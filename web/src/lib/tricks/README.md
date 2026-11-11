@@ -482,7 +482,11 @@ keeps one card, as before. Otherwise the card is one Decision with a `group` of 
   character is any one `web/src/lib/hidden-chars.ts` names: a control but the line feed and the tab, a
   format or direction character, U+2028 and U+2029 (a JavaScript line end), a zero-width joiner, a
   variation selector, a blank-looking letter (U+3164, U+115F, U+2800), a space that is not U+0020, a
-  private-use or unassigned code point. The phone's `diff` rule refuses the same characters. A line
+  private-use or unassigned code point. The phone's `diff` rule refuses the same characters. Windows
+  line ends (CRLF) are proposed: the CR of a CRLF line end is the line's end and shows nothing. A CR
+  inside a line (old or mixed line ends) is a hidden character, and when it is the only one the refusal
+  says so and names the file ("This trick holds a file with old or mixed line ends (program.ts), so it
+  was not proposed. Save it with Unix line ends, or ask your person to add it on the machine."). A line
   with a run of more than 40 spaces (a tab counts as two) is refused too (`cannot_show`): on a Decision's
   card the phone soft-wraps code, each row that goes on marked `↪` in the sign column, and such a run
   would still push the code after it far down and out of the reader's way. A new version whose diff

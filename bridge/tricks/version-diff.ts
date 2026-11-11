@@ -54,6 +54,8 @@ export interface ChangedFile {
   cut?: true;
   /** How many of the hunk's lines the mask changed (a key masked, a character as `?`). Absent for none. */
   masked?: number;
+  /** Set when every line the mask changed was changed only for a carriage return inside it: old or mixed line ends. */
+  strayCr?: true;
   /** Set when a line holds a run of more than {@link VIEW_GAP_MAX} spaces as the card shows it: a proposal with one is refused (review 7 R2). */
   gap?: true;
   /** The file became executable (`+x`) or stopped being so (`-x`), its bytes changed or not (review 7). */
@@ -170,6 +172,11 @@ export interface ViewLineRead {
   masked: boolean;
   /** True when the line holds a run of more than {@link VIEW_GAP_MAX} spaces, a tab counting as two. */
   gap: boolean;
+  /**
+   * True when the line is masked only for a carriage return inside it (not the one a CRLF line end
+   * leaves): a file with old or mixed line ends, not a key and no other hidden character.
+   */
+  strayCr: boolean;
 }
 
 /**
@@ -186,6 +193,7 @@ export function readViewLine(raw: string): ViewLineRead {
   const redacted = redactText(text);
   let line = "";
   let replaced = false;
+  let other = false;
   for (const ch of redacted) {
     if (ch === "\t") {
       line += "  ";
@@ -193,9 +201,11 @@ export function readViewLine(raw: string): ViewLineRead {
     }
     const refused = unsafeText(ch);
     if (refused) replaced = true;
+    if (refused && ch !== "\r") other = true;
     line += refused ? "?" : ch;
   }
-  return { line, masked: redacted !== text || replaced, gap: WIDE_GAP.test(line) };
+  const masked = redacted !== text || replaced;
+  return { line, masked, gap: WIDE_GAP.test(line), strayCr: masked && redacted === text && !other };
 }
 
 /** A line as a Decision's view takes it: masked, tabs as two spaces, any character the view refuses a `?`. */
@@ -283,8 +293,9 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
     file.minus = read.minus;
     file.hunk = lines.map((line) => line.line);
     if (answer.truncated === true || lines.some((line) => line.masked)) file.cut = true;
-    const masked = lines.filter((line) => line.masked).length;
-    if (masked > 0) file.masked = masked;
+    const masked = lines.filter((line) => line.masked);
+    if (masked.length > 0) file.masked = masked.length;
+    if (answer.truncated !== true && masked.length > 0 && masked.every((line) => line.strayCr)) file.strayCr = true;
     if (lines.some((line) => line.gap)) file.gap = true;
     counted = true;
   }

@@ -23,7 +23,7 @@ import type { HillDeps } from "./hill.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { cmdTrickGuide, trickGuide } from "./trick-guide.ts";
-import { GROUP_MASKED, GROUP_TOO_LARGE } from "../bridge/tricks/card-group.ts";
+import { GROUP_MASKED, GROUP_TOO_LARGE, groupLineEnds } from "../bridge/tricks/card-group.ts";
 import { TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { cmdTrickPropose, PROPOSE_UNKNOWN, proposeExit, readTrickFolder } from "./trick-propose.ts";
 import { askSocket } from "./walky.ts";
@@ -270,6 +270,18 @@ describe("collie trick propose, over the walky socket", () => {
     expect(await cmdTrickPropose(e, ["--json", trickFolder({ "keys.ts": 'export const KEY = "sk-or-v1-your-key-here-placeholder00";\n' })])).toBe(EXIT.REFUSED);
     expect(JSON.parse(e.io.stdout.join(""))).toEqual({ ok: false, code: "cannot_show", error: GROUP_MASKED });
     expect(b.calls).toEqual([]);
+  });
+
+  socketTest("a trick with Windows line ends is sent; one with a CR inside a line is refused in words that name the file", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)]);
+    const crlf = (text: string) => text.replaceAll("\n", "\r\n");
+    expect(await cmdTrickPropose(d, [trickFolder({ "trick.toml": crlf(MANIFEST), "program.ts": crlf("console.log(1);\nconsole.log(2);\n") })])).toBe(EXIT.OK);
+    expect(b.calls).toHaveLength(1);
+    const e = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(e, ["--json", trickFolder({ "program.ts": "console.log(1);\rconsole.log(2);\r" })])).toBe(EXIT.REFUSED);
+    expect(JSON.parse(e.io.stdout.join(""))).toEqual({ ok: false, code: "cannot_show", error: groupLineEnds("program.ts") });
+    expect(b.calls).toHaveLength(1);
   });
 
   socketTest("a refusal prints its words and the request id, with its exit code", async () => {

@@ -159,6 +159,23 @@ describe("the diff of two copies", () => {
     expect(versionCard(one(clean), { counted: true, files: clean })?.recommends).toMatchObject({ intent: "use" });
   });
 
+  test("a CR inside a changed line marks the file's lines as old or mixed line ends; a CRLF line end does not", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "a.sh": "1\n", "b.sh": "1\n", "c.sh": "1\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "a.sh": "2\n", "b.sh": "2\n", "c.sh": "2\n" });
+    const patches = new Map<string, string>([
+      ["a.sh", "@@ -1 +1 @@\n-1\r\n+a();\rb();\r\n"],
+      ["b.sh", "@@ -1 +1 @@\n-1\r\n+echo 2\r\n"],
+      ["c.sh", '@@ -1 +1,2 @@\n-1\n+a();\rb();\n+KEY="sk-or-v1-your-key-here-placeholder00"\n'],
+    ]);
+    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(argv.at(-1)?.split("/").at(-1) ?? "") ?? "", timedOut: false });
+    const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
+    expect(diff.files.map((file) => [file.rel, file.masked, file.strayCr])).toEqual([
+      ["a.sh", 1, true],
+      ["b.sh", undefined, undefined],
+      ["c.sh", 2, undefined],
+    ]);
+  });
+
   test("a version made by hand with masked lines says in Collie's words how many lines it could not show, and names the file", async () => {
     const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "1\n", "tool.sh": "1\n", "pic.bin": new Uint8Array([0, 1, 2]) });
     const next = await folder({ "trick.toml": MANIFEST, "legs.sh": "2\n", "tool.sh": "2\n", "pic.bin": new Uint8Array([0, 1, 3]) });
