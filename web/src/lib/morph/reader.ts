@@ -26,6 +26,7 @@
 // the session screen already holds, its hint stripped (`stripMorphHint`).
 
 import { isCommand } from "@/lib/send-protocol";
+import { reservedLead } from "@/lib/surface/send";
 import { kidsOf } from "@/lib/tricks/layout";
 import type { View, ViewNode } from "@/lib/tricks/schema";
 import type { TranscriptEntry } from "@/lib/types";
@@ -396,13 +397,21 @@ export function stripMorphHint(text: string, wording: { head?: string | undefine
   return head === undefined ? body : body.slice(head.length).trimStart();
 }
 
-/** The latest person turn with words once its hint is stripped, or null. `at` is its time in ms. */
+/** The leads of a person turn that is no request to the agent: a slash command and a shell line. An `@` turn is a prompt with a mention. */
+const NOT_A_REQUEST_LEADS = ["/", "!"] as const;
+
+/**
+ * The latest person turn with words once its hint is stripped, or null. `at` is its time in ms. A slash
+ * command (`/model`) or a shell line (`!ls`) typed in the terminal is no request, so it is skipped.
+ */
 export function latestRequestIn(entries: readonly TranscriptEntry[], wording: { head?: string | undefined; hint?: string | undefined }): { text: string; at: number } | null {
   for (const entry of entries.toReversed()) {
     if (entry.role !== "user" || entry.abandoned === true) continue;
     const text = stripMorphHint(textOf(entry), wording).trim();
     const at = timeOf(entry.ts);
-    if (text !== "" && !Number.isNaN(at)) return { text, at };
+    if (text === "" || Number.isNaN(at)) continue;
+    if (reservedLead(text, NOT_A_REQUEST_LEADS) !== null) continue;
+    return { text, at };
   }
   return null;
 }

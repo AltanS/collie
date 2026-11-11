@@ -73,6 +73,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The Collie mark rests until you touch the app.** Since 1.28.1 a page you opened drifted the mark for its first 20 seconds with no touch at all, background tabs included. Now the mark rests until your first touch, key press or mouse wheel, and 20 seconds after the last one it slows to a stop as before. A page left open and a page in the background draw nothing for the mark. A scroll the app makes by itself, such as the chat following new output, does not count as a touch. This undoes a slowdown seen in WebKit (Safari's engine) tests since 1.28.1.
+- **A slash command typed in the terminal is no Morph request.** With Morph on, running `/model` or a shell line such as `!ls` in the terminal showed it as your request, Sent, with the live mark, for good. Morph now skips a turn that starts with `/` or `!`, and a request sent from the phone is not replaced by one.
 
 ## [1.28.1] - 2026-11-10
 
