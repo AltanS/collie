@@ -9,8 +9,15 @@ import { HANDOVER_TTL_MS, mintInvite, type EnrollResponse } from "./enrollment.t
 import { counterRandom, fp, leadStore, material, member, muxCaps, CREW, peerStore, T0 } from "./fixtures.ts";
 import {
   createCrewRouter,
+  BODY_TOO_LARGE,
   CREW_ENROLL_PATH,
   CREW_HELLO_PATH,
+  CREW_HILL_MEDIA_PATH,
+  CREW_HILL_OP_PATH,
+  CREW_HILL_POST_PATH,
+  SIGNED_READS_BUSY,
+  SIGNED_READS_MAX,
+  SIGNED_MEDIA_READS_MAX,
   CREW_LAUNCHERS_COPY_PATH,
   CREW_LEAD_PATH,
   CREW_LEAVE_PATH,
@@ -20,11 +27,16 @@ import {
   CREW_SNAPSHOT_PATH,
   CREW_TAKEOVER_PATH,
   CREW_WALKY_OUTCOMES_PATH,
+  CREW_TRICKS_INPUTS_PATH,
   CREW_WALKY_PATH,
   CREW_WALKY_WHO_PATH,
   CREW_WARRANT_PATH,
+  SIGNED_BODY_CAPS,
   type SnapshotSource,
 } from "./router.ts";
+import type { HillCrewAnswer } from "../hill/crew.ts";
+import { WALKY_SPACE_MAX } from "../walky/parse.ts";
+import { WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import type { JsonValue } from "../json.ts";
 import type { CrewAnswer } from "../walky/crew.ts";
 import type { WalkyReceipt } from "../walky/types.ts";
@@ -3089,5 +3101,440 @@ describe("POST /crew/v1/walky/outcomes — the lead hands a member its outcomes 
     const h = harness(peerStore());
     const unwired = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true });
     expect((await call(unwired, CREW_WALKY_OUTCOMES_PATH, post({ receipts: [] })))!.status).toBe(404);
+  });
+});
+
+describe("POST /crew/v1/tricks/inputs — the lead reads a trick's inputs on a member (§23, added in 1.29.0)", () => {
+  const ask = { trick: "todo", run: "r1", globs: ["TODO.md"], panes: ["%1"] };
+
+  function inputsRig(store: TrustStoreData, answer: { status: number; body: JsonValue } = { status: 200, body: { panes: [] } }, deputyAnchor?: { memberId: string; certPem: string }) {
+    const h = harness(store);
+    const seen: (JsonValue | undefined)[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      deputyAnchor,
+      now: () => T0,
+      tricks: {
+        inputs: async (body) => {
+          seen.push(body);
+          return answer;
+        },
+      },
+    });
+    return { h, handler, seen };
+  }
+
+  test("a member answers its own lead, and passes the handler's status through (403 when its trick reads are off)", async () => {
+    const { handler, seen } = inputsRig(peerStore(), { status: 200, body: { panes: [{ pane: "%1", state: "ok", files: [] }] } });
+    const res = (await call(handler, CREW_TRICKS_INPUTS_PATH, post(ask)))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(await res.json()).toEqual({ panes: [{ pane: "%1", state: "ok", files: [] }] });
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    expect(seen).toEqual([JSON.parse(JSON.stringify(ask)) as JsonValue]);
+    const off = inputsRig(peerStore(), { status: 403, body: { error: "trick reads are off on this machine", code: "trick_reads_off" } });
+    const refused = (await call(off.handler, CREW_TRICKS_INPUTS_PATH, post(ask)))!;
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ code: "trick_reads_off" });
+  });
+
+  test("a body over 256 KiB is refused with 413 before the handler sees it", async () => {
+    const { handler, seen } = inputsRig(peerStore());
+    const big = { ...ask, run: "x".repeat(300 * 1024) };
+    const res = (await call(handler, CREW_TRICKS_INPUTS_PATH, post(big)))!;
+    expect(res.status).toBe(413);
+    expect(seen).toEqual([]);
+  });
+
+  test("who may ask: never a lead, never a member's signature, never the deputy this listener anchors; an unwired member answers 404", async () => {
+    // A lead has no lead: a member's signed request (the only way a lead admits one) reaches nothing.
+    const h0 = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const seen: (JsonValue | undefined)[] = [];
+    const lead = createCrewRouter({ store: h0.store, audit: h0.audit, now: () => T0, tricks: { inputs: async (body) => (seen.push(body), { status: 200, body: { panes: [] } }) } });
+    expect((await call(lead, CREW_TRICKS_INPUTS_PATH, signedPost("laptop", CREW_TRICKS_INPUTS_PATH, ask, T0)))!.status).toBe(401);
+    expect(seen).toEqual([]);
+    // A deputy this peer anchored dials it with its own attestation: admitted as "nas", not the lead, so refused.
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
+    const anchored = inputsRig(peerStore({ warrant: { warrant: w, deputyCertPem: material("nas").certPem } }), undefined, { memberId: "nas", certPem: material("nas").certPem });
+    const dialled = {
+      method: "POST",
+      headers: {
+        ...authed,
+        "content-type": "application/json",
+        [DIAL_HEADER]: signDial(material("nas").keyPem, { method: "POST", path: CREW_TRICKS_INPUTS_PATH, timestamp: T0, to: "laptop" }),
+        [TIMESTAMP_HEADER]: String(T0),
+      },
+      body: JSON.stringify(ask),
+    };
+    expect((await call(anchored.handler, CREW_TRICKS_INPUTS_PATH, dialled))!.status).toBe(401);
+    expect(anchored.seen).toEqual([]);
+    expect(anchored.h.lines.some((line) => line.action === "crew.refused")).toBe(true);
+    // No secret: the uniform 401 before routing.
+    const { handler, seen: none } = inputsRig(peerStore());
+    expect((await call(handler, CREW_TRICKS_INPUTS_PATH, { method: "POST", headers: { "x-crew-protocol": "2" }, body: JSON.stringify(ask) }))!.status).toBe(401);
+    expect(none).toEqual([]);
+    // A member build that does not wire it: 404, which the lead reads as an older member.
+    const h = harness(peerStore());
+    const unwired = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true });
+    expect((await call(unwired, CREW_TRICKS_INPUTS_PATH, post(ask)))!.status).toBe(404);
+  });
+});
+
+describe("signed body caps — a body over its route's cap is refused before it is read (§8.6, added in 1.29.0)", () => {
+  /** A body whose bytes are counted as they are pulled: the proof that a refused one was never read. */
+  interface CountedBody {
+    readonly stream: ReadableStream<Uint8Array>;
+    readonly pulled: () => number;
+  }
+
+  function counted(bytes: Uint8Array, chunk = 16 * 1024): CountedBody {
+    let offset = 0;
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          if (offset >= bytes.length) {
+            controller.close();
+            return;
+          }
+          const next = bytes.subarray(offset, offset + chunk);
+          offset += next.length;
+          pulled += next.length;
+          controller.enqueue(next);
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    return { stream, pulled: () => pulled };
+  }
+
+  function capRig() {
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const seen: string[] = [];
+    const answer = (route: string) => (body: JsonValue | undefined): HillCrewAnswer => {
+      seen.push(`${route}:${JSON.stringify(body).length}`);
+      return { status: 200, body: { ok: true } };
+    };
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      walky: {
+        fromMember: async (body) => {
+          seen.push(`walky:${JSON.stringify(body).length}`);
+          return { status: 200, body: { receipts: [] } };
+        },
+      },
+      hill: { media: answer("media"), post: answer("post"), op: answer("op") },
+    });
+    return { h, handler, seen };
+  }
+
+  test("every signable route has a cap, and the routes of §22 have theirs", () => {
+    for (const path of [CREW_LEAVE_PATH, CREW_HELLO_PATH, CREW_LEAD_PATH, CREW_WARRANT_PATH, CREW_TAKEOVER_PATH, CREW_WALKY_PATH, CREW_WALKY_WHO_PATH]) {
+      expect(SIGNED_BODY_CAPS.get(path)).toBeGreaterThanOrEqual(64 * 1024);
+    }
+    expect(SIGNED_BODY_CAPS.get(CREW_HILL_MEDIA_PATH)).toBe(3 * 1024 * 1024);
+    expect(SIGNED_BODY_CAPS.get(CREW_HILL_POST_PATH)).toBe(64 * 1024);
+    expect(SIGNED_BODY_CAPS.get(CREW_HILL_OP_PATH)).toBe(4 * 1024);
+    expect(SIGNED_BODY_CAPS.size).toBe(10);
+  });
+
+  test("a declared Content-Length over the cap is a 413 with its code, and not one byte is pulled", async () => {
+    const { h, handler, seen } = capRig();
+    const body = counted(new Uint8Array(8 * 1024).fill(0x61));
+    const url = new URL(`https://peer.example${CREW_HILL_OP_PATH}`);
+    const req = new Request(url, {
+      method: "POST",
+      headers: { ...authed, "content-type": "application/json", "content-length": String(8 * 1024), ...signed("laptop", "POST", CREW_HILL_OP_PATH, "{}", T0) },
+      body: body.stream,
+    });
+    const res = (await handler(req, url))!;
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ code: BODY_TOO_LARGE });
+    expect(body.pulled()).toBe(0);
+    expect(seen).toEqual([]);
+    expect(h.lines.some((line) => line.action === "crew.refused" && line.detail?.factor === "body-too-large")).toBe(true);
+  });
+
+  test("a body with no declared length is read only to its cap, then refused: the stream is not drained", async () => {
+    const { handler, seen } = capRig();
+    const body = counted(new Uint8Array(64 * 1024).fill(0x61), 1024);
+    const url = new URL(`https://peer.example${CREW_HILL_OP_PATH}`);
+    const req = new Request(url, {
+      method: "POST",
+      headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_HILL_OP_PATH, "{}", T0) },
+      body: body.stream,
+    });
+    req.headers.delete("content-length");
+    const res = (await handler(req, url))!;
+    expect(res.status).toBe(413);
+    expect(body.pulled()).toBeLessThanOrEqual(4 * 1024 + 1024);
+    expect(seen).toEqual([]);
+  });
+
+  test("an unsigned request is not read for a signature at all, and stays the uniform 401", async () => {
+    const { handler, seen } = capRig();
+    const res = (await call(handler, CREW_HILL_OP_PATH, post({ pad: "a".repeat(8 * 1024) })))!;
+    expect(res.status).toBe(401);
+    expect(seen).toEqual([]);
+  });
+
+  test("the largest walky talky message, with its space line and every label at its maximum, passes the cap and reaches the handler whole", async () => {
+    const { handler, seen } = capRig();
+    // The worst case as JSON writes it: every character an escaped control character (six bytes each),
+    // which a cleaned message never carries, so a real one is smaller still.
+    const worst = (length: number): string => "\u0001".repeat(length);
+    const message = {
+      v: 1,
+      id: "wt_aaaaaaaaaaa1",
+      kind: "say",
+      from: {
+        memberId: "laptop",
+        address: "laptop/w1:p1#aaaa",
+        harness: worst(WALKY_HARNESS_MAX),
+        label: worst(WALKY_LABEL_MAX),
+        space: { key: worst(WALKY_SPACE_MAX), named: true, label: worst(WALKY_SPACE_MAX) },
+      },
+      to: "desk/w1:p1#bbbb",
+      replyTo: "laptop/w1:p1#aaaa",
+      at: T0,
+      body: worst(WALKY_BODY_MAX),
+      wake: true,
+      outside: true,
+      signer: "laptop",
+      signature: "A".repeat(200),
+    };
+    const json = JSON.stringify(message);
+    expect(Buffer.byteLength(json)).toBeGreaterThan(6 * WALKY_BODY_MAX);
+    const res = (await call(handler, CREW_WALKY_PATH, {
+      method: "POST",
+      headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_WALKY_PATH, json, T0) },
+      body: json,
+    }))!;
+    expect(res.status).toBe(200);
+    expect(seen).toHaveLength(1);
+    expect(Buffer.byteLength(json)).toBeLessThan(SIGNED_BODY_CAPS.get(CREW_WALKY_PATH)!);
+  });
+
+  test("a junk signature without the crew secret is refused before one byte of the body is read", async () => {
+    const { h, handler, seen } = capRig();
+    const wrongSecret = { "x-crew-protocol": "2", authorization: "Bearer not-the-secret" } satisfies HeadersInit;
+    const noSecret = { "x-crew-protocol": "2" } satisfies HeadersInit;
+    for (const headers of [wrongSecret, noSecret]) {
+      const body = counted(new Uint8Array(2 * 1024 * 1024).fill(0x61));
+      const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+      const req = new Request(url, { method: "POST", headers: { ...headers, "content-type": "application/json", [SIGNATURE_HEADER]: "AAAA", [TIMESTAMP_HEADER]: String(T0) }, body: body.stream });
+      const res = (await handler(req, url))!;
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+      expect(body.pulled()).toBe(0);
+    }
+    expect(seen).toEqual([]);
+    expect(h.lines.filter((line) => line.action === "crew.refused" && line.detail?.factor === "secret")).toHaveLength(2);
+  });
+
+  test("with the secret, a timestamp that is no timestamp is refused before the body is read too", async () => {
+    const { handler, seen } = capRig();
+    const body = counted(new Uint8Array(1024 * 1024).fill(0x61));
+    const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+    const req = new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", [SIGNATURE_HEADER]: "AAAA", [TIMESTAMP_HEADER]: "soon" }, body: body.stream });
+    expect((await handler(req, url))!.status).toBe(401);
+    expect(body.pulled()).toBe(0);
+    expect(seen).toEqual([]);
+  });
+
+  test("at most four large signed bodies are read at once: a fifth is 503 unread; a small route still goes; the slot comes back", async () => {
+    const { h, handler, seen } = capRig();
+    const image = JSON.stringify({ sha256: "a".repeat(64), b64: Buffer.alloc(1024).toString("base64") });
+    // A body that sends its first byte, then waits for the gate before the rest.
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const held = (json: string) => {
+      const bytes = new TextEncoder().encode(json);
+      let sent = false;
+      return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue(bytes.subarray(0, 1));
+            return;
+          }
+          await gate;
+          controller.enqueue(bytes.subarray(1));
+          controller.close();
+        },
+      });
+    };
+    const media = (body: BodyInit) => {
+      const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+      return handler(new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_HILL_MEDIA_PATH, image, T0) }, body }), url);
+    };
+    const inFlight = Array.from({ length: SIGNED_READS_MAX }, () => media(held(image)));
+    await Bun.sleep(20);
+    const fifth = counted(new TextEncoder().encode(image));
+    const busy = (await media(fifth.stream))!;
+    expect(busy.status).toBe(503);
+    expect(busy.headers.get("retry-after")).toBe("1");
+    expect(await busy.json()).toMatchObject({ code: SIGNED_READS_BUSY });
+    expect(fifth.pulled()).toBe(0);
+    expect(h.lines.some((line) => line.action === "crew.refused" && line.detail?.factor === "signed-reads-busy")).toBe(true);
+    // A route with a small cap is not counted.
+    expect((await call(handler, CREW_HILL_OP_PATH, signedPost("laptop", CREW_HILL_OP_PATH, { op: "list" }, T0)))!.status).toBe(200);
+    open();
+    for (const res of await Promise.all(inFlight)) expect(res!.status).toBe(200);
+    expect((await media(image))!.status).toBe(200);
+    expect(seen.filter((entry) => entry.startsWith("media:"))).toHaveLength(SIGNED_READS_MAX + 1);
+  });
+
+  test("A5: uploads that fill every media slot never turn away a signed lead, warrant or takeover body", async () => {
+    const { handler } = capRig();
+    const image = JSON.stringify({ sha256: "a".repeat(64), b64: Buffer.alloc(1024).toString("base64") });
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    // A member's uploads that send one byte, then stall: they hold every media slot.
+    const stalled = (json: string) => {
+      const bytes = new TextEncoder().encode(json);
+      let sent = false;
+      return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue(bytes.subarray(0, 1));
+            return;
+          }
+          await gate;
+          controller.enqueue(bytes.subarray(1));
+          controller.close();
+        },
+      });
+    };
+    const media = (body: BodyInit) => {
+      const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+      return handler(new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_HILL_MEDIA_PATH, image, T0) }, body }), url);
+    };
+    const inFlight = Array.from({ length: SIGNED_MEDIA_READS_MAX }, () => media(stalled(image)));
+    await Bun.sleep(20);
+    expect((await media(image))!.status).toBe(503);
+    // The lead's own crew routes still read their bodies; whatever they answer, it is not "busy".
+    for (const path of [CREW_LEAD_PATH, CREW_WARRANT_PATH, CREW_TAKEOVER_PATH]) {
+      const res = (await call(handler, path, signedPost("laptop", path, { lead: { memberId: "laptop" } }, T0)))!;
+      expect(res.status).not.toBe(503);
+      expect(await res.text()).not.toContain(SIGNED_READS_BUSY);
+    }
+    open();
+    for (const res of await Promise.all(inFlight)) expect(res!.status).toBe(200);
+  });
+
+  test("A5: an upload that breaks off half way gives its slot back and is answered, not thrown", async () => {
+    const { handler, seen } = capRig();
+    const image = JSON.stringify({ sha256: "a".repeat(64), b64: Buffer.alloc(1024).toString("base64") });
+    const broken = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(image.slice(0, 1)));
+          controller.error(new Error("connection reset"));
+        },
+      });
+    const media = (body: BodyInit) => {
+      const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+      return handler(new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_HILL_MEDIA_PATH, image, T0) }, body }), url);
+    };
+    for (let i = 0; i < SIGNED_MEDIA_READS_MAX + 2; i += 1) {
+      const res = (await media(broken()))!;
+      expect(res.status).toBe(400);
+    }
+    expect((await media(image))!.status).toBe(200);
+    expect(seen.filter((entry) => entry.startsWith("media:"))).toHaveLength(1);
+  });
+
+  test("an image at the hill's 2 MB limit, written as base64, passes the media cap", async () => {
+    const { handler, seen } = capRig();
+    const image = { sha256: "a".repeat(64), b64: Buffer.alloc(2 * 1024 * 1024).toString("base64") };
+    const res = (await call(handler, CREW_HILL_MEDIA_PATH, signedPost("laptop", CREW_HILL_MEDIA_PATH, image, T0)))!;
+    expect(res.status).toBe(200);
+    expect(seen).toHaveLength(1);
+  });
+});
+
+describe("POST /crew/v1/hill/* — a member's Decision on its lead's Hill (§22, added in 1.29.0)", () => {
+  function hillRig(answer: HillCrewAnswer = { status: 200, body: { ok: true } }) {
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const seen: { route: string; body: JsonValue | undefined; member: string }[] = [];
+    const handle = (route: string) => (body: JsonValue | undefined, from: { memberId: string }): HillCrewAnswer => {
+      seen.push({ route, body, member: from.memberId });
+      return answer;
+    };
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0, hill: { media: handle("media"), post: handle("post"), op: handle("op") } });
+    return { h, handler, seen };
+  }
+
+  test("a signed member reaches each route as itself, the body as sent; nothing is written and no floor moves", async () => {
+    const { h, handler, seen } = hillRig();
+    for (const path of [CREW_HILL_MEDIA_PATH, CREW_HILL_POST_PATH, CREW_HILL_OP_PATH]) {
+      const res = (await call(handler, path, signedPost("laptop", path, { from: { address: "desk/w1:p1" } }, T0)))!;
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-crew-protocol")).toBe("2");
+    }
+    // The member is the signer's, whatever the body names.
+    expect(seen.map((s) => [s.route, s.member])).toEqual([
+      ["media", "laptop"],
+      ["post", "laptop"],
+      ["op", "laptop"],
+    ]);
+    expect(seen[1]!.body).toEqual({ from: { address: "desk/w1:p1" } });
+    expect(h.data().peers[0]!.signedAt).toBe(0);
+    expect(h.writes()).toBe(0);
+  });
+
+  test("a bad signature, an unknown member and an unsigned request are the uniform 401, and reach no handler", async () => {
+    const { handler, seen } = hillRig();
+    const forged = signedPost("laptop", CREW_HILL_POST_PATH, { a: 1 }, T0);
+    const tampered: RequestInit = { ...forged, body: JSON.stringify({ a: 2 }) };
+    for (const init of [tampered, signedPost("stranger", CREW_HILL_POST_PATH, {}, T0), post({})]) {
+      const res = (await call(handler, CREW_HILL_POST_PATH, init))!;
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+    }
+    expect(seen).toEqual([]);
+  });
+
+  test("a body that names another machine's session (the handler's 401) is the same uniform 401, audited", async () => {
+    const { h, handler } = hillRig({ status: 401, body: { error: "unauthorized" } });
+    const res = (await call(handler, CREW_HILL_POST_PATH, signedPost("laptop", CREW_HILL_POST_PATH, {}, T0)))!;
+    expect(res.status).toBe(401);
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
+    expect(h.lines.some((line) => line.action === "crew.refused")).toBe(true);
+  });
+
+  test("a collie that does not lead answers 404, and so does a lead of this build given no Hill", async () => {
+    const peer = harness(peerStore());
+    const answer = (): HillCrewAnswer => ({ status: 200, body: {} });
+    const asPeer = createCrewRouter({ store: peer.store, audit: peer.audit, transportPinned: true, hill: { media: answer, post: answer, op: answer } });
+    expect((await call(asPeer, CREW_HILL_POST_PATH, post({})))!.status).toBe(404);
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const older = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    for (const path of [CREW_HILL_MEDIA_PATH, CREW_HILL_POST_PATH, CREW_HILL_OP_PATH]) {
+      expect((await call(older, path, signedPost("laptop", path, {}, T0)))!.status).toBe(404);
+    }
+  });
+
+  test("a lead before 1.29.0 answers the uniform 401, not 404: a path it does not sign admits no signed member", async () => {
+    // A lead before 1.29.0 has the three paths outside its signable set. Its admission ignores the
+    // signature on a path it does not sign, so a member (which rides no pinned handshake into the lead)
+    // is unknown there: the uniform 401, before any routing. A path this build does not sign stands in.
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const path = "/crew/v1/hill/next";
+    const res = (await call(handler, path, signedPost("laptop", path, {}, T0)))!;
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
   });
 });

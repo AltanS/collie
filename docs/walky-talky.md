@@ -463,6 +463,10 @@ certificate with its own word for it, so the receiving machine checks the sender
   refuses to send it an agent's message, with `lead older than 1.29.0: update the lead`. A lead checks the
   border itself for a member older than 1.29.0, which cannot. A message from a member older than
   1.29.0 names no space. It passes as before, and its receipt says `legacy`.
+- **A Decision goes to the lead's Hill.** `collie hill post` on a member posts on the lead, and the
+  answer comes back to the session as a message through the lead. An answer to a session whose
+  machine is not answering is not sent, and the card stays open
+  ([Decisions from any machine](crew.md#decisions-from-any-machine)).
 
 The receipt's `verified` field says how the sender was known. `origin` means the sender's own key
 was checked. `lead` means the lead checked it, and this machine trusts the lead. `local` means

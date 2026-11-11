@@ -1,12 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 
 import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
-import { cmdTrickDev, devTrigger, parseDevArgs, watchCounts, watchFolder } from "./trick-dev.ts";
+import { cmdTrickDev, DEV_INPUTS_MARK, devTrigger, parseDevArgs, watchCounts, watchFolder } from "./trick-dev.ts";
 import { cmdTrickInit, type TrickDeps } from "./trick.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 
@@ -55,7 +55,7 @@ async function trickWith(d: Awaited<ReturnType<typeof deps>>, id: string, progra
 
 describe("the flags", () => {
   test("a folder, --tap with its --text and --node, --json and --watch", () => {
-    expect(parseDevArgs(["."])).toEqual({ target: ".", tap: null, json: false, watch: false, facts: null, state: null, rid: null });
+    expect(parseDevArgs(["."])).toEqual({ target: ".", tap: null, json: false, watch: false, facts: null, state: null, rid: null, inputs: null });
     expect(parseDevArgs(["look", "--tap", "rerun", "--text", "go on", "--node", "hill/case-24", "--json", "--watch"])).toEqual({
       target: "look",
       tap: { intent: "rerun", text: "go on", node: "hill/case-24" },
@@ -64,6 +64,7 @@ describe("the flags", () => {
       facts: null,
       state: null,
       rid: null,
+      inputs: null,
     });
     expect(parseDevArgs(["--tap", "x"])).toEqual({ error: "name a trick folder or id" });
     expect(parseDevArgs([".", "--text", "x"])).toEqual({ error: "--text and --node go with --tap" });
@@ -215,6 +216,72 @@ console.log(JSON.stringify({ v: 1, parts: [{ at: "status", id: "status", chip: {
     expect(JSON.parse(d.out.join("\n")).parts[0].part.chip.text).not.toBe(RID.slice(0, 12));
     expect(await cmdTrickDev(d, [dir, "--rid", RID])).toBe(EXIT.USAGE);
     expect(d.err.join("\n")).toContain("error: --rid goes with --tap");
+  });
+});
+
+describe("--inputs", () => {
+  /** A contract 2 trick whose program prints, as its status chip, the first session's input count and the first file's first word. */
+  async function readsTrick(d: Awaited<ReturnType<typeof deps>>, globs: string): Promise<string> {
+    const dir = await trickWith(
+      d,
+      "reads",
+      `import { run } from "./trick.ts";
+run((t) => {
+  const s = t.facts.sessions.find((x) => x.inputs?.state === "ok");
+  const files = s === undefined ? [] : t.inputs(s);
+  t.status({ text: \`\${files.length}:\${(files[0]?.text ?? "none").split(" ")[0]}\`.slice(0, 12) });
+});
+`,
+      '["status"]',
+    );
+    await writeFile(join(dir, "trick.toml"), `id = "reads"\nname = "reads"\nrun = "program.ts"\nplaces = ["status"]\ncontract = 2\ninputs = ${globs}\n`);
+    return dir;
+  }
+
+  test("the flag parses and needs a value", () => {
+    expect(parseDevArgs([".", "--inputs", "../proj"])).toMatchObject({ inputs: "../proj" });
+    expect(parseDevArgs(["."])).toMatchObject({ inputs: null });
+    expect(parseDevArgs([".", "--inputs"])).toEqual({ error: "--inputs needs a value" });
+  });
+
+  test("the globs' files reach the program through t.inputs as the first agent session's; a .env file never does", async () => {
+    const d = await deps();
+    const dir = await readsTrick(d, '["TODO.md", ".e*"]');
+    const proj = join(dirname(d.configDir), "proj");
+    await mkdir(proj);
+    await writeFile(join(proj, "TODO.md"), "ship it\n");
+    await writeFile(join(proj, ".env"), "API_KEY=sk-or-v1-your-key-here\n");
+    expect(await cmdTrickDev(d, [dir, "--inputs", proj])).toBe(EXIT.OK);
+    const text = d.out.join("\n");
+    expect(text).toContain(`inputs: 1 file from ${proj} as session`);
+    expect(text).toContain('"1:ship"');
+    expect(existsSync(join(dir, DEV_INPUTS_MARK))).toBe(true);
+    // A second run replaces the folder dev made itself.
+    await writeFile(join(proj, "TODO.md"), "hold it\n");
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--inputs", proj])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).toContain('"1:hold"');
+  });
+
+  test("an inputs/ folder dev did not make is never emptied: the run stops with the reason", async () => {
+    const d = await deps();
+    const dir = await readsTrick(d, '["TODO.md"]');
+    const proj = join(dirname(d.configDir), "proj");
+    await mkdir(proj);
+    await writeFile(join(proj, "TODO.md"), "ship it\n");
+    await mkdir(join(dir, "inputs"));
+    await writeFile(join(dir, "inputs", "mine.txt"), "the author's own\n");
+    expect(await cmdTrickDev(d, [dir, "--inputs", proj])).toBe(EXIT.FAIL);
+    expect(d.err.join("\n")).toContain("exists and trick dev did not make it");
+    expect(await readFile(join(dir, "inputs", "mine.txt"), "utf8")).toBe("the author's own\n");
+  });
+
+  test("a trick that lists no inputs runs as before, with a note", async () => {
+    const d = await deps();
+    const dir = await trickWith(d, "plain", `import { run } from "./trick.ts";\nrun((t) => t.status({ text: "ok" }));\n`, '["status"]');
+    expect(await cmdTrickDev(d, [dir, "--inputs", dirname(d.configDir)])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).toContain("--inputs: trick.toml lists no inputs, so the run reads none");
+    expect(existsSync(join(dir, "inputs"))).toBe(false);
   });
 });
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { FACTS } from "../../web/src/lib/tricks/fixtures/index.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
-import { PLACE_KINDS, parseDecisionView, parseFacts, parseTrickDocumentText, TRICK_CONTRACT, type TrickFacts } from "../../web/src/lib/tricks/schema.ts";
+import { PLACE_KINDS, parseDecisionView, parseFacts, parseTrickDocumentText, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TrickFacts } from "../../web/src/lib/tricks/schema.ts";
 import { TRICK_HELPER } from "../../bridge/tricks/scan.ts";
 import { sampleConfig, sampleManifest, sampleProgram } from "../trick.ts";
 import { age, clip, CONTRACT, firstSentence, iso, mapText, mask, minute, now, Trick, v, type Facts, type Node } from "./trick.ts";
@@ -72,8 +72,16 @@ describe("the builders cannot drift from the schema", () => {
     // SAFETY: the bridge's facts, through JSON, are exactly what a program reads on stdin, and the helper
     // reads that text as its Facts; the round trip drops the bridge-side types the helper does not name.
     const facts = JSON.parse(JSON.stringify(factsFor("/nonexistent", "/nonexistent"))) as Facts;
-    expect(facts.contract).toBe(CONTRACT);
-    expect(new Trick(facts).document().v).toBe(TRICK_CONTRACT);
+    expect(facts.contract).toBe(TRICK_CONTRACT_DEFAULT);
+    expect(new Trick(facts).document().v).toBe(TRICK_CONTRACT_DEFAULT);
+  });
+
+  test("a run prints the contract its facts name as v: 1 for a trick that names none, 2 for a contract 2 trick", () => {
+    // SAFETY: as above, the bridge's facts through JSON.
+    const facts = JSON.parse(JSON.stringify({ ...factsFor("/nonexistent", "/nonexistent"), contract: 2 })) as Facts;
+    const doc = new Trick(facts).document();
+    expect(doc.v).toBe(2);
+    expect(parseTrickDocumentText(JSON.stringify(doc)).refusals).toEqual([]);
   });
 
   test("every builder's node parses with the real parser, inside the container that holds it", () => {
@@ -512,5 +520,42 @@ run((t) => {
     expect(failed.code).toBe(0);
     expect(failed.stdout).toContain("failed in ~/x with sk-o****");
     expect(failed.stderr).not.toContain(key);
+  });
+});
+
+describe("helper v4: a session's inputs", () => {
+  test("t.inputs reads text and pictures from inputs/, and leaves out a path outside it, a missing copy and a changed one", async () => {
+    const { t, dir } = await trickHere();
+    await mkdir(join(dir, "inputs", "m", "p"), { recursive: true });
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    await writeFile(join(dir, "inputs", "m", "p", "TODO.md"), "- ship it\n");
+    await writeFile(join(dir, "inputs", "m", "p", "shot.png"), png);
+    await writeFile(join(dir, "inputs", "m", "p", "changed.md"), "now\n");
+    await writeFile(join(dir, "secret.txt"), "not an input\n");
+    const sha = (bytes: string | Uint8Array) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+    const file = (rel: string, kind: "text" | "image", hash: string, path = `inputs/m/p/${rel}`) => ({ rel, path, bytes: 1, sha256: hash, mtime: "2026-11-10T00:00:00Z", kind });
+    const first = t.facts.sessions[0];
+    if (first === undefined) throw new Error("the fixture facts hold no session");
+    const session = {
+      ...first,
+      inputs: {
+        state: "ok" as const,
+        files: [
+          file("TODO.md", "text", sha("- ship it\n")),
+          file("shot.png", "image", sha(png)),
+          file("changed.md", "text", sha("before\n")),
+          file("gone.md", "text", sha("x")),
+          file("secret.txt", "text", sha("not an input\n"), "secret.txt"),
+          file("up.txt", "text", sha("not an input\n"), "inputs/../secret.txt"),
+        ],
+      },
+    };
+    const read = t.inputs(session);
+    expect(read.map((f) => f.rel)).toEqual(["TODO.md", "shot.png"]);
+    expect(read[0]?.text).toBe("- ship it\n");
+    expect(read[0]?.data).toBeNull();
+    expect(read[1]?.text).toBeNull();
+    expect([...(read[1]?.data ?? [])]).toEqual([...png]);
+    expect(t.inputs(first)).toEqual([]);
   });
 });

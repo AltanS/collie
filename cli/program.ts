@@ -54,7 +54,7 @@ import {
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate } from "./trick-add.ts";
-import { cmdTrick, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
+import { cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
   cmdJoin,
@@ -117,6 +117,7 @@ import { HOST } from "../bridge/host.ts";
 import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 import {
+  askPaneKind,
   askSocket,
   cmdWalky,
   cmdWalkyCancel,
@@ -302,7 +303,7 @@ function walkyDeps(io: Io): WalkyDeps {
     platform: HOST.platform,
     readStdin: () => Bun.stdin.text(),
     stdinIsTty: process.stdin.isTTY === true,
-    ask: (path, line) => askSocket(path, line),
+    ask: (path, line, ms) => askSocket(path, line, ms),
   };
 }
 
@@ -427,7 +428,7 @@ function configVerbDeps(io: Io): ConfigDeps {
 
 /** `trick`: the context, the filesystem, and the one read `list` makes of this instance's own bridge. */
 function trickVerbDeps(io: Io): TrickDeps {
-  return { ctx: loadContext(io.err), io, files: realFiles, fetch: (url, init) => fetch(url, init), now: Date.now };
+  return { ctx: loadContext(io.err), io, files: realFiles, fetch: (url, init) => fetch(url, init), now: Date.now, paneKind: () => askPaneKind(walkyDeps(io)) };
 }
 
 /**
@@ -1026,13 +1027,18 @@ export const COMMANDS: readonly Command[] = [
       },
       {
         name: "on",
-        summary: "switch a trick on: <id>",
+        summary: "switch a trick on, approving its code as it is now: <id> (refused inside an agent's pane)",
         run: async (args, s) => await cmdTrickSwitch(trickVerbDeps(s.io), args, true),
       },
       {
         name: "off",
         summary: "switch a trick off: <id>",
         run: async (args, s) => await cmdTrickSwitch(trickVerbDeps(s.io), args, false),
+      },
+      {
+        name: "auto",
+        summary: "take a trick's new versions without asking while its powers do not change and it does nothing new: <id> on|off",
+        run: async (args, s) => await cmdTrickAuto(trickVerbDeps(s.io), args),
       },
       {
         name: "check",

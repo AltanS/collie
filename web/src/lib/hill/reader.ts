@@ -33,6 +33,7 @@ import {
   HILL_STATES,
   HILL_TEXT_MODES,
   HILL_TRICK_DELIVERIES,
+  hillCollieRef,
   type HillDecision,
   type HillList,
   type HillMedia,
@@ -48,7 +49,7 @@ const DELIVERIES: readonly NonNullable<HillReceipt["delivery"]>[] = ["typed", "h
 const ANSWER_DELIVERIES: readonly NonNullable<HillDecision["answer"]>["delivery"][] = ["typed", "held", "unknown", "none"];
 /** The most pixels one side of an image may have: a picture past it is left out, as one past the bytes cap is. */
 const HILL_MEDIA_PX_MAX = 8192;
-const FROM_KINDS: readonly HillDecision["from"]["kind"][] = ["agent", "trick"];
+const FROM_KINDS: readonly HillDecision["from"]["kind"][] = ["agent", "trick", "collie"];
 
 /** A string field, or null when the field is null or absent. `undefined` when it is there and is not a string. */
 function nullableString(value: JsonValue | undefined): string | null | undefined {
@@ -177,7 +178,12 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   if (kind === undefined || label === undefined) return null;
   if (address === undefined || trickId === undefined || memberId === undefined || harness === undefined || host === undefined) return null;
   if (trickKey === undefined || trickHost === undefined) return null;
-  return { kind, address, trickId, trickKey, memberId, harness, label, host, trickHost };
+  const from = { kind, address, trickId, trickKey, memberId, harness, label, host, trickHost };
+  if (kind !== "collie") return from;
+  // Collie's own Decision names what it is about; one without a readable `ref` is not drawn.
+  const ref = asJsonObject(o.ref);
+  const read = hillCollieRef(asJsonString(ref?.type), asJsonString(ref?.id), asJsonString(ref?.hash));
+  return read === null ? null : { ...from, ref: read };
 }
 
 function readTarget(value: JsonValue | undefined): HillDecision["target"] | undefined {
@@ -420,5 +426,11 @@ export function readHillReceipt(value: JsonValue | undefined): HillReceipt | nul
   const trick = o.trick === null ? null : oneOf(HILL_TRICK_DELIVERIES, o.trick);
   if (rid === undefined || code === undefined || reason === undefined || at === undefined) return null;
   if (state === undefined || delivery === undefined || trick === undefined) return null;
-  return { rid, code, reason, state, delivery, trick, at };
+  const receipt: HillReceipt = { rid, code, reason, state, delivery, trick, at };
+  // The crew machine that is not answering (CREW_PROTOCOL §22): a short printable name, else left out.
+  const machine = asJsonString(o.machine);
+  return machine !== undefined && MACHINE_NAME.test(machine) ? { ...receipt, machine } : receipt;
 }
+
+/** A crew machine's name as a receipt may carry it: a member id or a host name, short and printable. */
+const MACHINE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;

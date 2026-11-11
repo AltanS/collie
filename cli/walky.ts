@@ -5,7 +5,7 @@ import { readEnvMarkers, edgeStateDirs, type EdgeTargetDeps } from "./beacon.ts"
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { inScope, LOCAL_MEMBER, parseAddress, type WalkyScope } from "../bridge/walky/address.ts";
 import { OUTSIDE_YOUR_SPACE } from "../bridge/walky/border.ts";
 import { readMessage, readReceipt, readSpace } from "../bridge/walky/parse.ts";
@@ -43,8 +43,12 @@ export interface WalkyDeps extends EdgeTargetDeps {
   readStdin(): Promise<string>;
   /** Whether stdin is a terminal: then no body on the command line is a usage error, not a wait. */
   readonly stdinIsTty: boolean;
-  /** One request line to one socket: the answer line, or null when nothing answered. */
-  ask(path: string, line: string): Promise<string | null>;
+  /**
+   * One request line to one socket: the answer line, or null when nothing answered. `ms` is the wait,
+   * {@link ASK_MS} when absent. Rejects with {@link AskLate} when the socket took the line and did not
+   * answer in time: the request may still run there.
+   */
+  ask(path: string, line: string, ms?: number): Promise<string | null>;
   /** The socket of every live bridge. Defaults to the hook target registry, then this install's own. */
   sockets?(): readonly string[];
   readonly mintId?: () => string;
@@ -106,6 +110,22 @@ async function request(deps: WalkyDeps, body: JsonObject, path?: string, first?:
   if (unread) return { ok: false, error: UNREAD_BY_OLDER_BRIDGE };
   if (notHere) return { ok: false, error: "no Collie bridge on this machine knows this pane" };
   return { ok: false, error: "no running Collie bridge answers on this machine" };
+}
+
+/** What the bridge says of the pane the CLI runs in. `unknown`: no pane, no bridge, or a bridge before the `pane` op. */
+export type PaneKind = "agent" | "shell" | "unknown";
+
+/**
+ * Ask the local bridges whether this pane runs an agent (crew slice 3). Outside a pane, with no bridge
+ * answering, or with only bridges that do not know the op, the answer is `unknown`: the caller decides
+ * what that means. `collie trick on` treats it as a shell, a speed bump and not a wall.
+ */
+export async function askPaneKind(deps: WalkyDeps): Promise<PaneKind> {
+  if (readEnvMarkers(deps.ctx.env).length === 0) return "unknown";
+  const answer = await request(deps, { op: "pane" }).catch(() => null);
+  const agent = answer?.ok === true ? asJsonBoolean(answer.body.agent) : undefined;
+  if (agent === undefined) return "unknown";
+  return agent ? "agent" : "shell";
 }
 
 /**
@@ -797,19 +817,32 @@ export function cmdWalky(deps: Pick<WalkyDeps, "io">, args: readonly string[]): 
   return EXIT.USAGE;
 }
 
-/** One request line to a socket, and its one answer line. Null when it does not accept or answer in time. */
+/** Thrown by {@link askSocket} when a socket took the request line and gave no answer within the wait. */
+export class AskLate extends Error {
+  constructor(readonly ms: number) {
+    super(`no answer within ${String(Math.round(ms / 1000))} s`);
+  }
+}
+
+/**
+ * One request line to a socket, and its one answer line. Null when nothing accepts it or the connection
+ * ends without an answer. Rejects with {@link AskLate} when the line was written and no answer came
+ * within `ms`: the request may still be running on the other side, so it is not "nothing answered".
+ */
 export async function askSocket(path: string, line: string, ms = ASK_MS): Promise<string | null> {
   const conn = createConnection({ path });
   conn.on("error", () => undefined);
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<null>((done) => {
-    timer = setTimeout(() => done(null), ms);
+  let written = false;
+  const late = new Promise<"late">((done) => {
+    timer = setTimeout(() => done("late"), ms);
   });
   const answered = (async (): Promise<string | null> => {
     const connected = await once(conn, "connect").then(() => true, () => false);
     if (!connected) return null;
     conn.setEncoding("utf8");
     conn.write(line);
+    written = true;
     let text = "";
     for await (const chunk of conn) {
       text += String(chunk);
@@ -822,5 +855,7 @@ export async function askSocket(path: string, line: string, ms = ASK_MS): Promis
   const result = await Promise.race([answered, late]);
   clearTimeout(timer);
   conn.destroy();
-  return result;
+  if (result !== "late") return result;
+  if (written) throw new AskLate(ms);
+  return null;
 }

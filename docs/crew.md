@@ -324,7 +324,11 @@ a machine of its own in the list.
 ![Code reaches a member over your own ssh, never over the crew link.](images/crew/crew-ssh-rides.svg)
 
 Code rides your own ssh to every machine. `crew add` installs a member that way and `crew update`
-levels it. The crew link carries runtime data, and it never becomes a distribution channel.
+levels it. The crew link carries runtime data, and it never becomes a distribution channel for Collie.
+
+The code of a trick may cross the link only as inert data. It is held, never installed and never run,
+until you tap on the screen of the machine that will run it. No machine of the crew can run a command
+on another.
 
 ![The deputy's standby door opens only when the lead goes quiet.](images/crew/crew-deputy-standby.svg)
 
@@ -399,6 +403,97 @@ read well.
 > the pins of its own panes, so a pane on an older member offers no Pin, and a pin call that reaches it
 > answers "That machine's Collie is older and cannot keep pins. Update it." Run `collie crew update --all`
 > to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
+
+## Decisions from any machine
+
+An agent on any machine of the crew can put a Decision on the Hill with `collie hill post`, and follow
+it up with `collie hill status`, `withdraw` and `list`. The crew has one Hill, on the lead. The phone
+shows every Decision there, with the machine it came from on its first line.
+
+A member checks its own switches first: with the Hill or WalkyTalky off on that machine, the post is
+refused there. It reads the images from its own disk, under the same rules as on the lead, and sends
+them to the lead before the post. The lead checks the member's signature, and takes the machine from
+it. A member cannot post for a session of another machine, and its `--reply-to` and `--about` must
+name a session on that same machine.
+
+Your answer goes back to the session as a WalkyTalky message, through the lead. When the session's
+machine is not answering, the phone says "laptop is not answering. Your answer was not sent." The
+card stays open, and you can answer again when the machine is back. A Decision is never closed
+because its machine went away. Dismiss still closes the card: the phone then says the session was not
+told.
+
+When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. When the answer
+comes late, it says the post is not confirmed, and exits 5. Either way it prints the command to send
+the same post again, with its `--request-id`: the lead keeps one Decision for it.
+
+One machine's agents hold at most 40 open Decisions on the lead, and ring the phone at most four
+times an hour. All members together ring it at most six times an hour, so the lead's own sessions
+always keep a share.
+
+> **Note.** Decisions from a member need Collie 1.29.0 on the lead and on that member. An older lead
+> is refused with "the lead runs a Collie older than 1.29.0", and the post is not sent. Post from a
+> session on the lead machine, or run `collie crew update --all` to level the crew
+> ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
+
+## Tricks that read files on every machine
+
+A trick on the lead sees the sessions of every machine of the crew. A trick may also list files to
+read from its agent sessions' folders, in `trick.toml`:
+
+```toml
+contract = 2
+inputs = ["TODO.md", "shots/*.png"]
+```
+
+Before each run, the lead asks each member for the files those patterns match in the folders of that
+member's agent sessions, and copies them into the trick's folder. The trick reads them as data. It
+cannot run anything on a member, and it reads nothing outside a session's folder.
+
+A member serves these reads by default, unless it sets `COLLIE_DEVICE_HEADER` (the table below).
+It serves only the files that match the patterns a person
+approved for the trick on the lead. The patterns are part of the trick's rights: the trick's row in
+Settings says what it reads, "Reads TODO.md, shots/*.png in your agent sessions' folders on every
+machine of the crew." A new version that changes the patterns waits for your yes.
+
+A member reads the files with the same rules as the Files view, and a few more. It reads only the
+folders of its own agent sessions, never a shell session's folder. It never serves:
+
+- A link, at any level. It never follows one.
+- A name that starts with a dot, unless that step of the pattern starts with a dot too. `*` never
+  matches a leading dot, so `*.md` skips `.notes.md`, and `.editorconfig` is read only by a pattern
+  such as `.editorconfig` or `.e*`.
+- A `.env` file: any name that starts with `.env`, in any case and in any folder, such as `.env`,
+  `.env.local`, `.envrc` or `.ENV`. This holds whatever the pattern says, and a pattern that names
+  one is refused.
+- Anything in a `.git` folder, in any case. A pattern that names `.git` is refused.
+- Collie's own state and config folders, and a file named like one of Collie's state files, such as
+  `crew-trust.json` or `paired-devices.json`, wherever it sits.
+- A file or folder whose name holds a control character, a direction mark or a zero-width character.
+  Such a file counts as skipped.
+
+A text file is at most 256 KB and a picture (PNG, JPEG or WebP) at most 2 MB, and a member sends at
+most 32 files per session. Each member writes one audit line per read, with the trick, the number of
+files and their size, never a file name.
+
+Each member decides whether the lead's tricks may read its files. Set `COLLIE_CREW_TRICK_READS` in
+that machine's `.env`, or `crew_trick_reads` under `[crew]` in its `config.toml`
+([Configure Collie](configure.md)):
+
+| `COLLIE_CREW_TRICK_READS` | what the member does |
+| --- | --- |
+| unset | allows the reads while `COLLIE_DEVICE_HEADER` is unset, and refuses them while it is set |
+| `on` | allows the reads |
+| `off`, or any other word | refuses the reads |
+
+To switch the reads off on a member, add `COLLIE_CREW_TRICK_READS=off` to that member's `.env`, then
+run `collie restart` on that member. The member reads the setting only when it starts.
+
+A session on a member that refuses shows `refused` to the trick, and one on a machine that is not
+answering shows `offline`.
+
+> **Note.** Reads from a member need Collie 1.29.0 on the lead and on that member. A session on an
+> older member shows `older` to the trick, and the lead does not ask that member. Run `collie crew
+> update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
 ## A machine can run several Collies
 

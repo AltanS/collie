@@ -33,6 +33,7 @@ import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
 import { CREW_VERSION_FIELD } from "../update-action.ts";
 import { WALKY_ACK_HEADER, WALKY_OUTCOMES_ROUTE } from "../walky/crew.ts";
+import { INPUT_CALL_MS, TRICKS_INPUTS_ROUTE } from "../tricks/inputs.ts";
 
 // The LEAD side of a crew link: the client that dials a peer's `/crew/v1/*` surface.
 //
@@ -166,6 +167,8 @@ function readBudgetEnv(env: Record<string, string | undefined>, key: string): st
  * Lead-local, never on the wire, so moving it needs no protocol bump.
  */
 export const WRITE_BUDGET_MS = 5000;
+/** A trick's inputs call (§23): 8 s, no retry, whatever the poll budget is. */
+export const TRICKS_INPUTS_BUDGET_MS = INPUT_CALL_MS;
 
 /**
  * How long a **forwarded read of a pane's screen** (`GET /api/pane/:id`) may take before the lead gives up
@@ -913,6 +916,25 @@ export class PeerClient {
       undefined,
       { method: "POST", headers: { "content-type": "application/json" }, body: payload },
       WRITE_BUDGET_MS,
+      false,
+    );
+  }
+
+  /**
+   * `POST /crew/v1/tricks/inputs` — the lead asks a member for a trick's inputs (§23, added in 1.29.0).
+   *
+   * Like the walky outcomes push: the pinned handshake and the dial attestation, no §8.6 signature, and
+   * every status the member chose kept (its 403 is "trick reads are off", its 404 an older member). The
+   * budget is the route's own, {@link TRICKS_INPUTS_BUDGET_MS}, and the call is never retried. The body is
+   * not read here: the caller reads it up to its own cap.
+   */
+  tricksInputs(link: CrewLink, payload: string): Promise<PeerOutcome<Response>> {
+    return this.proxy(
+      link,
+      TRICKS_INPUTS_ROUTE,
+      undefined,
+      { method: "POST", headers: { "content-type": "application/json" }, body: payload },
+      TRICKS_INPUTS_BUDGET_MS,
       false,
     );
   }

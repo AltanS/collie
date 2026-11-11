@@ -108,9 +108,11 @@ export interface TrickHillDeps {
   readonly hill: TrickHillPort;
   /**
    * The walky address of the live session a facts scope key (`<memberId>:paneId`) names now, or null when it
-   * names none on this machine. The hill resolves the address to its session again at post time.
+   * names none. `listed` is the scope keys of the run's own facts: on a crew's lead a key of another member
+   * resolves only when it is one of them (see {@link scopeKeyAddress}). The hill resolves the address to its
+   * session again at post time.
    */
-  addressOf(scopeKey: string): string | null;
+  addressOf(scopeKey: string, listed: ReadonlySet<string>): string | null;
   readonly warn?: (line: string) => void;
   readonly now?: () => number;
 }
@@ -122,7 +124,7 @@ export interface TrickHillTrick {
   readonly name: string;
   /** This bridge's stable id (bridge/bridge-id.ts): where the answer's tap goes. */
   readonly memberId: string;
-  /** The trick's own folder, `<configDir>/tricks/<id>`: where its decisions' images are. */
+  /** The folder the trick's program ran in, its approved copy (approved.ts): where its decisions' images are. */
   readonly dir: string;
 }
 
@@ -175,6 +177,11 @@ export interface TrickHillRun {
   readonly decisions: readonly TrickDecision[];
   /** Keys the parser refused alone: their version on the hill stays as it is. */
   readonly refusedKeys: readonly string[];
+  /**
+   * The scope keys of the sessions in this run's facts. A `replyTo` or `about` naming another member's
+   * session must be one of them (M99 slice 5). Absent reads as none: only this machine's sessions resolve.
+   */
+  readonly sessions?: ReadonlySet<string>;
 }
 
 /**
@@ -350,6 +357,7 @@ export class TrickHill {
 
     // The trick folder's real path, once per run and only when a decision names an image.
     const root = run.decisions.some((decision) => (decision.media ?? []).length > 0) ? realFolder(trick.dir) : null;
+    const listedSessions = run.sessions ?? NO_SESSIONS;
     run.decisions.forEach((decision, index) => {
       const path = pointer("/decisions", index);
       const named = imageInputs(root, decision.media ?? []);
@@ -366,8 +374,8 @@ export class TrickHill {
       // Unchanged: open stays open, and an answered or dismissed one stays closed. One that closed without
       // the person asks again, once per REASK_AFTER_MS.
       if (held !== undefined && held.hash === hash && !this.mayReask(held)) return;
-      const replyTo = this.address(decision.replyTo, path, "replyTo", decision.key, refusals);
-      const about = this.address(decision.about, path, "about", decision.key, refusals);
+      const replyTo = this.address(decision.replyTo, listedSessions, path, "replyTo", decision.key, refusals);
+      const about = this.address(decision.about, listedSessions, path, "about", decision.key, refusals);
       if (replyTo === undefined || about === undefined) return;
       const input: HillPostInput = {
         requestId: trickRequestId(trick.id, decision.key, hash, gen, held?.seq ?? 0),
@@ -410,11 +418,11 @@ export class TrickHill {
   }
 
   /** A scope key as a walky address: null when absent, undefined (and a refusal) when it names no live session. */
-  private address(scopeKey: string | undefined, path: string, field: "replyTo" | "about", key: string, refusals: Refusal[]): string | null | undefined {
+  private address(scopeKey: string | undefined, listed: ReadonlySet<string>, path: string, field: "replyTo" | "about", key: string, refusals: Refusal[]): string | null | undefined {
     if (scopeKey === undefined) return null;
-    const address = this.deps.addressOf(scopeKey);
+    const address = this.deps.addressOf(scopeKey, listed);
     if (address !== null) return address;
-    refusals.push({ code: "target", path: pointer(path, field), reason: `"${scopeKey}" names no live agent session on this machine, so the decision "${key}" was not posted.`, decision: key });
+    refusals.push({ code: "target", path: pointer(path, field), reason: `"${scopeKey}" names no live agent session in this run's facts, so the decision "${key}" was not posted.`, decision: key });
     return undefined;
   }
 
@@ -506,18 +514,36 @@ function hillRefusal(answer: Extract<HillPostAnswer, { ok: false }>, path: strin
   return { code: answer.code === "image_too_large" ? "size" : "target", path: pointer(pointer(path, "media"), at), reason: `The hill refused the image "${file}": ${why}.`, decision: key };
 }
 
+const NO_SESSIONS: ReadonlySet<string> = new Set();
+
 /**
  * A facts scope key (`<memberId>:paneId`) as the walky address of the live agent session in that pane,
- * or null. Only a session of this bridge (`own` says whether a member id is this bridge's: its id, or
- * the id it served before a crew join, so a key a program kept from before the restart still lands):
- * the facts list no other. The address goes through `place`, the hill's own probe
- * (bridge/hill/walky.ts `walkyPlace`), so it carries the session's instance token and the hill takes it
- * as it is.
+ * or null.
+ *
+ * - A session of this bridge (`own` says whether a member id is this bridge's: its id, or the id it served
+ *   before a crew join, so a key a program kept from before the restart still lands) resolves as before.
+ * - A session of ANOTHER member resolves only when the key is in `listed`, the scope keys of the run's own
+ *   facts (M99 slice 5). On a crew's lead those list every member's sessions from the sweep; on a solo
+ *   bridge and a member they list only its own, so nothing else resolves. A program cannot name a machine
+ *   the lead's facts did not show it, and the member id must be a member's, never a free word.
+ *
+ * Either way the address goes through `place`, the hill's own probe (bridge/hill/walky.ts `walkyPlace`),
+ * which reads the lead's pane list (`who`), so it carries the session's instance token, the member must
+ * still be in the crew, and the hill takes it as it is.
  */
-export function scopeKeyAddress(scopeKey: string, own: (memberId: string) => boolean, walkyMember: string, place: (address: string) => { readonly address: string } | null): string | null {
+export function scopeKeyAddress(
+  scopeKey: string,
+  own: (memberId: string) => boolean,
+  walkyMember: string,
+  place: (address: string) => { readonly address: string } | null,
+  listed: ReadonlySet<string> = NO_SESSIONS,
+): string | null {
   const colon = scopeKey.indexOf(":");
-  if (colon <= 0 || !own(scopeKey.slice(0, colon))) return null;
+  if (colon <= 0) return null;
+  const memberId = scopeKey.slice(0, colon);
   const paneId = scopeKey.slice(colon + 1);
   if (paneId === "") return null;
-  return place(`${walkyMember}/${paneId}`)?.address ?? null;
+  if (own(memberId)) return place(`${walkyMember}/${paneId}`)?.address ?? null;
+  if (!listed.has(scopeKey)) return null;
+  return place(`${memberId}/${paneId}`)?.address ?? null;
 }

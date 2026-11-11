@@ -35,7 +35,7 @@ import {
   rotateCrewSecret,
   selfIdentity,
 } from "./enrollment.ts";
-import { fingerprintOfCert, hashToken } from "./identity.ts";
+import { fingerprintOfCert, hashToken, isReservedMemberId, mintMemberId } from "./identity.ts";
 import { mintWarrant } from "./warrant.ts";
 import { TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
 import { counterRandom, fp, leadStore, material, member, CREW, peerStore, T0 } from "./fixtures.ts";
@@ -256,6 +256,26 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
       expect(free !== null && !isEnrollRefusal(free) && free.result.memberId).toBe("bluefin-hc");
       const none = join(crowded, null, "other", "bluefin");
       expect(none !== null && !isEnrollRefusal(none) && none.result.memberId).toBe("collie-r1");
+    });
+
+    test("A1: a word the address grammar keeps (local, all, here) is refused as a label, and never minted", () => {
+      for (const label of ["local", "Local", "all", "here!"]) {
+        const refusal = join(leadStore(), label, "other", "bluefin");
+        if (refusal === null || !isEnrollRefusal(refusal)) throw new Error(`expected a refusal for ${label}`);
+        expect(refusal.takenBy).toBe("reserved");
+        expect(refusal.message).toBe(`the name "${label.trim()}" is a word Collie's addresses keep for themselves. Pass --label <another name>.`);
+      }
+      for (const word of ["local", "all", "here"]) expect(isReservedMemberId(mintMemberId(word, new Set(), R()))).toBe(false);
+      expect(isReservedMemberId("local")).toBe(true);
+      expect(isReservedMemberId("localhost")).toBe(false);
+    });
+
+    test("A1: a machine enrolled as `local` before the rule re-joins under a fresh id", () => {
+      const held = leadStore({ peers: [member({ memberId: "local", fingerprint: fp("old"), status: "unenrolled" })] });
+      const again = join(held, null, "old", "bluefin");
+      if (again === null || isEnrollRefusal(again)) throw new Error("expected an enrollment");
+      expect(again.result.memberId).not.toBe("local");
+      expect(again.next.peers.map((p) => p.memberId)).not.toContain("local");
     });
 
     test("the SAME fingerprint re-joining keeps its own label and id", () => {

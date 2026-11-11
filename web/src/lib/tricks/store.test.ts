@@ -379,6 +379,25 @@ describe("useTrickParts", () => {
   });
 });
 
+describe("B7: a bridge that runs no tricks", () => {
+  it("keeps the reply's word on where they run, and drops it once a reply no longer says it", async () => {
+    const store = storeOf();
+    serveTricks({ ...reply(3, [BELT, LEGS, TRACKER]), runsOn: { lead: "desk" } }, reply(4, []));
+    await store.syncTricks(3);
+    expect(store.getState().runsOn).toEqual({ lead: "desk" });
+    await store.syncTricks(4);
+    expect(store.getState().runsOn).toBeUndefined();
+  });
+
+  it("reads the word tolerantly: an unknown lead stays `{}`, a malformed one is left out and the reply kept", () => {
+    const base = { rev: 1, parts: [], present: [], tricks: [] };
+    expect(readTricksReply({ ...base, runsOn: { lead: "desk" } })?.runsOn).toEqual({ lead: "desk" });
+    expect(readTricksReply({ ...base, runsOn: {} })?.runsOn).toEqual({});
+    expect(readTricksReply({ ...base, runsOn: { lead: 7 } })?.runsOn).toEqual({});
+    expect(readTricksReply({ ...base, runsOn: "desk" })).toEqual(base);
+  });
+});
+
 describe("the wire readers", () => {
   it("read the fixtures' replies and refuse a body of another shape", () => {
     expect(readTricksReply(JSON.parse(JSON.stringify(reply(3, [BELT]))))).toEqual(reply(3, [BELT]));

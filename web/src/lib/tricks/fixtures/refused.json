@@ -1894,7 +1894,7 @@
   },
   "wrong-version": {
     "doc": {
-      "v": 2,
+      "v": 3,
       "parts": [
         {
           "at": "belt",

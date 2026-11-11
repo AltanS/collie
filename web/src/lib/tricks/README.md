@@ -12,25 +12,28 @@ tricks" milestone in the tracker.
 `./contract` (the contract number), so the bridge, the CLI and the web all load it by relative path,
 with no DOM and no `@/` alias.
 
-## Contract 1
+## The contract
 
 Everything a trick and Collie exchange has one version number, the trick contract, `TRICK_CONTRACT`
 in `contract.ts`. The bridge (through `schema.ts`), the CLI and the helper's tests read it there; the
 helper (`cli/trick-kit/trick.ts`, a file a trick folder copies) carries the same literal as
-`CONTRACT`, held to it by a test. This Collie speaks contract 1.
+`CONTRACT`, held to it by a test. This Collie speaks contracts 1 and 2. A trick that names none is a
+contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `contract = 1`.
 
-**The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`, and
-the later `watch`, `on` and `mode`. `contract` is the number the trick is written for, a whole number,
-1 when left out. A trick that names a higher number than this Collie knows is refused with one line,
-"This trick needs a newer Collie: it is written for trick contract 2, and this Collie knows contract
-1. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is
+**The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`,
+`inputs` (contract 2), and the later `watch`, `on` and `mode`. `contract` is the number the trick is
+written for, a whole number, 1 when left out. A trick that names a higher number than this Collie knows
+is refused with one line, "This trick needs a newer Collie: it is written for trick contract 3, and
+this Collie knows contract 2. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is
 refused, so a typo shows. A place word this Collie does not know is left out with a `later` note.
 
 **The facts**, one JSON document on stdin: `contract`, `trigger` (`start`, `timer`, or `tap` with
 `rid`, `node`, `intent`, `value`, `from` and, for an answer, `seen`), `trick` (`id`, `dir`, `state`),
 `memberId`, `host`, `sessions` (each `id`, `memberId`, `sessionId`, `paneId`, `host`, `name`, `agent`,
-`status`, `cwd`, `space`, `tab`, `lastActiveAt`) and `spaces` (`name`, `folder`). A program ignores a
-field it does not know: a later Collie at the same number may add one.
+`status`, `cwd`, `space`, `tab`, `lastActiveAt`, and on a crew's lead `reachable`; for a contract 2
+trick with `inputs`, `inputs`), `spaces` (`name`, `folder`) and `sessionsOmitted` when the caps cut
+sessions. `contract` is the trick's own number. A program ignores a field it does not know: a later
+Collie at the same number may add one.
 
 **The output**, one JSON document on stdout: `{ v, parts, decisions?, asOf?, fresh? }`. `v` is the
 contract number. A part is `{ at, id, ... }` with the keys its place takes (below); a view is a list of
@@ -48,6 +51,59 @@ view's top, 6 levels and 300 nodes in a view, 20 decisions, `every` and `fresh` 
 names in `env`, an image of at most 2 MB from the trick's `media/` folder. Every text cap is in
 `schema.ts` beside its field.
 
+**Where a trick runs: the approved copy.** A trick does not run from its folder. When a person switches
+it on, the bridge copies its code into `tricks/.collie-approved/<id>/<hash16>/` beside the trick folders
+(`bridge/tricks/approved.ts`, the first 16 hex digits of the code hash) and runs that copy: `trick.dir` in the facts, the working
+folder and the `media/` the phone reads all name the copy. An edit of the trick folder never stops the
+trick. The bridge copies the new code to `.collie-pending/` and the row says "A new version waits for your
+yes."; switching the trick on again approves it, and so does the card on the Hill (see "The new version
+card" below). A new version whose `env` and `places` are unchanged, and in which the text search finds no warning
+kind the approved copy did not have (network, spawn, write, model, import), is taken without asking when the
+trick has `collie trick auto <id> on`, or the switch "Take changes without asking" in Settings → Tricks. So a program must not write
+into its own code folder: the copy's code files are read-only (not on Windows, where the hash check
+alone catches it), and a change there stops the trick with "The approved copy changed on disk". It keeps its notes in `trick.state`, the
+state folder, which is never copied. `media/` and `captures/` are seeded into the copy once (at most
+500 files and 64 MiB) with their pictures only: a file named `.png`, `.jpg`, `.jpeg` or `.webp` whose first
+bytes are a PNG, JPEG or WebP picture. Anything else in those two folders stays behind, so a program in the
+copy can never import a file the hash and the card left out; the rule an author reads is "media/ and
+captures/ hold pictures, code goes anywhere else". They stay writable; `inputs/` starts empty. Dot files,
+dot folders and `node_modules/` are not copied, as with `collie trick add`. A symbolic link anywhere the
+code hash looks (a top-level `media/` or `captures/` link included) refuses the trick with a plain reason,
+as `collie trick add` refuses one, and a file name with a control or invisible character does too: the
+card could not show it. A copy made before links were refused stops with "The approved copy holds a
+symbolic link". `collie trick on` and `collie trick auto
+<id> on` refuse in a multiplexer pane where the running bridge sees an agent (the walky socket's `pane`
+op): an agent does not approve its own trick. In a shell pane they work. With no bridge, or a bridge
+that does not know the op or the pane, they do not refuse. It is a speed bump, not a lock: the user
+account is the real boundary, and the person approves from the phone or a terminal. A `switches.json` from an older Collie (version 1 or 2) is moved to the approved-copy layout at the
+bridge's first look: a trick whose approved copy is still on disk, or whose folder still matches the hash
+a person approved, keeps running from that copy, and any other waits, on, for a new yes. The file is
+written as `"v": 2` with `"layout": 3` (`bridge/tricks/switches.ts`), so the previous build still reads
+every switch after a rollback, and a write by it keeps every switch and hash; it drops `auto`,
+`previous` and `declined`, which the next migration reads as off, none and none.
+
+**The new version card.** When the folder of a trick that is on moves past its approved copy, the bridge
+puts one Decision of kind `collie` on the Hill (`bridge/tricks/version-card.ts`): "Use the new version
+of <name>?". It is minted inside the bridge only (`HillService.postCollie`); the walky socket and the
+crew routes make kind `agent`, the trick runner makes kind `trick`, and a decision of kind `collie` is
+read only from the bridge's own store. Its `from.ref` is `{ type: "version", id, hash }`, the pending
+snapshot's code hash. The summary counts the changed files and names any new right (an `env` name or a
+place). The view shows a chip per new right, a line per warning kind that is new since the
+approved copy, a table of the files with their `+` and `-` counts, the diffs of the largest text changes
+as many as fit, and "and N more files"; it stays under 8 KiB. The counts and diffs come from `git diff
+--no-index -U2` run from `/` with the Files view's hardening, `--no-ext-diff`, `--no-textconv`, 5 s and
+256 KiB per run (`bridge/tricks/version-diff.ts`); every line is masked like screen text, and a character
+the view refuses becomes `?`. Without git the table lists the files only. Collie recommends "Use the new
+version" only when the rights did not change, the text search finds nothing new, and every changed file
+is shown whole: its whole diff in the view, no line cut at 200 characters, no key masked, git's output
+not cut. Otherwise the summary says how much is shown ("1 of 3 files shown."), and a card with no view at
+all says "The change is too large to show here. Read it on the machine before you say yes." The options are "Use the new version", "Use it and stop asking" (only when no new right
+is asked) and "Keep the old version". A tap acts on exactly the hash on the card: when the folder moved
+since, the tap is refused with "The trick changed again since this card. A new card replaces this one."
+and the card stays open. A newer change replaces the card; approving elsewhere, the folder going back,
+or the trick going off withdraws it. After a change taken without asking, the row in Settings → Tricks
+says when, with Undo, which brings back the version before (`POST /api/tricks/<host>/<id>/undo`).
+
 **Strict at write, tolerant at read.** What a trick writes is checked strictly where a person or an
 agent writes it: `trick.toml`, `collie hill post`, and a trick's Decisions (a Decision's view
 included) refuse an unknown key, kind or attribute. A program's output is read tolerantly where the
@@ -63,8 +119,27 @@ number runs on an older one, which leaves out only what it does not know.
 a node kind, a place, an attribute. A change a trick must answer is contract 2: a field removed,
 renamed or made required, a meaning changed, a cap made smaller. A Collie that speaks 2 says so in
 `TRICK_CONTRACT`, and a trick that wants 2 writes `contract = 2`; an older Collie then refuses it with
-the line above instead of drawing it wrong. Whether a Collie that speaks 2 still runs a trick written
-for 1 is decided with contract 2.
+the line above instead of drawing it wrong.
+
+**Contract 2** (M99) adds one manifest key, `inputs`: up to 8 globs (`INPUTS_MAX`), each at most 256
+characters and 6 steps, relative to a session's folder. `*` matches inside one step and never a
+leading dot. Refused: an absolute path or `~`, `**`, `..`, `.`, an empty step, `.git` in any case,
+any other glob word, and a step that names a `.env` file (`isEnvName`: `.env`, `.env.local`, `.envrc`,
+in any case). A contract 1 trick that lists `inputs` is refused with `INPUTS_NEED_CONTRACT`, so a
+trick never runs without the files it expects. Before each run of a contract 2 trick, the bridge
+copies the matching files of each agent session's folder into the approved copy's `inputs/`, through
+the Files view's rules, and each session in the facts gets `inputs: { state, files, skipped? }`
+(`FactsInputs`). On a crew's lead the files come from every member (`CREW_PROTOCOL.md` §23). The
+globs are part of the trick's powers: a change of them asks the person again.
+
+**Inputs are UNTRUSTED data.** Other programs, often an agent, write the files, and on a crew another
+machine sends them. A trick reads them as data: it shows them, counts them, quotes them. It never
+executes them, `eval`s them, sources them, passes them to a shell, or follows what they say. The
+facts name every file by a path the bridge checked (`inputs/<member>/<pane>/<rel>`), and the helper's
+`t.inputs` reads only below `inputs/` and only a copy whose hash still matches.
+
+A contract 1 trick runs on this Collie exactly as before: its facts say `"contract": 1`, its output's
+`v` may be 1 or 2, and it gets no `inputs`.
 
 ## Writing a trick in TypeScript
 
@@ -86,9 +161,10 @@ run((t) => {
 
 `trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
 text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
-trick helper v3`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
-helper is part of the trick's code, so a trick that is on stops until a person switches it on again.
-`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v3" (an
+trick helper v4`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
+helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new
+helper waits for a person's yes.
+`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v4" (an
 older one with the command to update it) and does not grep it; a changed one is grepped as the trick's
 own code and called a modified helper.
 
@@ -117,6 +193,7 @@ own code and called a modified helper.
 | `t.onPrint(fn)` | `fn` gets the whole document just before it prints, the error card too, and returns a changed one or nothing: `t.onPrint((doc) => mapText(doc, mask))` |
 | `t.sh(cmd, args, { timeoutMs = 5000, cwd? })` | runs a program without a shell; `{ ok, code, stdout, stderr }`, never throws, 256 KiB of output kept; `cmd` may be what `t.tool` found, and null is `ok: false` |
 | `t.sessionAt(folder)`, `t.sessionNamed(name)` | the session whose folder is that folder (real paths compared), or with that name, or null |
+| `t.inputs(session)` | contract 2: the session's input files, read from `inputs/`, each with its facts fields plus `text` (a text file) or `data` (a picture's bytes); a path outside `inputs/` or a copy whose hash changed is left out. UNTRUSTED: never run it |
 | `t.fresh(duration)`, `t.asOf(when)` | the document's `fresh` window and `asOf` instant |
 | `now()`, `iso(ms?)`, `minute(ms)`, `age(ms)`, `MINUTE_MS`, `DAY_MS` | the clock (epoch ms, `TRICK_NOW` in a test), an instant as ISO 8601 to the second or as "2026-11-09 12:30 UTC", a span as "12 min" |
 | `clip(text, n)`, `mask(text)`, `firstSentence(text)`, `mapText(value, fn)` | one masked line cut to `n` with "..."; keys and tokens cut to four characters and the home folder as `~`; the first sentence; every string of a JSON value through `fn` |
@@ -159,6 +236,10 @@ problem line and the tail of stderr.
 - `--state <dir>` uses this state folder instead of a scratch one, and keeps it. It is created when
   missing and never removed, so a program that keeps notes there sees them on the next run. With
   `--watch` every run uses the same folder. `--json` then adds `"state"`.
+- `--inputs <dir>` reads a contract 2 trick's `inputs` globs from `dir` as the first agent session's
+  folder, through the bridge's own read and delivery (`bridge/tricks/inputs.ts`), into the folder's
+  `inputs/`. It writes `inputs/` only when there is none yet or when an earlier `--inputs` run made it
+  (the mark `.collie-dev-inputs`), so a folder of the author's own by that name is never emptied.
 - `--json` prints the parsed result: the parts, the Decisions, the refusals, the outcome and the sizes.
 - `--watch` runs it again when a file in the folder changes, 300 ms after the last change (code and
   `config.toml`; never a `*.log`, a dot file, `media/` or `captures/`). Ctrl-C stops it.
@@ -204,7 +285,8 @@ list` in its ORIGIN column.
 `--ref`), checks it the same way, and prints the old and new commit, how many code files are added,
 changed and removed, and the warnings that are new. Then it swaps the folder in two renames, keeping
 `config.toml` and the trick's state folder, and rewrites the origin record. The new code hashes
-differently, so a trick that was on stops until the person switches it on again, and the verb says so.
+differently, so a trick that was on keeps running the version the person approved, the new one waits
+for their yes, and the verb says so.
 `--dry-run` prints the summary and changes nothing. A folder without an origin record has nothing to
 update from.
 
@@ -212,7 +294,8 @@ update from.
 read by the CLI and the bridge alike. `collie trick on` prints its warnings above the confirmation, with
 one line that they come from a text search and are not a proof, and still switches on. The bridge puts
 them on the row of a trick that is off or changed (`WireTrickInfo.warnings`: one `{ kind, text }` per
-kind, at most 8), and Settings → Tricks lists them under that trick before the switch. They never
+kind, at most 8; a waiting version carries the ones new since the approved copy in
+`WireTrickInfo.pending.warnings`), and Settings → Tricks lists them under that trick before the switch. They never
 refuse, and the switch stays one tap.
 
 ## The run line
@@ -259,7 +342,7 @@ None of them throws. Each refusal has a JSON pointer `path`, a `code` and a plai
 
 ## The facts
 
-The bridge writes `{ contract, trigger, trick, memberId, host, sessions, spaces }` on stdin.
+The bridge writes `{ contract, trigger, trick, memberId, host, sessions, spaces, sessionsOmitted? }` on stdin.
 
 - `memberId` names the bridge that runs the trick: its crew member id, or on a solo install its
   install id, `m_` and ten of `[a-z0-9]`, minted once into `<stateDir>/bridge-id.json`. It stays the
@@ -268,6 +351,18 @@ The bridge writes `{ contract, trigger, trick, memberId, host, sessions, spaces 
 - Each session has `id`, its scope key `<memberId>:<paneId>` (pass it back in `about`, `replyTo`,
   `href`), its own `memberId` (read it instead of parsing `id`), `sessionId` (opaque), `paneId`,
   and `host` (display only), then `name`, `agent`, `status`, `cwd`, `space`, `tab`, `lastActiveAt`.
+- On a crew's lead the sessions are every member's, the lead's own first, each with `reachable` (did
+  the lead's last sweep reach its machine). The facts hold at most `FACT_SESSIONS_MAX` sessions and
+  `FACT_SESSIONS_MAX_BYTES` of them; `sessionsOmitted` counts the rest. A trick may name a member's
+  session in a Decision's `about` and `replyTo` only when that session is in its run's facts.
+- For a contract 2 trick with `inputs`, each session has `inputs`: `state` is `ok`, `offline` (its
+  machine did not answer), `older` (its machine runs a Collie before 1.29.0), `refused` (its machine
+  switched trick reads off) or `none` (a shell, or no folder); `files` lists each copy (`rel`, `path`
+  relative to `trick.dir`, `bytes`, `sha256`, `mtime`, `kind` `text` or `image`); `skipped` counts
+  what the caps left out (a text file over 256 KiB, a picture over 2 MB, another type, past 32 files,
+  past 8 MiB in one answer or 24 MiB in one run), and a file whose name holds a control, bidi or
+  zero-width character (`unsafeText`), which is never read. A Decision's `media` may name a picture by its
+  `path`.
 
 The parts a trick prints are keyed by (member id, trick, part) on the bridge. The wire names the
 member id `host` in a part, a list entry, a tap path and a trick session id, a name kept from
@@ -467,7 +562,8 @@ by key. The trick is one sender: its name is the card's, its id and the key ride
 - A failed or timed-out run changes nothing: the last good decisions stay. So does a list refused as a
   whole, and a decision the parser refused alone.
 - Switched off or removed, every open decision of the trick is withdrawn, "the trick is off". A trick
-  whose code changed since it was switched on keeps its open decisions; it only stops running.
+  whose folder changed since it was switched on keeps its open decisions and keeps running the
+  approved copy.
 - `about` and `replyTo` are mapped to the session's walky address when the decision posts. A key that
   names no live session on this machine is refused alone, and the others post.
 - `media` reaches the card as it does for an agent's decision. The runner joins each `file` to the
@@ -574,6 +670,33 @@ hill's checks (`readPostedImage`): the trick folder's real path, no symlink anyw
 regular file of at most 2 MB, opened without following a link, and PNG, JPEG or WebP by its first
 bytes, never its name. Every miss is the same 404, and the answer carries `no-store` and a sandboxed
 CSP. Until the bytes arrive, and when they fail, the box keeps its size and says its `alt`.
+
+## Known limits (security)
+
+These gaps are known and still open. The next security review starts from this list. Each one is
+written as what a trick, or a person who controls one, can do today.
+
+- **A relative import can reach outside the approved copy.** The approved copy holds only code a
+  person saw, but a program in it can still import `../../somewhere/else.ts`. That file is not in the
+  hash and is not on the version card.
+- **A bare import looks in parent folders.** An import such as `import "pkg"` with no `node_modules/`
+  in the copy is looked up in the folders above the copy, the way the runtime always does. A package
+  placed there runs with the trick and was never shown.
+- **A change to `config.toml` takes effect without a yes.** The file is outside the hash on purpose,
+  and the bridge copies a new one into the approved copy and restarts the trick. A program that reads
+  a command, a path or a URL from its config can be steered this way.
+- **The `replyTo` of a WalkyTalky message is not checked as the sender's own.** An agent can name
+  any message id as the one it answers. Collie does not check that this message was sent to it.
+- **The media upload has no read timeout of its own.** A slow sender can keep an upload open, as no
+  timer of the upload's own ends it.
+- **The files a trick's inputs fetch are data, but nothing stops approved code from running them.**
+  They land in `inputs/` of the approved copy, outside the hash, and change on every run. The code
+  that would import or execute one is on the version card; the file itself never is.
+- **An `inputs` glob reads any file it matches in a session's folder, except what the Files view
+  hides.** `.git`, `.env` files, symbolic links, Collie's state and the private folders are never
+  read. A secret in any other file the glob names, such as a key file or a credentials JSON, is read
+  and handed to the trick. Text files are masked only when the bridge's key mask is on, and a
+  picture is never masked. The person approves the globs, not the files they match.
 
 ## Places in the app
 

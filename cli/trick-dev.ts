@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { watch } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 
 import { skippedName } from "../bridge/tricks/code-hash.ts";
+import { INPUTS_DIR, readPaneInputs, TrickInputs, type WirePaneInputs } from "../bridge/tricks/inputs.ts";
 import { tricksConfigDir } from "../bridge/tricks/paths.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { parseJson } from "../web/src/lib/json.ts";
-import { HILL_NODE_PREFIX, isRequestId, isTrickId, parseFacts, type FactsTrigger, type ParsedPart, type Refusal, type TrickDecision, type TrickFacts, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
+import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
+import { HILL_NODE_PREFIX, INPUTS_CONTRACT, isRequestId, isTrickId, parseFacts, type FactsTrigger, type TrickManifest, type ParsedPart, type Refusal, type TrickDecision, type TrickFacts, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
 import { EXIT } from "./io.ts";
 import { checkStatic, decisionWording, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
@@ -18,7 +22,8 @@ import { checkStatic, decisionWording, runAgainstFixture, type FixtureOptions, t
 // and the run's time and stdout size against the caps. `--tap <intent>` runs it as a tap instead
 // (`--rid <uuid>` fixes the tap's request id), `--facts <file.json>` hands it your own facts in place of
 // the fixture's, `--state <dir>` keeps the state folder between runs, `--json` prints the parsed
-// result, and `--watch` runs it again on each change in the folder.
+// result, `--inputs <dir>` reads the trick's `inputs` globs from that folder as the first agent session's
+// (contract 2), and `--watch` runs it again on each change in the folder.
 //
 // It never talks to the bridge and never posts: nothing it prints reaches a phone or the hill.
 
@@ -44,9 +49,11 @@ export interface DevArgs {
   state: string | null;
   /** The request id after `--rid`, a UUID. */
   rid: string | null;
+  /** The folder after `--inputs`, as typed: read as the first agent session's folder. */
+  inputs: string | null;
 }
 
-const DEV_USAGE = "usage: collie trick dev <folder|id> [--tap <intent> [--text <words>] [--node <node>] [--rid <uuid>]] [--facts <file.json>] [--state <dir>] [--json] [--watch]";
+const DEV_USAGE = "usage: collie trick dev <folder|id> [--tap <intent> [--text <words>] [--node <node>] [--rid <uuid>]] [--facts <file.json>] [--state <dir>] [--inputs <dir>] [--json] [--watch]";
 
 export function parseDevArgs(args: readonly string[]): DevArgs | { error: string } {
   let target: string | undefined;
@@ -58,11 +65,12 @@ export function parseDevArgs(args: readonly string[]): DevArgs | { error: string
   let facts: string | null = null;
   let state: string | null = null;
   let rid: string | null = null;
+  let inputs: string | null = null;
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] ?? "";
     if (arg === "--json") json = true;
     else if (arg === "--watch") watching = true;
-    else if (arg === "--tap" || arg === "--text" || arg === "--node" || arg === "--facts" || arg === "--state" || arg === "--rid") {
+    else if (arg === "--tap" || arg === "--text" || arg === "--node" || arg === "--facts" || arg === "--state" || arg === "--rid" || arg === "--inputs") {
       const value = args[i + 1];
       if (value === undefined) return { error: `${arg} needs a value` };
       i += 1;
@@ -71,6 +79,7 @@ export function parseDevArgs(args: readonly string[]): DevArgs | { error: string
       else if (arg === "--node") node = value;
       else if (arg === "--facts") facts = value;
       else if (arg === "--state") state = value;
+      else if (arg === "--inputs") inputs = value;
       else rid = value;
     } else if (arg.startsWith("-")) return { error: `unknown flag ${arg}` };
     else if (target === undefined) target = arg;
@@ -80,7 +89,7 @@ export function parseDevArgs(args: readonly string[]): DevArgs | { error: string
   if (intent === undefined && (text !== null || node !== undefined)) return { error: "--text and --node go with --tap" };
   if (intent === undefined && rid !== null) return { error: "--rid goes with --tap" };
   if (rid !== null && !isRequestId(rid)) return { error: `--rid must be a UUID, not "${rid}"` };
-  return { target, tap: intent === undefined ? null : { intent, text, node: node ?? "main" }, json, watch: watching, facts, state, rid };
+  return { target, tap: intent === undefined ? null : { intent, text, node: node ?? "main" }, json, watch: watching, facts, state, rid, inputs };
 }
 
 /** The tap trigger `--tap` sends: a hill node carries `{ text }`, any other node the text as its value. `rid` is a fresh UUID unless `--rid` gave one. */
@@ -221,6 +230,57 @@ interface DevInputs {
   facts?: { file: string; value: TrickFacts };
   /** The absolute state folder of `--state`. */
   state?: string;
+  /** The absolute folder of `--inputs`. */
+  read?: string;
+}
+
+/**
+ * The file in a trick folder that says `trick dev --inputs` made its `inputs/`. The bridge replaces
+ * `inputs/` whole on each run, so dev writes it only when there is none yet or when it made it itself:
+ * a folder of the author's own by that name is never emptied.
+ */
+export const DEV_INPUTS_MARK = ".collie-dev-inputs";
+
+/** What `--inputs` did for one run: the facts with each session's inputs, and one line to print; or why it could not. */
+type DevRead = { facts: TrickFacts; line: string } | { note: string } | { error: string };
+
+/**
+ * `--inputs <dir>`: the trick's globs read from `dir` as the first agent session's folder, through the
+ * same read and delivery the bridge uses (bridge/tricks/inputs.ts), into the trick folder's `inputs/`.
+ * Every other session gets no files. The read runs the Files view's rules, with this machine's state
+ * and config folders private and a `.env` file never read.
+ */
+export async function devReadInputs(deps: Pick<TrickDeps, "ctx" | "files">, manifest: TrickManifest, folder: string, dir: string, base: TrickFacts | undefined): Promise<DevRead> {
+  const globs = manifest.inputs ?? [];
+  if (globs.length === 0 || manifest.contract < INPUTS_CONTRACT) return { note: "--inputs: trick.toml lists no inputs, so the run reads none" };
+  if (deps.files.entryType(dir) !== "directory") return { error: `--inputs ${dir} is not a folder` };
+  if (deps.files.exists(join(folder, INPUTS_DIR)) && !deps.files.exists(join(folder, DEV_INPUTS_MARK))) {
+    return { error: `--inputs: ${join(folder, INPUTS_DIR)} exists and trick dev did not make it. Collie replaces that folder on each run; move it, then run again.` };
+  }
+  const parsed = base === undefined ? parseFacts(FACTS.timer).facts : base;
+  if (parsed === undefined) return { error: "the fixture facts do not parse" };
+  const sessions = parsed.sessions.map((s) => ({ ...s }));
+  const chosen = sessions.find((s) => s.agent !== undefined);
+  if (chosen === undefined) return { note: "--inputs: the facts hold no agent session, so the run reads none" };
+  chosen.cwd = dir;
+  await writeFile(join(folder, DEV_INPUTS_MARK), "trick dev --inputs made inputs/ here; Collie replaces it on each run.\n", { mode: 0o600 });
+  const home = deps.ctx.env.HOME ?? homedir();
+  const reader = new TrickInputs({
+    isOwn: () => true,
+    member: () => null,
+    readLocal: async (pane, wanted, have, budget): Promise<WirePaneInputs> =>
+      pane === chosen.paneId ? await readPaneInputs({ root: dir, home, privateFolders: [deps.ctx.stateDir, deps.ctx.configDir] }, wanted, have, budget, true) : { state: "no-folder", files: [] },
+  });
+  const got = await reader.fetch({ id: manifest.id, dir: folder, globs }, sessions);
+  for (const session of sessions) {
+    const inputs = got.get(session.id);
+    if (inputs !== undefined) session.inputs = inputs;
+  }
+  const mine = chosen.inputs;
+  const files = mine?.files.length ?? 0;
+  const skipped = mine?.skipped ?? 0;
+  const line = `inputs: ${String(files)} ${files === 1 ? "file" : "files"} from ${dir} as session ${chosen.name ?? chosen.paneId}${skipped > 0 ? `, ${String(skipped)} skipped` : ""} (state ${mine?.state ?? "none"})`;
+  return { facts: { ...parsed, sessions }, line };
 }
 
 /** Read and parse a `--facts` file: the facts, or one line per problem, each naming the file and the path. */
@@ -255,6 +315,19 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
   if (args.tap !== null) opts.trigger = devTrigger(args.tap, args.rid ?? undefined);
   if (inputs.facts !== undefined) opts.facts = inputs.facts.value;
   if (inputs.state !== undefined) opts.state = inputs.state;
+  let readLine: string | null = null;
+  if (inputs.read !== undefined) {
+    const read = await devReadInputs(deps, manifest, folder, inputs.read, opts.facts);
+    if ("error" in read) {
+      deps.io.err(`error: ${read.error}`);
+      return false;
+    }
+    if ("note" in read) readLine = read.note;
+    else {
+      opts.facts = read.facts;
+      readLine = read.line;
+    }
+  }
   const ran = await runAgainstFixture(manifest, folder, deps.ctx.env, opts);
   const refusals = ran.parsed?.refusals ?? [];
   if (args.json) {
@@ -262,7 +335,8 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
     const parsed = ran.parsed;
     const kind = args.tap === null ? (inputs.facts?.value.trigger.kind ?? "timer") : "tap";
     const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals, notes: parsed?.notes ?? [], wording: decisionWording(parsed?.decisions ?? []) };
-    deps.io.out(JSON.stringify(inputs.state === undefined ? body : { ...body, state: inputs.state }, null, 2));
+    const withState = inputs.state === undefined ? body : { ...body, state: inputs.state };
+    deps.io.out(JSON.stringify(readLine === null ? withState : { ...withState, inputs: readLine }, null, 2));
   } else {
     const source = inputs.facts === undefined ? "fixture facts" : `facts from ${inputs.facts.file}`;
     const trigger = args.tap === null ? inputs.facts?.value.trigger : undefined;
@@ -274,6 +348,7 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
           : `a ${trigger?.kind ?? "timer"} run`;
     deps.io.out(`trick ${manifest.id} (${manifest.name}) in ${folder}, ${source}, ${what}`);
     if (inputs.state !== undefined) deps.io.out(`  state kept in ${inputs.state}`);
+    if (readLine !== null) deps.io.out(`  ${readLine}`);
     for (const line of devSummary(ran, refusals)) deps.io.out(line);
   }
   return ran.problem === null && refusals.length === 0;
@@ -303,6 +378,7 @@ export async function cmdTrickDev(deps: TrickDeps, args: readonly string[], unti
     inputs.facts = { file: parsed.facts, value: loaded.facts };
   }
   if (parsed.state !== null) inputs.state = resolve(parsed.state);
+  if (parsed.inputs !== null) inputs.read = resolve(parsed.inputs);
   const ok = await devOnce(deps, folder, parsed, inputs);
   if (!parsed.watch) return ok ? EXIT.OK : EXIT.FAIL;
   deps.io.out(`watching ${folder}; Ctrl-C stops`);

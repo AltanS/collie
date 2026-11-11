@@ -16,6 +16,7 @@ import {
   HILL_STATES,
   HILL_TEXT_MODES,
   HILL_TRICK_DELIVERIES,
+  hillCollieRef,
   hillIdOfNode,
   type HillAnswerRequest,
   type HillDecision,
@@ -222,7 +223,17 @@ function numberOrNull(row: JsonObject, key: string): number | null | undefined {
   return n !== undefined && Number.isSafeInteger(n) ? n : undefined;
 }
 
-function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
+/** How a stored decision is read. */
+export interface ReadDecisionOptions {
+  /**
+   * Whether a Decision of Collie's own (`from.kind` `collie`) reads. Only this bridge's own store says
+   * yes (store.ts): a decision that arrives from anywhere else, a lead's answer to a crew member or a
+   * socket answer the CLI reads, never stands for Collie. Default: no.
+   */
+  readonly collie?: boolean;
+}
+
+function readFrom(value: JsonValue | undefined, opts: ReadDecisionOptions): HillDecision["from"] | null {
   const row = asJsonObject(value);
   if (row === undefined) return null;
   const kind = asJsonString(row.kind);
@@ -234,12 +245,19 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   const host = stringOrNull(row, "host");
   const trickKey = stringOrNull(row, "trickKey");
   const trickHost = stringOrNull(row, "trickHost");
-  if ((kind !== "agent" && kind !== "trick") || address === undefined || trickId === undefined || memberId === undefined) return null;
+  const collie = kind === "collie" && opts.collie === true;
+  if ((kind !== "agent" && kind !== "trick" && !collie) || address === undefined || trickId === undefined || memberId === undefined) return null;
   if (harness === undefined || label === undefined || host === undefined || trickKey === undefined || trickHost === undefined) return null;
   // A trick's decision names its trick, its key and the bridge its tap goes to. One without them (the dev
   // lane stored some before `trickHost` existed) does not read: the store keeps it raw (store.ts).
   if (kind === "trick" && (trickId === null || trickKey === null || trickHost === null)) return null;
-  return { kind, address, trickId, trickKey, memberId, harness, label, host, trickHost };
+  // Only Collie's own decision carries a `ref`; on any other kind it is a forgery, and the decision fails.
+  if (!collie) return row.ref === undefined ? { kind: kind === "trick" ? "trick" : "agent", address, trickId, trickKey, memberId, harness, label, host, trickHost } : null;
+  // Collie's own names what it is about, and nothing of an agent's or a trick's.
+  const refRow = asJsonObject(row.ref);
+  const ref = hillCollieRef(asJsonString(refRow?.type), asJsonString(refRow?.id), asJsonString(refRow?.hash));
+  if (ref === null || address !== null || trickId !== null || trickKey !== null || trickHost !== null) return null;
+  return { kind: "collie", address, trickId, trickKey, memberId, harness, label, host, trickHost, ref };
 }
 
 function readTarget(value: JsonValue | undefined): HillDecision["target"] | undefined {
@@ -346,12 +364,12 @@ function storedView(value: JsonValue | undefined): View | undefined {
 }
 
 /** One decision as the file stored it, or null when any field fails. */
-export function readDecision(value: JsonValue | undefined): HillDecision | null {
+export function readDecision(value: JsonValue | undefined, opts: ReadDecisionOptions = {}): HillDecision | null {
   const row = asJsonObject(value);
   if (row === undefined || row.v !== 1) return null;
   const id = asJsonString(row.id);
   const requestId = asJsonString(row.requestId);
-  const from = readFrom(row.from);
+  const from = readFrom(row.from, opts);
   const about = stringOrNull(row, "about");
   const priority = asJsonString(row.priority);
   const priorityAsked = asJsonString(row.priorityAsked);

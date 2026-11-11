@@ -56,6 +56,13 @@ import {
   TONE_TOKENS,
   TRICK_ICONS,
   TRICK_CONTRACT,
+  TRICK_CONTRACT_DEFAULT,
+  INPUTS_CONTRACT,
+  INPUTS_NEED_CONTRACT,
+  inputGlobMatches,
+  inputGlobProblem,
+  inputsSentence,
+  isEnvName,
   TRICK_ICON_LUCIDE,
   VIEW_ROOT_KINDS,
   freshWindowMs,
@@ -1400,13 +1407,16 @@ describe("parseManifest", () => {
 
   it("names one contract number: the default 1, a higher one refused with both numbers, an unknown key still a typo", () => {
     const base = { id: "legs", name: "Legs", run: "./legs.sh", places: ["belt"] };
-    expect(parseManifest(base).manifest?.contract).toBe(TRICK_CONTRACT);
+    expect(TRICK_CONTRACT).toBe(2);
+    expect(parseManifest(base).manifest?.contract).toBe(TRICK_CONTRACT_DEFAULT);
+    expect(TRICK_CONTRACT_DEFAULT).toBe(1);
     expect(parseManifest({ ...base, contract: 1 }).manifest?.contract).toBe(1);
-    const newer = parseManifest({ ...base, contract: 2, shiny: "a key of contract 2" });
+    expect(parseManifest({ ...base, contract: 2 }).manifest?.contract).toBe(2);
+    const newer = parseManifest({ ...base, contract: 3, shiny: "a key of contract 3" });
     expect(newer.manifest).toBeUndefined();
     // Only the one sentence: a newer contract may hold keys this Collie never heard of.
-    expect(newer.refusals).toEqual([{ code: "version", path: "/contract", reason: newerContractReason(2) }]);
-    expect(newer.refusals[0]?.reason).toBe("This trick needs a newer Collie: it is written for trick contract 2, and this Collie knows contract 1. Update Collie to run it.");
+    expect(newer.refusals).toEqual([{ code: "version", path: "/contract", reason: newerContractReason(3) }]);
+    expect(newer.refusals[0]?.reason).toBe("This trick needs a newer Collie: it is written for trick contract 3, and this Collie knows contract 2. Update Collie to run it.");
     // At the same number an unknown key is a typo, and it refuses.
     expect(parseManifest({ ...base, contract: 1, plcaes: ["belt"] }).refusals.map((r) => [r.code, r.path])).toEqual([["unknown-key", "/plcaes"]]);
     expect(parseManifest({ ...base, contract: 1, plcaes: ["belt"] }).manifest).toBeUndefined();
@@ -1448,11 +1458,75 @@ describe("parseManifest", () => {
   });
 });
 
+describe("contract 2: inputs", () => {
+  const base = { id: "todo", name: "Todo", run: "./todo.sh", places: ["belt"] };
+
+  it("a contract 2 manifest lists up to 8 globs; contract 1 refuses the key with the one line", () => {
+    expect(INPUTS_CONTRACT).toBe(2);
+    expect(parseManifest({ ...base, contract: 2, inputs: ["TODO.md", "shots/*.png"] }).manifest?.inputs).toEqual(["TODO.md", "shots/*.png"]);
+    for (const manifest of [{ ...base, inputs: ["TODO.md"] }, { ...base, contract: 1, inputs: ["TODO.md"] }]) {
+      const read = parseManifest(manifest);
+      expect(read.manifest).toBeUndefined();
+      expect(read.refusals.map((r) => [r.code, r.path, r.reason])).toEqual([["version", "/inputs", INPUTS_NEED_CONTRACT]]);
+    }
+    expect(parseManifest({ ...base, contract: 2, inputs: Array.from({ length: 9 }, (_, i) => `f${String(i)}.md`) }).manifest).toBeUndefined();
+    expect(parseManifest({ ...base, contract: 2, inputs: ["../up.md"] }).manifest).toBeUndefined();
+  });
+
+  it("a glob is relative, one * per step at most as a wildcard, never **, .., .git or a .env file", () => {
+    for (const glob of ["TODO.md", "notes/*.md", "a/b/c/d/e/f", ".editorconfig", "*.png"]) expect(inputGlobProblem(glob), glob).toBeUndefined();
+    for (const glob of ["", "/etc/passwd", "~/x", "../x", "a/../b", "./x", "**/x", "a//b", "a/", ".git/config", "a/.GIT", "x?.md", "[ab].md", "a\\b", ".env", ".env.local", "config/.ENV", ".envrc", ".env*", "a/b/c/d/e/f/g", "x".repeat(257)]) {
+      expect(inputGlobProblem(glob), glob).toBeDefined();
+    }
+    expect(inputGlobProblem(".env")).toBe("may not name a .env file: it holds keys.");
+  });
+
+  it("a glob matches step by step: * stays in one step and never takes a leading dot; .env, .git and .. never match", () => {
+    expect(inputGlobMatches("notes/*.md", "notes/a.md")).toBe(true);
+    expect(inputGlobMatches("notes/*.md", "notes/sub/a.md")).toBe(false);
+    expect(inputGlobMatches("*.md", ".hidden.md")).toBe(false);
+    expect(inputGlobMatches(".e*", ".editorconfig")).toBe(true);
+    for (const rel of [".env", ".ENV.local", ".envrc"]) expect(inputGlobMatches(".e*", rel), rel).toBe(false);
+    expect(inputGlobMatches(".E*", ".ENV")).toBe(false);
+    expect(inputGlobMatches("*/x", "../x")).toBe(false);
+    expect(inputGlobMatches("*/x", ".git/x")).toBe(false);
+    expect(isEnvName(".Env.production")).toBe(true);
+    expect(isEnvName("env.md")).toBe(false);
+  });
+
+  it("says what the inputs read in one sentence, with every machine on a crew's lead", () => {
+    expect(inputsSentence(["TODO.md", "notes/*.md"], false)).toBe("Reads TODO.md, notes/*.md in your agent sessions' folders.");
+    expect(inputsSentence(["TODO.md"], true)).toBe("Reads TODO.md in your agent sessions' folders on every machine of the crew.");
+  });
+
+  it("a document's v may be any contract from 1 to this Collie's", () => {
+    const part = { at: "belt", id: "belt", mark: { icon: "flask", label: "1" } };
+    for (const v of [1, 2]) expect(parseTrickDocument({ v, parts: [part] }).refusals, String(v)).toEqual([]);
+    for (const v of [0, 3, 1.5]) expect(parseTrickDocument({ v, parts: [part] }).refusals.map((r) => r.path), String(v)).toEqual(["/v"]);
+  });
+});
+
 describe("parseFacts", () => {
   it.each(Object.entries(FACTS))("the %s facts parse clean", (_name, facts) => {
     const result = parseFacts(facts);
     expect(result.refusals).toEqual([]);
-    expect(result.facts?.contract).toBe(TRICK_CONTRACT);
+    expect(result.facts?.contract).toBe(TRICK_CONTRACT_DEFAULT);
+  });
+
+  it("takes contract 1 to this Collie's, a session's reachable flag and its inputs, and sessionsOmitted", () => {
+    const [first] = FACTS.timer.sessions;
+    const file = { rel: "notes/a.md", path: "inputs/bluefin/w6X_3/notes/a.md", bytes: 4, sha256: "a".repeat(64), mtime: "2026-11-10T09:00:00.000Z", kind: "text" };
+    const facts = { ...FACTS.timer, contract: 2, sessionsOmitted: 3, sessions: [{ ...first, reachable: false, inputs: { state: "ok", files: [file], skipped: 2 } }] };
+    const read = parseFacts(facts);
+    expect(read.refusals).toEqual([]);
+    expect(read.facts?.contract).toBe(2);
+    expect(read.facts?.sessionsOmitted).toBe(3);
+    expect(read.facts?.sessions[0]).toMatchObject({ reachable: false, inputs: { state: "ok", files: [file], skipped: 2 } });
+    expect(parseFacts({ ...FACTS.timer, contract: 3 }).refusals.map((r) => r.path)).toEqual(["/contract"]);
+    const badState = { ...facts, sessions: [{ ...first, inputs: { state: "maybe", files: [] } }] };
+    expect(parseFacts(badState).refusals.length).toBeGreaterThan(0);
+    const badKind = { ...facts, sessions: [{ ...first, inputs: { state: "ok", files: [{ ...file, kind: "binary" }] } }] };
+    expect(parseFacts(badKind).refusals.length).toBeGreaterThan(0);
   });
 
   it("refuses a session id that is a name", () => {

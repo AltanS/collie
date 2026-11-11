@@ -1,13 +1,13 @@
-import { act, render, renderHook, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HOLD_MS, TricksSettingsCard, placesLine, provenanceLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
-import { switchTrick } from "@/lib/api";
+import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
+import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
-import type { TricksReply, WireTrickInfo } from "@/lib/tricks/schema";
+import { inputsSentence, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import { readTrick } from "@/lib/tricks/wire";
 import { clearStatus, currentStatus } from "@/lib/status";
@@ -86,6 +86,31 @@ describe("TricksSettingsCard: when it shows", () => {
   });
 });
 
+describe("B7: TricksSettingsCard on a machine that runs no tricks", () => {
+  async function storeRunsOn(runsOn: TricksReply["runsOn"]): Promise<TricksStore> {
+    const reply: TricksReply = { rev: 5, tricks: [LEGS], parts: [], present: [], runsOn };
+    const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+    await store.syncTricks(5);
+    return store;
+  }
+
+  it("says the lead runs them, by name, and that this machine runs none", async () => {
+    renderCard(await storeRunsOn({ lead: "desk" }));
+    expect(await screen.findByText("Tricks run on the lead of this crew (desk). This machine runs none.")).toBeInTheDocument();
+  });
+
+  it("says it without a name when the lead is not known", async () => {
+    renderCard(await storeRunsOn({}));
+    expect(await screen.findByText("Tricks run on the lead of this crew. This machine runs none.")).toBeInTheDocument();
+  });
+
+  it("says nothing of the kind on a lead or a solo machine", async () => {
+    renderCard(await storeWith([LEGS]));
+    await screen.findByTestId("tricks-settings");
+    expect(screen.queryByText(/This machine runs none/)).toBeNull();
+  });
+});
+
 describe("TricksSettingsCard: the rows", () => {
   it("is one row per trick: the name, the places, the provenance and a switch", async () => {
     renderCard(await storeWith([LEGS, TRACKER]));
@@ -146,7 +171,10 @@ describe("TricksSettingsCard: the rows", () => {
     await screen.findByText("Bad");
     for (const id of ["legs", "tracker", "bad"]) {
       const row = rowOf(id);
-      expect(row.querySelectorAll("[data-line]").length).toBe(2);
+      // The three lines; a trick that is on adds its changes row below them (crew slice 3), whatever its state.
+      const lines = [...row.querySelectorAll<HTMLElement>("[data-line]")].filter((el) => el.closest('[data-line="changes"]') === null);
+      expect(lines.length).toBe(2);
+      expect(row.querySelector('[data-line="changes"]') !== null).toBe(id !== "tracker");
       expect(row.querySelector('[data-line="places"]')?.textContent).not.toBe("");
       expect(row.querySelector('[data-line="slot"]')?.textContent).not.toBe("");
     }
@@ -205,6 +233,34 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
     expect(readTrick(base)).not.toHaveProperty("warnings");
     expect(readTrick({ ...base, warnings: "loud" })).not.toHaveProperty("warnings");
     expect(readTrick({ ...base, warnings: [{ kind: "network", text: "x" }, 5, { kind: 1, text: "y" }, null] })?.warnings).toEqual([{ kind: "network", text: "x" }]);
+  });
+});
+
+describe("TricksSettingsCard: what a contract 2 trick reads (M99)", () => {
+  it("says the globs in one sentence under the places, with every machine on a crew's lead", async () => {
+    const solo: WireTrickInfo = { ...TRACKER, inputs: { globs: ["TODO.md", "shots/*.png"], crew: false } };
+    const crew: WireTrickInfo = { ...LEGS, inputs: { globs: ["TODO.md"], crew: true } };
+    renderCard(await storeWith([crew, solo]));
+    expect((await within(rowOf("tracker")).findByText(/^Reads /u)).textContent).toBe("Reads TODO.md, shots/*.png in your agent sessions' folders.");
+    expect(rowOf("legs").querySelector('[data-line="reads"]')?.textContent).toBe("Reads TODO.md in your agent sessions' folders on every machine of the crew.");
+  });
+
+  it("speaks the same words as the version card and collie trick check", () => {
+    for (const crew of [false, true]) {
+      const globs = ["TODO.md", "notes/*.md"];
+      expect(readsLine({ globs, crew })).toBe(inputsSentence(globs, crew));
+    }
+  });
+
+  it("draws no line for a trick without inputs, and reads a malformed field as none", async () => {
+    renderCard(await storeWith([LEGS]));
+    await screen.findByRole("switch", { name: "Browser leg" });
+    expect(rowOf("legs").querySelector('[data-line="reads"]')).toBeNull();
+    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: false, state: "off", places: ["belt"] };
+    expect(readTrick({ ...base, inputs: { globs: ["TODO.md"], crew: true } })?.inputs).toEqual({ globs: ["TODO.md"], crew: true });
+    for (const inputs of ["TODO.md", { globs: [], crew: false }, { globs: ["a"] }, { globs: [5], crew: false }, { globs: Array.from({ length: 9 }, () => "a"), crew: false }, { globs: ["x".repeat(257)], crew: true }]) {
+      expect(readTrick({ ...base, inputs }), JSON.stringify(inputs).slice(0, 40)).not.toHaveProperty("inputs");
+    }
   });
 });
 
@@ -391,5 +447,130 @@ describe("the Hill switched off", () => {
     await screen.findByText("Browser leg");
     expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("The Hill is off: this trick's Decisions are not shown.");
     expect(await within(rowOf("legs")).findByText("This trick reaches the network.")).toBeInTheDocument();
+  });
+});
+
+// A new version waits (crew slice 2, bridge/tricks/service.ts): the trick keeps running the approved copy,
+// and its row says once that a newer folder waits for a yes. The note takes the provenance's slot, never a
+// trouble report's, and the row grows no button: the switch, switched on again, is the yes.
+describe("a new version waits", () => {
+  const PENDING = { hash: "ab".repeat(32), files: { added: 1, changed: 2, removed: 0 }, powersChanged: false, warnings: [] };
+  const WAITING: WireTrickInfo = { ...LEGS, pending: PENDING };
+
+  it("slotLine: the note for a trick that is on, after any trouble and before the Hill note", () => {
+    expect(slotLine(WAITING, NOW)).toEqual({ text: "A new version waits for your yes.", trouble: false });
+    expect(slotLine({ ...WAITING, decides: true }, NOW, true).text).toBe("A new version waits for your yes.");
+    expect(slotLine({ ...WAITING, on: false, state: "off" }, NOW).text).toBe("Added by agent · 2 h ago");
+    expect(slotLine({ ...WAITING, state: "failing", error: "exit 2" }, NOW)).toEqual({ text: "exit 2", trouble: true });
+  });
+
+  it("the row shows the note and adds no button", async () => {
+    renderCard(await storeWith([WAITING, TRACKER]));
+    await screen.findByText("Browser leg");
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("A new version waits for your yes.");
+    expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("A new version waits");
+    expect(within(rowOf("legs")).queryByRole("button")).toBeNull();
+  });
+
+  it("readTrick keeps a well-formed pending and drops a malformed one", () => {
+    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    expect(readTrick(base)).not.toHaveProperty("pending");
+    expect(readTrick({ ...base, pending: PENDING })?.pending).toEqual(PENDING);
+    const warned = { ...PENDING, warnings: [{ kind: "network", text: "x" }, 7] };
+    expect(readTrick({ ...base, pending: warned })?.pending?.warnings).toEqual([{ kind: "network", text: "x" }]);
+    expect(readTrick({ ...base, pending: { ...PENDING, hash: 5 } })).not.toHaveProperty("pending");
+    expect(readTrick({ ...base, pending: { ...PENDING, files: { added: -1, changed: 0, removed: 0 } } })).not.toHaveProperty("pending");
+    expect(readTrick({ ...base, pending: { ...PENDING, powersChanged: "yes" } })).not.toHaveProperty("pending");
+    expect(readTrick({ ...base, pending: "soon" })).not.toHaveProperty("pending");
+  });
+});
+
+describe("take changes without asking, and undo an automatic change (crew slice 3)", () => {
+  function renderWith(store: TricksStore, calls: { onAuto?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>; onUndo?: (host: string, id: string) => Promise<WireTrickInfo> }) {
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onAuto={calls.onAuto} onUndo={calls.onUndo} /> }], { initialEntries: ["/"] });
+    return render(<RouterProvider router={router} />);
+  }
+
+  it("draws the switch with its hint under a trick that is on, and nothing under one that is off", async () => {
+    renderWith(await storeWith([{ ...LEGS, auto: false }, TRACKER]), {});
+    await screen.findByText("Browser leg");
+    const changes = rowOf("legs").querySelector<HTMLElement>('[data-line="changes"]');
+    expect(changes).toHaveTextContent("Take changes without asking");
+    expect(changes).toHaveTextContent("A change that asks for new rights, or does something new such as reaching the network, still asks.");
+    expect(within(changes!).getByRole("switch", { name: "Take changes without asking" })).not.toBeChecked();
+    expect(rowOf("tracker").querySelector('[data-line="changes"]')).toBeNull();
+    expect(rowOf("legs").querySelector('[data-line="auto-at"]')).toBeNull();
+  });
+
+  it("posts the new position, flips at once, and goes back with a status line when the bridge refuses", async () => {
+    const user = userEvent.setup();
+    const onAuto = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...LEGS, auto: on }));
+    renderWith(await storeWith([LEGS]), { onAuto });
+    const sw = await screen.findByRole("switch", { name: "Take changes without asking" });
+    await user.click(sw);
+    expect(onAuto).toHaveBeenCalledWith("bluefin", "legs", true);
+    expect(screen.getByRole("switch", { name: "Take changes without asking" })).toBeChecked();
+    onAuto.mockRejectedValueOnce(new Error("409"));
+    await user.click(screen.getByRole("switch", { name: "Take changes without asking" }));
+    expect(currentStatus()?.text).toBe("Could not change Browser leg. Try again.");
+  });
+
+  it("says when a version was taken without asking, and Undo asks for a second tap before it goes back", async () => {
+    const onUndo = vi.fn(async () => ({ ...LEGS, auto: true }));
+    renderWith(await storeWith([{ ...LEGS, auto: true, autoAt: "2026-11-08T07:41:00Z" }]), { onUndo });
+    await screen.findByText("Browser leg");
+    const line = rowOf("legs").querySelector<HTMLElement>('[data-line="auto-at"]');
+    expect(line).toHaveTextContent("Updated 2 h ago, automatically.");
+    const undo = within(line!).getByRole("button");
+    const front = () => undo.querySelector("[data-active]")?.textContent;
+    expect(front()).toBe("Undo");
+    const t0 = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
+    fireEvent.click(undo);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(front()).toBe("Undo?");
+    expect(undo.className).toContain("text-destructive");
+    // Inside the dwell the same touch landing twice does nothing; after it, the second tap goes back.
+    clock.mockReturnValue(t0 + 100);
+    fireEvent.click(undo);
+    expect(onUndo).not.toHaveBeenCalled();
+    clock.mockReturnValue(t0 + 600);
+    await act(async () => fireEvent.click(undo));
+    expect(onUndo).toHaveBeenCalledWith("bluefin", "legs");
+    clock.mockRestore();
+  });
+
+  it("autoLine: only for a trick that is on with a time it can read", () => {
+    expect(autoLine({ on: true, autoAt: "2026-11-08T09:38:00Z" }, NOW)).toBe("Updated 3 min ago, automatically.");
+    expect(autoLine({ on: false, autoAt: "2026-11-08T09:38:00Z" }, NOW)).toBeNull();
+    expect(autoLine({ on: true }, NOW)).toBeNull();
+    expect(autoLine({ on: true, autoAt: "soon" }, NOW)).toBeNull();
+  });
+
+  it("readTrick keeps a boolean auto and a time autoAt, and drops either of another shape", () => {
+    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    expect(readTrick({ ...base, auto: true, autoAt: "2026-11-08T07:41:00Z" })).toMatchObject({ auto: true, autoAt: "2026-11-08T07:41:00Z" });
+    expect(readTrick({ ...base, auto: "yes", autoAt: 5 })).not.toHaveProperty("auto");
+    expect(readTrick({ ...base, auto: "yes", autoAt: "later" })).not.toHaveProperty("autoAt");
+  });
+});
+
+describe("the auto and undo calls (crew slice 3)", () => {
+  it("setTrickAuto posts { on } and undoTrick posts {}, each to its route, and read the trick back", async () => {
+    const seen: { path: string; body: unknown }[] = [];
+    server.use(
+      http.post(/\/api\/tricks\/[^/]+\/[^/]+\/(auto|undo)$/, async ({ request }) => {
+        seen.push({ path: new URL(request.url).pathname, body: await request.json() });
+        return HttpResponse.json({ ...LEGS, auto: true });
+      }),
+    );
+    expect(await setTrickAuto("blue fin", "legs", true)).toMatchObject({ id: "legs", auto: true });
+    expect(await undoTrick("bluefin", "legs")).toMatchObject({ id: "legs" });
+    expect(seen).toEqual([
+      { path: "/api/tricks/blue%20fin/legs/auto", body: { on: true } },
+      { path: "/api/tricks/bluefin/legs/undo", body: {} },
+    ]);
+    server.use(http.post(/\/undo$/, () => HttpResponse.json({ error: "no-previous", message: "There is no earlier version to go back to." }, { status: 409 })));
+    await expect(undoTrick("bluefin", "legs")).rejects.toThrow();
   });
 });

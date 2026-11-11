@@ -147,7 +147,7 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────
 
-export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | HillOp;
+export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp;
 
 /** The hill's operations (M96), beside walky's own. Added, never a change to one of them. */
 export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear";
@@ -165,7 +165,7 @@ export type WalkyRequest =
       readonly outside: boolean;
     }
   | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
-  | { readonly op: "who" | "off" | "on"; readonly markers: readonly BeaconMarker[] }
+  | { readonly op: "who" | "off" | "on" | "pane"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
   | { readonly op: "ack"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] | null }
   | { readonly op: "cancel"; readonly markers: readonly BeaconMarker[]; readonly id: string }
@@ -214,7 +214,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
   const markers = readMarkers(row.markers);
   if (row.v !== 1) return unread(BAD_REQUEST_LINE, markers);
   const op = text(row, "op");
-  if (op === "who" || op === "off" || op === "on") return done({ op, markers });
+  if (op === "who" || op === "off" || op === "on" || op === "pane") return done({ op, markers });
   if (op === "status" || op === "cancel") {
     const id = text(row, "id");
     return isWalkyId(id) ? done({ op, markers, id }) : unread(BAD_MESSAGE_ID, markers);
