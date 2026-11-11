@@ -629,15 +629,21 @@ describe("collie trick on, off and list", () => {
     const second = list.entries[1];
     if (first === undefined || second === undefined) throw new Error("the list holds fewer than two entries");
     const d = await deps(null);
-    // One added at the listed commit, one by hand under the same id: taken.
+    // A record of the list at its commit over code that is not the list's (an edit, or a record by hand),
+    // one by hand under the same id, and one from the repository at a commit the list never named.
     await mkdir(join(d.configDir, "tricks", first.id), { recursive: true });
     await writeFile(join(d.configDir, "tricks", first.id, ORIGIN_FILE), renderOrigin({ url: first.repo, ref: first.commit, commit: first.commit, subdir: first.dir, at: "2026-11-11T09:00:00.000Z", official: true }));
     await mkdir(join(d.configDir, "tricks", second.id), { recursive: true });
+    const third = list.entries[2];
+    if (third === undefined) throw new Error("the list holds fewer than three entries");
+    await mkdir(join(d.configDir, "tricks", third.id), { recursive: true });
+    await writeFile(join(d.configDir, "tricks", third.id, ORIGIN_FILE), renderOrigin({ url: third.repo, ref: "refs/pull/4/head", commit: "4".repeat(40), subdir: third.dir, at: "2026-11-11T09:00:00.000Z" }));
     expect(await cmdTrickList(d, ["--official"])).toBe(EXIT.OK);
     expect(d.out[0]).toMatch(/^ID\s+NAME\s+COMMIT\s+STATE\s+WHAT IT DOES$/);
     expect(d.out[1]).toStartWith(first.id);
-    expect(d.out[1]).toContain("  added  ");
+    expect(d.out[1]).toContain("taken: its files were edited, update it with collie trick update");
     expect(d.out[2]).toContain("taken: another trick has this id");
+    expect(d.out[3]).toContain("taken: from the repository, not from the Collie list");
     expect(d.out.at(-1)).toBe("From AltanS/collie-tricks, at the commits this Collie release names. Add one on the phone: Settings, Tricks, From Collie.");
     // The only request is the local bridge's own tricks list, for the crew line: nothing reaches GitHub.
     expect(d.asked).toEqual(["http://127.0.0.1:18999/api/tricks"]);
@@ -645,8 +651,8 @@ describe("collie trick on, off and list", () => {
     await cmdTrickList(d, ["--official", "--json"]);
     // SAFETY: `list --official --json` prints one document, checked by value below.
     const doc = JSON.parse(d.out.join("\n")) as { official: { id: string; state: string }[] };
-    expect(doc.official.map((e) => e.state)).toEqual(list.entries.map((e) => (e.id === first.id ? "added" : e.id === second.id ? "taken" : "absent")));
-    expect(await readdir(join(d.configDir, "tricks"))).toEqual([first.id, second.id].toSorted());
+    expect(doc.official.map((e) => e.state)).toEqual(list.entries.map((e) => (e.id === first.id || e.id === second.id || e.id === third.id ? "taken" : "absent")));
+    expect(await readdir(join(d.configDir, "tricks"))).toEqual([first.id, second.id, third.id].toSorted());
   });
 
   test("list --official on a crew member names the lead", async () => {

@@ -5,7 +5,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { redactText } from "../bridge/redact.ts";
 import { approvedDirOf, approveFolder, pruneCopies, verifyCopy } from "../bridge/tricks/approved.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
-import { officialStateOf, shippedOfficialList } from "../bridge/tricks/official.ts";
+import { officialStanding, shippedOfficialList } from "../bridge/tricks/official.ts";
 import { originRepoName, originShort, proposalShort } from "../bridge/tricks/origin.ts";
 import {
   HELPER_FILE,
@@ -250,6 +250,13 @@ const OFFICIAL_STATE_TEXT = {
   taken: "taken: another trick has this id",
 } as const satisfies Record<OfficialState, string>;
 
+/** The STATE column: a taken folder from the list's repository says which kind it is. */
+function officialStateText(row: { state: OfficialState; changed?: true; unlisted?: true }): string {
+  if (row.changed === true) return "taken: its files were edited, update it with collie trick update";
+  if (row.unlisted === true) return "taken: from the repository, not from the Collie list";
+  return OFFICIAL_STATE_TEXT[row.state];
+}
+
 /**
  * `collie trick list --official`: the From Collie list this binary carries (bridge/tricks/official.ts), each
  * entry's state on this machine. Read-only: it reads the list from the binary and the tricks folder, and
@@ -262,8 +269,15 @@ async function cmdTrickListOfficial(deps: TrickDeps, json: boolean): Promise<num
     deps.io.err(`error: this Collie's From Collie list is refused: ${list.reason}`);
     return EXIT.FAIL;
   }
-  const states = await Promise.all(list.entries.map(async (e) => await officialStateOf(deps.ctx.configDir, e)));
-  const rows = list.entries.map((e, i) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, commit: e.commit, state: states[i] ?? "absent" }));
+  const standings = await Promise.all(list.entries.map(async (e) => await officialStanding(deps.ctx.configDir, e)));
+  const rows = list.entries.map((e, i) => {
+    const standing = standings[i];
+    const row = { id: e.id, name: e.name, description: e.description, repo: e.repo, commit: e.commit, state: standing?.state ?? "absent" };
+    // A taken folder from the list's repository: not a version of the list, or one whose files were edited.
+    if (standing?.changed === true) return { ...row, changed: true as const };
+    if (standing?.unlisted === true) return { ...row, unlisted: true as const };
+    return row;
+  });
   const runsOn = (await bridgeTricks(deps))?.runsOn;
   if (json) {
     const doc = { official: rows };
@@ -274,7 +288,7 @@ async function cmdTrickListOfficial(deps: TrickDeps, json: boolean): Promise<num
     deps.io.out("This Collie carries no tricks on its From Collie list.");
     return EXIT.OK;
   }
-  const lines = table([["ID", "NAME", "COMMIT", "STATE", "WHAT IT DOES"], ...rows.map((r) => [r.id, r.name, r.commit.slice(0, 7), OFFICIAL_STATE_TEXT[r.state], r.description])]);
+  const lines = table([["ID", "NAME", "COMMIT", "STATE", "WHAT IT DOES"], ...rows.map((r) => [r.id, r.name, r.commit.slice(0, 7), officialStateText(r), r.description])]);
   for (const line of lines) deps.io.out(line);
   if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
   deps.io.out(`From ${originRepoName(list.entries[0]?.repo ?? "")}, at the commits this Collie release names. Add one on the phone: Settings, Tricks, From Collie.`);
