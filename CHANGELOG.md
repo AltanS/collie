@@ -79,6 +79,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The Collie mark rests until you touch the app.** Since 1.28.1 a page you opened drifted the mark for its first 20 seconds with no touch at all, background tabs included. Now the mark rests until your first touch, key press or mouse wheel, and 20 seconds after the last one it slows to a stop as before. A page left open and a page in the background draw nothing for the mark. A scroll the app makes by itself, such as the chat following new output, does not count as a touch. This undoes a slowdown seen in WebKit (Safari's engine) tests since 1.28.1.
+- **`collie hill post --image` takes a picture from `/tmp`.** The bridge runs with a private `/tmp` of its own, so a screenshot an agent saved under `/tmp` or `/var/tmp` was refused as missing. The command now copies such a picture, after the same checks the bridge makes, into a private folder in your cache folder for the length of the command, then removes it. A refusal still names the path you typed. Pictures anywhere else are sent as before.
 
 ## [1.28.1] - 2026-11-10
 
