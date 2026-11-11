@@ -3,7 +3,7 @@
 
 import { t } from "@/lib/i18n";
 
-import type { HillDecision, HillPriority, HillReceipt, HillState } from "./wire";
+import { RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillPriority, type HillReceipt, type HillState } from "./wire";
 
 export function priorityWord(priority: HillPriority): string {
   return t(`hill.priority.${priority}`);
@@ -12,6 +12,18 @@ export function priorityWord(priority: HillPriority): string {
 /** A closed decision's state, in plain words. An open one has none to say. */
 export function stateWord(state: Exclude<HillState, "open">): string {
   return t(`hill.state.${state}`);
+}
+
+/**
+ * A closed decision's line: its state in plain words, except Collie's card about a trick's changed rights,
+ * which says why it closed (the bridge's `closedReason`, one of {@link RIGHTS_CLOSED}), never "Withdrawn by
+ * the poster". A reason this phone does not know reads as the plain state.
+ */
+export function closedWord(decision: Pick<HillDecision, "state" | "from" | "closedReason">): string {
+  if (decision.state === "open") return "";
+  if (decision.state !== "withdrawn" || decision.from.kind !== "collie" || decision.from.ref?.type !== "rights") return stateWord(decision.state);
+  const why = RIGHTS_CLOSED_KEYS.find((key) => RIGHTS_CLOSED[key] === decision.closedReason);
+  return why === undefined ? stateWord(decision.state) : t(`hill.rightsClosed.${why}`);
 }
 
 /**

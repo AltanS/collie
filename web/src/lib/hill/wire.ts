@@ -86,6 +86,24 @@ export const HILL_MEDIA_ROUTE = "/api/hill/media/";
  */
 export type HillCollieRefType = "version" | "proposal" | "carried" | "rights";
 export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried", "rights"];
+
+/**
+ * Why Collie's card about a trick's changed rights closed (bridge/tricks/rights-card.ts), as the bridge
+ * writes it into `closedReason` when it withdraws the card. One list for both sides: the phone says each
+ * in its own words (lib/hill/words.ts `closedWord`), never "Withdrawn by the poster".
+ */
+export const RIGHTS_CLOSED = {
+  /** The trick runs again: a switch on approved the rights it asks for now. */
+  approved: "It runs again with the rights it asks for now.",
+  /** The trick is off. */
+  off: "The trick is off.",
+  /** The trick's folder is gone. */
+  removed: "The trick was removed.",
+  /** It asks for other rights again: a new card says so. */
+  moved: "Its rights changed again; a new card says so.",
+} as const;
+export type RightsClosed = keyof typeof RIGHTS_CLOSED;
+export const RIGHTS_CLOSED_KEYS: readonly RightsClosed[] = ["approved", "off", "removed", "moved"];
 /** The id inside a Collie Decision's `ref`: a trick id for `version`. */
 export const HILL_COLLIE_REF_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** The hash inside a Collie Decision's `ref`: the sha256 of the code the answer is about, in hex. */

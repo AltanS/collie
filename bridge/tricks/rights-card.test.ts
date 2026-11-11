@@ -10,7 +10,7 @@ import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { TRICKS_DIR } from "./paths.ts";
-import { answerRights, RIGHTS_CARD_APPROVED, RIGHTS_CARD_MOVED, RIGHTS_CARD_OFF, RightsCards } from "./rights-card.ts";
+import { answerRights, RIGHTS_CARD_APPROVED, RIGHTS_CARD_MOVED, RIGHTS_CARD_OFF, RIGHTS_CARD_REMOVED, RightsCards } from "./rights-card.ts";
 import { RIGHTS_LINE, TricksService } from "./service.ts";
 
 // THE CARD THAT SAYS A TRICK ASKS FOR A NEW RIGHT (fault B): a real tricks runner beside a real Hill whose
@@ -206,6 +206,15 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_APPROVED]]);
   });
 
+  test("rights card close: switched off, the card closes as off; removed, as removed", async () => {
+    const f = await folders(OLDER_READER);
+    const l = life(f);
+    await scan(l, T0);
+    expect((await l.service.setSwitch("lodge", "legs", false)).status).toBe(200);
+    await scan(l, T0 + 60_000);
+    expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_OFF]]);
+  });
+
   test("fault B: a stopped trick whose folder is removed closes its card with that receipt", async () => {
     const f = await folders(OLDER_READER);
     const l = life(f);
@@ -213,7 +222,7 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     expect(cards(l).map((decision) => decision.state)).toEqual(["open"]);
     await rm(f.dir, { recursive: true, force: true });
     await scan(l, T0 + 60_000);
-    expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_OFF]]);
+    expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_REMOVED]]);
     expect(l.runs).toEqual([]);
   });
 

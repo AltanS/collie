@@ -19,7 +19,7 @@ import { useArm } from "@/hooks/use-arm";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
-import { answerLine, priorityWord, stateWord } from "@/lib/hill/words";
+import { answerLine, closedWord, priorityWord } from "@/lib/hill/words";
 import { hostSlot } from "@/lib/hosts";
 import { t, tn } from "@/lib/i18n";
 import { useTricksState } from "@/lib/tricks/store";
@@ -104,7 +104,7 @@ const STATE_GLYPH = {
 function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | undefined }) {
   // The closed list holds closed decisions only (lib/hill/reader.ts); an open one would have no words here.
   if (decision.state === "open") return null;
-  const word = stateWord(decision.state);
+  const word = closedWord(decision);
   const line = decision.state === "answered" && decision.answer !== null ? `${word} · ${answerLine(decision)}` : word;
   return (
     // The list item is the presence wrapper around this (`PresenceList itemAs="li"`), so a row can leave.

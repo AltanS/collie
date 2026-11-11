@@ -1048,7 +1048,7 @@ export class TricksService implements TricksSurface {
       subjects.push({ id: rt.found.id, name: this.shownOf(rt).manifest?.name ?? rt.found.id, moved: rt.rightsMoved });
     }
     try {
-      port.sync(subjects, running);
+      port.sync(subjects, running, new Set(this.runtimes.keys()));
     } catch (err) {
       this.warn(`the rights card could not be updated: ${err instanceof Error ? err.message : String(err)}`);
     }

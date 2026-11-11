@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
+import { RIGHTS_CLOSED, type HillCollieRef, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import type { HillCollieSender, HillCollieVerdict, HillOneAnswer, HillPostAnswer } from "../hill/service.ts";
 import type { RightsMoved } from "./service.ts";
 
@@ -20,11 +20,13 @@ export const RIGHTS_CARD_SENDER = "Collie";
 /** The card's one option. */
 export const RIGHTS_OK = "ok";
 /** Why an open card closes when its trick runs again: a switch on approved the rights it asks for. */
-export const RIGHTS_CARD_APPROVED = "Switched on again with the rights it asks for now.";
-/** Why an open card closes when its trick is off or its folder is gone. */
-export const RIGHTS_CARD_OFF = "The trick is off or removed.";
+export const RIGHTS_CARD_APPROVED = RIGHTS_CLOSED.approved;
+/** Why an open card closes when its trick is off. */
+export const RIGHTS_CARD_OFF = RIGHTS_CLOSED.off;
+/** Why an open card closes when its trick's folder is gone. */
+export const RIGHTS_CARD_REMOVED = RIGHTS_CLOSED.removed;
 /** Why an open card closes when its trick asks for other rights again: a new card says so. */
-export const RIGHTS_CARD_MOVED = "It asks for other rights now; a new card says so.";
+export const RIGHTS_CARD_MOVED = RIGHTS_CLOSED.moved;
 
 /** One trick that is on and stopped for its rights, as the runner sees it now. */
 export interface TrickRightsSubject {
@@ -35,11 +37,11 @@ export interface TrickRightsSubject {
 }
 
 /**
- * What the runner tells the card: every trick stopped for its rights now, and the ids of the tricks that
- * run now (on, approved, rights holding). A trick in neither list is off or gone.
+ * What the runner tells the card: every trick stopped for its rights now, the ids of the tricks that run
+ * now (on, approved, rights holding), and the ids of every trick it holds (a folder that is there).
  */
 export interface TrickRightsPort {
-  sync(subjects: readonly TrickRightsSubject[], running: ReadonlySet<string>): void;
+  sync(subjects: readonly TrickRightsSubject[], running: ReadonlySet<string>, present: ReadonlySet<string>): void;
 }
 
 /** What the card needs of the Hill: the door no agent, crew member or trick reaches (hill/service.ts). */
@@ -83,9 +85,10 @@ export function answerRights(intent: string): HillCollieVerdict {
 }
 
 /** The receipt of a card whose stop ended: why it closed. */
-function closeReason(id: string, stopped: ReadonlyMap<string, string>, running: ReadonlySet<string>): string {
+function closeReason(id: string, stopped: ReadonlyMap<string, string>, running: ReadonlySet<string>, present: ReadonlySet<string>): string {
   if (running.has(id)) return RIGHTS_CARD_APPROVED;
-  return stopped.has(id) ? RIGHTS_CARD_MOVED : RIGHTS_CARD_OFF;
+  if (stopped.has(id)) return RIGHTS_CARD_MOVED;
+  return present.has(id) ? RIGHTS_CARD_OFF : RIGHTS_CARD_REMOVED;
 }
 
 export class RightsCards implements TrickRightsPort {
@@ -99,14 +102,14 @@ export class RightsCards implements TrickRightsPort {
     this.warn = deps.warn ?? (() => undefined);
   }
 
-  sync(subjects: readonly TrickRightsSubject[], running: ReadonlySet<string>): void {
+  sync(subjects: readonly TrickRightsSubject[], running: ReadonlySet<string>, present: ReadonlySet<string>): void {
     const now = new Map(subjects.map((subject) => [subject.id, rightsHash(subject.moved)]));
     const mine = this.hill.collieDecisions("rights");
     for (const decision of mine) {
       const ref = decision.from.ref;
       if (decision.state !== "open" || ref === undefined || now.get(ref.id) === ref.hash) continue;
       // While its answer runs the Hill refuses; the answer closes it, so nothing is left to do.
-      this.hill.withdrawCollie(rightsSender(ref.id, ref.hash), decision.id, closeReason(ref.id, now, running));
+      this.hill.withdrawCollie(rightsSender(ref.id, ref.hash), decision.id, closeReason(ref.id, now, running, present));
     }
     for (const subject of subjects) {
       const hash = rightsHash(subject.moved);
