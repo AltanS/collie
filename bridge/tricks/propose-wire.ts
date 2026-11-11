@@ -109,6 +109,43 @@ export const PROPOSE_REFUSAL_CODES: readonly ProposeRefusalCode[] = [
   "failed",
 ];
 
+/**
+ * The most JSON tokens (`{`, `[`, `,`, `:` outside strings) and the deepest nesting a proposal's text may
+ * have before it is parsed (review S3). A proposal of {@link PROPOSE_LIMITS} files needs about 8 tokens a
+ * file and a depth of 4; an 8 MB line of `[0,0,…]` would build millions of values in `JSON.parse`.
+ */
+export const PROPOSE_PARSE_LIMITS = { tokens: 4096, depth: 8 } as const;
+
+/**
+ * Whether a proposal's JSON text is small enough in shape to parse: one pass over the characters, no
+ * values built. Strings may be long (a file's base64); only the structure outside them is counted.
+ */
+export function proposalParseable(text: string): boolean {
+  let tokens = 0;
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charCodeAt(i);
+    if (inString) {
+      if (ch === 0x5c) i += 1;
+      else if (ch === 0x22) inString = false;
+      continue;
+    }
+    if (ch === 0x22) inString = true;
+    else if (ch === 0x7b || ch === 0x5b) {
+      depth += 1;
+      tokens += 1;
+      if (depth > PROPOSE_PARSE_LIMITS.depth) return false;
+    } else if (ch === 0x7d || ch === 0x5d) depth -= 1;
+    else if (ch === 0x2c || ch === 0x3a) tokens += 1;
+    if (tokens > PROPOSE_PARSE_LIMITS.tokens) return false;
+  }
+  return true;
+}
+
+/** The refusal of a proposal whose text has more structure than any proposal needs. */
+export const PROPOSE_TOO_MANY_PARTS = "The proposal has more parts than a trick's files need, so it was not read.";
+
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/u;
 const BAD_CHARS = /[\p{C}\\:]/u;
 

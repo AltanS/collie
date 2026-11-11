@@ -44,7 +44,7 @@ import type { HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.
 import type { HillService } from "../hill/service.ts";
 import type { LocalProposer } from "../tricks/propose-door.ts";
 import type { ProposeAnswer } from "../tricks/proposals.ts";
-import type { ProposeRefusalCode } from "../tricks/propose-wire.ts";
+import { PROPOSE_TOO_MANY_PARTS, proposalParseable, type ProposeRefusalCode } from "../tricks/propose-wire.ts";
 import type { JsonObject } from "../json.ts";
 import { isHillOp, PROPOSE_LINE_MAX, PROPOSE_LINE_PREFIX, readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
 import { unknownOp } from "./refusals.ts";
@@ -449,6 +449,8 @@ export class WalkyServer {
 
   private async route(socket: Socket, line: string, big = false): Promise<void> {
     try {
+      // A long line is counted before `JSON.parse` builds it (review S3).
+      if (big && !proposalParseable(line)) return this.reply(socket, { ok: false, error: PROPOSE_TOO_MANY_PARTS, code: "bad_request", propose: true });
       const read = readWalkyRequest(line, big ? PROPOSE_LINE_MAX : WALKY_LINE_MAX);
       if (!read.ok) return this.reply(socket, await answerUnread(this.deps.service, read, this.deps.targets()));
       // A long line is a proposal's, or nothing: a second `op` key cannot turn it into another request.

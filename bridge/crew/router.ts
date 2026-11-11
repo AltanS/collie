@@ -74,6 +74,7 @@ import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
 import { WALKY_ACK_HEADER, WALKY_REPORT_FIELD, type CrewAnswer } from "../walky/crew.ts";
 import type { HillCrewAnswer } from "../hill/crew.ts";
 import { INPUT_REQUEST_MAX_BYTES } from "../tricks/inputs.ts";
+import { PROPOSE_TOO_MANY_PARTS, proposalParseable } from "../tricks/propose-wire.ts";
 import type { WalkyReportBody } from "../walky/parse.ts";
 
 // The `/crew/v1/*` surface. This module exists **so that `bridge/server.ts` contains no crew route
@@ -1417,6 +1418,8 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // §24 (added in 1.29.0): only a collie that leads takes a proposal, and only from a SIGNED member of
       // its roster; the handler takes the member from here, and its 401 is the uniform 401.
       if (signed.member === null) return refuse(pathname, "certificate");
+      // The body is counted before `JSON.parse` builds it (review S3): a 400 with the plain line.
+      if (signedBody !== null && !proposalParseable(signedBody)) return badRequest(verdict.self, PROPOSE_TOO_MANY_PARTS);
       const answer = await deps.proposals.propose(await readJson(req, signedBody), verdict.member);
       if (answer.status === 401) return refuse(pathname, "certificate");
       return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });

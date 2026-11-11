@@ -9,7 +9,7 @@ import { HOST } from "../bridge/host.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import type { LocalProposer } from "../bridge/tricks/propose-door.ts";
 import type { ProposeAnswer } from "../bridge/tricks/proposals.ts";
-import { PROPOSE_LIMITS, readProposal } from "../bridge/tricks/propose-wire.ts";
+import { PROPOSE_LIMITS, PROPOSE_TOO_MANY_PARTS, readProposal } from "../bridge/tricks/propose-wire.ts";
 import type { WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
 import { WalkyLog } from "../bridge/walky/log.ts";
 import { PROPOSE_LINE_PREFIX, WALKY_LINE_MAX } from "../bridge/walky/parse.ts";
@@ -322,6 +322,14 @@ describe("collie trick propose, over the walky socket", () => {
     });
     const next = await rawAsk(path, line);
     expect(next?.error).not.toBe("another proposal is being read; try again in a moment");
+  });
+
+  socketTest("S3: a proposal line with more parts than any trick needs is refused before it is parsed", async () => {
+    const b = await bridge();
+    const zeros = Array.from({ length: 100_000 }, () => "0").join(",");
+    const answer = await rawAsk(walkySocketPath(b.stateDir), `${PROPOSE_LINE_PREFIX}"v":1,"markers":{},"requestId":"x","files":[${zeros}]}\n`);
+    expect(answer).toEqual({ ok: false, error: PROPOSE_TOO_MANY_PARTS, code: "bad_request", propose: true });
+    expect(b.calls).toEqual([]);
   });
 
   socketTest("two stalled proposal lines are cut off after their time, and the next proposal is read", async () => {

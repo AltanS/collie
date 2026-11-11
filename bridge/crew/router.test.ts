@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { PROPOSE_TOO_MANY_PARTS } from "../tricks/propose-wire.ts";
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import type { SnapshotView } from "../sessions.ts";
 import { MUX_LOGO_PATH, type SessionCard, type SnapshotResponse } from "../types.ts";
@@ -3567,6 +3568,14 @@ describe("POST /crew/v1/tricks/propose: a member hands its lead a trick (§24, a
     expect(res.status).toBe(200);
     expect(seen.map((s) => s.member)).toEqual(["laptop"]);
     expect(h.data().peers[0]!.signedAt).toBe(0);
+  });
+
+  test("S3: a signed body with more parts than any trick needs is a 400 before it is parsed", async () => {
+    const { handler, seen } = proposeRig();
+    const res = (await call(handler, CREW_TRICKS_PROPOSE_PATH, signedPost("laptop", CREW_TRICKS_PROPOSE_PATH, { requestId: "x", files: Array.from({ length: 5000 }, () => 0), from: null }, T0)))!;
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: PROPOSE_TOO_MANY_PARTS });
+    expect(seen).toEqual([]);
   });
 
   test("unsigned, forged and unknown callers are the uniform 401; a handler's 401 is too", async () => {

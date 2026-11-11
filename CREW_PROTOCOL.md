@@ -4318,7 +4318,8 @@ nothing installs or runs it before a person's tap on the lead.
   a peer answers 404. A lead before 1.29.0 answers the uniform 401, as
   for §22. The body is read within 60 seconds, at most 2 at once, counted apart from the other large
   bodies (§8.6).
-- **The member is the signer.** `from` is `{ address }` for a session or `null` for a terminal. An
+- **The member is the signer.** `from` is `{ address }` for a session or `null` when no agent pane was
+  placed (a terminal, or a caller whose session the member could not confirm). An
   address must be a pane address of the signing member, as in §22; any other address is the uniform
   401, before a file is read. Any key beside the three is `400`.
 - **The member sends no name.** The lead names the session on its card with its own word for that
@@ -4328,15 +4329,22 @@ nothing installs or runs it before a person's tap on the lead.
   in standard base64, `x: true` for a file that was executable. The lead reads them with the same
   reader the member and the CLI use (`readProposal`, `bridge/tricks/propose-wire.ts`): at most 300 files
   and 5 MB, 8 folders deep, 256 characters a path; no `.` or `..` step, no dot step, no
-  `node_modules`, no absolute path, no backslash or colon, no control, bidi or invisible character,
-  NFC only; no two names, of files or folders, that are one once case and Unicode compatibility forms
-  are set aside; pictures only, by their first bytes, in `media/` and `captures/`; a `trick.toml` of at
-  most 64 KiB that the strict reader accepts, with an id Collie does not keep for itself. The base64
-  length is checked before a byte is decoded.
+  `node_modules` or `inputs` step, no absolute path, no backslash or colon, no control, bidi or
+  invisible character, NFC only; no two names, of files or folders, that are one once case and Unicode
+  compatibility forms are set aside; nothing in `media/` or `captures/` and no `config.toml` at the top
+  (a proposal carries code only: the person adds pictures and settings on the machine); the reserved
+  names are compared with case and Unicode compatibility forms set aside; a `trick.toml` of at most
+  64 KiB that the strict reader accepts, with an id Collie does not keep for itself. The base64 length
+  is checked before a byte is decoded.
+- **Counted before it is parsed.** Once the signature is checked, the lead counts the body's JSON
+  structure in one pass before `JSON.parse` builds it: more than 4096 `{`, `[`, `,` or `:` outside
+  strings, or nesting deeper than 8, is `400` with "The proposal has more parts than a trick's files
+  need, so it was not read." A proposal of 300 files needs about 2400.
 - **Content refusals are `200` with `{ ok: false, code, error }`**: `bad_request`, `bad_files`,
   `bad_manifest`, `reserved_id`, `hill_off`, `exists`, `open_elsewhere`, `answering`, `too_many_open`,
-  `too_many_bytes`, `rate`, `request_id_reused`, `no_tricks`, `failed`. `400` is a body the lead cannot
-  read, `401` the uniform 401.
+  `too_many_bytes`, `card_too_large`, `rate`, `request_id_reused`, `no_tricks`, `failed`. `400` is a
+  body the lead cannot read, `401` the uniform 401. A member that does not know a code
+  reads it as `failed` and prints the lead's line.
 
 ### The lead's side
 
@@ -4344,23 +4352,37 @@ nothing installs or runs it before a person's tap on the lead.
   files 0600 with no executable bit, in a dot folder no scanner reads. Collie posts one card on its
   Hill, as Collie: the title names the trick by its id, the summary names the proposer from the lead's
   own facts, there is no recommendation, and the options are "Switch it on" (asked twice) and "Not
-  now". No agent and no member can post, answer or withdraw that card.
+  now". No agent and no member can post, answer or withdraw that card. With `from: null` the card
+  says "Someone on <member> proposes it. Collie could not confirm which session."
+- **The card never cuts a fact.** Every right, every `inputs` glob and every warning shows in full: as
+  chips when each fits a chip and one bar holds them all, else as paragraphs. The author's words are
+  cut to 3 paragraphs and 400 characters and go before any code when they would cost code. When the
+  facts alone do not fit a Decision's view, nothing is stored or posted, and the answer is
+  `card_too_large`, "This trick asks for more than a card can show, so it was not proposed. Ask your
+  person to add it on the machine."
 - **The tap.** "Switch it on" reads the stored bytes again and installs them only when their hash is
   the card's. The trick folder is written beside the tricks and renamed into place, never over a folder
   of that name, then the code written is approved and switched on.
 - **A new version** is taken only for a trick a proposal made that is on. It is kept inert in the same
   store, and its one card ("Use the new version of <id>?") shows it against the approved copy and names
   the proposer. Before the yes nothing outside the store and the proposals state changes on the lead.
-  On the yes the trick must still be the one the card was made against; its code is replaced (its own
-  `config.toml` stays) and exactly that code approved. A trick from a repository, one added on the
+  On the yes the trick must still be the one the card was made against; its code files are replaced in
+  place, one temp file and rename each, and exactly that code approved. Every file the code hash does
+  not read (`config.toml`, `media/`, `captures/`, `inputs/`, logs, dot files, `node_modules`) stays byte
+  for byte. A new file whose name the person's own files hold refuses the yes, and nothing is written.
+  A write a crash cut short is cleaned up when the lead starts. A trick from a repository, one added on the
   lead, one that is off, or one with a change waiting refuses the proposal (`exists`). A trick on auto
   takes it, and the card still asks.
 - **A lead without tricks** answers `200` with `{ ok: false, code: "no_tricks" }`, "Tricks are not set
   up on the lead, so nothing was proposed.", never 404, so the member does not read it as older.
-- **Limits.** Per session (or per machine's terminal) 2 open and 6 an hour; per member 4 open; per lead
-  8 open and 32 MiB stored. One open proposal per trick id. A request id answers as it did for 24 hours;
-  with other files it is `request_id_reused`. The card closes after 3 days, and the stored copy goes
-  with it.
+- **Limits.** Per session (or per machine's terminal) 2 open and 6 an hour; per member 4 open and 12
+  an hour, its sessions and its terminal together; per lead 8 open and 32 MiB stored. One open proposal
+  per trick id: the same session's next one replaces it, and the new card says "It replaces an earlier
+  proposal from the same session."; one with `from: null` never replaces (`open_elsewhere`), as the lead
+  cannot tell who sent it. A request id answers as it did for 24 hours; with other files it is
+  `request_id_reused`. The card closes after 3 days, and the stored copy goes with it.
+- **Memory.** At most 2 bodies of 8 MiB are read at once on this route. Apart from that, each
+  machine's walky socket reads at most 2 proposal lines of 8 MiB at once.
 
 ### The member's side
 

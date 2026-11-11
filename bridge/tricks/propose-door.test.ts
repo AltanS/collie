@@ -7,7 +7,7 @@ import type { CrewDialAnswer } from "../walky/crew.ts";
 import { AUTHOR_PARAS_MAX, PROPOSAL_AUTHOR_WORDS, PROPOSAL_TOO_LARGE, proposalCard, proposalTitle, proposerSentence, PROPOSAL_LATER, PROPOSAL_ON } from "./proposal-card.ts";
 import type { ProposeAnswer, Proposer, TrickProposals } from "./proposals.ts";
 import { CREW_TRICKS_PROPOSE_ROUTE, PROPOSE_LEAD_AWAY, PROPOSE_LEAD_NO_TRICKS, ProposeDoor, proposeLeadOlder, proposeNotConfirmed, type ProposeDoorDeps } from "./propose-door.ts";
-import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
+import { PROPOSE_LIMITS, PROPOSE_PARSE_LIMITS, proposalParseable, readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { ViewNode } from "../../web/src/lib/tricks/schema.ts";
@@ -223,5 +223,16 @@ describe("the card", () => {
     const env = Array.from({ length: 200 }, (_, i) => `TOKEN_${String(i).padStart(3, "0")}_${"X".repeat(54)}`);
     expect(proposalCard({ ...input, manifest: { ...input.manifest, env } })).toBeNull();
     expect(PROPOSAL_TOO_LARGE).toBe("This trick asks for more than a card can show, so it was not proposed. Ask your person to add it on the machine.");
+  });
+});
+
+describe("the count before the parse (review S3)", () => {
+  test("a proposal of the most files fits; a long flat list or a deep nest does not; strings are not counted", () => {
+    const files: ProposedFile[] = Array.from({ length: PROPOSE_LIMITS.files }, (_, i) => ({ rel: `f${String(i)}.ts`, bytes: new Uint8Array([49]), executable: i % 2 === 0 }));
+    const line = JSON.stringify({ v: 1, op: "trick.propose", markers: [{ kind: "herdr", pane: "%1" }], fields: { requestId: RID, files: wireFiles(files) } });
+    expect(proposalParseable(line)).toBe(true);
+    expect(proposalParseable(`{"files":[${Array.from({ length: PROPOSE_PARSE_LIMITS.tokens + 1 }, () => "0").join(",")}]}`)).toBe(false);
+    expect(proposalParseable(`${"[".repeat(PROPOSE_PARSE_LIMITS.depth + 1)}${"]".repeat(PROPOSE_PARSE_LIMITS.depth + 1)}`)).toBe(false);
+    expect(proposalParseable(JSON.stringify({ rel: `${"{[,:".repeat(10_000)}"\\`, b64: "" }))).toBe(true);
   });
 });
