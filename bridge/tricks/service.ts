@@ -1472,7 +1472,7 @@ export class TricksService implements TricksSurface {
     if (problem === null && outcome.kind === "exited") {
       // Masked in run.ts already; again here, so no runner behind the seam can hand the parser a key.
       const text = redactText(outcome.stdout);
-      parsed = parseTrickDocumentText(text, { declared: manifest.places });
+      parsed = parseTrickDocumentText(text, { declared: manifest.places, contract: manifest.contract });
       if (parsed.documentRefused) problem = `The output was refused: ${parsed.refusals[0]?.reason ?? "not a document"}`;
       // An absent `decisions` key means "unchanged"; an empty list withdraws them all.
       decisionsListed = asJsonObject(parseJson(text))?.decisions !== undefined;

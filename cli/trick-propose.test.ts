@@ -83,6 +83,13 @@ describe("collie trick guide", () => {
     expect(text).toContain("collie trick view <id> help --session <address>");
   });
 
+  test("fault C: says that from contract 2 a key Collie does not know leaves its part out", () => {
+    const text = trickGuide().join("\n");
+    expect(text).toContain("THE KEYS OF A PART\n");
+    expect(text).toContain("With contract 1, Collie ignores a key it does not know, and the part still draws.");
+    expect(text).toContain("With contract 2, a key Collie does not know, at any depth of a part, leaves that part out.");
+  });
+
   test("prints the lines, or one JSON object with the lists; needs no bridge", () => {
     const io = capture();
     expect(cmdTrickGuide({ io }, [])).toBe(EXIT.OK);

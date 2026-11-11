@@ -747,7 +747,7 @@ export async function runAgainstFixture(manifest: TrickManifest, folder: string,
     });
     const problem = outcomeProblem(outcome, 400);
     if (problem !== null || outcome.kind !== "exited") return { outcome, problem, stdoutBytes: 0, parsed: null, decisionsListed: false };
-    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places });
+    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, contract: manifest.contract });
     const decisionsListed = asJsonObject(parseJson(outcome.stdout))?.decisions !== undefined;
     return { outcome, problem, stdoutBytes: new TextEncoder().encode(outcome.stdout).length, parsed, decisionsListed };
   } finally {

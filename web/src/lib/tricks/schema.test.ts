@@ -88,11 +88,13 @@ import {
   parsePartKey,
   parseTapRequest,
   partKey,
+  CLOSED_KEY_LINE,
   pointer,
   tapControls,
   toneToken,
   type NodeKind,
   type ParseTrickDocumentOptions,
+  type PlaceKind,
   type ParsedTrickDocument,
   type TrickAction,
   type View,
@@ -1021,6 +1023,61 @@ describe("strict at write, tolerant at read", () => {
     expect(result.parts[0]?.part).toEqual({ at: "belt", id: "belt", mark: { label: "23/34" } });
     const s = result.parts[1];
     expect(s?.place === "session" ? s.part.view : undefined).toEqual([{ kind: "para", text: "ok" }]);
+  });
+
+  it("fault C: at contract 2 a key this Collie does not know refuses its part alone, in every part kind and nested object", () => {
+    const ok = {
+      belt: { at: "belt", id: "b", mark: { label: "1" } },
+      status: { at: "status", id: "c", chip: { text: "1" } },
+      dashboard: { at: "dashboard", id: "d", item: { label: "1" } },
+      tabbar: { at: "tabbar", id: "t", item: { label: "1" } },
+      session: { at: "session", id: "s", actions: [{ id: "go", label: "Go", intent: "go" }], view: [{ kind: "card", kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "A", intent: "a" } }] }] }] },
+    };
+    const all = [ok.belt, ok.status, ok.dashboard, ok.tabbar, ok.session];
+    const places: PlaceKind[] = ["belt", "status", "dashboard", "tabbar", "session"];
+    const opts = { contract: 2, places };
+    expect(parseTrickDocument({ v: 1, parts: all }, opts).parts).toHaveLength(5);
+    const forged: [JsonObject, string][] = [
+      [{ ...ok.belt, glow: 1 }, "/parts/0/glow"],
+      [{ ...ok.belt, mark: { label: "1", shine: "x" } }, "/parts/0/mark/shine"],
+      [{ ...ok.status, chip: { text: "1", blink: true } }, "/parts/0/chip/blink"],
+      [{ ...ok.dashboard, item: { label: "1", size: 2 } }, "/parts/0/item/size"],
+      [{ ...ok.tabbar, item: { label: "1", size: 2 } }, "/parts/0/item/size"],
+      [{ ...ok.session, banner: "x" }, "/parts/0/banner"],
+      [{ ...ok.session, actions: [{ id: "go", label: "Go", intent: "go", hold: "3s" }] }, "/parts/0/actions/0/hold"],
+      [{ ...ok.session, view: [{ kind: "para", text: "x", extra: 2 }] }, "/parts/0/view/0/extra"],
+      [{ ...ok.session, view: [{ kind: "card", kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "A", intent: "a", sends: "rm" } }] }] }] }, "/parts/0/view/0/kids/0/kids/0/attrs/sends"],
+    ];
+    for (const [part, path] of forged) {
+      const id = String(part.id);
+      const others = all.filter((other) => other.at !== part.at);
+      const result = parseTrickDocument({ v: 1, parts: [part, ...others] }, opts);
+      expect(result.refusals.map((r) => [r.code, r.path, r.part]), path).toEqual([["unknown-key", path, id]]);
+      expect(result.refusals[0]?.reason.endsWith(` ${CLOSED_KEY_LINE}`), path).toBe(true);
+      expect(result.refusals[0]?.reason, path).not.toContain("This Collie ignores it.");
+      // Left out whole, and no last good version is kept for it: it would be stale for good.
+      expect(result.refusedParts, path).toEqual([]);
+      expect(result.parts.map((p) => p.part.id), path).toEqual(others.map((other) => other.id));
+      expect(result.notes, path).toEqual([]);
+    }
+  });
+
+  it("fault C: at contract 2 a node or a part of a kind this Collie does not draw is still only left out, with its note", () => {
+    const doc = { v: 1, parts: [{ at: "sidebar", id: "x" }, { at: "session", id: "s", view: [para, { kind: "chart", values: [1] }] }] };
+    const result = parseTrickDocument(doc, { contract: 2 });
+    expect(result.refusals).toEqual([]);
+    expect(result.notes.map((n) => n.code)).toEqual(["dropped", "dropped"]);
+    expect(result.parts.map((p) => p.part.id)).toEqual(["s"]);
+  });
+
+  it("fault C: contract 1, and no contract named, read as before: the key is ignored with a note and the part draws", () => {
+    const doc = { v: 1, parts: [{ at: "belt", id: "belt", wobble: 1, mark: { label: "1", shine: "x" } }] };
+    for (const opts of [{}, { contract: 1 }]) {
+      const result = parseTrickDocument(doc, opts);
+      expect(result.refusals).toEqual([]);
+      expect(result.notes.map((n) => [n.code, n.path])).toEqual([["ignored", "/parts/0/wobble"], ["ignored", "/parts/0/mark/shine"]]);
+      expect(result.parts[0]?.part).toEqual({ at: "belt", id: "belt", mark: { label: "1" } });
+    }
   });
 
   it("still refuses a bad value of a known field: tolerance covers only what this Collie does not know", () => {

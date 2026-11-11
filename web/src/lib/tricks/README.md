@@ -123,6 +123,18 @@ are `notes` on the parse (never `refusals`): the trick's row in Settings shows t
 known field is refused as before, part by part. So a trick written for a newer Collie at the same
 number runs on an older one, which leaves out only what it does not know.
 
+**From contract 2 a part is read closed** (fault C). In a trick whose manifest says `contract = 2`, a key or
+an attribute this Collie does not know, at any depth of a part (the part, its `mark`, `chip` or `item`,
+an action, a node of its view, a node's `attrs`), is no longer ignored: that part is refused alone with an
+`unknown-key` refusal whose reason ends in `CLOSED_KEY_LINE`, and the other parts still draw. A newer key
+may carry a meaning this Collie cannot keep, such as a confirm, so the part is not drawn at all, and the
+runner keeps no last good version of it either (it is not in `refusedParts`): that version would be stale
+for good. A node of a kind, or a part in a place, this Collie does not draw is still only left out with
+its `dropped` note, since leaving it out changes no meaning of what does draw. The document's own keys
+and contract 1 stay as above. The bridge and `collie trick dev` pass the manifest's `contract` to the
+parse (`ParseTrickDocumentOptions.contract`); a view an agent draws (`agent-view/wire.ts`) has its own
+strict reader and does not take this path.
+
 **What contract 2 means.** Inside contract 1 Collie only adds: an optional manifest key, a facts field,
 a node kind, a place, an attribute. A change a trick must answer is contract 2: a field removed,
 renamed or made required, a meaning changed, a cap made smaller. A Collie that speaks 2 says so in

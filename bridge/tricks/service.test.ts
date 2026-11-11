@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
-import { parseFacts, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { CLOSED_KEY_LINE, parseFacts, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
@@ -1681,6 +1681,37 @@ describe("fault B: a trick runs only while the rights it was approved with are t
     await tickAt(r, T0);
     expect(r.service.viewGate("legs")).toMatchObject({ ok: false, code: "trick_off" });
     expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ rightsMoved: true, error: RIGHTS_LINE });
+  });
+});
+
+describe("fault C: a contract 2 trick's part is read closed", () => {
+  const TWO = 'id = "legs"\nname = "Browser leg"\ncontract = 2\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt", "session"]\n';
+  const doc = (session: JsonObject): string =>
+    JSON.stringify({ v: 1, asOf: "2026-11-08T09:00:00Z", parts: [{ at: "belt", id: "belt", mark: { label: "1" } }, { at: "session", id: "legs", view: [{ kind: "para", text: "x" }], ...session }] });
+
+  test("fault C: a part with a key this Collie does not know is refused alone, on the row, and its last good version goes too", async () => {
+    const r = await rig([exited(doc({})), exited(doc({ view: [{ kind: "para", text: "x", attrs: { sends: "rm" } }] }))]);
+    await makeTrick(r.configDir, "legs", TWO);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect((await r.service.reply(undefined)).present).toEqual(["lodge/legs/belt", "lodge/legs/legs"]);
+    await tickAt(r, T0 + 30_000);
+    const reply = await r.service.reply(undefined);
+    expect(reply.present).toEqual(["lodge/legs/belt"]);
+    expect(reply.tricks[0]?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.part])).toEqual([["unknown-key", "/parts/1/view/0/attrs/sends", "legs"]]);
+    expect(reply.tricks[0]?.refusals?.[0]?.reason).toContain(CLOSED_KEY_LINE);
+  });
+
+  test("fault C: the same output from a contract 1 trick draws the part as today, the key ignored", async () => {
+    const r = await rig([exited(doc({ view: [{ kind: "para", text: "x", attrs: { sends: "rm" } }] }))]);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const reply = await r.service.reply(undefined);
+    expect(reply.present).toEqual(["lodge/legs/belt", "lodge/legs/legs"]);
+    expect(reply.parts.find((part) => part.part === "legs")?.value).toMatchObject({ view: [{ kind: "para", text: "x" }] });
+    // The row lists what was left out, never a key it ignored: as before.
+    expect(reply.tricks[0]?.refusals).toBeUndefined();
   });
 });
 

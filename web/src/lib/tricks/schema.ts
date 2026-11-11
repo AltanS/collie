@@ -3202,7 +3202,21 @@ export interface ParseTrickDocumentOptions {
   kinds?: readonly NodeKind[];
   /** The manifest's `places`. Absent: not checked. A part in a kind it does not declare is refused. */
   declared?: readonly PlaceKind[];
+  /**
+   * The manifest's `contract`. Absent: 1. From contract 2 a part read CLOSED (fault C): a key or an
+   * attribute this Collie does not know, anywhere in the part, refuses that part alone ({@link CLOSED_KEY_LINE}).
+   */
+  contract?: number;
 }
+
+/**
+ * Fault C: what a contract 2 part with a key this Collie does not know is told, after the key's own
+ * sentence. A newer key may carry a meaning this Collie cannot keep, so the part is not drawn at all,
+ * not even its last good version; the other parts draw.
+ */
+export const CLOSED_KEY_LINE = "A contract 2 trick uses only the keys this Collie knows, so the part is left out; the other parts draw.";
+/** The suffix a tolerant read puts after an ignored key's sentence (`Fields.unknown`). */
+const IGNORED_SUFFIX = " This Collie ignores it.";
 
 export interface ParsedTrickDocument {
   /** The accepted parts, in document order. */
@@ -3293,7 +3307,12 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     const partNotes: Refusal[] = [];
     const parsed = readPart(value, path, sink, opts, partNotes);
     const id = parsed.id;
-    for (const note of partNotes) notes.push(id === undefined ? note : { ...note, part: id });
+    // Fault C: from contract 2 a key this Collie does not know, at any depth of the part (a node's key or
+    // attribute included), refuses the part instead of being ignored. A node or a part of a kind this
+    // Collie does not draw is still only left out, with its note.
+    const closed = (opts.contract ?? 1) >= 2 ? partNotes.filter((note) => note.code === "ignored") : [];
+    for (const note of closed) sink.push({ code: "unknown-key", path: note.path, reason: `${note.reason.endsWith(IGNORED_SUFFIX) ? note.reason.slice(0, -IGNORED_SUFFIX.length) : note.reason} ${CLOSED_KEY_LINE}` });
+    for (const note of partNotes) if (!closed.includes(note)) notes.push(id === undefined ? note : { ...note, part: id });
     // A part in a place this Collie does not draw is left out: no refusal, no last good version.
     if (parsed.dropped === true) return;
     if (id !== undefined && seen.has(id)) sink.push({ code: "duplicate", path: pointer(path, "id"), reason: `The part id "${id}" is used twice. Each part needs its own.` });
@@ -3312,7 +3331,8 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     if (id !== undefined) seen.add(id);
     if (sink.length > 0 || parsed.part === undefined) {
       for (const r of sink) refusals.push(id === undefined ? r : { ...r, part: id });
-      if (id !== undefined) result.refusedParts.push(id);
+      // A part refused for a key this Collie does not know keeps no last good version: it would be stale for good.
+      if (id !== undefined && closed.length === 0) result.refusedParts.push(id);
       return;
     }
     if (parsed.part.place === "belt") belt = true;
