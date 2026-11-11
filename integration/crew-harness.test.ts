@@ -10,7 +10,7 @@ import { HOST } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
 import { askSocket, cmdWalkySend, cmdWalkyStatus, type WalkyDeps } from "../cli/walky.ts";
-import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
+import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../web/src/lib/json.ts";
 import type { AskReply } from "../web/src/lib/surface/ask.ts";
 import { signMessage } from "../bridge/walky/canonical.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
@@ -622,6 +622,24 @@ describe("agent views: the write gate, through real requests (lead addition 1)",
     expect(switched.status).toBe(409);
     expect(await switched.json()).toMatchObject({ view: true, code: "no_trick" });
     expect(lead.herdr!.writes.length).toBe(writes);
+  });
+
+  test("rule 12 (review 9, the index.ts wiring): the view service's refusal reaches the bridge's audit.log with the trick, the reason and the address", async () => {
+    const auth = await lead.pairingAuth();
+    const before = readFileSync(join(lead.stateDir, "audit.log"), "utf8").split("\n").length;
+    expect((await post("/api/trick-views/switch", switchBody, auth)).status).toBe(409);
+    let line: JsonObject | undefined;
+    await waitFor(
+      () => {
+        const lines = readFileSync(join(lead.stateDir, "audit.log"), "utf8").split("\n").slice(before - 1).filter((raw) => raw.trim() !== "");
+        line = lines.map((raw) => parseJsonObject(raw)).find((parsed) => parsed?.action === "trick.view.refused");
+        return Promise.resolve(line !== undefined);
+      },
+      10_000,
+      "no trick.view.refused line in audit.log",
+    );
+    // The address is the pane's, with its instance token; the device is the paired one.
+    expect(line).toMatchObject({ action: "trick.view.refused", device: "drill", detail: { trick: "morph", reason: "no_trick", switch: true, address: expect.stringMatching(/^local\/w1:p1#[a-z0-9]+$/u) } });
   });
 
   test("the list and a picture take the read gate: no credential is refused, the local credential reads, and an unknown picture is 404", async () => {

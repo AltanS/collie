@@ -677,6 +677,29 @@ describe("rules 9 to 11: the rules", () => {
     expect(await r.service.help(T, ONE)).toMatchObject({ ok: false, code: "trick_off" });
   });
 
+  test("rule 10 (review 9, the socket door): help reaches the session the caller's markers place, never one an argument names", async () => {
+    const r = rig();
+    await on(r);
+    const socket = socketOf(r);
+    try {
+      // From ONE's pane (%1), whose view is on: the rules, for ONE.
+      const own = await socket.ask("%1", { op: "trick.view.help", trick: T });
+      expect(own).toMatchObject({ ok: true, trickView: { session: ONE, on: true } });
+      expect(JSON.stringify(own)).toContain("Draw one screen.");
+      expect(JSON.stringify(own)).toContain(ONE);
+      // From TWO's pane (%2), whose view is off: nothing, though ONE's view is on.
+      expect(await socket.ask("%2", { op: "trick.view.help", trick: T })).toMatchObject({ ok: false, code: "view_off" });
+      // From TWO's pane, naming ONE: refused, nothing read.
+      const named = await socket.ask("%2", { op: "trick.view.help", trick: T, session: ONE });
+      expect(named).toMatchObject({ ok: false, code: "wrong_session" });
+      expect(JSON.stringify(named)).not.toContain("Draw one screen.");
+      // Markers that place no pane here: not here.
+      expect(await socket.ask("%9", { op: "trick.view.help", trick: T })).toMatchObject({ ok: false });
+    } finally {
+      socket.done();
+    }
+  });
+
   test("rule 11: the rules text is a power: a changed text changes the powers, so the trick waits for a yes", () => {
     const base = { places: [], agentView: true as const, rules: "rules.md", rulesSha256: "a".repeat(64) };
     expect(powersOf(base)).not.toBe(powersOf({ ...base, rulesSha256: "b".repeat(64) }));
