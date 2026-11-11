@@ -70,6 +70,16 @@ export const GROUP_WRAP = "↪";
 /** The note on a card that shows a masked line (only a version made by hand). */
 export const GROUP_MASKED_NOTE = "Some text on this card is masked: a key, or a hidden character.";
 
+/**
+ * Card 1's sentence for a file with masked lines (only a version made by hand): how many lines, and the
+ * file, so the person knows what the masked text on the code cards is and where.
+ */
+export function maskedLinesNote(rel: string, count: number): string {
+  const lines = count === 1 ? "1 line" : `${String(count)} lines`;
+  const rest = count === 1 ? "as it is (a key, or a hidden character), so it shows masked." : "as they are (a key, or a hidden character), so they show masked.";
+  return `Collie could not show ${lines} of ${cellPath(rel)} ${rest}`;
+}
+
 /** The capacity in words, for `collie trick guide` and `collie trick check`. */
 export const GROUP_CAPACITY_WORDS = `A proposal shows on at most ${String(GROUP_CODE_CARDS + 1)} cards: card 1 holds the facts, and ${String(GROUP_CODE_CARDS)} cards hold every line of the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all, ${String(GROUP_FILES_MAX)} files at most). A larger trick, a file that is not text, a line with a key or a hidden character, or a run of more than ${String(VIEW_GAP_MAX)} spaces cannot be proposed.`;
 
@@ -106,7 +116,11 @@ export function addedFile(file: Pick<ProposedFile, "rel" | "bytes">): ChangedFil
   const read = lines.map((line) => readViewLine(line));
   const hunk = [`@@ -0,0 +1,${String(read.length)} @@`, ...read.map((line) => `+${line.line}`)];
   const changed: ChangedFile = { rel: file.rel, change: "added", plus: read.length, minus: 0, hunk };
-  if (read.some((line) => line.masked)) changed.cut = true;
+  const masked = read.filter((line) => line.masked).length;
+  if (masked > 0) {
+    changed.cut = true;
+    changed.masked = masked;
+  }
   if (read.some((line) => line.gap)) changed.gap = true;
   return changed;
 }

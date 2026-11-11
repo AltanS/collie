@@ -8,7 +8,7 @@ import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { TrickVersionsPort, TrickVersionSubject, VersionAnswer } from "./service.ts";
 import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.ts";
-import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_FILES_MAX, groupOrder, placesTables } from "./card-group.ts";
+import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_FILES_MAX, groupOrder, maskedLinesNote, placesTables } from "./card-group.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): one Decision of Collie's own on the Hill for each trick that is
 // on and whose new version waits for a yes. It asks the same yes the Settings row and `collie trick on`
@@ -34,6 +34,10 @@ import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_FILES_MAX, grou
 // much is shown ("1 of 3 files shown."), and a card with no view at all says "The change is too large
 // to show here. Read it on the machine before you say yes." A file name is cleaned for the view (a
 // character the view refuses becomes `?`); the walk refuses such names anyway (code-hash.ts).
+//
+// A LINE THE MASK CHANGED IS COUNTED AND NAMED. A file with lines the mask changed (a key, or a hidden
+// character as `?`) gets a sentence in the facts, "Collie could not show 3 lines of program.ts as they
+// are (a key, or a hidden character), so they show masked.", on the one card and on card 1 of a group.
 //
 // ── THE ANSWER ─────────────────────────────────────────────────────────────────────────────────────
 // `answer` runs inside the Hill's claim (hill/service.ts `onCollieAnswer`), with the ref's hash: use
@@ -171,7 +175,8 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
   const fact = also.length > 0 ? `It now also ${alsoWords}.` : powersChanged ? "Its rights changed." : "It asks for no new rights.";
   // The view is what the person reads before the yes: how much of the change it holds decides the rest.
-  const shown = versionViewShown(rights, warnings, diff, reads.length > 0 ? inputsSentence(reads, crew) : null);
+  const head = [...rightsHead("New rights", rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...maskedNotes(diff.files)];
+  const shown = fitView(head, diff);
   const total = Math.max(fileCount, diff.files.length);
   const whole = shown.view !== null && shown.shown >= total;
   const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
@@ -197,7 +202,6 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // or more files than a group lists: the one card as before, with its sentence, recommending nothing.
   const code = codeGroup(diff.files, pending.manifest?.run ?? null, "show");
   if (!code.ok) return shown.view === null ? card : { ...card, view: shown.view };
-  const head = rightsHead("New rights", rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null);
   const rows = groupOrder(diff.files, pending.manifest?.run ?? null).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
   const first = checked([...head, { kind: "line", text: filesOnCards(diff.files.length, code.cards.length), attrs: { role: "note" } }, ...placesTables(rows, ["Change", "Lines"], code.places)]);
   if (first === undefined || bytesOf(first) > DECISION_VIEW_LIMITS.bytes) return shown.view === null ? card : { ...card, view: shown.view };
@@ -210,6 +214,11 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
     recommends: powersChanged || warnings.length > 0 || masked ? null : recommend,
     group: { decline: "keep", parts: [first, ...code.cards] },
   };
+}
+
+/** One paragraph for each changed file with lines the mask changed: how many, and which file. */
+function maskedNotes(files: readonly ChangedFile[]): ViewNode[] {
+  return files.flatMap((file): ViewNode[] => (file.masked === undefined ? [] : [{ kind: "para", text: maskedLinesNote(file.rel, file.masked) }]));
 }
 
 /** A path as one cell: any character the view refuses as `?`, cut from the start to fit, so the file name shows. */

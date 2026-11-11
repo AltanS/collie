@@ -158,6 +158,39 @@ describe("the diff of two copies", () => {
     const clean = diff.files.slice(2);
     expect(versionCard(one(clean), { counted: true, files: clean })?.recommends).toMatchObject({ intent: "use" });
   });
+
+  test("a version made by hand with masked lines says in Collie's words how many lines it could not show, and names the file", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "1\n", "tool.sh": "1\n", "pic.bin": new Uint8Array([0, 1, 2]) });
+    const next = await folder({ "trick.toml": MANIFEST, "legs.sh": "2\n", "tool.sh": "2\n", "pic.bin": new Uint8Array([0, 1, 3]) });
+    const patches = new Map<string, string>([
+      // A key, a bidi mark and a control character: three lines the mask changed, one kept as it is.
+      ["legs.sh", '@@ -1 +1,4 @@\n-1\n+KEY="sk-or-v1-your-key-here-placeholder00"\n+echo "‮ok"\n+echo hi\u0007\n+echo 2\n'],
+      ["tool.sh", '@@ -1 +1 @@\n-1\n+TOKEN="sk-or-v1-your-key-here-placeholder11"\n'],
+    ]);
+    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(argv.at(-1)?.split("/").at(-1) ?? "") ?? "", timedOut: false });
+    const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
+    expect(diff.files.map((file) => [file.rel, file.masked])).toEqual([
+      ["legs.sh", 3],
+      ["pic.bin", undefined],
+      ["tool.sh", 1],
+    ]);
+    const three = "Collie could not show 3 lines of legs.sh as they are (a key, or a hidden character), so they show masked.";
+    const one = "Collie could not show 1 line of tool.sh as it is (a key, or a hidden character), so it shows masked.";
+    const pending = subject().pending!;
+    const of = (files: VersionDiff["files"]): TrickVersionSubject => ({ ...subject(), pending: { ...pending, info: { ...pending.info, files: { added: 0, changed: files.length, removed: 0 } } } });
+    // Text files only: a group of cards, and card 1 says it for each file, before the code cards show the lines masked.
+    const text = diff.files.filter((file) => file.rel !== "pic.bin");
+    const group = versionCard(of(text), { counted: true, files: text });
+    expect(group?.group?.parts[0]).toEqual(expect.arrayContaining([{ kind: "para", text: three }, { kind: "para", text: one }]));
+    expect(JSON.stringify(group?.group?.parts[1])).toContain(GROUP_MASKED_NOTE);
+    expect(group?.recommends).toBeNull();
+    // With a file that is not text there is no group: the one card says it in its facts.
+    const single = versionCard(of(diff.files), diff);
+    expect(single?.group).toBeUndefined();
+    expect(single?.view).toEqual(expect.arrayContaining([{ kind: "para", text: three }, { kind: "para", text: one }]));
+    // A file with nothing masked gets no such sentence.
+    expect(JSON.stringify(versionCard(subject(), DIFF))).not.toContain("Collie could not show");
+  });
 });
 
 const subject = (over: Partial<TrickVersionSubject> = {}): TrickVersionSubject => ({

@@ -52,6 +52,8 @@ export interface ChangedFile {
   hunk: string[] | null;
   /** Set when the hunk is not the whole change as it is: git's output was cut at the cap, a line was masked, or a character became a `?`. */
   cut?: true;
+  /** How many of the hunk's lines the mask changed (a key masked, a character as `?`). Absent for none. */
+  masked?: number;
   /** Set when a line holds a run of more than {@link VIEW_GAP_MAX} spaces as the card shows it: a proposal with one is refused (review 7 R2). */
   gap?: true;
   /** The file became executable (`+x`) or stopped being so (`-x`), its bytes changed or not (review 7). */
@@ -281,6 +283,8 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
     file.minus = read.minus;
     file.hunk = lines.map((line) => line.line);
     if (answer.truncated === true || lines.some((line) => line.masked)) file.cut = true;
+    const masked = lines.filter((line) => line.masked).length;
+    if (masked > 0) file.masked = masked;
     if (lines.some((line) => line.gap)) file.gap = true;
     counted = true;
   }
