@@ -1,7 +1,7 @@
 // The hill's fixtures for the states playground (M96): Decisions shaped by the wire types
 // (`lib/hill/wire.ts`), the closed rows the Answered fold lists, and one receipt per card state.
 // DEV-ONLY, like the rest of `src/playground/`. The sentences are the contract's own examples; the
-// senders are "collie lead", "m96-hill" and "website", the machines "bluefin" and "minibuch". No
+// senders are "collie lead", "m96-hill" and "website", the machines "lodge" and "workshop". No
 // person's name, no private path. The ages are anchored to this module's load, so a card reads
 // "2 min" when the page opens.
 
@@ -18,9 +18,9 @@ import shotDiff from "./shot-3.png?inline";
 const NOW = Date.now();
 const MIN = 60_000;
 
-const LEAD = { label: "collie lead", host: "bluefin" } as const;
-const HILL = { label: "m96-hill", host: "minibuch" } as const;
-const SITE = { label: "website", host: "bluefin" } as const;
+const LEAD = { label: "collie lead", host: "lodge" } as const;
+const HILL = { label: "m96-hill", host: "workshop" } as const;
+const SITE = { label: "website", host: "lodge" } as const;
 
 let next = 0;
 /** A decision id of the contract's shape, unique per fixture. */
@@ -80,7 +80,7 @@ export const twoOptions = decision({
 /** 2: three options, the last one with a confirm. */
 export const threeWithConfirm = decision({
   title: "Reset the deputy's checkout?",
-  summary: "The checkout on minibuch is two commits ahead of main and the build fails there.",
+  summary: "The checkout on workshop is two commits ahead of main and the build fails there.",
   sender: HILL,
   ago: 6,
   options: [
@@ -148,7 +148,7 @@ export const unattended = decision({
     { intent: "run", label: "Run it now" },
     { intent: "tonight", label: "Tonight" },
   ],
-  target: { label: "m96-hill", host: "minibuch", unattended: true },
+  target: { label: "m96-hill", host: "workshop", unattended: true },
 });
 
 /** 7: a quiet one, for the view's later end. */
@@ -328,13 +328,13 @@ export const closedRows: readonly HillDecision[] = [
   closed({ title: "Pause the nightly leg?", summary: "The poster took it back.", state: "withdrawn", closedReason: "by the poster" }, 90),
   closed({ title: "Which icon for the hill row?", summary: "A newer one replaced it.", state: "superseded", sender: SITE }, 120),
   closed(
-    { title: "Rename the crew member on minibuch?", summary: "Its session ended.", state: "undeliverable", sender: HILL, closedReason: "target session ended" },
+    { title: "Rename the crew member on workshop?", summary: "Its session ended.", state: "undeliverable", sender: HILL, closedReason: "target session ended" },
     150,
   ),
 ];
 
 /** The words a person sent with an answer whose target had ended: the undeliverable row keeps them. */
-export const keptWords = "Call it minibuch-hc, and keep the old name as an alias until 2.0.";
+export const keptWords = "Call it workshop-hc, and keep the old name as an alias until 2.0.";
 
 function receipt(code: HillReceipt["code"], delivery: HillReceipt["delivery"], reason: string | null = null): HillReceipt {
   return { rid: "2c9e7a10-5d4b-4f3a-9b8c-7d6e5f4a3b2c", code, reason, state: code === "ok" ? "answered" : null, delivery, trick: delivery === null ? null : "none", at: NOW };
@@ -424,7 +424,7 @@ export const diffSummary = decision({
 });
 
 /** A collie tricks sender, as the owner's screenshot of 2026-11-10 shows it. */
-const TRICKS = { label: "collie tricks", host: "bluefin" } as const;
+const TRICKS = { label: "collie tricks", host: "lodge" } as const;
 
 /** A step chip that is done, with the words a poster gave it. */
 function doneChip(text: string) {
@@ -703,7 +703,7 @@ export const reviewCard = decision({
 
 /** Collie's own sender on a "new version" card: kind collie, the version's hash, no session. */
 function collieFrom(trickId: string, hash: string): HillDecision["from"] {
-  return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "version", id: trickId, hash } };
+  return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "version", id: trickId, hash } };
 }
 
 /** 46: a trick's new version that asks for no new rights: three files, two hunks, Collie recommends it. */
@@ -831,7 +831,7 @@ function legsRows(from: number, to: number): string {
 }
 
 const PROPOSAL_FACTS: View = [
-  { kind: "para", text: "An agent session (crew-08#propose) on minibuch proposes it." },
+  { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
   { kind: "bar", attrs: { label: "It asks for" }, kids: [{ kind: "chip", text: "the belt" }, { kind: "chip", text: "the Dashboard" }] },
   { kind: "para", text: "This trick reaches the network." },
   { kind: "line", text: "3 files, on cards 2 to 3.", attrs: { role: "note" } },
@@ -879,9 +879,9 @@ const PROPOSAL_CODE_3: View = [
 export function proposalGroup(): HillDecision {
   return decision({
     title: "Switch on the trick legs?",
-    summary: "An agent session (crew-08#propose) on minibuch proposes it. It has 3 files. It asks for the belt and the Dashboard, and reaches the network. It shows on 3 cards.",
+    summary: "An agent session (crew-08#propose) on workshop proposes it. It has 3 files. It asks for the belt and the Dashboard, and reaches the network. It shows on 3 cards.",
     ago: 1,
-    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "proposal", id: "legs", hash: "5d".repeat(32) } },
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "5d".repeat(32) } },
     target: null,
     text: "none",
     options: [
@@ -903,9 +903,9 @@ export function proposalGroup(): HillDecision {
 /** 57: a proposed new version on two cards: the facts and new rights, then the diff by file. */
 export const versionGroup = decision({
   title: "Use the new version of legs?",
-  summary: "An agent session (crew-08#propose) on minibuch proposes it. 2 files changed. It now also reaches the network. It shows on 2 cards.",
+  summary: "An agent session (crew-08#propose) on workshop proposes it. 2 files changed. It now also reaches the network. It shows on 2 cards.",
   ago: 2,
-  from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "proposal", id: "legs", hash: "6e".repeat(32) } },
+  from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "6e".repeat(32) } },
   target: null,
   text: "none",
   options: [
@@ -918,7 +918,7 @@ export const versionGroup = decision({
     parts: [
       {
         view: [
-          { kind: "para", text: "An agent session (crew-08#propose) on minibuch proposes it." },
+          { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
           { kind: "para", text: "This trick reaches the network." },
           { kind: "line", text: "2 files, on card 2.", attrs: { role: "note" } },
           {

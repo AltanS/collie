@@ -210,7 +210,7 @@ async function rig(entries: OfficialEntry[], extra: Partial<OfficialTricksDeps> 
   const service = new TricksService({
     configDir,
     stateDir,
-    memberId: "bluefin",
+    memberId: "lodge",
     world: () => ({ machine: "desk", sessions: [], spaces: [] }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
     warn: () => {},
@@ -390,7 +390,7 @@ describe.if(posix)("adding from the list", () => {
     expect((await r.official.reply()).tricks.map((t) => t.state)).toEqual(["added"]);
     expect(r.audit).toEqual(["trick.official.add legs"]);
     // The person's switch: the copy it approves hashes to the list's hash.
-    const on = await r.service.setSwitch("bluefin", "legs", true);
+    const on = await r.service.setSwitch("lodge", "legs", true);
     expect(on.status).toBe(200);
     const sw = parseSwitches(await readFile(switchesPath(r.stateDir), "utf8")).switches.on.get("legs");
     expect(sw?.hash).toBe(hash);
@@ -587,7 +587,7 @@ describe.if(posix)("adding from the list", () => {
     const member = new TricksService({
       configDir: await tempDir(),
       stateDir: await tempDir(),
-      memberId: "minibuch",
+      memberId: "workshop",
       world: () => ({ machine: "desk", sessions: [], spaces: [] }),
       env: { PATH: process.env.PATH ?? "" },
       warn: () => {},
@@ -746,11 +746,11 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     const stateDir = join(root, "state");
     await mkdir(configDir, { recursive: true });
     await mkdir(stateDir, { recursive: true });
-    const service = new TricksService({ configDir, stateDir, memberId: "bluefin", world: () => ({ machine: "desk", sessions: [], spaces: [] }), env: { PATH: process.env.PATH ?? "" }, warn: () => {}, now: () => clock.t });
+    const service = new TricksService({ configDir, stateDir, memberId: "lodge", world: () => ({ machine: "desk", sessions: [], spaces: [] }), env: { PATH: process.env.PATH ?? "" }, warn: () => {}, now: () => clock.t });
     const held = { entries: [fixtureEntry(repo.url, repo.shas[0] ?? "", h1)] };
     const official = new OfficialTricks({ configDir, stateDir, env: { PATH: process.env.PATH ?? "" }, entries: () => held.entries, lane: (w) => service.officialLane(w), allowFile: true, now: () => clock.t });
     expect((await official.install("legs", "add")).status).toBe(200);
-    expect((await service.setSwitch("bluefin", "legs", true)).status).toBe(200);
+    expect((await service.setSwitch("lodge", "legs", true)).status).toBe(200);
     held.entries = [moveTo(held.entries, repo.shas[1] ?? "", h2)];
     expect((await official.install("legs", "update")).status).toBe(200);
     // The folder settles, then the runner takes its snapshot: the row carries the waiting version.

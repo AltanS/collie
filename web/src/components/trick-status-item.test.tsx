@@ -16,15 +16,15 @@ const FRESH = new Date().toISOString();
 const OLD = new Date(Date.now() - 10 * 60_000).toISOString();
 
 function part(trick: string, chip: StatusChip, asOf = FRESH): WireTrickPart {
-  return { host: "bluefin", trick, part: "status", rev: 1, asOf, fresh: "30s", value: { at: "status", id: "status", chip } };
+  return { host: "lodge", trick, part: "status", rev: 1, asOf, fresh: "30s", value: { at: "status", id: "status", chip } };
 }
 
 const SESSION: AgentView = {
-  paneId: "trick:bluefin:tag:due",
-  workspaceId: "trick:bluefin",
+  paneId: "trick:lodge:tag:due",
+  workspaceId: "trick:lodge",
   workspaceLabel: "Tricks",
   workspaceNumber: 2,
-  tabId: "trick:bluefin:tag",
+  tabId: "trick:lodge:tag",
   agent: "tag",
   status: "idle",
   cwd: "/m",
@@ -33,7 +33,7 @@ const SESSION: AgentView = {
 };
 
 async function mount(parts: WireTrickPart[], sessions: AgentView[] = []) {
-  const tricks = parts.map((p): WireTrickInfo => ({ host: "bluefin", id: p.trick, name: p.trick, icon: "flask", on: true, state: "ok", places: ["status"] }));
+  const tricks = parts.map((p): WireTrickInfo => ({ host: "lodge", id: p.trick, name: p.trick, icon: "flask", on: true, state: "ok", places: ["status"] }));
   const reply: TricksReply = { rev: 1, tricks, parts, present: parts.map((p) => `${p.host}/${p.trick}/${p.part}`) };
   const store: TricksStore = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => ({ rid: "r", code: "ok" as const }), mintRequestId: () => "00000000-0000-4000-8000-000000000001" });
   await store.syncTricks(1);
@@ -112,7 +112,7 @@ describe("the tricks' items in the status line", () => {
 // A PART THAT FAILS DRAWS ALONE (M94 review).
 describe("a status part that is broken", () => {
   it("draws nothing for a part with no chip, and keeps the other items", async () => {
-    const bare: WireTrickPart = { host: "bluefin", trick: "bare", part: "status", rev: 1, asOf: FRESH, fresh: "30s", value: JSON.parse('{"at":"status","id":"status"}') };
+    const bare: WireTrickPart = { host: "lodge", trick: "bare", part: "status", rev: 1, asOf: FRESH, fresh: "30s", value: JSON.parse('{"at":"status","id":"status"}') };
     await mount([bare, part("spend", { text: "$7.42" })]);
     expect([...document.querySelectorAll("[data-slot='trick-status']")].map((el) => el.getAttribute("data-trick"))).toEqual(["spend"]);
   });
@@ -121,7 +121,7 @@ describe("a status part that is broken", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const bomb: WireTrickPart = {
-      host: "bluefin",
+      host: "lodge",
       trick: "bomb",
       part: "status",
       rev: 1,

@@ -237,7 +237,7 @@ export function DismissButton({ answer, className }: { answer: DecisionAnswer; c
   );
 }
 
-/** "Your answer goes to collie lead on bluefin", or to the trick. */
+/** "Your answer goes to collie lead on lodge", or to the trick. */
 export function goesTo(decision: HillDecision): string {
   if (decision.target === null) return `Your answer goes to the ${decision.from.label} trick`;
   return decision.target.host === null ? `Your answer goes to ${decision.target.label}` : `Your answer goes to ${decision.target.label} on ${decision.target.host}`;

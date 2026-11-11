@@ -34,8 +34,8 @@
           "why": "The log shows a timeout, not a code change."
         },
         "priority": "today",
-        "about": "bluefin:w6X:3",
-        "replyTo": "bluefin:w6X:3",
+        "about": "lodge:w6X:3",
+        "replyTo": "lodge:w6X:3",
         "media": [
           {
             "file": "shots/case-24.png",
@@ -45,7 +45,7 @@
         "links": [
           {
             "label": "the report",
-            "href": "http://bluefin:8832/legs/24"
+            "href": "http://lodge:8832/legs/24"
           }
         ]
       },

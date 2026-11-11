@@ -15,7 +15,7 @@ export function hillDecision(over: Partial<HillDecision> = {}): HillDecision {
     v: 1,
     id,
     requestId: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
-    from: { kind: "agent", address: "wt_aaaaaaaaaaaa", trickId: null, trickKey: null, memberId: null, harness: "claude", label: "collie lead", host: "bluefin", trickHost: null },
+    from: { kind: "agent", address: "wt_aaaaaaaaaaaa", trickId: null, trickKey: null, memberId: null, harness: "claude", label: "collie lead", host: "lodge", trickHost: null },
     about: null,
     priority: "today",
     priorityAsked: "today",
@@ -31,7 +31,7 @@ export function hillDecision(over: Partial<HillDecision> = {}): HillDecision {
     media: [],
     links: [],
     replyTo: null,
-    target: { label: "collie lead", host: "bluefin", unattended: false },
+    target: { label: "collie lead", host: "lodge", unattended: false },
     supersedes: null,
     supersededBy: null,
     expiresAt: null,
@@ -64,7 +64,7 @@ export function groupDecision(cards = 3, over: Partial<HillDecision> = {}): Hill
   const base = hillDecision();
   return {
     ...base,
-    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "proposal", id: "legs", hash: "a".repeat(64) } },
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "a".repeat(64) } },
     title: "Switch on the trick legs?",
     target: null,
     text: "none",

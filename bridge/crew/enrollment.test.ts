@@ -260,7 +260,7 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
 
     test("A1: a word the address grammar keeps (local, all, here) is refused as a label, and never minted", () => {
       for (const label of ["local", "Local", "all", "here!"]) {
-        const refusal = join(leadStore(), label, "other", "bluefin");
+        const refusal = join(leadStore(), label, "other", "lodge");
         if (refusal === null || !isEnrollRefusal(refusal)) throw new Error(`expected a refusal for ${label}`);
         expect(refusal.takenBy).toBe("reserved");
         expect(refusal.message).toBe(`the name "${label.trim()}" is a word Collie's addresses keep for themselves. Pass --label <another name>.`);
@@ -272,7 +272,7 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
 
     test("A1: a machine enrolled as `local` before the rule re-joins under a fresh id", () => {
       const held = leadStore({ peers: [member({ memberId: "local", fingerprint: fp("old"), status: "unenrolled" })] });
-      const again = join(held, null, "old", "bluefin");
+      const again = join(held, null, "old", "lodge");
       if (again === null || isEnrollRefusal(again)) throw new Error("expected an enrollment");
       expect(again.result.memberId).not.toBe("local");
       expect(again.next.peers.map((p) => p.memberId)).not.toContain("local");

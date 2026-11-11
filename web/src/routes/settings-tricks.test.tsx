@@ -43,7 +43,7 @@ describe("Settings → Tricks", () => {
   it("offers the row once the store holds a reply, and the page lists the tricks", async () => {
     const reply: TricksReply = {
       rev: 3,
-      tricks: [{ host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"], provenance: { via: "cli" } }],
+      tricks: [{ host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"], provenance: { via: "cli" } }],
       parts: [],
       present: [],
     };

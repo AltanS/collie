@@ -367,8 +367,8 @@ async function life(): Promise<Life> {
     send: async () => "typed",
     crewMode: () => "solo",
     walkyOn: () => true,
-    memberId: "bluefin",
-    machine: "bluefin",
+    memberId: "lodge",
+    machine: "lodge",
     now: () => clock.t,
     mintId: () => `dc_ver${String((n += 1)).padStart(9, "0")}`,
     onCollieAnswer: (ref, intent) => cards?.answer(ref, intent) ?? Promise.resolve({ ok: false, reason: "no cards" }),
@@ -377,8 +377,8 @@ async function life(): Promise<Life> {
   service = new TricksService({
     configDir,
     stateDir,
-    memberId: "bluefin",
-    world: () => ({ machine: "bluefin", sessions: [], spaces: [] }),
+    memberId: "lodge",
+    world: () => ({ machine: "lodge", sessions: [], spaces: [] }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
     now: () => clock.t,
     warn: () => undefined,
@@ -477,7 +477,7 @@ describe("the card's life", () => {
     expect(row).toMatchObject({ auto: true, autoAt: new Date(T0 + 20_000 + PENDING_SETTLE_MS).toISOString() });
     expect(openCard(l)).toBeUndefined();
     // Undo goes back; the row then has nothing to undo.
-    expect(await l.service.undoRoute("bluefin", "legs")).toMatchObject({ status: 200 });
+    expect(await l.service.undoRoute("lodge", "legs")).toMatchObject({ status: 200 });
     expect((await l.service.reply(undefined)).tricks[0]?.autoAt).toBeUndefined();
   });
 
@@ -509,7 +509,7 @@ describe("the card's life", () => {
     const l = await life();
     await edit(l, T0 + 1000, "#!/bin/sh\necho 2\n");
     expect(openCard(l)).toBeDefined();
-    expect(await l.service.setSwitch("bluefin", "legs", false)).toMatchObject({ status: 200 });
+    expect(await l.service.setSwitch("lodge", "legs", false)).toMatchObject({ status: 200 });
     await l.cards.settled();
     expect(openCard(l)).toBeUndefined();
     expect(cardsOf(l)[0]?.closedReason).toBe(VERSION_CARD_GONE);
@@ -517,11 +517,11 @@ describe("the card's life", () => {
 
   test("the auto route writes the switch, and is refused for a trick that is off", async () => {
     const l = await life();
-    expect(await l.service.autoRoute("bluefin", "legs", true)).toMatchObject({ status: 200, body: { auto: true } });
+    expect(await l.service.autoRoute("lodge", "legs", true)).toMatchObject({ status: 200, body: { auto: true } });
     expect((await switchFile(l)).auto).toBe(true);
     expect(await l.service.autoRoute("elsewhere", "legs", true)).toEqual({ status: 404, body: { error: "unknown-host" } });
-    await l.service.setSwitch("bluefin", "legs", false);
-    expect(await l.service.autoRoute("bluefin", "legs", true)).toMatchObject({ status: 409, body: { error: "off" } });
-    expect(await l.service.undoRoute("bluefin", "nope")).toEqual({ status: 404, body: { error: "unknown-trick" } });
+    await l.service.setSwitch("lodge", "legs", false);
+    expect(await l.service.autoRoute("lodge", "legs", true)).toMatchObject({ status: 409, body: { error: "off" } });
+    expect(await l.service.undoRoute("lodge", "nope")).toEqual({ status: 404, body: { error: "unknown-trick" } });
   });
 });

@@ -34,7 +34,7 @@ mkdir "$tmp/state"
 mkfacts "$tmp/state"
 
 step "green log" "$fix/green" 0 "$tmp/facts.json" '{"label":"12/12","tone":"ok","decisions":[],"chips":3}'
-step "red log" "$fix/red" 0 "$tmp/facts.json" '{"label":"10/12","tone":"danger","decisions":["case-8"],"about":"bluefin:w6X:3","chips":2}'
+step "red log" "$fix/red" 0 "$tmp/facts.json" '{"label":"10/12","tone":"danger","decisions":["case-8"],"about":"lodge:w6X:3","chips":2}'
 step "red log, still running" "$fix/red" 1 "$tmp/facts.json" '{"label":"10/12","tone":"danger","decisions":[]}'
 step "no log in the folder" "$fix/empty" 0 "$tmp/facts.json" '{"label":"no leg","tone":"plain","decisions":[]}'
 step "folder missing" "$tmp/none" 0 "$tmp/facts.json" '{"label":"no leg","decisions":[]}'
@@ -44,8 +44,8 @@ sed 's#collie#shop#g' "$tmp/facts.json" > "$tmp/facts-none.json"
 step "no matching session" "$fix/red" 0 "$tmp/facts-none.json" '{"decisions":["case-8"],"about":null}'
 
 # A rerun tap changes nothing: the decision stays and the state folder stays empty.
-sed 's#"trigger":{"kind":"timer"}#"trigger":{"kind":"tap","rid":"r1","node":"hill/case-8","intent":"rerun","value":{"text":null},"from":{"session":"bluefin:w6X:9"}}#' "$tmp/facts.json" > "$tmp/facts-rerun.json"
-step "tap rerun" "$fix/red" 0 "$tmp/facts-rerun.json" '{"label":"10/12","decisions":["case-8"],"about":"bluefin:w6X:9"}'
+sed 's#"trigger":{"kind":"timer"}#"trigger":{"kind":"tap","rid":"r1","node":"hill/case-8","intent":"rerun","value":{"text":null},"from":{"session":"lodge:w6X:9"}}#' "$tmp/facts.json" > "$tmp/facts-rerun.json"
+step "tap rerun" "$fix/red" 0 "$tmp/facts-rerun.json" '{"label":"10/12","decisions":["case-8"],"about":"lodge:w6X:9"}'
 [ -z "$(ls -A "$tmp/state")" ] || { echo "FAIL tap rerun wrote to the state folder"; failed=1; }
 
 # A skip tap closes it, and the state folder remembers it for the next timer run.

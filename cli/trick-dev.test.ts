@@ -125,7 +125,7 @@ console.log(JSON.stringify({ v: 1, parts: [{ at: "status", id: "status", chip: {
     expect(text).toContain('"lonehost/0+"');
     d.out.length = 0;
     expect(await cmdTrickDev(d, [dir, "--json"])).toBe(EXIT.OK);
-    expect(JSON.parse(d.out.join("\n")).parts[0].part.chip.text).toBe("bluefin/2+");
+    expect(JSON.parse(d.out.join("\n")).parts[0].part.chip.text).toBe("lodge/2+");
   });
 
   test("--facts: the file's own tap trigger runs, and --tap replaces it", async () => {

@@ -2,7 +2,7 @@
 // the Dashboard's way in. Every card mounts the REAL component (`DecisionCard`, `HillView`,
 // `HillHeader`, `DashboardTabBar`) with fixtures shaped by the wire (`fixtures/hill/decisions.ts`). There
 // is no bridge behind this page: a card's state is fixed, and a tap on a live card answers nothing.
-// The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
+// The cards wear the machine tints of a two-machine crew (lodge and workshop), as `LiveDecisionCard`
 // would hand them on one.
 //
 // Cards are numbered 1 to 52.
@@ -79,8 +79,8 @@ const noSend = () => {};
 
 /** The tint slot per machine, as `lib/hosts.ts` would assign it on this two-machine crew. */
 const HOST_SLOT: ReadonlyMap<string, number> = new Map([
-  ["bluefin", 2],
-  ["minibuch", 6],
+  ["lodge", 2],
+  ["workshop", 6],
 ]);
 
 /** One proposal group per case: each is its own Decision, so the cards one case opens never count in another. */
@@ -412,13 +412,13 @@ function MatchView({ c }: { c: HillCase }) {
 /** The case's tricks as `dashboard` parts in a store of their own, so the real strip draws them. */
 function useCaseTricksStore(c: HillCase): TricksStore {
   const store = useMemo(() => {
-    const infos: WireTrickInfo[] = c.tricks.map((trick) => ({ host: "bluefin", id: trick.id, name: trick.name, icon: trick.icon, on: true, state: "ok", places: ["dashboard"] }));
+    const infos: WireTrickInfo[] = c.tricks.map((trick) => ({ host: "lodge", id: trick.id, name: trick.name, icon: trick.icon, on: true, state: "ok", places: ["dashboard"] }));
     const asOf = new Date().toISOString();
     const parts: WireTrickPart[] = c.tricks.map((trick) => {
       const item: PlaceItem = { icon: trick.icon, label: trick.name };
       if (trick.count !== undefined) item.badge = trick.count;
       if (trick.tone !== undefined) item.tone = trick.tone;
-      return { host: "bluefin", trick: trick.id, part: "dashboard", rev: 1, value: { at: "dashboard", id: "dashboard", item }, asOf, fresh: "1h" };
+      return { host: "lodge", trick: trick.id, part: "dashboard", rev: 1, value: { at: "dashboard", id: "dashboard", item }, asOf, fresh: "1h" };
     });
     return createTricksStore({
       fetchTricks: () => Promise.resolve({ rev: 1, tricks: infos, parts, present: parts.map(partKey) }),

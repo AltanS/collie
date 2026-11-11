@@ -12,26 +12,26 @@ function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
   return { paneId, workspaceId: "w1", workspaceLabel: "collie", workspaceNumber: 1, tabId: "w1:t1", agent: "claude", status: "idle", cwd: "/w", focused: false, ...over };
 }
 
-const TRICK = pane("trick:bluefin:legs:legs", {
-  workspaceId: "trick:bluefin",
+const TRICK = pane("trick:lodge:legs:legs", {
+  workspaceId: "trick:lodge",
   workspaceLabel: "Tricks",
   workspaceNumber: 2,
-  tabId: "trick:bluefin:legs",
+  tabId: "trick:lodge:legs",
   agent: "legs",
   kind: "trick",
   status: "working",
-  view: "bluefin/legs/legs",
+  view: "lodge/legs/legs",
   progress: { kind: "percent", value: 68 },
 });
-const TRICK2 = { ...TRICK, paneId: "trick:bluefin:legs:second", view: "bluefin/legs/second" };
+const TRICK2 = { ...TRICK, paneId: "trick:lodge:legs:second", view: "lodge/legs/second" };
 const REAL = pane("w6X:3");
 const SPACES: WorkspaceView[] = [
   { workspaceId: "w1", number: 1, label: "collie", focused: true, activeTabId: "w1:t1", tabCount: 1, paneCount: 1 },
-  { workspaceId: "trick:bluefin", number: 2, label: "Tricks", focused: false, activeTabId: "trick:bluefin:legs", tabCount: 1, paneCount: 1 },
+  { workspaceId: "trick:lodge", number: 2, label: "Tricks", focused: false, activeTabId: "trick:lodge:legs", tabCount: 1, paneCount: 1 },
 ];
 const TABS: TabView[] = [
   { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "main", focused: true, paneCount: 1 },
-  { tabId: "trick:bluefin:legs", workspaceId: "trick:bluefin", number: 1, label: "Browser leg", focused: false, paneCount: 1 },
+  { tabId: "trick:lodge:legs", workspaceId: "trick:lodge", number: 1, label: "Browser leg", focused: false, paneCount: 1 },
 ];
 
 describe("the trick sessions leave the herd", () => {
@@ -95,23 +95,23 @@ describe("the trick sessions leave the herd", () => {
 
 describe("where a link goes", () => {
   it("finds a trick session by its id, and the trick's first session part by the trick alone", () => {
-    expect(findTrickSession("trick:bluefin:legs:second", [TRICK, TRICK2])).toBe(TRICK2);
-    expect(findTrickSession("trick:bluefin:legs", [TRICK, TRICK2])).toBe(TRICK);
-    expect(findTrickSession("trick:bluefin:legs:gone", [TRICK])).toBeUndefined();
-    expect(findTrickSession("trick:minibuch:legs", [TRICK])).toBeUndefined();
+    expect(findTrickSession("trick:lodge:legs:second", [TRICK, TRICK2])).toBe(TRICK2);
+    expect(findTrickSession("trick:lodge:legs", [TRICK, TRICK2])).toBe(TRICK);
+    expect(findTrickSession("trick:lodge:legs:gone", [TRICK])).toBeUndefined();
+    expect(findTrickSession("trick:workshop:legs", [TRICK])).toBeUndefined();
     expect(findTrickSession("w6X:3", [TRICK])).toBeUndefined();
   });
 
   it("finds the real pane a scope key names, the bridge's own host matching a pane with no host", () => {
-    const peer = pane("w6X:3", { host: "minibuch" });
-    expect(findScopedPane("bluefin:w6X:3", [REAL, peer], "bluefin")).toBe(REAL);
-    expect(findScopedPane("minibuch:w6X:3", [REAL, peer], "bluefin")).toBe(peer);
-    expect(findScopedPane("laptop:w6X:3", [REAL, peer], "bluefin")).toBeUndefined();
+    const peer = pane("w6X:3", { host: "workshop" });
+    expect(findScopedPane("lodge:w6X:3", [REAL, peer], "lodge")).toBe(REAL);
+    expect(findScopedPane("workshop:w6X:3", [REAL, peer], "lodge")).toBe(peer);
+    expect(findScopedPane("laptop:w6X:3", [REAL, peer], "lodge")).toBeUndefined();
     // Never a trick session: it has no reply box.
-    expect(findScopedPane("bluefin:trick:bluefin:legs:legs", [TRICK], "bluefin")).toBeUndefined();
+    expect(findScopedPane("lodge:trick:lodge:legs:legs", [TRICK], "lodge")).toBeUndefined();
   });
 
   it("finds no pane for a key that is not a scope key: a name, a URL, a script", () => {
-    for (const key of ["w6X:3", "composer", "https://a.example/", "javascript:alert(1)", "trick:bluefin:legs"]) expect(findScopedPane(key, [REAL, TRICK], "bluefin"), key).toBeUndefined();
+    for (const key of ["w6X:3", "composer", "https://a.example/", "javascript:alert(1)", "trick:lodge:legs"]) expect(findScopedPane(key, [REAL, TRICK], "lodge"), key).toBeUndefined();
   });
 });

@@ -28,7 +28,7 @@ export const DEF: SectionDef = {
 const NOW = Date.parse("2026-11-08T09:41:00Z");
 
 function trick(id: string, name: string, extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
-  return { host: "bluefin", id, name, icon: "plug", on: true, state: "ok", places: ["belt", "session"], provenance: { via: "folder" }, ...extra };
+  return { host: "lodge", id, name, icon: "plug", on: true, state: "ok", places: ["belt", "session"], provenance: { via: "folder" }, ...extra };
 }
 
 const HEALTHY: WireTrickInfo[] = [

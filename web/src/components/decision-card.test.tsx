@@ -55,7 +55,7 @@ describe("the Decision card, at rest", () => {
     expect(glyph).toHaveAttribute("data-filled", "3");
     expect(glyph).toHaveAttribute("aria-label", "Now");
     expect(slot("decision-meta")).toHaveTextContent("collie lead");
-    expect(slot("decision-meta")).toHaveTextContent("bluefin");
+    expect(slot("decision-meta")).toHaveTextContent("lodge");
     expect(slot("decision-title")).toHaveTextContent("Merge it?");
     expect(slot("decision-summary")).toHaveTextContent("CI is green.");
   });
@@ -177,8 +177,8 @@ describe("the Decision card, at rest", () => {
   });
 
   it("says where the answer goes, and that the target runs without prompts", () => {
-    const { slot } = renderCard(hillDecision({ target: { label: "m96-hill", host: "minibuch", unattended: true } }));
-    expect(slot("decision-target")).toHaveTextContent("Your answer goes to m96-hill on minibuch");
+    const { slot } = renderCard(hillDecision({ target: { label: "m96-hill", host: "workshop", unattended: true } }));
+    expect(slot("decision-target")).toHaveTextContent("Your answer goes to m96-hill on workshop");
     expect(slot("decision-target")).toHaveTextContent("runs without prompts");
   });
 
@@ -251,7 +251,7 @@ describe("the poster's view", () => {
       {
         kind: "list",
         kids: [
-          { kind: "row", text: "Where", attrs: { href: "http://bluefin:8788/settings/tricks" } },
+          { kind: "row", text: "Where", attrs: { href: "http://lodge:8788/settings/tricks" } },
           { kind: "row", text: "With an end", attrs: { href: "https://ci.example.com/run/7", end: "1 of 18" } },
           { kind: "row", text: "No link", attrs: { end: "x" } },
         ],
@@ -260,16 +260,16 @@ describe("the poster's view", () => {
     const { slot } = renderCard(hillDecision({ view: rows }));
     const frame = slot("decision-view")!;
     const hosts = [...frame.querySelectorAll("[data-trick-link-host]")].map((el) => el.textContent);
-    expect(hosts).toEqual(["bluefin:8788", "ci.example.com"]);
+    expect(hosts).toEqual(["lodge:8788", "ci.example.com"]);
     const first = frame.querySelectorAll('[data-slot="trick-row"]')[0]!;
     expect(first.querySelectorAll("a")).toHaveLength(1);
     expect(first.querySelector("button")).toBeNull();
-    expect(first.querySelector("a")).toHaveTextContent("bluefin:8788");
+    expect(first.querySelector("a")).toHaveTextContent("lodge:8788");
     // The end slot keeps its own words beside the host.
     expect(frame.querySelectorAll('[data-slot="trick-row"]')[1]).toHaveTextContent("1 of 18");
     expect(frame.querySelectorAll('[data-slot="trick-row"]')[2]!.querySelector("[data-trick-link-host]")).toBeNull();
     fireEvent.click(within(frame).getByText("Where"));
-    expect(open).toHaveBeenCalledWith("http://bluefin:8788/settings/tricks", "_blank", "noopener,noreferrer");
+    expect(open).toHaveBeenCalledWith("http://lodge:8788/settings/tricks", "_blank", "noopener,noreferrer");
   });
 
   it("a link in a group draws as a block, with its host, and opens in a new tab", () => {
@@ -646,7 +646,7 @@ describe("after the tap", () => {
   });
 
   it("says what Collie did for its own Decision, wears the app's mark, and says nothing of a trick", () => {
-    const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "bluefin", harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "version", id: "legs", hash: "a".repeat(64) } };
+    const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "version", id: "legs", hash: "a".repeat(64) } };
     const decision = hillDecision({ from, target: null, options: [{ intent: "use", label: "Use the new version" }, { intent: "keep", label: "Keep the old version" }] });
     const used = renderCard(decision, answered(hillReceipt({ delivery: "none" }), "use"));
     expect(used.slot("decision-receipt")?.textContent).toBe("Now running the new version.");
@@ -720,7 +720,7 @@ describe("after the tap", () => {
 });
 
 describe("a trick's decision", () => {
-  const m96 = { label: "m96-hill", host: "bluefin", unattended: false } as const;
+  const m96 = { label: "m96-hill", host: "lodge", unattended: false } as const;
 
   it("names the trick and the word trick on the meta line, in the poster's slot", () => {
     const { slot } = renderCard(trickDecision());
@@ -731,10 +731,10 @@ describe("a trick's decision", () => {
 
   it("shows the machine's name on the meta line, never the routing host", () => {
     const base = trickDecision();
-    const { slot } = renderCard({ ...base, from: { ...base.from, host: "bluefin", trickHost: "collie-04rj6a" } });
-    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*trick\s*bluefin/);
-    expect(slot("decision-host")).toHaveTextContent("bluefin");
-    expect(slot("decision-meta")).not.toHaveTextContent("collie-04rj6a");
+    const { slot } = renderCard({ ...base, from: { ...base.from, host: "lodge", trickHost: "collie-7k2m9q" } });
+    expect(slot("decision-meta")?.textContent).toMatch(/Look\s*trick\s*lodge/);
+    expect(slot("decision-host")).toHaveTextContent("lodge");
+    expect(slot("decision-meta")).not.toHaveTextContent("collie-7k2m9q");
   });
 
   it("leaves an agent's meta line without the word trick", () => {
@@ -749,7 +749,7 @@ describe("a trick's decision", () => {
 
   it("names the target and the trick when the trick set a reply target", () => {
     const { slot } = renderCard(trickDecision({ target: m96 }));
-    expect(slot("decision-target")?.textContent).toBe("Your answer goes to m96-hill on bluefin and to the Look trick");
+    expect(slot("decision-target")?.textContent).toBe("Your answer goes to m96-hill on lodge and to the Look trick");
   });
 
   it("drops the machine when the bridge names none", () => {
@@ -759,7 +759,7 @@ describe("a trick's decision", () => {
 
   it("keeps an agent's target line as it was", () => {
     const { slot } = renderCard(hillDecision());
-    expect(slot("decision-target")?.textContent).toBe("Your answer goes to collie lead on bluefin");
+    expect(slot("decision-target")?.textContent).toBe("Your answer goes to collie lead on lodge");
   });
 
   it.each<[string, HillDecision, HillReceipt, string, string]>([

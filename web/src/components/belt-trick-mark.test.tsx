@@ -13,18 +13,18 @@ import { beltMarksOf } from "./belt-trick-mark";
 
 const AS_OF = new Date().toISOString();
 function belt(trick: string, mark: Mark, rev = 1): WireTrickPart {
-  return { host: "bluefin", trick, part: "belt", rev, asOf: AS_OF, value: { at: "belt", id: "belt", mark } };
+  return { host: "lodge", trick, part: "belt", rev, asOf: AS_OF, value: { at: "belt", id: "belt", mark } };
 }
 const LEGS = belt("legs", { icon: "flask", label: "23/34", tone: "accent", intent: "rerun" });
 const TRACKER = belt("tracker", { icon: "file", label: "M94", tone: "plain" });
 const QUIET = belt("quiet", { icon: "bell", badge: "2" });
 
 const TRICK_SESSION: AgentView = {
-  paneId: "trick:bluefin:tracker:due",
-  workspaceId: "trick:bluefin",
+  paneId: "trick:lodge:tracker:due",
+  workspaceId: "trick:lodge",
   workspaceLabel: "Tricks",
   workspaceNumber: 2,
-  tabId: "trick:bluefin:tracker",
+  tabId: "trick:lodge:tracker",
   agent: "tracker",
   status: "idle",
   cwd: "/m",
@@ -33,7 +33,7 @@ const TRICK_SESSION: AgentView = {
 };
 
 function storeWith(parts: WireTrickPart[], tap: () => Promise<TrickTapReply>): TricksStore {
-  const tricks = ["legs", "tracker", "quiet"].map((id): WireTrickInfo => ({ host: "bluefin", id, name: id, icon: "flask", on: true, state: "ok", places: ["belt"] }));
+  const tricks = ["legs", "tracker", "quiet"].map((id): WireTrickInfo => ({ host: "lodge", id, name: id, icon: "flask", on: true, state: "ok", places: ["belt"] }));
   const reply: TricksReply = { rev: 1, tricks, parts, present: parts.map((p) => `${p.host}/${p.trick}/${p.part}`) };
   return createTricksStore({ fetchTricks: async () => reply, tapTrick: tap, mintRequestId: () => "00000000-0000-4000-8000-000000000001" });
 }
@@ -86,7 +86,7 @@ describe("the tricks' marks on the belt", () => {
     mount(store);
     const legs = screen.getByRole("button", { name: "legs: 23/34" });
     fireEvent.click(legs);
-    expect(tap).toHaveBeenCalledWith("bluefin", "legs", expect.objectContaining({ intent: "rerun" }));
+    expect(tap).toHaveBeenCalledWith("lodge", "legs", expect.objectContaining({ intent: "rerun" }));
     expect(legs.getAttribute("aria-busy")).toBe("true");
     expect(legs.querySelector('[data-slot="trick-mark-busy"]')).not.toBeNull();
     await act(async () => finish({ rid: "00000000-0000-4000-8000-000000000001", code: "ok" }));
@@ -204,7 +204,7 @@ describe("a belt part that is broken", () => {
         throw new Error("a mark that cannot be read");
       },
     };
-    return { host: "bluefin", trick, part: "belt", rev: 1, asOf: AS_OF, value };
+    return { host: "lodge", trick, part: "belt", rev: 1, asOf: AS_OF, value };
   }
 
   it("leaves the other marks drawn when one throws", async () => {
@@ -223,7 +223,7 @@ describe("a belt part that is broken", () => {
   });
 
   it("draws nothing for a belt part that has no mark, and leaves the others", async () => {
-    const bare: WireTrickPart = { host: "bluefin", trick: "tracker", part: "belt", rev: 1, asOf: AS_OF, value: JSON.parse('{"at":"belt","id":"belt"}') };
+    const bare: WireTrickPart = { host: "lodge", trick: "tracker", part: "belt", rev: 1, asOf: AS_OF, value: JSON.parse('{"at":"belt","id":"belt"}') };
     const parts = [LEGS, bare];
     const store = storeWith(parts, async () => ({ rid: "r", code: "ok" as const }));
     await store.syncTricks(1);

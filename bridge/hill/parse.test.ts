@@ -103,9 +103,9 @@ describe("a post's view", () => {
     expect(refusal([{ kind: "image", attrs: { src: "media/a.png" } }])).toStartWith("bad_body the view is refused at /view/0/attrs/src");
     expect(refusal([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }])).toStartWith("bad_body the view is refused at /view/0/kids/0/attrs/intent");
     // A row may open a web page, and nothing else.
-    const web = parseJson('[{"kind":"list","kids":[{"kind":"row","text":"Where","attrs":{"href":"http://bluefin:8788/settings/tricks"}}]}]') ?? null;
+    const web = parseJson('[{"kind":"list","kids":[{"kind":"row","text":"Where","attrs":{"href":"http://lodge:8788/settings/tricks"}}]}]') ?? null;
     expect(readPostFields({ ...base, view: web }).ok).toBe(true);
-    expect(refusal([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "bluefin:w6X:3" } }] }])).toStartWith("bad_body the view is refused at /view/0/kids/0/attrs/href");
+    expect(refusal([{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "lodge:w6X:3" } }] }])).toStartWith("bad_body the view is refused at /view/0/kids/0/attrs/href");
     expect(refusal("rows")).toStartWith("bad_body");
   });
 
@@ -158,7 +158,7 @@ describe("a stored decision", () => {
 
   test("a trick's decision reads back only with its trick, its key and its routing member id", () => {
     const base = decision("dc_aaaaaaaaaaa1");
-    const trick = { ...base, from: { ...base.from, kind: "trick" as const, address: null, trickId: "legs", trickKey: "k", memberId: "bluefin-hc", label: "Legs", host: "bluefin", trickHost: "bluefin-hc" } };
+    const trick = { ...base, from: { ...base.from, kind: "trick" as const, address: null, trickId: "legs", trickKey: "k", memberId: "lodge-hc", label: "Legs", host: "lodge", trickHost: "lodge-hc" } };
     expect(readDecision(onDisk(trick))).toEqual(trick);
     const row = { ...parseJsonObject(JSON.stringify(trick)) };
     const from = { ...parseJsonObject(JSON.stringify(trick.from)) };
@@ -168,7 +168,7 @@ describe("a stored decision", () => {
       expect(readDecision({ ...row, from: without }), key).toBeNull();
     }
     // The dev lane stored trick decisions with `trickHost: null` and the routing value in `host`.
-    expect(readDecision({ ...row, from: { ...from, trickHost: null, host: "bluefin-hc" } })).toBeNull();
+    expect(readDecision({ ...row, from: { ...from, trickHost: null, host: "lodge-hc" } })).toBeNull();
     expect(readDecision({ ...row, from: { ...from, trickKey: null } })).toBeNull();
     expect(readDecision({ ...row, from: { ...from, trickHost: 5 } })).toBeNull();
     // An agent's decision has neither.

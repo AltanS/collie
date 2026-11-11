@@ -13,7 +13,7 @@ const copyText = vi.hoisted(() => vi.fn((_text: string) => Promise.resolve()));
 vi.mock("../clipboard", () => ({ copyText, canCopyText: () => true }));
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
-const KEY = "bluefin/legs/legs";
+const KEY = "lodge/legs/legs";
 
 /** A document's session view, as the schema's own parser reads it: what the renderer gets from the bridge. */
 function viewOf(doc: JsonValue): View {
@@ -136,7 +136,7 @@ const PAIRS = {
   ],
   link: [
     { kind: "para", kids: [{ kind: "link", text: "a", attrs: { href: "https://example.invalid/a" } }] },
-    { kind: "para", kids: [{ kind: "link", text: "the session", attrs: { href: "bluefin:w6X:3", rel: "pane" } }] },
+    { kind: "para", kids: [{ kind: "link", text: "the session", attrs: { href: "lodge:w6X:3", rel: "pane" } }] },
   ],
   code: [
     { kind: "code", attrs: { max: "3" }, kids: [{ kind: "line", text: "one" }] },
@@ -378,9 +378,9 @@ describe("a row and a link", () => {
 
   it("opens a session key href through onLink, as a button", () => {
     const onLink = vi.fn();
-    const { getByRole } = draw(viewOfNodes(list(row("The composer session", { href: "bluefin:w6X:3" }))), { onLink });
+    const { getByRole } = draw(viewOfNodes(list(row("The composer session", { href: "lodge:w6X:3" }))), { onLink });
     fireEvent.click(getByRole("button", { name: "The composer session" }));
-    expect(onLink).toHaveBeenCalledWith({ session: "bluefin:w6X:3" });
+    expect(onLink).toHaveBeenCalledWith({ session: "lodge:w6X:3" });
   });
 
   it("is two tap targets side by side with a trailing button, never one inside the other", () => {
@@ -407,7 +407,7 @@ describe("a row and a link", () => {
     expect(container.querySelector("a")).toBeNull();
     expect(container.querySelector('[data-trick-node="row"] button')).toBeNull();
     expect(linkTargetOf("javascript:alert(1)")).toBeUndefined();
-    expect(linkTargetOf("trick:bluefin:legs")).toBeUndefined();
+    expect(linkTargetOf("trick:lodge:legs")).toBeUndefined();
   });
 
   it("cuts a long title in the middle with cut mid, keeping its tail", () => {
@@ -420,7 +420,7 @@ describe("a row and a link", () => {
     const onLink = vi.fn();
     const { getByRole } = draw(viewOf(nodeDocument("link")), { onLink });
     fireEvent.click(getByRole("button", { name: "the composer session" }));
-    expect(onLink).toHaveBeenCalledWith({ session: "bluefin:w6X:3" });
+    expect(onLink).toHaveBeenCalledWith({ session: "lodge:w6X:3" });
   });
 });
 

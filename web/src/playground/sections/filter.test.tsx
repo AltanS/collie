@@ -66,8 +66,8 @@ describe("the session filter's round", () => {
 
   it("changes one switch per option: best first is one flat list, drawn only does not search the machine", async () => {
     const { container } = await mount();
-    useCase("minibuch");
-    await waitFor(() => expect(field(option(container, 5))).toHaveValue("minibuch"), SLOW);
+    useCase("workshop");
+    await waitFor(() => expect(field(option(container, 5))).toHaveValue("workshop"), SLOW);
     // The machine is a field no switcher row draws: option 5 finds its rows, option 6 searches only what is drawn.
     expect(rows(option(container, 5))).toBeGreaterThan(0);
     expect(rows(option(container, 6))).toBe(0);

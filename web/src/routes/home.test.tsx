@@ -1240,7 +1240,7 @@ describe("the Hill in the Dashboard's bar (M96)", () => {
 describe("the tricks' places on the Dashboard (2026-11-10)", () => {
   let rev = 100;
   const item = (trick: string, at: "dashboard" | "tabbar", it: PlaceItem): WireTrickPart => ({
-    host: "bluefin",
+    host: "lodge",
     trick,
     part: at,
     rev: 1,
@@ -1249,7 +1249,7 @@ describe("the tricks' places on the Dashboard (2026-11-10)", () => {
   });
   async function seed(parts: WireTrickPart[]) {
     rev += 1;
-    const tricks = [...new Set(parts.map((p) => p.trick))].map((id) => ({ host: "bluefin", id, name: id, icon: "flask" as const, on: true, state: "ok" as const, places: ["dashboard" as const, "tabbar" as const] }));
+    const tricks = [...new Set(parts.map((p) => p.trick))].map((id) => ({ host: "lodge", id, name: id, icon: "flask" as const, on: true, state: "ok" as const, places: ["dashboard" as const, "tabbar" as const] }));
     const reply: TricksReply = { rev, tricks, parts, present: parts.map(partKey) };
     server.use(http.get(/\/api\/tricks/, () => HttpResponse.json(reply)));
     await act(() => tricksStore.syncTricks(rev));
@@ -1284,7 +1284,7 @@ describe("the tricks' places on the Dashboard (2026-11-10)", () => {
   it("draws today's bar with the Hill when every trick is switched off: their bar items are not drawn", async () => {
     rev += 1;
     const parts = [item("legs", "tabbar", { label: "Legs" }), item("tracker", "tabbar", { label: "Tracker" })];
-    const tricks = ["legs", "tracker"].map((id) => ({ host: "bluefin", id, name: id, icon: "flask" as const, on: false, state: "ok" as const, places: ["tabbar" as const] }));
+    const tricks = ["legs", "tracker"].map((id) => ({ host: "lodge", id, name: id, icon: "flask" as const, on: false, state: "ok" as const, places: ["tabbar" as const] }));
     const reply: TricksReply = { rev, tricks, parts, present: parts.map(partKey) };
     server.use(http.get(/\/api\/tricks/, () => HttpResponse.json(reply)));
     await act(() => tricksStore.syncTricks(rev));

@@ -75,8 +75,8 @@ describe("parseEnvelopeHeader", () => {
 
   describe("the outside word (M98)", () => {
     const NUDGE = ": a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 \"<text>\"";
-    const plain = `[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3#k3f9 (claude, repo#branch) outside${NUDGE}`;
-    const reply = `[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3#k3f9 (claude, repo#branch) outside reply to wt_8ab2k1m4q7zx${NUDGE}`;
+    const plain = `[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3#k3f9 (claude, repo#branch) outside${NUDGE}`;
+    const reply = `[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3#k3f9 (claude, repo#branch) outside reply to wt_8ab2k1m4q7zx${NUDGE}`;
 
     /** The 1.28 reader, frozen as it shipped: what a phone before M98 runs on this line. */
     function readerBefore(line: string): { id: string; kind: string; replyTo: string | null } | null {
@@ -100,8 +100,8 @@ describe("parseEnvelopeHeader", () => {
     });
 
     it("is not the word inside the parenthesis, nor in the nudge", () => {
-      expect(parseEnvelopeHeader(`[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, repo outside)${NUDGE}`)).not.toHaveProperty("outside");
-      expect(parseEnvelopeHeader(`[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, repo#branch)${NUDGE} outside`)).not.toHaveProperty("outside");
+      expect(parseEnvelopeHeader(`[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, repo outside)${NUDGE}`)).not.toHaveProperty("outside");
+      expect(parseEnvelopeHeader(`[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, repo#branch)${NUDGE} outside`)).not.toHaveProperty("outside");
     });
   });
 

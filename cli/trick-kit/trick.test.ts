@@ -232,10 +232,10 @@ run((t) => {
     expect(JSON.parse(answer.stdout).parts[0].chip.text).toBe("case-24:rerun:go");
     const answerTap: unknown = JSON.parse(await readFile(join(state, "tap.json"), "utf8"));
     expect(answerTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556666", node: "hill/case-24", intent: "rerun", value: null, decision: "case-24", text: "go", from: null, seen: "944a71314b332828" });
-    const tap = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", from: { session: "bluefin:w6X:3" } }));
+    const tap = await runProgram(dir, factsFor(dir, state, { kind: "tap", rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", from: { session: "lodge:w6X:3" } }));
     expect(JSON.parse(tap.stdout).parts[0].chip.text).toBe("tap:rerun");
     const partTap: unknown = JSON.parse(await readFile(join(state, "tap.json"), "utf8"));
-    expect(partTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", decision: null, text: null, from: "bluefin:w6X:3", seen: null });
+    expect(partTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", decision: null, text: null, from: "lodge:w6X:3", seen: null });
   });
 
   test("a thrown error: one warn card in the session and exit 0 when the trick has a session; exit 1 without one", async () => {

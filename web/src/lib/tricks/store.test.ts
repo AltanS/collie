@@ -26,12 +26,12 @@ function legsSaying(subtitle: string): TrickPart {
 
 function wire(trick: string, value: TrickPart | undefined, rev: number, extra: Partial<WireTrickPart> = {}): WireTrickPart {
   if (value === undefined) throw new Error("fixture part missing");
-  return { host: "bluefin", trick, part: value.id, rev, value, asOf: "2026-11-08T09:41:00Z", fresh: "90s", ...extra };
+  return { host: "lodge", trick, part: value.id, rev, value, asOf: "2026-11-08T09:41:00Z", fresh: "90s", ...extra };
 }
 
 const TRICKS: WireTrickInfo[] = [
-  { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] },
-  { host: "bluefin", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["session"] },
+  { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] },
+  { host: "lodge", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["session"] },
 ];
 
 const BELT = wire("legs", LEGS_BELT, 3);
@@ -162,7 +162,7 @@ describe("syncTricks", () => {
     serveTricks(reply(3, [BELT, LEGS, TRACKER]));
     await store.syncTricks(3);
     // No `present` list and no `tricks` list: bad outside its parts, so nothing of it is applied.
-    server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 4, parts: [{ host: "bluefin" }] })));
+    server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 4, parts: [{ host: "lodge" }] })));
     await store.syncTricks(4);
     expect(store.getState().rev).toBe(3);
     expect(store.getState().parts.size).toBe(3);
@@ -172,8 +172,8 @@ describe("syncTricks", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const store = storeOf();
     const changed = wire("legs", legsSaying("case 25 red"), 5);
-    const bad = { host: "bluefin", trick: "legs", part: "broken", rev: 4, value: "not an object" };
-    server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 5, tricks: TRICKS, parts: [bad, changed, { nope: 1 }, BELT], present: [...ALL, "bluefin/legs/broken"] })));
+    const bad = { host: "lodge", trick: "legs", part: "broken", rev: 4, value: "not an object" };
+    server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 5, tricks: TRICKS, parts: [bad, changed, { nope: 1 }, BELT], present: [...ALL, "lodge/legs/broken"] })));
     await store.syncTricks(5);
     expect(store.getState().rev).toBe(5);
     expect([...store.getState().parts.keys()].toSorted()).toEqual([partKey(BELT), partKey(LEGS)].toSorted());
@@ -191,7 +191,7 @@ describe("syncTricks", () => {
     const store = storeOf();
     serveTricks(reply(3, [BELT, LEGS, TRACKER]));
     await store.syncTricks(3);
-    const bad = { host: "bluefin", trick: "legs", part: LEGS.part, rev: 9, value: 7 };
+    const bad = { host: "lodge", trick: "legs", part: LEGS.part, rev: 9, value: 7 };
     server.use(http.get(/\/api\/tricks$/, () => HttpResponse.json({ rev: 9, tricks: TRICKS, parts: [bad], present: ALL })));
     await store.syncTricks(9);
     expect(store.getState().rev).toBe(9);
@@ -201,8 +201,8 @@ describe("syncTricks", () => {
   it("reads a tap's receipt whole when one part in it is malformed", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const body = { rid: "r1", code: "ok", rev: 6, parts: [{ nope: 1 }, wire("legs", legsSaying("after the tap"), 6)] };
-    server.use(http.post(/\/api\/tricks\/bluefin\/legs\/tap$/, () => HttpResponse.json(JSON.parse(JSON.stringify(body)))));
-    const got = await tapTrick("bluefin", "legs", { rid: "r1", node: "legs", intent: "rerun" });
+    server.use(http.post(/\/api\/tricks\/lodge\/legs\/tap$/, () => HttpResponse.json(JSON.parse(JSON.stringify(body)))));
+    const got = await tapTrick("lodge", "legs", { rid: "r1", node: "legs", intent: "rerun" });
     expect(got.code).toBe("ok");
     expect(got.parts?.map((part) => part.rev)).toEqual([6]);
   });
@@ -224,7 +224,7 @@ describe("syncTricks", () => {
 function serveTaps(...answers: (JsonValue | Promise<JsonValue>)[]): JsonObject[] {
   const bodies: JsonObject[] = [];
   server.use(
-    http.post<never, JsonObject>(/\/api\/tricks\/bluefin\/legs\/tap$/, async ({ request }) => {
+    http.post<never, JsonObject>(/\/api\/tricks\/lodge\/legs\/tap$/, async ({ request }) => {
       bodies.push(await request.json());
       const next = answers.shift();
       if (next === undefined) return HttpResponse.json({ error: "no more answers" }, { status: 500 });
@@ -234,7 +234,7 @@ function serveTaps(...answers: (JsonValue | Promise<JsonValue>)[]): JsonObject[]
   return bodies;
 }
 
-const RERUN: TapInput = { host: "bluefin", trick: "legs", part: "legs", intent: "rerun", value: "red", control: "v/6" };
+const RERUN: TapInput = { host: "lodge", trick: "legs", part: "legs", intent: "rerun", value: "red", control: "v/6" };
 
 function receipt(rid: string, code: string, extra: JsonObject = {}): JsonValue {
   return { rid, code, ...extra };
@@ -287,9 +287,9 @@ describe("a tap", () => {
 
   it("applies a changed receipt the same way, and a stray draft or open in it reaches nothing: the handlers have no such hook", async () => {
     const store = await heldStore();
-    serveTaps(receipt(ID1, "changed", { draft: { session: "bluefin:w6X:3", text: "fix case 24" }, open: { url: "http://bluefin:8080/" } }));
+    serveTaps(receipt(ID1, "changed", { draft: { session: "lodge:w6X:3", text: "fix case 24" }, open: { url: "http://lodge:8080/" } }));
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
-    await expect(store.tap(RERUN, { from: { session: "bluefin:w6X:3" } })).resolves.toBe("changed");
+    await expect(store.tap(RERUN, { from: { session: "lodge:w6X:3" } })).resolves.toBe("changed");
     expect(open).not.toHaveBeenCalled();
     expect(store.getState().taps.size).toBe(0);
     open.mockRestore();
@@ -298,8 +298,8 @@ describe("a tap", () => {
   it("sends the session open on the phone", async () => {
     const store = await heldStore();
     const bodies = serveTaps(receipt(ID1, "ok"));
-    await store.tap(RERUN, { from: { session: "bluefin:w6X:3" } });
-    expect(bodies[0]).toMatchObject({ from: { session: "bluefin:w6X:3" } });
+    await store.tap(RERUN, { from: { session: "lodge:w6X:3" } });
+    expect(bodies[0]).toMatchObject({ from: { session: "lodge:w6X:3" } });
   });
 
   it("keeps a failed receipt's masked reason for the frame", async () => {
@@ -402,14 +402,14 @@ describe("the wire readers", () => {
   it("read the fixtures' replies and refuse a body of another shape", () => {
     expect(readTricksReply(JSON.parse(JSON.stringify(reply(3, [BELT]))))).toEqual(reply(3, [BELT]));
     expect(readTricksReply({ rev: 1, parts: [], present: "x", tricks: [] })).toBeUndefined();
-    expect(readTricksReply({ rev: 1, parts: [], present: [], tricks: [{ host: "bluefin" }] })).toBeUndefined();
+    expect(readTricksReply({ rev: 1, parts: [], present: [], tricks: [{ host: "lodge" }] })).toBeUndefined();
     expect(readTapReply({ rid: ID1, code: "maybe" })).toBeUndefined();
     expect(readTapReply({ requestId: ID1, outcome: "applied" })).toBeUndefined();
-    expect(readTapReply({ rid: ID1, code: "ok", open: { session: "trick:bluefin:legs" } })).toEqual({ rid: ID1, code: "ok" });
+    expect(readTapReply({ rid: ID1, code: "ok", open: { session: "trick:lodge:legs" } })).toEqual({ rid: ID1, code: "ok" });
   });
 
   it("keep a part of a kind this Collie does not know, for the placeholder to draw", () => {
-    const newer = { host: "bluefin", trick: "legs", part: "legs", rev: 1, value: { at: "session", id: "legs", view: [{ kind: "hologram" }] } };
-    expect(readTricksReply({ rev: 1, parts: [newer], present: ["bluefin/legs/legs"], tricks: [] })?.parts).toHaveLength(1);
+    const newer = { host: "lodge", trick: "legs", part: "legs", rev: 1, value: { at: "session", id: "legs", view: [{ kind: "hologram" }] } };
+    expect(readTricksReply({ rev: 1, parts: [newer], present: ["lodge/legs/legs"], tricks: [] })?.parts).toHaveLength(1);
   });
 });

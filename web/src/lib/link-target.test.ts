@@ -94,7 +94,7 @@ describe("linkTargetParts", () => {
   });
 
   it("keeps a port", () => {
-    expect(line("http://bluefin:8788/x")).toBe("bluefin:8788/x");
+    expect(line("http://lodge:8788/x")).toBe("lodge:8788/x");
   });
 
   it("is null for a target that is not a web address", () => {

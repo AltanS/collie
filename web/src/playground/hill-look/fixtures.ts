@@ -1,7 +1,7 @@
 // The fixtures of the "Hill look" section (M96 design round, 2026-11-09): four cases every option
 // draws, so the options compare on the same data. DEV-ONLY, like the rest of `src/playground/`.
 //
-// The senders are "collie lead" (Claude, bluefin), "m96-hill" (Codex, minibuch) and the "Browser leg"
+// The senders are "collie lead" (Claude, lodge), "m96-hill" (Codex, workshop) and the "Browser leg"
 // trick; the tricks are the ones the trick sections already use, plus a few more for the busy strip.
 // No person's name, no private path. Ages are anchored to this module's load.
 
@@ -16,8 +16,8 @@ const MIN = 60_000;
 
 type Sender = { kind: "agent"; label: string; host: string; harness: string } | { kind: "trick"; label: string; trickId: string; icon: TrickIcon };
 
-export const LEAD: Sender = { kind: "agent", label: "collie lead", host: "bluefin", harness: "claude" };
-export const HILL: Sender = { kind: "agent", label: "m96-hill", host: "minibuch", harness: "codex" };
+export const LEAD: Sender = { kind: "agent", label: "collie lead", host: "lodge", harness: "claude" };
+export const HILL: Sender = { kind: "agent", label: "m96-hill", host: "workshop", harness: "codex" };
 export const LEGS: Sender = { kind: "trick", label: "Browser leg", trickId: "legs", icon: "flask" };
 
 /** The icon word of a trick sender, by trick id. A Decision names its trick by id; the strip knows the icon. */
@@ -25,8 +25,8 @@ export const TRICK_ICON_OF: ReadonlyMap<string, TrickIcon> = new Map([["legs", "
 
 /** The host colour slot per machine, as `lib/hosts.ts` would assign it on this crew. */
 export const HOST_SLOT: ReadonlyMap<string, number> = new Map([
-  ["bluefin", 2],
-  ["minibuch", 6],
+  ["lodge", 2],
+  ["workshop", 6],
 ]);
 
 let next = 0;
@@ -43,7 +43,7 @@ function decision(over: Fixture): HillDecision {
   const from: HillDecision["from"] =
     sender.kind === "agent"
       ? { kind: "agent", address: `wt_${did.slice(3, 15)}`, trickId: null, trickKey: null, memberId: null, harness: sender.harness, label: sender.label, host: sender.host, trickHost: null }
-      : { kind: "trick", address: null, trickId: sender.trickId, trickKey: did, memberId: null, harness: null, label: sender.label, host: "bluefin", trickHost: "bluefin" };
+      : { kind: "trick", address: null, trickId: sender.trickId, trickKey: did, memberId: null, harness: null, label: sender.label, host: "lodge", trickHost: "lodge" };
   return {
     v: 1,
     id: did,
@@ -92,7 +92,7 @@ const zoom = decision({
 
 const reset = decision({
   title: "Reset the deputy's checkout?",
-  summary: "The checkout on minibuch is two commits ahead of main and the build fails there.",
+  summary: "The checkout on workshop is two commits ahead of main and the build fails there.",
   sender: HILL,
   ago: 6,
   options: [
@@ -157,12 +157,12 @@ const leg = decision({
     { intent: "run", label: "Run it now" },
     { intent: "tonight", label: "Tonight" },
   ],
-  target: { label: "collie lead", host: "bluefin", unattended: true },
+  target: { label: "collie lead", host: "lodge", unattended: true },
 });
 
 const rename = decision({
-  title: "Rename the member on minibuch?",
-  summary: "Its id still says the old name. The new one would be minibuch-hc.",
+  title: "Rename the member on workshop?",
+  summary: "Its id still says the old name. The new one would be workshop-hc.",
   sender: HILL,
   ago: 41,
   options: [

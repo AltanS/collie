@@ -110,7 +110,7 @@ describe("the Hill", () => {
     const ran = trickDecision({ state: "answered", answer: { ...answer, delivery: "none", trick: "ran" } });
     const sentAndRan = trickDecision({
       state: "answered",
-      target: { label: "m96-hill", host: "bluefin", unattended: false },
+      target: { label: "m96-hill", host: "lodge", unattended: false },
       answer: { ...answer, delivery: "typed", trick: "ran" },
     });
     const failed = trickDecision({ state: "answered", answer: { ...answer, delivery: "none", trick: "failed" } });
@@ -125,10 +125,10 @@ describe("the Hill", () => {
 
   it("keeps the words of an undeliverable answer on its row", () => {
     const gone = hillDecision({ state: "undeliverable", closedReason: "target session ended" });
-    const { container } = renderView([], [gone], new Map([[gone.id, "Call it minibuch-hc."]]));
+    const { container } = renderView([], [gone], new Map([[gone.id, "Call it workshop-hc."]]));
     const row = container.querySelector('[data-slot="hill-closed-row"]')!;
     expect(row).toHaveTextContent("Could not be delivered");
-    expect(row.querySelector('[data-slot="decision-kept"]')).toHaveTextContent("Call it minibuch-hc.");
+    expect(row.querySelector('[data-slot="decision-kept"]')).toHaveTextContent("Call it workshop-hc.");
   });
 });
 

@@ -40,11 +40,11 @@ const AS_OF = new Date(NOW - 20_000).toISOString();
 const IGNORE = () => {};
 const RUN = () => Promise.resolve(true);
 
-const LEGS: WireTrickInfo = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] };
-const TRACKER: WireTrickInfo = { host: "bluefin", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["belt", "session"] };
-const TRIAGE: WireTrickInfo = { host: "bluefin", id: "triage", name: "Triage", icon: "eye", on: true, state: "ok", places: ["belt"] };
-const QUIET: WireTrickInfo = { host: "bluefin", id: "quiet", name: "Quiet", icon: "bell", on: true, state: "ok", places: ["belt"] };
-const SPEND: WireTrickInfo = { host: "bluefin", id: "spend", name: "Spend", icon: "tag", on: true, state: "ok", places: ["status", "dashboard", "tabbar"] };
+const LEGS: WireTrickInfo = { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] };
+const TRACKER: WireTrickInfo = { host: "lodge", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["belt", "session"] };
+const TRIAGE: WireTrickInfo = { host: "lodge", id: "triage", name: "Triage", icon: "eye", on: true, state: "ok", places: ["belt"] };
+const QUIET: WireTrickInfo = { host: "lodge", id: "quiet", name: "Quiet", icon: "bell", on: true, state: "ok", places: ["belt"] };
+const SPEND: WireTrickInfo = { host: "lodge", id: "spend", name: "Spend", icon: "tag", on: true, state: "ok", places: ["status", "dashboard", "tabbar"] };
 
 const LEGS_ROWS: ListNode = {
   kind: "list",
@@ -61,7 +61,7 @@ const LEGS_VIEW: View = [
 const TRACKER_VIEW: View = [{ kind: "para", text: "Two specs due this week." }];
 
 function wire(trick: string, value: WireTrickPart["value"]): WireTrickPart {
-  return { host: "bluefin", trick, part: value.id, rev: 1, value, asOf: AS_OF, fresh: "90s" };
+  return { host: "lodge", trick, part: value.id, rev: 1, value, asOf: AS_OF, fresh: "90s" };
 }
 
 const LEGS_BELT = wire("legs", { at: "belt", id: "belt", mark: { icon: "flask", label: "23/34", tone: "accent", intent: "rerun" } });
@@ -119,11 +119,11 @@ function useStore(): TricksStore {
 
 function trickPane(id: string, part: WireTrickPart, over: Partial<AgentView>): AgentView {
   return {
-    paneId: `trick:bluefin:${id}:${part.part}`,
-    workspaceId: "trick:bluefin",
+    paneId: `trick:lodge:${id}:${part.part}`,
+    workspaceId: "trick:lodge",
     workspaceLabel: "Tricks",
     workspaceNumber: 4,
-    tabId: `trick:bluefin:${id}`,
+    tabId: `trick:lodge:${id}`,
     agent: id,
     status: "idle",
     cwd: "",

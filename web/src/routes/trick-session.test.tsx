@@ -16,13 +16,13 @@ import { TrickSessionRoute } from "./trick-session";
 // A TRICK'S OWN SESSION (M94 slice 03): the Header, the view, the actions at the foot, and no Composer.
 // The tricks store is the app's own, brought to a rev the test serves at the wire.
 
-const KEY = "bluefin/legs/legs";
+const KEY = "lodge/legs/legs";
 const TRICK_PANE: AgentView = {
-  paneId: "trick:bluefin:legs:legs",
-  workspaceId: "trick:bluefin",
+  paneId: "trick:lodge:legs:legs",
+  workspaceId: "trick:lodge",
   workspaceLabel: "Tricks",
   workspaceNumber: 2,
-  tabId: "trick:bluefin:legs",
+  tabId: "trick:lodge:legs",
   agent: "legs",
   status: "working",
   cwd: "/home/me/.config/collie/tricks/legs",
@@ -68,20 +68,20 @@ async function serveTricks(opts: { tabbar?: boolean } = {}): Promise<void> {
   const asOf = new Date().toISOString();
   const tabbar = opts.tabbar === true
     ? [
-        { host: "bluefin", trick: "legs", part: "bar", rev, asOf, value: { at: "tabbar", id: "bar", item: { label: "Legs", badge: "23/34" } } },
-        { host: "bluefin", trick: "tracker", part: "bar", rev, asOf, value: { at: "tabbar", id: "bar", item: { label: "Tracker" } } },
+        { host: "lodge", trick: "legs", part: "bar", rev, asOf, value: { at: "tabbar", id: "bar", item: { label: "Legs", badge: "23/34" } } },
+        { host: "lodge", trick: "tracker", part: "bar", rev, asOf, value: { at: "tabbar", id: "bar", item: { label: "Tracker" } } },
       ]
     : [];
   const reply = {
     rev,
     tricks: [
-      { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["session", "tabbar"] },
-      ...(opts.tabbar === true ? [{ host: "bluefin", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["tabbar"] }] : []),
+      { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["session", "tabbar"] },
+      ...(opts.tabbar === true ? [{ host: "lodge", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["tabbar"] }] : []),
     ],
     parts: [
       ...tabbar,
       {
-        host: "bluefin",
+        host: "lodge",
         trick: "legs",
         part: "legs",
         rev,
@@ -96,7 +96,7 @@ async function serveTricks(opts: { tabbar?: boolean } = {}): Promise<void> {
           ],
           view: [
             { kind: "para", text: "23 of 34 green" },
-            { kind: "list", kids: [{ kind: "row", text: "case 24", attrs: { href: "bluefin:w6X:3" }, kids: [{ kind: "button", attrs: { label: "Rerun case", intent: "rerun", value: "24" } }] }] },
+            { kind: "list", kids: [{ kind: "row", text: "case 24", attrs: { href: "lodge:w6X:3" }, kids: [{ kind: "button", attrs: { label: "Rerun case", intent: "rerun", value: "24" } }] }] },
           ],
         },
       },
@@ -117,7 +117,7 @@ function Status() {
   return <output aria-label="status">{status?.text ?? ""}</output>;
 }
 
-function mount(path = "/trick/trick%3Abluefin%3Alegs%3Alegs", data: HomeData = home()) {
+function mount(path = "/trick/trick%3Alodge%3Alegs%3Alegs", data: HomeData = home()) {
   const router = createMemoryRouter(
     [
       {
@@ -176,7 +176,7 @@ describe("the trick session screen", () => {
   });
 
   it("says so when the session is gone", async () => {
-    mount("/trick/trick%3Abluefin%3Agone%3Ax");
+    mount("/trick/trick%3Alodge%3Agone%3Ax");
     expect(await screen.findByText("This trick session is not here any more.")).toBeInTheDocument();
   });
 });
@@ -186,10 +186,10 @@ describe("a tap from the trick session", () => {
   function tapReplies(): JsonObject[] {
     const bodies: JsonObject[] = [];
     server.use(
-      http.post<never, JsonObject>("/api/tricks/bluefin/legs/tap", async ({ request }) => {
+      http.post<never, JsonObject>("/api/tricks/lodge/legs/tap", async ({ request }) => {
         const body = await request.json();
         bodies.push(body);
-        return HttpResponse.json({ rid: asJsonString(body.rid) ?? "", code: "changed", draft: { session: "bluefin:w6X:3", text: "Rerun case 24" } });
+        return HttpResponse.json({ rid: asJsonString(body.rid) ?? "", code: "changed", draft: { session: "lodge:w6X:3", text: "Rerun case 24" } });
       }),
     );
     return bodies;
@@ -208,7 +208,7 @@ describe("a tap from the trick session", () => {
     await waitFor(() => expect(bodies).toHaveLength(2));
     await waitFor(() => expect(screen.getByRole("button", { name: "Rerun case" })).not.toBeDisabled());
     expect(loadDraft({}, REAL.paneId)).toBe("half a thought");
-    expect(where()).toBe("/trick/trick%3Abluefin%3Alegs%3Alegs");
+    expect(where()).toBe("/trick/trick%3Alodge%3Alegs%3Alegs");
     expect(screen.getByRole("status", { name: "status" }).textContent).toBe("");
   });
 
@@ -254,7 +254,7 @@ describe("the Dashboard's bar on a trick's Session (amended 2026-11-10)", () => 
     expect(tracker).not.toHaveAttribute("aria-current");
     for (const tab of bar().querySelectorAll('[data-slot="tab"]')) expect(tab).not.toHaveAttribute("aria-current");
     fireEvent.click(legs!);
-    expect(router.state.location.pathname).toBe("/trick/trick%3Abluefin%3Alegs%3Alegs");
+    expect(router.state.location.pathname).toBe("/trick/trick%3Alodge%3Alegs%3Alegs");
   });
 
   it("a tab stores its view and goes up to the Dashboard", async () => {

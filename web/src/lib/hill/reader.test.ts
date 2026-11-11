@@ -29,8 +29,8 @@ describe("readHillDecision", () => {
   });
 
   it("reads a trick's routing member id beside the host it shows", () => {
-    const from = { ...asJsonObject(wire({}).from), kind: "trick", host: "bluefin", memberId: "bluefin-hc", trickHost: "bluefin-hc" };
-    expect(readHillDecision(wire({ from }))?.from).toMatchObject({ host: "bluefin", memberId: "bluefin-hc", trickHost: "bluefin-hc" });
+    const from = { ...asJsonObject(wire({}).from), kind: "trick", host: "lodge", memberId: "lodge-hc", trickHost: "lodge-hc" };
+    expect(readHillDecision(wire({ from }))?.from).toMatchObject({ host: "lodge", memberId: "lodge-hc", trickHost: "lodge-hc" });
     expect(readHillDecision(wire({ from: { ...from, trickHost: 5 } }))).toBeNull();
   });
 
@@ -184,11 +184,11 @@ describe("readHillDecision", () => {
   it("reads a display view; a view that breaks a rule is dropped and the decision stays", () => {
     const view = [{ kind: "bar", kids: [{ kind: "chip", text: "unit", attrs: { tone: "ok" } }] }];
     expect(readHillDecision(wire({ view }))?.view).toEqual(view);
-    const where = [{ kind: "list", kids: [{ kind: "row", text: "Where", attrs: { href: "http://bluefin:8788/settings/tricks" } }] }];
+    const where = [{ kind: "list", kids: [{ kind: "row", text: "Where", attrs: { href: "http://lodge:8788/settings/tricks" } }] }];
     expect(readHillDecision(wire({ view: where }))?.view).toEqual(where);
     expect(readHillDecision(wire())).not.toHaveProperty("view");
     expect(readHillDecision(wire({ view: null }))).not.toHaveProperty("view");
-    for (const bad of [[{ kind: "button", text: "Go", attrs: { intent: "go" } }], [{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "bluefin:w6X:3" } }] }], [{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }], "rows", [{ kind: "para", text: "x".repeat(9000) }]]) {
+    for (const bad of [[{ kind: "button", text: "Go", attrs: { intent: "go" } }], [{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "lodge:w6X:3" } }] }], [{ kind: "list", kids: [{ kind: "row", text: "x", attrs: { intent: "go" } }] }], "rows", [{ kind: "para", text: "x".repeat(9000) }]]) {
       const read = readHillDecision(wire({ view: bad }));
       expect(read?.title).toBe("Ship the zoom fix in 1.28.1?");
       expect(read).not.toHaveProperty("view");

@@ -45,7 +45,7 @@ export function runsOnLine(runsOn: TricksRunsOn): string {
 
 /**
  * Where a trick came from, for its About sheet: "From owner/repo @ 3f2a91c" for one `collie trick add` took
- * from a repository, "Proposed by an agent session on minibuch." for one `collie trick propose` handed in,
+ * from a repository, "Proposed by an agent session on workshop." for one `collie trick propose` handed in,
  * else "Added on this machine." (a folder, the CLI or an agent made it here).
  */
 export function originLine(by: WireTrickInfo["provenance"]): string {

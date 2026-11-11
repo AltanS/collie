@@ -1040,8 +1040,8 @@ describe("status from the session an answer goes to", () => {
 
 describe("the session's name in status", () => {
   test("status names where the answer goes as the bridge served it, the session's name and its machine", () => {
-    const decision = storedDecision("dc_named0000001", { target: { label: "concept hill v2", host: "bluefin", unattended: false } });
-    expect(statusLines(decision)).toEqual(["dc_named0000001 open", "title: Ship it?", "goes to: concept hill v2 on bluefin"]);
+    const decision = storedDecision("dc_named0000001", { target: { label: "concept hill v2", host: "lodge", unattended: false } });
+    expect(statusLines(decision)).toEqual(["dc_named0000001 open", "title: Ship it?", "goes to: concept hill v2 on lodge"]);
     expect(statusLines({ ...decision, target: { label: "lead", host: null, unattended: false } })).toEqual(["dc_named0000001 open", "title: Ship it?", "goes to: lead"]);
     expect(statusLines({ ...decision, target: null })).toEqual(["dc_named0000001 open", "title: Ship it?"]);
   });

@@ -27,10 +27,10 @@ const REVIEW = entry("design-review", "Design Review", "Turns an agent's UI note
 const INBOX = entry("pr-inbox", "PR Inbox", "Open pull requests and issues that wait for you.");
 const BUILDS = entry("running-builds", "Running Builds", "Builds and long commands running in your sessions now.");
 
-const LEGS: WireTrickInfo = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"], provenance: { via: "agent" } };
+const LEGS: WireTrickInfo = { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"], provenance: { via: "agent" } };
 
 function installed(from: WireOfficialTrick, extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
-  return { host: "bluefin", id: from.id, name: from.name, icon: "plug", on: false, state: "off", places: ["belt"], provenance: { via: "repo", repo: from.repoName, sha: "1111111aaaa" }, ...extra };
+  return { host: "lodge", id: from.id, name: from.name, icon: "plug", on: false, state: "off", places: ["belt"], provenance: { via: "repo", repo: from.repoName, sha: "1111111aaaa" }, ...extra };
 }
 
 /** A store whose list a test can change, as the snapshot's `tricksRev` would. */

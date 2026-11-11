@@ -92,7 +92,7 @@
         "kind": "row",
         "text": "case 24, send after restart",
         "attrs": {
-          "href": "http://bluefin:8832/legs/24",
+          "href": "http://lodge:8832/legs/24",
           "end": "red",
           "badge": "2",
           "tone": "danger",
@@ -144,7 +144,7 @@
         "kind": "link",
         "text": "Report",
         "attrs": {
-          "href": "https://github.com/sprqvntrs/collie/actions/runs/1234"
+          "href": "https://github.com/AltanS/collie/actions/runs/1234"
         }
       }
     ]
@@ -232,7 +232,7 @@
         "kind": "link",
         "text": "The report",
         "attrs": {
-          "href": "http://bluefin:8832/legs",
+          "href": "http://lodge:8832/legs",
           "icon": "link"
         }
       }
@@ -280,7 +280,7 @@
         "kind": "run",
         "text": " (log)",
         "attrs": {
-          "href": "http://bluefin:8832/legs/log"
+          "href": "http://lodge:8832/legs/log"
         }
       }
     ]
@@ -332,7 +332,7 @@
         "kind": "link",
         "text": "the composer session",
         "attrs": {
-          "href": "bluefin:w6X:3",
+          "href": "lodge:w6X:3",
           "rel": "pane",
           "icon": "terminal"
         }
@@ -345,7 +345,7 @@
         "kind": "link",
         "text": "the log",
         "attrs": {
-          "href": "http://bluefin:8832/legs/24.log",
+          "href": "http://lodge:8832/legs/24.log",
           "rel": "url",
           "badge": ""
         }

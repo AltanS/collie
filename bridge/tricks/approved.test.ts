@@ -202,17 +202,17 @@ describe("nothing unseen enters the copy (security re-review)", () => {
     if (!snap.ok) throw new Error(snap.reason);
     const before = await copyListing(snap.dir);
     // What inputs.ts writes before each run: inputs/<memberId>/<paneId>/<rel>, untrusted data, never code.
-    await mkdir(join(snap.dir, "inputs", "bluefin", "w6X_3a3", "notes"), { recursive: true });
-    await writeFile(join(snap.dir, "inputs", "bluefin", "w6X_3a3", "TODO.md"), "- [ ] one\n");
-    await writeFile(join(snap.dir, "inputs", "bluefin", "w6X_3a3", "notes", "a.ts"), 'console.log("a session file");\n');
+    await mkdir(join(snap.dir, "inputs", "lodge", "w6X_3a3", "notes"), { recursive: true });
+    await writeFile(join(snap.dir, "inputs", "lodge", "w6X_3a3", "TODO.md"), "- [ ] one\n");
+    await writeFile(join(snap.dir, "inputs", "lodge", "w6X_3a3", "notes", "a.ts"), 'console.log("a session file");\n');
     expect(await copyListing(snap.dir)).toBe(before);
     if (before === null) throw new Error("the copy does not list");
     expect(await verifyCopy(snap.dir, snap.hash)).toEqual({ ok: true, listing: before });
     expect(await hashOf(snap.dir)).toBe(snap.hash);
     // A fetch again (a new set of files) moves nothing either: the next fetch is not a new version.
-    await rm(join(snap.dir, "inputs", "bluefin"), { recursive: true });
-    await mkdir(join(snap.dir, "inputs", "minibuch", "w6Y_p21"), { recursive: true });
-    await writeFile(join(snap.dir, "inputs", "minibuch", "w6Y_p21", "TODO.md"), "- [x] two\n");
+    await rm(join(snap.dir, "inputs", "lodge"), { recursive: true });
+    await mkdir(join(snap.dir, "inputs", "workshop", "w6Y_p21"), { recursive: true });
+    await writeFile(join(snap.dir, "inputs", "workshop", "w6Y_p21", "TODO.md"), "- [x] two\n");
     expect(await copyListing(snap.dir)).toBe(before);
     expect((await verifyCopy(snap.dir, snap.hash)).ok).toBe(true);
   });

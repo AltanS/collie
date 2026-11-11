@@ -328,8 +328,8 @@ function space(label: string, folder?: string): WorkspaceView {
 describe("the facts", () => {
   test("sessions by scope key, spaces with folders, and the document the schema reads back", () => {
     const world = factsWorldOf({
-      memberId: "bluefin-hc",
-      machine: "bluefin",
+      memberId: "lodge-hc",
+      machine: "lodge",
       runtimes: [
         {
           name: "default",
@@ -345,11 +345,11 @@ describe("the facts", () => {
     });
     expect(world.sessions).toEqual([
       {
-        id: "bluefin-hc:w6X:3",
-        memberId: "bluefin-hc",
-        sessionId: "bluefin-hc:w6X:3",
+        id: "lodge-hc:w6X:3",
+        memberId: "lodge-hc",
+        sessionId: "lodge-hc:w6X:3",
         paneId: "w6X:3",
-        host: "bluefin",
+        host: "lodge",
         status: "working",
         name: "composer",
         agent: "claude",
@@ -358,18 +358,18 @@ describe("the facts", () => {
         tab: "fix",
         lastActiveAt: "2026-11-08T09:41:00.000Z",
       },
-      { id: "bluefin-hc:w6X:4", memberId: "bluefin-hc", sessionId: "bluefin-hc:w6X:4", paneId: "w6X:4", host: "bluefin", status: "idle", name: "shell", cwd: "/work/collie", space: "home", lastActiveAt: "2026-11-08T09:41:00.000Z" },
+      { id: "lodge-hc:w6X:4", memberId: "lodge-hc", sessionId: "lodge-hc:w6X:4", paneId: "w6X:4", host: "lodge", status: "idle", name: "shell", cwd: "/work/collie", space: "home", lastActiveAt: "2026-11-08T09:41:00.000Z" },
     ]);
     expect(world.spaces).toEqual([{ name: "collie", folder: "/work/collie-workspace" }, { name: "home" }, { name: "YouTube", folder: "/work/yt" }]);
-    expect(world.memberId).toBe("bluefin-hc");
+    expect(world.memberId).toBe("lodge-hc");
     const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
     expect(JSON.stringify(facts)).not.toContain("/secret/path.jsonl");
     const back = parseFacts(JSON.parse(JSON.stringify(facts)));
     expect(back.refusals).toEqual([]);
     expect(back.facts).toEqual(facts);
     // The member id is the key a program keeps; `host` is the machine's name, for display only.
-    expect(facts.memberId).toBe("bluefin-hc");
-    expect(facts.host).toBe("bluefin");
+    expect(facts.memberId).toBe("lodge-hc");
+    expect(facts.host).toBe("lodge");
     // One contract number on the facts, no `v` beside it: the trick's own, 1 when it names none.
     expect(facts.contract).toBe(TRICK_CONTRACT_DEFAULT);
     expect(buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" }, TRICK_CONTRACT).contract).toBe(2);
@@ -379,13 +379,13 @@ describe("the facts", () => {
   test("a solo install keys its sessions on its install id, never on the host name", () => {
     const world = factsWorldOf({
       memberId: "m_k3x9q2w7ab",
-      machine: "bluefin.lan",
+      machine: "lodge.lan",
       runtimes: [{ name: "default", agents: [pane({})], shellPanes: [], workspaces: [] }],
     });
-    expect(world.sessions[0]).toMatchObject({ id: "m_k3x9q2w7ab:w6X:3", memberId: "m_k3x9q2w7ab", sessionId: "m_k3x9q2w7ab:w6X:3", host: "bluefin.lan" });
+    expect(world.sessions[0]).toMatchObject({ id: "m_k3x9q2w7ab:w6X:3", memberId: "m_k3x9q2w7ab", sessionId: "m_k3x9q2w7ab:w6X:3", host: "lodge.lan" });
     const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
-    expect(facts).toMatchObject({ memberId: "m_k3x9q2w7ab", host: "bluefin.lan" });
-    expect(JSON.stringify(facts)).not.toContain('"bluefin.lan:');
+    expect(facts).toMatchObject({ memberId: "m_k3x9q2w7ab", host: "lodge.lan" });
+    expect(JSON.stringify(facts)).not.toContain('"lodge.lan:');
     expect(parseFacts(JSON.parse(JSON.stringify(facts))).refusals).toEqual([]);
     // A solo bridge's facts carry no crew field.
     expect(Object.keys(facts)).not.toContain("sessionsOmitted");
@@ -394,52 +394,52 @@ describe("the facts", () => {
 });
 
 describe("the facts on a crew's lead (M99 slice 5)", () => {
-  const own = factsWorldOf({ memberId: "bluefin", machine: "bluefin", runtimes: [{ name: "default", agents: [pane({})], shellPanes: [], workspaces: [space("collie", "/work/collie")] }] });
-  const isOwn = (id: string): boolean => id === "bluefin";
+  const own = factsWorldOf({ memberId: "lodge", machine: "lodge", runtimes: [{ name: "default", agents: [pane({})], shellPanes: [], workspaces: [space("collie", "/work/collie")] }] });
+  const isOwn = (id: string): boolean => id === "lodge";
 
   test("every member's sessions, each with its own memberId, its machine's name and reachable; the lead's first", () => {
     const world = crewFactsWorld(
       own,
       [
-        { memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: [pane({ paneId: "%1", paneLabel: "builder" })], shellPanes: [pane({ paneId: "%2", kind: "shell", agent: "shell" })] } },
+        { memberId: "workshop", name: "workshop", reachable: true, body: { agents: [pane({ paneId: "%1", paneLabel: "builder" })], shellPanes: [pane({ paneId: "%2", kind: "shell", agent: "shell" })] } },
         { memberId: "laptop", name: "laptop", reachable: false, body: { agents: [pane({ paneId: "w1:2" })], shellPanes: [] } },
         { memberId: "fresh", name: "fresh", reachable: false, body: null },
       ],
       isOwn,
     );
     expect(world.sessions.map((s) => [s.id, s.memberId, s.host, s.reachable])).toEqual([
-      ["bluefin:w6X:3", "bluefin", "bluefin", true],
-      ["minibuch:%1", "minibuch", "minibuch", true],
-      ["minibuch:%2", "minibuch", "minibuch", true],
+      ["lodge:w6X:3", "lodge", "lodge", true],
+      ["workshop:%1", "workshop", "workshop", true],
+      ["workshop:%2", "workshop", "workshop", true],
       ["laptop:w1:2", "laptop", "laptop", false],
     ]);
     // The spaces stay the lead's own.
     expect(world.spaces).toEqual(own.spaces);
     // A trick tells its own sessions from the others by memberId.
     const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
-    expect(facts.sessions.filter((s) => s.memberId === facts.memberId).map((s) => s.id)).toEqual(["bluefin:w6X:3"]);
+    expect(facts.sessions.filter((s) => s.memberId === facts.memberId).map((s) => s.id)).toEqual(["lodge:w6X:3"]);
     const back = parseFacts(JSON.parse(JSON.stringify(facts)));
     expect(back.refusals).toEqual([]);
     expect(back.facts).toEqual(facts);
   });
 
   test("no member can pose as the lead: a contribution under the lead's own id is skipped", () => {
-    const world = crewFactsWorld(own, [{ memberId: "bluefin", name: "imposter", reachable: true, body: { agents: [pane({ paneId: "w6X:9" })], shellPanes: [] } }], isOwn);
-    expect(world.sessions.map((s) => s.id)).toEqual(["bluefin:w6X:3"]);
+    const world = crewFactsWorld(own, [{ memberId: "lodge", name: "imposter", reachable: true, body: { agents: [pane({ paneId: "w6X:9" })], shellPanes: [] } }], isOwn);
+    expect(world.sessions.map((s) => s.id)).toEqual(["lodge:w6X:3"]);
   });
 
   test("past the session count or the byte cap the rest are left out and counted, never the lead's own", () => {
     const many = Array.from({ length: FACT_SESSIONS_MAX + 5 }, (_, i) => pane({ paneId: `%${String(i)}` }));
-    const world = crewFactsWorld(own, [{ memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: many, shellPanes: [] } }], isOwn);
+    const world = crewFactsWorld(own, [{ memberId: "workshop", name: "workshop", reachable: true, body: { agents: many, shellPanes: [] } }], isOwn);
     expect(world.sessions).toHaveLength(FACT_SESSIONS_MAX);
-    expect(world.sessions[0]?.id).toBe("bluefin:w6X:3");
+    expect(world.sessions[0]?.id).toBe("lodge:w6X:3");
     expect(world.sessionsOmitted).toBe(6);
     const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
     expect(facts.sessionsOmitted).toBe(6);
     expect(parseFacts(JSON.parse(JSON.stringify(facts))).facts?.sessionsOmitted).toBe(6);
 
     const wide = Array.from({ length: 200 }, (_, i) => pane({ paneId: `%${String(i)}`, cwd: `/${"x".repeat(4000)}` }));
-    const heavy = crewFactsWorld(own, [{ memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: wide, shellPanes: [] } }], isOwn);
+    const heavy = crewFactsWorld(own, [{ memberId: "workshop", name: "workshop", reachable: true, body: { agents: wide, shellPanes: [] } }], isOwn);
     const bytes = new TextEncoder().encode(JSON.stringify(heavy.sessions)).length;
     expect(bytes).toBeLessThanOrEqual(FACT_SESSIONS_MAX_BYTES + heavy.sessions.length + 2);
     expect(heavy.sessionsOmitted).toBe(201 - heavy.sessions.length);
@@ -473,10 +473,10 @@ describe("the routes", () => {
       undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
-    const match = route.exec("/api/tricks/blue%66in/legs/tap");
+    const match = route.exec("/api/tricks/lod%67e/legs/tap");
     if (match === null) throw new Error("no match");
     await tricksTapRoute(surface, match, {});
-    expect(calls).toEqual([["bluefin", "legs"]]);
+    expect(calls).toEqual([["lodge", "legs"]]);
     const broken = route.exec("/api/tricks/%E0%A4%A/legs/tap");
     if (broken === null) throw new Error("no match");
     expect(await tricksTapRoute(surface, broken, {})).toEqual({ status: 404, body: { error: "unknown-host" } });
@@ -499,10 +499,10 @@ describe("the routes", () => {
       undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
-    const match = route.exec("/api/tricks/blue%66in/legs/switch");
+    const match = route.exec("/api/tricks/lod%67e/legs/switch");
     if (match === null) throw new Error("no match");
     await tricksSwitchRoute(surface, match, { on: false });
-    expect(calls).toEqual([["bluefin", "legs", false]]);
+    expect(calls).toEqual([["lodge", "legs", false]]);
     for (const body of [undefined, null, [], {}, { on: "yes" }, { on: true, extra: 1 }]) {
       expect(await tricksSwitchRoute(surface, match, body)).toEqual({ status: 400, body: { error: "switch-invalid" } });
     }
@@ -531,8 +531,8 @@ describe("the routes", () => {
         return { status: 409, body: { error: "no-previous", message: "There is no earlier version to go back to." } };
       },
     };
-    const auto = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/.exec("/api/tricks/blue%66in/legs/auto");
-    const undo = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/.exec("/api/tricks/bluefin/legs/undo");
+    const auto = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/.exec("/api/tricks/lod%67e/legs/auto");
+    const undo = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/.exec("/api/tricks/lodge/legs/undo");
     if (auto === null || undo === null) throw new Error("no match");
     expect(await tricksAutoRoute(surface, auto, { on: true })).toEqual({ status: 409, body: { error: "off", message: "The trick is off." } });
     expect(await tricksUndoRoute(surface, undo, {})).toMatchObject({ status: 409, body: { error: "no-previous" } });
@@ -542,7 +542,7 @@ describe("the routes", () => {
     for (const body of [undefined, null, [], { hash: "a" }]) {
       expect(await tricksUndoRoute(surface, undo, body)).toEqual({ status: 400, body: { error: "undo-invalid" } });
     }
-    expect(calls).toEqual(["auto bluefin legs true", "undo bluefin legs"]);
+    expect(calls).toEqual(["auto lodge legs true", "undo lodge legs"]);
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     expect(src).toContain("const TRICKS_AUTO_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/auto$/;");
     expect(src).toContain("const TRICKS_UNDO_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/;");
@@ -567,17 +567,17 @@ describe("the routes", () => {
       undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
-    const match = route.exec("/api/tricks/blue%66in/legs/media/shots/case%2024.png");
+    const match = route.exec("/api/tricks/lod%67e/legs/media/shots/case%2024.png");
     if (match === null) throw new Error("no match");
     expect(await tricksMediaRoute(surface, match)).toBeNull();
-    expect(calls).toEqual([["bluefin", "legs", "media/shots/case 24.png"]]);
-    for (const path of ["/api/tricks/%E0%A4%A/legs/media/a.png", "/api/tricks/bluefin/legs/media/%E0%A4%A.png"]) {
+    expect(calls).toEqual([["lodge", "legs", "media/shots/case 24.png"]]);
+    for (const path of ["/api/tricks/%E0%A4%A/legs/media/a.png", "/api/tricks/lodge/legs/media/%E0%A4%A.png"]) {
       const broken = route.exec(path);
       if (broken === null) throw new Error("no match");
       expect(await tricksMediaRoute(surface, broken)).toBeNull();
     }
     expect(calls.length).toBe(1);
-    expect(route.exec("/api/tricks/bluefin/legs/trick.toml")).toBeNull();
+    expect(route.exec("/api/tricks/lodge/legs/trick.toml")).toBeNull();
   });
 
   test("server.ts gates the list as a read and the tap as a write, stamps the watch for a paired phone only, the switch as a write, and declares both routes", () => {

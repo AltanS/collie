@@ -624,7 +624,7 @@ describe("collie trick on, off and list", () => {
   test("list shows the bridge's state, last run and error when it answers", async () => {
     const d = await deps({
       rev: 5,
-      tricks: [{ host: "bluefin", id: "legs", name: "legs", icon: "plug", on: true, state: "failing", places: ["belt"], error: "The program exited with 1", lastRunAt: "2026-11-08T09:41:00.000Z" }],
+      tricks: [{ host: "lodge", id: "legs", name: "legs", icon: "plug", on: true, state: "failing", places: ["belt"], error: "The program exited with 1", lastRunAt: "2026-11-08T09:41:00.000Z" }],
       parts: [],
       present: [],
       path: "/usr/bin",
@@ -864,7 +864,7 @@ describe("the doctor's tricks row", () => {
   test("one row with each trick, its state and error, and the runner's PATH; warn when an on trick fails", async () => {
     const d = await deps({
       rev: 5,
-      tricks: [{ host: "bluefin", id: "legs", name: "legs", icon: "plug", on: true, state: "stopped", places: ["belt"], error: "darius: not found" }],
+      tricks: [{ host: "lodge", id: "legs", name: "legs", icon: "plug", on: true, state: "stopped", places: ["belt"], error: "darius: not found" }],
       parts: [],
       present: [],
       path: "/unit/bin:/usr/bin",
