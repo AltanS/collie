@@ -38,6 +38,7 @@ import {
   sha256Hex,
   toDeviceWire,
   touchDevice,
+  uniqueLabel,
   type PairedRegistry,
   type PairingIo,
   type PendingPairing,
@@ -553,6 +554,71 @@ describe("PairingStore", () => {
     const claimed = await store.claim("ABCD2345", "phone");
     if (!claimed.ok) throw new Error("claim failed");
     expect(claimed.token).toBe(Buffer.alloc(32, 0x41).toString("base64url"));
+  });
+
+  // ADR 0139: an approved pairing request enrols through the same code as a claim, with no lifetime,
+  // under a label made unique, and touches no pending code.
+  test("enrolApproved enrols like a claim: same token form, hash only, no expiry, the pending code untouched", async () => {
+    const pending = newPending("ABCD2345", 0);
+    const { io, state } = memoryIo({ pending });
+    const store = new PairingStore(io, () => 1000, fixedRandom(0x42));
+    const got = await store.enrolApproved("desk");
+    expect(got).toEqual({ token: Buffer.alloc(32, 0x42).toString("base64url"), label: "desk" });
+    expect(state.registry?.devices).toEqual([{ label: "desk", tokenHash: sha256Hex(got.token), createdAt: 1000, lastSeenAt: 1000 }]);
+    expect(store.resolve(got.token)?.label).toBe("desk");
+    expect(state.pending).toEqual(pending);
+  });
+
+  test("enrolApproved never replaces a device: a taken label gets a number", async () => {
+    const { io, state } = memoryIo({ registry: { devices: [{ label: "desk", tokenHash: sha256Hex("h"), createdAt: 1, lastSeenAt: 1 }] } });
+    const store = new PairingStore(io, () => 1000);
+    expect((await store.enrolApproved("desk")).label).toBe("desk 2");
+    expect(state.registry?.devices.map((d) => d.label)).toEqual(["desk", "desk 2"]);
+  });
+
+  test("enrolApproved with an end gives the device exactly that end", async () => {
+    const { io, state } = memoryIo();
+    const store = new PairingStore(io, () => 1000);
+    expect(await store.enrolApproved("desk", 5000)).toMatchObject({ label: "desk", expiresAt: 5000 });
+    expect(state.registry?.devices[0]?.expiresAt).toBe(5000);
+  });
+
+  test("revokeByTokenHash removes the device holding that token, and only it", async () => {
+    const { io, state } = memoryIo({
+      registry: {
+        devices: [
+          { label: "desk", tokenHash: sha256Hex("tok-a"), createdAt: 1, lastSeenAt: 1 },
+          { label: "phone", tokenHash: sha256Hex("tok-b"), createdAt: 1, lastSeenAt: 1 },
+        ],
+      },
+    });
+    const store = new PairingStore(io, () => 1000);
+    expect(await store.revokeByTokenHash(sha256Hex("tok-b"))).toBe("phone");
+    expect(state.registry?.devices.map((d) => d.label)).toEqual(["desk"]);
+    expect(await store.revokeByTokenHash(sha256Hex("tok-c"))).toBeNull();
+  });
+
+  test("uniqueLabel cuts on a code point, never inside a surrogate pair (A4)", () => {
+    // 46 letters, then an emoji (two UTF-16 units): 48 units, the limit. Its " 2" leaves room for 46.
+    const label = `${"x".repeat(45)}\u{1F415}y`;
+    expect(label.length).toBe(48);
+    const next = uniqueLabel({ devices: [{ label, tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1 }] }, label);
+    expect(next).toBe(`${"x".repeat(45)} 2`);
+    expect(next.length).toBeLessThanOrEqual(48);
+    // Every code point of the result is whole.
+    for (const point of next) expect(point.codePointAt(0)! < 0xd800 || point.codePointAt(0)! > 0xdfff).toBe(true);
+  });
+
+  test("hasLiveDevice: true only while a device that has not expired is paired", async () => {
+    const empty = new PairingStore(memoryIo().io, () => 1000);
+    expect(empty.hasLiveDevice()).toBe(false);
+    const expired = new PairingStore(
+      memoryIo({ registry: { devices: [{ label: "old", tokenHash: sha256Hex("h"), createdAt: 1, lastSeenAt: 1, expiresAt: 500 }] } }).io,
+      () => 1000,
+    );
+    expect(expired.hasLiveDevice()).toBe(false);
+    const live = new PairingStore(memoryIo({ registry: { devices: [{ label: "pixel", tokenHash: sha256Hex("h"), createdAt: 1, lastSeenAt: 1 }] } }).io, () => 1000);
+    expect(live.hasLiveDevice()).toBe(true);
   });
 });
 

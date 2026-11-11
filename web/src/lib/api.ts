@@ -522,11 +522,15 @@ function captureBuild(res: Response): void {
  */
 type Recover<T> = (status: number, detail: string) => T | null;
 
-/** A request's init, plus the one deadline override a poll read asks for ({@link POLL_TIMEOUT_MS}). */
-type ReqInit = RequestInit & { timeoutMs?: number };
+/**
+ * A request's init, plus the one deadline override a poll read asks for ({@link POLL_TIMEOUT_MS}), and
+ * `provesNothing` for a write an unpaired browser may make (the pairing request, ADR 0139): its 2xx is
+ * not proof that this device is paired, so it must not clear the refusal latch the way a write does.
+ */
+type ReqInit = RequestInit & { timeoutMs?: number; provesNothing?: boolean };
 
 async function doReq<T>(path: string, reqInit?: ReqInit, recover?: Recover<T>): Promise<T> {
-  const { timeoutMs: asked, ...init } = reqInit ?? {};
+  const { timeoutMs: asked, provesNothing = false, ...init } = reqInit ?? {};
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
   const method = init.method?.toUpperCase() ?? "GET";
   const timeoutMs = asked ?? (method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS);
@@ -552,7 +556,7 @@ async function doReq<T>(path: string, reqInit?: ReqInit, recover?: Recover<T>): 
     if (recovered !== null && recovered !== undefined) return recovered;
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
-  notePairing(method, res.status);
+  if (!provesNothing) notePairing(method, res.status);
   if (res.status === 204) {
     // SAFETY: `T` is the response contract each exported wrapper below declares for its own
     // endpoint; `doReq` is the generic transport and has no shape of its own to check against. A
@@ -2777,6 +2781,177 @@ export async function pairDevice(code: string, label: string): Promise<PairResul
     recoverPairFailure,
   );
   return "token" in res ? { ok: true, token: res.token, label: res.label } : res;
+}
+
+// ── Pairing with a phone (ADR 0139) ─────────────────────────────────────────────────────────────
+//
+// The new device asks (`POST /api/pair/request`), shows the code and a QR to the approver page, and
+// polls with the secret only it holds. A paired browser opens the QR, reads the request and answers
+// it by tapping one of three codes. Every refusal the screens name is recovered into a value here, so
+// the screens switch on a state and never parse a body.
+
+/** The header the poll secret rides in. Never the URL: a URL lands in logs and history. */
+export const PAIR_POLL_HEADER = "x-collie-pair-poll";
+
+/** A started request, or why none was started. */
+export type PairRequestStart =
+  | { ok: true; publicId: string; pollSecret: string; code: string; expiresInMs: number }
+  | { ok: false; reason: "no-approver" }
+  | { ok: false; reason: "rate-limited"; retryAfterSeconds: number }
+  /** Refused before pairing by the bridge's access check (host, origin or identity). Pairing cannot fix it. */
+  | { ok: false; reason: "refused" };
+
+/** What the poll found. `gone` is an id the bridge does not know (or a wrong secret: it says the same). */
+export type PairRequestPoll =
+  | { state: "waiting"; expiresInMs: number }
+  | { state: "approved"; token: string; label: string }
+  | { state: "refused" }
+  | { state: "expired" }
+  | { state: "gone" };
+
+/** The network class a request came from, as the bridge names it (bridge/pair-audit.ts). */
+export type PairRoute = "loopback" | "tailnet" | "lan" | "internet" | "unknown";
+
+/** What the approver sees of an open request, or why it cannot answer it. */
+export type PairApproval =
+  | {
+      state: "open";
+      browser: string | null;
+      os: string | null;
+      /** The class of the socket the asker came in by: the kernel's, the one fact here. */
+      route: PairRoute;
+      /**
+       * The class a front door on the bridge's machine passed on (`X-Forwarded-For`), or null. A claim:
+       * a local program can write that header too, so the page never states it as fact.
+       */
+      claimed: PairRoute | null;
+      choices: readonly string[];
+      expiresInMs: number;
+      /** When the approver's own access ends, and so the new device's with it; null for no end. */
+      endsAt: number | null;
+    }
+  | { state: "gone" }
+  | { state: "answered" }
+  /** The bridge refused this browser as an approver: no token, a read-only credential, or not allowlisted. */
+  | { state: "forbidden" };
+
+/** The bridge's answer to the approver's tap. */
+export type PairApproveResult =
+  | { state: "approved"; label: string }
+  | { state: "refused"; reason: "wrong-code" | "refused" }
+  | { state: "gone" }
+  | { state: "answered" }
+  | { state: "bad-label" }
+  | { state: "forbidden" };
+
+const PAIR_ROUTES: readonly PairRoute[] = ["loopback", "tailnet", "lan", "internet", "unknown"];
+
+function pairRouteOf(value: JsonValue | undefined): PairRoute {
+  const named = asJsonString(value);
+  return PAIR_ROUTES.find((r) => r === named) ?? "unknown";
+}
+
+const errorOf = (detail: string): string | undefined => asJsonString(parseJsonObject(detail)?.error);
+
+/** Ask the bridge for a pairing request. Open to an unpaired browser, like `POST /api/pair`. */
+export async function startPairRequest(): Promise<PairRequestStart> {
+  const body = await req<JsonObject>(
+    "/api/pair/request",
+    { method: "POST", body: "{}", provesNothing: true },
+    (status, detail) => {
+      if (status === 409 && errorOf(detail) === "no-approver") return { [HTTP_STATUS]: 409 };
+      if (status === 429) return { [HTTP_STATUS]: 429, retryAfter: asJsonNumber(parseJsonObject(detail)?.retryAfter) ?? 60 };
+      if (status === 403) return { [HTTP_STATUS]: 403 };
+      return null;
+    },
+  );
+  const status = asJsonNumber(body[HTTP_STATUS]);
+  if (status === 409) return { ok: false, reason: "no-approver" };
+  if (status === 429) return { ok: false, reason: "rate-limited", retryAfterSeconds: asJsonNumber(body.retryAfter) ?? 60 };
+  if (status === 403) return { ok: false, reason: "refused" };
+  const publicId = asJsonString(body.publicId);
+  const pollSecret = asJsonString(body.pollSecret);
+  const code = asJsonString(body.code);
+  const expiresInMs = asJsonNumber(body.expiresInMs);
+  if (publicId === undefined || pollSecret === undefined || code === undefined || expiresInMs === undefined) {
+    throw new ApiError("/api/pair/request → 200 without a request", 200);
+  }
+  return { ok: true, publicId, pollSecret, code, expiresInMs };
+}
+
+/** One poll of a request this browser started. The secret goes in a header, never in the path. */
+export async function pollPairRequest(publicId: string, pollSecret: string, signal?: AbortSignal): Promise<PairRequestPoll> {
+  const body = await req<JsonObject>(
+    `/api/pair/request/${encodeURIComponent(publicId)}`,
+    { signal, headers: { [PAIR_POLL_HEADER]: pollSecret } },
+    (status) => (status === 404 ? { state: "gone" } : null),
+  );
+  const state = asJsonString(body.state);
+  if (state === "waiting") return { state, expiresInMs: asJsonNumber(body.expiresInMs) ?? 0 };
+  if (state === "approved") {
+    const token = asJsonString(body.token);
+    const label = asJsonString(body.label);
+    if (token !== undefined && label !== undefined) return { state, token, label };
+  }
+  if (state === "refused" || state === "expired" || state === "gone") return { state };
+  throw new ApiError(`/api/pair/request → 200 with no known state`, 200);
+}
+
+/**
+ * End a request this browser started (Cancel, or the block went away). `keepalive`, so it still leaves
+ * when the page is being closed. Nothing waits on it: the request runs out on its own anyway.
+ */
+export async function cancelPairRequest(publicId: string, pollSecret: string): Promise<void> {
+  await req<JsonObject>(
+    `/api/pair/request/${encodeURIComponent(publicId)}`,
+    { method: "DELETE", keepalive: true, provesNothing: true, headers: { [PAIR_POLL_HEADER]: pollSecret } },
+    (status) => (status === 404 ? {} : null),
+  );
+}
+
+/** A 403 from the approver's gate is an answer the page can name, whatever the body said. */
+function approverRefusal(status: number, detail: string): JsonObject | null {
+  if (status === 404) return { state: "gone" };
+  if (status === 409) return { state: "answered" };
+  if (status === 403) return { state: "forbidden" };
+  if (status === 400 && errorOf(detail) === "bad-label") return { state: "bad-label" };
+  return null;
+}
+
+/** Read an open request as the approver. Needs this browser's paired token with write access. */
+export async function fetchPairApproval(publicId: string, signal?: AbortSignal): Promise<PairApproval> {
+  const body = await req<JsonObject>(`/api/pair/approve/${encodeURIComponent(publicId)}`, { signal }, approverRefusal);
+  const state = asJsonString(body.state);
+  if (state === "gone" || state === "answered" || state === "forbidden") return { state };
+  const choices = Array.isArray(body.choices) ? body.choices.flatMap((c) => asJsonString(c) ?? []) : [];
+  if (choices.length !== 3) throw new ApiError("/api/pair/approve → 200 without three codes", 200);
+  return {
+    state: "open",
+    browser: asJsonString(body.browser) ?? null,
+    os: asJsonString(body.os) ?? null,
+    route: pairRouteOf(body.route),
+    claimed: body.forwardedFrom === null || body.forwardedFrom === undefined ? null : pairRouteOf(body.forwardedFrom),
+    choices,
+    expiresInMs: asJsonNumber(body.expiresInMs) ?? 0,
+    endsAt: asJsonNumber(body.endsAt) ?? null,
+  };
+}
+
+/** Answer a request: the tapped code and the new device's name, or `refuse` for "Not my device". */
+export async function answerPairApproval(
+  publicId: string,
+  answer: { code: string; label: string } | { refuse: true },
+): Promise<PairApproveResult> {
+  const body = await req<JsonObject>(
+    `/api/pair/approve/${encodeURIComponent(publicId)}`,
+    { method: "POST", body: JSON.stringify(answer) },
+    approverRefusal,
+  );
+  const state = asJsonString(body.state);
+  if (state === "approved") return { state, label: asJsonString(body.label) ?? "" };
+  if (state === "refused") return { state, reason: asJsonString(body.reason) === "wrong-code" ? "wrong-code" : "refused" };
+  if (state === "gone" || state === "answered" || state === "bad-label" || state === "forbidden") return { state };
+  throw new ApiError("/api/pair/approve → 200 with no known state", 200);
 }
 
 /**

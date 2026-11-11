@@ -18,8 +18,10 @@ export interface PairLimiter {
   /**
    * Count one attempt from `source` at `now` and say whether it is allowed. `first` is true on the
    * first refusal of a window, so a caller can audit the burst once instead of once per request.
+   * `retryAfterMs` is set on a refusal: how long until the oldest counted attempt leaves the window,
+   * so a caller can say exactly when the next attempt counts (the pairing-request limit does).
    */
-  hit(source: string, now?: number): { allowed: boolean; first: boolean };
+  hit(source: string, now?: number): { allowed: boolean; first: boolean; retryAfterMs?: number };
   /** How many addresses are tracked right now (for the bounded-map test). */
   size(): number;
 }
@@ -53,7 +55,8 @@ export function createPairLimiter(
       if (entry.stamps.length >= limit) {
         const first = !entry.refused;
         entry.refused = true;
-        return { allowed: false, first };
+        const oldest = entry.stamps[0] ?? now;
+        return { allowed: false, first, retryAfterMs: Math.max(0, windowMs - (now - oldest)) };
       }
       entry.stamps.push(now);
       // Re-insert so the Map's insertion order is least-recently-active first, then bound it.

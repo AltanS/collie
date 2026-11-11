@@ -971,6 +971,12 @@ export interface DevicesData {
   devices: PairedDeviceWire[];
   /** True when the fetch failed — the lists below are then empty rather than authoritative. */
   error: boolean;
+  /**
+   * True when that failure was a 401 or 403 that is not the bridge's own pairing refusal: the read
+   * was refused, so nothing here is known, and the card says so instead of "could not load". Only
+   * ever set together with `error`.
+   */
+  denied?: boolean;
 }
 
 /**
@@ -1004,6 +1010,9 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
     // answer, not a failure: pairing is on and this device is not in it, and the card then offers the
     // pair form. The latch was already set where the refusal was read (lib/api.ts).
     if (isPairingRefusal(e)) return { enforced: true, current: null, devices: [], error: false };
+    // Any other refusal (a fronting proxy's 401/403) is a read that was refused: the card says that
+    // this browser is not allowed to read, and does not guess what is or is not paired.
+    if (isAuthError(e)) return { enforced: false, current: null, devices: [], error: true, denied: true };
     // Any other failed read says nothing about pairing, so the latch is left exactly as it was.
     return { enforced: false, current: null, devices: [], error: true };
   }

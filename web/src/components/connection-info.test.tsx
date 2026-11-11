@@ -18,6 +18,13 @@ describe("ConnectionInfo — device access row", () => {
     expect(screen.getByText("Connected")).toBeInTheDocument();
   });
 
+  it("a refused snapshot with a token in storage reads as refused, not as paired", () => {
+    render(<ConnectionInfo bridge={undefined} device={undefined} denied />);
+    expect(screen.getByText("Refused, this browser has no access")).toBeInTheDocument();
+    expect(screen.queryByText("Enforced, this device is paired")).toBeNull();
+    expect(screen.queryByText("Not enforced")).toBeNull();
+  });
+
   it("a browser with no token reads as enforced and not paired", () => {
     localStorage.clear();
     render(<ConnectionInfo bridge={undefined} device={undefined} />);

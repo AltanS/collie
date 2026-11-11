@@ -46,8 +46,9 @@ The two device gates answer different questions, and you can run either, both, o
 Pairing requires no extra infrastructure. It fits a direct `tailscale serve` setup where no proxy
 exists to inject headers.
 
-Pairing gates every `/api` route, reads included. Only two routes stay open: `/api/health`, which
-a monitor or a load balancer asks, and `/api/pair`, which a device needs before it holds a token.
+Pairing gates every `/api` route, reads included. Only three routes stay open: `/api/health`, which
+a monitor or a load balancer asks, `/api/pair`, which a device needs before it holds a token, and
+`/api/pair/request`, which a device uses to [pair with a phone](#pair-with-a-phone).
 `/api/health` answers the build, the crew mode and three counts of the last seven days (how often the
 input box read as free, how often it could not be read, and how often a person sent by hand past a
 screen Collie could not read). The counts name no pane, no text and no person.
@@ -101,6 +102,58 @@ line with the reason `agent-pane`. The log never holds the code or the token.
 ```json
 {"ts":"2026-11-11T09:30:00.000Z","action":"pair","device":"pixel","detail":{"label":"pixel","route":"loopback","forwardedFrom":"tailnet","mintSession":"main","mintPane":"w1:p3"}}
 ```
+
+### Pair with a phone
+
+A browser that is not paired can also ask a paired phone to let it in, with no terminal. In the
+browser, tap **Pair with your phone**. It shows a QR code, a 6-character code and a countdown of two
+minutes. Scan the QR code with the paired phone. The phone opens **Pair a device** in Collie, which
+shows the browser and system that ask (for example `Chrome on Linux`) and the network they ask from.
+Then it shows three codes, under the line **Only if you started this on a screen in front of you.** Tap the one the other screen shows. The phone also names the new device;
+the name follows the rules of `collie pair`, and a name in use gets a number.
+
+There is no plain Yes. A link alone can come from anyone who can reach Collie, so the right code is
+the proof that you see the other screen. A wrong tap ends the request for good, and so does **Not my
+device**. On the right tap, Collie pairs the browser and hands it its token once. The browser stores
+it as the code form does and reloads. The new device ends when the phone that let it in ends: a phone
+paired with `--expires` passes on its own end date, and the phone says so before the tap. A phone with
+no expiry gives a device with no expiry, as `collie pair` does without `--expires`.
+
+The network line states only what the bridge can see. Behind a front door on the same machine, such
+as `tailscale serve`, every request reaches the bridge from this computer, so the phone says **Asks
+through a front door on this computer**. The address class the door passed on is shown as the door's
+word, which Collie cannot check. A request from an internet address, or one the bridge cannot place,
+adds a warning line.
+
+The code proves that someone sees the other screen. It does not prove who that someone is. A
+stranger who can reach Collie can start a request, send you the link and read you the code over a
+call or a chat. The phone cannot tell that apart from your own laptop. Tap a code only for a request
+you started yourself, on a screen in front of you. If you did not start it, tap **Not my device**.
+
+The rules the bridge keeps:
+
+- Only a paired device with full access can answer: its own token, and when `COLLIE_DEVICE_HEADER`
+  is set, a name on the allowlist too. The CLI's [local read credential](#the-clis-own-reads), a
+  browser that is not paired and a crew forward are refused.
+- With no paired device, the request is refused, and the browser says to run `collie pair`.
+- At most three requests are open at once, and one source address can ask six times in ten minutes.
+  An IPv6 source counts by its /64, since one host commonly holds a whole /64. Every try counts,
+  one with no paired device too. The bridge makes at most 30 requests in ten minutes from all sources
+  together: five sources at their own cap. Past that, the answer is `429` with `Retry-After`.
+- One source has one open request. A new one replaces the old, and **Cancel** ends it on the
+  bridge.
+- The browser polls and cancels with a secret that only it holds, sent in a header. A wrong secret
+  reads the same as an unknown request.
+- Requests live in memory. A bridge restart drops them, and the browser shows a new code. A token
+  the browser did not collect in time is revoked. A restart between the tap and the collect leaves
+  a listed device that nobody holds. Remove it in the device list.
+- A crew member serves no browser door, so it answers `404`.
+
+Each step writes one line to the audit log: `pair-request` with the route, `pair-approve` with the
+approving device, the new label and both routes, and `pair-request-refused` with the reason
+`wrong-code`, `refused`, `expired`, `cancelled`, `replaced` or `rate`. A run of `rate` refusals
+writes one line: per burst for one source, per ten minutes for the global caps. The log never holds a code, a request id, the secret or
+the token.
 
 ### The CLI's own reads
 
@@ -316,6 +369,7 @@ facts. It is not a list of fixes. The state folder is `~/.local/state/collie` un
 | `paired-devices.json` in the state folder | It holds hashes, not tokens, so a read gives nothing to spend. A program that adds its own entry, with the hash of a token it made up, has a paired device. The bridge reads the file on each request, so no restart is needed. |
 | `pairing-pending.json` in the state folder | A program that writes the hash of a code it chose can claim that code at `POST /api/pair`. It never runs `collie pair`, so the agent check never runs, and the audit line names whatever pane the file names, or `not placed`. |
 | A pairing code on screen | `collie pair` prints its code in a pane. A program that reads that pane through the multiplexer can claim the code before your phone does. The phone then hears that no code waits, and the audit log shows a pairing you did not make. |
+| `POST /api/pair/request` on loopback | A program can ask for a pairing request, show its code in a pane and send the front door's header to choose the network line the phone shows. It still needs a person to tap the right code on a paired device. |
 | `POST /api/pair` on loopback | It needs a live code. Its `Origin` rule stops a web page, not a local program: a local program writes its own `Origin` and `Host` headers, and a request with no `Origin` is taken from a loopback host name. |
 | `local-secret` in the state folder | The CLI's read credential. It reads every session through the bridge on the same machine. It never writes, and never opens the Files view. |
 | The profile of a paired browser | The browser keeps its token in local storage. A program that reads the profile files gets a full device token. A program that drives the browser, for example through a debugging port, taps as you. |
