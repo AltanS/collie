@@ -82,8 +82,11 @@ export function PairedDevices({ data }: { data: DevicesData }) {
   // A failed load (`data.error`, which is also the no-loader placeholder's shape) says nothing
   // about pairing, so it offers no form either (#512): the load-error line above is the whole
   // answer until the bridge replies, never an empty registry read as "nothing is paired".
-  const unpaired =
-    !data.error && (!token || refused || (data.enforced && data.current === null));
+  // A read the bridge or its proxy REFUSED (`data.denied`) is the exception: it is a refusal, and the
+  // way out of a refusal is the pair form, so an unpaired browser keeps it there.
+  const unpaired = data.denied
+    ? !token || refused
+    : !data.error && (!token || refused || (data.enforced && data.current === null));
 
   const pairedAsMessage = data.current
     ? t("settings.devices.pairedAs", { device: data.current })
@@ -112,7 +115,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
 
       {data.error && (
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-          {t("settings.devices.loadError")}
+          {data.denied ? t("settings.devices.denied") : t("settings.devices.loadError")}
         </p>
       )}
 

@@ -430,6 +430,61 @@ describe("PairedDevices — the fragment the read-only strip links to", () => {
   });
 });
 
+// Three states, not two: the read answered, the read was refused, the read failed. Only the first may
+// say anything about what is paired. The loader feeds the card exactly these shapes (lib/loaders.ts).
+describe("PairedDevices — what the card says for each answer of the read", () => {
+  const DENIED: DevicesData = { enforced: false, current: null, devices: [], error: true, denied: true };
+  const FAILED: DevicesData = { enforced: false, current: null, devices: [], error: true };
+  const LOAD_ERROR = "Couldn’t load the paired devices from the bridge.";
+  const DENIED_LINE = "This browser has no access, so Collie cannot show the paired devices.";
+  const DESCRIPTION = "Every read and every write needs a paired device.";
+
+  test("an answered read with an empty list keeps its text, and no error line", () => {
+    setDeviceToken("tok-placeholder");
+    render(<PairedDevices data={{ enforced: true, current: "my phone", devices: [], error: false }} />);
+    expect(screen.getByText(DESCRIPTION)).toBeInTheDocument();
+    expect(screen.queryByText(LOAD_ERROR)).not.toBeInTheDocument();
+    expect(screen.queryByText(DENIED_LINE)).not.toBeInTheDocument();
+  });
+
+  test("an answered read with devices lists them and says nothing of a failure", () => {
+    setDeviceToken("tok-placeholder");
+    render(<PairedDevices data={PAIRED} />);
+    expect(screen.getByText("This device")).toBeInTheDocument();
+    expect(screen.getByText("This device is paired as", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText(LOAD_ERROR)).not.toBeInTheDocument();
+    expect(screen.queryByText(DENIED_LINE)).not.toBeInTheDocument();
+  });
+
+  test("a refused read says this browser has no access, and the pair form stays", () => {
+    render(<PairedDevices data={DENIED} />);
+    expect(screen.getByText(DENIED_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(LOAD_ERROR)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ungated/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/nothing is paired/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Not enforced")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/pairing code/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /pair this device/i })).toBeInTheDocument();
+  });
+
+  test("a refused read on a browser that holds a token the bridge never refused offers no form", () => {
+    setDeviceToken("tok-placeholder");
+    render(<PairedDevices data={DENIED} />);
+    expect(screen.getByText(DENIED_LINE)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/pairing code/i)).not.toBeInTheDocument();
+  });
+
+  test("a failed read (a 500 or no network) says it could not load, and claims nothing else", () => {
+    render(<PairedDevices data={FAILED} />);
+    expect(screen.getByText(LOAD_ERROR)).toBeInTheDocument();
+    expect(screen.queryByText(DENIED_LINE)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ungated/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/nothing is paired/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Not enforced")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/pairing code/i)).not.toBeInTheDocument();
+  });
+});
+
 // M46 hardening: the pair screen says why it is there.
 describe("PairedDevices — the pair screen names its cause", () => {
   test("a browser that never held a token says it has not been paired, and names `collie pair`", () => {
