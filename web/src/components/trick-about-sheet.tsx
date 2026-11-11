@@ -15,8 +15,8 @@ import type { TricksRunsOn, WireTrickInfo } from "@/lib/tricks/schema";
 //
 // FROM TOP TO BOTTOM
 //   1. the trick's name as the sheet's title, and under it the manifest's one-line `description`;
-//   2. the manifest's `about` text as paragraphs (a blank line splits them), or one muted line when there
-//      is none. With an `about` or a `description`, a small muted line under it says the author wrote the
+//   2. the manifest's `about` text as paragraphs (a blank line splits them), or, when the trick has neither
+//      an `about` nor a `description`, one muted line saying so. With an `about` or a `description`, a small muted line under it says the author wrote the
 //      text and Collie did not check it; the rows below are the bridge's own facts. Plain text: no markdown, no HTML and no link is drawn, so React draws it as text and a
 //      line break inside a paragraph is kept as one;
 //   3. "What it does": ONLY facts the bridge already sends for the row. Where it draws, what it reads from
@@ -125,15 +125,18 @@ export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite =
             {trick.description}
           </p>
         )}
-        <div data-section="about" className={trick.description === undefined ? "" : "pt-3"}>
-          {paragraphs.length === 0 && <p className="text-sm text-muted-foreground">{t("settings.tricks.about.none")}</p>}
-          {paragraphs.map((paragraph, index) => (
-            // The order never changes while the sheet is open and a paragraph has no identity of its own.
-            <p key={index} className="text-sm break-words whitespace-pre-line [&:not(:first-child)]:mt-3">
-              {paragraph}
-            </p>
-          ))}
-        </div>
+        {/* No description and no about: the one muted line. A description alone is the text, so no such line. */}
+        {(paragraphs.length > 0 || trick.description === undefined) && (
+          <div data-section="about" className={trick.description === undefined ? "" : "pt-3"}>
+            {paragraphs.length === 0 && <p className="text-sm text-muted-foreground">{t("settings.tricks.about.none")}</p>}
+            {paragraphs.map((paragraph, index) => (
+              // The order never changes while the sheet is open and a paragraph has no identity of its own.
+              <p key={index} className="text-sm break-words whitespace-pre-line [&:not(:first-child)]:mt-3">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        )}
         {(trick.about !== undefined || trick.description !== undefined) && (
           <p data-line="author-note" className="pt-2 text-xs text-muted-foreground">
             {t("settings.tricks.about.authorNote")}

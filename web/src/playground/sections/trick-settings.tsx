@@ -213,7 +213,7 @@ export function TrickSettingsSection(): ReactNode {
         <SheetBox
           n={14}
           state="trick-settings-about-none"
-          label="no about"
+          label="neither a description nor an about"
           trick={trick("clock", "Clock", { on: false, state: "off", places: ["belt"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } })}
         />
         <SheetBox

@@ -60,8 +60,20 @@ describe("TrickAboutSheet", () => {
     const order = [...(body?.children ?? [])].map((el) => el.getAttribute("data-section") ?? el.getAttribute("data-line"));
     expect(order).toEqual(["description", "about", "author-note", "does", "from"]);
     unmount();
+    // A description alone is the text: its line, then the note, and no "no description" line.
     open({ ...BASE, description: "Only a line." });
     expect(screen.getByText("Written by the trick's author. Collie did not check it.")).toBeInTheDocument();
+    expect(screen.queryByText("This trick has no description.")).toBeNull();
+    const alone = screen.getByRole("dialog").querySelector('[data-slot="trick-about-body"]');
+    expect([...(alone?.children ?? [])].map((el) => el.getAttribute("data-section") ?? el.getAttribute("data-line"))).toEqual(["description", "author-note", "does", "from"]);
+  });
+
+  it("says no description only when the trick has neither an about nor a description", () => {
+    const { unmount } = open({ ...BASE, about: "Only an about." });
+    expect(screen.queryByText("This trick has no description.")).toBeNull();
+    unmount();
+    open(BASE);
+    expect(screen.getByText("This trick has no description.")).toBeInTheDocument();
   });
 
   it("says so in one muted line when the trick has no about, and draws no author note", () => {
