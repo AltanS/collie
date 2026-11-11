@@ -907,7 +907,7 @@ export class TricksService implements TricksSurface {
     await syncConfig(fresh.dir, target);
     const powers = (await scanTrickDir(diskTrickFs, target, id, undefined)).manifest;
     const at = new Date(this.now()).toISOString();
-    const written = await updateSwitches(this.deps.stateDir, (now) => withApproval(now, id, { at, hash, by, powers: powers === undefined ? null : powersOf(powers) }));
+    const written = await updateSwitches(this.deps.stateDir, (now) => withApproval(now, id, { at, hash, by, powers: powers === undefined ? null : powersOf(powers), instructs: powers?.rules !== undefined }));
     rt.pending = null;
     rt.settle = null;
     this.deps.audit?.({ action: "trick.approve", detail: { trick: id, hash: hash.slice(0, 16), by } });

@@ -1408,3 +1408,22 @@ describe("an agent view (contract 2): the keys only, the view answers later", ()
     expect(row?.rules?.text).toBe(RULES);
   });
 });
+
+describe("review 8 V-N6: approving a trick with rules clears take changes without asking", () => {
+  test("an old auto: true is written false at the approval, so a later version without rules does not take itself", async () => {
+    const r = await rig([exited(belt("x"))]);
+    await makeTrick(r.configDir, "morph", 'id = "morph"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n', { "rules.md": "Draw one screen.\n" });
+    await tickAt(r, T0);
+    await r.service.setSwitch(HOST, "morph", true);
+    // A switch file from before the rules, or written by hand, that says auto.
+    await updateSwitches(r.stateDir, (now) => {
+      const held = now.on.get("morph");
+      return held === undefined ? now : withEntry(now, "morph", { ...held, auto: true });
+    });
+    await writeFile(join(r.configDir, TRICKS_DIR, "morph", "rules.md"), "Draw one screen.\nKeep it short.\n");
+    await tickAt(r, T0 + 1000);
+    expect(await r.service.setSwitch(HOST, "morph", true)).toMatchObject({ status: 200 });
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.morph.auto).toBe(false);
+  });
+});

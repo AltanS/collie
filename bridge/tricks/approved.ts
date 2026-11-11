@@ -383,7 +383,8 @@ export async function approveFolder(opts: ApproveOptions): Promise<ApproveResult
   if (!snap.ok) return snap;
   const read = await readManifestFile(fs, snap.dir, opts.id);
   const powers = read.manifest === undefined ? null : powersOf(read.manifest);
-  await updateSwitches(opts.stateDir, (now) => withApproval(now, opts.id, { at: opts.at, hash: snap.hash, by: opts.by, powers }));
+  const instructs = read.manifest?.rules !== undefined;
+  await updateSwitches(opts.stateDir, (now) => withApproval(now, opts.id, { at: opts.at, hash: snap.hash, by: opts.by, powers, instructs }));
   const out: ApproveResult = { ok: true, hash: snap.hash, dir: snap.dir, powers };
   if (read.manifest !== undefined) out.manifest = read.manifest;
   return out;
