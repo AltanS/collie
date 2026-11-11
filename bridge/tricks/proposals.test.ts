@@ -660,6 +660,14 @@ describe("the card belongs to Collie and to the person", () => {
     expect(l.sent).toEqual([]);
   });
 
+  test("the proposer's receipt names the card's title and the option's label, as a poster's does", async () => {
+    const l = await lead();
+    await l.proposals.propose(proposal("legs"), AGENT);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok" });
+    expect(l.sent).toEqual([{ to: "minibuch/%3#abcd", body: `Answer to ${card!.id} "Switch on the trick legs?"\nOption: on (Switch it on)` }]);
+  });
+
   test("a dismiss types nothing into the proposer's session", async () => {
     const l = await lead();
     await l.proposals.propose(proposal("legs"), AGENT);
@@ -770,3 +778,4 @@ describe("nothing outside the store moves before the yes (review S5)", () => {
     expect(await wholeTree(l, () => false)).toEqual(before);
   });
 });
+

@@ -1322,7 +1322,9 @@ export class HillService {
     const text = cleaned.text === "" ? null : cleaned.text;
     const textRule = this.textRule(decision, intent, text);
     if (textRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", textRule, "open", null));
-    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision));
+    // Collie's own card carries Collie's own title and labels (a trick's id, fixed words), so the session
+    // it tells gets them as a poster does.
+    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
     // Where the answer goes: `replyTo`, else the poster. A trick with no `replyTo` has nothing to type into.

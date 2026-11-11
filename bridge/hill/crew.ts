@@ -534,7 +534,8 @@ export class HillMemberForward implements HillLeadForward {
     if (read.kind === "unknown") return { ok: false, missing: false, error: op === "withdraw" ? `the lead (${lead}) did not confirm the withdraw; check with: collie hill status ${id}` : hillLeadAway(lead) };
     if (read.kind === "failed") return { ok: false, missing: false, error: read.error };
     if (asJsonBoolean(read.body.ok) === true) {
-      const decision = readDecision(read.body.decision);
+      // Shown only, never stored: Collie's own card (a trick proposal) reads too (parse.ts `collie`).
+      const decision = readDecision(read.body.decision, { collie: true });
       return decision === null ? { ok: false, missing: false, error: `the lead (${lead}) answered without a decision` } : { ok: true, decision };
     }
     const error = leadWords(asJsonString(read.body.error), `no decision ${id} from this session`);

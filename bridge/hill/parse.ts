@@ -226,9 +226,12 @@ function numberOrNull(row: JsonObject, key: string): number | null | undefined {
 /** How a stored decision is read. */
 export interface ReadDecisionOptions {
   /**
-   * Whether a Decision of Collie's own (`from.kind` `collie`) reads. Only this bridge's own store says
-   * yes (store.ts): a decision that arrives from anywhere else, a lead's answer to a crew member or a
-   * socket answer the CLI reads, never stands for Collie. Default: no.
+   * Whether a Decision of Collie's own (`from.kind` `collie`) reads. This bridge's own store says yes
+   * (store.ts): a decision that arrives from anywhere else never stands for Collie, and is never stored
+   * or answered as one. The one other yes is a `status` or `withdraw` reply, which is only shown: the CLI
+   * prints it, and a crew member hands its lead's reply on to the CLI. The bridge that holds the card
+   * decides who may read it (hill/service.ts `status`: the poster, or the session `replyTo` names, which
+   * for a proposal card is the proposing session as the lead placed it). Default: no.
    */
   readonly collie?: boolean;
 }

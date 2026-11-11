@@ -10,7 +10,7 @@ import { deniedFoldersSync, HillMediaStore } from "../bridge/hill/media.ts";
 import { HOST } from "../bridge/host.ts";
 import { memoryHillReceipts } from "../bridge/hill/receipts.ts";
 import { CREW_HILL_MEDIA_ROUTE, CREW_HILL_POST_ROUTE, HILL_CALL_BUDGET_MS, HILL_FORWARD_BUDGET_MS, HILL_MEDIA_BUDGET_MS, HILL_POST_ASK_MS, HillCrewLead, HillHeldMedia, HillMemberForward, type HillLeadLink } from "../bridge/hill/crew.ts";
-import { HillService } from "../bridge/hill/service.ts";
+import { HillService, type HillServiceDeps } from "../bridge/hill/service.ts";
 import { HillStore } from "../bridge/hill/store.ts";
 import { HillSwitch, readHillSwitch } from "../bridge/hill/switch.ts";
 import { walkyPlace } from "../bridge/hill/walky.ts";
@@ -91,7 +91,7 @@ interface Bridge {
 }
 
 /** A bridge with the hill on a real socket. `withHill: false` is a bridge built without it. POSIX only. */
-async function bridge(withHill = true): Promise<Bridge> {
+async function bridge(withHill = true, extra: Partial<HillServiceDeps> = {}): Promise<Bridge> {
   const stateDir = mkdtempSync(join(tmpdir(), "hill-cli-"));
   cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
   const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
@@ -114,6 +114,7 @@ async function bridge(withHill = true): Promise<Bridge> {
     media: new HillMediaStore(join(stateDir, "hill"), deniedFoldersSync([stateDir])),
     // The real switch on this bridge's own state folder, so `collie hill on|off` moves it.
     hillSwitch: new HillSwitch(stateDir, () => undefined),
+    ...extra,
   });
   const base = { socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined };
   const server = withHill ? new WalkyServer({ ...base, hill }) : new WalkyServer(base);
@@ -861,6 +862,37 @@ describe("a post on a slow crew link", () => {
     expect(await cmdHillPost(again, [...POST, "--request-id", retry!])).toBe(EXIT.OK);
     expect(again.io.stdout).toEqual([leadStore.all()[0]!.id]);
     expect(leadStore.all()).toHaveLength(1);
+  });
+});
+
+describe("status of Collie's own card, from the session it tells", () => {
+  const COLLIE = { kind: "collie" as const, ref: { type: "proposal" as const, id: "legs", hash: "a".repeat(64) }, label: "Collie" };
+  const CARD = { requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f", title: "Switch on the trick legs?", summary: "An agent session (repo#one) on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" as const, recommends: null };
+
+  socketTest("the proposing session reads the card before and after the answer; another pane does not", async () => {
+    const b = await bridge(true, { onCollieAnswer: async () => ({ ok: true }) });
+    const sock = [walkySocketPath(b.stateDir)];
+    const posted = b.hill.postCollie(COLLIE, CARD, { tellOf: "local/%1#aaaa" });
+    expect(posted.ok).toBe(true);
+    const before = deps(sock);
+    expect(await cmdHillStatus(before, ["dc_cli000000001"])).toBe(EXIT.OK);
+    expect(before.io.stdout).toEqual(["dc_cli000000001 open", "title: Switch on the trick legs?"]);
+    await b.hill.answer({ rid: "11111111-1111-4111-8111-111111111111", node: "hill/dc_cli000000001", intent: "on", value: { text: null } }, "dc_cli000000001", "Pixel 9");
+    const after = deps(sock);
+    expect(await cmdHillStatus(after, ["dc_cli000000001"])).toBe(EXIT.OK);
+    expect(after.io.stdout).toEqual(["dc_cli000000001 answered", "title: Switch on the trick legs?", "answer: on (Switch it on)", "by: Pixel 9", "delivery: typed"]);
+    // Nobody else reads it, and the proposer cannot take it back.
+    const other = deps(sock, inPane("%2"));
+    expect(await cmdHillStatus(other, ["dc_cli000000001"])).not.toBe(EXIT.OK);
+    expect(await cmdHillWithdraw(deps(sock), ["dc_cli000000001"])).not.toBe(EXIT.OK);
+  });
+
+  socketTest("on a crew member, the proposing session reads its lead's card", async () => {
+    const { sock, lead } = await slowCrew(0);
+    expect(lead.postCollie(COLLIE, CARD, { tellOf: "laptop/%1#aaaa" }).ok).toBe(true);
+    const reader = deps(sock);
+    expect(await cmdHillStatus(reader, ["dc_lead00000001"])).toBe(EXIT.OK);
+    expect(reader.io.stdout).toEqual(["dc_lead00000001 open", "title: Switch on the trick legs?"]);
   });
 });
 
