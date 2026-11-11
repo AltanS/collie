@@ -916,8 +916,8 @@ describe("the composition of a view that wraps (2026-11-10)", () => {
 });
 
 describe("linkText, the place's pass over free text", () => {
-  const SAID = "see http://bluefin:5198 and src/a.tsx";
-  const END = "http://bluefin:5198";
+  const SAID = "see http://workshop:5198 and src/a.tsx";
+  const END = "http://workshop:5198";
   const nodes = [
     { kind: "line", text: SAID },
     para(SAID),
@@ -950,9 +950,9 @@ describe("linkText, the place's pass over free text", () => {
   it("leaves a button, a chip, a link and a row that is itself a link as they were", () => {
     const linkText = vi.fn((text: string) => <mark data-linked="">{text}</mark>);
     const inert = viewOfNodes(
-      bar(button({ label: "Open src/a.tsx", intent: "open" }), { kind: "chip", text: "http://bluefin:5198" }),
-      { kind: "para", kids: [{ kind: "link", text: "http://bluefin:5198", attrs: { href: "https://example.com" } }] },
-      list(row("src/a.tsx", { href: "https://example.com", end: "http://bluefin:5198" })),
+      bar(button({ label: "Open src/a.tsx", intent: "open" }), { kind: "chip", text: "http://workshop:5198" }),
+      { kind: "para", kids: [{ kind: "link", text: "http://workshop:5198", attrs: { href: "https://example.com" } }] },
+      list(row("src/a.tsx", { href: "https://example.com", end: "http://workshop:5198" })),
     );
     const { container } = draw(inert, { linkText });
     expect(linkText).not.toHaveBeenCalled();

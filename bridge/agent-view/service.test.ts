@@ -22,7 +22,7 @@ import type { JsonValue } from "../json.ts";
 
 const BIN = "/home/op/apps/collie/bin/collie";
 /** The lane's own binary: 59 characters, the longest path the hint has to carry. */
-const LANE_BIN = "/var/home/altan/projects/collie-workspace/collie/bin/collie";
+const LANE_BIN = "/home/operator/projects/workshop-lane/collie-tip/bin/collie";
 const ONE = "local/%1#aaaa";
 const TWO = "local/%2#bbbb";
 const T = "morph";

@@ -21,7 +21,7 @@ function screenOf(raw: JsonValue): MorphScreen {
 
 const LINES = screenOf([
   { kind: "line", text: "Edit web/src/b.tsx:3 first." },
-  { kind: "line", text: "Look at it at http://bluefin:5198 on your phone." },
+  { kind: "line", text: "Look at it at http://workshop:5198 on your phone." },
   { kind: "list", kids: [{ kind: "row", text: "section.tsx" }, { kind: "row", text: "ghost.tsx" }] },
   { kind: "bar", kids: [{ kind: "button", attrs: { label: "Open src/a.tsx", intent: "open" } }] },
 ]);
@@ -40,8 +40,8 @@ afterEach(cleanup);
 describe("links in the Morph screen's text", () => {
   it("draws a web address as a link that opens in a new tab", () => {
     draw(null);
-    const link = screen.getByRole("link", { name: "http://bluefin:5198" });
-    expect(link).toHaveAttribute("href", "http://bluefin:5198");
+    const link = screen.getByRole("link", { name: "http://workshop:5198" });
+    expect(link).toHaveAttribute("href", "http://workshop:5198");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(link.className).toContain("text-primary");
