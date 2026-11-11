@@ -41,7 +41,7 @@ import type { Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
-import type { HeldRow, SendMode, SendOffer, SendWhen } from "@/lib/surface/send";
+import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
 import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -150,7 +150,13 @@ export interface ComposerHandle {
    * Protocol request with its request id, the same refusal notice at the thumb, the same Morph hint.
    * True only on a send the bridge confirmed. A Morph button's tap (components/morph-view.tsx).
    */
-  sendLine: (text: string) => Promise<boolean>;
+  sendLine: (text: string, tap?: ViewTap) => Promise<boolean>;
+}
+
+/** TODO(agent-view web): a tap in an agent view, as the bridge reads it: the screen's rev and the control path. */
+export interface ViewTap {
+  readonly rev: number;
+  readonly control: string;
 }
 
 interface ComposerProps {
@@ -390,6 +396,12 @@ interface ComposerProps {
   /** The head that goes in front of the text with the hint (`[morph] from operator:`). Absent from an older bridge. */
   morphHead?: string | undefined;
   /**
+   * TODO(agent-view web): the agent view on screen, `{ trick, session }`. While it is set, every text this
+   * composer sends goes with a `view` field and no head or tail of the phone's own: the bridge builds the
+   * line (a head typed by any other door is refused `bad_head`). `morphHint` and `morphHead` are then unused.
+   */
+  morphView?: { readonly trick: string; readonly session: string } | undefined;
+  /**
    * Told when a send that carried the hint starts, and how it ended: the plain text (never the hint), the
    * phase, and the refusal's own words for a send that failed. The Morph body draws it at once.
    */
@@ -544,7 +556,7 @@ function moveCaret(from: HTMLTextAreaElement | null, to: HTMLTextAreaElement | n
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, morphHint, morphHead, onMorphRequest },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, morphHint, morphHead, morphView, onMorphRequest },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1257,7 +1269,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const startMessage = walky.startMessage;
   // The latest `send`, for the handle's `sendLine`: the handle is made once per `startMessage`, and a
   // send must read this render's gates (sending, locked, the Surface), never the first render's.
-  const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
+  const sendLineRef = useRef<(line: string, tap?: ViewTap) => Promise<boolean>>(() => Promise.resolve(false));
   useImperativeHandle(
     ref,
     () => ({
@@ -1266,7 +1278,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         startMessage(aim);
         focusInputImmediately();
       },
-      sendLine: (line) => sendLineRef.current(line),
+      sendLine: (line, tap) => sendLineRef.current(line, tap),
     }),
     [startMessage],
   );
@@ -1694,7 +1706,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // no key of its own: no pre-flight, no type-then-verify, no sweep of a stranded draft (a draft in
   // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
-  async function send(value: string, isDraft: boolean, when?: SendWhen): Promise<boolean> {
+  async function send(value: string, isDraft: boolean, when?: SendWhen, tap?: ViewTap): Promise<boolean> {
     // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
     // the raw text. An agent pane's text is trimmed at both ends, as it always was. The emptiness
     // check and the mode read the fully trimmed text on both, so neither sees a difference.
@@ -1704,9 +1716,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // MORPH: while the Morph view shows, the text carries the session's head and hint (lib/morph/reader.ts).
     // The mode is read from the text as typed, so the wording never turns a send into a command. A send
     // that carries it is a request to the Morph view: the view is told the plain text now, and how it ended.
-    const words = withMorphHint({ text: t, hint: morphHint, head: morphHead, attachments: isDraft ? attachmentsRef.current.length : 0 });
+    // TODO(agent-view web): with an agent view on screen the bridge builds the head and the tail from its
+    // own stored screen, so the text goes as typed, with the `view` field (a tap adds its rev and control).
+    const view = morphView === undefined ? undefined : tap === undefined ? { trick: morphView.trick, session: morphView.session } : { trick: morphView.trick, session: morphView.session, rev: tap.rev, control: tap.control };
+    // TODO(agent-view web): remove `morphHint`, `morphHead` and `withMorphHint`. Only the bridge writes a
+    // view's head (SECURITY rule 2); a head typed here is refused `bad_head` by the Send Protocol.
+    const words = view !== undefined ? t : withMorphHint({ text: t, hint: morphHint, head: morphHead, attachments: isDraft ? attachmentsRef.current.length : 0 });
     const tell = (phase: MorphRequestNote["phase"], reason: string | null = null): void => {
-      if (words !== t) onMorphRequest?.({ text: t, phase, reason });
+      if (view !== undefined || words !== t) onMorphRequest?.({ text: t, phase, reason });
     };
     if (offlineRef.current) {
       const refusal = phoneRefusal(translate("composer.send.reconnect"));
@@ -1725,7 +1742,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     tell("sending");
     try {
-      const sent = await sendThroughProtocol(words, isDraft, modeFor(trimmed), null, false, undefined, when);
+      const sent = await sendThroughProtocol(words, isDraft, modeFor(trimmed), null, false, undefined, view === undefined ? when : undefined, view);
       tell(sent ? "sent" : "failed", sent ? null : refusalWordsRef.current);
       return sent;
     } catch (thrown) {
@@ -1733,7 +1750,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       throw thrown;
     }
   }
-  sendLineRef.current = (line) => send(line, false);
+  sendLineRef.current = (line, tap) => send(line, false, undefined, tap);
 
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
   // (mode, rows hash, text) until an answer arrives, so a lost answer never sends twice; an answer
@@ -1741,7 +1758,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `sent`, `effective` or a `discarded` the bridge took.
   // `resend` is a resend of an ended held row: the request carries the old id and an empty text, the
   // bridge takes the row's own text, and `shown` (the row's text, maybe masked) is only for the preview.
-  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen): Promise<boolean> {
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen, view?: SendRequestBody["view"]): Promise<boolean> {
     if (starting) return false;
     setSending(true);
     setSendRefusal(null);
@@ -1758,7 +1775,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: protocolIntent.current });
+      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: protocolIntent.current };
+      const res = await sendText(view === undefined ? base : { ...base, view });
       if (res.status === "noAnswer") {
         // No answer: the id stays, so the next tap on the same text asks for the same request.
         protocolIntent.current = res.intent;

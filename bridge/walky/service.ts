@@ -7,6 +7,7 @@
 // device, through `POST /api/walky`, and nothing else: the local socket refuses a send that names no
 // pane, so the kind fails closed. The local uid can lie about its pane (decision 4); the docs say so.
 
+import { hasViewHead } from "../../web/src/lib/agent-view/wire.ts";
 import { isScopeAddress, isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
@@ -15,6 +16,9 @@ import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import { WalkyOff, type WalkyOffBy } from "./off.ts";
 import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
+
+/** The receipt's reason for a walky body with a line that starts with an agent view's head (`bad_head`). */
+export const WALKY_BAD_HEAD = "bad_head: a line starts with an agent view's head, which only that view sends; rewrite the line";
 
 /** Who is sending: an agent's pane, or an operator by label. */
 export type WalkySenderRef = { readonly kind: "agent"; readonly pane: WalkyPane } | { readonly kind: "operator"; readonly label: string };
@@ -233,6 +237,8 @@ export class WalkyService {
     if (to === null) return { ok: false, error: NO_ADDRESS };
     // Past the cap the send is refused, never cut: the receipt says why, and the count keeps it.
     if (cleanBody(input.body).cut) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, BODY_TOO_LONG)] };
+    // One head, one door (agent views SECURITY rule 2): a walky message never carries a view's head.
+    if (hasViewHead(input.body)) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, WALKY_BAD_HEAD)] };
     const message = this.compose({ ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
     const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId, instance: sender.pane.instance } : null;
@@ -263,6 +269,8 @@ export class WalkyService {
    * lead it is routed on to the members it names; `verified` says how its sender was known.
    */
   async receive(message: WalkyMessage, verified: WalkyVerified, localOnly: boolean, via?: string, pane?: string): Promise<WalkyReceipt[]> {
+    // A crew hop's message is held to the head rule too: a member built before it may still send one.
+    if (hasViewHead(message.body)) return [this.deliverer.refusal(message.id, message.to, WALKY_BAD_HEAD, verified)];
     const options = via === undefined ? { verified, localOnly } : { verified, localOnly, via };
     return this.deliverer.deliver(message, null, pane === undefined ? options : { ...options, pane });
   }

@@ -3,6 +3,7 @@
 // Nothing here opens a path into a pane of its own: the send is `WalkyService.send` with
 // `{ kind: "operator", label }`, as `POST /api/walky` calls it.
 
+import { neutraliseViewHeads } from "../../web/src/lib/agent-view/wire.ts";
 import { maskTerminalTitle } from "../answer-mask.ts";
 import { paneName, type NameableP } from "../pane-name.ts";
 import { realAgentPanes } from "../tricks/panes.ts";
@@ -139,7 +140,9 @@ export function walkySend(walky: Pick<WalkyService, "send" | "status">, options:
   const waitMs = options.waitMs ?? HILL_SEND_WAIT_MS;
   return async (to, body, by) => {
     const id = (options.mintId ?? mintWalkyId)();
-    const answer = await walky.send({ id, to, body, replyTo: null }, { kind: "operator", label: by }, options.budget === undefined ? {} : { budget: options.budget });
+    // Collie composes this text from stored words (an answer, a crew state): a line that would read as a
+    // view's head is made harmless, never refused, so the receipt still goes (agent views SECURITY rule 2).
+    const answer = await walky.send({ id, to, body: neutraliseViewHeads(body), replyTo: null }, { kind: "operator", label: by }, options.budget === undefined ? {} : { budget: options.budget });
     if (!answer.ok) return "refused";
     let receipt = answer.receipts[0];
     const until = now() + waitMs;

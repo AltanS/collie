@@ -71,6 +71,8 @@ const REASONS = {
   turn_running: "ignore",
   steer_unsupported: "ignore",
   steer_not_allowed: "ignore",
+  bad_head: "ignore",
+  stale_view: "ignore",
   // a dialog on screen, shown already
   dialog_open: "ignore",
   dialog_after_enter: "ignore",

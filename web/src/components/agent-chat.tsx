@@ -837,7 +837,8 @@ export function AgentChat({
   const { linkFor } = useTrickHandlers();
   const morphLink = useMemo(() => linkFor(scope?.host ?? crewLead ?? ""), [linkFor, scope?.host, crewLead]);
   // A Morph tap sends through the composer's own send path: the request id, the refusal notice, the hint.
-  const sendFromMorph = useCallback((line: string) => composerRef.current?.sendLine(line) ?? Promise.resolve(false), []);
+  // TODO(agent-view web): a tap carries the screen's rev and control, so the bridge builds the line.
+  const sendFromMorph = useCallback((line: string, tap?: { readonly rev: number; readonly control: string }) => composerRef.current?.sendLine(line, tap) ?? Promise.resolve(false), []);
   // A launch this phone started: Send waits for the bridge to read the agent's first screen, the read
   // that also ends the bridge's launch window, so the button never offers a send the bridge refuses.
   const startup = useStartupReadiness({
@@ -3433,6 +3434,8 @@ export function AgentChat({
                   // While the Morph body shows, every text this composer sends carries the session's hint.
                   morphHint={morph.hint}
                   morphHead={morph.head}
+                  // TODO(agent-view web): the view on screen; its sends go with the `view` field.
+                  morphView={morph.target}
                   // And it tells the Morph body the plain text when the send starts, and how it ended.
                   onMorphRequest={morph.noteRequest}
                   // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a

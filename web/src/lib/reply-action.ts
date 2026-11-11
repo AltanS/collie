@@ -12,7 +12,7 @@
 // The per-harness draft and status readers stay, for display only: the stranded-draft preview, the
 // echo suppression (lib/draft-match.ts) and the status line.
 
-import { postSend } from "./api";
+import { isApiErrorStatus, postSend } from "./api";
 import { describeThrownError } from "./api-error-message";
 import { requestIdFor, type IntentId } from "./durable-control";
 import { t } from "./i18n";
@@ -41,6 +41,8 @@ export interface ReplyArgs {
   readonly held: IntentId | null;
   /** Test seam for the request id. */
   readonly mint?: () => string;
+  /** TODO(agent-view web): a send from an agent view, as the bridge takes it (lib/surface/send.ts `SendRequestBody.view`). */
+  readonly view?: SendRequestBody["view"];
 }
 
 export type ReplyOutcome =
@@ -61,7 +63,7 @@ export type ReplyOutcome =
    * screen the person acted on may be old. No queue and no retry: a person sends again once the pane
    * reads live.
    */
-  | { readonly status: "refused"; readonly reason: "offline"; readonly error: string };
+  | { readonly status: "refused"; readonly reason: "offline" | "view"; readonly error: string };
 
 /** The mode of a text with no offer behind it: a reserved lead is a command, everything else a send. */
 export function modeFor(text: string): SendMode {
@@ -80,12 +82,16 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   const capAck = args.capAck === true;
   // The extra confirm is its own intent: it must not replay the commit the cap refused.
   const resendOf = args.resendOf;
-  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${resendOf ?? ""}\u0000${args.when ?? ""}\u0000${args.text}`, args.mint ?? mintRequestId);
-  const body: SendRequestBody = { id: intent.requestId, pane: args.paneId, text: args.text, mode };
+  const viewKey = args.view === undefined ? "" : JSON.stringify(args.view);
+  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${resendOf ?? ""}\u0000${args.when ?? ""}\u0000${viewKey}\u0000${args.text}`, args.mint ?? mintRequestId);
+  const body: SendRequestBody = args.view === undefined ? { id: intent.requestId, pane: args.paneId, text: args.text, mode } : { id: intent.requestId, pane: args.paneId, text: args.text, mode, view: args.view };
   try {
     const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when }, args.scope);
     return { status: "answered", reply, reading: readSend(reply), requestId: intent.requestId };
   } catch (e) {
+    // TODO(agent-view web): a view send the bridge refused before the Send Protocol answers 409 with
+    // `{ error, code, view: true }`. It is an answer, not a lost one: never retried under the same id.
+    if (args.view !== undefined && isApiErrorStatus(e, 409)) return { status: "refused", reason: "view", error: describeThrownError(e) };
     return { status: "noAnswer", error: describeThrownError(e), intent };
   }
 }
