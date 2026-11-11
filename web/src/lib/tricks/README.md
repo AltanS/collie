@@ -1029,7 +1029,9 @@ labelled group, then ` [rules: ...]` while the session does not hold the rules. 
 escaped. A button carries no `value` and no `does`, so every word a tap sends is on the screen. The rev
 must equal the stored one, and the screen must not be stale (`stale_view`). Once a tap's send went,
 that screen takes no second tap (`stale_view`, "answered already"), also after a restart. A tap is refused at a
-question, a dialog or an answer box (`question`, `not_free`), and any view send while a turn runs
+question, a dialog or an answer box (`question`, `not_free`), over the person's draft in the box
+(`draft_present`, before any key touches it), on a pane whose program has no profile (`not_free`), and
+any view send while a turn runs
 (`busy`): nothing queues, nothing steers. Typed text gets the head only while the session is free; with a
 question open, a turn running or a command, it goes plain, as the person's own send. A refusal before
 the protocol is HTTP 409 `{ error, code, view: true }`; a send that reached it answers its receipt and

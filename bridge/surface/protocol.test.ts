@@ -17,7 +17,7 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { BOUNDS, BOX_CHANGED, LATE_PROBE, VIEW_NO_PROFILE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendLedger, type SendRequest } from "./protocol.ts";
+import { BOUNDS, BOX_CHANGED, LATE_PROBE, VIEW_AT_DRAFT, VIEW_AT_QUESTION, VIEW_NO_PROFILE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendLedger, type SendRequest } from "./protocol.ts";
 import { HEAD_CASES, NOT_HEAD_CASES } from "../agent-view/testdata/head-cases.ts";
 import { AgentViewService } from "../agent-view/service.ts";
 import { AgentViewStore } from "../agent-view/store.ts";
@@ -11494,5 +11494,36 @@ describe("review 9 R7: a view send that typed but did not submit", () => {
     expect(service.status("morph", SESSION).sent).toEqual([{ rid: "view-r7-000001", at: expect.any(String), kind: "tap", line: body.view.line, outcome: "typed_not_submitted" }]);
     const again = await sendRoute(rt, { id: "view-r7-000002", pane: "%1", view: { trick: "morph", session: SESSION, rev, control: "v/0/0" } }, context);
     expect(again.status).toBe(409);
+  });
+});
+
+// Review 9, rule 5 tests that drive the path they name: an answer box on omp and Hermes, a draft in the box.
+describe("review 9 rule 5: a view send never answers and never joins a draft", () => {
+  const HEAD = "[view:morph local/%1#aaaa] from operator:";
+  const capture = (name: string): string => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8");
+  const view = { head: true, check: (): string | null => null };
+
+  test.each([
+    ["omp", "18.6.1", "omp--answer-editor-empty.txt"],
+    ["omp", "18.6.1", "omp--answer-editor-typed.txt"],
+    ["hermes", "0.22.2", "hermes--clarify-other.txt"],
+  ] as const)("rule 5: on %s %s at an answer box (%s), a view send is refused not_free and nothing is typed", async (harness, version, screen) => {
+    const r = rig({ harness, version });
+    r.pane.fixed = capture(screen);
+    const answer = await r.send(`${HEAD} tapped "Yes"`, { view });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+    expect(answer.detail).toBe(VIEW_AT_QUESTION);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+  });
+
+  test("rule 5: with the person's draft in the box, a view send is refused before any key, and the draft stays as it was", async () => {
+    const { pane, send } = rig();
+    pane.box = "my half-written note";
+    const answer = await send(`${HEAD} tapped "Yes"`, { view });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(answer.detail).toBe(VIEW_AT_DRAFT);
+    expect(pane.box).toBe("my half-written note");
+    expect(pane.keysSeen).toEqual([]);
   });
 });

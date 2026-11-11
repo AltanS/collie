@@ -628,6 +628,8 @@ export const VIEW_BEHIND_HELD = "Sends are waiting on this session; a send from 
 export const VIEW_IN_TURN = "The agent is working; a send from a view goes only to a free session.";
 /** Why a send from a view is refused while a dialog or an answer box shows. */
 export const VIEW_AT_QUESTION = "A question or a dialog is open in this session; answer it first.";
+/** Why a send from a view is refused while the person's draft is in the box: no key touches it. */
+export const VIEW_AT_DRAFT = "Your draft is in this session's box; send it or clear it first.";
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
 
@@ -4321,6 +4323,8 @@ export class SendProtocol {
     if (state.request.view?.head === true) {
       if (answersQuestion(state.match, s0) || s0.surface.modal !== "none") throw new Ended("refused", "not_free", { surface: s0.surface, detail: VIEW_AT_QUESTION });
       if (s0.surface.turn !== "idle") throw new Ended("refused", "busy", { surface: s0.surface, detail: VIEW_IN_TURN });
+      // The person's own draft is theirs: a view send neither joins it nor probes it (review 9, rule 5).
+      if (s0.surface.composer === "draft") throw new Ended("refused", "draft_present", { surface: s0.surface, detail: VIEW_AT_DRAFT });
     }
     if (answersQuestion(state.match, s0)) {
       if (state.released === true || state.request.fromPhone !== true) {
