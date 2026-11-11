@@ -1489,6 +1489,10 @@ const CREW_STATE_DIR_ENTRIES = [
   // the boot path, no open, no rename; a solo instance finds nothing and says nothing.
   "pack-trust.json",
   "standby-devices.json",
+  // The lead's open Decisions, kept as an inert copy on the DEPUTY beside its tricks (CREW_PROTOCOL
+  // §25). Written only by the Hill half of the §25 routes from this collie's own lead while a warrant
+  // names this machine, which a solo instance cannot reach.
+  "standby-hill",
   // The lead's launcher rows, kept as a read-only copy on the DEPUTY (ADR 0127 point 5). The same
   // structural reason as the registry above: it is written only by a `POST /crew/v1/launchers-copy`
   // from this collie's own lead while a warrant names this machine, which a solo instance cannot reach.

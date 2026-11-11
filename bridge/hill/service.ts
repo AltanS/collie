@@ -105,7 +105,7 @@ import type { WalkyPane } from "../walky/deliver.ts";
 import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import { digestDiffers, payloadDigest, withDigest } from "../worktree-receipts.ts";
 import { readPostFields } from "./parse.ts";
-import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.ts";
+import { mintMediaId, type HillImageBytes, type HillMediaFile, type HillMediaStore } from "./media.ts";
 import { HILL_PUSH_RATE, hillPushTag, type HillPushPort } from "./push.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
 import type { HillStore, HillTombstone } from "./store.ts";
@@ -313,6 +313,37 @@ export type HillPostAnswer = { readonly ok: true; readonly decision: HillDecisio
 /** A status or withdraw answer. `missing`: this bridge holds no such decision from this sender. */
 export type HillOneAnswer = { readonly ok: true; readonly decision: HillDecision } | { readonly ok: false; readonly missing: true; readonly error: string } | { readonly ok: false; readonly missing: false; readonly error: string };
 
+/** What a lead carries of its Hill to its deputy (CREW_PROTOCOL §25, `HillService.carryView`). */
+export interface HillCarryView {
+  readonly on: boolean;
+  readonly open: HillDecision[];
+  readonly closed: string[];
+}
+
+/**
+ * Merge carried Decisions into a Hill store (§25): each under its own id, its pictures first, in one
+ * write; an id the store holds or cleared is left alone. No post, no push. Answers the ids stored. The
+ * bridge's Hill (`HillService.adoptCarried`) and `collie promote` share it.
+ */
+export function adoptCarriedInto(
+  store: HillStore,
+  mediaStore: HillMediaStore | undefined,
+  decisions: readonly HillDecision[],
+  media: ReadonlyMap<string, readonly HillMediaFile[]>,
+): string[] {
+  const kept: HillDecision[] = [];
+  for (const decision of decisions) {
+    if (store.taken(decision.id)) continue;
+    const files = media.get(decision.id) ?? [];
+    // A picture this Hill could not keep leaves the card without it rather than pointing at nothing.
+    kept.push(files.length === 0 || mediaStore?.save(decision.id, files) === true ? decision : { ...decision, media: [] });
+  }
+  if (kept.length === 0 || !store.put(...kept)) return [];
+  return kept.map((decision) => decision.id);
+}
+
+/** What an answer on a deposed lead is refused with (§25): the Decisions moved with the crown. */
+export const HILL_DEPOSED = "This machine is not the crew's lead any more. Answer on the new lead.";
 /** The sentence a crew member answers a post with. */
 export const NOT_ON_LEAD = "the hill is not merged across the crew yet; post from a session on the lead machine";
 /** What a post says when its request id already posted a decision that a person has since cleared. */
@@ -767,6 +798,38 @@ export class HillService {
     return this.postAny(from, { ...input, about: null, replyTo: null, images: [] }, opts.tellOf === undefined ? {} : { tellOf: opts.tellOf });
   }
 
+  /**
+   * What a lead carries to its deputy (CREW_PROTOCOL §25): the switch, every open Decision newest first
+   * without its notification slot (the deputy's phone was never told by it), and the ids of the closed
+   * and cleared ones, newest first, so the deputy never holds one of them as open again.
+   */
+  carryView(closedMax: number): HillCarryView {
+    const all = this.deps.store.all();
+    const open = all
+      .filter((decision) => decision.state === "open")
+      .toSorted((a, b) => b.at - a.at)
+      .map(({ pushTag: _slot, ...decision }) => decision);
+    const closedHeld = all
+      .filter((decision) => decision.state !== "open")
+      .toSorted((a, b) => (b.closedAt ?? b.at) - (a.closedAt ?? a.at))
+      .map((decision) => decision.id);
+    return { on: this.isOn(), open, closed: [...new Set([...closedHeld, ...this.deps.store.clearedIds()])].slice(0, closedMax) };
+  }
+
+  /** The bytes of one kept picture, for the copy to the deputy (§25), or null. */
+  carryMedia(decisionId: string, media: Pick<HillMedia, "id" | "mime" | "bytes">): Uint8Array | null {
+    return this.deps.media?.bytesOf(decisionId, media) ?? null;
+  }
+
+  /**
+   * The person's takeover tap merges the carried Decisions into this Hill (§25): each under its own id,
+   * with its own pictures, in one write. An id this Hill already holds or cleared is left as it is here.
+   * Nothing is posted: no push, no tell, no request-id check; they are not new. Answers the ids stored.
+   */
+  adoptCarried(decisions: readonly HillDecision[], media: ReadonlyMap<string, readonly HillMediaFile[]>): string[] {
+    return adoptCarriedInto(this.deps.store, this.deps.media, decisions, media);
+  }
+
   /** Whether the Decision `id` is being answered right now (its claim runs). */
   isAnswering(id: string): boolean {
     return this.answering.has(id);
@@ -1190,6 +1253,12 @@ export class HillService {
   answer(request: HillAnswerRequest, id: string, by: string, deviceId: string | null = null): Promise<HillAnswerOutcome> {
     // With the Hill off nothing is typed and no tap runs; the decision stays open for when it is back.
     if (!this.isOn()) return Promise.resolve({ kind: "off" });
+    // §25: a deposed lead's Decisions went to the machine that took over; an answer here would be a
+    // second one. Refused, nothing typed, nothing closed, nothing stored.
+    if (this.deps.deposed?.() === true) {
+      const state = this.deps.store.get(id)?.state ?? null;
+      return Promise.resolve({ kind: "receipt", receipt: { rid: request.rid, code: "denied", reason: HILL_DEPOSED, state, delivery: null, trick: null, at: this.now() } });
+    }
     const digest = hillAnswerDigest(request.node, request.intent, request.value.text);
     // SYNCHRONOUS from here to `track`: two requests with one rid must not both get past the look.
     const stored = this.deps.receipts.get(request.rid);

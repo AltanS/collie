@@ -126,6 +126,7 @@ import {
   crewTimeoutClampWarning,
   PeerClient,
   WRITE_BUDGET_MS,
+  type CrewLink,
 } from "./crew/peer-client.ts";
 import { CrewRegistry } from "./crew/registry.ts";
 import {
@@ -186,7 +187,10 @@ import {
 } from "./crew/standby-launchers.ts";
 import { StandbyTricksStore } from "./crew/standby-tricks.ts";
 import { leadTricks } from "./crew/standby-tricks-lead.ts";
-import { carrySurface, tricksCarryRoutes } from "./crew/carry-surface.ts";
+import { carrySurface, hillCarryRoutes, tricksCarryRoutes } from "./crew/carry-surface.ts";
+import { StandbyHillStore } from "./crew/standby-hill.ts";
+import { HillCopySync } from "./crew/hill-copy-sync.ts";
+import { adoptCarriedHill } from "./crew/hill-adopt.ts";
 import { TricksCopySync } from "./crew/carry-sync.ts";
 import { adoptCarriedTricks, tricksStartingAtTap, writeCarryNotices } from "./crew/carry-adopt.ts";
 import { answerCarried, postCarryNotices } from "./crew/carry-notices.ts";
@@ -297,7 +301,7 @@ import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/
 import { crewFactsWorld, factsWorldOf, type FactsWorld } from "./tricks/facts.ts";
 import { answerInputsRequest, INPUT_ANSWER_BODY_MAX_BYTES, readPaneInputs, TrickInputs, type InputsBudget, type InputsCallResult, type WirePaneInputs } from "./tricks/inputs.ts";
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
-import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
+import { carriedMapRecords, scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { OfficialTricks } from "./tricks/official-install.ts";
 import type { TricksRunsOn } from "../web/src/lib/tricks/schema.ts";
 import { TricksService } from "./tricks/service.ts";
@@ -2608,12 +2612,22 @@ await tricksCopyStore?.load();
 /** The config folder tricks live under, or null on a bridge with no tricks. */
 const tricksConfigRoot = cfg.tricksDir === undefined ? null : dirname(cfg.tricksDir);
 
-/** Remove the tricks copy once it is not this machine's to hold, by `tricksCopyKept`. Never throws. */
+/**
+ * The lead's open Decisions, kept on the DEPUTY as an inert copy (§25, `crew/standby-hill.ts`), under
+ * `<stateDir>/standby-hill/`, which this machine's Hill never reads. The same tap adopts it.
+ */
+const hillCopyStore = bootTrust !== null ? new StandbyHillStore(cfg.stateDir) : null;
+await hillCopyStore?.load();
+
+/** Remove the tricks and Hill copies once they are not this machine's to hold, by `tricksCopyKept`. Never throws. */
 async function reconcileTricksCopy(): Promise<void> {
   if (tricksCopyStore === null) return;
   try {
     if (await tricksCopyStore.reconcile(copyRole())) {
       console.log("[crew] this machine is no longer its lead's deputy: removed its copy of the lead's tricks");
+    }
+    if ((await hillCopyStore?.reconcile(copyRole())) === true) {
+      console.log("[crew] this machine is no longer its lead's deputy: removed its copy of the lead's open Decisions");
     }
   } catch (err) {
     console.warn(`[crew] could not remove the copy of the lead's tricks: ${err instanceof Error ? err.message : String(err)}`);
@@ -2628,7 +2642,26 @@ await reconcileTricksCopy();
  * removed after, as this machine leads now.
  */
 async function startCarriedTricks(lead: string, by: "takeover" | "handover"): Promise<void> {
-  if (tricksCopyStore === null || tricksConfigRoot === null) return;
+  const started = await startCarriedTrickCode(lead, by);
+  await bringCarriedHill(lead, by, started);
+}
+
+/** The open Decisions come along (§25), after the tricks, as a trick Decision stays open only when its trick started. Never throws. */
+async function bringCarriedHill(lead: string, by: "takeover" | "handover", started: ReadonlySet<string>): Promise<void> {
+  if (hillCopyStore === null) return;
+  try {
+    const result = await adoptCarriedHill({ store: hillCopyStore, hill, lead, self: bridgeId.id, machine: hostname(), started, stateDir: cfg.stateDir, now: Date.now });
+    audit.record({ action: "hill.carried", detail: { from: lead, by, open: result.open, closed: result.closed } });
+    if (result.open + result.closed > 0) console.log(`[crew] ${by}: brought ${String(result.open)} open Decision(s) of the lead's Hill here, ${String(result.closed)} closed with their reason`);
+    await hillCopyStore.clear();
+  } catch (err) {
+    console.warn(`[crew] ${by}: could not bring the lead's open Decisions: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** The tricks half; answers the ids it started. */
+async function startCarriedTrickCode(lead: string, by: "takeover" | "handover"): Promise<ReadonlySet<string>> {
+  if (tricksCopyStore === null || tricksConfigRoot === null) return new Set();
   try {
     const result = await adoptCarriedTricks({ stateDir: cfg.stateDir, configDir: tricksConfigRoot, store: tricksCopyStore, lead, by, now: Date.now });
     await writeCarryNotices(cfg.stateDir, lead, Date.now(), result.failed);
@@ -2639,8 +2672,10 @@ async function startCarriedTricks(lead: string, by: "takeover" | "handover"): Pr
     if (result.started.length > 0) console.log(`[crew] ${by}: started ${String(result.started.length)} of the lead's tricks here: ${result.started.map((t) => t.id).join(", ")}`);
     if (result.failed.length > 0) console.warn(`[crew] ${by}: did not start ${result.failed.map((t) => `${t.id} (${t.reason})`).join(", ")}`);
     await tricksCopyStore.clear();
+    return new Set(result.started.map((t) => t.id));
   } catch (err) {
     console.warn(`[crew] ${by}: could not start the lead's tricks: ${err instanceof Error ? err.message : String(err)}`);
+    return new Set();
   }
 }
 
@@ -2695,7 +2730,7 @@ const standbySurface: CrewRouterDeps["standby"] =
           return own === null ? [] : collisionReportOf(own, standbyStore.current());
         },
         // §25: the tricks copy (and the Hill copy beside it), with its report on `hello` and `snapshot`.
-        carry: tricksCopyStore === null ? undefined : carrySurface([tricksCarryRoutes(tricksCopyStore)]),
+        carry: tricksCopyStore === null || hillCopyStore === null ? undefined : carrySurface([tricksCarryRoutes(tricksCopyStore), hillCarryRoutes(hillCopyStore)]),
         // ADR 0127 point 5: the launcher copy's report and its write, beside the device registry's.
         copyDigest: () => copyReportOf(launcherCopyStore?.current() ?? null),
         applyCopy:
@@ -2762,7 +2797,11 @@ runtimeFacts = () => {
     deposed: deposed === null ? null : { ...deposed, outcome: outcomeNow(deposed, facts) },
     pairingCollision,
   };
-  const held: CrewRuntimeFacts = tricksFact !== null && tricksFact.member === deputyNow ? { ...base, deputyTricks: tricksFact } : base;
+  const hillFact = hillCopySync?.deputyFact() ?? null;
+  // The open Decisions ride the tricks line ("… and N open questions on the Hill") once the deputy holds them.
+  const questions = hillFact !== null && hillFact.member === deputyNow && hillFact.state === "current" ? hillFact.open : 0;
+  const fact = tricksFact !== null && tricksFact.member === deputyNow ? (questions > 0 ? { ...tricksFact, questions } : tricksFact) : null;
+  const held: CrewRuntimeFacts = fact === null ? base : { ...base, deputyTricks: fact };
 
   // For `collie doctor`'s `durable-lead` row: only a durable peer that has heard its lead state one.
   const leadRelease = oldLead?.leadRelease() ?? null;
@@ -2834,6 +2873,7 @@ function crewSelfOf(data: TrustStoreData) {
  * with tricks; `deputyTricksFact` is what `collie crew status` and `approve-promote` read of it.
  */
 let tricksCopySync: TricksCopySync | null = null;
+let hillCopySync: HillCopySync | null = null;
 
 const crewLead = (() => {
   if (crew.mode !== "lead") return undefined;
@@ -3005,7 +3045,17 @@ const crewLead = (() => {
     },
     // §25: the tricks this lead runs, to the DEPUTY only, as an inert copy it starts only at the
     // person's takeover tap. Read off this lead's approved copies, never its live folders.
-    carry: (() => {
+    carry: [
+      ...(() => {
+        // §25: the Hill's open Decisions, beside the tricks, to the same deputy by the same rules.
+        const sync = new HillCopySync({
+          source: { view: (max) => hill.carryView(max), media: (id, m) => hill.carryMedia(id, m), tricks: (ids) => carriedMapRecords(cfg.stateDir, ids) },
+          client: { list: (link, body) => client.carryPost(link, "hill-copy", body), media: (link, body) => client.carryPost(link, "hill-copy/media", body) },
+        });
+        hillCopySync = sync;
+        return [{ name: "copy of the open Decisions", deputy: () => trustStore.current()?.deputy ?? null, sync: (link: CrewLink, body: JsonValue | undefined) => sync.run(link, body) }];
+      })(),
+      ...(() => {
       const configRoot = tricksConfigRoot;
       if (configRoot === null) return [];
       const sync = new TricksCopySync({
@@ -3017,8 +3067,9 @@ const crewLead = (() => {
         },
       });
       tricksCopySync = sync;
-      return [{ name: "copy of the tricks", deputy: () => trustStore.current()?.deputy ?? null, sync: (link, body) => sync.run(link, body) }];
+      return [{ name: "copy of the tricks", deputy: () => trustStore.current()?.deputy ?? null, sync: (link: CrewLink, body: JsonValue | undefined) => sync.run(link, body) }];
     })(),
+    ],
     // ADR 0127 point 5: the crew's launcher rows to the DEPUTY, beside its device registry. The rows
     // are the ones a launch on this lead matches, its own and any copy it serves after a takeover.
     launchersCopy: {
@@ -3496,7 +3547,10 @@ const standbyDoor = standbyStore === null ? null : createStandbyDoor({
   devices: syncedDevices,
   takeover: (device) => performTakeover(device),
   // §25: what the tap starts again, read off this machine's own disk, never off the lead's word.
-  carried: async () => ({ tricks: await tricksStartingAtTap(tricksCopyStore, cfg.stateDir, tricksConfigRoot) }),
+  carried: async () => ({
+    tricks: await tricksStartingAtTap(tricksCopyStore, cfg.stateDir, tricksConfigRoot),
+    questions: (await hillCopyStore?.openCount()) ?? 0,
+  }),
 });
 
 /**

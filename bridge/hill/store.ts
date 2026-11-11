@@ -188,6 +188,11 @@ export class HillStore {
     return this.tombstones.find((stone) => stone.id === id);
   }
 
+  /** The ids of the cleared decisions, newest first (CREW_PROTOCOL §25 carries them to the deputy). */
+  clearedIds(): string[] {
+    return this.tombstones.map((stone) => stone.id).toReversed();
+  }
+
   /** The tombstone of a cleared decision a sender posted under this request id. */
   tombstoneOfRequest(requestId: string, key: string): HillTombstone | undefined {
     return this.tombstones.find((stone) => stone.requestId === requestId && stone.key === key);

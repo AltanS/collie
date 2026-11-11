@@ -99,6 +99,8 @@ export interface DeputyTricksFact {
   readonly state: "current" | "behind" | "older";
   readonly tricks: number;
   readonly at: number;
+  /** Open Decisions the deputy holds a copy of, when it holds all of them. Absent: none, or not yet. */
+  readonly questions?: number;
 }
 
 /** One refused sync: when this process was told, and the labels the deputy named. */
@@ -284,7 +286,8 @@ function parseDeputyTricks(value: JsonValue | undefined): DeputyTricksFact | nul
   const d: JsonObject = value;
   const state = DEPUTY_TRICKS_STATES.find((candidate) => candidate === d.state);
   if (state === undefined || typeof d.member !== "string" || d.member === "" || typeof d.tricks !== "number" || typeof d.at !== "number") return null;
-  return { member: d.member, state, tricks: d.tricks, at: d.at };
+  const fact = { member: d.member, state, tricks: d.tricks, at: d.at };
+  return typeof d.questions === "number" && Number.isSafeInteger(d.questions) && d.questions > 0 ? { ...fact, questions: d.questions } : fact;
 }
 
 export interface RosterDrift {

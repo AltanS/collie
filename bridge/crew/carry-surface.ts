@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import type { CarryAnswer, StandbyCarrySurface } from "./router.ts";
-import { CREW_TRICKS_COPY_CODE_PATH, CREW_TRICKS_COPY_PATH, CREW_TRICKS_COPY_STATE_PATH } from "./router.ts";
+import { CREW_HILL_COPY_MEDIA_PATH, CREW_HILL_COPY_PATH, CREW_TRICKS_COPY_CODE_PATH, CREW_TRICKS_COPY_PATH, CREW_TRICKS_COPY_STATE_PATH } from "./router.ts";
+import { hillReportFields, parseHillList, parseMediaPush, type StandbyHillStore } from "./standby-hill.ts";
 import { parseCodePart, parseStatePush, parseTricksList, tricksReportFields, type StandbyTricksStore } from "./standby-tricks.ts";
 
 // The deputy's answers to the §25 routes (CREW_PROTOCOL §25): every body is read by the one parser of its
@@ -42,6 +43,30 @@ export function tricksCarryRoutes(store: StandbyTricksStore): CarryRoutes {
         const done = await store.applyState(push);
         if (!done.ok) return answer(done.code === "rate" ? 429 : 409, { error: done.reason, code: done.code });
         return answer(200, { applied: true });
+      }
+      return null;
+    },
+  };
+}
+
+/** The Hill half of the surface. */
+export function hillCarryRoutes(store: StandbyHillStore): CarryRoutes {
+  return {
+    report: () => hillReportFields(store.report()),
+    handle: async (path, ctx, body) => {
+      if (path === CREW_HILL_COPY_PATH) {
+        const list = parseHillList(body);
+        if (list === null) return answer(400, { error: "a Hill copy is { seq, on, decisions, closed, tricks }" });
+        const applied = await store.applyList({ from: ctx.from, crewId: ctx.crewId, list });
+        if (!applied.ok) return answer(409, { error: "this list is older than the one held", code: applied.code });
+        return answer(200, { applied: true, need: { media: applied.need } });
+      }
+      if (path === CREW_HILL_COPY_MEDIA_PATH) {
+        const push = parseMediaPush(body);
+        if (push === null) return answer(400, { error: "a picture is { decisionId, mediaId, b64 } or { decisionId, mediaId, gone: true }" });
+        const done = await store.applyMedia(push);
+        if (!done.ok) return answer(done.code === "mismatch" ? 422 : 409, { error: done.reason, code: done.code });
+        return answer(200, { held: true });
       }
       return null;
     },

@@ -11,6 +11,7 @@ import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../..
 import { DEFAULT_DECISION_PRIORITY, DEFAULT_DECISION_TEXT, pointer, type Refusal, type TrickDecision } from "../../web/src/lib/tricks/schema.ts";
 import { BY_THE_TRICK, TRICK_OFF, type HillOneAnswer, type HillPostAnswer, type HillPostOptions, type HillTrickSender } from "../hill/service.ts";
 import { hillDir } from "../hill/store.ts";
+import type { JsonObject } from "../json.ts";
 
 // A TRICK POSTS INTO THE HILL (M94, M96): after a run that succeeded, the runner hands the document's
 // decisions here, and this module makes the hill agree with them.
@@ -219,6 +220,62 @@ export function trickRequestId(trickId: string, key: string, hash: string, gen: 
 
 function isHillState(value: string | undefined): value is HillState {
   return HILL_STATES.some((state) => state === value);
+}
+
+/**
+ * The map's raw records of `ids`, off this lead's disk, for the copy to its deputy (CREW_PROTOCOL §25).
+ * The deputy reads them again with {@link mergeCarriedMap}. Never throws.
+ */
+export function carriedMapRecords(stateDir: string, ids: ReadonlySet<string>): JsonObject {
+  const path = join(hillDir(stateDir), TRICKS_MAP_FILE);
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return {};
+  }
+  const tricks = asJsonObject(parseJsonObject(raw)?.tricks) ?? {};
+  const out: JsonObject = {};
+  for (const id of ids) {
+    const record = tricks[id];
+    if (record !== undefined) out[id] = record;
+  }
+  return out;
+}
+
+/**
+ * Merge a lead's map records into this machine's map at the takeover tap (§25), for the tricks in `ids`
+ * only and only where this map has no record of that trick, so a carried trick Decision keeps its key and
+ * its trick does not post it a second time. Each record is read with the map's own reader. Never throws.
+ */
+export function mergeCarriedMap(stateDir: string, carried: JsonObject, ids: ReadonlySet<string>): number {
+  const dir = hillDir(stateDir);
+  const path = join(dir, TRICKS_MAP_FILE);
+  let current = new Map<string, TrickHillRecord>();
+  try {
+    current = existsSync(path) ? readMap(readFileSync(path, "utf8")) : new Map();
+  } catch {
+    return 0;
+  }
+  const incoming = readMap(JSON.stringify({ v: 1, tricks: carried }));
+  let merged = 0;
+  for (const [id, record] of incoming) {
+    if (!ids.has(id) || current.has(id)) continue;
+    current.set(id, record);
+    merged += 1;
+  }
+  if (merged === 0) return 0;
+  const tricks: Record<string, TrickHillRecord> = {};
+  for (const [id, record] of current) tricks[id] = record;
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const temp = `${path}.tmp`;
+    writeFileSync(temp, `${JSON.stringify({ v: 1, tricks })}\n`, { mode: 0o600 });
+    renameSync(temp, path);
+  } catch {
+    return 0;
+  }
+  return merged;
 }
 
 /** The map as read off disk; an entry that does not read is dropped. */

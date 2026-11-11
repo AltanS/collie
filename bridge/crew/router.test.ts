@@ -20,6 +20,8 @@ import {
   SIGNED_READS_MAX,
   SIGNED_MEDIA_READS_MAX,
   CREW_LAUNCHERS_COPY_PATH,
+  CREW_HILL_COPY_MEDIA_PATH,
+  CREW_HILL_COPY_PATH,
   CREW_TRICKS_COPY_PATH,
   CREW_TRICKS_COPY_CODE_PATH,
   CREW_TRICKS_COPY_STATE_PATH,
@@ -3700,7 +3702,7 @@ describe("POST /crew/v1/tricks-copy — the lead's tricks reach the DEPUTY only,
     return { handler, seen };
   }
 
-  const PATHS = [CREW_TRICKS_COPY_PATH, CREW_TRICKS_COPY_CODE_PATH, CREW_TRICKS_COPY_STATE_PATH];
+  const PATHS = [CREW_TRICKS_COPY_PATH, CREW_TRICKS_COPY_CODE_PATH, CREW_TRICKS_COPY_STATE_PATH, CREW_HILL_COPY_PATH, CREW_HILL_COPY_MEDIA_PATH];
 
   test("the deputy's own lead reaches each route, named as the sender with its crew", async () => {
     const r = router(harness(deputy()));
@@ -3730,6 +3732,16 @@ describe("POST /crew/v1/tricks-copy — the lead's tricks reach the DEPUTY only,
     const cap = CARRY_BODY_CAPS.get(CREW_TRICKS_COPY_CODE_PATH) ?? 0;
     expect(cap).toBe(3 * 1024 * 1024);
     const res = (await call(r.handler, CREW_TRICKS_COPY_CODE_PATH, post({ pad: "a".repeat(cap) })))!;
+    expect(res.status).toBe(413);
+    expect(r.seen).toEqual([]);
+  });
+
+  test("the Hill copy's two routes have their own caps: 8 MiB for the list, 3 MiB for one picture", async () => {
+    const r = router(harness(deputy()));
+    expect(CARRY_BODY_CAPS.get(CREW_HILL_COPY_PATH)).toBe(8 * 1024 * 1024);
+    const cap = CARRY_BODY_CAPS.get(CREW_HILL_COPY_MEDIA_PATH) ?? 0;
+    expect(cap).toBe(3 * 1024 * 1024);
+    const res = (await call(r.handler, CREW_HILL_COPY_MEDIA_PATH, post({ pad: "a".repeat(cap) })))!;
     expect(res.status).toBe(413);
     expect(r.seen).toEqual([]);
   });

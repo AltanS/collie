@@ -4401,13 +4401,17 @@ On the lead: `trick.proposal` for each proposal taken (`kind` `proposal` or `ver
 Additive inside protocol version 2 (§7.1). A member before 1.29.0 has no verb that sends it. A lead
 before 1.29.0 answers the uniform 401, and the member says the lead is older and proposes nothing. `CREW_PROTOCOL_VERSION` stays `2`.
 
-## 25. The deputy carries the lead's tricks *(added in 1.29.0)*
+## 25. The deputy carries the lead's tricks and open Decisions *(added in 1.29.0)*
 
 A deputy takes over when its lead is gone (§18). Before this section the tricks the lead ran were gone
 with it. Now the lead keeps an inert copy of each trick that is on, at its approved version, on its
 deputy, and the person's takeover tap on the deputy's own standby page starts them there. The rule of
 ADR 0016's addendum holds: the code crosses as inert data, and nothing installs or runs it before a
 person's tap on the machine that runs it.
+
+Beside the tricks, the lead keeps a copy of its Hill's open Decisions on the same deputy, by the same
+rules (see "The Hill copy" below). The tap brings them into the deputy's Hill, so a question the person
+has not answered yet is still there after the takeover.
 
 ### The routes
 
@@ -4416,6 +4420,8 @@ person's tap on the machine that runs it.
 | `POST` | `/crew/v1/tricks-copy` | the lead, to its deputy | `{ seq, tricks }` | `{ applied, need: { code, state } }` | 8 MiB |
 | `POST` | `/crew/v1/tricks-copy/code` | the lead, to its deputy | `{ id, hash, part, parts, chunks }` | `{ held }` | 3 MiB |
 | `POST` | `/crew/v1/tricks-copy/state` | the lead, to its deputy | `{ id, digest, files }` | `{ applied }` | 6 MiB |
+| `POST` | `/crew/v1/hill-copy` | the lead, to its deputy | `{ seq, on, decisions, closed, tricks }` | `{ applied, need: { media } }` | 8 MiB |
+| `POST` | `/crew/v1/hill-copy/media` | the lead, to its deputy | `{ decisionId, mediaId, b64 }` or `{ decisionId, mediaId, gone: true }` | `{ held }` | 3 MiB |
 
 - **Lead → deputy, the launchers copy's gate.** Unsigned, on the pinned link the lead dials (§8.1), like
   `launchers-copy`. Two questions must both answer yes before a byte of the body is read: the caller
@@ -4444,11 +4450,35 @@ person's tap on the machine that runs it.
   once a minute (`429`, `rate`). A state too large to keep is settled as kept with no bytes, so it is
   not asked for again until it changes.
 
+### The Hill copy
+
+- **`decisions`** is at most 500 open Decisions, newest first, each the record the lead's Hill stores
+  without its notification slot (`pushTag`). The deputy reads each one again with the Hill's own
+  reader. A record that does not read, is not open, repeats an id, or names an id in `closed` is left
+  out; the rest of the list still applies.
+- **`closed`** is at most 500 ids of the lead's closed and cleared Decisions, newest first. The deputy
+  keeps every closed id the same lead named, newest first, up to 500, and never holds a Decision with
+  one of those ids as open again. A replayed or late list cannot bring an answered Decision back.
+- **`on`** is the lead's Hill switch. **`tricks`** holds the trick map records (the key to Decision id
+  entries) of the tricks whose Decisions are open, so a carried trick Decision keeps its key.
+- **`seq` only rises,** as for the tricks: `409` (`stale`) for a list not above the one held.
+- **Pictures.** The lead and the deputy plan the pictures the same way: newest Decision first, each
+  picture of at most 2 MiB, all together at most 32 MiB. A picture past the plan stays on the lead. The
+  answer to a list names the pictures the deputy lacks (`need.media`, as `<decisionId>/<mediaId>`); the
+  lead sends each in one body. Both ids must match their id patterns before any path is built (`400`).
+  A picture the plan does not carry is `409` (`unknown`). The deputy keeps a picture only when its size
+  is the size its record says and its first bytes say the type its record says; else it is `422`
+  (`mismatch`) and settled as left on the lead, so it is not asked for again. `gone: true` from the
+  lead settles it the same way.
+
 ### The report
 
 The deputy reports `tricksDigest` (the digest of the list it holds), `tricksSeq` and `tricksNeed` (how
 many code and state parts it still lacks) on `hello` and `snapshot`, in the seat of `launchersDigest`.
-A deputy that holds no copy reports none of the three. The lead syncs off its sweep, never awaited,
+A deputy that holds no copy reports none of the three. The Hill copy reports `hillDigest`, `hillSeq`
+and `hillNeed` (how many pictures of the plan it still lacks) in the same seat, by the same rule. The
+digest is over the list as it arrived, before a record was left out, so a left-out record does not
+make the lead send the list again. The lead syncs off its sweep, never awaited,
 one sync at a time: a list when the digest differs, and the missing parts again at most once a minute
 while it is the same. A `404` marks an older deputy, said once in the lead's journal: "<deputy>: keeps
 no copy of the tricks (an older Collie), so it cannot resume them after a takeover; not sent again until
@@ -4463,10 +4493,15 @@ it reconnects".
 - **Whose copy it is.** The copy stays only while this machine is the deputy of the lead that sent it,
   in that crew. A demotion, another lead, another crew, or this machine leading removes it at once,
   `config.toml` with it.
+- **The Hill copy** lives under `<stateDir>/standby-hill/`: `index.json` and
+  `media/<decisionId>/<mediaId>`, folders 0700 and files 0600. The deputy's own Hill never reads it,
+  before or after a restart. It is removed by the same rule as the tricks copy.
 - **The page.** The armed standby page names the tricks the tap starts, read off this machine's own
   disk, never off the lead's word: each carried trick whose code is held, then each trick this machine
   already has on. A name is cleaned of control and invisible characters, cut to 40 characters and drawn
-  in its own box; at most 8 are named, then "and N more".
+  in its own box; at most 8 are named, then "and N more". When the Hill copy holds open Decisions, read
+  off this machine's disk too, one more line says "1 open question on the Hill comes along." or "N
+  open questions on the Hill come along."
 - **The tap.** The takeover commit (§18) adopts the copy, and so does `collie promote` (§14) typed on
   the deputy, before its restart, with `by: "handover"`. Nothing else does. For each held trick
   it hashes the code again, writes the trick folder only where this machine has none (a folder of that
@@ -4481,6 +4516,27 @@ it reconnects".
   this machine: <reason>. Switch it on again in Settings → Tricks when you want it here.", and one
   option, OK, which closes it. Its request id is fixed per tap and trick, so a second boot posts it
   once. A Hill that is off or full keeps the file for a later boot.
+- **The tap brings the open Decisions along,** after the tricks, in the same takeover commit and the
+  same `collie promote`. Only a copy from the lead the tap takes over from is read. Each Decision keeps
+  its id, and goes into this machine's Hill in one write; an id this Hill already holds or cleared is
+  left as it is here. Nothing is pushed, told or posted: they are not new. Each picture is read again
+  off this machine's disk and its type read again from its bytes; a Decision whose picture is not here
+  keeps the rest and carries the line "A picture stayed on <old lead>." Three kinds close at the tap,
+  each with its reason, because what they act on did not come along:
+  - a trick's new version (`ref.type` `version`): "This new version waited on <old lead>. It was not
+    carried over." The trick folder on this machine decides what waits here.
+  - a trick proposal (`ref.type` `proposal`): "This proposal stayed on <old lead>. Ask for it again."
+    A proposal's files are not carried, so a lead cannot place an install card on its deputy.
+  - a trick's Decision whose trick did not start here: "Its trick did not start on this machine after
+    the takeover."
+
+  A trick Decision that stays is moved to this machine (its `memberId`, `trickHost` and host), and its
+  trick map record comes along where this machine has none, so the trick does not post it a second
+  time. The Hill switch is written from the copy only when this machine has never set its own. The
+  copy is removed after.
+- **The old lead takes no answer.** A deposed lead (§18.12) refuses an answer to any Decision with the
+  receipt `denied` and the reason "This machine is not the crew's lead any more. Answer on the new
+  lead." Nothing is typed and nothing closes there, so a carried Decision is not answered twice.
 
 ### What the lead says
 
@@ -4488,14 +4544,19 @@ The running lead writes what it last saw of its deputy's copy into its runtime m
 (`deputyTricks`: the deputy, `current`, `behind` or `older`, and how many tricks it runs). `collie crew
 status` on the lead prints one line from it, a warning for an older deputy. `collie crew
 approve-promote <member>` says whether the tricks come along: they do only with the deputy's promote.
+When the deputy holds the whole Hill copy, the fact carries `questions`, the count of open Decisions,
+and both lines add "and N open questions on the Hill" (or name only the questions when the lead runs
+no trick).
 
 ### Audit
 
 On the deputy: `tricks.carried` at the tap, with the ids started, the ids that failed and the folders
-kept. Never a file's bytes.
+kept. Never a file's bytes. `hill.carried` at the tap, with the counts of Decisions stored open and
+closed with their reason. Never a Decision's text.
 
 ### Compatibility
 
 Additive inside protocol version 2 (§7.1). A lead before 1.29.0 sends nothing, and a deputy before
-1.29.0 answers `404`, which the lead reads as "keeps no copy". A deputy's absent report reads as "holds
+1.29.0 answers `404`, which the lead reads as "keeps no copy"; the Hill copy reads the same, on its
+own. A deputy's absent report reads as "holds
 nothing". `CREW_PROTOCOL_VERSION` stays `2`.
