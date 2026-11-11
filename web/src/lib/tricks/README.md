@@ -179,6 +179,17 @@ shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` h
 - An agent cannot propose a trick with `rules` or `agent-view`, nor a new version that adds them:
   `has_rules`, "A trick that gives agents instructions cannot be proposed by an agent. Ask your person
   to add it on the machine."
+- The `has_rules` refusal keeps an agent that follows the rules from proposing instructions. It is not a
+  barrier: an agent with a shell can write `rules.md` into a live trick folder, or a whole folder, by
+  hand. The edit is then a new version, and the version card, with the rules' change on screen, is the
+  only gate before it runs (a trick with rules never takes changes without asking).
+- On Windows there is no `O_NOFOLLOW`. The rules file is checked with `lstat` (a regular file, never a
+  link), then opened and checked with `fstat`; a program that swaps the file for a link between the two
+  can make the bridge read another regular file of at most 8 KiB that passes the content rule. What the
+  card shows and what is hashed still come from that one read, so the yes still names the bytes shown.
+- For a later build that serves the rules to an agent, one rule is fixed now: Collie's frame around them
+  uses a delimiter the rules cannot copy, a non-ASCII marker and a line with the byte length. The rules
+  are printable ASCII only, so no line of theirs can close the frame or open a new one.
 - The ids `walky-talky`, `hill`, `collie` and `view` are reserved (`RESERVED_TRICK_IDS`).
 - Approve what you read (every trick, not only one with rules): a row carries `approves`, the code hash
   a switch on takes (the waiting version's, else the folder's). The phone sends it back with the switch,
