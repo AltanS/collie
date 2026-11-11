@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import type { HillDeps } from "./hill.ts";
@@ -14,7 +14,7 @@ import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { PROPOSE_ASK_MS } from "../bridge/tricks/propose-door.ts";
 import { proposalCardCount } from "../bridge/tricks/proposal-card.ts";
-import { readProposal, wireFiles } from "../bridge/tricks/propose-wire.ts";
+import { manifestGivesRules, PROPOSE_HAS_RULES, readProposal, wireFiles } from "../bridge/tricks/propose-wire.ts";
 import { MANIFEST_FILE } from "../bridge/tricks/paths.ts";
 import { warningLines } from "../bridge/tricks/scan.ts";
 import { unknownOp } from "../bridge/walky/refusals.ts";
@@ -131,6 +131,10 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
     else deps.io.err(`propose: ${shown(error)}`);
     return exit;
   };
+  // A trick that gives agents instructions is never sent: no agent may hand a person its author's words for
+  // their agents. The lead refuses it again (propose-wire.ts `checkProposedFiles`).
+  const manifestText = deps.files.read(join(folder, MANIFEST_FILE));
+  if (manifestText !== null && manifestGivesRules(manifestText)) return fail(PROPOSE_HAS_RULES, "has_rules", EXIT.REFUSED);
   // First what `collie trick check` says: a trick it refuses is never sent.
   const report = await checkStatic(folder, deps.files, { crew: leadsCrewOnDisk(deps) });
   if (reportFails(report)) {

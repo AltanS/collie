@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { ADD_LIMITS } from "../../cli/trick-add.ts";
 import type { JsonObject } from "../json.ts";
-import { checkProposedFiles, foldKey, proposalHash, proposedPathProblem, PROPOSE_LIMITS, PROPOSE_NO_CONFIG, readProposal, RESERVED_PROPOSAL_IDS, wireFiles, type ProposedFile } from "./propose-wire.ts";
+import { checkProposedFiles, foldKey, manifestGivesRules, proposalHash, proposedPathProblem, PROPOSE_HAS_RULES, PROPOSE_LIMITS, PROPOSE_NO_CONFIG, readProposal, RESERVED_PROPOSAL_IDS, wireFiles, type ProposedFile } from "./propose-wire.ts";
 
 // THE ONE READER OF A PROPOSAL'S FILES (crew slice 8): the CLI, the member and the lead all read with it,
 // and the lead treats every byte as hostile. Each refusal below is one a hostile member could try.
@@ -170,5 +170,34 @@ describe("the hash", () => {
   test("checkProposedFiles agrees with readProposal on what it takes", () => {
     expect(checkProposedFiles(base()).ok).toBe(true);
     expect(checkProposedFiles([...base(), file("../x")]).ok).toBe(false);
+  });
+});
+
+describe("a trick that gives agents instructions (contract 2)", () => {
+  const VIEW_TOML = 'id = "morph"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n';
+  const refusal = (files: readonly ProposedFile[]) => {
+    const read = readProposal(wire(files));
+    return read.ok ? null : read.refusal;
+  };
+  const HAS_RULES = { code: "has_rules" as const, error: "A trick that gives agents instructions cannot be proposed by an agent. Ask your person to add it on the machine." };
+
+  test("a new trick with an agent view and rules is refused with has_rules", () => {
+    expect(refusal([file("trick.toml", VIEW_TOML), file("rules.md", "Draw one screen.\n")])).toEqual(HAS_RULES);
+    expect(PROPOSE_HAS_RULES).toBe(HAS_RULES.error);
+  });
+
+  test("a new version that adds rules or the place is refused alike, before any other check of the manifest", () => {
+    // The id of a trick that may be on: a new version of `legs` that now gives agents instructions.
+    const adds = MANIFEST.replace("contract = 1", 'contract = 2\nrules = "rules.md"').replace('places = ["belt"]', 'places = ["belt", "agent-view"]');
+    expect(refusal([file("trick.toml", adds), file("program.ts", "console.log(1)\n"), file("rules.md", "Draw.\n")])).toEqual(HAS_RULES);
+    // Either key alone, and a manifest the strict reader would refuse anyway: has_rules first.
+    expect(refusal([file("trick.toml", MANIFEST.replace("contract = 1", 'rules = "rules.md"')), file("program.ts", "x")])).toEqual(HAS_RULES);
+    expect(refusal([file("trick.toml", MANIFEST.replace('places = ["belt"]', 'places = ["agent-view"]')), file("program.ts", "x")])).toEqual(HAS_RULES);
+    expect(manifestGivesRules(MANIFEST)).toBe(false);
+  });
+
+  test("the ids no trick may take are reserved for proposals too", () => {
+    for (const id of ["walky-talky", "view", "hill", "collie"]) expect(RESERVED_PROPOSAL_IDS).toContain(id);
+    expect(RESERVED_PROPOSAL_IDS).not.toContain("morph");
   });
 });

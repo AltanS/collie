@@ -239,3 +239,31 @@ describe("the count before the parse (review S3)", () => {
     expect(proposalParseable(JSON.stringify({ rel: `${"{[,:".repeat(10_000)}"\\`, b64: "" }))).toBe(true);
   });
 });
+
+describe("a trick that gives agents instructions (contract 2)", () => {
+  const VIEW_FILES: ProposedFile[] = [
+    { rel: "trick.toml", bytes: enc('id = "morph"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n'), executable: false },
+    { rel: "rules.md", bytes: enc("Draw one screen.\n"), executable: false },
+  ];
+  const viewFields = (): JsonObject => ({ requestId: RID, files: wireFiles(VIEW_FILES) });
+  const HAS_RULES: ProposeAnswer = { ok: false, code: "has_rules", error: "A trick that gives agents instructions cannot be proposed by an agent. Ask your person to add it on the machine." };
+
+  test("the local door refuses it with has_rules, and the proposals never see it", async () => {
+    const { proposals, seen } = recorder();
+    const door = new ProposeDoor({ mode: () => "lead", proposals: () => proposals, memberId: "desk", machine: "desk" });
+    expect(await door.local(viewFields(), { kind: "agent", address: "desk/%1#aaaa", label: "repo#one" })).toEqual(HAS_RULES);
+    expect(await door.local(viewFields(), { kind: "terminal" })).toEqual(HAS_RULES);
+    expect(seen).toEqual([]);
+  });
+
+  test("the lead's route refuses it from a member, and a member's forward never sends it", async () => {
+    const { proposals, seen } = recorder();
+    const lead = new ProposeDoor({ mode: () => "lead", proposals: () => proposals, memberId: "desk", machine: "desk" });
+    expect(await lead.fromMember({ ...viewFields(), from: { address: "laptop/%3#cccc" } }, "laptop")).toEqual({ status: 200, body: HAS_RULES });
+    expect(seen).toEqual([]);
+    const sent: string[] = [];
+    const member = new ProposeDoor({ mode: () => "peer", proposals: () => null, memberId: "laptop", machine: "laptop", leadName: () => "desk", call: async (route) => (sent.push(route), { kind: "answer", status: 200, body: HAS_RULES }) });
+    expect(await member.local(viewFields(), { kind: "terminal" })).toEqual(HAS_RULES);
+    expect(sent).toEqual([]);
+  });
+});

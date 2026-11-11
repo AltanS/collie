@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
-import { isTrickId, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
+import { AGENT_VIEW_PLACE, isTrickId, RESERVED_TRICK_IDS, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import { CONFIG_FILE, PICTURE_DIRS, unsafeText } from "./code-hash.ts";
 import { MANIFEST_BYTES_MAX, readManifestText } from "./discover.ts";
@@ -44,8 +44,18 @@ export const PROPOSE_LIMITS = {
   stepBytes: 255,
 } as const;
 
-/** Trick ids a proposal may not take, though they are valid ids: they read as Collie's own words on a card. */
-export const RESERVED_PROPOSAL_IDS: readonly string[] = ["collie", "trick", "tricks", "hill", "settings"];
+/**
+ * Trick ids a proposal may not take, though they are valid ids: they read as Collie's own words on a card. They
+ * hold every id no trick may take at all (schema.ts `RESERVED_TRICK_IDS`), so a proposal hears it first.
+ */
+export const RESERVED_PROPOSAL_IDS: readonly string[] = [...new Set(["collie", "trick", "tricks", "hill", "settings", ...RESERVED_TRICK_IDS])];
+
+/**
+ * The refusal of a proposal whose manifest names `rules` or the place `agent-view` (contract 2): its author's
+ * words would reach the person's agents, so a person adds it on the machine, by hand or from a repository.
+ * The lead's condition of 2026-11-11. The CLI checks it before it sends, and every door again.
+ */
+export const PROPOSE_HAS_RULES = "A trick that gives agents instructions cannot be proposed by an agent. Ask your person to add it on the machine.";
 
 /** One file of a proposal, read and checked. */
 export interface ProposedFile {
@@ -75,6 +85,7 @@ export type ProposeRefusalCode =
   | "bad_files"
   | "bad_manifest"
   | "reserved_id"
+  | "has_rules"
   | "hill_off"
   | "exists"
   | "open_elsewhere"
@@ -96,6 +107,7 @@ export const PROPOSE_REFUSAL_CODES: readonly ProposeRefusalCode[] = [
   "bad_files",
   "bad_manifest",
   "reserved_id",
+  "has_rules",
   "hill_off",
   "exists",
   "open_elsewhere",
@@ -211,16 +223,33 @@ export function foldKey(rel: string): string {
   return rel.normalize("NFKC").toLowerCase();
 }
 
-/** The trick id a manifest names, read loosely: the strict reader then checks it against that id. */
-function manifestId(text: string): string | null {
+/** What a proposal's manifest names before the strict read: its id, and whether it gives agents instructions. */
+interface LooseManifest {
+  id: string | null;
+  rules: boolean;
+}
+
+/**
+ * The trick id a manifest names, and whether it names `rules` or the place `agent-view`, read loosely: the
+ * strict reader then checks the whole document. Loose on purpose for the second: a manifest that names them
+ * is refused as `has_rules` whatever else is wrong with it.
+ */
+function manifestLoose(text: string): LooseManifest {
   try {
-    // SAFETY: `Bun.TOML.parse` answers with a parsed document; only `id` is read here, as a string, and
-    // `readManifestText` checks the whole document strictly right after.
-    const doc = Bun.TOML.parse(text) as JsonValue;
-    return asJsonString(asJsonObject(doc)?.id) ?? null;
+    // SAFETY: `Bun.TOML.parse` answers with a parsed document; only `id`, `rules` and `places` are read here,
+    // each checked, and `readManifestText` checks the whole document strictly right after.
+    const doc = asJsonObject(Bun.TOML.parse(text) as JsonValue);
+    const places = doc?.places;
+    const rules = doc?.rules !== undefined || (Array.isArray(places) && places.some((place) => place === AGENT_VIEW_PLACE));
+    return { id: asJsonString(doc?.id) ?? null, rules };
   } catch {
-    return null;
+    return { id: null, rules: false };
   }
+}
+
+/** Whether a `trick.toml` text names `rules` or the place `agent-view`, read loosely: the CLI's check before it sends. */
+export function manifestGivesRules(text: string): boolean {
+  return manifestLoose(text).rules;
 }
 
 /**
@@ -278,9 +307,12 @@ export function checkProposedFiles(files: readonly ProposedFile[]): { ok: true; 
   const manifestFile = files.find((file) => file.rel === MANIFEST_FILE);
   if (manifestFile === undefined) return refuse("bad_manifest", `There is no ${MANIFEST_FILE} at the top of the trick.`);
   const text = new TextDecoder("utf-8", { fatal: false }).decode(manifestFile.bytes);
-  const id = manifestId(text);
+  const loose = manifestLoose(text);
+  const id = loose.id;
   if (id === null || !isTrickId(id)) return refuse("bad_manifest", `${MANIFEST_FILE} names no trick id Collie takes (1 to 32 of a-z, 0-9 and -).`);
   if (RESERVED_PROPOSAL_IDS.includes(id)) return refuse("reserved_id", `"${id}" is a name Collie keeps for itself. Give the trick another id.`);
+  // An agent view's instructions reach the person's agents: a new trick and a new version alike are refused.
+  if (loose.rules) return refuse("has_rules", PROPOSE_HAS_RULES);
   const read = readManifestText(text, id);
   if (read.manifest === undefined) {
     const first = read.refusals.find((r) => r.code !== "later") ?? read.refusals[0];
