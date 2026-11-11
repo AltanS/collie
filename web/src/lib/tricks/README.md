@@ -149,6 +149,37 @@ facts name every file by a path the bridge checked (`inputs/<member>/<pane>/<rel
 A contract 1 trick runs on this Collie exactly as before: its facts say `"contract": 1`, its output's
 `v` may be 1 or 2, and it gets no `inputs`.
 
+**Agent views ride inside contract 2 too.** The place word `agent-view` and the key `rules` came after
+`inputs`, before any released tag held contract 2, so they are additive at the same number. The rule
+from here on: once a build that speaks a number has shipped (a tag, an Edge build included), a key whose
+shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` holds it.
+
+- `agent-view` in `places` says the trick adds a view of a session that the session's own agent draws.
+  It is kept apart from the drawing places (`manifest.agentView`, never in `places`), at most once, and
+  it needs `rules`. This build reads it and answers with one `later` note,
+  `AGENT_VIEW_LATER`: "Agent views come with a later build of this version." No session UI, no socket
+  op and no route draws it yet.
+- `rules = "rules.md"` names the instructions the agent reads: one step, `*.md`, no leading dot, a
+  regular file (never a link), at most 8 KiB. Its content rule, `rulesTextProblems`, takes bytes 0x20 to
+  0x7E and `\n` only, no tab, no line over 160 characters, no space at a line's end, no run of more than
+  2 spaces, no more than 2 blank lines in a row, and not empty; each break is its own refusal that names
+  the line. `rules` without `agent-view` is refused, and so is either one at contract 1.
+- `run` may be left out only when `places` is exactly `["agent-view"]` and there is no `every`,
+  `inputs` or `env`. Such a trick never starts anything: no timer, no tap, no program.
+- The rules file is in the code hash, so an edit is a new version. Its SHA-256 is in the powers
+  (`powersOf` adds `rules` only when the manifest names it, so every other trick's powers hash is the
+  same as before), so a change of the rules is a change of rights. A trick with rules never takes a
+  version without asking: `collie trick auto <id> on` and the card's "always" refuse, the About sheet
+  draws no "Take changes without asking", and the version card shows the rules' change whole, with the
+  chip "new agent instructions", on a card group when it does not fit one card.
+- The rights words are fixed: `AGENT_VIEW_WORDS`, `AGENT_VIEW_TAP_WORDS` and `RULES_WORDS`. The About
+  sheet holds the rules behind "Read the instructions", the file's text whole, monospace, wrapped, never
+  markdown.
+- An agent cannot propose a trick with `rules` or `agent-view`, nor a new version that adds them:
+  `has_rules`, "A trick that gives agents instructions cannot be proposed by an agent. Ask your person
+  to add it on the machine."
+- The ids `walky-talky`, `hill`, `collie` and `view` are reserved (`RESERVED_TRICK_IDS`).
+
 ## Writing a trick in TypeScript
 
 `collie trick init <id>` makes `<config dir>/tricks/<id>/` with five files: `trick.toml` with

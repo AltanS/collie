@@ -3372,6 +3372,16 @@ export const en = {
   "settings.tricks.about.updates": "Updates",
   "settings.tricks.about.auto.label": "Take changes without asking",
   "settings.tricks.about.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
+  // An agent view and its rules (contract 2): English only until the translation pass, listed in
+  // PENDING_TRANSLATION below. The rights lines and the later note are schema.ts's own words
+  // (AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS, AGENT_VIEW_LATER), held there by a test.
+  "settings.tricks.place.agentView": "agent view",
+  "settings.tricks.agentView.later": "Agent views come with a later build of this version.",
+  "settings.tricks.about.agentView": "Adds a view of a session that the session's own agent draws. You switch it on per session.",
+  "settings.tricks.about.agentViewTap": "A tap in that view sends a message in your name to that session only.",
+  "settings.tricks.about.rules": "Gives your agents instructions written by its author.",
+  "settings.tricks.about.rulesOpen": "Read the instructions",
+  "settings.tricks.about.rulesClose": "Hide the instructions",
   // Official tricks, the ones this release can add (M94): English only until the translation pass,
   // listed in PENDING_TRANSLATION below. The failure lines are the bridge's own (bridge/tricks/official-install.ts).
   "settings.tricks.official.label": "Official tricks",
@@ -3734,6 +3744,14 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.updates",
   "settings.tricks.about.auto.label",
   "settings.tricks.about.auto.hint",
+  // An agent view and its rules (contract 2).
+  "settings.tricks.place.agentView",
+  "settings.tricks.agentView.later",
+  "settings.tricks.about.agentView",
+  "settings.tricks.about.agentViewTap",
+  "settings.tricks.about.rules",
+  "settings.tricks.about.rulesOpen",
+  "settings.tricks.about.rulesClose",
   // Official tricks (M94).
   "settings.tricks.official.label",
   "settings.tricks.official.add",
