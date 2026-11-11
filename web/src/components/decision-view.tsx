@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 
 import { hillMediaSource, viewPictures, type HillMediaSource } from "@/components/hill-media";
 import { usePrefersReducedMotion } from "@/components/ui/collapse";
@@ -44,6 +44,10 @@ import { cn } from "@/lib/utils";
 //
 // A view that throws while it draws takes only itself: the boundary draws the placeholder, and the
 // question and its options stay.
+//
+// A CARD OF A GROUP NEVER FOLDS (review 7 R1). Its code shows whole, and a quiet one-pixel mark after its
+// last line (`endRef`, data-slot "decision-view-end") lets the group see when the card's end was on
+// screen (decision-group.tsx): that, not the card's first draw, opens it.
 
 /** The tallest a view draws before it folds, in CSS pixels. */
 export const VIEW_CAP_PX = 240;
@@ -149,6 +153,8 @@ export function DecisionView({
   sender,
   media = NO_MEDIA,
   mediaSource = hillMediaSource,
+  folds = true,
+  endRef,
 }: {
   decisionId: string;
   view: View;
@@ -156,9 +162,15 @@ export function DecisionView({
   /** The Decision's images, which an `image` or a `compare` names by `ref`. */
   media?: readonly HillMedia[];
   mediaSource?: HillMediaSource;
+  /** False for a card of a group: the whole view shows, with no fold and no Show all. */
+  folds?: boolean;
+  /** A mark after the view's last line, for a caller that must know when the end was on screen. */
+  endRef?: Ref<HTMLDivElement>;
 }) {
   const { fold, open, toggle } = useFold();
-  const { ref, tall, cut, full } = useTallerThanCap<HTMLDivElement>();
+  const measured = useTallerThanCap<HTMLDivElement>();
+  const { ref, cut, full } = measured;
+  const tall = folds && measured.tall;
   const bodyId = useId();
   // At rest shut, the view is clipped at the cut. While it moves it is clipped too, at the height the
   // motion has reached; at rest open nothing clips it.
@@ -183,6 +195,7 @@ export function DecisionView({
           <TrickBoundary fallback="placeholder" resetKey={decisionId}>
             {renderView(view, ctx)}
           </TrickBoundary>
+          {endRef !== undefined && <div ref={endRef} aria-hidden data-slot="decision-view-end" className="h-px" />}
         </div>
         {(clipped || moving) && (
           <div

@@ -102,7 +102,8 @@ import { cn } from "@/lib/utils";
 // card shows its cards one at a time in the view's place, always from card 1: the page is this card's
 // state, never restored, so a link, a push or a second phone cannot open it past the facts. The first
 // line carries "4 cards". The options show on the last card only; the decline ("Not now") shows on
-// every card, quiet. A yes stays off until every card was on screen, with "Open all 4 cards first." and
+// every card, quiet. A yes stays off until the end of every card was on screen (review 7 R1: a card of a
+// group never folds, and paging past a long card does not open it), with "Open all 4 cards first." and
 // a "Card 3" tap for each card not yet opened (lib/hill/group-opened.ts keeps the marks). Every answer
 // to a group carries its digest and the cards opened; the bridge refuses a yes without them.
 
@@ -396,10 +397,8 @@ export function DecisionCard({
   const settled = useSettled(locked);
   const group = decision.group;
   const [page, setPage] = useState(() => (playgroundCard === undefined ? 0 : playgroundCard - 1));
+  // A card opens when its end was on screen (decision-group.tsx), not when it draws (review 7 R1).
   const { opened, mark } = useOpenedCards(decision.id, group?.digest ?? "");
-  useEffect(() => {
-    if (group !== undefined) mark(page + 1);
-  }, [group, page, mark]);
   const cardCount = group?.parts.length ?? 0;
   const lastCard = group === undefined || page >= cardCount - 1;
   const unopened = group === undefined ? [] : group.parts.map((_, i) => i + 1).filter((card) => !opened.has(card));
@@ -541,7 +540,7 @@ export function DecisionCard({
       )}
 
       {group !== undefined ? (
-        <DecisionGroupPager decisionId={decision.id} group={group} page={page} onPage={setPage} sender={decision.from.label} mediaSource={mediaSource} />
+        <DecisionGroupPager decisionId={decision.id} group={group} page={page} onPage={setPage} onOpened={mark} sender={decision.from.label} mediaSource={mediaSource} />
       ) : (
         decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} />
       )}

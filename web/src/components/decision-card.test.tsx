@@ -866,6 +866,53 @@ describe("the Decision card, with a group of cards", () => {
     expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "d".repeat(64), opened: [1, 2, 3] });
   });
 
+  it("a card taller than the screen opens only when its end comes on screen, and never folds (review 7 R1)", () => {
+    // Every card is taller than the screen, and far over the fold's cap.
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(VIEW_CAP_PX * 20);
+    const tall = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 390, window.innerHeight * 3));
+    // The hook reads `isIntersecting` alone, so the fake hands it that.
+    type Seen = (entries: readonly { isIntersecting: boolean }[]) => void;
+    const seen: { callback: Seen; target: Element | null }[] = [];
+    class FakeObserver {
+      private readonly at: { callback: Seen; target: Element | null };
+      constructor(callback: Seen) {
+        this.at = { callback, target: null };
+        seen.push(this.at);
+      }
+      observe(target: Element): void {
+        this.at.target = target;
+      }
+      disconnect(): void {
+        this.at.target = null;
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    try {
+      const onSend = vi.fn<(intent: string, text: string | null, group?: HillGroupAnswer) => void>();
+      const view = render(<DecisionCard decision={groupDecision(2)} answer={HILL_IDLE} onSend={onSend} />);
+      const at = (name: string) => view.container.querySelector<HTMLElement>(`[data-slot="${name}"]`);
+      // No fold on a group's card: no clip, no Show all.
+      expect(at("decision-view-more")).toBeNull();
+      expect(at("decision-view-body")).not.toHaveAttribute("data-clipped");
+      // The end mark is what is watched.
+      const watched = () => seen.filter((one) => one.target !== null);
+      expect(watched().map((one) => one.target?.getAttribute("data-slot"))).toEqual(["decision-view-end"]);
+      // Paging past card 1 without its end on screen leaves it unopened.
+      fireEvent.click(at("decision-group-next")!);
+      expect([...view.container.querySelectorAll('[data-slot="decision-group-goto"]')].map((b) => b.textContent)).toEqual(["Card 1", "Card 2"]);
+      expect(view.container.querySelector('[data-slot="decision-option"][data-intent="on"]')).toBeDisabled();
+      // Card 2's end comes on screen: card 2 opens, card 1 still waits.
+      const end = watched()[0]!;
+      act(() => end.callback([{ isIntersecting: true }]));
+      expect([...view.container.querySelectorAll('[data-slot="decision-group-goto"]')].map((b) => b.textContent)).toEqual(["Card 1"]);
+      fireEvent.click(view.container.querySelector<HTMLButtonElement>('[data-slot="decision-option"][data-intent="later"]')!);
+      expect(onSend).toHaveBeenLastCalledWith("later", null, { digest: "d".repeat(64), opened: [2] });
+    } finally {
+      vi.unstubAllGlobals();
+      tall.mockRestore();
+    }
+  });
+
   it("opens on card 1 again when drawn again, while the cards opened stay opened for this digest", () => {
     const decision = groupDecision(2);
     const first = renderCard(decision);

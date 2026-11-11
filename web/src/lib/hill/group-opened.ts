@@ -5,7 +5,8 @@ import { asJsonNumber, parseJson } from "@/lib/json";
 import { HILL_GROUP_PARTS } from "./wire";
 
 // WHICH CARDS OF A GROUP THIS PHONE OPENED (crew slice 8). A Decision whose code does not fit one card
-// carries a group of 2 to 8 cards, and its yes waits until every card was on screen. The marks live in
+// carries a group of 2 to 8 cards, and its yes waits until the end of every card was on screen (a card
+// never folds; components/decision-group.tsx watches a mark after its last line). The marks live in
 // memory and in sessionStorage, keyed by the Decision's id AND the group's digest: a group that changed
 // is a new key, so no mark of the old cards counts for the new ones. A reload of the tab keeps them; a
 // new tab, a second phone, or the app killed starts again. Only the marks are kept, never the card the
