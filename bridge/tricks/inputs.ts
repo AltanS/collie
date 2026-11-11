@@ -8,6 +8,7 @@ import { HOST, isBelow, type Host } from "../host.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { redactText } from "../redact.ts";
 import type { FileEntry } from "../types.ts";
+import { unsafeText } from "./code-hash.ts";
 import { asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import {
   FACT_SESSIONS_MAX,
@@ -45,8 +46,10 @@ import {
 //     (`listFolder`, `readFileBytes`): real-path containment, no symlink, no `.git`, no state secret, no
 //     private folder.
 //   - The file names (`rel`): the member. The lead trusts none of them: each must parse as a relative
-//     path (files-view `parseRelPath`), match one of the trick's globs, and land below the staging folder
-//     after the join. The member folder is the lead's trust-store member id and the pane folder the pane
+//     path (files-view `parseRelPath`), hold no character a Decision's view refuses (code-hash.ts
+//     `unsafeText`: a control, a bidi mark, a zero-width character), match one of the trick's globs, and
+//     land below the staging folder after the join. The member's walk refuses such a name too: it is
+//     never served, only counted as `skipped: "name"`. The member folder is the lead's trust-store member id and the pane folder the pane
 //     the lead asked about, each encoded to one safe step ({@link inputsDirName}).
 //   - The bytes: the member. The lead checks the size against the kind's cap, the SHA-256, the picture
 //     type off the bytes, and that a text file is UTF-8 with no NUL. Nothing is ever executed: the
@@ -76,8 +79,8 @@ export const TRICK_READS_OFF = "trick_reads_off";
 /** The folder of the approved copy the files go to. */
 export const INPUTS_DIR = "inputs";
 
-/** Why a matched file was left out. */
-export type InputSkip = "too-large" | "cap" | "type";
+/** Why a matched file was left out. `name`: its path holds a character {@link unsafeText} refuses. */
+export type InputSkip = "too-large" | "cap" | "type" | "name";
 /** One file in a member's answer. `b64` is absent when the lead already holds these bytes (`have`), and on a skipped one. */
 export interface WireInputFile {
   rel: string;
@@ -114,9 +117,19 @@ export interface InputsBudget {
   left: number;
 }
 
-/** The relative paths the globs match under the root, in glob order then listing order, at most {@link INPUT_FILES_MAX}. */
-async function walkGlobs(ctx: FilesContext, globs: readonly string[], top: FileEntry[]): Promise<{ found: Map<string, number>; more: boolean }> {
+/** A refused name as the answer counts it: each character {@link unsafeText} refuses as `?`, so the name itself never travels. */
+function maskedRel(rel: string): string {
+  return [...rel].map((ch) => (unsafeText(ch) ? "?" : ch)).join("");
+}
+
+/**
+ * The relative paths the globs match under the root, in glob order then listing order, at most
+ * {@link INPUT_FILES_MAX} together with `refused`: the matched files whose name holds a character
+ * {@link unsafeText} refuses. A folder with such a name is never entered.
+ */
+async function walkGlobs(ctx: FilesContext, globs: readonly string[], top: FileEntry[]): Promise<{ found: Map<string, number>; refused: Map<string, number>; more: boolean }> {
   const found = new Map<string, number>();
+  const refused = new Map<string, number>();
   let listings = 1;
   for (const glob of globs) {
     if (inputGlobProblem(glob) !== undefined) continue;
@@ -129,7 +142,7 @@ async function walkGlobs(ctx: FilesContext, globs: readonly string[], top: FileE
         let entries: readonly FileEntry[];
         if (dir === "") entries = top;
         else {
-          if (listings >= INPUT_LISTINGS_MAX) return { found, more: true };
+          if (listings >= INPUT_LISTINGS_MAX) return { found, refused, more: true };
           listings += 1;
           const listing = await listFolder(ctx, dir);
           if (listing === UNKNOWN_PATH || !listing.available) continue;
@@ -140,18 +153,19 @@ async function walkGlobs(ctx: FilesContext, globs: readonly string[], top: FileE
           const rel = dir === "" ? entry.name : `${dir}/${entry.name}`;
           // A link is never followed, at any level: only a real folder and a regular file count.
           if (!last) {
-            if (entry.kind === "dir") next.push(rel);
+            if (entry.kind === "dir" && !unsafeText(entry.name)) next.push(rel);
             continue;
           }
-          if (entry.kind !== "file" || found.has(rel)) continue;
-          if (found.size >= INPUT_FILES_MAX) return { found, more: true };
-          found.set(rel, entry.size ?? 0);
+          if (entry.kind !== "file" || found.has(rel) || refused.has(rel)) continue;
+          if (found.size + refused.size >= INPUT_FILES_MAX) return { found, refused, more: true };
+          if (unsafeText(entry.name)) refused.set(rel, entry.size ?? 0);
+          else found.set(rel, entry.size ?? 0);
         }
       }
       level = next;
     }
   }
-  return { found, more: false };
+  return { found, refused, more: false };
 }
 
 /** A matched file as the answer carries it: its kind and bytes, or why it is left out. */
@@ -190,7 +204,7 @@ export async function readPaneInputs(ctx: FilesContext, globs: readonly string[]
   const quiet: FilesContext = { ...ctx, ignoreProbe: () => Promise.resolve(null) };
   const top = await listFolder(quiet, "");
   if (top === UNKNOWN_PATH || !top.available) return { state: "no-folder", files: [] };
-  const { found } = await walkGlobs(quiet, globs, top.entries);
+  const { found, refused } = await walkGlobs(quiet, globs, top.entries);
   const files: WireInputFile[] = [];
   for (const [rel, size] of found) {
     const one = await readOne(quiet, rel, size, redact);
@@ -209,6 +223,8 @@ export async function readPaneInputs(ctx: FilesContext, globs: readonly string[]
     }
     files.push(file);
   }
+  // A refused name is counted, never read: its masked path, its listed size, and `skipped: "name"`.
+  for (const [rel, size] of refused) files.push({ rel: maskedRel(rel), bytes: size, mtime: isoOf(undefined), skipped: "name" });
   return { state: "ok", files };
 }
 
@@ -243,8 +259,9 @@ function strings(value: JsonValue | undefined, max: number): string[] | null {
   return out;
 }
 
+/** A `rel` either side takes: within {@link INPUT_REL_MAX_BYTES}, a Files path, and no character {@link unsafeText} refuses. */
 function relOk(rel: string): boolean {
-  return encoder.encode(rel).length <= INPUT_REL_MAX_BYTES && parseRelPath(rel) !== null;
+  return encoder.encode(rel).length <= INPUT_REL_MAX_BYTES && !unsafeText(rel) && parseRelPath(rel) !== null;
 }
 
 /**
@@ -416,7 +433,7 @@ interface MemberCall {
 }
 
 const KIND_CAP = { text: INPUT_TEXT_MAX_BYTES, image: INPUT_IMAGE_MAX_BYTES } satisfies Record<InputKind, number>;
-const SKIPS = new Set<string>(["too-large", "cap", "type"]);
+const SKIPS = new Set<string>(["too-large", "cap", "type", "name"] satisfies InputSkip[]);
 
 /** One file of a member's answer as the lead takes it, or null when it is refused (and so counted as skipped). */
 function takeFile(row: JsonObject, globs: readonly string[], held: ReadonlyMap<string, string>): HeldFile | null {

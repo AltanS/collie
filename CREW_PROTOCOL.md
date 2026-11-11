@@ -4225,7 +4225,9 @@ data. It never reaches a member any other way: no socket, no token, no command.
   get the uniform 401. A lead or a solo install answers 404.
 - **The member's gate.** `COLLIE_CREW_TRICK_READS` on the member: `on` allows, `off` refuses, and any
   other word refuses (it fails closed). Unset follows the member's device gate: allowed while
-  `COLLIE_DEVICE_HEADER` is off (like the Files view to a crew link today), refused while it is on.
+  `COLLIE_DEVICE_HEADER` is unset (like the Files view to a crew link today), refused while it is set.
+  The member reads the gate at start (`.env`, or `[crew] crew_trick_reads` in `config.toml`), so a
+  change needs a restart. With neither variable set, the reads are on.
   Refused is `403` with `{ code: "trick_reads_off" }`, and the member reads nothing. The gate is read
   before the body is parsed.
 - **The body.** `trick` is the trick's id (`isTrickId`), `run` a run id for the audit, `globs` the
@@ -4243,11 +4245,15 @@ data. It never reaches a member any other way: no socket, no token, no command.
   lead files the answer under the member id of the link it dialled.
 - **The member's read** is the Files view's own: the same root, home bound, real-path containment, deny
   list (`.git`, the state secrets, the bridge's own state and config folders) and no-follow open. A link
-  is never followed at any level. A `.env` file (`.env`, `.env.local`, `.envrc`, in any case) is never
+  is never followed at any level. A glob's `*` never matches a leading dot, so a dot name is read only
+  by a glob step that starts with a dot. A `.env` file (`.env`, `.env.local`, `.envrc`, in any case) is never
   read, whatever the glob says: the Files view shows one to a person who opens it, a trick reads
   unattended. A file over 2 MB, or a text file over 256 KiB, is listed as `skipped: "too-large"`; a
-  file that is neither UTF-8 text without NUL nor a PNG, JPEG or WebP picture is `skipped: "type"`. At
-  most 32 files and 64 folder listings per pane. With `COLLIE_REDACT` on, a text file
+  file that is neither UTF-8 text without NUL nor a PNG, JPEG or WebP picture is `skipped: "type"`. A
+  file whose name holds a control character, a bidi mark or isolate, a zero-width space or word joiner,
+  a byte order mark or a tag character (the characters a Decision's view refuses, `unsafeText`) is
+  never read: it is `skipped: "name"`, and its `rel` carries each such character as `?`. A folder with
+  such a name is never entered. At most 32 files and 64 folder listings per pane. With `COLLIE_REDACT` on, a text file
   leaves masked. A file whose SHA-256 the lead named in `have` travels as its hash only. The bytes of
   one answer stop at 8 MiB; past it a file is `skipped: "cap"`.
 - **A file in the answer** is `{ rel, bytes, mtime, sha256, kind, b64 }`, or `{ rel, bytes, mtime,
@@ -4264,8 +4270,8 @@ data. It never reaches a member any other way: no socket, no token, no command.
   is `offline`; a `404` is `older` (a member built before the route); a `403 trick_reads_off` is
   `refused`. The lead reads at most the answer's cap of the body and drops the rest.
 - **The lead trusts no word of the answer.** For each file it checks: `rel` is a relative path that
-  passes the same rule as a Files path, matches one of the trick's globs step by step, and names no
-  `.env`, `.git`, `.` or `..`; `b64` decodes strictly; the bytes' SHA-256 is `sha256`; the size is
+  passes the same rule as a Files path, holds no character `unsafeText` refuses, matches one of the
+  trick's globs step by step, and names no `.env`, `.git`, `.` or `..`; `b64` decodes strictly; the bytes' SHA-256 is `sha256`; the size is
   `bytes` and within the kind's cap; a picture sniffs as PNG, JPEG or WebP; a text file is UTF-8 with no
   NUL. A hash-only file counts only when the lead holds that file with that hash. A pane not asked is
   ignored. Anything else is skipped and counted.

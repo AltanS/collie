@@ -449,21 +449,44 @@ Before each run, the lead asks each member for the files those patterns match in
 member's agent sessions, and copies them into the trick's folder. The trick reads them as data. It
 cannot run anything on a member, and it reads nothing outside a session's folder.
 
-The trick's row in Settings says what it reads: "Reads TODO.md, shots/*.png in your agent sessions'
-folders on every machine of the crew." A new version that changes the patterns waits for your yes.
+A member serves these reads by default, unless it sets `COLLIE_DEVICE_HEADER` (the table below).
+It serves only the files that match the patterns a person
+approved for the trick on the lead. The patterns are part of the trick's rights: the trick's row in
+Settings says what it reads, "Reads TODO.md, shots/*.png in your agent sessions' folders on every
+machine of the crew." A new version that changes the patterns waits for your yes.
 
-A member reads the files with the same rules as the Files view. It never reads a shell pane's folder,
-a link, a `.git` folder, a `.env` file, or Collie's own state and config folders. A text file is at
-most 256 KB and a picture (PNG, JPEG or WebP) at most 2 MB. Each member writes one audit line per
-read, with the trick, the number of files and their size, never a file name.
+A member reads the files with the same rules as the Files view, and a few more. It reads only the
+folders of its own agent sessions, never a shell session's folder. It never serves:
 
-Each member decides whether the lead's tricks may read its files, in that machine's `.env`:
+- A link, at any level. It never follows one.
+- A name that starts with a dot, unless that step of the pattern starts with a dot too. `*` never
+  matches a leading dot, so `*.md` skips `.notes.md`, and `.editorconfig` is read only by a pattern
+  such as `.editorconfig` or `.e*`.
+- A `.env` file: any name that starts with `.env`, in any case and in any folder, such as `.env`,
+  `.env.local`, `.envrc` or `.ENV`. This holds whatever the pattern says, and a pattern that names
+  one is refused.
+- Anything in a `.git` folder, in any case. A pattern that names `.git` is refused.
+- Collie's own state and config folders, and a file named like one of Collie's state files, such as
+  `crew-trust.json` or `paired-devices.json`, wherever it sits.
+- A file or folder whose name holds a control character, a direction mark or a zero-width character.
+  Such a file counts as skipped.
+
+A text file is at most 256 KB and a picture (PNG, JPEG or WebP) at most 2 MB, and a member sends at
+most 32 files per session. Each member writes one audit line per read, with the trick, the number of
+files and their size, never a file name.
+
+Each member decides whether the lead's tricks may read its files. Set `COLLIE_CREW_TRICK_READS` in
+that machine's `.env`, or `crew_trick_reads` under `[crew]` in its `config.toml`
+([Configure Collie](configure.md)):
 
 | `COLLIE_CREW_TRICK_READS` | what the member does |
 | --- | --- |
-| unset | allows the reads while `COLLIE_DEVICE_HEADER` is off, and refuses them while it is on |
+| unset | allows the reads while `COLLIE_DEVICE_HEADER` is unset, and refuses them while it is set |
 | `on` | allows the reads |
 | `off`, or any other word | refuses the reads |
+
+To switch the reads off on a member, add `COLLIE_CREW_TRICK_READS=off` to that member's `.env`, then
+run `collie restart` on that member. The member reads the setting only when it starts.
 
 A session on a member that refuses shows `refused` to the trick, and one on a machine that is not
 answering shows `offline`.

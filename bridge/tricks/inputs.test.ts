@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 
 import type { JsonValue } from "../json.ts";
 import type { FactsSession } from "../../web/src/lib/tricks/schema.ts";
+import { unsafeText } from "./code-hash.ts";
 import {
   answerInputsRequest,
   INPUT_ANSWER_MAX_BYTES,
@@ -121,6 +122,22 @@ describe("the member's read, through the Files view", () => {
     m.put(".editorconfig", "root = true\n");
     const read = await readPaneInputs(m.ctx, [".e*", "config/.e*", ".E*"], new Map(), budget(), false);
     expect(read.files.map((f) => f.rel)).toEqual([".editorconfig"]);
+  });
+
+  test.skipIf(process.platform === "win32")("a name with a control, bidi or zero-width character is never served, and counts as skipped; plain non-ASCII names pass", async () => {
+    const m = machine();
+    for (const name of ["evil\u202Etxt.md", "zero\u200Bwidth.md", "bell\u0007.md", "übersicht.md", "日本.txt"]) m.put(name, "x");
+    m.put("dir\u202E/inner.md", "x");
+    m.put("ok/inner.md", "x");
+    const read = await readPaneInputs(m.ctx, ["*.md", "*.txt", "*/inner.md"], new Map(), budget(), false);
+    expect(read.files.filter((f) => f.skipped === undefined).map((f) => f.rel)).toEqual(["übersicht.md", "日本.txt", "ok/inner.md"]);
+    const refused = read.files.filter((f) => f.skipped === "name");
+    expect(refused).toHaveLength(3);
+    for (const file of refused) {
+      expect(file.b64).toBeUndefined();
+      expect(file.sha256).toBeUndefined();
+      expect(unsafeText(file.rel)).toBe(false);
+    }
   });
 
   test("oversize and the wrong type are skipped with the reason, never sent", async () => {
@@ -354,6 +371,30 @@ describe("the lead's fetch and delivery", () => {
     const got = await r.inputs.fetch({ ...TRICK(r.dir), globs: [".e*", ".E*"] }, [session("minibuch", "%1")]);
     expect(got.get("minibuch:%1")?.files.map((f) => f.rel)).toEqual([".editorconfig"]);
     expect(got.get("minibuch:%1")?.skipped).toBe(2);
+  });
+
+  test("a hostile member's name with a control, bidi or zero-width character is dropped, never written; plain non-ASCII names land", async () => {
+    const r = leadRig();
+    r.answer = () =>
+      ok([
+        wireFile("notes/evil\u202Etxt.md", "x"),
+        wireFile("notes/zero\u200Bwidth.md", "x"),
+        wireFile("notes/bell\u0007.md", "x"),
+        wireFile("notes/übersicht.md", "ü"),
+        wireFile("notes/日本.md", "日"),
+        { rel: "notes/skip.md", bytes: 1, mtime: "2026-11-10T09:00:00.000Z", skipped: "name" },
+      ]);
+    const got = await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
+    expect(got.get("minibuch:%1")?.files.map((f) => f.rel)).toEqual(["notes/übersicht.md", "notes/日本.md"]);
+    expect(got.get("minibuch:%1")?.skipped).toBe(4);
+    expect(readdirSync(join(r.dir, "inputs/minibuch/_251/notes")).toSorted()).toEqual(["übersicht.md", "日本.md"].toSorted());
+  });
+
+  test("a request whose have names a file with a hidden character is refused", () => {
+    for (const rel of ["evil\u202Etxt.md", "zero\u200Bwidth.md", "bell\u0007.md"]) {
+      expect(parseInputsRequest({ trick: "todo", run: "r1", globs: ["*.md"], panes: ["%1"], have: [{ pane: "%1", files: [{ rel, sha256: sha("x") }] }] }), rel).toHaveProperty("error");
+    }
+    expect("error" in parseInputsRequest({ trick: "todo", run: "r1", globs: ["*.md"], panes: ["%1"], have: [{ pane: "%1", files: [{ rel: "übersicht.md", sha256: sha("x") }] }] })).toBe(false);
   });
 
   test("a binary file posing as text, more than 32 files, and an answer for a pane not asked: refused or ignored", async () => {
