@@ -37,6 +37,7 @@ import security from "../docs/security.md" with { type: "text" };
 import sessions from "../docs/sessions.md" with { type: "text" };
 import terminology from "../docs/terminology.md" with { type: "text" };
 import themes from "../docs/themes.md" with { type: "text" };
+import themesReference from "../docs/themes-reference.md" with { type: "text" };
 import tricks from "../docs/tricks.md" with { type: "text" };
 import tricksAuthoring from "../docs/tricks-authoring.md" with { type: "text" };
 import tricksReference from "../docs/tricks-reference.md" with { type: "text" };
@@ -200,6 +201,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "themes",
     purpose: "Pick, import, export and write a theme: colours, shape, look and terminal palette",
     text: themes,
+  },
+  {
+    name: "themes-reference",
+    purpose: "Every key, colour token, shape word, palette key, typeface, character and glyph set of a theme file, complete, generated from the code",
+    text: themesReference,
   },
   {
     name: "security",

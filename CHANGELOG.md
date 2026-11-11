@@ -125,6 +125,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Docs
 
 - **One complete reference for tricks, generated from the code.** `docs/tricks-reference.md` lists every place, part, manifest key, limit and `collie trick` and `collie hill` verb, each with a working example, and `collie docs tricks-reference` prints it. A script writes the page from a catalogue in the code, and a test fails when the page is stale, an example fails the real parser, or a place, part, key or verb is missing. `collie trick guide` reads its keys and places from the same catalogue and names the page. Writing a trick and Tricks now link to it instead of repeating its tables.
+- **One complete reference for themes, generated from the code.** `docs/themes-reference.md` lists every key, colour token, shape word, ground pattern, terminal palette key, typeface, character and glyph set of a theme file, with the limits and the defaults of the theme Collie, and `collie docs themes-reference` prints it. A test fails when the page is stale, an example fails the theme parser, or `docs/themes.md` or the theme brief names a word the parser lacks.
 
 ## [1.28.2] - 2026-11-11
 

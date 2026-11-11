@@ -56,6 +56,8 @@ that browser, and it changes nothing on the bridge.
 Every theme has two halves. The light half is the set of colours for light mode. The dark half is the set
 for dark mode. A colour in a theme has a name, such as `background` or `primary`, and that name is a token.
 
+The [Themes reference](themes-reference.md) lists every key, token, word and limit of a theme file in one page, generated from the code.
+
 ## The four themes
 
 Collie ships four themes, and every one of them uses every part of a theme file except [`character`](#characters). Each picture shows the Dashboard,

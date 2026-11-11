@@ -8,11 +8,7 @@
 //
 // `scripts/tricks-reference.test.ts` holds the page to the generator, parses every example with the real
 // parser, and fails when a place, a part kind, a manifest key or a verb is missing from the page.
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
+import { runReferenceCli, table, word } from "./reference-kit.ts";
 import {
   COMMANDS,
   HILL,
@@ -37,17 +33,6 @@ export const REFERENCE_PAGE = "docs/tricks-reference.md";
 
 /** The command that writes it, as the page names it. */
 export const REFERENCE_COMMAND = "bun scripts/tricks-reference.ts --write";
-
-const ROOT = join(import.meta.dir, "..");
-
-/** A table cell: a pipe is escaped and a line break is a space. */
-function cell(text: string): string {
-  return text.replaceAll("|", "\\|").replaceAll("\n", " ");
-}
-
-function table(head: readonly string[], rows: readonly (readonly string[])[]): string[] {
-  return [`| ${head.join(" | ")} |`, `| ${head.map(() => "---").join(" | ")} |`, ...rows.map((row) => `| ${row.map(cell).join(" | ")} |`)];
-}
 
 function limitTable(limits: readonly Limit[]): string[] {
   return table(
@@ -95,8 +80,6 @@ function exampleLabel(example: Example): string {
 function exampleLines(examples: readonly Example[]): string[] {
   return examples.flatMap((example) => ["", exampleLabel(example), "", ...exampleBlock(example)]);
 }
-
-const word = (text: string): string => `\`${text}\``;
 
 function placesSection(): string[] {
   const lines: string[] = [
@@ -254,47 +237,4 @@ export function renderReference(): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** A unified diff of two texts, from the system `diff`; empty when equal. */
-function unifiedDiff(current: string, wanted: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "tricks-reference-"));
-  try {
-    writeFileSync(join(dir, "current"), current);
-    writeFileSync(join(dir, "generated"), wanted);
-    const run = spawnSync("diff", ["-u", "--label", REFERENCE_PAGE, "--label", "generated", join(dir, "current"), join(dir, "generated")], { encoding: "utf8" });
-    if (run.status === 0) return "";
-    return run.stdout === "" ? "the page differs from the generator output\n" : run.stdout;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-/** The page's text on disk, or "" when it does not exist yet. */
-function readPage(): string {
-  try {
-    return readFileSync(join(ROOT, REFERENCE_PAGE), "utf8");
-  } catch {
-    return "";
-  }
-}
-
-function main(argv: readonly string[]): number {
-  const write = argv.includes("--write");
-  const unknown = argv.filter((arg) => arg !== "--write");
-  if (unknown.length > 0) {
-    console.error(`usage: ${REFERENCE_COMMAND.replace(" --write", "")} [--write]`);
-    return 2;
-  }
-  const wanted = renderReference();
-  if (write) {
-    writeFileSync(join(ROOT, REFERENCE_PAGE), wanted);
-    console.log(`wrote ${REFERENCE_PAGE}`);
-    return 0;
-  }
-  const diff = unifiedDiff(readPage(), wanted);
-  if (diff === "") return 0;
-  process.stdout.write(diff);
-  console.error(`${REFERENCE_PAGE} is stale. Run: ${REFERENCE_COMMAND}`);
-  return 1;
-}
-
-if (import.meta.main) process.exit(main(process.argv.slice(2)));
+if (import.meta.main) process.exit(runReferenceCli(process.argv.slice(2), REFERENCE_PAGE, REFERENCE_COMMAND, renderReference()));
