@@ -3,6 +3,7 @@ import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
 import { Segmented } from "@/components/ui/segmented";
 import { useLocale } from "@/hooks/use-locale";
+import { savedAtLabel } from "@/lib/format";
 import { HILL_CREW_STATES, type HillCrewState } from "@/lib/hill/wire";
 import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -28,12 +29,23 @@ const HELP = {
   away: "hill.state.help.away",
 } as const satisfies Record<HillCrewState, string>;
 
+/** Who set the crew state and when: a phone's label, or `terminal` for `collie hill state`. */
+export interface HillCrewStateSetBy {
+  by: string;
+  at: number;
+}
+
 export interface HillCrewStateBarProps {
   value: HillCrewState;
   /** The lead's value now: the tell row follows it, not a tap still in flight. */
   saved: HillCrewState;
   /** How many sessions "Tell all sessions now" reached for this change, or null when it has not run. */
   told: number | null;
+  /**
+   * Who set the lead's value and when, or null when nobody did. Shown under quiet and away, so a state
+   * that silences every push always says where it came from, push or no push (review 8).
+   */
+  setBy: HillCrewStateSetBy | null;
   canWrite: boolean;
   busy: boolean;
   failed: boolean;
@@ -43,12 +55,18 @@ export interface HillCrewStateBarProps {
   onTell: () => void;
 }
 
+/** Who set it and when: a phone by its label, the CLI as a terminal. */
+function setByWords(setBy: HillCrewStateSetBy): string {
+  const time = savedAtLabel(setBy.at);
+  return setBy.by === "terminal" ? t("hill.state.setFromTerminal", { time }) : t("hill.state.setBy", { by: setBy.by, time });
+}
+
 /** The done words of the tell button: how many sessions the line reached. */
 function toldWords(count: number): string {
   return count === 0 ? t("hill.state.toldNone") : tn("hill.state.told", count);
 }
 
-export function HillCrewStateBar({ value, saved, told, canWrite, busy, failed, telling, tellFailed, onChange, onTell }: HillCrewStateBarProps) {
+export function HillCrewStateBar({ value, saved, told, setBy, canWrite, busy, failed, telling, tellFailed, onChange, onTell }: HillCrewStateBarProps) {
   useLocale();
   const offerTell = saved !== "here";
   const done = told !== null;
@@ -71,6 +89,11 @@ export function HillCrewStateBar({ value, saved, told, canWrite, busy, failed, t
       </Collapse>
       <Collapse open={offerTell}>
         <div className="flex flex-col pt-3">
+          {setBy !== null && (
+            <p data-slot="hill-crew-state-set-by" className="pb-2 text-xs text-muted-foreground">
+              {setByWords(setBy)}
+            </p>
+          )}
           <Button
             type="button"
             variant="outline"

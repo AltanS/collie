@@ -288,6 +288,7 @@ function CrewStateBody({ initial, told: firstTold }: { initial: HillCrewState; t
           value={value}
           saved={value}
           told={told}
+          setBy={{ by: "Pixel 9", at: Date.now() - 12 * 60 * 1000 }}
           canWrite
           busy={false}
           failed={false}

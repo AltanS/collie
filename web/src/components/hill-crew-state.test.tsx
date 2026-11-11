@@ -25,6 +25,7 @@ function Live() {
       value={crew.value}
       saved={crew.view.state}
       told={crew.view.told}
+      setBy={crew.view.by === null || crew.view.at === null ? null : { by: crew.view.by, at: crew.view.at }}
       canWrite={crew.canWrite}
       busy={crew.busy}
       failed={crew.failed}
@@ -47,7 +48,7 @@ function serveState(first: HillCrewStateView | Response) {
 
 beforeEach(() => __resetHill());
 
-const bar = { told: null, canWrite: true, busy: false, failed: false, telling: false, tellFailed: false, onChange: () => {}, onTell: () => {} };
+const bar = { told: null, setBy: null, canWrite: true, busy: false, failed: false, telling: false, tellFailed: false, onChange: () => {}, onTell: () => {} };
 
 describe("the crew state control", () => {
   it("offers the three values, each with its one helper line, and no tell under here", () => {
@@ -62,6 +63,16 @@ describe("the crew state control", () => {
     rerender(<HillCrewStateBar {...bar} value="away" saved="away" />);
     expect(screen.getByText("No push. Agents hold questions that need an answer now.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tell all sessions now" })).toBeEnabled();
+  });
+
+  it("says who set quiet or away and when, without a push: a phone by its name, the CLI as a terminal (review 8)", () => {
+    const { rerender } = render(<HillCrewStateBar {...bar} value="away" saved="away" setBy={{ by: "Pixel 9", at: Date.now() }} />);
+    expect(screen.getByText(/^Set by Pixel 9 at /)).toBeInTheDocument();
+    rerender(<HillCrewStateBar {...bar} value="quiet" saved="quiet" setBy={{ by: "terminal", at: Date.now() }} />);
+    expect(screen.getByText(/^Set from a terminal at /)).toBeInTheDocument();
+    rerender(<HillCrewStateBar {...bar} value="here" saved="here" setBy={{ by: "Pixel 9", at: Date.now() }} />);
+    // Under here the line leaves with the tell row: the closed Collapse holds it out of reach.
+    expect(screen.getByText(/^Set (by|from) /).closest("[inert]")).not.toBeNull();
   });
 
   it("reads done with the count once told, and the button takes no second tap", () => {

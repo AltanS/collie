@@ -3478,6 +3478,8 @@ export const en = {
   "hill.state.told.other": "Told {count} sessions",
   "hill.state.toldNone": "No session was waiting",
   "hill.state.tellFailed": "Could not tell the sessions. Try again.",
+  "hill.state.setBy": "Set by {by} at {time}.",
+  "hill.state.setFromTerminal": "Set from a terminal at {time}.",
   "hill.spoke": "You wrote to this session after it asked.",
   "hill.clear.closed.one": "Clear {count} entry",
   "hill.clear.closed.other": "Clear {count} entries",
@@ -3738,6 +3740,8 @@ export const PENDING_TRANSLATION = [
   "hill.state.told.other",
   "hill.state.toldNone",
   "hill.state.tellFailed",
+  "hill.state.setBy",
+  "hill.state.setFromTerminal",
   // The quiet mark on a card whose session the person wrote to (1.29.0).
   "hill.spoke",
   // The Clear menu's two choices (1.29.0).

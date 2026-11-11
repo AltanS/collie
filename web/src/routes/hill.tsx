@@ -69,6 +69,7 @@ export function HillRoute() {
                 value={crew.value}
                 saved={crew.view.state}
                 told={crew.view.told}
+                setBy={crew.view.by === null || crew.view.at === null ? null : { by: crew.view.by, at: crew.view.at }}
                 canWrite={crew.canWrite}
                 busy={crew.busy}
                 failed={crew.failed}
