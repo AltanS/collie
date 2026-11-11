@@ -897,7 +897,8 @@ describe("fault A: a tap names what the bridge drew", () => {
       expect(reply).toMatchObject({ code: "rejected", refused: "intent" });
     }
     expect(r.specs.length).toBe(1);
-    expect(r.audits.map((line) => line.detail.reason)).toEqual(forged.map(() => "intent"));
+    // One line for the reason this minute (N5), however many taps.
+    expect(r.audits.map((line) => line.detail.reason)).toEqual(["intent"]);
   });
 
   test("fault A: a forged value is refused: another value, a value where the control sends none, none where it sends one", async () => {
@@ -918,7 +919,7 @@ describe("fault A: a tap names what the bridge drew", () => {
       expect(answer.body).toMatchObject({ code: "rejected", refused: "value" });
     }
     expect(r.specs.length).toBe(1);
-    expect(r.audits.map((line) => line.detail.reason)).toEqual(["value", "value", "value"]);
+    expect(r.audits.map((line) => line.detail.reason)).toEqual(["value"]);
   });
 
   test("fault A: a stale rev answers changed with the parts now, and runs nothing; a rev moved only by a new asOf still lands", async () => {
@@ -945,7 +946,7 @@ describe("fault A: a tap names what the bridge drew", () => {
     // A rev from the future names nothing the phone was shown either.
     expect(await route(r, { rid: rid(3), node: "belt", intent: "open", rev: (r.service.rev() ?? 0) + 1 })).toMatchObject({ code: "changed", refused: "changed" });
     expect(r.specs.length).toBe(3);
-    expect(audits.map((line) => line.detail.reason)).toEqual(["changed", "changed"]);
+    expect(audits.map((line) => line.detail.reason)).toEqual(["changed"]);
   });
 
   test("fault A: a tap without a rev, from a bundle older than the check, answers changed and runs nothing", async () => {
@@ -973,10 +974,22 @@ describe("fault A: a tap names what the bridge drew", () => {
       expect(await route(r, { rid: rid(i + 1), node: "belt", intent: "open", from: { session }, rev })).toMatchObject({ code: "rejected", refused: "session", message: TAP_REFUSED_LINES.session });
     }
     expect(r.specs.length).toBe(1);
-    expect(r.audits.map((line) => line.detail.reason)).toEqual(["session", "session", "session"]);
+    expect(r.audits.map((line) => line.detail.reason)).toEqual(["session"]);
     // A live agent session, or none at all, lands.
     expect(await route(r, { rid: rid(4), node: "belt", intent: "open", from: { session: "lodge:w6X:3" }, rev })).toMatchObject({ code: "ok" });
     expect(await route(r, { rid: rid(5), node: "belt", intent: "open", rev: await revOf(r, "belt") })).toMatchObject({ code: "ok" });
+  });
+
+  test("N5: refused taps write one audit line per trick and reason a minute", async () => {
+    const r = await drawnRig();
+    const rev = await revOf(r, "belt");
+    for (let i = 1; i <= 5; i++) expect(await route(r, { rid: rid(i), node: "ghost", intent: "open", rev })).toMatchObject({ refused: "part" });
+    expect(await route(r, { rid: rid(6), node: "belt", intent: "rerun", rev })).toMatchObject({ refused: "intent" });
+    expect(r.audits.map((line) => line.detail.reason)).toEqual(["part", "intent"]);
+    r.clock.t += 61_000;
+    expect(await route(r, { rid: rid(7), node: "ghost", intent: "open", rev })).toMatchObject({ refused: "part" });
+    expect(r.audits.map((line) => line.detail.reason)).toEqual(["part", "intent", "part"]);
+    expect(r.specs.length).toBe(1);
   });
 
   test("N2: a session of a crew member the lead cannot reach is refused; a reachable one lands", async () => {

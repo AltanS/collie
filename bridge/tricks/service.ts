@@ -254,6 +254,14 @@ export const HILL_NODE_TAP_REFUSED = "A decision is answered on the Hill, not wi
  * The bridge's words for a refused phone tap (fault A), for `collie trick` and a phone that predates
  * `refused`. A phone that reads `refused` says it in its own words.
  */
+/**
+ * N5 (review 11): a refused tap writes its audit line at most once a minute per trick and reason, the
+ * rule of the agent view's refused writes (agent-view/service.ts `noteRefusedWrite`), so a phone or a
+ * forger tapping in a loop cannot fill the audit log. Past this many keys, a new one waits for a free slot.
+ */
+export const TAP_REFUSAL_AUDIT_MS = 60_000;
+export const TAP_REFUSAL_KEYS_MAX = 1024;
+
 export const TAP_REFUSED_LINES = {
   part: "The trick holds no such part now, so nothing ran.",
   intent: "No control of this part sends that intent, so nothing ran.",
@@ -583,6 +591,8 @@ export class TricksService implements TricksSurface {
   private readonly readSwitches: () => Promise<Switches>;
   private readonly runtimes = new Map<string, TrickRuntime>();
   private readonly receipts = new Map<string, Receipt>();
+  /** When each (trick, reason) of a refused tap last wrote its audit line (N5). */
+  private readonly tapRefusalLines = new Map<string, number>();
   private readonly inflight = new Map<string, { digest: string; reply: Promise<TrickTapReply> }>();
   private readonly receiptFile: TrickReceiptSurface;
   private receiptsLoaded: Promise<void> | null = null;
@@ -1607,7 +1617,7 @@ export class TricksService implements TricksSurface {
   /** The reply of a refused phone tap, and its one audit line. */
   private refusalOf(id: string, request: TapRequest, refused: TapRefusal): TrickTapReply {
     const host = this.deps.memberId;
-    this.deps.audit?.({ action: "trick.tap.refused", detail: { trick: id, reason: refused, node: request.node, intent: request.intent } });
+    if (this.mayAuditTapRefusal(id, refused)) this.deps.audit?.({ action: "trick.tap.refused", detail: { trick: id, reason: refused, node: request.node, intent: request.intent } });
     const reply: TrickTapReply = { rid: request.rid, code: refused === "changed" ? "changed" : "rejected", refused, message: TAP_REFUSED_LINES[refused] };
     if (refused === "changed") {
       const mine = this.store.trickParts(host, id, -Infinity);
@@ -1616,6 +1626,20 @@ export class TricksService implements TricksSurface {
       reply.present = mine.present;
     }
     return reply;
+  }
+
+  /** Whether a refused tap of this trick and reason may write its audit line now (N5). Records it when so. */
+  private mayAuditTapRefusal(id: string, reason: TapRefusal): boolean {
+    const key = `${id}\u0000${reason}`;
+    const now = this.now();
+    const last = this.tapRefusalLines.get(key);
+    if (last !== undefined && now - last < TAP_REFUSAL_AUDIT_MS) return false;
+    if (last === undefined && this.tapRefusalLines.size >= TAP_REFUSAL_KEYS_MAX) {
+      for (const [held, at] of this.tapRefusalLines) if (now - at >= TAP_REFUSAL_AUDIT_MS) this.tapRefusalLines.delete(held);
+      if (this.tapRefusalLines.size >= TAP_REFUSAL_KEYS_MAX) return false;
+    }
+    this.tapRefusalLines.set(key, now);
+    return true;
   }
 
   /**
