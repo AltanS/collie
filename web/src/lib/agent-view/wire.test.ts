@@ -282,7 +282,7 @@ describe("blocks", () => {
 describe("review 10 accept: Collie's own words", () => {
   // The phone's own frame words around a view: each must be refused in an agent's text, so the shared
   // list (VIEW_COLLIE_PHRASES, read by the bridge's write) can never fall behind the words the phone shows.
-  const OWN = ["view.band.by", "view.sent.label", "view.band.question", "view.band.old", "view.band.changed", "view.band.working", "view.request.working", "view.textAnswer", "view.earlier.row", "view.refused.noProfile"] as const;
+  const OWN = ["view.band.by", "view.sent.label", "view.band.question", "view.band.old", "view.band.changed", "view.band.working", "view.request.working", "view.textAnswer", "view.earlier.row"] as const;
 
   it("review 10 accept: every frame line the phone draws around a view reads as Collie's own words", () => {
     for (const key of OWN) expect(collieWordsIn(t(key)), key).not.toBeNull();
@@ -290,7 +290,7 @@ describe("review 10 accept: Collie's own words", () => {
   });
 
   it("review 10 accept: the list holds the phrases named in the review", () => {
-    for (const phrase of ["Drawn by this session's agent", "Sent to this session", "From Collie", "Collie"]) expect(collieWordsIn(phrase), phrase).not.toBeNull();
+    for (const phrase of ["Drawn by this session's agent", "Sent to this session", "From Collie"]) expect(collieWordsIn(phrase), phrase).not.toBeNull();
     expect(VIEW_COLLIE_PHRASES.length).toBeGreaterThan(0);
   });
 });

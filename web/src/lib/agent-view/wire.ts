@@ -652,14 +652,13 @@ export const VIEW_WEB_LINKS_ONLY = "A link in an agent view goes to a web addres
 
 /**
  * The words Collie draws around an agent view, which no text of the agent's may say, so a screen cannot
- * pass for Collie's frame: Collie's name, the band's words, the line over a sent message, the band's lines
+ * pass for Collie's frame: "From Collie", the band's words, the line over a sent message, the band's lines
  * for a held button, the armed words, and the fold. ONE LIST for the bridge's write and the phone's read
  * (both run {@link parseAgentView} and {@link parseViewChoice}); the web's tests pin that the phone's own
  * strings stay in it. English: the phone draws the frame in the person's language, and a screen in
  * another one is the agent's to write.
  */
 export const VIEW_COLLIE_PHRASES = [
-  "Collie",
   "From Collie",
   "Drawn by this session's agent",
   "Drawn in an earlier conversation",
@@ -684,8 +683,8 @@ const COLLIE_PHRASES_FOLDED = VIEW_COLLIE_PHRASES.map((phrase) => ({ phrase, wor
 /**
  * The first of Collie's own phrases a text says, or null. Both sides are folded as the head rule folds
  * (hidden characters out, NFKC, lower case, marks out, look-alikes folded), then every run of characters
- * that are not letters or digits becomes one space; a phrase counts as whole words only, so `colliepwa`
- * or "The screens changed" pass. A text with a hidden character is read a second time with each one a
+ * that are not letters or digits becomes one space; a phrase counts as whole words only, so "The screens
+ * changed" passes. Collie's bare name is not a phrase: an agent that works on Collie names it. A text with a hidden character is read a second time with each one a
  * blank.
  */
 export function collieWordsIn(text: string): string | null {

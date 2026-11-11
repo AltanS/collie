@@ -1082,10 +1082,10 @@ holds a button at the same steps, and the decision block's while it asks the sam
 options; a removed block, a new block id or a new decision shows none. A settled choice takes no pick.
 
 **Collie's own words (review 10).** No text an agent draws may say one of `VIEW_COLLIE_PHRASES`
-(`web/src/lib/agent-view/wire.ts`): Collie's name, the band's words, "Sent to this session", the band's
+(`web/src/lib/agent-view/wire.ts`): "From Collie", the band's words, "Sent to this session", the band's
 lines for a held button, "Tap again to send", "Earlier screen". `collieWordsIn` folds both sides as the
-head rule does, turns every run of other characters into one blank and matches whole words, so
-`colliepwa.dev` passes. It reads a node's text and every attribute's words (not `href`, `src`, `ref`,
+head rule does, turns every run of other characters into one blank and matches whole words. Collie's
+bare name is not on the list: "Restart Collie" passes. It reads a node's text and every attribute's words (not `href`, `src`, `ref`,
 `intent`), the choice, the title, a pending label and a start note.
 
 **Links (review 10).** A link, a row or a run goes to a web address only; a session `href` is refused.

@@ -787,6 +787,17 @@ describe("review 10 accept: an agent's text cannot say Collie's own words", () =
     expect(await r.service.pending(T, ONE, { id: "wait", label: "The buttons wait", place: { kind: "end" } })).toMatchObject({ ok: false, code: "bad_block" });
   });
 
+  test("review 10 follow-up: the product's bare name passes, \"From Collie\" is still refused", async () => {
+    expect(VIEW_COLLIE_PHRASES).not.toContain("Collie");
+    expect(parseAgentView([{ kind: "para", text: "Collie 1.29.0 is tagged" }]).view).toBeDefined();
+    expect(parseAgentView([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Restart Collie", intent: "restart" } }] }]).view).toBeDefined();
+    expect(parseAgentView([{ kind: "para", text: "From Collie" }]).view).toBeUndefined();
+    const r = rig();
+    await on(r);
+    expect(await r.service.show(T, ONE, { view: [{ kind: "para", text: "Collie 1.29.0 is tagged" }, { kind: "bar", kids: [{ kind: "button", attrs: { label: "Restart Collie", intent: "restart" } }] }], title: "Collie" })).toMatchObject({ ok: true });
+    expect(await r.service.show(T, ONE, { view: [{ kind: "para", text: "From Collie" }], title: null })).toMatchObject({ ok: false, code: "bad_view" });
+  });
+
   test("review 10 accept: words that only hold the letters pass: colliepwa.dev, a link's address, a word inside another", () => {
     expect(collieWordsIn("Read colliepwa.dev for more")).toBeNull();
     expect(collieWordsIn("The screens changed")).toBeNull();
