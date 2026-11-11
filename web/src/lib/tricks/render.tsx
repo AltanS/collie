@@ -32,7 +32,7 @@
 // tap opens them at full size). The renderer owns the layout (the frame's shape, the crop, the labels),
 // the place owns the bytes and the sheet. Without `ctx.pictures` such an image draws the placeholder.
 
-import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { Icon as KeyIcon } from "../../components/icons/icon";
 import type { IconKey } from "../../components/icons/keys";
@@ -192,6 +192,13 @@ export interface RenderCtx {
    * less than its settle window (review 10 W3). Absent: every tap counts.
    */
   canTap?: () => boolean;
+  /**
+   * A button's accessible name, given its label and its control path: the words its tap sends (an agent
+   * view: the label, and the group's label when it sits in one, review 10 W12). Given, the button's `hint`
+   * becomes its description (`aria-describedby`), never a part of its name. Absent: the button is named by
+   * what it shows, as it always was.
+   */
+  tapName?: (label: string, path: string) => string;
 }
 
 /** The words of a free text as the place draws them: through `ctx.linkText` when it has one, else as they are. */
@@ -404,7 +411,10 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
       ]}
     />
   );
-  const name = state === "unknown" ? `${label}, ${t("tricks.tap.unknown")}` : armed ? label : undefined;
+  const named = ctx.tapName?.(attrs.label, path);
+  const name = state === "unknown" ? `${named ?? label}, ${t("tricks.tap.unknown")}` : armed ? label : named;
+  const hintId = useId();
+  const describes = named !== undefined && attrs.hint !== undefined;
   return (
     <div {...floorBox(node, ctx)} className={cn("flex min-w-0 items-center", compact && ctx.wrap !== true && "shrink-0")}>
       <Button
@@ -412,6 +422,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
         variant="outline"
         aria-busy={busy}
         aria-label={name}
+        aria-describedby={describes ? hintId : undefined}
         aria-pressed={attrs.pressed === undefined ? undefined : attrs.pressed}
         title={disabled && attrs.disabled !== "" ? attrs.disabled : attrs.hint}
         data-armed={armed ? "" : undefined}
@@ -430,7 +441,11 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
           {words}
           <BadgeMark badge={attrs.badge} />
         </span>
-        {attrs.hint !== undefined && <span className="max-w-full truncate text-xs font-normal text-muted-foreground">{attrs.hint}</span>}
+        {attrs.hint !== undefined && (
+          <span id={describes ? hintId : undefined} className="max-w-full truncate text-xs font-normal text-muted-foreground">
+            {attrs.hint}
+          </span>
+        )}
       </Button>
       {announces && (
         <span data-slot="view-armed-live" className="sr-only" aria-live="polite">

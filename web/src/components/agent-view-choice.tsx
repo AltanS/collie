@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { Badge } from "@/components/ui/badge";
@@ -79,6 +79,8 @@ export function ViewChoiceBlock({ choice, pictures, media, picked, busy, canAct,
   }
 
   const armedOption = choice.options.find((_, i) => armed === `option:${String(i)}`);
+  // An option is named by the words its pick sends, its label; its detail describes it (review 10 W12).
+  const idBase = useId();
 
   return (
     <section data-slot="view-choice" aria-label={choice.question} className="mt-4 flex min-w-0 flex-col gap-2">
@@ -93,6 +95,8 @@ export function ViewChoiceBlock({ choice, pictures, media, picked, busy, canAct,
           const isBusy = busy === i;
           const isPicked = picked === i;
           const isRecommended = choice.recommends?.option === i;
+          const describedBy = `${idBase}-${String(i)}`;
+          const describes = isArmed ? option.confirm !== undefined : option.detail !== undefined;
           return (
             <li key={`${String(i)}:${option.label}`} className="min-w-0">
               {option.preview !== undefined && pictures !== undefined && (
@@ -106,7 +110,8 @@ export function ViewChoiceBlock({ choice, pictures, media, picked, busy, canAct,
                 data-armed={isArmed ? "" : undefined}
                 aria-pressed={isPicked}
                 aria-busy={isBusy || undefined}
-                aria-label={isArmed ? t("view.armed", { label: option.label }) : undefined}
+                aria-label={isArmed ? t("view.armed", { label: option.label }) : option.label}
+                aria-describedby={describes ? describedBy : undefined}
                 disabled={blocked}
                 onClick={() => choose(option, i)}
                 className={cn(
@@ -121,9 +126,17 @@ export function ViewChoiceBlock({ choice, pictures, media, picked, busy, canAct,
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium break-words">{isArmed ? t("view.armed", { label: option.label }) : option.label}</span>
                   {isArmed ? (
-                    option.confirm !== undefined && <span className="block text-xs break-words">{option.confirm}</span>
+                    option.confirm !== undefined && (
+                      <span id={describedBy} className="block text-xs break-words">
+                        {option.confirm}
+                      </span>
+                    )
                   ) : (
-                    option.detail !== undefined && <span className="block text-xs break-words text-muted-foreground">{option.detail}</span>
+                    option.detail !== undefined && (
+                      <span id={describedBy} className="block text-xs break-words text-muted-foreground">
+                        {option.detail}
+                      </span>
+                    )
                   )}
                 </span>
                 {/* One 16px slot on every option, so the spinner or the star arriving moves no label. */}

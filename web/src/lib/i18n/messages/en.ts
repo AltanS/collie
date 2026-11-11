@@ -840,6 +840,7 @@ export const en = {
   // is a third of the width, so it takes the short words; its label is the one the person just tapped.
   "view.armed": "Tap again to send \"{label}\"",
   "view.armed.in": "Tap again to send \"{label}\" in \"{group}\"",
+  "view.tap.name": "{label}, in {group}",
   // Why the bridge refused a send from a view, or a switch, in Collie's words: one per refusal code, so no
   // code reaches the screen (lib/agent-view/reader.ts `viewRefusalKey`). Nothing was typed in any of them.
   "view.refused.noProfile": "Collie cannot read this session's program, so a view cannot send to it.",
@@ -3784,6 +3785,7 @@ export const PENDING_TRANSLATION = [
   "view.sent.label",
   "view.armed",
   "view.armed.in",
+  "view.tap.name",
   "view.refused.noProfile",
   "view.refused.draft",
   "view.refused.question",

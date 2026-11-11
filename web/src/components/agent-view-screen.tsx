@@ -178,6 +178,17 @@ function armedWordsOf(view: ViewScreen | undefined, block: ScreenBlock, label: s
 }
 
 /**
+ * A button's accessible name (review 10 W12): the words its tap sends, the label and the group's label,
+ * read from the words the bridge builds for that control. Its hint is its description, never its name.
+ */
+function tapNameOf(view: ViewScreen | undefined, block: ScreenBlock, label: string, rendered: string): string {
+  const words = view === undefined ? null : viewTapWords(view, screenControl(block, rendered));
+  const tap = words === null ? null : pickReceiptOf(words, null, undefined);
+  if (tap === null) return label.trim();
+  return tap.context === null ? tap.label : t("view.tap.name", { label: tap.label, group: tap.context });
+}
+
+/**
  * What the screen's container does to the renderer's own nodes, from this side (render.tsx is the
  * tricks'): a `line` wraps instead of scrolling sideways and takes the height its words need, so no
  * sentence is ever cut at the right edge; a pressed button is filled, which the renderer marks with
@@ -486,6 +497,7 @@ export function AgentViewScreen({
         wrap: true,
         linkText,
         armedLabel: (label, rendered) => armedWordsOf(view, block, label, rendered),
+        tapName: (label, rendered) => tapNameOf(view, block, label, rendered),
         canTap,
       };
       const busyHere = busyControl === null ? null : renderedControl(block.prefix, busyControl);

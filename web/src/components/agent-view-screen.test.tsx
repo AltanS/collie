@@ -787,7 +787,8 @@ describe("review 10 W2: an armed button shows and announces the words its second
     expect(live).not.toBeNull();
     expect(live).toHaveAttribute("aria-live", "polite");
     expect(live?.textContent).toBe("");
-    fireEvent.click(screen.getByRole("button", { name: "Drop" }));
+    // Named by the words it sends (review 10 W12).
+    fireEvent.click(screen.getByRole("button", { name: "Drop, in Release candidate" }));
     const armed = screen.getByRole("button", { name: words });
     expect(armed).toHaveAttribute("data-armed");
     expect(armed).toHaveTextContent(words);
@@ -987,5 +988,35 @@ describe("review 10 W9: a link's host shows whole in an agent view", () => {
     expect(shown?.textContent).toBe(host);
     expect(shown === null ? true : cutsWords(shown)).toBe(false);
     for (const part of shown?.querySelectorAll("*") ?? []) expect(part.className).not.toMatch(/(^|\s)(truncate|whitespace-pre)(\s|$)/u);
+  });
+});
+
+describe("review 10 W12: a control's name is the words its tap sends; hint and detail describe it", () => {
+  it("W12: a button in a labelled group is named by its label and the group's, and its hint describes it", () => {
+    draw({
+      view: screenOf([
+        {
+          kind: "group",
+          attrs: { label: "Release" },
+          kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship", hint: "Pushes the tag" } }] }],
+        },
+      ]),
+    });
+    const button = screen.getByRole("button", { name: "Ship, in Release" });
+    expect(button).toHaveAccessibleName("Ship, in Release");
+    expect(button).toHaveAccessibleDescription("Pushes the tag");
+  });
+
+  it("W12: a button with no group is named by its label alone, its hint apart", () => {
+    draw({ view: screenOf([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship", hint: "Pushes the tag" } }] }]) });
+    const button = screen.getByRole("button", { name: "Ship" });
+    expect(button).toHaveAccessibleDescription("Pushes the tag");
+  });
+
+  it("W12: an option is named by its label alone, its detail describes it", () => {
+    draw({ view: { ...BUTTONS, choice: { question: "Which?", options: [{ label: "Lean", detail: "One line" }, { label: "Full" }] } } });
+    const lean = screen.getByRole("button", { name: "Lean" });
+    expect(lean).toHaveAccessibleName("Lean");
+    expect(lean).toHaveAccessibleDescription("One line");
   });
 });
