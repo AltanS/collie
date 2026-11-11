@@ -75,8 +75,9 @@ export function useMorphPane({
   const on = available && session?.on === true;
   const aside = on && asideHeld?.address === address ? asideHeld.view : null;
   const showing = on && aside === null;
-  const hint = showing && session !== null && session.hint !== "" ? session.hint : undefined;
-  const head = hint === undefined ? undefined : session?.head;
+  // The head names the session; the tail rides only while the bridge does not know the session holds the rules.
+  const head = showing && session !== null && session.head !== undefined && session.head !== "" ? session.head : undefined;
+  const hint = showing && session !== null && session.hint !== undefined && session.hint !== "" ? session.hint : undefined;
   const shown = on ? session?.view : undefined;
   const live = useMemo(() => livePrefixes(shown), [shown]);
   const pressed = picksFor(picks, { address, live });

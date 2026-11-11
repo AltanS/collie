@@ -701,4 +701,16 @@ describe("a user turn that carried the Morph wording", () => {
     rerender(<ItemView item={{ id: "u", kind: "user", text: "please continue" }} />);
     expect(container.textContent).toContain("please continue");
   });
+
+  it("is drawn without the head that names the session, with the tail and without it", () => {
+    const withTail = '[morph local/w1:p1#ab12] from operator: tapped "Fast" in "Speed" [rules: /bin/collie morph help --session local/w1:p1#ab12]';
+    const { container, rerender } = render(<ItemView item={{ id: "u", kind: "user", text: withTail }} />);
+    expect(container.textContent).toContain('tapped "Fast" in "Speed"');
+    expect(container.textContent).not.toContain("[morph");
+    expect(container.textContent).not.toContain("rules");
+    rerender(<ItemView item={{ id: "u", kind: "user", text: "[morph local/w1:p1#ab12] from operator: show the plan" }} />);
+    expect(container.textContent).toContain("show the plan");
+    expect(container.textContent).not.toContain("[morph");
+    expect(container.textContent).not.toContain("from operator");
+  });
 });

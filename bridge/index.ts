@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { liveHookTargets } from "../cli/beacon.ts";
 import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
+import { morphRulesId } from "../cli/morph-skill.ts";
 import { packageCommand } from "../cli/package-command.ts";
 import { sendsReportRows } from "../cli/send-findings.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
@@ -323,6 +324,7 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
+import { morphPaneMark } from "./morph/mark.ts";
 import { MorphService } from "./morph/service.ts";
 import { morphDir, MorphStore } from "./morph/store.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
@@ -2371,6 +2373,10 @@ const morph = ((): MorphService | undefined => {
       sessionsKnown: () => walky.who().length > 0,
       crewMode: () => crew.mode,
       binary: collieBinary,
+      // The rules handshake: a `morph start --rules <id>` with this id drops the request's tail, while
+      // the pane runs the harness and conversation it ran then (bridge/morph/mark.ts).
+      rulesId: morphRulesId(),
+      paneMark: morphPaneMark({ place: hillPlace, views: hillViews.read, memberId: walkyMemberId }),
     });
   } catch (err) {
     console.warn(`[morph] off: ${err instanceof Error ? err.message : String(err)}`);
@@ -2396,6 +2402,8 @@ const refreshTimer = setInterval(() => {
   // The hill's sweep (M96) rides this slow timer: a decision past its `expiresAt` closes `expired`, and
   // one whose target session was gone at two sweeps in a row closes `undeliverable`.
   hill.sweep(Date.now());
+  // Morph's rules proofs end when their pane runs another harness or conversation, or is gone.
+  morph?.noteMarks();
 }, SESSION_REFRESH_MS);
 refreshTimer.unref();
 

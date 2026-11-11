@@ -91,17 +91,18 @@ export function morphStateOf({ view, status }: { view: MorphView | undefined; st
 
 /**
  * The text a send carries while the Morph view shows: `head + " " + text + " " + hint`, on one line, so the
- * terminal reads `[morph] from operator: <text> [rules: ...]`. A session whose bridge served no head (an
- * older one) sends `text + " " + hint`. No head and no hint for an empty hint, for a text with a reserved
- * lead (`/`, `!`, `@`: a command, a shell line, a file mention, whose words the harness reads as its
- * own), and for a send with attachments.
+ * terminal reads `[morph <address>] from operator: <text> [rules: ...]`. Each part rides as the bridge gave
+ * it: no tail for a session that holds the rules (`head + " " + text`), no head from an older bridge
+ * (`text + " " + hint`). Neither for a text with a reserved lead (`/`, `!`, `@`: a command, a shell line,
+ * a file mention, whose words the harness reads as its own), nor for a send with attachments.
  */
 export function withMorphHint({ text, hint, head, attachments }: { text: string; hint: string | undefined; head?: string | undefined; attachments: number }): string {
-  if (hint === undefined || hint.trim() === "") return text;
+  const lead = head === undefined || head.trim() === "" ? "" : `${head} `;
+  const tail = hint === undefined || hint.trim() === "" ? "" : ` ${hint}`;
+  if (lead === "" && tail === "") return text;
   if (attachments > 0) return text;
   if (isCommand(text.trimStart())) return text;
-  const lead = head === undefined || head.trim() === "" ? "" : `${head} `;
-  return `${lead}${text} ${hint}`;
+  return `${lead}${text}${tail}`;
 }
 
 /** The node at a renderer control path (`v/0/2/1`), or undefined when the path names none. */
@@ -366,7 +367,8 @@ export interface MorphRequest extends MorphRequestNote {
 const LEGACY_OPEN = "[morph:";
 /** The tail of the split wording, and the head, as the bridge words them. */
 const TAIL_OPEN = "[rules:";
-const HEAD_OPEN = "[morph] from operator:";
+/** The head of every build: `[morph] from operator:` before the address rode in it, `[morph <address>] from operator:` since. */
+const HEAD_ANY = /^\[morph(?: [^\]\n]+)?\] from operator:/u;
 
 /** The text without the tail: the exact `hint`, else a trailing `[rules: ... morph help ...]`, else the legacy bracket. */
 function withoutTail(text: string, hint: string | undefined): string {
@@ -380,17 +382,18 @@ function withoutTail(text: string, hint: string | undefined): string {
 }
 
 /**
- * A text without the Morph wording a send added: the head in front (`[morph] from operator:`) and the
- * tail behind (`[rules: ...]`). The exact `head` and `hint` the session served go first; failing that, any
- * leading head and any trailing `[rules: ... morph help ...]` bracket on one line go too, so wording that
- * changed since the send (a rebuild, another path) is still taken off, and so does the one-bracket hint of
- * an earlier build. Anything else is returned as it was.
+ * A text without the Morph wording a send added: the head in front (`[morph <address>] from operator:`, or
+ * `[morph] from operator:` of an earlier build) and the tail behind (`[rules: ...]`), when there is one. The
+ * exact `head` and `hint` the session served go first; failing that, any leading head of either form and
+ * any trailing `[rules: ... morph help ...]` bracket on one line go too, so wording that changed since the
+ * send (a rebuild, another path) is still taken off, and so does the one-bracket hint of an earlier build.
+ * Anything else is returned as it was.
  */
 export function stripMorphHint(text: string, wording: { head?: string | undefined; hint?: string | undefined } = {}): string {
   const body = withoutTail(text, wording.hint);
   const exact = wording.head !== undefined && wording.head.trim() !== "" && body.startsWith(wording.head);
-  const head = exact ? wording.head : body.startsWith(HEAD_OPEN) ? HEAD_OPEN : null;
-  return head === null || head === undefined ? body : body.slice(head.length).trimStart();
+  const head = exact ? wording.head : HEAD_ANY.exec(body)?.[0];
+  return head === undefined ? body : body.slice(head.length).trimStart();
 }
 
 /** The latest person turn with words once its hint is stripped, or null. `at` is its time in ms. */

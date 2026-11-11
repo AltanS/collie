@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { MORPH_BAD_SWITCH, MORPH_LOCAL_TEXT, MORPH_OFF_TEXT, morphListRoute, morphSwitchRoute, withMorphRev } from "../server.ts";
 import type { SnapshotResponse } from "../types.ts";
 import { MORPH_DRAWING_MAX_MS, MORPH_HINT_MAX, MORPH_NOTE_MAX } from "../../web/src/lib/morph/wire.ts";
-import { MORPH_HEAD, MORPH_NO_SESSION, MORPH_NOT_ON_LEAD, morphHint, MorphService, sameSession, type MorphCrewMode, type MorphServiceDeps } from "./service.ts";
+import { MORPH_HEAD, MORPH_NO_SESSION, MORPH_NOT_ON_LEAD, morphHead, morphHint, MorphService, readStartFields, sameSession, type MorphCrewMode, type MorphServiceDeps } from "./service.ts";
 import { MorphStore } from "./store.ts";
 
 const BIN = "/home/op/apps/collie/bin/collie";
@@ -91,8 +91,141 @@ describe("the hint", () => {
     r.morph.setOn(ONE, true);
     r.morph.setOn(TWO, true);
     const served = r.morph.answer().sessions;
-    expect(served.map((s) => s.head)).toEqual([MORPH_HEAD, MORPH_HEAD]);
+    expect(served.map((s) => s.head)).toEqual([`[morph ${ONE}] from operator:`, `[morph ${TWO}] from operator:`]);
     expect(served.map((s) => s.hint)).toEqual([morphHint(BIN, ONE), morphHint(BIN, TWO)]);
+  });
+
+  test("the head names the session, quoted as the tail quotes it; one that cannot carry it is the old head", () => {
+    expect(morphHead(ONE)).toBe("[morph local/%1#aaaa] from operator:");
+    expect(morphHead("local/a b#aaaa")).toBe("[morph 'local/a b#aaaa'] from operator:");
+    expect(morphHead("local/a'b#aaaa")).toBe(MORPH_HEAD);
+    expect(morphHead(`local/${"x".repeat(120)}#aaaa`)).toBe(MORPH_HEAD);
+  });
+});
+
+describe("the rules handshake", () => {
+  const ID = "4f8eb9c7";
+
+  /** A rig with the rules id and a pane mark the test moves. */
+  function handshake(): Rig & { marks: Map<string, string | null> } {
+    const marks = new Map<string, string | null>([
+      [ONE, "claude\u0000id:conv-1"],
+      [TWO, "codex\u0000"],
+    ]);
+    const r = rig({ rulesId: ID, paneMark: (session) => marks.get(session) ?? null });
+    return Object.assign(r, { marks });
+  }
+
+  const served = (r: Rig, session: string) => r.morph.answer().sessions.find((s) => s.session === session);
+
+  test("a start with the current id drops the tail of the next request; the head stays", () => {
+    const r = handshake();
+    r.morph.setOn(ONE, true);
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+    const before = r.morph.rev();
+    expect(r.morph.start(ONE, { note: "Drawing", rules: ID }).ok).toBe(true);
+    expect(r.morph.rev()).not.toBe(before);
+    expect(served(r, ONE)).toMatchObject({ head: `[morph ${ONE}] from operator:` });
+    expect(served(r, ONE)?.hint).toBeUndefined();
+    expect(r.morph.status(ONE).hint).toBeUndefined();
+    // Another session is its own.
+    r.morph.setOn(TWO, true);
+    expect(served(r, TWO)?.hint).toBe(morphHint(BIN, TWO));
+  });
+
+  test("a missing or another id is no refusal: the start works and the tail stays; a later start without the id brings it back", () => {
+    const r = handshake();
+    r.morph.setOn(ONE, true);
+    expect(r.morph.start(ONE, { note: "Drawing", rules: "deadbeef" }).ok).toBe(true);
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+    expect(r.morph.start(ONE, { note: "Drawing", rules: ID }).ok).toBe(true);
+    expect(served(r, ONE)?.hint).toBeUndefined();
+    expect(r.morph.start(ONE, { note: "Again", rules: null }).ok).toBe(true);
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+  });
+
+  test("a bridge with no rules id never drops the tail", () => {
+    const r = rig();
+    r.morph.setOn(ONE, true);
+    expect(r.morph.start(ONE, { note: "Drawing", rules: ID }).ok).toBe(true);
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+  });
+
+  test("off and clear end the proof, and move the revision", () => {
+    const r = handshake();
+    r.morph.setOn(ONE, true);
+    r.morph.start(ONE, { note: "Drawing", rules: ID });
+    expect(r.morph.clear(ONE).ok).toBe(true);
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+
+    r.morph.start(ONE, { note: "Drawing", rules: ID });
+    r.morph.show(ONE, { view: goodView, title: null });
+    expect(served(r, ONE)?.hint).toBeUndefined();
+    // A clear with nothing on screen still ends the proof, and the phone learns it by the revision.
+    r.morph.clear(ONE);
+    r.morph.start(ONE, { note: null, rules: ID });
+    r.morph.clear(ONE);
+    const rev = r.morph.rev();
+    r.morph.start(ONE, { note: null, rules: ID });
+    expect(r.morph.clear(ONE).ok).toBe(true);
+    expect(r.morph.rev()).not.toBe(rev);
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+
+    r.morph.start(ONE, { note: "Drawing", rules: ID });
+    expect(r.morph.setOn(ONE, false).ok).toBe(true);
+    r.morph.setOn(ONE, true);
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+  });
+
+  test("another conversation or another harness in the pane ends the proof at the next look, and the revision moves", () => {
+    const r = handshake();
+    r.morph.setOn(ONE, true);
+    r.morph.start(ONE, { note: "Drawing", rules: ID });
+    r.morph.noteMarks();
+    expect(served(r, ONE)?.hint).toBeUndefined();
+
+    r.marks.set(ONE, "claude\u0000id:conv-2");
+    const rev = r.morph.rev();
+    r.morph.noteMarks();
+    expect(r.morph.rev()).not.toBe(rev);
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+
+    // The new conversation proves itself in turn; then the harness changes.
+    r.morph.start(ONE, { note: "Drawing", rules: ID });
+    expect(served(r, ONE)?.hint).toBeUndefined();
+    r.marks.set(ONE, "codex\u0000id:conv-2");
+    // Serving reads the mark too, so a look between two sweeps is right.
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+
+    // A pane gone (no mark) ends it as well.
+    r.morph.start(ONE, { note: "Drawing", rules: ID });
+    r.marks.set(ONE, null);
+    r.morph.noteMarks();
+    expect(served(r, ONE)?.hint).toBe(morphHint(BIN, ONE));
+  });
+
+  test("a harness that reports no conversation keeps the proof while its harness stays", () => {
+    const r = handshake();
+    r.morph.setOn(TWO, true);
+    r.morph.start(TWO, { note: "Drawing", rules: ID });
+    r.morph.noteMarks();
+    expect(served(r, TWO)?.hint).toBeUndefined();
+  });
+
+  test("a session whose head cannot name it keeps the tail, proof or not", () => {
+    const odd = "local/a'b#aaaa";
+    const r = rig({ rulesId: ID, place: () => ({ address: odd }), sessionsKnown: () => false });
+    r.morph.setOn(odd, true);
+    r.morph.start(odd, { note: "Drawing", rules: ID });
+    const session = r.morph.status(odd);
+    expect(session.head).toBe(MORPH_HEAD);
+    expect(session.hint).toBe(morphHint(BIN, odd));
+  });
+
+  test("the socket's start fields carry the id; a value that is not text reads as none", () => {
+    expect(readStartFields({ note: "x", rules: ID })).toEqual({ note: "x", rules: ID });
+    expect(readStartFields({ note: "x" })).toEqual({ note: "x", rules: null });
+    expect(readStartFields({ rules: 7 })).toEqual({ note: null, rules: null });
   });
 });
 
@@ -285,7 +418,7 @@ describe("the routes", () => {
     r.morph.setOn(ONE, true);
     const rev = r.morph.rev()!;
     const list = await morphListRoute(r.morph, null, null).json();
-    expect(list).toEqual({ rev, sessions: [{ session: ONE, on: true, head: MORPH_HEAD, hint: morphHint(BIN, ONE) }] });
+    expect(list).toEqual({ rev, sessions: [{ session: ONE, on: true, head: morphHead(ONE), hint: morphHint(BIN, ONE) }] });
     expect(await morphListRoute(r.morph, String(rev), null).json()).toEqual({ rev, unchanged: true, sessions: [] });
   });
 

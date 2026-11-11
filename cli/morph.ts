@@ -79,10 +79,14 @@ export const MORPH_FILE_MAX = 64 * 1024;
 
 const SESSION_USAGE = "[--session <address>]";
 
+/** Where the rules id stands in a command when the caller gave none: help and the skill fill in the real one. */
+export const MORPH_RULES_PLACEHOLDER = "<rules id>";
+
 const USAGE = {
   start: [
-    `usage: collie morph start ${SESSION_USAGE} ["<what you do>"] [--json]`,
+    `usage: collie morph start ${SESSION_USAGE} [--rules <id>] ["<what you do>"] [--json]`,
     `  Say first that you are drawing: the phone shows "Morphing…" and your note (3 to 6 words, at most ${String(MORPH_NOTE_MAX)} characters) until your show lands.`,
+    "  --rules names the rules you hold, by the id `morph help` and the Morph skill print. With the current id, the next request comes without the [rules: ...] tail.",
   ],
   show: [
     `usage: collie morph show ${SESSION_USAGE} <file.json | -> [--title "<one line, at most ${String(MORPH_TITLE_MAX)}>"] [--image <path>[=<caption>]]... [--json]`,
@@ -112,7 +116,7 @@ const USAGE = {
 /** What Morph is, for an agent with no other context. */
 export const MORPH_ABOUT: readonly string[] = [
   "Morph is a third view of your session on Collie, the operator's phone app, beside Terminal and Chat.",
-  "When the operator writes to you from Morph, the message starts with [morph] from operator: and ends with a [rules: ...] tail, and you answer by drawing one screen.",
+  "When the operator writes to you from Morph, the message starts with [morph <address>] from operator: (the address is your session) and may end with a [rules: ...] tail that points here. You answer by drawing one screen.",
   "A tap on a button reaches you the same way, as tapped \"<label>\" (with the button's value after a colon when it has one, and the group's label after in when the button sits in a labelled group). A pick in a choice reaches you as picked \"<label>\".",
 ];
 
@@ -123,26 +127,55 @@ export const MORPH_SESSION_PLACEHOLDER = "<session>";
  * The two commands an agent runs, in order, as they stand. With a session they are ready to copy; without,
  * the address is a placeholder and the lines say where to copy it from.
  */
-export function morphCommandLines(session: string | null): string[] {
+export function morphCommandLines(session: string | null, rulesId: string = MORPH_RULES_PLACEHOLDER): string[] {
   const word = session === null ? null : morphShellWord(session);
-  const address = word ?? MORPH_SESSION_PLACEHOLDER;
   const intro =
     word === null
-      ? "Your commands (replace <session> with the address after --session in the [rules: ...] line of the request; copy it, never invent one):"
+      ? "Your commands (replace <session> with the address in the request's head, [morph <address>]; copy it, never invent one):"
       : `Your commands (the session is filled in; copy them as they stand, with the collie path the [rules: ...] line names when \`collie\` is not on your PATH):`;
+  return [intro, ...morphCycleCommands({ bin: "collie", session, rulesId }).map((line, i) => `  ${String(i + 1)}. ${line}`)];
+}
+
+/**
+ * The three commands of a request, in order, as help and the Morph skill print them: `bin` is `collie` in
+ * help and the absolute path in the skill; the session is the address, or {@link MORPH_SESSION_PLACEHOLDER}.
+ */
+export function morphCycleCommands({ bin, session, rulesId }: { bin: string; session: string | null; rulesId: string }): string[] {
+  const address = (session === null ? null : morphShellWord(session)) ?? MORPH_SESSION_PLACEHOLDER;
   return [
-    intro,
-    `  1. collie morph start --session ${address} "<3 to 6 words on what you are doing>"`,
-    `  2. collie morph show --session ${address} <file.json>`,
-    `  3. collie morph set --session ${address} <id> <block.json>   (one block at a time, after the outline)`,
+    `${bin} morph start --session ${address} --rules ${rulesId} "<3 to 6 words on what you are doing>"`,
+    `${bin} morph show --session ${address} <file.json>`,
+    `${bin} morph set --session ${address} <id> <block.json>   (one block at a time, after the outline)`,
+  ];
+}
+
+/** Every verb's usage lines, as help's "Commands:" prints them, with `bin` in place of `collie`. */
+export function morphUsageLines(bin = "collie"): string[] {
+  return MORPH_SUBCOMMANDS.flatMap((verb) => USAGE[verb].map((line) => `  ${line.replace(/^usage: /u, "").replace(/^collie morph /u, `${bin} morph `)}`));
+}
+
+/** The three examples, as help prints them: a screen, a screen with pictures and a choice, and the block cycle. */
+export function morphExampleLines({ bin, session }: { bin: string; session: string | null }): string[] {
+  const address = (session === null ? null : morphShellWord(session)) ?? MORPH_SESSION_PLACEHOLDER;
+  return [
+    `Example (save as screen.json, run \`morph start\`, then \`${bin} morph show --session ${address} screen.json\`):`,
+    JSON.stringify(MORPH_EXAMPLE),
+    "",
+    `Example with pictures and a choice (\`${bin} morph show --session ${address} pick.json --image now.png --image compact.png --image tall.png\`):`,
+    JSON.stringify(MORPH_CHOICE_EXAMPLE),
+    "",
+    "Example of blocks:",
+    `  ${bin} morph show --session ${address} outline.json   (outline.json: ${JSON.stringify(MORPH_BLOCKS_EXAMPLE.outline)})`,
+    `  ${bin} morph pending --session ${address} ${MORPH_BLOCKS_EXAMPLE.pending.id} "${MORPH_BLOCKS_EXAMPLE.pending.label}"`,
+    `  ${bin} morph set --session ${address} ${MORPH_BLOCKS_EXAMPLE.pending.id} tests.json   (tests.json: ${JSON.stringify(MORPH_BLOCKS_EXAMPLE.block)})`,
   ];
 }
 
 /** The rules an agent keeps when it draws. The first one is the one that makes the phone say "Morphing…". */
 export const MORPH_RULES: readonly string[] = [
   "Rules:",
-  '- FIRST, as the very first thing when a message starts with [morph] from operator: run command 1 above, `morph start`, with 3 to 6 words on what you are doing. Run it again with a new note when the work takes long. Then run command 2, `morph show`. Until the show lands, the phone says "Morphing…" with your note, so the operator knows you read the request.',
-  "- Copy the session from the request line (the address after --session), never invent one. A command that names another session than yours is refused.",
+  '- FIRST, as the very first thing when a message starts with [morph <address>] from operator: run `morph start` with 3 to 6 words on what you are doing and `--rules` with the rules id. Run it again with a new note when the work takes long. Then run `morph show`. Until the show lands, the phone says "Morphing…" with your note, so the operator knows you read the request.',
+  "- Copy the session from the request's head (the address after [morph), never invent one. A command that names another session than yours is refused.",
   "- One screen per answer, made of blocks. A top-level node may carry \"id\" (1 to 32 of a-z, 0-9 and -); a node without one is named b1, b2 and so on. A new show replaces the whole screen.",
   "- Draw the outline first: `morph show` with the blocks you know, or `morph pending <id> \"<label>\"` for the ones in work. Then fill block by block with `morph set`. Change one block when the operator asks for a change; do not redraw the whole screen.",
   "- When a new request arrives, the operator's screen is cleared of your old blocks. Send what the answer needs: `morph show` for a new screen, or `morph set` for changed blocks and `morph keep <id>` for the ones that still hold (`morph keep choice` for the decision block, `--all` for every one).",
@@ -158,7 +191,8 @@ export const MORPH_RULES: readonly string[] = [
   '- An attribute with a closed set of values takes one of those and no other, or the whole screen is refused (see Closed sets). A tone for success is "ok", for failure "danger".',
   "- Never imitate a permission dialog, a login, or any part of Collie. A screen is yours, and it reads as yours.",
   `- Stay under the caps: ${String(VIEW_LIMITS.root.max)} top-level nodes, ${String(VIEW_LIMITS.nodes.max)} nodes, ${String(VIEW_LIMITS.depth.max)} levels, ${String(PART_MAX_BYTES / 1024)} KiB of compact JSON. A refusal names the node's path and the reason.`,
-  "- Keep answering in the terminal as well when the operator asked there; Morph is only for messages that carry the [morph] from operator: head.",
+  "- A tap or a pick reaches you as a new [morph <address>] message in the operator's name. Chat is the record: every request and tap is a message of your conversation there, and the next screen replaces this one.",
+  "- Keep answering in the terminal as well when the operator asked there; Morph is only for messages that carry the [morph <address>] from operator: head.",
 ];
 
 /** The attributes of an image in Morph: a picture by `ref`, as a Decision's view takes it. `src`, `alt`, `w` and `h` are a trick's. */
@@ -298,13 +332,12 @@ export const MORPH_BLOCKS_EXAMPLE: MorphBlocksExample = {
  * `collie morph help [--session <address>]`: what Morph is, your commands, the rules, the kinds with their
  * closed sets, one example, and the sub-verbs. With a session the commands carry it, ready to copy.
  */
-export function morphHelp(session: string | null = null): string[] {
-  const commands = MORPH_SUBCOMMANDS.flatMap((verb) => USAGE[verb].map((line) => `  ${line.replace(/^usage: /u, "")}`));
-  const address = (session === null ? null : morphShellWord(session)) ?? MORPH_SESSION_PLACEHOLDER;
+export function morphHelp(session: string | null = null, rulesId: string = MORPH_RULES_PLACEHOLDER): string[] {
   return [
     ...MORPH_ABOUT,
+    `The rules id of this text is ${rulesId}. Pass it to \`morph start --rules\`: it proves you hold these rules, and the next request comes without the [rules: ...] tail.`,
     "",
-    ...morphCommandLines(session),
+    ...morphCommandLines(session, rulesId),
     "",
     ...MORPH_RULES,
     "",
@@ -312,19 +345,10 @@ export function morphHelp(session: string | null = null): string[] {
     "",
     ...morphClosedSetLines(),
     "",
-    `Example (save as screen.json, run command 1, then \`collie morph show --session ${address} screen.json\`):`,
-    JSON.stringify(MORPH_EXAMPLE),
-    "",
-    `Example with pictures and a choice (\`collie morph show --session ${address} pick.json --image now.png --image compact.png --image tall.png\`):`,
-    JSON.stringify(MORPH_CHOICE_EXAMPLE),
-    "",
-    "Example of blocks:",
-    `  collie morph show --session ${address} outline.json   (outline.json: ${JSON.stringify(MORPH_BLOCKS_EXAMPLE.outline)})`,
-    `  collie morph pending --session ${address} ${MORPH_BLOCKS_EXAMPLE.pending.id} "${MORPH_BLOCKS_EXAMPLE.pending.label}"`,
-    `  collie morph set --session ${address} ${MORPH_BLOCKS_EXAMPLE.pending.id} tests.json   (tests.json: ${JSON.stringify(MORPH_BLOCKS_EXAMPLE.block)})`,
+    ...morphExampleLines({ bin: "collie", session }),
     "",
     "Commands:",
-    ...commands,
+    ...morphUsageLines(),
   ];
 }
 
@@ -596,12 +620,18 @@ const SIMPLE_LEADS = { clear: "cleared", on: "turned on", off: "turned off", sta
 interface PlainArgs {
   readonly json: boolean;
   readonly session: string | null;
+  /** `--rules <id>`, taken only where the verb allows it (`start`). */
+  readonly rules: string | null;
   readonly words: readonly string[];
 }
 
-function parsePlainArgs(args: readonly string[]): PlainArgs | { readonly error: string } {
+/** A `--rules` value: one word of letters, digits, `-` and `_`, as an id is printed. */
+const RULES_WORD = /^[\w-]{1,64}$/u;
+
+function parsePlainArgs(args: readonly string[], allowRules = false): PlainArgs | { readonly error: string } {
   let json = false;
   let session: string | null = null;
+  let rules: string | null = null;
   const words: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -617,10 +647,18 @@ function parsePlainArgs(args: readonly string[]): PlainArgs | { readonly error: 
       i += 1;
       continue;
     }
+    if (arg === "--rules" && allowRules) {
+      const value = args[i + 1];
+      if (value === undefined || !RULES_WORD.test(value)) return { error: "`--rules` needs the rules id that `morph help` or the Morph skill prints" };
+      if (rules !== null) return { error: "`--rules` is given twice" };
+      rules = value;
+      i += 1;
+      continue;
+    }
     if (arg.startsWith("-")) return { error: `unknown flag \`${arg}\`` };
     words.push(arg);
   }
-  return { json, session, words };
+  return { json, session, rules, words };
 }
 
 async function simple(deps: MorphDeps, verb: "clear" | "on" | "off" | "status", args: readonly string[]): Promise<number> {
@@ -641,10 +679,12 @@ async function simple(deps: MorphDeps, verb: "clear" | "on" | "off" | "status", 
  */
 export async function cmdMorphStart(deps: MorphDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
-  const parsed = parsePlainArgs(args);
+  const parsed = parsePlainArgs(args, true);
   if ("error" in parsed) return usage(deps, "start", parsed.error);
   const note = parsed.words.join(" ").trim();
   const fields: JsonObject = note === "" ? {} : { note };
+  // The rules id rides as given: the bridge compares it with its own, and a mismatch is no refusal.
+  if (parsed.rules !== null) fields.rules = parsed.rules;
   const answer = await request(deps, bodyOf({ op: "morph.start", session: parsed.session, fields }));
   if (!answer.ok) return failed(deps, answer);
   const session = sessionOf(answer);
@@ -882,20 +922,25 @@ export async function cmdMorphKeep(deps: MorphDeps, args: readonly string[]): Pr
  * `morph help [--session <address>]`: what Morph is, your commands, the rules, the kinds and an example. No
  * bridge is asked: the address only fills the commands in, and any address-shaped text will do.
  */
-export function cmdMorphHelp(deps: Pick<MorphDeps, "io">, args: readonly string[] = []): number {
+export function cmdMorphHelp(deps: Pick<MorphDeps, "io"> & MorphHelpDeps, args: readonly string[] = []): number {
   const parsed = parsePlainArgs(args);
   if ("error" in parsed) return usage(deps, "help", parsed.error);
   if (parsed.json || parsed.words[0] !== undefined) return usage(deps, "help", `unknown argument \`${parsed.json ? "--json" : parsed.words[0]}\``);
   if (parsed.session !== null && morphShellWord(parsed.session) === null) return usage(deps, "help", `\`${parsed.session}\` is not an address`);
-  for (const line of morphHelp(parsed.session)) deps.io.out(line);
+  for (const line of morphHelp(parsed.session, deps.rulesId)) deps.io.out(line);
   return EXIT.OK;
 }
 
+/** What help prints beyond the constants: the rules id (`cli/morph-skill.ts` `morphRulesId`), passed in so this module does not hash itself. */
+export interface MorphHelpDeps {
+  readonly rulesId?: string;
+}
+
 /** A bare, misspelt or `--help` `collie morph`: the help. `--help` exits 0, the others 2. */
-export function cmdMorph(deps: Pick<MorphDeps, "io">, args: readonly string[]): number {
+export function cmdMorph(deps: Pick<MorphDeps, "io"> & MorphHelpDeps, args: readonly string[]): number {
   const help = args[0] === "--help" || args[0] === "-h";
   if (!help && args[0] !== undefined) deps.io.err(`error: unknown morph command \`${args[0]}\``);
   const print = help ? deps.io.out : deps.io.err;
-  for (const line of morphHelp()) print(line);
+  for (const line of morphHelp(null, deps.rulesId)) print(line);
   return help ? EXIT.OK : EXIT.USAGE;
 }

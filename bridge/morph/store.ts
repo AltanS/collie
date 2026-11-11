@@ -172,6 +172,14 @@ export class MorphStore {
     return true;
   }
 
+  /**
+   * Move the revision without a write: something the phone reads beside the entries changed (a session's
+   * rules proof, bridge/morph/service.ts), so its next `since` read must not answer `unchanged`.
+   */
+  touch(): void {
+    this.revision = Math.max((this.revision ?? 0) + 1, this.now());
+  }
+
   private write(entries: readonly MorphEntry[]): boolean {
     if (this.path === null || this.dir === null) return true;
     try {

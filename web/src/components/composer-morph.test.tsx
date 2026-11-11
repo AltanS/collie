@@ -123,6 +123,18 @@ describe("Morph sends through the composer", () => {
     expect(sends[0]!.text).toBe(`show the plan ${HINT}`);
   });
 
+  it("a session that holds the rules: the bridge served no tail, so the text goes with the head alone", async () => {
+    const sends = bridge();
+    const notes: MorphRequestNote[] = [];
+    const head = "[morph local/w1:p1#ab12] from operator:";
+    const ref = renderScreen({ morphHint: undefined, morphHead: head, onMorphRequest: (note) => notes.push(note) });
+    await act(async () => {
+      await ref.current?.sendLine("show the plan");
+    });
+    expect(sends[0]!.text).toBe(`${head} show the plan`);
+    expect(notes.map((note) => note.text)).toEqual(["show the plan", "show the plan"]);
+  });
+
   it("tells the view the plain text when the send starts, then that it was sent", async () => {
     bridge();
     const notes: MorphRequestNote[] = [];
@@ -158,7 +170,7 @@ describe("Morph sends through the composer", () => {
     });
     expect(notes).toEqual([]);
     cleanup();
-    const plain = renderScreen({ morphHint: undefined, onMorphRequest: (note) => notes.push(note) });
+    const plain = renderScreen({ morphHint: undefined, morphHead: undefined, onMorphRequest: (note) => notes.push(note) });
     await act(async () => {
       await plain.current?.sendLine("hello");
     });
@@ -177,7 +189,7 @@ describe("Morph sends through the composer", () => {
 
   it("without the Morph view, a send is exactly as before", async () => {
     const sends = bridge();
-    const ref = renderScreen({ morphHint: undefined });
+    const ref = renderScreen({ morphHint: undefined, morphHead: undefined });
     await act(async () => {
       await ref.current?.sendLine("hello");
     });

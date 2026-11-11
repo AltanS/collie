@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
+import { MORPH_HEAD_MAX,
   MORPH_HINT_MAX,
   MORPH_NOTE_MAX,
   MORPH_NOTES_MAX,
@@ -95,6 +95,12 @@ describe("readMorphSession", () => {
     expect(readMorphSession({ session: SESSION, on: true, head: "a\nb", hint: HINT })).toEqual({ session: SESSION, on: true, hint: HINT });
     expect(readMorphSession({ session: SESSION, on: true, hint: HINT, drawing: { at: "soon" } })).toEqual({ session: SESSION, on: true, hint: HINT });
     expect(readMorphSession({ session: SESSION, on: true, hint: HINT, drawing: { at: drawing.at, note: "x".repeat(MORPH_NOTE_MAX + 1) } })).toEqual({ session: SESSION, on: true, hint: HINT });
+  });
+
+  it("reads a session with no hint (it holds the rules) and a head that names the session", () => {
+    const head = `[morph ${SESSION}] from operator:`;
+    expect(readMorphSession({ session: SESSION, on: true, head })).toEqual({ session: SESSION, on: true, head });
+    expect(readMorphSession({ session: SESSION, on: true, head: `[morph ${"x".repeat(MORPH_HEAD_MAX)}] from operator:` })).toEqual({ session: SESSION, on: true });
   });
 
   it("drops a session with a bad key, switch or hint", () => {

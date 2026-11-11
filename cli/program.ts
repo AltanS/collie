@@ -148,6 +148,7 @@ import {
   morphHelp,
   type MorphDeps,
 } from "./morph.ts";
+import { morphRulesId } from "./morph-skill.ts";
 import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
@@ -435,8 +436,8 @@ const MORPH_TREE: readonly Subcommand[] = [
   {
     name: "help",
     summary: "what Morph is, your commands (`--session <address>` fills the session in), the rules, the kinds and one example",
-    usage: morphHelp,
-    run: (args, s) => cmdMorphHelp({ io: s.io }, args),
+    usage: () => morphHelp(null, morphRulesId()),
+    run: (args, s) => cmdMorphHelp({ io: s.io, rulesId: morphRulesId() }, args),
   },
 ];
 
@@ -1224,7 +1225,7 @@ export const COMMANDS: readonly Command[] = [
     name: "morph",
     summary: `Morph, the one screen an agent draws for its session: ${MORPH_SUBCOMMANDS.join(", ")}`,
     subcommands: MORPH_TREE,
-    run: (args, s) => cmdMorph({ io: s.io }, args),
+    run: (args, s) => cmdMorph({ io: s.io, rulesId: morphRulesId() }, args),
   },
   // ── Themes (M59 spec 05) ───────────────────────────────────────────────────
   // `theme check` runs the app's own theme parser and contrast report over files on disk, for a
@@ -1297,16 +1298,16 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "skill",
     summary:
-      "print the agent-facing brief on Collie (also `collie --skill`), or install the WalkyTalky skill into a harness: install, uninstall, sync, status, print",
+      "print the agent-facing brief on Collie (also `collie --skill`), or install the WalkyTalky skill (or the Morph skill, `--skill morph`) into a harness: install, uninstall, sync, status, print",
     subcommands: [
       {
         name: "install",
-        summary: "write the WalkyTalky skill: `skill install <claude|codex|opencode|pi|gemini|all>`",
+        summary: "write the WalkyTalky skill: `skill install <claude|codex|opencode|pi|gemini|all>`; `--skill morph` writes the Morph skill (opt-in)",
         run: (args, s) => cmdSkillInstall(skillDeps(s.io), args),
       },
       {
         name: "uninstall",
-        summary: "remove only the file or block Collie wrote: `skill uninstall <harness|all>`",
+        summary: "remove only the file or block Collie wrote: `skill uninstall [--skill morph] <harness|all>`",
         run: (args, s) => cmdSkillUninstall(skillDeps(s.io), args),
       },
       {
@@ -1322,7 +1323,7 @@ export const COMMANDS: readonly Command[] = [
       },
       {
         name: "print",
-        summary: "print the text an install writes: `skill print <harness|all|generic>`",
+        summary: "print the text an install writes: `skill print [--skill morph] <harness|all|generic>`",
         run: (args, s) => cmdSkillPrint(skillDeps(s.io), args),
       },
     ],

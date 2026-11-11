@@ -54,8 +54,11 @@ export const MORPH_TITLE_MAX = 80;
  * address of 30 is about 120, so there is room for a quoted path and a longer address.
  */
 export const MORPH_HINT_MAX = 160;
-/** The head the phone puts in front of a request sent from Morph, in characters. The bridge owns the words. */
-export const MORPH_HEAD_MAX = 40;
+/**
+ * The head the phone puts in front of a request sent from Morph, `[morph <address>] from operator:`, in
+ * characters. The bridge owns the words, and falls back to `[morph] from operator:` past this cap.
+ */
+export const MORPH_HEAD_MAX = 120;
 /** A `morph start` note, in characters: what the agent does, one line. */
 export const MORPH_NOTE_MAX = 80;
 /** How long a `start` counts as morphing, in ms. The bridge stops serving an older one; the phone ignores it too. */
@@ -188,12 +191,16 @@ export interface MorphSession {
   session: string;
   on: boolean;
   /**
-   * The head the phone puts in front of a request sent from Morph (`[morph] from operator:`), so the
-   * terminal shows who wrote and where. Absent from an older bridge: the phone then sends no head.
+   * The head the phone puts in front of a request sent from Morph (`[morph <address>] from operator:`), so
+   * the terminal shows who wrote and for which session. Absent from an older bridge: the phone then sends no head.
    */
   head?: string;
-  /** The tail the phone appends to a request sent from Morph (`[rules: ...]`). The bridge owns the wording. */
-  hint: string;
+  /**
+   * The tail the phone appends to a request sent from Morph (`[rules: ...]`). The bridge owns the wording.
+   * Absent while the session holds the rules (its last `morph start --rules` carried the bridge's id): the
+   * request then goes with the head alone.
+   */
+  hint?: string;
   /** The current view. Absent before the first show and after a clear. */
   view?: MorphView;
   /** The agent's `morph start`, until the next show, a clear, the switch going off, or ten minutes. Optional: an older reader ignores it. */
@@ -720,7 +727,7 @@ function readMorphNote(raw: JsonValue | undefined): MorphNote | null {
 }
 
 /**
- * One session, or null when its key, switch or hint does not fit. A view that does not fit is left out
+ * One session, or null when its key, switch or a given hint does not fit. A view that does not fit is left out
  * and the session kept: the switch still reads, and the phone shows no screen rather than half of one.
  */
 export function readMorphSession(raw: JsonValue | undefined): MorphSession | null {
@@ -728,10 +735,14 @@ export function readMorphSession(raw: JsonValue | undefined): MorphSession | nul
   if (obj === undefined) return null;
   const session = asJsonString(obj.session);
   const on = asJsonBoolean(obj.on);
-  const hint = asJsonString(obj.hint);
-  if (!isSessionKey(session) || on === undefined || hint === undefined) return null;
-  if (cleanMorphLine(hint, MORPH_HINT_MAX) !== hint) return null;
-  const out: MorphSession = { session, on, hint };
+  if (!isSessionKey(session) || on === undefined) return null;
+  const out: MorphSession = { session, on };
+  // No hint is a session that holds the rules; a hint that does not fit drops the session, as before.
+  if (obj.hint !== undefined) {
+    const hint = asJsonString(obj.hint);
+    if (hint === undefined || cleanMorphLine(hint, MORPH_HINT_MAX) !== hint) return null;
+    out.hint = hint;
+  }
   // A head that does not fit is left out, as an older bridge's would be: the request goes without one.
   const head = obj.head === undefined ? undefined : asJsonString(obj.head);
   if (head !== undefined && cleanMorphLine(head, MORPH_HEAD_MAX) === head) out.head = head;

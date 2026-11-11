@@ -21,6 +21,7 @@ import { MORPH_NOTE_MAX, parseMorphChoice, parseMorphView } from "../web/src/lib
 import { NODE_ATTRS, NODE_KINDS, TONES } from "../web/src/lib/tricks/schema.ts";
 import { capture, context } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import { morphRulesId } from "./morph-skill.ts";
 import {
   attrsOf,
   cmdMorph,
@@ -86,7 +87,7 @@ const panes: WalkyPane[] = [
   { session: "main", paneId: "%3", agent: false, harness: null, label: "shell", state: "idle", activeAt: null, instance: "cccc", terminal: true, off: false, space: SOLO_SPACE },
 ];
 
-async function bridge(withMorph = true): Promise<{ readonly stateDir: string; readonly morph: MorphService }> {
+async function bridge(withMorph = true, rulesId?: string): Promise<{ readonly stateDir: string; readonly morph: MorphService }> {
   const stateDir = mkdtempSync(join(tmpdir(), "morph-cli-"));
   cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
   const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
@@ -97,6 +98,7 @@ async function bridge(withMorph = true): Promise<{ readonly stateDir: string; re
     sessionsKnown: () => true,
     crewMode: () => "solo",
     binary: BIN,
+    rulesId,
     now: () => Date.parse("2026-11-10T10:00:00.000Z"),
     media: new HillMediaStore(join(stateDir, "morph"), deniedFoldersSync([stateDir]), () => undefined),
   });
@@ -198,12 +200,12 @@ describe("help", () => {
 
   test("with a session every command carries it; without, the commands say where to copy it from", () => {
     const filled = morphHelp("local/%1#aaaa").join("\n");
-    expect(filled).toContain('collie morph start --session local/%1#aaaa "<3 to 6 words on what you are doing>"');
+    expect(filled).toContain('collie morph start --session local/%1#aaaa --rules <rules id> "<3 to 6 words on what you are doing>"');
     expect(filled).toContain("collie morph show --session local/%1#aaaa <file.json>");
     expect(filled).not.toContain("<session>");
     const bare = morphHelp().join("\n");
-    expect(bare).toContain('collie morph start --session <session> "<3 to 6 words on what you are doing>"');
-    expect(bare).toContain("replace <session> with the address after --session");
+    expect(bare).toContain('collie morph start --session <session> --rules <rules id> "<3 to 6 words on what you are doing>"');
+    expect(bare).toContain("replace <session> with the address in the request's head, [morph <address>]");
     expect(bare).toContain("never invent one");
     expect(morphHelp("local/a b#aaaa").join("\n")).toContain("--session 'local/a b#aaaa' <file.json>");
   });
@@ -234,6 +236,15 @@ describe("help", () => {
     const kinds = morphKindLines().join("\n");
     for (const kind of NODE_KINDS) expect(kinds).toContain(kind);
     expect(kinds).toContain(`  button  attrs: ${NODE_ATTRS.button.map((name) => (name === "label" ? "label*" : name)).join(", ")}`);
+  });
+
+  test("help names the rules id it is given, in the text and in command 1", () => {
+    const d = deps([]);
+    expect(cmdMorphHelp({ io: d.io, rulesId: "1a2b3c4d" }, ["--session", "local/%1#aaaa"])).toBe(EXIT.OK);
+    const text = d.io.stdout.join("\n");
+    expect(text).toContain("The rules id of this text is 1a2b3c4d.");
+    expect(text).toContain('collie morph start --session local/%1#aaaa --rules 1a2b3c4d "<3 to 6 words on what you are doing>"');
+    expect(morphHelp(null, morphRulesId()).join("\n")).toContain(`--rules ${morphRulesId()}`);
   });
 
   test("`morph help` prints on stdout and exits 0; a bare `morph` prints on stderr and exits 2", () => {
@@ -329,7 +340,7 @@ describe("against a bridge", () => {
     // Another pane's session is its own.
     const other = deps([walkySocketPath(b.stateDir)], inPane("%2"));
     expect(await cmdMorphStatus(other, [])).toBe(EXIT.OK);
-    expect(other.io.stdout).toEqual(["session: local/%2#bbbb", "morph: off", "screen: none", `sent as: [morph] from operator: <text> [rules: ${BIN} morph help --session local/%2#bbbb]`]);
+    expect(other.io.stdout).toEqual(["session: local/%2#bbbb", "morph: off", "screen: none", `sent as: [morph local/%2#bbbb] from operator: <text> [rules: ${BIN} morph help --session local/%2#bbbb]`]);
   });
 
   socketTest("a picture under /tmp is staged for the bridge, which gets the staged path, and the stage is gone afterwards", async () => {
@@ -393,6 +404,26 @@ describe("against a bridge", () => {
     const shown = deps(sockets);
     expect(await cmdMorphShow(shown, [screenFile(shown, JSON.stringify(MORPH_EXAMPLE))])).toBe(EXIT.OK);
     expect(b.morph.status("local/%1#aaaa").drawing).toBeUndefined();
+  });
+
+  socketTest("start --rules carries the id to the bridge: the current one drops the tail, a wrong one is no refusal", async () => {
+    const id = morphRulesId();
+    const b = await bridge(true, id);
+    const sockets = [walkySocketPath(b.stateDir)];
+    await cmdMorphOn(deps(sockets), []);
+    expect(await cmdMorphStart(deps(sockets), ["--rules", "0000ffff", "Drawing"])).toBe(EXIT.OK);
+    expect(b.morph.status("local/%1#aaaa").hint).toBeDefined();
+    const proven = deps(sockets);
+    expect(await cmdMorphStart(proven, ["--session", "local/%1#aaaa", "--rules", id, "Drawing", "the", "screen"])).toBe(EXIT.OK);
+    expect(b.morph.status("local/%1#aaaa").hint).toBeUndefined();
+    expect(b.morph.status("local/%1#aaaa").drawing?.note).toBe("Drawing the screen");
+    expect(proven.io.stdout.at(-1)).toBe("sent as: [morph local/%1#aaaa] from operator: <text>");
+
+    const bad = deps(sockets);
+    expect(await cmdMorphStart(bad, ["--rules"])).toBe(EXIT.USAGE);
+    expect(await cmdMorphStart(deps(sockets), ["--rules", "a b"])).toBe(EXIT.USAGE);
+    // Only `start` takes it.
+    expect(await cmdMorphStatus(deps(sockets), ["--rules", id])).toBe(EXIT.USAGE);
   });
 
   socketTest("a note past the cap is refused with exit 4", async () => {

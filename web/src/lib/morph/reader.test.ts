@@ -36,6 +36,8 @@ import { MORPH_DRAWING_MAX_MS, parseMorphView, type MorphView } from "./wire";
 
 const HINT = "[rules: /bin/collie morph help --session local/w1:p1#ab12]";
 const HEAD = "[morph] from operator:";
+/** The head since the address rode in it. */
+const HEAD2 = "[morph local/w1:p1#ab12] from operator:";
 
 function entry(role: TranscriptEntry["role"], ts: string, text: string): TranscriptEntry {
   return { uuid: `${role}-${ts}`, ts, role, parts: [{ kind: "text", text }] };
@@ -163,6 +165,36 @@ describe("withPressed", () => {
   it("names a button's parent: its siblings share it", () => {
     expect(parentControl("v/0/1")).toBe("v/0");
     expect(parentControl("v/1/0/0")).toBe("v/1/0");
+  });
+});
+
+describe("withMorphHint for a session that holds the rules", () => {
+  it("sends the head alone, with no tail, when the bridge served none", () => {
+    expect(withMorphHint({ text: "Show me the plan", hint: undefined, head: HEAD2, attachments: 0 })).toBe(`${HEAD2} Show me the plan`);
+  });
+
+  it("keeps the old rule: no head on a command, a shell line, a mention, or attachments", () => {
+    for (const text of ["/compact", "!ls", "@notes.md"]) expect(withMorphHint({ text, hint: undefined, head: HEAD2, attachments: 0 })).toBe(text);
+    expect(withMorphHint({ text: "look", hint: undefined, head: HEAD2, attachments: 2 })).toBe("look");
+  });
+});
+
+describe("stripMorphHint, both head forms", () => {
+  it("takes the head that names the session off, with or without the tail", () => {
+    expect(stripMorphHint(`${HEAD2} Show me the plan ${HINT}`)).toBe("Show me the plan");
+    expect(stripMorphHint(`${HEAD2} Show me the plan`)).toBe("Show me the plan");
+    expect(stripMorphHint(`${HEAD2} Show me the plan`, { head: HEAD2 })).toBe("Show me the plan");
+    expect(stripMorphHint(`[morph 'local/a b#ab12'] from operator: tapped "Ship"`)).toBe('tapped "Ship"');
+  });
+
+  it("still takes the old head off, with or without the tail", () => {
+    expect(stripMorphHint(`${HEAD} Show me the plan ${HINT}`)).toBe("Show me the plan");
+    expect(stripMorphHint(`${HEAD} Show me the plan`)).toBe("Show me the plan");
+  });
+
+  it("leaves a bracket that only looks like it alone", () => {
+    expect(stripMorphHint("[morph] from someone: hi")).toBe("[morph] from someone: hi");
+    expect(stripMorphHint("say [morph x] from operator: later")).toBe("say [morph x] from operator: later");
   });
 });
 

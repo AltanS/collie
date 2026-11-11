@@ -8,18 +8,24 @@
 export interface SyncChange {
   readonly harness: string;
   readonly path: string;
+  /** The skill, when it is not the WalkyTalky one (`morph`). Absent on a walky entry, as before. */
+  readonly skill?: string;
   readonly action: "installed" | "updated";
 }
 
 export interface SyncRefusal {
   readonly harness: string;
   readonly path: string;
+  /** The skill, when it is not the WalkyTalky one (`morph`). Absent on a walky entry, as before. */
+  readonly skill?: string;
   readonly reason: string;
 }
 
 export interface SyncSkip {
   readonly harness: string;
   readonly path: string;
+  /** The skill, when it is not the WalkyTalky one (`morph`). Absent on a walky entry, as before. */
+  readonly skill?: string;
   readonly reason: "not on this machine" | "uninstalled";
 }
 
@@ -46,13 +52,18 @@ export function parseSyncResult(stdout: string): SyncResult | null {
   return { changed: doc.changed, refused: doc.refused, skipped: doc.skipped };
 }
 
+/** ` (morph skill)` after the path of an entry that names a skill; nothing for a walky entry. */
+function skillTag(entry: { readonly skill?: string }): string {
+  return entry.skill === undefined || entry.skill === "" ? "" : ` (${entry.skill} skill)`;
+}
+
 /** The lines `sync` prints: one per change, one per refusal, none for a skip. `collie update` prints the same. */
 export function syncLines(result: SyncResult, dryRun = false): string[] {
   const verb = (action: SyncChange["action"]): string =>
     dryRun ? (action === "installed" ? "would install" : "would update") : action;
   return [
-    ...result.changed.map((c) => `${verb(c.action)} ${c.harness} ${c.path}`),
-    ...result.refused.map((r) => `refused ${r.harness} ${r.path}: ${r.reason}`),
+    ...result.changed.map((c) => `${verb(c.action)} ${c.harness} ${c.path}${skillTag(c)}`),
+    ...result.refused.map((r) => `refused ${r.harness} ${r.path}${skillTag(r)}: ${r.reason}`),
   ];
 }
 

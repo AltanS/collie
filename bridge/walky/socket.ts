@@ -22,7 +22,7 @@
 // Morph, six operations beside these, answered only by a bridge built with it, always for the asking
 // pane's own session (bridge/morph/service.ts). Every one MAY carry `session` (the address the caller
 // names); the bridge refuses `wrong_session` unless it is the session the markers placed.
-//   morph.start   { note? }         → { ok, morph } | { ok: false, error, code }
+//   morph.start   { note?, rules? } → { ok, morph } | { ok: false, error, code }   (rules: the rules id the session holds; another id is no refusal)
 //   morph.show    { view, title?, images?: [{ path, caption? }], choice? }  → { ok, morph } | { ok: false, error, code, refusals? }
 //   morph.clear | morph.on | morph.off | morph.status  {}  → { ok, morph }
 //   morph.set     { id, node, after? | first?, images? }   → { ok, morph } | { ok: false, error, code, refusals? }

@@ -2,12 +2,13 @@ import { dirname, isAbsolute, join } from "node:path";
 
 import { codexHome } from "./codex-hooks.ts";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
+import { renderMorphSkillText } from "./morph-skill.ts";
 import { type CliContext, collieVersion } from "./context.ts";
 import { claudeSettingsTargets, realpathVia, resolveHookCommand } from "./hooks.ts";
 import { HILL_RULES, HILL_WRITING } from "./hill.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
-import { type SyncResult, syncLines } from "./skill-sync-result.ts";
+import { type SyncChange, type SyncRefusal, type SyncResult, type SyncSkip, syncLines } from "./skill-sync-result.ts";
 import type { Files } from "./sys.ts";
 
 // `collie skill install|uninstall|sync|status [--check]|print` — putting the walky talky skill into the
@@ -39,6 +40,13 @@ import type { Files } from "./sys.ts";
 // NOT compared: a release that did not change the skill must not tell every operator to reinstall. The
 // stamp's own `v2` is compared, so changing the shape of the text (a bump of {@link SKILL_FORMAT}) goes
 // stale on purpose. A different path in the examples (the binary moved) or a different word is stale.
+//
+// TWO SKILLS, ONE SHAPE. Each skill is a {@link SkillKind}: its name, its template, its stamp, its block
+// markers and its format version. The WalkyTalky skill is the default and the only one `sync` installs
+// on its own; the Morph skill (`--skill morph`, cli/morph-skill.ts) is opt-in: `install --skill morph`
+// writes it, and `sync` only refreshes a Morph copy that is already there. Each skill's block has markers
+// of its own, so a walky block and a Morph block sit side by side in one AGENTS.md and each verb touches
+// only its own. Each skill keeps its own uninstall marker.
 
 // ── The text ─────────────────────────────────────────────────────────────────
 
@@ -47,12 +55,6 @@ export const SKILL_FORMAT = 2;
 
 export const BLOCK_BEGIN = `<!-- collie:walky-talky v${String(SKILL_FORMAT)} begin -->`;
 export const BLOCK_END = `<!-- collie:walky-talky v${String(SKILL_FORMAT)} end -->`;
-
-/** What makes a file or block ours, at any text version. */
-const STAMP_PREFIX = "<!-- collie-skill walky-talky v";
-const BEGIN_ANY = /^<!-- collie:walky-talky v\d+ begin -->[ \t]*$/gmu;
-const END_ANY = /^<!-- collie:walky-talky v\d+ end -->[ \t]*$/gmu;
-const STAMP_VERSION = /^(<!-- collie-skill walky-talky v\d+ collie ).*( -->)[ \t]*$/mu;
 
 /** The skill's own name, which is the folder Claude Code reads it from. */
 export const SKILL_NAME = "collie-walky-talky";
@@ -85,6 +87,79 @@ export function renderWalkySkill(ctx: CliContext, fs: LinkReader): string {
     .replace(/\n+$/u, "\n");
 }
 
+/** The Morph skill for this install: the binary the hooks pin, this build's version (cli/morph-skill.ts). */
+export function renderMorphSkill(ctx: CliContext, fs: LinkReader): string {
+  return renderMorphSkillText({ binary: resolveHookCommand(ctx, fs).binary, version: collieVersion(ctx.root) });
+}
+
+// ── The skills ───────────────────────────────────────────────────────────────
+
+/** One skill an install can write: its words, its markers, and how `sync` treats it. */
+export interface SkillKind {
+  /** The word `--skill` takes, and the word inside its stamp and markers. */
+  readonly id: string;
+  /** The skill's own name, which is the folder Claude Code reads it from. */
+  readonly name: string;
+  /** How the verbs name it in a sentence. */
+  readonly title: string;
+  /** The text's format version, inside the stamp and the markers. */
+  readonly format: number;
+  readonly render: (ctx: CliContext, fs: LinkReader) => string;
+  /** `install`: sync writes it wherever the harness is set up. `refresh`: sync only brings a copy that is there up to date. */
+  readonly sync: "install" | "refresh";
+  /** The uninstall marker's file name under `<stateDir>/skill/`. */
+  readonly uninstalledName: string;
+  readonly begin: string;
+  readonly end: string;
+  /** What makes a file or block ours, at any text version. */
+  readonly stampPrefix: string;
+  readonly beginAny: RegExp;
+  readonly endAny: RegExp;
+  readonly stampVersion: RegExp;
+}
+
+/** A skill's markers and stamp patterns from its id and format: one spelling for every skill. */
+function skillKind(base: Pick<SkillKind, "id" | "name" | "title" | "format" | "render" | "sync" | "uninstalledName">): SkillKind {
+  const id = base.id;
+  return {
+    ...base,
+    begin: `<!-- collie:${id} v${String(base.format)} begin -->`,
+    end: `<!-- collie:${id} v${String(base.format)} end -->`,
+    stampPrefix: `<!-- collie-skill ${id} v`,
+    beginAny: new RegExp(`^<!-- collie:${id} v\\d+ begin -->[ \\t]*$`, "gmu"),
+    endAny: new RegExp(`^<!-- collie:${id} v\\d+ end -->[ \\t]*$`, "gmu"),
+    stampVersion: new RegExp(`^(<!-- collie-skill ${id} v\\d+ collie ).*( -->)[ \\t]*$`, "mu"),
+  };
+}
+
+/** The WalkyTalky skill, the default of every verb. Its markers, stamp and paths are the ones above. */
+export const WALKY_SKILL: SkillKind = skillKind({
+  id: "walky-talky",
+  name: SKILL_NAME,
+  title: "WalkyTalky",
+  format: SKILL_FORMAT,
+  render: renderWalkySkill,
+  sync: "install",
+  uninstalledName: "uninstalled",
+});
+
+/** The Morph skill's format version. Bump it when an installed copy must be replaced whatever the words say. */
+export const MORPH_SKILL_FORMAT = 1;
+
+/** The Morph skill: opt-in (`--skill morph`), refreshed by sync only where a copy is already there. */
+export const MORPH_SKILL: SkillKind = skillKind({
+  id: "morph",
+  name: "collie-morph",
+  title: "Morph",
+  format: MORPH_SKILL_FORMAT,
+  render: renderMorphSkill,
+  sync: "refresh",
+  uninstalledName: "uninstalled-morph",
+});
+
+/** Every skill, in the order the verbs that walk them all (`status`, `sync`) print. */
+export const SKILLS: readonly SkillKind[] = [WALKY_SKILL, MORPH_SKILL];
+
 /** The text without its `---` front matter: what a harness reads inside an instruction file. */
 function withoutFrontMatter(text: string): string {
   if (!text.startsWith("---\n")) return text;
@@ -93,19 +168,19 @@ function withoutFrontMatter(text: string): string {
 }
 
 /** The managed block for a rendered skill: markers around the body, no trailing newline. */
-export function blockOf(rendered: string): string {
-  return `${BLOCK_BEGIN}\n${withoutFrontMatter(withLf(rendered)).replace(/\n+$/u, "")}\n${BLOCK_END}`;
+export function blockOf(rendered: string, skill: SkillKind = WALKY_SKILL): string {
+  return `${skill.begin}\n${withoutFrontMatter(withLf(rendered)).replace(/\n+$/u, "")}\n${skill.end}`;
 }
 
 /** Text with the stamp's collie version blanked, so two builds of one text compare equal. */
-function withoutStampVersion(text: string): string {
-  return text.replace(STAMP_VERSION, "$1-$2");
+function withoutStampVersion(text: string, skill: SkillKind): string {
+  return text.replace(skill.stampVersion, "$1-$2");
 }
 
 /** Line ends do not make a skill stale: an editor on Windows may save the file with CRLF. */
 const withLf = (text: string): string => text.replaceAll("\r\n", "\n");
 
-const sameText = (a: string, b: string): boolean => withoutStampVersion(withLf(a)) === withoutStampVersion(withLf(b));
+const sameText = (a: string, b: string, skill: SkillKind): boolean => withoutStampVersion(withLf(a), skill) === withoutStampVersion(withLf(b), skill);
 
 // ── The targets ──────────────────────────────────────────────────────────────
 
@@ -114,8 +189,8 @@ export type SkillForm = "file" | "block";
 export interface SkillTarget {
   readonly harness: string;
   readonly form: SkillForm;
-  /** Every path this harness reads, in the order they print. Claude has one per config profile. */
-  readonly paths: (ctx: Pick<CliContext, "home" | "env">) => string[];
+  /** Every path this harness reads, in the order they print. Claude has one per config profile, and one folder per skill (`name`). */
+  readonly paths: (ctx: Pick<CliContext, "home" | "env">, name: string) => string[];
   /** The harness's own config folder for a path of this row. `install all` skips a harness whose folder is not there. */
   readonly home: (path: string) => string;
   /** A file next to the target that makes the harness ignore it, when there is one. */
@@ -152,7 +227,7 @@ export const SKILL_TARGETS: readonly SkillTarget[] = [
     harness: "claude",
     form: "file",
     home: (path) => dirname(dirname(dirname(path))),
-    paths: (ctx) => claudeProfileDirs(ctx).map((dir) => join(dir, "skills", SKILL_NAME, "SKILL.md")),
+    paths: (ctx, name) => claudeProfileDirs(ctx).map((dir) => join(dir, "skills", name, "SKILL.md")),
   },
   {
     // https://learn.chatgpt.com/docs/agent-configuration/agents-md (2026-10-17; developers.openai.com redirects
@@ -197,15 +272,16 @@ export const SKILL_TARGETS: readonly SkillTarget[] = [
 /** Harness names the verbs accept. `generic` only prints. */
 export const SKILL_HARNESSES: readonly string[] = [...SKILL_TARGETS.map((t) => t.harness), "generic"];
 
-/** One concrete file, with the row it came from. */
+/** One concrete file, with the row it came from and the skill it is for. */
 export interface SkillFile {
   readonly target: SkillTarget;
   readonly path: string;
+  readonly skill: SkillKind;
 }
 
-export function skillFiles(ctx: Pick<CliContext, "home" | "env">, harnesses?: readonly string[]): SkillFile[] {
+export function skillFiles(ctx: Pick<CliContext, "home" | "env">, harnesses?: readonly string[], skill: SkillKind = WALKY_SKILL): SkillFile[] {
   return SKILL_TARGETS.filter((t) => harnesses === undefined || harnesses.includes(t.harness)).flatMap((target) =>
-    target.paths(ctx).map((path) => ({ target, path })),
+    target.paths(ctx, skill.name).map((path) => ({ target, path, skill })),
   );
 }
 
@@ -245,16 +321,16 @@ type BlockLookup =
   | { readonly kind: "span"; readonly start: number; readonly end: number }
   | { readonly kind: "damaged"; readonly reason: string };
 
-function findBlock(text: string): BlockLookup {
-  const begins = [...text.matchAll(BEGIN_ANY)];
-  const ends = [...text.matchAll(END_ANY)];
+function findBlock(text: string, skill: SkillKind): BlockLookup {
+  const begins = [...text.matchAll(skill.beginAny)];
+  const ends = [...text.matchAll(skill.endAny)];
   if (begins.length === 0 && ends.length === 0) return { kind: "none" };
   const begin = begins[0];
   const end = ends[0];
   if (begins.length !== 1 || ends.length !== 1 || begin === undefined || end === undefined) {
-    return { kind: "damaged", reason: "its WalkyTalky markers are not one begin and one end" };
+    return { kind: "damaged", reason: `its ${skill.title} markers are not one begin and one end` };
   }
-  if (end.index < begin.index) return { kind: "damaged", reason: "its WalkyTalky end marker comes before the begin marker" };
+  if (end.index < begin.index) return { kind: "damaged", reason: `its ${skill.title} end marker comes before the begin marker` };
   return { kind: "span", start: begin.index, end: end.index + end[0].length };
 }
 
@@ -279,14 +355,15 @@ export function skillState(deps: SkillReadDeps, file: SkillFile, rendered: strin
   const reading = readFile(deps, file.path);
   if (reading.refusal !== null) return { kind: "refused", reason: reading.refusal };
   if (reading.text === null) return { kind: "absent" };
+  const skill = file.skill;
   if (file.target.form === "file") {
-    if (!reading.text.includes(STAMP_PREFIX)) return { kind: "refused", reason: "it is not a Collie skill file" };
-    return sameText(reading.text, rendered) ? { kind: "installed" } : { kind: "stale" };
+    if (!reading.text.includes(skill.stampPrefix)) return { kind: "refused", reason: "it is not a Collie skill file" };
+    return sameText(reading.text, rendered, skill) ? { kind: "installed" } : { kind: "stale" };
   }
-  const found = findBlock(reading.text);
+  const found = findBlock(reading.text, skill);
   if (found.kind === "damaged") return { kind: "refused", reason: found.reason };
   if (found.kind === "none") return { kind: "absent" };
-  return sameText(reading.text.slice(found.start, found.end), blockOf(rendered)) ? { kind: "installed" } : { kind: "stale" };
+  return sameText(reading.text.slice(found.start, found.end), blockOf(rendered, skill), skill) ? { kind: "installed" } : { kind: "stale" };
 }
 
 export interface SkillReport {
@@ -294,18 +371,18 @@ export interface SkillReport {
   readonly state: SkillState;
 }
 
-/** Every target's verdict. The one reading `status`, `--check` and `doctor` all use. */
-export function skillReport(deps: SkillReadDeps): SkillReport[] {
-  const rendered = renderWalkySkill(deps.ctx, deps.fs);
-  return skillFiles(deps.ctx).map((file) => ({ file, state: skillState(deps, file, rendered) }));
+/** Every target's verdict for one skill, the walky one by default. The one reading `status`, `--check` and `doctor` all use. */
+export function skillReport(deps: SkillReadDeps, skill: SkillKind = WALKY_SKILL): SkillReport[] {
+  const rendered = skill.render(deps.ctx, deps.fs);
+  return skillFiles(deps.ctx, undefined, skill).map((file) => ({ file, state: skillState(deps, file, rendered) }));
 }
 
 /**
- * Is any installed copy behind this build? Absent is the operator's choice and refused is `status`'s
- * business, so neither counts. The question `collie update` asks of the NEW binary.
+ * Is any installed copy of any skill behind this build? Absent is the operator's choice and refused is
+ * `status`'s business, so neither counts. The question `collie update` asks of the NEW binary.
  */
 export function skillIsStale(deps: SkillReadDeps): boolean {
-  return skillReport(deps).some((r) => r.state.kind === "stale");
+  return SKILLS.some((skill) => skillReport(deps, skill).some((r) => r.state.kind === "stale"));
 }
 
 // ── Writing ──────────────────────────────────────────────────────────────────
@@ -326,9 +403,9 @@ function writeAtomic(deps: Pick<SkillReadDeps, "files">, path: string, previous:
 }
 
 /** `existing` with our block in, replacing the old one in place. A string result is a refusal. */
-export function insertBlock(existing: string | null, block: string): string {
+export function insertBlock(existing: string | null, block: string, skill: SkillKind = WALKY_SKILL): string {
   if (existing === null || existing.trim() === "") return `${block}\n`;
-  const found = findBlock(existing);
+  const found = findBlock(existing, skill);
   if (found.kind === "damaged") throw new Error(found.reason);
   if (found.kind === "span") return `${existing.slice(0, found.start)}${block}${existing.slice(found.end)}`;
   const lead = existing.endsWith("\n") ? existing : `${existing}\n`;
@@ -336,8 +413,8 @@ export function insertBlock(existing: string | null, block: string): string {
 }
 
 /** `existing` with our block cut out, and the blank line install put before it. */
-export function removeBlock(existing: string): string {
-  const found = findBlock(existing);
+export function removeBlock(existing: string, skill: SkillKind = WALKY_SKILL): string {
+  const found = findBlock(existing, skill);
   if (found.kind !== "span") return existing;
   let before = existing.slice(0, found.start);
   let after = existing.slice(found.end);
@@ -366,23 +443,23 @@ function overrideNote(deps: SkillReadDeps, file: SkillFile, path: string): strin
 // one small file under this instance's state dir. `skill sync` skips a listed path; `skill install`
 // takes it off.
 
-/** `<stateDir>/skill/uninstalled` — one target path per line. */
-export const uninstalledFile = (stateDir: string): string => join(stateDir, "skill", "uninstalled");
+/** `<stateDir>/skill/uninstalled` (`uninstalled-morph` for the Morph skill) — one target path per line. */
+export const uninstalledFile = (stateDir: string, skill: SkillKind = WALKY_SKILL): string => join(stateDir, "skill", skill.uninstalledName);
 
 /** The paths the operator uninstalled. A missing or unreadable file is an empty list. */
-export function readUninstalled(files: Files, stateDir: string): Set<string> {
-  const text = files.read(uninstalledFile(stateDir)) ?? "";
+export function readUninstalled(files: Files, stateDir: string, skill: SkillKind = WALKY_SKILL): Set<string> {
+  const text = files.read(uninstalledFile(stateDir, skill)) ?? "";
   return new Set(text.split("\n").map((line) => line.trim()).filter((line) => line !== ""));
 }
 
 /** Add or take off paths. Writes only when the list changes; an empty list removes the file. */
-function updateUninstalled(files: Files, stateDir: string, add: readonly string[], drop: readonly string[]): void {
-  const before = readUninstalled(files, stateDir);
+function updateUninstalled({ files, stateDir, skill }: { files: Files; stateDir: string; skill: SkillKind }, add: readonly string[], drop: readonly string[]): void {
+  const before = readUninstalled(files, stateDir, skill);
   const next = new Set(before);
   for (const p of add) next.add(p);
   for (const p of drop) next.delete(p);
   if (next.size === before.size && [...next].every((p) => before.has(p))) return;
-  const path = uninstalledFile(stateDir);
+  const path = uninstalledFile(stateDir, skill);
   if (next.size === 0) {
     files.remove(path);
     return;
@@ -396,7 +473,8 @@ function updateUninstalled(files: Files, stateDir: string, add: readonly string[
 //
 //   installed                          nothing
 //   stale                              rewritten in place
-//   absent, harness folder exists      installed (the rule `install all` uses)
+//   absent, harness folder exists      installed (the rule `install all` uses), WalkyTalky only
+//   absent, Morph skill                nothing: it is opt-in, and sync never adds it
 //   absent, no harness folder          skipped: the harness is not on this machine
 //   uninstalled by the operator        skipped, whatever the file says
 //   refused                            reported, nothing written
@@ -404,47 +482,59 @@ function updateUninstalled(files: Files, stateDir: string, add: readonly string[
 // The result's shape and its printed lines live in `cli/skill-sync-result.ts`, which imports nothing:
 // `collie update` reads them, and the update must not pull the embedded docs into its import graph.
 
-/** What `sync` decided and did. `failed` is an unexpected I/O error: the verb exits 1 on it. */
-export function syncSkills(deps: SkillReadDeps, dryRun: boolean): SyncResult & { failed: boolean } {
-  const rendered = renderWalkySkill(deps.ctx, deps.fs);
-  const block = blockOf(rendered);
-  const uninstalled = readUninstalled(deps.files, deps.ctx.stateDir);
-  const result: SyncResult & { failed: boolean } = { changed: [], refused: [], skipped: [], failed: false };
-  for (const file of skillFiles(deps.ctx)) {
+/** One skill's part of a sync, appended to `result`. */
+function syncSkill(deps: SkillReadDeps, skill: SkillKind, dryRun: boolean, result: SyncResult & { failed: boolean }): void {
+  const rendered = skill.render(deps.ctx, deps.fs);
+  const block = blockOf(rendered, skill);
+  const uninstalled = readUninstalled(deps.files, deps.ctx.stateDir, skill);
+  // Every entry of a skill other than walky names it, so two lines for one AGENTS.md tell apart.
+  const tag = skill === WALKY_SKILL ? {} : { skill: skill.id };
+  const skip = (entry: SyncSkip): void => void result.skipped.push({ ...entry, ...tag });
+  const refuse = (entry: SyncRefusal): void => void result.refused.push({ ...entry, ...tag });
+  const change = (entry: SyncChange): void => void result.changed.push({ ...entry, ...tag });
+  for (const file of skillFiles(deps.ctx, undefined, skill)) {
     const harness = file.target.harness;
     if (uninstalled.has(file.path)) {
-      result.skipped.push({ harness, path: file.path, reason: "uninstalled" });
+      skip({ harness, path: file.path, reason: "uninstalled" });
       continue;
     }
     const state = skillState(deps, file, rendered);
     if (state.kind === "installed") continue;
+    // An opt-in skill is refreshed where it is, never added (and a file not ours is not its business).
+    if (skill.sync === "refresh" && state.kind !== "stale") continue;
     const reading = readFile(deps, file.path);
     if (state.kind === "refused") {
-      result.refused.push({ harness, path: reading.path, reason: state.reason });
+      refuse({ harness, path: reading.path, reason: state.reason });
       continue;
     }
     if (state.kind === "absent" && !configDirExists(deps, file, reading.path)) {
-      result.skipped.push({ harness, path: reading.path, reason: "not on this machine" });
+      skip({ harness, path: reading.path, reason: "not on this machine" });
       continue;
     }
     const action = state.kind === "stale" ? "updated" : "installed";
     const parent = dirname(reading.path);
     if (deps.files.entryType(parent) !== null && deps.files.writable(parent) === false) {
-      result.refused.push({ harness, path: reading.path, reason: `${parent} cannot be written to` });
+      refuse({ harness, path: reading.path, reason: `${parent} cannot be written to` });
       continue;
     }
     if (!dryRun) {
       try {
-        const next = file.target.form === "file" ? rendered : insertBlock(reading.text, block);
+        const next = file.target.form === "file" ? rendered : insertBlock(reading.text, block, skill);
         writeAtomic(deps, reading.path, reading.text, next);
       } catch (err) {
-        result.refused.push({ harness, path: reading.path, reason: `could not write it: ${err instanceof Error ? err.message : String(err)}` });
+        refuse({ harness, path: reading.path, reason: `could not write it: ${err instanceof Error ? err.message : String(err)}` });
         result.failed = true;
         continue;
       }
     }
-    result.changed.push({ harness, path: reading.path, action });
+    change({ harness, path: reading.path, action });
   }
+}
+
+/** What `sync` decided and did, for every skill. `failed` is an unexpected I/O error: the verb exits 1 on it. */
+export function syncSkills(deps: SkillReadDeps, dryRun: boolean): SyncResult & { failed: boolean } {
+  const result: SyncResult & { failed: boolean } = { changed: [], refused: [], skipped: [], failed: false };
+  for (const skill of SKILLS) syncSkill(deps, skill, dryRun, result);
   return result;
 }
 
@@ -475,6 +565,20 @@ export function skillUsage(): string {
   return `usage: collie skill [{${SKILL_SUBCOMMANDS.join("|")}}]`;
 }
 
+/**
+ * `--skill <name>` taken off the arguments: the skill it names (walky when absent), and the rest. A
+ * name this build does not know is a usage line. `walky-talky` names the default.
+ */
+export function takeSkillFlag(args: readonly string[]): { readonly skill: SkillKind; readonly rest: readonly string[] } | { readonly error: string } {
+  const at = args.indexOf("--skill");
+  if (at < 0) return { skill: WALKY_SKILL, rest: args };
+  if (args.indexOf("--skill", at + 1) >= 0) return { error: "`--skill` is given twice" };
+  const name = args[at + 1];
+  const skill = SKILLS.find((s) => s.id === name);
+  if (skill === undefined) return { error: `\`--skill\` takes ${SKILLS.map((s) => s.id).join(" or ")}${name === undefined ? "" : `, not \`${name}\``}` };
+  return { skill, rest: [...args.slice(0, at), ...args.slice(at + 2)] };
+}
+
 /** The harness arguments as rows, or null after a usage line. `all` is every row; `generic` is none. */
 function chooseHarnesses(deps: SkillDeps, verb: string, args: readonly string[], allowGeneric: boolean): string[] | null {
   const name = args.find((a) => !a.startsWith("-"));
@@ -490,23 +594,35 @@ function chooseHarnesses(deps: SkillDeps, verb: string, args: readonly string[],
   return null;
 }
 
-/** `collie skill install <harness|all>` */
-export function cmdSkillInstall(deps: SkillDeps, args: readonly string[]): number {
+/** The skill and the rest of the arguments, or null after the usage line. */
+function skillOf(deps: SkillDeps, verb: string, args: readonly string[]): { readonly skill: SkillKind; readonly rest: readonly string[] } | null {
+  const taken = takeSkillFlag(args);
+  if (!("error" in taken)) return taken;
+  deps.io.err(`error: ${taken.error}`);
+  deps.io.err(`usage: collie skill ${verb} [--skill ${SKILLS.map((s) => s.id).join("|")}] <harness|all>`);
+  return null;
+}
+
+/** `collie skill install [--skill morph] <harness|all>` */
+export function cmdSkillInstall(deps: SkillDeps, argv: readonly string[]): number {
+  const chosen = skillOf(deps, "install", argv);
+  if (chosen === null) return EXIT.USAGE;
+  const { skill, rest: args } = chosen;
   const harnesses = chooseHarnesses(deps, "install", args, false);
   if (harnesses === null) return EXIT.USAGE;
   const everything = args.includes("all");
-  const rendered = renderWalkySkill(deps.ctx, deps.fs);
-  const block = blockOf(rendered);
+  const rendered = skill.render(deps.ctx, deps.fs);
+  const block = blockOf(rendered, skill);
   let failed = false;
   let wrote = 0;
   // Asking for a harness by name, or for `all`, takes back an earlier uninstall: sync follows it again.
   try {
-    updateUninstalled(deps.files, deps.ctx.stateDir, [], skillFiles(deps.ctx, harnesses).map((f) => f.path));
+    updateUninstalled({ files: deps.files, stateDir: deps.ctx.stateDir, skill }, [], skillFiles(deps.ctx, harnesses, skill).map((f) => f.path));
   } catch (err) {
     deps.io.err(`error: could not clear the uninstall marker — ${err instanceof Error ? err.message : String(err)}`);
     failed = true;
   }
-  for (const file of skillFiles(deps.ctx, harnesses)) {
+  for (const file of skillFiles(deps.ctx, harnesses, skill)) {
     const reading = readFile(deps, file.path);
     if (reading.refusal !== null) {
       deps.io.err(`error: ${file.target.harness}: ${reading.refusal} — refusing to write there.`);
@@ -514,12 +630,13 @@ export function cmdSkillInstall(deps: SkillDeps, args: readonly string[]): numbe
       continue;
     }
     if (everything && reading.text === null && !configDirExists(deps, file, reading.path)) {
-      deps.io.out(`- ${file.target.harness}: no ${file.target.home(reading.path)} here, skipped. \`collie skill install ${file.target.harness}\` creates it.`);
+      const flag = skill === WALKY_SKILL ? "" : `--skill ${skill.id} `;
+      deps.io.out(`- ${file.target.harness}: no ${file.target.home(reading.path)} here, skipped. \`collie skill install ${flag}${file.target.harness}\` creates it.`);
       continue;
     }
     let next: string;
     if (file.target.form === "file") {
-      if (reading.text !== null && !reading.text.includes(STAMP_PREFIX)) {
+      if (reading.text !== null && !reading.text.includes(skill.stampPrefix)) {
         deps.io.err(`error: ${reading.path} is not a Collie skill file — refusing to overwrite it.`);
         failed = true;
         continue;
@@ -527,7 +644,7 @@ export function cmdSkillInstall(deps: SkillDeps, args: readonly string[]): numbe
       next = rendered;
     } else {
       try {
-        next = insertBlock(reading.text, block);
+        next = insertBlock(reading.text, block, skill);
       } catch (err) {
         deps.io.err(`error: ${reading.path}: ${err instanceof Error ? err.message : String(err)} — leaving it alone.`);
         failed = true;
@@ -562,15 +679,18 @@ export function cmdSkillInstall(deps: SkillDeps, args: readonly string[]): numbe
   return EXIT.OK;
 }
 
-/** `collie skill uninstall <harness|all>` — removes our file or our block and nothing else. */
-export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): number {
+/** `collie skill uninstall [--skill morph] <harness|all>` — removes our file or our block and nothing else. */
+export function cmdSkillUninstall(deps: SkillDeps, argv: readonly string[]): number {
+  const chosen = skillOf(deps, "uninstall", argv);
+  if (chosen === null) return EXIT.USAGE;
+  const { skill, rest: args } = chosen;
   const harnesses = chooseHarnesses(deps, "uninstall", args, false);
   if (harnesses === null) return EXIT.USAGE;
   let failed = false;
   let removed = 0;
   /** Every target that ends this run without the skill: sync must leave each one out from now on. */
   const without: string[] = [];
-  for (const file of skillFiles(deps.ctx, harnesses)) {
+  for (const file of skillFiles(deps.ctx, harnesses, skill)) {
     const reading = readFile(deps, file.path);
     if (reading.refusal !== null) {
       deps.io.err(`error: ${file.target.harness}: ${reading.refusal} — refusing to touch it.`);
@@ -584,12 +704,12 @@ export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): num
     try {
       if (file.target.form === "file") {
         // Not ours, so not removed, and not marked: sync would refuse that file anyway.
-        if (!reading.text.includes(STAMP_PREFIX)) continue;
+        if (!reading.text.includes(skill.stampPrefix)) continue;
         deps.files.remove(reading.path);
         const folder = dirname(reading.path);
         if (deps.files.list(folder).length === 0) deps.files.removeTree(folder);
       } else {
-        const found = findBlock(reading.text);
+        const found = findBlock(reading.text, skill);
         if (found.kind === "damaged") {
           deps.io.err(`error: ${reading.path}: ${found.reason} — leaving it alone.`);
           failed = true;
@@ -599,7 +719,7 @@ export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): num
           without.push(file.path);
           continue;
         }
-        const next = removeBlock(reading.text);
+        const next = removeBlock(reading.text, skill);
         if (next.trim() === "") deps.files.remove(reading.path);
         else writeAtomic(deps, reading.path, reading.text, next);
       }
@@ -608,20 +728,21 @@ export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): num
       failed = true;
       continue;
     }
-    deps.io.out(`✓ ${file.target.harness}: removed the WalkyTalky skill from ${reading.path}; every other line is untouched.`);
+    deps.io.out(`✓ ${file.target.harness}: removed the ${skill.title} skill from ${reading.path}; every other line is untouched.`);
     without.push(file.path);
     removed += 1;
   }
   try {
-    updateUninstalled(deps.files, deps.ctx.stateDir, without, []);
+    updateUninstalled({ files: deps.files, stateDir: deps.ctx.stateDir, skill }, without, []);
   } catch (err) {
     deps.io.err(`error: could not record the uninstall — ${err instanceof Error ? err.message : String(err)}. The next update may put the skill back.`);
     return EXIT.FAIL;
   }
   if (failed) return EXIT.FAIL;
-  if (removed === 0) deps.io.out("nothing to remove: no instruction file here carries the WalkyTalky skill.");
+  if (removed === 0) deps.io.out(`nothing to remove: no instruction file here carries the ${skill.title} skill.`);
   if (without.length > 0) {
-    deps.io.out("  `collie update` and `collie skill sync` leave it out from now on. `collie skill install <harness>` brings it back.");
+    const flag = skill === WALKY_SKILL ? "" : `--skill ${skill.id} `;
+    deps.io.out(`  \`collie update\` and \`collie skill sync\` leave it out from now on. \`collie skill install ${flag}<harness>\` brings it back.`);
   }
   return EXIT.OK;
 }
@@ -633,14 +754,10 @@ const STATE_WORDS = {
   refused: "refused",
 } satisfies Record<SkillState["kind"], string>;
 
-/**
- * `collie skill status` — read-only. `--check` prints nothing and answers with the exit code:
- * `EXIT.STATE` when any installed copy is stale, `EXIT.OK` otherwise.
- */
-export function cmdSkillStatus(deps: SkillDeps, args: readonly string[] = []): number {
-  if (args.includes("--check")) return skillIsStale(deps) ? EXIT.STATE : EXIT.OK;
-  const uninstalled = readUninstalled(deps.files, deps.ctx.stateDir);
-  for (const { file, state } of skillReport(deps)) {
+/** The status rows of one skill. */
+function statusRows(deps: SkillDeps, skill: SkillKind): void {
+  const uninstalled = readUninstalled(deps.files, deps.ctx.stateDir, skill);
+  for (const { file, state } of skillReport(deps, skill)) {
     const word =
       state.kind === "refused"
         ? `refused — ${state.reason}`
@@ -651,32 +768,49 @@ export function cmdSkillStatus(deps: SkillDeps, args: readonly string[] = []): n
     const note = overrideNote(deps, file, file.path);
     if (note !== null) deps.io.out(`          ${note}`);
   }
+}
+
+/**
+ * `collie skill status` — read-only. The WalkyTalky rows as they always were, then the Morph rows under
+ * their own heading. `--check` prints nothing and answers with the exit code: `EXIT.STATE` when any
+ * installed copy of any skill is stale, `EXIT.OK` otherwise.
+ */
+export function cmdSkillStatus(deps: SkillDeps, args: readonly string[] = []): number {
+  if (args.includes("--check")) return skillIsStale(deps) ? EXIT.STATE : EXIT.OK;
+  statusRows(deps, WALKY_SKILL);
   deps.io.out("generic   no file: `collie skill print generic` prints the block for a hand paste");
+  for (const skill of SKILLS.filter((s) => s !== WALKY_SKILL)) {
+    deps.io.out(`${skill.title} skill (opt-in: \`collie skill install --skill ${skill.id} <harness>\`; sync only refreshes a copy that is there):`);
+    statusRows(deps, skill);
+  }
   return EXIT.OK;
 }
 
-/** `collie skill print <harness|all>` — the text an install would write, to stdout. */
-export function cmdSkillPrint(deps: SkillDeps, args: readonly string[]): number {
+/** `collie skill print [--skill morph] <harness|all|generic>` — the text an install would write, to stdout. */
+export function cmdSkillPrint(deps: SkillDeps, argv: readonly string[]): number {
+  const chosen = skillOf(deps, "print", argv);
+  if (chosen === null) return EXIT.USAGE;
+  const { skill, rest: args } = chosen;
   const name = args.find((a) => !a.startsWith("-"));
-  const rendered = renderWalkySkill(deps.ctx, deps.fs);
-  const body = (file: SkillFile | null): string => (file?.target.form === "file" ? rendered : blockOf(rendered));
+  const rendered = skill.render(deps.ctx, deps.fs);
+  const body = (file: SkillFile | null): string => (file?.target.form === "file" ? rendered : blockOf(rendered, skill));
   const emit = (text: string): void => {
     for (const line of text.replace(/\n+$/u, "").split("\n")) deps.io.out(line);
   };
   if (name === "all") {
-    for (const file of skillFiles(deps.ctx)) {
+    for (const file of skillFiles(deps.ctx, undefined, skill)) {
       deps.io.out(`<!-- collie skill: ${file.target.harness} → ${file.path} -->`);
       emit(body(file));
     }
     return EXIT.OK;
   }
-  if (name === "generic" || name === "walky-talky") {
-    emit(blockOf(rendered));
+  if (name === "generic" || name === skill.id) {
+    emit(blockOf(rendered, skill));
     return EXIT.OK;
   }
-  const file = name === undefined ? undefined : skillFiles(deps.ctx, [name])[0];
+  const file = name === undefined ? undefined : skillFiles(deps.ctx, [name], skill)[0];
   if (file === undefined) {
-    deps.io.err(`usage: collie skill print {${[...SKILL_HARNESSES, "all"].join("|")}}`);
+    deps.io.err(`usage: collie skill print [--skill ${SKILLS.map((s) => s.id).join("|")}] {${[...SKILL_HARNESSES, "all"].join("|")}}`);
     if (name !== undefined) deps.io.err(`  \`${name}\` is not a harness this build knows.`);
     return EXIT.USAGE;
   }
@@ -701,11 +835,11 @@ export function cmdSkillVerb(deps: SkillDeps, sub: string, rest: readonly string
       deps.io.err(`error: unknown skill subcommand \`${sub}\``);
       deps.io.err(skillUsage());
       deps.io.err("  (no argument)  print the general brief on Collie");
-      deps.io.err("  install        write the WalkyTalky skill: `skill install <harness|all>`");
-      deps.io.err("  uninstall      remove only the file or block Collie wrote");
+      deps.io.err("  install        write the WalkyTalky skill: `skill install <harness|all>`; `--skill morph` writes the Morph skill");
+      deps.io.err("  uninstall      remove only the file or block Collie wrote (`--skill morph` for the Morph skill)");
       deps.io.err("  sync           bring every harness on this machine up to this build's skill (--json, --dry-run)");
       deps.io.err("  status         what each target carries now, and whether it is behind (--check for the exit code)");
-      deps.io.err("  print          the text an install writes: `skill print <harness|all|generic>`");
+      deps.io.err("  print          the text an install writes: `skill print [--skill morph] <harness|all|generic>`");
       return EXIT.USAGE;
   }
 }

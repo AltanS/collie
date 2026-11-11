@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
-import type { Environment } from "./context.ts";
+import { collieVersion, type Environment } from "./context.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, ROOT, STATE } from "./fakes.ts";
 import { HILL_RULES, HILL_WRITING, hillHelp, hillPostHelp } from "./hill.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
@@ -19,6 +21,8 @@ import {
   cmdSkillVerb,
   insertBlock,
   removeBlock,
+  MORPH_SKILL,
+  renderMorphSkill,
   renderWalkySkill,
   SKILL_FORMAT,
   SKILL_TARGETS,
@@ -28,6 +32,7 @@ import {
   skillState,
   uninstalledFile,
 } from "./skill-install.ts";
+import { morphRulesId } from "./morph-skill.ts";
 import { collieBinary } from "./unit.ts";
 
 // `collie skill install|uninstall|status|print`. Every path is spelled with `join`, as the code under
@@ -560,5 +565,199 @@ describe("sync", () => {
     const d = deps();
     expect(cmdSkillVerb(d, "sync", ["--json"])).toBe(EXIT.OK);
     expect(JSON.parse(d.io.stdout[0]!)).toMatchObject({ changed: [], refused: [] });
+  });
+});
+
+// ── Two skills ───────────────────────────────────────────────────────────────
+
+describe("the WalkyTalky skill is byte for byte what it was before the Morph skill", () => {
+  /** The stamp's collie version as a placeholder, so a release bump does not move the comparison. */
+  const norm = (body: string, version: string): string => body.replaceAll(` collie ${version} -->`, " collie {{VERSION}} -->");
+
+  test("the rendered text equals the golden copy taken from the code before the refactor", () => {
+    const d = deps();
+    const golden = readFileSync(join(import.meta.dir, "testdata", "walky-skill-v2.golden.md"), "utf8");
+    expect(norm(rendered(d), collieVersion(d.ctx.root))).toBe(golden);
+  });
+
+  test("install, status, print, uninstall and sync write and print what the code before the refactor did", () => {
+    // The same run as /tmp capture of the pre-refactor code, hashed: the rendered text, the block, the
+    // files and their backups, the marker, and every printed line of the walky verbs.
+    const out: string[] = [];
+    const d0 = deps();
+    const v = collieVersion(d0.ctx.root);
+    const r = rendered(d0);
+    out.push("=== rendered", norm(r, v));
+    out.push("=== block", norm(blockOf(r), v));
+    const codex = join(HOME, ".codex", "AGENTS.md");
+    const d = deps({ files: { [codex]: "# Mine\n\nKeep this.\n", [join(HOME, ".gemini", "x")]: "", [join(HOME, ".claude", "x")]: "" } });
+    const code = cmdSkillInstall(d, ["all"]);
+    out.push("=== install all", String(code), ...d.io.stdout.map((l) => norm(l, v)), ...d.io.stderr);
+    const dump = (): string[] =>
+      [...d.files.entries.keys()]
+        .toSorted()
+        .filter((p) => !p.endsWith("/x"))
+        .map((p) => `--- ${p}\n${norm(d.files.entries.get(p)!.text, v)}`);
+    out.push("=== files after install", ...dump());
+    d.io.stdout.length = 0;
+    cmdSkillStatus(d, []);
+    // The walky rows and the generic line come first, as before; the Morph rows follow under their heading.
+    out.push("=== status", ...d.io.stdout.slice(0, 6));
+    expect(d.io.stdout[6]).toStartWith("Morph skill (opt-in");
+    d.io.stdout.length = 0;
+    cmdSkillPrint(d, ["codex"]);
+    out.push("=== print codex", ...d.io.stdout.map((l) => norm(l, v)));
+    d.io.stdout.length = 0;
+    cmdSkillUninstall(d, ["codex"]);
+    out.push("=== uninstall codex", ...d.io.stdout, ...d.io.stderr);
+    out.push("=== files after uninstall", ...dump());
+    d.io.stdout.length = 0;
+    cmdSkillSync(d, ["--json"]);
+    out.push("=== sync json", ...d.io.stdout);
+    const hash = createHash("sha256").update(`${out.join("\n")}\n`).digest("hex");
+    expect(hash).toBe("e7f980a18d82c08e9c2a6866e2f9fdb0cbd08170d6700b1e799f7084430b2785");
+  });
+});
+
+const MORPH_CLAUDE = join(HOME, ".claude", "skills", "collie-morph", "SKILL.md");
+const morphRendered = (d: SkillDeps): string => renderMorphSkill(d.ctx, d.fs);
+
+describe("the Morph skill: opt-in, then kept fresh", () => {
+  test("its own stamp, markers, format and folder", () => {
+    const d = deps();
+    const out = morphRendered(d);
+    expect(out.trimEnd().split("\n").at(-1)).toBe(`<!-- collie-skill morph v1 collie ${collieVersion(d.ctx.root)} -->`);
+    expect(MORPH_SKILL.begin).toBe("<!-- collie:morph v1 begin -->");
+    expect(MORPH_SKILL.end).toBe("<!-- collie:morph v1 end -->");
+    expect(MORPH_SKILL.name).toBe("collie-morph");
+    expect(skillFiles(d.ctx, ["claude"], MORPH_SKILL).map((f) => f.path)).toEqual([MORPH_CLAUDE]);
+    expect(out).toContain(`${collieBinary(ROOT)} morph start --session <session> --rules ${morphRulesId()}`);
+    const block = blockOf(out, MORPH_SKILL);
+    expect(block.startsWith(`${MORPH_SKILL.begin}\n# Morph`)).toBe(true);
+    expect(block.endsWith(`-->\n${MORPH_SKILL.end}`)).toBe(true);
+  });
+
+  test("install with no --skill writes WalkyTalky only; --skill morph writes Morph only, in every target form", () => {
+    const d = deps({ files: { [CODEX_FILE]: "", [OPENCODE_FILE]: "", [PI_FILE]: "", [GEMINI_FILE]: "" } });
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(text(d, CODEX_FILE)).not.toContain(MORPH_SKILL.begin);
+    for (const harness of ["claude", "codex", "opencode", "pi", "gemini"]) expect(cmdSkillInstall(d, ["--skill", "morph", harness])).toBe(EXIT.OK);
+    expect(text(d, MORPH_CLAUDE)).toBe(morphRendered(d));
+    expect(text(d, CLAUDE_FILE)).toBeUndefined();
+    for (const path of [CODEX_FILE, OPENCODE_FILE, PI_FILE, GEMINI_FILE]) expect(text(d, path)).toContain(MORPH_SKILL.begin);
+    // A second install changes no byte.
+    const before = text(d, CODEX_FILE);
+    const again = deps();
+    Object.assign(again, { files: d.files });
+    expect(cmdSkillInstall(again, ["codex", "--skill", "morph"])).toBe(EXIT.OK);
+    expect(again.io.stdout[0]).toContain("already has it");
+    expect(text(d, CODEX_FILE)).toBe(before);
+  });
+
+  test("a walky block and a Morph block side by side survive each other's install and uninstall", () => {
+    const d = deps({ files: { [CODEX_FILE]: "# Mine\n\nKeep this.\n" } });
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(cmdSkillInstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    const both = text(d, CODEX_FILE)!;
+    const walkyBlock = blockOf(rendered(d));
+    const morphBlock = blockOf(morphRendered(d), MORPH_SKILL);
+    expect(both).toBe(`# Mine\n\nKeep this.\n\n${walkyBlock}\n\n${morphBlock}\n`);
+    // Reinstalling either is a no-op; each status reads its own block.
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(text(d, CODEX_FILE)).toBe(both);
+    expect(skillReport(d).find((r) => r.file.path === CODEX_FILE)?.state.kind).toBe("installed");
+    expect(skillReport(d, MORPH_SKILL).find((r) => r.file.path === CODEX_FILE)?.state.kind).toBe("installed");
+    // Uninstalling walky leaves Morph and the operator's lines.
+    expect(cmdSkillUninstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(text(d, CODEX_FILE)).toBe(`# Mine\n\nKeep this.\n\n${morphBlock}\n`);
+    // Walky back in, then Morph out: walky and the operator's lines stay.
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(cmdSkillUninstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    expect(d.io.stdout.join("\n")).toContain("removed the Morph skill from");
+    expect(text(d, CODEX_FILE)).toBe(`# Mine\n\nKeep this.\n\n${walkyBlock}\n`);
+  });
+
+  test("uninstall --skill morph leaves its own marker; walky's marker is untouched, and install takes it back", () => {
+    const d = deps({ files: { [CODEX_FILE]: "" } });
+    expect(cmdSkillInstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    expect(cmdSkillUninstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    expect(text(d, uninstalledFile(STATE, MORPH_SKILL))).toBe(`${CODEX_FILE}\n`);
+    expect(text(d, uninstalledFile(STATE))).toBeUndefined();
+    expect(uninstalledFile(STATE, MORPH_SKILL)).toBe(join(STATE, "skill", "uninstalled-morph"));
+    expect(cmdSkillInstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    expect(text(d, uninstalledFile(STATE, MORPH_SKILL))).toBeUndefined();
+  });
+
+  test("sync never adds the Morph skill, even where the harness is set up", () => {
+    const d = deps({ files: { [join(HOME, ".claude", "x")]: "", [CODEX_FILE]: "# Mine\n" } });
+    expect(cmdSkillSync(d, ["--json"])).toBe(EXIT.OK);
+    expect(text(d, MORPH_CLAUDE)).toBeUndefined();
+    expect(text(d, CODEX_FILE)).not.toContain(MORPH_SKILL.begin);
+    // Walky, the default, was installed as before.
+    expect(text(d, CODEX_FILE)).toContain(BLOCK_BEGIN);
+  });
+
+  test("sync refreshes a stale Morph copy where it is, names it in its line, and a second run prints nothing", () => {
+    const d = deps({ files: { [CODEX_FILE]: "# Mine\n" } });
+    expect(cmdSkillInstall(d, ["--skill", "morph", "claude"])).toBe(EXIT.OK);
+    expect(cmdSkillInstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    // An older build's words in both copies.
+    const old = (t: string): string => t.replace("## The cycle", "## The old cycle");
+    d.files.entries.set(MORPH_CLAUDE, { text: old(text(d, MORPH_CLAUDE)!) });
+    d.files.entries.set(CODEX_FILE, { text: old(text(d, CODEX_FILE)!) });
+    expect(skillReport(d, MORPH_SKILL).filter((r) => r.state.kind === "stale").map((r) => r.file.path)).toEqual([MORPH_CLAUDE, CODEX_FILE]);
+    expect(cmdSkillStatus(d, ["--check"])).toBe(EXIT.STATE);
+    const run = deps();
+    Object.assign(run, { files: d.files });
+    expect(cmdSkillSync(run, [])).toBe(EXIT.OK);
+    expect(run.io.stdout).toContain(`updated claude ${MORPH_CLAUDE} (morph skill)`);
+    expect(run.io.stdout).toContain(`updated codex ${CODEX_FILE} (morph skill)`);
+    expect(text(d, MORPH_CLAUDE)).toBe(morphRendered(d));
+    expect(text(d, CODEX_FILE)).toContain(blockOf(morphRendered(d), MORPH_SKILL));
+    const second = deps();
+    Object.assign(second, { files: d.files });
+    expect(cmdSkillSync(second, [])).toBe(EXIT.OK);
+    expect(second.io.stdout).toEqual([]);
+  });
+
+  test("sync leaves an uninstalled Morph target out, and its JSON entries name the skill", () => {
+    const d = deps({ files: { [CODEX_FILE]: "" } });
+    expect(cmdSkillInstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    expect(cmdSkillUninstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    const run = deps();
+    Object.assign(run, { files: d.files });
+    expect(cmdSkillSync(run, ["--json"])).toBe(EXIT.OK);
+    // SAFETY: `sync --json` printed this line from a `SyncResult` one statement above; the test reads it back.
+    const result = JSON.parse(run.io.stdout[0]!) as { skipped: { harness: string; path: string; reason: string; skill?: string }[] };
+    expect(result.skipped).toContainEqual({ harness: "codex", path: CODEX_FILE, reason: "uninstalled", skill: "morph" });
+    expect(text(d, CODEX_FILE) ?? "").not.toContain(MORPH_SKILL.begin);
+  });
+
+  test("status lists both skills; print --skill morph prints its block or its file", () => {
+    const d = deps({ files: { [CODEX_FILE]: "" } });
+    expect(cmdSkillInstall(d, ["--skill", "morph", "codex"])).toBe(EXIT.OK);
+    d.io.stdout.length = 0;
+    expect(cmdSkillStatus(d, [])).toBe(EXIT.OK);
+    const lines = d.io.stdout;
+    const heading = lines.findIndex((l) => l.startsWith("Morph skill (opt-in"));
+    expect(heading).toBe(6);
+    expect(lines.slice(heading + 1)).toContain(`codex     ${CODEX_FILE}: installed`);
+    expect(lines.slice(heading + 1)).toContain(`claude    ${MORPH_CLAUDE}: absent`);
+    expect(lines.slice(0, heading)).toContain(`codex     ${CODEX_FILE}: absent`);
+
+    const p = deps();
+    expect(cmdSkillPrint(p, ["--skill", "morph", "generic"])).toBe(EXIT.OK);
+    expect(`${p.io.stdout.join("\n")}`).toBe(blockOf(morphRendered(p), MORPH_SKILL));
+    const c = deps();
+    expect(cmdSkillPrint(c, ["claude", "--skill", "morph"])).toBe(EXIT.OK);
+    expect(`${c.io.stdout.join("\n")}\n`).toBe(morphRendered(c));
+  });
+
+  test("an unknown --skill is a usage line and writes nothing", () => {
+    const d = deps({ files: { [CODEX_FILE]: "" } });
+    expect(cmdSkillInstall(d, ["--skill", "nope", "codex"])).toBe(EXIT.USAGE);
+    expect(cmdSkillInstall(d, ["--skill"])).toBe(EXIT.USAGE);
+    expect(cmdSkillPrint(d, ["--skill", "morph", "--skill", "morph", "codex"])).toBe(EXIT.USAGE);
+    expect(text(d, CODEX_FILE)).toBe("");
   });
 });

@@ -19,6 +19,17 @@
 // all (a bridge right after boot lists none, and must not forget every switch). The store also caps
 // the list (store.ts). Every entry held is served: the phone matches entries to its panes by key.
 //
+// THE RULES HANDSHAKE. A request from the phone carries a head that names the session,
+// `[morph <address>] from operator:`, and, while the session is not known to hold the rules, a tail that
+// points at them, `[rules: <bin> morph help --session <address>]`. A session proves it holds them with
+// `morph start --rules <id>`: the id is a hash of every rule text Morph gives an agent (cli/morph-skill.ts
+// `morphRulesId`, handed in as `rulesId`). While the session's LAST start carried the current id, the
+// session is served with no tail. A missing or another id is no refusal; it only means "no rules known".
+// The proof is held in memory with the pane's mark at that start (`paneMark`: the harness and the
+// conversation the bridge already knows of the pane), and it goes when the mark changes (another harness
+// or another conversation in the pane, or the pane gone), on `morph off`, and on `morph clear`. A bridge
+// restart forgets every proof: the next request then carries the tail once more, the safe side.
+//
 // THIS MACHINE ONLY, as the hill: a crew member refuses a show (its phone reads the lead), and the
 // lead's routes refuse `?host=` (server.ts).
 
@@ -30,6 +41,7 @@ import { LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
 import {
   cleanMorphLine,
   MORPH_DRAWING_MAX_MS,
+  MORPH_HEAD_MAX,
   MORPH_HINT_MAX,
   MORPH_MEDIA_ID_RE,
   MORPH_MEDIA_MAX,
@@ -106,6 +118,14 @@ export interface MorphServiceDeps {
   readonly media?: MorphMediaKeep;
   /** How set and picture ids are minted. A test pins them. */
   readonly mint?: MorphMinters;
+  /** This build's rules id (cli/morph-skill.ts `morphRulesId`). Absent, no session is ever known to hold the rules. */
+  readonly rulesId?: string | undefined;
+  /**
+   * What the pane a session names runs now, as one opaque word: its harness and its conversation, as far
+   * as the bridge knows them (bridge/morph/mark.ts). Null when the pane is not live. Absent: no mark, so a
+   * proof ends only on off, clear or a start without the id.
+   */
+  readonly paneMark?: (session: string) => string | null;
 }
 
 /** A socket operation's answer: the caller's session as served, or a refusal with its code. */
@@ -132,8 +152,21 @@ export interface MorphMediaFile {
   readonly mime: string;
 }
 
-/** The head the phone puts in front of a request sent from Morph: who wrote it, so the terminal shows where it came from. */
+/**
+ * The head of an earlier build, and the one a session gets whose address cannot ride the head (no shell
+ * word, or too long): who wrote it, with no address. Such a session always gets the tail too.
+ */
 export const MORPH_HEAD = "[morph] from operator:";
+
+/**
+ * The head the phone puts in front of a request sent from Morph: who wrote it, and the session it is for,
+ * `[morph <address>] from operator:`, so an agent that holds the rules copies the address from it.
+ */
+export function morphHead(session: string): string {
+  const word = morphShellWord(session);
+  const head = word === null ? MORPH_HEAD : `[morph ${word}] from operator:`;
+  return head.length <= MORPH_HEAD_MAX ? head : MORPH_HEAD;
+}
 
 /**
  * The tail the phone appends to a request sent from Morph for ONE session: where the rules are, with the
@@ -183,9 +216,16 @@ function refusalWords(refusals: readonly Refusal[]): string {
   return more > 0 ? `${shown.join("; ")}; and ${String(more)} more` : shown.join("; ");
 }
 
+/** A session's proof that it holds the rules: the pane's mark when its start carried the current id. */
+interface RulesProof {
+  readonly mark: string | null;
+}
+
 export class MorphService {
   private readonly now: () => number;
   private readonly mint: MorphMinters;
+  /** Sessions whose last `morph start` carried the current rules id, in memory only. */
+  private readonly proofs = new Map<string, RulesProof>();
 
   constructor(private readonly deps: MorphServiceDeps) {
     // Probed once, so a path that fits no wording leaves the bridge without Morph at boot, not at a serve.
@@ -206,13 +246,49 @@ export class MorphService {
 
   /** What `GET /api/morph` serves. Rev 0 while no state file exists: the phone then shows every switch off. */
   answer(): MorphAnswer {
-    return { rev: this.deps.store.rev() ?? 0, sessions: this.deps.store.all().map((entry) => this.served(entry)) };
+    // The sessions first: a proof that ends while they are served moves the revision this answer carries.
+    const sessions = this.deps.store.all().map((entry) => this.served(entry));
+    return { rev: this.deps.store.rev() ?? 0, sessions };
   }
 
   /** One session as served. A session the store does not hold is off with no screen. */
   status(session: string): MorphSession {
     const entry = this.deps.store.get(session);
-    return entry === undefined ? { session, on: false, head: MORPH_HEAD, hint: this.hint(session) } : this.served(entry);
+    return entry === undefined ? this.wording({ session, on: false }) : this.served(entry);
+  }
+
+  /** The head, and the tail unless the session holds the rules. */
+  private wording(session: MorphSession): MorphSession {
+    const head = morphHead(session.session);
+    session.head = head;
+    // A head without the address leaves the agent nothing to copy it from: the tail carries it then.
+    if (head === MORPH_HEAD || !this.holdsRules(session.session)) session.hint = this.hint(session.session);
+    return session;
+  }
+
+  /**
+   * Whether the session's last start carried the current rules id, and its pane still runs what it ran
+   * then. A proof whose mark moved is dropped here, and the revision moves, so the phone reads again.
+   */
+  holdsRules(session: string): boolean {
+    const proof = this.proofs.get(session);
+    if (proof === undefined) return false;
+    if (this.deps.paneMark === undefined || this.deps.paneMark(session) === proof.mark) return true;
+    this.dropProof(session);
+    return false;
+  }
+
+  /**
+   * The bridge's look at every proof, on its refresh timer: a proof whose pane runs another harness or
+   * another conversation, or is gone, ends here. Cheap: one mark per session that holds a proof.
+   */
+  noteMarks(): void {
+    for (const session of this.proofs.keys()) this.holdsRules(session);
+  }
+
+  /** End a session's proof. The revision moves when there was one, so the phone fetches the tail again. */
+  private dropProof(session: string): void {
+    if (this.proofs.delete(session)) this.deps.store.touch();
   }
 
   /**
@@ -226,18 +302,31 @@ export class MorphService {
     if (fields.note !== null && note === null) return { ok: false, error: `a note is one line of 1 to ${String(MORPH_NOTE_MAX)} characters`, code: "bad_note" };
     const at = new Date(this.now()).toISOString();
     const base = this.base(session);
+    // The rules: this start's id decides, whatever an earlier start said. The write below moves the
+    // revision, so the phone reads the session again with the tail or without it.
+    const proven = this.deps.rulesId !== undefined && fields.rules === this.deps.rulesId;
+    const before = this.proofs.get(session);
+    if (proven) this.proofs.set(session, { mark: this.deps.paneMark?.(session) ?? null });
+    else this.proofs.delete(session);
     // A start inside a run adds its note to the run's list; a start with no run held begins one.
     const prior = this.freshDrawing(base)?.notes ?? [];
     const notes = note === null ? prior : [...prior, { at, note }].slice(-MORPH_NOTES_MAX);
     const drawing: MorphDrawing = note === null ? { at } : { at, note };
     if (notes.length > 0) drawing.notes = notes;
-    return this.commit({ ...base, drawing, changedAt: this.now() });
+    const answer = this.commit({ ...base, drawing, changedAt: this.now() });
+    if (!answer.ok) {
+      if (before === undefined) this.proofs.delete(session);
+      else this.proofs.set(session, before);
+    }
+    return answer;
   }
 
   /** `morph on` and `morph off` from the socket, for the caller's own session. */
   setOn(session: string, on: boolean): MorphOpAnswer {
     if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
     const held = this.deps.store.get(session);
+    // Off ends the rules proof: the next session after an on starts with the tail.
+    if (!on) this.dropProof(session);
     // Off ends a drawing too, so an off that only has a drawing to end is still a change.
     if (held?.on === on && !(on === false && held.drawing !== undefined)) return { ok: true, session: this.served(held) };
     const base = this.base(session);
@@ -249,6 +338,8 @@ export class MorphService {
   clear(session: string): MorphOpAnswer {
     if (this.deps.crewMode() === "peer") return { ok: false, error: MORPH_NOT_ON_LEAD, code: "not_on_lead" };
     const held = this.deps.store.get(session);
+    // A clear ends the rules proof too (and moves the revision when there was one).
+    this.dropProof(session);
     if (held === undefined || (held.view === undefined && held.drawing === undefined)) return { ok: true, session: this.status(session) };
     return this.commit({ session, on: held.on, shows: held.shows, changedAt: this.now() });
   }
@@ -455,7 +546,7 @@ export class MorphService {
   }
 
   private served(entry: MorphEntry): MorphSession {
-    const session: MorphSession = { session: entry.session, on: entry.on, head: MORPH_HEAD, hint: this.hint(entry.session) };
+    const session: MorphSession = this.wording({ session: entry.session, on: entry.on });
     if (entry.view !== undefined) session.view = entry.view;
     const drawing = this.freshDrawing(entry);
     if (drawing !== undefined) session.drawing = drawing;
@@ -463,16 +554,20 @@ export class MorphService {
   }
 }
 
-/** A `morph.start` request's fields, as the socket carries them: an optional `note`. */
+/** A `morph.start` request's fields, as the socket carries them: an optional `note` and an optional `rules` id. */
 export interface MorphStartFields {
   readonly note: string | null;
+  /** The rules id the session says it holds. Null for none; a value that is not text reads as none. */
+  readonly rules?: string | null;
 }
 
-/** A `morph.start` request's fields: the note, or the reason it is not one. */
+/** A `morph.start` request's fields: the note and the rules id, or the reason the note is not one. */
 export function readStartFields(fields: JsonObject): MorphStartFields | { readonly error: string } {
   const note = fields.note === undefined || fields.note === null ? null : asJsonString(fields.note);
   if (note === undefined) return { error: "a note is text" };
-  return { note };
+  // A wrong rules id is never a refusal: the start works, and the session gets the tail.
+  const rules = asJsonString(fields.rules) ?? null;
+  return { note, rules };
 }
 
 /** One screen built from its parts: the pictures, the choice and the blocks are on it only when given. */
