@@ -852,8 +852,10 @@ describe("solo zero-tax — routes", () => {
       // And a picture of the trick's own `media/` folder (M94 review 11): a read, gated like the list,
       // the hill image's checks and headers, this bridge's own host and a trick that is on only.
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/(media\\/.+)$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/auto$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",
       // The operator's Cancel on a held walky talky message it sent (M62 spec 03): a write, solo; a
       // record held on a member answers `elsewhere`, never a route of its own.
       "/^\\/api\\/walky\\/([^/]+)\\/cancel$/",

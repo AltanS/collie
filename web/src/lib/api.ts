@@ -3126,3 +3126,29 @@ export async function switchTrick(host: string, trick: string, on: boolean): Pro
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
   return info;
 }
+
+/**
+ * Take a trick's changes without asking, or ask again (crew slice 3): `POST /api/tricks/<host>/<id>/auto`
+ * with `{ on }`, the field `collie trick auto` writes. Answers the trick as the list now shows it. A
+ * refusal (409 for a trick that is off, 404, 403) throws with its status; a body of another shape throws.
+ */
+export async function setTrickAuto(host: string, trick: string, on: boolean): Promise<WireTrickInfo> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/auto`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
+  const info = readTrick(raw);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  return info;
+}
+
+/**
+ * Go back to the version a trick ran before its last change (crew slice 3): `POST
+ * /api/tricks/<host>/<id>/undo` with `{}`. Answers the trick as the list now shows it; a refusal (409 when
+ * there is no earlier version or its copy changed, 404, 403) throws with its status.
+ */
+export async function undoTrick(host: string, trick: string): Promise<WireTrickInfo> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/undo`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({}) });
+  const info = readTrick(raw);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  return info;
+}

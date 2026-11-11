@@ -64,8 +64,12 @@ export function coerceHillReceipt(raw: JsonValue): HillReceiptRecord | null {
   // Absent on a receipt written before receipts carried the device's record id.
   const deviceId = receipt.deviceId === undefined ? undefined : asJsonString(receipt.deviceId);
   if (receipt.deviceId !== undefined && (deviceId === undefined || !HILL_DEVICE_ID_RE.test(deviceId))) return null;
+  // On a dismiss that closed without telling the session, its machine not answering (CREW_PROTOCOL §22).
+  const machine = receipt.machine === undefined ? undefined : asJsonString(receipt.machine);
+  if (receipt.machine !== undefined && (machine === undefined || machine.length > 80)) return null;
   const read: HillReceipt = { rid, code, reason, state: stateText, delivery, trick, at };
-  return { requestId, payloadDigest: digest, receipt: deviceId === undefined ? read : { ...read, deviceId } };
+  const withDevice = deviceId === undefined ? read : { ...read, deviceId };
+  return { requestId, payloadDigest: digest, receipt: machine === undefined ? withDevice : { ...withDevice, machine } };
 }
 
 /**

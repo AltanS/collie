@@ -89,6 +89,7 @@ import {
   isHillOptionIntent,
   sortOpenDecisions,
   type HillAnswerRequest,
+  type HillCollieRef,
   type HillDecision,
   type HillImageInput,
   type HillMedia,
@@ -98,6 +99,7 @@ import {
   type HillRefusalCode,
   type HillState,
 } from "../../web/src/lib/hill/wire.ts";
+import { parseAddress } from "../walky/address.ts";
 import { cleanBody } from "../walky/clean.ts";
 import type { WalkyPane } from "../walky/deliver.ts";
 import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
@@ -107,6 +109,7 @@ import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.t
 import { HILL_PUSH_RATE, hillPushTag, type HillPushPort } from "./push.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
 import type { HillStore, HillTombstone } from "./store.ts";
+import type { HillLeadForward, HillListAnswer } from "./crew.ts";
 
 /** An agent in a pane this bridge placed: what the socket can name. */
 export interface HillAgentSender {
@@ -149,6 +152,24 @@ export interface HillTrickTap {
 
 export type HillSender = HillAgentSender | HillTrickSender;
 
+/**
+ * Collie itself (crew slice 3): a Decision about a trick's new version. Only code inside the bridge
+ * builds one (bridge/tricks/version-card.ts), through `postCollie` and `withdrawCollie`, which no door
+ * reaches: the walky socket and the crew post build an agent's sender, the trick runner a trick's.
+ */
+export interface HillCollieSender {
+  readonly kind: "collie";
+  readonly ref: HillCollieRef;
+  /** The name the card shows as its sender, such as the trick's name. Display only. */
+  readonly label: string;
+}
+
+/** What the answer to a Collie Decision did: done, or refused in plain words (the card then stays open). */
+export type HillCollieVerdict = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+
+/** Every sender a decision can have; the public doors take only {@link HillSender}. */
+type AnySender = HillSender | HillCollieSender;
+
 /** One live session a walky address names now, as the probe resolves it. */
 export interface HillPlace {
   /** The address with the session's instance token, as `who` lists it. */
@@ -157,6 +178,11 @@ export interface HillPlace {
   readonly host: string | null;
   /** The session runs in bypass or auto-approve mode, when the bridge knows it. */
   readonly unattended: boolean;
+  /**
+   * False when the session is on a crew machine the lead cannot reach now (the crew's targets list it
+   * `unreachable`, walky's `crewTargets`). Absent or true: reachable, as every session on this machine is.
+   */
+  readonly reachable?: boolean;
 }
 
 /** What the walky send reported: typed, held by walky's hold rule, or not confirmed. */
@@ -214,6 +240,24 @@ export interface HillServiceDeps {
    * (`set`, true when written). Absent: always on, and the switch cannot be moved.
    */
   readonly hillSwitch?: { on(): boolean; set?(on: boolean): boolean };
+  /**
+   * On a crew member (CREW_PROTOCOL §22, 1.29.0): the forward to its lead, which holds the one Hill. With
+   * it, an agent's post, status, withdraw and list from this machine go to the lead. Absent: a member
+   * refuses a post with `not_on_lead`, as before 1.29.0.
+   */
+  readonly forward?: HillLeadForward;
+  /**
+   * On a lead: the name of the crew machine a walky address is on, when that machine is not answering
+   * now (unreachable, or not swept yet since this bridge started), else null. An answer for a session
+   * there is refused before the decision closes, and the sweep never closes one for it. Absent: none.
+   */
+  readonly offline?: (address: string) => string | null;
+  /**
+   * Act on the answer to a Collie Decision (crew slice 3; bridge/index.ts wires it to the version card).
+   * It checks `ref.hash` against the thing as it is now and refuses when it moved. Called once per answer,
+   * in the claim lane, before the decision closes; a refusal keeps the card open. Absent: refused.
+   */
+  readonly onCollieAnswer?: (ref: HillCollieRef, intent: string) => Promise<HillCollieVerdict>;
 }
 
 /** What a new decision does about the phone: the slot it holds, whether it sends, and why a rate held it. */
@@ -230,6 +274,16 @@ export interface HillPostOptions {
    * `mayReask`). It shows as any post does, and never pushes: the phone heard of that question once.
    */
   readonly reask?: boolean;
+  /**
+   * The poster's own session as its crew member claims it (crew.ts, CREW_PROTOCOL §22): used when this
+   * bridge's `place` does not list the pane yet, for a pane opened since the last sweep.
+   */
+  readonly own?: HillPlace;
+  /**
+   * The post's images, already read and checked: a crew member's upload, in the order of `input.images`,
+   * whose paths then only name them. Absent: each image is read from its path on this machine.
+   */
+  readonly images?: readonly HillImageBytes[];
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -273,10 +327,27 @@ export const MESSAGE_TITLE_MAX = 80;
 export const SESSION_LABEL_MAX = 80;
 /** Open decisions the hill holds at once, across every sender. A further post is refused `too_many_open`. */
 export const HILL_OPEN_TOTAL_MAX = 200;
+/**
+ * Open decisions from the agents of one crew member (one bridge id other than this bridge's own), across
+ * all its sessions, so one machine cannot fill the lead's hill (CREW_PROTOCOL §22). Beside the session
+ * cap (`HILL_OPEN_MAX`, 20) and the total above. This bridge's own sessions keep those two alone.
+ */
+export const HILL_OPEN_MEMBER_MAX = 40;
+/** The words an answer to a session on an unreachable crew machine is refused with: nothing was sent. */
+export function notAnswering(machine: string): string {
+  return `${machine} is not answering. Your answer was not sent.`;
+}
 /** The days a decision posted with no expiry stays open; `collie hill post --help` says so. */
 export const HILL_DEFAULT_EXPIRY_DAYS = 14;
 /** {@link HILL_DEFAULT_EXPIRY_DAYS} in milliseconds: a post with no `expiresAt` gets `at` plus this. */
 export const HILL_DEFAULT_EXPIRY_MS = HILL_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+/**
+ * The most days any decision stays open, a crew member's too: a later `expiresAt` is held to `at` plus
+ * this (never refused, so a trick's long expiry still posts). `collie hill post --expires` refuses more.
+ */
+export const HILL_MAX_EXPIRY_DAYS = 30;
+/** {@link HILL_MAX_EXPIRY_DAYS} in milliseconds. */
+export const HILL_MAX_EXPIRY_MS = HILL_MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
 /** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
 export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n)): string {
@@ -407,14 +478,29 @@ export function hillDeviceId(tokenHash: string): string {
   return `dv_${payloadDigest(["collie hill device", tokenHash]).slice(0, 16)}`;
 }
 
-/** The key a sender's decisions are filed under: its address, or the trick's id. */
-function senderKey(sender: HillSender): string {
-  return sender.kind === "agent" ? sender.address : `trick:${sender.trickId}`;
+/** The key a sender's decisions are filed under: its address, the trick's id, or what Collie asks about. */
+function senderKey(sender: AnySender): string {
+  if (sender.kind === "agent") return sender.address;
+  if (sender.kind === "trick") return `trick:${sender.trickId}`;
+  return collieKey(sender.ref);
+}
+
+function collieKey(ref: Pick<HillCollieRef, "type" | "id">): string {
+  return `collie:${ref.type}:${ref.id}`;
 }
 
 function keyOf(decision: HillDecision): string {
-  return decision.from.kind === "agent" ? (decision.from.address ?? "") : `trick:${decision.from.trickId ?? ""}`;
+  const { from } = decision;
+  if (from.kind === "agent") return from.address ?? "";
+  if (from.kind === "trick") return `trick:${from.trickId ?? ""}`;
+  // A collie decision without its ref files under a key no sender has.
+  return from.ref === undefined ? "collie:" : collieKey(from.ref);
 }
+
+/** The message a Collie answer refused with, when no handler is wired. */
+export const HILL_NO_ANSWER_HANDLER = "Collie cannot act on this answer here.";
+/** The reason a withdraw is refused while that Collie Decision's answer runs. */
+export const HILL_ANSWER_RUNNING = "the decision is being answered";
 
 function refuse(code: HillRefusalCode | null, error: string): HillPostAnswer {
   return { ok: false, code, error };
@@ -507,6 +593,8 @@ export class HillService {
   private absent = new Set<string>();
   /** The switch as last seen, so the move to off closes the open notifications once. */
   private wasOn = true;
+  /** The Collie Decisions whose answer runs now: no withdraw or supersede closes one under its answer. */
+  private answering = new Set<string>();
 
   constructor(private readonly deps: HillServiceDeps) {
     this.now = deps.now ?? Date.now;
@@ -594,11 +682,47 @@ export class HillService {
     return { kind: "agent", address, memberId: this.deps.memberId, harness: pane.harness, label: headerField(pane.label, WALKY_LABEL_MAX), host: this.deps.machine };
   }
 
-  /** A `hill.post` request's raw fields, from the socket: read, then posted. */
-  postFields(from: HillAgentSender, fields: JsonObject): HillPostAnswer {
+  /**
+   * A `hill.post` request's raw fields, from the socket: read, then posted. On a crew member with a
+   * forward (CREW_PROTOCOL §22) the post goes to the lead: the images are read here, under every rule of
+   * this machine, and uploaded; the lead mints the id and holds the decision.
+   */
+  async postFields(from: HillAgentSender, fields: JsonObject): Promise<HillPostAnswer> {
     const read = readPostFields(fields);
     if (!read.ok) return refuse(read.code, read.error);
-    return this.post(from, read.input);
+    const forward = this.forwardOf();
+    if (forward === null) return this.post(from, read.input);
+    // This machine's own switches still hold: the person who switched its Hill or WalkyTalky off meant it.
+    if (!this.isOn()) return refuse("hill_off", HILL_OFF);
+    if (!this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
+    const images = this.readImages(read.input.images ?? [], null);
+    if (!images.ok) return images;
+    const answer = await forward.post(from, fields, read.input.requestId, images.images);
+    this.deps.audit?.({ action: "hill.forward", detail: answer.ok ? { decisionId: answer.decision.id, images: images.images.length } : { refused: answer.code ?? "plain" } });
+    return answer;
+  }
+
+  /** The forward to the lead, on a crew member that has one; null everywhere else. */
+  private forwardOf(): HillLeadForward | null {
+    return this.deps.crewMode() === "peer" && this.deps.forward !== undefined ? this.deps.forward : null;
+  }
+
+  /** `hill.status` from the socket: this bridge's own answer, or on a crew member its lead's. */
+  async askStatus(sender: HillAgentSender, id: string): Promise<HillOneAnswer> {
+    const forward = this.forwardOf();
+    return forward === null ? this.status(sender, id) : forward.one("status", sender, id);
+  }
+
+  /** `hill.withdraw` from the socket: this bridge's own answer, or on a crew member its lead's. */
+  async askWithdraw(sender: HillAgentSender, id: string): Promise<HillOneAnswer> {
+    const forward = this.forwardOf();
+    return forward === null ? this.withdraw(sender, id) : forward.one("withdraw", sender, id);
+  }
+
+  /** `hill.list` from the socket: this bridge's own list, or on a crew member its lead's. */
+  async askList(sender: HillAgentSender): Promise<HillListAnswer> {
+    const forward = this.forwardOf();
+    return forward === null ? { ok: true, decisions: this.mineList(sender) } : forward.list(sender);
   }
 
   /** One post from an agent's pane. The socket's only entry; it can never make a trick's post. */
@@ -608,9 +732,36 @@ export class HillService {
 
   /** One post, from an agent or from a trick inside the bridge. */
   postDecision(from: HillSender, input: HillPostInput, opts: HillPostOptions = {}): HillPostAnswer {
+    return this.postAny(from, input, opts);
+  }
+
+  /**
+   * One Decision of Collie's own (crew slice 3), from code inside the bridge only. It types nothing, so
+   * WalkyTalky being off does not stop it; it names no session and carries no image. Its answer runs
+   * `onCollieAnswer`. Supersede an older one of the same `ref` type and id with `input.supersedes`.
+   */
+  postCollie(from: HillCollieSender, input: HillPostInput): HillPostAnswer {
+    if ((input.images ?? []).length > 0) return refuse("too_many_images", "a Collie decision carries no image");
+    if (input.supersedes !== undefined && input.supersedes !== null && this.answering.has(input.supersedes)) return refuse("bad_supersedes", HILL_ANSWER_RUNNING);
+    return this.postAny(from, { ...input, about: null, replyTo: null, images: [] }, {});
+  }
+
+  /** Collie takes back one of its open Decisions: it closes `withdrawn` with `reason`. Never while its answer runs. */
+  withdrawCollie(from: HillCollieSender, id: string, reason: string): HillOneAnswer {
+    if (this.answering.has(id)) return { ok: false, missing: false, error: HILL_ANSWER_RUNNING };
+    return this.withdrawAny(from, id, reason);
+  }
+
+  /** Collie's own Decisions of one `ref` type, open and closed, as stored. */
+  collieDecisions(type: HillCollieRef["type"]): HillDecision[] {
+    return this.deps.store.all().filter((decision) => decision.from.kind === "collie" && decision.from.ref?.type === type);
+  }
+
+  private postAny(from: AnySender, input: HillPostInput, opts: HillPostOptions): HillPostAnswer {
     // First: with the Hill off nothing is taken, not even a repeat of a post it once took.
     if (!this.isOn()) return refuse("hill_off", HILL_OFF);
-    if (!this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
+    // Collie's own answer types nothing, so only a post whose answer is typed needs WalkyTalky.
+    if (from.kind !== "collie" && !this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     if (this.deps.crewMode() === "peer") return refuse("not_on_lead", NOT_ON_LEAD);
     const key = senderKey(from);
     const digest = hillPostDigest(input);
@@ -628,14 +779,15 @@ export class HillService {
     const now = this.now();
     if (input.expiresAt !== undefined && input.expiresAt !== null && input.expiresAt <= now) return refuse(null, "bad request: the expiry is in the past");
 
-    const about = this.resolveAbout(from, input.about ?? null);
+    const about = this.resolveAbout(from, input.about ?? null, opts.own ?? null);
     if (about === undefined) return refuse("bad_target", `\`${headerField(input.about ?? "", 80)}\` is not a live session's walky address`);
     let replyTo: HillPlace | null = null;
     if (input.replyTo !== undefined && input.replyTo !== null) {
       replyTo = this.deps.place(input.replyTo);
       if (replyTo === null) return refuse("bad_target", `\`${headerField(input.replyTo, 80)}\` is not a live session's walky address`);
     }
-    const own = from.kind === "agent" ? this.deps.place(from.address) : null;
+    // A crew member's claim about its own pane stands in only while this bridge does not list the pane yet.
+    const own = from.kind === "agent" ? (this.deps.place(from.address) ?? (opts.own?.address === from.address ? opts.own : null)) : null;
     if (from.kind === "agent" && own === null && replyTo === null) return refuse("bad_target", "this session is not a live walky address: run it inside an agent's pane");
     const target = replyTo ?? own;
 
@@ -649,11 +801,16 @@ export class HillService {
     const allOpen = this.deps.store.all().filter((decision) => decision.state === "open" && decision.id !== superseded?.id);
     const open = allOpen.filter((decision) => keyOf(decision) === key);
     if (open.length >= HILL_OPEN_MAX) return refuse("too_many_open", `this session has ${String(HILL_OPEN_MAX)} open decisions; withdraw one, or wait for answers`);
+    // A crew member's agents, posting through their lead: one machine's share of the hill. This
+    // bridge's own sessions keep the solo caps alone.
+    const crewMember = from.kind === "agent" && from.memberId !== this.deps.memberId ? from.memberId : null;
+    const machineOpen = crewMember === null ? [] : allOpen.filter((decision) => decision.from.kind === "agent" && decision.from.memberId === crewMember);
+    if (machineOpen.length >= HILL_OPEN_MEMBER_MAX) return refuse("too_many_open", `this machine's sessions have ${String(HILL_OPEN_MEMBER_MAX)} open decisions; withdraw one, or wait for answers`);
     if (allOpen.length >= HILL_OPEN_TOTAL_MAX) return refuse("too_many_open", `the hill holds ${String(HILL_OPEN_TOTAL_MAX)} open decisions; withdraw one, or wait for answers`);
     const asked = input.priority ?? "today";
     const priority = asked === "now" && open.filter((decision) => decision.priority === "now").length >= HILL_NOW_MAX ? "today" : asked;
     // A trick's own folder is a root for a trick's images only; an agent's post never has one.
-    const images = this.readImages(input.images ?? [], from.kind === "trick" ? (from.imageRoot ?? null) : null);
+    const images = opts.images === undefined ? this.readImages(input.images ?? [], from.kind === "trick" ? (from.imageRoot ?? null) : null) : this.heldImages(input.images ?? [], opts.images);
     if (!images.ok) return images;
 
     let id = this.mint();
@@ -667,10 +824,7 @@ export class HillService {
       v: 1,
       id,
       requestId: input.requestId,
-      from:
-        from.kind === "agent"
-          ? { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: this.nameOf(from.address, from.label), host: from.host, trickHost: null }
-          : { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: from.memberId },
+      from: this.fromOf(from),
       about: about?.address ?? null,
       priority,
       priorityAsked: asked,
@@ -680,8 +834,9 @@ export class HillService {
       target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
       supersededBy: null,
-      // No expiry asked for: it closes `expired` after the default, so a forgotten decision does not stay forever.
-      expiresAt: input.expiresAt ?? now + HILL_DEFAULT_EXPIRY_MS,
+      // No expiry asked for: it closes `expired` after the default, so a forgotten decision does not stay
+      // forever; and none stays past the cap, whatever it asked for.
+      expiresAt: Math.min(input.expiresAt ?? now + HILL_DEFAULT_EXPIRY_MS, now + HILL_MAX_EXPIRY_MS),
       at: now,
       state: "open",
       closedAt: null,
@@ -690,7 +845,7 @@ export class HillService {
       postDigest: digest,
     };
     if (input.view !== undefined) decision.view = input.view;
-    const push = this.pushPlan(key, priority, opts, superseded, id);
+    const push = this.pushPlan(key, crewMember, priority, opts, superseded, id);
     if (push.tag !== undefined) decision.pushTag = push.tag;
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
     if (!this.save(decision, ...replaced)) {
@@ -703,8 +858,20 @@ export class HillService {
     this.deps.audit?.({ action: "hill.post", detail });
     if (push.skipped !== null) this.deps.audit?.({ action: "hill.push.skipped", detail: { decisionId: id, why: push.skipped } });
     // Only while it is still open: nothing between the write and here closes it, and a push is never late.
-    if (push.send && this.deps.store.get(id)?.state === "open") this.deps.push?.send(key, decision);
+    if (push.send && this.deps.store.get(id)?.state === "open") this.deps.push?.send(key, decision, crewMember);
     return { ok: true, decision: served(decision) };
+  }
+
+  /** The `from` a new decision stores for its sender. */
+  private fromOf(from: AnySender): HillDecision["from"] {
+    if (from.kind === "agent") {
+      return { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: this.nameOf(from.address, from.label), host: from.host, trickHost: null };
+    }
+    if (from.kind === "trick") {
+      return { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: from.memberId };
+    }
+    const ref = { type: from.ref.type, id: from.ref.id, hash: from.ref.hash };
+    return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: null, ref };
   }
 
   /**
@@ -713,14 +880,21 @@ export class HillService {
    * `now` decision held by a gate sends nothing, and still keeps a superseded one's slot: the notification
    * on the phone stays until the question closes. Anything else holds no slot.
    */
-  private pushPlan(key: string, priority: HillDecision["priority"], opts: HillPostOptions, superseded: HillDecision | null, id: string): HillPushPlan {
+  private pushPlan(key: string, member: string | null, priority: HillDecision["priority"], opts: HillPostOptions, superseded: HillDecision | null, id: string): HillPushPlan {
     const inherited = superseded?.pushTag;
     if (priority !== "now" || this.deps.push === undefined) return { tag: undefined, send: false, skipped: null };
     if (opts.reask === true) return { tag: inherited, send: false, skipped: null };
-    const verdict = this.deps.push.check(key);
+    const verdict = this.deps.push.check(key, member);
     if (verdict === "send") return { tag: inherited ?? hillPushTag(id), send: true, skipped: null };
     if (verdict === "off") return { tag: inherited, send: false, skipped: null };
-    const why = verdict === "sender" ? `more than ${String(HILL_PUSH_RATE.perSender)} an hour from this sender` : `more than ${String(HILL_PUSH_RATE.total)} an hour in total`;
+    const why =
+      verdict === "sender"
+        ? `more than ${String(HILL_PUSH_RATE.perSender)} an hour from this sender`
+        : verdict === "member"
+          ? `more than ${String(HILL_PUSH_RATE.perMember)} an hour from this machine`
+          : verdict === "crew"
+            ? `more than ${String(HILL_PUSH_RATE.crew)} an hour from the crew's other machines`
+            : `more than ${String(HILL_PUSH_RATE.total)} an hour in total`;
     return { tag: inherited, send: false, skipped: why };
   }
 
@@ -752,6 +926,24 @@ export class HillService {
       const read = store.read(image.path, trickRoot);
       if (!read.ok) return { ok: false, code: read.code, error: read.error };
       images.push({ mime: read.mime, bytes: read.bytes, width: read.width, height: read.height, caption: caption.text === "" ? null : caption.text });
+    }
+    return { ok: true, images };
+  }
+
+  /**
+   * A crew member's images, already read and checked on the lead (crew.ts), with the captions the post
+   * names, cleaned as a caption read here is. The counts must match: one held image per named one.
+   */
+  private heldImages(raw: readonly HillImageInput[], held: readonly HillImageBytes[]): { readonly ok: true; readonly images: Array<HillImageBytes & { readonly caption: string | null }> } | Extract<HillPostAnswer, { ok: false }> {
+    if (raw.length > HILL_MEDIA_MAX || held.length > HILL_MEDIA_MAX) return { ok: false, code: "too_many_images", error: `a decision has at most ${String(HILL_MEDIA_MAX)} images` };
+    if (raw.length !== held.length) return { ok: false, code: "bad_image", error: "the images do not match the post" };
+    if (this.deps.media === undefined && held.length > 0) return { ok: false, code: "bad_image", error: "this bridge keeps no images" };
+    const images: Array<HillImageBytes & { readonly caption: string | null }> = [];
+    for (const [i, image] of raw.entries()) {
+      const caption = cleanLine(image.caption ?? "", HILL_MEDIA_CAPTION_MAX);
+      if (caption.over) return { ok: false, code: "bad_image", error: `an image caption is at most ${String(HILL_MEDIA_CAPTION_MAX)} characters` };
+      const bytes = held[i]!;
+      images.push({ mime: bytes.mime, bytes: bytes.bytes, width: bytes.width, height: bytes.height, caption: caption.text === "" ? null : caption.text });
     }
     return { ok: true, images };
   }
@@ -798,13 +990,13 @@ export class HillService {
   }
 
   /** `about` as the post named it: none, `here` (the poster's own session) or an address. Undefined: not a live one. */
-  private resolveAbout(from: HillSender, about: string | null): HillPlace | null | undefined {
+  private resolveAbout(from: AnySender, about: string | null, claimed: HillPlace | null = null): HillPlace | null | undefined {
     if (about === null || about.trim() === "") return null;
-    if (about.trim() === "here") return from.kind === "agent" ? (this.deps.place(from.address) ?? undefined) : undefined;
+    if (about.trim() === "here") return from.kind === "agent" ? (this.deps.place(from.address) ?? (claimed?.address === from.address ? claimed : undefined)) : undefined;
     return this.deps.place(about) ?? undefined;
   }
 
-  private mine(sender: HillSender, id: string): HillDecision | null {
+  private mine(sender: AnySender, id: string): HillDecision | null {
     const decision = this.deps.store.get(id);
     return decision === undefined || keyOf(decision) !== senderKey(sender) ? null : decision;
   }
@@ -842,6 +1034,10 @@ export class HillService {
 
   /** The poster takes an open decision back. It closes `withdrawn`, "by the poster" (a trick's runner names its own reason). */
   withdraw(sender: HillSender, id: string, reason: string = BY_THE_POSTER): HillOneAnswer {
+    return this.withdrawAny(sender, id, reason);
+  }
+
+  private withdrawAny(sender: AnySender, id: string, reason: string): HillOneAnswer {
     const decision = this.mine(sender, id);
     if (decision === null) return { ok: false, missing: true, error: `no decision ${id} from this session` };
     if (decision.state !== "open") return { ok: false, missing: false, error: `${id} is ${decision.state}, nothing to withdraw` };
@@ -942,6 +1138,8 @@ export class HillService {
       const to = decision.replyTo ?? decision.from.address;
       // A trick's decision with no `replyTo` types into nothing: the trick runner owns it.
       if (decision.target === null || to === null) continue;
+      // A crew machine that is not answering ends none of its sessions: the decision waits for it (§22).
+      if (this.away(to) !== null) continue;
       if (this.deps.place(to)?.address === to) continue;
       if (this.absent.has(decision.id)) ended.push(decision);
       else gone.push(decision.id);
@@ -990,7 +1188,7 @@ export class HillService {
   }
 
   private async run(request: HillAnswerRequest, id: string, by: string, digest: string, deviceId: string | null): Promise<HillAnswerOutcome> {
-    const claimed = this.lane.then(() => this.claim(request, id, by, digest, deviceId));
+    const claimed = this.lane.then(() => this.guarded(id, () => this.claim(request, id, by, digest, deviceId)));
     this.lane = claimed.then(
       () => undefined,
       () => undefined,
@@ -1018,6 +1216,32 @@ export class HillService {
     if (now?.answer?.rid === request.rid && (now.answer.delivery !== delivery || now.answer.trick !== trick)) this.save({ ...now, answer: { ...now.answer, delivery, trick } });
     this.auditAnswer(claim.decision, request, by, receipt);
     return { kind: "receipt", receipt };
+  }
+
+  /** Run one claim; while it runs, a Collie Decision it answers cannot be withdrawn or superseded. */
+  private async guarded<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    if (this.deps.store.get(id)?.from.kind !== "collie") return fn();
+    this.answering.add(id);
+    try {
+      return await fn();
+    } finally {
+      this.answering.delete(id);
+    }
+  }
+
+  /**
+   * Act on an answer to a Collie Decision before it closes: null when done, else the plain line the
+   * refusal shows. A throw, or no handler, refuses; the card stays open for another tap.
+   */
+  private async actForCollie(decision: HillDecision, intent: string): Promise<string | null> {
+    const ref = decision.from.ref;
+    if (ref === undefined || this.deps.onCollieAnswer === undefined) return HILL_NO_ANSWER_HANDLER;
+    try {
+      const verdict = await this.deps.onCollieAnswer(ref, intent);
+      return verdict.ok ? null : verdict.reason;
+    } catch {
+      return HILL_NO_ANSWER_HANDLER;
+    }
   }
 
   /** The trick's tap, run once. A throw, or no tricks runner, is a failed tap; nothing retries. */
@@ -1080,18 +1304,32 @@ export class HillService {
 
     // Where the answer goes: `replyTo`, else the poster. A trick with no `replyTo` has nothing to type into.
     const to = decision.replyTo ?? decision.from.address;
-    if (decision.target !== null && to !== null && this.deps.place(to)?.address !== to) {
+    // A session on a crew machine that is not answering: refused BEFORE anything is closed or written, so
+    // the card stays open and the same tap may go once the machine is back. Nothing is queued (§10.3).
+    // A dismiss is the exception: it always closes the card, typing nothing, and its receipt names the
+    // machine, so the phone says the session was not told (a card no tap could close would stay forever).
+    const away = decision.target !== null && to !== null ? this.away(to) : null;
+    const untold = away !== null && intent === "dismiss";
+    if (away !== null && !untold) return this.final(request, id, by, digest, { ...receiptOf(rid, now, "rejected", notAnswering(away), "open", null), machine: away }, false);
+    if (!untold && decision.target !== null && to !== null && this.deps.place(to)?.address !== to) {
       const gone = await this.final(request, id, by, digest, receiptOf(rid, now, "gone", TARGET_ENDED, "undeliverable", null));
       this.closeAs(id, now, "undeliverable", TARGET_ENDED);
       return gone;
     }
+    // Collie's own Decision acts here, once, before anything is written: a refusal (the code moved since
+    // the card was made) keeps the card open, and a dismiss closes it with no act at all.
+    if (decision.from.kind === "collie" && intent !== "dismiss") {
+      const refused = await this.actForCollie(decision, intent);
+      if (refused !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", refused, "open", null));
+    }
     const state: HillState = intent === "dismiss" ? "dismissed" : "answered";
-    const typed = decision.target !== null && to !== null;
+    const typed = decision.target !== null && to !== null && !untold;
     const trick = trickOf(decision);
     // Written first, as not confirmed: a bridge that stops after this line never types the answer twice,
     // and never runs the trick's tap twice (it reads `failed`, the tap that did not run).
     const firstTrick = trick === null ? "none" : "failed";
-    const first = receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick);
+    const plain = receiptOf(rid, now, "ok", null, state, typed ? "unknown" : "none", firstTrick);
+    const first = untold && away !== null ? { ...plain, machine: away } : plain;
     const device = deviceId !== null && HILL_DEVICE_ID_RE.test(deviceId) ? deviceId : null;
     const record: HillReceiptRecord = { requestId: rid, payloadDigest: digest, receipt: device === null ? first : { ...first, deviceId: device } };
     if (!(await this.deps.receipts.recordFirst(record))) return { kind: "done", outcome: { kind: "unsaved" } };
@@ -1114,6 +1352,19 @@ export class HillService {
       return { kind: "done", outcome: { kind: "receipt", receipt: record.receipt } };
     }
     return { kind: "deliver", decision: closed, record, send, tap };
+  }
+
+  /**
+   * The name of the crew machine a session address is on, when that machine is not answering now: the
+   * live session's own `reachable`, else the bridge's word for a machine it has not swept. Null otherwise.
+   */
+  private away(address: string): string | null {
+    const placed = this.deps.place(address);
+    if (placed !== null && placed.reachable === false) {
+      const at = parseAddress(placed.address);
+      return placed.host ?? (at?.kind === "pane" ? at.memberId : "that machine");
+    }
+    return this.deps.offline?.(address) ?? null;
   }
 
   /** Why the text breaks the decision's rule, or null when it keeps it. */

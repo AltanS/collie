@@ -16,6 +16,7 @@ import { WalkyOff } from "./off.ts";
 import { answerRequest, answerUnread, CANCEL_NEEDS_A_PANE, HILL_NEEDS_A_PANE, placeMarkers, SWITCH_NEEDS_A_PANE, walkySocketPath, WalkyServer, type PlaceTarget } from "./socket.ts";
 import { HILL_BAD_ID } from "../hill/parse.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
+import type { HillLeadForward } from "../hill/crew.ts";
 import { HillService } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import { walkyPlace } from "../hill/walky.ts";
@@ -101,6 +102,14 @@ describe("the off and on requests (M89)", () => {
     expect(await ask(walky, { op: "on", markers: [] })).toEqual({ ok: false, error: SWITCH_NEEDS_A_PANE });
     expect(await ask(walky, { op: "off", markers: marker("%9") })).toEqual({ ok: false, error: "not here" });
     expect(off.all()).toEqual([]);
+  });
+
+  test("`pane` says whether the asking pane runs an agent, and needs a pane of this bridge", async () => {
+    const { walky } = switched();
+    expect(await ask(walky, { op: "pane", markers: marker("%1") })).toEqual({ ok: true, agent: true });
+    expect(await ask(walky, { op: "pane", markers: marker("%3") })).toEqual({ ok: true, agent: false });
+    expect(await ask(walky, { op: "pane", markers: [] })).toEqual({ ok: false, error: "needs a pane" });
+    expect(await ask(walky, { op: "pane", markers: marker("%9") })).toEqual({ ok: false, error: "not here" });
   });
 
   test("`who` says so of the asker and of the pane, and says nothing when on", async () => {
@@ -351,9 +360,10 @@ describe("the socket", () => {
 
 // ── The hill's operations (M96) ──────────────────────────────────────────────────────────────────
 describe("the hill operations (M96)", () => {
-  function withHill(mode: "solo" | "lead" | "peer" = "solo") {
+  function withHill(mode: "solo" | "lead" | "peer" = "solo", forward?: HillLeadForward) {
     const walky = service();
     const hill = new HillService({
+      forward,
       store: new HillStore(null, () => 1000),
       receipts: memoryHillReceipts(),
       place: walkyPlace(walky, null),
@@ -378,6 +388,15 @@ describe("the hill operations (M96)", () => {
     expect(answer).toMatchObject({ ok: true, decision: { id: "dc_aaaaaaaaaaa1", from: { kind: "agent", address: "local/%1#aaaa", harness: "agent-x", label: "repo#a", host: "desk" }, target: { label: "repo#a" } } });
   });
 
+  test("a post that claims to be Collie's own is an agent's post: the socket cannot mint kind collie (crew slice 3)", async () => {
+    const { walky, hill } = withHill();
+    const ref = { type: "version", id: "legs", hash: "a".repeat(64) };
+    const answer = await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post, kind: "collie", ref, from: { kind: "collie", ref } });
+    expect(answer).toMatchObject({ ok: true, decision: { from: { kind: "agent", address: "local/%1#aaaa" } } });
+    expect(hill.collieDecisions("version")).toEqual([]);
+    expect(hill.list().open.every((decision) => decision.from.kind === "agent" && decision.from.ref === undefined)).toBe(true);
+  });
+
   test("no pane, or a shell pane: refused, with the hill's mark; markers that name no pane here are `not here`", async () => {
     const { walky, hill } = withHill();
     expect(await ask(walky, hill, { op: "hill.post", markers: [], ...post })).toEqual({ ok: false, error: HILL_NEEDS_A_PANE, hill: true });
@@ -395,6 +414,35 @@ describe("the hill operations (M96)", () => {
     expect(await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post, title: "" })).toEqual({ ok: false, error: "a decision needs a title", hill: true, code: "bad_title" });
     const peer = withHill("peer");
     expect(await ask(peer.walky, peer.hill, { op: "hill.post", markers: marker("%1"), ...post })).toMatchObject({ ok: false, code: "not_on_lead", hill: true });
+  });
+
+  test("on a crew member from 1.29.0 the four go to the lead (CREW_PROTOCOL §22); a lead that does not answer is said plainly, with its code", async () => {
+    const seen: string[] = [];
+    const lead: HillLeadForward = {
+      post: async (from, fields, requestId) => {
+        seen.push(`post ${from.address} ${requestId} ${String(fields.title)}`);
+        return { ok: false, code: "lead_unreachable", error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${requestId}: it posts once` };
+      },
+      one: async (op, from, id) => {
+        seen.push(`${op} ${from.address} ${id}`);
+        return { ok: false, missing: false, error: "the lead (desk) is not answering; try again" };
+      },
+      list: async (from) => {
+        seen.push(`list ${from.address}`);
+        return { ok: false, error: "the lead (desk) is not answering; try again" };
+      },
+    };
+    const { walky, hill } = withHill("peer", lead);
+    expect(await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post })).toEqual({
+      ok: false,
+      code: "lead_unreachable",
+      hill: true,
+      error: `the lead (desk) is not answering; nothing was posted. Post again with --request-id ${post.requestId}: it posts once`,
+    });
+    expect(await ask(walky, hill, { op: "hill.status", markers: marker("%1"), id: "dc_aaaaaaaaaaa1" })).toEqual({ ok: false, error: "the lead (desk) is not answering; try again", hill: true });
+    expect(await ask(walky, hill, { op: "hill.list", markers: marker("%1"), mine: true })).toEqual({ ok: false, error: "the lead (desk) is not answering; try again", hill: true });
+    // The sender is the pane's own address with its token, as on a lead.
+    expect(seen).toEqual([`post local/%1#aaaa ${post.requestId} Ship?`, "status local/%1#aaaa dc_aaaaaaaaaaa1", "list local/%1#aaaa"]);
   });
 
   test("status, withdraw and list answer the asker's own decisions; another pane's id is `not here` with the sentence", async () => {

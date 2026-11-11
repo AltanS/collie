@@ -25,6 +25,7 @@ import {
   type TrickPartKey,
   type TrickTapReply,
   type TricksReply,
+  type TricksRunsOn,
   type PlaceKind,
   type TapCode,
   type TapFrom,
@@ -49,6 +50,8 @@ export interface TricksState {
   parts: ReadonlyMap<string, WireTrickPart>;
   /** The last tap on a part, by `partKey`. */
   taps: ReadonlyMap<string, TapState>;
+  /** Set while the last reply said this bridge runs no tricks, because its crew's lead does. */
+  runsOn?: TricksRunsOn;
 }
 
 /** The two routes and the id source, so a test or the playground can stand in for the bridge. */
@@ -152,7 +155,9 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
     const taps = new Map(state.taps);
     mergeParts(parts, taps, reply.parts, replace);
     dropAbsent(parts, taps, new Set(reply.present));
-    commit({ rev: reply.rev, tricks: reply.tricks, parts, taps });
+    const next: TricksState = { rev: reply.rev, tricks: reply.tricks, parts, taps };
+    if (reply.runsOn !== undefined) next.runsOn = reply.runsOn;
+    commit(next);
   }
 
   async function runSync(): Promise<void> {

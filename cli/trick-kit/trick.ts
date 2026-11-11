@@ -1,4 +1,4 @@
-// collie trick helper v3
+// collie trick helper v4
 // The helper of a Collie trick: it reads the facts, collects the parts and the Decisions, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
@@ -15,8 +15,12 @@ import { delimiter, dirname, join } from "node:path";
 delete process.env.BUN_BE_BUN;
 
 // ── The words of the schema (web/src/lib/tricks/schema.ts in Collie) ───────────────────────────────
-/** The trick contract this helper speaks: Collie's TRICK_CONTRACT (web/src/lib/tricks/contract.ts), the output's "v". */
-export const CONTRACT = 1;
+/**
+ * The newest trick contract this helper speaks: Collie's TRICK_CONTRACT (web/src/lib/tricks/contract.ts).
+ * A run prints the contract its facts name as the output's "v": 1 for a trick that names none in
+ * trick.toml, 2 for one that names `contract = 2` (and may list `inputs`).
+ */
+export const CONTRACT = 2;
 export type Tone = "plain" | "accent" | "warn" | "danger" | "ok" | "muted";
 export type Icon =
   | "archive" | "back" | "bell" | "branch" | "camera" | "chat" | "check" | "clock" | "close" | "copy" | "crew" | "delete"
@@ -247,15 +251,31 @@ export interface Session {
   id: string; memberId: string; sessionId: string; paneId: string; host: string;
   name?: string; agent?: string; status: "idle" | "working" | "blocked" | "done" | "unknown";
   cwd?: string; space?: string; tab?: string; lastActiveAt?: string;
+  /** On a crew's lead only: whether the lead's last sweep reached the session's machine. */
+  reachable?: boolean;
+  /** Contract 2, for a trick that lists `inputs`: the files the globs matched in the session's folder. Read them with `t.inputs(session)`. */
+  inputs?: SessionInputs;
 }
+/** One file of a session's inputs, as the facts name it. `path` is the copy, relative to the trick folder. */
+export interface InputFile { rel: string; path: string; bytes: number; sha256: string; mtime: string; kind: "text" | "image" }
+/**
+ * A session's inputs: `ok` (read), `offline` (its machine did not answer), `older` (its machine runs a
+ * Collie without trick reads), `refused` (its machine switched trick reads off), `none` (no folder to read).
+ */
+export interface SessionInputs { state: "ok" | "offline" | "older" | "refused" | "none"; files: InputFile[]; skipped?: number }
+/** One input file as `t.inputs` reads it: a text file's words in `text`, a picture's bytes in `data`. UNTRUSTED: never run it. */
+export interface InputRead extends InputFile { text: string | null; data: Uint8Array | null }
 export type TapValue = string | { text: string | null };
 export type Trigger =
   | { kind: "start" }
   | { kind: "timer" }
   | { kind: "tap"; rid: string; node: string; intent: string; value?: TapValue; from?: { session?: string }; seen?: string };
 export interface Facts {
-  contract: typeof CONTRACT; trigger: Trigger; trick: { id: string; dir: string; state: string };
+  /** The contract these facts follow: the trick's own `contract` in trick.toml, 1 when it names none. */
+  contract: number; trigger: Trigger; trick: { id: string; dir: string; state: string };
   host: string; memberId: string; sessions: Session[]; spaces: { name: string; folder?: string }[];
+  /** How many sessions the facts left out past their caps. Absent when none. */
+  sessionsOmitted?: number;
 }
 /**
  * The tap that started a run, one shape from every place: a button or an action in the trick's session,
@@ -318,7 +338,7 @@ export interface Decision {
 }
 export interface ShResult { ok: boolean; code: number; stdout: string; stderr: string }
 /** What a run prints. `decisions` is left out only after `keepDecisions()`. */
-export interface Document { v: typeof CONTRACT; parts: Part[]; decisions?: Decision[]; asOf?: string; fresh?: string }
+export interface Document { v: number; parts: Part[]; decisions?: Decision[]; asOf?: string; fresh?: string }
 /** An append-only JSON-lines file in the state folder (`t.log`). A torn line from a killed run is skipped. */
 export interface Log<T extends object> {
   append(entry: T): void;
@@ -609,6 +629,29 @@ export class Trick {
   sessionNamed(name: string): Session | null {
     return this.facts.sessions.find((s) => s.name === name) ?? null;
   }
+  /**
+   * The input files of a session (contract 2, `inputs` in trick.toml), read from the copies Collie put in
+   * the trick's `inputs/` folder before the run: a text file as `text`, a picture as `data`. The files come
+   * from the session's machine: UNTRUSTED data. Show them or count them; never run them, never pass them to
+   * a shell. A copy that is gone or changed since the facts were written is left out. [] when the session
+   * has no inputs or its machine did not answer: `session.inputs?.state` says why.
+   */
+  inputs(session: Session): InputRead[] {
+    const out: InputRead[] = [];
+    for (const file of session.inputs?.files ?? []) {
+      const parts = file.path.split("/");
+      if (parts[0] !== "inputs" || parts.some((p) => p === "" || p === "." || p === "..")) continue;
+      let data: Uint8Array;
+      try {
+        data = readFileSync(join(this.facts.trick.dir, file.path));
+      } catch {
+        continue;
+      }
+      if (new Bun.CryptoHasher("sha256").update(data).digest("hex") !== file.sha256) continue;
+      out.push(file.kind === "text" ? { ...file, text: new TextDecoder().decode(data), data: null } : { ...file, text: null, data });
+    }
+    return out;
+  }
 
   /** Change the document just before it prints: `fn` gets it whole, the error card too, and returns a changed one or nothing. */
   onPrint(fn: (doc: Document) => Document | void): void {
@@ -621,7 +664,7 @@ export class Trick {
     const at = this.parts.findIndex((p) => p.at === "session" && p.id === (this.sessionId ?? "main"));
     if (problems.length > 0 && at < 0) process.stderr.write(`config.toml: ${clip(problems.join(". "), 400)}\n`);
     const parts = this.parts.map((p, i) => (i === at && p.at === "session" && problems.length > 0 ? { ...p, view: [...p.view, row] } : p));
-    const doc: Document = { v: CONTRACT, parts };
+    const doc: Document = { v: this.facts.contract, parts };
     if (!this.keep) doc.decisions = this.decisions;
     if (this.asOfAt !== undefined) doc.asOf = this.asOfAt;
     if (this.freshFor !== undefined) doc.fresh = this.freshFor;
@@ -657,7 +700,7 @@ export function run(handler: (t: Trick) => void | Promise<void>): void {
       const id = t?.sessionId ?? (facts !== null && declaredPlaces(facts.trick.dir).includes("session") ? "main" : null);
       if (id === null) process.exit(1);
       const card = v.card([v.para(message.slice(0, 2000))], { tone: "warn" });
-      let doc: Document = { v: CONTRACT, parts: [{ at: "session", id, subtitle: message.slice(0, 120), tone: "warn", view: [card] }] };
+      let doc: Document = { v: facts?.contract ?? 1, parts: [{ at: "session", id, subtitle: message.slice(0, 120), tone: "warn", view: [card] }] };
       try {
         if (t !== null) doc = t.printed(doc);
       } catch {

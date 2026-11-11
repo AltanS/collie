@@ -9,6 +9,7 @@ import { decision as storedDecision } from "../bridge/hill/fixtures.ts";
 import { deniedFoldersSync, HillMediaStore } from "../bridge/hill/media.ts";
 import { HOST } from "../bridge/host.ts";
 import { memoryHillReceipts } from "../bridge/hill/receipts.ts";
+import { CREW_HILL_MEDIA_ROUTE, CREW_HILL_POST_ROUTE, HILL_CALL_BUDGET_MS, HILL_FORWARD_BUDGET_MS, HILL_MEDIA_BUDGET_MS, HILL_POST_ASK_MS, HillCrewLead, HillHeldMedia, HillMemberForward, type HillLeadLink } from "../bridge/hill/crew.ts";
 import { HillService } from "../bridge/hill/service.ts";
 import { HillStore } from "../bridge/hill/store.ts";
 import { HillSwitch, readHillSwitch } from "../bridge/hill/switch.ts";
@@ -33,6 +34,7 @@ import {
   HILL_OFF_WORDS,
   HILL_ON_WORDS,
   HILL_IMAGES_DROPPED,
+  HILL_NOT_CONFIRMED,
   HILL_NOT_HERE,
   HILL_RULES,
   HILL_UNKNOWN,
@@ -45,6 +47,7 @@ import {
   parsePostArgs,
   readViewFile,
   refusalExit,
+  retryCommand,
   statusLines,
   type HillDeps,
 } from "./hill.ts";
@@ -163,6 +166,11 @@ function deps(sockets: string[], env: Record<string, string> = inPane("%1"), ove
   };
 }
 
+/** The line every failed post ends with: its request id, and the command that sends it again once. */
+function retryLine(args: readonly string[], id = "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f"): string {
+  return `hill: request id ${id}; to send this post again, it posts once: ${retryCommand(args, id)}`;
+}
+
 const POST = ["--title", "Ship the zoom fix in 1.28.1?", "--summary", "The pill moves out of Chat. The leg is green.", "--option", "yes=Yes, Edge first", "--option", "no=No, wait for 1.29.0", "--recommend", "yes", "--why", "Edge users find it in a day."];
 
 describe("post's flags", () => {
@@ -237,6 +245,9 @@ describe("post's flags", () => {
     expect(error([...POST, "--text", "lots"])).toBe("`--text` is none, optional or required");
     expect(error(["--title", "t", "--summary", "s", "--text", "none"])).toBe("`--text none` needs at least one `--option`");
     expect(error([...POST, "--expires", "soon"])).toBe("`--expires soon` is a duration such as 30m, 2h, 3d or 1w");
+    expect(error([...POST, "--expires", "31d"])).toBe("`--expires 31d` is longer than 30 days, the most a decision stays open");
+    expect(error([...POST, "--expires", "5w"])).toBe("`--expires 5w` is longer than 30 days, the most a decision stays open");
+    expect(parsePostArgs([...POST, "--expires", "30d"])).toMatchObject({ expiresInMs: 30 * 86_400_000 });
     expect(error([...POST, "--request-id", "abc"])).toBe("`--request-id abc` is not a UUID");
     expect(error([...POST, "--supersedes", "wt_aaaaaaaaaaa1"])).toContain("is not a decision id");
     expect(error([...POST, "--reply-to", "all"])).toContain("is not a session");
@@ -286,7 +297,12 @@ describe("post, status, withdraw and list against a bridge", () => {
     const d = deps([walkySocketPath(b.stateDir)]);
     expect(await cmdHillPost(d, ["--title", "t".repeat(121), "--summary", "s"])).toBe(EXIT.REFUSED);
     // The wording warnings come first, before the post; the refusal is the last line.
-    expect(d.io.stderr).toEqual(["warning: the title has 121 characters. Keep it to 60: the decision as a short question.", "warning: the title asks no question. Write the decision as a question the options answer.", "hill: the title is longer than 120 characters (bad_title)"]);
+    expect(d.io.stderr).toEqual([
+      "warning: the title has 121 characters. Keep it to 60: the decision as a short question.",
+      "warning: the title asks no question. Write the decision as a question the options answer.",
+      "hill: the title is longer than 120 characters (bad_title)",
+      retryLine(["--title", "t".repeat(121), "--summary", "s"]),
+    ]);
   });
 
   socketTest("outside a pane the bridge refuses: a decision belongs to a session", async () => {
@@ -403,7 +419,7 @@ describe("the Hill's switch", () => {
 
     const refused = deps(sock, inPane("%1"), { mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e71" });
     expect(await cmdHillPost(refused, POST)).toBe(EXIT.STATE);
-    expect(refused.io.stderr.at(-1)).toBe("hill: the Hill is off on this Collie; your person can switch it on in Settings, Alerts, on the phone, or with: collie hill on (hill_off)");
+    expect(refused.io.stderr.slice(-2)).toEqual(["hill: the Hill is off on this Collie; your person can switch it on in Settings, Alerts, on the phone, or with: collie hill on (hill_off)", retryLine(POST, "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e71")]);
     // The open decision is still there, and its poster can read, list and withdraw it while the Hill is off.
     const status = deps(sock);
     expect(await cmdHillStatus(status, ["dc_cli000000001"])).toBe(EXIT.OK);
@@ -447,6 +463,9 @@ describe("the Hill's switch", () => {
     expect(refusalExit(null)).toBe(EXIT.STATE);
     expect(refusalExit("bad_title")).toBe(EXIT.REFUSED);
     expect(refusalExit("walky_off")).toBe(EXIT.REFUSED);
+    // A member's lead that did not answer: a retry with the same request id may pass (CREW_PROTOCOL §22).
+    expect(refusalExit("lead_unreachable")).toBe(EXIT.UNREACHABLE);
+    expect(refusalExit("not_on_lead")).toBe(EXIT.REFUSED);
   });
 
   test("`collie hill on` and `off` are verbs of the tree", async () => {
@@ -484,21 +503,21 @@ describe("an older bridge on the same machine", () => {
     for (const verb of [(x: HillDeps) => cmdHillPost(x, POST), (x: HillDeps) => cmdHillStatus(x, ["dc_k3m9x2p7q1ab"]), (x: HillDeps) => cmdHillList(x, [])]) {
       const d = deps([older.path, bare.path, walkySocketPath(without.stateDir)]);
       expect(await verb(d)).toBe(EXIT.UNREACHABLE);
-      expect(d.io.stderr).toEqual([`hill: ${HILL_UNKNOWN}`]);
+      expect(d.io.stderr[0]).toBe(`hill: ${HILL_UNKNOWN}`);
     }
   });
 
   test("no bridge at all: the same words", async () => {
     const d = deps([join(tmpdir(), "no-such-dir", "walky", "sock")]);
     expect(await cmdHillPost(d, POST)).toBe(EXIT.UNREACHABLE);
-    expect(d.io.stderr).toEqual([`hill: ${HILL_UNKNOWN}`]);
+    expect(d.io.stderr).toEqual([`hill: ${HILL_UNKNOWN}`, retryLine(POST)]);
   });
 
   socketTest("a bridge that knows the hill but not this pane says it does not know the pane", async () => {
     const b = await bridge();
     const d = deps([walkySocketPath(b.stateDir)], inPane("%9"));
     expect(await cmdHillPost(d, POST)).toBe(EXIT.STATE);
-    expect(d.io.stderr).toEqual([`hill: ${HILL_NOT_HERE}`]);
+    expect(d.io.stderr).toEqual([`hill: ${HILL_NOT_HERE}`, retryLine(POST)]);
   });
 
   test("Windows has no walky socket", async () => {
@@ -541,7 +560,7 @@ describe("help", () => {
     expect(await run(["hill", "post", "--help"], io)).toBe(EXIT.OK);
     expect(io.stdout).toEqual(hillPostHelp());
     expect(io.stdout[0]).toStartWith("usage: collie hill post");
-    expect(io.stdout).toContain("  With no --expires, a decision closes as expired after 14 days.");
+    expect(io.stdout).toContain("  With no --expires, a decision closes as expired after 14 days. --expires is at most 30 days.");
     expect(io.stdout.slice(-RULES.length)).toEqual(RULES);
   });
 });
@@ -758,7 +777,90 @@ describe("a retried post", () => {
     expect(again.io.stdout).toEqual(first.io.stdout);
     const changed = deps(sock);
     expect(await cmdHillPost(changed, [...POST.map((arg) => (arg === "Ship the zoom fix in 1.28.1?" ? "Ship it later?" : arg)), "--request-id", id])).toBe(EXIT.REFUSED);
-    expect(changed.io.stderr).toEqual([`hill: this request id already posted ${first.io.stdout[0]!} with other content; post with a new --request-id (request_id_reused)`]);
+    expect(changed.io.stderr[0]).toBe(`hill: this request id already posted ${first.io.stdout[0]!} with other content; post with a new --request-id (request_id_reused)`);
+  });
+});
+
+/**
+ * A crew member's bridge on a real socket, whose forward dials a lead in this process through a link
+ * that answers after `delayMs`: the slow relayed link of CREW_PROTOCOL §22.
+ */
+async function slowCrew(delayMs: number): Promise<{ readonly sock: string[]; readonly lead: HillService; readonly leadStore: HillStore }> {
+  const stateDir = mkdtempSync(join(tmpdir(), "hill-member-"));
+  cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
+  const leadStore = new HillStore(null, () => 1000);
+  let n = 0;
+  const lead = new HillService({
+    store: leadStore,
+    receipts: memoryHillReceipts(),
+    place: (address) => (address.startsWith("laptop/%1") ? { address: "laptop/%1#aaaa", label: "repo#one", host: "laptop", unattended: false } : null),
+    send: async () => "typed",
+    crewMode: () => "lead",
+    walkyOn: () => true,
+    memberId: "m_lead000000",
+    machine: "desk",
+    now: () => 1000,
+    mintId: () => {
+      n += 1;
+      return `dc_lead${String(n).padStart(8, "0")}`;
+    },
+  });
+  const crewLead = new HillCrewLead({ hill: lead, held: new HillHeldMedia(() => 1000) });
+  const link: HillLeadLink = {
+    leadName: () => "desk",
+    leadOlder: () => false,
+    leadAtFloor: () => true,
+    call: async (route, payload) => {
+      await Bun.sleep(delayMs);
+      const handle = route === CREW_HILL_POST_ROUTE ? crewLead.post.bind(crewLead) : route === CREW_HILL_MEDIA_ROUTE ? crewLead.media.bind(crewLead) : crewLead.op.bind(crewLead);
+      const answer = await handle(parseJsonObject(payload), "laptop");
+      return { kind: "answer", status: answer.status, body: JSON.parse(JSON.stringify(answer.body)) };
+    },
+  };
+  const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
+  const walky = new WalkyService({ log: new WalkyLog(join(stateDir, "walky")), host, memberId: "laptop", enabled: () => true, machine: "laptop", keyPem: () => null });
+  const member = new HillService({
+    store: new HillStore(null, () => 1000),
+    receipts: memoryHillReceipts(),
+    place: walkyPlace(walky, "laptop"),
+    send: async () => "typed",
+    crewMode: () => "peer",
+    walkyOn: () => true,
+    memberId: "m_laptop0000",
+    machine: "laptop",
+    now: () => 1000,
+    forward: new HillMemberForward(link),
+  });
+  const server = new WalkyServer({ socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined, hill: member });
+  expect(await server.start()).toBe(true);
+  cleanups.push(() => server.stop());
+  return { sock: [walkySocketPath(stateDir)], lead, leadStore };
+}
+
+describe("a post on a slow crew link", () => {
+  socketTest("the CLI waits longer than the member's whole forward", () => {
+    expect(HILL_POST_ASK_MS).toBeGreaterThan(HILL_FORWARD_BUDGET_MS);
+    expect(HILL_FORWARD_BUDGET_MS).toBeGreaterThanOrEqual(HILL_MEDIA_BUDGET_MS + HILL_CALL_BUDGET_MS);
+  });
+
+  socketTest("a late answer says not confirmed and prints the retry; the retry with that id leaves one card", async () => {
+    const { sock, leadStore } = await slowCrew(300);
+    // The CLI's wait, cut short to stand for a forward that outlasts it.
+    const first = deps(sock, inPane("%1"), { ask: (path, line) => askSocket(path, line, 50), mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e99" });
+    expect(await cmdHillPost(first, POST)).toBe(EXIT.UNREACHABLE);
+    expect(first.io.stderr[0]).toBe(`hill: ${HILL_NOT_CONFIRMED}`);
+    expect(first.io.stderr.join("\n")).not.toContain("no running Collie");
+    const retry = /--request-id (\S+)/u.exec(first.io.stderr[1] ?? "")?.[1];
+    expect(retry).toBe("0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e99");
+    expect(first.io.stderr[1]).toContain(`collie hill post --title 'Ship the zoom fix in 1.28.1?'`);
+    // The bridge went on and posted.
+    await Bun.sleep(500);
+    expect(leadStore.all()).toHaveLength(1);
+    // The agent runs the printed command: the same request id posts once.
+    const again = deps(sock);
+    expect(await cmdHillPost(again, [...POST, "--request-id", retry!])).toBe(EXIT.OK);
+    expect(again.io.stdout).toEqual([leadStore.all()[0]!.id]);
+    expect(leadStore.all()).toHaveLength(1);
   });
 });
 

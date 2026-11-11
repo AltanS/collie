@@ -63,6 +63,17 @@ function okWithTrick(receipt: HillReceipt, intent: string, label: string, trickN
   return `${okWords(receipt, intent, label)} · ${t("hill.delivery.recorded", { trick: trickName })}`;
 }
 
+/**
+ * What an `ok` answer to a Decision of Collie's own did (crew slice 3). Nothing was typed anywhere:
+ * Collie acted itself, so the line says the outcome. A trick's new version: "Now running the new
+ * version." for use and always, "Kept the old version." for keep.
+ */
+export function collieOkWords(from: HillDecision["from"], intent: string): string {
+  if (intent === "dismiss") return t("hill.receipt.dismissed");
+  if (from.ref?.type === "version") return intent === "keep" ? t("hill.receipt.versionKept") : t("hill.receipt.versionUsed");
+  return t("hill.receipt.collieDone");
+}
+
 /** The bridge's plain-words reason, in the phone's language where it is one the phone knows. */
 function reasonWords(reason: string | null): string | null {
   if (reason === null || reason.trim() === "") return null;
@@ -80,12 +91,15 @@ function reasonWords(reason: string | null): string | null {
 export function receiptWords(receipt: HillReceipt, intent: string, label: string, trickName: string | null = null): string {
   switch (receipt.code) {
     case "ok":
+      // A dismiss that closed the card while the session's machine was away: nothing reached the session.
+      if (receipt.machine !== undefined) return t("hill.receipt.dismissedOffline", { machine: receipt.machine });
       if (trickName !== null && receipt.trick === "failed") return t("hill.receipt.trickFailed", { trick: trickName });
       if (trickName !== null && receipt.trick === "ran") return okWithTrick(receipt, intent, label, trickName);
       return okWords(receipt, intent, label);
     case "unknown":
       return t("hill.receipt.unknown");
     case "rejected": {
+      if (receipt.machine !== undefined) return t("hill.receipt.offline", { machine: receipt.machine });
       const why = reasonWords(receipt.reason);
       return why === null ? t("hill.receipt.rejected") : t("hill.receipt.rejectedWhy", { reason: why });
     }

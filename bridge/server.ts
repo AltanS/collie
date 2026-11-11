@@ -213,7 +213,7 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, parseSince } from "./tricks/routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
@@ -597,6 +597,9 @@ const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
 const TRICKS_TAP_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
 // And the off switch (M94 slice 04): write-gated like the tap, the same file `collie trick on|off` writes.
 const TRICKS_SWITCH_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
+// Take changes without asking, and go back one version (crew slice 3): write-gated like the switch.
+const TRICKS_AUTO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/;
+const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
 // And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
 // `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
 const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
@@ -3189,6 +3192,23 @@ export function startServer(opts: {
         const answer = await tricksSwitchRoute(tricks, tricksSwitch, body);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
+      const tricksVersion = TRICKS_AUTO_ROUTE.exec(pathname) ?? TRICKS_UNDO_ROUTE.exec(pathname);
+      if (tricksVersion !== null && req.method === "POST") {
+        const auto = pathname.endsWith("/auto");
+        const denied = guard(req, cfg, auto ? TRICKS_ROUTE_RIGHTS.auto : TRICKS_ROUTE_RIGHTS.undo, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; the route reads every field it takes.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = auto ? await tricksAutoRoute(tricks, tricksVersion, body) : await tricksUndoRoute(tricks, tricksVersion, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
       const tricksMedia = TRICKS_MEDIA_ROUTE.exec(pathname);
       if (tricksMedia !== null && req.method === "GET") {
         const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.media, pairingGate);
@@ -5631,6 +5651,19 @@ export async function filesExist(
   const root = await filesSubjectRoot(engine, subject, home);
   const exists = root === null ? [] : await existingPaths({ root, home, privateFolders }, paths);
   return json({ exists } satisfies FilesExistAnswer, accept);
+}
+
+/**
+ * The Files root of one of this machine's AGENT panes, the one the Files view reads for it (a trick's
+ * inputs, M99): `{ root }`, `{ root: null }` when the pane has no folder narrow enough to read, or null
+ * when the id names no agent pane in any runtime here, or more than one: a shell pane, a trick's pane, a
+ * pane of another machine and an unknown id alike.
+ */
+export async function agentPaneFilesRoot(snaps: readonly RootSnapshot[], paneId: string, home: string): Promise<{ root: string | null } | null> {
+  const hits = snaps.flatMap((snap) => snap.agents.filter((a) => a.paneId === paneId && (a.kind ?? "agent") === "agent").map((pane) => ({ snap, pane })));
+  if (hits.length !== 1) return null;
+  const { snap, pane } = hits[0]!;
+  return { root: paneFilesRootOf(await paneWorkspaceRoot(rootOfWorkspace(snap, pane.workspaceId, home), pane.cwd), pane.cwd, home) };
 }
 
 /**

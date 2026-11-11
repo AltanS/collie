@@ -198,7 +198,9 @@ import {
 } from "./crew/takeover.ts";
 import {
   enrollmentOf,
+  isActiveMember,
   legacyStateFileNotice,
+  reservedMembers,
   TrustStore,
   type TrustStoreData,
   type Warrant,
@@ -207,7 +209,7 @@ import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush
 import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
-import { buildId, filesPrivateFolders, startServer } from "./server.ts";
+import { agentPaneFilesRoot, buildId, filesPrivateFolders, startServer } from "./server.ts";
 import {
   DEFAULT_SESSION_NAME,
   herdTagFor,
@@ -287,12 +289,14 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
-import { factsWorldOf } from "./tricks/facts.ts";
+import { crewFactsWorld, factsWorldOf, type FactsWorld } from "./tricks/facts.ts";
+import { answerInputsRequest, INPUT_ANSWER_BODY_MAX_BYTES, readPaneInputs, TrickInputs, type InputsBudget, type InputsCallResult, type WirePaneInputs } from "./tricks/inputs.ts";
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { TricksService } from "./tricks/service.ts";
+import { VersionCards } from "./tricks/version-card.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
-import { labelOf, LOCAL_MEMBER } from "./walky/address.ts";
+import { labelOf, LOCAL_MEMBER, parseAddress } from "./walky/address.ts";
 import {
   crewSkipped,
   crewTargets,
@@ -327,6 +331,7 @@ import { HillService } from "./hill/service.ts";
 import { morphPaneMark } from "./morph/mark.ts";
 import { MorphService } from "./morph/service.ts";
 import { morphDir, MorphStore } from "./morph/store.ts";
+import { atTricksCrewFloor, HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
 import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
@@ -642,7 +647,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
     const client = crewPeerClient(data);
     const verdict = await runBootGate({
       links: data.peers
-        .filter((p) => p.status === "enrolled")
+        .filter(isActiveMember)
         .map((p) => ({ memberId: p.memberId, address: p.address })),
       hello: (link) => client.hello(link),
       generation: currentWarrant(data)?.warrant.generation ?? 0,
@@ -669,6 +674,11 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
 // The mode is resolved AFTER the gate, from whatever the gate left on disk — a machine that healed
 // boots as a peer, wires a peer's listener and serves no front door, with no second process involved.
 const enrollment = enrollmentOf(trustStore.current());
+// A member enrolled under a word the address grammar keeps (`local`, `all`, `here`) is refused, not
+// dropped: said once here, with what to do (security re-review A1).
+for (const word of reservedMembers(trustStore.current())) {
+  console.warn(`[crew] warn: the member "${word}" has a name Collie's addresses keep for themselves, so this collie refuses it. Remove it with \`collie crew remove ${word}\`, then join that machine again with --label <another name>.`);
+}
 const crew = resolveCrewRuntime(enrollment);
 if (crew.conflict) console.warn(`[crew] ${crew.conflict}`);
 if (crew.mode !== "solo") console.log(`[crew] mode: ${crew.mode}`);
@@ -2321,6 +2331,12 @@ const hillViews = new OneLook(() => registry.ordered().flatMap((rt) => rt.engine
 // `unattended` (the card's "runs unattended" mark) keeps walkyPlace's default, false: no bridge fact
 // says yet whether a session runs in bypass or auto-approve mode, so nothing is wired here.
 const hillPlace = walkyPlace({ who: hillWho.read }, walkyMemberId);
+// On a lead (CREW_PROTOCOL §22): the crew machine an address is on when it is not answering now, read
+// off the sweep's ledger. Assigned where the lead runtime is built, after this.
+let hillOffline: (address: string) => string | null = () => null;
+// The "new version" card of a trick (crew slice 3): built after the Hill, which it posts into; the Hill
+// hands it the answer to one of its cards. An answer only ever comes after boot.
+let versionCards: VersionCards | undefined;
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
     for (const id of ids) hillMedia.remove(id);
@@ -2348,6 +2364,8 @@ const hill = new HillService({
   // A trick's decision (M94): the answer reaches the trick's program as a tap. `tricks` is made further
   // down; an answer only ever comes after boot.
   tap: (host, trickId, tap, decisionId) => tricks?.tapFromHill(host, trickId, tap, decisionId) ?? Promise.resolve(false),
+  // A Decision of Collie's own (crew slice 3): its answer acts here, on exactly the version the card shows.
+  onCollieAnswer: (ref, intent) => versionCards?.answer(ref, intent) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." }),
   // A `now` Decision rings the phone once (hill/push.ts): push live, its switch on, not snoozed. A crew
   // member refuses posts anyway; the lead holds the subscriptions, as for every other push.
   push: new HillPush({
@@ -2357,6 +2375,19 @@ const hill = new HillService({
   // The Hill's switch (hill/switch.ts): on by default, `<stateDir>/hill/switch.json` once the phone or
   // `collie hill on|off` moved it. Read behind a stat check, so a switch needs no restart.
   hillSwitch: new HillSwitch(cfg.stateDir),
+  // A crew member posts on its lead's Hill (CREW_PROTOCOL §22, 1.29.0): images read here, then uploaded,
+  // then the post, over the member's signed dial of its lead. A lead below 1.29.0 is refused up front
+  // when its release is known; when not, its uniform 401 (it does not sign these routes) reads as older.
+  forward:
+    crew.mode === "peer" && walkyMemberId !== null
+      ? new HillMemberForward({
+          call: (route, payload, budgetMs) => walkyToLead(payload, route, budgetMs),
+          leadName: () => trustStore.current()?.lead?.memberId ?? null,
+          leadOlder: () => olderThanTricksCrew(heardLeadRelease, crewVersion, compareSemver),
+          leadAtFloor: () => atTricksCrewFloor(heardLeadRelease, crewVersion, compareSemver),
+        })
+      : undefined,
+  offline: crew.mode === "lead" ? (address) => hillOffline(address) : undefined,
 });
 hill.pruneMedia();
 // Morph: the one screen an agent draws per session (`collie morph show`), and the phone's per-session
@@ -2384,6 +2415,11 @@ const morph = ((): MorphService | undefined => {
   }
 })();
 morph?.pruneMedia();
+versionCards = new VersionCards({ hill, tricks: () => tricks ?? null, warn: (line) => console.warn(`[tricks] ${line}`), crew: () => crew.mode === "lead" });
+// The lead's half of §22: a member's images wait here by hash for the post that names them.
+// `place` is the same probe the Hill resolves addresses with: what it returns for a member's address is
+// checked against the signing member too, not only the string (security re-review A1).
+const hillCrewLead = crew.mode === "lead" ? new HillCrewLead({ hill, held: new HillHeldMedia(), machineOf: (memberId) => memberId, walkyOn: () => cfg.walky, place: hillPlace }) : null;
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,
@@ -2914,6 +2950,16 @@ const crewLead = (() => {
 if (crewLead !== undefined && walkyMemberId !== null) {
   const lead = crewLead;
   walkyMemberVersion = (memberId) => lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null;
+  // §22: a session on a member this lead cannot reach now, by the sweep's own reading (the one `who`
+  // shows as `unreachable`). Its Decisions wait.
+  hillOffline = (address) => {
+    const at = parseAddress(address);
+    if (at === null || at.kind !== "pane") return null;
+    // The lead's own sessions are not a contribution, so they never read as away.
+    const member = lead.contributions().find((c) => c.state.memberId === at.memberId);
+    if (member === undefined) return null;
+    return member.state.health === "reachable" ? null : member.name;
+  };
   walkyLeadHalf = {
     route: leadRouteRemote({
       self: walkyMemberId,
@@ -2925,10 +2971,10 @@ if (crewLead !== undefined && walkyMemberId !== null) {
       // sweep's pane list and its own log, and sends it the message without the space and outside lines.
       olderThanSpace: (memberId) => olderThanSpace(walkyMemberVersion(memberId), crewVersion, compareSemver),
       border: (message, memberId, paneId) => walky.deliverer.remoteBorder(message, memberId, paneId),
-      members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
+      members: () => (trustStore.current()?.peers ?? []).filter(isActiveMember).map((member) => member.memberId),
       // A message from another member travels with that member's pinned certificate and this lead's
       // voucher, so the receiving member checks the origin itself (§21, added 2026-10-18).
-      senderCert: (memberId) => (trustStore.current()?.peers ?? []).find((member) => member.memberId === memberId && member.status === "enrolled")?.certPem ?? null,
+      senderCert: (memberId) => (trustStore.current()?.peers ?? []).find((member) => member.memberId === memberId && isActiveMember(member))?.certPem ?? null,
       signing: () => {
         const held = trustStore.current();
         return held === null || held.crew === null ? null : { keyPem: held.self.keyPem, crewId: held.crew.crewId };
@@ -3159,7 +3205,7 @@ if (crewLead) {
  * and attested on every dial, with no pin for the lead (its address is a front door that terminates
  * TLS, the CLI's rule). Built on first use and kept (`walkyLeadClient`): the store is read on every dial.
  */
-async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE): Promise<CrewDialAnswer> {
+async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE, budgetMs: number = WRITE_BUDGET_MS): Promise<CrewDialAnswer> {
   const data = trustStore.current();
   const lead = data?.lead ?? null;
   if (data === null || lead === null) return { kind: "refused", reason: "this machine has no lead" };
@@ -3178,7 +3224,7 @@ async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE): P
     route,
     undefined,
     { method: "POST", headers: { "content-type": "application/json" }, body: payload },
-    WRITE_BUDGET_MS,
+    budgetMs,
     true,
   );
   if (outcome.ok) {
@@ -3435,6 +3481,70 @@ if (standbyServer !== null && standbyDoor !== null) {
 // Collie tricks (M94 slice 01): the runner over `<configDir>/tricks/`. It reads nothing but a missing
 // folder until the operator makes one, writes nothing until a trick is switched on and runs, and its
 // timers wait for a paired phone to look (bridge/tricks/service.ts).
+/**
+ * One of this machine's own agent panes, read for a trick's inputs (M99 slice 6): its Files root off the
+ * live snapshot of every runtime (bridge/server.ts `agentPaneFilesRoot`), then the Files view's walk and
+ * reads. Shared by the lead's own fetch and a member's answer to its lead.
+ */
+async function readOwnPaneInputs(paneId: string, globs: readonly string[], have: ReadonlyMap<string, string>, budget: InputsBudget): Promise<WirePaneInputs> {
+  const found = await agentPaneFilesRoot(registry.all().map((rt) => rt.engine.current()), paneId, homedir());
+  if (found === null) return { state: "no-pane", files: [] };
+  if (found.root === null) return { state: "no-folder", files: [] };
+  return readPaneInputs({ root: found.root, home: homedir(), privateFolders: filesPrivateFolders(cfg) }, globs, have, budget, cfg.redact);
+}
+
+/** A crew answer's body as text, read only up to `cap` bytes, or null past it. */
+async function readAnswerCapped(res: Response, cap: number): Promise<string | null> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > cap) {
+    void res.body?.cancel();
+    return null;
+  }
+  if (res.body === null) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const part = await reader.read();
+    if (part.done) break;
+    size += part.value.byteLength;
+    if (size > cap) {
+      void reader.cancel();
+      return null;
+    }
+    chunks.push(part.value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+// A contract 2 trick's inputs (M99 slice 6): this machine's own sessions read locally, and on a crew's
+// lead each member's by one call (`POST /crew/v1/tricks/inputs`, CREW_PROTOCOL §23).
+const tricksInputs = new TrickInputs({
+  isOwn: (memberId) => isOwnId(bridgeId, memberId),
+  readLocal: readOwnPaneInputs,
+  member: (memberId) => {
+    const found = crewLead?.contributions().find((c) => c.state.memberId === memberId);
+    if (found === undefined) return null;
+    // A member below 1.29.0 never gets the call: it would not know the route (§23).
+    return { reachable: found.state.health === "reachable", older: olderThanTricksCrew(found.state.version ?? null, crewVersion, compareSemver) };
+  },
+  call:
+    crewLead === undefined
+      ? undefined
+      : async (memberId, body): Promise<InputsCallResult> => {
+          const lead = crewLead;
+          const client = crewLeadClient;
+          if (lead === undefined || client === null) return { kind: "failed" };
+          const resolved = lead.resolve({ kind: "member", id: memberId });
+          if (resolved === undefined || resolved.kind !== "peer") return { kind: "failed" };
+          const outcome = await client.tricksInputs(resolved.link, body);
+          if (!outcome.ok) return { kind: "failed" };
+          return { kind: "answer", status: outcome.status, text: await readAnswerCapped(outcome.value, INPUT_ANSWER_BODY_MAX_BYTES).catch(() => null) };
+        },
+  // One line per run: the trick id, the file count and the bytes, never a name.
+  audit: (detail) => audit.record({ action: "tricks.inputs", detail: { trick: detail.trick, files: detail.files, bytes: detail.bytes } }),
+});
+
 const tricksFolders = createSessionFolders(cfg.spacesFile ?? null);
 const tricksLabels = createSessionLabels(cfg.spacesFile ?? null);
 const tricks =
@@ -3451,8 +3561,12 @@ const tricks =
           stateDir: cfg.stateDir,
           // With the Hill switched off (`hill.isOn()`) a trick's Decisions are not posted, and the map stays.
           hill,
-          addressOf: (scopeKey) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace),
+          // A key of another member resolves only when the run's own facts listed it (M99 slice 5), through
+          // the lead's pane list, so a program cannot name a machine outside the crew.
+          addressOf: (scopeKey, listed) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace, listed),
         }),
+        inputs: tricksInputs,
+        crewWide: () => crewLead !== undefined,
         world: (memberId) => {
           void tricksFolders.refresh();
           void tricksLabels.refresh();
@@ -3467,9 +3581,35 @@ const tricks =
             labelOf: (name) => tricksLabels.labelOf(name),
             activeAt: (session, paneId) => activity.get(session, paneId)?.activeAt,
           });
-          return { machine: world.machine, sessions: world.sessions, spaces: world.spaces };
+          // On a crew's lead the facts list every member's sessions too, off the sweep's own bodies, read and
+          // never refreshed (M99 slice 5). A solo bridge and a member see their own only.
+          const lead = crewLead;
+          const merged =
+            lead === undefined
+              ? world
+              : crewFactsWorld(
+                  world,
+                  lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
+                  (id) => isOwnId(bridgeId, id),
+                );
+          const out: Omit<FactsWorld, "memberId"> = { machine: merged.machine, sessions: merged.sessions, spaces: merged.spaces };
+          if (merged.sessionsOmitted !== undefined) out.sessionsOmitted = merged.sessionsOmitted;
+          return out;
         },
         env: process.env,
+        // Only a lead or a solo bridge that is not deposed schedules tricks (§18.12): a peer, a deputy and
+        // a deposed lead run no timer, so one trick never runs on two machines of a crew.
+        active: () => crew.mode !== "peer" && deposed === null,
+        // And says so: Settings → Tricks and `collie trick list` on such a machine name the lead that runs them.
+        runsOn: () => {
+          if (crew.mode !== "peer" && deposed === null) return null;
+          const lead = crew.mode === "peer" ? trustStore.current()?.lead?.memberId : deposed?.leadMemberId;
+          return lead === undefined || lead === null ? {} : { lead };
+        },
+        // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line.
+        audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+        // A new version that waits gets its card on the Hill; the card goes when nothing waits any more.
+        versions: versionCards,
       });
 tricks?.start();
 
@@ -3576,6 +3716,31 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
               // §21 (added 2026-10-18): a member takes its lead's push of how its own messages ended.
               outcomes: crew.mode === "peer" ? (body, from) => walkyCrew.outcomes(body, from) : undefined,
             },
+            // §23 (added in 1.29.0, M99): a member reads a trick's inputs for its lead, while its trick
+            // reads are on (`COLLIE_CREW_TRICK_READS`, crew/config.ts). Only its own agent panes.
+            tricks:
+              crew.mode === "peer"
+                ? {
+                    inputs: (body) =>
+                      answerInputsRequest(body, {
+                        rootOf: (paneId) => agentPaneFilesRoot(registry.all().map((rt) => rt.engine.current()), paneId, homedir()),
+                        home: homedir(),
+                        privateFolders: filesPrivateFolders(cfg),
+                        redact: cfg.redact,
+                        allowed: () => crew.trickReads,
+                        audit: (detail) => audit.record({ action: "tricks.inputs", detail: { trick: detail.trick, files: detail.files, bytes: detail.bytes } }),
+                      }),
+                  }
+                : undefined,
+            // §22 (added in 1.29.0): a lead takes a member's Decision, its images and its follow-up calls.
+            hill:
+              hillCrewLead === null
+                ? undefined
+                : {
+                    media: (body, member) => hillCrewLead.media(body, member.memberId),
+                    post: (body, member) => hillCrewLead.post(body, member.memberId),
+                    op: (body, member) => hillCrewLead.op(body, member.memberId),
+                  },
             transportPinned,
             // Present only on a two-anchored peer. Its presence is what makes a dial attestation
             // mandatory and identity signature-resolved (§8.1's 2026-08-20 amendment).

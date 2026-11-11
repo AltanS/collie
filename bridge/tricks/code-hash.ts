@@ -5,23 +5,40 @@ import { join } from "node:path";
 
 // THE CODE OF A TRICK, AS ONE HASH (M94): what a person approves when they switch a trick on.
 //
-// The switch stores this hash (switches.ts), and a trick runs only while its folder still hashes the
-// same. So an edited program, a swapped `run` line or a new helper file stops the trick until a person
-// switches it on again. The hash is a SHA-256 over every file of the folder that is code: the sorted
+// The switch stores this hash (switches.ts), and the bridge runs a copy of exactly those bytes
+// (approved.ts). So an edited program, a swapped `run` line or a new helper file is a new version that
+// waits for a person's yes, and the copy holds the walk's files and no others. The hash is a SHA-256 over every file of the folder that is code: the sorted
 // relative paths, each with its kind and its bytes. Not code, so never hashed:
 //
 //   * `config.toml` at the top: the person's settings for the program. Editing it never turns a trick off.
-//   * a top-level `media/` and `captures/` folder: pictures the program makes or shows.
+//   * a top-level `media/`, `captures/` and `inputs/` folder: pictures the program makes or shows, and the
+//     files a later slice hands it. In the approved copy (approved.ts) these three are the writable ones.
 //   * any `*.log` file: what a program appends to as it runs.
 //   * every dot file and dot folder, and every `node_modules/` folder.
 //
-// A symlink is never followed: its target string is hashed, so pointing it elsewhere changes the hash.
+// WHAT THE WALK REFUSES, so a trick with it cannot be approved and its row says why in plain words:
+//
+//   * a symbolic link anywhere the walk looks, a top-level `media/` or `captures/` link included (a linked
+//     `node_modules/` or top-level `inputs/` is left out, as those folders are never copied). A link
+//     in the approved copy would point somewhere else than it did in the folder (the copy sits deeper),
+//     or at the live folder itself, so code nobody approved could run. `collie trick add` refuses links
+//     for the same reason (cli/trick-add.ts).
+//   * a name with a control character, an invisible direction mark or a tag character
+//     ({@link unsafeText}): the card on the Hill could not show it as it is.
+//
+// PICTURES ARE NOT CODE, AND NOTHING ELSE IN `media/` OR `captures/` IS COPIED. The approved copy
+// (approved.ts) brings in from those two folders only a file whose name ends in `.png`, `.jpg`, `.jpeg` or
+// `.webp` ({@link isPictureName}) and whose first bytes say it is a PNG, JPEG or WebP picture. Anything
+// else there stays behind, so a program in the copy can never import a file the hash and the card left
+// out. `inputs/` is never copied at all. So the rule an author reads: "media/ and captures/ hold
+// pictures; code goes anywhere else in the folder, where it is hashed and shown."
+//
 // A FIFO, a socket or a device is hashed by its kind and path only and never opened, so it cannot hang
 // a scan. More than {@link CODE_FILES_MAX} files or {@link CODE_BYTES_MAX} bytes refuses the trick with
 // a reason: a folder that big is a mistake, and hashing it every change would cost the bridge.
 //
-// The cheap half is the walk: one `lstat` per file, no read. Its fingerprint (path, kind, size, mtime
-// and inode of each entry) tells the scanner when to hash again, so the 2 s scan reads no file while
+// The cheap half is the walk: one `lstat` per file, no read. Its fingerprint (path, kind, size, mtime,
+// inode and ctime of each entry) tells the scanner when to hash again, so the 2 s scan reads no file while
 // nothing moved.
 
 /** The most files hashed. More refuses the trick. */
@@ -32,8 +49,35 @@ export const CODE_DIRS_MAX = 2000;
 export const CODE_BYTES_MAX = 20 * 1024 * 1024;
 /** The settings file beside `trick.toml`, outside the hash. */
 export const CONFIG_FILE = "config.toml";
-/** Top-level folders outside the hash. */
-const SKIPPED_TOP_DIRS = new Set(["media", "captures"]);
+/**
+ * Top-level folders outside the hash: the program's pictures (`media/`, `captures/`) and the files a later
+ * slice fetches for it (`inputs/`). The approved copy (approved.ts) makes these three writable.
+ */
+export const WRITABLE_TOP_DIRS = ["media", "captures", "inputs"] as const;
+const SKIPPED_TOP_DIRS: ReadonlySet<string> = new Set(WRITABLE_TOP_DIRS);
+/** The top-level folders whose pictures, and only those, are copied into the approved copy (approved.ts). */
+export const PICTURE_DIRS = ["media", "captures"] as const;
+const PICTURE_NAME = /\.(?:png|jpe?g|webp)$/i;
+
+/** Whether a file name is a picture's: `.png`, `.jpg`, `.jpeg` or `.webp`. The copy checks the bytes too. */
+export function isPictureName(name: string): boolean {
+  return PICTURE_NAME.test(name);
+}
+
+/**
+ * Whether text holds a character a Decision's view refuses (web/src/lib/tricks/schema.ts `hasControl` and
+ * `hasInvisible`): a C0 or C1 control, an invisible direction mark or isolate, a zero-width space or
+ * joiner word, a byte order mark, or a tag character. A file name with one is refused by the walk.
+ */
+export function unsafeText(text: string): boolean {
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+    if (code === 0x200b || code === 0x200e || code === 0x200f || code === 0x061c || code === 0x2060 || code === 0xfeff) return true;
+    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069) || (code >= 0xe0000 && code <= 0xe007f)) return true;
+  }
+  return false;
+}
 
 export type EntryKind = "file" | "dir" | "symlink" | "other";
 
@@ -42,6 +86,8 @@ export interface FsStat {
   size: number;
   mtimeMs: number;
   ino: number;
+  /** The inode change time: unlike mtime, no caller can set it back. Absent from a test's fake. */
+  ctimeMs?: number;
 }
 
 /** A folder listing: its entries, or why it could not be listed (`missing` for ENOENT only). */
@@ -80,7 +126,7 @@ export const diskTrickFs: TrickFs = {
   async lstat(path) {
     try {
       const st = await lstat(path);
-      return { kind: kindOf(st), size: st.size, mtimeMs: st.mtimeMs, ino: st.ino };
+      return { kind: kindOf(st), size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs };
     } catch {
       return null;
     }
@@ -123,10 +169,20 @@ export interface CodeEntry {
   size: number;
   mtimeMs: number;
   ino: number;
+  /** The inode change time, so a file rewritten in place with its mtime put back still moves the listing. */
+  ctimeMs?: number;
 }
 
-/** The walk: every code entry in path order, or why the trick is refused. */
-export type CodeWalk = { ok: true; entries: CodeEntry[] } | { ok: false; reason: string };
+/**
+ * The walk: every code entry in path order, or why the trick is refused. `code` names the refusals a
+ * caller words on its own: `link` for a symbolic link, `name` for a name the card cannot show.
+ */
+export type CodeWalk = { ok: true; entries: CodeEntry[] } | { ok: false; reason: string; code?: "link" | "name" };
+
+/** Why the walk refuses a symbolic link. */
+export function linkRefusal(rel: string): string {
+  return `${rel} is a symbolic link. A trick holds regular files only: put the file itself there.`;
+}
 
 /** Whether the walk leaves `name` out, at `depth` 0 for the trick folder's own entries. */
 export function skippedName(name: string, kind: EntryKind, depth: number): boolean {
@@ -161,6 +217,12 @@ export async function walkTrickCode(fs: TrickFs, dir: string): Promise<CodeWalk>
     for (const item of listed.entries) {
       if (skippedName(item.name, item.kind, next.depth)) continue;
       const rel = next.rel === "" ? item.name : `${next.rel}/${item.name}`;
+      if (unsafeText(item.name)) {
+        return { ok: false, code: "name", reason: `A file name in the trick folder holds a control or an invisible character (${JSON.stringify(rel).slice(1, -1)}). Rename it.` };
+      }
+      // A linked `node_modules/` or top-level `inputs/` is never read nor copied, as the folders are not.
+      if (item.kind === "symlink" && (item.name === "node_modules" || (next.depth === 0 && item.name === "inputs"))) continue;
+      if (item.kind === "symlink") return { ok: false, code: "link", reason: linkRefusal(rel) };
       if (item.kind === "dir") {
         queue.push({ rel, depth: next.depth + 1 });
         continue;
@@ -168,7 +230,10 @@ export async function walkTrickCode(fs: TrickFs, dir: string): Promise<CodeWalk>
       const st = await fs.lstat(join(dir, rel));
       // Gone between the listing and the stat: the next scan sees the folder as it settled.
       if (st === null || st.kind === "dir") continue;
-      entries.push({ rel, kind: st.kind, size: st.size, mtimeMs: st.mtimeMs, ino: st.ino });
+      if (st.kind === "symlink") return { ok: false, code: "link", reason: linkRefusal(rel) };
+      const entry: CodeEntry = { rel, kind: st.kind, size: st.size, mtimeMs: st.mtimeMs, ino: st.ino };
+      if (st.ctimeMs !== undefined) entry.ctimeMs = st.ctimeMs;
+      entries.push(entry);
       if (entries.length > CODE_FILES_MAX) return { ok: false, reason: `The trick folder holds more than ${CODE_FILES_MAX} files. Move what is not code out of it, or into media/.` };
       if (st.kind === "file") bytes += st.size;
       if (bytes > CODE_BYTES_MAX) return { ok: false, reason: `The trick folder holds more than ${CODE_BYTES_MAX / (1024 * 1024)} MB of code. Move what is not code out of it, or into media/.` };
@@ -177,10 +242,13 @@ export async function walkTrickCode(fs: TrickFs, dir: string): Promise<CodeWalk>
   return { ok: true, entries: entries.toSorted(byPath) };
 }
 
-/** The walk's fingerprint: moves when any code entry is added, removed, resized, touched or replaced. */
+/**
+ * The walk's fingerprint: moves when any code entry is added, removed, resized, touched or replaced, or
+ * changed in place with its mtime put back (the ctime moves; security re-review B8).
+ */
 export function walkFingerprint(entries: readonly CodeEntry[], extra: string): string {
   const h = createHash("sha256");
-  for (const e of entries) h.update(`${e.kind}\0${e.rel}\0${String(e.size)}\0${String(e.mtimeMs)}\0${String(e.ino)}\n`);
+  for (const e of entries) h.update(`${e.kind}\0${e.rel}\0${String(e.size)}\0${String(e.mtimeMs)}\0${String(e.ino)}\0${String(e.ctimeMs ?? "")}\n`);
   h.update(extra);
   return h.digest("hex");
 }

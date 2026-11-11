@@ -12,14 +12,19 @@
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import {
+  INPUTS_MAX,
+  INPUT_GLOB_MAX,
+  isHostName,
   TAP_CODES,
   TRICK_WARNINGS_MAX,
   type TrickPart,
   type TrickTapReply,
   type TricksReply,
+  type TricksRunsOn,
   type TapCode,
   type WireTrickInfo,
   type WireTrickPart,
+  type WireTrickPending,
   type WireTrickWarning,
 } from "./schema";
 
@@ -98,6 +103,47 @@ export function readWarnings(raw: JsonValue | undefined): WireTrickWarning[] {
   return out.slice(0, TRICK_WARNINGS_MAX);
 }
 
+/** A count of files on the wire: a whole number from 0. */
+function readCount(raw: JsonValue | undefined): number | undefined {
+  const n = asJsonNumber(raw);
+  return n !== undefined && Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/**
+ * A trick's waiting version (crew slice 2), read tolerantly: kept only with a hash, three counts and the
+ * powers flag; its warnings are read like the row's. Anything else is left out, as from an older bridge.
+ */
+export function readPending(raw: JsonValue | undefined): WireTrickPending | undefined {
+  const body = asJsonObject(raw);
+  const files = asJsonObject(body?.files);
+  const hash = asJsonString(body?.hash);
+  const powersChanged = asJsonBoolean(body?.powersChanged);
+  const added = readCount(files?.added);
+  const changed = readCount(files?.changed);
+  const removed = readCount(files?.removed);
+  if (body === undefined || hash === undefined || powersChanged === undefined || added === undefined || changed === undefined || removed === undefined) return undefined;
+  return { hash, files: { added, changed, removed }, powersChanged, warnings: readWarnings(body.warnings) };
+}
+
+/**
+ * What a trick's inputs read (contract 2), read tolerantly: kept only with 1 to `INPUTS_MAX` globs, each a
+ * string of at most `INPUT_GLOB_MAX` characters, and the crew flag. Anything else is left out, as from an
+ * older bridge.
+ */
+export function readInputs(raw: JsonValue | undefined): WireTrickInfo["inputs"] {
+  const body = asJsonObject(raw);
+  const crew = asJsonBoolean(body?.crew);
+  const list = asJsonArray(body?.globs);
+  if (crew === undefined || list === undefined || list.length === 0 || list.length > INPUTS_MAX) return undefined;
+  const globs: string[] = [];
+  for (const entry of list) {
+    const glob = asJsonString(entry);
+    if (glob === undefined || glob === "" || [...glob].length > INPUT_GLOB_MAX) return undefined;
+    globs.push(glob);
+  }
+  return { globs, crew };
+}
+
 /** One trick entry as the list and the switch route give it, or `undefined` for a body of another shape. */
 export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
@@ -106,12 +152,24 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (body === undefined) return undefined;
   // Read as JSON before the frame check narrows the body to the wire type.
   const sent = body.warnings;
+  const waiting = body.pending;
+  const reads = body.inputs;
+  const auto = asJsonBoolean(body.auto);
+  const autoAt = asJsonString(body.autoAt);
   if (!isTrickValue(body)) return undefined;
-  if (sent === undefined) return body;
-  // The one field read past the frame: the Tricks card lists it, so its shape is held here.
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined) return body;
+  // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
+  // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
-  const { warnings: _sent, ...rest } = body;
-  return warnings.length === 0 ? rest : { ...rest, warnings };
+  const pending = readPending(waiting);
+  const inputs = readInputs(reads);
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, ...rest } = body;
+  const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
+  if (pending !== undefined) out.pending = pending;
+  if (inputs !== undefined) out.inputs = inputs;
+  if (auto !== undefined) out.auto = auto;
+  if (autoAt !== undefined && Number.isFinite(Date.parse(autoAt))) out.autoAt = autoAt;
+  return out;
 }
 
 /** `GET /api/tricks?since=` as the store merges it, or `undefined` for a body of another shape. */
@@ -129,7 +187,21 @@ export function readTricksReply(raw: JsonValue | undefined): TricksReply | undef
     if (trick === undefined) return undefined;
     tricks.push(trick);
   }
-  return { rev, tricks, parts, present };
+  const reply: TricksReply = { rev, tricks, parts, present };
+  const runsOn = readRunsOn(body.runsOn);
+  if (runsOn !== undefined) reply.runsOn = runsOn;
+  return reply;
+}
+
+/**
+ * Where a bridge that runs no tricks says they run, read tolerantly: a word of another shape is left
+ * out and the reply kept, and a lead that is no host name reads as not known (`{}`).
+ */
+function readRunsOn(raw: JsonValue | undefined): TricksRunsOn | undefined {
+  const body = asJsonObject(raw);
+  if (body === undefined) return undefined;
+  const lead = asJsonString(body.lead);
+  return lead !== undefined && isHostName(lead) ? { lead } : {};
 }
 
 function isTapCode(text: string | undefined): text is TapCode {

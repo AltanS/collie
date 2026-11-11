@@ -2,7 +2,7 @@ import { asJsonBoolean, asJsonObject } from "../../web/src/lib/json.ts";
 import type { GateLevel } from "../crew/peer-gate.ts";
 import type { JsonValue } from "../json.ts";
 import type { TrickMediaFile } from "./media.ts";
-import type { TricksSurface, SwitchAnswer, TapAnswer } from "./service.ts";
+import type { TricksSurface, SwitchAnswer, TapAnswer, VersionRouteAnswer } from "./service.ts";
 
 // The tricks routes' request halves (M94 slices 01 and 04), kept out of server.ts so that file only
 // dispatches. The gate, the watch stamp and the response are server.ts's.
@@ -28,7 +28,10 @@ export const TRICKS_ROUTE_RIGHTS = {
   tap: "write",
   switch: "write",
   media: "read",
-} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media", GateLevel>>;
+  // Take changes without asking, and go back a version (crew slice 3): both change what code runs.
+  auto: "write",
+  undo: "write",
+} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "auto" | "undo", GateLevel>>;
 
 /** `since` as a rev, or undefined (every part) when absent or not a whole number at or above 0. */
 export function parseSince(raw: string | null): number | undefined {
@@ -65,6 +68,29 @@ export async function tricksSwitchRoute(tricks: TricksSurface, match: RegExpExec
   const on = asJsonBoolean(doc?.on);
   if (doc === undefined || on === undefined || Object.keys(doc).length !== 1) return { status: 400, body: { error: "switch-invalid" } };
   return await tricks.setSwitch(host, id, on);
+}
+
+/** `POST /api/tricks/<host>/<id>/auto` with `{ "on": true|false }` and nothing else. */
+export async function tricksAutoRoute(tricks: TricksSurface, match: RegExpExecArray, body: JsonValue | undefined): Promise<VersionRouteAnswer> {
+  const host = segment(match[1] ?? "");
+  const id = segment(match[2] ?? "");
+  if (host === null) return { status: 404, body: { error: "unknown-host" } };
+  if (id === null) return { status: 404, body: { error: "unknown-trick" } };
+  const doc = asJsonObject(body);
+  const on = asJsonBoolean(doc?.on);
+  if (doc === undefined || on === undefined || Object.keys(doc).length !== 1) return { status: 400, body: { error: "auto-invalid" } };
+  return await tricks.autoRoute(host, id, on);
+}
+
+/** `POST /api/tricks/<host>/<id>/undo` with `{}`: an empty object, so a stray field is never read as consent. */
+export async function tricksUndoRoute(tricks: TricksSurface, match: RegExpExecArray, body: JsonValue | undefined): Promise<VersionRouteAnswer> {
+  const host = segment(match[1] ?? "");
+  const id = segment(match[2] ?? "");
+  if (host === null) return { status: 404, body: { error: "unknown-host" } };
+  if (id === null) return { status: 404, body: { error: "unknown-trick" } };
+  const doc = asJsonObject(body);
+  if (doc === undefined || Object.keys(doc).length !== 0) return { status: 400, body: { error: "undo-invalid" } };
+  return await tricks.undoRoute(host, id);
 }
 
 /**

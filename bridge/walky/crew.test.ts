@@ -216,6 +216,13 @@ describe("the one shape check both crew hops share", () => {
     expect(checkCrewMessage(operator)).toBeNull();
   });
 
+  test("A1: a message signed by a member whose id is a word the address grammar keeps is the uniform 401", () => {
+    for (const word of ["local", "all", "here"]) {
+      const forged = { ...good, from: { ...good.from, memberId: word, address: `${word}/w1:p1` }, signer: word };
+      expect(checkCrewMessage(forged)).toEqual({ status: 401 });
+    }
+  });
+
   test("an LF, a CR or a bare `-` in any signed field is a 400", () => {
     for (const value of ["laptop\ndesk", "x\r", "-"]) {
       for (const [field, message] of eachField(good, value)) {

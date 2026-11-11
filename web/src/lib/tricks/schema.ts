@@ -71,15 +71,16 @@ import {
   type HillTextMode,
 } from "../hill/wire";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
-import { TRICK_CONTRACT } from "./contract";
+import { INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
 
-export { TRICK_CONTRACT };
+export { INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT };
 
 // ── Versions and byte caps ───────────────────────────────────────────────────────────────────
 
 /**
  * The output document's `"v"`: the trick contract number (contract.ts), the same one the manifest's
- * `contract` and the facts' `contract` name. One number, not three.
+ * `contract` and the facts' `contract` name. One number, not three. This is the newest a document may
+ * say; any number from 1 up to it reads.
  */
 export const DOCUMENT_VERSION = TRICK_CONTRACT;
 
@@ -160,6 +161,12 @@ export const FACT_TEXT_MAX_BYTES = 4096;
 /** Sessions and spaces in one facts document (WIRE.md §6, panes and workspaces per snapshot). */
 export const FACT_SESSIONS_MAX = 256;
 export const FACT_SPACES_MAX = 64;
+/**
+ * The most bytes the sessions of one facts document take, written as JSON. On a crew's lead the facts
+ * list every member's sessions too; past this cap (or past {@link FACT_SESSIONS_MAX}) the rest are left
+ * out and `sessionsOmitted` counts them. The lead's own sessions come first, so they are never the cut.
+ */
+export const FACT_SESSIONS_MAX_BYTES = 512 * 1024;
 /** A facts session's opaque `sessionId`. */
 export const SESSION_ID_MAX = 256;
 /** A refused tap's or a failed run's one line of words on the wire. */
@@ -1045,7 +1052,8 @@ export function decisionPriority(decision: TrickDecision): DecisionPriority {
 
 /** The program's output, as written. There is no `draft` and no `open`: a trick never writes into a reply box. */
 export interface TrickDocument {
-  v: 1;
+  /** The trick contract the document follows: 1 to {@link DOCUMENT_VERSION}. */
+  v: number;
   parts: TrickPart[];
   asOf?: string;
   fresh?: string;
@@ -1070,6 +1078,12 @@ export interface TrickManifest {
   places: PlaceKind[];
   /** Environment names past the base allow-list the program asks for (bridge/tricks/env.ts). */
   env?: string[];
+  /**
+   * Contract 2: globs of files the program reads from its agent sessions' folders, on every machine of a
+   * crew (M99, {@link inputGlobProblem}). The bridge fetches them before each run into `inputs/` of the
+   * approved copy. Untrusted data: a program reads them, never runs them.
+   */
+  inputs?: string[];
 }
 
 /**
@@ -1124,14 +1138,55 @@ export interface FactsSession {
   space?: string;
   tab?: string;
   lastActiveAt?: string;
+  /**
+   * On a crew's lead only: whether the lead's last sweep reached the session's machine. The lead's own
+   * sessions are always `true`. Absent on a solo bridge, where every session is this machine's.
+   */
+  reachable?: boolean;
+  /**
+   * Contract 2, for a trick that lists `inputs` only: the files of the session's folder its globs match,
+   * fetched before the run into the trick's `inputs/` folder (M99). UNTRUSTED data: never run it.
+   */
+  inputs?: FactsInputs;
+}
+/**
+ * Where a session's inputs stand: `ok` (read; `files` may be empty), `offline` (its machine did not
+ * answer), `older` (its machine runs a Collie without trick reads), `refused` (its machine switched trick
+ * reads off), `none` (no folder to read: a shell, or a session with no folder of its own).
+ */
+export const INPUT_STATES = ["ok", "offline", "older", "refused", "none"] as const;
+export type InputState = (typeof INPUT_STATES)[number];
+/** A text file, or a picture sniffed as PNG, JPEG or WebP. */
+export const INPUT_KINDS = ["text", "image"] as const;
+export type InputKind = (typeof INPUT_KINDS)[number];
+/** The most files one session's inputs hold. */
+export const INPUT_FILES_MAX = 32;
+/** One file of a session's inputs. */
+export interface FactsInputFile {
+  /** The file's path relative to the session's folder, as the glob matched it. */
+  rel: string;
+  /** Where the copy is, relative to the trick's folder (`trick.dir`, the program's working folder): `inputs/...`. A Decision's `media` may name it. */
+  path: string;
+  bytes: number;
+  /** The SHA-256 of the copy's bytes, hex. */
+  sha256: string;
+  /** When the file last changed on its machine, an ISO 8601 instant. */
+  mtime: string;
+  kind: InputKind;
+}
+export interface FactsInputs {
+  state: InputState;
+  files: FactsInputFile[];
+  /** Files the globs matched that were left out: too large, not text or a picture, or past a cap. Absent when none. */
+  skipped?: number;
 }
 export interface FactsSpace {
   name: string;
   folder?: string;
 }
 export interface TrickFacts {
-  /** The trick contract these facts follow (contract.ts). */
-  contract: typeof TRICK_CONTRACT;
+  /** The trick contract these facts follow (contract.ts): the trick's own `contract`, 1 when it names none. */
+  contract: number;
   trigger: FactsTrigger;
   trick: { id: string; dir: string; state: string };
   /** The bridge that runs the trick: the key a program keeps (see `FactsSession.memberId`). */
@@ -1140,6 +1195,8 @@ export interface TrickFacts {
   host: string;
   sessions: FactsSession[];
   spaces: FactsSpace[];
+  /** How many sessions the facts left out past {@link FACT_SESSIONS_MAX} or {@link FACT_SESSIONS_MAX_BYTES}. Absent when none. */
+  sessionsOmitted?: number;
 }
 
 // ── Types: taps and the wire ─────────────────────────────────────────────────────────────────
@@ -1236,10 +1293,16 @@ export interface WireTrickInfo {
   /** Who added the trick, when and from where. */
   provenance?: TrickProvenance;
   /**
-   * True when the trick is on but its code no longer hashes as it did when it was switched on: it does
-   * not run until it is switched on again.
+   * True when the trick is on and its folder no longer hashes to the version a person approved. Since the
+   * approved copy (bridge/tricks/approved.ts) the trick keeps running that version, and `pending` says
+   * what waits; an older bridge stopped the trick instead.
    */
   changed?: boolean;
+  /**
+   * The new version of an on trick that waits for a person's yes: a snapshot of its folder taken once the
+   * folder settled. Absent when there is none, and from an older bridge.
+   */
+  pending?: WireTrickPending;
   /**
    * True when the trick's last good document listed at least one Decision. With the Hill switched off
    * (the snapshot's `hillOff`), its row in Settings says those Decisions are not shown.
@@ -1248,11 +1311,27 @@ export interface WireTrickInfo {
   /** The environment names the manifest asks for past the base allow-list, so the person sees them. */
   env?: string[];
   /**
+   * Contract 2 (M99): the globs the trick reads from its agent sessions' folders, and whether this bridge
+   * leads a crew (the files then come from every machine). The row says it in one sentence
+   * ({@link inputsSentence}). Absent: no inputs, or an older bridge.
+   */
+  inputs?: { globs: string[]; crew: boolean };
+  /**
    * What a text search of the code flags (bridge/tricks/scan.ts), one entry per kind, for a trick that is
    * off or changed, so the person sees them before the switch. Absent when there is none, on a trick that
    * is on and unchanged, and from an older bridge. A warning never refuses: the switch stays one tap.
    */
   warnings?: WireTrickWarning[];
+  /**
+   * Take a new version whose rights did not change without asking (crew slice 3), on a trick that is on.
+   * Absent: off, or an older bridge.
+   */
+  auto?: boolean;
+  /**
+   * When the version that runs was taken without asking (ISO time), while an earlier version is there to
+   * go back to. Settings then offers Undo. Absent otherwise, and from an older bridge.
+   */
+  autoAt?: string;
 }
 /** The kinds of warning the check scan gives. A phone reads a kind it does not know as plain text. */
 export const TRICK_WARNING_KINDS = ["spawn", "network", "write", "model", "import"] as const;
@@ -1264,6 +1343,17 @@ export interface WireTrickWarning {
 }
 /** The most warnings a trick's row carries. */
 export const TRICK_WARNINGS_MAX = 8;
+/** A new version of a trick that waits for a person's yes (`WireTrickInfo.pending`). */
+export interface WireTrickPending {
+  /** The code hash of the waiting version, 64 hex: what a yes approves. */
+  hash: string;
+  /** How many code files it adds, changes and removes against the version that runs. */
+  files: { added: number; changed: number; removed: number };
+  /** Whether the rights its manifest asks for (environment names, places) differ from the version that runs. */
+  powersChanged: boolean;
+  /** The warnings of the check scan that are new since the version that runs, one per kind. */
+  warnings: WireTrickWarning[];
+}
 /**
  * How a trick came to be on the machine. `folder` is a folder made by hand or by `collie trick init`;
  * `cli`, `agent` and `repo` are for `collie trick add`, which records `at`, `repo` and `sha`.
@@ -1289,6 +1379,16 @@ export interface TricksReply {
   present: string[];
   /** The PATH the bridge's runner gives programs, for `collie doctor`. The phone may ignore it. */
   path?: string;
+  /**
+   * Set when this bridge schedules no tricks because another machine of its crew does: a crew member,
+   * a deputy or a deposed lead (bridge/index.ts). Absent on a lead and a solo bridge.
+   */
+  runsOn?: TricksRunsOn;
+}
+
+/** Where a bridge that schedules no tricks says they run: the lead's member id, when it knows it. */
+export interface TricksRunsOn {
+  lead?: string;
 }
 
 /** The string key of a stored part. None of the three may hold `/`, so it splits back. */
@@ -2960,9 +3060,10 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     return removed === undefined ? undefined : { code: "removed", reason: removed };
   });
   const refused = (): ParsedTrickDocument => ({ parts: [], decisions: [], refusals: capRefusals(refusals), refusedParts: [], refusedDecisions: [], documentRefused: true, notes: capRefusals(notes) });
-  if (asJsonNumber(obj.v) !== DOCUMENT_VERSION) {
+  const v = asJsonNumber(obj.v);
+  if (v === undefined || !Number.isInteger(v) || v < 1 || v > DOCUMENT_VERSION) {
     const said = obj.v === undefined ? 'has no "v"' : `says "v": ${JSON.stringify(obj.v)}`;
-    refusals.push({ code: "version", path: "/v", reason: `The document ${said}. This Collie reads "v": ${DOCUMENT_VERSION}.` });
+    refusals.push({ code: "version", path: "/v", reason: `The document ${said}. This Collie reads "v" from 1 to ${String(DOCUMENT_VERSION)}.` });
     return refused();
   }
   const list = top.array("parts", { min: 0, max: PARTS_MAX, required: true, what: "parts" });
@@ -3386,7 +3487,106 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs"] as const;
+
+// ── The inputs: files a trick reads from its agent sessions' folders (contract 2, M99) ───────────────
+
+/** The most globs `inputs` lists, the longest one, and the most folder levels one names. */
+export const INPUTS_MAX = 8;
+export const INPUT_GLOB_MAX = 256;
+export const INPUT_DEPTH_MAX = 6;
+/** Characters a glob may not hold: a control character, a backslash, and every glob word but `*`. */
+const INPUT_GLOB_BAD = /[\p{C}\\?[\]{}]/u;
+
+/**
+ * Why an `inputs` glob is refused, or undefined when it reads. A glob is a path RELATIVE to a session's
+ * folder (the Files view's root): 1 to {@link INPUT_DEPTH_MAX} steps split by `/`. `*` matches any run
+ * of characters inside one step and never a leading dot; no other glob word reads. Refused: an absolute
+ * path or `~`, an empty step, a `.` or `..` step, a `.git` step in any case, a step that starts with
+ * `.env` in any case ({@link isEnvName}: a `.env` file holds keys, and a trick reads unattended), and `**`. The same rule runs
+ * on the trick's machine, on the member that reads the files, and on the lead again for each file name
+ * a member answers with ({@link inputGlobMatches}).
+ */
+export function inputGlobProblem(glob: string): string | undefined {
+  if (glob === "") return "is empty.";
+  if (codePoints(glob) > INPUT_GLOB_MAX) return `is longer than ${String(INPUT_GLOB_MAX)} characters.`;
+  if (glob.startsWith("/") || glob.startsWith("~")) return "must be relative to the session's folder: no leading / or ~.";
+  if (INPUT_GLOB_BAD.test(glob)) return "may hold * as its one wildcard, and no control character or backslash.";
+  if (glob.includes("**")) return "may not hold **: a * matches inside one folder level only.";
+  const steps = glob.split("/");
+  if (steps.length > INPUT_DEPTH_MAX) return `names more than ${String(INPUT_DEPTH_MAX)} folder levels.`;
+  for (const step of steps) {
+    if (step === "") return "has an empty step (// or a / at an end).";
+    if (step === "." || step === "..") return "may not hold a . or .. step.";
+    if (step.toLowerCase() === ".git") return "may not name .git.";
+    if (isEnvName(step)) return "may not name a .env file: it holds keys.";
+  }
+  return undefined;
+}
+
+/**
+ * Whether a name is a `.env` file (`.env`, `.env.local`, `.envrc`, in any case), which a trick's inputs
+ * never read: the Files view shows one to a person who opens it, but a trick reads without anyone looking.
+ */
+export function isEnvName(name: string): boolean {
+  return name.toLowerCase().startsWith(".env");
+}
+
+/** Whether one name matches one glob step: `*` is any run of characters, and never a leading dot. A `.env` name never matches. */
+function inputStepMatches(step: string, name: string): boolean {
+  if (name.startsWith(".") && !step.startsWith(".")) return false;
+  if (isEnvName(name)) return false;
+  const pieces = step.split("*");
+  if (pieces.length === 1) return step === name;
+  const first = pieces[0] ?? "";
+  const last = pieces[pieces.length - 1] ?? "";
+  if (name.length < first.length + last.length || !name.startsWith(first) || !name.endsWith(last)) return false;
+  let at = first.length;
+  const end = name.length - last.length;
+  for (const piece of pieces.slice(1, -1)) {
+    const found = name.indexOf(piece, at);
+    if (found < 0 || found + piece.length > end) return false;
+    at = found + piece.length;
+  }
+  return true;
+}
+
+/** Whether a glob's step at `depth` matches `name`: what a walk asks at each folder level. */
+export function inputGlobStepMatches(glob: string, depth: number, name: string): boolean {
+  const step = glob.split("/")[depth];
+  return step !== undefined && inputStepMatches(step, name);
+}
+
+/**
+ * Whether a relative file path matches a glob, step by step, with as many steps as the glob. A glob
+ * that does not read ({@link inputGlobProblem}) matches nothing, and so does a path with an empty, `.`,
+ * `..` or `.git` step, a backslash or a control character, whatever the glob says.
+ */
+export function inputGlobMatches(glob: string, rel: string): boolean {
+  if (inputGlobProblem(glob) !== undefined) return false;
+  if (rel === "" || /[\p{C}\\]/u.test(rel)) return false;
+  const names = rel.split("/");
+  const steps = glob.split("/");
+  if (names.length !== steps.length) return false;
+  for (const [i, name] of names.entries()) {
+    if (name === "" || name === "." || name === ".." || name.toLowerCase() === ".git") return false;
+    if (!inputStepMatches(steps[i] ?? "", name)) return false;
+  }
+  return true;
+}
+
+/**
+ * The one sentence that says what a trick's `inputs` read, the same on the version card, in Settings (its
+ * English strings, `settings.tricks.reads.*`) and in `collie trick check`. `crew` is true on a crew's
+ * lead, where the files come from every machine.
+ */
+export function inputsSentence(globs: readonly string[], crew: boolean): string {
+  const list = globs.join(", ");
+  return crew ? `Reads ${list} in your agent sessions' folders on every machine of the crew.` : `Reads ${list} in your agent sessions' folders.`;
+}
+
+/** The line a contract 1 trick that lists `inputs` is refused with. */
+export const INPUTS_NEED_CONTRACT = `"inputs" needs contract = ${String(INPUTS_CONTRACT)}. Add contract = ${String(INPUTS_CONTRACT)} to trick.toml to read files from your sessions' folders.`;
 
 /** The highest `contract` a manifest may write before it is refused as a typo rather than a newer Collie. */
 const CONTRACT_MAX = 999;
@@ -3425,7 +3625,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   const f = new Fields(obj, "", refusals, "trick.toml");
   // The contract first: a trick written for a newer contract may use keys this Collie has never heard
   // of, so it is refused with the one sentence that names both numbers, never with a list of unknown keys.
-  const contract = f.int("contract", { min: 1, max: CONTRACT_MAX }) ?? (f.has("contract") ? undefined : TRICK_CONTRACT);
+  const contract = f.int("contract", { min: 1, max: CONTRACT_MAX }) ?? (f.has("contract") ? undefined : TRICK_CONTRACT_DEFAULT);
   if (contract !== undefined && contract > TRICK_CONTRACT) {
     return { refusals: [{ code: "version", path: "/contract", reason: newerContractReason(contract) }] };
   }
@@ -3475,6 +3675,14 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   env?.forEach((envName, i) => {
     if (!ENV_NAME_RE.test(envName)) refusals.push({ code: "word", path: pointer("/env", i), reason: "An environment name is letters, digits and _, and does not start with a digit." });
   });
+  // Contract 2 (M99): files the trick reads from its agent sessions' folders. A contract 1 trick that
+  // lists them is refused whole, with one plain line, so it never runs thinking it has them.
+  const inputs = readStrings(f, "inputs", { min: 1, max: INPUTS_MAX, what: "globs", text: { max: INPUT_GLOB_MAX } });
+  if (f.has("inputs") && contract !== undefined && contract < INPUTS_CONTRACT) f.push("version", "inputs", INPUTS_NEED_CONTRACT);
+  inputs?.forEach((glob, i) => {
+    const problem = inputGlobProblem(glob);
+    if (problem !== undefined) refusals.push({ code: "target", path: pointer("/inputs", i), reason: `This glob ${problem}` });
+  });
 
   // Room for the places of a newer Collie at the same contract: the words this one does not know are left out.
   const placeList = f.array("places", { min: 1, max: PLACES_LISTED_MAX, required: true, what: "places" });
@@ -3523,14 +3731,18 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (on.length > 0 && triggers.includes("on")) manifest.on = on;
   if (mode === "serve" && triggers.includes("serve")) manifest.mode = "serve";
   if (env !== undefined && env.length > 0) manifest.env = [...new Set(env)];
+  if (inputs !== undefined && inputs.length > 0) manifest.inputs = [...new Set(inputs)];
   return { manifest, refusals: capRefusals(refusals) };
 }
 
 // ── The facts ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
-export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces"] as const;
-export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt"] as const;
+export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces", "sessionsOmitted"] as const;
+export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt", "reachable", "inputs"] as const;
+export const INPUTS_FACT_KEYS = ["state", "files", "skipped"] as const;
+export const INPUT_FILE_FACT_KEYS = ["rel", "path", "bytes", "sha256", "mtime", "kind"] as const;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
 export const SPACE_FACT_KEYS = ["name", "folder"] as const;
 export const TRICK_FACT_KEYS = ["id", "dir", "state"] as const;
 export const TRIGGER_KINDS = ["start", "timer", "tap", "watch", "event"] as const;
@@ -3557,7 +3769,9 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   const refusals: Refusal[] = [];
   const f = new Fields(obj, "", refusals, "the facts");
   f.keys(FACTS_KEYS);
-  if (asJsonNumber(obj.contract) !== TRICK_CONTRACT) f.push("version", "contract", `The facts must say "contract": ${TRICK_CONTRACT}.`);
+  const contract = asJsonNumber(obj.contract);
+  const contractOk = contract !== undefined && Number.isInteger(contract) && contract >= 1 && contract <= TRICK_CONTRACT;
+  if (!contractOk) f.push("version", "contract", `The facts must say "contract": a number from 1 to ${String(TRICK_CONTRACT)}.`);
   const trigger = readTrigger(f);
   const trickFields = f.object("trick", 'an object with "id", "dir" and "state"', true);
   trickFields?.keys(TRICK_FACT_KEYS);
@@ -3588,10 +3802,14 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
     spaces.push(folder === undefined ? { name } : { name, folder });
   });
 
+  const omitted = f.int("sessionsOmitted", { min: 1, max: 1_000_000 });
+
   if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || memberId === undefined || host === undefined) {
     return { refusals: capRefusals(refusals) };
   }
-  return { facts: { contract: TRICK_CONTRACT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces }, refusals };
+  const facts: TrickFacts = { contract: contract ?? TRICK_CONTRACT_DEFAULT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
+  if (omitted !== undefined) facts.sessionsOmitted = omitted;
+  return { facts, refusals };
 }
 
 function readTrigger(f: Fields): FactsTrigger | undefined {
@@ -3648,7 +3866,41 @@ function readFactsSession(value: JsonValue | undefined, path: string, sink: Refu
   const last = s.text("lastActiveAt", { max: INSTANT_MAX });
   if (last !== undefined && !isInstant(last)) s.push("text", "lastActiveAt", '"lastActiveAt" must be an ISO 8601 instant.');
   if (last !== undefined) out.lastActiveAt = last;
+  const reachable = s.bool("reachable");
+  if (reachable !== undefined) out.reachable = reachable;
+  const inputs = s.object("inputs", 'an object with "state" and "files"');
+  if (inputs !== undefined) {
+    const read = readFactsInputs(inputs, sink);
+    if (read !== undefined) out.inputs = read;
+  }
   return sink.length === before ? out : undefined;
+}
+
+function readFactsInputs(f: Fields, sink: Refusal[]): FactsInputs | undefined {
+  f.keys(INPUTS_FACT_KEYS);
+  const state = f.word("state", INPUT_STATES, true);
+  const list = f.array("files", { min: 0, max: INPUT_FILES_MAX, required: true, what: "files" });
+  const skipped = f.int("skipped", { min: 1, max: 1_000_000 });
+  const files: FactsInputFile[] = [];
+  list?.forEach((value, i) => {
+    const file = itemFields(value, pointer(f.at("files"), i), sink, "a file");
+    if (file === undefined) return;
+    file.keys(INPUT_FILE_FACT_KEYS);
+    const rel = file.text("rel", { max: 1024, required: true });
+    const path = file.text("path", { max: 2048, required: true });
+    const bytes = file.int("bytes", { min: 0, max: 64 * 1024 * 1024, required: true });
+    const sha256 = file.text("sha256", { max: 64, required: true });
+    if (sha256 !== undefined && !SHA256_HEX.test(sha256)) file.push("text", "sha256", '"sha256" must be 64 lower-case hex digits.');
+    const mtime = file.text("mtime", { max: INSTANT_MAX, required: true });
+    if (mtime !== undefined && !isInstant(mtime)) file.push("text", "mtime", '"mtime" must be an ISO 8601 instant.');
+    const kind = file.word("kind", INPUT_KINDS, true);
+    if (rel === undefined || path === undefined || bytes === undefined || sha256 === undefined || mtime === undefined || kind === undefined) return;
+    files.push({ rel, path, bytes, sha256, mtime, kind });
+  });
+  if (state === undefined || list === undefined) return undefined;
+  const out: FactsInputs = { state, files };
+  if (skipped !== undefined) out.skipped = skipped;
+  return out;
 }
 
 // ── A tap ────────────────────────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 
 import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { ORIGIN_FILE, parseOrigin } from "../bridge/tricks/origin.ts";
-import { switchesPath, trickStateDir } from "../bridge/tricks/paths.ts";
+import { APPROVED_DIR, approvedTrickDir, PENDING_DIR, switchesPath, trickStateDir } from "../bridge/tricks/paths.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
@@ -128,7 +128,8 @@ async function expectNoLeftovers(r: Rig): Promise<void> {
   const state = await readdir(join(r.stateDir, "tricks")).catch(() => []);
   expect(state.filter((n) => n.startsWith(".fetch-"))).toEqual([]);
   const tricks = await readdir(join(r.configDir, "tricks")).catch(() => []);
-  expect(tricks.filter((n) => n.startsWith("."))).toEqual([]);
+  // The folders of approved and pending copies are the bridge's, not a leftover of add or update.
+  expect(tricks.filter((n) => n.startsWith(".") && n !== APPROVED_DIR && n !== PENDING_DIR)).toEqual([]);
 }
 
 describe("collie trick add: the source", () => {
@@ -355,7 +356,7 @@ describe.if(posix)("collie trick add", () => {
 });
 
 describe.if(posix)("collie trick update", () => {
-  test("replaces the code, keeps config.toml and the state folder, and the changed code stops the trick", async () => {
+  test("replaces the code, keeps config.toml and the state folder, and the new code waits for a yes", async () => {
     const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM, "old.sh": txt("echo old\n"), "config.toml": txt("rows = 1\n") }]);
     const r = await rig();
     expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
@@ -389,7 +390,7 @@ describe.if(posix)("collie trick update", () => {
     expect(parseOrigin(await readFile(join(dir, ORIGIN_FILE), "utf8"))?.commit).toBe(next.shas[1]);
     const now = await trickCodeHash(dir);
     expect(now.ok && now.hash !== approved).toBe(true);
-    expect(r.out.join("\n")).toContain("stops until you switch it on again");
+    expect(r.out.join("\n")).toContain("keeps running the version you approved; the new one waits for your yes");
     await expectNoLeftovers(r);
     // Again: nothing moved.
     r.out.length = 0;
@@ -425,7 +426,7 @@ describe.if(posix)("collie trick update", () => {
 });
 
 describe.if(posix)("collie trick remove", () => {
-  test("refuses while the trick is on, then removes the folder and its state folder", async () => {
+  test("refuses while the trick is on, then removes the folder, its state folder and its approved copies", async () => {
     const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM }]);
     const r = await rig();
     expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
@@ -437,6 +438,7 @@ describe.if(posix)("collie trick remove", () => {
     expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.OK);
     expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
     expect(await stat(trickStateDir(r.stateDir, "legs")).catch(() => null)).toBeNull();
+    expect(await stat(approvedTrickDir(r.configDir, "legs")).catch(() => null)).toBeNull();
     expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.FAIL);
   });
 });

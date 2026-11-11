@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { AgentIcon } from "@/components/agent-icon";
+import { BrandMark } from "@/components/brand-mark";
 import { DecisionView } from "@/components/decision-view";
 import { HillPriorityMark } from "@/components/hill-priority";
 import { HillImageStrip, hillMediaSource, type HillMediaSource } from "@/components/hill-media";
@@ -25,7 +26,7 @@ import { HILL_ACK_MS } from "@/lib/hill/motion";
 import { linkHost } from "@/lib/hill/reader";
 import type { HillDecision, HillOption, HillReceipt } from "@/lib/hill/wire";
 import { HILL_ANSWER_TEXT_MAX } from "@/lib/hill/wire";
-import { ageWords, receiptWords, targetLabel, targetLine } from "@/lib/hill/words";
+import { ageWords, collieOkWords, receiptWords, targetLabel, targetLine } from "@/lib/hill/words";
 import { HOST_TEXT_CLASSES } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { onBridgeClock } from "@/lib/server-clock";
@@ -106,8 +107,18 @@ function Age({ at }: { at: number }) {
   return <span className="ml-auto shrink-0 tabular-nums">{ageWords(at, now)}</span>;
 }
 
-/** Who asks, as a 16px mark: the agent's own logo tile, or the trick's glyph on a neutral tile of the same size. Decorative: the name follows. */
+/**
+ * Who asks, as a 16px mark: the agent's own logo tile, the trick's glyph on a neutral tile of the same
+ * size, or the app's own mark for a Decision of Collie's own. Decorative: the name follows.
+ */
 function SenderMark({ decision, trickIcon }: { decision: HillDecision; trickIcon: string | undefined }) {
+  if (decision.from.kind === "collie") {
+    return (
+      <span aria-hidden data-slot="decision-collie-mark" className="flex shrink-0">
+        <BrandMark size={16} weight="header" state="rest" />
+      </span>
+    );
+  }
   if (decision.from.kind === "agent") {
     return (
       <span aria-hidden className="flex shrink-0">
@@ -323,7 +334,9 @@ function AnswerNotice({ decision, answer, onRetry }: { decision: HillDecision; a
         icon={<Icon name={tone === "danger" ? "error" : "answered"} />}
       >
         <span data-slot="decision-receipt" data-code={receipt.code}>
-          {receiptWords(receipt, answer.intent, targetLabel(decision), decision.from.kind === "trick" ? decision.from.label : null)}
+          {decision.from.kind === "collie" && receipt.code === "ok"
+            ? collieOkWords(decision.from, answer.intent)
+            : receiptWords(receipt, answer.intent, targetLabel(decision), decision.from.kind === "trick" ? decision.from.label : null)}
         </span>
       </Notice>
       {kept !== null && <KeptWords text={kept} />}

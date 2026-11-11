@@ -3337,6 +3337,8 @@ export const en = {
   // --- Settings → Tricks (M94 slice 04) ---
   "settings.tricks.none": "No tricks yet",
   "settings.tricks.foot": "A trick runs as you.",
+  "settings.tricks.runsOn": "Tricks run on the lead of this crew. This machine runs none.",
+  "settings.tricks.runsOn.lead": "Tricks run on the lead of this crew ({lead}). This machine runs none.",
   "settings.tricks.switchFailed": "Could not switch {name}. Try again.",
   "settings.tricks.places.none": "No parts",
   "settings.tricks.place.belt": "belt",
@@ -3365,6 +3367,20 @@ export const en = {
   "settings.tricks.warn.import": "This trick imports a package Collie does not install, so it may not run.",
   "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
   "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
+  "settings.tricks.pending": "A new version waits for your yes.",
+  // Take changes without asking, and the undo of an automatic change (crew slice 3). English only until
+  // the translation pass, listed in PENDING_TRANSLATION below.
+  "settings.tricks.auto.label": "Take changes without asking",
+  "settings.tricks.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
+  "settings.tricks.auto.failed": "Could not change {name}. Try again.",
+  "settings.tricks.autoAt": "Updated {ago}, automatically.",
+  "settings.tricks.undo": "Undo",
+  "settings.tricks.undoArmed": "Undo?",
+  "settings.tricks.undoFailed": "Could not undo {name}. Try again.",
+  // What a contract 2 trick reads (M99): English only until the translation pass, listed in
+  // PENDING_TRANSLATION below. The same words as schema.ts `inputsSentence`, held there by a test.
+  "settings.tricks.reads.solo": "Reads {globs} in your agent sessions' folders.",
+  "settings.tricks.reads.crew": "Reads {globs} in your agent sessions' folders on every machine of the crew.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
   // "Hill" is the view's name, a Collie word like a brand: the same in every language, never
@@ -3419,6 +3435,16 @@ export const en = {
   "hill.receipt.gone": "This Decision is closed",
   "hill.receipt.denied": "This device may not answer",
   "hill.receipt.failed": "Not sent.",
+  // An answer to a session on a crew machine that is not answering (CREW_PROTOCOL §22): English only
+  // until the translation pass, listed in PENDING_TRANSLATION below.
+  "hill.receipt.offline": "{machine} is not answering. Your answer was not sent.",
+  // An answer to a Decision of Collie's own (crew slice 3): Collie acted itself, nothing was typed.
+  // English only until the translation pass, listed in PENDING_TRANSLATION below.
+  "hill.receipt.versionUsed": "Now running the new version.",
+  "hill.receipt.versionKept": "Kept the old version.",
+  "hill.receipt.collieDone": "Done.",
+  // A dismiss that closed the card while the session's crew machine was not answering (CREW_PROTOCOL §22).
+  "hill.receipt.dismissedOffline": "Dismissed. {machine} is not answering, so the session was not told.",
   "hill.retry": "Try again",
   "hill.reason.textRequired": "an answer in words is required",
   "hill.reason.notAnOption": "that is not an option of this Decision",
@@ -3513,6 +3539,8 @@ export const PENDING_TRANSLATION = [
   "settings.section.tricks.blurb",
   "settings.tricks.none",
   "settings.tricks.foot",
+  "settings.tricks.runsOn",
+  "settings.tricks.runsOn.lead",
   "settings.tricks.switchFailed",
   "settings.tricks.places.none",
   "settings.tricks.place.belt",
@@ -3532,6 +3560,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.withTime",
   "settings.tricks.refused",
   "settings.tricks.refusedBare",
+  "settings.tricks.pending",
   "hill.title",
   "hill.back",
   "hill.open.one",
@@ -3677,6 +3706,22 @@ export const PENDING_TRANSLATION = [
   "hill.off.title",
   "hill.off.body",
   "hill.off.turnOn",
+  // An answer refused for a crew machine that is not answering (2026-11-10).
+  "hill.receipt.offline",
+  // A trick's new version on the Hill and in Settings (crew slice 3).
+  "hill.receipt.versionUsed",
+  "hill.receipt.versionKept",
+  "hill.receipt.collieDone",
+  "settings.tricks.auto.label",
+  "settings.tricks.auto.hint",
+  "settings.tricks.auto.failed",
+  "settings.tricks.autoAt",
+  "settings.tricks.undo",
+  "settings.tricks.undoArmed",
+  "settings.tricks.undoFailed",
+  "settings.tricks.reads.solo",
+  "settings.tricks.reads.crew",
+  "hill.receipt.dismissedOffline",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

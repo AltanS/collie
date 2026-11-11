@@ -33,10 +33,33 @@ export interface CrewRuntime {
   readonly peerServesBrowser: boolean;
   /** A one-line explanation when the enrollment state is self-contradictory; `null` when coherent. */
   readonly conflict: string | null;
+  /**
+   * Peer mode only: whether this member answers its lead's `POST /crew/v1/tricks/inputs` (M99, §23), so a
+   * trick on the lead may read files from this member's agent sessions' folders. Always false outside
+   * peer mode. See {@link trickReadsAllowed}.
+   */
+  readonly trickReads: boolean;
 }
 
 /** Env var an operator sets on a peer to keep that peer's own browser front door. Peer mode only. */
 export const PEER_BROWSER_ENV = "COLLIE_PEER_BROWSER";
+/** Env var that switches a member's trick reads on or off (`on`, `off`, or unset). */
+export const TRICK_READS_ENV = "COLLIE_CREW_TRICK_READS";
+
+/**
+ * Whether a member lets its lead's tricks read files from its agent sessions' folders (M99, §23).
+ *
+ * `COLLIE_CREW_TRICK_READS=off` refuses and `=on` allows. Unset follows the member's device gate as a
+ * read with no named device (`crewGate("device-read", ...)`): allowed while `COLLIE_DEVICE_HEADER` is
+ * off, refused while it is on, because a member that gates its own reads by device has said it does not
+ * want a crew link to read for nobody in particular. Any other word refuses: it fails closed.
+ */
+export function trickReadsAllowed(env: Record<string, string | undefined>): boolean {
+  const word = (env[TRICK_READS_ENV] ?? "").trim().toLowerCase();
+  if (word === "on") return true;
+  if (word !== "") return false;
+  return (env.COLLIE_DEVICE_HEADER ?? "").trim() === "";
+}
 
 /**
  * Resolve the crew runtime: a pure function of the trust store's contents and the environment, in
@@ -57,6 +80,7 @@ export function resolveCrewRuntime(
     mode,
     peerServesBrowser: mode === "peer" ? envBool(PEER_BROWSER_ENV, false, env) : false,
     conflict,
+    trickReads: mode === "peer" ? trickReadsAllowed(env) : false,
   };
 }
 
@@ -100,4 +124,5 @@ export const SOLO_RUNTIME: CrewRuntime = {
   mode: "solo",
   peerServesBrowser: false,
   conflict: null,
+  trickReads: false,
 };

@@ -142,7 +142,8 @@ export class HillStore {
     const read: HillDecision[] = [];
     const opaque: JsonValue[] = [];
     for (const entry of file.decisions) {
-      const decision = readDecision(entry);
+      // This bridge's own file: the one place a Decision of Collie's own reads (parse.ts `collie`).
+      const decision = readDecision(entry, { collie: true });
       if (decision === null) opaque.push(entry);
       // A second entry under a held id is a duplicate this build wrote; the first one stands.
       else if (!read.some((held) => held.id === decision.id)) read.push(decision);

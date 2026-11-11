@@ -5,14 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentView, WorkspaceView } from "../types.ts";
-import { parseFacts, TRICK_CONTRACT } from "../../web/src/lib/tricks/schema.ts";
+import { FACT_SESSIONS_MAX, FACT_SESSIONS_MAX_BYTES, parseFacts, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../../web/src/lib/tricks/schema.ts";
 import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import { createTrickScanner, MANIFEST_BYTES_MAX, readManifestText, TRICKS_MAX } from "./discover.ts";
-import { buildFacts, factsWorldOf } from "./facts.ts";
+import { buildFacts, crewFactsWorld, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, parseSince } from "./routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
-import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withSwitch, writeSwitches } from "./switches.ts";
+import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withApproval, withEntry, withSwitch, writeSwitches } from "./switches.ts";
 
 const HASH = "a".repeat(64);
 const HASH2 = "b".repeat(64);
@@ -36,7 +36,7 @@ describe("the switch file", () => {
     await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-08T09:00:00.000Z", HASH));
     expect((await stat(switchesPath(stateDir))).mode & 0o777).toBe(0o600);
     expect((await stat(join(stateDir, "tricks"))).mode & 0o777).toBe(0o700);
-    expect([...(await read()).on.entries()]).toEqual([["legs", { at: "2026-11-08T09:00:00.000Z", hash: HASH }]]);
+    expect([...(await read()).on.entries()]).toEqual([["legs", { at: "2026-11-08T09:00:00.000Z", hash: HASH, auto: false, by: "cli", powers: null }]]);
     expect(warnings).toEqual([]);
   });
 
@@ -51,19 +51,40 @@ describe("the switch file", () => {
     expect(warnings.length).toBe(1);
   });
 
-  test("render is stable, on/off round-trips, and switching on again stores the new hash", () => {
+  test("render is layout 3 as version 2 (B4) and stable, on/off round-trips, and switching on again stores the new hash", () => {
     const one = withSwitch({ on: new Map() }, "b", true, "t1", HASH);
     const two = withSwitch(one, "a", true, "t2");
-    expect(renderSwitches(two)).toBe(`{\n  "v": 2,\n  "on": {\n    "a": {\n      "at": "t2",\n      "hash": null\n    },\n    "b": {\n      "at": "t1",\n      "hash": "${HASH}"\n    }\n  }\n}\n`);
-    expect(parseSwitches(renderSwitches(two)).switches.on.get("b")).toEqual({ at: "t1", hash: HASH });
-    expect(withSwitch(two, "b", true, "later", HASH2).on.get("b")).toEqual({ at: "later", hash: HASH2 });
+    const entry = (at: string, hash: string | null) => `{\n      "at": "${at}",\n      "hash": ${hash === null ? "null" : `"${hash}"`},\n      "auto": false,\n      "by": "cli",\n      "powers": null\n    }`;
+    expect(renderSwitches(two)).toBe(`{\n  "v": 2,\n  "layout": 3,\n  "on": {\n    "a": ${entry("t2", null)},\n    "b": ${entry("t1", HASH)}\n  }\n}\n`);
+    expect(parseSwitches(renderSwitches(two)).switches.on.get("b")).toEqual({ at: "t1", hash: HASH, auto: false, by: "cli", powers: null });
+    expect(parseSwitches(renderSwitches(two)).switches.version).toBe(3);
+    expect(withSwitch(two, "b", true, "later", HASH2).on.get("b")).toEqual({ at: "later", hash: HASH2, auto: false, by: "cli", powers: null });
     expect([...withSwitch(two, "a", false, "x").on.keys()]).toEqual(["b"]);
   });
 
-  test("a version 1 file reads as on with no hash, so its tricks read as changed", () => {
-    const parsed = parseSwitches('{ "v": 1, "on": { "legs": "2026-11-08T09:00:00Z" } }');
-    expect(parsed.problem).toBeNull();
-    expect(parsed.switches.on.get("legs")).toEqual({ at: "2026-11-08T09:00:00Z", hash: null });
+  test("a version 3 entry keeps auto, by, powers, previous and declined through a round trip", () => {
+    const set = withApproval({ on: new Map() }, "legs", { at: "t1", hash: HASH, by: "cli", powers: "0123456789abcdef" });
+    const auto = withEntry(set, "legs", { ...set.on.get("legs")!, auto: true });
+    const next = withApproval(auto, "legs", { at: "t2", hash: HASH2, by: "auto", powers: "0123456789abcdef" });
+    const declined = withEntry(next, "legs", { ...next.on.get("legs")!, declined: HASH });
+    const back = parseSwitches(renderSwitches(declined)).switches.on.get("legs");
+    expect(back).toEqual({ at: "t2", hash: HASH2, auto: true, by: "auto", powers: "0123456789abcdef", previous: { hash: HASH, at: "t1", by: "cli", powers: "0123456789abcdef" }, declined: HASH });
+    // Approving the same hash again keeps the earlier `previous`; a new approval clears a decline.
+    expect(withApproval(declined, "legs", { at: "t3", hash: HASH2, by: "phone", powers: null }).on.get("legs")?.previous?.hash).toBe(HASH);
+    expect(withApproval(declined, "legs", { at: "t3", hash: HASH2, by: "phone", powers: null }).on.get("legs")?.declined).toBeUndefined();
+  });
+
+  test("a version 1 and a version 2 file still read, with their version; a newer one reads as all off", () => {
+    const v1 = parseSwitches('{ "v": 1, "on": { "legs": "2026-11-08T09:00:00Z" } }');
+    expect(v1.problem).toBeNull();
+    expect(v1.switches.version).toBe(1);
+    expect(v1.switches.on.get("legs")).toEqual({ at: "2026-11-08T09:00:00Z", hash: null, auto: false, by: "cli", powers: null });
+    const v2 = parseSwitches(`{ "v": 2, "on": { "legs": { "at": "t", "hash": "${HASH}" } } }`);
+    expect(v2.switches.version).toBe(2);
+    expect(v2.switches.on.get("legs")?.hash).toBe(HASH);
+    const v4 = parseSwitches('{ "v": 4, "on": { "legs": { "at": "t" } } }');
+    expect(v4.switches.on.size).toBe(0);
+    expect(v4.problem).toContain("not a version 1, 2 or 3");
   });
 
   test("two writers at once both land: each re-reads the file under the lock", async () => {
@@ -157,18 +178,17 @@ describe("discovery", () => {
     expect((await trickCodeHash(dir)).ok && (await trickCodeHash(dir))).toEqual({ ok: true, hash: edited.codeHash! });
   });
 
-  test("a symlink is hashed by its target and never followed", async () => {
+  test("B3: a symlink is refused, never followed: the row says why and the trick has no code hash", async () => {
     const root = await tempDir();
     const dir = await trickDir(root, "legs");
     const outside = join(root, "outside.sh");
     await writeFile(outside, "one\n");
     await symlink(outside, join(dir, "p.sh"));
-    const before = await trickCodeHash(dir);
-    await writeFile(outside, "two\n");
-    expect(await trickCodeHash(dir)).toEqual(before);
-    await rm(join(dir, "p.sh"));
-    await symlink(join(root, "elsewhere.sh"), join(dir, "p.sh"));
-    expect(await trickCodeHash(dir)).not.toEqual(before);
+    expect(await trickCodeHash(dir)).toMatchObject({ ok: false, code: "link" });
+    const found = (await createTrickScanner(root).scan()).tricks[0]!;
+    expect(found.codeHash).toBeUndefined();
+    expect(found.manifest).toBeUndefined();
+    expect(found.refusals.map((r) => r.reason)).toContain("p.sh is a symbolic link. A trick holds regular files only: put the file itself there.");
   });
 
   test("more than 2000 files refuses the trick with a reason", async () => {
@@ -350,8 +370,9 @@ describe("the facts", () => {
     // The member id is the key a program keeps; `host` is the machine's name, for display only.
     expect(facts.memberId).toBe("bluefin-hc");
     expect(facts.host).toBe("bluefin");
-    // One contract number on the facts, no `v` beside it.
-    expect(facts.contract).toBe(TRICK_CONTRACT);
+    // One contract number on the facts, no `v` beside it: the trick's own, 1 when it names none.
+    expect(facts.contract).toBe(TRICK_CONTRACT_DEFAULT);
+    expect(buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" }, TRICK_CONTRACT).contract).toBe(2);
     expect(Object.keys(facts)).not.toContain("v");
   });
 
@@ -366,6 +387,62 @@ describe("the facts", () => {
     expect(facts).toMatchObject({ memberId: "m_k3x9q2w7ab", host: "bluefin.lan" });
     expect(JSON.stringify(facts)).not.toContain('"bluefin.lan:');
     expect(parseFacts(JSON.parse(JSON.stringify(facts))).refusals).toEqual([]);
+    // A solo bridge's facts carry no crew field.
+    expect(Object.keys(facts)).not.toContain("sessionsOmitted");
+    expect(Object.keys(world.sessions[0] ?? {})).not.toContain("reachable");
+  });
+});
+
+describe("the facts on a crew's lead (M99 slice 5)", () => {
+  const own = factsWorldOf({ memberId: "bluefin", machine: "bluefin", runtimes: [{ name: "default", agents: [pane({})], shellPanes: [], workspaces: [space("collie", "/work/collie")] }] });
+  const isOwn = (id: string): boolean => id === "bluefin";
+
+  test("every member's sessions, each with its own memberId, its machine's name and reachable; the lead's first", () => {
+    const world = crewFactsWorld(
+      own,
+      [
+        { memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: [pane({ paneId: "%1", paneLabel: "builder" })], shellPanes: [pane({ paneId: "%2", kind: "shell", agent: "shell" })] } },
+        { memberId: "laptop", name: "laptop", reachable: false, body: { agents: [pane({ paneId: "w1:2" })], shellPanes: [] } },
+        { memberId: "fresh", name: "fresh", reachable: false, body: null },
+      ],
+      isOwn,
+    );
+    expect(world.sessions.map((s) => [s.id, s.memberId, s.host, s.reachable])).toEqual([
+      ["bluefin:w6X:3", "bluefin", "bluefin", true],
+      ["minibuch:%1", "minibuch", "minibuch", true],
+      ["minibuch:%2", "minibuch", "minibuch", true],
+      ["laptop:w1:2", "laptop", "laptop", false],
+    ]);
+    // The spaces stay the lead's own.
+    expect(world.spaces).toEqual(own.spaces);
+    // A trick tells its own sessions from the others by memberId.
+    const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
+    expect(facts.sessions.filter((s) => s.memberId === facts.memberId).map((s) => s.id)).toEqual(["bluefin:w6X:3"]);
+    const back = parseFacts(JSON.parse(JSON.stringify(facts)));
+    expect(back.refusals).toEqual([]);
+    expect(back.facts).toEqual(facts);
+  });
+
+  test("no member can pose as the lead: a contribution under the lead's own id is skipped", () => {
+    const world = crewFactsWorld(own, [{ memberId: "bluefin", name: "imposter", reachable: true, body: { agents: [pane({ paneId: "w6X:9" })], shellPanes: [] } }], isOwn);
+    expect(world.sessions.map((s) => s.id)).toEqual(["bluefin:w6X:3"]);
+  });
+
+  test("past the session count or the byte cap the rest are left out and counted, never the lead's own", () => {
+    const many = Array.from({ length: FACT_SESSIONS_MAX + 5 }, (_, i) => pane({ paneId: `%${String(i)}` }));
+    const world = crewFactsWorld(own, [{ memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: many, shellPanes: [] } }], isOwn);
+    expect(world.sessions).toHaveLength(FACT_SESSIONS_MAX);
+    expect(world.sessions[0]?.id).toBe("bluefin:w6X:3");
+    expect(world.sessionsOmitted).toBe(6);
+    const facts = buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" });
+    expect(facts.sessionsOmitted).toBe(6);
+    expect(parseFacts(JSON.parse(JSON.stringify(facts))).facts?.sessionsOmitted).toBe(6);
+
+    const wide = Array.from({ length: 200 }, (_, i) => pane({ paneId: `%${String(i)}`, cwd: `/${"x".repeat(4000)}` }));
+    const heavy = crewFactsWorld(own, [{ memberId: "minibuch", name: "minibuch", reachable: true, body: { agents: wide, shellPanes: [] } }], isOwn);
+    const bytes = new TextEncoder().encode(JSON.stringify(heavy.sessions)).length;
+    expect(bytes).toBeLessThanOrEqual(FACT_SESSIONS_MAX_BYTES + heavy.sessions.length + 2);
+    expect(heavy.sessionsOmitted).toBe(201 - heavy.sessions.length);
   });
 });
 
@@ -392,6 +469,8 @@ describe("the routes", () => {
       },
       setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       media: async () => null,
+      autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
     const match = route.exec("/api/tricks/blue%66in/legs/tap");
@@ -416,6 +495,8 @@ describe("the routes", () => {
         return { status: 404, body: { error: "unknown-trick" } };
       },
       media: async () => null,
+      autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
     const match = route.exec("/api/tricks/blue%66in/legs/switch");
@@ -431,6 +512,44 @@ describe("the routes", () => {
     expect(await tricksSwitchRoute(surface, broken, { on: true })).toEqual({ status: 404, body: { error: "unknown-host" } });
   });
 
+  test("auto takes exactly { on: boolean } and undo exactly {}; both decode the path; server.ts gates both as writes", async () => {
+    const calls: string[] = [];
+    const surface: TricksSurface = {
+      rev: () => 1,
+      noteWatched: () => {},
+      reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
+      tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      sessionPanes: () => undefined,
+      setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      media: async () => null,
+      autoRoute: async (host, id, on) => {
+        calls.push(`auto ${host} ${id} ${String(on)}`);
+        return { status: 409, body: { error: "off", message: "The trick is off." } };
+      },
+      undoRoute: async (host, id) => {
+        calls.push(`undo ${host} ${id}`);
+        return { status: 409, body: { error: "no-previous", message: "There is no earlier version to go back to." } };
+      },
+    };
+    const auto = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/.exec("/api/tricks/blue%66in/legs/auto");
+    const undo = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/.exec("/api/tricks/bluefin/legs/undo");
+    if (auto === null || undo === null) throw new Error("no match");
+    expect(await tricksAutoRoute(surface, auto, { on: true })).toEqual({ status: 409, body: { error: "off", message: "The trick is off." } });
+    expect(await tricksUndoRoute(surface, undo, {})).toMatchObject({ status: 409, body: { error: "no-previous" } });
+    for (const body of [undefined, null, [], {}, { on: "yes" }, { on: true, extra: 1 }]) {
+      expect(await tricksAutoRoute(surface, auto, body)).toEqual({ status: 400, body: { error: "auto-invalid" } });
+    }
+    for (const body of [undefined, null, [], { hash: "a" }]) {
+      expect(await tricksUndoRoute(surface, undo, body)).toEqual({ status: 400, body: { error: "undo-invalid" } });
+    }
+    expect(calls).toEqual(["auto bluefin legs true", "undo bluefin legs"]);
+    const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
+    expect(src).toContain("const TRICKS_AUTO_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/auto$/;");
+    expect(src).toContain("const TRICKS_UNDO_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/;");
+    const block = src.slice(src.indexOf("const tricksVersion = TRICKS_AUTO_ROUTE.exec(pathname)"));
+    expect(block.slice(0, 400)).toContain("guard(req, cfg, auto ? TRICKS_ROUTE_RIGHTS.auto : TRICKS_ROUTE_RIGHTS.undo, pairingGate)");
+  });
+
   test("the media path is decoded and handed on; a segment that does not decode is a miss", async () => {
     const calls: [string, string, string][] = [];
     const surface: TricksSurface = {
@@ -444,6 +563,8 @@ describe("the routes", () => {
         calls.push([host, id, rel]);
         return null;
       },
+      autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
     const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
     const match = route.exec("/api/tricks/blue%66in/legs/media/shots/case%2024.png");
@@ -463,7 +584,7 @@ describe("the routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")'));
     // The rights live in one table in routes.ts; server.ts reads each route's level from it.
-    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read" });
+    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", auto: "write", undo: "write" });
     expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
     const tap = src.slice(src.indexOf("const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);"));

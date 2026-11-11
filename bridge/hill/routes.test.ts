@@ -108,7 +108,7 @@ const post = {
 
 async function posted(r: Rig, fields: JsonObject = post): Promise<string> {
   const from = r.hill.agentSender(panes[0]!, "local/%1#aaaa");
-  const answer = r.hill.postFields(from, fields);
+  const answer = await r.hill.postFields(from, fields);
   if (!answer.ok) throw new Error(answer.error);
   return answer.decision.id;
 }
