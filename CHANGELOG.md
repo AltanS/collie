@@ -94,6 +94,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Hill card says when you already wrote to its session.** When a message you send from the phone's composer reaches an agent's session after it posted a Decision (a held one once it goes out, never a slash command), its open card reads "You wrote to this session after it asked." and moves below the fresh cards of its priority. It stays open and answerable.
 
 - **Clear the cards you already answered in the session.** When a card on the Hill carries "You wrote to this session after it asked.", the Clear button on Answered opens a menu with two choices: the closed entries as before, or "Clear cards you answered in the session", which withdraws those open cards and clears them. Nothing is typed into any session. From a terminal it is `collie hill clear --spoken`, which an agent's pane is refused.
+- **The playground explains tricks in pictures.** A new playground section, "Tricks explained", walks through what a trick is, where it shows, how it is approved and what the Hill does, with live figures drawn from the same code as the app. It loads on its own page and adds nothing to the app bundle.
 
 ### Changed
 
