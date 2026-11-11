@@ -279,6 +279,8 @@ export class StandbyHillStore {
   private cached: HillIndex | null = null;
   private loaded = false;
   private holdDepth = 0;
+  /** The last write in line ({@link serial}). */
+  private writes: Promise<unknown> = Promise.resolve();
 
   constructor(
     stateDir: string,
@@ -407,19 +409,36 @@ export class StandbyHillStore {
     return (await this.load())?.decisions.length ?? 0;
   }
 
+  /**
+   * Run one write after every write before it (review 7 R5): a list, a part, a state, a picture, a
+   * reconcile. A takeover's {@link hold} waits for the write that runs, and every write after it finds the
+   * copy held.
+   */
+  serial<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.writes.then(work);
+    this.writes = next.catch(() => undefined);
+    return next;
+  }
+
   /** Whether a takeover holds the copy now: then it takes nothing from the lead (§25). */
   held(): boolean {
     return this.holdDepth > 0;
   }
 
-  hold(): () => void {
+  /**
+   * Hold the copy against a role change and the lead's writes while the person's tap adopts it. Every write
+   * from now on finds it held; the answer comes once the write that ran when it was asked has ended.
+   */
+  async hold(): Promise<() => void> {
     this.holdDepth += 1;
     let released = false;
-    return () => {
+    const release = () => {
       if (released) return;
       released = true;
       this.holdDepth -= 1;
     };
+    await this.writes;
+    return release;
   }
 
   async clear(): Promise<void> {
@@ -429,7 +448,11 @@ export class StandbyHillStore {
   }
 
   /** Clear the copy when it is not this machine's any more: the tricks copy's own rule. */
-  async reconcile(role: CopyRole): Promise<boolean> {
+  reconcile(role: CopyRole): Promise<boolean> {
+    return this.serial(() => this.reconcileNow(role));
+  }
+
+  private async reconcileNow(role: CopyRole): Promise<boolean> {
     if (this.holdDepth > 0) return false;
     const index = await this.load();
     const present = index !== null || (await lstat(this.dir).catch(() => null)) !== null;

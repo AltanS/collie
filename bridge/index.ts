@@ -155,6 +155,7 @@ import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import {
   armThresholdMs,
   armThresholdWarning,
+  CARRIED_CHANGED,
   createStandbyDoor,
   frontDoorHealth,
   standbyHostOf,
@@ -165,6 +166,7 @@ import {
   withStandbyVersion,
   warrantNamesSelf,
   type StandbyFacts,
+  type TakeoverAnswer,
 } from "./crew/standby.ts";
 import {
   collidingLabels,
@@ -191,7 +193,7 @@ import { leadTricks } from "./crew/standby-tricks-lead.ts";
 import { carrySurface, hillCarryRoutes, tricksCarryRoutes } from "./crew/carry-surface.ts";
 import { StandbyHillStore } from "./crew/standby-hill.ts";
 import { HillCopySync } from "./crew/hill-copy-sync.ts";
-import { adoptAtBoot, carriedSeen, holdCopies, readAdoptMarker, writeAdoptMarker } from "./crew/carry-boot.ts";
+import { adoptAtBoot, carriedSeen, holdCopies, holdForTap, readAdoptMarker, writeAdoptMarker } from "./crew/carry-boot.ts";
 import { TricksCopySync } from "./crew/carry-sync.ts";
 import { tricksStartingAtTap } from "./crew/carry-adopt.ts";
 import { answerCarried, postCarryNotices } from "./crew/carry-notices.ts";
@@ -3422,9 +3424,12 @@ function takeoverClient(data: TrustStoreData): PeerClient {
 /**
  * §25: the copies are held for the whole exchange, so the lead's syncs take nothing while it runs: what
  * the page showed (the door checked its mark just before this) is what the tap leaves for the next boot.
+ * The hold waits for a write in flight, then the mark is read again (review 7 R5): a list that landed
+ * between the door's check and the hold refuses the tap as changed, and the page is drawn again.
  */
-async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; message: string }> {
-  const release = holdCopies([tricksCopyStore, hillCopyStore]);
+async function performTakeover(deviceLabel: string, shown: string | null): Promise<TakeoverAnswer> {
+  const release = await holdForTap([tricksCopyStore, hillCopyStore], shown, () => carriedSeen(tricksCopyStore, hillCopyStore));
+  if (release === null) return { ok: false, message: CARRIED_CHANGED, changed: true };
   try {
     return await performTakeoverHeld(deviceLabel);
   } finally {
@@ -3473,7 +3478,7 @@ async function performTakeoverHeld(deviceLabel: string): Promise<{ ok: boolean; 
       const clash = collidingLabels(own, devices);
       if (clash.length > 0) return { kind: "refused", reason: "pairing-collision", labels: clash };
       // §25: the role change below would otherwise remove the copies before this tap adopts them.
-      const release = holdCopies([tricksCopyStore, hillCopyStore]);
+      const release = await holdCopies([tricksCopyStore, hillCopyStore]);
       try {
         const formerLead = held.lead.memberId;
         const result = await commitCrewChange(trustStore, audit, (current) =>
@@ -3545,7 +3550,7 @@ const standbyDoor = standbyStore === null ? null : createStandbyDoor({
     };
   },
   devices: syncedDevices,
-  takeover: (device) => performTakeover(device),
+  takeover: (device, shown) => performTakeover(device, shown),
   // §25: what the tap starts again, read off this machine's own disk, never off the lead's word.
   carried: async () => ({
     tricks: await tricksStartingAtTap(tricksCopyStore, cfg.stateDir, tricksConfigRoot),

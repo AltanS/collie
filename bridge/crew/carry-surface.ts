@@ -28,57 +28,65 @@ const HILL_PATHS: ReadonlySet<string> = new Set([CREW_HILL_COPY_PATH, CREW_HILL_
 export function tricksCarryRoutes(store: StandbyTricksStore): CarryRoutes {
   return {
     report: () => tricksReportFields(store.report()),
-    handle: async (path, ctx, body) => {
-      if (store.held() && TRICKS_PATHS.has(path)) return HELD;
-      if (path === CREW_TRICKS_COPY_PATH) {
-        const list = parseTricksList(body);
-        if (list === null) return answer(400, { error: "a tricks copy is { seq, tricks }, each trick checked" });
-        const applied = await store.applyList({ from: ctx.from, crewId: ctx.crewId, seq: list.seq, tricks: list.tricks });
-        if (!applied.ok) return answer(409, { error: "this list is older than the one held", code: applied.code });
-        return answer(200, { applied: true, need: { code: applied.need.code, state: applied.need.state } });
-      }
-      if (path === CREW_TRICKS_COPY_CODE_PATH) {
-        const part = parseCodePart(body);
-        if (part === null) return answer(400, { error: "a code part is { id, hash, part, parts, chunks }" });
-        const done = await store.applyCodePart(part);
-        if (!done.ok) return answer(done.code === "mismatch" ? 422 : 409, { error: done.reason, code: done.code });
-        return answer(200, { held: done.held });
-      }
-      if (path === CREW_TRICKS_COPY_STATE_PATH) {
-        const push = parseStatePush(body);
-        if (push === null) return answer(400, { error: "a state push is { id, digest, files }, each file checked" });
-        const done = await store.applyState(push);
-        if (!done.ok) return answer(done.code === "rate" ? 429 : 409, { error: done.reason, code: done.code });
-        return answer(200, { applied: true });
-      }
-      return null;
-    },
+    // One write at a time, and the hold is read inside the turn: a list that waited behind the write a
+    // takeover's hold waited for finds the copy held (review 7 R5).
+    handle: (path, ctx, body) => (TRICKS_PATHS.has(path) ? store.serial(() => tricksWrite(store, path, ctx, body)) : Promise.resolve(null)),
   };
+}
+
+/** One write of the tricks copy, in its turn. */
+async function tricksWrite(store: StandbyTricksStore, path: string, ctx: { readonly from: string; readonly crewId: string }, body: JsonValue): Promise<CarryAnswer | null> {
+  if (store.held()) return HELD;
+  if (path === CREW_TRICKS_COPY_PATH) {
+    const list = parseTricksList(body);
+    if (list === null) return answer(400, { error: "a tricks copy is { seq, tricks }, each trick checked" });
+    const applied = await store.applyList({ from: ctx.from, crewId: ctx.crewId, seq: list.seq, tricks: list.tricks });
+    if (!applied.ok) return answer(409, { error: "this list is older than the one held", code: applied.code });
+    return answer(200, { applied: true, need: { code: applied.need.code, state: applied.need.state } });
+  }
+  if (path === CREW_TRICKS_COPY_CODE_PATH) {
+    const part = parseCodePart(body);
+    if (part === null) return answer(400, { error: "a code part is { id, hash, part, parts, chunks }" });
+    const done = await store.applyCodePart(part);
+    if (!done.ok) return answer(done.code === "mismatch" ? 422 : 409, { error: done.reason, code: done.code });
+    return answer(200, { held: done.held });
+  }
+  if (path === CREW_TRICKS_COPY_STATE_PATH) {
+    const push = parseStatePush(body);
+    if (push === null) return answer(400, { error: "a state push is { id, digest, files }, each file checked" });
+    const done = await store.applyState(push);
+    if (!done.ok) return answer(done.code === "rate" ? 429 : 409, { error: done.reason, code: done.code });
+    return answer(200, { applied: true });
+  }
+  return null;
 }
 
 /** The Hill half of the surface. */
 export function hillCarryRoutes(store: StandbyHillStore): CarryRoutes {
   return {
     report: () => hillReportFields(store.report()),
-    handle: async (path, ctx, body) => {
-      if (store.held() && HILL_PATHS.has(path)) return HELD;
-      if (path === CREW_HILL_COPY_PATH) {
-        const list = parseHillList(body);
-        if (list === null) return answer(400, { error: "a Hill copy is { seq, on, decisions, closed, tricks }" });
-        const applied = await store.applyList({ from: ctx.from, crewId: ctx.crewId, list });
-        if (!applied.ok) return answer(409, { error: "this list is older than the one held", code: applied.code });
-        return answer(200, { applied: true, need: { media: applied.need } });
-      }
-      if (path === CREW_HILL_COPY_MEDIA_PATH) {
-        const push = parseMediaPush(body);
-        if (push === null) return answer(400, { error: "a picture is { decisionId, mediaId, b64 } or { decisionId, mediaId, gone: true }" });
-        const done = await store.applyMedia(push);
-        if (!done.ok) return answer(done.code === "mismatch" ? 422 : 409, { error: done.reason, code: done.code });
-        return answer(200, { held: true });
-      }
-      return null;
-    },
+    handle: (path, ctx, body) => (HILL_PATHS.has(path) ? store.serial(() => hillWrite(store, path, ctx, body)) : Promise.resolve(null)),
   };
+}
+
+/** One write of the Hill copy, in its turn. */
+async function hillWrite(store: StandbyHillStore, path: string, ctx: { readonly from: string; readonly crewId: string }, body: JsonValue): Promise<CarryAnswer | null> {
+  if (store.held()) return HELD;
+  if (path === CREW_HILL_COPY_PATH) {
+    const list = parseHillList(body);
+    if (list === null) return answer(400, { error: "a Hill copy is { seq, on, decisions, closed, tricks }" });
+    const applied = await store.applyList({ from: ctx.from, crewId: ctx.crewId, list });
+    if (!applied.ok) return answer(409, { error: "this list is older than the one held", code: applied.code });
+    return answer(200, { applied: true, need: { media: applied.need } });
+  }
+  if (path === CREW_HILL_COPY_MEDIA_PATH) {
+    const push = parseMediaPush(body);
+    if (push === null) return answer(400, { error: "a picture is { decisionId, mediaId, b64 } or { decisionId, mediaId, gone: true }" });
+    const done = await store.applyMedia(push);
+    if (!done.ok) return answer(done.code === "mismatch" ? 422 : 409, { error: done.reason, code: done.code });
+    return answer(200, { held: true });
+  }
+  return null;
 }
 
 /** The whole surface: each half answers its own routes, and the report is both halves'. */

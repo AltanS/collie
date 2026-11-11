@@ -282,7 +282,7 @@ describe("whose copy it is", () => {
     await putOnTrick(lead, { id: "legs" });
     const store = new StandbyTricksStore((await machine("deputy")).stateDir);
     await carryAll(lead, store);
-    const release = store.hold();
+    const release = await store.hold();
     expect(await store.reconcile({ ...ROLE, leads: true })).toBe(false);
     expect((await store.ready()).length).toBe(1);
     release();

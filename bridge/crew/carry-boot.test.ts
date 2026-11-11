@@ -7,7 +7,7 @@ import type { JsonValue } from "../json.ts";
 import { decision } from "../hill/fixtures.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
 import { switchesPath } from "../tricks/paths.ts";
-import { ADOPT_MARKER_FILE, adoptAtBoot, carriedSeen, holdCopies, readAdoptMarker, writeAdoptMarker, type BootAdoptDeps } from "./carry-boot.ts";
+import { ADOPT_MARKER_FILE, adoptAtBoot, carriedSeen, holdCopies, holdForTap, readAdoptMarker, writeAdoptMarker, type BootAdoptDeps } from "./carry-boot.ts";
 import { carryAll, machine, putOnTrick, removeCarryDirs } from "./carry-fixtures.ts";
 import { hillCarryRoutes, tricksCarryRoutes } from "./carry-surface.ts";
 import { CREW_HILL_COPY_PATH, CREW_TRICKS_COPY_PATH } from "./router.ts";
@@ -39,7 +39,7 @@ describe("the takeover commit holds both copies (§25)", () => {
   test("a role change in the middle of the commit removes neither copy; after it, both go", async () => {
     const { tricks, hill } = await deputyWithCopies();
     expect(await tricks.reconcile(ROLE)).toBe(false);
-    const release = holdCopies([tricks, hill]);
+    const release = await holdCopies([tricks, hill]);
     // The commit made this machine the lead; a membership change runs the reconcile now.
     expect(await tricks.reconcile(LEADS)).toBe(false);
     expect(await hill.reconcile(LEADS)).toBe(false);
@@ -63,10 +63,46 @@ describe("what the page showed is what the tap takes (§25)", () => {
     expect(carriedSeen(null, null)).toBe(carriedSeen(null, null));
   });
 
+  test("a list in flight when the tap holds lands before the hold answers; one after it is refused (review 7 R5)", async () => {
+    const { tricks, hill } = await deputyWithCopies();
+    const ctx = { from: "desk", crewId: "crew-1" };
+    const before = carriedSeen(tricks, hill);
+    // The lead's list starts its write, and the tap asks for the hold while it runs.
+    const inFlight = hillCarryRoutes(hill).handle(CREW_HILL_COPY_PATH, ctx, { seq: 7, on: true, decisions: [], closed: ["dc_carried00001"], tricks: {} });
+    // Its turn starts (a few microtasks), and it is writing to the disk when the hold is asked.
+    for (let i = 0; i < 3; i += 1) await Promise.resolve();
+    const release = await holdCopies([tricks, hill]);
+    const atHold = carriedSeen(tricks, hill);
+    expect(atHold).not.toBe(before);
+    expect((await inFlight)?.status).toBe(200);
+    // Nothing moves the copies after the hold: what the tap reads now is what it adopts.
+    const after = await tricksCarryRoutes(tricks).handle(CREW_TRICKS_COPY_PATH, ctx, { seq: 9, tricks: [] });
+    expect(after?.body).toMatchObject({ code: "held" });
+    expect(carriedSeen(tricks, hill)).toBe(atHold);
+    release();
+  });
+
+  test("the tap's hold reads the mark again: a list that landed after the door's check refuses the tap and lets go (review 7 R5)", async () => {
+    const { tricks, hill } = await deputyWithCopies();
+    const shown = carriedSeen(tricks, hill);
+    const mark = () => carriedSeen(tricks, hill);
+    const kept = await holdForTap([tricks, hill], shown, mark);
+    expect(kept).not.toBeNull();
+    expect(tricks.held()).toBe(true);
+    kept?.();
+    expect(tricks.held()).toBe(false);
+    // A list lands between the door's check and the hold.
+    const list = parseHillList({ seq: 3, on: true, decisions: [], closed: ["dc_carried00001"], tricks: {} });
+    if (list === null) throw new Error("bad list");
+    await hill.applyList({ from: "desk", crewId: "crew-1", list });
+    expect(await holdForTap([tricks, hill], shown, mark)).toBeNull();
+    expect([tricks.held(), hill.held()]).toEqual([false, false]);
+  });
+
   test("while the tap holds the copies, neither takes a list from the lead", async () => {
     const { tricks, hill } = await deputyWithCopies();
     const before = carriedSeen(tricks, hill);
-    const release = holdCopies([tricks, hill]);
+    const release = await holdCopies([tricks, hill]);
     const ctx = { from: "desk", crewId: "crew-1" };
     const hillAnswer = await hillCarryRoutes(hill).handle(CREW_HILL_COPY_PATH, ctx, { seq: 9, on: true, decisions: [], closed: [], tricks: {} });
     const tricksAnswer = await tricksCarryRoutes(tricks).handle(CREW_TRICKS_COPY_PATH, ctx, { seq: 9, tricks: [] });

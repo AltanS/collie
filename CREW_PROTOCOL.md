@@ -4541,7 +4541,11 @@ it reconnects".
   back (`x-collie-carried`). When the copies hold another list by then, the tap is refused (`409`,
   `changed: true`), nothing is asked or written, and the page is drawn again with the line "The list
   changed. Read it again." From the tap until its answer, both copies are held: a list or a part from
-  the lead is answered `409` (`held`), and the lead sends it again later.
+  the lead is answered `409` (`held`), and the lead sends it again later. Each copy takes one write at
+  a time; the hold waits for the write that runs when the tap comes, and the mark is then read again,
+  so a list that landed between the door's check and the hold refuses the tap the same way. The page
+  reads the names and the mark from one snapshot: the mark before and after the names, and only an
+  unchanged pair goes out.
 - **The tap.** The takeover commit (§18), and `collie promote` (§14) typed on the deputy, are the
   person's yes. Each holds both copies through its role change and writes one marker,
   `<stateDir>/standby-adopt.json` (0600): the lead it took over from, `by` (`takeover`, or `handover`

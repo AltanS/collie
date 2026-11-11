@@ -38,9 +38,9 @@ export interface AdoptMarker {
   readonly at: number;
 }
 
-/** A copy the commit holds. */
+/** A copy the commit holds. The hold answers once the write that ran when it was asked has ended. */
 export interface HeldCopy {
-  hold(): () => void;
+  hold(): Promise<() => void>;
 }
 
 /** What a copy reports of the list it holds, for {@link carriedSeen}. */
@@ -59,12 +59,27 @@ export function carriedSeen(tricks: SeenCopy | null, hill: SeenCopy | null): str
   return `t:${t === null ? "-" : `${t.digest.slice(0, 16)}:${String(t.need)}`};h:${String(h?.seq ?? 0)}`;
 }
 
-/** Hold every copy at once. The one release lets go of all of them, once. */
-export function holdCopies(copies: readonly (HeldCopy | null)[]): () => void {
-  const releases = copies.flatMap((copy) => (copy === null ? [] : [copy.hold()]));
+/**
+ * Hold every copy at once, and wait for the writes that ran when they were asked (review 7 R5). The one
+ * release lets go of all of them, once.
+ */
+export async function holdCopies(copies: readonly (HeldCopy | null)[]): Promise<() => void> {
+  const releases = await Promise.all(copies.flatMap((copy) => (copy === null ? [] : [copy.hold()])));
   return () => {
     for (const release of releases) release();
   };
+}
+
+/**
+ * The tap's hold (§25, review 7 R5): hold the copies, then read their mark again. Answers the release when
+ * the copies still hold the list the page showed (`shown`, null when the page carried no mark), and
+ * releases them and answers null when a list landed between the door's check and the hold.
+ */
+export async function holdForTap(copies: readonly (HeldCopy | null)[], shown: string | null, mark: () => string): Promise<(() => void) | null> {
+  const release = await holdCopies(copies);
+  if (shown === null || mark() === shown) return release;
+  release();
+  return null;
 }
 
 function markerPath(stateDir: string): string {

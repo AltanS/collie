@@ -473,8 +473,11 @@ export interface StandbyDoorDeps {
   readonly build: () => Promise<string>;
   /** The synced registry's devices, per request, for the bearer check. Empty ⇒ nothing can pass. */
   readonly devices: () => readonly SyncedDevice[];
-  /** Run RFC §7. Called at most once per admitted confirm; the door does not retry it. */
-  readonly takeover: (device: string) => Promise<TakeoverAnswer>;
+  /**
+   * Run RFC §7. Called at most once per admitted confirm; the door does not retry it. `shown` is the mark
+   * the tap sent (null when the door checks none), read again once the copies are held (review 7 R5).
+   */
+  readonly takeover: (device: string, shown: string | null) => Promise<TakeoverAnswer>;
   /** What the tap also starts, read off this machine's own disk per page (§25). Absent: nothing listed. */
   readonly carried?: () => Promise<CarriedSummary | null>;
   /** The mark of the lists the copies hold now (`carriedSeen`). Absent: the tap is not checked. */
@@ -614,7 +617,7 @@ export function createStandbyDoor(deps: StandbyDoorDeps) {
       if (deps.seen !== undefined && (req.headers.get(CARRIED_SEEN_HEADER) ?? "") !== deps.seen()) {
         return json({ ok: false, message: CARRIED_CHANGED, changed: true } satisfies TakeoverAnswer, 409);
       }
-      const answer = await deps.takeover(device.label);
+      const answer = await deps.takeover(device.label, deps.seen === undefined ? null : (req.headers.get(CARRIED_SEEN_HEADER) ?? ""));
       return json(answer, answer.ok ? 200 : 409);
     }
 
