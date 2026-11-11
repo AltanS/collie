@@ -8971,16 +8971,15 @@ export interface SendRouteRuntime {
   };
 }
 
-/** The send modes that put the person's words into the session, as against staging them in the box. */
-const SPOKE_MODES: ReadonlySet<SendRequest["mode"]> = new Set(["send", "command", "submit"]);
-/** The outcomes of a send whose words reached the session, or will once it is free. */
-const SPOKE_OUTCOMES: ReadonlySet<string> = new Set(["effective", "sent", "held", "steered"]);
-
 /**
- * Whether one phone send counts as the person writing to the session (1.29.0, the Hill's quiet mark): a
- * mode that submits, with an outcome that reached the session or waits for it. A discard, a staged
- * `append`/`replace`/`prepare` and a refusal do not.
+ * The send modes that put the person's own words into the session. Not a `command` (a `/compact` answers
+ * no question), and not a staged `append`/`replace`/`prepare` or a discard (C-N1, review 8).
  */
+const SPOKE_MODES: ReadonlySet<SendRequest["mode"]> = new Set(["send", "submit"]);
+/** The outcomes of a send whose words reached the session now. Not `held`: it may still be cancelled or expire. */
+const SPOKE_OUTCOMES: ReadonlySet<string> = new Set(["effective", "sent", "steered"]);
+
+/** Whether one phone send counts as the person writing to the session (1.29.0, the Hill's quiet mark). */
 export function sendSpoke(mode: SendRequest["mode"], outcome: string): boolean {
   return SPOKE_MODES.has(mode) && SPOKE_OUTCOMES.has(outcome);
 }

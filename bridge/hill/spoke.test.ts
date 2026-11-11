@@ -100,8 +100,11 @@ describe("the quiet mark", () => {
   test("only a send that put words into the session counts", () => {
     expect(sendSpoke("send", "effective")).toBe(true);
     expect(sendSpoke("submit", "sent")).toBe(true);
-    expect(sendSpoke("command", "held")).toBe(true);
     expect(sendSpoke("send", "steered")).toBe(true);
+    // C-N1 (review 8): a held send may still be cancelled or expire, and a command (`/compact`) is no
+    // answer to the session's question; neither marks a card.
+    expect(sendSpoke("send", "held")).toBe(false);
+    expect(sendSpoke("command", "effective")).toBe(false);
     expect(sendSpoke("send", "refused")).toBe(false);
     expect(sendSpoke("send", "typed_not_submitted")).toBe(false);
     expect(sendSpoke("discard", "discarded")).toBe(false);
