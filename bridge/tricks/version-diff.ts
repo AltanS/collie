@@ -27,8 +27,9 @@ import { CODE_BYTES_MAX, diskTrickFs, unsafeText, walkTrickCode, type TrickFs } 
 // Every diff line goes through `redactText` (bridge/redact.ts), the mask the bridge puts on any screen
 // text it serves, so a key in the code is not on the phone. Tabs become spaces and any other character
 // a Decision's view refuses (code-hash.ts `unsafeText`) a `?`, so one line never drops the whole view
-// (web/src/lib/tricks/schema.ts). A file whose hunk is not whole, because git's output hit the cap or
-// a line was masked, is marked `cut`: the card then does not count it as shown, and recommends nothing.
+// (web/src/lib/tricks/schema.ts). A file whose hunk is not whole, because git's output hit the cap, a
+// line was masked, or a character in a line became a `?`, is marked `cut`: the card then does not
+// count it as shown, and recommends nothing. The CR of a CRLF line end is dropped and does not count.
 
 /** One git run's limit. */
 export const DIFF_TIMEOUT_MS = 5000;
@@ -49,7 +50,7 @@ export interface ChangedFile {
   minus: number | null;
   /** The file's hunks, masked, one line each without the patch headers. Null when not read. */
   hunk: string[] | null;
-  /** Set when the hunk is not the whole change: git's output was cut at the cap, or a line was masked. */
+  /** Set when the hunk is not the whole change as it is: git's output was cut at the cap, a line was masked, or a character became a `?`. */
   cut?: true;
 }
 
@@ -129,21 +130,34 @@ async function spawnDiff(argv: readonly string[]): Promise<DiffRun> {
   }
 }
 
-/** A line as a Decision's view takes it, and whether the mask changed it. */
+/** A line as a Decision's view takes it, and whether it differs from the file's line beyond its tabs. */
 export interface ViewLineRead {
   line: string;
+  /**
+   * True when the person would not read the line as it is in the file: a key was masked, or a
+   * character the view refuses (a bidi mark, a control character) became a `?` (third security
+   * review). A tab as two spaces, or the CR of a CRLF line end, hides nothing and does not count.
+   */
   masked: boolean;
 }
 
-/** A line as a Decision's view takes it, and whether the mask changed it. */
+/** A line as a Decision's view takes it, and whether it differs from the file's line beyond its tabs. */
 export function readViewLine(raw: string): ViewLineRead {
-  const redacted = redactText(raw);
+  // A CRLF file's line keeps its CR after the split on LF: it is the line end, not text, so it goes.
+  const text = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+  const redacted = redactText(text);
   let line = "";
+  let replaced = false;
   for (const ch of redacted) {
-    if (ch === "\t") line += "  ";
-    else line += unsafeText(ch) ? "?" : ch;
+    if (ch === "\t") {
+      line += "  ";
+      continue;
+    }
+    const refused = unsafeText(ch);
+    if (refused) replaced = true;
+    line += refused ? "?" : ch;
   }
-  return { line, masked: redacted !== raw };
+  return { line, masked: redacted !== text || replaced };
 }
 
 /** A line as a Decision's view takes it: masked, tabs as two spaces, any character the view refuses a `?`. */

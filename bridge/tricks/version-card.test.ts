@@ -103,6 +103,39 @@ describe("the diff of two copies", () => {
       ["b.sh", true],
     ]);
   });
+
+  test("a changed line with a bidi mark or a control character is marked cut, and the card does not recommend use", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "a.sh": "1\n", "b.sh": "1\n", "c.sh": "1\n", "d.sh": "1\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "a.sh": "2\n", "b.sh": "2\n", "c.sh": "2\n", "d.sh": "2\n" });
+    const patches = new Map<string, string>([
+      // U+202E turns the rest of the line around on screen: the person would not read it as it is.
+      ["a.sh", '@@ -1 +1 @@\n-1\n+if [ "$x" = "\u202e1 nimda" ]; then rm -rf ~; fi\n'],
+      // A control character (BEL) the view cannot draw.
+      ["b.sh", "@@ -1 +1 @@\n-1\n+echo hi\u0007\n"],
+      // A tab is two spaces and a CRLF line end is the line's end: both are read as they are.
+      ["c.sh", "@@ -1 +1 @@\n-1\r\n+\techo 2\r\n"],
+      ["d.sh", "@@ -1 +1 @@\n-1\n+echo 2\n"],
+    ]);
+    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(argv.at(-1)?.split("/").at(-1) ?? "") ?? "", timedOut: false });
+    const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
+    expect(diff.files.map((file) => [file.rel, file.cut === true])).toEqual([
+      ["a.sh", true],
+      ["b.sh", true],
+      ["c.sh", false],
+      ["d.sh", false],
+    ]);
+    expect(diff.files[0]?.hunk?.[2]).toBe('+if [ "$x" = "?1 nimda" ]; then rm -rf ~; fi');
+    expect(diff.files[2]?.hunk).toEqual(["@@ -1 +1 @@", "-1", "+  echo 2"]);
+    const pending = subject().pending!;
+    const one = (files: VersionDiff["files"]): TrickVersionSubject => ({ ...subject(), pending: { ...pending, info: { ...pending.info, files: { added: 0, changed: files.length, removed: 0 } } } });
+    for (const file of diff.files.slice(0, 2)) {
+      const card = versionCard(one([file]), { counted: true, files: [file] });
+      expect(card?.recommends).toBeNull();
+      expect(card?.summary).toBe("1 file changed. It asks for no new rights. 0 of 1 file shown.");
+    }
+    const clean = diff.files.slice(2);
+    expect(versionCard(one(clean), { counted: true, files: clean })?.recommends).toMatchObject({ intent: "use" });
+  });
 });
 
 const subject = (over: Partial<TrickVersionSubject> = {}): TrickVersionSubject => ({
