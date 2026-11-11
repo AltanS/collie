@@ -15,6 +15,7 @@ import {
   PROPOSAL_ORPHAN_MS,
   PROPOSALS_MEMBER_OPEN_MAX,
   PROPOSALS_OPEN_MAX,
+  PROPOSALS_MACHINE_HOUR_MAX,
   PROPOSALS_SENDER_HOUR_MAX,
   PROPOSALS_SENDER_OPEN_MAX,
   PROPOSED_BYTES_MAX,
@@ -320,6 +321,18 @@ describe("one open proposal per trick id", () => {
     expect(await l.proposals.propose(proposal("legs", "2\n"), OTHER)).toMatchObject({ ok: false, code: "open_elsewhere" });
   });
 
+  test("F5: with no session placed, a second proposal of the same id never replaces the first", async () => {
+    const l = await lead();
+    const first = proposal("legs", "1\n");
+    expect((await l.proposals.propose(first, TERMINAL)).ok).toBe(true);
+    const second = await l.proposals.propose(proposal("legs", "2\n"), TERMINAL);
+    expect(second).toEqual({ ok: false, code: "open_elsewhere", error: "A proposal of legs from this machine already waits for your person's answer. Collie cannot confirm which session sent it, so it is not replaced." });
+    expect(proposalCards(l).map((d) => d.state)).toEqual(["open"]);
+    expect((await stat(l.proposals.storeDir("legs", first.hash))).isDirectory()).toBe(true);
+    // The same files again still answer as before.
+    expect(await l.proposals.propose(proposal("legs", "1\n"), TERMINAL)).toMatchObject({ ok: true, replaced: null });
+  });
+
   test("a replacement while the person answers the open one is refused", async () => {
     const l = await lead();
     await l.proposals.propose(proposal("legs", "1\n"), AGENT);
@@ -357,6 +370,21 @@ describe("the limits", () => {
     expect(await l.proposals.propose(proposal("late"), AGENT)).toMatchObject({ ok: false, code: "rate" });
     l.clock.t += 61 * 60_000;
     expect((await l.proposals.propose(proposal("late"), AGENT)).ok).toBe(true);
+  });
+
+  test("F5: per crew machine per hour, however many session addresses it names", async () => {
+    const l = await lead();
+    const sender = (i: number): Proposer => ({ by: "agent", host: "minibuch", label: null, memberId: "minibuch", address: `minibuch/%${String(i)}#aaaa` });
+    for (let i = 0; i < PROPOSALS_MACHINE_HOUR_MAX; i += 1) {
+      expect((await l.proposals.propose(proposal(`r${String(i)}`), sender(i))).ok).toBe(true);
+      for (const card of openCards(l)) await tap(l, card, "later");
+    }
+    expect(await l.proposals.propose(proposal("late"), sender(99))).toEqual({ ok: false, code: "rate", error: `This machine proposed ${String(PROPOSALS_MACHINE_HOUR_MAX)} tricks in the last hour. Try again later.` });
+    expect(await l.proposals.propose(proposal("late"), { ...TERMINAL, memberId: "minibuch", host: "minibuch" })).toMatchObject({ ok: false, code: "rate" });
+    // Another machine is not held by it.
+    expect((await l.proposals.propose(proposal("late"), TERMINAL)).ok).toBe(true);
+    l.clock.t += 61 * 60_000;
+    expect((await l.proposals.propose(proposal("later"), sender(99))).ok).toBe(true);
   });
 
   test("per crew machine, and on the whole lead", async () => {

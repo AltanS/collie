@@ -44,9 +44,19 @@ import { versionDiff, type VersionDiff } from "./version-diff.ts";
 // ── LIMITS ─────────────────────────────────────────────────────────────────────────────────────────
 // A sender is one session (its walky address on its machine) or one machine's terminal. Per sender at
 // most {@link PROPOSALS_SENDER_OPEN_MAX} open and {@link PROPOSALS_SENDER_HOUR_MAX} in an hour; per crew
-// machine {@link PROPOSALS_MEMBER_OPEN_MAX} open; on this lead {@link PROPOSALS_OPEN_MAX} open and
-// {@link PROPOSED_BYTES_MAX} stored. One open proposal per trick id: the same sender's next one replaces
-// it (the old card closes as replaced), anybody else's is refused. A request id is the proposal's replay
+// machine (this lead's own included) {@link PROPOSALS_MEMBER_OPEN_MAX} open and
+// {@link PROPOSALS_MACHINE_HOUR_MAX} in an hour, so new session addresses do not lift the hourly cap; on
+// this lead {@link PROPOSALS_OPEN_MAX} open and {@link PROPOSED_BYTES_MAX} stored. One open proposal per
+// trick id: the same session's next one replaces it (the old card closes as replaced, and the new card
+// says so), anybody else's is refused.
+//
+// WHAT IS CONFIRMED (review F5). The machine is: the walky socket is this machine's, and a member's call
+// is signed with the crew secret. The session is placed by the pane markers the caller sends, against a
+// live agent pane (on a crew the lead resolves the address to one of that member's own panes): a check,
+// not a proof, as any process of the same user can send another pane's markers. A call with no markers,
+// or none that place an agent pane, has no session at all: its card says "Someone on <host> proposes it.
+// Collie could not confirm which session.", and such a "terminal" proposal never replaces an open one of
+// the same id; it is refused until the person answers the first. A request id is the proposal's replay
 // key for {@link PROPOSAL_RID_KEEP_MS}: the same sender, request id and hash answers what it answered; the
 // same request id with other files is refused.
 
@@ -56,6 +66,8 @@ export const PROPOSALS_SENDER_OPEN_MAX = 2;
 export const PROPOSALS_SENDER_HOUR_MAX = 6;
 /** Open proposals from one crew machine, its sessions and its terminal together. */
 export const PROPOSALS_MEMBER_OPEN_MAX = 4;
+/** Proposals one crew machine may make in an hour, its sessions and its terminal together. */
+export const PROPOSALS_MACHINE_HOUR_MAX = 12;
 /** Open proposals on this lead. */
 export const PROPOSALS_OPEN_MAX = 8;
 /** Bytes stored for open proposals on this lead. */
@@ -364,6 +376,8 @@ export class TrickProposals {
     const same = live.find((row) => row.id === id);
     if (same !== undefined && same.sender !== sender) return refused("open_elsewhere", `Somebody else already proposed a trick named ${id}. It waits for your person's answer.`);
     if (same !== undefined && same.hash === hash) return { ok: true, kind: same.kind === "version" ? "version" : "proposal", id, hash, decision: same.decision, replaced: null };
+    // With no session placed, "the same sender" is anybody on that machine: never a silent replace.
+    if (same !== undefined && proposer.address === null) return refused("open_elsewhere", `A proposal of ${id} from this machine already waits for your person's answer. Collie cannot confirm which session sent it, so it is not replaced.`);
     if (same !== undefined && this.deps.hill.isAnswering(same.decision)) return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");
     const target = await tricks.proposalTarget(id);
     if (target.kind === "refused") return refused("exists", target.reason);
@@ -371,6 +385,7 @@ export class TrickProposals {
     const self = proposer.by === "agent" ? "This session" : "This terminal";
     if (others.filter((row) => row.sender === sender).length >= PROPOSALS_SENDER_OPEN_MAX) return refused("too_many_open", `${self} has ${String(PROPOSALS_SENDER_OPEN_MAX)} proposals waiting. Wait for your person's answers.`);
     if (state.recent.filter((row) => row.sender === sender).length >= PROPOSALS_SENDER_HOUR_MAX) return refused("rate", `${self} proposed ${String(PROPOSALS_SENDER_HOUR_MAX)} tricks in the last hour. Try again later.`);
+    if (state.recent.filter((row) => row.sender.startsWith(`${proposer.memberId}\u0000`)).length >= PROPOSALS_MACHINE_HOUR_MAX) return refused("rate", `This machine proposed ${String(PROPOSALS_MACHINE_HOUR_MAX)} tricks in the last hour. Try again later.`);
     if (others.filter((row) => row.memberId === proposer.memberId).length >= PROPOSALS_MEMBER_OPEN_MAX) return refused("too_many_open", `This machine has ${String(PROPOSALS_MEMBER_OPEN_MAX)} proposals waiting. Wait for your person's answers.`);
     if (others.length >= PROPOSALS_OPEN_MAX) return refused("too_many_open", `${String(PROPOSALS_OPEN_MAX)} proposals wait already on this Collie. Wait for your person's answers.`);
     if (others.reduce((sum, row) => sum + row.bytes, 0) + proposal.bytes > PROPOSED_BYTES_MAX) return refused("too_many_bytes", "The proposals waiting on this Collie hold too much already. Wait for your person's answers.");
