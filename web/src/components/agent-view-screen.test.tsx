@@ -139,12 +139,13 @@ describe("a tap on an agent view", () => {
     expect(props.onTap).toHaveBeenNthCalledWith(2, tapOf(1, "v/1/1", 'tapped "Wait"'));
   });
 
-  it("lead 6: with confirm, arms on the first tap in Collie's words and sends on the second", () => {
+  it("lead 6, review 10 W2: with confirm, arms on the first tap with the words the second sends, and sends on the second", () => {
     vi.useFakeTimers();
     const { props } = draw();
     fireEvent.click(screen.getByRole("button", { name: "Drop" }));
     expect(props.onTap).not.toHaveBeenCalled();
-    const armed = screen.getByRole("button", { name: "Tap again" });
+    // Not "Tap again" alone: the armed button says what the second tap sends, every word.
+    const armed = screen.getByRole("button", { name: 'Tap again to send "Drop"' });
     expect(armed).toHaveAttribute("data-armed");
     expect(screen.queryByRole("button", { name: "Really drop?" })).toBeNull();
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
@@ -764,5 +765,32 @@ describe("review 10 W1: a button's label is shown whole", () => {
   it("W1: a long label on a row's own button wraps too", () => {
     draw({ view: screenOf([{ kind: "list", kids: [{ kind: "row", text: "Deploy", kids: [{ kind: "button", attrs: { label: long, intent: "a" } }] }] }]) });
     for (const words of screen.getAllByText(long)) expect(cutsWords(words)).toBe(false);
+  });
+});
+
+describe("review 10 W2: an armed button shows and announces the words its second tap sends", () => {
+  const grouped = screenOf([
+    {
+      kind: "group",
+      attrs: { label: "Release candidate" },
+      kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Drop", intent: "drop", confirm: "Sure?" } }] }],
+    },
+  ]);
+
+  it("W2: the armed words name the label and the group, on the button and in a live region", () => {
+    vi.useFakeTimers();
+    const { container } = draw({ view: grouped });
+    const words = 'Tap again to send "Drop" in "Release candidate"';
+    const live = container.querySelector("[data-slot=view-armed-live]");
+    expect(live).not.toBeNull();
+    expect(live).toHaveAttribute("aria-live", "polite");
+    expect(live?.textContent).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Drop" }));
+    const armed = screen.getByRole("button", { name: words });
+    expect(armed).toHaveAttribute("data-armed");
+    expect(armed).toHaveTextContent(words);
+    expect(live?.textContent).toBe(words);
+    // The button holds the whole sentence: nothing cuts it.
+    for (const shown of screen.getAllByText(words)) expect(cutsWords(shown)).toBe(false);
   });
 });

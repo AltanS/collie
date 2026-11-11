@@ -142,11 +142,15 @@ const REQUEST_CLAMP_CHARS = 140;
 const BLOCK_GAP = 8;
 
 /**
- * Collie's words on an armed `confirm` button. A button in a bar is a third of the screen wide, so the
- * words are short; the button's label, which the person just tapped, is what the second tap sends.
+ * Collie's words on an armed `confirm` button (review 10 W2): "Tap again to send" with every word the
+ * second tap sends, the label and the group's label, read from the words the bridge would build for that
+ * control (`viewTapWords`). The button grows to hold them; no word of a send is ever off screen.
  */
-function armedLabel(): string {
-  return t("view.armed.short");
+function armedWordsOf(view: ViewScreen | undefined, block: ScreenBlock, label: string, rendered: string): string {
+  const words = view === undefined ? null : viewTapWords(view, screenControl(block, rendered));
+  const tap = words === null ? null : pickReceiptOf(words, undefined);
+  if (tap === null) return t("view.armed", { label: label.trim() });
+  return tap.context === null ? t("view.armed", { label: tap.label }) : t("view.armed.in", { label: tap.label, group: tap.context });
 }
 
 /**
@@ -443,7 +447,7 @@ export function AgentViewScreen({
         hostOf: linkHost,
         wrap: true,
         linkText,
-        armedLabel,
+        armedLabel: (label, rendered) => armedWordsOf(view, block, label, rendered),
       };
       const busyHere = busyControl === null ? null : renderedControl(block.prefix, busyControl);
       if (isLive && busyHere !== null) ctx.tap = { phase: "busy", rid: "agent-view", control: busyHere, intent: "" };
@@ -458,7 +462,7 @@ export function AgentViewScreen({
         </div>
       );
     },
-    [partKey, onBlockTap, onLink, busyControl, held, now, pictures, pressed, linkText],
+    [partKey, view, onBlockTap, onLink, busyControl, held, now, pictures, pressed, linkText],
   );
 
   const freshItems = useMemo(

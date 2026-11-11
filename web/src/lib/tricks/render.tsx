@@ -179,12 +179,13 @@ export interface RenderCtx {
    */
   linkText?: (text: string) => ReactNode;
   /**
-   * The words an armed `confirm` button shows, in the place's own voice: given the button's label, the
-   * sentence that says what the second tap does (an agent view: Collie's "Tap again", so the armed state
-   * is never the agent's `confirm` word alone). NO DEFAULT: absent, an
+   * The words an armed `confirm` button shows, in the place's own voice: given the button's label and its
+   * control path, the sentence that says what the second tap sends (an agent view: Collie's "Tap again to
+   * send" with every word the tap sends, so the armed state is never the agent's `confirm` word alone).
+   * Given, the button also announces those words in a live region of its own. NO DEFAULT: absent, an
    * armed button shows its `confirm` word, as it always did.
    */
-  armedLabel?: (label: string) => string;
+  armedLabel?: (label: string, path: string) => string;
 }
 
 /** The words of a free text as the place draws them: through `ctx.linkText` when it has one, else as they are. */
@@ -349,7 +350,9 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const arm = useArm<"confirm">();
   const armed = arm.armed === "confirm";
   const Icon = attrs.icon === undefined ? null : trickIconOf(attrs.icon);
-  const armedWords = attrs.confirm === undefined ? undefined : (ctx.armedLabel?.(attrs.label) ?? attrs.confirm);
+  const armedWords = attrs.confirm === undefined ? undefined : (ctx.armedLabel?.(attrs.label, path) ?? attrs.confirm);
+  // The place speaks the armed words aloud too (a live region on the button itself is unreliable).
+  const announces = attrs.confirm !== undefined && ctx.armedLabel !== undefined;
   const label = armed && armedWords !== undefined ? armedWords : attrs.label;
   const ink = armed ? inkOf("danger", false) : inkOf(attrs.tone, ctx.stale);
   const disabled = attrs.disabled !== undefined;
@@ -422,6 +425,11 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
         </span>
         {attrs.hint !== undefined && <span className="max-w-full truncate text-xs font-normal text-muted-foreground">{attrs.hint}</span>}
       </Button>
+      {announces && (
+        <span data-slot="view-armed-live" className="sr-only" aria-live="polite">
+          {armed ? armedWords : ""}
+        </span>
+      )}
     </div>
   );
 }
