@@ -717,6 +717,33 @@ describe("taps", () => {
     expect(ok200(await r.service.tap(HOST, "legs", tapBody(await revOf(r, "legs"), REQ2))).code).toBe("ok");
   });
 
+  test("N1: a tap queued behind a run that redraws its part answers changed, and runs nothing", async () => {
+    let release: () => void = () => {};
+    const redrawn = JSON.stringify({ v: 1, asOf: "2026-11-08T09:01:00Z", parts: [{ at: "session", id: "legs", view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Rerun", intent: "rerun", value: "25" } }] }] }] });
+    const slow: Scripted = {
+      later: () =>
+        new Promise((resolve) => {
+          release = () => resolve(exited(redrawn));
+        }),
+    };
+    const r = await onRig([slow, exited(redrawn)]);
+    r.clock.t = T0 + 30_000;
+    r.service.noteWatched();
+    const timer = r.service.tick();
+    await Bun.sleep(20);
+    // Checked against the part as it was drawn when it queued: it passes, and waits for the slot.
+    const queued = r.service.tap(HOST, "legs", tapBody(r.rev, REQ));
+    await Bun.sleep(20);
+    release();
+    await timer;
+    const reply = ok200(await queued);
+    expect(reply).toMatchObject({ code: "changed", refused: "changed" });
+    expect(reply.parts?.[0]?.value).toMatchObject({ view: [{ kids: [{ attrs: { value: "25" } }] }] });
+    expect(r.specs.map((s) => factsOf(s).trigger.kind)).toEqual(["start", "timer"]);
+    // A refusal keeps no receipt: the same id may tap again, at the rev drawn now.
+    expect(ok200(await r.service.tap(HOST, "legs", { ...tapBody(await revOf(r, "legs"), REQ), value: "25" })).code).toBe("ok");
+  });
+
   test("a timeout is unknown, a failure is rejected with the masked line, and the tap restarts a stopped trick", async () => {
     const r = await onRig([
       { kind: "timeout", stderr: "", ms: 10_000, limitMs: 10_000 },

@@ -417,6 +417,8 @@ interface QueuedTap {
   marker: TrickReceiptRecord;
   /** Set once the marker reached disk: only then is the receipt completed on disk. */
   marked: boolean;
+  /** Only on a phone's tap: the rev it drew, checked again when the tap's run begins (N1). */
+  phone?: { rev: number | undefined };
   resolve: (reply: TrickTapReply) => void;
 }
 
@@ -1408,6 +1410,13 @@ export class TricksService implements TricksSurface {
           tap?.resolve({ rid, code: "rejected", message: why });
           return;
         }
+        // N1 (review 11): a phone's tap was checked when it queued; the run ahead of it may have redrawn the
+        // part since. Check it again against the part as drawn NOW, before anything is recorded or run.
+        const refused = tap?.phone === undefined ? null : this.tapRefusal(rt.found.id, tap.request, tap.phone.rev);
+        if (tap !== null && refused !== null) {
+          tap.resolve(this.refusalOf(rt.found.id, tap.request, refused));
+          return;
+        }
         if (tap !== null) {
           tap.marked = await this.receiptFile.recordFirst(tap.marker);
           if (!tap.marked) {
@@ -1591,6 +1600,11 @@ export class TricksService implements TricksSurface {
 
   /** Answer a refused phone tap: one audit line, nothing run, nothing kept. `changed` carries the trick's parts now. */
   private refuseTap(id: string, request: TapRequest, refused: TapRefusal): TapAnswer {
+    return { status: 200, body: this.refusalOf(id, request, refused) };
+  }
+
+  /** The reply of a refused phone tap, and its one audit line. */
+  private refusalOf(id: string, request: TapRequest, refused: TapRefusal): TrickTapReply {
     const host = this.deps.memberId;
     this.deps.audit?.({ action: "trick.tap.refused", detail: { trick: id, reason: refused, node: request.node, intent: request.intent } });
     const reply: TrickTapReply = { rid: request.rid, code: refused === "changed" ? "changed" : "rejected", refused, message: TAP_REFUSED_LINES[refused] };
@@ -1600,7 +1614,7 @@ export class TricksService implements TricksSurface {
       reply.parts = mine.parts;
       reply.present = mine.present;
     }
-    return { status: 200, body: reply };
+    return reply;
   }
 
   /**
@@ -1665,6 +1679,7 @@ export class TricksService implements TricksSurface {
     const reply = new Promise<TrickTapReply>((resolve) => {
       queued = seen === undefined ? { request, marker, marked: false, resolve } : { request, seen, marker, marked: false, resolve };
     });
+    if (queued !== undefined && phone !== undefined) queued.phone = phone;
     if (queued === undefined) throw new Error("the tap promise did not run its executor");
     if (answer) rt.hillQueue.push(queued);
     else rt.queued = queued;
@@ -1672,6 +1687,8 @@ export class TricksService implements TricksSurface {
     this.pump(rt);
     try {
       const body = await reply;
+      // A refusal at the run's start (N1) keeps no receipt, as one at the door: the same id may tap again.
+      if (body.refused !== undefined) return { status: 200, body };
       this.receipts.set(request.rid, { digest, reply: body });
       while (this.receipts.size > TAP_RECEIPTS_MAX) {
         const oldest = this.receipts.keys().next().value;
