@@ -114,7 +114,7 @@ async function lead(opts: { hillOff?: boolean } = {}): Promise<Lead> {
     onCollieAnswer: (ref, intent) => (ref.type === "proposal" ? proposals!.answer(ref, intent) : cards!.answer(ref, intent)),
   });
   const diff = async (): Promise<{ files: []; counted: false }> => ({ files: [], counted: false });
-  cards = new VersionCards({ hill, tricks: () => service, diff, proposedBy: (id, hash) => proposals?.proposedBy(id, hash) ?? null });
+  cards = new VersionCards({ hill, tricks: () => service, diff });
   service = new TricksService({
     configDir,
     stateDir,
@@ -205,7 +205,7 @@ describe("a proposal for a new trick", () => {
     const code = await trickCodeHash(dir);
     expect(code.ok && switches.on.legs.hash === code.hash).toBe(true);
     const row = (await l.service.reply(undefined)).tricks.find((t) => t.id === "legs");
-    expect(row).toMatchObject({ on: true, provenance: { via: "agent" } });
+    expect(row).toMatchObject({ on: true, provenance: { via: "agent", proposed: { by: "agent", host: "minibuch" } } });
     // The stored copy is gone, and the proposer's session got the answer.
     expect(await readdir(join(l.configDir, TRICKS_DIR, PROPOSED_DIR, "legs")).catch(() => [])).toEqual([]);
     expect(l.sent.at(-1)).toMatchObject({ to: "minibuch/%3#abcd" });
@@ -371,7 +371,7 @@ describe("the limits", () => {
 });
 
 describe("a trick id that exists", () => {
-  async function installed(l: Lead, id: string, opts: { on: boolean; auto?: boolean; origin?: string }): Promise<string> {
+  async function installed(l: Lead, id: string, opts: { on: boolean; origin?: string }): Promise<string> {
     const dir = join(l.configDir, TRICKS_DIR, id);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, "trick.toml"), manifest(id));
@@ -380,13 +380,50 @@ describe("a trick id that exists", () => {
     if (opts.origin !== undefined) await writeFile(join(dir, ORIGIN_FILE), opts.origin);
     const code = await trickCodeHash(dir);
     if (!code.ok) throw new Error(code.reason);
-    if (opts.on) {
-      const switches = withSwitch({ on: new Map() }, id, true, "2026-11-10T08:00:00Z", code.hash);
-      if (opts.auto === true) switches.on.get(id)!.auto = true;
-      await writeSwitches(l.stateDir, switches);
-    }
+    if (opts.on) await writeSwitches(l.stateDir, withSwitch({ on: new Map() }, id, true, "2026-11-10T08:00:00Z", code.hash));
     await l.service.refresh(true);
     return dir;
+  }
+
+  /** A trick a proposal made, switched on by the person's yes, with a config.toml the person wrote after. */
+  async function proposedOn(l: Lead, id: string): Promise<string> {
+    await l.proposals.propose(proposal(id, "old\n"), TERMINAL);
+    const card = openCards(l).find((d) => d.from.kind === "collie" && d.from.ref?.id === id);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok" });
+    const dir = join(l.configDir, TRICKS_DIR, id);
+    await writeFile(join(dir, "config.toml"), "rows = 3\n");
+    await l.service.refresh(true);
+    return dir;
+  }
+
+  /** Every file under the tricks folder but the proposals' own, with its bytes and mode, and the switch file. */
+  async function snapshot(l: Lead): Promise<string[]> {
+    const root = join(l.configDir, TRICKS_DIR);
+    const out: string[] = [];
+    const go = async (rel: string): Promise<void> => {
+      for (const name of (await readdir(join(root, rel))).toSorted()) {
+        const sub = rel === "" ? name : `${rel}/${name}`;
+        if (sub === PROPOSED_DIR) continue;
+        const st = await stat(join(root, sub));
+        if (st.isDirectory()) {
+          out.push(`${sub}/ ${(st.mode & 0o777).toString(8)}`);
+          await go(sub);
+          continue;
+        }
+        out.push(`${sub} ${(st.mode & 0o777).toString(8)} ${await readFile(join(root, sub), "utf8")}`);
+      }
+    };
+    await go("");
+    out.push(`switches ${await readFile(join(l.stateDir, TRICKS_DIR, "switches.json"), "utf8").catch(() => "none")}`);
+    return out;
+  }
+
+  async function settle(l: Lead): Promise<void> {
+    l.clock.t += 1000;
+    await l.service.refresh(true);
+    l.clock.t += PENDING_SETTLE_MS;
+    await l.service.refresh(true);
+    await l.cards.settled();
   }
 
   test("from a repository is refused: change it there", async () => {
@@ -396,34 +433,94 @@ describe("a trick id that exists", () => {
     expect(await l.proposals.propose(proposal("legs"), AGENT)).toEqual({ ok: false, code: "exists", error: "This trick comes from AltanS/collie-tricks. Change it there." });
   });
 
-  test("that is off, or takes versions without asking, is refused", async () => {
+  test("added on this machine is refused: the person owns that folder", async () => {
     const l = await lead();
-    await installed(l, "offline", { on: false });
-    expect(await l.proposals.propose(proposal("offline"), AGENT)).toMatchObject({ ok: false, code: "exists", error: expect.stringContaining("switched off") });
-    await installed(l, "auto", { on: true, auto: true });
-    expect(await l.proposals.propose(proposal("auto"), AGENT)).toMatchObject({ ok: false, code: "exists", error: expect.stringContaining("without asking") });
+    await installed(l, "legs", { on: true });
+    const before = await snapshot(l);
+    expect(await l.proposals.propose(proposal("legs", "new\n"), AGENT)).toEqual({ ok: false, code: "exists", error: "legs was added on this machine. Change it there." });
+    expect(await snapshot(l)).toEqual(before);
   });
 
-  test("that is on gets the runner's own new version card, which names the proposer and recommends nothing", async () => {
+  test("a proposed trick that is off is refused; one on auto still gets a card that waits for a yes", async () => {
     const l = await lead();
-    const dir = await installed(l, "legs", { on: true });
-    const answer = await l.proposals.propose(proposal("legs", "new\n"), AGENT);
-    expect(answer).toMatchObject({ ok: true, kind: "version", decision: null });
-    expect(await readFile(join(dir, "program.ts"), "utf8")).toBe("new\n");
-    // The person's settings stay.
-    expect(await readFile(join(dir, "config.toml"), "utf8")).toBe("rows = 3\n");
-    l.clock.t += 1000;
+    await proposedOn(l, "legs");
+    await writeSwitches(l.stateDir, withSwitch(withSwitch({ on: new Map() }, "x", true, "2026-11-10T08:00:00Z"), "x", false, "2026-11-10T08:00:00Z"));
     await l.service.refresh(true);
-    l.clock.t += PENDING_SETTLE_MS;
-    await l.service.refresh(true);
-    await l.cards.settled();
-    const card = l.hill.collieDecisions("version").find((d) => d.state === "open");
+    expect(await l.proposals.propose(proposal("legs", "new\n"), AGENT)).toMatchObject({ ok: false, code: "exists", error: expect.stringContaining("switched off") });
+    const m = await lead();
+    await proposedOn(m, "auto");
+    const switches = JSON.parse(await readFile(join(m.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    switches.on.auto.auto = true;
+    await writeFile(join(m.stateDir, TRICKS_DIR, "switches.json"), JSON.stringify(switches));
+    await m.service.refresh(true);
+    const before = await snapshot(m);
+    expect(await m.proposals.propose(proposal("auto", "new\n"), AGENT)).toMatchObject({ ok: true, kind: "version" });
+    await settle(m);
+    expect(await snapshot(m)).toEqual(before);
+    expect(openCards(m).map((d) => d.title)).toEqual(["Use the new version of auto?"]);
+  });
+
+  test("a proposed trick that is on: the version waits inert on one card, and no file outside the store moves before the yes", async () => {
+    const l = await lead();
+    const dir = await proposedOn(l, "legs");
+    const before = await snapshot(l);
+    // Proposed: one card, nothing written.
+    const v2 = proposal("legs", "new\n", { extra: [{ rel: "config.toml", bytes: enc("rows = 99\n"), executable: false }] });
+    const answer = await l.proposals.propose(v2, AGENT);
+    expect(answer).toMatchObject({ ok: true, kind: "version", id: "legs", hash: v2.hash, decision: expect.stringMatching(/^dc_/u) });
+    await settle(l);
+    expect(await snapshot(l)).toEqual(before);
+    const [card] = openCards(l);
+    expect(card?.title).toBe("Use the new version of legs?");
     expect(card?.summary).toStartWith("An agent session (repo#one) on minibuch proposes it.");
     expect(card?.recommends).toBeNull();
-    expect(card?.options.map((o) => o.intent)).toEqual(["use", "keep"]);
-    // Nothing new runs: the approved copy is still the old one until the person says use.
+    expect(card?.options.map((o) => [o.intent, o.label])).toEqual([
+      ["on", "Use the new version"],
+      ["later", "Keep the old version"],
+    ]);
+    expect(JSON.stringify(card?.view ?? null)).toContain("The trick keeps yours.");
+    expect(l.hill.collieDecisions("version").filter((d) => d.state === "open")).toEqual([]);
+    // Declined: the stored copy goes, nothing else moved.
+    expect(await tap(l, card!, "later")).toMatchObject({ code: "ok" });
+    await settle(l);
+    expect(await snapshot(l)).toEqual(before);
+    expect(await stat(l.proposals.storeDir("legs", v2.hash)).catch(() => null)).toBeNull();
+    // Expired: the same.
+    const v3 = proposal("legs", "newer\n");
+    expect(await l.proposals.propose(v3, AGENT)).toMatchObject({ ok: true, kind: "version" });
+    l.clock.t += 4 * 24 * 60 * 60_000;
+    l.hill.sweep(l.clock.t);
+    await l.proposals.sweep();
+    await settle(l);
+    expect(await snapshot(l)).toEqual(before);
+    expect(await stat(l.proposals.storeDir("legs", v3.hash)).catch(() => null)).toBeNull();
+    // The yes: exactly the stored code is written and approved, the person's config.toml stays, the trick stays on.
+    const v4 = proposal("legs", "newest\n", { extra: [{ rel: "config.toml", bytes: enc("rows = 99\n"), executable: false }] });
+    await l.proposals.propose(v4, AGENT);
+    const [yes] = openCards(l);
+    expect(await tap(l, yes!, "on")).toMatchObject({ code: "ok", state: "answered" });
+    expect(await readFile(join(dir, "program.ts"), "utf8")).toBe("newest\n");
+    expect(await readFile(join(dir, "config.toml"), "utf8")).toBe("rows = 3\n");
+    const code = await trickCodeHash(dir);
     const switches = JSON.parse(await readFile(join(l.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
-    expect(switches.on.legs.by).not.toBe("proposal");
+    expect(code.ok && switches.on.legs.hash === code.hash).toBe(true);
+    expect(switches.on.legs.by).toBe("proposal");
+    expect(switches.on.legs.previous).toBeDefined();
+    await settle(l);
+    // The runner never saw the write as a version waiting: no card of its own.
+    expect(l.hill.collieDecisions("version")).toEqual([]);
+    expect((await l.service.reply(undefined)).tricks.find((t) => t.id === "legs")).toMatchObject({ on: true });
+  });
+
+  test("a folder changed by hand since the card refuses the yes, and the hand edit stays", async () => {
+    const l = await lead();
+    const dir = await proposedOn(l, "legs");
+    await l.proposals.propose(proposal("legs", "new\n"), AGENT);
+    await writeFile(join(dir, "program.ts"), "my edit\n");
+    await l.service.refresh(true);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "rejected" });
+    expect(await readFile(join(dir, "program.ts"), "utf8")).toBe("my edit\n");
   });
 });
 

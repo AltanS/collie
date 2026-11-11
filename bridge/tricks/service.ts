@@ -27,7 +27,7 @@ import {
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
 import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
-import { diskTrickFs } from "./code-hash.ts";
+import { diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
@@ -244,7 +244,11 @@ function routeAnswer(answer: VersionAnswer): VersionRouteAnswer {
  * Where a proposal for a trick id lands (crew slice 8, proposals.ts): a NEW trick, a new VERSION of one that
  * is on (the runner's own card asks), or refused in plain words.
  */
-export type ProposalTarget = { kind: "new" } | { kind: "version" } | { kind: "refused"; reason: string };
+export type ProposalTarget =
+  | { kind: "new" }
+  /** A trick a proposal made, on, with the approved copy a new version is shown against. */
+  | { kind: "version"; baseHash: string; baseDir: string; baseManifest?: TrickManifest }
+  | { kind: "refused"; reason: string };
 
 /** What writing a proposal into the tricks folder came to. */
 export type ProposalPlaced = { ok: true; codeHash: string } | { ok: false; message: string };
@@ -1087,7 +1091,10 @@ export class TricksService implements TricksSurface {
     if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
     // A proposed trick (`collie trick propose`, crew slice 8) reads "Added by agent", or "Added by CLI" from a terminal.
     const proposal = shown.proposal;
-    if (origin === undefined && proposal !== undefined) info.provenance = { via: proposal.by === "agent" ? "agent" : "cli", at: proposal.at };
+    if (origin === undefined && proposal !== undefined) {
+      const host = [...proposal.host].map((ch) => (unsafeText(ch) ? "?" : ch)).slice(0, 40).join("");
+      info.provenance = { via: proposal.by === "agent" ? "agent" : "cli", at: proposal.at, proposed: { by: proposal.by, host } };
+    }
     const waiting = rt.pending === null ? NOT_APPROVED_LINE : PENDING_LINE;
     const error = m === undefined ? shown.refusals[0]?.reason : blocked ? (rt.copyProblem ?? waiting) : rt.lastError;
     if (error !== undefined) info.error = problemLine(error);
@@ -1441,10 +1448,11 @@ export class TricksService implements TricksSurface {
   }
 
   /**
-   * What a proposal for `id` would be now (crew slice 8): new, a new version of a trick that is on, or
-   * refused. A trick from a repository is changed there. A trick that is off, takes versions without
-   * asking, has a version waiting already, or runs no approved copy is refused: a proposal must always
-   * reach the person as a card, and must never overwrite a change the person has not seen.
+   * What a proposal for `id` would be now (crew slice 8): new, a new version, or refused. Only a trick a
+   * proposal made takes a new version by proposal: a trick from a repository is changed there, and one
+   * added on this machine is the person's folder. A trick that is off, has a change waiting, or runs no
+   * approved copy is refused too. A trick on auto takes a proposal: the proposal still waits for the
+   * person's yes on its own card, since it comes from an agent and not from the folder.
    */
   async proposalTarget(id: string): Promise<ProposalTarget> {
     await this.refresh(true);
@@ -1456,14 +1464,15 @@ export class TricksService implements TricksSurface {
     if (rt === undefined) return { kind: "new" };
     const repo = rt.found.origin ?? rt.approved?.found.origin;
     if (repo !== undefined) return { kind: "refused", reason: `This trick comes from ${originRepoName(repo.url)}. Change it there.` };
+    if (rt.found.proposal === undefined) return { kind: "refused", reason: `${id} was added on this machine. Change it there.` };
     const entry = rt.entry;
     if (!rt.on || entry === undefined) return { kind: "refused", reason: `A trick named ${id} is here and switched off. Ask your person to remove it or switch it on, then propose again.` };
-    if (entry.auto) return { kind: "refused", reason: `${id} takes new versions without asking, and a proposal always waits for a yes. Ask your person to turn that off first.` };
     if (rt.pending !== null || (rt.found.codeHash !== undefined && rt.found.codeHash !== entry.hash && rt.found.codeHash !== entry.declined)) {
       return { kind: "refused", reason: `A new version of ${id} already waits for a yes. Propose again after your person answers it.` };
     }
-    if (rt.approved === null || rt.copyProblem !== null || entry.hash === null) return { kind: "refused", reason: `${id} runs no approved version now, so nothing was changed.` };
-    return { kind: "version" };
+    if (rt.approved === null || rt.copyProblem !== null || entry.hash === null || rt.found.codeHash !== entry.hash) return { kind: "refused", reason: `${id} runs no approved version now, so nothing was changed.` };
+    const target: ProposalTarget = { kind: "version", baseHash: entry.hash, baseDir: rt.approved.dir };
+    return rt.approved.found.manifest === undefined ? target : { ...target, baseManifest: rt.approved.found.manifest };
   }
 
   /**
@@ -1477,34 +1486,50 @@ export class TricksService implements TricksSurface {
       if (this.runtimes.has(id)) return { ok: false, message: `A trick named ${id} is here now. Nothing was switched on.` };
       const written = await writeProposedTrick(tricksConfigDir(this.deps.configDir), id, files, origin);
       if (!written.ok) return { ok: false, message: written.reason };
-      const src = join(tricksConfigDir(this.deps.configDir), id);
-      const snap = await snapshotTrick({ src, parent: approvedTrickDir(this.deps.configDir, id), expect: written.codeHash, platform: this.deps.platform });
-      if (!snap.ok) return { ok: false, message: `The trick was written but changed before it could be approved, so it stays off. ${snap.reason}` };
-      const read = await scanTrickDir(diskTrickFs, snap.dir, id, undefined);
-      const at = new Date(this.now()).toISOString();
-      await updateSwitches(this.deps.stateDir, (now) => withApproval(now, id, { at, hash: snap.hash, by: "proposal", powers: read.manifest === undefined ? null : powersOf(read.manifest) }));
-      this.deps.audit?.({ action: "trick.approve", detail: { trick: id, hash: snap.hash.slice(0, 16), by: "proposal" } });
+      const placed = await this.approveWritten(id, written.codeHash, "The trick was written but changed before it could be approved, so it stays off.");
       await this.freshScan();
-      return { ok: true, codeHash: snap.hash };
+      return placed;
     });
   }
 
   /**
-   * A proposal for a trick that is on: its code replaces the folder's at once, and the runner's own
-   * pending snapshot and "new version" card ask the person. Nothing runs before that yes: the trick keeps
-   * running its approved copy, and {@link targetOf} refused a trick that takes versions without asking.
+   * After the person's yes to a new version's proposal card: the trick must still be the one the card was
+   * made against (same approved hash, folder unchanged). Then its code is replaced (staged, the old
+   * folder set aside until the new one is in place, config.toml, pictures and inputs/ kept), and exactly
+   * the code written is approved. The trick stays on. No scan runs between the write and the approval,
+   * so the runner never sees the written code as a version waiting.
    */
-  async proposeVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalPlaced> {
+  async installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string): Promise<ProposalPlaced> {
     return await this.lane(async () => {
       await this.refresh(true);
       const target = this.targetOf(id);
-      if (target.kind !== "version") return { ok: false, message: target.kind === "refused" ? target.reason : `There is no trick named ${id} to change.` };
-      const written = await replaceTrickCode(tricksConfigDir(this.deps.configDir), id, files, origin);
-      if (!written.ok) return { ok: false, message: written.reason };
-      this.deps.audit?.({ action: "trick.proposed", detail: { trick: id, hash: written.codeHash.slice(0, 16) } });
+      if (target.kind === "refused") return { ok: false, message: target.reason };
+      if (target.kind !== "version" || target.baseHash !== baseHash) return { ok: false, message: `${id} changed since this card, so nothing was changed.` };
+      const { promise: held, resolve: release } = Promise.withResolvers<void>();
+      this.scanning = held;
+      let placed: ProposalPlaced;
+      try {
+        const written = await replaceTrickCode(tricksConfigDir(this.deps.configDir), id, files, origin);
+        placed = written.ok ? await this.approveWritten(id, written.codeHash, "The new version was written but changed before it could be approved.") : { ok: false, message: written.reason };
+      } finally {
+        if (this.scanning === held) this.scanning = null;
+        release();
+      }
       await this.freshScan();
-      return { ok: true, codeHash: written.codeHash };
+      return placed;
     });
+  }
+
+  /** Copy the folder just written into an approved copy that must hash to `codeHash`, and approve it. */
+  private async approveWritten(id: string, codeHash: string, failed: string): Promise<ProposalPlaced> {
+    const src = join(tricksConfigDir(this.deps.configDir), id);
+    const snap = await snapshotTrick({ src, parent: approvedTrickDir(this.deps.configDir, id), expect: codeHash, platform: this.deps.platform });
+    if (!snap.ok) return { ok: false, message: `${failed} ${snap.reason}` };
+    const read = await scanTrickDir(diskTrickFs, snap.dir, id, undefined);
+    const at = new Date(this.now()).toISOString();
+    await updateSwitches(this.deps.stateDir, (now) => withApproval(now, id, { at, hash: snap.hash, by: "proposal", powers: read.manifest === undefined ? null : powersOf(read.manifest) }));
+    this.deps.audit?.({ action: "trick.approve", detail: { trick: id, hash: snap.hash.slice(0, 16), by: "proposal" } });
+    return { ok: true, codeHash: snap.hash };
   }
 
   private async writeSwitch(id: string, on: boolean): Promise<SwitchAnswer> {

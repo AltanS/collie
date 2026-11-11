@@ -14,10 +14,11 @@ import type { ProposedFile } from "./propose-wire.ts";
 //     are written into a staged sibling (`.collie-add-<id>-<hex>`, a dot folder the scanner never reads),
 //     with the proposal record (origin.ts) beside them, then renamed into place. A folder of that name
 //     that appeared since the card was made stops it: nothing is written over.
-//   * A NEW VERSION of a trick that is on: the proposal replaces the folder's code at once, and the
-//     runner's own pending snapshot and "new version" card ask the person (version-card.ts). The folder's
-//     `config.toml`, its pictures and its `inputs/` stay, and so do its dot files, except the origin
-//     record, which the proposal's replaces. The staged folder is swapped in by two renames.
+//   * A NEW VERSION of a trick a proposal made, after the person's "Use the new version": the proposal
+//     replaces the folder's code. The folder's `config.toml` (always: the proposal's is dropped), its
+//     pictures and its `inputs/` stay, and so do its dot files, except the origin record, which the
+//     proposal's replaces. The staged folder is swapped in by two renames; the old folder is set aside
+//     until the new one is in place, and put back on a failure.
 //
 // Folders are 0700 and files 0644, or 0755 for a file the proposal marked executable, as `collie trick
 // add` writes them (cli/trick-add.ts). A path written twice is a bug, never an overwrite (`wx`).
@@ -80,10 +81,12 @@ function kept(name: string): boolean {
  * files. A kept name the proposal also carries (a picture folder it brings) is the proposal's. The old
  * folder is set aside and removed once the new one is in place; on a failure it is put back.
  */
-export async function replaceTrickCode(root: string, id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalWrite> {
+export async function replaceTrickCode(root: string, id: string, proposed: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalWrite> {
   const target = join(root, id);
   const st = await lstat(target).catch(() => null);
   if (st === null || !st.isDirectory()) return { ok: false, reason: `There is no trick folder ${id} to change.` };
+  // The trick's config.toml is the person's: a new version never brings its own.
+  const files = proposed.filter((file) => file.rel !== CONFIG_FILE);
   const stage = proposalSideName(root, "add", id);
   const carried = new Set(files.map((file) => file.rel.split("/")[0] ?? ""));
   try {

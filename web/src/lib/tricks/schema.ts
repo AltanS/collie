@@ -1381,6 +1381,11 @@ export interface TrickProvenance {
   at?: string;
   repo?: string;
   sha?: string;
+  /**
+   * Set for a trick `collie trick propose` handed in (crew slice 8): who proposed it and the machine, as
+   * the lead named it. Absent for any other trick, and from an older bridge.
+   */
+  proposed?: { by: "agent" | "terminal"; host: string };
 }
 /**
  * `GET /api/tricks?since=<rev>`. The snapshot carries `tricksRev`; when it moves, the phone asks for the

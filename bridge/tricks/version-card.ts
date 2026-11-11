@@ -75,11 +75,6 @@ export interface VersionCardDeps {
   diff?: (base: string | null, next: string) => Promise<VersionDiff>;
   /** Whether this bridge leads a crew: a new `inputs` glob then reads on every machine, and the card says so. */
   crew?: () => boolean;
-  /**
-   * The proposer of a version handed in with `collie trick propose` (crew slice 8, proposals.ts), as the
-   * card's first sentence, or null. Such a card recommends nothing and has no "always".
-   */
-  proposedBy?: (id: string, hash: string) => string | null;
   warn?: (line: string) => void;
 }
 
@@ -144,7 +139,7 @@ export function versionTitle(name: string): string {
 }
 
 /** "1 file changed." or "3 files changed." */
-function filesSentence(count: number): string {
+export function filesSentence(count: number): string {
   return count === 1 ? "1 file changed." : `${String(count)} files changed.`;
 }
 
@@ -157,7 +152,7 @@ export function shownSentence(shown: number, total: number): string {
 }
 
 /** The card for one waiting version: title, summary, options, recommendation and view. */
-export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, crew = false, proposedBy: string | null = null): Omit<HillPostInput, "requestId"> | null {
+export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, crew = false): Omit<HillPostInput, "requestId"> | null {
   const pending = subject.pending;
   if (pending === null) return null;
   const rights = newRights(subject.base?.manifest, pending.manifest);
@@ -181,12 +176,10 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
   // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the chips say it all.
   const short = rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below.";
-  // A version an agent or a terminal proposed (crew slice 8, proposals.ts) says who, first.
-  const by = proposedBy === null ? "" : `${proposedBy} `;
-  const full = `${by}${filesSentence(fileCount)} ${fact}${tail}`;
-  const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${by}${filesSentence(fileCount)} ${short}${tail}`;
+  const full = `${filesSentence(fileCount)} ${fact}${tail}`;
+  const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${filesSentence(fileCount)} ${short}${tail}`;
   const options: HillPostInput["options"] = [{ intent: "use", label: "Use the new version" }];
-  if (!powersChanged && proposedBy === null) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." });
+  if (!powersChanged) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." });
   options.push({ intent: "keep", label: "Keep the old version" });
   const card: Omit<HillPostInput, "requestId"> = {
     title: versionTitle(subject.name),
@@ -194,7 +187,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
     options,
     text: "none",
     priority: "today",
-    recommends: powersChanged || warnings.length > 0 || !whole || proposedBy !== null ? null : { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
+    recommends: powersChanged || warnings.length > 0 || !whole ? null : { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
   };
   return shown.view === null ? card : { ...card, view: shown.view };
 }
@@ -389,7 +382,7 @@ export class VersionCards implements TrickVersionsPort {
     // The version may have moved while the diff ran: post only for the one still waiting.
     const now = this.latest.get(subject.id);
     if (now === undefined || !now.waiting || now.pending?.hash !== pending.hash || this.answered(subject.id, pending.hash)) return;
-    const card = versionCard(now, diff, this.deps.crew?.() ?? false, this.deps.proposedBy?.(subject.id, pending.hash) ?? null);
+    const card = versionCard(now, diff, this.deps.crew?.() ?? false);
     if (card === null) return;
     const mine = this.deps.hill.collieDecisions("version").filter((decision) => decision.from.ref?.id === subject.id);
     const older = mine.find((decision) => decision.state === "open");

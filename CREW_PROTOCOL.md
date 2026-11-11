@@ -4311,11 +4311,11 @@ nothing installs or runs it before a person's tap on the lead.
 
 | Method | Path | Sent by | Body | Answer | Body cap |
 |---|---|---|---|---|---|
-| `POST` | `/crew/v1/tricks/propose` | a member, to its lead | `{ requestId, files, from }` | `{ ok, kind, id, hash, decision, replaced }` | 8 MiB |
+| `POST` | `/crew/v1/tricks/propose` | a member, to its lead | `{ requestId, files, from }` | `{ ok, kind, id, hash, decision, replaced }`, `kind` is `proposal` or `version` | 8 MiB |
 
 - **Member → lead, signed like §22.** It is a membership-table route (§5), in the signed set (§8.6),
   and it advances no replay floor: the request id is its replay key. Only a collie that leads answers;
-  a peer, and a lead built without tricks, answer 404. A lead before 1.29.0 answers the uniform 401, as
+  a peer answers 404. A lead before 1.29.0 answers the uniform 401, as
   for §22. The body is read within 60 seconds, at most 2 at once, counted apart from the other large
   bodies (§8.6).
 - **The member is the signer.** `from` is `{ address }` for a session or `null` for a terminal. An
@@ -4348,10 +4348,15 @@ nothing installs or runs it before a person's tap on the lead.
 - **The tap.** "Switch it on" reads the stored bytes again and installs them only when their hash is
   the card's. The trick folder is written beside the tricks and renamed into place, never over a folder
   of that name, then the code written is approved and switched on.
-- **A trick that is on** gets the proposal as a new version: the folder's code changes, and the
-  runner's own "new version" card asks the person, naming the proposer. A trick from a repository, one
-  that is off, one that takes versions without asking, or one with a version waiting refuses the
-  proposal (`exists`).
+- **A new version** is taken only for a trick a proposal made that is on. It is kept inert in the same
+  store, and its one card ("Use the new version of <id>?") shows it against the approved copy and names
+  the proposer. Before the yes nothing outside the store and the proposals state changes on the lead.
+  On the yes the trick must still be the one the card was made against; its code is replaced (its own
+  `config.toml` stays) and exactly that code approved. A trick from a repository, one added on the
+  lead, one that is off, or one with a change waiting refuses the proposal (`exists`). A trick on auto
+  takes it, and the card still asks.
+- **A lead without tricks** answers `200` with `{ ok: false, code: "no_tricks" }`, "Tricks are not set
+  up on the lead, so nothing was proposed.", never 404, so the member does not read it as older.
 - **Limits.** Per session (or per machine's terminal) 2 open and 6 an hour; per member 4 open; per lead
   8 open and 32 MiB stored. One open proposal per trick id. A request id answers as it did for 24 hours;
   with other files it is `request_id_reused`. The card closes after 3 days, and the stored copy goes
@@ -4366,11 +4371,10 @@ proposed once." A 404 is an older lead, named as such.
 
 ### Audit
 
-On the lead: `trick.proposed` for a new version, and `trick.approve` by `proposal` when the person
-switches a proposed trick on. Never a file's bytes.
+On the lead: `trick.proposal` for each proposal taken (`kind` `proposal` or `version`), `trick.proposal.on` and
+`trick.approve` by `proposal` when the person says yes. Never a file's bytes.
 
 ### Compatibility
 
 Additive inside protocol version 2 (§7.1). A member before 1.29.0 has no verb that sends it. A lead
-before 1.29.0 answers the uniform 401 and a lead without tricks 404; the member says the lead is older
-and proposes nothing. `CREW_PROTOCOL_VERSION` stays `2`.
+before 1.29.0 answers the uniform 401, and the member says the lead is older and proposes nothing. `CREW_PROTOCOL_VERSION` stays `2`.

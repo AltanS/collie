@@ -2398,7 +2398,6 @@ versionCards = new VersionCards({
   tricks: () => tricks ?? null,
   warn: (line) => console.warn(`[tricks] ${line}`),
   crew: () => crew.mode === "lead",
-  proposedBy: (id, hash) => trickProposals?.proposedBy(id, hash) ?? null,
 });
 trickProposals =
   cfg.tricksDir === undefined || crew.mode === "peer"
@@ -3750,7 +3749,8 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
                     op: (body, member) => hillCrewLead.op(body, member.memberId),
                   },
             // §24 (added in 1.29.0, crew slice 8): a lead takes a trick a member's agent or terminal proposed.
-            proposals: crew.mode === "lead" && trickProposals !== undefined ? { propose: (body, member) => proposeDoor.fromMember(body, member.memberId) } : undefined,
+            // A lead without tricks still answers the route, with "not set up", so its member never reads it as older.
+            proposals: crew.mode === "lead" ? { propose: (body, member) => proposeDoor.fromMember(body, member.memberId) } : undefined,
             transportPinned,
             // Present only on a two-anchored peer. Its presence is what makes a dial attestation
             // mandatory and identity signature-resolved (§8.1's 2026-08-20 amendment).

@@ -219,11 +219,8 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   }
   const config = read.files.some((file) => file.rel === CONFIG_FILE) ? ", config.toml included" : "";
   deps.io.out(`Sent ${String(read.files.length)} files${config}. Left behind: ${String(read.left)} (dot files, node_modules, logs, inputs/).`);
-  if (kind === "version") {
-    deps.io.out(`Proposed a new version of ${id}. Your person sees it as a new version card on the Hill. Nothing of it runs before their yes.`);
-    return EXIT.OK;
-  }
-  deps.io.out(`Proposed ${id}. Your person sees it on the Hill as ${decision ?? "a card"}. Nothing runs before their yes.`);
+  if (kind === "version") deps.io.out(`Proposed a new version of ${id}. Your person sees it on the Hill as ${decision ?? "a card"}. Nothing of it is written or runs before their yes.`);
+  else deps.io.out(`Proposed ${id}. Your person sees it on the Hill as ${decision ?? "a card"}. Nothing runs before their yes.`);
   if (replaced !== null) deps.io.out(`It replaces your earlier proposal ${replaced}.`);
   if (decision !== null) deps.io.out(`Read the answer with: collie hill status ${decision}`);
   return EXIT.OK;

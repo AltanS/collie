@@ -111,7 +111,9 @@ export function trickGuide(): string[] {
     `The card closes on its own after ${String(days)} days.`,
     "Propose the same folder again to replace your open proposal.",
     `One session may have ${String(PROPOSALS_SENDER_OPEN_MAX)} proposals open, and make ${String(PROPOSALS_SENDER_HOUR_MAX)} in an hour.`,
-    "A trick that is on already gets a new version card instead.",
+    "A trick that came from a proposal and is on gets a new version card instead.",
+    "Its folder changes only after the person's yes. Their config.toml stays.",
+    "A trick added on this machine or from a repository is changed there, not by proposal.",
     "Read the answer with: collie hill status <decision id>",
   ];
 }

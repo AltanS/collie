@@ -30,6 +30,9 @@ export const PROPOSE_ASK_MS = PROPOSE_FORWARD_MS + 30_000;
 /** The words of a lead that did not take the proposal and may not have read it. */
 export const PROPOSE_LEAD_AWAY = "The lead is not answering, so nothing was proposed.";
 
+/** A lead that takes proposals and has no tricks set up. */
+export const PROPOSE_LEAD_NO_TRICKS = "Tricks are not set up on the lead, so nothing was proposed.";
+
 /** A lead whose release takes no proposals. */
 export function proposeLeadOlder(lead: string): string {
   return `The lead (${lead}) runs a Collie older than ${TRICKS_CREW_FIRST_VERSION}, which takes no proposals. Update the lead, or propose from the lead machine.`;
@@ -73,12 +76,10 @@ function answerOf(body: JsonObject, lead: string): ProposeAnswer {
   const kind = asJsonString(body.kind);
   const id = asJsonString(body.id);
   const hash = asJsonString(body.hash);
-  const decision = body.decision === null ? null : asJsonString(body.decision);
+  const decision = asJsonString(body.decision);
   const replaced = body.replaced === null || body.replaced === undefined ? null : asJsonString(body.replaced);
-  if (id === undefined || hash === undefined || decision === undefined || replaced === undefined) return refusal("failed", `The lead (${lead}) answered without the proposal. Check the Hill on the phone.`);
-  if (kind === "proposal" && decision !== null) return { ok: true, kind, id, hash, decision, replaced };
-  if (kind === "version") return { ok: true, kind, id, hash, decision: null, replaced: null };
-  return refusal("failed", `The lead (${lead}) answered without the proposal. Check the Hill on the phone.`);
+  if (id === undefined || hash === undefined || decision === undefined || replaced === undefined || (kind !== "proposal" && kind !== "version")) return refusal("failed", `The lead (${lead}) answered without the proposal. Check the Hill on the phone.`);
+  return { ok: true, kind, id, hash, decision, replaced };
 }
 
 export class ProposeDoor {
@@ -122,10 +123,11 @@ export class ProposeDoor {
     if (from === undefined || address === undefined) return { status: 400, body: { error: "from is { address } or null" } };
     if (address !== null && !resolvesToOwn(address, memberId, this.deps.place)) return { status: 401, body: { error: "unauthorized" } };
     if (Object.keys(row).some((key) => key !== "requestId" && key !== "files" && key !== "from")) return { status: 400, body: { error: "a proposal is { requestId, files, from }" } };
+    // A lead without tricks says so in its own words (not a 404, which the member reads as an older lead).
+    const proposals = this.deps.proposals();
+    if (proposals === null) return { status: 200, body: { ok: false, code: "no_tricks", error: PROPOSE_LEAD_NO_TRICKS } };
     const read = readProposal(row);
     if (!read.ok) return { status: 200, body: { ok: false, code: read.refusal.code, error: read.refusal.error } };
-    const proposals = this.deps.proposals();
-    if (proposals === null) return { status: 200, body: { ok: false, code: "no_tricks", error: "Tricks are not set up on the lead, so nothing was proposed." } };
     // The lead's own knowledge only: its name for the member, and its own name for the session, or none.
     const placed = address === null ? null : (this.deps.place?.(address) ?? null);
     const label = placed === null || placed.label.trim() === "" ? null : placed.label;

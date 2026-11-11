@@ -5,11 +5,12 @@ import { dirname, join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../../web/src/lib/json.ts";
 import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import type { JsonObject } from "../json.ts";
+import type { TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { HILL_OFF, type HillCollieSender, type HillCollieVerdict, type HillOneAnswer, type HillPostAnswer, type HillPostOptions } from "../hill/service.ts";
 import { CONFIG_FILE, unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
-import { proposalCard, proposalRequestId, proposerSentence, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposerFacts } from "./proposal-card.ts";
+import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposerFacts } from "./proposal-card.ts";
 import { checkProposedFiles, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
@@ -30,10 +31,14 @@ import { versionDiff, type VersionDiff } from "./version-diff.ts";
 // `installProposed`), approved as exactly the code written, and switched on. "Not now", a dismiss, an
 // expiry, a withdraw or a newer proposal from the same sender removes the stored copy.
 //
-// A proposal for a trick that is ON (and has a local or proposal origin, takes no version without asking,
-// and has nothing waiting) replaces the folder's code at once: the runner's own snapshot and "new version"
-// card ask the person, and that card names the proposer (version-card.ts `proposedBy`). Everything else
-// with an id that exists is refused in plain words (service.ts `proposalTarget`).
+// A proposal for a trick a proposal made, that is on and has nothing waiting, is a NEW VERSION. It is kept
+// inert the same way, and its card (proposal-card.ts `proposalVersionCard`) shows it against the approved
+// copy, names the proposer, and recommends nothing. Only on "Use the new version" does it touch the
+// trick's folder: the trick must still be the one the card was made against, then its code is replaced
+// and exactly that code approved (service.ts `installProposedVersion`). The trick's own config.toml stays.
+// Before that yes nothing a proposer sends changes a file outside `.collie-proposed/` and `proposals.json`.
+// Every other id that exists is refused in plain words (service.ts `proposalTarget`): a trick from a
+// repository, one added on this machine, one that is off, one with a change waiting.
 //
 // ── LIMITS ─────────────────────────────────────────────────────────────────────────────────────────
 // A sender is one session (its walky address on its machine) or one machine's terminal. Per sender at
@@ -60,8 +65,6 @@ export const PROPOSAL_EXPIRY_MS = 3 * 24 * 60 * 60_000;
 export const PROPOSAL_RID_KEEP_MS = 24 * 60 * 60_000;
 /** The most request ids kept. */
 export const PROPOSAL_RIDS_MAX = 200;
-/** How long the proposer of a new version is remembered for its card. */
-export const PROPOSED_VERSION_KEEP_MS = 14 * 24 * 60 * 60_000;
 /** A stored copy no open proposal names is removed once it is this old (a write in flight is younger). */
 export const PROPOSAL_ORPHAN_MS = 60_000;
 /** The folder under the tricks folder that holds proposals. A dot folder: never a trick. */
@@ -87,10 +90,7 @@ export interface Proposer extends ProposerFacts {
 }
 
 /** What a proposal came to. */
-export type ProposeAnswer =
-  | { ok: true; kind: "proposal"; id: string; hash: string; decision: string; replaced: string | null }
-  | { ok: true; kind: "version"; id: string; hash: string; decision: null; replaced: null }
-  | { ok: false; code: ProposeRefusalCode; error: string };
+export type ProposeAnswer = { ok: true; kind: "proposal" | "version"; id: string; hash: string; decision: string; replaced: string | null } | { ok: false; code: ProposeRefusalCode; error: string };
 
 /** What proposals need of the Hill: Collie's own door, which no agent and no crew member reaches. */
 export interface ProposalsHill {
@@ -105,7 +105,7 @@ export interface ProposalsHill {
 export interface ProposalsTricks {
   proposalTarget(id: string): Promise<ProposalTarget>;
   installProposed(id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalPlaced>;
-  proposeVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalPlaced>;
+  installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string): Promise<ProposalPlaced>;
 }
 
 export interface TrickProposalsDeps {
@@ -124,6 +124,10 @@ export interface TrickProposalsDeps {
 
 /** One open proposal, as `proposals.json` keeps it. */
 interface OpenProposal {
+  /** A new trick, or a new version of a trick a proposal made. */
+  kind: "new" | "version";
+  /** For a version: the approved code hash the card was made against. */
+  base: string | null;
   id: string;
   hash: string;
   decision: string;
@@ -145,22 +149,14 @@ interface RidEntry {
   at: number;
 }
 
-interface VersionEntry {
-  id: string;
-  codeHash: string;
-  proposer: ProposerFacts;
-  at: number;
-}
-
 interface ProposalsState {
   open: OpenProposal[];
   recent: { sender: string; at: number }[];
   rids: RidEntry[];
-  versions: VersionEntry[];
 }
 
 function emptyState(): ProposalsState {
-  return { open: [], recent: [], rids: [], versions: [] };
+  return { open: [], recent: [], rids: [] };
 }
 
 function refused(code: ProposeRefusalCode, error: string): ProposeAnswer {
@@ -205,9 +201,12 @@ export function parseProposalsState(text: string | null): ProposalsState {
     const exec = listOf(row?.exec).map((rel) => asJsonString(rel));
     const bytes = asJsonNumber(row?.bytes);
     const at = asJsonNumber(row?.at);
+    const kind = row?.kind === undefined ? "new" : asJsonString(row.kind);
+    const base = row?.base === undefined || row.base === null ? null : asJsonString(row.base);
+    if ((kind !== "new" && kind !== "version") || base === undefined || (kind === "version") !== (base !== null && HASH_RE.test(base))) continue;
     if (id === undefined || !ID_RE.test(id) || hash === undefined || !HASH_RE.test(hash) || decision === undefined || sender === undefined || memberId === undefined) continue;
     if (address === undefined || proposer === null || exec.some((rel) => rel === undefined) || bytes === undefined || at === undefined) continue;
-    state.open.push({ id, hash, decision, sender, memberId, address, proposer, exec: exec.filter((rel): rel is string => rel !== undefined), bytes, at });
+    state.open.push({ kind, base, id, hash, decision, sender, memberId, address, proposer, exec: exec.filter((rel): rel is string => rel !== undefined), bytes, at });
   }
   for (const raw of listOf(doc.recent)) {
     const row = asJsonObject(raw);
@@ -227,16 +226,7 @@ export function parseProposalsState(text: string | null): ProposalsState {
     const decision = answer?.decision === null ? null : asJsonString(answer?.decision);
     const replaced = answer?.replaced === null ? null : asJsonString(answer?.replaced);
     if (sender === undefined || requestId === undefined || hash === undefined || at === undefined || id === undefined || decision === undefined || replaced === undefined) continue;
-    if (kind === "proposal" && decision !== null) state.rids.push({ sender, requestId, hash, at, answer: { ok: true, kind, id, hash, decision, replaced } });
-    if (kind === "version") state.rids.push({ sender, requestId, hash, at, answer: { ok: true, kind, id, hash, decision: null, replaced: null } });
-  }
-  for (const raw of listOf(doc.versions)) {
-    const row = asJsonObject(raw);
-    const id = asJsonString(row?.id);
-    const codeHash = asJsonString(row?.codeHash);
-    const proposer = readFacts(asJsonObject(row?.proposer));
-    const at = asJsonNumber(row?.at);
-    if (id !== undefined && codeHash !== undefined && proposer !== null && at !== undefined) state.versions.push({ id, codeHash, proposer, at });
+    if ((kind === "proposal" || kind === "version") && decision !== null) state.rids.push({ sender, requestId, hash, at, answer: { ok: true, kind, id, hash, decision, replaced } });
   }
   return state;
 }
@@ -333,13 +323,7 @@ export class TrickProposals {
     await rename(tmp, path);
   }
 
-  /** The proposer's sentence for a new version's card, when that version came from a proposal. */
-  proposedBy(id: string, codeHash: string): string | null {
-    const entry = this.state?.versions.find((row) => row.id === id && row.codeHash === codeHash);
-    return entry === undefined ? null : proposerSentence(entry.proposer);
-  }
-
-  /** Read the state once, so {@link proposedBy} answers from the start. Then sweep. */
+  /** Read the state once, then sweep. */
   async start(): Promise<void> {
     await this.turn(() => this.load());
     await this.sweep();
@@ -374,7 +358,7 @@ export class TrickProposals {
     const live = this.liveOpen(state);
     const same = live.find((row) => row.id === id);
     if (same !== undefined && same.sender !== sender) return refused("open_elsewhere", `Somebody else already proposed a trick named ${id}. It waits for your person's answer.`);
-    if (same !== undefined && same.hash === hash) return { ok: true, kind: "proposal", id, hash, decision: same.decision, replaced: null };
+    if (same !== undefined && same.hash === hash) return { ok: true, kind: same.kind === "version" ? "version" : "proposal", id, hash, decision: same.decision, replaced: null };
     if (same !== undefined && this.deps.hill.isAnswering(same.decision)) return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");
     const target = await tricks.proposalTarget(id);
     if (target.kind === "refused") return refused("exists", target.reason);
@@ -385,38 +369,37 @@ export class TrickProposals {
     if (others.filter((row) => row.memberId === proposer.memberId).length >= PROPOSALS_MEMBER_OPEN_MAX) return refused("too_many_open", `This machine has ${String(PROPOSALS_MEMBER_OPEN_MAX)} proposals waiting. Wait for your person's answers.`);
     if (others.length >= PROPOSALS_OPEN_MAX) return refused("too_many_open", `${String(PROPOSALS_OPEN_MAX)} proposals wait already on this Collie. Wait for your person's answers.`);
     if (others.reduce((sum, row) => sum + row.bytes, 0) + proposal.bytes > PROPOSED_BYTES_MAX) return refused("too_many_bytes", "The proposals waiting on this Collie hold too much already. Wait for your person's answers.");
-    const origin: ProposalOrigin = { by: proposer.by, host: proposer.host, label: proposer.label, at: new Date(now).toISOString() };
-    if (target.kind === "version") {
-      const placed = await tricks.proposeVersion(id, proposal.files, origin);
-      if (!placed.ok) return refused("exists", placed.message);
-      state.versions = [...state.versions.filter((row) => row.id !== id), { id, codeHash: placed.codeHash, proposer: facts(proposer), at: now }];
-      const answer: ProposeAnswer & { ok: true } = { ok: true, kind: "version", id, hash, decision: null, replaced: null };
-      this.remember(state, sender, proposal.requestId, hash, answer, now);
-      await this.save(state);
-      this.deps.audit?.({ action: "trick.proposal", detail: { trick: id, hash: hash.slice(0, 16), kind: "version", from: proposer.memberId } });
-      return answer;
-    }
-    return await this.newProposal(state, proposal, proposer, same ?? null, now);
+    return await this.newProposal(state, proposal, proposer, same ?? null, target.kind === "version" ? target : null, now);
   }
 
-  private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, now: number): Promise<ProposeAnswer> {
+  /** The warning kinds a text search of `dir` finds. A search that failed counts as everything it could find. */
+  private async warningKinds(dir: string, manifest: TrickManifest | undefined): Promise<(keyof typeof WARN_PLAIN)[]> {
+    if (manifest === undefined) return [...ALL_WARNINGS];
+    const found = await trickWarnings(dir, manifest).catch(() => null);
+    return found === null ? [...ALL_WARNINGS] : [...new Set(found.map((w) => w.kind))];
+  }
+
+  /** The card for a stored proposal: a new trick, or a new version shown against the approved copy. */
+  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null): Promise<Omit<HillPostInput, "requestId">> {
+    const id = proposal.manifest.id;
+    const crew = this.deps.crew?.() ?? false;
+    const hasConfig = proposal.files.some((file) => file.rel === CONFIG_FILE);
+    const kinds = await this.warningKinds(dir, proposal.manifest);
+    if (base === null) {
+      const diff = await this.diff(null, dir).catch((): VersionDiff => ({ files: [], counted: false }));
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff, warnings: kinds, hasConfig, crew });
+    }
+    const diff = await this.diff(base.baseDir, dir).catch((): VersionDiff => ({ files: [], counted: false }));
+    const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), hasConfig, crew });
+  }
+
+  private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {
     const id = proposal.manifest.id;
     const { hash } = proposal;
     const dir = await this.store(id, hash, proposal.files);
     if (dir === null) return refused("failed", "The proposal could not be kept on this machine, so nothing was proposed.");
-    const diff = await this.diff(null, dir).catch((): VersionDiff => ({ files: [], counted: false }));
-    const found = await trickWarnings(dir, proposal.manifest).catch(() => null);
-    // A search that failed counts as everything it could have found.
-    const kinds = found === null ? ALL_WARNINGS : [...new Set(found.map((w) => w.kind))];
-    const card = proposalCard({
-      id,
-      manifest: proposal.manifest,
-      proposer: facts(proposer),
-      diff,
-      warnings: kinds,
-      hasConfig: proposal.files.some((file) => file.rel === CONFIG_FILE),
-      crew: this.deps.crew?.() ?? false,
-    });
+    const card = await this.cardOf(dir, proposal, proposer, base);
     const input: HillPostInput = { ...card, requestId: proposalRequestId(id, hash, proposal.requestId), expiresAt: now + PROPOSAL_EXPIRY_MS };
     if (old !== null) input.supersedes = old.decision;
     const posted = this.deps.hill.postCollie(senderOf(id, hash), input, proposer.address === null ? {} : { tellOf: proposer.address });
@@ -430,11 +413,11 @@ export class TrickProposals {
       state.open = state.open.filter((row) => row !== old);
       if (old.hash !== hash) await rm(this.storeDir(old.id, old.hash), { recursive: true, force: true });
     }
-    state.open.push({ id, hash, decision: posted.decision.id, sender: senderKey(proposer), memberId: proposer.memberId, address: proposer.address, proposer: facts(proposer), exec: proposal.files.filter((file) => file.executable).map((file) => file.rel), bytes: proposal.bytes, at: now });
-    const answer: ProposeAnswer & { ok: true } = { ok: true, kind: "proposal", id, hash, decision: posted.decision.id, replaced: old?.decision ?? null };
+    state.open.push({ kind: base === null ? "new" : "version", base: base?.baseHash ?? null, id, hash, decision: posted.decision.id, sender: senderKey(proposer), memberId: proposer.memberId, address: proposer.address, proposer: facts(proposer), exec: proposal.files.filter((file) => file.executable).map((file) => file.rel), bytes: proposal.bytes, at: now });
+    const answer: ProposeAnswer & { ok: true } = { ok: true, kind: base === null ? "proposal" : "version", id, hash, decision: posted.decision.id, replaced: old?.decision ?? null };
     this.remember(state, senderKey(proposer), proposal.requestId, hash, answer, now);
     await this.save(state);
-    this.deps.audit?.({ action: "trick.proposal", detail: { trick: id, hash: hash.slice(0, 16), kind: "proposal", decisionId: posted.decision.id, from: proposer.memberId } });
+    this.deps.audit?.({ action: "trick.proposal", detail: { trick: id, hash: hash.slice(0, 16), kind: base === null ? "proposal" : "version", decisionId: posted.decision.id, from: proposer.memberId } });
     return answer;
   }
 
@@ -444,11 +427,10 @@ export class TrickProposals {
     state.rids = [...state.rids, { sender, requestId, hash, answer, at: now }].slice(-PROPOSAL_RIDS_MAX);
   }
 
-  /** Drop what is past its time: the hour's count, the request ids, the version proposers. */
+  /** Drop what is past its time: the hour's count and the request ids. */
   private forget(state: ProposalsState, now: number): void {
     state.recent = state.recent.filter((row) => now - row.at < 60 * 60_000);
     state.rids = state.rids.filter((row) => now - row.at < PROPOSAL_RID_KEEP_MS);
-    state.versions = state.versions.filter((row) => now - row.at < PROPOSED_VERSION_KEEP_MS);
   }
 
   /** The open proposals whose card is still open on the Hill. */
@@ -492,7 +474,8 @@ export class TrickProposals {
 
   /**
    * The answer to a proposal card, from the Hill's claim (`onCollieAnswer`). "on" installs exactly the
-   * stored bytes whose hash is the card's; "later" removes the stored copy. A refusal keeps the card open.
+   * stored bytes whose hash is the card's (a new trick, or a new version of the trick the card was made
+   * against); "later" removes the stored copy and changes nothing else. A refusal keeps the card open.
    */
   answer(ref: HillCollieRef, intent: string): Promise<HillCollieVerdict> {
     return this.turn(async () => {
@@ -509,7 +492,8 @@ export class TrickProposals {
       const files = await readStored(this.storeDir(entry.id, entry.hash), new Set(entry.exec));
       // TOCTOU: the bytes installed are the bytes read here, and they must hash to the card's hash.
       if (files === null || proposalHash(files) !== ref.hash || !checkProposedFiles(files).ok) return { ok: false, reason: PROPOSAL_CHANGED };
-      const placed = await tricks.installProposed(entry.id, files, { by: entry.proposer.by, host: entry.proposer.host, label: entry.proposer.label, at: new Date(this.now()).toISOString() });
+      const origin: ProposalOrigin = { by: entry.proposer.by, host: entry.proposer.host, label: entry.proposer.label, at: new Date(this.now()).toISOString() };
+      const placed = entry.kind === "version" && entry.base !== null ? await tricks.installProposedVersion(entry.id, files, origin, entry.base) : await tricks.installProposed(entry.id, files, origin);
       if (!placed.ok) return { ok: false, reason: placed.message };
       await this.drop(state, entry);
       this.deps.audit?.({ action: "trick.proposal.on", detail: { trick: entry.id, hash: entry.hash.slice(0, 16) } });

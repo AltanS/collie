@@ -6,7 +6,7 @@ import type { HillPlace } from "../hill/service.ts";
 import type { CrewDialAnswer } from "../walky/crew.ts";
 import { PROPOSAL_AUTHOR_WORDS, proposalCard, proposalTitle, proposerSentence, PROPOSAL_LATER, PROPOSAL_ON } from "./proposal-card.ts";
 import type { ProposeAnswer, Proposer, TrickProposals } from "./proposals.ts";
-import { CREW_TRICKS_PROPOSE_ROUTE, PROPOSE_LEAD_AWAY, ProposeDoor, proposeLeadOlder, proposeNotConfirmed, type ProposeDoorDeps } from "./propose-door.ts";
+import { CREW_TRICKS_PROPOSE_ROUTE, PROPOSE_LEAD_AWAY, PROPOSE_LEAD_NO_TRICKS, ProposeDoor, proposeLeadOlder, proposeNotConfirmed, type ProposeDoorDeps } from "./propose-door.ts";
 import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
 
@@ -131,6 +131,14 @@ describe("the lead's route", () => {
       expect((await door.fromMember({ ...fields(), from: { address } }, "laptop")).status).toBe(401);
     }
     expect(seen).toEqual([]);
+  });
+
+  test("a lead without tricks says so, and its member prints those words, never 'older'", async () => {
+    const none = new ProposeDoor({ mode: () => "lead", proposals: () => null, memberId: "desk", machine: "desk" });
+    const res = await none.fromMember({ ...fields(), from: null }, "laptop");
+    expect(res).toEqual({ status: 200, body: { ok: false, code: "no_tricks", error: PROPOSE_LEAD_NO_TRICKS } });
+    const member = new ProposeDoor({ mode: () => "peer", proposals: () => null, memberId: "laptop", machine: "laptop", leadName: () => "desk", call: async () => ({ kind: "answer", status: res.status, body: { ok: false, code: "no_tricks", error: PROPOSE_LEAD_NO_TRICKS } }) });
+    expect(await member.local(fields(), { kind: "terminal" })).toEqual({ ok: false, code: "no_tricks", error: "Tricks are not set up on the lead, so nothing was proposed." });
   });
 
   test("an extra key, a bad from or a bad file is refused", async () => {
