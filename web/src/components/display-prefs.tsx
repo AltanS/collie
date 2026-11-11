@@ -6,6 +6,7 @@ import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { CHAT_FONT_MAX, CHAT_FONT_MIN, FONT_MAX, FONT_MIN } from "@/hooks/use-display-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { MORPH_NAME } from "@/lib/morph/reader";
 import type { PaneView } from "@/lib/pane-view";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/components/icons/icon";
@@ -65,6 +66,12 @@ export interface PaneViewControl {
   /** The stream's own text size in px, and its stepper. Its own number, never the mirror's. */
   chatFontSize: number;
   stepChatFontSize: (delta: number) => void;
+  /**
+   * The session's Morph is on (components/morph-view.tsx): the View row offers Morph as a third choice.
+   * `selected` while the Morph body shows; picking Terminal or Chat then calls `onChange` and Morph stays
+   * on, picking Morph calls `onPick`. Absent: the row is the two-way it always was.
+   */
+  morph?: { selected: boolean; onPick: () => void };
 }
 
 interface DisplayPrefsContentProps {
@@ -168,16 +175,25 @@ function TextSizeRow({
  * app is broken.
  */
 function ViewRow({ view }: { view: PaneViewControl }) {
-  const options: { value: PaneView; label: string }[] = [
+  const options: { value: PaneView | "morph"; label: string }[] = [
     { value: "terminal", label: t("chat.mode.option.terminal") },
     { value: "chat", label: t("chat.mode.option.chat") },
+    ...(view.morph === undefined ? [] : [{ value: "morph" as const, label: MORPH_NAME }]),
   ];
+  const picked = view.morph?.selected === true ? "morph" : view.chosen;
+  const pick = (value: PaneView | "morph") => {
+    if (value === "morph") {
+      view.morph?.onPick();
+      return;
+    }
+    view.onChange(value);
+  };
   return (
     <div className="py-1.5">
       <div className="mb-1.5 text-sm font-medium">{t("chat.mode.view.label")}</div>
       <div role="radiogroup" aria-label={t("chat.mode.view.label")} className="flex gap-1">
         {options.map((option) => {
-          const selected = option.value === view.chosen;
+          const selected = option.value === picked;
           const blocked = option.value === "chat" && view.note !== undefined;
           return (
             <button
@@ -186,7 +202,7 @@ function ViewRow({ view }: { view: PaneViewControl }) {
               role="radio"
               aria-checked={selected}
               disabled={blocked}
-              onClick={() => view.onChange(option.value)}
+              onClick={() => pick(option.value)}
               className={cn(
                 "flex min-h-11 flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 "disabled:opacity-50",

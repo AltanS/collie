@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 
 import { BottomSheet } from "@/components/ui/sheet";
+import { PICTURE_SHEET, ZoomPicture } from "@/components/ui/zoom-picture";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,6 +12,9 @@ import { cn } from "@/lib/utils";
  * window to one, so a link to it opened nothing on any phone; a fetched one is an object URL, which an
  * installed iOS app cannot open in a new window either. The sheet draws the same URL the thumbnail
  * already loaded, and a long-press on it there is the platform's own save and share.
+ *
+ * In the sheet the picture zooms (`ZoomPicture`): pinch, pan while zoomed, double tap. The panel takes
+ * no page zoom from a pinch (`PICTURE_SHEET`).
  *
  * The sheet is portalled to <body>: a mirror card sits inside a <pre>, which allows no <div>, and an
  * ancestor with a transform would otherwise become the containing block of its `fixed` layer.
@@ -46,8 +50,8 @@ export function ImageSheet({
       </button>
       {open &&
         createPortal(
-          <BottomSheet open onClose={() => setOpen(false)} title={title}>
-            <img src={src} alt={alt} className="mx-auto h-auto w-auto max-w-full rounded" />
+          <BottomSheet open onClose={() => setOpen(false)} title={title} className={PICTURE_SHEET}>
+            <ZoomPicture src={src} alt={alt} />
           </BottomSheet>,
           document.body,
         )}

@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { liveHookTargets } from "../cli/beacon.ts";
 import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
+import { morphRulesId } from "../cli/morph-skill.ts";
 import { packageCommand } from "../cli/package-command.ts";
 import { sendsReportRows } from "../cli/send-findings.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
@@ -342,6 +343,9 @@ import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
+import { morphPaneMark } from "./morph/mark.ts";
+import { MorphService } from "./morph/service.ts";
+import { morphDir, MorphStore } from "./morph/store.ts";
 import { atTricksCrewFloor, HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
 import { TrickProposals } from "./tricks/proposals.ts";
 import { ProposeDoor } from "./tricks/propose-door.ts";
@@ -2459,6 +2463,31 @@ const hill = new HillService({
   offline: crew.mode === "lead" ? (address) => hillOffline(address) : undefined,
 });
 hill.pruneMedia();
+// Morph: the one screen an agent draws per session (`collie morph show`), and the phone's per-session
+// switch. `<stateDir>/morph/` is made by the first use, never at boot. The hint names this bridge's own
+// binary; a path no one-line hint can hold leaves the bridge without Morph, with one warning.
+const morph = ((): MorphService | undefined => {
+  try {
+    return new MorphService({
+      store: new MorphStore(morphDir(cfg.stateDir)),
+      // Pictures: a second instance of the hill's media store, rooted at Morph's own folder
+      // (`<stateDir>/morph/media/`), with the same denied folders. Made by the first picture, never at boot.
+      media: new HillMediaStore(morphDir(cfg.stateDir), deniedFoldersSync(filesPrivateFolders(cfg))),
+      place: hillPlace,
+      sessionsKnown: () => walky.who().length > 0,
+      crewMode: () => crew.mode,
+      binary: collieBinary,
+      // The rules handshake: a `morph start --rules <id>` with this id drops the request's tail, while
+      // the pane runs the harness and conversation it ran then (bridge/morph/mark.ts).
+      rulesId: morphRulesId(),
+      paneMark: morphPaneMark({ place: hillPlace, views: hillViews.read, memberId: walkyMemberId }),
+    });
+  } catch (err) {
+    console.warn(`[morph] off: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+})();
+morph?.pruneMedia();
 versionCards = new VersionCards({
   hill,
   tricks: () => tricks ?? null,
@@ -2502,6 +2531,7 @@ const walkyServer = new WalkyServer({
   service: walky,
   hill,
   propose: proposeDoor,
+  morph,
   targets: () => {
     const live = new Set(registry.ordered().map((runtime) => runtime.name));
     return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
@@ -2516,6 +2546,8 @@ const refreshTimer = setInterval(() => {
   hill.sweep(Date.now());
   // A proposal whose card closed (answered elsewhere, dismissed, expired) loses its stored copy.
   void trickProposals?.sweep();
+  // Morph's rules proofs end when their pane runs another harness or conversation, or is gone.
+  morph?.noteMarks();
 }, SESSION_REFRESH_MS);
 refreshTimer.unref();
 
@@ -3849,6 +3881,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   },
   walky,
   hill,
+  morph,
   pins: pinStore,
   cacheWatch,
   folders,

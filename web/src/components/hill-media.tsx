@@ -4,6 +4,7 @@ import { Icon } from "@/components/icons/icon";
 import { FocusFrame, FocusImage } from "@/components/ui/focus-image";
 import { ImageStrip, ImageStripItem, stripSize, type StripSize } from "@/components/ui/image-strip";
 import { PagerSheet } from "@/components/ui/pager-sheet";
+import { ZoomPicture } from "@/components/ui/zoom-picture";
 import { useLocale } from "@/hooks/use-locale";
 import { useNearScreen } from "@/hooks/use-near-screen";
 import { useAuthedUrl } from "@/lib/authed-url";
@@ -18,7 +19,8 @@ import type { ViewPictureDraw, ViewPictures } from "@/lib/tricks/render";
 // with its caption under it. The height comes from the images' shapes on the wire (`stripSize`): a row
 // of phone screenshots is tall enough to read, a row with a wide shot keeps the short height, and a
 // single image may use the card's width. A tap on an image opens it at full size in the app's own picture sheet
-// (`ImageSheet`, the one a journal picture in Chat opens), so there is no zoom of the hill's own.
+// (`ImageSheet`, the one a journal picture in Chat opens), where it zooms as every sheet picture does
+// (`ui/zoom-picture.tsx`), so there is no zoom of the hill's own.
 //
 // THE BYTES COME WITH THE PAIRING TOKEN. Reads need it (ADR 0086), and an `<img src>` to an `/api`
 // route cannot carry it, so the route is fetched through `useAuthedUrl` and drawn from the object URL
@@ -117,12 +119,12 @@ export function HillImageStrip({
   );
 }
 
-/** One picture at full size in the pager: its own fetch, from the cache the frame already filled. */
+/** One picture at full size in the pager, zoomable: its own fetch, from the cache the frame already filled. */
 function PagerPicture({ src, alt }: { src: string; alt: string }) {
   const { url, failed } = useAuthedUrl(src);
   if (failed) return <Unavailable />;
   if (url === null) return <span aria-hidden className="block h-40 w-full" />;
-  return <img src={url} alt={alt} className="mx-auto h-auto max-h-[70dvh] w-auto max-w-full rounded" />;
+  return <ZoomPicture src={url} alt={alt} className="max-h-[70dvh]" />;
 }
 
 /** A frame a Decision's view placed: the picture cropped in it, near the screen only; a tap opens the pager on it. */

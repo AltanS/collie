@@ -96,6 +96,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The walky talky switch in a pane's Messages sheet (M89 spec 04): the switch itself is the receipt, it holds the new place while the call runs and the pane row's flag then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
+  postMorphSwitch: {
+    channel: "inline",
+    why: "The Morph switch in a session's menu: the switch itself is the receipt, it holds the new place while the call runs and the session's Morph then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
+  },
   setHillSwitch: {
     channel: "inline",
     why: "The Hill's switch in Settings and on the Hill's own off state (M96): the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `hillOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",

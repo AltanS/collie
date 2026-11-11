@@ -57,11 +57,18 @@ import WALKY_TALKY_SKILL_TEXT from "./skills/walky-talky.md" with { type: "text"
  */
 const WALKY_TALKY_SKILL_TEMPLATE = WALKY_TALKY_SKILL_TEXT.replaceAll("\r\n", "\n");
 
+// The Morph skill (`cli/morph-skill.ts`): opt-in, rendered the same way. Its kinds, closed sets, commands
+// and examples are filled from the constants `collie morph help` prints, so the two cannot drift.
+import MORPH_SKILL_TEXT from "./skills/morph.md" with { type: "text" };
+
+/** The Morph skill template with LF line ends, for the reason the walky one has them. */
+const MORPH_SKILL_TEMPLATE = MORPH_SKILL_TEXT.replaceAll("\r\n", "\n");
+
 // The brief `collie theme skill` prints for an agent that writes a theme (`cli/theme-skill.ts`). Its
 // one placeholder takes sections of `docs/themes.md` at print time.
 import THEME_SKILL_TEMPLATE from "./theme-skill.md" with { type: "text" };
 
-export { SKILL_TEMPLATE, THEME_SKILL_TEMPLATE, WALKY_TALKY_SKILL_TEMPLATE };
+export { MORPH_SKILL_TEMPLATE, SKILL_TEMPLATE, THEME_SKILL_TEMPLATE, WALKY_TALKY_SKILL_TEMPLATE };
 
 export interface DocPage {
   /** The file stem, which is the name an operator types: `crew` for `docs/crew.md`. */

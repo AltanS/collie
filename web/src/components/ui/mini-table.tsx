@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 
 // A SMALL TABLE THAT FITS A PHONE (2026-11-10). One to four columns of a few rows, the heads in small
@@ -16,14 +18,16 @@ export interface MiniTableColumn {
 
 export interface MiniTableCell {
   text: string;
+  /** What to draw in place of `text` (the place linked part of it); `text` stays the cell's `title`. */
+  words?: ReactNode;
   className?: string;
 }
 
 /** A cell's words, clamped to two lines, the whole words in `title`. */
-function Clamped({ text }: { text: string }) {
+function Clamped({ text, words }: { text: string; words?: ReactNode }) {
   return (
     <span title={text} className="line-clamp-2 break-words [overflow-wrap:anywhere]">
-      {text}
+      {words ?? text}
     </span>
   );
 }
@@ -50,7 +54,7 @@ export function MiniTable({ columns, rows, rowClassName, className }: { columns:
           <tr key={r} className={rowClassName}>
             {row.map((cell, c) => (
               <td key={c} className={cn("px-1.5 py-1.5 align-middle font-content first:pl-0 last:pr-0", align(columns[c]), cell.className)}>
-                <Clamped text={cell.text} />
+                <Clamped text={cell.text} words={cell.words} />
               </td>
             ))}
           </tr>

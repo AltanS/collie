@@ -135,6 +135,25 @@ import {
   type WalkyDeps,
 } from "./walky.ts";
 import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
+import {
+  cmdMorph,
+  cmdMorphChoice,
+  cmdMorphClear,
+  cmdMorphHelp,
+  cmdMorphKeep,
+  cmdMorphOff,
+  cmdMorphOn,
+  cmdMorphPending,
+  cmdMorphRemove,
+  cmdMorphSet,
+  cmdMorphShow,
+  cmdMorphStart,
+  cmdMorphStatus,
+  MORPH_SUBCOMMANDS,
+  morphHelp,
+  type MorphDeps,
+} from "./morph.ts";
+import { morphRulesId } from "./morph-skill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -362,6 +381,76 @@ const HILL_TREE: readonly Subcommand[] = [
     name: "off",
     summary: "switch the Hill off: agents and tricks cannot post, the open decisions stay",
     run: (args, s) => cmdHillSwitch(hillDeps(s.io), "off", args),
+  },
+];
+
+/** `morph`: walky's own deps, since Morph speaks over the walky socket. */
+function morphDeps(io: Io): MorphDeps {
+  return walkyDeps(io);
+}
+
+/** The sub-verbs of `morph`. `help` prints what an agent reads first: the rules, the kinds, an example. */
+const MORPH_TREE: readonly Subcommand[] = [
+  {
+    name: "start",
+    summary: "say you are drawing, so the phone shows \"Morphing…\": `morph start --session <address> \"<what you do>\"`",
+    run: (args, s) => cmdMorphStart(morphDeps(s.io), args),
+  },
+  {
+    name: "show",
+    summary: "draw one screen for this session: `morph show --session <address> <file.json | -> [--title ...]`",
+    run: (args, s) => cmdMorphShow(morphDeps(s.io), args),
+  },
+  {
+    name: "set",
+    summary: "put one block on the screen, by id: `morph set --session <address> <id> <file.json | -> [--after <id> | --first] [--image ...]`",
+    run: (args, s) => cmdMorphSet(morphDeps(s.io), args),
+  },
+  {
+    name: "pending",
+    summary: "a placeholder block for one still in work: `morph pending --session <address> <id> \"<label>\"`",
+    run: (args, s) => cmdMorphPending(morphDeps(s.io), args),
+  },
+  {
+    name: "remove",
+    summary: "take one block off the screen: `morph remove --session <address> <id>`",
+    run: (args, s) => cmdMorphRemove(morphDeps(s.io), args),
+  },
+  {
+    name: "choice",
+    summary: "set or drop the decision block alone: `morph choice --session <address> <file.json | -> | --clear`",
+    run: (args, s) => cmdMorphChoice(morphDeps(s.io), args),
+  },
+  {
+    name: "keep",
+    summary: "say which blocks still hold for the new request: `morph keep --session <address> <id>... | --all`",
+    run: (args, s) => cmdMorphKeep(morphDeps(s.io), args),
+  },
+  {
+    name: "clear",
+    summary: "take this session's screen away; the switch stays",
+    run: (args, s) => cmdMorphClear(morphDeps(s.io), args),
+  },
+  {
+    name: "on",
+    summary: "turn Morph on for this session",
+    run: (args, s) => cmdMorphOn(morphDeps(s.io), args),
+  },
+  {
+    name: "off",
+    summary: "turn Morph off for this session",
+    run: (args, s) => cmdMorphOff(morphDeps(s.io), args),
+  },
+  {
+    name: "status",
+    summary: "this session's address, switch, screen and hint line",
+    run: (args, s) => cmdMorphStatus(morphDeps(s.io), args),
+  },
+  {
+    name: "help",
+    summary: "what Morph is, your commands (`--session <address>` fills the session in), the rules, the kinds and one example",
+    usage: () => morphHelp(null, morphRulesId()),
+    run: (args, s) => cmdMorphHelp({ io: s.io, rulesId: morphRulesId() }, args),
   },
 ];
 
@@ -1156,6 +1245,15 @@ export const COMMANDS: readonly Command[] = [
     summary: `the hill, decisions an agent asks its person: ${HILL_SUBCOMMANDS.join(", ")}`,
     subcommands: HILL_TREE,
     run: (args, s) => cmdHill({ io: s.io }, args),
+  },
+  // ── Morph ──────────────────────────────────────────────────────────────────
+  // An agent draws one screen for its session's Morph view over the walky socket. Declared after
+  // `hill`, whose socket and markers it shares.
+  {
+    name: "morph",
+    summary: `Morph, the one screen an agent draws for its session: ${MORPH_SUBCOMMANDS.join(", ")}`,
+    subcommands: MORPH_TREE,
+    run: (args, s) => cmdMorph({ io: s.io, rulesId: morphRulesId() }, args),
   },
   // ── Themes (M59 spec 05) ───────────────────────────────────────────────────
   // `theme check` runs the app's own theme parser and contrast report over files on disk, for a

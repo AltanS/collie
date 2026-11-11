@@ -8,10 +8,12 @@ import {
   MIN_ZOOM,
   clampScale,
   clampScroll,
+  clampToBox,
   contentPointAt,
   doubleTapTarget,
   formatScale,
   isDoubleTap,
+  panMove,
   pinchMove,
   pinchStart,
   stepScale,
@@ -140,5 +142,38 @@ describe("steps and the readout", () => {
 
   it("prints at most one decimal", () => {
     expect([1, 1.5, 2.25, 6].map(formatScale)).toEqual(["1×", "1.5×", "2.3×", "6×"]);
+  });
+});
+
+// A PICTURE IN ITS SHEET (ui/zoom-picture.tsx): its content is its own box at 1×, and it pans by
+// its own transform, so the pan and the bounds are table rows here too.
+describe("a picture fitted to its box", () => {
+  const box = { width: 300, height: 200 };
+
+  it("never pans at 1×: the picture is the box", () => {
+    expect(clampToBox({ scale: 1, scroll: { x: 40, y: -10 } }, box)).toEqual(rest);
+  });
+
+  it("pans at 2× as far as the scaled picture reaches past the box, and no further", () => {
+    expect(clampToBox({ scale: 2, scroll: { x: 999, y: 999 } }, box).scroll).toEqual({ x: 300, y: 200 });
+    expect(clampToBox({ scale: 2, scroll: { x: -5, y: -5 } }, box).scroll).toEqual({ x: 0, y: 0 });
+    expect(clampToBox({ scale: 2, scroll: { x: 120, y: 80 } }, box).scroll).toEqual({ x: 120, y: 80 });
+  });
+
+  it("keeps the scale as it is", () => {
+    expect(clampToBox({ scale: 3, scroll: { x: 0, y: 0 } }, box).scale).toBe(3);
+  });
+
+  it("a one-finger pan moves the content with the finger, so the scroll moves against it", () => {
+    const start = { view: { scale: 2, scroll: { x: 100, y: 50 } }, at: { x: 150, y: 100 } };
+    expect(panMove(start, { x: 130, y: 120 })).toEqual({ scale: 2, scroll: { x: 120, y: 30 } });
+    expect(panMove(start, start.at)).toEqual(start.view);
+  });
+
+  it("a pinch about the middle of a picture, clamped, keeps the middle in the middle", () => {
+    const start = pinchStart(rest, { x: 100, y: 100 }, { x: 200, y: 100 });
+    const view = clampToBox(pinchMove(start, { x: 50, y: 100 }, { x: 250, y: 100 }), box);
+    expect(view.scale).toBe(2);
+    expect(contentPointAt(view, { x: 150, y: 100 })).toEqual({ x: 150, y: 100 });
   });
 });

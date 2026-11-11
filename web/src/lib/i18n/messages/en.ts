@@ -819,6 +819,30 @@ export const en = {
   // `{reason}` is a whole sentence of its own and leading with a clause would read as one sentence
   // interrupted by another.
   "chat.mode.noChat": "{reason} The terminal stays here.",
+  // Morph (prototype, 2026-11-10): English only until the translation pass, listed in PENDING_TRANSLATION
+  // below. `{name}` is the word Morph, a name that is never translated (lib/morph/reader.ts `MORPH_NAME`).
+  "chat.mode.morph": "{name} view",
+  "morph.switch.hint": "The agent answers by drawing one screen.",
+  "morph.switch.failed": "Not changed: {error}",
+  "morph.empty": "Ask for something. The agent draws the answer here.",
+  "morph.drawn": "Drawn by the agent",
+  "morph.drawnAt": "Drawn by the agent · {time}",
+  "morph.textAnswer": "The agent answered in text",
+  // The status line under the operator's own request in the Morph body. Exactly one shows at a time.
+  "morph.request.sending": "Sending…",
+  "morph.request.notSent": "Not sent",
+  "morph.request.notSentWhy": "Not sent: {reason}",
+  "morph.request.sent": "Sent",
+  "morph.request.working": "The agent is working",
+  "morph.request.morphing": "Morphing…",
+  "morph.request.answered": "Answered",
+  "morph.request.answeredAt": "Answered · {time}",
+  // The blocks the agent drew for an earlier request, folded under one row; the row, then the label inside.
+  "morph.earlier.row": "Earlier screen",
+  "morph.earlier.label": "Earlier",
+  // A pick or a tap the operator sent, settled: the badge, and what a screen reader hears for a settled choice.
+  "morph.receipt.answered": "Answered",
+  "morph.receipt.pickedLabel": "Picked: {label}",
 
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Send a message to start.",
@@ -3722,6 +3746,26 @@ export const PENDING_TRANSLATION = [
   // The Hill's push switch (M96, 2026-11-10).
   "settings.notify.decisions.label",
   "settings.notify.decisions.hint",
+  // Morph (prototype, 2026-11-10).
+  "chat.mode.morph",
+  "morph.switch.hint",
+  "morph.switch.failed",
+  "morph.empty",
+  "morph.drawn",
+  "morph.drawnAt",
+  "morph.textAnswer",
+  "morph.request.sending",
+  "morph.request.notSent",
+  "morph.request.notSentWhy",
+  "morph.request.sent",
+  "morph.request.working",
+  "morph.request.morphing",
+  "morph.request.answered",
+  "morph.request.answeredAt",
+  "morph.earlier.row",
+  "morph.earlier.label",
+  "morph.receipt.answered",
+  "morph.receipt.pickedLabel",
   // A trick's warnings at the switch (M94 review 15).
   "settings.tricks.warn.label",
   "settings.tricks.warn.spawn",

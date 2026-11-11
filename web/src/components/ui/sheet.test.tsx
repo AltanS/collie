@@ -220,6 +220,36 @@ describe("BottomSheet: drag-to-dismiss", () => {
     expect(latest).toHaveBeenCalledTimes(1);
     expect(first).not.toHaveBeenCalled();
   });
+
+  // A part inside the sheet that owns the fingers (a zoomed picture, ui/zoom-picture.tsx) claims its
+  // moves with preventDefault before they bubble up; a second finger is a pinch. Neither is a pull.
+  it("lets go of the pull on a move a child claimed, and on a second finger, and stays open", () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <BottomSheet open onClose={onClose} title="Picture">
+        <div data-testid="owner" />
+      </BottomSheet>,
+    );
+    const panel = container.querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    const owner = container.querySelector<HTMLElement>("[data-testid='owner']")!;
+    const claim = (e: Event) => e.preventDefault();
+    owner.addEventListener("touchmove", claim, { passive: false });
+    fireEvent.touchStart(owner, { touches: [at(100)] });
+    fireEvent.touchMove(owner, { touches: [at(250)], cancelable: true });
+    expect(panel.style.transform).toBe("");
+    fireEvent.touchEnd(owner, { touches: [] });
+    owner.removeEventListener("touchmove", claim);
+
+    fireEvent.touchStart(panel, { touches: [at(100)] });
+    fireEvent.touchMove(panel, { touches: [at(150)] });
+    expect(panel.style.transform).toBe("translateY(50px)");
+    fireEvent.touchStart(panel, { touches: [at(150), { ...at(150), identifier: 2, clientX: 200 }] });
+    expect(panel.style.transform).toBe("");
+    fireEvent.touchMove(panel, { touches: [at(300)] });
+    fireEvent.touchEnd(panel, { touches: [] });
+    expect(panel.style.transform).toBe("");
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
 
 // The native-feel drag reveal (use-sheet-pull.ts): while `!open && pull > 0` the sheet peeks up
