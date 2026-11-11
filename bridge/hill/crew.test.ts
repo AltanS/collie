@@ -30,6 +30,7 @@ import {
   type HillLeadLink,
 } from "./crew.ts";
 import { deniedFoldersSync, HillMediaStore } from "./media.ts";
+import { HILL_GROUP_NOT_YOURS } from "./parse.ts";
 import { HILL_PUSH_RATE, HillPush } from "./push.ts";
 import type { PushMessage } from "../push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
@@ -269,6 +270,14 @@ describe("the lead's routes", () => {
     expect(answer.body).toMatchObject({ ok: true, decision: { from: { kind: "agent", address: LAPTOP_PANE, memberId: "laptop" } } });
     expect(lead.store.all().map((decision) => decision.from.kind)).toEqual(["agent"]);
     expect(lead.store.all()[0]?.from.ref).toBeUndefined();
+  });
+
+  test("post: a member's post carrying a group of cards is refused, and nothing is posted (crew slice 8)", () => {
+    const { crewLead, lead } = crew();
+    const group = { decline: "no", parts: [[{ kind: "para", text: "a" }], [{ kind: "para", text: "b" }]] };
+    const answer = crewLead.post({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: { ...fields(), group } }, "laptop");
+    expect(answer.body).toMatchObject({ ok: false, code: "bad_body", error: HILL_GROUP_NOT_YOURS });
+    expect(lead.store.all()).toEqual([]);
   });
 
   test("post: a repeated request id is the same decision; an image not held is refused", () => {

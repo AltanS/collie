@@ -80,7 +80,7 @@ const NOT_REACHED_BY_WINDOWS: readonly Allowed[] = [
   { file: "bridge/tricks/propose-wire.ts", pattern: "startsWithSlash", count: 1, why: "`proposedPathProblem` reads a proposal's wire path, written with `/` on every host (crew slice 8), and refuses one that opens with it" },
   { file: "bridge/tricks/propose-wire.ts", pattern: "splitOnSlash", count: 3, why: "a proposal's wire path, written with `/` on every host (crew slice 8), cut into its steps to check each one and its folders" },
   { file: "bridge/tricks/proposal-install.ts", pattern: "splitOnSlash", count: 1, why: "the folders above a wire path or a code walk path, both written with `/` on every host (crew slice 8)" },
-  { file: "cli/trick-propose.ts", pattern: "splitOnSlash", count: 1, why: "`leftBehind` reads the wire path the walk built by joining names with `/` on every host (crew slice 8)" },
+  { file: "cli/trick-folder.ts", pattern: "splitOnSlash", count: 1, why: "`leftBehind` reads the wire path the walk built by joining names with `/` on every host (crew slice 8)" },
   { file: "bridge/tricks/scan.ts", pattern: "splitOnSlash", count: 1, why: "`isScannedFile` reads a path `walkTrickCode` built by joining names with `/` on every host (M94)" },
   { file: "bridge/tricks/code-hash.ts", pattern: "splitOnSlash", count: 1, why: "`isCodePath` reads a git tree path or a `walkTrickCode` path, both written with `/` on every host (official update)" },
   { file: "cli/trick-add.ts", pattern: "splitOnSlash", count: 2, why: "a folder inside a git repository and the paths of a git tree, which git writes with `/` on every host (M94 review 15)" },

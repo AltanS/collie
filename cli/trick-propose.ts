@@ -1,18 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { lstat, readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import type { HillDeps } from "./hill.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
 import { checkStatic, leadsCrewOnDisk, reportFails } from "./trick.ts";
+import { readTrickFolder } from "./trick-folder.ts";
+
+export { PROPOSE_WALK_MAX, readTrickFolder, type FolderRead } from "./trick-folder.ts";
 import { AskLate, NO_SOCKET_TEXT, shown } from "./walky.ts";
 import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { PROPOSE_ASK_MS } from "../bridge/tricks/propose-door.ts";
-import { foldKey, isConfigPath, PROPOSE_LIMITS, readProposal, wireFiles, type ProposedFile } from "../bridge/tricks/propose-wire.ts";
-import { CONFIG_FILE, PICTURE_DIRS } from "../bridge/tricks/code-hash.ts";
+import { proposalCardCount } from "../bridge/tricks/proposal-card.ts";
+import { readProposal, wireFiles } from "../bridge/tricks/propose-wire.ts";
 import { MANIFEST_FILE } from "../bridge/tricks/paths.ts";
 import { warningLines } from "../bridge/tricks/scan.ts";
 import { unknownOp } from "../bridge/walky/refusals.ts";
@@ -38,71 +40,7 @@ export const PROPOSE_NOT_HERE = "No Collie bridge on this machine knows this pan
 /** What the CLI says when the folder's config.toml stayed behind. */
 export const PROPOSE_CONFIG_LEFT = "config.toml stays behind: your person sets the trick up on the machine.";
 
-/** The most entries the folder walk looks at, skipped ones included, before it gives up. */
-export const PROPOSE_WALK_MAX = 2000;
-
 export type ProposeDeps = HillDeps;
-
-/** The folder read for a proposal: the files to send, and how many were left behind. */
-export type FolderRead = { ok: true; files: ProposedFile[]; left: number; config: boolean } | { ok: false; error: string };
-
-/** The top-level names left behind, folded: the bridge's `inputs/`, the person's pictures and settings. */
-const LEFT_TOP: ReadonlySet<string> = new Set(["inputs", ...PICTURE_DIRS, CONFIG_FILE]);
-
-/** Whether a name is left behind: not code, or the bridge's own. */
-function leftBehind(rel: string, isDir: boolean): boolean {
-  const steps = rel.split("/");
-  const name = steps.at(-1) ?? "";
-  if (steps.some((step) => step.startsWith(".") || foldKey(step) === "node_modules")) return true;
-  // The bridge's own inputs/, the person's pictures and settings: a proposal carries code only.
-  if (steps.length === 1 && LEFT_TOP.has(foldKey(name))) return true;
-  if (!isDir && name.endsWith(".log")) return true;
-  return false;
-}
-
-/** Read a trick folder for a proposal: regular files only, never through a link, within the caps. */
-export async function readTrickFolder(folder: string): Promise<FolderRead> {
-  const files: ProposedFile[] = [];
-  let left = 0;
-  let config = false;
-  let seen = 0;
-  let bytes = 0;
-  const walk = async (rel: string, depth: number): Promise<string | null> => {
-    const here = rel === "" ? folder : join(folder, rel);
-    const entries = await readdir(here, { withFileTypes: true });
-    for (const entry of entries.toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
-      seen += 1;
-      if (seen > PROPOSE_WALK_MAX) return `The folder holds more than ${String(PROPOSE_WALK_MAX)} entries. A trick is small.`;
-      const sub = rel === "" ? entry.name : `${rel}/${entry.name}`;
-      const st = await lstat(join(folder, sub));
-      if (leftBehind(sub, st.isDirectory())) {
-        left += 1;
-        if (isConfigPath(sub)) config = true;
-        continue;
-      }
-      if (st.isSymbolicLink()) return `${sub} is a symbolic link. A trick holds regular files only.`;
-      if (st.isDirectory()) {
-        if (depth >= PROPOSE_LIMITS.depth) return `${sub} sits deeper than ${String(PROPOSE_LIMITS.depth)} folders.`;
-        const deeper = await walk(sub, depth + 1);
-        if (deeper !== null) return deeper;
-        continue;
-      }
-      if (!st.isFile()) return `${sub} is not a regular file. A trick holds regular files only.`;
-      bytes += st.size;
-      if (files.length + 1 > PROPOSE_LIMITS.files) return `The trick holds more than ${String(PROPOSE_LIMITS.files)} files.`;
-      if (bytes > PROPOSE_LIMITS.bytes) return `The trick holds more than ${String(PROPOSE_LIMITS.bytes / (1024 * 1024))} MB.`;
-      const body = await readFile(join(folder, sub));
-      files.push({ rel: sub, bytes: new Uint8Array(body.buffer, body.byteOffset, body.byteLength), executable: (st.mode & 0o111) !== 0 });
-    }
-    return null;
-  };
-  try {
-    const error = await walk("", 0);
-    return error === null ? { ok: true, files, left, config } : { ok: false, error };
-  } catch (err) {
-    return { ok: false, error: `The folder could not be read: ${err instanceof Error ? err.message : String(err)}` };
-  }
-}
 
 /** Every bridge socket on this machine worth asking, this install's own first, as `collie hill` asks them. */
 function socketPaths(deps: ProposeDeps): string[] {
@@ -202,6 +140,10 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   }
   const read = await readTrickFolder(folder);
   if (!read.ok) return fail(read.error, "bad_files", EXIT.FAIL);
+  // The cards the phone would show: a trick larger than a group, or with a line no card shows as it is,
+  // is refused here, and again on the lead.
+  const cards = proposalCardCount({ manifest: report.manifest!, files: read.files, warnings: [...new Set(report.warnings.map((w) => w.kind))], crew: leadsCrewOnDisk(deps) });
+  if (!cards.ok) return fail(cards.error, cards.code, EXIT.REFUSED);
   const rid = requestId ?? (deps.mintRequestId ?? randomUUID)();
   // The one reader the bridge and the lead use: what it refuses, they refuse.
   const fields = { requestId: rid, files: wireFiles(read.files) };

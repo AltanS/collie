@@ -45,9 +45,16 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   "decisionId",
   // The hill's answer: what walky reported (`typed`, `held`, `unknown`, `none`), an enum the bridge writes.
   "delivery",
+  // A pairing's route (bridge/pair-audit.ts): the class of the forwarded address, an enum the bridge
+  // writes (`loopback`, `tailnet`, `lan`, `internet`, `unknown`), never the address.
+  "forwardedFrom",
   // The hill's answer: the option's intent, `answer` or `dismiss`. A lowercase word of at most 32
   // characters the poster named for a button (`isHillOptionIntent`), never the person's text.
   "intent",
+  // A pairing (bridge/pair-audit.ts): the pane and session `collie pair` ran in, as the bridge placed
+  // them, or `not placed`. A pane id and a session name, the same values the envelope keeps.
+  "mintPane",
+  "mintSession",
   "passed",
   "reason",
   // The hill's answer: the receipt's code (`ok`, `rejected`, `gone`, `unknown`), an enum the bridge writes.
@@ -57,6 +64,8 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   "recordedBy",
   // A worktree create's id (ADR 0089): a UUID the phone mints, never typed by a person.
   "requestId",
+  // A pairing's route (bridge/pair-audit.ts): the class of the peer address, an enum, never the address.
+  "route",
   "saved",
   "sent",
   "size",

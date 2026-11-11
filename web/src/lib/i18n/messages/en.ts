@@ -3495,6 +3495,15 @@ export const en = {
   "hill.media.next": "Next picture",
   "hill.media.position": "{index} of {count}",
   "hill.media.open": "Open {name} at full size",
+  // A group of cards (crew slice 8): English only until the translation pass, listed in PENDING_TRANSLATION below.
+  "hill.group.count.one": "{count} card",
+  "hill.group.count.other": "{count} cards",
+  "hill.group.position": "Card {index} of {count}",
+  "hill.group.back": "Back",
+  "hill.group.next": "Next",
+  "hill.group.openAll.one": "Open the card first.",
+  "hill.group.openAll.other": "Open all {count} cards first.",
+  "hill.group.card": "Card {index}",
   "tricks.compare.before": "Before",
   "tricks.compare.after": "After",
   "tricks.spark.trend": "Trend",
@@ -3746,6 +3755,15 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.by.repoUnlisted",
   "settings.tricks.official.updateFailed",
   "hill.receipt.dismissedOffline",
+  // A group of cards (crew slice 8).
+  "hill.group.count.one",
+  "hill.group.count.other",
+  "hill.group.position",
+  "hill.group.back",
+  "hill.group.next",
+  "hill.group.openAll.one",
+  "hill.group.openAll.other",
+  "hill.group.card",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

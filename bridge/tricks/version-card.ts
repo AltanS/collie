@@ -8,6 +8,7 @@ import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { TrickVersionsPort, TrickVersionSubject, VersionAnswer } from "./service.ts";
 import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.ts";
+import { changeCells, codeGroup, filesOnCards, GROUP_FILES_MAX, groupOrder, placesTables } from "./card-group.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): one Decision of Collie's own on the Hill for each trick that is
 // on and whose new version waits for a yes. It asks the same yes the Settings row and `collie trick on`
@@ -181,24 +182,43 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const options: HillPostInput["options"] = [{ intent: "use", label: "Use the new version" }];
   if (!powersChanged) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." });
   options.push({ intent: "keep", label: "Keep the old version" });
+  const recommend = { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." };
   const card: Omit<HillPostInput, "requestId"> = {
     title: versionTitle(subject.name),
     summary,
     options,
     text: "none",
     priority: "today",
-    recommends: powersChanged || warnings.length > 0 || !whole ? null : { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
+    recommends: powersChanged || warnings.length > 0 || !whole ? null : recommend,
   };
-  return shown.view === null ? card : { ...card, view: shown.view };
+  if (whole || fileCount > diff.files.length) return shown.view === null ? card : { ...card, view: shown.view };
+  // Not whole on one card: every line on a group of cards (card-group.ts). A line the mask changed shows
+  // masked, its card says so, and Collie recommends nothing. More than 8 cards, a file that is not text,
+  // or more files than a group lists: the one card as before, with its sentence, recommending nothing.
+  const code = codeGroup(diff.files, pending.manifest?.run ?? null, "show");
+  if (!code.ok) return shown.view === null ? card : { ...card, view: shown.view };
+  const head = rightsHead("New rights", rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null);
+  const rows = groupOrder(diff.files, pending.manifest?.run ?? null).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
+  const first = checked([...head, { kind: "line", text: filesOnCards(diff.files.length, code.cards.length), attrs: { role: "note" } }, ...placesTables(rows, ["Change", "Lines"], code.places)]);
+  if (first === undefined || bytesOf(first) > DECISION_VIEW_LIMITS.bytes) return shown.view === null ? card : { ...card, view: shown.view };
+  const masked = diff.files.some((file) => file.cut === true);
+  const many = ` It shows on ${String(code.cards.length + 1)} cards.`;
+  const fullGroup = `${filesSentence(fileCount)} ${fact}${many}`;
+  return {
+    ...card,
+    summary: [...fullGroup].length <= HILL_SUMMARY_MAX ? fullGroup : `${filesSentence(fileCount)} ${short}${many}`,
+    recommends: powersChanged || warnings.length > 0 || masked ? null : recommend,
+    group: { decline: "keep", parts: [first, ...code.cards] },
+  };
 }
 
 /** A path as one cell: any character the view refuses as `?`, cut from the start to fit, so the file name shows. */
-function cellPath(rel: string): string {
+export function cellPath(rel: string): string {
   const chars = [...rel].map((ch) => (unsafeText(ch) ? "?" : ch));
   return chars.length <= LINE_MAX ? chars.join("") : `…${chars.slice(chars.length - LINE_MAX + 1).join("")}`;
 }
 
-function countCell(n: number | null, sign: string): string {
+export function countCell(n: number | null, sign: string): string {
   return n === null || n === 0 ? "" : `${sign}${String(n)}`;
 }
 
@@ -225,12 +245,12 @@ function hunkNode(file: ChangedFile, lines: number): { node: ViewNode; whole: bo
   return { node: { kind: "diff", text: hunk.join("\n"), attrs: { file: cellPath(file.rel) } }, whole };
 }
 
-function bytesOf(view: View): number {
+export function bytesOf(view: View): number {
   return new TextEncoder().encode(JSON.stringify(view)).byteLength;
 }
 
 /** The view as the schema reads it back (the one reader every Decision's view goes through), or undefined. */
-function checked(view: View): View | undefined {
+export function checked(view: View): View | undefined {
   return parseDecisionView(parseJson(JSON.stringify(view))).view;
 }
 
@@ -375,7 +395,7 @@ export class VersionCards implements TrickVersionsPort {
 
   constructor(deps: VersionCardDeps) {
     this.deps = deps;
-    this.diff = deps.diff ?? ((base, next) => versionDiff({ base, next }));
+    this.diff = deps.diff ?? ((base, next) => versionDiff({ base, next, filesMax: GROUP_FILES_MAX }));
     this.warn = deps.warn ?? (() => undefined);
   }
 

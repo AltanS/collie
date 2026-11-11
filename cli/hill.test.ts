@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,7 +10,7 @@ import { deniedFoldersSync, HillMediaStore } from "../bridge/hill/media.ts";
 import { HOST } from "../bridge/host.ts";
 import { memoryHillReceipts } from "../bridge/hill/receipts.ts";
 import { CREW_HILL_MEDIA_ROUTE, CREW_HILL_POST_ROUTE, HILL_CALL_BUDGET_MS, HILL_FORWARD_BUDGET_MS, HILL_MEDIA_BUDGET_MS, HILL_POST_ASK_MS, HillCrewLead, HillHeldMedia, HillMemberForward, type HillLeadLink } from "../bridge/hill/crew.ts";
-import { HillService } from "../bridge/hill/service.ts";
+import { HillService, type HillServiceDeps } from "../bridge/hill/service.ts";
 import { HillStore } from "../bridge/hill/store.ts";
 import { HillSwitch, readHillSwitch } from "../bridge/hill/switch.ts";
 import { walkyPlace } from "../bridge/hill/walky.ts";
@@ -19,7 +19,7 @@ import { WalkyLog } from "../bridge/walky/log.ts";
 import { unknownOp } from "../bridge/walky/refusals.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
-import { parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { capture, context } from "./fakes.ts";
 import {
   clearedWords,
@@ -55,7 +55,7 @@ import { HILL_WRITING, hillWordingWarnings, sentenceCount } from "./hill-rules.t
 import { EXIT } from "./io.ts";
 import { run } from "./program.ts";
 import { realFiles } from "./sys.ts";
-import { askSocket } from "./walky.ts";
+import { AskLate, askSocket } from "./walky.ts";
 
 import { spaceOf } from "../bridge/walky/space.ts";
 
@@ -91,7 +91,7 @@ interface Bridge {
 }
 
 /** A bridge with the hill on a real socket. `withHill: false` is a bridge built without it. POSIX only. */
-async function bridge(withHill = true): Promise<Bridge> {
+async function bridge(withHill = true, extra: Partial<HillServiceDeps> = {}): Promise<Bridge> {
   const stateDir = mkdtempSync(join(tmpdir(), "hill-cli-"));
   cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
   const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
@@ -114,6 +114,7 @@ async function bridge(withHill = true): Promise<Bridge> {
     media: new HillMediaStore(join(stateDir, "hill"), deniedFoldersSync([stateDir])),
     // The real switch on this bridge's own state folder, so `collie hill on|off` moves it.
     hillSwitch: new HillSwitch(stateDir, () => undefined),
+    ...extra,
   });
   const base = { socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined };
   const server = withHill ? new WalkyServer({ ...base, hill }) : new WalkyServer(base);
@@ -150,8 +151,12 @@ async function olderBridge(bare = false): Promise<{ readonly path: string; reado
 
 function deps(sockets: string[], env: Record<string, string> = inPane("%1"), over: Partial<HillDeps> = {}): HillDeps & { readonly io: ReturnType<typeof capture> } {
   const io = capture();
+  // A picture under /tmp is copied for the bridge; the fake home is not writable, so the copy goes to a folder of the test's own.
+  const staging = mkdtempSync(join(tmpdir(), "hill-stage-"));
+  cleanups.push(() => rmSync(staging, { recursive: true, force: true }));
   return {
     ctx: context(env, { stateDir: mkdtempSync(join(tmpdir(), "hill-own-")) }),
+    stagingRoot: () => staging,
     files: realFiles,
     uid: process.getuid?.(),
     platform: "linux",
@@ -684,10 +689,133 @@ describe("post --image", () => {
       rmSync(stateDir, { recursive: true, force: true });
     });
     const dir = work();
+    writeFileSync(join(dir, "a.png"), PNG);
     const d = deps([path], inPane("%1"), { cwd: () => dir });
     expect(await cmdHillPost(d, [...POST, "--image", "a.png"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["dc_older0000001"]);
     expect(d.io.stderr).toEqual([`hill: ${HILL_IMAGES_DROPPED}`]);
+  });
+
+  describe("a picture under /tmp, for a bridge with a private /tmp", () => {
+    /** A folder of the test's own as the staging root, and a folder under /tmp for the picture. */
+    function stage() {
+      const root = join(work(), "image-staging");
+      const dir = realpathSync(mkdtempSync(join("/tmp", "hill-cli-tmp-")));
+      cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+      writeFileSync(join(dir, "a.png"), PNG);
+      return { root, dir, left: () => (existsSync(root) ? readdirSync(root) : []) };
+    }
+
+    /** A socket the CLI accepts as a bridge's (real folder, our uid, 0700); the `ask` of each test stands in for the bridge. */
+    async function socket(): Promise<string> {
+      const stateDir = mkdtempSync(join(tmpdir(), "hill-stage-sock-"));
+      const path = walkySocketPath(stateDir);
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      const server = createServer((conn) => conn.end());
+      await new Promise<void>((resolve) => server.listen(path, resolve));
+      cleanups.push(() => {
+        server.close();
+        rmSync(stateDir, { recursive: true, force: true });
+      });
+      return path;
+    }
+
+    type Seen = { lines: string[]; staged: string[]; bytes: Uint8Array[] };
+
+    /** An `ask` that records each request line, reads the staged files while the request is open, then answers. */
+    function asking(seen: Seen, answer: (staged: string[]) => string | Promise<string>): HillDeps["ask"] {
+      return async (_path, line) => {
+        seen.lines.push(line);
+        const sent = parseJsonObject(line)?.images;
+        const images = (Array.isArray(sent) ? sent : []).flatMap((image) => asJsonString(asJsonObject(image)?.path) ?? []).map((path) => ({ path }));
+        seen.staged.push(...images.map((image) => image.path));
+        for (const image of images) if (existsSync(image.path)) seen.bytes.push(new Uint8Array(readFileSync(image.path)));
+        return answer(images.map((image) => image.path));
+      };
+    }
+
+    const seenNone = (): Seen => ({ lines: [], staged: [], bytes: [] });
+    const okAnswer = `${JSON.stringify({ ok: true, decision: storedDecision("dc_staged000001") })}\n`;
+    const refusal = (staged: string[]) => `${JSON.stringify({ ok: false, hill: true, code: "bad_image", error: `${staged[0] ?? ""}: the bridge does not like this picture` })}\n`;
+
+    test("is copied, the copy is the path sent, and the copy is gone when the post is answered", async () => {
+      const sock = await socket();
+      const s = stage();
+      const seen = seenNone();
+      const d = deps([sock], inPane("%1"), { cwd: () => s.dir, stagingRoot: () => s.root, ask: asking(seen, () => okAnswer) });
+      expect(await cmdHillPost(d, [...POST, "--image", "a.png=After"])).toBe(EXIT.OK);
+      expect(seen.staged).toHaveLength(1);
+      expect(seen.staged[0]!.startsWith(`${s.root}/`)).toBe(true);
+      expect(seen.staged[0]).not.toContain("/tmp/hill-cli-tmp-");
+      expect(JSON.parse(seen.lines[0]!).images).toEqual([{ path: seen.staged[0], caption: "After" }]);
+      expect(seen.bytes[0]).toEqual(PNG);
+      expect(existsSync(seen.staged[0]!)).toBe(false);
+      expect(s.left()).toEqual([]);
+    });
+
+    test("a bridge refusal names the path the agent typed, not the copy, and the copy is gone", async () => {
+      const sock = await socket();
+      const s = stage();
+      const seen = seenNone();
+      const typed = join(s.dir, "a.png");
+      const d = deps([sock], inPane("%1"), { cwd: () => s.dir, stagingRoot: () => s.root, ask: asking(seen, refusal) });
+      expect(await cmdHillPost(d, [...POST, "--image", "a.png"])).toBe(EXIT.REFUSED);
+      expect(d.io.stderr[0]).toBe(`hill: ${typed}: the bridge does not like this picture (bad_image)`);
+      expect(d.io.stderr.join("\n")).not.toContain(s.root);
+      expect(s.left()).toEqual([]);
+    });
+
+    test("a timeout and a throw leave no copy behind", async () => {
+      const sock = await socket();
+      const s = stage();
+      const seen = seenNone();
+      const late = deps([sock], inPane("%1"), { cwd: () => s.dir, stagingRoot: () => s.root, ask: asking(seen, () => Promise.reject(new AskLate(1000))) });
+      expect(await cmdHillPost(late, [...POST, "--image", "a.png"])).toBe(EXIT.UNREACHABLE);
+      expect(late.io.stderr[0]).toContain(HILL_NOT_CONFIRMED);
+      expect(seen.staged).toHaveLength(1);
+      expect(s.left()).toEqual([]);
+      // `sockets` throws inside the request, after the copy was made.
+      const thrown = deps([sock], inPane("%1"), {
+        cwd: () => s.dir,
+        stagingRoot: () => s.root,
+        sockets: () => {
+          expect(s.left()).toHaveLength(1);
+          throw new Error("boom");
+        },
+      });
+      await expect(cmdHillPost(thrown, [...POST, "--image", "a.png"])).rejects.toThrow("boom");
+      expect(s.left()).toEqual([]);
+    });
+
+    test("a picture outside /tmp and /var/tmp is sent as it is, with no copy", async () => {
+      const sock = await socket();
+      if (!existsSync("/dev/shm")) return;
+      const s = stage();
+      const dir = realpathSync(mkdtempSync(join("/dev/shm", "hill-cli-shm-")));
+      cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+      writeFileSync(join(dir, "a.png"), PNG);
+      const seen = seenNone();
+      const d = deps([sock], inPane("%1"), { cwd: () => dir, stagingRoot: () => s.root, ask: asking(seen, () => okAnswer) });
+      expect(await cmdHillPost(d, [...POST, "--image", "a.png"])).toBe(EXIT.OK);
+      expect(seen.staged).toEqual([join(dir, "a.png")]);
+      expect(existsSync(s.root)).toBe(false);
+    });
+
+    test("a picture the helper refuses is a plain error and a non-zero exit, and nothing is posted", async () => {
+      const sock = await socket();
+      const s = stage();
+      const seen = seenNone();
+      const missing = deps([sock], inPane("%1"), { cwd: () => s.dir, stagingRoot: () => s.root, ask: asking(seen, () => okAnswer) });
+      expect(await cmdHillPost(missing, [...POST, "--image", "gone.png"])).toBe(EXIT.REFUSED);
+      expect(missing.io.stderr[0]).toStartWith(`hill: ${join(s.dir, "gone.png")}`);
+      // A copy that cannot be made has no bridge code: the machine's state, not the picture.
+      const blocked = join(s.dir, "not-a-folder");
+      writeFileSync(blocked, "x");
+      const noCopy = deps([sock], inPane("%1"), { cwd: () => s.dir, stagingRoot: () => join(blocked, "stage"), ask: asking(seen, () => okAnswer) });
+      expect(await cmdHillPost(noCopy, [...POST, "--image", "a.png"])).toBe(EXIT.FAIL);
+      expect(noCopy.io.stderr[0]).toStartWith("hill: could not copy the picture for the bridge:");
+      expect(seen.lines).toEqual([]);
+    });
   });
 });
 
@@ -861,6 +989,37 @@ describe("a post on a slow crew link", () => {
     expect(await cmdHillPost(again, [...POST, "--request-id", retry!])).toBe(EXIT.OK);
     expect(again.io.stdout).toEqual([leadStore.all()[0]!.id]);
     expect(leadStore.all()).toHaveLength(1);
+  });
+});
+
+describe("status of Collie's own card, from the session it tells", () => {
+  const COLLIE = { kind: "collie" as const, ref: { type: "proposal" as const, id: "legs", hash: "a".repeat(64) }, label: "Collie" };
+  const CARD = { requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f", title: "Switch on the trick legs?", summary: "An agent session (repo#one) on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" as const, recommends: null };
+
+  socketTest("the proposing session reads the card before and after the answer; another pane does not", async () => {
+    const b = await bridge(true, { onCollieAnswer: async () => ({ ok: true }) });
+    const sock = [walkySocketPath(b.stateDir)];
+    const posted = b.hill.postCollie(COLLIE, CARD, { tellOf: "local/%1#aaaa" });
+    expect(posted.ok).toBe(true);
+    const before = deps(sock);
+    expect(await cmdHillStatus(before, ["dc_cli000000001"])).toBe(EXIT.OK);
+    expect(before.io.stdout).toEqual(["dc_cli000000001 open", "title: Switch on the trick legs?"]);
+    await b.hill.answer({ rid: "11111111-1111-4111-8111-111111111111", node: "hill/dc_cli000000001", intent: "on", value: { text: null } }, "dc_cli000000001", "Pixel 9");
+    const after = deps(sock);
+    expect(await cmdHillStatus(after, ["dc_cli000000001"])).toBe(EXIT.OK);
+    expect(after.io.stdout).toEqual(["dc_cli000000001 answered", "title: Switch on the trick legs?", "answer: on (Switch it on)", "by: Pixel 9", "delivery: typed"]);
+    // Nobody else reads it, and the proposer cannot take it back.
+    const other = deps(sock, inPane("%2"));
+    expect(await cmdHillStatus(other, ["dc_cli000000001"])).not.toBe(EXIT.OK);
+    expect(await cmdHillWithdraw(deps(sock), ["dc_cli000000001"])).not.toBe(EXIT.OK);
+  });
+
+  socketTest("on a crew member, the proposing session reads its lead's card", async () => {
+    const { sock, lead } = await slowCrew(0);
+    expect(lead.postCollie(COLLIE, CARD, { tellOf: "laptop/%1#aaaa" }).ok).toBe(true);
+    const reader = deps(sock);
+    expect(await cmdHillStatus(reader, ["dc_lead00000001"])).toBe(EXIT.OK);
+    expect(reader.io.stdout).toEqual(["dc_lead00000001 open", "title: Switch on the trick legs?"]);
   });
 });
 

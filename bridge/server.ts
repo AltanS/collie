@@ -207,6 +207,7 @@ import {
   type PairedDeviceWire,
   type PairingStore,
 } from "./pairing.ts";
+import { pairAuditEntry, pairRoute } from "./pair-audit.ts";
 import { createPairLimiter, pairSourceKey } from "./pair-limit.ts";
 import { LOCAL_LABEL, type LocalCredential } from "./local-secret.ts";
 import { modeForWire } from "./crew/mode.ts";
@@ -4465,7 +4466,11 @@ export function startServer(opts: {
           // name is not the person who added them. Before the watch can see the label come back.
           await forgetDevice(parsed.label, "expired-replaced");
         }
-        audit.record({ action: "pair", device: parsed.label, detail: { label: parsed.label } });
+        // One line per pairing, with where the claim came from (the address class, never the address)
+        // and the pane `collie pair` ran in. Never the code or the token (bridge/pair-audit.ts).
+        audit.record(
+          pairAuditEntry(parsed.label, pairRoute(peer, isLoopbackPeer(peer), req.headers.get("x-forwarded-for")), claimed.mintedIn),
+        );
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
         return json({ token: claimed.token, label: parsed.label }, req.headers.get("accept-encoding"));
       }

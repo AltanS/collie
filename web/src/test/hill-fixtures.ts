@@ -59,6 +59,28 @@ export function trickDecision(over: Partial<HillDecision> = {}): HillDecision {
   };
 }
 
+/** Collie's own proposal card with a group of `cards` cards (crew slice 8): card i says "Card i words." */
+export function groupDecision(cards = 3, over: Partial<HillDecision> = {}): HillDecision {
+  const base = hillDecision();
+  return {
+    ...base,
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "proposal", id: "legs", hash: "a".repeat(64) } },
+    title: "Switch on the trick legs?",
+    target: null,
+    text: "none",
+    options: [
+      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "later", label: "Not now" },
+    ],
+    group: {
+      digest: "d".repeat(64),
+      decline: "later",
+      parts: Array.from({ length: cards }, (_, i) => ({ view: [{ kind: "para", text: `Card ${String(i + 1)} words.` }], sha256: String(i).repeat(64) })),
+    },
+    ...over,
+  };
+}
+
 /** A receipt for `rid`, `ok` and typed unless the case says otherwise. */
 export function hillReceipt(over: Partial<HillReceipt> = {}): HillReceipt {
   return { rid: "00000000-0000-4000-8000-000000000001", code: "ok", reason: null, state: "answered", delivery: "typed", trick: "none", at: HILL_T0, ...over };
