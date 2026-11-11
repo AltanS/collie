@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { ADD_LIMITS } from "../../cli/trick-add.ts";
 import type { JsonObject } from "../json.ts";
-import { checkProposedFiles, foldKey, proposalHash, proposedPathProblem, PROPOSE_LIMITS, readProposal, RESERVED_PROPOSAL_IDS, wireFiles, type ProposedFile } from "./propose-wire.ts";
+import { checkProposedFiles, foldKey, proposalHash, proposedPathProblem, PROPOSE_LIMITS, PROPOSE_NO_CONFIG, readProposal, RESERVED_PROPOSAL_IDS, wireFiles, type ProposedFile } from "./propose-wire.ts";
 
 // THE ONE READER OF A PROPOSAL'S FILES (crew slice 8): the CLI, the member and the lead all read with it,
 // and the lead treats every byte as hostile. Each refusal below is one a hostile member could try.
@@ -72,8 +72,17 @@ describe("the paths a proposal may carry", () => {
     expect(refusedWith(wire([...base(), file("CAPTURES/x.png", "#!/bin/sh")]))).toContain("picture folder");
   });
 
-  test("ordinary names, a nested folder and config.toml are taken", () => {
-    for (const rel of ["program.ts", "lib/util.ts", "config.toml", "README.md", "a-b_c.d.ts"]) expect(proposedPathProblem(rel)).toBeNull();
+  test("ordinary names and a nested folder are taken", () => {
+    for (const rel of ["program.ts", "lib/util.ts", "README.md", "a-b_c.d.ts", "lib/config.toml"]) expect(proposedPathProblem(rel)).toBeNull();
+  });
+
+  test("a config.toml, in any case, is refused with its own words, by the reader and by the file check", () => {
+    for (const rel of ["config.toml", "Config.TOML"]) {
+      expect(refusedWith(wire([...base(), file(rel, "a = 1\n")]))).toBe(PROPOSE_NO_CONFIG);
+      const checked = checkProposedFiles([...base(), file(rel, "a = 1\n")]);
+      expect(checked.ok === false && checked.refusal.error).toBe(PROPOSE_NO_CONFIG);
+    }
+    expect(PROPOSE_NO_CONFIG).toBe("A proposal cannot carry a config.toml. Your person sets the trick up on the machine.");
   });
 
   test("names that fold to one are refused: case, Unicode compatibility forms", () => {

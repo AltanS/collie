@@ -167,7 +167,6 @@ describe("the card", () => {
       ],
     } satisfies VersionDiff,
     warnings: [],
-    hasConfig: false,
     crew: false,
   };
 

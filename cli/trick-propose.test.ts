@@ -102,9 +102,10 @@ describe("the folder read", () => {
     chmodSync(join(dir, "program.ts"), 0o755);
     const read = await readTrickFolder(dir);
     if (!read.ok) throw new Error(read.error);
-    expect(read.files.map((f) => f.rel).toSorted()).toEqual(["config.toml", "lib/util.ts", "program.ts", "trick.toml"]);
+    expect(read.files.map((f) => f.rel).toSorted()).toEqual(["lib/util.ts", "program.ts", "trick.toml"]);
     expect(read.files.find((f) => f.rel === "program.ts")?.executable).toBe(true);
-    expect(read.left).toBe(6);
+    expect(read.left).toBe(7);
+    expect(read.config).toBe(true);
   });
 
   posixTest("refuses a symbolic link, even to a file inside the folder", async () => {
@@ -222,10 +223,20 @@ describe("collie trick propose, over the walky socket", () => {
     const files = b.calls[0]?.fields.files;
     expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
     expect(d.io.stdout).toEqual([
-      "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/).",
+      "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml).",
       "Proposed legs. Your person sees it on the Hill as dc_k3m9x2p7q1ab. Nothing runs before their yes.",
       "Read the answer with: collie hill status dc_k3m9x2p7q1ab",
     ]);
+  });
+
+  socketTest("a config.toml stays behind, and the CLI says so", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(d, [trickFolder({ "config.toml": "rows = 3\n" })])).toBe(EXIT.OK);
+    const files = b.calls[0]?.fields.files;
+    expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
+    expect(d.io.stdout[0]).toBe("Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml).");
+    expect(d.io.stdout[1]).toBe("config.toml stays behind: your person sets the trick up on the machine.");
   });
 
   socketTest("from a bare shell the proposer is a terminal", async () => {

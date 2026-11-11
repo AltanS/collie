@@ -31,23 +31,19 @@ import type { VersionDiff } from "./version-diff.ts";
 // (version-card.ts): title "Use the new version of <id>?", the changed files against the approved copy,
 // the new rights and the new warnings, how much is shown. It names the proposer first, never
 // recommends, and has no "Use it and stop asking". Options: "Use the new version" (with a confirm tap)
-// and "Keep the old version". The proposal's own config.toml is never used for a version: the trick
-// keeps the person's.
+// and "Keep the old version". A proposal never carries a config.toml (propose-wire.ts `PROPOSE_NO_CONFIG`).
 
 /** The card's sender name. Display only. */
 export const PROPOSAL_CARD_SENDER = "Collie";
 /** The heading of the author's words in the card's view. */
 export const PROPOSAL_AUTHOR_WORDS = "Its author's words. Collie did not check them.";
-/** The view's line for a proposal that brings its own config.toml. */
-export const PROPOSAL_HAS_CONFIG = "It brings its own config.toml, which is not shown.";
 /** The two options. */
 export const PROPOSAL_ON = { intent: "on", label: "Switch it on", confirm: "Yes, switch on" } as const;
 export const PROPOSAL_LATER = { intent: "later", label: "Not now" } as const;
 /** The two options of a new version's card: the same intents, the version card's words. */
 export const PROPOSAL_USE = { intent: "on", label: "Use the new version", confirm: "Yes, use it" } as const;
 export const PROPOSAL_KEEP = { intent: "later", label: "Keep the old version" } as const;
-/** The view's line for a new version that brings its own config.toml. */
-export const PROPOSAL_CONFIG_KEPT = "It brings its own config.toml. The trick keeps yours.";
+
 
 /** Who proposed the trick, as the lead knows them. */
 export interface ProposerFacts {
@@ -67,8 +63,6 @@ export interface ProposalCardInput {
   diff: VersionDiff;
   /** The warning kinds a text search of its code finds. */
   warnings: readonly (keyof typeof WARN_PLAIN)[];
-  /** Whether it brings a config.toml. */
-  hasConfig: boolean;
   /** Whether this bridge leads a crew: its `inputs` then read on every machine. */
   crew: boolean;
 }
@@ -116,7 +110,6 @@ export function proposalCard(input: ProposalCardInput): Omit<HillPostInput, "req
   const fact = also.length > 0 ? `It ${alsoWords}.` : "It asks for no rights.";
   const head = rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null);
   head.push({ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: authorWords(manifest) });
-  if (input.hasConfig) head.push({ kind: "line", text: PROPOSAL_HAS_CONFIG, attrs: { role: "note" } });
   const shown = fitView(head, input.diff);
   const total = input.diff.files.length;
   const whole = shown.view !== null && shown.shown >= total;
@@ -155,7 +148,6 @@ export interface ProposalVersionCardInput {
   diff: VersionDiff;
   /** The warning kinds the approved copy did not have. */
   warnings: readonly (keyof typeof WARN_PLAIN)[];
-  hasConfig: boolean;
   crew: boolean;
 }
 
@@ -171,7 +163,6 @@ export function proposalVersionCard(input: ProposalVersionCardInput): Omit<HillP
   const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
   const fact = also.length > 0 ? `It now also ${alsoWords}.` : "It asks for no new rights.";
   const head = rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null);
-  if (input.hasConfig) head.push({ kind: "line", text: PROPOSAL_CONFIG_KEPT, attrs: { role: "note" } });
   const shown = fitView(head, input.diff);
   const total = input.diff.files.length;
   const whole = shown.view !== null && shown.shown >= total;

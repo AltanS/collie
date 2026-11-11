@@ -85,8 +85,7 @@ export async function replaceTrickCode(root: string, id: string, proposed: reado
   const target = join(root, id);
   const st = await lstat(target).catch(() => null);
   if (st === null || !st.isDirectory()) return { ok: false, reason: `There is no trick folder ${id} to change.` };
-  // The trick's config.toml is the person's: a new version never brings its own.
-  const files = proposed.filter((file) => file.rel !== CONFIG_FILE);
+  const files = proposed;
   const stage = proposalSideName(root, "add", id);
   const carried = new Set(files.map((file) => file.rel.split("/")[0] ?? ""));
   try {

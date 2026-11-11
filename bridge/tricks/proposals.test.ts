@@ -465,7 +465,7 @@ describe("a trick id that exists", () => {
     const dir = await proposedOn(l, "legs");
     const before = await snapshot(l);
     // Proposed: one card, nothing written.
-    const v2 = proposal("legs", "new\n", { extra: [{ rel: "config.toml", bytes: enc("rows = 99\n"), executable: false }] });
+    const v2 = proposal("legs", "new\n");
     const answer = await l.proposals.propose(v2, AGENT);
     expect(answer).toMatchObject({ ok: true, kind: "version", id: "legs", hash: v2.hash, decision: expect.stringMatching(/^dc_/u) });
     await settle(l);
@@ -478,7 +478,6 @@ describe("a trick id that exists", () => {
       ["on", "Use the new version"],
       ["later", "Keep the old version"],
     ]);
-    expect(JSON.stringify(card?.view ?? null)).toContain("The trick keeps yours.");
     expect(l.hill.collieDecisions("version").filter((d) => d.state === "open")).toEqual([]);
     // Declined: the stored copy goes, nothing else moved.
     expect(await tap(l, card!, "later")).toMatchObject({ code: "ok" });
@@ -495,7 +494,7 @@ describe("a trick id that exists", () => {
     expect(await snapshot(l)).toEqual(before);
     expect(await stat(l.proposals.storeDir("legs", v3.hash)).catch(() => null)).toBeNull();
     // The yes: exactly the stored code is written and approved, the person's config.toml stays, the trick stays on.
-    const v4 = proposal("legs", "newest\n", { extra: [{ rel: "config.toml", bytes: enc("rows = 99\n"), executable: false }] });
+    const v4 = proposal("legs", "newest\n");
     await l.proposals.propose(v4, AGENT);
     const [yes] = openCards(l);
     expect(await tap(l, yes!, "on")).toMatchObject({ code: "ok", state: "answered" });

@@ -7,7 +7,7 @@ import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/l
 import type { JsonObject } from "../json.ts";
 import type { TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { HILL_OFF, type HillCollieSender, type HillCollieVerdict, type HillOneAnswer, type HillPostAnswer, type HillPostOptions } from "../hill/service.ts";
-import { CONFIG_FILE, unsafeText } from "./code-hash.ts";
+import { unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposerFacts } from "./proposal-card.ts";
@@ -383,15 +383,14 @@ export class TrickProposals {
   private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null): Promise<Omit<HillPostInput, "requestId">> {
     const id = proposal.manifest.id;
     const crew = this.deps.crew?.() ?? false;
-    const hasConfig = proposal.files.some((file) => file.rel === CONFIG_FILE);
     const kinds = await this.warningKinds(dir, proposal.manifest);
     if (base === null) {
       const diff = await this.diff(null, dir).catch((): VersionDiff => ({ files: [], counted: false }));
-      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff, warnings: kinds, hasConfig, crew });
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff, warnings: kinds, crew });
     }
     const diff = await this.diff(base.baseDir, dir).catch((): VersionDiff => ({ files: [], counted: false }));
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
-    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), hasConfig, crew });
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew });
   }
 
   private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {

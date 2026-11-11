@@ -131,6 +131,14 @@ export function shownPath(rel: string): string {
     .join("");
 }
 
+/** The words for a proposal that carries a config.toml: the program reads it, and nobody would see it. */
+export const PROPOSE_NO_CONFIG = "A proposal cannot carry a config.toml. Your person sets the trick up on the machine.";
+
+/** Whether a path is the trick's top-level config.toml, in any case. */
+export function isConfigPath(rel: string): boolean {
+  return foldKey(rel) === CONFIG_FILE;
+}
+
 /** Why a relative path is refused, or null when a proposal may carry it. */
 export function proposedPathProblem(rel: string): string | null {
   if (rel === "" || [...rel].length > PROPOSE_LIMITS.pathChars) return `is empty or longer than ${String(PROPOSE_LIMITS.pathChars)} characters`;
@@ -203,6 +211,7 @@ export function checkProposedFiles(files: readonly ProposedFile[]): { ok: true; 
   // Each folder's folded name, and the one spelling it was first seen with.
   const folders = new Map<string, string>();
   for (const file of files) {
+    if (isConfigPath(file.rel)) return refuse("bad_files", PROPOSE_NO_CONFIG);
     const problem = proposedPathProblem(file.rel);
     if (problem !== null) return refuse("bad_files", `The file name "${shownPath(file.rel)}" ${problem}.`);
     const key = foldKey(file.rel);
@@ -220,7 +229,7 @@ export function checkProposedFiles(files: readonly ProposedFile[]): { ok: true; 
     if (inPictureDir(file.rel) && (!isPictureName(file.rel) || !isPictureBytes(file.bytes))) {
       return refuse("bad_files", `"${shownPath(file.rel)}" is in a picture folder and is not a PNG, JPEG or WebP picture.`);
     }
-    if ((file.rel === MANIFEST_FILE || file.rel === CONFIG_FILE) && file.bytes.length > MANIFEST_BYTES_MAX) {
+    if (file.rel === MANIFEST_FILE && file.bytes.length > MANIFEST_BYTES_MAX) {
       return refuse("bad_files", `${file.rel} is larger than ${String(MANIFEST_BYTES_MAX / 1024)} KiB.`);
     }
     bytes += file.bytes.length;
@@ -271,6 +280,7 @@ export function readProposal(fields: JsonObject | undefined): { ok: true; propos
     if (Object.keys(row).some((key) => key !== "rel" && key !== "b64" && key !== "x")) return refuse("bad_request", "A file is { rel, b64, x? }.");
     b64Left -= b64.length;
     if (b64Left < 0) return refuse("bad_files", `The trick holds more than ${String(PROPOSE_LIMITS.bytes / (1024 * 1024))} MB.`);
+    if (isConfigPath(rel)) return refuse("bad_files", PROPOSE_NO_CONFIG);
     const problem = proposedPathProblem(rel);
     if (problem !== null) return refuse("bad_files", `The file name "${shownPath(rel)}" ${problem}.`);
     const bytes = strictBase64(b64);
