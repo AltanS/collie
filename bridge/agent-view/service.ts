@@ -393,12 +393,16 @@ export class AgentViewService {
   }
 
   /**
-   * What `GET /api/trick-views[?since=<rev>]` serves. Without `since`, every view. With it, only the views
-   * that moved after it, and the keys of every view held. Rev 0 while no view was ever written.
+   * What `GET /api/trick-views[?since=<rev>][&session=<address>...]` serves. Without `since`, every view.
+   * With it, only the views that moved after it, and the keys of every view held. With `sessions`, the
+   * same, narrowed to those sessions. Rev 0 while no view was ever written.
    */
-  answer(since: number | null = null): TrickViewsAnswer {
+  answer(since: number | null = null, sessions: readonly string[] | null = null): TrickViewsAnswer {
     // Served first: a gate, a mark or a question that moved while they are served moves the views' revs.
-    const served = this.deps.store.all().map((entry) => ({ entry, session: this.servedNoting(entry) }));
+    // With `sessions`, only the views of those sessions (the ones the phone shows), by the canonical
+    // rule of `sameSession`; their keys alone, so the phone forgets only what it asked for.
+    const asked = (entry: ViewEntry) => sessions === null || sessions.some((given) => sameSession({ own: entry.session, given }));
+    const served = this.deps.store.all().filter(asked).map((entry) => ({ entry, session: this.servedNoting(entry) }));
     const rev = this.deps.store.rev() ?? 0;
     if (since === null || since > rev) return { rev, views: served.map((s) => s.session) };
     if (since === rev) return { rev, unchanged: true, views: [] };

@@ -257,7 +257,7 @@ import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
 import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
 import type { AgentViewService } from "./agent-view/service.ts";
-import { VIEW_MEDIA_ID_RE, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField } from "../web/src/lib/agent-view/wire.ts";
+import { VIEW_MEDIA_ID_RE, VIEW_SESSION_MAX, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField } from "../web/src/lib/agent-view/wire.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -3455,7 +3455,7 @@ export function startServer(opts: {
         const denied = browserGate("read");
         if (denied) return denied;
         if (host.kind === "member") return text(VIEW_LOCAL_TEXT, 400);
-        return await trickViewsListRoute(views, url.searchParams.get("since"), req.headers.get("accept-encoding"));
+        return await trickViewsListRoute(views, url.searchParams.get("since"), req.headers.get("accept-encoding"), url.searchParams.getAll("session"));
       }
       if (pathname === "/api/trick-views/switch" && req.method === "POST") {
         const denied = browserGate("write") ?? viewWriteGate(req, pairingGate);
@@ -9365,13 +9365,21 @@ export function withTrickViewsRev(body: SnapshotResponse, rev: number | undefine
  * switch, head, tail and screen. With `since` equal to the revision, `{ rev, unchanged: true, views: [] }`;
  * with an older one, only the views that moved after it and the keys of every view held. The tricks are
  * scanned first (inside their usual cadence), so a trick switched off reads off here at once.
+ * `session=<address>`, given once per session (at most {@link VIEW_LIST_SESSIONS_MAX}), narrows the answer
+ * and its keys to the sessions the phone shows; none given is every session, as before.
  */
-export async function trickViewsListRoute(views: AgentViewService | undefined, since: string | null, acceptEncoding: string | null): Promise<Response> {
+export async function trickViewsListRoute(views: AgentViewService | undefined, since: string | null, acceptEncoding: string | null, sessions: readonly string[] = []): Promise<Response> {
   if (views === undefined) return text(VIEW_OFF_TEXT, 404);
+  if (sessions.length > VIEW_LIST_SESSIONS_MAX || sessions.some((session) => session === "" || session.length > VIEW_SESSION_MAX)) return text(VIEW_BAD_SESSIONS, 400);
   await views.settle();
   const at = since === null || !/^\d{1,16}$/u.test(since) ? null : Number(since);
-  return json(views.answer(at), acceptEncoding);
+  return json(views.answer(at, sessions.length === 0 ? null : sessions), acceptEncoding);
 }
+
+/** The most `session` names one read of the views may carry. */
+export const VIEW_LIST_SESSIONS_MAX = 16;
+/** What the read answers for a session list it does not take. */
+export const VIEW_BAD_SESSIONS = `give at most ${String(VIEW_LIST_SESSIONS_MAX)} session addresses, each 1 to ${String(VIEW_SESSION_MAX)} characters`;
 
 /**
  * `POST /api/trick-views/switch`: the person turns one session's view of one trick on or off. 200 with the

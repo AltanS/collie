@@ -1016,7 +1016,9 @@ a refusal answers `{ ok: false, error, code, trickView: true }`.
 
 **The routes.** `GET /api/trick-views?since=<rev>` answers `{ rev, views: [...] }`; with `since` equal to
 the rev, `{ rev, unchanged: true, views: [] }`; with an older one, the views that moved and `keys`, the
-(trick, session) of every view held. The snapshot carries `trickViewsRev`. `GET /api/trick-views/media/
+(trick, session) of every view held. `&session=<address>`, once per session and at most 16, narrows the
+answer and its keys to those sessions (the phone asks only for the sessions it shows); none is every
+session. The snapshot carries `trickViewsRev`. `GET /api/trick-views/media/
 <set>/<id>` serves a picture of a view that is on, passes the gate and is not stale, behind the read gate;
 every miss is the same 404. Set ids and picture ids are minted at random by the bridge.
 

@@ -658,6 +658,27 @@ describe("the routes", () => {
     expect((await trickViewsListRoute(undefined, null, null)).status).toBe(404);
   });
 
+  test("GET /api/trick-views?session= answers only the sessions named, keys too; none named is every one", async () => {
+    const r = rig();
+    await on(r, ONE);
+    await on(r, TWO);
+    type Listed = { rev: number; views: { session: string }[]; keys?: { session: string }[] };
+    // SAFETY: the route answers `TrickViewsAnswer` JSON (checked above for the whole read); the test reads three fields of it.
+    const read = async (since: string | null, sessions: string[]) => (await (await trickViewsListRoute(r.service, since, null, sessions)).json()) as Listed;
+    expect((await read(null, [])).views.map((v) => v.session)).toEqual([ONE, TWO]);
+    const mine = await read(null, [ONE]);
+    expect(mine.views.map((v) => v.session)).toEqual([ONE]);
+    // The canonical rule: a bare address names the pane whatever its token, `local/` names this machine.
+    expect((await read(null, ["local/%2"])).views.map((v) => v.session)).toEqual([TWO]);
+    expect((await read(null, ["local/%2#zzzz"])).views).toEqual([]);
+    await r.service.switch({ trick: T, session: TWO, on: false }, null);
+    const since = await read(String(mine.rev), [ONE]);
+    expect(since.keys?.map((k) => k.session)).toEqual([ONE]);
+    expect(since.views).toEqual([]);
+    expect((await trickViewsListRoute(r.service, null, null, Array.from({ length: 17 }, () => ONE))).status).toBe(400);
+    expect((await trickViewsListRoute(r.service, null, null, [""])).status).toBe(400);
+  });
+
   test("POST /api/trick-views/switch: 200 with the view, 400 for another body, 404 for no live session, 409 for a shut trick, 400 on a crew member", async () => {
     const r = rig();
     const ctx = { device: "Pixel 9", acceptEncoding: null };
