@@ -32,7 +32,7 @@ import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, type HeldAction } from "@/components/composer-held";
-import { offerMode, type SendNote } from "@/lib/send-protocol";
+import { doorNote, offerMode, type SendNote } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
@@ -127,11 +127,18 @@ const STATUS_KEY = {
   held: "composer.protocol.held",
   steered: "composer.steer.steered",
   queuedInstead: "composer.steer.queuedInstead",
+  doorTaken: "composer.protocol.doorTaken",
+  doorQueued: "composer.protocol.doorQueued",
+  doorBehindMenu: "composer.protocol.doorBehindMenu",
+  doorRefused: "composer.protocol.doorRefused",
 } as const;
 
-/** What a cleared reading tells the status line; a steer the harness queued says so (M69). */
+/**
+ * What a cleared reading tells the status line; a steer the harness queued says so (M69), and a send
+ * through the agent's door says which way it went (ADR 0141).
+ */
 function verifiedNote(note: SendNote, when: SendWhen | undefined): keyof typeof STATUS_KEY {
-  if (note === "steered" || note === "held") return note;
+  if (note === "steered" || note === "held" || note === "doorTaken" || note === "doorQueued" || note === "doorBehindMenu" || note === "doorRefused") return note;
   if (note === "queued") return when === "steer" ? "queuedInstead" : "queued";
   return "sent";
 }
@@ -1664,7 +1671,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // mark flashes, the pill says sent, the preview keeps the text.
   // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
   // bridge's held row above the box (`held`), which is not a send yet and so leaves no "You sent" preview.
-  function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" | "steered" | "queuedInstead" = "sent") {
+  function afterVerifiedSend(t: string, isDraft: boolean, note: keyof typeof STATUS_KEY = "sent") {
     // The bridge has a new line now (a shell pane only: the read is off elsewhere).
     suggestions.refresh();
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
@@ -1781,6 +1788,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const sentAt = Date.now();
     const seenUserUuids = new Set((chatEntriesRef.current ?? []).map((entry) => entry.uuid));
     const draftAtSend = inputValueRef.current;
+    // The screen the person saw as they sent: a door's turn that runs behind its open menu says so (ADR 0141).
+    const seenSurface = shownSurface;
     // A send ends the belt X's Undo window: the operator has moved on, and an Undo landing after
     // the send would put back a draft the pane has since answered.
     endUndoWindow();
@@ -1826,7 +1835,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       if (reading.clear) {
         setProtocolOffer(null);
-        afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(reading.note, when));
+        afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(doorNote(reading.note, seenSurface), when));
         return true;
       }
       // A resend makes no offer: an offer would carry the row's text, which may be masked.
@@ -1841,7 +1850,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // An `unknown` outcome is an open question the journal can still answer (#511): remember the
       // send, so its text landing as a user turn retires this notice and the kept draft. A resend
       // carries no text of its own to recognise, so it is never remembered.
-      if (reading.note === "unknown" && resend === undefined) {
+      if ((reading.note === "unknown" || reading.note === "doorUnknown") && resend === undefined) {
         setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
       }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see

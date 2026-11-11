@@ -265,6 +265,7 @@ import {
   surfaceWords,
   takesManualSend,
   wsFree,
+  type DoorHint,
   type ReadMark,
   type SendAnswer,
   type SendCap,
@@ -2531,6 +2532,10 @@ interface RunState {
   readonly lockKey: string;
   /** How the text went: `screen`, or the harness id of the door that took it (the receipt's `via`). */
   via: string;
+  /** What the door answered when it took the text (the receipt's `door`). */
+  door?: DoorHint;
+  /** The pane's door refused before it took the text, and the screen path went on (the receipt's `doorRefused`). */
+  doorRefused?: true;
   /** The request's bound. Emptying a long draft moves it later by its own bound ({@link SendProtocol.stretch}). */
   deadline: number;
   readonly marks: { s0: Snap | null; s1: Snap | null; s2: Snap | null };
@@ -3008,6 +3013,9 @@ export class SendProtocol {
       if (receipt.cap !== undefined) row.cap = receipt.cap;
       if (receipt.queued === true) row.queued = true;
       if (receipt.late !== undefined) row.late = receipt.late;
+      if (receipt.via !== undefined) row.via = receipt.via;
+      if (receipt.door !== undefined) row.door = receipt.door;
+      if (receipt.doorRefused === true) row.doorRefused = true;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -3835,6 +3843,8 @@ export class SendProtocol {
       outcome,
     };
     const receipt: ReceiptDraft = { ...base, via: state.via };
+    if (state.door !== undefined && outcome === "sent") receipt.door = state.door;
+    if (state.doorRefused === true) receipt.doorRefused = true;
     if (match?.binary !== undefined) receipt.binary = match.binary;
     if (reason !== undefined) receipt.reason = reason;
     if (cap !== undefined) receipt.cap = cap;
@@ -3949,6 +3959,7 @@ export class SendProtocol {
     state.gaps.door = this.now() - started;
     if (tried.kind === "refused") {
       console.log(`[send] ${request.id}: the ${door.id} door refused (${tried.why}); the screen path goes on`);
+      state.doorRefused = true;
       return null;
     }
     state.via = door.id;
@@ -3958,6 +3969,7 @@ export class SendProtocol {
       console.warn(`[send] ${request.id}: the ${door.id} door may have taken the text (${tried.why}); it is not typed again`);
       return this.settle(state, new Ended("unknown", "no_evidence"));
     }
+    state.door = tried.answer.kind;
     return this.settle(state, new Ended("sent", undefined));
   }
 

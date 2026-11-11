@@ -11,6 +11,8 @@
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
 import {
+  DOOR_HINTS,
+  SCREEN,
   SEND_MODES,
   SEND_OUTCOMES,
   SEND_CAUSES,
@@ -20,6 +22,7 @@ import {
   readSurfaceWords,
   reservedLead,
   RECEIPT_DETAIL_MAX,
+  type DoorHint,
   type SendCap,
   type SendCause,
   type SendMode,
@@ -33,7 +36,7 @@ import {
   STALE_SCREEN,
 } from "./surface/send";
 import type { ProfileStatus } from "./surface/profile";
-import { ASK_CHANNELS, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
+import { ASK_CHANNELS, askOf, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
 
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
 export interface SendReply {
@@ -57,6 +60,12 @@ export interface SendReply {
    * tail included, for the view's "Sent to this session". Absent on every other send.
    */
   readonly viewLine?: string;
+  /** The harness id of the agent's door that took the text (ADR 0141); null for the screen and an old bridge. */
+  readonly door: string | null;
+  /** What that door answered when it took the text; null when the receipt names none. */
+  readonly doorHint: DoorHint | null;
+  /** The pane's door refused before it took the text, and the send went on by the screen. */
+  readonly doorRefused: boolean;
 }
 
 const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
@@ -113,6 +122,15 @@ export function readSurface(value: JsonValue | undefined): Surface | null {
   return node.staleFrame === true ? { ...read, staleFrame: true } : read;
 }
 
+/** The harness id of the door a receipt's `via` names, or null for the screen, a bridge before doors and a value that is not a word. */
+function doorOf(via: JsonValue | undefined): string | null {
+  const word = asJsonString(via);
+  return word === undefined || word === SCREEN || !VIA.test(word) ? null : word;
+}
+
+/** A `via` word, as the bridge's request files read it: `screen` or a harness id. */
+const VIA = /^[a-z0-9_-]{1,32}$/u;
+
 /** The bridge's answer, field by field; null when it is not one (a proxy page, an old bridge). */
 export function readSendReply(body: JsonValue | undefined): SendReply | null {
   const node = asJsonObject(body);
@@ -134,6 +152,9 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     queued: receipt?.queued === true,
     cause: pick(node.cause, SEND_CAUSES),
     ...viewLineOf(node.view),
+    door: doorOf(receipt?.via),
+    doorHint: pick(receipt?.door, DOOR_HINTS),
+    doorRefused: receipt?.doorRefused === true,
   };
 }
 
@@ -146,7 +167,7 @@ function viewLineOf(view: JsonValue | undefined): { viewLine?: string } {
 /** A row of the list being built, field by field. */
 type RowDraft = { -readonly [K in keyof SendReceiptRow]: SendReceiptRow[K] };
 
-const STEPS: readonly SendStep[] = ["profile", "settle", "s0", "proof", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"];
+const STEPS: readonly SendStep[] = ["profile", "door", "settle", "s0", "proof", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"];
 
 /**
  * The session page's list of recent sends, row by row. A row that is not whole is left out. The wire
@@ -191,6 +212,11 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     if (node.queued === true) row.queued = true;
     const late = pick(node.late, SEND_LATES);
     if (late !== null) row.late = late;
+    const via = asJsonString(node.via);
+    if (via !== undefined && VIA.test(via)) row.via = via;
+    const hint = pick(node.door, DOOR_HINTS);
+    if (doorOf(node.via) !== null && hint !== null) row.door = hint;
+    if (node.doorRefused === true) row.doorRefused = true;
     const detail = asJsonString(node.detail);
     if (detail !== undefined && detail.length > 0) row.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
     const saw = readSurfaceWords(node.saw);
@@ -233,6 +259,11 @@ export type SendNote =
   | "draft"
   | "draftCommand"
   | "typed"
+  | "doorTaken"
+  | "doorQueued"
+  | "doorBehindMenu"
+  | "doorUnknown"
+  | "doorRefused"
   | "unconfirmed"
   | "noticeKey"
   | "noticeKeyHeld"
@@ -418,6 +449,9 @@ export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discar
   return `sendReceipts.outcome.${outcome}`;
 }
 
+/** The sentences of the session page's list that are not a composer note. */
+export type ReceiptKey = "sendReceipts.queued" | "sendReceipts.returned" | "sendReceipts.merged" | "sendReceipts.doorTaken" | "sendReceipts.doorQueued" | "sendReceipts.doorRefused";
+
 /**
  * The sentence under a row's label, or null when it has none. A reason reads as the composer's sentence
  * for it; the cap's refusal, which carries its numbers, reads as the cap's sentence with them filled in;
@@ -425,19 +459,38 @@ export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discar
  */
 export function receiptSentence(
   row: SendReceiptRow,
-  say: (key: NoteKey | "sendReceipts.queued" | "sendReceipts.returned", vars?: Record<string, string>) => string,
+  say: (key: NoteKey | ReceiptKey, vars?: Record<string, string>) => string,
 ): string | null {
   if (row.outcome === "discarded") return say("composer.protocol.discarded");
   // Stop gave the queued text back to the box (ADR 0122): the row is still `sent`, but not waiting.
   if (row.late === "returned") return say("sendReceipts.returned");
+  // The journal shows a door's send only inside a longer or changed prompt (ADR 0141 point 4).
+  if (row.late === "merged") return say("sendReceipts.merged");
+  // A door's send is `queued` until the journal shows it, taken or not: the door's own word says which.
+  // One that may have reached the agent keeps the sentence that does not ask for a resend.
+  if (row.via !== undefined && row.via !== SCREEN) {
+    if (row.outcome === "unknown") return say("composer.protocol.doorUnknown");
+    if (row.outcome === "sent" || row.outcome === "effective") return say(row.door === "queued" ? "sendReceipts.doorQueued" : "sendReceipts.doorTaken");
+  }
   if (row.queued === true) return say("sendReceipts.queued");
-  if (row.reason === undefined) return null;
+  if (row.reason === undefined) return row.doorRefused === true ? say("sendReceipts.doorRefused") : null;
   if (row.outcome === "refused" && row.reason === "unconfirmed" && row.cap !== undefined) {
     return capSentence(row.cap, (vars) => say("composer.protocol.capConfirm", vars));
   }
   // A steered row wears its one word, like Sent; the sentence is the status line's under the box.
   if (row.outcome === "steered") return null;
   return say(noteKey(sendNote(row.outcome, row.reason)));
+}
+
+/**
+ * A door's `taken` while a menu was open on the agent's screen (ADR 0141, leg A7): the turn runs behind
+ * the menu, which keeps its focus, and nothing was typed into it. `surface` is the one the person saw
+ * as they sent. A menu ask counts, and so does a modal Collie saw and could not read, as pi's pickers
+ * read; `unknown` does not, because Collie cannot tell that anything is open.
+ */
+export function doorNote(note: SendNote, surface: Surface | null): SendNote {
+  if (note !== "doorTaken" || surface === null) return note;
+  return surface.modal === "unreadable" || askOf(surface.modal)?.kind === "menu" ? "doorBehindMenu" : note;
 }
 
 /** The verdict half of a reading: whether the draft goes, the sentence, the offers. */
@@ -453,9 +506,17 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   // than the plain one says a probe character may remain in the live editor: that has its own sentence.
   if (reply.outcome === "refused" && reply.cause === "stale_screen") return { clear: false, note: reply.detail === null || reply.detail === STALE_SCREEN ? "staleScreen" : "staleScreenProbe", offers };
   const note = sendNote(reply.outcome, reply.reason);
+  // A door's send typed no key (ADR 0141): the door's own word says whether the agent runs it now or
+  // queued it as its own turn. One that may have reached the agent is never sent again (point 2), so
+  // its sentence asks for no resend and it carries no offer; the draft stays, as an `unknown`'s does.
+  if (reply.door !== null) {
+    if (note === "sent") return { clear: true, note: reply.doorHint === "queued" ? "doorQueued" : "doorTaken", offers: [] };
+    if (note === "unknown") return { clear: false, note: "doorUnknown", offers: [] };
+  }
   // A discard has its own outcome: the box emptied, but nothing went to the agent, so the phone's draft stays.
   // A send queued behind the running turn went out all the same: it clears, and its sentence says it waits.
-  if (note === "sent") return { clear: true, note: reply.queued ? "queued" : note, offers: [] };
+  // One the door refused went by the screen, and says so.
+  if (note === "sent") return { clear: true, note: reply.queued ? "queued" : reply.doorRefused ? "doorRefused" : note, offers: [] };
   // A steer the witness saw land: the text went into the running turn, so the draft goes like a send's.
   if (note === "steered") return { clear: true, note, offers: [] };
   if (note === "discarded") return { clear: false, note, offers: [] };

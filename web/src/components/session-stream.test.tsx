@@ -769,6 +769,24 @@ describe("SessionStream — queued sends from the receipts", () => {
     expect(onReturned).toHaveBeenCalledWith("req-lost-00001", "dismiss");
   });
 
+  it("a merged card says the agent's log shows it merged or changed, and offers Discard alone, which asks to dismiss (ADR 0141)", async () => {
+    const onReturned = vi.fn(async () => true);
+    const MERGED = { requestId: "req-merge-0001", state: "merged", text: "fold me in" } as const;
+    const { container } = renderReceipts({ queuedSends: [MERGED] }, onReturned);
+    const card = container.querySelector("[data-slot='stream-merged']")!;
+    expect([...card.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
+      "Merged or changed",
+      "The agent's log shows this message only inside a longer or changed one. Check the agent.",
+      "fold me in",
+    ]);
+    expect(card.querySelectorAll("button")).toHaveLength(1);
+    expect(container.querySelector("[data-slot='stream-queued-receipts']")).toBeNull();
+    const discard = screen.getByRole("button", { name: "Discard this card. Nothing is sent to the agent." });
+    expect(discard).toHaveTextContent("Discard");
+    await userEvent.click(discard);
+    expect(onReturned).toHaveBeenCalledWith("req-merge-0001", "dismiss");
+  });
+
   it("a returned run is one card with its joined text and one pair of buttons", () => {
     const run = { requestId: "req-run-000001", state: "returned", text: "alpha one\nbeta two" } as const;
     const { container } = renderReceipts({ queuedSends: [run] }, vi.fn(async () => true));

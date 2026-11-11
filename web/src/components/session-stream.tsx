@@ -230,6 +230,8 @@ type QueuedCardAct = ((requestId: string, action: QueuedCardAction) => Promise<b
  *     together is ONE card, with one Send and one Discard.
  *   - Unconfirmed: Collie cannot tell where the message went. The card says so, and its one button,
  *     Discard, drops the card and presses nothing.
+ *   - Merged (ADR 0141): the agent's log shows a door's send only inside a longer or changed prompt.
+ *     The card says so, with the same one Discard as an unconfirmed card.
  *
  * PENDING, NEVER RETRYING, like the queue card: a tap disables the card's buttons until the card goes
  * away (the next answer drops it) or {@link SEND_NOW_PENDING_MS} pass, or the act itself failed.
@@ -257,6 +259,8 @@ function ReceiptQueueCards({ rows, act }: { rows: readonly QueuedSendRow[]; act:
           <ReceiptCard key={row.requestId} row={row} act={act} slot="stream-returned" label="chat.stream.returned" why="chat.stream.returnedWhy" buttons={RETURNED_BUTTONS} />
         ) : row.state === "unconfirmed" ? (
           <ReceiptCard key={row.requestId} row={row} act={act} slot="stream-unconfirmed" label="chat.stream.unconfirmed" why="chat.stream.unconfirmedWhy" buttons={UNCONFIRMED_BUTTONS} />
+        ) : row.state === "merged" ? (
+          <ReceiptCard key={row.requestId} row={row} act={act} slot="stream-merged" label="chat.stream.merged" why="chat.stream.mergedWhy" buttons={MERGED_BUTTONS} />
         ) : null,
       )}
     </>
@@ -279,6 +283,9 @@ const RETURNED_BUTTONS: readonly CardButton[] = [
 ];
 const UNCONFIRMED_BUTTONS: readonly CardButton[] = [
   { action: "dismiss", word: "chat.stream.unconfirmedDiscard", aria: "chat.stream.unconfirmedDiscardAria", variant: "outline", slot: "stream-unconfirmed-discard" },
+];
+const MERGED_BUTTONS: readonly CardButton[] = [
+  { action: "dismiss", word: "chat.stream.mergedDiscard", aria: "chat.stream.mergedDiscardAria", variant: "outline", slot: "stream-merged-discard" },
 ];
 
 function ReceiptCard({

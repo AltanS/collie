@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
 import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
-import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SCREEN, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
+import { DOOR_HINTS, readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SCREEN, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 import { SENT_MAX_LINE, sentLineOf } from "../secret-line.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
@@ -214,6 +214,10 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   // `via` is lenient like `detail`: a value that is not a short word is dropped, and the receipt stays.
   const via = node.via === undefined ? undefined : asJsonString(node.via);
   if (via !== undefined && /^[a-z0-9_-]{1,32}$/u.test(via)) whole.via = via;
+  // `door` and `doorRefused` are lenient too: a word this module did not write is dropped (ADR 0141).
+  const door = node.door === undefined ? undefined : pick(node.door, DOOR_HINTS);
+  if (door !== undefined) whole.door = door;
+  if (node.doorRefused === true) whole.doorRefused = true;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;
   return whole;

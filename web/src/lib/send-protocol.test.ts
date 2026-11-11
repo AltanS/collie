@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "./json";
-import { capSentence, isCommand, offerMode, readHeldCancelAnswer, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, noteKey, receiptSentence, sendNote, surfaceNote, type SendReply } from "./send-protocol";
+import { capSentence, doorNote, isCommand, offerMode, readHeldCancelAnswer, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, noteKey, receiptSentence, sendNote, surfaceNote, type SendReply } from "./send-protocol";
 import { STALE_SCREEN, type SendReceiptRow } from "./surface/send";
 import type { Surface } from "./surface/surface";
 
@@ -33,6 +33,9 @@ describe("readSendReply", () => {
       cap: null,
       queued: false,
       cause: null,
+      door: null,
+      doorHint: null,
+      doorRefused: false,
     });
   });
 
@@ -303,6 +306,53 @@ describe("capSentence", () => {
   });
 });
 
+describe("a send through the agent's door (ADR 0141, T17)", () => {
+  const door = (receipt: JsonObject) => readSend(readSendReply({ receipt, offers: ["keys"] })!);
+  const IDLE: Surface = { revision: 1, turn: "idle", modal: "none", composer: "empty" };
+
+  it("reads the door off `via`, its word only when known, and the screen, an old bridge or a bad word as no door", () => {
+    expect(readSendReply({ receipt: { outcome: "sent", queued: true, via: "pi", door: "taken" }, offers: [] })).toMatchObject({ door: "pi", doorHint: "taken", doorRefused: false });
+    expect(readSendReply({ receipt: { outcome: "sent", via: "pi", door: "teleported" }, offers: [] })).toMatchObject({ door: "pi", doorHint: null });
+    for (const via of ["screen", undefined, "Pi Door", 7]) {
+      const body: JsonObject = { receipt: via === undefined ? { outcome: "sent" } : { outcome: "sent", via }, offers: [] };
+      expect(readSendReply(body)?.door).toBeNull();
+    }
+    expect(readSendReply({ receipt: { outcome: "sent", via: "screen", doorRefused: true }, offers: [] })?.doorRefused).toBe(true);
+    expect(readSendReply({ receipt: { outcome: "sent", via: "screen", doorRefused: "yes" }, offers: [] })?.doorRefused).toBe(false);
+  });
+
+  it("a door's `taken` is never read as queued, though the receipt says `queued` until the journal shows it", () => {
+    expect(door({ outcome: "sent", queued: true, via: "pi", door: "taken" })).toMatchObject({ clear: true, note: "doorTaken", offers: [] });
+    expect(door({ outcome: "sent", queued: true, via: "pi", door: "replayed" })).toMatchObject({ clear: true, note: "doorTaken" });
+    expect(door({ outcome: "sent", queued: true, via: "pi", door: "queued" })).toMatchObject({ clear: true, note: "doorQueued" });
+    // The same receipt typed into the screen is the screen's queued send.
+    expect(door({ outcome: "sent", queued: true, via: "screen" })).toMatchObject({ clear: true, note: "queued" });
+  });
+
+  it("a door's `unknown` keeps the draft, offers nothing and has the sentence that asks for no resend", () => {
+    expect(door({ outcome: "unknown", reason: "no_evidence", via: "pi" })).toMatchObject({ clear: false, note: "doorUnknown", offers: [] });
+    expect(noteKey("doorUnknown")).toBe("composer.protocol.doorUnknown");
+    expect(door({ outcome: "unknown", reason: "no_evidence", via: "screen" }).note).toBe("unknown");
+  });
+
+  it("a door that refused says the send went by the screen; a screen refusal keeps its own sentence", () => {
+    expect(door({ outcome: "sent", via: "screen", doorRefused: true })).toMatchObject({ clear: true, note: "doorRefused" });
+    expect(door({ outcome: "refused", reason: "draft_present", via: "screen", doorRefused: true }).note).toBe("draft");
+  });
+
+  it("a `taken` runs behind a menu only when the person saw one: a menu ask or a modal Collie could not read, never `unknown`", () => {
+    expect(doorNote("doorTaken", MENU)).toBe("doorBehindMenu");
+    expect(doorNote("doorTaken", { ...IDLE, modal: "unreadable" })).toBe("doorBehindMenu");
+    expect(doorNote("doorTaken", { ...IDLE, modal: { ask: { id: "q", kind: "question", options: [], channel: "keys", hash: "h" } } })).toBe("doorTaken");
+    expect(doorNote("doorTaken", { ...IDLE, modal: "unknown" })).toBe("doorTaken");
+    expect(doorNote("doorTaken", IDLE)).toBe("doorTaken");
+    expect(doorNote("doorTaken", null)).toBe("doorTaken");
+    // A queued turn waits for the running one, not for the menu, and a screen send is the screen's.
+    expect(doorNote("doorQueued", MENU)).toBe("doorQueued");
+    expect(doorNote("sent", MENU)).toBe("sent");
+  });
+});
+
 describe("the session page's rows (send drill 3)", () => {
   const base = { requestId: "req00001", at: 1, mode: "send" as const, keys: [], gapsMs: {}, harness: "codex", version: null };
   const say = (key: string, vars?: Record<string, string>) => (vars === undefined ? key : `${key} ${JSON.stringify(vars)}`);
@@ -331,6 +381,31 @@ describe("the session page's rows (send drill 3)", () => {
     expect(rows.receipts[0]?.late).toBe("returned");
     expect(rows.receipts[1] && "late" in rows.receipts[1]).toBe(false);
     expect(rows.receipts[1] && receiptSentence(rows.receipts[1], say)).toBe("sendReceipts.queued");
+  });
+
+  it("a door's row says how it went; a merged one says so; a door that refused says the screen took it (ADR 0141, T17)", () => {
+    const door: SendReceiptRow = { ...base, harness: "pi", outcome: "sent", queued: true, via: "pi" };
+    expect(receiptSentence({ ...door, door: "taken" }, say)).toBe("sendReceipts.doorTaken");
+    expect(receiptSentence(door, say)).toBe("sendReceipts.doorTaken");
+    expect(receiptSentence({ ...door, door: "queued" }, say)).toBe("sendReceipts.doorQueued");
+    expect(receiptSentence({ ...door, outcome: "effective", door: "queued" }, say)).toBe("sendReceipts.doorQueued");
+    expect(receiptSentence({ ...door, late: "merged" }, say)).toBe("sendReceipts.merged");
+    expect(receiptSentence({ ...base, harness: "pi", outcome: "unknown", reason: "no_evidence", via: "pi" }, say)).toBe("composer.protocol.doorUnknown");
+    expect(receiptSentence({ ...base, outcome: "sent", via: "screen", doorRefused: true }, say)).toBe("sendReceipts.doorRefused");
+    expect(receiptSentence({ ...base, outcome: "sent", via: "screen" }, say)).toBeNull();
+    const wire = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "sent", keys: [], gapsMs: { door: 12 }, harness: "pi", version: "0.87.1", queued: true };
+    const rows = readSendReceipts({
+      receipts: [
+        { ...wire, via: "pi", door: "queued", late: "merged" },
+        { ...wire, requestId: "r2abcdefgh", via: "screen", door: "taken", doorRefused: true },
+        { ...wire, requestId: "r3abcdefgh", via: "pi", door: "teleported", doorRefused: 1 },
+      ],
+    });
+    expect(rows.receipts[0]).toMatchObject({ via: "pi", door: "queued", late: "merged", gapsMs: { door: 12 } });
+    // A door word beside the screen is not a door's: it is dropped.
+    expect(rows.receipts[1]).toMatchObject({ via: "screen", doorRefused: true });
+    expect(rows.receipts[1] && "door" in rows.receipts[1]).toBe(false);
+    expect(rows.receipts[2] && ("door" in rows.receipts[2] || "doorRefused" in rows.receipts[2])).toBe(false);
   });
 
   it("a send queued behind the turn wears Sent and says it was queued; queued is read off the wire only when true", () => {

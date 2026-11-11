@@ -255,6 +255,17 @@ export interface SendReceipt {
    */
   readonly via?: string;
   /**
+   * What the agent's door answered when it took the text ({@link DoorHint}): a hint, never the proof
+   * (ADR 0141 point 4). Set only beside a door's `via` on a `sent`; the receipt still says `queued`,
+   * because a door's send is a card until the journal shows its turn.
+   */
+  readonly door?: DoorHint;
+  /**
+   * Set when the pane's door refused before it took the text, so the send went on by the screen (ADR
+   * 0141 point 2). Only the fact: the door's own reason stays in the bridge's log, as it may name a path.
+   */
+  readonly doorRefused?: true;
+  /**
    * Set on a refusal: the bridge's own line for it, the fixed sentence the phone was shown, cut to
    * {@link RECEIPT_DETAIL_MAX} characters. Set on a `typed_not_submitted` too: the rule that kept
    * Enter back (2026-10-17). Never the person's text and never a screen row.
@@ -270,6 +281,13 @@ export interface SendReceipt {
 
 /** {@link SendReceipt.via} for a send typed into the screen by the Send Protocol. */
 export const SCREEN = "screen";
+
+/**
+ * What an agent's door answered when it took a text (ADR 0141): `taken` to run now, `queued` as its own
+ * turn after the running one, `replayed` for a request id it had already taken.
+ */
+export const DOOR_HINTS = ["taken", "queued", "replayed"] as const;
+export type DoorHint = (typeof DOOR_HINTS)[number];
 
 /**
  * What may happen to a settled receipt later (see {@link SendReceipt.late}): its queued text came back to
@@ -353,6 +371,12 @@ export interface SendReceiptRow {
   readonly queued?: true;
   /** Set when a queued send came back to the box and never became a prompt (see {@link SendReceipt.late}). */
   readonly late?: SendLate;
+  /** How the text went: `screen`, or the harness id of the agent's door (see {@link SendReceipt.via}). */
+  readonly via?: string;
+  /** What the door answered when it took the text (see {@link SendReceipt.door}). */
+  readonly door?: DoorHint;
+  /** The pane's door refused, and the send went on by the screen (see {@link SendReceipt.doorRefused}). */
+  readonly doorRefused?: true;
   /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */

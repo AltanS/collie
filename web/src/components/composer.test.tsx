@@ -4931,6 +4931,29 @@ describe("outcome at the thumb", () => {
     expect(refusalText()).toBe("");
   });
 
+  // A send through the agent's door (ADR 0141, T17): the receipt says `queued` until the journal shows
+  // the turn, so the door's own word, not `queued`, picks the header.
+  const doorAnswer = (door: string) => () => {
+    const answer = sendAnswer("x", "sent", undefined, { queued: true });
+    answer.receipt = { ...asJsonObject(answer.receipt), via: "pi", door };
+    return answer;
+  };
+
+  it("sent through the agent's door: the draft goes, and the header names the inbox, never the turn's queue", async () => {
+    await send(doorAnswer("taken"));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+    await waitFor(() => expect(header()).toBe("Sent through the agent's inbox. Nothing was typed."));
+    expect(refusalText()).toBe("");
+  });
+
+  it("sent through the agent's door while a menu Collie could not read was open: the header says the turn runs behind it", async () => {
+    const picker: Surface = { revision: 3, turn: "idle", modal: "unreadable", composer: "unknown" };
+    await send(doorAnswer("taken"), { surface: picker });
+    await waitFor(() => expect(header()).toBe("Sent through the agent's inbox. Its turn runs behind the open menu, and nothing was typed into the menu."));
+    // One tap, a plain send: the bridge tries the door before any screen step, so the open menu does not stop it.
+    expect(recordedSends().map(({ text, mode }) => ({ text, mode }))).toEqual([{ text: "hello there", mode: "send" }]);
+  });
+
   it("refused turn_running: the agent is working, said as that, with the draft kept", async () => {
     await send(() => sendAnswer("x", "refused", "turn_running", { offers: ["keys"], surface: SURFACES.running }), { surface: SURFACES.running });
     await waitFor(() => expect(refusalText()).not.toBe(""));

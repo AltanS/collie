@@ -123,7 +123,8 @@ describe("the door goes first (ADR 0141 point 2)", () => {
     const door = new FakeDoor();
     const { pane, protocol, send } = rig(door);
     const answer = await send("hello from the phone");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, via: "claude", keys: [] });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, via: "claude", door: "taken", keys: [] });
+    expect(answer.receipt?.doorRefused).toBeUndefined();
     expect(answer.receipt?.gapsMs.door).toBeNumber();
     expect(door.submits).toEqual([{ requestId: answer.receipt!.requestId, text: "hello from the phone" }]);
     expect(pane.reads).toBe(0);
@@ -135,7 +136,18 @@ describe("the door goes first (ADR 0141 point 2)", () => {
     const { pane, send } = rig(null);
     const answer = await send("hello");
     expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, via: "screen" });
+    expect(answer.receipt?.door).toBeUndefined();
+    expect(answer.receipt?.doorRefused).toBeUndefined();
     expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
+
+  test("the door's own word rides on the receipt and the recent-sends row: `queued`, `replayed` (T17)", async () => {
+    for (const kind of ["queued", "replayed"] as const) {
+      const { protocol, send } = rig(new FakeDoor(undefined, () => Promise.resolve({ kind })));
+      const answer = await send("hello");
+      expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, via: "claude", door: kind });
+      expect(protocol.recent("%1")[0]).toMatchObject({ via: "claude", door: kind, queued: true });
+    }
   });
 
   test("a refusal before submit falls back to the screen: an unbound door, a preflight throw, the agent's own refusal", async () => {
@@ -145,9 +157,13 @@ describe("the door goes first (ADR 0141 point 2)", () => {
       new FakeDoor(undefined, () => Promise.resolve({ kind: "refused", why: "cannot take a message now" })),
     ];
     for (const door of doors) {
-      const { pane, send } = rig(door);
+      const { pane, protocol, send } = rig(door);
       const answer = await send("hello");
-      expect(answer.receipt).toMatchObject({ outcome: "sent", via: "screen" });
+      // The fact that the door refused rides on the receipt; its reason, which may name a path, does not.
+      expect(answer.receipt).toMatchObject({ outcome: "sent", via: "screen", doorRefused: true });
+      expect(answer.receipt?.door).toBeUndefined();
+      expect(JSON.stringify(answer.receipt)).not.toContain("socket");
+      expect(protocol.recent("%1")[0]).toMatchObject({ via: "screen", doorRefused: true });
       expect(pane.reads).toBeGreaterThan(0);
       expect(pane.keysSeen.at(-1)).toBe("Enter");
     }
@@ -160,6 +176,8 @@ describe("once submit may have reached the agent there is no fallback (ADR 0141 
     const { pane, protocol, send } = rig(door);
     const answer = await send("hello");
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", via: "claude", keys: [] });
+    // No word came back from the door, so the receipt names none.
+    expect(answer.receipt?.door).toBeUndefined();
     expect(answer.offers).toEqual(["keys"]);
     expect(pane.reads).toBe(0);
     expect(pane.keysSeen).toEqual([]);

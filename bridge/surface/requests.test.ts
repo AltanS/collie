@@ -318,6 +318,25 @@ describe("a door's send the journal shows merged or changed (ADR 0141 point 4)",
     store.settle("req-door-ref-01", { ...receiptFor(refused, "refused"), via: "pi" });
     expect(store.markMerged("req-door-ref-01")).toBe(false);
   });
+
+  test("a door's word and a door's refusal survive a restart; a word this build did not write is dropped, and the receipt stays (T17)", () => {
+    const store = new RequestStore(dir);
+    const taken = store.accept(input({ id: "req-door-word-1" })).record;
+    store.settle("req-door-word-1", { ...receiptFor(taken), queued: true, via: "pi", door: "queued" });
+    const fell = store.accept(input({ id: "req-door-fell-1" })).record;
+    store.settle("req-door-fell-1", { ...receiptFor(fell), via: "screen", doorRefused: true });
+    const again = new RequestStore(dir);
+    expect(again.get("req-door-word-1")?.receipt).toMatchObject({ outcome: "sent", via: "pi", door: "queued" });
+    expect(again.get("req-door-fell-1")?.receipt).toMatchObject({ outcome: "sent", via: "screen", doorRefused: true });
+    for (const [id, field, value] of [["req-door-word-1", "door", "teleported"], ["req-door-fell-1", "doorRefused", "yes"]] as const) {
+      const path = join(dir, `${id}.json`);
+      const raw = JSON.parse(readFileSync(path, "utf8"));
+      writeFileSync(path, JSON.stringify({ ...raw, receipt: { ...raw.receipt, [field]: value } }));
+      const read = new RequestStore(dir).get(id)?.receipt;
+      expect(read).toMatchObject({ outcome: "sent" });
+      expect(read && field in read).toBe(false);
+    }
+  });
 });
 
 // Ask answers live in the same store (M56 spec 08), under their own file names.
