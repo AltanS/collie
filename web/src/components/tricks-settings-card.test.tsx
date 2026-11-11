@@ -135,6 +135,8 @@ describe("TricksSettingsCard: the rows", () => {
     expect(provenanceLine({ ...LEGS, provenance: undefined }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: { via: "repo", repo: "o/r" } }, NOW)).toBe("From o/r");
     expect(provenanceLine({ ...LEGS, provenance: { via: "repo" } }, NOW)).toBe("Added from a repository");
+    expect(provenanceLine({ ...LEGS, provenance: { via: "agent", proposed: { by: "agent", host: "minibuch" } } }, NOW)).toBe("Proposed by an agent on minibuch");
+    expect(provenanceLine({ ...LEGS, provenance: { via: "cli", proposed: { by: "terminal", host: "bluefin" } } }, NOW)).toBe("Proposed from a terminal on bluefin");
   });
 
   it("fills the third line with the masked error for a failing or stopped trick, one line, clipped", async () => {

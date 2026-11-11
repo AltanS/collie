@@ -89,6 +89,7 @@ export function provenanceLine(trick: WireTrickInfo, now: number): string {
 }
 
 function whoWords(by: WireTrickInfo["provenance"]): string {
+  if (by?.proposed !== undefined) return by.proposed.by === "agent" ? t("settings.tricks.by.proposedAgent", { host: by.proposed.host }) : t("settings.tricks.by.proposedTerminal", { host: by.proposed.host });
   if (by === undefined || by.via === "folder") return t("settings.tricks.by.folder");
   if (by.via === "cli") return t("settings.tricks.by.cli");
   if (by.via === "agent") return t("settings.tricks.by.agent");

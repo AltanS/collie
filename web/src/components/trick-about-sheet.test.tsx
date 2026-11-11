@@ -116,6 +116,15 @@ describe("TrickAboutSheet", () => {
     expect(screen.getByText("Added on this machine.")).toBeInTheDocument();
   });
 
+  it("says who proposed a trick that came from collie trick propose, and on which machine", () => {
+    const { unmount } = open({ ...BASE, provenance: { via: "agent", at: "2026-11-08T09:38:00Z", proposed: { by: "agent", host: "minibuch" } } });
+    expect(screen.getByText("Proposed by an agent session on minibuch.")).toBeInTheDocument();
+    expect(screen.queryByText("Added on this machine.")).toBeNull();
+    unmount();
+    open({ ...BASE, provenance: { via: "cli", proposed: { by: "terminal", host: "bluefin" } } });
+    expect(screen.getByText("Proposed from a terminal on bluefin.")).toBeInTheDocument();
+  });
+
   it("adds the one line a bridge that runs no tricks says", () => {
     open(BASE, { runsOn: { lead: "desk" } });
     expect(screen.getByText("Tricks run on the lead of this crew (desk). This machine runs none.")).toBeInTheDocument();
