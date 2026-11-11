@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
-import { parseFacts, partKey, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { parseFacts, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
-import { backoffAfter, BACKOFF_MS, LINK_LINE, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -1358,5 +1358,53 @@ describe("migrating switches.json from version 2 at boot", () => {
     expect(r.specs.length).toBe(0);
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file).toEqual({ v: 2, layout: 3, on: { legs: { at: "2026-11-01T00:00:00Z", hash: null, auto: false, by: "migrated", powers: null } } });
+  });
+});
+
+describe("an agent view (contract 2): the keys only, the view answers later", () => {
+  const VIEW_TOML = 'id = "morph"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n';
+  const RULES = "Draw one screen.\nA button sends its label back to you.\n";
+
+  async function viewRig(): Promise<Rig> {
+    const r = await rig([exited(belt("x"))]);
+    await makeTrick(r.configDir, "morph", VIEW_TOML, { "rules.md": RULES });
+    return r;
+  }
+
+  test("a trick that is only an agent view loads, shows its rights and rules, switches on, and never starts a program", async () => {
+    const r = await viewRig();
+    await tickAt(r, T0);
+    const off = (await r.service.reply(undefined)).tricks[0];
+    expect(off).toMatchObject({ id: "morph", on: false, state: "off", places: [], agentView: true, rules: { file: "rules.md", text: RULES } });
+    expect(off?.refusals).toEqual([{ code: "later", path: "/places/0", reason: "Agent views come with a later build of this version." }]);
+    expect(await r.service.setSwitch(HOST, "morph", true)).toMatchObject({ status: 200, body: { on: true, state: "ok", agentView: true } });
+    for (const t of [T0 + 1000, T0 + 60_000, T0 + 3_600_000]) await tickAt(r, t);
+    const tap = ok200(await r.service.tap(HOST, "morph", { rid: REQ, node: "belt", intent: "rerun" }));
+    expect(tap).toMatchObject({ code: "rejected", message: NO_PROGRAM_LINE });
+    // No spawn, ever: not at start, not on a timer, not on a tap.
+    expect(r.specs).toEqual([]);
+    expect((await r.service.reply(undefined)).tricks[0]?.state).toBe("ok");
+  });
+
+  test("take changes without asking is refused for a trick with rules, from the route and from the card's seam", async () => {
+    const r = await viewRig();
+    await tickAt(r, T0);
+    await r.service.setSwitch(HOST, "morph", true);
+    expect(await r.service.setAuto("morph", true)).toEqual({ ok: false, code: "has-rules", message: RULES_NEVER_AUTO });
+    expect(await r.service.autoRoute(HOST, "morph", true)).toEqual({ status: 409, body: { error: "has-rules", message: RULES_NEVER_AUTO } });
+    expect((await r.service.setAuto("morph", false)).ok).toBe(true);
+    // An older switch file that says auto shows as off, and a new version waits for a yes.
+    await updateSwitches(r.stateDir, (now) => {
+      const held = now.on.get("morph");
+      return held === undefined ? now : withEntry(now, "morph", { ...held, auto: true });
+    });
+    await writeFile(join(r.configDir, TRICKS_DIR, "morph", "rules.md"), `${RULES}Stop when the view is off.\n`);
+    await tickAt(r, T0 + 1000);
+    await tickAt(r, T0 + 1000 + PENDING_SETTLE_MS + 1);
+    await tickAt(r, T0 + 2000 + PENDING_SETTLE_MS * 2);
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row?.auto).toBe(false);
+    expect(row?.pending?.powersChanged).toBe(true);
+    expect(row?.rules?.text).toBe(RULES);
   });
 });

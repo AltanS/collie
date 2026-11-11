@@ -12,6 +12,7 @@ import {
   parseTrickDocumentText,
   parseTapRequest,
   REFUSALS_MAX,
+  RULES_NEVER_AUTO,
   type FactsTrigger,
   type TrickState,
   type TrickTapReply,
@@ -146,6 +147,8 @@ export const HILL_QUEUE_MAX = 32;
 export const PENDING_LINE = "A new version waits for your yes.";
 /** The line of a trick that is on but has no approved version (a version 1 entry, a migration of a changed folder). */
 export const NOT_APPROVED_LINE = "No version of this trick is approved yet. Switch it on again to approve its code as it is now.";
+/** The answer to a tap on a trick that is only an agent view: it has no program, so nothing runs. */
+export const NO_PROGRAM_LINE = "This trick has no program, so nothing runs.";
 /** The line of a trick whose approved copy changed on disk. */
 export const TAMPERED_LINE = "The approved copy changed on disk, so the trick stopped. Switch it on again to approve its code as it is now.";
 /** The row's line when the approved copy holds a symbolic link (one made before links were refused). */
@@ -232,7 +235,7 @@ export type VersionRouteAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "auto-invalid" | "undo-invalid" } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
-  | { status: 409; body: { error: "off" | "no-pending" | "moved" | "no-previous" | "copy-failed"; message: string } };
+  | { status: 409; body: { error: "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules"; message: string } };
 
 /** A version change as a route's answer. */
 function routeAnswer(answer: VersionAnswer): VersionRouteAnswer {
@@ -348,7 +351,7 @@ interface PendingVersion {
 /** What a version change answers: the trick as the list now shows it, or why not. */
 export type VersionAnswer =
   | { ok: true; info: WireTrickInfo }
-  | { ok: false; code: "unknown-trick" | "off" | "no-pending" | "moved" | "no-previous" | "copy-failed"; message: string };
+  | { ok: false; code: "unknown-trick" | "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules"; message: string };
 
 interface QueuedTap {
   request: TapRequest;
@@ -417,6 +420,14 @@ interface Receipt {
  * A trick's state on the wire. `found` is what the row shows (the approved copy while one runs, else the
  * folder); `blocked` is a trick that is on but cannot run (no approved copy, or a copy that changed).
  */
+/**
+ * Whether a trick gives agents instructions (`rules`, contract 2) in the folder, in the approved copy or in
+ * the version waiting: such a trick never takes a change without asking.
+ */
+export function hasRules(rt: Pick<TrickRuntime, "found" | "approved" | "pending">): boolean {
+  return rt.found.manifest?.rules !== undefined || rt.approved?.found.manifest?.rules !== undefined || rt.pending?.manifest?.rules !== undefined;
+}
+
 export function trickStateOf(rt: Pick<TrickRuntime, "on" | "found" | "stopped" | "failures"> & { blocked?: boolean }): TrickState {
   if (rt.found.manifest === undefined) return "skipped";
   if (!rt.on) return "off";
@@ -816,8 +827,9 @@ export class TricksService implements TricksSurface {
       }
       rt.pending = { hash, dir: snap.dir, ...(await this.pendingInfo(rt, snap.dir, hash)) };
       this.publish(rt.found.id);
-      // Auto takes a version only when its rights did not move AND it does nothing new (security re-review B5).
-      if (entry.auto && rt.approved !== null && rt.copyProblem === null && !rt.pending.info.powersChanged && !rt.pending.doesMore) {
+      // Auto takes a version only when its rights did not move AND it does nothing new (security re-review B5),
+      // and never for a trick that gives agents instructions, before or after (contract 2, agent views).
+      if (entry.auto && rt.approved !== null && rt.copyProblem === null && !rt.pending.info.powersChanged && !rt.pending.doesMore && !hasRules(rt) && rt.pending.manifest?.rules === undefined) {
         const took = await this.promote(rt, hash, "auto");
         if (took.ok) this.warn(`${rt.found.id}: took the new version ${hash.slice(0, 16)} without asking (auto); undo restores ${entry.hash?.slice(0, 16) ?? "nothing"}`);
       }
@@ -999,6 +1011,7 @@ export class TricksService implements TricksSurface {
     return await this.serial(async () => {
       const rt = this.onRuntime(id);
       if (!("found" in rt)) return rt;
+      if (on && hasRules(rt)) return { ok: false, code: "has-rules", message: RULES_NEVER_AUTO };
       const written = await updateSwitches(this.deps.stateDir, (now) => {
         const held = now.on.get(id);
         return held === undefined ? now : withEntry(now, id, { ...held, auto: on });
@@ -1130,7 +1143,11 @@ export class TricksService implements TricksSurface {
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
-    if (rt.on && rt.entry !== undefined) info.auto = rt.entry.auto;
+    // Contract 2: an agent view and its rules, whole, for the About sheet; this build draws no view yet.
+    if (m?.agentView === true) info.agentView = true;
+    if (m?.rules !== undefined && m.rulesText !== undefined) info.rules = { file: m.rules, text: m.rulesText };
+    // A trick with rules never takes a change without asking, whatever an older switch file says.
+    if (rt.on && rt.entry !== undefined) info.auto = rt.entry.auto && !hasRules(rt);
     // Undo is offered only for a version taken without asking, while the one before it is there.
     if (rt.on && rt.entry?.by === "auto" && rt.entry.previous !== undefined) info.autoAt = rt.entry.at;
     const taken = this.warningsOf.get(id);
@@ -1148,6 +1165,8 @@ export class TricksService implements TricksSurface {
     if (!this.runnable(rt) || rt.stopped) return false;
     if (rt.running !== null || rt.queued !== null || rt.hillQueue.length > 0) return false;
     if (now < rt.nextAt) return false;
+    // A trick that is only an agent view has no program: nothing is ever due.
+    if (rt.approved?.found.manifest?.run === undefined) return false;
     // A failed start run keeps `pendingStart`, so it is tried again after its backoff; a trick with no
     // `every` never runs on the clock otherwise.
     return rt.pendingStart || rt.approved?.found.manifest?.everyMs !== undefined;
@@ -1248,6 +1267,9 @@ export class TricksService implements TricksSurface {
     const rid = trigger.kind === "tap" ? trigger.rid : "";
     const revBefore = this.store.rev;
     if (run === null || manifest === undefined) return { rid, code: "rejected", message: "The trick's trick.toml is refused." };
+    // An agent view and nothing else: no program, so nothing starts, whatever asked.
+    const command = manifest.run;
+    if (command === undefined) return { rid, code: "rejected", message: NO_PROGRAM_LINE };
     const startedAt = this.now();
     const state = trickStateDir(this.deps.stateDir, id);
     // The program's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
@@ -1267,7 +1289,7 @@ export class TricksService implements TricksSurface {
     }
     const facts = buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract);
     const outcome = await (this.deps.run ?? runProgram)({
-      command: manifest.run,
+      command,
       cwd: run.dir,
       env: scrubEnv(this.deps.env, manifest.env ?? []),
       stdin: JSON.stringify(facts),

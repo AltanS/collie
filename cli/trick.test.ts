@@ -990,3 +990,54 @@ describe("approving from inside an agent's pane, auto, and a version waiting", (
     expect(await trickCodeHash(approvedCopyDir(d.configDir, "other", hash))).toEqual(other);
   });
 });
+
+describe("an agent view (contract 2)", () => {
+  const VIEW_TOML = 'id = "morph"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n';
+
+  async function viewFolder(configDir: string, rules = "Draw one screen.\n"): Promise<string> {
+    const dir = join(configDir, "tricks", "morph");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "trick.toml"), VIEW_TOML);
+    await writeFile(join(dir, "rules.md"), rules);
+    return dir;
+  }
+
+  test("check prints the rights lines, the rules file, the later note and no program", async () => {
+    const d = await deps();
+    const dir = await viewFolder(d.configDir);
+    expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
+    const out = d.out.join("\n");
+    expect(out).toContain("Adds a view of a session that the session's own agent draws. You switch it on per session.");
+    expect(out).toContain("A tap in that view sends a message in your name to that session only.");
+    expect(out).toContain("rules.md. Gives your agents instructions written by its author.");
+    expect(out).toContain("Agent views come with a later build of this version.");
+    expect(out).toContain("none: this trick is an agent view and has no program, so nothing runs.");
+    expect(d.err).toEqual([]);
+  });
+
+  test("check prints each break of the rules' content rule, naming the line, and fails", async () => {
+    const d = await deps();
+    const dir = await viewFolder(d.configDir, "Draw.\n\tTab.\nTrailing \nToo   many.\n");
+    expect(await cmdTrickCheck(d, [dir])).toBe(EXIT.FAIL);
+    const err = d.err.join("\n");
+    expect(err).toContain("rules.md line 2 holds a tab. Use spaces.");
+    expect(err).toContain("rules.md line 3 ends with a space.");
+    expect(err).toContain("rules.md line 4 holds a run of more than 2 spaces.");
+  });
+
+  test("auto on is refused for a trick with rules, in the folder or the approved copy; off is fine", async () => {
+    const d = await deps();
+    await viewFolder(d.configDir);
+    expect(await cmdTrickSwitch(d, ["morph"], true)).toBe(EXIT.OK);
+    expect(await cmdTrickAuto(d, ["morph", "on"])).toBe(EXIT.REFUSED);
+    expect(d.err.slice(-2)).toEqual([
+      "error: A trick that gives your agents instructions never takes a new version without asking: every change of its code waits for your yes.",
+      "error: morph keeps asking.",
+    ]);
+    expect(JSON.parse(await readFile(switchesPath(d.stateDir), "utf8")).on.morph.auto).toBe(false);
+    // The folder drops the keys, but the approved copy still gives instructions: still refused.
+    await writeFile(join(d.configDir, "tricks", "morph", "trick.toml"), 'id = "morph"\nname = "Morph"\nrun = "./p.sh"\nplaces = ["belt"]\n');
+    expect(await cmdTrickAuto(d, ["morph", "on"])).toBe(EXIT.REFUSED);
+    expect(await cmdTrickAuto(d, ["morph", "off"])).toBe(EXIT.OK);
+  });
+});

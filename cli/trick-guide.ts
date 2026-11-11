@@ -4,7 +4,7 @@ import { PROPOSE_LIMITS } from "../bridge/tricks/propose-wire.ts";
 import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../bridge/tricks/proposals.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../web/src/lib/tricks/contract.ts";
-import { ABOUT_MAX, DESCRIPTION_MAX, ENV_NAMES_MAX, EVERY_MAX_MS, EVERY_MIN_MS, INPUTS_MAX, MANIFEST_KEYS, PLACE_KINDS, TRICK_MODES, type PlaceKind } from "../web/src/lib/tricks/schema.ts";
+import { ABOUT_MAX, AGENT_VIEW_CONTRACT, AGENT_VIEW_LATER, AGENT_VIEW_PLACE, DESCRIPTION_MAX, ENV_NAMES_MAX, EVERY_MAX_MS, EVERY_MIN_MS, INPUTS_MAX, MANIFEST_KEYS, PLACE_KINDS, RESERVED_TRICK_IDS, RULES_BLANK_LINES_MAX, RULES_LINE_MAX, RULES_MAX_BYTES, RULES_SPACES_MAX, TRICK_MODES, type PlaceKind } from "../web/src/lib/tricks/schema.ts";
 
 // `collie trick guide` (crew slice 8): how to write a trick and hand it to the person, as plain text an
 // agent reads once. It needs no bridge. Its numbers and lists come from the constants the bridge checks
@@ -13,20 +13,21 @@ import { ABOUT_MAX, DESCRIPTION_MAX, ENV_NAMES_MAX, EVERY_MAX_MS, EVERY_MIN_MS, 
 
 /** One manifest key per line, what it is. The type makes a new key a compile error until it is described here. */
 const KEY_WORDS = {
-  id: "the trick's id, 1 to 32 of a-z, 0-9 and -. The folder has the same name.",
+  id: `the trick's id, 1 to 32 of a-z, 0-9 and -. The folder has the same name. Not ${RESERVED_TRICK_IDS.join(", ")}.`,
   name: "the name a person reads on the row.",
-  run: 'what Collie runs: a TypeScript file in the folder ("program.ts"), or a shell command line.',
+  run: 'what Collie runs: a TypeScript file in the folder ("program.ts"), or a shell command line. An agent view alone has none.',
   every: `how often it runs on its timer, such as "30s" or "5m", from ${String(EVERY_MIN_MS / 1000)} s to ${String(EVERY_MAX_MS / 3_600_000)} h. Leave it out to run at start and on taps only.`,
   watch: "kept for a later Collie. Leave it out.",
   on: "kept for a later Collie. Leave it out.",
   mode: `${TRICK_MODES.map((mode) => `"${mode}"`).join(" or ")}. Leave it out for "${TRICK_MODES[0]}": one run, one document.`,
-  contract: `the contract the trick is written for: ${String(TRICK_CONTRACT_DEFAULT)}, or ${String(TRICK_CONTRACT)} to read files with inputs.`,
+  contract: `the contract the trick is written for: ${String(TRICK_CONTRACT_DEFAULT)}, or ${String(TRICK_CONTRACT)} to read files with inputs or to add an agent view.`,
   icon: 'one icon name, such as "plug". collie trick check names a wrong one.',
-  places: "where its parts draw. Each place a part uses must be listed here.",
+  places: `where its parts draw. Each place a part uses must be listed here. "${AGENT_VIEW_PLACE}" adds an agent view, below.`,
   env: `up to ${String(ENV_NAMES_MAX)} environment names past the base list, such as ["GH_TOKEN"]. The person sees each one.`,
   inputs: `with contract ${String(TRICK_CONTRACT)}: up to ${String(INPUTS_MAX)} globs of files read from each agent session's folder. Untrusted data: show it, never run it.`,
   description: `one plain line of at most ${String(DESCRIPTION_MAX)} characters: what the trick does.`,
   about: `the About text, at most ${String(ABOUT_MAX)} characters, paragraphs split by a blank line. Plain text only.`,
+  rules: `with contract ${String(AGENT_VIEW_CONTRACT)} and "${AGENT_VIEW_PLACE}": the file of instructions the agent reads, such as "rules.md". Below.`,
 } as const satisfies Readonly<Record<(typeof MANIFEST_KEYS)[number], string>>;
 
 /** One place per line, what it draws. */
@@ -70,6 +71,18 @@ export function trickGuide(): string[] {
     "THE PLACES",
     "A trick draws in these places:",
     ...PLACE_KINDS.map((place) => `  ${place.padEnd(12)}${PLACE_GUIDE[place]}`),
+    "",
+    "AGENT VIEWS",
+    `A trick may add a view of a session that the session's own agent draws: list "${AGENT_VIEW_PLACE}" in places.`,
+    `It needs contract = ${String(AGENT_VIEW_CONTRACT)} and rules = "rules.md": a file of instructions the agent reads.`,
+    `A trick whose places are only ["${AGENT_VIEW_PLACE}"], with no every, inputs or env, needs no run line. It has no program.`,
+    "The rules file is one .md file at the top of the folder, a regular file, not a link.",
+    `It holds plain ASCII and line breaks only: no tab, no other character, at most ${String(RULES_MAX_BYTES / 1024)} KiB.`,
+    `No line over ${String(RULES_LINE_MAX)} characters, no space at a line's end, no run of more than ${String(RULES_SPACES_MAX)} spaces, no more than ${String(RULES_BLANK_LINES_MAX)} blank lines in a row.`,
+    "The person reads the rules whole before they switch the trick on, and again on every change.",
+    "A trick with rules never takes a new version without asking.",
+    "An agent cannot propose a trick with an agent view or rules. Ask your person to add it on the machine.",
+    AGENT_VIEW_LATER,
     "",
     "THE HELPER, trick.ts",
     "The program imports it: import { run, v } from \"./trick.ts\";",

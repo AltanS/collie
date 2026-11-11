@@ -1,0 +1,10 @@
+# A fixture trick for agent views (contract 2): a view of a session that the session's own agent draws.
+# It has no program, so it lists no run line. Its rules are the instructions the agent reads.
+id = "morph"
+name = "Morph"
+contract = 2
+icon = "eye"
+places = ["agent-view"]
+rules = "rules.md"
+description = "Your agent answers by drawing one screen."
+about = "Morph lets the agent of a session answer you with one screen on your phone instead of a wall of text.\n\nYou switch it on per session. A tap on a button sends its words to that session, in your name."

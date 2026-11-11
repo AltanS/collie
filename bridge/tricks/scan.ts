@@ -294,8 +294,9 @@ export async function scanTrickFolder(folder: string, manifest: TrickManifest, e
   else if (claimed !== null) out.helper = { version: claimed, current: false, modified: true };
   out.sources = all.filter((src) => src.file !== MANIFEST_FILE && isScannedFile(src.file) && !(src.file === HELPER_FILE && shipped !== null));
   out.notScanned = all.filter((src) => src.file !== MANIFEST_FILE && !out.sources.includes(src)).map((src) => src.file);
-  const graded = [...out.sources, { file: MANIFEST_FILE, text: manifest.run, shell: true }];
-  const imports = runtimeScript(manifest.run) === null ? [] : importWarnings(out.sources);
+  // A trick that is only an agent view has no run line: its files are graded, and nothing is imported.
+  const graded = manifest.run === undefined ? out.sources : [...out.sources, { file: MANIFEST_FILE, text: manifest.run, shell: true }];
+  const imports = manifest.run === undefined || runtimeScript(manifest.run) === null ? [] : importWarnings(out.sources);
   out.warnings = [...checkWarnings(graded, manifest.everyMs !== undefined), ...imports].slice(0, WARNINGS_MAX);
   return out;
 }

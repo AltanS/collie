@@ -2,13 +2,35 @@ import { createHash } from "node:crypto";
 
 import { parseJson } from "../../web/src/lib/json.ts";
 import { HILL_SUMMARY_MAX, type HillCollieRef, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { CHIP_TEXT_MAX, DECISION_VIEW_LIMITS, DIFF_LIMITS, inputsSentence, LINE_MAX, parseDecisionView, PLACE_KINDS, TABLE_LIMITS, TEXT_MAX, VIEW_LIMITS, type PlaceKind, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import {
+  AGENT_VIEW_PLACE,
+  AGENT_VIEW_TAP_WORDS,
+  AGENT_VIEW_WORDS,
+  CHIP_TEXT_MAX,
+  DECISION_VIEW_LIMITS,
+  DIFF_LIMITS,
+  inputsSentence,
+  LINE_MAX,
+  parseDecisionView,
+  PLACE_KINDS,
+  RULES_CHIP,
+  RULES_NEVER_AUTO,
+  RULES_WORDS,
+  TABLE_LIMITS,
+  TEXT_MAX,
+  VIEW_LIMITS,
+  type PlaceKind,
+  type TrickManifest,
+  type View,
+  type ViewNode,
+} from "../../web/src/lib/tricks/schema.ts";
 import type { HillCollieSender, HillCollieVerdict, HillOneAnswer, HillPostAnswer } from "../hill/service.ts";
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { TrickVersionsPort, TrickVersionSubject, VersionAnswer } from "./service.ts";
 import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.ts";
 import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_FILES_MAX, groupOrder, placesTables } from "./card-group.ts";
+import { rulesChange } from "./rules-diff.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): one Decision of Collie's own on the Hill for each trick that is
 // on and whose new version waits for a yes. It asks the same yes the Settings row and `collie trick on`
@@ -88,7 +110,11 @@ const PLACE_WORDS = {
   tabbar: "the bottom bar",
 } as const satisfies Readonly<Record<PlaceKind, string>>;
 
+/** The chip word of the place `agent-view` (contract 2): a view of a session that its own agent draws. */
+export const AGENT_VIEW_CHIP = "an agent view";
+
 export function placeWords(place: string): string {
+  if (place === AGENT_VIEW_PLACE) return AGENT_VIEW_CHIP;
   const kind = PLACE_KINDS.find((candidate) => candidate === place);
   return kind === undefined ? place : PLACE_WORDS[kind];
 }
@@ -102,14 +128,15 @@ export const WARN_VERBS = {
   import: "imports a package Collie does not install",
 } as const satisfies Readonly<Record<keyof typeof WARN_PLAIN, string>>;
 
-/** The rights a manifest asks for past the base: its environment names and its places. */
-function rightsOf(manifest: Pick<TrickManifest, "env" | "places"> | undefined): Set<string> {
+/** The rights a manifest asks for past the base: its environment names and its places, an agent view among them. */
+function rightsOf(manifest: Pick<TrickManifest, "env" | "places" | "agentView"> | undefined): Set<string> {
   if (manifest === undefined) return new Set();
-  return new Set([...(manifest.env ?? []).map((name) => `env:${name}`), ...manifest.places.map((place) => `place:${place}`)]);
+  const places: string[] = [...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])];
+  return new Set([...(manifest.env ?? []).map((name) => `env:${name}`), ...places.map((place) => `place:${place}`)]);
 }
 
 /** What the new version asks for that the approved one did not, as chip words. */
-export function newRights(base: Pick<TrickManifest, "env" | "places"> | undefined, next: Pick<TrickManifest, "env" | "places"> | undefined): string[] {
+export function newRights(base: Pick<TrickManifest, "env" | "places" | "agentView"> | undefined, next: Pick<TrickManifest, "env" | "places" | "agentView"> | undefined): string[] {
   const was = rightsOf(base);
   return [...rightsOf(next)].filter((right) => !was.has(right)).map((right) => (right.startsWith("env:") ? right.slice(4) : placeWords(right.slice(6))));
 }
@@ -156,31 +183,50 @@ export function shownSentence(shown: number, total: number): string {
 export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, crew = false): Omit<HillPostInput, "requestId"> | null {
   const pending = subject.pending;
   if (pending === null) return null;
-  const rights = newRights(subject.base?.manifest, pending.manifest);
-  const reads = newInputs(subject.base?.manifest, pending.manifest);
+  const base = subject.base?.manifest;
+  const next = pending.manifest;
+  const rights = newRights(base, next);
+  const reads = newInputs(base, next);
+  // Contract 2: the rules of an agent view, the whole change of their text, or null when it did not change.
+  const rules = rulesChange(base, next);
+  const newRules = rules !== null && next?.rules !== undefined;
+  const viewNew = next?.agentView === true && base?.agentView !== true;
   const warnings = pending.info.warnings.map((warning) => warning.kind).filter((kind): kind is keyof typeof WARN_PLAIN => kind in WARN_PLAIN);
   const counts = pending.info.files;
   const fileCount = counts.added + counts.changed + counts.removed;
   const also = [
     ...(rights.length > 0 ? [`asks for ${listWords(rights)}`] : []),
+    ...(newRules ? ["gives your agents new instructions"] : []),
     ...(reads.length > 0 ? [crew ? "reads files in your agent sessions' folders on every machine of the crew" : "reads files in your agent sessions' folders"] : []),
     ...warnings.map((kind) => WARN_VERBS[kind]),
   ];
-  const powersChanged = pending.info.powersChanged || rights.length > 0 || reads.length > 0;
+  const powersChanged = pending.info.powersChanged || rights.length > 0 || reads.length > 0 || rules !== null;
+  // A trick that gives agents instructions never takes a change without asking, before or after this one.
+  const instructs = base?.rules !== undefined || next?.rules !== undefined;
   // The outer list takes a comma before its last part, as a part may itself say "a and b".
   const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
   const fact = also.length > 0 ? `It now also ${alsoWords}.` : powersChanged ? "Its rights changed." : "It asks for no new rights.";
+  // The head of the view: the rights as chips (the new instructions as one more), then each new right in
+  // the words a person reads, then the inputs and the warnings.
+  const lines = [...(viewNew ? [AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS] : []), ...(newRules ? [RULES_WORDS] : [])];
+  const facts = [...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
+  // The code the card shows beside the rules: every changed file but the rules file, which shows whole on its own.
+  const code = rules === null ? diff : { ...diff, files: diff.files.filter((file) => file.rel !== rules.rel) };
+  const rulesNodes = rules === null ? [] : rulesView(rules);
+  const oneHead = [...facts, ...rulesNodes];
+  const rulesFit = rules === null || (oneHead.length <= VIEW_LIMITS.root.max && bytesOf(oneHead) <= DECISION_VIEW_LIMITS.bytes && checked(oneHead) !== undefined);
   // The view is what the person reads before the yes: how much of the change it holds decides the rest.
-  const shown = versionViewShown(rights, warnings, diff, reads.length > 0 ? inputsSentence(reads, crew) : null);
+  const shown = rulesFit ? fitView(oneHead, code) : fitView([...facts, rulesNote(1)], code);
+  const shownFiles = shown.shown + (rules !== null && rulesFit && shown.view !== null ? 1 : 0);
   const total = Math.max(fileCount, diff.files.length);
-  const whole = shown.view !== null && shown.shown >= total;
-  const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
+  const whole = shown.view !== null && shownFiles >= total;
+  const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shownFiles, total)}`;
   // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the view lists every one.
-  const short = rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below.";
+  const short = rights.length > 0 || newRules ? "It asks for new rights, listed below." : "It does something new, listed below.";
   const full = `${filesSentence(fileCount)} ${fact}${tail}`;
   const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${filesSentence(fileCount)} ${short}${tail}`;
   const options: HillPostInput["options"] = [{ intent: "use", label: "Use the new version" }];
-  if (!powersChanged) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." });
+  if (!powersChanged && !instructs) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." });
   options.push({ intent: "keep", label: "Keep the old version" });
   const recommend = { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." };
   const card: Omit<HillPostInput, "requestId"> = {
@@ -191,25 +237,60 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
     priority: "today",
     recommends: powersChanged || warnings.length > 0 || !whole ? null : recommend,
   };
-  if (whole || fileCount > diff.files.length) return shown.view === null ? card : { ...card, view: shown.view };
-  // Not whole on one card: every line on a group of cards (card-group.ts). A line the mask changed shows
-  // masked, its card says so, and Collie recommends nothing. More than 8 cards, a file that is not text,
-  // or more files than a group lists: the one card as before, with its sentence, recommending nothing.
-  const code = codeGroup(diff.files, pending.manifest?.run ?? null, "show");
-  if (!code.ok) return shown.view === null ? card : { ...card, view: shown.view };
-  const head = rightsHead("New rights", rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null);
-  const rows = groupOrder(diff.files, pending.manifest?.run ?? null).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
-  const first = checked([...head, { kind: "line", text: filesOnCards(diff.files.length, code.cards.length), attrs: { role: "note" } }, ...placesTables(rows, ["Change", "Lines"], code.places)]);
-  if (first === undefined || bytesOf(first) > DECISION_VIEW_LIMITS.bytes) return shown.view === null ? card : { ...card, view: shown.view };
-  const masked = diff.files.some((file) => file.cut === true);
-  const many = ` It shows on ${String(code.cards.length + 1)} cards.`;
-  const fullGroup = `${filesSentence(fileCount)} ${fact}${many}`;
+  const single = shown.view === null ? card : { ...card, view: shown.view };
+  if (rulesFit && (whole || fileCount > diff.files.length)) return single;
+  // Not whole on one card: every line on a group of cards (card-group.ts), the rules first. A line the mask
+  // changed shows masked, its card says so, and Collie recommends nothing. More than 8 cards, a file that is
+  // not text, or more files than a group lists: the one card as before, with its sentence, recommending
+  // nothing; when the rules did not fit it, they go on cards of their own after it.
+  const files = rules === null ? diff.files : [rules, ...code.files];
+  const lead = rules === null ? [] : [rules.rel];
+  const run = next?.run ?? null;
+  const group = codeGroup(files, run, "show", new Map(), lead);
+  const rows = groupOrder(files, run, lead).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
+  const first = group.ok ? checked([...facts, { kind: "line", text: filesOnCards(files.length, group.cards.length), attrs: { role: "note" } }, ...placesTables(rows, ["Change", "Lines"], group.places)]) : undefined;
+  if (group.ok && first !== undefined && bytesOf(first) <= DECISION_VIEW_LIMITS.bytes) {
+    const masked = files.some((file) => file.cut === true);
+    const many = ` It shows on ${String(group.cards.length + 1)} cards.`;
+    const fullGroup = `${filesSentence(fileCount)} ${fact}${many}`;
+    return {
+      ...card,
+      summary: [...fullGroup].length <= HILL_SUMMARY_MAX ? fullGroup : `${filesSentence(fileCount)} ${short}${many}`,
+      recommends: powersChanged || warnings.length > 0 || masked ? null : recommend,
+      group: { decline: "keep", parts: [first, ...group.cards] },
+    };
+  }
+  if (rules === null || rulesFit) return single;
+  // The rules never fall back to "not shown": the card as it fits, then the rules whole on cards of their own.
+  const alone = codeGroup([rules], null, "show");
+  if (!alone.ok) return single;
+  const fitted = fitView([...facts, rulesNote(alone.cards.length)], code);
+  if (fitted.view === null) return single;
+  const aloneShown = fitted.shown + 1;
+  const aloneTail = aloneShown >= total ? "" : ` ${shownSentence(aloneShown, total)}`;
+  const many = ` It shows on ${String(alone.cards.length + 1)} cards.`;
+  const fullAlone = `${filesSentence(fileCount)} ${fact}${aloneTail}${many}`;
   return {
     ...card,
-    summary: [...fullGroup].length <= HILL_SUMMARY_MAX ? fullGroup : `${filesSentence(fileCount)} ${short}${many}`,
-    recommends: powersChanged || warnings.length > 0 || masked ? null : recommend,
-    group: { decline: "keep", parts: [first, ...code.cards] },
+    summary: [...fullAlone].length <= HILL_SUMMARY_MAX ? fullAlone : `${filesSentence(fileCount)} ${short}${many}`,
+    recommends: null,
+    group: { decline: "keep", parts: [fitted.view, ...alone.cards] },
   };
+}
+
+/** The words above the rules' diff, and the note that sends a person to the cards that hold it. */
+export const RULES_DIFF_LABEL = "The agent instructions, every line:";
+function rulesNote(cards: number): ViewNode {
+  const where = cards === 1 ? "card 2" : `cards 2 to ${String(cards + 1)}`;
+  return { kind: "line", text: `The agent instructions are on ${where}, every line.`, attrs: { role: "note" } };
+}
+
+/** The whole diff of the rules as view nodes: the label, then the rows in diff nodes of at most {@link DIFF_LIMITS} lines. */
+export function rulesView(rules: ChangedFile): ViewNode[] {
+  const rows = rules.hunk ?? [];
+  const nodes: ViewNode[] = [{ kind: "line", text: RULES_DIFF_LABEL, attrs: { role: "note" } }];
+  for (let at = 0; at < rows.length; at += DIFF_LIMITS.lines) nodes.push({ kind: "diff", text: rows.slice(at, at + DIFF_LIMITS.lines).join("\n"), attrs: { file: cellPath(rules.rel) } });
+  return nodes;
 }
 
 /** A path as one cell: any character the view refuses as `?`, cut from the start to fit, so the file name shows. */
@@ -471,6 +552,8 @@ export class VersionCards implements TrickVersionsPort {
       const subject = this.latest.get(ref.id);
       const pending = subject?.pending;
       if (pending?.hash === ref.hash && (pending.info.powersChanged || newRights(subject?.base?.manifest, pending.manifest).length > 0)) return { ok: false, reason: VERSION_NEW_RIGHTS };
+      // A trick that gives agents instructions never takes changes without asking (contract 2).
+      if (subject?.base?.manifest?.rules !== undefined || pending?.manifest?.rules !== undefined) return { ok: false, reason: RULES_NEVER_AUTO };
     }
     const approved = verdictOf(await tricks.approvePending(ref.id, ref.hash, "phone"));
     if (!approved.ok || intent === "use") return approved;
@@ -495,6 +578,7 @@ function verdictOf(answer: VersionAnswer): HillCollieVerdict {
       return { ok: false, reason: VERSION_GONE };
     case "no-previous":
     case "copy-failed":
+    case "has-rules":
       return { ok: false, reason: answer.message };
     default:
       return answer.code satisfies never;

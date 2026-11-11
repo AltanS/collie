@@ -72,9 +72,9 @@ import {
 } from "../hill/wire";
 import { codePointName, firstHiddenChar, hasHiddenChar } from "../hidden-chars";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
-import { INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
+import { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
 
-export { INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT };
+export { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT };
 
 // ── Versions and byte caps ───────────────────────────────────────────────────────────────────
 
@@ -1071,7 +1071,11 @@ export interface TrickDocument {
 export interface TrickManifest {
   id: string;
   name: string;
-  run: string;
+  /**
+   * The program's command line. Absent only for a trick that is an agent view and nothing else (places
+   * exactly `["agent-view"]`, no `every`, `inputs` or `env`): such a trick has no program and never runs.
+   */
+  run?: string;
   every?: string;
   everyMs?: number;
   watch?: string[];
@@ -1099,6 +1103,26 @@ export interface TrickManifest {
    * blank line. No markdown, no HTML, no link is drawn. Text, not a right, like `description`.
    */
   about?: string;
+  /**
+   * Contract 2: the manifest lists the place word `agent-view`, a view of a session that the session's own
+   * agent draws ({@link AGENT_VIEW_PLACE}). Kept apart from `places`, which are the places a document's
+   * parts draw in. A right: it is in the powers. This build answers it with a `later` note
+   * ({@link AGENT_VIEW_LATER}).
+   */
+  agentView?: true;
+  /**
+   * Contract 2: the file name of the instructions the session's agent reads (`rules.md`), one step in the
+   * folder ({@link rulesNameProblem}). Required with `agent-view`, refused without it.
+   */
+  rules?: string;
+  /**
+   * The bytes of the rules file as text, set by the bridge's folder reader (discover.ts `readManifestFile`)
+   * once the file passed {@link rulesTextProblems}: printable ASCII and `\n` only, so the text is the bytes.
+   * Absent from a manifest read from its text alone.
+   */
+  rulesText?: string;
+  /** The SHA-256 (hex) of the rules file's bytes, set with {@link rulesText}. In the powers. */
+  rulesSha256?: string;
 }
 
 /**
@@ -1336,6 +1360,17 @@ export interface WireTrickInfo {
   /** The manifest's `about` text for the About sheet, at most `ABOUT_MAX` characters. Absent: none, or an older bridge. */
   about?: string;
   /**
+   * Contract 2: the manifest lists `agent-view`. The About sheet says the two lines of that right, and the
+   * row carries the one `later` note: this build draws no agent view yet. Absent: none, or an older bridge.
+   */
+  agentView?: true;
+  /**
+   * Contract 2: the instructions the trick gives the session's agent, the rules file's name and its bytes as
+   * text, whole ({@link rulesTextProblems} holds them to printable ASCII and `\n`). The About sheet shows
+   * them raw in a fold. Absent: none, or an older bridge.
+   */
+  rules?: WireTrickRules;
+  /**
    * What a text search of the code flags (bridge/tricks/scan.ts), one entry per kind, for a trick that is
    * off or changed, so the person sees them before the switch. Absent when there is none, on a trick that
    * is on and unchanged, and from an older bridge. A warning never refuses: the switch stays one tap.
@@ -1352,6 +1387,12 @@ export interface WireTrickInfo {
    */
   autoAt?: string;
 }
+/** A trick's rules on the wire: the file's name and its bytes as text, whole. */
+export type WireTrickRules = {
+  file: string;
+  text: string;
+};
+
 /** The kinds of warning the check scan gives. A phone reads a kind it does not know as plain text. */
 export const TRICK_WARNING_KINDS = ["spawn", "network", "write", "model", "import"] as const;
 export type TrickWarningKind = (typeof TRICK_WARNING_KINDS)[number];
@@ -1452,6 +1493,12 @@ export interface WireOfficialTrick {
    * not that version's code any more: the person changed its files. Collie never updates it. Absent otherwise.
    */
   changed?: true;
+  /**
+   * Contract 2: the instructions the entry's trick gives its agents, as the list pins them (official.ts), so the
+   * About sheet shows them whole before Add. The add checks the folder's rules file holds exactly these bytes.
+   * Absent: the trick has none, or an older bridge.
+   */
+  rules?: WireTrickRules;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */
@@ -3573,7 +3620,128 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "rules"] as const;
+
+// ── Agent views: the place word `agent-view` and the key `rules` (contract 2) ───────────────────────
+
+/**
+ * The place word of an agent view: a view of a session that the session's own agent draws. A manifest word
+ * only: no part of a document draws `at` it, so it is not a {@link PlaceKind}, and the manifest keeps it as
+ * `agentView`. At most once per trick. It needs `rules`.
+ */
+export const AGENT_VIEW_PLACE = "agent-view";
+
+/** The one `later` note of a trick that lists `agent-view`: this build reads the keys and draws no view yet. */
+export const AGENT_VIEW_LATER = "Agent views come with a later build of this version.";
+
+/**
+ * The words a person reads for these rights, the same on the version card, in `collie trick check` and in
+ * the About sheet (whose English strings are `settings.tricks.about.agentView*` and `.rules`, held equal by a test).
+ */
+export const AGENT_VIEW_WORDS = "Adds a view of a session that the session's own agent draws. You switch it on per session.";
+export const AGENT_VIEW_TAP_WORDS = "A tap in that view sends a message in your name to that session only.";
+export const RULES_WORDS = "Gives your agents instructions written by its author.";
+/** The version card's chip when a new version's instructions differ from the approved ones. */
+export const RULES_CHIP = "new agent instructions";
+/** Why a trick with `rules` never takes a new version without asking: the CLI, the bridge and the card say it. */
+export const RULES_NEVER_AUTO = "A trick that gives your agents instructions never takes a new version without asking: every change of its code waits for your yes.";
+
+/**
+ * Trick ids no trick may take: the words of the heads Collie writes into a session (`[view:<id> ...]`,
+ * `[walky-talky ...]`) and Collie's own names, so no trick reads as Collie or as another door. `morph` is
+ * not here: it is a trick's name.
+ */
+export const RESERVED_TRICK_IDS: readonly string[] = ["walky-talky", "hill", "collie", "view"];
+
+/** The most bytes of a rules file. */
+export const RULES_MAX_BYTES = 8 * 1024;
+/** The most characters of one line of a rules file. */
+export const RULES_LINE_MAX = 160;
+/** The longest run of spaces a rules line may hold. */
+export const RULES_SPACES_MAX = 2;
+/** The most blank lines a rules file may hold in a row. */
+export const RULES_BLANK_LINES_MAX = 2;
+/** The longest rules file name. */
+export const RULES_NAME_MAX = 64;
+const RULES_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/u;
+
+/**
+ * Why a `rules` file name is refused, or undefined. One step in the trick's folder, so it is a file the code
+ * hash walks (code-hash.ts): no `/` or `\`, no leading dot, letters, digits, `.`, `_` and `-` only, ending
+ * in `.md`, at most {@link RULES_NAME_MAX} characters.
+ */
+export function rulesNameProblem(name: string): string | undefined {
+  if (name.includes("/") || name.includes("\\")) return `"rules" names one file in the trick's folder, with no / or \\ in it.`;
+  if (name.length > RULES_NAME_MAX || !RULES_NAME.test(name)) return `"rules" is a file name of at most ${String(RULES_NAME_MAX)} letters, digits, ".", "_" and "-", starting with a letter or a digit and ending in .md, such as "rules.md".`;
+  return undefined;
+}
+
+/** One line of a rules file that breaks the content rule: its number (from 1) and one plain sentence. */
+export interface RulesProblem {
+  line: number;
+  reason: string;
+}
+
+/**
+ * Every way a rules file's bytes break the content rule (agent-view SECURITY S5), each with its own
+ * sentence naming the line. Empty when they read. The rule is stricter than {@link hasHiddenChar}: what a
+ * person reads before the yes must be exactly what the agent gets, so only bytes 0x20 to 0x7E and `\n` are
+ * taken. No tab; no line over {@link RULES_LINE_MAX} characters; no space at a line's end; no run of more
+ * than {@link RULES_SPACES_MAX} spaces; no more than {@link RULES_BLANK_LINES_MAX} blank lines in a row; at
+ * most {@link RULES_MAX_BYTES} bytes; not empty. `file` names the file in each sentence.
+ */
+export function rulesTextProblems(bytes: Uint8Array, file = "The rules file"): RulesProblem[] {
+  if (bytes.length > RULES_MAX_BYTES) return [{ line: 0, reason: `${file} is larger than ${String(RULES_MAX_BYTES / 1024)} KiB.` }];
+  const out: RulesProblem[] = [];
+  let line = 1;
+  let start = 0;
+  let blanks = 0;
+  let printable = false;
+  // One pass over the bytes; a line ends at `\n` or at the end of the file.
+  for (let at = 0; at <= bytes.length; at += 1) {
+    const byte = at < bytes.length ? (bytes[at] ?? 0) : 0x0a;
+    if (byte !== 0x0a) continue;
+    if (at === bytes.length && start === at && at > 0) break;
+    const row = bytes.subarray(start, at);
+    const words = rulesLineProblems(row, line, file);
+    out.push(...words);
+    if (row.length === 0) {
+      blanks += 1;
+      if (blanks === RULES_BLANK_LINES_MAX + 1) out.push({ line, reason: `${file} line ${String(line)} is a third blank line in a row. At most ${String(RULES_BLANK_LINES_MAX)} blank lines may follow each other.` });
+    } else blanks = 0;
+    if (row.some((b) => b !== 0x20)) printable = true;
+    line += 1;
+    start = at + 1;
+  }
+  if (!printable) return [{ line: 0, reason: `${file} is empty. Write the instructions your agents read.` }];
+  return out;
+}
+
+/** The problems of one line of a rules file (its bytes without the `\n`). */
+function rulesLineProblems(row: Uint8Array, line: number, file: string): RulesProblem[] {
+  const at = `${file} line ${String(line)}`;
+  const out: RulesProblem[] = [];
+  if (row.includes(0x09)) out.push({ line, reason: `${at} holds a tab. Use spaces.` });
+  if (row.includes(0x0d)) out.push({ line, reason: `${at} holds a carriage return. Save the file with plain \\n line ends.` });
+  if (row.some((b) => b !== 0x09 && b !== 0x0d && b < 0x20)) out.push({ line, reason: `${at} holds a control character.` });
+  if (row.some((b) => b > 0x7e)) out.push({ line, reason: `${at} holds a character outside plain ASCII (letters, digits, punctuation and spaces). Agent instructions are plain ASCII text.` });
+  if (row.length > RULES_LINE_MAX) out.push({ line, reason: `${at} is longer than ${String(RULES_LINE_MAX)} characters. Break it in two.` });
+  if (row.length > 0 && row[row.length - 1] === 0x20) out.push({ line, reason: `${at} ends with a space.` });
+  let run = 0;
+  for (const b of row) {
+    run = b === 0x20 ? run + 1 : 0;
+    if (run === RULES_SPACES_MAX + 1) {
+      out.push({ line, reason: `${at} holds a run of more than ${String(RULES_SPACES_MAX)} spaces.` });
+      break;
+    }
+  }
+  return out;
+}
+
+/** Whether a manifest lists `agent-view` or `rules`: such a trick gives agents instructions, so no agent may propose it. */
+export function givesAgentsInstructions(manifest: Pick<TrickManifest, "agentView" | "rules">): boolean {
+  return manifest.agentView === true || manifest.rules !== undefined;
+}
 
 // ── The inputs: files a trick reads from its agent sessions' folders (contract 2, M99) ───────────────
 
@@ -3673,6 +3841,11 @@ export function inputsSentence(globs: readonly string[], crew: boolean): string 
 
 /** The line a contract 1 trick that lists `inputs` is refused with. */
 export const INPUTS_NEED_CONTRACT = `"inputs" needs contract = ${String(INPUTS_CONTRACT)}. Add contract = ${String(INPUTS_CONTRACT)} to trick.toml to read files from your sessions' folders.`;
+/** The lines an agent view's keys are refused with: an older contract, a place without its rules, rules without the place. */
+export const AGENT_VIEW_NEEDS_CONTRACT = `"agent-view" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
+export const RULES_NEEDS_CONTRACT = `"rules" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
+export const AGENT_VIEW_NEEDS_RULES = `"agent-view" needs "rules": the file of instructions the session's agent reads. Add rules = "rules.md" to trick.toml.`;
+export const RULES_NEED_AGENT_VIEW = `"rules" goes with the place "agent-view": they are the instructions of the agent that draws the view. Add "agent-view" to places, or remove "rules".`;
 
 /** The highest `contract` a manifest may write before it is refused as a typo rather than a newer Collie. */
 const CONTRACT_MAX = 999;
@@ -3725,8 +3898,12 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (id !== undefined && opts.folder !== undefined && id !== opts.folder) {
     f.push("id", "id", `"id" is "${id}" but the folder is "${opts.folder}". Name them alike.`);
   }
+  if (id !== undefined && RESERVED_TRICK_IDS.includes(id)) f.push("id", "id", `"${id}" is a name Collie keeps for itself. Give the trick another id.`);
   const name = f.text("name", { max: NAME_MAX, required: true });
-  const run = f.text("run", { max: RUN_MAX, required: true });
+  // A trick that is only an agent view has no program: `run` may then be left out, and nothing ever starts.
+  const placesRaw = obj.places;
+  const viewOnly = Array.isArray(placesRaw) && placesRaw.length === 1 && placesRaw[0] === AGENT_VIEW_PLACE && !f.has("every") && !f.has("inputs") && !f.has("env");
+  const run = f.text("run", { max: RUN_MAX, required: !viewOnly });
 
   const every = f.text("every", { max: 8 });
   const everyMs = every === undefined ? undefined : parseDuration(every);
@@ -3778,9 +3955,25 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   // Room for the places of a newer Collie at the same contract: the words this one does not know are left out.
   const placeList = f.array("places", { min: 1, max: PLACES_LISTED_MAX, required: true, what: "places" });
   const places: PlaceKind[] = [];
+  let agentView = false;
   placeList?.forEach((value, i) => {
     const word = asJsonString(value);
     const path = pointer("/places", i);
+    // Contract 2: an agent view. Read and kept as a right, and answered with the one `later` note, since
+    // this build draws no agent view yet.
+    if (word === AGENT_VIEW_PLACE) {
+      if (agentView) {
+        refusals.push({ code: "duplicate", path, reason: `"${word}" is listed twice.` });
+        return;
+      }
+      agentView = true;
+      if (contract !== undefined && contract < AGENT_VIEW_CONTRACT) {
+        refusals.push({ code: "version", path, reason: AGENT_VIEW_NEEDS_CONTRACT });
+        return;
+      }
+      refusals.push({ code: "later", path, reason: AGENT_VIEW_LATER });
+      return;
+    }
     const later = word === undefined ? undefined : reasonOf(LATER_PLACE_WORDS, word);
     if (later !== undefined) {
       refusals.push({ code: "later", path, reason: later });
@@ -3807,13 +4000,26 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
     places.push(word);
   });
   const placeFaults = refusals.filter((r) => r.path.startsWith("/places/") && r.code !== "later");
-  if (placeList !== undefined && places.length === 0 && placeFaults.length === 0) {
+  if (placeList !== undefined && places.length === 0 && !agentView && placeFaults.length === 0) {
     refusals.push({ code: "place", path: "/places", reason: "The trick lists no place this Collie draws." });
   }
 
+  // Contract 2: the instructions of an agent view. The name is checked here; the bytes where the folder is
+  // read (bridge/tricks/discover.ts `readManifestFile`, {@link rulesTextProblems}).
+  const rules = f.text("rules", { max: RULES_NAME_MAX });
+  const rulesProblem = rules === undefined ? undefined : rulesNameProblem(rules);
+  if (rulesProblem !== undefined) f.push("target", "rules", rulesProblem);
+  if (f.has("rules") && contract !== undefined && contract < AGENT_VIEW_CONTRACT) f.push("version", "rules", RULES_NEEDS_CONTRACT);
+  if (agentView && !f.has("rules")) f.push("missing", "places", AGENT_VIEW_NEEDS_RULES);
+  if (f.has("rules") && !agentView) f.push("place", "rules", RULES_NEED_AGENT_VIEW);
+
   const fatal = refusals.some((r) => r.code !== "later");
-  if (fatal || id === undefined || name === undefined || run === undefined || contract === undefined) return { refusals: capRefusals(refusals) };
-  const manifest: TrickManifest = { id, name, run, mode: "once", contract, icon: icon ?? DEFAULT_TRICK_ICON, places };
+  if (fatal || id === undefined || name === undefined || (run === undefined && !viewOnly) || contract === undefined) return { refusals: capRefusals(refusals) };
+  const head = { id, name };
+  const rest = { mode: "once" as const, contract, icon: icon ?? DEFAULT_TRICK_ICON, places };
+  const manifest: TrickManifest = run === undefined ? { ...head, ...rest } : { ...head, run, ...rest };
+  if (agentView) manifest.agentView = true;
+  if (rules !== undefined) manifest.rules = rules;
   if (every !== undefined && everyMs !== undefined && everyOk) {
     manifest.every = every;
     manifest.everyMs = everyMs;
