@@ -982,6 +982,49 @@ export type ParsedPart =
   | { place: "dashboard"; part: DashboardPart }
   | { place: "tabbar"; part: TabbarPart };
 
+/** One control a part draws that sends a tap: its intent, and the value it sends (none for a mark). */
+export interface TapControl {
+  intent: string;
+  value?: string;
+}
+
+/**
+ * Every control of a part that sends a tap to the program (fault A): what the bridge holds a phone's tap
+ * against. A belt mark with an intent; a session's actions and every `button` of its view, at any depth,
+ * that sends an intent. A disabled control and a button that only copies send nothing, so they are left
+ * out. A status chip, a Dashboard tile and a bottom bar item are no controls: a tap there opens the
+ * trick's session on the phone and never reaches the bridge.
+ */
+export function tapControls(part: TrickPart): TapControl[] {
+  switch (part.at) {
+    case "belt":
+      return part.mark.intent === undefined ? [] : [{ intent: part.mark.intent }];
+    case "session": {
+      const out: TapControl[] = [];
+      for (const action of part.actions ?? []) {
+        if (action.disabled === true) continue;
+        out.push(action.value === undefined ? { intent: action.intent } : { intent: action.intent, value: action.value });
+      }
+      const walk = (nodes: readonly ViewNode[]): void => {
+        for (const node of nodes) {
+          if (node.kind === "button") {
+            const { intent, value, does, disabled } = node.attrs;
+            if (intent !== undefined && does === undefined && disabled === undefined) out.push(value === undefined ? { intent } : { intent, value });
+            continue;
+          }
+          if ("kids" in node && node.kids !== undefined) walk(node.kids);
+        }
+      };
+      walk(part.view);
+      return out;
+    }
+    case "status":
+    case "dashboard":
+    case "tabbar":
+      return [];
+  }
+}
+
 // ── Types: decisions (the Hill's decision shape, as a trick lists it) ───────────────────────
 
 /** `priority`: a request, not a fact. Only `now` pushes. Absent is `today`. The hill's words. */
@@ -1265,6 +1308,15 @@ export interface TapRequest {
 export const TAP_CODES = ["ok", "changed", "rejected", "gone", "denied", "unknown"] as const;
 export type TapCode = (typeof TAP_CODES)[number];
 /**
+ * Why the bridge refused a phone's tap before anything ran (fault A), beside the receipt's code. The
+ * phone says each in its own words, never the code. `part`: the trick holds no such part now. `intent`:
+ * the part has no control that sends this intent. `value`: no control of that intent sends this value.
+ * `changed`: the part moved since the phone drew it (the code is `changed`; the phone draws the new one
+ * and sends nothing again). `session`: `from.session` is no agent session the bridge lists now.
+ */
+export const TAP_REFUSALS = ["part", "intent", "value", "changed", "session"] as const;
+export type TapRefusal = (typeof TAP_REFUSALS)[number];
+/**
  * The tap reply: the receipt and the trick's new parts, which the phone applies at once. A repeat
  * `rid` returns the first reply and runs nothing. `unknown` is shown and never resent.
  */
@@ -1273,6 +1325,8 @@ export interface TrickTapReply {
   code: TapCode;
   /** One masked line, at most `PROBLEM_MAX`, for every code but `ok`. */
   message?: string;
+  /** Set when the bridge refused the tap before anything ran (fault A): why, as a word the phone says in its own words. */
+  refused?: TapRefusal;
   /** `tricksRev` after the run. */
   rev?: number;
   /** This trick's parts that changed, as in `TricksReply.parts`. */
@@ -4219,11 +4273,16 @@ function readFactsInputs(f: Fields, sink: Refusal[]): FactsInputs | undefined {
 
 // ── A tap ────────────────────────────────────────────────────────────────────────────────────
 
-/** Every key a tap's body takes. */
-export const TAP_KEYS = ["rid", "node", "intent", "value", "from"] as const;
+/**
+ * Every key a tap's body takes. `rev` is the rev of the part as the phone drew it (fault A): the bridge
+ * checks it and strips it, so it never reaches the program's trigger.
+ */
+export const TAP_KEYS = ["rid", "node", "intent", "value", "from", "rev"] as const;
 
 export interface ParsedTapRequest {
   request?: TapRequest;
+  /** The part's rev the phone sent, when it sent one. An older phone sends none. */
+  rev?: number;
   refusals: Refusal[];
 }
 
@@ -4239,9 +4298,10 @@ export function parseTapRequest(raw: JsonValue | undefined): ParsedTapRequest {
     if (key === "args") return { code: "unknown-key", reason: '"args" is "value" now: a button\'s fixed string, or a decision\'s answer.' };
     return undefined;
   });
+  const rev = f.int("rev", { min: 0, max: Number.MAX_SAFE_INTEGER });
   const request = readTapFields(f);
   if (refusals.length > 0 || request === undefined) return { refusals: capRefusals(refusals) };
-  return { request, refusals };
+  return rev === undefined ? { request, refusals } : { request, rev, refusals };
 }
 
 /** The fields a tap request and a tap trigger share. The caller has checked the keys. */

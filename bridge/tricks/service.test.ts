@@ -10,7 +10,8 @@ import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
-import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { tricksTapRoute } from "./routes.ts";
+import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -117,8 +118,9 @@ async function rig(outcomes: Scripted[] | null, extra: Partial<TricksServiceDeps
 }
 
 const exited = (stdout: string, code = 0): RunOutcome => ({ kind: "exited", code, stdout, stderr: "", ms: 5 });
+/** A document with one belt mark, whose tap sends the intent `x` (no value). */
 const belt = (label: string, extra: JsonObject = {}): string =>
-  JSON.stringify({ v: 1, asOf: "2026-11-08T09:00:00Z", parts: [{ at: "belt", id: "belt", mark: { label } }], ...extra });
+  JSON.stringify({ v: 1, asOf: "2026-11-08T09:00:00Z", parts: [{ at: "belt", id: "belt", mark: { label, intent: "x" } }], ...extra });
 const MANIFEST = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt", "session"]\n';
 
 /** Watch, advance the clock, tick, wait for the scan the tick started. */
@@ -127,6 +129,18 @@ async function tickAt(r: Rig, t: number, watch = true): Promise<void> {
   if (watch) r.service.noteWatched();
   await r.service.refresh(true);
   await r.service.tick();
+}
+
+/** The rev the phone holds of a part: the one `GET /api/tricks` serves for it now. */
+async function revOf(r: Pick<Rig, "service">, part = "belt", id = "legs"): Promise<number> {
+  const held = (await r.service.reply(undefined)).parts.find((p) => p.trick === id && p.part === part);
+  if (held === undefined) throw new Error(`the trick ${id} holds no part ${part}`);
+  return held.rev;
+}
+
+/** A phone's tap on the belt mark `belt()` draws, at the rev the phone holds now (fault A). */
+async function beltTap(r: Pick<Rig, "service">, rid: string, id = "legs"): Promise<TapAnswer> {
+  return await r.service.tap(HOST, id, { rid, node: "belt", intent: "x", rev: await revOf(r, "belt", id) });
 }
 
 /** The reply of a tap that answered 200. */
@@ -250,7 +264,7 @@ describe("discovery and the switch", () => {
     const reply = await r.service.reply(undefined);
     expect(reply.tricks[0]?.state).toBe("ok");
     expect(reply.parts.map((p) => partKey(p))).toEqual(["lodge/legs/belt"]);
-    expect(reply.parts[0]?.value).toEqual({ at: "belt", id: "belt", mark: { label: "23/34" } });
+    expect(reply.parts[0]?.value).toEqual({ at: "belt", id: "belt", mark: { label: "23/34", intent: "x" } });
     expect(reply.parts[0]?.fresh).toBe("90s");
     expect(reply.path).toBe(process.env.PATH ?? "/usr/bin:/bin");
   });
@@ -559,7 +573,7 @@ describe("last good, per part, and the rev", () => {
     // A new face: the part comes back with a higher rev.
     await tickAt(r, T0 + 60_000);
     const changed = await r.service.reply(same.rev);
-    expect(changed.parts.map((p) => p.value)).toEqual([{ at: "belt", id: "belt", mark: { label: "2" } }]);
+    expect(changed.parts.map((p) => p.value)).toEqual([{ at: "belt", id: "belt", mark: { label: "2", intent: "x" } }]);
     expect(changed.parts[0]?.rev ?? 0).toBeGreaterThan(same.rev);
     // A `since` from a future (a bridge before a restart with a clock behind) is everything.
     expect((await r.service.reply(changed.rev + 1_000_000)).parts.length).toBe(1);
@@ -607,37 +621,48 @@ describe("last good, per part, and the rev", () => {
 });
 
 describe("taps", () => {
-  const tapBody = (rid = REQ, intent = "rerun") => ({ rid, node: "belt", intent, value: "24", from: { session: "lodge:w6X:3" } });
+  /** What the trick draws first: a session part whose button sends `rerun` with the value 24 (fault A: a tap names what was drawn). */
+  const DRAWN = JSON.stringify({
+    v: 1,
+    asOf: "2026-11-08T09:00:00Z",
+    parts: [{ at: "session", id: "legs", view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Rerun", intent: "rerun", value: "24" } }] }] }],
+  });
+  const tapFields = (rid = REQ, intent = "rerun") => ({ rid, node: "legs", intent, value: "24", from: { session: "lodge:w6X:3" } });
+  /** The body the phone posts: the fields the program gets, and the rev of the part as the phone drew it. */
+  const tapBody = (rev: number, rid = REQ, intent = "rerun") => ({ ...tapFields(rid, intent), rev });
 
-  async function onRig(outcomes: Parameters<typeof rig>[0]): Promise<Rig> {
-    const r = await rig(outcomes);
+  /** The legs trick on, after its start run drew {@link DRAWN}; then each run takes the next outcome. */
+  async function onRig(outcomes: Scripted[]): Promise<Rig & { rev: number }> {
+    const r = await rig([exited(DRAWN), ...outcomes]);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
-    await r.service.refresh(true);
-    return r;
+    await tickAt(r, T0);
+    return Object.assign(r, { rev: await revOf(r, "legs") });
   }
 
   test("a tap runs the program with the tap trigger and replies ok with the new parts", async () => {
     const r = await onRig([exited(belt("24 red"))]);
-    const answer = await r.service.tap(HOST, "legs", tapBody());
+    const answer = await r.service.tap(HOST, "legs", tapBody(r.rev));
     expect(answer.status).toBe(200);
     const reply = ok200(answer);
     expect(reply.code).toBe("ok");
-    expect(reply.parts?.map((p) => p.value)).toEqual([{ at: "belt", id: "belt", mark: { label: "24 red" } }]);
+    expect(reply.parts?.map((p) => p.value)).toEqual([{ at: "belt", id: "belt", mark: { label: "24 red", intent: "x" } }]);
     expect(reply.present).toEqual(["lodge/legs/belt"]);
     expect(reply.rev).toBe(r.service.rev());
-    expect(factsOf(r.specs[0]).trigger).toEqual({ kind: "tap", ...tapBody() });
+    // The rev is the bridge's check, never the program's: the trigger is the tap's own fields.
+    expect(factsOf(r.specs[1]).trigger).toEqual({ kind: "tap", ...tapFields() });
   });
 
   test("the same rid runs nothing twice and answers the same receipt again; another payload is refused", async () => {
-    const r = await onRig([exited(belt("1"))]);
-    const first = await r.service.tap(HOST, "legs", tapBody());
-    const again = await r.service.tap(HOST, "legs", tapBody());
-    expect(r.specs.length).toBe(1);
+    const r = await onRig([exited(DRAWN)]);
+    const first = await r.service.tap(HOST, "legs", tapBody(r.rev));
+    // The run drew the same part again: the phone may hold either rev, and the receipt is the same.
+    const again = await r.service.tap(HOST, "legs", tapBody(await revOf(r, "legs")));
+    expect(r.specs.length).toBe(2);
     expect(again.status).toBe(200);
     expect(ok200(again)).toEqual(ok200(first));
     expect(ok200(again).code).toBe("ok");
-    const reused = await r.service.tap(HOST, "legs", tapBody(REQ, "other"));
+    const reused = await r.service.tap(HOST, "legs", tapBody(r.rev, REQ, "other"));
     expect(reused).toEqual({ status: 409, body: { error: "request-id-reused", rid: REQ } });
   });
 
@@ -646,19 +671,19 @@ describe("taps", () => {
     const slow: Scripted = {
       later: () =>
         new Promise((resolve) => {
-          release = () => resolve(exited(belt("1")));
+          release = () => resolve(exited(DRAWN));
         }),
     };
     const r = await onRig([slow]);
-    const a = r.service.tap(HOST, "legs", tapBody());
+    const a = r.service.tap(HOST, "legs", tapBody(r.rev));
     await Bun.sleep(20);
-    const b = r.service.tap(HOST, "legs", tapBody());
+    const b = r.service.tap(HOST, "legs", tapBody(r.rev));
     await Bun.sleep(20);
     release();
     const first = ok200(await a);
     expect(first.code).toBe("ok");
     expect(ok200(await b)).toEqual(first);
-    expect(r.specs.length).toBe(1);
+    expect(r.specs.length).toBe(2);
   });
 
   test("a tap queues one deep ahead of the timer; a second waiting tap is busy and keeps no receipt", async () => {
@@ -666,25 +691,26 @@ describe("taps", () => {
     const slow: Scripted = {
       later: () =>
         new Promise((resolve) => {
-          release = () => resolve(exited(belt("timer")));
+          release = () => resolve(exited(DRAWN));
         }),
     };
-    const r = await onRig([slow, exited(belt("tapped"))]);
+    const r = await onRig([slow, exited(DRAWN)]);
+    r.clock.t = T0 + 30_000;
     r.service.noteWatched();
     const timer = r.service.tick();
     await Bun.sleep(20);
-    const queued = r.service.tap(HOST, "legs", tapBody(REQ));
+    const queued = r.service.tap(HOST, "legs", tapBody(r.rev, REQ));
     await Bun.sleep(20);
-    const busy = await r.service.tap(HOST, "legs", tapBody(REQ2));
+    const busy = await r.service.tap(HOST, "legs", tapBody(r.rev, REQ2));
     expect(ok200(busy).code).toBe("rejected");
     expect(ok200(busy).message).toContain("busy");
     release();
     await timer;
     const reply = ok200(await queued);
     expect(reply.code).toBe("ok");
-    expect(r.specs.map((s) => factsOf(s).trigger.kind)).toEqual(["start", "tap"]);
+    expect(r.specs.map((s) => factsOf(s).trigger.kind)).toEqual(["start", "timer", "tap"]);
     // The busy id kept no receipt, so it may simply be tried again.
-    expect(ok200(await r.service.tap(HOST, "legs", tapBody(REQ2))).code).toBe("ok");
+    expect(ok200(await r.service.tap(HOST, "legs", tapBody(await revOf(r, "legs"), REQ2))).code).toBe("ok");
   });
 
   test("a timeout is unknown, a failure is rejected with the masked line, and the tap restarts a stopped trick", async () => {
@@ -692,58 +718,234 @@ describe("taps", () => {
       { kind: "timeout", stderr: "", ms: 10_000, limitMs: 10_000 },
       { kind: "exited", code: 1, stdout: "", stderr: "curl: 401 for https://api/?token=sk-or-v1-0123456789abcdef0123456789", ms: 3 },
     ]);
-    const unknown = ok200(await r.service.tap(HOST, "legs", tapBody(REQ)));
+    const unknown = ok200(await r.service.tap(HOST, "legs", tapBody(r.rev, REQ)));
     expect(unknown.code).toBe("unknown");
     expect(unknown.message).toBe("The program ran past 10 s and was stopped");
-    const failed = ok200(await r.service.tap(HOST, "legs", tapBody(REQ2)));
+    // A failed run keeps the part, stale: its value did not move, so the rev the phone drew still holds.
+    const failed = ok200(await r.service.tap(HOST, "legs", tapBody(r.rev, REQ2)));
     expect(failed.code).toBe("rejected");
     expect(failed.message).toStartWith("The program exited with 1: curl: 401");
     expect(failed.message).not.toContain("0123456789abcdef");
   });
 
   test("off, unknown, foreign and malformed taps", async () => {
-    const r = await rig([exited(belt("1"))]);
+    const r = await rig([exited(DRAWN)]);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await r.service.refresh(true);
-    expect(await r.service.tap("workshop", "legs", tapBody())).toEqual({ status: 404, body: { error: "unknown-host" } });
-    expect(await r.service.tap(HOST, "nope", tapBody())).toEqual({ status: 404, body: { error: "unknown-trick" } });
+    expect(await r.service.tap("workshop", "legs", tapBody(1))).toEqual({ status: 404, body: { error: "unknown-host" } });
+    expect(await r.service.tap(HOST, "nope", tapBody(1))).toEqual({ status: 404, body: { error: "unknown-trick" } });
     const bad = await r.service.tap(HOST, "legs", { rid: "nope", node: "belt", intent: "x" });
     expect(bad.status).toBe(400);
-    const off = ok200(await r.service.tap(HOST, "legs", tapBody()));
+    expect((await r.service.tap(HOST, "legs", { ...tapBody(1), rev: "1" })).status).toBe(400);
+    const off = ok200(await r.service.tap(HOST, "legs", tapBody(1)));
     expect(off).toEqual({ rid: REQ, code: "rejected", message: "The trick is off." });
     expect(r.specs.length).toBe(0);
-    // Off kept no receipt: switched on, the same id runs.
+    // Off kept no receipt: switched on, the same id runs once the part is drawn.
     await switchOn(r.stateDir, "legs");
-    await r.service.refresh(true);
-    expect(ok200(await r.service.tap(HOST, "legs", tapBody())).code).toBe("ok");
+    await tickAt(r, T0);
+    expect(ok200(await r.service.tap(HOST, "legs", tapBody(await revOf(r, "legs")))).code).toBe("ok");
   });
 
   test("a tap under the id the bridge served before a crew join still lands; parts stay under the id it serves now", async () => {
     let kept = 0;
-    const r = await rig([exited(belt("1"))], { previousId: "m_aaaaaaaaaa", keepId: () => (kept += 1) });
+    const r = await rig([exited(DRAWN), exited(belt("1"))], { previousId: "m_aaaaaaaaaa", keepId: () => (kept += 1) });
     // A scan alone keys nothing on the id: it is written down only before a program sees it.
     await makeTrick(r.configDir, "other", MANIFEST.replace('id = "legs"', 'id = "other"'));
     await r.service.refresh(true);
     expect(kept).toBe(0);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
-    await r.service.refresh(true);
-    const reply = ok200(await r.service.tap("m_aaaaaaaaaa", "legs", tapBody()));
+    await tickAt(r, T0);
+    const reply = ok200(await r.service.tap("m_aaaaaaaaaa", "legs", tapBody(await revOf(r, "legs"))));
     expect(reply.code).toBe("ok");
     expect(reply.parts?.map((part) => part.host)).toEqual([HOST]);
     expect((await r.service.reply(undefined)).tricks.map((trick) => trick.host)).toEqual([HOST, HOST]);
     // The facts the program got carry the id the bridge serves now, never the old one.
-    expect(JSON.parse(r.specs[0]?.stdin ?? "{}")).toMatchObject({ memberId: HOST, host: "desk" });
-    expect(await r.service.tap("m_bbbbbbbbbb", "legs", tapBody(REQ2))).toEqual({ status: 404, body: { error: "unknown-host" } });
+    expect(JSON.parse(r.specs[1]?.stdin ?? "{}")).toMatchObject({ memberId: HOST, host: "desk" });
+    expect(await r.service.tap("m_bbbbbbbbbb", "legs", tapBody(1, REQ2))).toEqual({ status: 404, body: { error: "unknown-host" } });
     expect(kept).toBeGreaterThan(0);
   });
 
   test("a draft is ignored, from any run: no note on the row, and the parts still draw", async () => {
-    const r = await onRig([exited(belt("1", { draft: { session: "lodge:w6X:3", text: "x" } }))]);
+    const r = await rig([exited(belt("1", { draft: { session: "lodge:w6X:3", text: "x" } }))]);
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
     expect(reply.present).toEqual(["lodge/legs/belt"]);
     expect(reply.tricks[0]?.refusals).toBeUndefined();
+  });
+});
+
+describe("fault A: a tap names what the bridge drew", () => {
+  /** The route as server.ts runs it: the path matched, then the body. */
+  const ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
+  async function route(r: Rig, body: JsonObject, id = "legs"): Promise<TrickTapReply> {
+    const match = ROUTE.exec(`/api/tricks/${HOST}/${id}/tap`);
+    if (match === null) throw new Error("the tap path did not match");
+    return ok200(await tricksTapRoute(r.service, match, body));
+  }
+
+  /** Every place, as one document: a belt mark, a session with an action and buttons in its view, a tile, a chip and a bar item. */
+  const PLACES = JSON.stringify({
+    v: 1,
+    asOf: "2026-11-08T09:00:00Z",
+    parts: [
+      { at: "belt", id: "belt", mark: { label: "3 red", intent: "open" } },
+      {
+        at: "session",
+        id: "legs",
+        actions: [
+          { id: "rerun", label: "Rerun", intent: "rerun", value: "all" },
+          { id: "stop", label: "Stop", intent: "stop", disabled: true },
+        ],
+        view: [
+          { kind: "card", kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Case 8", intent: "case", value: "8" } }, { kind: "button", attrs: { label: "Copy", does: "copy", value: "x" } }] }] },
+          { kind: "list", kids: [{ kind: "row", text: "Case 9", kids: [{ kind: "button", attrs: { label: "Skip", intent: "skip" } }] }] },
+        ],
+      },
+      { at: "dashboard", id: "tile", item: { label: "Legs" } },
+      { at: "status", id: "chip", chip: { text: "3 red" } },
+      { at: "tabbar", id: "bar", item: { label: "Legs" } },
+    ],
+  });
+  const ALL = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt", "session", "dashboard", "status", "tabbar"]\n';
+
+  async function drawnRig(world?: TricksServiceDeps["world"]): Promise<Rig & { audits: { action: string; detail: Record<string, string> }[] }> {
+    const audits: { action: string; detail: Record<string, string> }[] = [];
+    const extra: Partial<TricksServiceDeps> = { audit: (entry) => audits.push(entry) };
+    if (world !== undefined) extra.world = world;
+    const r = await rig([exited(PLACES)], extra);
+    await makeTrick(r.configDir, "legs", ALL);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    return Object.assign(r, { audits });
+  }
+  const rid = (n: number): string => `${String(n).padStart(8, "0")}-3b4a-4c5d-8e6f-708192a3b4c5`;
+
+  test("fault A: a valid tap from each place that sends one still runs: the belt mark, a session action, a nested view button, a row's button", async () => {
+    const r = await drawnRig();
+    const taps: JsonObject[] = [
+      { node: "belt", intent: "open", from: { session: "lodge:w6X:3" } },
+      { node: "legs", intent: "rerun", value: "all" },
+      { node: "legs", intent: "case", value: "8" },
+      { node: "legs", intent: "skip" },
+    ];
+    for (const [i, tap] of taps.entries()) {
+      const reply = await route(r, { rid: rid(i + 1), ...tap, rev: await revOf(r, String(tap.node)) });
+      expect(reply).toMatchObject({ code: "ok" });
+      expect(reply.refused).toBeUndefined();
+    }
+    expect(r.specs.map((spec) => factsOf(spec).trigger)).toMatchObject([{ kind: "start" }, ...taps.map((tap) => Object.assign({ kind: "tap" }, tap))]);
+    // The rev the phone sent is the bridge's check: it never reaches the program.
+    for (const spec of r.specs) expect(JSON.stringify(factsOf(spec).trigger)).not.toContain('"rev"');
+    expect(r.audits).toEqual([]);
+  });
+
+  test("fault A: a forged node is refused, runs nothing and writes exactly one audit line", async () => {
+    const r = await drawnRig();
+    const reply = await route(r, { rid: rid(1), node: "ghost", intent: "open", rev: await revOf(r, "belt") });
+    expect(reply).toEqual({ rid: rid(1), code: "rejected", refused: "part", message: TAP_REFUSED_LINES.part });
+    expect(r.specs.length).toBe(1);
+    expect(r.audits).toEqual([{ action: "trick.tap.refused", detail: { trick: "legs", reason: "part", node: "ghost", intent: "open" } }]);
+  });
+
+  test("fault A: a forged intent is refused, also on a disabled action, a copy button, and the places that send no tap", async () => {
+    const r = await drawnRig();
+    const forged: JsonObject[] = [
+      { node: "belt", intent: "rerun" },
+      { node: "legs", intent: "stop" },
+      { node: "legs", intent: "copy", value: "x" },
+      { node: "tile", intent: "open" },
+      { node: "chip", intent: "open" },
+      { node: "bar", intent: "open" },
+    ];
+    for (const [i, tap] of forged.entries()) {
+      const reply = await route(r, { rid: rid(i + 1), ...tap, rev: await revOf(r, String(tap.node)) });
+      expect(reply).toMatchObject({ code: "rejected", refused: "intent" });
+    }
+    expect(r.specs.length).toBe(1);
+    expect(r.audits.map((line) => line.detail.reason)).toEqual(forged.map(() => "intent"));
+  });
+
+  test("fault A: a forged value is refused: another value, a value where the control sends none, none where it sends one", async () => {
+    const r = await drawnRig();
+    const forged: JsonObject[] = [
+      { node: "legs", intent: "rerun", value: "rm -rf" },
+      { node: "belt", intent: "open", value: "1" },
+      { node: "legs", intent: "case" },
+      { node: "legs", intent: "skip", value: { text: "x" } },
+    ];
+    for (const [i, tap] of forged.entries()) {
+      const answer = await tricksTapRoute(r.service, ROUTE.exec(`/api/tricks/${HOST}/legs/tap`)!, { rid: rid(i + 1), ...tap, rev: await revOf(r, String(tap.node)) });
+      // A `{ text }` value is a decision's answer: the phone's route never takes one for a part.
+      if (answer.status !== 200) {
+        expect(answer.status).toBe(400);
+        continue;
+      }
+      expect(answer.body).toMatchObject({ code: "rejected", refused: "value" });
+    }
+    expect(r.specs.length).toBe(1);
+    expect(r.audits.map((line) => line.detail.reason)).toEqual(["value", "value", "value"]);
+  });
+
+  test("fault A: a stale rev answers changed with the parts now, and runs nothing; a rev moved only by a new asOf still lands", async () => {
+    const audits: { action: string; detail: Record<string, string> }[] = [];
+    const later = PLACES.replace('"2026-11-08T09:00:00Z"', '"2026-11-08T09:00:30Z"');
+    const moved = PLACES.replace('"3 red"', '"4 red"');
+    const r = await rig([exited(PLACES), exited(later), exited(moved)], { audit: (entry) => audits.push(entry) });
+    await makeTrick(r.configDir, "legs", ALL);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const drawn = await revOf(r, "belt");
+    // A timer run with the same mark and a new asOf: the rev moves, what the phone drew does not.
+    await tickAt(r, T0 + 30_000);
+    expect(await revOf(r, "belt")).toBeGreaterThan(drawn);
+    expect(await route(r, { rid: rid(1), node: "belt", intent: "open", rev: drawn })).toMatchObject({ code: "ok" });
+    // That tap's run drew a new face: the rev the phone drew is behind it now.
+    expect(r.specs.length).toBe(3);
+    const stale = await route(r, { rid: rid(2), node: "belt", intent: "open", rev: drawn });
+    expect(stale).toMatchObject({ rid: rid(2), code: "changed", refused: "changed", message: TAP_REFUSED_LINES.changed });
+    expect(stale.parts?.find((part) => part.part === "belt")?.value).toMatchObject({ mark: { label: "4 red" } });
+    expect(stale.present).toContain("lodge/legs/belt");
+    expect(stale.rev).toBe(r.service.rev());
+    expect(r.specs.length).toBe(3);
+    // A rev from the future names nothing the phone was shown either.
+    expect(await route(r, { rid: rid(3), node: "belt", intent: "open", rev: (r.service.rev() ?? 0) + 1 })).toMatchObject({ code: "changed", refused: "changed" });
+    expect(r.specs.length).toBe(3);
+    expect(audits.map((line) => line.detail.reason)).toEqual(["changed", "changed"]);
+  });
+
+  test("fault A: a tap without a rev, from a bundle older than the check, answers changed and runs nothing", async () => {
+    const r = await drawnRig();
+    const reply = await route(r, { rid: rid(1), node: "belt", intent: "open" });
+    expect(reply).toMatchObject({ code: "changed", refused: "changed" });
+    expect(reply.parts?.length).toBeGreaterThan(0);
+    expect(r.specs.length).toBe(1);
+    expect(r.audits).toHaveLength(1);
+    // The same rid with the rev the new bundle sends runs: a refusal keeps no receipt.
+    expect(await route(r, { rid: rid(1), node: "belt", intent: "open", rev: await revOf(r, "belt") })).toMatchObject({ code: "ok" });
+  });
+
+  test("fault A: from.session must be an agent session the facts list now: a dead, an unknown or a shell session is refused", async () => {
+    const r = await drawnRig((memberId) => ({
+      machine: "desk",
+      sessions: [
+        { id: `${memberId}:w6X:3`, memberId, sessionId: `${memberId}:w6X:3`, paneId: "w6X:3", host: "desk", name: "composer", agent: "claude", status: "working" },
+        { id: `${memberId}:w6X:4`, memberId, sessionId: `${memberId}:w6X:4`, paneId: "w6X:4", host: "desk", name: "zsh", status: "idle" },
+      ],
+      spaces: [],
+    }));
+    const rev = await revOf(r, "belt");
+    for (const [i, session] of ["lodge:w6X:9", "workshop:w6X:3", "lodge:w6X:4"].entries()) {
+      expect(await route(r, { rid: rid(i + 1), node: "belt", intent: "open", from: { session }, rev })).toMatchObject({ code: "rejected", refused: "session", message: TAP_REFUSED_LINES.session });
+    }
+    expect(r.specs.length).toBe(1);
+    expect(r.audits.map((line) => line.detail.reason)).toEqual(["session", "session", "session"]);
+    // A live agent session, or none at all, lands.
+    expect(await route(r, { rid: rid(4), node: "belt", intent: "open", from: { session: "lodge:w6X:3" }, rev })).toMatchObject({ code: "ok" });
+    expect(await route(r, { rid: rid(5), node: "belt", intent: "open", rev: await revOf(r, "belt") })).toMatchObject({ code: "ok" });
   });
 });
 
@@ -811,7 +1013,7 @@ describe("consent tied to the code", () => {
     expect(row?.pending).toBeUndefined();
     expect(spy.offs).toEqual([]);
     // A tap still runs, on the approved copy.
-    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" })).code).toBe("ok");
+    expect(ok200(await beltTap(r, REQ)).code).toBe("ok");
     // Once the folder sat still for the settle time, the snapshot is taken and the row says what waits.
     await tickAt(r, T0 + 30_000 + PENDING_SETTLE_MS);
     row = (await r.service.reply(undefined)).tricks[0];
@@ -892,8 +1094,8 @@ describe("consent tied to the code", () => {
     const r = await rig([exited(belt("1", { decisions: [ASK] })), exited(belt("2")), exited(belt("3", { decisions: [] }))], { decisions: spy.port });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
-    await r.service.refresh(true);
-    for (const rid of [REQ, REQ2, REQ3]) await r.service.tap(HOST, "legs", { rid, node: "belt", intent: "x" });
+    await tickAt(r, T0);
+    for (const rid of [REQ2, REQ3]) await beltTap(r, rid);
     expect(spy.synced).toEqual([["a"], []]);
   });
 });
@@ -964,30 +1166,37 @@ describe("taps, answers and slots", () => {
   });
 
   test("a tap that waited for a trick switched off answers rejected and runs nothing", async () => {
-    const g = gated();
-    const r = await rig(null, { run: g.run });
+    let release: () => void = () => {};
+    const slow: Scripted = {
+      later: () =>
+        new Promise((resolve) => {
+          release = () => resolve(exited(belt("2")));
+        }),
+    };
+    const r = await rig([exited(belt("1")), slow]);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
-    await r.service.refresh(true);
+    await tickAt(r, T0);
+    r.clock.t = T0 + 30_000;
     r.service.noteWatched();
     const timer = r.service.tick();
     await Bun.sleep(20);
-    const queued = r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" });
+    const queued = beltTap(r, REQ);
     await Bun.sleep(10);
     await writeSwitches(r.stateDir, { on: new Map() });
     await r.service.refresh(true);
-    g.releaseAll();
+    release();
     await timer;
     expect(ok200(await queued)).toEqual({ rid: REQ, code: "rejected", message: "The trick is off." });
-    expect(g.specs.length).toBe(1);
+    expect(r.specs.length).toBe(2);
   });
 
   test("a tap writes its marker before the run; after a restart a marker alone answers unknown and never runs twice", async () => {
     const r = await rig([exited(belt("1"))]);
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
-    await r.service.refresh(true);
-    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" })).code).toBe("ok");
+    await tickAt(r, T0);
+    expect(ok200(await beltTap(r, REQ)).code).toBe("ok");
     const file = JSON.parse(await readFile(join(r.stateDir, "tricks", "receipts.json"), "utf8"));
     expect(file.receipts).toMatchObject([{ requestId: REQ, pending: false, reply: { code: "ok" } }]);
     // A bridge that died mid-run left only the marker of REQ2.
@@ -1008,9 +1217,10 @@ describe("taps, answers and slots", () => {
     const r = await rig([exited(belt("1"))], { receipts: { ...memoryTrickReceipts(), recordFirst: async () => false } });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
-    await r.service.refresh(true);
-    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" })).code).toBe("rejected");
-    expect(r.specs.length).toBe(0);
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    expect(ok200(await beltTap(r, REQ))).toMatchObject({ code: "rejected", message: "The tap could not be recorded, so nothing ran. Try again." });
+    expect(r.specs.length).toBe(1);
   });
 
   test("the switch answer reflects the write even while a scan is in flight", async () => {
@@ -1243,7 +1453,7 @@ describe("the approved copy (crew slice 2)", () => {
     const copy = await copyOf(r, "legs");
     await chmod(join(copy, "legs.sh"), 0o700);
     await writeFile(join(copy, "legs.sh"), "#!/bin/sh\necho evil\n");
-    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" }))).toMatchObject({ code: "rejected", message: TAMPERED_LINE });
+    expect(ok200(await beltTap(r, REQ))).toMatchObject({ code: "rejected", message: TAMPERED_LINE });
     expect(r.specs.length).toBe(1);
     const reply = await r.service.reply(undefined);
     expect(reply.tricks[0]).toMatchObject({ on: true, state: "stopped", error: TAMPERED_LINE });
@@ -1266,7 +1476,7 @@ describe("the approved copy (crew slice 2)", () => {
     expect(r.specs.length).toBe(1);
     const copy = await copyOf(r, "legs");
     await symlink(join(r.configDir, TRICKS_DIR, "legs", "legs.sh"), join(copy, "live.sh"));
-    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" }))).toMatchObject({ code: "rejected", message: LINK_LINE });
+    expect(ok200(await beltTap(r, REQ))).toMatchObject({ code: "rejected", message: LINK_LINE });
     expect(r.specs.length).toBe(1);
     expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ on: true, state: "stopped", error: LINK_LINE });
   });
@@ -1278,7 +1488,7 @@ describe("the approved copy (crew slice 2)", () => {
     await tickAt(r, T0);
     const copy = await copyOf(r, "legs");
     await rm(copy, { recursive: true, force: true });
-    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x" })).code).toBe("ok");
+    expect(ok200(await beltTap(r, REQ)).code).toBe("ok");
     expect(await Bun.file(join(copy, "trick.toml")).exists()).toBe(true);
   });
 

@@ -12,6 +12,7 @@ import {
   parseTrickDocumentText,
   parseTapRequest,
   REFUSALS_MAX,
+  tapControls,
   RULES_NEVER_AUTO,
   type FactsTrigger,
   type TrickState,
@@ -20,6 +21,7 @@ import {
   type TricksRunsOn,
   type ParsedTrickDocument,
   type Refusal,
+  type TapRefusal,
   type TapRequest,
   type TrickManifest,
   type WireTrickInfo,
@@ -120,6 +122,20 @@ import { createSwitchReader, updateSwitches, withApproval, withEntry, withSwitch
 // rid with another payload is refused. A repeat after a bridge restart that finds only the marker
 // answers `unknown` and runs nothing. A tap that ran nothing (the trick is off, busy or skipped) keeps
 // no receipt on disk, so the same rid may simply be tried again.
+//
+// THE TAP NAMES WHAT WAS DRAWN (fault A). A phone's tap runs the program only when it names what this
+// bridge drew: `node` is a part the store holds for that trick, `rev` is the rev the phone drew it at and
+// the part's value has not moved since (store.ts `held`), `intent` is one a control of that part sends
+// (schema.ts `tapControls`: a belt mark, a session's actions and view buttons; a status chip, a tile and a
+// bar item send none), `value` is the one that control sends, or absent where it sends none, and
+// `from.session`, when present, is an agent session the facts list now. Anything else is refused before
+// the receipt's marker, with one `trick.tap.refused` audit line and a typed `refused` word the phone
+// says in its own words; a moved rev answers `changed` with the trick's parts now, and the phone draws
+// them and sends nothing again by itself. A tap without `rev` comes from a bundle older than the check
+// (the bridge serves its own bundle, so only a tab that has not reloaded since the update sends one): it
+// is answered `changed` too, and the next tap, from the new bundle, carries the rev. An answer from the
+// Hill is checked there (hill/service.ts `claim`: the decision is open, the intent is one of its
+// options, `answer` or `dismiss`, and the text keeps its rule), so `tapFromHill` skips these checks.
 //
 // ── DECISIONS (M94, M96) ────────────────────────────────────────────────────────
 // After a run that succeeded, the document's decisions go to the hill through `deps.decisions`
@@ -226,6 +242,18 @@ export interface TrickVersionsPort {
 
 /** The phone's words when it taps a decision's node directly: answers go through the hill. */
 export const HILL_NODE_TAP_REFUSED = "A decision is answered on the Hill, not with a tap.";
+
+/**
+ * The bridge's words for a refused phone tap (fault A), for `collie trick` and a phone that predates
+ * `refused`. A phone that reads `refused` says it in its own words.
+ */
+export const TAP_REFUSED_LINES = {
+  part: "The trick holds no such part now, so nothing ran.",
+  intent: "No control of this part sends that intent, so nothing ran.",
+  value: "No control of this part sends that value, so nothing ran.",
+  changed: "The part changed since the phone drew it, so nothing ran. Look at it again.",
+  session: "The tap names no agent session that is open here now, so nothing ran.",
+} as const satisfies Readonly<Record<TapRefusal, string>>;
 
 /** A tap route's answer: the HTTP status and the JSON body. */
 export type TapAnswer =
@@ -1420,7 +1448,45 @@ export class TricksService implements TricksSurface {
     if (parsed.request === undefined) return { status: 400, body: { error: "tap-invalid", refusals: parsed.refusals } };
     // A decision's answer comes from the hill only (`tapFromHill`), so it is closed and receipted there.
     if (parsed.request.node.startsWith(HILL_NODE_PREFIX)) return { status: 200, body: { rid: parsed.request.rid, code: "rejected", message: HILL_NODE_TAP_REFUSED } };
-    return this.runTap(host, id, parsed.request, undefined);
+    // The rev is the phone's claim of what it drew. It is checked here and never reaches the program.
+    return this.runTap(host, id, parsed.request, undefined, { rev: parsed.rev });
+  }
+
+  /**
+   * Why a phone's tap does not name what this bridge drew for the trick, or null when it does (fault A,
+   * THE TAP NAMES WHAT WAS DRAWN in the header). The order puts the phone's own race first: a part that is
+   * gone, then a rev the part moved past, so an honest phone that tapped a control just redrawn hears
+   * `changed`, never a refusal that reads like a forgery.
+   */
+  private tapRefusal(id: string, request: TapRequest, rev: number | undefined): TapRefusal | null {
+    const host = this.deps.memberId;
+    const held = this.store.held({ host, trick: id, part: request.node });
+    if (held === undefined) return "part";
+    // A phone that sends no rev predates the check: it cannot say what it drew, so the tap is a race it lost.
+    if (rev === undefined || !held.shows(rev)) return "changed";
+    const controls = tapControls(held.part.value).filter((control) => control.intent === request.intent);
+    if (controls.length === 0) return "intent";
+    // A part's control sends one fixed string or nothing; a `{ text }` answer belongs to a decision and matches none.
+    if (!controls.some((control) => control.value === request.value)) return "value";
+    const session = request.from?.session;
+    // A session the tap names must be an agent session the facts list now. No part names sessions yet; a
+    // part that does narrows this to the sessions it names.
+    if (session !== undefined && !this.deps.world(host).sessions.some((s) => s.id === session && s.agent !== undefined)) return "session";
+    return null;
+  }
+
+  /** Answer a refused phone tap: one audit line, nothing run, nothing kept. `changed` carries the trick's parts now. */
+  private refuseTap(id: string, request: TapRequest, refused: TapRefusal): TapAnswer {
+    const host = this.deps.memberId;
+    this.deps.audit?.({ action: "trick.tap.refused", detail: { trick: id, reason: refused, node: request.node, intent: request.intent } });
+    const reply: TrickTapReply = { rid: request.rid, code: refused === "changed" ? "changed" : "rejected", refused, message: TAP_REFUSED_LINES[refused] };
+    if (refused === "changed") {
+      const mine = this.store.trickParts(host, id, -Infinity);
+      reply.rev = this.store.rev;
+      reply.parts = mine.parts;
+      reply.present = mine.present;
+    }
+    return { status: 200, body: reply };
   }
 
   /**
@@ -1439,7 +1505,8 @@ export class TricksService implements TricksSurface {
     return this.receiptsLoaded;
   }
 
-  private async runTap(host: string, id: string, request: TapRequest, seen: string | undefined): Promise<TapAnswer> {
+  /** `phone`: set for a tap from the phone's route, whose part, control, value, rev and session are checked first (fault A). */
+  private async runTap(host: string, id: string, request: TapRequest, seen: string | undefined, phone?: { rev: number | undefined }): Promise<TapAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const digest = payloadDigest([id, request.node, request.intent, JSON.stringify(request.value ?? null), request.from?.session ?? ""]);
     // A replay answers the same receipt again, from the receipt log, unchanged (the tree's intent rule).
@@ -1468,6 +1535,10 @@ export class TricksService implements TricksSurface {
     if (!rt.on) return refuse("The trick is off.");
     if (rt.approved === null || rt.copyProblem !== null) return refuse(rt.copyProblem ?? (rt.pending === null ? NOT_APPROVED_LINE : PENDING_LINE));
     if (rt.approved.found.manifest === undefined) return refuse("The trick's trick.toml is refused. Run `collie trick check` on its folder.");
+    // An agent view alone draws no part and runs no program: a tap has nothing to reach.
+    if (rt.approved.found.manifest.run === undefined) return refuse(NO_PROGRAM_LINE);
+    const refused = phone === undefined ? null : this.tapRefusal(id, request, phone.rev);
+    if (refused !== null) return this.refuseTap(id, request, refused);
     const answer = request.node.startsWith(HILL_NODE_PREFIX);
     // A decision's answer waits in its own queue; a phone tap queues one deep.
     if (answer && rt.hillQueue.length >= HILL_QUEUE_MAX) return refuse("The trick has too many answers waiting. Try again in a moment.");

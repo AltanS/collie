@@ -2,6 +2,7 @@ import { redactText } from "../redact.ts";
 import {
   partKey,
   PROBLEM_MAX,
+  type TrickPartKey,
   type TricksReply,
   type TricksRunsOn,
   type ParsedTrickDocument,
@@ -56,6 +57,12 @@ export class TricksStore {
   private counter: number;
   private readonly parts = new Map<string, WireTrickPart>();
   private readonly infos = new Map<string, WireTrickInfo>();
+  /**
+   * The rev at which each part's VALUE (what the phone draws and taps) last changed (fault A). A new
+   * `asOf`, a stale flag or a problem line moves the part's rev but not this one, so a tap sent from any
+   * rev from here up to the part's rev was sent from what the part draws now.
+   */
+  private readonly drawnAt = new Map<string, number>();
 
   constructor(base: number) {
     this.counter = base;
@@ -76,8 +83,22 @@ export class TricksStore {
     const key = partKey(wire);
     const old = this.parts.get(key);
     if (old !== undefined && sameJson({ ...old, rev: 0 }, { ...wire, rev: 0 })) return false;
-    this.parts.set(key, { ...wire, rev: this.next() });
+    const rev = this.next();
+    if (old === undefined || JSON.stringify(old.value) !== JSON.stringify(wire.value)) this.drawnAt.set(key, rev);
+    this.parts.set(key, { ...wire, rev });
     return true;
+  }
+
+  /**
+   * One stored part, and whether a phone that drew it at `rev` drew what it holds now (fault A): `rev`
+   * lies between the rev its value last changed at and its own rev. Undefined when the part is not held.
+   */
+  held(key: TrickPartKey): { part: WireTrickPart; shows: (rev: number) => boolean } | undefined {
+    const id = partKey(key);
+    const part = this.parts.get(id);
+    if (part === undefined) return undefined;
+    const from = this.drawnAt.get(id) ?? part.rev;
+    return { part, shows: (rev) => rev >= from && rev <= part.rev };
   }
 
   /** The keys of one trick's stored parts. */
@@ -108,6 +129,7 @@ export class TricksStore {
     for (const key of this.keysOf(memberId, trick)) {
       if (keep.has(key)) continue;
       this.parts.delete(key);
+      this.drawnAt.delete(key);
       this.next();
     }
   }
@@ -125,7 +147,10 @@ export class TricksStore {
   /** Drop every part of a trick (switched off, folder gone). */
   dropParts(memberId: string, trick: string): void {
     const keys = this.keysOf(memberId, trick);
-    for (const key of keys) this.parts.delete(key);
+    for (const key of keys) {
+      this.parts.delete(key);
+      this.drawnAt.delete(key);
+    }
     if (keys.length > 0) this.next();
   }
 

@@ -768,6 +768,22 @@ A tap is `{ rid, node, intent, value, from }`, the tree's `POST /intent`. `node`
 (`store.ts`) holds one tap per part: a second tap on that part is ignored until the receipt lands,
 and an `unknown` shows on the pressed control until the next tap.
 
+**A tap names what was drawn** (fault A). The phone's body also carries `rev`, the rev of the part as
+the phone drew it; the bridge checks it and strips it, so the program's trigger never holds it. The
+bridge runs the program only when `node` is a part it holds for that trick, `intent` is one a control of
+that part sends (`tapControls`: a belt mark's, a session's actions and the `button`s of its view at any
+depth; not a disabled one, not a `does: copy` one; a status chip, a Dashboard tile and a bottom bar item
+send none), `value` is the one that control sends (absent where it sends none), the part's value has not
+moved since `rev`, and `from.session`, when present, is an agent session the facts list now. A
+refusal runs nothing, keeps no receipt, writes one `trick.tap.refused` audit line, and answers with
+`refused`: `part`, `intent`, `value` or `session` (code `rejected`), or `changed` (code `changed`, with
+the trick's parts now). The phone draws the new parts, never sends the tap again by itself, and says
+each word as a quiet line of its own in the part's frame line (a belt mark has none: the status line
+says it). A tap with no `rev` comes from a bundle older than the check, and is answered `changed`. The
+bridge serves the bundle it was built with, so such a tab is one that has not reloaded since an
+update, and its next tap, from the new bundle, carries the rev. An answer from the Hill is checked by
+the Hill (its decision, its options, its text rule) and never takes this route.
+
 ## Decisions
 
 `decisions` is the trick's one path to the person's attention: a list of `{ key, title, summary,

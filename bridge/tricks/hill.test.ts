@@ -682,7 +682,7 @@ function makeLegs(configDir: string, manifest = 'id = "legs"\nname = "Browser le
 }
 
 const exited = (doc: JsonObject): RunOutcome => ({ kind: "exited", code: 0, stdout: JSON.stringify(doc), stderr: "", ms: 5 });
-const doc = (decisions: JsonObject[]): JsonObject => ({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12" } }], decisions });
+const doc = (decisions: JsonObject[]): JsonObject => ({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12", intent: "x" } }], decisions });
 const RED: JsonObject = { key: "case-8", title: "Leg red: case 8. Rerun it?", summary: "Case 8 failed.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip" }] };
 
 async function serviceRig(): Promise<ServiceRig> {
@@ -721,6 +721,18 @@ async function runNow(r: ServiceRig): Promise<void> {
   await r.service.tick();
 }
 
+/** A phone's tap on the trick's belt mark, at the rev the phone holds (fault A: a tap names what was drawn). */
+async function beltTap(r: ServiceRig, rid: string): Promise<TapAnswer> {
+  const rev = (await r.service.reply(undefined)).parts.find((part) => part.trick === "legs" && part.part === "belt")?.rev;
+  return await r.service.tap(HOST, "legs", { rid, node: "belt", intent: "x", rev: rev ?? 0 });
+}
+
+/** The reply of a tap that answered 200. */
+function ok200(tapped: TapAnswer): TrickTapReply {
+  if (tapped.status !== 200) throw new Error(`the tap answered ${tapped.status}: ${JSON.stringify(tapped.body)}`);
+  return tapped.body;
+}
+
 function factsOf(spec: RunSpec | undefined): TrickFacts {
   const parsed = parseFacts(JSON.parse(spec?.stdin ?? "null"));
   if (parsed.facts === undefined) throw new Error(`facts did not parse: ${JSON.stringify(parsed.refusals)}`);
@@ -734,10 +746,10 @@ describe("the runner posts", () => {
     await runNow(r);
     expect(open(r).map((held) => held.from.trickKey)).toEqual(["case-8"]);
     r.outcome = { kind: "exited", code: 1, stdout: "", stderr: "boom", ms: 5 };
-    await r.service.tap(HOST, "legs", { rid: uuid(1), node: "belt", intent: "rerun" });
+    expect(ok200(await beltTap(r, uuid(1))).refused).toBeUndefined();
     expect(open(r).map((held) => held.from.trickKey)).toEqual(["case-8"]);
     r.outcome = { kind: "timeout", stderr: "", ms: 30_000, limitMs: 30_000 };
-    await r.service.tap(HOST, "legs", { rid: uuid(2), node: "belt", intent: "rerun" });
+    expect(ok200(await beltTap(r, uuid(2))).refused).toBeUndefined();
     expect(open(r)).toHaveLength(1);
   });
 
@@ -746,7 +758,7 @@ describe("the runner posts", () => {
     await switches(r.stateDir, true);
     await runNow(r);
     r.outcome = exited(doc(Array.from({ length: 21 }, (_, i) => ({ ...RED, key: `d${String(i)}` }))));
-    await r.service.tap(HOST, "legs", { rid: uuid(1), node: "belt", intent: "x" });
+    expect(ok200(await beltTap(r, uuid(1))).refused).toBeUndefined();
     expect(open(r).map((held) => held.from.trickKey)).toEqual(["case-8"]);
   });
 
@@ -771,11 +783,11 @@ describe("the runner posts", () => {
     expect(await legs()).toMatchObject({ state: "ok" });
     expect((await legs())?.refusals).toBeUndefined();
     // A document with no `decisions` key leaves it; an empty list clears it.
-    r.outcome = exited({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12" } }] });
-    await r.service.tap(HOST, "legs", { rid: uuid(1), node: "belt", intent: "x" });
+    r.outcome = exited({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12", intent: "x" } }] });
+    expect(ok200(await beltTap(r, uuid(1))).refused).toBeUndefined();
     expect((await legs())?.decides).toBe(true);
     r.outcome = exited(doc([]));
-    await r.service.tap(HOST, "legs", { rid: uuid(2), node: "belt", intent: "x" });
+    expect(ok200(await beltTap(r, uuid(2))).refused).toBeUndefined();
     expect((await legs())?.decides).toBeUndefined();
   });
 

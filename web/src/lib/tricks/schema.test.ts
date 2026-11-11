@@ -89,10 +89,13 @@ import {
   parseTapRequest,
   partKey,
   pointer,
+  tapControls,
   toneToken,
   type NodeKind,
   type ParseTrickDocumentOptions,
   type ParsedTrickDocument,
+  type TrickAction,
+  type View,
   type ViewNode,
 } from "./schema";
 
@@ -1636,6 +1639,31 @@ describe("parseTapRequest", () => {
 
   it("answers with the tree's receipt codes", () => {
     expect(TAP_CODES).toEqual(["ok", "changed", "rejected", "gone", "denied", "unknown"]);
+  });
+
+  it("fault A: reads the part's rev beside the request, never into it, and refuses one that is no whole number", () => {
+    expect(parseTapRequest({ ...tap, rev: 1_762_592_400_123 })).toEqual({ request: tap, rev: 1_762_592_400_123, refusals: [] });
+    expect(parseTapRequest({ ...tap, rev: "12" }).refusals.map((r) => r.path)).toEqual(["/rev"]);
+    expect(parseTapRequest({ ...tap, rev: 1.5 }).refusals.map((r) => r.path)).toEqual(["/rev"]);
+    expect(parseTapRequest({ ...tap, rev: -1 }).refusals.map((r) => r.path)).toEqual(["/rev"]);
+  });
+
+  it("fault A: the controls a part sends a tap from, as the bridge checks a tap against them", () => {
+    expect(tapControls({ at: "belt", id: "belt", mark: { label: "3", intent: "open" } })).toEqual([{ intent: "open" }]);
+    expect(tapControls({ at: "belt", id: "belt", mark: { label: "3" } })).toEqual([]);
+    expect(tapControls({ at: "status", id: "s", chip: { text: "3" } })).toEqual([]);
+    expect(tapControls({ at: "dashboard", id: "d", item: { label: "3" } })).toEqual([]);
+    expect(tapControls({ at: "tabbar", id: "t", item: { label: "3" } })).toEqual([]);
+    const view: View = [
+      { kind: "card", kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "A", intent: "a", value: "1" } }, { kind: "button", attrs: { label: "Off", intent: "off", disabled: "" } }] }] },
+      { kind: "list", kids: [{ kind: "row", text: "r", kids: [{ kind: "button", attrs: { label: "B", intent: "b" } }] }] },
+      { kind: "bar", kids: [{ kind: "button", attrs: { label: "Copy", does: "copy", value: "x" } }] },
+    ];
+    const actions: TrickAction[] = [
+      { id: "go", label: "Go", intent: "go", value: "all" },
+      { id: "no", label: "No", intent: "no", disabled: true },
+    ];
+    expect(tapControls({ at: "session", id: "s", view, actions })).toEqual([{ intent: "go", value: "all" }, { intent: "a", value: "1" }, { intent: "b" }]);
   });
 });
 
