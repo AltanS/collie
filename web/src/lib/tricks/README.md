@@ -703,6 +703,10 @@ written as what a trick, or a person who controls one, can do today.
   read. A secret in any other file the glob names, such as a key file or a credentials JSON, is read
   and handed to the trick. Text files are masked only when the bridge's key mask is on, and a
   picture is never masked. The person approves the globs, not the files they match.
+- **The `description` and `about` texts are the author's claim, and nothing checks them against the
+  code.** A trick can say it only reads and still write. The About sheet says so under the text
+  ("Written by the trick's author. Collie did not check it."). The rows under "What it does" and the
+  warnings are the bridge's own facts, from the manifest and the code search.
 
 ## Places in the app
 

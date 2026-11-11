@@ -50,9 +50,24 @@ describe("TrickAboutSheet", () => {
     expect(paragraphs).toEqual(["It shows each check of the release branch.", "It never changes anything."]);
   });
 
-  it("says so in one muted line when the trick has no about", () => {
+  it("says under the text that the author wrote it and Collie did not check it, with an about or a description", () => {
+    const { unmount } = open(FULL);
+    const note = screen.getByRole("dialog").querySelector('[data-line="author-note"]');
+    expect(note).toHaveTextContent("Written by the trick's author. Collie did not check it.");
+    expect(note?.className).toContain("text-muted-foreground");
+    // It sits after the about paragraphs and before the bridge's own facts.
+    const body = screen.getByRole("dialog").querySelector('[data-slot="trick-about-body"]');
+    const order = [...(body?.children ?? [])].map((el) => el.getAttribute("data-section") ?? el.getAttribute("data-line"));
+    expect(order).toEqual(["description", "about", "author-note", "does", "from"]);
+    unmount();
+    open({ ...BASE, description: "Only a line." });
+    expect(screen.getByText("Written by the trick's author. Collie did not check it.")).toBeInTheDocument();
+  });
+
+  it("says so in one muted line when the trick has no about, and draws no author note", () => {
     open(BASE);
     expect(screen.getByText("This trick has no description.")).toBeInTheDocument();
+    expect(screen.queryByText("Written by the trick's author. Collie did not check it.")).toBeNull();
     expect(screen.getByRole("dialog").querySelector('[data-line="description"]')).toBeNull();
   });
 

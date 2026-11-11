@@ -187,11 +187,11 @@ export function TrickSettingsSection(): ReactNode {
           ]}
         />
       </Group>
-      <Group title="Taking changes">
+      <Group title="Undo a change">
         <ListCard
           n={11}
           state="trick-settings-auto"
-          label="one takes changes without asking, and took one"
+          label="a version was taken without asking: the card shows the Undo line"
           tricks={[
             trick("legs", "Browser leg", { auto: true, autoAt: "2026-11-08T09:38:00Z", provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } }),
             trick("tracker", "Tracker", { places: ["session"], provenance: { via: "repo", at: "2026-11-07T21:10:00Z", repo: "owner/tracker-trick", sha: "3f2a91c0d4e5" } }),

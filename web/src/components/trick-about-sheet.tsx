@@ -16,7 +16,8 @@ import type { TricksRunsOn, WireTrickInfo } from "@/lib/tricks/schema";
 // FROM TOP TO BOTTOM
 //   1. the trick's name as the sheet's title, and under it the manifest's one-line `description`;
 //   2. the manifest's `about` text as paragraphs (a blank line splits them), or one muted line when there
-//      is none. Plain text: no markdown, no HTML and no link is drawn, so React draws it as text and a
+//      is none. With an `about` or a `description`, a small muted line under it says the author wrote the
+//      text and Collie did not check it; the rows below are the bridge's own facts. Plain text: no markdown, no HTML and no link is drawn, so React draws it as text and a
 //      line break inside a paragraph is kept as one;
 //   3. "What it does": ONLY facts the bridge already sends for the row. Where it draws, what it reads from
 //      the agent sessions, the environment names it asks for, and the warnings of the text search of its
@@ -26,9 +27,9 @@ import type { TricksRunsOn, WireTrickInfo } from "@/lib/tricks/schema";
 //      one line a bridge that runs no tricks says;
 //   5. "Updates": the "Take changes without asking" switch with its hint, for a trick that is switched on
 //      and only on a bridge that runs tricks (a crew member runs none, so it has nothing to take). It is the
-//      same field as the switch on the card (`collie trick auto`), and the card owns the write: it flips at
-//      once, holds its position until the list agrees, and says a failed write in the status line, as the
-//      trick's own switch does. The card keeps its own switch too.
+//      same field `collie trick auto` writes. The switch shows only here, not on the card; the card owns the
+//      write state (`flipAuto`): it flips at once, holds its position until the list agrees, and says a failed
+//      write in the status line, as the trick's own switch does.
 
 /** The paragraphs of an `about` text: split on a blank line, each trimmed, none empty. */
 export function aboutParagraphs(about: string): string[] {
@@ -133,6 +134,11 @@ export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite =
             </p>
           ))}
         </div>
+        {(trick.about !== undefined || trick.description !== undefined) && (
+          <p data-line="author-note" className="pt-2 text-xs text-muted-foreground">
+            {t("settings.tricks.about.authorNote")}
+          </p>
+        )}
         {does.length > 0 && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={does} />}
         <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
         {trick.on && runsOn === undefined && onAuto !== undefined && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
