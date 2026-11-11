@@ -3099,8 +3099,9 @@ export async function clearHillSpoken(): Promise<number> {
 }
 
 /**
- * GET /api/hill/state (1.29.0): the crew state this lead holds. A member answers 400 (the state lives on
- * the lead), and an older bridge 404; both throw, and the caller then reads it from the Hill's list.
+ * GET /api/hill/state (1.29.0): the crew state this lead holds. A crew member and a deposed lead answer
+ * 409 (the state lives on the lead), a member's page 400, an older bridge 404; each throws, and the list
+ * from such a bridge carries no `crewState` either, so the Hill shows no control.
  */
 export async function fetchHillCrewState(signal?: AbortSignal): Promise<HillCrewStateView> {
   const raw = await req<JsonValue>("/api/hill/state", { signal });

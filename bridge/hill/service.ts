@@ -779,6 +779,15 @@ export class HillService {
   }
 
   /**
+   * The crew state as the phone may read it from this bridge: null on a crew member and on a deposed
+   * lead, whose own file is not the crew's state (C-N4, review 8), as a set there is refused.
+   */
+  servedCrewState(): HillCrewStateView | null {
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return null;
+    return this.crewState();
+  }
+
+  /**
    * Set the crew state, from the phone (`device` its label) or the person's terminal (`device` null,
    * `by` "terminal"). Answers the state as it reads now, or why nothing changed: a member and a deposed
    * lead hold no crew state of their own (`notLead`), or the file could not be written. One `hill.state`

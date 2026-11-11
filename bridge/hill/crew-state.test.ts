@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AuditEntry } from "../audit.ts";
-import { hillStateRoute, hillTellRoute } from "../server.ts";
+import { hillListRoute, hillStateRoute, hillTellRoute } from "../server.ts";
 import { HILL_TELL_MAX, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { hillCrewStatePath, HillCrewStateFile, parseHillCrewState, readHillCrewState, writeHillCrewState } from "./crew-state.ts";
 import { HillCrewLead, HillHeldMedia, HillMemberForward, type HillLeadLink } from "./crew.ts";
@@ -252,6 +252,17 @@ describe("the crew state routes", () => {
     expect(r.audit).toContainEqual({ action: "hill.state", device: "Pixel 9", detail: { state: "away" } });
     r.mode = "peer";
     expect(hillStateRoute(r.hill, { body: { state: "here" } }, { device: "Pixel 9", acceptEncoding: null }).status).toBe(409);
+  });
+
+  test("a member's or a deposed lead's own file is never served: GET answers 409 and the list carries no crew state (C-N4)", async () => {
+    const r = rig();
+    writeHillCrewState(r.stateDir, { state: "away", by: "Pixel 9" }, r.clock);
+    expect(await hillListRoute(r.hill, null, null).json()).toMatchObject({ crewState: { state: "away" } });
+    r.mode = "peer";
+    const read = hillStateRoute(r.hill, null, { device: null, acceptEncoding: null });
+    expect(read.status).toBe(409);
+    expect(await read.text()).toBe(HILL_STATE_ON_LEAD);
+    expect(await hillListRoute(r.hill, null, null).json()).not.toHaveProperty("crewState");
   });
 
   test("the tell route takes `{ at }` and answers how many were told, or 409 with the words", async () => {

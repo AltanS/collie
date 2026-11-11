@@ -41,7 +41,8 @@ import { sortOpenDecisions, type HillCrewStateView, type HillDecision, type Hill
 // The lead's `here` / `quiet` / `away` rides on the list (`crewState`), and a change of it moves the
 // hill's number, so every phone reads it as it reads a new card. A lead with no decisions file yet sends
 // no number, so the Hill's route also reads `GET /api/hill/state` when it opens (`noteHillCrewState`).
-// Null is "no crew state here": a member, or an older bridge, and the Hill's route then shows no control.
+// Null is "no crew state here": a crew member or a deposed lead (409), or an older bridge, and the Hill's
+// route then shows no control.
 
 /** What one answer came to, kept beside the decision it answered. */
 export interface HillAnswerHeld {

@@ -254,7 +254,7 @@ import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
 import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
-import { hillDeviceId, type HillService } from "./hill/service.ts";
+import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -9246,7 +9246,9 @@ export function hillListRoute(hill: HillService | undefined, since: string | nul
   const list = hill.list();
   if (since !== null && since === String(list.rev)) return json({ rev: list.rev, unchanged: true }, acceptEncoding);
   // The crew state rides along (1.29.0); a change of it moves the revision, so `unchanged` stays true to it.
-  return json({ ...list, crewState: hill.crewState() }, acceptEncoding);
+  // Not from a member or a deposed lead: its own file is not the crew's state (C-N4).
+  const crewState = hill.servedCrewState();
+  return json(crewState === null ? list : { ...list, crewState }, acceptEncoding);
 }
 
 /**
@@ -9256,12 +9258,16 @@ export function hillListRoute(hill: HillService | undefined, since: string | nul
  * 503 when the file could not be written. The audit line `hill.state` names the device and the value.
  */
 export function hillStateRoute(
-  hill: Pick<HillService, "crewState" | "setCrewState"> | undefined,
+  hill: Pick<HillService, "servedCrewState" | "setCrewState"> | undefined,
   write: { readonly body: JsonValue | undefined } | null,
   context: { readonly device: string | null; readonly acceptEncoding: string | null },
 ): Response {
   if (hill === undefined) return text(HILL_OFF_TEXT, 404);
-  if (write === null) return json(hill.crewState(), context.acceptEncoding);
+  if (write === null) {
+    // A member or a deposed lead answers as its POST does (C-N4): the state lives on the lead.
+    const served = hill.servedCrewState();
+    return served === null ? text(HILL_STATE_ON_LEAD, 409) : json(served, context.acceptEncoding);
+  }
   const doc = asJsonObject(write.body);
   const state = doc?.state;
   if (doc === undefined || !isHillCrewState(state) || Object.keys(doc).length !== 1) return text('bad request: the body is { "state": "here" }, "quiet" or "away"', 400);
