@@ -928,3 +928,126 @@ describe("the Decision card, with a group of cards", () => {
     expect(changed.container.querySelector('[data-slot="decision-option"][data-intent="on"]')).toBeDisabled();
   });
 });
+
+// A SINGLE CARD OF CODE (review 7 R1): Collie's own proposal or version card whose code fits one card is
+// held to a group card's rule. It never folds, and its yes waits until its end was on screen.
+describe("the Decision card, a single card of Collie's own with code", () => {
+  afterEach(() => sessionStorage.clear());
+  const collie = (type: "proposal" | "version") => ({
+    kind: "collie" as const,
+    address: null,
+    trickId: null,
+    trickKey: null,
+    memberId: null,
+    harness: null,
+    label: "Collie",
+    host: "lodge",
+    trickHost: null,
+    ref: { type, id: "legs", hash: "a".repeat(64) },
+  });
+  const code: HillDecision["view"] = [{ kind: "diff", text: "@@ -0,0 +1,2 @@\n+console.log(1);\n+console.log(2);", attrs: { file: "program.ts" } }];
+  const proposal = (over: Partial<HillDecision> = {}) =>
+    hillDecision({
+      from: collie("proposal"),
+      title: "Switch on the trick legs?",
+      target: null,
+      text: "none",
+      options: [
+        { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+        { intent: "later", label: "Not now" },
+      ],
+      view: code,
+      ...over,
+    });
+
+  /** Every view taller than the screen and far over the fold's cap, and an observer the case drives. */
+  function tallScreen() {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(VIEW_CAP_PX * 20);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 390, window.innerHeight * 3));
+    // The hook reads `isIntersecting` alone, so the fake hands it that.
+    type Seen = (entries: readonly { isIntersecting: boolean }[]) => void;
+    const seen: { callback: Seen; target: Element | null }[] = [];
+    class FakeObserver {
+      private readonly at: { callback: Seen; target: Element | null };
+      constructor(callback: Seen) {
+        this.at = { callback, target: null };
+        seen.push(this.at);
+      }
+      observe(target: Element): void {
+        this.at.target = target;
+      }
+      disconnect(): void {
+        this.at.target = null;
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+    return () => seen.filter((one) => one.target !== null);
+  }
+
+  it("a proposal's single code card never folds, and its yes waits for the end mark; Not now does not", () => {
+    const watched = tallScreen();
+    const { slot, option, onSend } = renderCard(proposal());
+    expect(slot("decision-view-more")).toBeNull();
+    expect(slot("decision-view-body")).not.toHaveAttribute("data-clipped");
+    expect(watched().map((one) => one.target?.getAttribute("data-slot"))).toEqual(["decision-view-end"]);
+    expect(option("on")).toBeDisabled();
+    expect(option("later")).toBeEnabled();
+    expect(slot("decision-code-unread")).toHaveTextContent("Scroll to the end of the code first.");
+    // The end comes on screen: the yes is offered, the hint goes, and the answer carries no group.
+    act(() => watched()[0]!.callback([{ isIntersecting: true }]));
+    expect(option("on")).toBeEnabled();
+    expect(slot("decision-code-unread")).toBeNull();
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    fireEvent.click(option("on"));
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS + 1));
+    fireEvent.click(option("on"));
+    expect(onSend).toHaveBeenLastCalledWith("on", null);
+  });
+
+  it("a version's single code card waits the same way: Use and Use it and stop asking wait, Keep does not", () => {
+    const watched = tallScreen();
+    const { slot, option } = renderCard(
+      proposal({
+        from: collie("version"),
+        title: "Use the new version of legs?",
+        options: [
+          { intent: "use", label: "Use the new version" },
+          { intent: "always", label: "Use it and stop asking" },
+          { intent: "keep", label: "Keep the old version" },
+        ],
+      }),
+    );
+    expect(slot("decision-view-more")).toBeNull();
+    expect(option("use")).toBeDisabled();
+    expect(option("always")).toBeDisabled();
+    expect(option("keep")).toBeEnabled();
+    act(() => watched()[0]!.callback([{ isIntersecting: true }]));
+    expect(option("use")).toBeEnabled();
+    expect(option("always")).toBeEnabled();
+  });
+
+  it("a card no taller than the screen counts as read as it draws", () => {
+    const { slot, option } = renderCard(proposal());
+    expect(option("on")).toBeEnabled();
+    expect(slot("decision-code-unread")).toBeNull();
+  });
+
+  it("a card with no code folds as before, Collie's own or an agent's, and waits for nothing", () => {
+    tallScreen();
+    const words: HillDecision["view"] = [{ kind: "para", text: "No code here." }];
+    for (const decision of [proposal({ view: words }), hillDecision({ view: code })]) {
+      const card = renderCard(decision);
+      expect(card.slot("decision-view-more")).not.toBeNull();
+      expect(card.slot("decision-code-unread")).toBeNull();
+      for (const button of card.container.querySelectorAll<HTMLButtonElement>('[data-slot="decision-option"]')) expect(button).toBeEnabled();
+      card.unmount();
+    }
+  });
+});

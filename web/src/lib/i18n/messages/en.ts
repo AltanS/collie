@@ -3504,6 +3504,7 @@ export const en = {
   "hill.group.openAll.one": "Open the card first.",
   "hill.group.openAll.other": "Open all {count} cards first.",
   "hill.group.card": "Card {index}",
+  "hill.single.readEnd": "Scroll to the end of the code first.",
   "tricks.compare.before": "Before",
   "tricks.compare.after": "After",
   "tricks.spark.trend": "Trend",
@@ -3764,6 +3765,8 @@ export const PENDING_TRANSLATION = [
   "hill.group.openAll.one",
   "hill.group.openAll.other",
   "hill.group.card",
+  // A single card of code (review 7 R1).
+  "hill.single.readEnd",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
