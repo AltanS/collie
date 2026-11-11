@@ -369,6 +369,9 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const label = armed && armedWords !== undefined ? armedWords : attrs.label;
   const ink = armed ? inkOf("danger", false) : inkOf(attrs.tone, ctx.stale);
   const disabled = attrs.disabled !== undefined;
+  // The button waits for its part (a send in flight, a turn), not for its own `disabled`: a place that
+  // shows no grey wash (an agent view) keeps such a button at full contrast by this mark (review 10 W14).
+  const waits = !disabled && partBusy(ctx) && attrs.does === undefined;
   const onClick = () => {
     if (ctx.canTap?.() === false) return;
     if (attrs.does === "copy") {
@@ -426,6 +429,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
         aria-pressed={attrs.pressed === undefined ? undefined : attrs.pressed}
         title={disabled && attrs.disabled !== "" ? attrs.disabled : attrs.hint}
         data-armed={armed ? "" : undefined}
+        data-waits={waits ? "" : undefined}
         disabled={disabled || (partBusy(ctx) && attrs.does === undefined)}
         onClick={onClick}
         className={cn(

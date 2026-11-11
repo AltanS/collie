@@ -93,7 +93,7 @@ describe("the agent view's states", () => {
   it("while the turn runs with no request, keeps the screen at full contrast with the working mark in the band", () => {
     const { container } = draw({ working: true });
     expect(container.querySelector("[data-slot=agent-view]")?.getAttribute("data-state")).toBe("view");
-    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toContain("opacity");
+    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toMatch(/opacity-(?!100\b)/u); // only the held buttons' opacity-100 (review 10 W14)
     expect(screen.getByText("Ready to ship?")).toBeInTheDocument();
     expect(container.querySelector("[data-slot=view-band]")?.getAttribute("data-line")).toBe("working");
   });
@@ -305,7 +305,7 @@ describe("the operator's request in an agent view", () => {
   it("says Not sent with the composer's own words, and does not dim the old screen", () => {
     const { container } = draw({ request: mine("failed", { reason: "The link is down" }) });
     expect(statusLine(container)).toBe("Not sent: The link is down");
-    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toContain("opacity");
+    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toMatch(/opacity-(?!100\b)/u);
     // A send that failed folds nothing: the screen is live again.
     expect(screen.getByRole("button", { name: "Ship" })).not.toBeDisabled();
     expect(screen.queryByRole("button", { name: /Earlier screen/ })).toBeNull();
@@ -1042,5 +1042,22 @@ describe("review 10 W13: a tap whose send throws leaves no unhandled rejection",
     } finally {
       process.off("unhandledRejection", listen);
     }
+  });
+});
+
+describe("review 10 W14: a held button keeps full contrast", () => {
+  it("W14: a button that waits (a turn runs) is marked as waiting, and the screen undoes the disabled wash for it", () => {
+    draw({ working: true });
+    const ship = screen.getByRole("button", { name: "Ship" });
+    expect(ship).toBeDisabled();
+    expect(ship).toHaveAttribute("data-waits");
+    expect(VIEW_SCREEN_CLASS).toContain("[&_button[data-waits]]:opacity-100");
+  });
+
+  it("W14: a button the agent drew disabled is not waiting: it keeps its own look", () => {
+    draw({ view: screenOf([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship", disabled: "CI is red" } }] }]) });
+    const ship = screen.getByRole("button", { name: "Ship" });
+    expect(ship).toBeDisabled();
+    expect(ship).not.toHaveAttribute("data-waits");
   });
 });

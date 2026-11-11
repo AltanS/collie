@@ -200,6 +200,9 @@ export const VIEW_SCREEN_CLASS = cn(
   "[&_[data-trick-node=line]_span]:whitespace-pre-wrap [&_[data-trick-node=line]_span]:break-words",
   "[&_button[aria-pressed=true]]:border-primary [&_button[aria-pressed=true]]:bg-primary [&_button[aria-pressed=true]]:text-primary-foreground",
   "[&_button[data-armed]]:border-status-blocked",
+  // NO GREY WASH (the header): a button that waits for the turn or a send keeps full contrast; the band
+  // says why it waits (review 10 W14). A button the agent drew disabled keeps its own look.
+  "[&_button[data-waits]]:opacity-100",
 );
 
 function statusWords(status: ViewStatus, clock: number): string {
