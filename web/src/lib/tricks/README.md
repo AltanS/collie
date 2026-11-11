@@ -1049,8 +1049,10 @@ screen stays until the next turn starts.
 
 **One head, one door.** Only the view's own send may type a line that starts with a view head or the old
 `[morph` head. The Send Protocol refuses it `bad_head` for every other request (the composer, a steer, a
-held send, a crew-forwarded send, the bridge's own callers), WalkyTalky refuses it in a message and in a
-crew hop, and a Hill receipt or tell turns its bracket into a parenthesis. One function decides, for
+held send, a crew-forwarded send, the bridge's own callers), the reply route refuses it in the raw text
+it types with `submit: false`, the view refuses it on any line of the person's typed text (`bad_head`),
+the program driver refuses it, WalkyTalky refuses it in a message and in a crew hop, and a Hill receipt
+or tell turns its bracket into a parenthesis. One function decides, for
 every door (`isViewHeadLine` in `web/src/lib/agent-view/wire.ts`): each line, after any kind of line
 break, is read as the typing path would leave it (every hidden character and control byte removed, read
 once more with control sequences removed), then folded with NFKC, lower case, no combining marks and a
