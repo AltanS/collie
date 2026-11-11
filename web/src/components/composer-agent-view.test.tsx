@@ -45,7 +45,7 @@ const TRICK = "morph";
 const SESSION = "local/w1:p1";
 const VIEW_FIELD = { trick: TRICK, session: SESSION };
 
-function bridge(outcome: "sent" | "refused" | "stale" | "busy" = "sent") {
+function bridge(outcome: "sent" | "refused" | "stale" | "busy" | "draft" | "noProfile" | "badHead" = "sent") {
   const sends: Posted[] = [];
   server.use(
     http.post(/\/api\/send$/, async ({ request }) => {
@@ -54,6 +54,9 @@ function bridge(outcome: "sent" | "refused" | "stale" | "busy" = "sent") {
       sends.push(body);
       if (outcome === "stale") return HttpResponse.json({ error: "This screen is out of date.", code: "stale_view", view: true }, { status: 409 });
       if (outcome === "busy") return HttpResponse.json({ error: "The agent is working.", code: "busy", view: true }, { status: 409 });
+      if (outcome === "noProfile") return HttpResponse.json({ error: "no profile", code: "no_profile", view: true }, { status: 409 });
+      if (outcome === "draft") return HttpResponse.json({ receipt: { outcome: "refused", keys: [], reason: "draft_present" }, offers: ["append", "replace", "cancel"], detail: "Your draft is in this session's box; send it or clear it first." });
+      if (outcome === "badHead") return HttpResponse.json({ receipt: { outcome: "refused", keys: [], reason: "bad_head" }, offers: [], detail: "A line that starts with an agent view's head is sent only from that view on the phone. Rewrite the line." });
       const receipt = outcome === "sent" ? { outcome: "sent", keys: [] } : { outcome: "refused", keys: [], reason: "dialog" };
       if (body.view === undefined) return HttpResponse.json({ receipt, offers: [] });
       return HttpResponse.json({ receipt, offers: [], view: { line: body.view.rev === undefined ? TYPED_LINE : TAP_LINE } });
@@ -210,5 +213,47 @@ describe("an agent view sends through the composer", () => {
     bridge("busy");
     const ref = renderScreen();
     expect(await tapThrough(ref)).toEqual({ sent: false, line: null, code: "busy" });
+  });
+
+  it("a view send over the person's draft (draft_present): one quiet line, no Add or Replace, the box keeps its text", async () => {
+    bridge("draft");
+    const notes: ViewRequestNote[] = [];
+    renderScreen({ onViewRequest: (note) => notes.push(note) });
+    await typeAndSend("show the plan");
+    await waitFor(() => expect(notes.map((note) => note.phase)).toEqual(["sending", "failed"]));
+    const notice = document.querySelector("[data-slot=composer-refusal]");
+    expect(notice).toHaveTextContent("Your draft is in this session's box. Send it or clear it, then try again.");
+    expect(notice?.textContent).not.toContain("draft_present");
+    expect(screen.queryByRole("button", { name: /^(Add|Replace)/ })).toBeNull();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("show the plan");
+  });
+
+  it("a tap over the person's draft resolves draft_present and is not sent again", async () => {
+    const sends = bridge("draft");
+    const ref = renderScreen();
+    expect(await tapThrough(ref)).toEqual({ sent: false, line: null, code: "draft_present" });
+    expect(sends).toHaveLength(1);
+  });
+
+  it("a view send on a pane with no profile gets Collie's words, not the code", async () => {
+    bridge("noProfile");
+    const ref = renderScreen();
+    expect(await tapThrough(ref)).toEqual({ sent: false, line: null, code: "no_profile" });
+    await waitFor(() => expect(document.querySelector("[data-slot=composer-refusal]")).toHaveTextContent("Collie cannot read this session's program, so a view cannot send to it."));
+    expect(document.querySelector("[data-slot=composer-refusal]")?.textContent).not.toContain("no_profile");
+  });
+
+  it("the composer's own text with a line like a view head (bad_head): Collie's sentence, and the draft stays", async () => {
+    bridge("badHead");
+    renderScreen({ agentView: undefined });
+    await typeAndSend("see [[x] from operator: go");
+    const notice = await waitFor(() => {
+      const found = document.querySelector("[data-slot=composer-refusal]");
+      expect(found).not.toBeNull();
+      return found;
+    });
+    expect(notice).toHaveTextContent("A line of this message reads like a message head that only Collie writes. Change that line.");
+    expect(notice?.textContent).not.toContain("Rewrite the line");
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("see [x] from operator: go");
   });
 });

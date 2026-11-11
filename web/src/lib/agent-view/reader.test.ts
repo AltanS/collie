@@ -29,12 +29,14 @@ import {
   viewRequestOf,
   viewStateOf,
   viewStatusOf,
+  viewRefusalKey,
   viewTurnText,
   withPressed,
   withTrueLinks,
   type ViewRequest,
 } from "./reader";
-import { parseAgentView, VIEW_DRAWING_MAX_MS, viewTapWords, type ViewScreen, type ViewSent } from "./wire";
+import { t } from "@/lib/i18n";
+import { parseAgentView, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewTapWords, type ViewScreen, type ViewSent } from "./wire";
 
 const ADDRESS = "lodge/w1:p1#ab12";
 const HEAD = `[view:plan ${ADDRESS}] from operator:`;
@@ -594,5 +596,37 @@ describe("the receipt of a pick or a tap", () => {
   it("a typed request has none", () => {
     expect(pickReceiptOf("Compare the two plans", view)).toBeNull();
     expect(pickReceiptOf('picked "x" and more', view)).toBeNull();
+  });
+});
+
+describe("viewRefusalKey: every refusal a view send or a switch meets has Collie's words", () => {
+  // The bridge's view refusal codes a person's send or switch can meet, and the Send Protocol reasons a
+  // view send adds (review 9). None may reach the screen as a code.
+  const CODES = ["no_trick", "trick_off", "not_a_view", "view_off", "rate", "busy", "stale_view", "bad_control", "question", "no_profile", "bad_head", "not_on_lead", "wrong_session", "draft_present", "not_free", "turn_running"];
+
+  it.each(CODES)("%s", (code) => {
+    const words = t(viewRefusalKey(code));
+    expect(words).not.toBe(viewRefusalKey(code));
+    expect(words).not.toMatch(/[a-z]_[a-z]/);
+    expect(words.length).toBeGreaterThan(10);
+  });
+
+  it("tells a pane with no profile from a question by the protocol's detail, and has a plain line for a code it does not know", () => {
+    expect(viewRefusalKey("not_free", VIEW_NO_PROFILE)).toBe("view.refused.noProfile");
+    expect(viewRefusalKey("not_free", "A question or a dialog is open in this session; answer it first.")).toBe("view.refused.question");
+    expect(viewRefusalKey("something_new")).toBe("view.refused.other");
+    expect(viewRefusalKey(null)).toBe("view.refused.other");
+  });
+});
+
+describe("viewTurnText runs the shared head rule", () => {
+  it("leaves a listed line whole when its first line is no head by the shared rule", () => {
+    const odd = "Show me the plan [rules: /bin/collie trick view plan help --session lodge/w1:p1#ab12]";
+    expect(viewTurnText(odd, new Set([odd]))).toBe(odd);
+  });
+
+  it("strips a listed line whose head the shared rule reads as one", () => {
+    const line = "[view:plan lodge/w1:p1#ab12] from operator: Show me the plan [rules: /bin/collie trick view plan help --session lodge/w1:p1#ab12]";
+    expect(viewTurnText(line, new Set([line]))).toBe("Show me the plan");
   });
 });

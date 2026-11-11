@@ -34,7 +34,7 @@ import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
-import type { ViewRequestNote } from "@/lib/agent-view/reader";
+import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
 import type { Surface } from "@/lib/surface/surface";
@@ -1795,12 +1795,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       protocolIntent.current = null;
       if (res.status === "refused") {
-        if (res.reason === "view") viewAnswerRef.current = { line: null, code: res.code };
+        if (res.reason === "view") {
+          // A refusal of a send from a view, before the protocol: Collie's words for its code, never the code.
+          viewAnswerRef.current = { line: null, code: res.code };
+          setSendRefusal(phoneRefusal(translate(viewRefusalKey(res.code))));
+          return false;
+        }
         setSendRefusal(phoneRefusal(res.error));
         return false;
       }
       const { reply, reading } = res;
       if (view !== undefined) viewAnswerRef.current = { line: reply.viewLine ?? null, code: null };
+      // A send from a view the protocol refused (over the person's draft, at a question, a pane with no
+      // profile, a turn, a screen that moved): one quiet line in Collie's words and no offer. The draft in
+      // the session's box and the text in this box stay as they are; nothing retries.
+      if (view !== undefined && reply.outcome === "refused") {
+        viewAnswerRef.current = { line: null, code: reply.reason };
+        setProtocolOffer(null);
+        const words = phoneRefusal(translate(viewRefusalKey(reply.reason, reply.detail)));
+        setSendRefusal(reply.reason === "draft_present" ? { ...words, tone: "neutral" } : words, reply.surface ?? shownSurface, false);
+        return false;
+      }
       // Report a problem (ADR 0123): the answer joins this pane's streak. Plain rules over the outcome and
       // reason (lib/report/trouble.ts); nothing is sent and nothing is retried. This machine's panes only.
       if (reportOn && reply.outcome !== null) {

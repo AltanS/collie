@@ -250,6 +250,7 @@ export type SendNote =
   | "paneGone"
   | "writeFailed"
   | "idReused"
+  | "badHead"
   | "refused";
 
 /** What the screen was, in one word, for the sentence after the note: a key under `composer.surface.*`. */
@@ -335,6 +336,10 @@ function refusalNote(reason: SendReason | null): SendNote {
       return "steerUnsupported";
     case "steer_not_allowed":
       return "steerNotAllowed";
+    case "bad_head":
+      return "badHead";
+    case "stale_view":
+      return "moved";
     default:
       return "refused";
   }
@@ -496,7 +501,7 @@ export function readSend(reply: SendReply): SendReading {
  * `probe_failed` with the `late_keys` cause keeps it as every `probe_failed` does: the line says the
  * agent showed Collie's keys late and to wait, which the phone's sentence does not (#623).
  */
-const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "busy", "pane_gone", "draft_present"]);
+const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "busy", "pane_gone", "draft_present", "bad_head", "stale_view"]);
 const PLAIN_NOT_FREE = "The input box is not free.";
 
 function ownSentence(reply: SendReply): boolean {

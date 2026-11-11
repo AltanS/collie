@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TrickViewSession, TrickViewSwitchBody } from "@/lib/agent-view/wire";
+import type { ApiErrorFields } from "@/lib/api-error-codes";
 import type { WireTrickInfo } from "@/lib/tricks/schema";
 
 // Which views a session's sheet offers, and where a send from the view goes. The tricks list and the
@@ -12,13 +13,22 @@ interface Stores {
   views: TrickViewSession[];
   available: boolean;
 }
+/** A refusal as the api module throws it, with the bridge's fields. */
+class Refused extends Error {
+  readonly fields: ApiErrorFields;
+  constructor(fields: ApiErrorFields) {
+    super(fields.error ?? "refused");
+    this.fields = fields;
+  }
+}
 interface Switched {
+  refuse: ApiErrorFields | null;
   posts: TrickViewSwitchBody[];
   noted: TrickViewSession[];
   refetched: number;
 }
 const state = vi.hoisted((): Stores => ({ tricks: [], views: [], available: true }));
-const switched = vi.hoisted((): Switched => ({ posts: [], noted: [], refetched: 0 }));
+const switched = vi.hoisted((): Switched => ({ refuse: null, posts: [], noted: [], refetched: 0 }));
 
 vi.mock("@/lib/tricks/store", () => ({ useTricksState: () => ({ tricks: state.tricks }) }));
 vi.mock("@/lib/agent-view/store", () => ({
@@ -35,8 +45,9 @@ vi.mock("@/lib/agent-view/store", () => ({
 vi.mock("@/lib/api", () => ({
   postTrickViewSwitch: (body: TrickViewSwitchBody) => {
     switched.posts.push(body);
-    return Promise.resolve(null);
+    return switched.refuse === null ? Promise.resolve(null) : Promise.reject(new Refused(switched.refuse));
   },
+  apiErrorFields: (thrown: Error) => (thrown instanceof Refused ? thrown.fields : undefined),
 }));
 
 const { useAgentViewPane } = await import("./use-agent-view-pane");
@@ -59,6 +70,7 @@ beforeEach(() => {
   state.tricks = [];
   state.views = [];
   state.available = true;
+  switched.refuse = null;
   switched.posts = [];
   switched.noted = [];
   switched.refetched = 0;
@@ -103,6 +115,20 @@ describe("lead 2: which views a session offers", () => {
       expect(await result.current.setOn("morph", true)).toBeNull();
     });
     expect(switched.posts).toEqual([{ trick: "morph", session: ADDRESS, on: true }]);
+  });
+});
+
+describe("review 9 M1: a switch refused for a pane with no profile", () => {
+  it("answers Collie's plain reason, never the code, and notes no switch", async () => {
+    state.tricks = [trick("morph", "Morph")];
+    switched.refuse = { error: "This session's program is not one Collie can read, so a view cannot send to it.", code: "no_profile" };
+    const { result } = pane();
+    let failed: string | null = null;
+    await act(async () => {
+      failed = await result.current.setOn("morph", true);
+    });
+    expect(failed).toBe("Not changed: Collie cannot read this session's program, so a view cannot send to it.");
+    expect(switched.noted).toEqual([]);
   });
 });
 

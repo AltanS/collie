@@ -36,7 +36,7 @@ import { kidsOf } from "@/lib/tricks/layout";
 import type { View, ViewNode } from "@/lib/tricks/schema";
 import type { TranscriptEntry } from "@/lib/types";
 
-import { VIEW_DRAWING_MAX_MS, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
+import { isViewHeadLine, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
 
 /** The longest trick name the switch row and the View choice show, in characters, the cut included. */
 export const VIEW_NAME_SHOWN = 12;
@@ -337,9 +337,72 @@ export function sentWords(line: string): string {
   return line.replace(SENT_HEAD, "").replace(SENT_TAIL, "");
 }
 
-/** A person turn as Chat and the request block draw it: without head and tail when the bridge sent that exact line from a view. */
+/**
+ * A person turn as Chat and the request block draw it: without head and tail when the bridge sent that
+ * exact line from a view AND its first line is a head by the one shared head rule ({@link isViewHeadLine},
+ * the rule every door of the bridge runs). The phone has no head rule of its own; {@link sentWords} only
+ * cuts the head the bridge wrote off a line already known to be one.
+ */
 export function viewTurnText(text: string, sentLines: ReadonlySet<string>): string {
-  return sentLines.has(text) || sentLines.has(text.trim()) ? sentWords(text.trim()) : text;
+  const line = sentLines.has(text) ? text : sentLines.has(text.trim()) ? text.trim() : null;
+  if (line === null || !isViewHeadLine(line.split("\n", 1)[0] ?? "")) return text;
+  return sentWords(line);
+}
+
+/** The catalog key of the words for a refusal of a send from a view, or of a view switch, by the bridge's code. */
+export type ViewRefusalKey =
+  | "view.refused.noProfile"
+  | "view.refused.draft"
+  | "view.refused.question"
+  | "view.refused.busy"
+  | "view.refused.changed"
+  | "view.refused.off"
+  | "view.refused.rate"
+  | "view.refused.badControl"
+  | "view.refused.notOnLead"
+  | "view.refused.wrongSession"
+  | "view.refused.other"
+  | "composer.protocol.badHead";
+
+/**
+ * Collie's words for every refusal a send from a view or a switch can meet: the bridge's 409 codes and the
+ * Send Protocol reasons a view send adds (`draft_present`, `not_free` for a question or a pane with no
+ * profile, `busy`, `stale_view`, `bad_head`). No code reaches the screen: an unknown one gets the plain
+ * "could not send" line. `detail` tells a `not_free` for a pane with no profile from one at a question.
+ */
+export function viewRefusalKey(code: string | null, detail: string | null = null): ViewRefusalKey {
+  switch (code) {
+    case "no_profile":
+      return "view.refused.noProfile";
+    case "not_free":
+      return detail === VIEW_NO_PROFILE ? "view.refused.noProfile" : "view.refused.question";
+    case "draft_present":
+      return "view.refused.draft";
+    case "question":
+      return "view.refused.question";
+    case "busy":
+    case "turn_running":
+      return "view.refused.busy";
+    case "stale_view":
+      return "view.refused.changed";
+    case "view_off":
+    case "trick_off":
+    case "no_trick":
+    case "not_a_view":
+      return "view.refused.off";
+    case "rate":
+      return "view.refused.rate";
+    case "bad_control":
+      return "view.refused.badControl";
+    case "not_on_lead":
+      return "view.refused.notOnLead";
+    case "wrong_session":
+      return "view.refused.wrongSession";
+    case "bad_head":
+      return "composer.protocol.badHead";
+    default:
+      return "view.refused.other";
+  }
 }
 
 // ── the request ─────────────────────────────────────────────────────────────────────────────────

@@ -217,6 +217,22 @@ describe("a tap on an agent view", () => {
   });
 });
 
+describe("rule 3: a group's label is on screen whole", () => {
+  // A tap's words name its group (`in "<group>"`), so every word of the label must be visible: an agent
+  // view draws with `wrap: true`, and a long label wraps, never cut (security review 9).
+  it("wraps a long group label (40 characters, the cap) onto more lines instead of cutting it", () => {
+    const label = "Spring release candidate, migration two";
+    const { container } = draw({ view: screenOf([{ kind: "group", attrs: { label }, kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship" } }] }] }]) });
+    const shown = screen.getByText(label);
+    expect(shown.textContent).toBe(label);
+    const box = shown.closest("[class*='break-words']");
+    expect(box).not.toBeNull();
+    expect(box?.className).not.toMatch(/truncate|line-clamp/);
+    expect(shown.className).not.toMatch(/truncate|line-clamp/);
+    expect(container.querySelector("[data-slot=view-screen]")).toHaveTextContent(label);
+  });
+});
+
 describe("rule 8: Collie's band", () => {
   it("stands above the screen and outside the agent's area, with Collie's mark, the trick's name and Collie's words", () => {
     const { container } = draw();

@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { postTrickViewSwitch } from "@/lib/api";
+import { apiErrorFields, postTrickViewSwitch } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
-import { livePrefixes, picksAfter, picksFor, requestAfter, shownTrickName, type ViewPicks, type ViewRequest, type ViewRequestNote } from "@/lib/agent-view/reader";
+import { livePrefixes, picksAfter, picksFor, requestAfter, shownTrickName, viewRefusalKey, type ViewPicks, type ViewRequest, type ViewRequestNote } from "@/lib/agent-view/reader";
 import { noteAgentViewSwitch, refetchAgentViews, useAgentViewsAvailable, useAgentViewsOf, useShowAgentViews, viewKey } from "@/lib/agent-view/store";
 import type { TrickViewSession, ViewDrawing, ViewScreen, ViewSent } from "@/lib/agent-view/wire";
 import type { PaneView } from "@/lib/pane-view";
@@ -169,6 +169,10 @@ export function useAgentViewPane({
         onChanged();
         return null;
       } catch (thrown) {
+        // A refusal with a code gets Collie's words for it (a pane with no profile, a trick that is off...);
+        // the switch row puts the old position back and shows them under itself. No code reaches the screen.
+        const code = apiErrorFields(thrown)?.code ?? null;
+        if (code !== null) return t("view.switch.failed", { error: t(viewRefusalKey(code)) });
         return t("view.switch.failed", { error: describeThrownError(thrown) });
       }
     },
