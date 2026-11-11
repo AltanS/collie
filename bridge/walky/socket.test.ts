@@ -93,6 +93,14 @@ describe("the off and on requests (M89)", () => {
     expect(off.all()).toEqual([]);
   });
 
+  test("`pane` says whether the asking pane runs an agent and where it sits, and needs a pane of this bridge", async () => {
+    const { walky } = switched();
+    expect(await ask(walky, { op: "pane", markers: marker("%1") })).toEqual({ ok: true, agent: true, session: "main", paneId: "%1" });
+    expect(await ask(walky, { op: "pane", markers: marker("%3") })).toEqual({ ok: true, agent: false, session: "main", paneId: "%3" });
+    expect(await ask(walky, { op: "pane", markers: [] })).toEqual({ ok: false, error: "needs a pane" });
+    expect(await ask(walky, { op: "pane", markers: marker("%9") })).toEqual({ ok: false, error: "not here" });
+  });
+
   test("`who` says so of the asker and of the pane, and says nothing when on", async () => {
     const { walky } = switched();
     const on = await ask(walky, { op: "who", markers: marker("%1") });

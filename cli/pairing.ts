@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { formatAuditLine } from "../bridge/audit.ts";
+import { type AuditEntry, formatAuditLine } from "../bridge/audit.ts";
 import { ADDED_FILE, formatAddedFile, parseAddedText } from "../bridge/launchers-added.ts";
 import {
   CODE_TTL_MS,
@@ -21,6 +21,7 @@ import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { urlToEncode } from "./qr.ts";
 import type { Exec, Files } from "./sys.ts";
+import type { PanePlace } from "./walky.ts";
 import { qrModules, renderQr } from "../scripts/qr.ts";
 
 // `pair`, `devices list`, `devices revoke` — the operator's half of device pairing. The pure
@@ -66,6 +67,11 @@ export interface PairingDeps {
    * launcher rows it removes there (ADR 0094). Absent writes no line.
    */
   appendAudit?: (line: string) => void;
+  /**
+   * Where the running bridge places the pane `pair` runs in (`askPanePlace`, cli/walky.ts). Absent: not
+   * asked, so `pair` runs as it always did.
+   */
+  panePlace?: () => Promise<PanePlace>;
 }
 
 const pendingPath = (ctx: CliContext): string => join(ctx.stateDir, PENDING_FILENAME);
@@ -168,6 +174,46 @@ function parsePairArgs(
 // ── pair ─────────────────────────────────────────────────────────────────────
 
 /**
+ * What `collie pair` (every form, `--json` included) says inside an agent's pane, on stderr. A SPEED BUMP,
+ * NOT A WALL: the CLI asks the running bridge over the walky socket whether the pane its markers name
+ * runs an agent, and refuses only on a yes. A paired device can read and drive every pane, so an agent
+ * that pairs one for itself has skipped every tap Collie asks a person for. No bridge, a bridge
+ * that does not know the pane, or no markers at all lets `pair` run as before; a process that strips the
+ * markers, or writes the pending file itself, gets past any check here. The user account is the real
+ * boundary (docs/security.md, "What a program running as you can still do").
+ */
+export const PAIR_AGENT_PANE_REFUSAL: readonly string[] = [
+  "error: collie pair makes a code that gives a device full access, and this runs in a pane where an agent works.",
+  "An agent does not pair a device for itself. Tell your operator that a device needs pairing.",
+  "A person runs collie pair in a shell pane or a terminal of their own.",
+];
+
+/**
+ * Where the bridge places this pane. Unasked, or with no answer: `unknown` (see above). Outside a pane
+ * `askPanePlace` answers `unknown` without asking anything. The marker check stays there and is not
+ * repeated here: `cli/beacon.ts` reaches the surface profiles, and this module is on the bare-checkout
+ * path to `build` (cli/main.test.ts), which must stay free of them.
+ */
+async function placeOfPane(deps: PairingDeps): Promise<PanePlace> {
+  if (deps.panePlace === undefined) return { kind: "unknown" };
+  return deps.panePlace().catch((): PanePlace => ({ kind: "unknown" }));
+}
+
+/** The audit line of a refused `pair`: the pane the bridge placed, and why. No code was made. */
+function auditRefusal(deps: PairingDeps, place: PanePlace): void {
+  const content = deps.ctx.env.COLLIE_AUDIT_CONTENT === "none" ? "none" : "preview";
+  const entry: AuditEntry = { action: "pair-refused", detail: { reason: "agent-pane" } };
+  if (place.paneId !== undefined) entry.paneId = place.paneId;
+  if (place.session !== undefined) entry.session = place.session;
+  try {
+    deps.appendAudit?.(formatAuditLine(entry, (deps.now ?? Date.now)(), content));
+  } catch (err) {
+    // The refusal stands whether or not its line lands, as every audit write in Collie does.
+    deps.io.err(`note: could not write the audit line: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * `collie pair` — mint the one-time code the phone spends on `/api/pair`.
  *
  * Only the code's HASH is written, so the string printed here is the only copy that will ever exist;
@@ -184,9 +230,20 @@ export async function cmdPair(deps: PairingDeps, args: readonly string[] = []): 
     deps.io.err("usage: collie pair [--expires <duration>] [--json]   durations: 12h, 30d, 2w");
     return EXIT.USAGE;
   }
+  const place = await placeOfPane(deps);
+  if (place.kind === "agent") {
+    for (const line of PAIR_AGENT_PANE_REFUSAL) deps.io.err(line);
+    auditRefusal(deps, place);
+    return EXIT.REFUSED;
+  }
   const now = (deps.now ?? Date.now)();
   const code = generateCode(deps.random);
   const pending = newPending(code, now, CODE_TTL_MS, parsed.lifetimeMs);
+  // The pane this ran in, for the pairing's audit line (bridge/pair-audit.ts). Only a pane the bridge
+  // placed and named; otherwise the file stays exactly as it was before the field existed.
+  if (place.session !== undefined && place.paneId !== undefined) {
+    pending.mintedIn = { session: place.session, paneId: place.paneId };
+  }
   const path = pendingPath(deps.ctx);
   const replaced = deps.files.exists(path);
 

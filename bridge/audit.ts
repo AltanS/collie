@@ -41,6 +41,13 @@ export type AuditContent = "preview" | "none";
  */
 const METADATA_KEYS: ReadonlySet<string> = new Set([
   "checked",
+  // A pairing's route (bridge/pair-audit.ts): the class of the forwarded address, an enum the bridge
+  // writes (`loopback`, `tailnet`, `lan`, `internet`, `unknown`), never the address.
+  "forwardedFrom",
+  // A pairing (bridge/pair-audit.ts): the pane and session `collie pair` ran in, as the bridge placed
+  // them, or `not placed`. A pane id and a session name, the same values the envelope keeps.
+  "mintPane",
+  "mintSession",
   "passed",
   "reason",
   // The state dir name of the sibling instance a walky talky row came from (bridge/walky/siblings.ts):
@@ -48,6 +55,8 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   "recordedBy",
   // A worktree create's id (ADR 0089): a UUID the phone mints, never typed by a person.
   "requestId",
+  // A pairing's route (bridge/pair-audit.ts): the class of the peer address, an enum, never the address.
+  "route",
   "saved",
   "sent",
   "size",

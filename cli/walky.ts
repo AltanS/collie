@@ -5,7 +5,7 @@ import { readEnvMarkers, edgeStateDirs, type EdgeTargetDeps } from "./beacon.ts"
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { inScope, labelScope, LOCAL_MEMBER, parseAddress, type WalkyScope } from "../bridge/walky/address.ts";
 import { readMessage, readReceipt } from "../bridge/walky/parse.ts";
 import { BARE_BAD_REQUEST, UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
@@ -104,6 +104,38 @@ async function request(deps: WalkyDeps, body: JsonObject, path?: string, first?:
   if (unread) return { ok: false, error: UNREAD_BY_OLDER_BRIDGE };
   if (notHere) return { ok: false, error: "no Collie bridge on this machine knows this pane" };
   return { ok: false, error: "no running Collie bridge answers on this machine" };
+}
+
+/** What the bridge says of the pane the CLI runs in. `unknown`: no pane, no bridge, or a bridge before the `pane` op. */
+export type PaneKind = "agent" | "shell" | "unknown";
+
+/**
+ * Where the bridge placed this pane, with {@link PaneKind}. `session` and `paneId` are set only when the
+ * bridge named them: `collie pair` writes them on the pending code so the pairing's audit line can say
+ * which pane made it.
+ */
+export interface PanePlace {
+  readonly kind: PaneKind;
+  readonly session?: string;
+  readonly paneId?: string;
+}
+
+/**
+ * Ask the local bridges whether this pane runs an agent, and where they placed it. Outside a pane, with
+ * no bridge answering, or with a bridge that does not know the op (1.28.1 and older answer `unknown op`
+ * or the bare `bad request`), the answer is `unknown`: the caller decides what that means. `collie pair`
+ * treats it as a shell, a speed bump and not a wall.
+ */
+export async function askPanePlace(deps: WalkyDeps): Promise<PanePlace> {
+  if (readEnvMarkers(deps.ctx.env).length === 0) return { kind: "unknown" };
+  const answer = await request(deps, { op: "pane" }).catch(() => null);
+  if (answer?.ok !== true) return { kind: "unknown" };
+  const agent = asJsonBoolean(answer.body.agent);
+  if (agent === undefined) return { kind: "unknown" };
+  const session = asJsonString(answer.body.session);
+  const paneId = asJsonString(answer.body.paneId);
+  const kind = agent ? "agent" : "shell";
+  return session === undefined || paneId === undefined ? { kind } : { kind, session, paneId };
 }
 
 /**
