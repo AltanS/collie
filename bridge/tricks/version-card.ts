@@ -8,7 +8,7 @@ import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { TrickVersionsPort, TrickVersionSubject, VersionAnswer } from "./service.ts";
 import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.ts";
-import { changeCells, codeGroup, filesOnCards, GROUP_FILES_MAX, groupOrder, placesTables } from "./card-group.ts";
+import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_FILES_MAX, groupOrder, placesTables } from "./card-group.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): one Decision of Collie's own on the Hill for each trick that is
 // on and whose new version waits for a yes. It asks the same yes the Settings row and `collie trick on`
@@ -231,7 +231,7 @@ function filesTable(files: readonly ChangedFile[], rows: number): ViewNode {
     { kind: "col", text: "−", attrs: { align: "end" } },
   ];
   for (const file of files.slice(0, rows)) {
-    kids.push({ kind: "cell", text: cellPath(file.rel) }, { kind: "cell", text: file.change }, { kind: "cell", text: countCell(file.plus, "+") }, { kind: "cell", text: countCell(file.minus, "−") });
+    kids.push({ kind: "cell", text: cellPath(file.rel) }, { kind: "cell", text: changeWord(file) }, { kind: "cell", text: countCell(file.plus, "+") }, { kind: "cell", text: countCell(file.minus, "−") });
   }
   return { kind: "table", kids };
 }
@@ -343,6 +343,8 @@ function fitCode(head: readonly ViewNode[], diff: VersionDiff): VersionViewShown
     if (rows > 0) view.push(filesTable(files, rows));
     let shown = 0;
     const listed = new Set(files.slice(0, rows).map((file) => file.rel));
+    // A row whose bit alone moved has no line to show: the row is the whole change.
+    shown += files.slice(0, rows).filter((file) => file.hunk !== null && file.hunk.length === 0 && file.mode !== undefined).length;
     for (const [i, file] of largest.slice(0, hunks).entries()) {
       const hunk = hunkNode(file, i === hunks - 1 ? lines : DIFF_LIMITS.lines);
       if (hunk === null) continue;

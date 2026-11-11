@@ -87,6 +87,8 @@ export interface FsStat {
   ino: number;
   /** The inode change time: unlike mtime, no caller can set it back. Absent from a test's fake. */
   ctimeMs?: number;
+  /** The permission bits, for a card that says a file became executable. Absent from a test's fake. */
+  mode?: number;
 }
 
 /** A folder listing: its entries, or why it could not be listed (`missing` for ENOENT only). */
@@ -125,7 +127,7 @@ export const diskTrickFs: TrickFs = {
   async lstat(path) {
     try {
       const st = await lstat(path);
-      return { kind: kindOf(st), size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs };
+      return { kind: kindOf(st), size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs, mode: st.mode };
     } catch {
       return null;
     }

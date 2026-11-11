@@ -249,9 +249,14 @@ export function filesOnCards(count: number, cards: number): string {
   return cards === 1 ? `${files}, on card 2.` : `${files}, on cards 2 to ${String(cards + 1)}.`;
 }
 
+/** The Change cell: "changed", or "changed +x" when the file also became executable (review 7). */
+export function changeWord(file: ChangedFile): string {
+  return file.mode === undefined ? file.change : `${file.change} ${file.mode}`;
+}
+
 /** A row of the version table: the change and its line counts. */
 export function changeCells(file: ChangedFile): string[] {
-  return [file.change, [countCell(file.plus, "+"), countCell(file.minus, "−")].filter((cell) => cell !== "").join(" ")];
+  return [changeWord(file), [countCell(file.plus, "+"), countCell(file.minus, "−")].filter((cell) => cell !== "").join(" ")];
 }
 
 /** Why a proposal's code cannot show as a group: a refusal code of the propose wire and its words. */

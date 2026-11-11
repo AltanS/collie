@@ -54,6 +54,8 @@ export interface ChangedFile {
   cut?: true;
   /** Set when a line holds a run of more than {@link VIEW_GAP_MAX} spaces as the card shows it: a proposal with one is refused (review 7 R2). */
   gap?: true;
+  /** The file became executable (`+x`) or stopped being so (`-x`), its bytes changed or not (review 7). */
+  mode?: "+x" | "-x";
 }
 
 export interface VersionDiff {
@@ -84,20 +86,41 @@ export interface VersionDiffOptions {
   run?: (argv: readonly string[]) => Promise<DiffRun>;
   /** How many files get a line count and a hunk. Default {@link DIFF_FILES_MAX}; a group of cards asks for more. */
   filesMax?: number;
+  /**
+   * The files of `next` that are executable, when its own modes do not say (a stored proposal is 0600,
+   * its bits kept apart). Absent: read off the disk.
+   */
+  nextExec?: ReadonlySet<string>;
 }
 
-/** The sum of one code entry: its kind and the sha256 of its bytes (or its link target). */
-async function sums(dir: string, fs: TrickFs): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+/** The sums of a folder's code entries, and which of its files are executable. */
+interface Sums {
+  sum: Map<string, string>;
+  exec: Set<string>;
+}
+
+/** The sum of one code entry: its kind and the sha256 of its bytes (or its link target); and its x bit. */
+async function sums(dir: string, fs: TrickFs): Promise<Sums> {
+  const out: Sums = { sum: new Map(), exec: new Set() };
   const walk = await walkTrickCode(fs, dir);
   if (!walk.ok) return out;
   for (const entry of walk.entries) {
     const bytes = entry.kind === "file" ? await fs.read(join(dir, entry.rel), CODE_BYTES_MAX) : null;
     const link = entry.kind === "symlink" ? await fs.readlink(join(dir, entry.rel)) : null;
     const body = bytes === null ? (link ?? "") : createHash("sha256").update(bytes).digest("hex");
-    out.set(entry.rel, `${entry.kind}:${body}`);
+    out.sum.set(entry.rel, `${entry.kind}:${body}`);
+    if (entry.kind === "file" && (((await fs.lstat(join(dir, entry.rel)))?.mode ?? 0) & 0o111) !== 0) out.exec.add(entry.rel);
   }
   return out;
+}
+
+/** `+x` or `-x` when a file in both folders changed its executable bit. */
+function modeChange(rel: string, old: Sums, now: ReadonlySet<string>): "+x" | "-x" | undefined {
+  if (!old.sum.has(rel)) return undefined;
+  const was = old.exec.has(rel);
+  const is = now.has(rel);
+  if (was === is) return undefined;
+  return is ? "+x" : "-x";
 }
 
 /** The argv of one hardened `git diff --no-index` between two paths (`/dev/null` for none). */
@@ -215,21 +238,35 @@ async function countable(fs: TrickFs, path: string): Promise<boolean> {
  */
 export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff> {
   const fs = opts.fs ?? diskTrickFs;
-  const [old, now] = await Promise.all([opts.base === null ? Promise.resolve(new Map<string, string>()) : sums(opts.base, fs), sums(opts.next, fs)]);
-  const rels = [...new Set([...old.keys(), ...now.keys()])].toSorted();
+  const none: Sums = { sum: new Map(), exec: new Set() };
+  const [old, now] = await Promise.all([opts.base === null ? Promise.resolve(none) : sums(opts.base, fs), sums(opts.next, fs)]);
+  const nowExec = opts.nextExec ?? now.exec;
+  const rels = [...new Set([...old.sum.keys(), ...now.sum.keys()])].toSorted();
   const files: ChangedFile[] = [];
+  let modeOnly = false;
   for (const rel of rels) {
-    const was = old.get(rel);
-    const is = now.get(rel);
-    if (was === is) continue;
+    const was = old.sum.get(rel);
+    const is = now.sum.get(rel);
+    const mode = is === undefined ? undefined : modeChange(rel, old, nowExec);
+    if (was === is && mode === undefined) continue;
     const change: FileChange = was === undefined ? "added" : is === undefined ? "removed" : "changed";
-    files.push({ rel, change, plus: null, minus: null, hunk: null });
+    // Only the bit moved: nothing to count and no line to show, so it is whole as it is.
+    if (was === is && mode !== undefined) {
+      files.push({ rel, change, plus: 0, minus: 0, hunk: [], mode });
+        modeOnly = true;
+      continue;
+    }
+    const file: ChangedFile = { rel, change, plus: null, minus: null, hunk: null };
+    if (mode !== undefined) file.mode = mode;
+    files.push(file);
   }
   const git = opts.git === undefined ? await gitBinary().catch(() => null) : opts.git;
   if (git === null) return { files, counted: false };
   const run = opts.run ?? spawnDiff;
-  let counted = false;
+  // A file whose bit alone moved is whole as it is: nothing for git to count.
+  let counted = modeOnly;
   for (const file of files.slice(0, opts.filesMax ?? DIFF_FILES_MAX)) {
+    if (file.hunk !== null) continue;
     const left = file.change === "added" || opts.base === null ? "/dev/null" : join(opts.base, file.rel);
     const right = file.change === "removed" ? "/dev/null" : join(opts.next, file.rel);
     // A symlink or a binary is listed, not counted: git would print a link target or "Binary files differ".

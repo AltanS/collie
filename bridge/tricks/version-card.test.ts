@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -58,6 +58,23 @@ describe("the diff of two copies", () => {
     expect(hunk[0]).toStartWith("@@");
     expect(hunk.join("\n")).not.toContain("0123456789abcdef");
     expect(hunk.join("\n")).toContain("+echo 2");
+  });
+
+  test.if(process.platform !== "win32")("a file whose executable bit alone moved is listed +x, counted, and its row is the whole change (review 7)", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" });
+    await chmod(join(next, "legs.sh"), 0o755);
+    const diff = await versionDiff({ base, next });
+    expect(diff).toEqual({ files: [{ rel: "legs.sh", change: "changed", plus: 0, minus: 0, hunk: [], mode: "+x" }], counted: true });
+    const view = JSON.stringify(versionView([], [], diff));
+    expect(view).toContain('"text":"changed +x"');
+    // A stored proposal is 0600: the bits it marked are passed in, and a bit taken away reads -x.
+    await chmod(join(base, "keep.sh"), 0o755);
+    const proposed = await versionDiff({ base, next: await folder({ "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" }), nextExec: new Set(["legs.sh"]) });
+    expect(proposed.files.map((file) => [file.rel, file.mode])).toEqual([
+      ["keep.sh", "-x"],
+      ["legs.sh", "+x"],
+    ]);
   });
 
   test("with no git, every file is listed by what happened to it, with no counts and no hunks", async () => {

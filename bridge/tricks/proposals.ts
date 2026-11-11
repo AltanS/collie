@@ -134,7 +134,8 @@ export interface TrickProposalsDeps {
   tricks: () => ProposalsTricks | null;
   /** Whether this bridge leads a crew (a trick's `inputs` then read on every machine). */
   crew?: () => boolean;
-  diff?: (base: string | null, next: string) => Promise<VersionDiff>;
+  /** `nextExec`: the files the proposal marked executable; its stored copy is 0600 (review 7, `+x`). */
+  diff?: (base: string | null, next: string, nextExec: ReadonlySet<string>) => Promise<VersionDiff>;
   now?: () => number;
   warn?: (line: string) => void;
   audit?: (entry: { action: string; detail: Record<string, string> }) => void;
@@ -294,7 +295,7 @@ export class TrickProposals {
   private readonly deps: TrickProposalsDeps;
   private readonly now: () => number;
   private readonly warn: (line: string) => void;
-  private readonly diff: (base: string | null, next: string) => Promise<VersionDiff>;
+  private readonly diff: (base: string | null, next: string, nextExec: ReadonlySet<string>) => Promise<VersionDiff>;
   private state: ProposalsState | null = null;
   /** Every change runs one at a time: a propose, an answer, a sweep. */
   private chain: Promise<unknown> = Promise.resolve();
@@ -304,7 +305,7 @@ export class TrickProposals {
     this.now = deps.now ?? Date.now;
     this.warn = deps.warn ?? ((line) => console.warn(`[tricks] ${line}`));
     // Every changed file gets its diff, up to the most a group of cards shows (card-group.ts).
-    this.diff = deps.diff ?? ((base, next) => versionDiff({ base, next, filesMax: GROUP_FILES_MAX }));
+    this.diff = deps.diff ?? ((base, next, nextExec) => versionDiff({ base, next, nextExec, filesMax: GROUP_FILES_MAX }));
   }
 
   /** `<configDir>/tricks/.collie-proposed`. */
@@ -415,7 +416,8 @@ export class TrickProposals {
       const sizes = new Map(proposal.files.map((file) => [file.rel, file.bytes.byteLength]));
       return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff: addedDiff(proposal.files), warnings: kinds, crew, replaces, sizes, helpers: shippedHelpers(proposal.files) });
     }
-    const diff = await this.diff(base.baseDir, dir).catch((): VersionDiff => ({ files: [], counted: false }));
+    const exec = new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel));
+    const diff = await this.diff(base.baseDir, dir, exec).catch((): VersionDiff => ({ files: [], counted: false }));
     // A diff that failed, or one that names no file while the code is another, would show "0 files" while
     // the yes installs the new code (review 7 R9).
     const code = codeHashOfFiles(proposal.files.filter((file) => isCodePath(file.rel)));
