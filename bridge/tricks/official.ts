@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
 import { DESCRIPTION_MAX, isTrickId, isTrickText, NAME_MAX, type OfficialState, type WireOfficialTrick } from "../../web/src/lib/tricks/schema.ts";
-import { diskTrickFs, type TrickFs } from "./code-hash.ts";
+import { diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import shipped from "./official.json";
-import { originRepoName, readOrigin } from "./origin.ts";
+import { originRepoName, readOrigin, type TrickOrigin } from "./origin.ts";
 import { tricksConfigDir } from "./paths.ts";
 
 // THE FROM COLLIE LIST (M94): the official tricks this Collie release can add with a tap. Collie ships no
@@ -15,23 +15,42 @@ import { tricksConfigDir } from "./paths.ts";
 // commit id and the code hash (code-hash.ts `trickCodeHash`, 64 hex, the hash a switch approves) that
 // folder has at that commit.
 //
-// THE TRUST ROOT is this file as built into the binary: the commit pins what git fetches (git checks every
-// object against its id), and the code hash pins what Collie writes (official-install.ts compares it before
-// anything lands in the tricks folder). Changing the list on a machine means changing the binary.
+// THE TRUST ROOT is this file as built into the binary: the commit names what git fetches, and the two hashes
+// pin what Collie writes, the code hash the code and the extras hash `config.toml` and `media/`
+// (official-install.ts compares both before anything lands in the tricks folder). The commit id alone is
+// not the pin: git checks objects against SHA-1 ids, and the hashes Collie checks are SHA-256 over the
+// bytes it writes. Changing the list on a machine means changing the binary.
 //
 // THE READER IS STRICT (`parseOfficialList`): exactly the keys below, an https repository that is one of
 // {@link OFFICIAL_REPOS} (an allowlist of one), a folder that is one step by the trick id rule, a commit of
 // 40 hex digits, a hash of 64, a name and a description by the manifest's own text rules, a contract this
-// Collie speaks, no id twice, at most {@link OFFICIAL_ENTRIES_MAX} entries. A list it refuses is no list:
+// Collie speaks, at most {@link OFFICIAL_PREVIOUS_MAX} earlier versions (`previous`, each a commit and its
+// hash, none the current commit, none twice), no id twice, at most {@link OFFICIAL_ENTRIES_MAX} entries. A list it refuses is no list:
 // the bridge offers nothing and says why once. The maintainer script (scripts/official-tricks.ts) rewrites
 // commits and hashes from a checkout of the repository, and `--check` fails when the list is stale.
+//
+// WHAT COUNTS AS FROM THE LIST (security review): a folder of an entry's id whose origin record says
+// `official: true`, names the entry's repository and folder, and names a commit this list knows for the id:
+// its current commit or one in `previous`, the versions earlier releases listed. Only then is the entry
+// `added` or `update`. A folder from the same repository at any other commit (a pull request's ref, a fork's
+// commit, a branch nobody listed) is `taken`, marked `unlisted`, and its row says it is not on the Collie
+// list: the record is written by Collie, but a hand can write it too, so the commit must be a listed one,
+// and an update checks the folder's code hash against that commit's listed hash first (official-install.ts).
 
 /** The repositories a list entry may name. One, on purpose. */
 export const OFFICIAL_REPOS: readonly string[] = ["https://github.com/AltanS/collie-tricks"];
 /** The most entries a list holds. */
 export const OFFICIAL_ENTRIES_MAX = 32;
+/** The most earlier versions an entry keeps. */
+export const OFFICIAL_PREVIOUS_MAX = 8;
 /** The keys of an entry, all required, no other. */
-const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "contract"] as const;
+const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "contract", "previous"] as const;
+
+/** One version of an entry: a commit and the code hash its folder has there. */
+export interface OfficialVersion {
+  commit: string;
+  hash: string;
+}
 
 /** One entry of the list. */
 export interface OfficialEntry {
@@ -45,8 +64,15 @@ export interface OfficialEntry {
   commit: string;
   /** The code hash that folder has at that commit, 64 hex. */
   hash: string;
+  /**
+   * The hash of what an add installs beside the code: `config.toml` and `media/` (code-hash.ts
+   * `officialExtrasHash`), 64 hex. The code hash leaves them out, so this pins them.
+   */
+  extras: string;
   /** The trick contract its manifest names. */
   contract: number;
+  /** Versions earlier releases listed, newest first: a folder at one of them is still from the list. */
+  previous: OfficialVersion[];
 }
 
 export type OfficialList = { ok: true; entries: OfficialEntry[] } | { ok: false; reason: string };
@@ -86,6 +112,7 @@ function readEntry(raw: JsonValue, at: number): EntryRead {
   const dir = asJsonString(doc.dir);
   const commit = asJsonString(doc.commit);
   const hash = asJsonString(doc.hash);
+  const extras = asJsonString(doc.extras);
   const contract = asJsonNumber(doc.contract);
   if (id === undefined || !isTrickId(id)) return refuse(`${where} has no trick id (1 to 32 of a-z, 0-9 and -)`);
   if (name === undefined || !isTrickText(name, { max: NAME_MAX })) return refuse(`${id}: the name is missing, too long or holds a control or invisible character`);
@@ -97,8 +124,51 @@ function readEntry(raw: JsonValue, at: number): EntryRead {
   if (dir === undefined || !isTrickId(dir)) return refuse(`${id}: the folder is not one step named by the trick id rule`);
   if (commit === undefined || !COMMIT.test(commit)) return refuse(`${id}: the commit is not 40 hex digits`);
   if (hash === undefined || !HASH.test(hash)) return refuse(`${id}: the code hash is not 64 hex digits`);
+  if (extras === undefined || !HASH.test(extras)) return refuse(`${id}: the extras hash is not 64 hex digits`);
   if (contract === undefined || !Number.isInteger(contract) || contract < 1 || contract > TRICK_CONTRACT) return refuse(`${id}: the contract is not one this Collie speaks (1 to ${String(TRICK_CONTRACT)})`);
-  return { ok: true, entry: { id, name, description, repo, dir, commit, hash, contract } };
+  const previous = readPrevious(doc.previous, commit);
+  if (!previous.ok) return refuse(`${id}: ${previous.reason}`);
+  return { ok: true, entry: { id, name, description, repo, dir, commit, hash, extras, contract, previous: previous.versions } };
+}
+
+/** An entry's earlier versions read strictly, or why not. */
+function readPrevious(raw: JsonValue | undefined, current: string): { ok: true; versions: OfficialVersion[] } | { ok: false; reason: string } {
+  if (!Array.isArray(raw)) return { ok: false, reason: "previous is not an array" };
+  if (raw.length > OFFICIAL_PREVIOUS_MAX) return { ok: false, reason: `previous holds more than ${String(OFFICIAL_PREVIOUS_MAX)} versions` };
+  const versions: OfficialVersion[] = [];
+  for (const item of raw) {
+    const doc = asJsonObject(item);
+    if (doc === undefined || Object.keys(doc).some((key) => key !== "commit" && key !== "hash")) return { ok: false, reason: "a previous version is not { commit, hash }" };
+    const commit = asJsonString(doc.commit);
+    const hash = asJsonString(doc.hash);
+    if (commit === undefined || !COMMIT.test(commit) || hash === undefined || !HASH.test(hash)) return { ok: false, reason: "a previous version has no commit of 40 hex digits or no hash of 64" };
+    if (commit === current || versions.some((held) => held.commit === commit)) return { ok: false, reason: `the commit ${commit.slice(0, 12)} is listed twice` };
+    versions.push({ commit, hash });
+  }
+  return { ok: true, versions };
+}
+
+/** The version of an entry at `commit`: the current one or a previous one, or undefined when the list does not know it. */
+export function listedVersion(entry: Pick<OfficialEntry, "commit" | "hash" | "previous">, commit: string): OfficialVersion | undefined {
+  if (commit === entry.commit) return { commit: entry.commit, hash: entry.hash };
+  return entry.previous.find((v) => v.commit === commit);
+}
+
+/** Whether an origin record is one of this list's: `official: true`, the entry's repository and folder, a listed commit. */
+export function isListedOrigin(entry: Pick<OfficialEntry, "repo" | "dir" | "commit" | "hash" | "previous">, origin: TrickOrigin): boolean {
+  return origin.official === true && origin.url === entry.repo && origin.subdir === entry.dir && listedVersion(entry, origin.commit) !== undefined;
+}
+
+/**
+ * Whether a trick's origin names an official repository without being a version of the list: a pull
+ * request's ref, a fork's commit, a branch nobody listed, or, given `codeHash`, a listed version whose code
+ * is not that version's code any more. Its row says it is not on the official list.
+ */
+export function isUnlistedOfficialOrigin(entries: readonly OfficialEntry[], id: string, origin: TrickOrigin, codeHash?: string): boolean {
+  if (!OFFICIAL_REPOS.includes(origin.url) && !entries.some((e) => e.repo === origin.url)) return false;
+  const entry = entries.find((e) => e.id === id);
+  if (entry === undefined || !isListedOrigin(entry, origin)) return true;
+  return codeHash !== undefined && listedVersion(entry, origin.commit)?.hash !== codeHash;
 }
 
 /** The list from its JSON value, strictly: every entry or none. */
@@ -124,7 +194,7 @@ export function parseOfficialList(raw: JsonValue | undefined): OfficialList {
 
 /** The list's text as the maintainer script writes it: two spaces, the keys in their order, one newline at the end. */
 export function renderOfficialList(entries: readonly OfficialEntry[]): string {
-  const tricks = entries.map((e) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, contract: e.contract }));
+  const tricks = entries.map((e) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, contract: e.contract, previous: e.previous.map((v) => ({ commit: v.commit, hash: v.hash })) }));
   return `${JSON.stringify({ v: 1, tricks }, null, 2)}\n`;
 }
 
@@ -138,30 +208,57 @@ export function shippedOfficialList(): OfficialList {
   return held;
 }
 
+/** Where one entry stands on this machine, and for `taken`, whether the folder is from its repository but not from the list. */
+export interface OfficialStanding {
+  state: OfficialState;
+  /** `taken` by a folder from the entry's repository and folder at a commit the list does not know, or without `official`. */
+  unlisted: boolean;
+  /**
+   * `taken` by a folder that is a version of the list by its record, but whose code hash is not the hash the
+   * list names for that commit: the person changed its files (or wrote the record by hand). Never updated.
+   */
+  changed: boolean;
+  /** The folder's origin record, when it has one. */
+  origin: TrickOrigin | null;
+}
+
+type EntryKeys = Pick<OfficialEntry, "id" | "repo" | "dir" | "commit" | "hash" | "previous">;
+
 /** Where one entry stands on this machine. Reads the folder and its origin record; never follows a link. */
-export async function officialStateOf(configDir: string, entry: Pick<OfficialEntry, "id" | "repo" | "dir" | "commit">, fs: TrickFs = diskTrickFs): Promise<OfficialState> {
+export async function officialStanding(configDir: string, entry: EntryKeys, fs: TrickFs = diskTrickFs): Promise<OfficialStanding> {
   const dir = join(tricksConfigDir(configDir), entry.id);
   const st = await fs.lstat(dir);
-  if (st === null) return "absent";
-  if (st.kind !== "dir") return "taken";
+  if (st === null) return { state: "absent", unlisted: false, changed: false, origin: null };
+  if (st.kind !== "dir") return { state: "taken", unlisted: false, changed: false, origin: null };
   const origin = await readOrigin(dir, fs);
-  // Only a folder from this repository and this folder in it is the list's to update. Any other, a
-  // proposal's or one made by hand included, is the person's: never written over.
-  if (origin === null || origin.url !== entry.repo || origin.subdir !== entry.dir) return "taken";
-  return origin.commit === entry.commit ? "added" : "update";
+  // Only a folder from this repository and this folder in it is a candidate. Any other, a proposal's or one
+  // made by hand included, is the person's: never written over.
+  if (origin === null || origin.url !== entry.repo || origin.subdir !== entry.dir) return { state: "taken", unlisted: false, changed: false, origin };
+  // From the repository, but not a version of the list: `collie trick add` at another ref, or a record by hand.
+  const version = isListedOrigin(entry, origin) ? listedVersion(entry, origin.commit) : undefined;
+  if (version === undefined) return { state: "taken", unlisted: true, changed: false, origin };
+  // A version of the list by its record: its code must still be the code Collie wrote, the hash the list
+  // names for that commit. Otherwise the files are the person's (an edit, a file they added, a record
+  // written by hand over their own trick), and nothing of the list moves or removes them.
+  const hashed = await trickCodeHash(dir, fs);
+  if (!hashed.ok || hashed.hash !== version.hash) return { state: "taken", unlisted: false, changed: true, origin };
+  return { state: origin.commit === entry.commit ? "added" : "update", unlisted: false, changed: false, origin };
+}
+
+/** {@link officialStanding}'s state alone. */
+export async function officialStateOf(configDir: string, entry: EntryKeys, fs: TrickFs = diskTrickFs): Promise<OfficialState> {
+  return (await officialStanding(configDir, entry, fs)).state;
 }
 
 /** The list as the phone reads it, each entry with its state on this machine. */
 export async function officialWire(configDir: string, entries: readonly OfficialEntry[], fs: TrickFs = diskTrickFs): Promise<WireOfficialTrick[]> {
   return await Promise.all(
-    entries.map(async (e) => ({
-      id: e.id,
-      name: e.name,
-      description: e.description,
-      repo: e.repo,
-      repoName: originRepoName(e.repo),
-      commit: e.commit,
-      state: await officialStateOf(configDir, e, fs),
-    })),
+    entries.map(async (e) => {
+      const standing = await officialStanding(configDir, e, fs);
+      const wire: WireOfficialTrick = { id: e.id, name: e.name, description: e.description, repo: e.repo, repoName: originRepoName(e.repo), commit: e.commit, state: standing.state };
+      if (standing.unlisted) wire.unlisted = true;
+      if (standing.changed) wire.changed = true;
+      return wire;
+    }),
   );
 }

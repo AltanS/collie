@@ -69,7 +69,7 @@ import { cn } from "@/lib/utils";
 // under its name; a row without one is drawn as before.
 //
 // FROM COLLIE, UNDER THE INSTALLED TRICKS (M94). The bridge's `GET /api/tricks/official` lists the official
-// tricks this release can add, each with its state here. A section labelled "From Collie" holds one row per
+// tricks this release can add, each with its state here. A section labelled "Official tricks" holds one row per
 // entry that is not added: the name (a button that opens the About sheet in its not-added mode), its one
 // line, and a small Add. An entry whose id another trick holds (`taken`) is drawn muted with no Add, and
 // says so. An entry already added is not in the section: it is a trick row above, and when this release
@@ -108,7 +108,8 @@ function whoWords(by: WireTrickInfo["provenance"]): string {
   if (by.via === "agent") return t("settings.tricks.by.agent");
   if (by.repo === undefined) return t("settings.tricks.by.repoNone");
   if (by.sha === undefined) return t("settings.tricks.by.repoBare", { repo: by.repo });
-  return t("settings.tricks.by.repo", { repo: by.repo, sha: by.sha.slice(0, 7) });
+  // From the official repository, but not a version of the official list: never read as the list.
+  return t(by.unlisted === true ? "settings.tricks.by.repoUnlisted" : "settings.tricks.by.repo", { repo: by.repo, sha: by.sha.slice(0, 7) });
 }
 
 /** The third line of a row, and whether it is a trouble report rather than a provenance. */
@@ -152,7 +153,7 @@ export interface TricksSettingsCardProps {
   readOnly?: boolean;
   /** Draw the rows as with the Hill switched off, for the playground. Default: the snapshot's `hillOff`. */
   hillOff?: boolean;
-  /** The From Collie list read. The real route by default. */
+  /** The official list read. The real route by default. */
   onOfficialList?: (signal?: AbortSignal) => Promise<OfficialTricksReply>;
   /** The add or update from that list. The real route by default. */
   onOfficialAdd?: (id: string, mode: "add" | "update") => Promise<{ id: string; state: OfficialState }>;
@@ -277,7 +278,7 @@ function OfficialButton({ word, label, slot, busy, canWrite, onTap }: { word: st
   );
 }
 
-/** One From Collie row: the name opens the About sheet, the line under it, and Add; a taken one says so instead. */
+/** One official row: the name opens the About sheet, the line under it, and Add; a taken one says so instead. */
 function OfficialRow({ entry, busy, canWrite, onAdd, onAbout }: { entry: WireOfficialTrick; busy: boolean; canWrite: boolean; onAdd: () => void; onAbout: () => void }) {
   const taken = entry.state === "taken" && !busy;
   return (
@@ -304,7 +305,7 @@ function OfficialRow({ entry, busy, canWrite, onAdd, onAbout }: { entry: WireOff
           </p>
           {taken && (
             <p data-line="taken" className="text-xs text-muted-foreground">
-              {t("settings.tricks.official.taken")}
+              {t(entry.changed === true ? "settings.tricks.official.changed" : entry.unlisted === true ? "settings.tricks.official.takenRepo" : "settings.tricks.official.taken")}
             </p>
           )}
         </div>
@@ -325,6 +326,8 @@ export function officialFailureLine<TThrown>(thrown: TThrown, mode: "add" | "upd
   if (code === "taken") return t("settings.tricks.official.taken");
   // The new code needs a name the person's own files hold in the trick's folder: nothing was changed.
   if (code === "blocked" && !add) return t("settings.tricks.official.updateBlocked");
+  // A version of the list whose files the person changed: Collie never moves or removes them.
+  if (code === "changed") return t("settings.tricks.official.changed");
   return add ? t("settings.tricks.official.failed", { name }) : t("settings.tricks.official.updateFailed", { name });
 }
 
@@ -338,7 +341,7 @@ interface TrickRowProps {
   onFlip: (on: boolean) => void;
   onUndo: () => void;
   onAbout: () => void;
-  /** This release names a newer version of the trick (From Collie `update`), and whether its update is in flight. */
+  /** This release names a newer version of the trick (official `update`), and whether its update is in flight. */
   update?: { busy: boolean; onUpdate: () => void } | undefined;
 }
 
@@ -436,9 +439,9 @@ function TricksList({
   const flying = useRef(new Set<string>());
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const official = useOfficialList(onOfficialList, tricks);
-  // The From Collie adds and updates in flight or held until the lists agree, by trick id.
+  // The official adds and updates in flight or held until the lists agree, by trick id.
   const [adding, setAdding] = useState<ReadonlyMap<string, "add" | "update">>(new Map());
-  // The From Collie entry whose About sheet is open, by id.
+  // The official entry whose About sheet is open, by id.
   const [officialAboutId, setOfficialAboutId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -607,7 +610,8 @@ function TricksList({
           </p>
         )}
         <div data-slot="list-group">
-          {tricks.length === 0 && (
+          {/* A fresh install (no tricks folder yet) with an official list: the card holds only the list. */}
+          {tricks.length === 0 && officialRows.length === 0 && (
             <div className="px-4 py-3">
               <p className="text-sm text-muted-foreground">{t("settings.tricks.none")}</p>
               {/* The command is a literal, not a sentence: it is typed on the machine, so it is never translated. */}
@@ -642,7 +646,7 @@ function TricksList({
           })}
         </div>
         {officialRows.length > 0 && (
-          <div data-section="official" className="border-t border-border pt-3">
+          <div data-section="official" className={cn("pt-3", (tricks.length > 0 || runsOn !== undefined) && "border-t border-border")}>
             <SectionLabel placement="above" className="px-4">
               {t("settings.tricks.official.label")}
             </SectionLabel>
@@ -699,11 +703,11 @@ function TricksList({
 }
 
 /**
- * The From Collie list as the card shows it: read once on mount and again whenever the installed tricks
+ * The official list as the card shows it: read once on mount and again whenever the installed tricks
  * change (an id or a commit), or when `reread` asks. A read that fails keeps what the card had, and the
  * first one that fails leaves no list, so no section is drawn.
  */
-/** What the card holds of the From Collie list. */
+/** What the card holds of the official list. */
 interface OfficialListState {
   list: OfficialTricksReply | null;
   reread: () => void;

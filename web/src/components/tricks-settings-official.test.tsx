@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -13,7 +13,7 @@ import { readOfficialAddReply, readOfficialTricksReply } from "@/lib/tricks/wire
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 
-// From Collie in Settings → Tricks (M94): the official tricks this release can add, under the installed
+// Official tricks in Settings → Tricks (M94): the official tricks this release can add, under the installed
 // ones. The routes are the real api.ts calls against msw, so the paths and bodies are checked too.
 
 const NOW = Date.parse("2026-11-11T09:41:00Z");
@@ -81,7 +81,7 @@ function renderCard(store: TricksStore, readOnly = false) {
 const section = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-section="official"]');
 const officialRow = (id: string) => {
   const row = document.querySelector(`[data-official="${id}"]`);
-  if (!(row instanceof HTMLElement)) throw new Error(`no From Collie row for ${id}`);
+  if (!(row instanceof HTMLElement)) throw new Error(`no official row for ${id}`);
   return row;
 };
 
@@ -91,15 +91,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("From Collie: the section", () => {
+describe("Official tricks: the section", () => {
   it("lists each entry not added under the installed tricks: name, its line and Add; a taken one is muted and says so", async () => {
     serveList(() => ({ tricks: [REVIEW, { ...INBOX, state: "taken" }, { ...BUILDS, state: "added" }] }));
     const { store } = await liveStore([LEGS, installed(BUILDS)]);
     renderCard(store);
     await vi.waitFor(() => expect(section()).not.toBeNull());
     const listed = section();
-    if (listed === null) throw new Error("no From Collie section");
-    expect(within(listed).getByText("From Collie")).toBeInTheDocument();
+    if (listed === null) throw new Error("no official section");
+    expect(within(listed).getByText("Official tricks")).toBeInTheDocument();
     // After the installed rows, before the foot.
     const card = screen.getByTestId("tricks-settings");
     const order = [...card.querySelectorAll("[data-trick], [data-section='official']")].map((el) => el.getAttribute("data-trick") ?? "official");
@@ -115,6 +115,20 @@ describe("From Collie: the section", () => {
     expect(within(inbox).queryByRole("button")).toBeNull();
     // An added entry is a trick row above, not a row here.
     expect(document.querySelector('[data-official="running-builds"]')).toBeNull();
+  });
+
+  it("a taken entry whose folder came from the repository but not from the list says so, and never reads as the list", async () => {
+    serveList(() => ({ tricks: [REVIEW, { ...INBOX, state: "taken", unlisted: true }] }));
+    const { store } = await liveStore([LEGS]);
+    renderCard(store);
+    await vi.waitFor(() => expect(section()).not.toBeNull());
+    const inbox = officialRow("pr-inbox");
+    expect(within(inbox).getByText("Added from the repository, not from the official list.")).toBeInTheDocument();
+    expect(within(inbox).queryByText("A trick with this name is already here.")).toBeNull();
+    expect(within(inbox).queryByRole("button")).toBeNull();
+    // The wire keeps the mark only on a taken entry.
+    expect(readOfficialTricksReply({ tricks: [{ ...INBOX, state: "taken", unlisted: true }] })?.tricks[0]?.unlisted).toBe(true);
+    expect(readOfficialTricksReply({ tricks: [{ ...INBOX, state: "update", unlisted: true }] })?.tricks[0]?.unlisted).toBeUndefined();
   });
 
   it("draws no section for an empty list, a crew member's, or a list the phone could not read", async () => {
@@ -145,7 +159,45 @@ describe("From Collie: the section", () => {
   });
 });
 
-describe("From Collie: Add", () => {
+describe("Official tricks: a fresh install", () => {
+  it("with no trick yet the card holds only the list; an add lands the trick, off, and its row appears", async () => {
+    const user = userEvent.setup();
+    let state: WireOfficialTrick["state"] = "absent";
+    serveList(() => ({ tricks: [{ ...REVIEW, state }] }));
+    server.use(
+      http.post("/api/tricks/official/:id/:mode", () => {
+        state = "added";
+        return HttpResponse.json({ id: "design-review", state: "added" });
+      }),
+    );
+    // What the bridge sends with no tricks folder and a list: a rev and no trick.
+    const { store, list } = await liveStore([]);
+    renderCard(store);
+    await vi.waitFor(() => expect(section()).not.toBeNull());
+    expect(screen.queryByText("collie trick init <id>")).toBeNull();
+    expect(section()?.className).not.toContain("border-t");
+    expect(screen.getByText("A trick runs as you.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add Design Review" }));
+    await list([installed(REVIEW, { provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: COMMIT } })]);
+    await vi.waitFor(() => expect(document.querySelector('[data-trick="design-review"]')).not.toBeNull());
+    expect(within(document.querySelector<HTMLElement>('[data-trick="design-review"]') ?? document.body).getByRole("switch")).not.toBeChecked();
+    await vi.waitFor(() => expect(section()).toBeNull());
+  });
+
+  it("an empty list and no trick shows the empty card as before; no tricks reply shows no card", async () => {
+    serveList(() => ({ tricks: [] }));
+    const { store } = await liveStore([]);
+    renderCard(store);
+    expect(await screen.findByText("collie trick init <id>")).toBeInTheDocument();
+    expect(section()).toBeNull();
+    cleanup();
+    const bare = createTricksStore({ fetchTricks: async () => Promise.reject(new Error("never asked")), tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+    renderCard(bare);
+    expect(screen.queryByTestId("tricks-settings")).toBeNull();
+  });
+});
+
+describe("Official tricks: Add", () => {
   it("posts {} to the entry's add route, spins in place, takes no second tap, and leaves the section once the trick is installed", async () => {
     const user = userEvent.setup();
     let state: WireOfficialTrick["state"] = "absent";
@@ -209,7 +261,7 @@ describe("From Collie: Add", () => {
   });
 });
 
-describe("From Collie: the About sheet before the add", () => {
+describe("Official tricks: the About sheet before the add", () => {
   it("shows the name, the line and where it comes from, no invented facts, and Add at the foot; it closes once the bridge took the add", async () => {
     const user = userEvent.setup();
     serveList(() => ({ tricks: [REVIEW] }));
@@ -249,7 +301,7 @@ describe("From Collie: the About sheet before the add", () => {
   });
 });
 
-describe("From Collie: Update", () => {
+describe("Official tricks: Update", () => {
   it("puts a quiet line with Update under an installed trick this release has a newer version of, and posts to the update route", async () => {
     const user = userEvent.setup();
     let state: WireOfficialTrick["state"] = "update";
@@ -295,15 +347,31 @@ describe("From Collie: Update", () => {
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "Update Running Builds" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Update Running Builds" }));
     await vi.waitFor(() => expect(currentStatus()).toMatchObject({ text: "Your own files block it. Nothing was changed.", tone: "error" }));
+    // The person changed the trick's files: Collie moves and removes none of them.
+    server.use(http.post("/api/tricks/official/:id/:mode", () => HttpResponse.json({ error: "changed", message: "x" }, { status: 409 })));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Update Running Builds" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Update Running Builds" }));
+    await vi.waitFor(() => expect(currentStatus()).toMatchObject({ text: "You edited its files. Update it on the machine.", tone: "error" }));
+  });
+
+  it("a taken entry whose files the person changed says so, and offers nothing", async () => {
+    serveList(() => ({ tricks: [{ ...BUILDS, state: "taken", changed: true }] }));
+    const { store } = await liveStore([installed(BUILDS)]);
+    renderCard(store);
+    await vi.waitFor(() => expect(section()).not.toBeNull());
+    const builds = officialRow("running-builds");
+    expect(within(builds).getByText("You edited its files. Update it on the machine.")).toBeInTheDocument();
+    expect(within(builds).queryByRole("button")).toBeNull();
+    expect(readOfficialTricksReply({ tricks: [{ ...BUILDS, state: "taken", changed: true }] })?.tricks[0]?.changed).toBe(true);
   });
 });
 
-describe("From Collie: the wire", () => {
+describe("Official tricks: the wire", () => {
   it("fetchOfficialTricks reads the list tolerantly: an odd entry is left out, a body of another shape throws", async () => {
     serveList(() => HttpResponse.json({ tricks: [REVIEW, { ...INBOX, commit: "abc" }, { ...BUILDS, state: "gone" }], runsOn: { lead: "desk" } }));
     expect(await fetchOfficialTricks()).toEqual({ tricks: [REVIEW], runsOn: { lead: "desk" } });
     serveList(() => HttpResponse.json({ list: [] }));
-    await expect(fetchOfficialTricks()).rejects.toThrow(/not the From Collie list/);
+    await expect(fetchOfficialTricks()).rejects.toThrow(/not the official list/);
     expect(readOfficialTricksReply({ tricks: [{ ...REVIEW, name: "Le‮gs" }] })).toEqual({ tricks: [] });
     expect(readOfficialTricksReply({ tricks: [{ ...REVIEW, id: "../x" }] })).toEqual({ tricks: [] });
   });

@@ -10,7 +10,7 @@ import { MANIFEST_BYTES_MAX, readManifestText } from "./discover.ts";
 import { MANIFEST_FILE } from "./paths.ts";
 
 // THE HARDENED GIT FETCH OF A TRICK (M94 review 15), shared by `collie trick add` and `update`
-// (cli/trick-add.ts) and the From Collie list (official-install.ts). Moved here from the CLI so the
+// (cli/trick-add.ts) and the official list (official-install.ts). Moved here from the CLI so the
 // bridge runs the very same lines; `collie trick add` behaves as it did.
 //
 // ── WHAT A REPOSITORY MAY NOT DO ──────────────────────────────────────────────────────────────────
@@ -18,6 +18,7 @@ import { MANIFEST_FILE } from "./paths.ts";
 // a fresh BARE repository in a temp folder under the state folder (never the tricks folder):
 //
 //   git init --bare --quiet --template= <tmp>/repo.git
+//   git <H> --git-dir=<tmp>/repo.git ls-remote --refs -- <url> refs/tags/<name> refs/heads/<name>   (a short name only)
 //   git <H> --git-dir=<tmp>/repo.git fetch --quiet --depth=1 --no-tags --no-recurse-submodules -- <url> <ref|HEAD>
 //   git <H> --git-dir=<tmp>/repo.git rev-parse --verify --end-of-options FETCH_HEAD^{commit}
 //   git <H> --git-dir=<tmp>/repo.git ls-tree -r -l -z --full-tree <commit>
@@ -31,11 +32,11 @@ import { MANIFEST_FILE } from "./paths.ts";
 // `GIT_LFS_SKIP_SMUDGE=1` are set. Each git run is argv, never a shell, killed at {@link ADD_LIMITS}
 // `gitTimeoutMs` (or sooner, at the caller's deadline), its output capped. On POSIX each run starts its own
 // process group and a kill takes the whole group, so `git-remote-https` and any other helper git starts go
-// with it. With `maxBytes` (the From Collie list), the temp repository is measured while the fetch runs and
+// with it. With `maxBytes` (the official list), the temp repository is measured while the fetch runs and
 // once after it: past the cap the fetch is killed and refused, before anything is read from it. git itself
 // offers no size limit on a fetch (`receive.maxInputSize` is the push side only). For `collie trick add` the
 // operator's own global git config is trusted, as their shell is (a credential helper for a private
-// repository keeps working); the From Collie list reads none (official-install.ts `OFFICIAL_GIT`).
+// repository keeps working); the official list reads none (official-install.ts `OFFICIAL_GIT`).
 //
 // The tree is read from git's own objects, so its modes are git's: a symlink (120000) or a submodule
 // (160000) anywhere in the trick's folder refuses the trick, on every platform. Collie writes each
@@ -43,10 +44,19 @@ import { MANIFEST_FILE } from "./paths.ts";
 // caps hold, and the id is free. Dot files and dot folders and `node_modules/` are not copied: they are
 // outside the code hash (code-hash.ts), so they would be code the person never approved.
 //
+// WHICH REF (security review of the official list): only a branch or a tag, or a full commit id. A ref
+// that starts with `refs/` must be `refs/heads/...` or `refs/tags/...`: `refs/pull/N/head` on GitHub is a
+// stranger's pull request served through the repository's own URL, and is refused. A short name is never
+// handed to git as it is, because git's own lookup would also try `refs/<name>` (so `pull/5/head` would be
+// that pull request): it is looked up as exactly `refs/tags/<name>` or `refs/heads/<name>` (a tag first, as
+// git's lookup orders them) and the fetch names the full ref it found. A full commit id is fetched as it is;
+// `collie trick add` refuses one for the official repository (cli/trick-add.ts), where a fork's commit is
+// reachable by its id too.
+//
 // A local folder or `file://` URL is accepted only with `allowFile`, which only a test seam and the
 // maintainer script (scripts/official-tricks.ts, reading a local checkout) set.
 
-/** Every cap of a fetched trick, in one place: `collie trick add`, `update` and the From Collie list. */
+/** Every cap of a fetched trick, in one place: `collie trick add`, `update` and the official list. */
 export const ADD_LIMITS = {
   /** Files in the trick's folder, all of them, dot files included. */
   files: 300,
@@ -240,9 +250,9 @@ export interface FetchOptions {
   git?: GitRunner;
   /** A local folder or `file://` URL may be the source: the tests' seam and the maintainer script only. */
   allowFile: boolean;
-  /** More `-c` settings after the hardening (the From Collie list's). */
+  /** More `-c` settings after the hardening (the official list's). */
   extraConfig?: readonly string[];
-  /** More environment after {@link gitRunEnv} (the From Collie list's). */
+  /** More environment after {@link gitRunEnv} (the official list's). */
   extraEnv?: Readonly<Record<string, string>>;
   /** An instant (epoch ms) by which every git run must have ended: each run is killed at the sooner of it and its own cap. */
   deadline?: number;
@@ -309,6 +319,34 @@ function parseBatch(bytes: Uint8Array): Map<string, Uint8Array> {
   return out;
 }
 
+/** A full commit id. */
+const FULL_COMMIT = /^[0-9a-f]{40}$/u;
+
+/** Why a ref is not one Collie fetches (a `refs/` name outside heads and tags), or null. */
+export function refNamespaceProblem(ref: string): string | null {
+  if (!ref.startsWith("refs/") || ref.startsWith("refs/heads/") || ref.startsWith("refs/tags/")) return null;
+  return `"${ref}" is not a branch or a tag. Collie fetches refs/heads/... and refs/tags/... only.`;
+}
+
+/**
+ * What the fetch names for a source's ref: `HEAD` for none, a full commit id or a full branch or tag ref as
+ * it is, and a short name as the one full tag or branch ref the repository has by exactly that name.
+ */
+async function fetchRef(source: { url: string; ref: string | null }, git: (args: readonly string[]) => Promise<GitResult>): Promise<string> {
+  const ref = source.ref;
+  if (ref === null) return "HEAD";
+  const outside = refNamespaceProblem(ref);
+  if (outside !== null) throw new FetchRefused(outside);
+  if (FULL_COMMIT.test(ref) || ref.startsWith("refs/")) return ref;
+  const wanted = [`refs/tags/${ref}`, `refs/heads/${ref}`];
+  const listed = await git(["ls-remote", "--refs", "--", source.url, ...wanted]);
+  if (listed.code !== 0 || listed.timedOut) throw new FetchRefused(`could not fetch ${source.url} at ${ref}: ${gitLine(listed)}`, "fetch");
+  const names = new Set(new TextDecoder().decode(listed.stdout).split("\n").map((line) => line.split("\t")[1]?.trim()));
+  const found = wanted.find((full) => names.has(full));
+  if (found === undefined) throw new FetchRefused(`${source.url} has no branch or tag named ${ref}`);
+  return found;
+}
+
 /** Fetch one commit of a source into `tmp` (a fresh folder) and read its tree. Runs nothing of the repository. */
 export async function fetchSource(source: { url: string; ref: string | null }, tmp: string, opts: FetchOptions): Promise<Fetched> {
   const run = opts.git ?? spawnGit;
@@ -325,10 +363,11 @@ export async function fetchSource(source: { url: string; ref: string | null }, t
   };
   const init = await git(["init", "--bare", "--quiet", "--template=", repo]);
   if (init.code !== 0) throw new FetchRefused(`could not make a temp repository: ${gitLine(init)}`, "local");
+  const want = await fetchRef(source, (args) => git([`--git-dir=${repo}`, ...args]));
   const watch = opts.maxBytes === undefined ? null : watchBytes(repo, opts.maxBytes, opts.watchMs ?? 200);
   let fetched: GitResult;
   try {
-    fetched = await git([`--git-dir=${repo}`, "fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", "--", source.url, source.ref ?? "HEAD"], undefined, watch?.signal);
+    fetched = await git([`--git-dir=${repo}`, "fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", "--", source.url, want], undefined, watch?.signal);
   } finally {
     watch?.stop();
   }
@@ -339,7 +378,7 @@ export async function fetchSource(source: { url: string; ref: string | null }, t
   if (fetched.code !== 0 || fetched.timedOut) throw new FetchRefused(`could not fetch ${source.url}${source.ref === null ? "" : ` at ${source.ref}`}: ${gitLine(fetched)}`, "fetch");
   const parsed = await git([`--git-dir=${repo}`, "rev-parse", "--verify", "--end-of-options", "FETCH_HEAD^{commit}"]);
   const commit = new TextDecoder().decode(parsed.stdout).trim();
-  if (parsed.code !== 0 || !/^[0-9a-f]{40}$/u.test(commit)) throw new FetchRefused(`could not read the fetched commit: ${gitLine(parsed)}`);
+  if (parsed.code !== 0 || !FULL_COMMIT.test(commit)) throw new FetchRefused(`could not read the fetched commit: ${gitLine(parsed)}`);
   const listed = await git([`--git-dir=${repo}`, "ls-tree", "-r", "-l", "-z", "--full-tree", commit]);
   if (listed.code !== 0 || listed.capped) throw new FetchRefused(`could not list the fetched files: ${gitLine(listed)}`);
   return {

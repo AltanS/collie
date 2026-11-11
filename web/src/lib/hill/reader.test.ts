@@ -44,6 +44,26 @@ describe("readHillDecision", () => {
     expect(readHillDecision(wire({ from: { ...from, ref: { ...ref, type: "pane" } }, replyTo: null, target: null }))).toBeNull();
   });
 
+  it("reads a group of cards whole on Collie's own decision, and drops it when a card does not read or it sits on another sender (crew slice 8)", () => {
+    const ref = { type: "proposal", id: "legs", hash: "a".repeat(64) };
+    const from = { ...asJsonObject(wire({}).from), kind: "collie", address: null, label: "Collie", ref };
+    const options = [
+      { intent: "on", label: "Switch it on" },
+      { intent: "later", label: "Not now" },
+    ];
+    const part = (text: string) => ({ view: [{ kind: "para", text }], sha256: "c".repeat(64) });
+    const group = { digest: "d".repeat(64), decline: "later", parts: [part("Card one."), part("Card two.")] };
+    const base = { from, options, replyTo: null, target: null, text: "none" };
+    expect(readHillDecision(wire({ ...base, group }))?.group).toEqual({ digest: "d".repeat(64), decline: "later", parts: [{ view: [{ kind: "para", text: "Card one." }], sha256: "c".repeat(64) }, { view: [{ kind: "para", text: "Card two." }], sha256: "c".repeat(64) }] });
+    for (const bad of [{ ...group, parts: [part("one")] }, { ...group, decline: "nope" }, { ...group, digest: "x" }, { ...group, parts: [part("one"), { view: [{ kind: "nonsense" }], sha256: "c".repeat(64) }] }]) {
+      const read = readHillDecision(wire({ ...base, group: bad }));
+      expect(read).not.toBeNull();
+      expect(read?.group).toBeUndefined();
+    }
+    // An agent's decision never carries one, whatever its body says.
+    expect(readHillDecision(wire({ options, group }))?.group).toBeUndefined();
+  });
+
   it("drops an answer or a receipt without its trick delivery, which every bridge sends", () => {
     const answered = asJsonObject(JSON.parse(JSON.stringify(hillDecision({ state: "answered", answer: { rid: "r", intent: "yes", label: "Yes", text: null, by: "phone", at: 1, delivery: "typed", trick: "none" } }))));
     expect(answered === undefined ? null : readHillDecision(answered)?.answer).toMatchObject({ trick: "none" });

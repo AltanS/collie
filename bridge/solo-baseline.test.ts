@@ -268,8 +268,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
-  // Not a crew dimension: Collie tricks' rev (M94), present only when a `<configDir>/tricks/` folder
-  // exists, so a solo body with no tricks carries no such key and no golden byte moved.
+  // Not a crew dimension: Collie tricks' rev (M94), present when a `<configDir>/tricks/` folder exists or
+  // the official list offers a trick (decided 2026-11-11: the card shows on a fresh install), and absent
+  // from these bodies, which run no tricks service, so no golden byte moved.
   tricksRev: true,
   // Not a crew dimension: the hill's revision (M96), absent until a session posts a decision on this
   // bridge, so a solo body with no decisions carries no such key and no golden byte moved.
@@ -847,7 +848,7 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",
-      // From Collie (M94): add or update a trick on the list this release carries. A SOLO route that
+      // Official tricks (M94): add or update a trick on the list this release carries. A SOLO route that
       // legitimately extends this list, named here rather than exempted: write-gated like the switch,
       // this bridge's own tricks folder only, and a crew member answers `runs-on` and fetches nothing.
       "/^\\/api\\/tricks\\/official\\/([^/]+)\\/(add|update)$/",
@@ -1011,7 +1012,7 @@ describe("solo zero-tax — routes", () => {
       // Collie tricks (M94 slice 01): the tricks list and the parts changed since a rev. A read, gated like
       // the snapshot, and its body is empty of tricks on an install with no `<configDir>/tricks/`.
       "/api/tricks",
-      // From Collie (M94): the list this release carries, each entry's state on this machine. A read, gated
+      // Official tricks (M94): the list this release carries, each entry's state on this machine. A read, gated
       // like the tricks list; it reads the list from the binary and the tricks folder, and fetches nothing.
       "/api/tricks/official",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this

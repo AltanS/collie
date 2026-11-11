@@ -3778,7 +3778,7 @@ const tricks =
       });
 tricks?.start();
 
-// The From Collie list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
+// The official list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
 // add itself, in the runner's lane. Nothing is fetched until the person taps Add.
 const officialTricks =
   tricks === undefined || cfg.tricksDir === undefined
@@ -3791,6 +3791,8 @@ const officialTricks =
         lane: (work) => tricks.officialLane(work),
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
       });
+// A fetch a stopped bridge left behind under <stateDir>/tricks/ goes now, before anyone can tap Add.
+void officialTricks?.sweep();
 
 const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer({
   cfg,

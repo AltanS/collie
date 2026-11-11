@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { originLine } from "@/lib/tricks/row-words";
 import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
@@ -134,6 +135,10 @@ describe("TricksSettingsCard: the rows", () => {
     expect(provenanceLine({ ...LEGS, provenance: { via: "folder" } }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: undefined }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: { via: "repo", repo: "o/r" } }, NOW)).toBe("From o/r");
+    // From the official repository, but not a version of the official list (a pull request's commit).
+    expect(provenanceLine({ ...LEGS, provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa", unlisted: true } }, NOW)).toBe("From AltanS/collie-tricks @ 9c41d07, not on the official list");
+    expect(originLine({ via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa", unlisted: true })).toBe("From AltanS/collie-tricks @ 9c41d07, not on the official list");
+    expect(originLine({ via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa" })).toBe("From AltanS/collie-tricks @ 9c41d07");
     expect(provenanceLine({ ...LEGS, provenance: { via: "repo" } }, NOW)).toBe("Added from a repository");
     expect(provenanceLine({ ...LEGS, provenance: { via: "agent", proposed: { by: "agent", host: "minibuch" } } }, NOW)).toBe("Proposed by an agent on minibuch");
     expect(provenanceLine({ ...LEGS, provenance: { via: "cli", proposed: { by: "terminal", host: "bluefin" } } }, NOW)).toBe("Proposed from bluefin, session not confirmed");

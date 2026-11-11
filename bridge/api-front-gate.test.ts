@@ -560,10 +560,10 @@ describe("the local credential: reads only, from this host through nothing", () 
     }
   });
 
-  // From Collie (M94): an add or an update from the list fetches code onto this machine, so it is a
+  // Official tricks (M94): an add or an update from the list fetches code onto this machine, so it is a
   // person's tap only, like the trick switch. The local credential (an agent beside the bridge can hold it)
   // is refused at the level server.ts asks for the route (pinned in bridge/tricks/units.test.ts).
-  test("an add or an update from the From Collie list with the local credential is 403", async () => {
+  test("an add or an update from the official list with the local credential is 403", async () => {
     expect(TRICKS_ROUTE_RIGHTS.officialAdd).toBe("write");
     for (const [bind, peer] of [
       [LOOPBACK_BIND, "127.0.0.1"],

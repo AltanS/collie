@@ -293,8 +293,14 @@ describe("the store", () => {
     });
     const { store: s } = store({ fetch });
     const first = s.refresh();
-    await Promise.resolve();
-    expect((await s.status()).fetching).toBe(true);
+    // refresh() reads the state folder from disk before it starts the fetch, so wait for the real condition.
+    let started = false;
+    for (let tries = 0; tries < 200 && !started; tries++) {
+      started = (await s.status()).fetching;
+      if (!started) await new Promise((r) => setTimeout(r, 5));
+    }
+    if (!started) throw new Error("the fetch never started within 200 polls of 5 ms");
+    expect(started).toBe(true);
     const second = s.refresh();
     release();
     expect((await first).outcome).toBe("fetched");

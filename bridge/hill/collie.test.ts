@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { readDecision } from "./parse.ts";
+import type { View } from "../../web/src/lib/tricks/schema.ts";
+import { groupDigest, groupPartHash } from "./group.ts";
+import { HILL_GROUP_NOT_YOURS, readAnswerRequest, readDecision, readPostFields } from "./parse.ts";
 import { memoryHillReceipts } from "./receipts.ts";
-import { HILL_ANSWER_RUNNING, HILL_NO_ANSWER_HANDLER, HillService, type HillAgentSender, type HillCollieSender, type HillCollieVerdict, type HillPostAnswer } from "./service.ts";
+import { HILL_ANSWER_RUNNING, HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_NO_ANSWER_HANDLER, hillGroupOpenAll, HillService, type HillAgentSender, type HillCollieSender, type HillCollieVerdict, type HillPostAnswer } from "./service.ts";
 import { HillStore } from "./store.ts";
 
 // COLLIE'S OWN DECISION (crew slice 3): kind `collie`, minted only by bridge code. Its answer types
@@ -234,5 +236,84 @@ describe("clearing Collie's own Decision", () => {
     expect(again.hill.clearedState(closed.id)).toBe("answered");
     const repost = again.hill.postCollie(SENDER, card(1));
     expect(repost.ok).toBe(false);
+  });
+});
+
+// A GROUP OF CARDS (crew slice 8): only Collie's own Decision carries one, through `postCollie`.
+describe("a group of cards", () => {
+  const VIEW = (n: number): View => [{ kind: "para", text: `Card ${String(n)} words.` }];
+  const GROUP = { decline: "keep", parts: [VIEW(1), VIEW(2), VIEW(3)] };
+
+  test("postCollie stores the cards with their hashes and the digest; the file reads it back whole", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hill-group-"));
+    roots.push(dir);
+    const r = rig(dir);
+    const decision = posted(r.hill.postCollie(SENDER, card(1, { group: GROUP })));
+    const group = decision.group!;
+    expect(group.parts.map((part) => part.sha256)).toEqual(group.parts.map((part) => groupPartHash(part.view)));
+    expect(group.digest).toBe(groupDigest(REF, group.parts.map((part) => part.sha256)));
+    expect(new HillStore(dir, () => 1000).get(decision.id)?.group).toEqual(group);
+  });
+
+  test("a group of one card, of nine, with a decline that is no option, or beside a view is refused", () => {
+    const r = rig();
+    for (const group of [{ ...GROUP, parts: [VIEW(1)] }, { ...GROUP, parts: Array.from({ length: 9 }, (_, i) => VIEW(i)) }, { ...GROUP, decline: "later" }]) {
+      expect(r.hill.postCollie(SENDER, card(1, { group }))).toMatchObject({ ok: false, code: "bad_body" });
+    }
+    expect(r.hill.postCollie(SENDER, card(2, { group: GROUP, view: VIEW(1) }))).toMatchObject({ ok: false, code: "bad_body" });
+  });
+
+  test("an agent's post and a trick's post carrying a group are refused", () => {
+    const r = rig();
+    expect(r.hill.post(POSTER, card(3, { group: GROUP }))).toEqual({ ok: false, code: "bad_body", error: HILL_GROUP_NOT_YOURS });
+    expect(r.hill.postDecision({ kind: "trick", trickId: "legs", trickKey: "k", label: "Legs", memberId: "m_aaaaaaaaaa" }, card(4, { group: GROUP }))).toEqual({ ok: false, code: "bad_body", error: HILL_GROUP_NOT_YOURS });
+    expect(readPostFields({ ...JSON.parse(JSON.stringify(card(5))), group: GROUP })).toEqual({ ok: false, code: "bad_body", error: HILL_GROUP_NOT_YOURS });
+    expect(readPostFields({ ...JSON.parse(JSON.stringify(card(6))), parts: [] })).toEqual({ ok: false, code: "bad_body", error: HILL_GROUP_NOT_YOURS });
+  });
+
+  test("the file drops a group on an agent's decision, and one whose card or digest does not match", () => {
+    const r = rig();
+    const decision = posted(r.hill.postCollie(SENDER, card(7, { group: GROUP })));
+    const raw = JSON.parse(JSON.stringify(decision));
+    expect(readDecision(raw, { collie: true })?.group).toEqual(decision.group);
+    const asAgent = { ...raw, from: { ...raw.from, kind: "agent", address: "local/%1#aaaa", ref: undefined } };
+    expect(readDecision(JSON.parse(JSON.stringify(asAgent)), { collie: true })).toBeNull();
+    const changed = JSON.parse(JSON.stringify(raw));
+    changed.group.parts[1].view = VIEW(9);
+    expect(readDecision(changed, { collie: true })).toBeNull();
+    const moved = JSON.parse(JSON.stringify(raw));
+    moved.group.parts.reverse();
+    expect(readDecision(moved, { collie: true })).toBeNull();
+  });
+
+  test("an answer's group fields are read strictly: a digest of 64 hex, the opened cards each once, 1 to 8", () => {
+    const base = { rid: uuid(1), node: "hill/dc_col000000001", intent: "use", value: { text: null } };
+    expect(readAnswerRequest({ ...base, group: { digest: "a".repeat(64), opened: [1, 2, 3] } })).toMatchObject({ ok: true, request: { group: { digest: "a".repeat(64), opened: [1, 2, 3] } } });
+    for (const group of [{ digest: "x", opened: [1] }, { digest: "a".repeat(64), opened: [0] }, { digest: "a".repeat(64), opened: [1, 1] }, { digest: "a".repeat(64), opened: [9] }, { digest: "a".repeat(64) }]) {
+      expect(readAnswerRequest({ ...base, group })).toEqual({ ok: false, error: "bad group" });
+    }
+    expect(readAnswerRequest(base)).toMatchObject({ ok: true });
+  });
+
+  test("the yes needs the digest and every card; keep and a dismiss need neither", async () => {
+    const r = rig();
+    const decision = posted(r.hill.postCollie(SENDER, card(8, { group: GROUP })));
+    const digest = decision.group!.digest;
+    const answer = async (rid: number, intent: string, group?: { digest: string; opened: number[] }) => {
+      const request = { rid: uuid(rid), node: `hill/${decision.id}`, intent, value: { text: null } };
+      const outcome = await r.hill.answer(group === undefined ? request : { ...request, group }, decision.id, "Pixel 9");
+      if (outcome.kind !== "receipt") throw new Error(outcome.kind);
+      return outcome.receipt;
+    };
+    expect(await answer(10, "use")).toMatchObject({ code: "rejected", reason: HILL_GROUP_OLD_APP });
+    expect(await answer(11, "use", { digest: "b".repeat(64), opened: [1, 2, 3] })).toMatchObject({ code: "rejected", reason: HILL_GROUP_CHANGED });
+    expect(await answer(12, "use", { digest, opened: [1, 3] })).toMatchObject({ code: "rejected", reason: hillGroupOpenAll(3) });
+    expect(hillGroupOpenAll(3)).toBe("Open all 3 cards first.");
+    expect(r.calls).toEqual([]);
+    expect(await answer(13, "use", { digest, opened: [3, 1, 2] })).toMatchObject({ code: "ok", state: "answered" });
+    expect(r.calls).toEqual([{ ref: REF, intent: "use" }]);
+    const other = posted(r.hill.postCollie({ ...SENDER, ref: { ...REF, id: "other" } }, card(9, { group: GROUP })));
+    const outcome = await r.hill.answer({ rid: uuid(14), node: `hill/${other.id}`, intent: "keep", value: { text: null } }, other.id, "Pixel 9");
+    expect(outcome).toMatchObject({ kind: "receipt", receipt: { code: "ok" } });
   });
 });

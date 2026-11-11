@@ -23,6 +23,8 @@ import type { HillDeps } from "./hill.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { cmdTrickGuide, trickGuide } from "./trick-guide.ts";
+import { GROUP_MASKED, GROUP_TOO_LARGE } from "../bridge/tricks/card-group.ts";
+import { TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { cmdTrickPropose, PROPOSE_UNKNOWN, proposeExit, readTrickFolder } from "./trick-propose.ts";
 import { askSocket } from "./walky.ts";
 
@@ -66,6 +68,8 @@ describe("collie trick guide", () => {
     expect(text).toContain(`at most ${String(PROPOSE_LIMITS.files)} files and 5 MB`);
     expect(text).toContain("collie trick propose <folder>");
     expect(text).toContain("Nothing runs before their yes.");
+    expect(text).toContain("a group of up to 8 cards, every line of it.");
+    expect(text).toContain("7 cards hold the code, about 6 KB each (42 KB in all).");
   });
 
   test("prints the lines, or one JSON object with the lists; needs no bridge", () => {
@@ -249,8 +253,23 @@ describe("collie trick propose, over the walky socket", () => {
   socketTest("a line longer than a walky line still arrives whole", async () => {
     const b = await bridge();
     const d = deps([walkySocketPath(b.stateDir)]);
-    expect(await cmdTrickPropose(d, [trickFolder({ "data.json": "x".repeat(WALKY_LINE_MAX * 2) })])).toBe(EXIT.OK);
+    // Collie's own helper (about 42 KB, named on card 1) and 20 KB of data: past a walky line once base64'd.
+    const data = Array.from({ length: 400 }, (_, i) => `"row ${String(i).padStart(4, "0")} of the data the program reads"`).join(",\n");
+    expect(((TRICK_HELPER.length + data.length) * 4) / 3).toBeGreaterThan(WALKY_LINE_MAX);
+    expect(await cmdTrickPropose(d, [trickFolder({ "trick.ts": TRICK_HELPER, "data.json": `[\n${data}\n]\n` })])).toBe(EXIT.OK);
     expect(b.calls).toHaveLength(1);
+  });
+
+  socketTest("a trick larger than a group of cards, or with a key in it, is refused before anything is sent (crew slice 8)", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)]);
+    const big = Array.from({ length: 900 }, (_, i) => `"row ${String(i).padStart(4, "0")} of the data the program reads, longer than a group holds"`).join(",\n");
+    expect(await cmdTrickPropose(d, [trickFolder({ "data.json": `[\n${big}\n]\n` })])).toBe(EXIT.REFUSED);
+    expect(d.io.stderr).toEqual([`propose: ${GROUP_TOO_LARGE}`]);
+    const e = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(e, ["--json", trickFolder({ "keys.ts": 'export const KEY = "sk-or-v1-your-key-here-placeholder00";\n' })])).toBe(EXIT.REFUSED);
+    expect(JSON.parse(e.io.stdout.join(""))).toEqual({ ok: false, code: "cannot_show", error: GROUP_MASKED });
+    expect(b.calls).toEqual([]);
   });
 
   socketTest("a refusal prints its words and the request id, with its exit code", async () => {

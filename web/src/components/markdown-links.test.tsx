@@ -142,3 +142,26 @@ describe("heading ids", () => {
     expect([...container.querySelectorAll("[id]")].map((el) => el.id)).toEqual(["getting-started", "usage", "usage-1"]);
   });
 });
+
+describe("the address beside a link (showLinkTargets)", () => {
+  const SAMPLE = "[the CI run](https://ci.example/run/123), https://plain.example/a and [https://good.com](https://evil.example)";
+
+  it("Chat draws the same text as before: no address beside any link", () => {
+    const { container } = render(<MarkdownText text={SAMPLE} />);
+    expect(container.querySelector('[data-slot="link-target"]')).toBeNull();
+    expect(container.textContent).toBe("the CI run, https://plain.example/a and https://good.com");
+    expect(container.querySelectorAll("a")).toHaveLength(3);
+  });
+
+  it("with the opt-in, a link whose label is not its address shows the address after it", () => {
+    const { container } = render(<MarkdownText text={SAMPLE} showLinkTargets />);
+    expect(container.textContent).toBe("the CI run (ci.example/run/123), https://plain.example/a and https://good.com (evil.example)");
+    expect(container.querySelectorAll("a")).toHaveLength(3);
+  });
+
+  it("a local link and an unsafe scheme stay as they are", () => {
+    const { container } = render(<MarkdownText text="[guide](./guide.md) and [x](javascript:alert(1))" showLinkTargets />);
+    expect(container.querySelector('[data-slot="link-target"]')).toBeNull();
+    expect(container.textContent).toBe("guide and x");
+  });
+});

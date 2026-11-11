@@ -3,12 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
+import { officialExtrasHash, trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { parseOfficialList, renderOfficialList, type OfficialEntry } from "../bridge/tricks/official.ts";
 import { parseJson } from "../web/src/lib/json.ts";
-import { LIST_FILE, parseArgs, runOfficial } from "./official-tricks.ts";
+import { LIST_FILE, parseArgs, rolled, runOfficial } from "./official-tricks.ts";
 
-// The maintainer script that keeps the From Collie list in step with the tricks repository. The
+// The maintainer script that keeps the official list in step with the tricks repository. The
 // repository is a temp git repository; the script reads it through `file://`. No network.
 
 setDefaultTimeout(30_000);
@@ -36,7 +36,10 @@ const PROGRAM = (v: string): string => `#!/bin/sh\n# ${v}\nprintf '{"v":1,"parts
 
 interface Repo {
   dir: string;
+  /** Commit the files; `origin/main` follows, as after a push and a fetch. */
   commit(files: Record<string, string>): Promise<string>;
+  /** Point `origin/main` at `sha`. */
+  pinMain(sha: string): void;
 }
 
 async function repo(): Promise<Repo> {
@@ -55,7 +58,12 @@ async function repo(): Promise<Repo> {
       }
       git(dir, ["add", "-A"], home);
       git(dir, ["commit", "-q", "-m", "c"], home);
-      return git(dir, ["rev-parse", "HEAD"], home);
+      const sha = git(dir, ["rev-parse", "HEAD"], home);
+      git(dir, ["update-ref", "refs/remotes/origin/main", sha], home);
+      return sha;
+    },
+    pinMain(sha) {
+      git(dir, ["update-ref", "refs/remotes/origin/main", sha], home);
     },
   };
 }
@@ -70,6 +78,13 @@ async function hashOf(manifest: string, program: string): Promise<string> {
   return hashed.hash;
 }
 
+/** The extras hash of a folder with no config.toml and no media/. */
+function emptyExtras(): string {
+  const none = officialExtrasHash([]);
+  if (!none.ok) throw new Error("no extras");
+  return none.hash;
+}
+
 const START: OfficialEntry = {
   id: "legs",
   name: "Legs",
@@ -78,7 +93,9 @@ const START: OfficialEntry = {
   dir: "legs",
   commit: "0".repeat(40),
   hash: "0".repeat(64),
+  extras: "0".repeat(64),
   contract: 1,
+  previous: [],
 };
 
 async function listFile(entries: OfficialEntry[]): Promise<string> {
@@ -102,7 +119,7 @@ describe.if(posix)("scripts/official-tricks.ts", () => {
     expect(run.code).toBe(0);
     expect(run.lines.at(-1)).toBe(`wrote ${file}`);
     const [entry] = await entriesOf(file);
-    expect(entry).toEqual({ ...START, name: "Legs Counter", commit: sha, hash: await hashOf(MANIFEST("Legs Counter"), PROGRAM("one")) });
+    expect(entry).toEqual({ ...START, name: "Legs Counter", commit: sha, hash: await hashOf(MANIFEST("Legs Counter"), PROGRAM("one")), extras: emptyExtras(), previous: [{ commit: START.commit, hash: START.hash }] });
     // The description is the list's own line: the manifest has none.
     expect(entry?.description).toBe("Counts legs.");
     expect(await runOfficial({ repoDir: r.dir, commit: sha, check: true, file })).toEqual({ code: 0, lines: [`ok: ${file} is in step with ${sha.slice(0, 12)}`] });
@@ -121,6 +138,62 @@ describe.if(posix)("scripts/official-tricks.ts", () => {
     expect(run.lines.some((l) => l.startsWith("legs: hash is"))).toBe(true);
     expect(run.lines.at(-1)).toContain("stale:");
     expect(await readFile(file, "utf8")).toBe(before);
+  });
+
+  test("a move to another commit keeps the old one in previous, newest first, capped, and never the current one", async () => {
+    const r = await repo();
+    const first = await r.commit({ "legs/trick.toml": MANIFEST("Legs"), "legs/program.sh": PROGRAM("one") });
+    const file = await listFile([START]);
+    expect((await runOfficial({ repoDir: r.dir, commit: first, check: false, file })).code).toBe(0);
+    const h1 = (await entriesOf(file))[0]?.hash ?? "";
+    const second = await r.commit({ "legs/program.sh": PROGRAM("two") });
+    expect((await runOfficial({ repoDir: r.dir, commit: second, check: false, file })).code).toBe(0);
+    expect((await entriesOf(file))[0]?.previous).toEqual([
+      { commit: first, hash: h1 },
+      { commit: START.commit, hash: START.hash },
+    ]);
+    // The same commit again changes nothing; a step back to the first drops it from previous.
+    expect((await runOfficial({ repoDir: r.dir, commit: second, check: true, file })).code).toBe(0);
+    expect((await runOfficial({ repoDir: r.dir, commit: first, check: false, file })).code).toBe(0);
+    expect((await entriesOf(file))[0]?.previous.map((v) => v.commit)).toEqual([second, START.commit]);
+    const many = Array.from({ length: 12 }, (_, i) => ({ commit: String(i + 1).padStart(40, "a"), hash: "c".repeat(64) }));
+    expect(rolled({ commit: first, hash: h1, previous: many.slice(0, 8) }, second)).toHaveLength(8);
+    expect(rolled({ commit: first, hash: h1, previous: many.slice(0, 8) }, second)[0]).toEqual({ commit: first, hash: h1 });
+  });
+
+  test("a commit that is not on origin/main is refused before any fetch, and the list stays as it was", async () => {
+    const r = await repo();
+    const first = await r.commit({ "legs/trick.toml": MANIFEST("Legs"), "legs/program.sh": PROGRAM("one") });
+    const side = await r.commit({ "legs/program.sh": PROGRAM("a pull request") });
+    r.pinMain(first);
+    const file = await listFile([START]);
+    const before = await readFile(file, "utf8");
+    for (const check of [false, true]) {
+      const run = await runOfficial({ repoDir: r.dir, commit: side, check, file });
+      expect(run.code).toBe(1);
+      expect(run.lines[0]).toBe(`error: ${side.slice(0, 12)} is not on origin/main of ${r.dir}: list only a commit of main (git -C ${r.dir} fetch origin first)`);
+    }
+    expect(await readFile(file, "utf8")).toBe(before);
+    expect((await runOfficial({ repoDir: r.dir, commit: first, check: false, file })).code).toBe(0);
+  });
+
+  test("the extras hash pins config.toml and media/; a log or a captures/ file in the folder stops the script", async () => {
+    const r = await repo();
+    const sha = await r.commit({ "legs/trick.toml": MANIFEST("Legs"), "legs/program.sh": PROGRAM("one"), "legs/config.toml": "rows = 8\n", "legs/media/icon.png": "png" });
+    const file = await listFile([START]);
+    expect((await runOfficial({ repoDir: r.dir, commit: sha, check: false, file })).code).toBe(0);
+    const extras = officialExtrasHash([
+      { rel: "config.toml", bytes: new TextEncoder().encode("rows = 8\n") },
+      { rel: "media/icon.png", bytes: new TextEncoder().encode("png") },
+    ]);
+    expect(extras.ok && (await entriesOf(file))[0]?.extras === extras.hash).toBe(true);
+    for (const stray of ["legs/run.log", "legs/captures/shot.png", "legs/inputs/a.md"]) {
+      const bad = await repo();
+      const at = await bad.commit({ "legs/trick.toml": MANIFEST("Legs"), "legs/program.sh": PROGRAM("one"), [stray]: "x" });
+      const run = await runOfficial({ repoDir: bad.dir, commit: at, check: false, file: await listFile([START]) });
+      expect(run.code).toBe(1);
+      expect(run.lines[0]).toContain("is neither code, config.toml nor under media/");
+    }
   });
 
   test("an uncommitted edit never reaches a hash: the script reads git, not the working tree", async () => {

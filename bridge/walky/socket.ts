@@ -148,7 +148,7 @@ export type WalkyAnswer =
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number }
   | { readonly ok: true; readonly off: boolean }
-  | { readonly ok: true; readonly agent: boolean }
+  | { readonly ok: true; readonly agent: boolean; readonly session: string; readonly paneId: string }
   | { readonly ok: true; readonly results: readonly TakeBack[] }
   // The hill (M96).
   | { readonly ok: false; readonly error: string; readonly hill: true; readonly code?: HillRefusalCode; readonly missing?: string }
@@ -245,9 +245,11 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       return { ok: true, off: service.setOff(pane, request.op === "off", "session") };
     case "pane":
       // What the asking pane runs, from the pane its markers place: an agent's session, or a bare shell.
-      // `collie trick on` refuses only for an agent (cli/trick.ts); with no markers there is no pane to say.
+      // `collie trick on` and `collie pair` refuse only for an agent (cli/trick.ts, cli/pairing.ts); with
+      // no markers there is no pane to say. `session` and `paneId` are where the bridge placed it: `pair`
+      // carries them to the audit line of the pairing its code makes.
       if (pane === null) return { ok: false, error: "needs a pane" };
-      return { ok: true, agent: pane.agent };
+      return { ok: true, agent: pane.agent, session: pane.session, paneId: pane.paneId };
     case "hill.post":
     case "hill.status":
     case "hill.withdraw":

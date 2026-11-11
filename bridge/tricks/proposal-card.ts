@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
 import { HILL_SUMMARY_MAX, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { inputsSentence, TEXT_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
-import { filesSentence, fitView, listWords, newInputs, newRights, placeWords, rightsHead, shownSentence, VERSION_NOT_SHOWN, versionTitle, WARN_VERBS } from "./version-card.ts";
+import { addedDiff, codeGroup, changeCells, filesOnCards, groupOrder, helperNote, placesTables, shippedHelpers, sizeWords, type GroupRefusal } from "./card-group.ts";
+import { bytesOf, checked, filesSentence, fitView, listWords, newInputs, newRights, placeWords, rightsHead, versionTitle, WARN_VERBS } from "./version-card.ts";
+import type { ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
 
 // THE PROPOSAL CARD (crew slice 8): one Decision of Collie's own on the lead's Hill for each trick an agent
@@ -70,6 +72,10 @@ export interface ProposalCardInput {
   crew: boolean;
   /** Whether it replaces the same session's open proposal of this id (review S2). */
   replaces?: boolean;
+  /** Each file's size in bytes, for card 1 of a group. */
+  sizes?: ReadonlyMap<string, number>;
+  /** The files that are a helper this Collie ships, with its version (card-group.ts `shippedHelpers`): named on card 1, never shown. */
+  helpers?: ReadonlyMap<string, number>;
 }
 
 /** One line of somebody else's words for a sentence: every character a card could misread as `?`, cut. */
@@ -139,39 +145,94 @@ function summaryOf(who: string, replaces: boolean, full: string, short: string):
 /** The refusal of a proposal whose facts do not fit one card (crew slice 8 review F1). */
 export const PROPOSAL_TOO_LARGE = "This trick asks for more than a card can show, so it was not proposed. Ask your person to add it on the machine.";
 
+/** A proposal's card, or why there is none: a refusal code of the propose wire and its plain words. */
+export type ProposalCardResult = { ok: true; card: Omit<HillPostInput, "requestId"> } | { ok: false; code: "card_too_large" | GroupRefusal["code"]; error: string };
+
+const TOO_LARGE_FACTS = { ok: false, code: "card_too_large", error: PROPOSAL_TOO_LARGE } as const;
+
+/** The sentence of what a trick asks for and does, after "It" or "It now also". */
+function alsoSentence(rights: readonly string[], reads: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], crew: boolean): string {
+  const also = [
+    ...(rights.length > 0 ? [`asks for ${listWords(rights)}`] : []),
+    ...(reads.length > 0 ? [crew ? "reads files in your agent sessions' folders on every machine of the crew" : "reads files in your agent sessions' folders"] : []),
+    ...warnings.map((kind) => WARN_VERBS[kind]),
+  ];
+  return also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
+}
+
+/** "It shows on 4 cards." */
+export function cardsSentence(count: number): string {
+  return `It shows on ${String(count)} cards.`;
+}
+
+/** A view checked by the schema's reader when it is within the byte cap. */
+function fitsCard(view: View): View | undefined {
+  return bytesOf(view) <= DECISION_VIEW_LIMITS.bytes ? checked(view) : undefined;
+}
+
 /**
- * The card for one proposal: title, summary, options, no recommendation, and the view. Null when its
- * facts (rights, inputs, warnings) do not fit a view: the proposal is then refused ({@link PROPOSAL_TOO_LARGE}).
+ * Card 1 of a group: who proposes, the facts in full, which card shows which file, then the author's
+ * words when they still fit (they never displace a fact). Null when the facts alone do not fit.
  */
-export function proposalCard(input: ProposalCardInput): Omit<HillPostInput, "requestId"> | null {
+function factsCard(head: readonly ViewNode[], count: number, codeCards: number, tables: readonly ViewNode[], author: readonly ViewNode[], helpers: ReadonlyMap<string, number> = new Map()): View | null {
+  // A paragraph, not a note line: it is a sentence, and a line does not wrap.
+  const helperLines = [...helpers.values()].map((version): ViewNode => ({ kind: "para", text: helperNote(version) }));
+  const facts: View = [...head, { kind: "line", text: filesOnCards(count - helpers.size, codeCards), attrs: { role: "note" } }, ...helperLines, ...tables];
+  return (author.length > 0 ? fitsCard([...facts, ...author]) : undefined) ?? fitsCard(facts) ?? null;
+}
+
+/**
+ * The card for one proposal: title, summary, options, no recommendation, and the view. A trick whose
+ * code fits one card whole gets one card, as before groups. Otherwise a group (card-group.ts): card 1 the
+ * facts, cards 2 to n every line of the code; the yes needs every card opened. Refused when the facts
+ * alone do not fit a card ({@link PROPOSAL_TOO_LARGE}), when the code needs more than 8 cards, or when a
+ * line cannot be shown as it is (card-group.ts `codeGroup`).
+ */
+export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const { manifest } = input;
   const rights = proposalRights(manifest);
   const reads = manifest.inputs ?? [];
-  const also = [
-    ...(rights.length > 0 ? [`asks for ${listWords(rights)}`] : []),
-    ...(reads.length > 0 ? [input.crew ? "reads files in your agent sessions' folders on every machine of the crew" : "reads files in your agent sessions' folders"] : []),
-    ...input.warnings.map((kind) => WARN_VERBS[kind]),
-  ];
-  const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
-  const fact = also.length > 0 ? `It ${alsoWords}.` : "It asks for no rights.";
+  const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
+  const fact = alsoWords !== "" ? `It ${alsoWords}.` : "It asks for no rights.";
   const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null)];
   const words = authorWords(manifest);
-  const shown = fitView(head, input.diff, words.length > 0 ? [{ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: words }] : []);
-  if (!shown.headFits) return null;
+  const author: ViewNode[] = words.length > 0 ? [{ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: words }] : [];
+  const shown = fitView(head, input.diff, author);
+  if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;
-  const whole = shown.view !== null && shown.shown >= total;
-  const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
   const files = total === 1 ? "It has 1 file." : `It has ${String(total)} files.`;
-  const summary = summaryOf(proposerSentence(input.proposer), input.replaces === true, `${files} ${fact}${tail}`, `${files} It asks for rights, listed below.${tail}`);
-  const card: Omit<HillPostInput, "requestId"> = {
-    title: proposalTitle(input.id),
-    summary,
-    options: [{ ...PROPOSAL_ON }, { ...PROPOSAL_LATER }],
-    text: "none",
-    priority: "today",
-    recommends: null,
-  };
-  return shown.view === null ? card : { ...card, view: shown.view };
+  const who = proposerSentence(input.proposer);
+  const base: Omit<HillPostInput, "requestId" | "summary"> = { title: proposalTitle(input.id), options: [{ ...PROPOSAL_ON }, { ...PROPOSAL_LATER }], text: "none", priority: "today", recommends: null };
+  if (total === 0 || (shown.view !== null && shown.shown >= total)) {
+    const card = { ...base, summary: summaryOf(who, input.replaces === true, `${files} ${fact}`, `${files} It asks for rights, listed below.`) };
+    return { ok: true, card: shown.view === null ? card : { ...card, view: shown.view } };
+  }
+  const helpers = input.helpers ?? new Map<string, number>();
+  const code = codeGroup(input.diff.files, manifest.run, "refuse", helpers);
+  if (!code.ok) return { ok: false, code: code.code, error: code.error };
+  const rows = groupOrder(input.diff.files, manifest.run).map((file) => ({ rel: file.rel, cells: [sizeWords(input.sizes?.get(file.rel) ?? 0)] }));
+  const first = factsCard([{ kind: "para", text: who }, ...head], total, code.cards.length, placesTables(rows, ["Size"], code.places, helpers), author, helpers);
+  if (first === null) return TOO_LARGE_FACTS;
+  const tail = ` ${cardsSentence(code.cards.length + 1)}`;
+  const summary = summaryOf(who, input.replaces === true, `${files} ${fact}${tail}`, `${files} It asks for rights, listed below.${tail}`);
+  return { ok: true, card: { ...base, summary, group: { decline: PROPOSAL_LATER.intent, parts: [first, ...code.cards] } } };
+}
+
+/** How many cards a proposal shows on, or why it cannot be proposed. */
+export type ProposalCardCount = { ok: true; cards: number } | Extract<ProposalCardResult, { ok: false }>;
+
+/**
+ * The cards a trick's folder shows on as a proposal for a new trick, or why it cannot be proposed: what
+ * `collie trick check` prints and `collie trick propose` refuses on, before anything is sent. The whole
+ * trick counts, so a version is held to the same rule; the lead counts again on its own diff. The
+ * proposer is a stand-in: the lead's sentence names the session, a few words longer.
+ */
+export function proposalCardCount(input: Pick<ProposalCardInput, "manifest" | "warnings" | "crew"> & { files: readonly Pick<ProposedFile, "rel" | "bytes">[] }): ProposalCardCount {
+  const sizes = new Map(input.files.map((file) => [file.rel, file.bytes.byteLength]));
+  const proposer: ProposerFacts = { by: "agent", host: "this machine", label: null };
+  const made = proposalCard({ id: input.manifest.id, manifest: input.manifest, proposer, diff: addedDiff(input.files), warnings: input.warnings, crew: input.crew, sizes, helpers: shippedHelpers(input.files) });
+  if (!made.ok) return made;
+  return { ok: true, cards: made.card.group?.parts.length ?? 1 };
 }
 
 /** A canonical UUID for one proposal card: the trick, the hash and the proposal's own request id. */
@@ -195,33 +256,35 @@ export interface ProposalVersionCardInput {
   crew: boolean;
   /** As {@link ProposalCardInput.replaces}. */
   replaces?: boolean;
+  /** As {@link ProposalCardInput.helpers}: a changed file that is now a helper this Collie ships. */
+  helpers?: ReadonlyMap<string, number>;
 }
 
-/** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended. Null as {@link proposalCard}. */
-export function proposalVersionCard(input: ProposalVersionCardInput): Omit<HillPostInput, "requestId"> | null {
+/** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended, one card or a group as {@link proposalCard}. */
+export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCardResult {
   const rights = newRights(input.baseManifest, input.manifest);
   const reads = newInputs(input.baseManifest, input.manifest);
-  const also = [
-    ...(rights.length > 0 ? [`asks for ${listWords(rights)}`] : []),
-    ...(reads.length > 0 ? [input.crew ? "reads files in your agent sessions' folders on every machine of the crew" : "reads files in your agent sessions' folders"] : []),
-    ...input.warnings.map((kind) => WARN_VERBS[kind]),
-  ];
-  const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
-  const fact = also.length > 0 ? `It now also ${alsoWords}.` : "It asks for no new rights.";
+  const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
+  const fact = alsoWords !== "" ? `It now also ${alsoWords}.` : "It asks for no new rights.";
   const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null)];
   const shown = fitView(head, input.diff);
-  if (!shown.headFits) return null;
+  if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;
-  const whole = shown.view !== null && shown.shown >= total;
-  const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
-  const summary = summaryOf(proposerSentence(input.proposer), input.replaces === true, `${filesSentence(total)} ${fact}${tail}`, `${filesSentence(total)} ${rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below."}${tail}`);
-  const card: Omit<HillPostInput, "requestId"> = {
-    title: versionTitle(input.id),
-    summary,
-    options: [{ ...PROPOSAL_USE }, { ...PROPOSAL_KEEP }],
-    text: "none",
-    priority: "today",
-    recommends: null,
-  };
-  return shown.view === null ? card : { ...card, view: shown.view };
+  const who = proposerSentence(input.proposer);
+  const short = rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below.";
+  const base: Omit<HillPostInput, "requestId" | "summary"> = { title: versionTitle(input.id), options: [{ ...PROPOSAL_USE }, { ...PROPOSAL_KEEP }], text: "none", priority: "today", recommends: null };
+  if (total === 0 || (shown.view !== null && shown.shown >= total)) {
+    const card = { ...base, summary: summaryOf(who, input.replaces === true, `${filesSentence(total)} ${fact}`, `${filesSentence(total)} ${short}`) };
+    return { ok: true, card: shown.view === null ? card : { ...card, view: shown.view } };
+  }
+  const changed = new Set(input.diff.files.map((file) => file.rel));
+  const helpers = new Map([...(input.helpers ?? new Map<string, number>())].filter(([rel]) => changed.has(rel)));
+  const code = codeGroup(input.diff.files, input.manifest.run, "refuse", helpers);
+  if (!code.ok) return { ok: false, code: code.code, error: code.error };
+  const rows = groupOrder(input.diff.files, input.manifest.run).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
+  const first = factsCard([{ kind: "para", text: who }, ...head], total, code.cards.length, placesTables(rows, ["Change", "Lines"], code.places, helpers), [], helpers);
+  if (first === null) return TOO_LARGE_FACTS;
+  const tail = ` ${cardsSentence(code.cards.length + 1)}`;
+  const summary = summaryOf(who, input.replaces === true, `${filesSentence(total)} ${fact}${tail}`, `${filesSentence(total)} ${short}${tail}`);
+  return { ok: true, card: { ...base, summary, group: { decline: PROPOSAL_KEEP.intent, parts: [first, ...code.cards] } } };
 }

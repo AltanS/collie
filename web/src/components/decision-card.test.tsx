@@ -5,8 +5,8 @@ import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
 import { PRESENCE_MS } from "@/components/ui/presence";
 import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
 import { HILL_ACK_MS } from "@/lib/hill/motion";
-import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
-import { hillDecision, hillReceipt, trickDecision } from "@/test/hill-fixtures";
+import type { HillDecision, HillGroupAnswer, HillReceipt } from "@/lib/hill/wire";
+import { groupDecision, hillDecision, hillReceipt, trickDecision } from "@/test/hill-fixtures";
 
 import { DecisionCard } from "./decision-card";
 import { VIEW_CAP_PX, foldCut } from "./decision-view";
@@ -17,7 +17,7 @@ import { VIEW_CAP_PX, foldCut } from "./decision-view";
 // Cases read the card through its data-slot hooks inside the render's own container (DESIGN.md §9).
 
 function renderCard(decision: HillDecision, answer: HillAnswerState = HILL_IDLE) {
-  const onSend = vi.fn<(intent: string, text: string | null) => void>();
+  const onSend = vi.fn<(intent: string, text: string | null, group?: HillGroupAnswer) => void>();
   const view = render(<DecisionCard decision={decision} answer={answer} onSend={onSend} />);
   const slot = (name: string) => view.container.querySelector<HTMLElement>(`[data-slot="${name}"]`);
   const option = (intent: string) => {
@@ -93,6 +93,23 @@ describe("the Decision card, at rest", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(link).toHaveTextContent("CI run 4821");
     expect(link).toHaveTextContent("ci.example.com");
+  });
+
+  it("shows the address beside a named link in the body, and nothing beside a bare address", () => {
+    const body = [
+      "See [the CI run](https://ci.example/run/123) and https://plain.example/a and [https://good.com](https://evil.example).",
+      "",
+      "Or [trick](https://good.com@evil.example/login).",
+    ].join("\n");
+    const { slot } = renderCard(hillDecision({ body, links: [] }));
+    fireEvent.click(slot("decision-more")!);
+    const targets = [...slot("decision-body")!.querySelectorAll('[data-slot="link-target"]')];
+    // The bare address and the link's own words are the address already; the other two name a host the label hides.
+    expect(targets.map((el) => el.textContent)).toEqual([" (ci.example/run/123)", " (evil.example)", " (evil.example/login)"]);
+    // The link's name stays its label, and the address is not tappable.
+    const named = within(slot("decision-body")!).getByRole("link", { name: "the CI run" });
+    expect(named).toHaveAttribute("href", "https://ci.example/run/123");
+    for (const el of targets) expect(el.closest("a")).toBeNull();
   });
 
   it("sets the why between muted quote marks, the marks out of the reader's way", () => {
@@ -786,5 +803,81 @@ describe("who asks, on the first line", () => {
     known.unmount();
     const unknown = render(<DecisionCard decision={trickDecision()} answer={HILL_IDLE} onSend={() => {}} trickIcon="no-such-word" />);
     expect(unknown.container.querySelector('[data-slot="decision-trick-mark"] svg')).not.toBeNull();
+  });
+});
+
+// A GROUP OF CARDS (crew slice 8): card 1 first, one card at a time, the yes after every card.
+describe("the Decision card, with a group of cards", () => {
+  afterEach(() => sessionStorage.clear());
+  const words = (container: HTMLElement) => container.querySelector('[data-slot="decision-group"] [data-slot="decision-view"]')?.textContent ?? "";
+
+  it("opens on card 1 with its position and the chip; Back is off on card 1 and Next on the last", () => {
+    const { slot, container } = renderCard(groupDecision(3));
+    expect(slot("decision-group-count")).toHaveTextContent("3 cards");
+    expect(slot("decision-group-position")).toHaveTextContent("Card 1 of 3");
+    expect(words(container)).toContain("Card 1 words.");
+    expect(slot("decision-group-back")).toBeDisabled();
+    fireEvent.click(slot("decision-group-next")!);
+    fireEvent.click(slot("decision-group-next")!);
+    expect(slot("decision-group-position")).toHaveTextContent("Card 3 of 3");
+    expect(words(container)).toContain("Card 3 words.");
+    expect(slot("decision-group-next")).toBeDisabled();
+    // Back and Next are 44px targets.
+    expect(slot("decision-group-back")!.className).toContain("h-11");
+    expect(slot("decision-group-next")!.className).toContain("h-11");
+  });
+
+  it("before the last card offers only the decline, quiet; the options come on the last card", () => {
+    const { slot, container, option } = renderCard(groupDecision(3));
+    expect(container.querySelectorAll('[data-slot="decision-option"]')).toHaveLength(1);
+    expect(option("later")).toHaveTextContent("Not now");
+    expect(container.querySelector('[data-intent="on"]')).toBeNull();
+    fireEvent.click(slot("decision-group-next")!);
+    fireEvent.click(slot("decision-group-next")!);
+    expect(option("on")).toBeEnabled();
+    expect(option("later")).toBeEnabled();
+    expect(slot("decision-group-unopened")).toBeNull();
+  });
+
+  it("the yes waits for every card: the hint and a tap for each card not opened, then it sends the digest and the cards", () => {
+    const onSend = vi.fn<(intent: string, text: string | null, group?: HillGroupAnswer) => void>();
+    const decision = groupDecision(3);
+    const view = render(<DecisionCard decision={decision} answer={HILL_IDLE} onSend={onSend} playgroundCard={3} />);
+    const at = (name: string) => view.container.querySelector<HTMLElement>(`[data-slot="${name}"]`);
+    const yes = () => view.container.querySelector<HTMLButtonElement>('[data-slot="decision-option"][data-intent="on"]')!;
+    expect(yes()).toBeDisabled();
+    expect(at("decision-group-unopened")).toHaveTextContent("Open all 3 cards first.");
+    const gotos = [...view.container.querySelectorAll<HTMLButtonElement>('[data-slot="decision-group-goto"]')];
+    expect(gotos.map((b) => b.textContent)).toEqual(["Card 1", "Card 2"]);
+    // The decline needs no card opened, and carries what was opened.
+    fireEvent.click(view.container.querySelector<HTMLButtonElement>('[data-slot="decision-option"][data-intent="later"]')!);
+    expect(onSend).toHaveBeenLastCalledWith("later", null, { digest: "d".repeat(64), opened: [3] });
+    fireEvent.click(gotos[0]!);
+    expect(at("decision-group-position")).toHaveTextContent("Card 1 of 3");
+    fireEvent.click(at("decision-group-next")!);
+    fireEvent.click(at("decision-group-next")!);
+    expect(at("decision-group-unopened")).toBeNull();
+    // "Switch it on" asks twice; the second tap sends the digest and every card.
+    vi.useFakeTimers();
+    fireEvent.click(yes());
+    act(() => vi.advanceTimersByTime(ARM_DWELL_MS + 1));
+    fireEvent.click(yes());
+    vi.useRealTimers();
+    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "d".repeat(64), opened: [1, 2, 3] });
+  });
+
+  it("opens on card 1 again when drawn again, while the cards opened stay opened for this digest", () => {
+    const decision = groupDecision(2);
+    const first = renderCard(decision);
+    fireEvent.click(first.slot("decision-group-next")!);
+    first.unmount();
+    const again = renderCard(decision);
+    expect(again.slot("decision-group-position")).toHaveTextContent("Card 1 of 2");
+    fireEvent.click(again.slot("decision-group-next")!);
+    expect(again.option("on")).toBeEnabled();
+    // Another digest is another group: nothing counts.
+    again.unmount();
+    const changed = render(<DecisionCard decision={{ ...decision, group: { ...decision.group!, digest: "e".repeat(64) } }} answer={HILL_IDLE} onSend={vi.fn()} playgroundCard={2} />);
+    expect(changed.container.querySelector('[data-slot="decision-option"][data-intent="on"]')).toBeDisabled();
   });
 });

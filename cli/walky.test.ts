@@ -19,6 +19,7 @@ import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import {
   askPaneKind,
+  askPanePlace,
   askSocket,
   cmdWalky,
   cmdWalkyCancel,
@@ -723,6 +724,21 @@ describe("reply, inbox, status, who", () => {
     const older = await olderBridge();
     expect(await askPaneKind(deps(b, inPane("%1"), { sockets: () => [older.path] }))).toBe("unknown");
     expect(await askPaneKind(deps(b, inPane("%1"), { sockets: () => [] }))).toBe("unknown");
+  });
+
+  socketTest("askPanePlace: the pane's session and id as the bridge placed them; an older bridge says unknown", async () => {
+    const b = await bridge();
+    expect(await askPanePlace(deps(b, inPane("%1")))).toEqual({ kind: "agent", session: "main", paneId: "%1" });
+    expect(await askPanePlace(deps(b))).toEqual({ kind: "unknown" });
+    expect(await askPanePlace(deps(b, inPane("%9")))).toEqual({ kind: "unknown" });
+    const older = await olderBridge();
+    expect(await askPanePlace(deps(b, inPane("%1"), { sockets: () => [older.path] }))).toEqual({ kind: "unknown" });
+    // Outside a pane no bridge is asked at all; a pane marker without its scope variable is no marker.
+    let asked = 0;
+    const counting = { ask: async () => { asked += 1; return ""; } };
+    expect(await askPanePlace(deps(b, {}, counting))).toEqual({ kind: "unknown" });
+    expect(await askPanePlace(deps(b, { HERDR_PANE_ID: "%1" }, counting))).toEqual({ kind: "unknown" });
+    expect(asked).toBe(0);
   });
 
   socketTest("who marks an off session in STATE and in --json, and tells an off asker how to turn on", async () => {

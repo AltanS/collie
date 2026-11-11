@@ -253,6 +253,52 @@ describe.if(posix)("collie trick add", () => {
     expect(branch.out.join("\n")).toContain("reaches the network");
   });
 
+  test("takes only a branch or a tag by name: a pull request's ref, or a short name git would read as one, is refused", async () => {
+    const repo = await fixtureRepo([
+      { "legs/trick.toml": txt(MANIFEST("legs")), "legs/program.sh": PROGRAM },
+      { "legs/trick.toml": txt(MANIFEST("legs")), "legs/program.sh": NETWORK_PROGRAM },
+    ]);
+    // A stranger's pull request: GitHub serves refs/pull/N/head through the repository's own URL.
+    fixtureGit(repo.bare, ["update-ref", "refs/pull/1/head", repo.shas[0] ?? ""], repo.home);
+    for (const raw of [`${repo.bare}//legs#refs/pull/1/head`, `${repo.bare}//legs#pull/1/head`, `${repo.bare}//legs#refs/remotes/x`]) {
+      const r = await rig();
+      expect(await cmdTrickAdd(r, [raw])).not.toBe(EXIT.OK);
+      expect(r.err.join("\n")).toMatch(/is not a branch or a tag|has no branch or tag named pull\/1\/head/u);
+      expect(await readdir(join(r.configDir, "tricks")).catch(() => [])).toEqual([]);
+      await expectNoLeftovers(r);
+    }
+    // A short name is looked up as exactly a tag or a branch, and the fetch names the full ref.
+    const r = await rig();
+    expect(await cmdTrickAdd(r, [`${repo.bare}//legs#main`])).toBe(EXIT.OK);
+    expect(r.gitArgs.find((a) => a.includes("fetch"))).toContain("refs/heads/main");
+    const full = await rig();
+    expect(await cmdTrickAdd(full, [`${repo.bare}//legs#refs/heads/main`])).toBe(EXIT.OK);
+  });
+
+  test("the official repository takes a branch or a tag, never a pull request's ref or a bare commit id", async () => {
+    const repo = await fixtureRepo(
+      [
+        { "legs/trick.toml": txt(MANIFEST("legs")), "legs/program.sh": PROGRAM },
+        { "legs/trick.toml": txt(MANIFEST("legs")), "legs/program.sh": NETWORK_PROGRAM },
+      ],
+      { v1: 0 },
+    );
+    fixtureGit(repo.bare, ["update-ref", "refs/pull/7/head", repo.shas[0] ?? ""], repo.home);
+    for (const raw of ["legs#refs/pull/7/head", `legs#${repo.shas[0] ?? ""}`, `legs#${repo.shas[1] ?? ""}`]) {
+      const r = await rig(repo.bare);
+      expect(await cmdTrickAdd(r, [raw])).not.toBe(EXIT.OK);
+      expect(r.err.join("\n")).toMatch(/is not a branch or a tag|not by a commit id/u);
+      expect(r.gitArgs).toEqual([]);
+    }
+    expect(parseTrickSource(`legs#${"a".repeat(40)}`)).toEqual({ error: expect.stringContaining("not by a commit id") });
+    // Another repository keeps the documented full commit id.
+    expect(parseTrickSource(`https://github.com/o/r#${"a".repeat(40)}`)).toEqual({ url: "https://github.com/o/r", ref: "a".repeat(40), subdir: null });
+    const tagged = await rig(repo.bare);
+    expect(await cmdTrickAdd(tagged, ["legs#v1"])).toBe(EXIT.OK);
+    const branch = await rig(repo.bare);
+    expect(await cmdTrickAdd(branch, ["legs#refs/heads/main"])).toBe(EXIT.OK);
+  });
+
   test("refuses a symbolic link anywhere in the trick, and leaves nothing behind", async () => {
     const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM, ".config/link": { link: "/etc/passwd" } }]);
     const r = await rig();
@@ -306,7 +352,8 @@ describe.if(posix)("collie trick add", () => {
     const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM }]);
     const r = await rig();
     expect(await cmdTrickAdd(r, [`${repo.bare}#no-such-branch`])).toBe(EXIT.FAIL);
-    expect(r.err.join("\n")).toContain("could not fetch");
+    // A short name is looked up as a tag or a branch first (fetch.ts `fetchRef`).
+    expect(r.err.join("\n")).toContain("has no branch or tag named no-such-branch");
     await expectNoLeftovers(r);
   });
 

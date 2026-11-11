@@ -6,17 +6,18 @@ import { dirname, join } from "node:path";
 
 import { parseJson, type JsonValue } from "../../web/src/lib/json.ts";
 import { parseWalkyRequest } from "../walky/parse.ts";
-import { isCodePath, trickCodeHash } from "./code-hash.ts";
+import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
-import { officialStateOf, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
+import { isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin } from "./origin.ts";
+import { caseClash } from "./proposal-install.ts";
 import { APPROVED_DIR, approvedCopyDir, switchesPath, TRICKS_DIR } from "./paths.ts";
 import { tricksOfficialRoute } from "./routes.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { parseSwitches, withSwitch, writeSwitches } from "./switches.ts";
 
-// The From Collie list (official.ts) and the add from it (official-install.ts). Every source is a bare
+// The official list (official.ts) and the add from it (official-install.ts). Every source is a bare
 // repository under the test's temp dir, reached as `file://` through the test seam: nothing here touches
 // the network. Each case runs real git a few times, so the limit is longer than the default.
 
@@ -38,7 +39,7 @@ const C1 = "1".repeat(40);
 const H1 = "a".repeat(64);
 
 function entryFields(over: Partial<Record<keyof OfficialEntry, JsonValue>> = {}) {
-  return { id: "legs", name: "Legs", description: "Counts legs.", repo: REPO, dir: "legs", commit: C1, hash: H1, contract: 1, ...over };
+  return { id: "legs", name: "Legs", description: "Counts legs.", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, contract: 1, previous: [], ...over };
 }
 const entry = (over: Partial<Record<keyof OfficialEntry, JsonValue>> = {}): JsonValue => entryFields(over);
 const listOf = (...tricks: JsonValue[]): JsonValue => ({ v: 1, tricks });
@@ -100,7 +101,14 @@ describe("the strict reader", () => {
     ["a contract this Collie does not speak", listOf(entry({ contract: 3 }))],
     ["a contract that is no whole number", listOf(entry({ contract: 1.5 }))],
     ["an unknown key", listOf({ ...entryFields(), url: REPO })],
-    ["a missing key", listOf({ id: "legs", name: "Legs", description: "x", repo: REPO, dir: "legs", commit: C1, contract: 1 })],
+    ["a missing key", listOf({ id: "legs", name: "Legs", description: "x", repo: REPO, dir: "legs", commit: C1, contract: 1, previous: [] })],
+    ["no previous", listOf({ id: "legs", name: "Legs", description: "x", repo: REPO, dir: "legs", commit: C1, hash: H1, contract: 1 })],
+    ["a previous that is no array", listOf(entry({ previous: {} }))],
+    ["a previous version with another key", listOf(entry({ previous: [{ commit: "2".repeat(40), hash: H1, ref: "main" }] }))],
+    ["a previous version with a short commit", listOf(entry({ previous: [{ commit: "2".repeat(39), hash: H1 }] }))],
+    ["the current commit as a previous version", listOf(entry({ previous: [{ commit: C1, hash: H1 }] }))],
+    ["one previous commit twice", listOf(entry({ previous: [{ commit: "2".repeat(40), hash: H1 }, { commit: "2".repeat(40), hash: H1 }] }))],
+    ["too many previous versions", listOf(entry({ previous: Array.from({ length: OFFICIAL_PREVIOUS_MAX + 1 }, (_, i) => ({ commit: String(i + 2).padStart(40, "0"), hash: H1 })) }))],
     ["one id twice", listOf(entry(), entry())],
     ["another version", { v: 2, tricks: [entry()] }],
     ["an unknown top key", { v: 1, tricks: [], more: true }],
@@ -198,6 +206,7 @@ async function rig(entries: OfficialEntry[], extra: Partial<OfficialTricksDeps> 
     if (args.includes("fetch")) await hooks.beforeFetch?.();
     return await spawnGit(args, opts);
   };
+  const held = { entries };
   const service = new TricksService({
     configDir,
     stateDir,
@@ -205,8 +214,8 @@ async function rig(entries: OfficialEntry[], extra: Partial<OfficialTricksDeps> 
     world: () => ({ machine: "desk", sessions: [], spaces: [] }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
     warn: () => {},
+    officialEntries: () => held.entries,
   });
-  const held = { entries };
   const official = new OfficialTricks({
     configDir,
     stateDir,
@@ -247,9 +256,27 @@ async function expectNoLeftovers(r: Rig): Promise<void> {
   expect(tricks.filter((n) => n.startsWith(".collie-add-") || n.startsWith(".collie-old-"))).toEqual([]);
 }
 
-/** A list entry for the fixture: its file URL, a commit, and the hash the tree's folder has. */
-function fixtureEntry(url: string, commit: string, hash: string, id = "legs"): OfficialEntry {
-  return { id, name: `Trick ${id}`, description: "Counts legs.", repo: url, dir: id, commit, hash, contract: 1 };
+/** The extras hash a folder holding `files` has (code-hash.ts `officialExtrasHash`): its config.toml and media/. */
+function extrasOf(files: Record<string, FixtureFile>): string {
+  const held = Object.entries(files).flatMap(([rel, file]) => ("text" in file ? [{ rel, bytes: new TextEncoder().encode(file.text) }] : []));
+  const extras = officialExtrasHash(held);
+  if (!extras.ok) throw new Error(`${extras.rel} is not an extra`);
+  return extras.hash;
+}
+
+/** The extras of V1 and V2 below: their config.toml. */
+const EXTRAS = extrasOf({ "config.toml": { text: "rows = 8\n" } });
+
+/** A list entry for the fixture: its file URL, a commit, and the hashes the tree's folder has. */
+function fixtureEntry(url: string, commit: string, hash: string, id = "legs", extras = EXTRAS): OfficialEntry {
+  return { id, name: `Trick ${id}`, description: "Counts legs.", repo: url, dir: id, commit, hash, extras, contract: 1, previous: [] };
+}
+
+/** The list's entry moved to another commit, as the maintainer script moves it: the old version goes first into `previous`. */
+function moveTo(was: readonly OfficialEntry[], commit: string, hash: string): OfficialEntry {
+  const old = was[0];
+  if (old === undefined) throw new Error("no entry to move");
+  return { ...old, commit, hash, previous: [{ commit: old.commit, hash: old.hash }, ...old.previous].filter((v) => v.commit !== commit) };
 }
 
 const V1 = { "legs/trick.toml": { text: MANIFEST("legs") }, "legs/program.sh": PROGRAM("one"), "legs/config.toml": { text: "rows = 8\n" }, "other/x.txt": { text: "x" } };
@@ -260,24 +287,66 @@ const V2_LEGS = { "trick.toml": V2["legs/trick.toml"], "program.sh": V2["legs/pr
 // ── states ───────────────────────────────────────────────────────────────────
 
 describe("an entry's state on this machine", () => {
-  const e = { id: "legs", repo: REPO, dir: "legs", commit: C1 };
+  const C0 = "0".repeat(40);
+  const e = { id: "legs", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, previous: [{ commit: C0, hash: "b".repeat(64) }] };
   test("absent, added, update and taken", async () => {
     const configDir = await tempDir();
     const dir = join(configDir, TRICKS_DIR, "legs");
     expect(await officialStateOf(configDir, e)).toBe("absent");
     await mkdir(dir, { recursive: true });
     expect(await officialStateOf(configDir, e)).toBe("taken");
-    const origin = { url: REPO, ref: C1, commit: C1, subdir: "legs", at: "2026-11-11T09:00:00.000Z" };
+    const origin = { url: REPO, ref: C1, commit: C1, subdir: "legs", at: "2026-11-11T09:00:00.000Z", official: true as const };
     await writeFile(join(dir, ORIGIN_FILE), renderOrigin(origin));
-    expect(await officialStateOf(configDir, e)).toBe("added");
-    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, commit: "2".repeat(40) }));
-    expect(await officialStateOf(configDir, e)).toBe("update");
+    // A version of the list by its record, and its code is the code the list names for that commit.
+    await writeFile(join(dir, "trick.toml"), MANIFEST("legs"));
+    const code = await trickCodeHash(dir);
+    if (!code.ok) throw new Error(code.reason);
+    const listed = { ...e, hash: code.hash, previous: [{ commit: C0, hash: code.hash }] };
+    expect(await officialStateOf(configDir, listed)).toBe("added");
+    // A version an earlier release listed is still the list's, and the current one is newer.
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, commit: C0 }));
+    expect(await officialStateOf(configDir, listed)).toBe("update");
+    // The same record over other code: taken, and changed.
+    expect(await officialStanding(configDir, e)).toMatchObject({ state: "taken", changed: true });
     await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, url: "https://github.com/someone/else" }));
     expect(await officialStateOf(configDir, e)).toBe("taken");
     await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, subdir: "other" }));
     expect(await officialStateOf(configDir, e)).toBe("taken");
     await writeFile(join(dir, ORIGIN_FILE), renderProposalOrigin({ by: "agent", host: "desk", label: null, at: origin.at }));
     expect(await officialStateOf(configDir, e)).toBe("taken");
+  });
+
+  test("from the repository but not from the list is taken and unlisted: a pull request's commit, a ref nobody listed, a record without `official`", async () => {
+    const configDir = await tempDir();
+    const dir = join(configDir, TRICKS_DIR, "legs");
+    await mkdir(dir, { recursive: true });
+    const origin = { url: REPO, ref: C1, commit: C1, subdir: "legs", at: "2026-11-11T09:00:00.000Z", official: true as const };
+    // `collie trick add legs#refs/pull/9/head` before the ref rule: the official repository, the folder, another commit.
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ url: REPO, ref: "refs/pull/9/head", commit: "9".repeat(40), subdir: "legs", at: origin.at }));
+    expect(await officialStanding(configDir, e)).toMatchObject({ state: "taken", unlisted: true });
+    // `official: true` written by hand does not make a commit the list never named a version of it.
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, commit: "9".repeat(40) }));
+    expect(await officialStanding(configDir, e)).toMatchObject({ state: "taken", unlisted: true });
+    // The listed commit, but added with `collie trick add` (no `official`): not from the list either.
+    const { official: _drop, ...plain } = origin;
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin(plain));
+    expect(await officialStanding(configDir, e)).toMatchObject({ state: "taken", unlisted: true });
+    const wire = await officialWire(configDir, [{ ...e, name: "Legs", description: "Counts legs.", contract: 1 }]);
+    expect(wire[0]).toMatchObject({ state: "taken", unlisted: true });
+    // Another repository's folder is taken, and not marked: it never claimed the list.
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, url: "https://github.com/someone/else" }));
+    expect(await officialStanding(configDir, e)).toMatchObject({ state: "taken", unlisted: false });
+  });
+
+  test("a trick's row is marked unlisted when its origin names an official repository and is not a version of the list", () => {
+    const list: OfficialEntry[] = [{ ...e, name: "Legs", description: "Counts legs.", contract: 1 }];
+    const at = "2026-11-11T09:00:00.000Z";
+    expect(isUnlistedOfficialOrigin(list, "legs", { url: REPO, ref: C1, commit: C1, subdir: "legs", at, official: true })).toBe(false);
+    expect(isUnlistedOfficialOrigin(list, "legs", { url: REPO, ref: C0, commit: C0, subdir: "legs", at, official: true })).toBe(false);
+    expect(isUnlistedOfficialOrigin(list, "legs", { url: REPO, ref: "refs/pull/9/head", commit: "9".repeat(40), subdir: "legs", at })).toBe(true);
+    expect(isUnlistedOfficialOrigin(list, "legs", { url: REPO, ref: null, commit: C1, subdir: "legs", at })).toBe(true);
+    expect(isUnlistedOfficialOrigin(list, "arms", { url: REPO, ref: null, commit: C1, subdir: "arms", at, official: true })).toBe(true);
+    expect(isUnlistedOfficialOrigin(list, "legs", { url: "https://github.com/o/r", ref: null, commit: C1, subdir: "legs", at })).toBe(false);
   });
 
   test.if(posix)("a link or a file by that name is taken, never followed", async () => {
@@ -355,6 +424,39 @@ describe.if(posix)("adding from the list", () => {
     expect(OFFICIAL_LINES.mismatch).toBe("The code did not match. Nothing was added.");
     expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
     expect(r.audit).toEqual([]);
+    await expectNoLeftovers(r);
+  });
+
+  test("config.toml or media/ other than the list's extras hash installs nothing; a log or a captures/ file in the folder is refused", async () => {
+    const repo = await fixtureRepo([{ ...V1, "legs/media/icon.png": { text: "png" } }]);
+    const code = await hashOf(V1_LEGS);
+    // The code hash is the list's, but the extras are not: config.toml alone, without the picture.
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", code)]);
+    expect(await r.official.install("legs", "add")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
+    expect(await readdir(join(r.configDir, TRICKS_DIR)).catch(() => [])).not.toContain("legs");
+    await expectNoLeftovers(r);
+    const right = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", code, "legs", extrasOf({ "config.toml": { text: "rows = 8\n" }, "media/icon.png": { text: "png" } }))]);
+    expect((await right.official.install("legs", "add")).status).toBe(200);
+    for (const stray of ["legs/run.log", "legs/captures/shot.png", "legs/inputs/a.md"]) {
+      const bad = await fixtureRepo([{ ...V1, [stray]: { text: "x" } }]);
+      const refused = await rig([fixtureEntry(bad.url, bad.shas[0] ?? "", code)]);
+      expect(await refused.official.install("legs", "add")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
+      expect(await readdir(join(refused.configDir, TRICKS_DIR)).catch(() => [])).not.toContain("legs");
+    }
+  });
+
+  test("names that differ only in case or Unicode form are one file on some systems: refused as a mismatch, never `exists` or a success", async () => {
+    expect(caseClash(["A.sh", "a.sh"])).toBe("a.sh");
+    expect(caseClash(["lib/x.sh", "Lib/y.sh"])).toBe("Lib/y.sh");
+    expect(caseClash(["notes", "notes/x.sh"])).toBe("notes/x.sh");
+    expect(caseClash(["caf\u00e9.sh", "cafe\u0301.sh"])).toBe("cafe\u0301.sh");
+    expect(caseClash(["x.sh", "x.sh"])).toBe("x.sh");
+    expect(caseClash(["lib/x.sh", "lib/y.sh", "trick.toml"])).toBeUndefined();
+    const repo = await fixtureRepo([{ ...V1, "legs/Helper.sh": { text: "# one\n" }, "legs/helper.sh": { text: "# two\n" } }]);
+    const files = { ...V1_LEGS, "Helper.sh": { text: "# one\n" }, "helper.sh": { text: "# two\n" } };
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(files))]);
+    expect(await r.official.install("legs", "add")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
+    expect(await readdir(join(r.configDir, TRICKS_DIR)).catch(() => [])).not.toContain("legs");
     await expectNoLeftovers(r);
   });
 
@@ -463,6 +565,55 @@ describe.if(posix)("adding from the list", () => {
     expect((await roomy.official.install("legs", "add")).status).toBe(200);
   });
 
+  test("a fresh install with no tricks folder offers the list; the first add makes the folder, and its row appears, off, with no restart", async () => {
+    const repo = await fixtureRepo([V1]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect(await stat(join(r.configDir, TRICKS_DIR)).catch(() => null)).toBeNull();
+    await r.service.refresh(true);
+    // The snapshot carries a rev, so Settings shows the Tricks card, with no trick in it yet.
+    const before = r.service.rev();
+    expect(before).toBeDefined();
+    expect((await r.service.reply(undefined)).tricks).toEqual([]);
+    expect((await r.official.reply()).tricks.map((e) => e.state)).toEqual(["absent"]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    expect(((await stat(join(r.configDir, TRICKS_DIR))).mode & 0o777).toString(8)).toBe("700");
+    expect(r.service.rev()).not.toBe(before);
+    expect((await r.service.reply(undefined)).tricks.find((t) => t.id === "legs")).toMatchObject({ on: false });
+    // An empty list and no folder: no rev, so no card, as before.
+    const none = await rig([]);
+    await none.service.refresh(true);
+    expect(none.service.rev()).toBeUndefined();
+    // A crew member runs no tricks: no folder means no card there, list or not.
+    const member = new TricksService({
+      configDir: await tempDir(),
+      stateDir: await tempDir(),
+      memberId: "minibuch",
+      world: () => ({ machine: "desk", sessions: [], spaces: [] }),
+      env: { PATH: process.env.PATH ?? "" },
+      warn: () => {},
+      officialEntries: () => r.entries,
+      runsOn: () => ({ lead: "desk" }),
+    });
+    await member.refresh(true);
+    expect(member.rev()).toBeUndefined();
+  });
+
+  test("a fetch folder a stopped bridge left behind goes at the next start; nothing else does", async () => {
+    const r = await rig([fixtureEntry("file:///nowhere", "1".repeat(40), H1)]);
+    const root = join(r.stateDir, TRICKS_DIR);
+    await mkdir(join(root, ".fetch-official-abc123", "repo.git", "objects"), { recursive: true });
+    await writeFile(join(root, ".fetch-official-abc123", "repo.git", "objects", "pack"), "half a pack");
+    await mkdir(join(root, ".fetch-official-def456"));
+    // Not an official fetch: a `collie trick add` running now, and a trick's own state folder.
+    await mkdir(join(root, ".fetch-cli1"));
+    await mkdir(join(root, "legs"));
+    expect(await r.official.sweep()).toBe(2);
+    expect((await readdir(root)).toSorted()).toEqual([".fetch-cli1", "legs"]);
+    // No tricks state folder at all: nothing to do.
+    const empty = await rig([]);
+    expect(await empty.official.sweep()).toBe(0);
+  });
+
   test("folderBytes counts by lstat, never through a link, and stops once past the cap", async () => {
     const dir = await tempDir();
     await writeFile(join(dir, "a"), "x".repeat(1000));
@@ -496,7 +647,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
     expect((await r.official.install("legs", "add")).status).toBe(200);
     await writeFile(join(trickDir(r, "legs"), "config.toml"), "rows = 3\n");
-    r.entries = [fixtureEntry(repo.url, repo.shas[1] ?? "", await hashOf(V2_LEGS))];
+    r.entries = [moveTo(r.entries, repo.shas[1] ?? "", await hashOf(V2_LEGS))];
     expect((await r.official.reply()).tricks.map((t) => t.state)).toEqual(["update"]);
     expect(await r.official.install("legs", "add")).toMatchObject({ status: 409, body: { error: "added" } });
     expect(await r.official.install("legs", "update")).toEqual({ status: 200, body: { id: "legs", state: "added" } });
@@ -507,7 +658,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     await expectNoLeftovers(r);
   });
 
-  test("off: only code moves; media/, captures/, inputs/, logs, dot files and config.toml stay untouched, and a code edit is replaced", async () => {
+  test("off: only code moves; media/, captures/, inputs/, logs, dot files and config.toml stay untouched, and code the person never touched is replaced", async () => {
     // The new version brings a picture and a config.toml of its own: neither is taken.
     const V2_MORE = { ...V2, "legs/media/new.png": { text: "theirs-new" }, "legs/lib/util.sh": { text: "# util v2\n" } };
     const V1_MORE = { ...V1, "legs/lib/util.sh": { text: "# util v1\n" }, "legs/old.sh": { text: "# goes\n" } };
@@ -518,7 +669,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     expect((await r.official.install("legs", "add")).status).toBe(200);
     const dir = trickDir(r, "legs");
     // The person's own: settings, pictures, captures, inputs, a log at the top and one inside a code folder,
-    // a dot file, and an edit of a code file.
+    // and a dot file. None of them is code, so the folder's code is still the code Collie wrote.
     await writeFile(join(dir, "config.toml"), "rows = 3\n");
     await mkdir(join(dir, "media"), { recursive: true });
     await writeFile(join(dir, "media", "mine.png"), "mine");
@@ -529,8 +680,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     await writeFile(join(dir, "run.log"), "log");
     await writeFile(join(dir, "lib", "debug.log"), "deep log");
     await writeFile(join(dir, ".mine"), "a dot file Collie does not know");
-    await writeFile(join(dir, "program.sh"), "#!/bin/sh\n# my edit\n");
-    r.entries = [fixtureEntry(repo.url, repo.shas[1] ?? "", await hashOf(legsOf(V2_MORE)))];
+    r.entries = [moveTo(r.entries, repo.shas[1] ?? "", await hashOf(legsOf(V2_MORE)))];
     expect(await r.official.install("legs", "update")).toEqual({ status: 200, body: { id: "legs", state: "added" } });
     const read = async (rel: string): Promise<string | null> => await readFile(join(dir, rel), "utf8").catch(() => null);
     expect(await read("config.toml")).toBe("rows = 3\n");
@@ -541,7 +691,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     expect(await read("run.log")).toBe("log");
     expect(await read("lib/debug.log")).toBe("deep log");
     expect(await read(".mine")).toBe("a dot file Collie does not know");
-    // Code: the new version's, the person's edit replaced, a file the new version dropped removed.
+    // Code: the new version's, and a file the new version dropped removed: both were Collie's.
     expect(await read("program.sh")).toContain("# two");
     expect(await read("lib/util.sh")).toBe("# util v2\n");
     expect(await read("old.sh")).toBeNull();
@@ -568,7 +718,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     await mkdir(join(trickDir(r, "legs"), "notes"));
     await writeFile(join(trickDir(r, "legs"), "notes", "index.sh.log"), "mine");
     const V2_DIR_LEGS = { "trick.toml": V2["legs/trick.toml"], "program.sh": V2["legs/program.sh"], "notes/index.sh": { text: "# a code folder now\n" } };
-    r.entries = [fixtureEntry(repo.url, repo.shas[1] ?? "", await hashOf(V2_DIR_LEGS))];
+    r.entries = [moveTo(r.entries, repo.shas[1] ?? "", await hashOf(V2_DIR_LEGS))];
     // The log inside notes/ is the person's; the new code's notes/index.sh beside it is fine.
     expect((await r.official.install("legs", "update")).status).toBe(200);
     expect(await readFile(join(trickDir(r, "legs"), "notes", "index.sh.log"), "utf8")).toBe("mine");
@@ -578,7 +728,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     expect((await blocked.official.install("legs", "add")).status).toBe(200);
     await writeFile(join(trickDir(blocked, "legs"), "run.log"), "mine");
     const V3_LEGS = { "trick.toml": V2["legs/trick.toml"], "program.sh": V2["legs/program.sh"], "run.log/x.sh": { text: "# never\n" } };
-    blocked.entries = [fixtureEntry(repo3.url, repo3.shas[1] ?? "", await hashOf(V3_LEGS))];
+    blocked.entries = [moveTo(blocked.entries, repo3.shas[1] ?? "", await hashOf(V3_LEGS))];
     const answer = await blocked.official.install("legs", "update");
     expect(answer).toEqual({ status: 409, body: { error: "blocked", message: "Your own files block it. Nothing was changed." } });
     expect(OFFICIAL_LINES.blocked).toBe("Your own files block it. Nothing was changed.");
@@ -601,7 +751,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     const official = new OfficialTricks({ configDir, stateDir, env: { PATH: process.env.PATH ?? "" }, entries: () => held.entries, lane: (w) => service.officialLane(w), allowFile: true, now: () => clock.t });
     expect((await official.install("legs", "add")).status).toBe(200);
     expect((await service.setSwitch("bluefin", "legs", true)).status).toBe(200);
-    held.entries = [fixtureEntry(repo.url, repo.shas[1] ?? "", h2)];
+    held.entries = [moveTo(held.entries, repo.shas[1] ?? "", h2)];
     expect((await official.install("legs", "update")).status).toBe(200);
     // The folder settles, then the runner takes its snapshot: the row carries the waiting version.
     for (const step of [1, PENDING_SETTLE_MS + 1]) {
@@ -613,17 +763,95 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     // Still the approved version: nothing was approved by the update.
     expect(parseSwitches(await readFile(switchesPath(stateDir), "utf8")).switches.on.get("legs")?.hash).toBe(h1);
     // A list with the older commit again is an update like any other difference.
-    held.entries = [fixtureEntry(repo.url, repo.shas[0] ?? "", h1)];
+    held.entries = [moveTo(held.entries, repo.shas[0] ?? "", h1)];
     expect((await official.reply()).tricks.map((t) => t.state)).toEqual(["update"]);
     expect((await official.install("legs", "update")).status).toBe(200);
     expect(await readFile(join(configDir, TRICKS_DIR, "legs", "program.sh"), "utf8")).toContain("# one");
+  });
+
+  test("the row of a trick from the list's repository says unlisted once its record is not a version of the list", async () => {
+    const repo = await fixtureRepo([V1, V2]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    await r.service.refresh(true);
+    const listed = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    expect(listed?.provenance).toMatchObject({ via: "repo", sha: repo.shas[0] });
+    expect(listed?.provenance?.unlisted).toBeUndefined();
+    // The same folder from another ref of the repository (a pull request's), as `collie trick add` writes it.
+    const origin = parseOrigin(await readFile(join(trickDir(r, "legs"), ORIGIN_FILE), "utf8"));
+    if (origin === null) throw new Error("no origin");
+    await writeFile(join(trickDir(r, "legs"), ORIGIN_FILE), renderOrigin({ url: origin.url, ref: "refs/pull/3/head", commit: repo.shas[1] ?? "", subdir: "legs", at: origin.at }));
+    await r.service.refresh(true);
+    const unlisted = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    expect(unlisted?.provenance).toMatchObject({ via: "repo", sha: repo.shas[1], unlisted: true });
+    expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "taken", unlisted: true });
+    expect(await r.official.install("legs", "update")).toMatchObject({ status: 409, body: { error: "taken" } });
+  });
+
+  test("an edit of a code file, or a file the person added, refuses the update: changed, nothing moves or goes", async () => {
+    const repo = await fixtureRepo([V1, V2]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    r.entries = [moveTo(r.entries, repo.shas[1] ?? "", await hashOf(V2_LEGS))];
+    expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "update" });
+    const dir = trickDir(r, "legs");
+    for (const [rel, text] of [["program.sh", "#!/bin/sh\n# my edit\n"], ["notes.txt", "my notes"]] as const) {
+      const before = rel === "program.sh" ? await readFile(join(dir, rel), "utf8") : null;
+      await writeFile(join(dir, rel), text);
+      expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "taken", changed: true });
+      expect(await r.official.install("legs", "update")).toEqual({ status: 409, body: { error: "changed", message: OFFICIAL_LINES.changed } });
+      expect(await readFile(join(dir, rel), "utf8")).toBe(text);
+      expect(parseOrigin(await readFile(join(dir, ORIGIN_FILE), "utf8"))?.commit).toBe(repo.shas[0]);
+      if (before === null) await rm(join(dir, rel));
+      else await writeFile(join(dir, rel), before);
+    }
+    expect(OFFICIAL_LINES.changed).toBe("You edited its files. Update it on the machine.");
+    // Put back as Collie wrote it, the update runs.
+    expect(await r.official.install("legs", "update")).toEqual({ status: 200, body: { id: "legs", state: "added" } });
+    await expectNoLeftovers(r);
+  });
+
+  test("a forged record: `official: true` written by hand over a hand-made trick is taken, or a refused update", async () => {
+    const repo = await fixtureRepo([V1, V2]);
+    const h1 = await hashOf(V1_LEGS);
+    const r = await rig([moveTo([fixtureEntry(repo.url, repo.shas[0] ?? "", h1)], repo.shas[1] ?? "", await hashOf(V2_LEGS))]);
+    const dir = trickDir(r, "legs");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "trick.toml"), MANIFEST("legs"));
+    await writeFile(join(dir, "program.sh"), "#!/bin/sh\n# hand-made\n", { mode: 0o755 });
+    await writeFile(join(dir, "mine.txt"), "mine");
+    const forged = { url: repo.url, ref: repo.shas[0] ?? "", subdir: "legs", at: "2026-11-11T09:00:00.000Z", official: true as const };
+    // At a commit the list never named: taken, unlisted.
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...forged, commit: "9".repeat(40) }));
+    expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "taken", unlisted: true });
+    expect(await r.official.install("legs", "update")).toMatchObject({ status: 409, body: { error: "taken" } });
+    // At a listed commit: the code is not the list's, so taken and changed, and the update is refused.
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...forged, commit: repo.shas[0] ?? "" }));
+    expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "taken", changed: true });
+    expect(await r.official.install("legs", "update")).toMatchObject({ status: 409, body: { error: "changed" } });
+    expect(await readFile(join(dir, "program.sh"), "utf8")).toContain("# hand-made");
+    expect(await readFile(join(dir, "mine.txt"), "utf8")).toBe("mine");
+    expect(r.gitArgs).toEqual([]);
+  });
+
+  test("a new version's name that differs only in case from an entry the person keeps refuses the update: blocked", async () => {
+    const V2_CASE = { ...V2, "legs/MEDIA/run.sh": { text: "# lands in media/ on a case-insensitive disk\n" } };
+    const repo = await fixtureRepo([V1, V2_CASE]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    await mkdir(join(trickDir(r, "legs"), "media"));
+    await writeFile(join(trickDir(r, "legs"), "media", "mine.png"), "mine");
+    r.entries = [moveTo(r.entries, repo.shas[1] ?? "", await hashOf({ ...V2_LEGS, "MEDIA/run.sh": V2_CASE["legs/MEDIA/run.sh"] }))];
+    expect(await r.official.install("legs", "update")).toEqual({ status: 409, body: { error: "blocked", message: OFFICIAL_LINES.blocked } });
+    expect(await readFile(join(trickDir(r, "legs"), "program.sh"), "utf8")).toContain("# one");
+    expect(await readdir(join(trickDir(r, "legs"), "media"))).toEqual(["mine.png"]);
   });
 
   test("an update whose hash does not match changes nothing", async () => {
     const repo = await fixtureRepo([V1, V2]);
     const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
     expect((await r.official.install("legs", "add")).status).toBe(200);
-    r.entries = [fixtureEntry(repo.url, repo.shas[1] ?? "", H1)];
+    r.entries = [moveTo(r.entries, repo.shas[1] ?? "", H1)];
     expect(await r.official.install("legs", "update")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.updateMismatch } });
     expect(await readFile(join(trickDir(r, "legs"), "program.sh"), "utf8")).toContain("# one");
     expect(parseOrigin(await readFile(join(trickDir(r, "legs"), ORIGIN_FILE), "utf8"))?.commit).toBe(repo.shas[0]);
@@ -671,12 +899,24 @@ describe.if(posix)("a git run killed at its time cap", () => {
     // writes the helper's pid, and waits. The run is killed at 300 ms; the helper must be gone too.
     const bin = await tempDir();
     const pidFile = join(bin, "helper.pid");
-    await writeFile(join(bin, "git"), `#!/bin/sh\nsleep 30 &\necho $! > "${pidFile}"\nwait\n`);
+    const groupFile = join(bin, "groups");
+    // It also writes its own pid, its process group, and the helper's group: `detached: true` in Bun's spawn
+    // makes git the leader of a new group (its group id is its pid), and a helper git starts without a
+    // setpgid of its own (as git starts `git-remote-https`) stays in that group, so the group kill reaches it.
+    await writeFile(
+      join(bin, "git"),
+      `#!/bin/sh\nsleep 30 &\nhelper=$!\necho $helper > "${pidFile}"\necho "$$ $(ps -o pgid= -p $$) $(ps -o pgid= -p $helper)" > "${groupFile}"\nwait\n`,
+    );
     await chmod(join(bin, "git"), 0o755);
-    const run = await spawnGit(["fetch"], { cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` }, timeoutMs: 300 });
+    const run = await spawnGit(["fetch"], { cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` }, timeoutMs: 1_000 });
     expect(run.timedOut).toBe(true);
     const pid = Number((await readFile(pidFile, "utf8")).trim());
     expect(pid).toBeGreaterThan(0);
+    const [gitPid, gitGroup, helperGroup] = (await readFile(groupFile, "utf8")).trim().split(/\s+/u).map(Number);
+    expect(gitGroup).toBe(gitPid);
+    expect(helperGroup).toBe(gitPid);
+    // Not the test runner's own group: a kill of git's group never reaches the bridge.
+    expect(gitGroup).not.toBe(Number(Bun.spawnSync(["ps", "-o", "pgid=", "-p", String(process.pid)]).stdout.toString().trim()));
     // Give the kernel a moment to reap; then the helper's pid answers no signal.
     let alive = true;
     for (let i = 0; i < 20 && alive; i += 1) {

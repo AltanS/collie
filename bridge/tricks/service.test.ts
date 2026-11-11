@@ -142,14 +142,24 @@ function factsOf(spec: RunSpec | undefined): TrickFacts {
 }
 
 describe("zero tricks", () => {
-  test("no folder: no rev, an empty reply, no log line, no file", async () => {
-    const r = await rig([exited(belt("x"))]);
+  test("no folder and no official list: no rev, an empty reply, no log line, no file", async () => {
+    const r = await rig([exited(belt("x"))], { officialEntries: () => [] });
     r.service.noteWatched();
     await r.service.refresh(true);
     await r.service.tick();
     expect(r.service.rev()).toBeUndefined();
     expect(await r.service.reply(undefined)).toEqual({ rev: 1000, tricks: [], parts: [], present: [] });
     expect(r.warnings).toEqual([]);
+    expect(await readdir(r.stateDir)).toEqual([]);
+    expect(r.specs).toEqual([]);
+  });
+
+  test("no folder, but the list this release carries offers tricks: a rev, so the card shows the list; still no file", async () => {
+    const r = await rig([exited(belt("x"))]);
+    await r.service.refresh(true);
+    await r.service.tick();
+    expect(r.service.rev()).toBe(1000);
+    expect((await r.service.reply(undefined)).tricks).toEqual([]);
     expect(await readdir(r.stateDir)).toEqual([]);
     expect(r.specs).toEqual([]);
   });
@@ -1068,7 +1078,8 @@ describe("warnings at the switch (review 15)", () => {
     await writeFile(join(dir, ".collie-origin.json"), JSON.stringify({ v: 1, url: "https://github.com/AltanS/collie-tricks", ref: null, commit, subdir: "legs", at: "2026-11-10T09:41:00.000Z" }));
     const row = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
     expect(row && "warnings" in row).toBe(false);
-    expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit });
+    // The official repository at a commit the official list never named: the row must not read as the list.
+    expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit, unlisted: true });
   });
 });
 

@@ -3100,23 +3100,23 @@ export async function switchTrick(host: string, trick: string, on: boolean): Pro
   return info;
 }
 
-/** How long the phone waits for an add from the From Collie list: the bridge's own two-minute cap, and a margin. */
+/** How long the phone waits for an add from the official list: the bridge's own two-minute cap, and a margin. */
 export const OFFICIAL_ADD_TIMEOUT_MS = 130_000;
 
 /**
- * The From Collie list (`GET /api/tricks/official`): the official tricks this Collie release can add, each
+ * The official list (`GET /api/tricks/official`): the official tricks this Collie release can add, each
  * with its state on this machine. A read of the bridge's own list and folder; it fetches nothing. A body of
  * another shape throws, so the card draws no section rather than a half one.
  */
 export async function fetchOfficialTricks(signal?: AbortSignal): Promise<OfficialTricksReply> {
   const body = await req<JsonValue>("/api/tricks/official", { signal, timeoutMs: GET_TIMEOUT_MS });
   const reply = readOfficialTricksReply(body);
-  if (reply === undefined) throw new Error("/api/tricks/official answered with a body that is not the From Collie list");
+  if (reply === undefined) throw new Error("/api/tricks/official answered with a body that is not the official list");
   return reply;
 }
 
 /**
- * Add a trick from the From Collie list, or update one added from it: `POST
+ * Add a trick from the official list, or update one added from it: `POST
  * /api/tricks/official/<id>/add` or `/update` with `{}`. The bridge fetches the commit the list names,
  * checks the code, and installs it off. Answers `{ id, state }`; a refusal throws with its status and its
  * `error` (`unreachable`, `mismatch`, `busy`, `taken`, ...), which the card turns into one status line.

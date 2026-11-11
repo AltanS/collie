@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { devNull } from "node:os";
 import { join } from "node:path";
 
 import type { OfficialState, OfficialTricksReply, TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
-import { isCodePath, trickCodeHash } from "./code-hash.ts";
+import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
-import { officialStateOf, officialWire, shippedOfficialList, type OfficialEntry } from "./official.ts";
+import { officialStanding, officialStateOf, officialWire, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
 import { renderOrigin } from "./origin.ts";
 import { tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { replaceCode, writeNewTrick, type ProposalWrite } from "./proposal-install.ts";
@@ -26,6 +26,8 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 //      is read from it. The commit git resolved must be the listed one.
 //   2. READ the one folder by fetch.ts `readCandidate`: no link, no submodule, regular files only, 300 files,
 //      5 MB, 8 levels, safe names, a manifest the strict reader takes, and its id must be the entry's.
+//      The files beside the code that an add installs (`config.toml`, `media/`) must hash to the entry's
+//      `extras` (code-hash.ts `officialExtrasHash`); any other file the code hash leaves out refuses it.
 //   3. HASH what would land: the files are written into a staged sibling in the tricks folder and hashed by
 //      code-hash.ts `trickCodeHash`, the hash a switch approves. Another hash than the list's removes the
 //      stage and answers "The code did not match. Nothing was added."
@@ -55,13 +57,16 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 export const OFFICIAL_ADD_TIMEOUT_MS = 120_000;
 
 /**
- * The most bytes a From Collie fetch may bring into its temp repository: one commit at depth 1. The tricks
+ * The most bytes an official fetch may bring into its temp repository: one commit at depth 1. The tricks
  * themselves are capped at 5 MB (fetch.ts `ADD_LIMITS.bytes`); the rest is room for the other folders of
  * the repository at that commit.
  */
 export const OFFICIAL_FETCH_BYTES_MAX = 20 * 1024 * 1024;
 
-/** The `-c` settings a From Collie fetch adds to fetch.ts's hardening. */
+/** The name every official temp folder under `<stateDir>/tricks/` starts with. */
+export const OFFICIAL_FETCH_PREFIX = ".fetch-official-";
+
+/** The `-c` settings an official fetch adds to fetch.ts's hardening. */
 export const OFFICIAL_GIT: readonly string[] = ["http.followRedirects=false", "credential.helper="];
 
 /** The plain refusals, as the bridge says them; the phone says them in its own words by `error`. */
@@ -71,6 +76,7 @@ export const OFFICIAL_LINES = {
   updateUnreachable: "GitHub did not answer. Nothing was changed.",
   updateMismatch: "The code did not match. Nothing was changed.",
   blocked: "Your own files block it. Nothing was changed.",
+  changed: "You edited its files. Update it on the machine.",
   busy: "Collie is adding another trick. Try again in a moment.",
   taken: "A trick with this name is already here.",
   added: "This trick is already added.",
@@ -83,7 +89,7 @@ export type OfficialAnswer =
   | { status: 200; body: { id: string; state: OfficialState } }
   | { status: 400; body: { error: "official-invalid" } }
   | { status: 404; body: { error: "unknown-official" } }
-  | { status: 409; body: { error: "runs-on" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked"; message: string } }
+  | { status: 409; body: { error: "runs-on" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked" | "changed"; message: string } }
   | { status: 422; body: { error: "mismatch" | "too-large"; message: string } }
   | { status: 502; body: { error: "unreachable"; message: string } }
   | { status: 500; body: { error: "failed"; message: string } };
@@ -146,7 +152,7 @@ export async function candidateHash(candidate: Candidate, dir: string): Promise<
   return hashed.hash;
 }
 
-/** The fetch options of a From Collie fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline. */
+/** The fetch options of an official fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline. */
 export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git" | "allowFile" | "now" | "maxBytes">, deadline: number): FetchOptions {
   const opts: FetchOptions = {
     env: deps.env,
@@ -172,9 +178,23 @@ export class OfficialTricks implements OfficialTricksSurface {
     if (this.deps.entries !== undefined) return this.deps.entries();
     const list = shippedOfficialList();
     if (list.ok) return list.entries;
-    if (!this.warned) (this.deps.warn ?? ((line) => console.warn(`[tricks] ${line}`)))(`the From Collie list is refused, so it offers nothing: ${list.reason}`);
+    if (!this.warned) (this.deps.warn ?? ((line) => console.warn(`[tricks] ${line}`)))(`the official list is refused, so it offers nothing: ${list.reason}`);
     this.warned = true;
     return [];
+  }
+
+  /**
+   * Remove the temp folders a bridge that stopped mid-fetch left under `<stateDir>/tricks/` (a crash, a kill,
+   * a power cut). Run once at bridge start; while an add or update runs it leaves its folder alone. Only names
+   * that start with {@link OFFICIAL_FETCH_PREFIX}; `rm` removes a link itself, never what it points at.
+   */
+  async sweep(): Promise<number> {
+    if (this.busy) return 0;
+    const root = tricksStateDir(this.deps.stateDir);
+    const names = await readdir(root).catch(() => []);
+    const stale = names.filter((name) => name.startsWith(OFFICIAL_FETCH_PREFIX));
+    for (const name of stale) await rm(join(root, name), { recursive: true, force: true }).catch(() => {});
+    return stale.length;
   }
 
   async reply(): Promise<OfficialTricksReply> {
@@ -192,13 +212,13 @@ export class OfficialTricks implements OfficialTricksSurface {
     this.busy = true;
     let fetchDir: string | null = null;
     try {
-      const wrong = stateRefusal(await officialStateOf(this.deps.configDir, entry), mode);
+      const wrong = stateRefusal(await officialStanding(this.deps.configDir, entry), mode);
       if (wrong !== null) return wrong;
       const now = this.deps.now ?? Date.now;
       const deadline = now() + (this.deps.timeoutMs ?? OFFICIAL_ADD_TIMEOUT_MS);
       const root = tricksStateDir(this.deps.stateDir);
       await mkdir(root, { recursive: true, mode: 0o700 });
-      fetchDir = await mkdtemp(join(root, ".fetch-official-"));
+      fetchDir = await mkdtemp(join(root, OFFICIAL_FETCH_PREFIX));
       const candidate = await this.fetch(entry, fetchDir, mode, deadline);
       if (now() > deadline) return unreachable(mode);
       const lane = this.deps.lane ?? (async <T>(work: () => Promise<T>) => await work());
@@ -206,7 +226,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     } catch (err) {
       if (err instanceof Stop) return err.answer;
       const message = err instanceof Error ? err.message : String(err);
-      this.deps.warn?.(`${id}: the From Collie ${mode} failed: ${message}`);
+      this.deps.warn?.(`${id}: the official ${mode} failed: ${message}`);
       return { status: 500, body: { error: "failed", message: `The trick could not be ${mode === "add" ? "added" : "updated"}. Nothing was changed.` } };
     } finally {
       if (fetchDir !== null) await rm(fetchDir, { recursive: true, force: true }).catch(() => {});
@@ -216,22 +236,34 @@ export class OfficialTricks implements OfficialTricksSurface {
 
   /** Steps 1 and 2: the fetch and the folder, each refusal as its answer. */
   private async fetch(entry: OfficialEntry, fetchDir: string, mode: "add" | "update", deadline: number): Promise<Candidate> {
+    let candidate: Candidate;
     try {
-      return await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline));
+      candidate = await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline));
     } catch (err) {
       if (!(err instanceof FetchRefused)) throw err;
-      this.deps.warn?.(`${entry.id}: the From Collie fetch was refused (${err.step}): ${err.message}`);
+      this.deps.warn?.(`${entry.id}: the official fetch was refused (${err.step}): ${err.message}`);
       if (err.step === "fetch") throw new Stop(unreachable(mode));
       if (err.step === "local") throw err;
       // More than a listed commit can be: the same answer class as a mismatch, with its own code.
       if (err.step === "size") throw new Stop({ status: 422, body: { error: "too-large", message: mode === "add" ? OFFICIAL_LINES.mismatch : OFFICIAL_LINES.updateMismatch } });
       throw new Stop(mismatch(mode));
     }
+    // An add writes config.toml and media/ too, which the code hash leaves out: the extras hash pins them.
+    // An update takes only code, so it has nothing of them to check.
+    if (mode === "add") {
+      const extras = officialExtrasHash(candidate.files);
+      if (!extras.ok || extras.hash !== entry.extras) {
+        this.deps.warn?.(`${entry.id}: the official add was refused: ${extras.ok ? "the extras hash differs from the list's" : `${extras.rel} is neither code, config.toml nor under media/`}`);
+        throw new Stop(mismatch(mode));
+      }
+    }
+    return candidate;
   }
 
   /** Steps 3 and 4, in the runner's lane: the state again, then the staged write held to the list's hash. */
   private async write(entry: OfficialEntry, candidate: Candidate, mode: "add" | "update"): Promise<OfficialAnswer> {
-    const again = stateRefusal(await officialStateOf(this.deps.configDir, entry), mode);
+    // Again in the lane, the code hash included: a file changed during the fetch stops the update here.
+    const again = stateRefusal(await officialStanding(this.deps.configDir, entry), mode);
     if (again !== null) return again;
     const root = tricksConfigDir(this.deps.configDir);
     const at = new Date((this.deps.now ?? Date.now)()).toISOString();
@@ -250,7 +282,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     if (!written.ok && written.code === "exists") return { status: 409, body: { error: "taken", message: OFFICIAL_LINES.taken } };
     if (!written.ok && written.code === "blocked") return { status: 409, body: { error: "blocked", message: OFFICIAL_LINES.blocked } };
     if (!written.ok) {
-      this.deps.warn?.(`${entry.id}: the From Collie ${mode} could not write: ${written.reason}`);
+      this.deps.warn?.(`${entry.id}: the official ${mode} could not write: ${written.reason}`);
       return { status: 500, body: { error: "failed", message: `The trick could not be ${mode === "add" ? "added" : "updated"}. Nothing was changed.` } };
     }
     this.deps.audit?.({ action: `trick.official.${mode}`, detail: { trick: entry.id, commit: entry.commit.slice(0, 12), hash: written.codeHash.slice(0, 16) } });
@@ -266,8 +298,11 @@ function mismatch(mode: "add" | "update"): OfficialAnswer {
   return { status: 422, body: { error: "mismatch", message: mode === "add" ? OFFICIAL_LINES.mismatch : OFFICIAL_LINES.updateMismatch } };
 }
 
-/** Why an entry in `state` cannot take `mode`, or null when it can: add needs `absent`, update needs `update`. */
-function stateRefusal(state: OfficialState, mode: "add" | "update"): OfficialAnswer | null {
+/** Why an entry standing so cannot take `mode`, or null when it can: add needs `absent`, update needs `update`. */
+function stateRefusal(standing: OfficialStanding, mode: "add" | "update"): OfficialAnswer | null {
+  const { state } = standing;
+  // A version of the list whose files the person changed: Collie never moves or removes them.
+  if (standing.changed) return { status: 409, body: { error: "changed", message: OFFICIAL_LINES.changed } };
   if (state === "taken") return { status: 409, body: { error: "taken", message: OFFICIAL_LINES.taken } };
   if (mode === "add" && state === "absent") return null;
   if (mode === "update" && state === "update") return null;

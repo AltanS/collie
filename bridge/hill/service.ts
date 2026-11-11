@@ -104,7 +104,8 @@ import { cleanBody } from "../walky/clean.ts";
 import type { WalkyPane } from "../walky/deliver.ts";
 import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import { digestDiffers, payloadDigest, withDigest } from "../worktree-receipts.ts";
-import { readPostFields } from "./parse.ts";
+import { HILL_GROUP_NOT_YOURS, readPostFields } from "./parse.ts";
+import { makeGroup } from "./group.ts";
 import { mintMediaId, type HillImageBytes, type HillMediaFile, type HillMediaStore } from "./media.ts";
 import { HILL_PUSH_RATE, hillPushTag, type HillPushPort } from "./push.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
@@ -508,8 +509,9 @@ export function hillPostDigest(input: HillPostInput): string {
   const links = (input.links ?? []).map((link) => [link.label, link.href]);
   const images = (input.images ?? []).map((image) => [image.path, image.caption ?? null]);
   const parts = [input.title, input.summary, input.body ?? "", options, input.text ?? "optional", recommends, links, input.priority ?? "today", input.about ?? null, input.replyTo ?? null, images];
-  // The view joins only when there is one, so a post without one keeps the digest it always had.
-  return payloadDigest([JSON.stringify(input.view === undefined ? parts : [...parts, input.view])]);
+  // The view joins only when there is one, so a post without one keeps the digest it always had; a group too.
+  const withView = input.view === undefined ? parts : [...parts, input.view];
+  return payloadDigest([JSON.stringify(input.group === undefined ? withView : [...withView, { group: input.group }])]);
 }
 
 /** A decision as the phone and the socket get it: without `postDigest` and `pushTag`, which only the bridge needs. */
@@ -553,6 +555,15 @@ function keyOf(decision: HillDecision): string {
 export const HILL_NO_ANSWER_HANDLER = "Collie cannot act on this answer here.";
 /** The reason a withdraw is refused while that Collie Decision's answer runs. */
 export const HILL_ANSWER_RUNNING = "the decision is being answered";
+
+/** The refusal of a yes to a group whose cards the phone did not all open (a DISPLAY check, never proof). */
+export function hillGroupOpenAll(count: number): string {
+  return `Open all ${String(count)} cards first.`;
+}
+/** The refusal of a yes to a group from a phone that was given other cards: they changed since. */
+export const HILL_GROUP_CHANGED = "These cards changed since this phone showed them. Open them again from card 1.";
+/** The refusal of a yes to a group from an app that does not send which cards it showed. */
+export const HILL_GROUP_OLD_APP = "This app does not show a group of cards yet. Reload Collie on this phone, then open every card and answer again.";
 
 function refuse(code: HillRefusalCode | null, error: string): HillPostAnswer {
   return { ok: false, code, error };
@@ -852,6 +863,9 @@ export class HillService {
     // Collie's own answer types nothing, so only a post whose answer is typed needs WalkyTalky.
     if (from.kind !== "collie" && !this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return refuse("not_on_lead", NOT_ON_LEAD);
+    // A group of cards is Collie's own (crew slice 8): no session, crew member or trick posts one.
+    if (input.group !== undefined && from.kind !== "collie") return refuse("bad_body", HILL_GROUP_NOT_YOURS);
+    if (input.group !== undefined && input.view !== undefined) return refuse("bad_body", "a group of cards carries no view of its own");
     const key = senderKey(from);
     const digest = hillPostDigest(input);
     // A repeated request id from the same sender with the same payload is the same decision: answered as
@@ -936,6 +950,11 @@ export class HillService {
       postDigest: digest,
     };
     if (input.view !== undefined) decision.view = input.view;
+    if (input.group !== undefined && from.kind === "collie") {
+      const made = makeGroup(input.group, from.ref, decision.options);
+      if (!made.ok) return refuse("bad_body", made.error);
+      decision.group = made.group;
+    }
     const push = this.pushPlan(key, crewMember, priority, opts, superseded, id);
     if (push.tag !== undefined) decision.pushTag = push.tag;
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
@@ -1315,6 +1334,17 @@ export class HillService {
     return { kind: "receipt", receipt };
   }
 
+  /** Why a yes to a group of cards is refused, or null. */
+  private groupRule(decision: HillDecision, request: HillAnswerRequest): string | null {
+    const group = decision.group;
+    if (group === undefined || request.intent === "dismiss" || request.intent === group.decline) return null;
+    const asked = request.group;
+    if (asked === undefined) return HILL_GROUP_OLD_APP;
+    if (asked.digest !== group.digest) return HILL_GROUP_CHANGED;
+    const opened = new Set(asked.opened);
+    return group.parts.every((_, i) => opened.has(i + 1)) ? null : hillGroupOpenAll(group.parts.length);
+  }
+
   /** Run one claim; while it runs, a Collie Decision it answers cannot be withdrawn or superseded. */
   private async guarded<T>(id: string, fn: () => Promise<T>): Promise<T> {
     if (this.deps.store.get(id)?.from.kind !== "collie") return fn();
@@ -1391,12 +1421,19 @@ export class HillService {
     // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
     if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     if (option === undefined && intent !== "answer" && intent !== "dismiss") return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
+    // A group's yes needs the digest this phone was given and every card opened on it (a DISPLAY check:
+    // the phone's claim of what it showed, never proof of what the person read). Its decline and a dismiss
+    // need neither. Nothing is kept for these refusals, so the same tap may go again once the cards are open.
+    const groupRule = this.groupRule(decision, request);
+    if (groupRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", groupRule, "open", null), false);
     const cleaned = cleanText(request.value.text ?? "", HILL_ANSWER_TEXT_MAX);
     if (cleaned.over) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", `text is longer than ${String(HILL_ANSWER_TEXT_MAX)} characters`, "open", null));
     const text = cleaned.text === "" ? null : cleaned.text;
     const textRule = this.textRule(decision, intent, text);
     if (textRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", textRule, "open", null));
-    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision));
+    // Collie's own card carries Collie's own title and labels (a trick's id, fixed words), so the session
+    // it tells gets them as a poster does.
+    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
     // Where the answer goes: `replyTo`, else the poster. A trick with no `replyTo` has nothing to type into.

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { memoryHillReceipts } from "../hill/receipts.ts";
-import { HILL_OFF, HillService, type HillPlace } from "../hill/service.ts";
+import { HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_OFF, HillService, type HillPlace } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { ORIGIN_FILE } from "./origin.ts";
@@ -25,6 +25,8 @@ import {
   type Proposer,
 } from "./proposals.ts";
 import { ProposeDoor } from "./propose-door.ts";
+import { GROUP_CODE_BYTES, GROUP_MASKED, GROUP_NOT_TEXT, GROUP_TOO_LARGE, helperCell, helperNote } from "./card-group.ts";
+import { HELPER_VERSION, TRICK_HELPER } from "./scan.ts";
 import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
@@ -410,22 +412,18 @@ describe("the limits", () => {
     expect(await l.proposals.propose(proposal("full"), TERMINAL)).toMatchObject({ ok: false, code: "too_many_open", error: expect.stringContaining("wait already") });
   });
 
-  test("the bytes stored for open proposals", async () => {
+  test("a proposal larger than a group of cards, or with a file that is not text, is refused, and nothing is stored", async () => {
     const l = await lead();
-    const big = (seed: number): ProposedFile => ({ rel: "blob.bin", bytes: new Uint8Array(4_900_000).fill(seed), executable: false });
-    const senders: Proposer[] = Array.from({ length: 8 }, (_, i) => ({ by: "terminal", host: `m${String(i)}`, label: null, memberId: `m${String(i)}`, address: null }));
-    let taken = 0;
-    for (const [i, sender] of senders.entries()) {
-      const answer = await l.proposals.propose(proposal(`b${String(i)}`, "1\n", { extra: [big(i)] }), sender);
-      if (!answer.ok) {
-        expect(answer.code).toBe("too_many_bytes");
-        break;
-      }
-      taken += 1;
-    }
-    expect(taken * 4_900_000).toBeLessThanOrEqual(PROPOSED_BYTES_MAX);
-    expect(taken).toBeLessThan(senders.length);
+    // The store's byte cap (PROPOSED_BYTES_MAX) stays as a backstop: a proposal a group can show is far smaller.
+    expect(PROPOSED_BYTES_MAX).toBeGreaterThan(PROPOSALS_OPEN_MAX * GROUP_CODE_BYTES);
+    const big: ProposedFile = { rel: "big.ts", bytes: new TextEncoder().encode("x\n".repeat(GROUP_CODE_BYTES)), executable: false };
+    expect(await l.proposals.propose(proposal("big", "1\n", { extra: [big] }), AGENT)).toEqual({ ok: false, code: "too_large", error: GROUP_TOO_LARGE });
+    const blob: ProposedFile = { rel: "blob.bin", bytes: new Uint8Array([0, 1, 2, 3]), executable: false };
+    expect(await l.proposals.propose(proposal("blob", "1\n", { extra: [blob] }), AGENT)).toEqual({ ok: false, code: "cannot_show", error: GROUP_NOT_TEXT });
+    expect(openCards(l)).toEqual([]);
+    expect(await readdir(l.proposals.root()).then((names) => Promise.all(names.map((name) => readdir(join(l.proposals.root(), name)))))).toEqual([[], []]);
   });
+
 });
 
 describe("a trick id that exists", () => {
@@ -660,6 +658,14 @@ describe("the card belongs to Collie and to the person", () => {
     expect(l.sent).toEqual([]);
   });
 
+  test("the proposer's receipt names the card's title and the option's label, as a poster's does", async () => {
+    const l = await lead();
+    await l.proposals.propose(proposal("legs"), AGENT);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok" });
+    expect(l.sent).toEqual([{ to: "minibuch/%3#abcd", body: `Answer to ${card!.id} "Switch on the trick legs?"\nOption: on (Switch it on)` }]);
+  });
+
   test("a dismiss types nothing into the proposer's session", async () => {
     const l = await lead();
     await l.proposals.propose(proposal("legs"), AGENT);
@@ -768,5 +774,82 @@ describe("nothing outside the store moves before the yes (review S5)", () => {
     expect(sent).toHaveLength(1);
     expect(local).toBe(0);
     expect(await wholeTree(l, () => false)).toEqual(before);
+  });
+});
+
+// A GROUP OF CARDS (crew slice 8): a trick whose code does not fit one card shows on 2 to 8 cards, and the
+// yes needs the group's digest and every card opened on the phone (a DISPLAY check, never proof).
+describe("a proposal whose code does not fit one card", () => {
+  const program = Array.from({ length: 200 }, (_, i) => `console.log("line ${String(i).padStart(4, "0")} of the program");`).join("\n") + "\n";
+
+  async function answerGroup(l: Lead, decision: HillDecision, intent: string, group?: { digest: string; opened: number[] }): Promise<HillReceipt> {
+    const request = { rid: nextRid(), node: `hill/${decision.id}`, intent, value: { text: null } };
+    const outcome = await l.hill.answer(group === undefined ? request : { ...request, group }, decision.id, "Pixel 9");
+    if (outcome.kind !== "receipt") throw new Error(outcome.kind);
+    return outcome.receipt;
+  }
+
+  test("is one Decision with a group: card 1 the facts and no code, the rest every line, and no view of its own", async () => {
+    const l = await lead();
+    const read = proposal("legs", program);
+    expect((await l.proposals.propose(read, AGENT)).ok).toBe(true);
+    const [card] = openCards(l);
+    const group = card!.group!;
+    expect(card!.view).toBeUndefined();
+    expect(group.parts.length).toBeGreaterThanOrEqual(3);
+    expect(group.decline).toBe("later");
+    expect(card!.summary).toBe(`An agent session (repo#one) on minibuch proposes it. It has 2 files. It asks for the belt. It shows on ${String(group.parts.length)} cards.`);
+    const first = JSON.stringify(group.parts[0]!.view);
+    expect(first).toContain("An agent session (repo#one) on minibuch proposes it.");
+    expect(first).toContain(`2 files, on cards 2 to ${String(group.parts.length)}.`);
+    expect(group.parts[0]!.view.some((node) => node.kind === "diff")).toBe(false);
+    // Every line of the program is on cards 2 to n, in order.
+    const shown = group.parts.slice(1).flatMap((part) => part.view.flatMap((node) => (node.kind === "diff" && node.attrs?.file === "program.ts" ? (node.text ?? "").split("\n") : [])));
+    expect(shown.filter((row) => row.startsWith("+")).map((row) => row.slice(1))).toEqual(program.trimEnd().split("\n"));
+    // The stored decision reads back with its group whole.
+    expect(l.store.get(card!.id)?.group?.digest).toBe(group.digest);
+  });
+
+  test("the yes needs the digest the phone was given and every card opened; the decline needs neither", async () => {
+    const l = await lead();
+    await l.proposals.propose(proposal("legs", program), AGENT);
+    const [card] = openCards(l);
+    const group = card!.group!;
+    const n = group.parts.length;
+    const all = Array.from({ length: n }, (_, i) => i + 1);
+    expect(await answerGroup(l, card!, "on")).toMatchObject({ code: "rejected", reason: HILL_GROUP_OLD_APP, state: "open" });
+    expect(await answerGroup(l, card!, "on", { digest: "0".repeat(64), opened: all })).toMatchObject({ code: "rejected", reason: HILL_GROUP_CHANGED, state: "open" });
+    expect(await answerGroup(l, card!, "on", { digest: group.digest, opened: all.slice(0, -1) })).toMatchObject({ code: "rejected", reason: `Open all ${String(n)} cards first.`, state: "open" });
+    expect(await listed(l)).toEqual([]);
+    expect(await answerGroup(l, card!, "on", { digest: group.digest, opened: all })).toMatchObject({ code: "ok", state: "answered" });
+    expect(await listed(l)).toEqual(["legs"]);
+    // Not now needs no card opened.
+    await l.proposals.propose(proposal("more", program), AGENT);
+    const [other] = openCards(l);
+    expect(await answerGroup(l, other!, "later")).toMatchObject({ code: "ok", state: "answered" });
+  });
+
+  test("Collie's own helper is named on card 1 and on no other card; a changed helper is the author's code and counts", async () => {
+    const l = await lead();
+    const helper: ProposedFile = { rel: "trick.ts", bytes: enc(TRICK_HELPER), executable: false };
+    expect((await l.proposals.propose(proposal("legs", "console.log(1)\n", { extra: [helper] }), AGENT)).ok).toBe(true);
+    const [card] = openCards(l);
+    const parts = card!.group!.parts;
+    expect(parts.length).toBe(2);
+    const first = JSON.stringify(parts[0]!.view);
+    expect(first).toContain(helperNote(HELPER_VERSION));
+    expect(first).toContain(helperCell(HELPER_VERSION));
+    expect(first).toContain("2 files, on card 2.");
+    expect(JSON.stringify(parts[1]!.view)).not.toContain("trick.ts");
+    const changed: ProposedFile = { rel: "trick.ts", bytes: enc(`${TRICK_HELPER}// mine\n`), executable: false };
+    expect(await l.proposals.propose(proposal("mine", "console.log(1)\n", { extra: [changed] }), AGENT)).toEqual({ ok: false, code: "too_large", error: GROUP_TOO_LARGE });
+  });
+
+  test("a key or a hidden character in the code refuses the proposal at the door, and nothing is stored", async () => {
+    const l = await lead();
+    const keyed = `const KEY = "sk-or-v1-your-key-here-placeholder00";\n${program}`;
+    expect(await l.proposals.propose(proposal("keyed", keyed), AGENT)).toEqual({ ok: false, code: "cannot_show", error: GROUP_MASKED });
+    expect(await l.proposals.propose(proposal("bidi", "const x = '\u202e';\n"), AGENT)).toEqual({ ok: false, code: "cannot_show", error: GROUP_MASKED });
+    expect(openCards(l)).toEqual([]);
   });
 });

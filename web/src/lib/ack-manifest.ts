@@ -354,7 +354,7 @@ export const ACK_MANIFEST = {
   },
   addOfficialTrick: {
     channel: "echo",
-    why: "Add (or Update) on a From Collie row in Settings → Tricks swaps its word for Collie's spinner on the spot and stays busy until the trick shows among the installed ones, off (components/tricks-settings-card.tsx); a refused or lost post says why in the status line (offline, a code mismatch, another add running), because the reason is about that one trick.",
+    why: "Add (or Update) on an official row in Settings → Tricks swaps its word for Collie's spinner on the spot and stays busy until the trick shows among the installed ones, off (components/tricks-settings-card.tsx); a refused or lost post says why in the status line (offline, a code mismatch, another add running), because the reason is about that one trick.",
   },
   tapTrick: {
     channel: "echo",

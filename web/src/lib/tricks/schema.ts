@@ -1387,6 +1387,11 @@ export interface TrickProvenance {
    * agent pane was placed: the machine is known, the session is not confirmed.
    */
   proposed?: { by: "agent" | "terminal"; host: string };
+  /**
+   * Set when `repo` is an official repository of the official list but this folder is not a version of
+   * the list (official.ts `isUnlistedOfficialOrigin`): the phone says it is not on the official list.
+   */
+  unlisted?: true;
 }
 /**
  * `GET /api/tricks?since=<rev>`. The snapshot carries `tricksRev`; when it moves, the phone asks for the
@@ -1416,14 +1421,14 @@ export interface TricksRunsOn {
 }
 
 /**
- * Where one entry of the From Collie list stands on this machine (bridge/tricks/official.ts): `absent`
+ * Where one entry of the official list stands on this machine (bridge/tricks/official.ts): `absent`
  * (no folder of its id), `added` (a folder from the same repository and folder at the list's commit),
  * `update` (the same, at another commit) or `taken` (a folder of its id from anywhere else, never written over).
  */
 export const OFFICIAL_STATES = ["absent", "added", "update", "taken"] as const;
 export type OfficialState = (typeof OFFICIAL_STATES)[number];
 
-/** One entry of the From Collie list as the phone reads it (`GET /api/tricks/official`). */
+/** One entry of the official list as the phone reads it (`GET /api/tricks/official`). */
 export interface WireOfficialTrick {
   id: string;
   name: string;
@@ -1436,6 +1441,16 @@ export interface WireOfficialTrick {
   /** The commit this Collie release expects, 40 hex. */
   commit: string;
   state: OfficialState;
+  /**
+   * Set on a `taken` entry whose folder came from this repository and folder, but not from the list: another
+   * ref (a pull request's, a branch nobody listed) or a record without `official`. Absent otherwise.
+   */
+  unlisted?: true;
+  /**
+   * Set on a `taken` entry whose folder is a version of the list by its origin record, but whose code is
+   * not that version's code any more: the person changed its files. Collie never updates it. Absent otherwise.
+   */
+  changed?: true;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */
