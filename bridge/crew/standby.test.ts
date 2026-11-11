@@ -402,6 +402,34 @@ describe("the door's three routes", () => {
     expect(calls).toEqual(["phone"]);
   });
 
+  test("§25: a list that lands while the page reads the copies never puts the new mark over the old names (review 7 R4)", async () => {
+    let now = "t:aaaa:0;h:1";
+    let names = ["Leg day"];
+    let pushes = 0;
+    const handler = createStandbyDoor({
+      version: "1.4.0+abc1234",
+      build: () => Promise.resolve("b"),
+      facts: () => facts(),
+      devices: () => [DEVICE],
+      takeover: async () => ({ ok: true, message: "done" }),
+      carried: async () => {
+        const read = { tricks: [...names], questions: 0 };
+        // A push from the lead lands while the names are read: a new list, a new mark.
+        if (pushes < 1) {
+          pushes += 1;
+          names = ["Leg day", "Arm day"];
+          now = "t:bbbb:0;h:2";
+        }
+        return read;
+      },
+      seen: () => now,
+    });
+    const page = await (await handler(req(STANDBY_PATH), new URL(`http://x${STANDBY_PATH}`)))!.text();
+    // Read again after the push: the names and the mark are one snapshot.
+    expect(page).toContain("Arm day");
+    expect(page).toContain(`data-seen="t:bbbb:0;h:2"`);
+  });
+
   test("the auth matrix: pairing bearer ONLY, and a device header does NOT count (RFC §16, decision 2)", async () => {
     const good = door();
     const ok = await good.handler(

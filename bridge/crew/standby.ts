@@ -483,6 +483,26 @@ export interface StandbyDoorDeps {
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" } as const;
 
+/** How many times the page reads the copies again when a list landed while it read them. */
+const SNAPSHOT_TRIES = 3;
+
+/**
+ * What the copies hold and their mark, from one snapshot (review 7 R4): the mark is read before and after
+ * the names, and only a pair with no list landing between is used. When lists keep landing the mark from
+ * before the last read goes out: it can only be older than the names, so the tap is refused as changed
+ * and the page is drawn again, never a new mark over old names.
+ */
+async function carriedSnapshot(deps: Pick<StandbyDoorDeps, "carried" | "seen">): Promise<{ carried: CarriedSummary | null; seen: string | undefined }> {
+  let carried: CarriedSummary | null = null;
+  let before = deps.seen?.();
+  for (let i = 0; i < SNAPSHOT_TRIES; i += 1) {
+    before = deps.seen?.();
+    carried = (await deps.carried?.().catch(() => null)) ?? null;
+    if (deps.seen?.() === before) break;
+  }
+  return { carried, seen: before };
+}
+
 /**
  * The header EVERY response from the standby listener carries, whatever its path, its status or
  * whether the door is armed: this collie's `<semver>+<short sha>`.
@@ -561,9 +581,9 @@ export function createStandbyDoor(deps: StandbyDoorDeps) {
       // The PAGE is served in both states — while cold it is a statement with no action on it, which
       // is what lets an operator confirm the door exists before the bad day rather than during it.
       // Read only for the armed page, the one with the button: the cold page lists nothing.
-      const carried = report.armed ? ((await deps.carried?.().catch(() => null)) ?? null) : null;
+      const { carried, seen } = report.armed ? await carriedSnapshot(deps) : { carried: null, seen: deps.seen?.() };
       const changed = url.searchParams.get("changed") === "1";
-      const view: StandbyView = deps.seen === undefined ? { changed } : { seen: deps.seen(), changed };
+      const view: StandbyView = seen === undefined ? { changed } : { seen, changed };
       return new Response(standbyPage(facts, carried, view), {
         status: 200,
         headers: {
