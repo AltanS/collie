@@ -10,6 +10,7 @@ import { useChatLook } from "@/lib/chat-look";
 import { mathEngineOf, useDesignPrefs } from "@/lib/design";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { t } from "@/lib/i18n";
+import { linkTargetBeside } from "@/lib/link-target";
 import { findBareUrls, headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
 import { closeStretch, composeStretches, liftStretches, parseStretches, stretches as allStretches } from "@/lib/stretch";
 import { splitHighlight } from "@/lib/transcript-search";
@@ -60,6 +61,13 @@ export type LinkResolver = (href: string) => LinkTarget;
 // The resolver, threaded the way the find query is. With none (the transcript) a `rel` link is its
 // label as plain text: a dead anchor would be worse than none, and raw Markdown worse still.
 const LinkContext = createContext<LinkResolver | null>(null);
+
+/**
+ * Whether an outside link whose label is not its address shows the address beside it. Only a Decision's
+ * body asks for it (`showLinkTargets`): a Decision asks for a person's attention, and a label can hide
+ * a wrong page. Chat and every other screen leave it off and draw links as they always did.
+ */
+const LinkTargetsContext = createContext(false);
 
 /**
  * What the screen draws for one `![alt](src)` (ADR 0090), or null to draw the alt text, as an image
@@ -244,6 +252,9 @@ function isPlainClick(e: React.MouseEvent): boolean {
   return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 }
 
+/** A host this long or shorter never breaks inside; a longer one could not fit a phone line, so it may. */
+const HOST_NO_BREAK_MAX = 32;
+
 const LINK_CLASS = "text-primary underline underline-offset-2";
 
 // Inside a link's label nothing else may be a link: an anchor inside an anchor is invalid HTML, and
@@ -396,6 +407,7 @@ function CodeSpan({ text }: { text: string }) {
 
 function LinkSpan({ span }: { span: Extract<MdSpan, { kind: "link" }> }) {
   const resolve = useContext(LinkContext);
+  const showTargets = useContext(LinkTargetsContext);
   const label = (
     <InLinkContext.Provider value>
       <Spans spans={span.spans} />
@@ -408,7 +420,7 @@ function LinkSpan({ span }: { span: Extract<MdSpan, { kind: "link" }> }) {
     // Same break rule as a chip, and for the same reason: `http://bluefin:8788` is full of slashes
     // and colons, every one of them a wrap opportunity, and an address split across two lines is
     // one you have to reassemble in your head before you trust the tap.
-    return (
+    const anchor = (
       <a
         href={span.href}
         target="_blank"
@@ -417,6 +429,20 @@ function LinkSpan({ span }: { span: Extract<MdSpan, { kind: "link" }> }) {
       >
         {label}
       </a>
+    );
+    const beside = showTargets ? linkTargetBeside(flatten(span.spans), span.href) : null;
+    if (beside === null) return anchor;
+    // Plain text after the anchor, so the link's name stays its label and a screen reader reads the address next.
+    return (
+      <>
+        {anchor}
+        <span data-slot="link-target" className="font-mono text-[11px] text-muted-foreground">
+          {" ("}
+          {/* The host is one word to read: it moves to a new line whole, and breaks only when it is longer than a line. */}
+          <span className={beside.host.length <= HOST_NO_BREAK_MAX ? "whitespace-nowrap" : "break-all"}>{beside.host}</span>
+          <span className="break-all">{`${beside.rest})`}</span>
+        </span>
+      </>
     );
   }
   const target = resolve?.(span.href);
@@ -733,6 +759,7 @@ export function MarkdownText({
   headingIds = false,
   variant = "chat",
   stretches = false,
+  showLinkTargets = false,
 }: {
   text: string;
   className?: string;
@@ -751,6 +778,11 @@ export function MarkdownText({
    * drawn as tappable phrases only where the screen's {@link StretchTextContext} says so too.
    */
   stretches?: boolean;
+  /**
+   * Show the address beside an outside link whose label is not that address: `the CI run (ci.example/run/1)`.
+   * Off by default, so Chat is unchanged. A Decision's body turns it on (lib/link-target.ts).
+   */
+  showLinkTargets?: boolean;
 }) {
   const withImages = resolveImage !== undefined;
   const drawsStretches = useContext(StretchTextContext);
@@ -774,11 +806,13 @@ export function MarkdownText({
       <LinkContext.Provider value={resolveLink ?? null}>
         <ImageContext.Provider value={resolveImage ?? null}>
           <StretchControlContext.Provider value={control}>
-            <div className={`font-content space-y-2 ${size} break-words ${className ?? ""}`}>
-              {blocks.map((block, i) => (
-                <Block key={i} block={block} anchor={anchors?.[i] ?? null} variant={variant} />
-              ))}
-            </div>
+            <LinkTargetsContext.Provider value={showLinkTargets}>
+              <div className={`font-content space-y-2 ${size} break-words ${className ?? ""}`}>
+                {blocks.map((block, i) => (
+                  <Block key={i} block={block} anchor={anchors?.[i] ?? null} variant={variant} />
+                ))}
+              </div>
+            </LinkTargetsContext.Provider>
           </StretchControlContext.Provider>
         </ImageContext.Provider>
       </LinkContext.Provider>

@@ -95,6 +95,23 @@ describe("the Decision card, at rest", () => {
     expect(link).toHaveTextContent("ci.example.com");
   });
 
+  it("shows the address beside a named link in the body, and nothing beside a bare address", () => {
+    const body = [
+      "See [the CI run](https://ci.example/run/123) and https://plain.example/a and [https://good.com](https://evil.example).",
+      "",
+      "Or [trick](https://good.com@evil.example/login).",
+    ].join("\n");
+    const { slot } = renderCard(hillDecision({ body, links: [] }));
+    fireEvent.click(slot("decision-more")!);
+    const targets = [...slot("decision-body")!.querySelectorAll('[data-slot="link-target"]')];
+    // The bare address and the link's own words are the address already; the other two name a host the label hides.
+    expect(targets.map((el) => el.textContent)).toEqual([" (ci.example/run/123)", " (evil.example)", " (evil.example/login)"]);
+    // The link's name stays its label, and the address is not tappable.
+    const named = within(slot("decision-body")!).getByRole("link", { name: "the CI run" });
+    expect(named).toHaveAttribute("href", "https://ci.example/run/123");
+    for (const el of targets) expect(el.closest("a")).toBeNull();
+  });
+
   it("sets the why between muted quote marks, the marks out of the reader's way", () => {
     const { slot } = renderCard(hillDecision({ recommends: { intent: "yes", why: "Edge first." } }));
     const marks = [...slot("decision-recommends")!.querySelectorAll('blockquote > span[aria-hidden="true"]')];

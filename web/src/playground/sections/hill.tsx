@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 51.
+// Cards are numbered 1 to 52.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -36,6 +36,7 @@ import {
   gateStrip,
   goneText,
   keptWords,
+  linkBody,
   mixedImages,
   placedImage,
   oneImage,
@@ -820,6 +821,13 @@ export function HillSection() {
         <Card state="hill-card-version-used" label="51: the new version used">
           <CardHead n={51} title="The new version used" />
           <OneCard decision={versionPlain} answer={answered({ ...receipts.typed, delivery: "none" }, "use")} />
+        </Card>
+      </Group>
+
+      <Group title="Links in the body">
+        <Card state="hill-card-body-links" label="52: a body with links">
+          <CardHead n={52} title="A body with links" />
+          <OpenedCard decision={linkBody} toggle="decision-more" />
         </Card>
       </Group>
     </Section>

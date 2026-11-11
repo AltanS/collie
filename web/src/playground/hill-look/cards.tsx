@@ -81,7 +81,7 @@ function Tools({ decision, answer, className, placeholder }: { decision: HillDec
       </div>
       <Collapse open={answer.moreOpen}>
         <div id={bodyId} className="flex flex-col gap-2 pb-2">
-          {decision.body.trim() !== "" && <MarkdownText text={decision.body} />}
+          {decision.body.trim() !== "" && <MarkdownText text={decision.body} showLinkTargets />}
           {decision.links.map((link) => (
             <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center gap-2 text-sm font-medium">
               <Icon name="open-external" aria-hidden className="size-4 text-muted-foreground" />

@@ -814,3 +814,24 @@ export const versionRights = decision({
     },
   ],
 });
+
+/** 52: a body with links: a bare address, a named link, a long path, and a label that looks like another address. */
+export const linkBody = decision({
+  title: "Open the failing run?",
+  summary: "The nightly run is red. The links below are in the body.",
+  ago: 6,
+  body: [
+    "The run: https://ci.example.com/runs/4821",
+    "",
+    "The log: [the CI run](https://ci.example.com/runs/4821/jobs/9).",
+    "",
+    "The report: [the failing job](https://reports.example.com/2026/11/nightly/browser-leg/replay/claude/cases/ask-card-first-tap?run=4821&tab=log).",
+    "",
+    "The fix: [https://github.com/AltanS/collie/pull/812](https://evil.example/AltanS/collie/pull/812).",
+  ].join("\n"),
+  links: [],
+  options: [
+    { intent: "open", label: "Open the run" },
+    { intent: "later", label: "Later" },
+  ],
+});
