@@ -124,7 +124,8 @@ export interface SlotLine {
 }
 
 /**
- * The third line: the reason a trick is not well, else that a new version waits for a yes (`pending`,
+ * The third line: the reason a trick is not well (a trick stopped for its rights in the phone's own words,
+ * fault B), else that a new version waits for a yes (`pending`,
  * from a bridge since crew slice 2), else the one note that the Hill is off for a trick that is on and
  * asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts: they are not posted, the trick keeps
  * running), else where it came from.
@@ -134,6 +135,8 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): Sl
     const reason = trick.refusals?.[0]?.reason ?? trick.error;
     return { text: reason === undefined ? t("settings.tricks.refusedBare") : t("settings.tricks.refused", { reason }), trouble: true };
   }
+  // Fault B: the bridge's flag, in the phone's words; its `error` is the same line in the bridge's English.
+  if (trick.on && trick.rightsMoved === true) return { text: t("settings.tricks.rightsMoved"), trouble: true };
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
   if (trick.on && trick.pending !== undefined) return { text: t("settings.tricks.pending"), trouble: false };

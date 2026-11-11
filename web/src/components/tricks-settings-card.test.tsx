@@ -439,6 +439,14 @@ describe("the Hill switched off", () => {
     expect(slotLine({ ...ASKS, state: "failing", error: "exit 2" }, NOW, true)).toEqual({ text: "exit 2", trouble: true });
   });
 
+  it("fault B: a trick stopped for its rights says so in the phone's words, ahead of every other line", () => {
+    const stopped: WireTrickInfo = { ...ASKS, state: "stopped", error: "the bridge's English line", rightsMoved: true, pending: { hash: "a".repeat(64), files: { added: 0, changed: 1, removed: 0 }, powersChanged: false, warnings: [] } };
+    expect(slotLine(stopped, NOW, true)).toEqual({ text: "Asks for a new right. Switch it on again.", trouble: true });
+    // An older bridge sends no flag: its own line stands.
+    const { rightsMoved: _flag, ...older } = stopped;
+    expect(slotLine(older, NOW, true)).toEqual({ text: "the bridge's English line", trouble: true });
+  });
+
   it("the row reads the snapshot's hillOff from the root data", async () => {
     const store = await storeWith([ASKS, TRACKER]);
     const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });

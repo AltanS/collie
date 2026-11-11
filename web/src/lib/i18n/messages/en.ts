@@ -3405,6 +3405,8 @@ export const en = {
   "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
   "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
   "settings.tricks.pending": "A new version waits for your yes.",
+  // Fault B: the trick stopped because its code asks for a right the person's yes did not hold.
+  "settings.tricks.rightsMoved": "Asks for a new right. Switch it on again.",
   // Take changes without asking, and the undo of an automatic change (crew slice 3). English only until
   // the translation pass, listed in PENDING_TRANSLATION below.
   "settings.tricks.auto.failed": "Could not change {name}. Try again.",
@@ -3954,6 +3956,7 @@ export const PENDING_TRANSLATION = [
   "tricks.frame.refused.value",
   "tricks.frame.refused.changed",
   "tricks.frame.refused.session",
+  "settings.tricks.rightsMoved",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
