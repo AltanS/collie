@@ -5,6 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import { HILL_RULES, HILL_WRITING, hillWordingWarnings } from "./hill-rules.ts";
 import { holdSocketSafe } from "./hold.ts";
+import { stageImagesForBridge } from "./image-stage.ts";
 import { EXIT } from "./io.ts";
 import { AskLate, NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
@@ -96,6 +97,8 @@ export type HillDeps = Omit<WalkyDeps, "mintId" | "sleep"> & {
   readonly mintRequestId?: () => string;
   /** The folder a relative `--image` path is read from. Defaults to the process's own. */
   readonly cwd?: () => string;
+  /** Where a picture under /tmp is copied for the bridge. Defaults to `<XDG_CACHE_HOME or ~/.cache>/collie/image-staging`. */
+  readonly stagingRoot?: () => string;
 };
 
 /** Every bridge socket on this machine worth asking, this install's own first, as `collie walky` asks them. */
@@ -480,11 +483,21 @@ export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Prom
   const body = await bodyOf(deps, parsed.body);
   const requestId = parsed.requestId ?? (deps.mintRequestId ?? randomUUID)();
   const expiresAt = parsed.expiresInMs === null ? null : (deps.now ?? Date.now)() + parsed.expiresInMs;
-  // The wait covers a crew member's whole forward to its lead (CREW_PROTOCOL §22), so the CLI does not
-  // give up on a post that is still on its way.
-  const answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt, images, view), HILL_POST_ASK_MS);
+  // The bridge runs under PrivateTmp and cannot see /tmp: a picture there is copied for it, and the copy
+  // is removed when the request is over, whatever it came to (an answer, a refusal, a timeout, a throw).
+  const staged = stageImagesForBridge({ env: deps.ctx.env, home: deps.ctx.home, now: deps.now, stagingRoot: deps.stagingRoot }, images);
+  if (!staged.ok) return failed(deps, { ok: false, error: staged.error, code: staged.code, exit: staged.code === null ? EXIT.FAIL : EXIT.REFUSED });
+  let answer: Answer;
+  try {
+    // The wait covers a crew member's whole forward to its lead (CREW_PROTOCOL §22), so the CLI does not
+    // give up on a post that is still on its way.
+    answer = await request(deps, postLine(parsed.fields, requestId, body, expiresAt, staged.images, view), HILL_POST_ASK_MS);
+  } finally {
+    staged.cleanup();
+  }
   if (!answer.ok) {
-    const exit = failed(deps, answer);
+    // A refusal names the picture as the agent typed it, not the copy.
+    const exit = failed(deps, { ...answer, error: staged.unstage(answer.error) });
     // Every failure names the request id and the command that sends the same post once.
     deps.io.err(`hill: request id ${requestId}; to send this post again, it posts once: ${shown(retryCommand(args, requestId))}${parsed.body === null && body !== "" ? " (with the same body on stdin)" : ""}`);
     return exit;

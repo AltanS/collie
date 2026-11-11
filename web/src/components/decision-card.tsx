@@ -588,7 +588,7 @@ export function DecisionCard({
           </div>
           {hasBody && (
             <FoldPanel id={bodyId} open={moreOpen} data-slot="decision-body" className="flex flex-col gap-2 pb-2">
-              {decision.body.trim() !== "" && <MarkdownText text={decision.body} />}
+              {decision.body.trim() !== "" && <MarkdownText text={decision.body} showLinkTargets />}
               {decision.links.length > 0 && (
                 <ul className="flex flex-col">
                   {decision.links.map((link, i) => (

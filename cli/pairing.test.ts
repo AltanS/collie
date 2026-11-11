@@ -21,9 +21,11 @@ import {
   cmdDevicesRevoke,
   cmdDevicesSetExpiry,
   cmdPair,
+  PAIR_AGENT_PANE_REFUSAL,
   type PairingDeps,
   type PairJson,
 } from "./pairing.ts";
+import type { PanePlace } from "./walky.ts";
 
 // The two operator-side verbs of device pairing, against fake seams. What is asserted here is what
 // only these verbs own: the file that lands under the state dir (path, mode, shape), and the exact
@@ -257,6 +259,102 @@ describe("collie pair", () => {
       expect(out.url).toBeNull();
       expect(out.qr).toBeNull();
       expect(d.io.stderr.join("\n")).toContain("no URL to encode");
+    });
+  });
+
+  // A speed bump, not a wall, the same one `collie trick on` has: the bridge says whether this pane runs
+  // an agent, and `pair` refuses only on a yes.
+  describe("inside an agent's pane", () => {
+    const PANE = { HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" };
+
+    function inPane(place: PanePlace | Error, asked: PanePlace["kind"][] = []) {
+      const d = deps();
+      const audit: string[] = [];
+      const run: typeof d = {
+        ...d,
+        ctx: { ...d.ctx, env: { ...d.ctx.env, ...PANE } },
+        appendAudit: (line) => audit.push(line),
+        panePlace: async () => {
+          if (place instanceof Error) throw place;
+          asked.push(place.kind);
+          return place;
+        },
+      };
+      return { d: run, audit, asked };
+    }
+
+    const AGENT: PanePlace = { kind: "agent", session: "main", paneId: "w1:p2" };
+
+    test("every form that makes a code refuses, makes none, and tells the agent to ask its operator", async () => {
+      for (const args of [[], ["--json"], ["--expires", "30d"], ["--expires=12h", "--json"]]) {
+        const { d, audit } = inPane(AGENT);
+        expect(await cmdPair(d, args)).toBe(EXIT.REFUSED);
+        expect(d.files.entries.has(PENDING)).toBe(false);
+        expect(d.io.stdout).toEqual([]);
+        expect(d.io.stderr).toEqual([...PAIR_AGENT_PANE_REFUSAL]);
+        expect(audit).toHaveLength(1);
+      }
+    });
+
+    test("the refusal reads as one plain step for a person, with no em dash", () => {
+      const text = PAIR_AGENT_PANE_REFUSAL.join("\n");
+      expect(text).toContain("Tell your operator that a device needs pairing.");
+      expect(text).toContain("in a shell pane or a terminal of their own");
+      expect(text).not.toContain("—");
+    });
+
+    test("a refusal writes one audit line with the pane the bridge placed", async () => {
+      const { d, audit } = inPane(AGENT);
+      await cmdPair(d);
+      expect(JSON.parse(audit[0]!)).toEqual({
+        ts: new Date(NOW).toISOString(),
+        action: "pair-refused",
+        paneId: "w1:p2",
+        session: "main",
+        detail: { reason: "agent-pane" },
+      });
+    });
+
+    test("a usage error is still a usage error in an agent's pane, and makes no code", async () => {
+      const { d } = inPane(AGENT);
+      expect(await cmdPair(d, ["--expire", "30d"])).toBe(EXIT.USAGE);
+      expect(d.files.entries.has(PENDING)).toBe(false);
+    });
+
+    test("a shell pane is a person's terminal: the code is made, and the pending file names the pane", async () => {
+      const { d, audit } = inPane({ kind: "shell", session: "main", paneId: "w1:p3" });
+      expect(await cmdPair(d)).toBe(EXIT.OK);
+      const pending = coercePending(JSON.parse(d.files.entries.get(PENDING)!.text));
+      expect(pending!.mintedIn).toEqual({ session: "main", paneId: "w1:p3" });
+      expect(pending!.codeHash).toBe(sha256Hex(d.io.stdout[0]!));
+      // The pairing's line is the bridge's, at the claim; making a code writes none.
+      expect(audit).toEqual([]);
+    });
+
+    test("no bridge, a bridge that does not know the pane, or one that fails: pair runs as before", async () => {
+      for (const place of [{ kind: "unknown" } as const, new Error("socket gone")]) {
+        const { d } = inPane(place);
+        expect(await cmdPair(d, ["--json"])).toBe(EXIT.OK);
+        expect(Object.keys(JSON.parse(d.files.entries.get(PENDING)!.text))).toEqual(["codeHash", "expiresAt", "attemptsLeft"]);
+      }
+    });
+
+    test("an older bridge that says shell but names no pane: the code is made, and the file is unchanged", async () => {
+      const { d } = inPane({ kind: "shell" });
+      expect(await cmdPair(d)).toBe(EXIT.OK);
+      expect(Object.keys(JSON.parse(d.files.entries.get(PENDING)!.text))).toEqual(["codeHash", "expiresAt", "attemptsLeft"]);
+    });
+
+    test("with no pane question at all (no seam), pair runs as before", async () => {
+      const { d } = inPane(AGENT);
+      expect(await cmdPair({ ...d, panePlace: undefined })).toBe(EXIT.OK);
+      expect(d.files.entries.has(PENDING)).toBe(true);
+    });
+
+    test("the read-only verbs stay allowed in an agent's pane", async () => {
+      const { d } = inPane(AGENT);
+      expect(cmdDevicesList(d)).toBe(EXIT.OK);
+      expect(d.io.stdout.join("\n")).toContain("no devices paired");
     });
   });
 
