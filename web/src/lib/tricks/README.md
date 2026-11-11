@@ -1036,7 +1036,11 @@ the protocol is HTTP 409 `{ error, code, view: true }`; a send that reached it a
 
 **Stale screens.** A screen is bound to the pane mark at its write: the harness and the conversation the
 harness reported. Another mark makes it stale. A harness that reports no conversation cannot show a
-`/clear`, so its screen goes stale at the first person turn that did not come from the view.
+`/clear`, so its screen goes stale at the first person turn that did not come from the view: a phone
+send, an ask answer, a WalkyTalky message from the person (a Hill answer or tell is one), typed text
+sent plain, or a turn the bridge sees start that no view send started (the view's own send excuses one
+turn start for 30 seconds). A `/clear` typed at the desk starts no turn, so on such a harness the old
+screen stays until the next turn starts.
 
 **One head, one door.** Only the view's own send may type a line that starts with a view head or the old
 `[morph` head. The Send Protocol refuses it `bad_head` for every other request (the composer, a steer, a

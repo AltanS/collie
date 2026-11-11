@@ -344,6 +344,7 @@ import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
 import { viewPaneMark, viewPaneOf, viewQuestion, viewWorking } from "./agent-view/mark.ts";
+import { listenPersonTurns } from "./agent-view/person-turns.ts";
 import { AgentViewService } from "./agent-view/service.ts";
 import { trickViewsDir, AgentViewStore } from "./agent-view/store.ts";
 import { atTricksCrewFloor, HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
@@ -2515,6 +2516,9 @@ const views = ((): AgentViewService | undefined => {
   }
 })();
 views?.pruneMedia();
+// Rule 6 (review 9 R3): a WalkyTalky message from the person (a Hill answer or tell is one) typed into a
+// pane here is a person turn in that session.
+if (views !== undefined) listenPersonTurns({ log: walkyLog, addressOf: (paneId, instance) => walky.addressOf(paneId, instance), note: (session) => views.notePersonTurn(session) });
 versionCards = new VersionCards({
   hill,
   tricks: () => tricks ?? null,

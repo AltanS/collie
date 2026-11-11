@@ -2130,7 +2130,11 @@ export function startServer(opts: {
       } catch {
         body = undefined;
       }
-      return askRoute(rt, askMatch[1]!, body, { audit: caller.audit, device: caller.device(), redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+      const personTurn = (paneId: string): void => {
+        const pane = walky?.paneAt(rt.name, paneId) ?? null;
+        if (walky !== undefined && pane !== null && pane.agent) views?.notePersonTurn(walky.addressOf(pane.paneId, pane.instance));
+      };
+      return askRoute(rt, askMatch[1]!, body, { audit: caller.audit, device: caller.device(), redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding"), personTurn });
     }
 
     // ── Walky talky off for one session (M89 spec 04) ─────────────────────
@@ -9875,6 +9879,19 @@ function maskAskReply(reply: AskReply): AskReply {
   return masked;
 }
 
+/** What `POST /api/ask/<id>` writes beside its answer. */
+export interface AskRouteContext {
+  readonly audit: AuditLog;
+  readonly device: string | null;
+  readonly redact: boolean;
+  readonly acceptEncoding: string | null;
+  /**
+   * An answer that reached the pane is a person turn in its session (agent views rule 6, review 9 R3):
+   * a view's screen there, on a harness that reports no conversation, goes stale. A replay is no turn.
+   */
+  readonly personTurn?: (paneId: string) => void;
+}
+
 /**
  * `POST /api/ask/<id>` once the write gate passed and the session resolved (M56 spec 08). With the
  * Send Protocol off (no answerer on the runtime) the route is not there. Every outcome is a 200 with
@@ -9885,7 +9902,7 @@ export async function askRoute(
   rt: AskRouteRuntime,
   askId: string,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: AskRouteContext,
 ): Promise<Response> {
   if (rt.driver !== undefined) return programAskRoute(rt, rt.driver, askId, body, context);
   if (rt.asks === undefined) return text(ASK_OFF_TEXT, 404);
@@ -9907,6 +9924,7 @@ export async function askRoute(
     if (receipt.keys.length > 0 && reply.replayed !== true) {
       rt.engine.noteInput();
       rt.engine.pokeNow();
+      context.personTurn?.(paneId);
     }
   }
   return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
@@ -9922,7 +9940,7 @@ async function programAskRoute(
   driver: ProgramDriver,
   askId: string,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: AskRouteContext,
 ): Promise<Response> {
   const parsed = parseAnswerBody(askId, body);
   if (parsed === null) return text("bad ask answer", 400);
@@ -9936,7 +9954,10 @@ async function programAskRoute(
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     if (reply.replayed === true) detail.replayed = true;
     context.audit.record({ action: "ask", paneId, session: rt.name, device: context.device, detail });
-    if (receipt.outcome === "sent" && reply.replayed !== true) rt.engine.pokeNow();
+    if (receipt.outcome === "sent" && reply.replayed !== true) {
+      rt.engine.pokeNow();
+      context.personTurn?.(paneId);
+    }
   }
   return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
 }

@@ -123,6 +123,12 @@ export type ViewRefusalCode =
   // Typed text that holds a view head on any line (rule 7, review 9 R1): the view's request skips the protocol's check.
   | "bad_head";
 
+/**
+ * How long after a view's own send a turn start is taken as the turn that send started, not a person's
+ * (rule 6, review 9 R3). The bridge sees a turn start on its next poll, at most 12 s apart when idle.
+ */
+export const VIEW_OWN_TURN_MS = 30_000;
+
 /** The sentence a crew member answers a write or a switch with. */
 export const VIEW_NOT_ON_LEAD = "agent views work on the lead machine only; run it in a session on the lead";
 /** The sentence when the state could not be written. */
@@ -379,6 +385,10 @@ export class AgentViewService {
   private readonly sends: MinuteWindow;
   /** Sessions with a view send going out now: one at a time per session. */
   private readonly sending = new Set<string>();
+  /** Whether a turn ran in each session with a screen at the last look (rule 6, review 9 R3). */
+  private readonly turnSeen = new Map<string, boolean>();
+  /** Sessions a view's own send went to, until when the turn it starts is the view's and not a person's. */
+  private readonly ownTurns = new Map<string, number>();
 
   constructor(private readonly deps: AgentViewServiceDeps) {
     // Probed once, so a path that fits no wording leaves the bridge without agent views at boot, not at a serve.
@@ -430,18 +440,43 @@ export class AgentViewService {
    * conversation, or is gone, ends; a gate, a stale mark or a question that moved moves the view's rev.
    */
   noteMarks(): void {
+    this.noteTurnStarts();
     for (const entry of this.deps.store.all()) this.servedNoting(entry);
   }
 
   /**
-   * A person turn reached a session, and it did not come from a view: a phone send, a walky message from
-   * the person, typed text sent plain. A screen of that session whose pane reports no conversation goes
-   * stale (rule 6): the bridge cannot see a `/clear` there, so the next person turn ends the screen's
-   * conversation for it.
+   * A turn that started in a session with a screen since the last look, and that no send of the view
+   * started, is a person turn (rule 6, review 9 R3): the person typed at the desk, or something else
+   * prompted the agent. The view's own send excuses the first turn start within {@link VIEW_OWN_TURN_MS}.
+   * The first look at a session only learns its state.
+   */
+  private noteTurnStarts(): void {
+    const working = this.deps.working;
+    if (working === undefined) return;
+    const sessions = new Set(this.deps.store.all().filter((entry) => entry.view !== undefined).map((entry) => entry.session));
+    for (const session of this.turnSeen.keys()) if (!sessions.has(session)) this.turnSeen.delete(session);
+    for (const session of sessions) {
+      const now = working(session);
+      const before = this.turnSeen.get(session);
+      this.turnSeen.set(session, now);
+      if (!now || before !== false) continue;
+      const own = this.ownTurns.get(session);
+      this.ownTurns.delete(session);
+      if (own !== undefined && own >= this.now()) continue;
+      this.notePersonTurn(session);
+    }
+  }
+
+  /**
+   * A person turn reached a session, and it did not come from a view: a phone send, an ask answer, a
+   * WalkyTalky message from the person (a Hill answer or tell is one), typed text sent plain, or a turn
+   * start no view send caused ({@link noteTurnStarts}). A screen of that session whose pane reports no
+   * conversation goes stale (rule 6). `/clear` typed at the desk starts no turn, so on such a harness the
+   * screen stays until the next turn starts; a harness that reports its conversation changes its mark.
    */
   notePersonTurn(session: string): void {
     for (const entry of this.deps.store.all()) {
-      if (entry.session !== session || entry.view === undefined || entry.staleTurn === true) continue;
+      if (!sameSession({ own: entry.session, given: session }) || entry.view === undefined || entry.staleTurn === true) continue;
       if (entry.mark !== undefined && markHasConversation(entry.mark)) continue;
       this.deps.store.put(viewEntry({ ...entry, staleTurn: true }));
     }
@@ -854,6 +889,7 @@ export class AgentViewService {
         }
         this.keepSent(trick, session, { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line });
         if (plain) this.notePersonTurn(session);
+        else this.ownTurns.set(session, this.now() + VIEW_OWN_TURN_MS);
         this.audit("trick.view.send", session, device, { trick, rid: end.rid, kind: tap ? "tap" : "text", plain });
       },
     };

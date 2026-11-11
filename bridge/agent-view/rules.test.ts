@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { framedRulesLines, VIEW_FRAME, viewHelpWithRules, viewRulesIdOf } from "../../cli/trick-view-help.ts";
@@ -27,9 +28,18 @@ import {
 } from "../../web/src/lib/agent-view/wire.ts";
 import { rulesTextProblems, type View } from "../../web/src/lib/tricks/schema.ts";
 import type { JsonValue } from "../json.ts";
-import { AgentViewService, viewHead, VIEW_STALE_WORDS, type AgentViewServiceDeps, type ViewAuditEntry, type ViewCrewMode, type ViewGate, type ViewSendPlan } from "./service.ts";
+import { AgentViewService, viewHead, VIEW_OWN_TURN_MS, VIEW_STALE_WORDS, type AgentViewServiceDeps, type ViewAuditEntry, type ViewCrewMode, type ViewGate, type ViewSendPlan } from "./service.ts";
 import { AgentViewStore } from "./store.ts";
 import { HEAD_CASES } from "./testdata/head-cases.ts";
+import { listenPersonTurns } from "./person-turns.ts";
+import { walkySend } from "../hill/walky.ts";
+import { WalkyLog } from "../walky/log.ts";
+import { WalkyService } from "../walky/service.ts";
+import type { WalkyHost, WalkyPane } from "../walky/deliver.ts";
+import { spaceOf } from "../walky/space.ts";
+
+/** One unnamed space on one machine, for the WalkyTalky door of rule 6. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
 
 // THE AGENT VIEW CONTRACT'S RULES, one test (or more) per rule, named after it: the twelve rules of the
 // security read (section 3), the lead's seven additions (section 5) and V-A2. Doors of rule 7 that live in
@@ -411,6 +421,62 @@ describe("rule 6: no stale taps", () => {
     r.questions.delete(ONE);
     expect(served(r).stale).toBe(true);
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view" });
+  });
+
+  test("rule 6 (review 9 R3, turn starts): on a harness with no conversation, a turn no view send started makes the screen stale; the turn a view send starts does not, within VIEW_OWN_TURN_MS", async () => {
+    const r = rig();
+    r.marks.set(ONE, "pi\u0000");
+    const rev = await drawn(r);
+    r.service.noteMarks();
+    // The view's own send: the turn it starts is the view's.
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    r.working.add(ONE);
+    r.service.noteMarks();
+    expect(served(r).stale).toBeUndefined();
+    r.working.delete(ONE);
+    r.service.noteMarks();
+    // A turn nothing of the view started: the person at the desk.
+    r.working.add(ONE);
+    r.service.noteMarks();
+    expect(served(r).stale).toBe(true);
+    expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "stale_view" });
+  });
+
+  test("rule 6 (review 9 R3, turn starts): a view send excuses one turn start only, and only for VIEW_OWN_TURN_MS", async () => {
+    const r = rig();
+    r.marks.set(ONE, "pi\u0000");
+    const rev = await drawn(r);
+    r.service.noteMarks();
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    r.advance(VIEW_OWN_TURN_MS + 1);
+    r.working.add(ONE);
+    r.service.noteMarks();
+    expect(served(r).stale).toBe(true);
+  });
+
+  test("rule 6 (review 9 R3, WalkyTalky door): a message from the person typed into the session, a Hill tell among them, makes its screen stale; an agent's message does not", async () => {
+    for (const door of ["walky", "hill", "agent"] as const) {
+      const r = rig();
+      r.marks.set(ONE, "pi\u0000");
+      await drawn(r);
+      const root = mkdtempSync(join(tmpdir(), "view-person-turn-"));
+      try {
+        const panes: WalkyPane[] = [
+          { session: "main", paneId: "%1", agent: true, harness: "pi", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+          { session: "main", paneId: "%2", agent: true, harness: "pi", label: "repo#two", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
+        ];
+        const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
+        const log = new WalkyLog(join(root, "walky"));
+        const walky = new WalkyService({ log, host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+        listenPersonTurns({ log, addressOf: (paneId, instance) => walky.addressOf(paneId, instance), note: (session) => r.service.notePersonTurn(session) });
+        if (door === "walky") await walky.send({ id: "wt_aaaaaaaaaaa1", to: ONE, body: "please stop", replyTo: null }, { kind: "operator", label: "Pixel 9" });
+        if (door === "hill") expect(await walkySend(walky, { mintId: () => "wt_aaaaaaaaaaa2", sleep: async () => undefined })(ONE, "Answer to dc_k3m9x2p7q1ab: yes", "Pixel 9")).toBe("typed");
+        if (door === "agent") await walky.send({ id: "wt_aaaaaaaaaaa3", to: ONE, body: "done", replyTo: null }, { kind: "agent", pane: panes[1]! });
+        expect(served(r).stale, door).toBe(door === "agent" ? undefined : true);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
   });
 
   test("requirement 4: a harness that reports its conversation keeps the screen across a person turn: its mark is the reset", async () => {
