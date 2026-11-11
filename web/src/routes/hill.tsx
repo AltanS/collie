@@ -2,10 +2,12 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
 import { DashboardRouteBar, footAir } from "@/components/dashboard-route-bar";
+import { HillCrewStateBar } from "@/components/hill-crew-state";
 import { HillHeader, HillOff, HillView, LiveDecisionCard } from "@/components/hill-view";
 import { BandMain } from "@/components/ui/strip-host";
 import { useDashboardBar } from "@/hooks/use-dashboard-bar";
 import { useHillClear } from "@/hooks/use-hill-clear";
+import { useHillCrewStateControl } from "@/hooks/use-hill-crew-state";
 import { useHillSwitch } from "@/hooks/use-hill-switch";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
@@ -31,6 +33,10 @@ import { cn } from "@/lib/utils";
 // same header, and shows a calm off state with the switch's way back on (`HillOff`), not a redirect: a
 // person who lands here from an old notification or a bookmark learns why the Hill is empty, and turns
 // it on in one tap. The bar has no Hill item then, as on the Dashboard.
+//
+// THE CREW STATE (1.29.0) sits at the top of the list, above the cards: Here / Quiet / Away and its
+// helper line (components/hill-crew-state.tsx). Only where the bridge serves one: a member's own Hill,
+// which is not there (the Hill lives on the lead), and an older bridge show no control.
 
 const AT_HILL = { kind: "hill" } as const;
 
@@ -39,12 +45,15 @@ export function HillRoute() {
   const nav = useNav();
   const scope = useScope();
   const open = useHillOpen();
+  // The marked cards this page shows: the second Clear sends their ids, so a card marked later stays (C-N5).
+  const spoken = open.flatMap((d) => (d.spokeAfter === undefined ? [] : [d.id]));
   const closed = useHillClosed();
   const kept = useHillKept();
   const closedTotal = useHillClosedTotal();
   const clearing = useHillClear();
   const bar = useDashboardBar();
   const sw = useHillSwitch();
+  const crew = useHillCrewStateControl();
   const off = !sw.on;
   useScrollToDecision(open);
   return (
@@ -54,7 +63,24 @@ export function HillRoute() {
         {off ? (
           <HillOff canWrite={sw.canWrite} busy={sw.busy} onTurnOn={() => void sw.set(true)} />
         ) : (
-          <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear() }} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
+          <>
+            {crew.view !== null && (
+              <HillCrewStateBar
+                value={crew.value}
+                saved={crew.view.state}
+                told={crew.view.told}
+                setBy={crew.view.by === null || crew.view.at === null ? null : { by: crew.view.by, at: crew.view.at }}
+                canWrite={crew.canWrite}
+                busy={crew.busy}
+                failed={crew.failed}
+                telling={crew.telling}
+                tellFailed={crew.tellFailed}
+                onChange={(next) => void crew.set(next)}
+                onTell={() => void crew.tell()}
+              />
+            )}
+            <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: spoken.length, onClearSpoken: () => void clearing.clearSpoken(spoken) }} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
+          </>
         )}
       </BandMain>
       <DashboardRouteBar bar={bar} at={AT_HILL} />

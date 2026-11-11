@@ -7,13 +7,17 @@ import { HILL_RULES, HILL_WRITING, hillWordingWarnings } from "./hill-rules.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { stageImagesForBridge } from "./image-stage.ts";
 import { EXIT } from "./io.ts";
-import { AskLate, NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
+import { AskLate, NO_SOCKET_TEXT, shown, type PaneKind, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_POST_ASK_MS } from "../bridge/hill/crew.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
-import { HILL_DEFAULT_EXPIRY_DAYS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS } from "../bridge/hill/service.ts";
+import { HILL_DEFAULT_EXPIRY_DAYS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS, HILL_STATE_ON_LEAD } from "../bridge/hill/service.ts";
+import { deriveMode } from "../bridge/crew/mode.ts";
+import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { readHillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
+import { hillCrewStatePath, readHillCrewState, writeHillCrewState } from "../bridge/hill/crew-state.ts";
+import { readCrewStateView } from "../bridge/hill/crew.ts";
 import { parseAddress } from "../bridge/walky/address.ts";
 import { BARE_BAD_REQUEST, unknownOp } from "../bridge/walky/refusals.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
@@ -23,7 +27,11 @@ import {
   HILL_MEDIA_MAX,
   HILL_PRIORITIES,
   HILL_TEXT_MODES,
+  crewStateLine,
+  isHillCrewState,
   isHillOptionIntent,
+  type HillCrewState,
+  type HillCrewStateView,
   type HillDecision,
   type HillImageInput,
   type HillOption,
@@ -43,7 +51,7 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 // bridge that does not know the pane answers `not here`, and one that does not know the hill answers as
 // it answers any op it cannot read; both lead to the next. When no bridge knows the hill, it says so.
 
-export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list", "clear", "on", "off"] as const;
+export const HILL_SUBCOMMANDS = ["post", "status", "withdraw", "list", "clear", "state", "on", "off"] as const;
 
 export { HILL_RULES, HILL_WRITING };
 
@@ -75,7 +83,11 @@ const USAGE = {
   status: ["usage: collie hill status <dc_id> [--json]   (yours, or one whose answer goes to this session)"],
   withdraw: ["usage: collie hill withdraw <dc_id> [--json]"],
   list: ["usage: collie hill list [--json]   (your own decisions, open first)"],
-  clear: ["usage: collie hill clear [--json]   (remove every closed decision from the Hill; open ones stay)"],
+  clear: [
+    "usage: collie hill clear [--json]   (remove every closed decision from the Hill; open ones stay)",
+    "       collie hill clear --spoken [--json]   (withdraw and clear the open cards you answered in the session; types nothing; not from an agent's pane)",
+  ],
+  state: ["usage: collie hill state [here|quiet|away] [--json]   (read the crew state; with a word, your person sets it)"],
   on: ["usage: collie hill on    (switch the Hill on for this Collie; it is on unless switched off)"],
   off: ["usage: collie hill off   (switch the Hill off: every post is refused, the open decisions stay)"],
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
@@ -99,6 +111,11 @@ export type HillDeps = Omit<WalkyDeps, "mintId" | "sleep"> & {
   readonly cwd?: () => string;
   /** Where a picture under /tmp is copied for the bridge. Defaults to `<XDG_CACHE_HOME or ~/.cache>/collie/image-staging`. */
   readonly stagingRoot?: () => string;
+  /**
+   * What the local bridge says of the pane this runs in (`askPaneKind`, cli/walky.ts), for the person's
+   * verbs (`state <word>`, `clear --spoken`), as `collie trick on` asks it. None: not asked, so allowed.
+   */
+  readonly paneKind?: () => Promise<PaneKind>;
 };
 
 /** Every bridge socket on this machine worth asking, this install's own first, as `collie walky` asks them. */
@@ -506,8 +523,14 @@ export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Prom
   if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
   if (images.length > 0 && decision.media.length === 0) deps.io.err(`hill: ${HILL_IMAGES_DROPPED}`);
   if (view !== null && decision.view === undefined) deps.io.err(`hill: ${HILL_VIEW_DROPPED}`);
-  if (parsed.json) deps.io.out(JSON.stringify({ decision }));
-  else deps.io.out(decision.id);
+  // The crew state at the moment of the post, when it is not `here` (1.29.0): one last line.
+  const crewState = answer.body.crewState;
+  const crew = isHillCrewState(crewState) && crewState !== "here" ? crewState : null;
+  if (parsed.json) deps.io.out(JSON.stringify(crew === null ? { decision } : { decision, crewState: crew }));
+  else {
+    deps.io.out(decision.id);
+    if (crew !== null) deps.io.out(crewStateLine(crew));
+  }
   return EXIT.OK;
 }
 
@@ -614,14 +637,155 @@ export function clearedWords(count: number): string {
  */
 export async function cmdHillClear(deps: HillDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
-  const unknown = args.find((arg) => arg !== "--json");
+  const unknown = args.find((arg) => arg !== "--json" && arg !== "--spoken");
   if (unknown !== undefined) return usage(deps, "clear", `unknown argument \`${unknown}\``);
-  const answer = await request(deps, { op: "hill.clear" });
+  const spoken = args.includes("--spoken");
+  // The second Clear is the person's choice: refused in an agent's pane, here and again by the bridge.
+  if (spoken && (await inAgentPane(deps))) {
+    for (const line of personOnlyRefusal("collie hill clear --spoken")) deps.io.err(line);
+    return EXIT.REFUSED;
+  }
+  const answer = await request(deps, { op: spoken ? "hill.spoken.clear" : "hill.clear" });
   if (!answer.ok) return failed(deps, answer);
   const count = asJsonNumber(answer.body.cleared);
   if (count === undefined) return failed(deps, { ok: false, error: "the bridge answered without a count", code: null, exit: EXIT.FAIL });
-  deps.io.out(args.includes("--json") ? JSON.stringify({ cleared: count }) : clearedWords(count));
+  deps.io.out(args.includes("--json") ? JSON.stringify({ cleared: count }) : spoken ? spokenClearedWords(count) : clearedWords(count));
   return EXIT.OK;
+}
+
+/** What `collie hill clear --spoken` prints for a count. */
+export function spokenClearedWords(count: number): string {
+  if (count === 0) return "Nothing to clear: no open card you answered in its session.";
+  return `Withdrew and cleared ${String(count)} ${count === 1 ? "card" : "cards"} you answered in the session. Nothing was typed.`;
+}
+
+// ── The crew state (1.29.0) ──────────────────────────────────────────────────────────────────────────
+
+/** What each crew state means, one line, the words the phone shows under its control. */
+export const CREW_STATE_MEANING = {
+  here: "Agents post as usual.",
+  quiet: "No push. Agents post but do not wait.",
+  away: "No push. Agents hold questions that need an answer now.",
+} as const satisfies Record<HillCrewState, string>;
+
+/**
+ * The line a person's verb refuses with inside an agent's pane: the crew state and the Clear of the
+ * cards answered in the session are the person's choice. A SPEED BUMP, NOT A WALL, as `collie trick on`'s
+ * (cli/trick.ts `agentPaneRefusal`): the bridge is asked whether this pane runs an agent, and only a yes refuses.
+ */
+export function personOnlyRefusal(command: string): string[] {
+  return [
+    `error: ${command} is your person's choice, and this runs in a pane where an agent works.`,
+    "Tell your operator what you would change and why. They do it on the phone, on the Hill, or with this command in a shell pane or a terminal.",
+  ];
+}
+
+/** Whether the bridge says this pane runs an agent. Outside a pane, or with no answer, it is not. */
+async function inAgentPane(deps: HillDeps): Promise<boolean> {
+  if (readEnvMarkers(deps.ctx.env).length === 0 || deps.paneKind === undefined) return false;
+  return (await deps.paneKind().catch(() => "unknown" as const)) === "agent";
+}
+
+/** The second line of `collie hill state`: since when, and who set it. */
+export function crewStateSince(view: HillCrewStateView): string {
+  if (view.at === null) return "since always: nobody set it, so it is the default";
+  const when = `${new Date(view.at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  return view.by === null ? `since ${when}` : `since ${when}, set by ${shown(view.by)}`;
+}
+
+/** The crew state of this machine's file, for when no bridge answers. */
+function localCrewState(deps: HillDeps): HillCrewStateView {
+  return readHillCrewState(deps.ctx.stateDir).view;
+}
+
+/**
+ * Why `collie hill state` says `unknown` on a crew member no running bridge answers for (C-N3, review 8):
+ * the state is the lead's, and this machine's own file is not it. An agent reads this before each post.
+ */
+export const HILL_STATE_UNKNOWN_ON_MEMBER = "no running Collie here could ask the crew's lead, and the crew state lives there; start Collie, or look on the phone";
+
+/** Whether this machine is a crew member by its trust store on disk (cli/serve.ts `crewModeOnDisk`). */
+function memberOnDisk(deps: HillDeps): boolean {
+  const raw = deps.files.read(trustStorePath(deps.ctx.stateDir));
+  return deriveMode(enrollmentOf(raw === null ? null : parseTrustStore(raw))).mode === "peer";
+}
+
+/**
+ * `hill state [here|quiet|away] [--json]`: with no word, the crew state, read from the running bridge (on
+ * a crew member, from its lead), else this machine's file: one word, then a line with since when. A lead
+ * too old to say is a plain line and exit 4; so is a crew member no running bridge answers for, which
+ * prints `unknown` (its own file is not the lead's). With a word, the person sets it: refused inside an agent's
+ * pane (exit 4, as `collie trick on`), refused on a crew member (the state is the lead's), written by the
+ * running bridge, which audits it, or into the file when no bridge answers.
+ */
+export async function cmdHillState(deps: HillDeps, args: readonly string[]): Promise<number> {
+  const json = args.includes("--json");
+  const words = args.filter((arg) => arg !== "--json");
+  const word = words[0];
+  if (words.length > 1 || (word !== undefined && !isHillCrewState(word))) return usage(deps, "state", word === undefined ? `unexpected \`${words[1] ?? ""}\`` : `\`${words.join(" ")}\` is not a crew state: here, quiet or away`);
+  const print = (view: HillCrewStateView): void => {
+    if (json) deps.io.out(JSON.stringify({ crewState: view }));
+    else {
+      deps.io.out(view.state);
+      deps.io.out(crewStateSince(view));
+    }
+  };
+  const socket = deps.platform !== "win32";
+  // The file fallback for a read: on a member it is not the lead's state, so the answer is `unknown`.
+  const fallback = (): number => {
+    if (!memberOnDisk(deps)) {
+      print(localCrewState(deps));
+      return EXIT.OK;
+    }
+    deps.io.out(json ? JSON.stringify({ crewState: null }) : "unknown");
+    if (!json) deps.io.err(`hill: ${HILL_STATE_UNKNOWN_ON_MEMBER}`);
+    return EXIT.REFUSED;
+  };
+  if (word === undefined) {
+    if (!socket) return fallback();
+    const answer = await request(deps, { op: "hill.state" });
+    if (answer.ok) {
+      const view = readCrewStateView(answer.body.crewState);
+      if (view === null) return failed(deps, { ok: false, error: "the bridge answered without a crew state", code: null, exit: EXIT.FAIL });
+      print(view);
+      return EXIT.OK;
+    }
+    // No running Collie here knows the crew state: this machine's own file is the answer, on a lead.
+    if (answer.error === HILL_UNKNOWN) return fallback();
+    return failed(deps, answer);
+  }
+  if (await inAgentPane(deps)) {
+    for (const line of personOnlyRefusal(`collie hill state ${word}`)) deps.io.err(line);
+    return EXIT.REFUSED;
+  }
+  const said = (view: HillCrewStateView): number => {
+    if (json) deps.io.out(JSON.stringify({ crewState: view }));
+    else {
+      deps.io.out(`${crewStateLine(view.state)} ${CREW_STATE_MEANING[view.state]}`);
+      if (view.state !== "here") deps.io.out("To tell the sessions waiting on the Hill now, tap Tell all sessions now on the Hill.");
+    }
+    return EXIT.OK;
+  };
+  if (socket) {
+    const answer = await request(deps, { op: "hill.state", state: word });
+    if (answer.ok) {
+      const view = readCrewStateView(answer.body.crewState);
+      if (view === null) return failed(deps, { ok: false, error: "the bridge answered without a crew state", code: null, exit: EXIT.FAIL });
+      return said(view);
+    }
+    if (answer.error !== HILL_UNKNOWN) return failed(deps, answer);
+  }
+  // No running Collie here knows the crew state: write this machine's file, as `collie hill on|off` does.
+  // Not on a member: the state is the lead's, and a file here would only mislead its next read.
+  if (memberOnDisk(deps)) return failed(deps, { ok: false, error: HILL_STATE_ON_LEAD, code: "not_on_lead", exit: EXIT.REFUSED });
+  try {
+    writeHillCrewState(deps.ctx.stateDir, { state: word, by: "terminal" }, (deps.now ?? Date.now)());
+  } catch (err) {
+    deps.io.err(`hill: could not write ${hillCrewStatePath(deps.ctx.stateDir)}: ${err instanceof Error ? err.message : String(err)}`);
+    return EXIT.FAIL;
+  }
+  if (!json) deps.io.err(`hill: no running Collie answered; written to ${hillCrewStatePath(deps.ctx.stateDir)}, which the bridge reads when it runs`);
+  return said(localCrewState(deps));
 }
 
 /** What `collie hill off` says once the switch is written. */

@@ -347,6 +347,7 @@ import { TrickProposals } from "./tricks/proposals.ts";
 import { ProposeDoor } from "./tricks/propose-door.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
+import { HillCrewStateFile } from "./hill/crew-state.ts";
 import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
@@ -2401,6 +2402,8 @@ const hill = new HillService({
   media: hillMedia,
   place: hillPlace,
   send: walkySend(walky),
+  // "Tell all sessions now" in a rate bucket of its own (C-S1): a tell never spends the answers' bucket.
+  tell: walkySend(walky, { budget: "hill-tell" }),
   // A card names a session as the Dashboard's row does, from the same snapshot views (M96).
   sessionName: hillSessionName({
     place: hillPlace,
@@ -2438,6 +2441,9 @@ const hill = new HillService({
   // The Hill's switch (hill/switch.ts): on by default, `<stateDir>/hill/switch.json` once the phone or
   // `collie hill on|off` moved it. Read behind a stat check, so a switch needs no restart.
   hillSwitch: new HillSwitch(cfg.stateDir),
+  // The crew state (hill/crew-state.ts, 1.29.0): `here` by default, `<stateDir>/hill/state.json` once the
+  // phone or `collie hill state` set it. Read behind a stat check, so a change needs no restart.
+  crewState: new HillCrewStateFile(cfg.stateDir),
   // A crew member posts on its lead's Hill (CREW_PROTOCOL §22, 1.29.0): images read here, then uploaded,
   // then the post, over the member's signed dial of its lead. A lead below 1.29.0 is refused up front
   // when its release is known; when not, its uniform 401 (it does not sign these routes) reads as older.

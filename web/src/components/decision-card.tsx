@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 
 import { AgentIcon } from "@/components/agent-icon";
 import { BrandMark } from "@/components/brand-mark";
-import { DecisionGroupPager, GroupCount } from "@/components/decision-group";
+import { DecisionGroupPager, DecisionWholeView, GroupCount } from "@/components/decision-group";
 import { DecisionView } from "@/components/decision-view";
 import { HillPriorityMark } from "@/components/hill-priority";
 import { HillImageStrip, hillMediaSource, type HillMediaSource } from "@/components/hill-media";
@@ -25,6 +25,7 @@ import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
 import { hasResizeObserver, pageFonts } from "@/lib/env";
 import { HILL_ACK_MS } from "@/lib/hill/motion";
 import { linkHost } from "@/lib/hill/reader";
+import { singleCodeCard } from "@/lib/hill/code-card";
 import { useOpenedCards } from "@/lib/hill/group-opened";
 import type { HillDecision, HillGroupAnswer, HillOption, HillReceipt } from "@/lib/hill/wire";
 import { HILL_ANSWER_TEXT_MAX } from "@/lib/hill/wire";
@@ -105,7 +106,9 @@ import { cn } from "@/lib/utils";
 // every card, quiet. A yes stays off until the end of every card was on screen (review 7 R1: a card of a
 // group never folds, and paging past a long card does not open it), with "Open all 4 cards first." and
 // a "Card 3" tap for each card not yet opened (lib/hill/group-opened.ts keeps the marks). Every answer
-// to a group carries its digest and the cards opened; the bridge refuses a yes without them.
+// to a group carries its digest and the cards opened; the bridge refuses a yes without them. A single
+// card of Collie's own with code never folds either, and its yes waits for its end the same way, with
+// "Scroll to the end of the code first." (lib/hill/code-card.ts; the bridge does not check that one).
 
 /** The bridge's clock, ticked once a second by the page's one shared clock (lib/cache-clock.ts). */
 function hillClockNow(): number {
@@ -397,12 +400,16 @@ export function DecisionCard({
   const settled = useSettled(locked);
   const group = decision.group;
   const [page, setPage] = useState(() => (playgroundCard === undefined ? 0 : playgroundCard - 1));
+  const single = singleCodeCard(decision);
   // A card opens when its end was on screen (decision-group.tsx), not when it draws (review 7 R1).
-  const { opened, mark } = useOpenedCards(decision.id, group?.digest ?? "");
+  const { opened, mark } = useOpenedCards(decision.id, group?.digest ?? single?.key ?? "");
   const cardCount = group?.parts.length ?? 0;
   const lastCard = group === undefined || page >= cardCount - 1;
-  const unopened = group === undefined ? [] : group.parts.map((_, i) => i + 1).filter((card) => !opened.has(card));
-  const groupAnswer: HillGroupAnswer | undefined = group === undefined ? undefined : { digest: group.digest, opened: [...opened].toSorted((a, b) => a - b) };
+  const unopened = group === undefined ? (single === null || opened.has(1) ? [] : [1]) : group.parts.map((_, i) => i + 1).filter((card) => !opened.has(card));
+  const decline = group?.decline ?? single?.decline;
+  // A single card of code names its hash and card 1 once its end was on screen; the bridge needs both for its yes (C-A2).
+  const singleAnswer: HillGroupAnswer | undefined = single !== null && opened.has(1) ? { digest: single.digest, opened: [1] } : undefined;
+  const groupAnswer: HillGroupAnswer | undefined = group === undefined ? singleAnswer : { digest: group.digest, opened: [...opened].toSorted((a, b) => a - b) };
   const declineOption = group === undefined ? undefined : decision.options.find((option) => option.intent === group.decline);
   // An image the view places among its facts is drawn there, not again in the row above it.
   const stripMedia = useMemo(() => {
@@ -519,6 +526,13 @@ export function DecisionCard({
       className="gap-4 p-5"
     >
       <MetaLine decision={decision} hostSlot={hostSlot} trickIcon={trickIcon} />
+      {/* The quiet mark (1.29.0): the person wrote to the posting session after it asked. Words, not a
+          tint, and the card stays open and answerable; the list sorts it below the fresh cards. */}
+      {decision.spokeAfter !== undefined && (
+        <p data-slot="decision-spoke" className="-mt-2 text-xs text-muted-foreground">
+          {t("hill.spoke")}
+        </p>
+      )}
 
       <div className="flex flex-col gap-1">
         <h3 data-slot="decision-title" className="font-content break-words text-[17px] font-semibold leading-tight text-balance">
@@ -541,6 +555,8 @@ export function DecisionCard({
 
       {group !== undefined ? (
         <DecisionGroupPager decisionId={decision.id} group={group} page={page} onPage={setPage} onOpened={mark} sender={decision.from.label} mediaSource={mediaSource} />
+      ) : single !== null && decision.view !== undefined ? (
+        <DecisionWholeView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} onOpened={mark} />
       ) : (
         decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} />
       )}
@@ -681,7 +697,7 @@ export function DecisionCard({
                             aria-label={isArmed && option.confirm !== undefined ? t("hill.armed", { label: option.confirm }) : undefined}
                             aria-describedby={required ? hintId : undefined}
                             description={option.detail}
-                            disabled={optionsBlocked || (group !== undefined && option.intent !== group.decline && unopened.length > 0)}
+                            disabled={optionsBlocked || (decline !== undefined && option.intent !== decline && unopened.length > 0)}
                             onClick={() => choose(option)}
                             className="min-h-12 items-center px-3"
                             trailing={
@@ -700,6 +716,11 @@ export function DecisionCard({
                       })}
                       {/* The mark is decorative; a reader hears which option it is here. */}
                       {recommended !== undefined && <span className="sr-only">{t("hill.recommended", { label: recommended.label })}</span>}
+                      {single !== null && unopened.length > 0 && (
+                        <p data-slot="decision-code-unread" className="text-xs text-muted-foreground">
+                          {t("hill.single.readEnd")}
+                        </p>
+                      )}
                       {group !== undefined && unopened.length > 0 && (
                         <div data-slot="decision-group-unopened" className="flex flex-col">
                           <p className="text-xs text-muted-foreground">{tn("hill.group.openAll", cardCount)}</p>

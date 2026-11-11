@@ -40,8 +40,8 @@ import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
 import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTakeBack, type WalkyTarget, type WalkyWho } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
-import { readHillList, readHillReceipt } from "./hill/reader";
-import type { HillAnswerRequest, HillList, HillReceipt } from "./hill/wire";
+import { readHillCrewStateView, readHillList, readHillReceipt } from "./hill/reader";
+import type { HillAnswerRequest, HillCrewState, HillCrewStateView, HillList, HillReceipt } from "./hill/wire";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
@@ -3084,6 +3084,53 @@ export async function clearHillClosed(): Promise<number> {
   const cleared = asJsonNumber(asJsonObject(raw)?.cleared);
   if (cleared === undefined) throw new Error("/api/hill/clear answered with a body that is not { cleared }");
   return cleared;
+}
+
+/**
+ * POST /api/hill/clear/spoken (1.29.0): withdraw and clear the open Decisions the person answered in their
+ * session, of `ids` (the ones this phone showed) only. Nothing is typed. Answers how many went; the list comes back through the snapshot's `hillRev`.
+ * An older bridge answers 404 and a refusal throws, so the caller says it on the status line.
+ */
+export async function clearHillSpoken(ids: readonly string[]): Promise<number> {
+  const raw = await req<JsonValue>("/api/hill/clear/spoken", { method: "POST", body: JSON.stringify({ ids }) });
+  const cleared = asJsonNumber(asJsonObject(raw)?.cleared);
+  if (cleared === undefined) throw new Error("/api/hill/clear/spoken answered with a body that is not { cleared }");
+  return cleared;
+}
+
+/**
+ * GET /api/hill/state (1.29.0): the crew state this lead holds. A crew member and a deposed lead answer
+ * 409 (the state lives on the lead), a member's page 400, an older bridge 404; each throws, and the list
+ * from such a bridge carries no `crewState` either, so the Hill shows no control.
+ */
+export async function fetchHillCrewState(signal?: AbortSignal): Promise<HillCrewStateView> {
+  const raw = await req<JsonValue>("/api/hill/state", { signal });
+  const view = readHillCrewStateView(raw);
+  if (view === null) throw new Error("/api/hill/state answered with a body that is not a crew state");
+  return view;
+}
+
+/**
+ * POST /api/hill/state (1.29.0): set the crew state to `here`, `quiet` or `away`. Answers the value as the
+ * lead now holds it; a refusal or a body of another shape throws, so the caller puts the control back.
+ */
+export async function setHillCrewState(state: HillCrewState): Promise<HillCrewStateView> {
+  const raw = await req<JsonValue>("/api/hill/state", { method: "POST", body: JSON.stringify({ state }) });
+  const view = readHillCrewStateView(raw);
+  if (view === null) throw new Error("/api/hill/state answered with a body that is not a crew state");
+  return view;
+}
+
+/**
+ * POST /api/hill/state/tell (1.29.0): "Tell all sessions now", once for the change set at `at`. The lead
+ * types one operator line into each waiting session and answers how many it reached. A second tap for the
+ * same change, or a change the phone did not see, is refused with the lead's words (409), and throws.
+ */
+export async function tellHillSessions(at: number): Promise<number> {
+  const raw = await req<JsonValue>("/api/hill/state/tell", { method: "POST", body: JSON.stringify({ at }) });
+  const told = asJsonNumber(asJsonObject(raw)?.told);
+  if (told === undefined) throw new Error("/api/hill/state/tell answered with a body that is not { told }");
+  return told;
 }
 
 /**

@@ -199,6 +199,21 @@ export interface DeliverOptions {
    * only (M75): it is the one pane the lead's expansion picked here, and this member checks its label.
    */
   readonly pane?: string;
+  /**
+   * The rate bucket an operator send is counted in, instead of the operator's own (1.29.0). The Hill's
+   * "Tell all sessions now" names `hill-tell`, so a tell of 20 never spends the bucket the person's typed
+   * answers and messages use. The pair cap and a member's outer bucket are counted as always.
+   */
+  readonly budget?: "hill-tell";
+}
+
+/**
+ * The rate bucket a message is counted in: its sender's (kind, machine and pane address, never the label),
+ * or for an operator send that names one, its own `budget` on this machine (`hill-tell`).
+ */
+function bucketOf(message: WalkyMessage, options: DeliverOptions): string {
+  if (options.budget !== undefined && message.kind === "operator") return `${options.budget}:${message.from.memberId ?? "-"}`;
+  return senderKey(message.kind, message.from.memberId, message.from.address === null ? null : bareAddress(message.from.address));
 }
 
 /** The parts of a receipt beside its id, target and state. */
@@ -815,7 +830,7 @@ export class WalkyDeliverer {
    */
   private scopeCaps(message: WalkyMessage, targets: readonly string[], options: DeliverOptions, sender: boolean): { readonly refused: string } | { readonly full: ReadonlySet<string> } {
     const now = this.now();
-    const key = senderKey(message.kind, message.from.memberId, message.from.address === null ? null : bareAddress(message.from.address));
+    const key = bucketOf(message, options);
     const from = message.from.address === null ? null : bareAddress(this.normal(message.from.address));
     if (sender && !this.rate.room(key, now)) return { refused: "rate limit" };
     if (options.via !== undefined && targets.length > 0 && !this.members.room(options.via, now, targets.length)) return { refused: "rate limit" };
@@ -923,7 +938,7 @@ export class WalkyDeliverer {
     const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
     const count = Math.max(1, tokens);
     // A sender and a pair are counted by pane id, the token left out, so a new spelling never opens a new bucket.
-    const key = senderKey(message.kind, message.from.memberId, message.from.address === null ? null : bareAddress(message.from.address));
+    const key = bucketOf(message, options);
     const pair = message.from.address === null ? null : pairKey(bareAddress(this.normal(message.from.address)), bareAddress(this.normal(message.to)));
     if (!this.rate.room(key, now, count)) return refuse("rate limit");
     if (options.via !== undefined && !this.members.room(options.via, now, count)) return refuse("rate limit");

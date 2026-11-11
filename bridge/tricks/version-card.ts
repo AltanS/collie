@@ -29,7 +29,7 @@ import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { TrickVersionsPort, TrickVersionSubject, VersionAnswer } from "./service.ts";
 import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.ts";
-import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_CODE_CARDS, GROUP_FILES_MAX, groupOrder, placesTables } from "./card-group.ts";
+import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_CODE_CARDS, GROUP_FILES_MAX, groupOrder, maskedLinesNote, placesTables } from "./card-group.ts";
 import { rulesChange, rulesDiffRows } from "./rules-diff.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): one Decision of Collie's own on the Hill for each trick that is
@@ -56,6 +56,10 @@ import { rulesChange, rulesDiffRows } from "./rules-diff.ts";
 // much is shown ("1 of 3 files shown."), and a card with no view at all says "The change is too large
 // to show here. Read it on the machine before you say yes." A file name is cleaned for the view (a
 // character the view refuses becomes `?`); the walk refuses such names anyway (code-hash.ts).
+//
+// A LINE THE MASK CHANGED IS COUNTED AND NAMED. A file with lines the mask changed (a key, or a hidden
+// character as `?`) gets a sentence in the facts, "Collie could not show 3 lines of program.ts as they
+// are (a key, or a hidden character), so they show masked.", on the one card and on card 1 of a group.
 //
 // ── THE ANSWER ─────────────────────────────────────────────────────────────────────────────────────
 // `answer` runs inside the Hill's claim (hill/service.ts `onCollieAnswer`), with the ref's hash: use
@@ -212,7 +216,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // The head of the view: the rights as chips (the new instructions as one more), then each new right in
   // the words a person reads, then the inputs and the warnings.
   const lines = [...(viewNew ? [AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS] : []), ...(newRules ? [RULES_WORDS] : [])];
-  const facts = [...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
+  const facts = [...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
   // The code the card shows beside the rules: every changed file but the rules file, which shows whole on its own.
   const code = rules === null ? diff : { ...diff, files: diff.files.filter((file) => file.rel !== rules.rel) };
   const rulesNodes = rules === null ? [] : rulesView(rules);
@@ -323,6 +327,11 @@ export function rulesView(rules: ChangedFile): ViewNode[] {
   const nodes: ViewNode[] = [{ kind: "line", text: RULES_DIFF_LABEL, attrs: { role: "note" } }];
   for (let at = 0; at < rows.length; at += DIFF_LIMITS.lines) nodes.push({ kind: "diff", text: rows.slice(at, at + DIFF_LIMITS.lines).join("\n"), attrs: { file: cellPath(rules.rel) } });
   return nodes;
+}
+
+/** One paragraph for each changed file with lines the mask changed: how many, and which file. */
+function maskedNotes(files: readonly ChangedFile[]): ViewNode[] {
+  return files.flatMap((file): ViewNode[] => (file.masked === undefined ? [] : [{ kind: "para", text: maskedLinesNote(file.rel, file.masked) }]));
 }
 
 /** A path as one cell: any character the view refuses as `?`, cut from the start to fit, so the file name shows. */

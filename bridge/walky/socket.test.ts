@@ -431,6 +431,7 @@ describe("the hill operations (M96)", () => {
         seen.push(`list ${from.address}`);
         return { ok: false, error: "the lead (desk) is not answering; try again" };
       },
+      state: async () => ({ ok: false, error: "the lead (desk) is not answering; try again" }),
     };
     const { walky, hill } = withHill("peer", lead);
     expect(await ask(walky, hill, { op: "hill.post", markers: marker("%1"), ...post })).toEqual({

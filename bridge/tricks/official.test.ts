@@ -9,7 +9,7 @@ import { parseWalkyRequest } from "../walky/parse.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
-import { isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
+import { isListedOrigin, isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { canonicalRepoUrl, ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin, sameRepo } from "./origin.ts";
 import { caseClash } from "./proposal-install.ts";
 import { APPROVED_DIR, approvedCopyDir, switchesPath, TRICKS_DIR } from "./paths.ts";
@@ -385,6 +385,32 @@ describe("an entry's state on this machine", () => {
       await writeFile(join(dir, ORIGIN_FILE), renderOrigin(fork));
       expect(await officialStanding(configDir, list[0]!)).toMatchObject({ state: "taken", unlisted: true });
     }
+  });
+
+  // The forms with a user name, ssh and git's short ssh form: never listed, marked unlisted like any other spelling.
+  const USER_AND_SSH = ["https://user@github.com/AltanS/collie-tricks", "ssh://git@github.com/AltanS/collie-tricks.git", "git@github.com:AltanS/collie-tricks.git", "git+ssh://git@github.com:22/AltanS/collie-tricks", "git://github.com/AltanS/collie-tricks.git"];
+
+  test("a user name, ssh or git's short ssh form of the official repository is that repository, never a version of the list", async () => {
+    const list: OfficialEntry[] = [{ ...e, repo: OFFICIAL_REPOS[0]!, name: "Legs", description: "Counts legs.", contract: 1 }];
+    const at = "2026-11-11T09:00:00.000Z";
+    const configDir = await tempDir();
+    const dir = join(configDir, TRICKS_DIR, "legs");
+    await mkdir(dir, { recursive: true });
+    for (const url of USER_AND_SSH) {
+      expect(canonicalRepoUrl(url)).toBe("https://github.com/altans/collie-tricks");
+      // A listed commit with `official: true`, in this form: not the list's, so its row says so.
+      const record = { url, ref: C1, commit: C1, subdir: "legs", at, official: true } as const;
+      expect(isListedOrigin(list[0]!, record)).toBe(false);
+      expect(isUnlistedOfficialOrigin(list, "legs", record)).toBe(true);
+      await writeFile(join(dir, ORIGIN_FILE), renderOrigin(record));
+      expect(await officialStanding(configDir, list[0]!)).toMatchObject({ state: "taken", unlisted: true });
+    }
+    // Another repository on the same host in these forms stays another repository.
+    expect(sameRepo("git@github.com:AltanS/collie-tricks-fork.git", OFFICIAL_REPOS[0]!)).toBe(false);
+    expect(sameRepo("ssh://git@gitlab.com/AltanS/collie-tricks.git", OFFICIAL_REPOS[0]!)).toBe(false);
+    // A local path (the tests' seam) and a Windows drive are no short ssh form.
+    expect(canonicalRepoUrl("/tmp/repo")).toBe("/tmp/repo");
+    expect(canonicalRepoUrl("C:/repo")).toBe("C:/repo");
   });
 
   test.if(posix)("a link or a file by that name is taken, never followed", async () => {

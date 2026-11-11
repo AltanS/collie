@@ -16,6 +16,7 @@ import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
 import { RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
+import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): the diff of two copies, the card's words and view, and the
 // card's life on a real Hill beside a real tricks runner.
@@ -157,6 +158,56 @@ describe("the diff of two copies", () => {
     }
     const clean = diff.files.slice(2);
     expect(versionCard(one(clean), { counted: true, files: clean })?.recommends).toMatchObject({ intent: "use" });
+  });
+
+  test("a CR inside a changed line marks the file's lines as old or mixed line ends; a CRLF line end does not", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "a.sh": "1\n", "b.sh": "1\n", "c.sh": "1\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "a.sh": "2\n", "b.sh": "2\n", "c.sh": "2\n" });
+    const patches = new Map<string, string>([
+      ["a.sh", "@@ -1 +1 @@\n-1\r\n+a();\rb();\r\n"],
+      ["b.sh", "@@ -1 +1 @@\n-1\r\n+echo 2\r\n"],
+      ["c.sh", '@@ -1 +1,2 @@\n-1\n+a();\rb();\n+KEY="sk-or-v1-your-key-here-placeholder00"\n'],
+    ]);
+    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(argv.at(-1)?.split("/").at(-1) ?? "") ?? "", timedOut: false });
+    const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
+    expect(diff.files.map((file) => [file.rel, file.masked, file.strayCr])).toEqual([
+      ["a.sh", 1, true],
+      ["b.sh", undefined, undefined],
+      ["c.sh", 2, undefined],
+    ]);
+  });
+
+  test("a version made by hand with masked lines says in Collie's words how many lines it could not show, and names the file", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "1\n", "tool.sh": "1\n", "pic.bin": new Uint8Array([0, 1, 2]) });
+    const next = await folder({ "trick.toml": MANIFEST, "legs.sh": "2\n", "tool.sh": "2\n", "pic.bin": new Uint8Array([0, 1, 3]) });
+    const patches = new Map<string, string>([
+      // A key, a bidi mark and a control character: three lines the mask changed, one kept as it is.
+      ["legs.sh", '@@ -1 +1,4 @@\n-1\n+KEY="sk-or-v1-your-key-here-placeholder00"\n+echo "‮ok"\n+echo hi\u0007\n+echo 2\n'],
+      ["tool.sh", '@@ -1 +1 @@\n-1\n+TOKEN="sk-or-v1-your-key-here-placeholder11"\n'],
+    ]);
+    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(argv.at(-1)?.split("/").at(-1) ?? "") ?? "", timedOut: false });
+    const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
+    expect(diff.files.map((file) => [file.rel, file.masked])).toEqual([
+      ["legs.sh", 3],
+      ["pic.bin", undefined],
+      ["tool.sh", 1],
+    ]);
+    const three = "Collie could not show 3 lines of legs.sh as they are (a key, or a hidden character), so they show masked.";
+    const one = "Collie could not show 1 line of tool.sh as it is (a key, or a hidden character), so it shows masked.";
+    const pending = subject().pending!;
+    const of = (files: VersionDiff["files"]): TrickVersionSubject => ({ ...subject(), pending: { ...pending, info: { ...pending.info, files: { added: 0, changed: files.length, removed: 0 } } } });
+    // Text files only: a group of cards, and card 1 says it for each file, before the code cards show the lines masked.
+    const text = diff.files.filter((file) => file.rel !== "pic.bin");
+    const group = versionCard(of(text), { counted: true, files: text });
+    expect(group?.group?.parts[0]).toEqual(expect.arrayContaining([{ kind: "para", text: three }, { kind: "para", text: one }]));
+    expect(JSON.stringify(group?.group?.parts[1])).toContain(GROUP_MASKED_NOTE);
+    expect(group?.recommends).toBeNull();
+    // With a file that is not text there is no group: the one card says it in its facts.
+    const single = versionCard(of(diff.files), diff);
+    expect(single?.group).toBeUndefined();
+    expect(single?.view).toEqual(expect.arrayContaining([{ kind: "para", text: three }, { kind: "para", text: one }]));
+    // A file with nothing masked gets no such sentence.
+    expect(JSON.stringify(versionCard(subject(), DIFF))).not.toContain("Collie could not show");
   });
 });
 
@@ -429,8 +480,11 @@ async function edit(l: Life, at: number, text: string, manifest = MANIFEST): Pro
 const cardsOf = (l: Life): HillDecision[] => l.hill.collieDecisions("version");
 const openCard = (l: Life): HillDecision | undefined => cardsOf(l).find((decision) => decision.state === "open");
 
+/** A tap from a phone that showed the card's code to its end: a single card of code names its hash and card 1 (C-A2). */
 async function tap(l: Life, decision: HillDecision, rid: number, intent: string): Promise<HillReceipt> {
-  const outcome = await l.hill.answer({ rid: `00000000-0000-4000-8000-${String(rid).padStart(12, "0")}`, node: `hill/${decision.id}`, intent, value: { text: null } }, decision.id, "Pixel 9");
+  const request = { rid: `00000000-0000-4000-8000-${String(rid).padStart(12, "0")}`, node: `hill/${decision.id}`, intent, value: { text: null } };
+  const one = singleCodeCard(decision);
+  const outcome = await l.hill.answer(one === null ? request : { ...request, group: { digest: one.digest, opened: [1] } }, decision.id, "Pixel 9");
   if (outcome.kind !== "receipt") throw new Error(outcome.kind);
   return outcome.receipt;
 }

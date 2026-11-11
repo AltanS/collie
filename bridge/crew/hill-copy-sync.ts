@@ -4,7 +4,7 @@ import type { HillDecision, HillMedia } from "../../web/src/lib/hill/wire.ts";
 import type { HillCarryView } from "../hill/service.ts";
 import { CARRY_READ_TTL_MS, CARRY_RETRY_MS, type CarryCall, type CarrySyncResult } from "./carry-sync.ts";
 import type { CrewLink } from "./peer-client.ts";
-import { HILL_CLOSED_IDS_MAX, hillCopyDigest, mediaKey, parseHillReport } from "./standby-hill.ts";
+import { deputyReadsCrewState, HILL_CLOSED_IDS_MAX, hillCopyDigest, mediaKey, parseHillReport } from "./standby-hill.ts";
 
 // THE LEAD KEEPS ITS DEPUTY'S COPY OF THE HILL CURRENT (CREW_PROTOCOL §25), with the tricks copy's rules:
 // a list when the digest differs, the missing pictures again at most once a minute while it is the same,
@@ -50,7 +50,7 @@ function needOfAnswer(body: JsonValue | null): string[] {
 
 export class HillCopySync {
   private readonly now: () => number;
-  private cache: { at: number; built: Built } | null = null;
+  private cache: { at: number; withState: boolean; built: Built } | null = null;
   private lastRound = -Infinity;
   private fact: DeputyHillFact | null = null;
 
@@ -62,25 +62,30 @@ export class HillCopySync {
     return this.fact;
   }
 
-  private build(): Built {
+  /** The list for a deputy; `withState` only for one whose report says it reads the crew state (C-S2). */
+  private build(withState: boolean): Built {
     const now = this.now();
-    if (this.cache !== null && now - this.cache.at < CARRY_READ_TTL_MS) return this.cache.built;
+    if (this.cache !== null && this.cache.withState === withState && now - this.cache.at < CARRY_READ_TTL_MS) return this.cache.built;
     const view = this.deps.source.view(HILL_CLOSED_IDS_MAX);
     const trickIds = new Set(view.open.flatMap((d) => (d.from.kind === "trick" && d.from.trickId !== null ? [d.from.trickId] : [])));
     const tricks = this.deps.source.tricks(trickIds);
     // The records as the wire carries them: the deputy digests what it parsed, so the lead digests the same.
     // SAFETY: `JSON.parse` of `JSON.stringify` output is a JsonValue by construction.
     const decisions = JSON.parse(JSON.stringify(view.open)) as JsonValue[];
-    const digest = hillCopyDigest(view.on, decisions, view.closed, tricks);
-    const built: Built = { body: { on: view.on, decisions, closed: view.closed, tricks }, digest, open: view.open };
-    this.cache = { at: now, built };
+    // The crew state rides only once the person set one, so a lead that never did sends the body it always
+    // sent, and only to a deputy that reads it: an older one digests the four old fields, and so must we.
+    const crewState = withState ? (view.crewState ?? null) : null;
+    const digest = hillCopyDigest(view.on, decisions, view.closed, tricks, crewState);
+    const base: JsonObject = { on: view.on, decisions, closed: view.closed, tricks };
+    const built: Built = { body: crewState === null ? base : { ...base, crewState: { state: crewState.state, at: crewState.at, by: crewState.by } }, digest, open: view.open };
+    this.cache = { at: now, withState, built };
     return built;
   }
 
   /** One sync to the deputy at `link`, given the report off its snapshot answer. */
   async run(link: CrewLink, body: JsonValue | undefined): Promise<CarrySyncResult> {
     const reported = parseHillReport(body);
-    const built = this.build();
+    const built = this.build(deputyReadsCrewState(body));
     const same = reported !== null && reported.digest === built.digest;
     if (same && reported.need === 0) {
       this.fact = { member: link.memberId, state: "current", open: built.open.length };

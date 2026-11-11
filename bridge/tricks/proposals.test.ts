@@ -35,6 +35,7 @@ import { withSwitch, writeSwitches } from "./switches.ts";
 import { VersionCards } from "./version-card.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import type { VersionDiff } from "./version-diff.ts";
+import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
 
 // TRICK PROPOSALS ON THE LEAD (crew slice 8), on a real Hill beside a real tricks runner: the store stays
 // inert, the card is Collie's own, the yes installs exactly the bytes the card showed, and every limit.
@@ -146,8 +147,11 @@ async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next
 const proposalCards = (l: Lead): HillDecision[] => l.hill.collieDecisions("proposal");
 const openCards = (l: Lead): HillDecision[] => proposalCards(l).filter((d) => d.state === "open");
 
+/** A tap from a phone that showed the card's code to its end: a single card of code names its hash and card 1 (C-A2). */
 async function tap(l: Lead, decision: HillDecision, intent: string): Promise<HillReceipt> {
-  const outcome = await l.hill.answer({ rid: nextRid(), node: `hill/${decision.id}`, intent, value: { text: null } }, decision.id, "Pixel 9");
+  const request = { rid: nextRid(), node: `hill/${decision.id}`, intent, value: { text: null } };
+  const one = singleCodeCard(decision);
+  const outcome = await l.hill.answer(one === null ? request : { ...request, group: { digest: one.digest, opened: [1] } }, decision.id, "Pixel 9");
   if (outcome.kind !== "receipt") throw new Error(outcome.kind);
   return outcome.receipt;
 }
