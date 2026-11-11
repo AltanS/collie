@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/pro
 import { dirname, join } from "node:path";
 
 import { HOST } from "../host.ts";
-import { isTrickId, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
+import { AGENT_VIEW_PLACE, isTrickId, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { hillImageMime } from "../hill/media.ts";
 import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureName, linkRefusal, PICTURE_DIRS, walkFingerprint, walkTrickCode, WRITABLE_TOP_DIRS, type CodeEntry, type TrickFs } from "./code-hash.ts";
 import { readManifestFile, readSmallFile } from "./discover.ts";
@@ -302,12 +302,19 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
  * draws in (`places`), each sorted and once. `inputs` was hashed as an empty list before the key
  * existed, so a manifest without it hashes the same as before, and only a trick that declares inputs
  * moves its powers: a new glob asks for a new yes.
+ *
+ * Contract 2's agent view adds two rights, each only when the manifest has it, so every other trick keeps
+ * its hash byte for byte: the place word `agent-view` joins `places`, and `rules` is the SHA-256 of the
+ * rules file's bytes (discover.ts `readRulesFile`). A changed rules text is therefore a changed right: no
+ * auto, no "Use it and stop asking", the card shows it whole. A manifest read from its text alone, whose
+ * rules file was not read, hashes `rules` as the empty string: never equal to a read one.
  */
-export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs">): string {
+export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256">): string {
   const env = [...new Set(manifest.env ?? [])].toSorted();
-  const places = [...new Set<string>(manifest.places)].toSorted();
+  const places = [...new Set<string>([...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])])].toSorted();
   const inputs = [...new Set(manifest.inputs ?? [])].toSorted();
-  return createHash("sha256").update(JSON.stringify({ env, inputs, places })).digest("hex").slice(0, 16);
+  const doc = manifest.rules === undefined ? { env, inputs, places } : { env, inputs, places, rules: manifest.rulesSha256 ?? "" };
+  return createHash("sha256").update(JSON.stringify(doc)).digest("hex").slice(0, 16);
 }
 
 // ── counts ───────────────────────────────────────────────────────────────────
@@ -360,6 +367,8 @@ export interface ApproveOptions {
   at: string;
   fs?: TrickFs;
   platform?: NodeJS.Platform;
+  /** The code hash the person read (review 8 V-N1): a copy that hashes otherwise is refused. */
+  expect?: string;
 }
 
 /**
@@ -372,11 +381,14 @@ export async function approveFolder(opts: ApproveOptions): Promise<ApproveResult
   const fs = opts.fs ?? diskTrickFs;
   await migrateSwitches({ stateDir: opts.stateDir, configDir: opts.configDir, fs, platform: opts.platform });
   const src = join(tricksConfigDir(opts.configDir), opts.id);
-  const snap = await snapshotTrick({ src, parent: approvedTrickDir(opts.configDir, opts.id), fs, platform: opts.platform });
+  const snapOpts: SnapshotOptions = { src, parent: approvedTrickDir(opts.configDir, opts.id), fs, platform: opts.platform };
+  if (opts.expect !== undefined) snapOpts.expect = opts.expect;
+  const snap = await snapshotTrick(snapOpts);
   if (!snap.ok) return snap;
   const read = await readManifestFile(fs, snap.dir, opts.id);
   const powers = read.manifest === undefined ? null : powersOf(read.manifest);
-  await updateSwitches(opts.stateDir, (now) => withApproval(now, opts.id, { at: opts.at, hash: snap.hash, by: opts.by, powers }));
+  const instructs = read.manifest?.rules !== undefined;
+  await updateSwitches(opts.stateDir, (now) => withApproval(now, opts.id, { at: opts.at, hash: snap.hash, by: opts.by, powers, instructs }));
   const out: ApproveResult = { ok: true, hash: snap.hash, dir: snap.dir, powers };
   if (read.manifest !== undefined) out.manifest = read.manifest;
   return out;

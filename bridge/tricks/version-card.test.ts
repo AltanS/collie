@@ -7,16 +7,16 @@ import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HillService } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import { HILL_SUMMARY_MAX, type HillDecision, type HillReceipt } from "../../web/src/lib/hill/wire.ts";
-import { DECISION_VIEW_LIMITS, parseDecisionView } from "../../web/src/lib/tricks/schema.ts";
+import { DECISION_VIEW_LIMITS, parseDecisionView, RULES_NEVER_AUTO, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
-import { GROUP_MASKED_NOTE } from "./card-group.ts";
-import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
+import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
+import { RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
-import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
+import { singleCodeCard, viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): the diff of two copies, the card's words and view, and the
 // card's life on a real Hill beside a real tricks runner.
@@ -596,5 +596,165 @@ describe("the card's life", () => {
     await l.service.setSwitch("lodge", "legs", false);
     expect(await l.service.autoRoute("lodge", "legs", true)).toMatchObject({ status: 409, body: { error: "off" } });
     expect(await l.service.undoRoute("lodge", "nope")).toEqual({ status: 404, body: { error: "unknown-trick" } });
+  });
+});
+
+describe("an agent view's rules on the card (contract 2)", () => {
+  const VIEW: TrickManifest = { id: "morph", name: "Morph", mode: "once", contract: 2, icon: "eye", places: [], agentView: true, rules: "rules.md" };
+  const OLD = "Draw one screen.\nKeep it short.\n";
+  const NEW = "Draw one screen.\nKeep it short.\nNever ask for a password.\n";
+  const sha = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex");
+  const view = (text: string): TrickManifest => ({ ...VIEW, rulesText: text, rulesSha256: sha(text) });
+  const rulesSubject = (base: TrickManifest | undefined, next: TrickManifest, files = { added: 0, changed: 1, removed: 0 }): TrickVersionSubject => ({
+    id: "morph",
+    name: "Morph",
+    waiting: true,
+    pending: { hash: "b".repeat(64), dir: "/x", info: { hash: "b".repeat(64), files, powersChanged: true, warnings: [] }, manifest: next },
+    base: base === undefined ? null : { dir: "/y", manifest: base },
+  });
+  // What git says of the rules file: masked, so the card never shows these rows for it.
+  const gitRules = (text: string): VersionDiff => ({ counted: true, files: [{ rel: "rules.md", change: "changed", plus: 1, minus: 0, hunk: ["@@ -1,2 +1,3 @@", ...text.split("\n").slice(0, -1).map((line) => ` ${line}`)] }] });
+  /** Every diff row of a view or a group, in order. */
+  const rowsOf = (views: readonly (readonly ViewNode[])[]): string[] => views.flatMap((v) => v.flatMap((node) => (node.kind === "diff" ? node.text.split("\n") : [])));
+  /** The new text the rows say: every row but `-` and the header, without its sign. */
+  const newText = (rows: readonly string[]): string => `${rows.filter((row) => !row.startsWith("-") && !row.startsWith("@@")).map((row) => row.slice(1)).join("\n")}\n`;
+
+  test("a changed rules text: the chip, the words, the whole diff, no stop-asking option and no recommendation", () => {
+    const card = versionCard(rulesSubject(view(OLD), view(NEW)), gitRules(NEW));
+    expect(card?.options?.map((o) => o.intent)).toEqual(["use", "keep"]);
+    expect(card?.recommends).toBeNull();
+    expect(card?.summary).toBe("1 file changed. It now also gives your agents new instructions.");
+    expect(card?.group).toBeUndefined();
+    const text = JSON.stringify(card?.view);
+    expect(text).toContain('{"kind":"chip","text":"new agent instructions","attrs":{"tone":"warn"}}');
+    expect(text).toContain('"text":"Gives your agents instructions written by its author."');
+    expect(text).toContain('"text":"The agent instructions, every line:"');
+    const rows = rowsOf([card?.view ?? []]);
+    expect(rows).toEqual(["@@ -1,2 +1,3 @@", " Draw one screen.", " Keep it short.", "+Never ask for a password."]);
+    expect(newText(rows)).toBe(NEW);
+  });
+
+  test("a new agent view with long rules shows every line on a group of cards, never 'not shown'", () => {
+    const long = Array.from({ length: 70 }, (_, i) => `Rule ${String(i + 1)}: ${"draw one plain screen and keep each line short ".repeat(2).trim()}.`).join("\n").concat("\n");
+    // Within the rules cap, but past what one card holds beside the facts.
+    expect(long.length).toBeLessThanOrEqual(8 * 1024);
+    const base: TrickManifest = { id: "morph", name: "Morph", run: "./p.sh", mode: "once", contract: 2, icon: "eye", places: ["belt"] };
+    const card = versionCard(rulesSubject(base, view(long), { added: 1, changed: 1, removed: 0 }), { counted: true, files: [{ rel: "rules.md", change: "added", plus: 70, minus: 0, hunk: null }, { rel: "trick.toml", change: "changed", plus: 2, minus: 0, hunk: ["@@ -1 +1,2 @@", '+rules = "rules.md"', '+places = ["belt", "agent-view"]'] }] });
+    expect(card?.summary).not.toContain(VERSION_NOT_SHOWN);
+    expect(card?.options?.map((o) => o.intent)).toEqual(["use", "keep"]);
+    const parts = card?.group?.parts ?? [];
+    expect(parts.length).toBeGreaterThan(2);
+    const first = JSON.stringify(parts[0]);
+    expect(first).toContain('"text":"an agent view"');
+    expect(first).toContain('"text":"new agent instructions"');
+    expect(first).toContain("Adds a view of a session that the session's own agent draws. You switch it on per session.");
+    expect(first).toContain("A tap in that view sends a message in your name to that session only.");
+    // Every rules row on the cards, in order, before the other files: the bytes of the file, whole.
+    const rows = rowsOf(parts.slice(1));
+    const rulesRows = rows.slice(0, rows.indexOf('+rules = "rules.md"') === -1 ? rows.length : rows.indexOf("@@ -1 +1,2 @@"));
+    expect(newText(rulesRows)).toBe(long);
+    for (const part of parts) expect(parseDecisionView(parseJson(JSON.stringify(part))).view).toBeDefined();
+  });
+
+  test("a trick with rules whose rules did not change still never offers stop asking", () => {
+    const card = versionCard(rulesSubject(view(OLD), { ...view(OLD), run: "./p.sh" }), DIFF);
+    expect(card?.options?.map((o) => o.intent)).toEqual(["use", "keep"]);
+    expect(JSON.stringify(card?.view)).not.toContain("new agent instructions");
+  });
+
+  test("the card's always answer is refused for a trick with rules", async () => {
+    // The Hill offers no "always" on such a card; this is the seam behind it, should a claim name it anyway.
+    // SAFETY: the card posts through these three calls only; the refusal comes before any other is reached.
+    const hill = { postCollie: () => ({ ok: true }), withdrawCollie: () => ({ ok: true }), collieDecisions: () => [] } as never;
+    const calls: string[] = [];
+    // SAFETY: answer() reaches only these three calls of the tricks service.
+    const tricks = { approvePending: async () => (calls.push("approve"), { ok: true }), declinePending: async () => ({ ok: true }), setAuto: async () => (calls.push("auto"), { ok: true }) } as never;
+    const cards = new VersionCards({ hill, tricks: () => tricks, diff: async () => ({ counted: true, files: [] }) });
+    const held = rulesSubject(view(OLD), { ...view(OLD), run: "./p.sh" });
+    cards.sync([{ ...held, pending: held.pending === null ? null : { ...held.pending, info: { ...held.pending.info, powersChanged: false } } }]);
+    await cards.settled();
+    expect(await cards.answer({ type: "version", id: "morph", hash: "b".repeat(64) }, "always")).toEqual({ ok: false, reason: RULES_NEVER_AUTO });
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("review 8 V-S1: no yes without the rules on screen", () => {
+  const sha = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex");
+  const view = (text: string): TrickManifest => ({ id: "morph", name: "Morph", mode: "once", contract: 2, icon: "eye", places: [], agentView: true, rules: "rules.md", rulesText: text, rulesSha256: sha(text) });
+  const held = (old: string, now: string): TrickVersionSubject => ({
+    id: "morph",
+    name: "Morph",
+    waiting: true,
+    pending: { hash: "b".repeat(64), dir: "/x", info: { hash: "b".repeat(64), files: { added: 0, changed: 1, removed: 0 }, powersChanged: true, warnings: [] }, manifest: view(now) },
+    base: { dir: "/y", manifest: view(old) },
+  });
+  const masked: VersionDiff = { counted: true, files: [{ rel: "rules.md", change: "changed", plus: 4000, minus: 4000, hunk: null }] };
+  /** Every diff row on the cards after card 1, in order. */
+  const rowsAfterFirst = (card: ReturnType<typeof versionCard>): string[] =>
+    (card?.group?.parts ?? []).slice(1).flatMap((part) => part.flatMap((node) => (node.kind === "diff" ? node.text.split("\n") : [])));
+  /** The text the `+` and context rows say, without the wrap marks of a long line. */
+  const newOf = (rows: readonly string[]): string => {
+    const lines: string[] = [];
+    for (const row of rows) {
+      if (row.startsWith("@@") || row.startsWith("-")) continue;
+      const body = row.slice(1);
+      if (body.startsWith(GROUP_WRAP)) lines[lines.length - 1] += body.slice(GROUP_WRAP.length);
+      else lines.push(body);
+    }
+    return `${lines.join("\n")}\n`;
+  };
+
+  test("every card that shows rules is held to the code card rule: one card with a diff (no fold, yes after its end), else a group", () => {
+    const small = versionCard(held("Draw.\n", "Draw one screen.\n"), { counted: true, files: [{ rel: "rules.md", change: "changed", plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-Draw.", "+Draw one screen."] }] });
+    // One card: no group, and its view holds the rules as a diff node, so the phone's singleCodeCard takes it.
+    expect(small?.group).toBeUndefined();
+    expect(viewHasCode(small?.view ?? [])).toBe(true);
+    expect(JSON.stringify(small?.view)).toContain('"file":"rules.md"');
+    // Too long for one card, line by line or whole: a group, whose yes needs every card opened.
+    const long = (n: number): string => Array.from({ length: n }, (_, i) => `Line ${String(i)} of the rules.\n`).join("");
+    const byLine = versionCard(held(long(300), long(340)), { counted: true, files: [{ rel: "rules.md", change: "changed", plus: 40, minus: 0, hunk: null }] });
+    const whole = versionCard(held("a\n".repeat(4000), "b\n".repeat(4000)), masked);
+    for (const card of [byLine, whole]) {
+      expect(card?.group?.decline).toBe("keep");
+      expect((card?.group?.parts.length ?? 0) > 1).toBe(true);
+      expect(card?.group?.parts.slice(1).every((part) => viewHasCode(part))).toBe(true);
+    }
+    // No room at all: Keep alone, so there is no yes to hold.
+    const none = versionCard(held("a\n".repeat(2000), "b\n".repeat(2000)), masked, false, 0);
+    expect(none?.options?.map((o) => o.intent)).toEqual(["keep"]);
+  });
+
+  test("a change of 4000 lines for 4000 shows the new rules whole on cards of their own, and only then offers Use", () => {
+    const old = "a\n".repeat(4000);
+    const now = "b\n".repeat(4000);
+    const card = versionCard(held(old, now), masked);
+    const parts = card?.group?.parts ?? [];
+    expect(parts.length).toBeGreaterThan(1);
+    expect(newOf(rowsAfterFirst(card))).toBe(now);
+    const first = JSON.stringify(parts[0]);
+    expect(first).toContain("The change is too long to show line by line, so the new agent instructions show whole");
+    expect(first).not.toContain("on card 2, every line");
+    expect(card?.options?.map((o) => o.intent)).toEqual(["use", "keep"]);
+    for (const part of parts) expect(parseDecisionView(parseJson(JSON.stringify(part))).view).toBeDefined();
+  });
+
+  test("the worst rules a file may hold fit: 8 KiB of the longest escapes, one character a line, or 160 a line", () => {
+    for (const now of ['"\n'.repeat(4096), `${'"\\'.repeat(80)}\n`.repeat(50), "a\n\n".repeat(2730)]) {
+      expect(now.length).toBeLessThanOrEqual(8 * 1024);
+      const card = versionCard(held("x\n".repeat(4096), now), masked);
+      expect(newOf(rowsAfterFirst(card)), JSON.stringify(now.slice(0, 8))).toBe(now);
+      expect(card?.options?.map((o) => o.intent)).toEqual(["use", "keep"]);
+    }
+  });
+
+  test("when the rules cannot be shown at all, the card offers only Keep and says to take it on the machine", () => {
+    // No room for the rules' own cards: the case a larger cap would reach.
+    const card = versionCard(held("a\n".repeat(2000), "b\n".repeat(2000)), masked, false, 0);
+    expect(card?.options?.map((o) => o.intent)).toEqual(["keep"]);
+    expect(card?.group).toBeUndefined();
+    expect(card?.summary).toBe(`1 file changed. It now also gives your agents new instructions. ${RULES_ON_MACHINE}`);
+    expect(RULES_ON_MACHINE).toBe("The new agent instructions do not fit on the phone, so this version can only be taken on the machine.");
+    expect(JSON.stringify(card?.view)).toContain("Read them there, then take it with: collie trick on morph");
+    expect(JSON.stringify(card)).not.toContain("on card 2");
   });
 });

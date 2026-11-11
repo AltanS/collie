@@ -10,6 +10,7 @@
       "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
       "hash": "705e3e44ae3e22942842dff079f70450d8e9d7f362856ad5c7dcb79efc65631a",
       "extras": "b1039966e31072a10ef6a45aeb299d8e94626d4fa244b145ed8281d1c80a6653",
+      "rules": null,
       "contract": 1,
       "previous": []
     },
@@ -22,6 +23,7 @@
       "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
       "hash": "154877527ed1684a723bed5829fb8f7352970f3268432fd855ddcd175996cf9d",
       "extras": "a4ba4db96bd317b5f4c7223417f9fc8098682460256817b060f05b670967b63d",
+      "rules": null,
       "contract": 1,
       "previous": []
     },
@@ -34,6 +36,7 @@
       "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
       "hash": "ad74b18f54faebe21c6092a8524314a6bbc678cce94914d41db9786ada56992e",
       "extras": "0abbef9a24224b0853c24cf3a1ef80f1c66a2616d6795e08c012857c5466ebe3",
+      "rules": null,
       "contract": 1,
       "previous": []
     }

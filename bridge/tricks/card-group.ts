@@ -148,10 +148,13 @@ function runFile(run: string, rels: ReadonlySet<string>): string | null {
   return null;
 }
 
-/** The files in a group's order: the manifest, the run file, then by path in byte order. */
-export function groupOrder<T extends { rel: string }>(files: readonly T[], run: string | null): T[] {
+/**
+ * The files in a group's order: `lead` first (an agent view's rules on a version card), then the manifest,
+ * the run file, then by path in byte order.
+ */
+export function groupOrder<T extends { rel: string }>(files: readonly T[], run: string | null, lead: readonly string[] = []): T[] {
   const rels = new Set(files.map((file) => file.rel));
-  const first = [MANIFEST_FILE, run === null ? null : runFile(run, rels)];
+  const first = [...lead, MANIFEST_FILE, run === null ? null : runFile(run, rels)];
   const rank = (rel: string): number => {
     const at = first.indexOf(rel);
     return at < 0 ? first.length : at;
@@ -293,10 +296,10 @@ export interface GroupRefusal {
  * "refuse" for a proposal (a masked line is not the code as it is), "show" for a version the person
  * made by hand, whose cards then say so. `helpers`: the files that are Collie's own helper, left off.
  */
-export function codeGroup(files: readonly ChangedFile[], run: string | null, masked: "refuse" | "show", helpers: ReadonlyMap<string, number> = new Map()): ({ ok: true } & Extract<GroupCode, { ok: true }>) | ({ ok: false } & GroupRefusal) {
+export function codeGroup(files: readonly ChangedFile[], run: string | null, masked: "refuse" | "show", helpers: ReadonlyMap<string, number> = new Map(), lead: readonly string[] = []): ({ ok: true } & Extract<GroupCode, { ok: true }>) | ({ ok: false } & GroupRefusal) {
   if (files.length > GROUP_FILES_MAX) return { ok: false, code: "too_large", error: GROUP_TOO_LARGE };
   // Collie's own helper is named on card 1, never laid out.
-  const ordered = groupOrder(files, run).filter((file) => !helpers.has(file.rel));
+  const ordered = groupOrder(files, run, lead).filter((file) => !helpers.has(file.rel));
   const read: GroupFile[] = [];
   for (const file of ordered) {
     const one = groupFile(file);

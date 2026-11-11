@@ -149,6 +149,53 @@ facts name every file by a path the bridge checked (`inputs/<member>/<pane>/<rel
 A contract 1 trick runs on this Collie exactly as before: its facts say `"contract": 1`, its output's
 `v` may be 1 or 2, and it gets no `inputs`.
 
+**Agent views ride inside contract 2 too.** The place word `agent-view` and the key `rules` came after
+`inputs`, before any released tag held contract 2, so they are additive at the same number. The rule
+from here on: once a build that speaks a number has shipped (a tag, an Edge build included), a key whose
+shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` holds it.
+
+- `agent-view` in `places` says the trick adds a view of a session that the session's own agent draws.
+  It is kept apart from the drawing places (`manifest.agentView`, never in `places`), at most once, and
+  it needs `rules`. This build reads it and answers with one `later` note,
+  `AGENT_VIEW_LATER`: "Agent views come with a later build of this version." No session UI, no socket
+  op and no route draws it yet.
+- `rules = "rules.md"` names the instructions the agent reads: one step, `*.md`, no leading dot, a
+  regular file (never a link), at most 8 KiB. Its content rule, `rulesTextProblems`, takes bytes 0x20 to
+  0x7E and `\n` only, no tab, no line over 160 characters, no space at a line's end, no run of more than
+  2 spaces, no more than 2 blank lines in a row, not empty, and a line break at the end; each break is its own refusal that names
+  the line. `rules` without `agent-view` is refused, and so is either one at contract 1.
+- A trick whose `places` is exactly `["agent-view"]` has no program: `run`, `every`, `inputs` and
+  `env` are refused (`VIEW_ONLY_REFUSED`). It never starts anything: no timer, no tap, no program. A
+  place this Collie does not know beside it counts as another place, so a newer trick keeps its `run`.
+- The rules file is in the code hash, so an edit is a new version. Its SHA-256 is in the powers
+  (`powersOf` adds `rules` only when the manifest names it, so every other trick's powers hash is the
+  same as before), so a change of the rules is a change of rights. A trick with rules never takes a
+  version without asking: `collie trick auto <id> on` and the card's "always" refuse, the About sheet
+  draws no "Take changes without asking", and the version card shows the rules' change whole, with the
+  chip "new agent instructions", on a card group when it does not fit one card.
+- The rights words are fixed: `AGENT_VIEW_WORDS`, `AGENT_VIEW_TAP_WORDS` and `RULES_WORDS`. The About
+  sheet holds the rules behind "Read the instructions", the file's text whole, monospace, wrapped, never
+  markdown.
+- An agent cannot propose a trick with `rules` or `agent-view`, nor a new version that adds them:
+  `has_rules`, "A trick that gives agents instructions cannot be proposed by an agent. Ask your person
+  to add it on the machine."
+- The `has_rules` refusal keeps an agent that follows the rules from proposing instructions. It is not a
+  barrier: an agent with a shell can write `rules.md` into a live trick folder, or a whole folder, by
+  hand. The edit is then a new version, and the version card, with the rules' change on screen, is the
+  only gate before it runs (a trick with rules never takes changes without asking).
+- On Windows there is no `O_NOFOLLOW`. The rules file is checked with `lstat` (a regular file, never a
+  link), then opened and checked with `fstat`; a program that swaps the file for a link between the two
+  can make the bridge read another regular file of at most 8 KiB that passes the content rule. What the
+  card shows and what is hashed still come from that one read, so the yes still names the bytes shown.
+- For a later build that serves the rules to an agent, one rule is fixed now: Collie's frame around them
+  uses a delimiter the rules cannot copy, a non-ASCII marker and a line with the byte length. The rules
+  are printable ASCII only, so no line of theirs can close the frame or open a new one.
+- The ids `walky-talky`, `hill`, `collie` and `view` are reserved (`RESERVED_TRICK_IDS`).
+- Approve what you read (every trick, not only one with rules): a row carries `approves`, the code hash
+  a switch on takes (the waiting version's, else the folder's). The phone sends it back with the switch,
+  and the bridge refuses another (409 `moved`, `SWITCH_MOVED`) and copies only code that hashes to it.
+  `collie trick on` approves the code it hashed and prints the rules' sha256 and where to read them.
+
 ## Writing a trick in TypeScript
 
 `collie trick init <id>` makes `<config dir>/tricks/<id>/` with five files: `trick.toml` with
@@ -319,8 +366,13 @@ refuse, and the switch stays one tap.
 Each Collie release carries a short list of official tricks: `bridge/tricks/official.json`, built into
 the binary, read strictly by `bridge/tricks/official.ts`. An entry is a trick id, its name, one line
 about it, the repository (`https://github.com/AltanS/collie-tricks`, the only one the reader accepts),
-the folder in it, a full commit, the code hash that folder has at that commit, and an extras hash over what
-an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`). Settings, Tricks shows
+the folder in it, a full commit, the code hash that folder has at that commit, an extras hash over what
+an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`), and
+`rules`: the SHA-256 of the instructions a contract 2 trick gives its agents, or null. The code hash
+already covers that file; the pin lets the phone say "Gives your agents instructions written by its
+author." before Add without a fetch, and the add (and an update) refuses a folder whose rules differ. The
+list carries no rules text, so the not-added About sheet says "Read the instructions after you add it. It
+stays off until you switch it on." The added trick's own About sheet shows them before the switch. Settings, Tricks shows
 the entries that are not added under "Official tricks", each with an Add button. On a fresh install, with no tricks
 folder yet, the card shows too when the list is not empty (the bridge sends `tricksRev` for it), and holds
 only the list and the foot line; the first add makes `<configDir>/tricks/` (0700), and the next scan reads

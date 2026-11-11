@@ -6,10 +6,12 @@ import { t, type MessageKey } from "@/lib/i18n";
 import { TRICK_WARNING_KINDS, TRICK_WARNINGS_MAX, type PlaceKind, type TrickWarningKind, type TricksRunsOn, type WireTrickInfo } from "@/lib/tricks/schema";
 
 /** The place words of a trick, each kind once, in the manifest's order. */
-export function placesLine(places: readonly PlaceKind[] | undefined): string {
+export function placesLine(places: readonly PlaceKind[] | undefined, agentView = false): string {
   // A trick entry with no `places` (an older bridge, a broken reply) is a manifest that declares none.
   const held: readonly PlaceKind[] = Array.isArray(places) ? places : [];
   const words = [...new Set(held)].map((place) => t(`settings.tricks.place.${place}` satisfies MessageKey));
+  // An agent view (contract 2) is listed apart from the drawing places, last.
+  if (agentView) words.push(t("settings.tricks.place.agentView"));
   return words.length === 0 ? t("settings.tricks.places.none") : words.join(", ");
 }
 

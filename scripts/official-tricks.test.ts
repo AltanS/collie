@@ -94,6 +94,7 @@ const START: OfficialEntry = {
   commit: "0".repeat(40),
   hash: "0".repeat(64),
   extras: "0".repeat(64),
+  rules: null,
   contract: 1,
   previous: [],
 };
@@ -238,5 +239,23 @@ describe("the flags", () => {
   test("the shipped list is the file the script writes by default", async () => {
     expect(LIST_FILE).toEndWith(join("bridge", "tricks", "official.json"));
     expect(parseOfficialList(parseJson(await readFile(LIST_FILE, "utf8"))).ok).toBe(true);
+  });
+});
+
+describe.if(posix)("scripts/official-tricks.ts pins the rules (review 8 V-N3)", () => {
+  test("writes the sha256 of the trick's rules file, null for a trick without, and --check names a stale one", async () => {
+    const r = await repo();
+    const rules = "Draw one screen.\n";
+    const manifest = 'id = "legs"\nname = "Legs"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n';
+    const sha = await r.commit({ "legs/trick.toml": manifest, "legs/rules.md": rules });
+    const file = await listFile([START]);
+    expect((await runOfficial({ repoDir: r.dir, commit: sha, check: false, file })).code).toBe(0);
+    const [entry] = await entriesOf(file);
+    expect(entry?.rules).toBe(new Bun.CryptoHasher("sha256").update(rules).digest("hex"));
+    expect(entry?.contract).toBe(2);
+    const stale = await listFile([{ ...START, commit: sha, contract: 2, rules: "c".repeat(64) }]);
+    const run = await runOfficial({ repoDir: r.dir, commit: sha, check: true, file: stale });
+    expect(run.code).toBe(1);
+    expect(run.lines.some((line) => line.startsWith("legs: rules is "))).toBe(true);
   });
 });

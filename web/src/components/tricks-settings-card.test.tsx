@@ -11,6 +11,7 @@ import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import { readTrick, readTrickText } from "@/lib/tricks/wire";
+import type { JsonObject } from "@/lib/json";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 
@@ -678,5 +679,105 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     expect(readTrickText("a".repeat(ABOUT_MAX + 1), "about")).toBeUndefined();
     expect(readTrickText("hidden\u202Emark", "about")).toBeUndefined();
     expect(readTrickText("two\nlines", "description")).toBeUndefined();
+  });
+});
+
+describe("an agent view (contract 2)", () => {
+  const MORPH: WireTrickInfo = {
+    host: "lodge",
+    id: "morph",
+    name: "Morph",
+    icon: "eye",
+    on: false,
+    state: "off",
+    places: [],
+    agentView: true,
+    rules: { file: "rules.md", text: "Draw one screen.\n" },
+    refusals: [{ code: "later", path: "/places/0", reason: "Agent views come with a later build of this version." }],
+    provenance: { via: "folder" },
+  };
+
+  it("lists the trick with agent view as its place, one later note, and a switch that switches it on", async () => {
+    const user = userEvent.setup();
+    const onSwitch = vi.fn(async () => ({ ...MORPH, on: true, state: "ok" as const }));
+    renderCard(await storeWith([MORPH]), onSwitch);
+    const row = rowOf("morph");
+    expect(row.querySelector('[data-line="places"]')).toHaveTextContent(/^agent view$/u);
+    const notes = [...row.querySelectorAll('[data-line="later"]')];
+    expect(notes.map((n) => n.textContent)).toEqual(["Agent views come with a later build of this version."]);
+    expect(row.querySelector('[data-line="slot"]')?.getAttribute("data-trouble")).toBeNull();
+    await user.click(within(row).getByRole("switch", { name: "Morph" }));
+    expect(onSwitch).toHaveBeenCalledWith("lodge", "morph", true);
+  });
+
+  it("places beside the view keep their words, the view comes last", () => {
+    expect(placesLine(["belt"], true)).toBe("belt, agent view");
+    expect(placesLine([], false)).toBe("No parts");
+  });
+
+  it("the wire keeps agentView and rules only in their shapes, and a trick with rules never reads as auto", () => {
+    const wire = (extra: JsonObject) => readTrick(JSON.parse(JSON.stringify({ ...MORPH, ...extra })));
+    expect(wire({})?.rules).toEqual({ file: "rules.md", text: "Draw one screen.\n" });
+    expect(wire({})?.agentView).toBe(true);
+    expect(wire({ agentView: "yes" })?.agentView).toBeUndefined();
+    expect(wire({ auto: true })?.auto).toBe(false);
+    for (const rules of [{ file: "../rules.md", text: "x\n" }, { file: "rules.md", text: "tab\there\n" }, { file: "rules.md", text: "café\n" }, { file: "rules.md", text: "a‮b\n" }, { file: "rules.md", text: "" }, { file: "rules.md" }, "rules.md"]) {
+      expect(wire({ rules })?.rules, JSON.stringify(rules)).toBeUndefined();
+    }
+  });
+});
+
+describe("review 8 V-N5: rules the phone cannot show", () => {
+  const BAD: WireTrickInfo = {
+    host: "lodge",
+    id: "morph",
+    name: "Morph",
+    icon: "eye",
+    on: false,
+    state: "off",
+    places: [],
+    agentView: true,
+    provenance: { via: "folder" },
+  };
+  const UNSHOWN = "This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.";
+
+  it("the wire keeps that rules were sent but could not be read, and a view without rules counts the same", () => {
+    const wire = (extra: JsonObject) => readTrick(JSON.parse(JSON.stringify({ ...BAD, ...extra })));
+    expect(wire({ rules: { file: "rules.md", text: "tab\there\n" } })?.rulesUnshown).toBe(true);
+    expect(wire({})?.rulesUnshown).toBe(true);
+    expect(wire({ rules: { file: "rules.md", text: "Draw.\n" } })?.rulesUnshown).toBeUndefined();
+  });
+
+  it("the row says so and its switch cannot switch the trick on; one that is on can still be switched off", async () => {
+    const store = await storeWith([{ ...BAD, rulesUnshown: true }, { ...BAD, id: "morph-on", name: "Morph on", on: true, state: "ok", rulesUnshown: true }]);
+    renderCard(store);
+    const row = rowOf("morph");
+    expect(row.querySelector('[data-line="rules-unshown"]')).toHaveTextContent(UNSHOWN);
+    expect(within(row).getByRole("switch", { name: "Morph" })).toBeDisabled();
+    expect(within(rowOf("morph-on")).getByRole("switch", { name: "Morph on" })).toBeEnabled();
+  });
+});
+
+describe("review 8 V-N1: a switch on names the code the person read", () => {
+  it("sends the hash the row shows, and when the trick changed since, says so and stays off", async () => {
+    const user = userEvent.setup();
+    const hash = "a".repeat(64);
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/tricks/lodge/legs/switch", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ error: "moved", message: "The trick changed after you read it. Read it again, then switch it on." }, { status: 409 });
+      }),
+    );
+    renderCard(await storeWith([{ ...LEGS, on: false, state: "off", approves: hash }]));
+    await user.click(await screen.findByRole("switch", { name: "Browser leg" }));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("The trick changed after you read it. Read it again, then switch it on."));
+    expect(bodies).toEqual([{ on: true, hash }]);
+    expect(screen.getByRole("switch", { name: "Browser leg" })).not.toBeChecked();
+  });
+
+  it("the wire keeps approves only as 64 hex", () => {
+    expect(readTrick(JSON.parse(JSON.stringify({ ...LEGS, approves: "b".repeat(64) })))?.approves).toBe("b".repeat(64));
+    expect(readTrick(JSON.parse(JSON.stringify({ ...LEGS, approves: "nope" })))?.approves).toBeUndefined();
   });
 });

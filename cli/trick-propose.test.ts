@@ -72,6 +72,16 @@ describe("collie trick guide", () => {
     expect(text).toContain("7 cards hold the code, about 6 KB each (42 KB in all).");
   });
 
+  test("has a short agent-view section: the keys, the content rule, never auto, no proposal, the later note", () => {
+    const text = trickGuide().join("\n");
+    expect(text).toContain("AGENT VIEWS\n");
+    expect(text).toContain('It needs contract = 2 and rules = "rules.md"');
+    expect(text).toContain("no run of more than 2 spaces, no more than 2 blank lines in a row.");
+    expect(text).toContain("A trick with rules never takes a new version without asking.");
+    expect(text).toContain("An agent cannot propose a trick with an agent view or rules.");
+    expect(text).toContain("Agent views come with a later build of this version.");
+  });
+
   test("prints the lines, or one JSON object with the lists; needs no bridge", () => {
     const io = capture();
     expect(cmdTrickGuide({ io }, [])).toBe(EXIT.OK);
@@ -381,5 +391,22 @@ describe("collie trick propose, over the walky socket", () => {
     await Bun.sleep(250);
     const after = await rawAsk(path, `${PROPOSE_LINE_PREFIX}"v":1,"markers":{},"requestId":"x","files":[]}\n`);
     expect(after?.error).not.toBe("another proposal is being read; try again in a moment");
+  });
+});
+
+describe("a trick that gives agents instructions (contract 2)", () => {
+  socketTest("the CLI refuses it with has_rules before anything reaches the socket, for a new trick and a new version", async () => {
+    const b = await bridge();
+    const view = trickFolder({ "trick.toml": 'id = "morph"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n', "rules.md": "Draw one screen.\n" });
+    const adds = trickFolder({ "trick.toml": MANIFEST.replace('places = ["belt"]', 'places = ["belt", "agent-view"]\ncontract = 2\nrules = "rules.md"'), "rules.md": "Draw one screen.\n" });
+    for (const folder of [view, adds]) {
+      const d = deps([walkySocketPath(b.stateDir)]);
+      expect(await cmdTrickPropose(d, [folder])).toBe(EXIT.REFUSED);
+      expect(d.io.stderr.join("\n")).toContain("A trick that gives agents instructions cannot be proposed by an agent. Ask your person to add it on the machine.");
+      const json = deps([walkySocketPath(b.stateDir)]);
+      expect(await cmdTrickPropose(json, [folder, "--json"])).toBe(EXIT.REFUSED);
+      expect(json.io.stdout.join("\n")).toContain('"has_rules"');
+    }
+    expect(b.calls).toEqual([]);
   });
 });

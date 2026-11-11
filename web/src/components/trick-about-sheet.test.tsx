@@ -1,9 +1,13 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { TrickAboutSheet, aboutParagraphs } from "@/components/trick-about-sheet";
-import { ABOUT_MAX, type WireTrickInfo } from "@/lib/tricks/schema";
+import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs } from "@/components/trick-about-sheet";
+import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
+import { ABOUT_MAX, AGENT_VIEW_LATER, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
 // A trick's About sheet: the name as the title, the description and the about paragraphs, then two groups
 // built only from what the bridge already sends for the row.
@@ -188,5 +192,103 @@ describe("TrickAboutSheet", () => {
     await user.click(screen.getByRole("button", { name: "Close" }));
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("an agent view and its rules (contract 2)", () => {
+  // The fixture the bridge's own tests read: the bytes on disk are the bytes the sheet draws.
+  const RULES_BYTES = readFileSync(join(import.meta.dirname, "..", "..", "..", "bridge", "tricks", "fixtures", "morph", "rules.md"));
+  const RULES_TEXT = RULES_BYTES.toString("latin1");
+  const MORPH: WireTrickInfo = {
+    host: "lodge",
+    id: "morph",
+    name: "Morph",
+    icon: "eye",
+    on: true,
+    state: "ok",
+    places: [],
+    agentView: true,
+    rules: { file: "rules.md", text: RULES_TEXT },
+    description: "Your agent answers by drawing one screen.",
+    provenance: { via: "folder" },
+  };
+  const toggle = () => screen.getByRole("button", { name: "Read the instructions" });
+
+  it("lists the two rights lines, the rules line and the later note under What it does, in the schema's words", () => {
+    render(<TrickAboutSheet trick={MORPH} open onClose={vi.fn()} />);
+    const does = screen.getByRole("list", { name: "What it does" });
+    expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Draws in: agent view.", AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS, AGENT_VIEW_LATER]);
+    expect(AGENT_VIEW_WORDS).toBe("Adds a view of a session that the session's own agent draws. You switch it on per session.");
+    expect(AGENT_VIEW_TAP_WORDS).toBe("A tap in that view sends a message in your name to that session only.");
+    expect(RULES_WORDS).toBe("Gives your agents instructions written by its author.");
+  });
+
+  it("holds the rules behind a closed fold, and opens them whole: the text on the screen is the file's bytes", async () => {
+    const user = userEvent.setup();
+    render(<TrickAboutSheet trick={MORPH} open onClose={vi.fn()} />);
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("dialog").querySelector('[data-line="rules-text"]')).toBeNull();
+    await user.click(toggle());
+    expect(screen.getByRole("button", { name: "Hide the instructions" })).toHaveAttribute("aria-expanded", "true");
+    const pre = screen.getByRole("dialog").querySelector('[data-line="rules-text"]');
+    expect(pre?.tagName).toBe("PRE");
+    expect(pre?.className).toContain("font-mono");
+    expect(pre?.className).toContain("whitespace-pre-wrap");
+    // Byte for byte: the file, the wire's reader, the drawn text.
+    const wired = readTrick(JSON.parse(JSON.stringify(MORPH)));
+    expect(wired?.rules?.text).toBe(RULES_TEXT);
+    expect(Buffer.from(pre?.textContent ?? "", "latin1").equals(RULES_BYTES)).toBe(true);
+    // Never markdown: only the line and piece spans the wrap draws, no other element.
+    expect(pre?.querySelectorAll(":not([data-prose-line]):not([data-prose-piece]):not([data-prose-wrap])").length).toBe(0);
+    expect(pre?.querySelectorAll("[data-prose-line]").length).toBe(RULES_TEXT.split("\n").length - 1);
+  });
+
+  it("the playground's Morph rules are the bridge fixture's bytes", async () => {
+    const { MORPH_RULES } = await import("@/playground/fixtures/morph");
+    expect(MORPH_RULES).toBe(RULES_TEXT);
+  });
+
+  it("a markdown-looking line stays text", async () => {
+    const user = userEvent.setup();
+    const text = "# Not a heading\n**not bold** [not a link](https://example.com)\n<b>not html</b>\n";
+    render(<TrickAboutSheet trick={{ ...MORPH, rules: { file: "rules.md", text } }} open onClose={vi.fn()} />);
+    await user.click(toggle());
+    const pre = screen.getByRole("dialog").querySelector('[data-line="rules-text"]');
+    expect(pre?.textContent).toBe(text);
+    expect(screen.getByRole("dialog").querySelector("a, b, h1, strong")).toBeNull();
+  });
+
+  it("draws no Take changes without asking switch for a trick with rules, even with the write given", () => {
+    render(<TrickAboutSheet trick={{ ...MORPH, auto: true }} open onClose={vi.fn()} onAuto={vi.fn()} />);
+    expect(screen.queryByText("Updates")).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Take changes without asking" })).toBeNull();
+  });
+
+  it("the not-added sheet says the trick gives instructions and to read them after the add: nothing is fetched before Add (review 8 V-N3)", () => {
+    const entry: WireOfficialTrick = { id: "morph", name: "Morph", description: "Your agent answers by drawing one screen.", repo: "https://example.com/tricks.git", repoName: "owner/tricks", commit: "a".repeat(40), state: "absent", givesRules: true };
+    render(<OfficialTrickAboutSheet entry={entry} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    expect(screen.getByText(RULES_WORDS)).toBeInTheDocument();
+    expect(screen.getByRole("dialog").querySelector('[data-line="rules-after-add"]')).toHaveTextContent("Read the instructions after you add it. It stays off until you switch it on.");
+    expect(screen.queryByRole("button", { name: "Read the instructions" })).toBeNull();
+    // The wire keeps the flag, never a text the list does not carry.
+    const wired = readOfficialTricksReply(JSON.parse(JSON.stringify({ tricks: [{ ...entry, rules: { file: "rules.md", text: RULES_TEXT } }] })));
+    expect(wired?.tricks[0]?.givesRules).toBe(true);
+    expect(wired?.tricks[0] !== undefined && "rules" in wired.tricks[0]).toBe(false);
+  });
+});
+
+describe("review 8 V-N5: rules the phone cannot show, and no auto switch on any agent view", () => {
+  const VIEW: WireTrickInfo = { host: "lodge", id: "morph", name: "Morph", icon: "eye", on: true, state: "ok", places: [], agentView: true, provenance: { via: "folder" } };
+
+  it("says the instructions cannot be shown here, draws no fold, and no Updates switch", () => {
+    render(<TrickAboutSheet trick={{ ...VIEW, rulesUnshown: true, auto: false }} open onClose={vi.fn()} onAuto={vi.fn()} />);
+    expect(screen.getByRole("dialog").querySelector('[data-line="rules-unshown"]')).toHaveTextContent("This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.");
+    expect(screen.queryByRole("button", { name: "Read the instructions" })).toBeNull();
+    expect(screen.queryByText("Updates")).toBeNull();
+  });
+
+  it("an agent view never shows the Updates switch, even when its rules did not arrive", () => {
+    render(<TrickAboutSheet trick={VIEW} open onClose={vi.fn()} onAuto={vi.fn()} />);
+    expect(screen.queryByText("Updates")).toBeNull();
   });
 });

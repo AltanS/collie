@@ -1,7 +1,9 @@
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { Button } from "@/components/ui/button";
+import { ProseText } from "@/components/ui/diff-lines";
+import { FoldPanel, MoreToggle } from "@/components/ui/fold-toggle";
 import { ListGroup } from "@/components/ui/list-group";
 import { OneOf } from "@/components/ui/one-of";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -10,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { originLine, placesLine, readsLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
-import type { TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
+import type { TricksRunsOn, WireOfficialTrick, WireTrickInfo, WireTrickRules } from "@/lib/tricks/schema";
 
 // A trick's About sheet: what a person reads before they switch a trick on. Opened by a tap on the trick's
 // name in Settings → Tricks (components/tricks-settings-card.tsx); the switch there is its own tap target.
@@ -27,17 +29,23 @@ import type { TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/trick
 //      and the whole group when every row is;
 //   4. "Where it comes from": the repository and short commit, or that it was added on this machine, and the
 //      one line a bridge that runs no tricks says;
+//   3b. "Read the instructions": for a trick with `rules` (contract 2), a fold with the rules file's text
+//      whole, monospace, wrapped, never markdown (`RulesFold`). "What it does" names the agent view's two
+//      rights lines and the rules line, and the one note that the view itself comes in a later build;
 //   5. "Updates": the "Take changes without asking" switch with its hint, for a trick that is switched on
 //      and only on a bridge that runs tricks (a crew member runs none, so it has nothing to take). It is the
 //      same field `collie trick auto` writes. The switch shows only here, not on the card; the card owns the
 //      write state (`flipAuto`): it flips at once, holds its position until the list agrees, and says a failed
-//      write in the status line, as the trick's own switch does.
+//      write in the status line, as the trick's own switch does. Never for a trick with `rules`: it never
+//      takes changes without asking (the bridge refuses the write too).
 //
 // NOT ADDED YET (`OfficialTrickAboutSheet`, Official tricks): the same sheet for an entry of the official list
 // that is not on this machine. Only what the list knows: the name, its one line, and "Where it comes from"
 // (the repository and short commit, and that Collie checks the code before it adds it). No "What it does":
 // the manifest is not here yet, so there is nothing true to say. One primary Add at the foot; the card owns
-// the write and closes the sheet once the bridge took it.
+// the write and closes the sheet once the bridge took it. An entry whose list pins rules (`givesRules`) shows
+// the rules line and says to read them after the add: the list carries only their hash, nothing is fetched
+// before Add, and the added trick stays off until its own About sheet showed them and the person switched it on.
 
 /** The paragraphs of an `about` text: split on a blank line, each trimmed, none empty. */
 export function aboutParagraphs(about: string): string[] {
@@ -56,7 +64,14 @@ interface FactRow {
 function doesRows(trick: WireTrickInfo): FactRow[] {
   const rows: FactRow[] = [];
   const places = Array.isArray(trick.places) ? trick.places : [];
-  if (places.length > 0) rows.push({ key: "draws", node: t("settings.tricks.about.draws", { places: placesLine(places) }) });
+  const view = trick.agentView === true;
+  if (places.length > 0 || view) rows.push({ key: "draws", node: t("settings.tricks.about.draws", { places: placesLine(places, view) }) });
+  if (view) {
+    rows.push({ key: "agent-view", node: t("settings.tricks.about.agentView") });
+    rows.push({ key: "agent-view-tap", node: t("settings.tricks.about.agentViewTap") });
+  }
+  if (trick.rules !== undefined) rows.push({ key: "rules", node: t("settings.tricks.about.rules") });
+  if (view) rows.push({ key: "later", node: <span className="text-muted-foreground">{t("settings.tricks.agentView.later")}</span> });
   if (trick.inputs !== undefined) rows.push({ key: "reads", node: readsLine(trick.inputs) });
   if (trick.env !== undefined && trick.env.length > 0) rows.push({ key: "env", node: t("settings.tricks.about.env", { names: trick.env.join(", ") }) });
   for (const line of warningLines(trick)) {
@@ -84,6 +99,34 @@ function FactGroup({ label, rows, slot }: { label: string; rows: readonly FactRo
           </li>
         ))}
       </ListGroup>
+    </section>
+  );
+}
+
+/**
+ * The instructions a trick gives the person's agents (contract 2), behind one fold: the file's bytes as
+ * written, every line, in monospace and wrapped. Never markdown, never cut: React draws the string as text,
+ * so the text on the screen is the text the agent reads. The bridge and the wire reader both held it to
+ * printable ASCII and line breaks, so no character can hide or turn a line around.
+ */
+function RulesFold({ rules }: { rules: WireTrickRules }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <section data-section="rules" className="pt-3">
+      <MoreToggle
+        open={open}
+        onToggle={() => setOpen((was) => !was)}
+        controls={id}
+        data-slot="trick-rules-toggle"
+        className="-ml-3"
+        more={t("settings.tricks.about.rulesOpen")}
+        less={t("settings.tricks.about.rulesClose")}
+      />
+      <FoldPanel id={id} open={open} data-slot="trick-rules">
+        <p className="pb-1 font-mono text-xs text-muted-foreground">{rules.file}</p>
+        <ProseText data-line="rules-text" text={rules.text} className="rounded-md border border-border bg-muted/40" />
+      </FoldPanel>
     </section>
   );
 }
@@ -151,8 +194,15 @@ export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite =
           </p>
         )}
         {does.length > 0 && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={does} />}
+        {trick.rules !== undefined && <RulesFold rules={trick.rules} />}
+        {trick.rulesUnshown === true && (
+          <p data-line="rules-unshown" className="pt-3 text-sm break-words text-muted-foreground">
+            {t("settings.tricks.about.rulesUnshown")}
+          </p>
+        )}
         <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
-        {trick.on && runsOn === undefined && onAuto !== undefined && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
+        {/* A trick that gives agents instructions never takes changes without asking: no switch to offer. */}
+        {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && trick.rulesUnshown !== true && trick.agentView !== true && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
       </div>
     </BottomSheet>
   );
@@ -182,6 +232,13 @@ export function OfficialTrickAboutSheet({ entry, open, onClose, busy, canWrite, 
         <p data-line="description" className="text-sm font-medium break-words">
           {entry.description}
         </p>
+        {entry.givesRules === true && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={[{ key: "rules", node: t("settings.tricks.about.rules") }]} />}
+        {/* The list pins the rules but does not carry them, and nothing is fetched before Add (review 8 V-N3). */}
+        {entry.givesRules === true && (
+          <p data-line="rules-after-add" className="pt-3 text-sm break-words text-muted-foreground">
+            {t("settings.tricks.about.rulesAfterAdd")}
+          </p>
+        )}
         <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
         <div className="pt-6">
           <Button type="button" data-slot="official-add" className="h-11 w-full" disabled={!canWrite || busy} aria-busy={busy || undefined} onClick={onAdd}>

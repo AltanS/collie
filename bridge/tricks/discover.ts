@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
-import { parseManifest, type TrickManifest, type Refusal } from "../../web/src/lib/tricks/schema.ts";
+import { parseManifest, RULES_MAX_BYTES, rulesTextProblems, type TrickManifest, type Refusal } from "../../web/src/lib/tricks/schema.ts";
 import { CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, type FsStat, type TrickFs } from "./code-hash.ts";
 import { ORIGIN_FILE, readOrigin, readProposalOrigin, type ProposalOrigin, type TrickOrigin } from "./origin.ts";
 import { MANIFEST_FILE } from "./paths.ts";
@@ -95,11 +95,48 @@ export async function readSmallFile(fs: TrickFs, dir: string, name: string): Pro
   return { kind: "bytes", bytes };
 }
 
-/** Read and parse a trick folder's manifest the hardened way. */
+/**
+ * Read and parse a trick folder's manifest the hardened way. A manifest that names `rules` (contract 2, an
+ * agent view) has its rules file read too ({@link readRulesFile}), and only a file that passes the content rule
+ * leaves the manifest standing, with its text and its SHA-256: what the person reads and what the powers hash.
+ */
 export async function readManifestFile(fs: TrickFs, dir: string, id: string): Promise<ManifestRead> {
   const read = await readSmallFile(fs, dir, MANIFEST_FILE);
   if (read.kind === "refused") return { refusals: [read.refusal] };
-  return readManifestText(read.kind === "absent" ? null : new TextDecoder().decode(read.bytes), id);
+  const parsed = readManifestText(read.kind === "absent" ? null : new TextDecoder().decode(read.bytes), id);
+  const name = parsed.manifest?.rules;
+  if (parsed.manifest === undefined || name === undefined) return parsed;
+  const rules = await readRulesFile(fs, dir, name);
+  if (!rules.ok) return { refusals: [...parsed.refusals, ...rules.refusals] };
+  return { manifest: { ...parsed.manifest, rulesText: rules.text, rulesSha256: rules.sha256 }, refusals: parsed.refusals };
+}
+
+/** A rules file read: its text (the bytes, which are ASCII) and their SHA-256, or every refusal. */
+export type RulesRead = { ok: true; text: string; sha256: string } | { ok: false; refusals: Refusal[] };
+
+/** One refusal of the rules file, at `/rules`. */
+function refuse(code: Refusal["code"], reason: string): RulesRead {
+  return { ok: false, refusals: [{ code, path: "/rules", reason }] };
+}
+
+/**
+ * Read the rules file `name` of a trick folder: `lstat` first, a regular file only (never through a link),
+ * at most {@link RULES_MAX_BYTES}, then the content rule ({@link rulesTextProblems}), each break its own
+ * refusal naming the line. The name passed `rulesNameProblem` already: one step, `*.md`, no leading dot,
+ * so it is a file the code hash walks, and a change of it is a new version.
+ */
+export async function readRulesFile(fs: TrickFs, dir: string, name: string): Promise<RulesRead> {
+  const path = join(dir, name);
+  const st = await fs.lstat(path);
+  if (st === null) return refuse("missing", `"rules" names ${name}, which is not in the folder.`);
+  if (st.kind === "symlink") return refuse("target", `${name} is a symbolic link. The rules are a regular file in the folder: put the file itself there.`);
+  if (st.kind !== "file") return refuse("type", `${name} is not a regular file.`);
+  if (st.size > RULES_MAX_BYTES) return refuse("size", `${name} is larger than ${String(RULES_MAX_BYTES / 1024)} KiB.`);
+  const bytes = await fs.read(path, RULES_MAX_BYTES + 1);
+  if (bytes === null) return refuse("type", `${name} cannot be read.`);
+  const problems = rulesTextProblems(bytes, name);
+  if (problems.length > 0) return { ok: false, refusals: problems.map((p) => ({ code: "text", path: "/rules", reason: p.reason })) };
+  return { ok: true, text: new TextDecoder().decode(bytes), sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
 /** One entry's `lstat` as a word for a fingerprint: it moves when the entry is written or replaced. */

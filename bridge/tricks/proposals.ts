@@ -5,14 +5,14 @@ import { dirname, join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../../web/src/lib/json.ts";
 import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import type { JsonObject } from "../json.ts";
-import type { TrickManifest } from "../../web/src/lib/tricks/schema.ts";
+import { givesAgentsInstructions, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { HILL_OFF, type HillCollieSender, type HillCollieVerdict, type HillOneAnswer, type HillPostAnswer, type HillPostOptions } from "../hill/service.ts";
 import { codeHashOfFiles, isCodePath, unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { recoverProposalWrites } from "./proposal-install.ts";
 import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposalCardResult, type ProposerFacts } from "./proposal-card.ts";
-import { checkProposedFiles, foldKey, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
+import { checkProposedFiles, foldKey, proposalHash, PROPOSE_HAS_RULES, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
 import { versionDiff, type VersionDiff } from "./version-diff.ts";
@@ -366,6 +366,8 @@ export class TrickProposals {
   }
 
   private async take(proposal: ProposalRead, proposer: Proposer): Promise<ProposeAnswer> {
+    // The wire refuses it first; here again, so no caller that skips the wire hands agents an author's words.
+    if (givesAgentsInstructions(proposal.manifest)) return refused("has_rules", PROPOSE_HAS_RULES);
     if (!this.deps.hill.isOn()) return refused("hill_off", HILL_OFF);
     const tricks = this.deps.tricks();
     if (tricks === null) return refused("no_tricks", PROPOSAL_NO_TRICKS);

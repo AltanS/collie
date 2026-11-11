@@ -16,6 +16,16 @@
 // is a contract 1 trick and runs exactly as before; the facts it gets say `"contract": 1`. A trick names
 // `contract = 2` to use `inputs`, and its facts say 2. A document's `"v"` may be any number from 1 to
 // this Collie's.
+//
+// Contract 2 also takes the keys of an agent view (2026-11-11): the place word `agent-view` (a view of
+// a session that the session's own agent draws), the key `rules` (the instructions that agent reads)
+// and a `run` that may be left out by a trick that is only an agent view. They are additive inside
+// contract 2 because no released build spoke contract 2 when they landed: no tag held its first commit
+// (f8c4b9404), the newest being v1.28.1 and v1.28.0-edge.4, and every one of them refuses
+// `contract = 2` with its one line. THE RULE FROM HERE ON: once a build that speaks a number has
+// shipped (a Stable or an Edge tag), the shape of a key it knows is fixed at that number. A key whose
+// shape changes after that moves to the next number, and so does a new key an older build of the same
+// number would refuse in a confusing way.
 
 /** The newest trick contract this Collie speaks. */
 export const TRICK_CONTRACT = 2;
@@ -25,3 +35,6 @@ export const TRICK_CONTRACT_DEFAULT = 1;
 
 /** The first contract that takes the manifest key `inputs`. */
 export const INPUTS_CONTRACT = 2;
+
+/** The first contract that takes the place word `agent-view` and the manifest key `rules`. */
+export const AGENT_VIEW_CONTRACT = 2;

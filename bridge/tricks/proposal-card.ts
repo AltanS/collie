@@ -211,9 +211,9 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
     return { ok: true, card: shown.view === null ? card : { ...card, view: shown.view } };
   }
   const helpers = input.helpers ?? new Map<string, number>();
-  const code = codeGroup(input.diff.files, manifest.run, "refuse", helpers);
+  const code = codeGroup(input.diff.files, manifest.run ?? null, "refuse", helpers);
   if (!code.ok) return { ok: false, code: code.code, error: code.error };
-  const rows = groupOrder(input.diff.files, manifest.run).map((file) => ({ rel: file.rel, cells: [sizeWords(input.sizes?.get(file.rel) ?? 0)] }));
+  const rows = groupOrder(input.diff.files, manifest.run ?? null).map((file) => ({ rel: file.rel, cells: [sizeWords(input.sizes?.get(file.rel) ?? 0)] }));
   const first = factsCard([{ kind: "para", text: who }, ...head], total, code.cards.length, placesTables(rows, ["Size"], code.places, helpers), author, helpers);
   if (first === null) return TOO_LARGE_FACTS;
   const tail = ` ${cardsSentence(code.cards.length + 1)}`;
@@ -283,9 +283,9 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   }
   const changed = new Set(input.diff.files.map((file) => file.rel));
   const helpers = new Map([...(input.helpers ?? new Map<string, number>())].filter(([rel]) => changed.has(rel)));
-  const code = codeGroup(input.diff.files, input.manifest.run, "refuse", helpers);
+  const code = codeGroup(input.diff.files, input.manifest.run ?? null, "refuse", helpers);
   if (!code.ok) return { ok: false, code: code.code, error: code.error };
-  const rows = groupOrder(input.diff.files, input.manifest.run).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
+  const rows = groupOrder(input.diff.files, input.manifest.run ?? null).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
   const first = factsCard([{ kind: "para", text: who }, ...head], total, code.cards.length, placesTables(rows, ["Change", "Lines"], code.places, helpers), [], helpers);
   if (first === null) return TOO_LARGE_FACTS;
   const tail = ` ${cardsSentence(code.cards.length + 1)}`;

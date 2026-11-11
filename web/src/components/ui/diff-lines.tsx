@@ -33,8 +33,81 @@ export function wrapPieces(text: string, cols: number): string[] {
   return pieces;
 }
 
+/**
+ * The rows one line of prose takes in `cols` columns: it breaks after the last space that fits, the space
+ * kept at the piece's end (so the pieces join to the line, byte for byte), and cuts inside a word only when
+ * that word alone is longer than a row. An agent view's rules and a `.md` file read as prose, not code.
+ */
+export function wrapWords(text: string, cols: number): string[] {
+  const chars = [...text];
+  if (cols < 1 || chars.length <= cols) return [text];
+  const pieces: string[] = [];
+  let at = 0;
+  // Bounded: every pass takes at least one character.
+  while (chars.length - at > cols) {
+    let end = at + cols;
+    for (let i = at + cols - 1; i > at; i -= 1) {
+      if (chars[i] === " ") {
+        end = i + 1;
+        break;
+      }
+    }
+    pieces.push(chars.slice(at, end).join(""));
+    at = end;
+  }
+  pieces.push(chars.slice(at).join(""));
+  return pieces;
+}
+
+/**
+ * Prose shown whole, as text (an agent view's rules in the About sheet): one block per line, wrapped at
+ * spaces in the measured columns ({@link wrapWords}), each row that goes on marked with
+ * {@link DIFF_WRAP_MARK} in a 2ch gutter as a card's diff marks it. The mark is CSS, not text, so the
+ * element's text is the bytes given, every line break kept. Never markdown: only spans.
+ */
+export function ProseText({ text, cols: fixedCols, className, ...rest }: { text: string; cols?: number; className?: string; "data-line"?: string }) {
+  const measured = useColumns(true);
+  const cols = fixedCols ?? measured.cols;
+  const lines = text.split("\n");
+  const ends = text.endsWith("\n");
+  if (ends) lines.pop();
+  return (
+    <div ref={measured.box} className="relative min-w-0 font-mono text-xs leading-5 [font-variant-ligatures:none]">
+      <span ref={measured.probe} aria-hidden className="invisible absolute whitespace-pre">
+        0000000000
+      </span>
+      <pre {...rest} className={cn("py-3 pr-3 pl-1 font-mono text-xs leading-5 [font-variant-ligatures:none] break-words whitespace-pre-wrap", className)}>
+        {lines.map((line, i) => {
+          const pieces = wrapWords(line, cols);
+          const tail = ends || i < lines.length - 1 ? "\n" : "";
+          return (
+            <span key={i} data-prose-line="" className="block min-h-5">
+              {pieces.map((piece, j) => {
+                const last = j === pieces.length - 1;
+                const body = last ? `${piece}${tail}` : piece;
+                if (j === 0) {
+                  return (
+                    <span key={j} data-prose-piece="" className="block pl-[2ch]">
+                      {body}
+                    </span>
+                  );
+                }
+                return (
+                  <span key={j} data-prose-wrap="" className="relative block pl-[2ch] before:absolute before:left-0 before:w-[2ch] before:text-center before:text-muted-foreground before:content-['↪']">
+                    {body}
+                  </span>
+                );
+              })}
+            </span>
+          );
+        })}
+      </pre>
+    </div>
+  );
+}
+
 /** The columns of mono text a wrapping block holds, or 0 before it was measured. */
-function useColumns(on: boolean) {
+export function useColumns(on: boolean) {
   const box = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLSpanElement>(null);
   const [cols, setCols] = useState(0);
@@ -74,8 +147,26 @@ export const DIFF_SIGN_TONE = { add: "text-status-done", del: "text-status-block
 /** One line's height, in rem: the block reserves its lines from this (`leading-5`). */
 export const DIFF_LINE_REM = 1.25;
 
-export function DiffLines({ lines, file, className, wrap = false }: { lines: readonly string[]; file?: string; className?: string; wrap?: boolean }) {
-  const { box, probe, cols } = useColumns(wrap);
+export function DiffLines({
+  lines,
+  file,
+  className,
+  wrap = false,
+  prose = false,
+  cols: fixedCols,
+}: {
+  lines: readonly string[];
+  file?: string;
+  className?: string;
+  wrap?: boolean;
+  /** Wrap at spaces ({@link wrapWords}), for prose such as an agent view's rules. Only with `wrap`. */
+  prose?: boolean;
+  /** The columns, for a test; measured from the block otherwise. */
+  cols?: number;
+}) {
+  const measured = useColumns(wrap);
+  const { box, probe } = measured;
+  const cols = fixedCols ?? measured.cols;
   return (
     <div data-slot="diff-lines" data-wrap={wrap ? "" : undefined} className={cn("min-w-0 overflow-hidden rounded-sm border border-border font-mono text-xs leading-5 [font-variant-ligatures:none]", className)}>
       {file !== undefined && (
@@ -89,7 +180,7 @@ export function DiffLines({ lines, file, className, wrap = false }: { lines: rea
             0000000000
           </span>
           {lines.map((line, i) => (
-            <WrappedLine key={i} line={line} cols={cols} />
+            <WrappedLine key={i} line={line} cols={cols} prose={prose} />
           ))}
         </div>
       ) : (
@@ -125,11 +216,11 @@ export function DiffLines({ lines, file, className, wrap = false }: { lines: rea
  * with {@link DIFF_WRAP_MARK} in the sign column. Every row keeps the line's tint. A screen reader reads
  * the line once, whole.
  */
-function WrappedLine({ line, cols }: { line: string; cols: number }) {
+function WrappedLine({ line, cols, prose }: { line: string; cols: number; prose: boolean }) {
   const kind = diffLineKind(line);
   const signed = kind === "add" || kind === "del";
   const text = signed ? line.slice(1) : line;
-  const pieces = wrapPieces(text, cols);
+  const pieces = prose ? wrapWords(text, cols) : wrapPieces(text, cols);
   return (
     <div data-diff-line={kind} className={DIFF_ROW_TONE[kind]}>
       <span className="sr-only">{line}</span>
@@ -138,7 +229,7 @@ function WrappedLine({ line, cols }: { line: string; cols: number }) {
           <span className={cn("w-[2ch] shrink-0 text-center select-none", i > 0 ? "text-muted-foreground" : DIFF_SIGN_TONE[kind])}>
             {i > 0 ? DIFF_WRAP_MARK : kind === "del" ? "−" : kind === "add" ? "+" : ""}
           </span>
-          <span className="min-w-0 break-all whitespace-pre-wrap">{piece || " "}</span>
+          <span className={cn("min-w-0 whitespace-pre-wrap", prose ? "break-words" : "break-all")}>{piece || " "}</span>
         </div>
       ))}
     </div>

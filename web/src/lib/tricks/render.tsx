@@ -1011,7 +1011,7 @@ function TableView({ node, ctx }: { node: TableNode; ctx: RenderCtx }) {
 function DiffView({ node, ctx }: { node: DiffNode; ctx: RenderCtx }) {
   return (
     <div {...floorBox(node, ctx)} className="min-w-0">
-      <DiffLines lines={node.text.split("\n")} file={node.attrs?.file} wrap={ctx.wrap === true} />
+      <DiffLines lines={node.text.split("\n")} file={node.attrs?.file} wrap={ctx.wrap === true} prose={node.attrs?.file?.endsWith(".md") === true} />
     </div>
   );
 }

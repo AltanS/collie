@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
-import { TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
+import { AGENT_VIEW_CONTRACT, TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
 import { DESCRIPTION_MAX, isTrickId, isTrickText, NAME_MAX, type OfficialState, type WireOfficialTrick } from "../../web/src/lib/tricks/schema.ts";
 import { diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import shipped from "./official.json";
@@ -25,7 +25,8 @@ import { tricksConfigDir } from "./paths.ts";
 // {@link OFFICIAL_REPOS} (an allowlist of one), a folder that is one step by the trick id rule, a commit of
 // 40 hex digits, a hash of 64, a name and a description by the manifest's own text rules, a contract this
 // Collie speaks, at most {@link OFFICIAL_PREVIOUS_MAX} earlier versions (`previous`, each a commit and its
-// hash, none the current commit, none twice), no id twice, at most {@link OFFICIAL_ENTRIES_MAX} entries. A list it refuses is no list:
+// hash, none the current commit, none twice), `rules` null or 64 hex (null below contract 2), no id twice,
+// at most {@link OFFICIAL_ENTRIES_MAX} entries. A list it refuses is no list:
 // the bridge offers nothing and says why once. The maintainer script (scripts/official-tricks.ts) rewrites
 // commits and hashes from a checkout of the repository, and `--check` fails when the list is stale.
 //
@@ -48,7 +49,7 @@ export const OFFICIAL_ENTRIES_MAX = 32;
 /** The most earlier versions an entry keeps. */
 export const OFFICIAL_PREVIOUS_MAX = 8;
 /** The keys of an entry, all required, no other. */
-const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "contract", "previous"] as const;
+const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "previous"] as const;
 
 /** One version of an entry: a commit and the code hash its folder has there. */
 export interface OfficialVersion {
@@ -73,6 +74,12 @@ export interface OfficialEntry {
    * `officialExtrasHash`), 64 hex. The code hash leaves them out, so this pins them.
    */
   extras: string;
+  /**
+   * The sha256 (64 hex) of the instructions the trick gives its agents (its manifest's `rules` file) at
+   * `commit`, or null when it gives none (review 8 V-N3). The code hash already covers that file; this pin
+   * lets the phone say so before Add without a fetch, and the add refuses a folder whose rules differ.
+   */
+  rules: string | null;
   /** The trick contract its manifest names. */
   contract: number;
   /** Versions earlier releases listed, newest first: a folder at one of them is still from the list. */
@@ -117,6 +124,7 @@ function readEntry(raw: JsonValue, at: number): EntryRead {
   const commit = asJsonString(doc.commit);
   const hash = asJsonString(doc.hash);
   const extras = asJsonString(doc.extras);
+  const rules = doc.rules === null ? null : asJsonString(doc.rules);
   const contract = asJsonNumber(doc.contract);
   if (id === undefined || !isTrickId(id)) return refuse(`${where} has no trick id (1 to 32 of a-z, 0-9 and -)`);
   if (name === undefined || !isTrickText(name, { max: NAME_MAX })) return refuse(`${id}: the name is missing, too long or holds a control or invisible character`);
@@ -129,10 +137,12 @@ function readEntry(raw: JsonValue, at: number): EntryRead {
   if (commit === undefined || !COMMIT.test(commit)) return refuse(`${id}: the commit is not 40 hex digits`);
   if (hash === undefined || !HASH.test(hash)) return refuse(`${id}: the code hash is not 64 hex digits`);
   if (extras === undefined || !HASH.test(extras)) return refuse(`${id}: the extras hash is not 64 hex digits`);
+  if (rules === undefined || (rules !== null && !HASH.test(rules))) return refuse(`${id}: the rules are not null or a sha256 of 64 hex digits`);
   if (contract === undefined || !Number.isInteger(contract) || contract < 1 || contract > TRICK_CONTRACT) return refuse(`${id}: the contract is not one this Collie speaks (1 to ${String(TRICK_CONTRACT)})`);
+  if (rules !== null && contract < AGENT_VIEW_CONTRACT) return refuse(`${id}: a trick of contract ${String(contract)} gives agents no instructions`);
   const previous = readPrevious(doc.previous, commit);
   if (!previous.ok) return refuse(`${id}: ${previous.reason}`);
-  return { ok: true, entry: { id, name, description, repo, dir, commit, hash, extras, contract, previous: previous.versions } };
+  return { ok: true, entry: { id, name, description, repo, dir, commit, hash, extras, rules, contract, previous: previous.versions } };
 }
 
 /** An entry's earlier versions read strictly, or why not. */
@@ -199,7 +209,7 @@ export function parseOfficialList(raw: JsonValue | undefined): OfficialList {
 
 /** The list's text as the maintainer script writes it: two spaces, the keys in their order, one newline at the end. */
 export function renderOfficialList(entries: readonly OfficialEntry[]): string {
-  const tricks = entries.map((e) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, contract: e.contract, previous: e.previous.map((v) => ({ commit: v.commit, hash: v.hash })) }));
+  const tricks = entries.map((e) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, rules: e.rules, contract: e.contract, previous: e.previous.map((v) => ({ commit: v.commit, hash: v.hash })) }));
   return `${JSON.stringify({ v: 1, tricks }, null, 2)}\n`;
 }
 
@@ -264,6 +274,8 @@ export async function officialWire(configDir: string, entries: readonly Official
       const wire: WireOfficialTrick = { id: e.id, name: e.name, description: e.description, repo: e.repo, repoName: originRepoName(e.repo), commit: e.commit, state: standing.state };
       if (standing.unlisted) wire.unlisted = true;
       if (standing.changed) wire.changed = true;
+      // That it gives agents instructions, never their text: the text arrives with the add (review 8 V-N3).
+      if (e.rules !== null) wire.givesRules = true;
       return wire;
     }),
   );

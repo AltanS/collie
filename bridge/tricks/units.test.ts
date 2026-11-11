@@ -484,13 +484,15 @@ describe("the routes", () => {
 
   test("the switch path is decoded, the body must be exactly { on: boolean }", async () => {
     const calls: [string, string, boolean][] = [];
+    const hashes: (string | null)[] = [];
     const surface: TricksSurface = {
       rev: () => 1,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       sessionPanes: () => undefined,
-      setSwitch: async (host, id, on) => {
+      setSwitch: async (host, id, on, hash) => {
+        if (calls.length > 0 || hash !== undefined) hashes.push(hash ?? null);
         calls.push([host, id, on]);
         return { status: 404, body: { error: "unknown-trick" } };
       },
@@ -507,6 +509,14 @@ describe("the routes", () => {
       expect(await tricksSwitchRoute(surface, match, body)).toEqual({ status: 400, body: { error: "switch-invalid" } });
     }
     expect(calls.length).toBe(1);
+    // Review 8 V-N1: a switch on names the code the person read; the route passes it on, null when absent.
+    const hash = "a".repeat(64);
+    await tricksSwitchRoute(surface, match, { on: true, hash });
+    await tricksSwitchRoute(surface, match, { on: true });
+    expect(hashes).toEqual([null, hash, null]);
+    for (const body of [{ on: true, hash: 3 }, { on: true, hash: "short" }, { on: true, hash, extra: 1 }]) {
+      expect(await tricksSwitchRoute(surface, match, body)).toEqual({ status: 400, body: { error: "switch-invalid" } });
+    }
     const broken = route.exec("/api/tricks/%E0%A4%A/legs/switch");
     if (broken === null) throw new Error("no match");
     expect(await tricksSwitchRoute(surface, broken, { on: true })).toEqual({ status: 404, body: { error: "unknown-host" } });

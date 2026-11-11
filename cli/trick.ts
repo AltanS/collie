@@ -25,7 +25,7 @@ import {
   type CheckWarning,
   type RunsLine,
 } from "../bridge/tricks/scan.ts";
-import { createTrickScanner, readManifestFile, type FoundTrick } from "../bridge/tricks/discover.ts";
+import { createTrickScanner, readManifestFile, readSmallFile, type FoundTrick } from "../bridge/tricks/discover.ts";
 import { isBaseEnvName, neverReason, scrubEnv } from "../bridge/tricks/env.ts";
 import { MANIFEST_FILE, tricksConfigDir, switchesPath } from "../bridge/tricks/paths.ts";
 import { outcomeProblem, runProgram, runtimeScript, type RunOutcome } from "../bridge/tricks/run.ts";
@@ -37,9 +37,14 @@ import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/tr
 import { asJsonBoolean, asJsonObject, asJsonString, parseJson, type JsonValue } from "../web/src/lib/json.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 import {
+  AGENT_VIEW_PLACE,
+  AGENT_VIEW_TAP_WORDS,
+  AGENT_VIEW_WORDS,
   isHostName,
   isTrickId,
   parseFacts,
+  RULES_NEVER_AUTO,
+  RULES_WORDS,
   inputsSentence,
   parseTrickDocumentText,
   TRICK_CONTRACT,
@@ -462,7 +467,8 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     return EXIT.OK;
   }
   // The copy is what is approved: its hash, and the warnings of its code, read at the moment of consent.
-  const approved = await approveFolder({ stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir, id, by: "cli", at: new Date(deps.now()).toISOString() });
+  // The copy must be the code hashed above (review 8 V-N1): a folder that moved in between is refused.
+  const approved = await approveFolder({ stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir, id, by: "cli", at: new Date(deps.now()).toISOString(), expect: code.hash });
   if (!approved.ok) {
     deps.io.err(`error: ${approved.reason}`);
     deps.io.err(`error: ${id} stays as it was.`);
@@ -475,7 +481,36 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
   }
   deps.io.out(`${id} is on. The bridge picks it up within seconds; its timer runs while a phone watches.`);
   deps.io.out(`Approved the code of ${id} as it is now: sha256 ${approved.hash}. The bridge runs this copy; an edit of the folder waits for your yes.`);
+  // Agent instructions are approved with the code: name the bytes, and where to read them.
+  const rules = approved.manifest;
+  if (rules?.rules !== undefined && rules.rulesSha256 !== undefined) {
+    deps.io.out(`It gives your agents instructions: ${rules.rules}, sha256 ${rules.rulesSha256}.`);
+    deps.io.out(`Read them before an agent view uses them: ${join(approved.dir, rules.rules)}`);
+  }
   return EXIT.OK;
+}
+
+/**
+ * Whether the trick's folder or its approved copy names `rules`. Read loosely on purpose: a manifest that
+ * names them but does not parse, or a rules file that breaks the rule, still counts.
+ */
+async function givesRules(deps: TrickDeps, id: string): Promise<boolean> {
+  const dirs = [join(tricksConfigDir(deps.ctx.configDir), id)];
+  const copy = approvedDirOf(deps.ctx.configDir, id, switchesOf(deps).switches.on.get(id));
+  if (copy !== null) dirs.push(copy);
+  for (const dir of dirs) {
+    const read = await readSmallFile(diskTrickFs, dir, MANIFEST_FILE);
+    if (read.kind !== "bytes") continue;
+    try {
+      // SAFETY: `Bun.TOML.parse` answers with a parsed document; only two keys are read, each checked.
+      const doc = asJsonObject(Bun.TOML.parse(new TextDecoder().decode(read.bytes)) as JsonValue);
+      const places = doc?.places;
+      if (doc?.rules !== undefined || (Array.isArray(places) && places.includes(AGENT_VIEW_PLACE))) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
 }
 
 /** `collie trick auto <id> on|off`: "take changes without asking" for one trick that is on. */
@@ -490,6 +525,13 @@ export async function cmdTrickAuto(deps: TrickDeps, args: readonly string[]): Pr
     return EXIT.REFUSED;
   }
   const auto = word === "on";
+  // A trick that gives agents instructions never takes a change without asking: its folder or its
+  // approved copy names `rules` (contract 2).
+  if (auto && (await givesRules(deps, id))) {
+    deps.io.err(`error: ${RULES_NEVER_AUTO}`);
+    deps.io.err(`error: ${id} keeps asking.`);
+    return EXIT.REFUSED;
+  }
   const written = await updateSwitches(deps.ctx.stateDir, (now) => {
     const held = now.on.get(id);
     return held === undefined ? now : withEntry(now, id, { ...held, auto });
@@ -507,6 +549,9 @@ export async function cmdTrickAuto(deps: TrickDeps, args: readonly string[]): Pr
 }
 
 // ── check ────────────────────────────────────────────────────────────────────
+
+/** What `check` says on the run line of a trick that is only an agent view. */
+export const NO_PROGRAM_NOTE = "none: this trick is an agent view and has no program, so nothing runs.";
 
 /** The soft note `check` gives for a manifest with no `about`. Never fails the check. */
 export const ABOUT_NOTE = "Add an `about` text so a person can read what this trick does before they switch it on.";
@@ -611,11 +656,13 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
   report.env = envNames(read.manifest);
   const globs = read.manifest.inputs ?? [];
   if (globs.length > 0) report.reads = inputsSentence(globs, opts.crew === true);
-  const named = programFiles(read.manifest.run, folder, files);
+  // A trick that is only an agent view has no run line, so no program file to read.
+  const runText = read.manifest.run ?? "";
+  const named = programFiles(runText, folder, files);
   report.files = named.files;
   for (const word of named.missing) report.problems.push(`The run line names ${word}, which is not in the folder.`);
-  const script = runtimeScript(read.manifest.run);
-  if (script !== null && named.files.length === 0 && !named.missing.includes(read.manifest.run)) report.problems.push(`The run line names ${script}, which is not in the folder.`);
+  const script = runtimeScript(runText);
+  if (script !== null && named.files.length === 0 && !named.missing.includes(runText)) report.problems.push(`The run line names ${script}, which is not in the folder.`);
   for (const file of named.files) {
     const text = files.read(file);
     if (text === null) {
@@ -637,7 +684,7 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
   if (scanned.helper !== undefined) report.helper = scanned.helper;
   report.notScanned = scanned.notScanned;
   // A run line that names no file of the folder IS the command (`run = "darius due --json"`): list it.
-  const runLine = named.files.length === 0 ? [{ file: MANIFEST_FILE, text: `run = ${read.manifest.run}`, shell: true }] : [];
+  const runLine = named.files.length === 0 && read.manifest.run !== undefined ? [{ file: MANIFEST_FILE, text: `run = ${read.manifest.run}`, shell: true }] : [];
   report.runs = runsLines([...scanned.sources, ...runLine]).slice(0, RUNS_MAX);
   report.warnings = scanned.warnings;
   return report;
@@ -685,12 +732,15 @@ export interface FixtureOptions {
  * the test hooks (`TRICK_*` variables of `env`) pass the scrub.
  */
 export async function runAgainstFixture(manifest: TrickManifest, folder: string, env: CliContext["env"], opts: FixtureOptions = {}): Promise<FixtureRun> {
+  // A trick that is only an agent view has no program: nothing starts, as on the bridge.
+  if (manifest.run === undefined) return { outcome: { kind: "spawn-failed", message: NO_PROGRAM_NOTE, ms: 0 }, problem: NO_PROGRAM_NOTE, stdoutBytes: 0, parsed: null, decisionsListed: false };
+  const command = manifest.run;
   const kept = opts.state !== undefined;
   const state = opts.state ?? (await mkdtemp(join(tmpdir(), `collie-trick-check-${manifest.id}-`)));
   if (kept) await mkdir(state, { recursive: true, mode: 0o700 });
   try {
     const outcome = await runProgram({
-      command: manifest.run,
+      command,
       cwd: folder,
       env: scrubEnv(env, manifest.env ?? [], { testHooks: true }),
       stdin: JSON.stringify(checkFacts(manifest, folder, state, opts.trigger, opts.facts)),
@@ -739,7 +789,8 @@ async function tapShowsNothing(manifest: TrickManifest, folder: string, env: Cli
 /** Run the program once against fixture facts and parse its output, as the bridge would. */
 export async function checkRun(report: TrickCheckReport, env: CliContext["env"]): Promise<void> {
   const manifest = report.manifest;
-  if (manifest === undefined) return;
+  // No program to run: `--run` checks what `check` checks, and says so on the run line.
+  if (manifest === undefined || manifest.run === undefined) return;
   const ran = await runAgainstFixture(manifest, report.folder, env);
   const { outcome, problem } = ran;
   const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
@@ -772,9 +823,15 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
   const m = report.manifest;
   io.out(m === undefined ? `trick ${report.id} in ${report.folder}` : `trick ${m.id} (${m.name}) in ${report.folder}`);
   if (m !== undefined) {
-    io.out(`  places: ${m.places.join(", ")}`);
+    io.out(`  places: ${[...m.places, ...(m.agentView === true ? [AGENT_VIEW_PLACE] : [])].join(", ")}`);
     io.out(`  every:  ${m.every ?? "none (runs at start and on taps)"}`);
-    io.out(`  run:    ${m.run}`);
+    io.out(`  run:    ${m.run ?? NO_PROGRAM_NOTE}`);
+    // Contract 2: the rights of an agent view, in the words the person reads.
+    if (m.agentView === true) {
+      io.out(`  view:   ${AGENT_VIEW_WORDS}`);
+      io.out(`          ${AGENT_VIEW_TAP_WORDS}`);
+    }
+    if (m.rules !== undefined) io.out(`  rules:  ${m.rules}. ${RULES_WORDS}`);
   }
   if (report.env.length > 0) {
     const names = report.env.map((e) => (e.reason === undefined ? e.name : `${e.name} (${e.reason})`));

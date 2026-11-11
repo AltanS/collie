@@ -21,6 +21,8 @@ import {
   isTrickText,
   NAME_MAX,
   OFFICIAL_STATES,
+  rulesNameProblem,
+  rulesTextProblems,
   TAP_CODES,
   TRICK_WARNINGS_MAX,
   type OfficialState,
@@ -28,6 +30,7 @@ import {
   type TrickPart,
   type TrickTapReply,
   type TricksReply,
+  type WireTrickRules,
   type TricksRunsOn,
   type TapCode,
   type WireTrickInfo,
@@ -164,6 +167,19 @@ export function readTrickText(raw: JsonValue | undefined, kind: "description" | 
   return isTrickText(text, rule) ? text : undefined;
 }
 
+/**
+ * A trick's rules (contract 2), read tolerantly: kept only when the file's name passes the manifest's own
+ * rule and the text passes the content rule again (printable ASCII and line breaks, at most 8 KiB, short
+ * lines), so the phone never draws a text the bridge should have refused. Anything else is left out.
+ */
+export function readTrickRules(raw: JsonValue | undefined): WireTrickRules | undefined {
+  const body = asJsonObject(raw);
+  const file = asJsonString(body?.file);
+  const text = asJsonString(body?.text);
+  if (file === undefined || text === undefined || rulesNameProblem(file) !== undefined) return undefined;
+  return rulesTextProblems(new TextEncoder().encode(text)).length === 0 ? { file, text } : undefined;
+}
+
 /** One trick entry as the list and the switch route give it, or `undefined` for a body of another shape. */
 export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
@@ -178,8 +194,11 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const told = body.about;
   const auto = asJsonBoolean(body.auto);
   const autoAt = asJsonString(body.autoAt);
+  const viewed = body.agentView;
+  const approving = body.approves;
+  const ruled = body.rules;
   if (!isTrickValue(body)) return undefined;
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -187,7 +206,8 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const inputs = readInputs(reads);
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, ...rest } = body;
+  const rules = readTrickRules(ruled);
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -195,6 +215,15 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (about !== undefined) out.about = about;
   if (auto !== undefined) out.auto = auto;
   if (autoAt !== undefined && Number.isFinite(Date.parse(autoAt))) out.autoAt = autoAt;
+  if (viewed === true) out.agentView = true;
+  const approves = asJsonString(approving);
+  if (approves !== undefined && /^[0-9a-f]{64}$/u.test(approves)) out.approves = approves;
+  if (rules !== undefined) out.rules = rules;
+  // Review 8 V-N5: rules that were sent but do not read, or an agent view that came without them, are kept
+  // as a state of their own, never dropped: the trick cannot be switched on from this phone.
+  if (rules === undefined && (ruled !== undefined || viewed === true)) out.rulesUnshown = true;
+  // A trick with rules never takes changes without asking: an older switch file that says so reads as off.
+  if ((out.rules !== undefined || out.rulesUnshown === true || out.agentView === true) && out.auto === true) out.auto = false;
   return out;
 }
 
@@ -251,6 +280,7 @@ function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | unde
   const out: WireOfficialTrick = { id, name, description, repo, repoName, commit, state };
   if (body.unlisted === true && state === "taken") out.unlisted = true;
   if (body.changed === true && state === "taken") out.changed = true;
+  if (body.givesRules === true) out.givesRules = true;
   return out;
 }
 

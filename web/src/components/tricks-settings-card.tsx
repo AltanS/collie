@@ -142,7 +142,7 @@ export interface TricksSettingsCardProps {
   /** The store the list is read from. The app's own by default; a test or the playground passes its own. */
   store?: TricksStore;
   /** The switch call. The real route by default. */
-  onSwitch?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>;
+  onSwitch?: (host: string, id: string, on: boolean, hash?: string) => Promise<WireTrickInfo>;
   /** The take-changes-without-asking call. The real route by default. */
   onAuto?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>;
   /** The undo call. The real route by default. */
@@ -375,8 +375,19 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
             </p>
           )}
           <p data-line="places" className="truncate text-sm text-muted-foreground">
-            {placesLine(trick.places)}
+            {placesLine(trick.places, trick.agentView === true)}
           </p>
+          {/* The one note of an agent view (contract 2): this build reads the keys; the view itself comes later. */}
+          {trick.agentView === true && (
+            <p data-line="later" className="break-words text-xs text-muted-foreground">
+              {t("settings.tricks.agentView.later")}
+            </p>
+          )}
+          {trick.rulesUnshown === true && (
+            <p data-line="rules-unshown" className="break-words text-xs text-muted-foreground">
+              {t("settings.tricks.about.rulesUnshown")}
+            </p>
+          )}
           {trick.inputs !== undefined && (
             <p data-line="reads" className="break-words text-xs text-muted-foreground">
               {readsLine(trick.inputs)}
@@ -387,7 +398,8 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
           </p>
           <Collapse open={showWarnings}>{showWarnings ? <TrickWarnings lines={warnings} /> : null}</Collapse>
         </div>
-        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite} aria-label={trick.name} />
+        {/* Rules this phone cannot show (review 8 V-N5): no yes from here; a trick that is on can still go off. */}
+        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || (trick.rulesUnshown === true && !checked)} aria-label={trick.name} />
       </div>
       {trick.on && changed !== null && <TrickChanges trick={trick} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
       {update !== undefined && <OfficialUpdateLine name={trick.name} busy={update.busy} canWrite={canWrite} onUpdate={update.onUpdate} />}
@@ -537,16 +549,18 @@ function TricksList({
     hold(key, on);
     flying.current.add(key);
     try {
-      const info = await onSwitch(trick.host, trick.id, on);
+      const info = on && trick.approves !== undefined ? await onSwitch(trick.host, trick.id, on, trick.approves) : await onSwitch(trick.host, trick.id, on);
       hold(key, info.on);
       const timer = setTimeout(() => {
         timers.current.delete(timer);
         hold(key, null);
       }, HOLD_MS);
       timers.current.add(timer);
-    } catch {
+    } catch (thrown) {
       hold(key, null);
-      setStatus(t("settings.tricks.switchFailed", { name: trick.name }), "error");
+      // The trick changed after the person read it (review 8 V-N1): read it again, nothing was approved.
+      const moved = apiErrorFields(thrown)?.error === "moved";
+      setStatus(moved ? t("settings.tricks.switchMoved") : t("settings.tricks.switchFailed", { name: trick.name }), "error");
     } finally {
       flying.current.delete(key);
     }

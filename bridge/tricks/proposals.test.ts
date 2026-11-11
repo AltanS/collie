@@ -896,3 +896,15 @@ describe("a proposal whose code does not fit one card", () => {
     expect(openCards(l)).toEqual([]);
   });
 });
+
+describe("a trick that gives agents instructions (contract 2)", () => {
+  test("the lead refuses it even when a caller skipped the wire, for a new trick and for a new version", async () => {
+    const l = await lead();
+    const plain = proposal("legs");
+    for (const instructs of [{ ...plain.manifest, agentView: true as const, rules: "rules.md" }, { ...plain.manifest, rules: "rules.md" }]) {
+      const answer = await l.proposals.propose({ ...plain, manifest: instructs }, AGENT);
+      expect(answer).toEqual({ ok: false, code: "has_rules", error: "A trick that gives agents instructions cannot be proposed by an agent. Ask your person to add it on the machine." });
+    }
+    expect(openCards(l)).toEqual([]);
+  });
+});

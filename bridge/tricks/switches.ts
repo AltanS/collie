@@ -192,6 +192,8 @@ export interface Approval {
   hash: string;
   by: string;
   powers: string | null;
+  /** The version approved gives agents instructions (`rules`, contract 2): `auto` is written false (review 8 V-N6). */
+  instructs?: boolean;
 }
 
 /**
@@ -200,7 +202,10 @@ export interface Approval {
  */
 export function withApproval(switches: Switches, id: string, approval: Approval): Switches {
   const held = switches.on.get(id);
-  const entry: SwitchEntry = { at: approval.at, hash: approval.hash, auto: held?.auto ?? false, by: approval.by, powers: approval.powers };
+  // A trick with rules never takes changes without asking: an older `auto` is cleared, not hidden, so a later
+  // version that drops the rules does not take itself on the strength of it.
+  const auto = approval.instructs === true ? false : (held?.auto ?? false);
+  const entry: SwitchEntry = { at: approval.at, hash: approval.hash, auto, by: approval.by, powers: approval.powers };
   if (held?.hash != null && held.hash !== approval.hash) entry.previous = { hash: held.hash, at: held.at, by: held.by, powers: held.powers };
   else if (held?.previous !== undefined) entry.previous = held.previous;
   return withEntry(switches, id, entry);
