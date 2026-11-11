@@ -162,14 +162,16 @@ async function adoptOne(opts: AdoptTricksOptions, ready: CarriedReady, at: strin
     // holding other code would be such a "later version", taken by auto with no tap on this machine.
     // So `auto` comes along only when the folder here is the carried version; else it is off, and the
     // folder's code is the usual new version card. A decline this machine held for that code stays.
-    const folder = keptFolder ? await trickCodeHash(target) : null;
-    const same = folder === null || (folder.ok && folder.hash === hash);
+    // Read after the rename, whatever the check before it said (review 7, accepted): a folder that appeared
+    // between that check and the rename is someone else's code, and `auto` must not come along for it.
+    const folder = await trickCodeHash(target);
+    const same = folder.ok && folder.hash === hash;
     await updateSwitches(opts.stateDir, (now) => {
       const declined = now.on.get(id)?.declined;
       const approved = withApproval(now, id, { at, hash, by: opts.by, powers });
       const entry = approved.on.get(id);
       if (entry === undefined) return approved;
-      const kept = !same && folder?.ok === true && declined === folder.hash ? { declined } : {};
+      const kept = !same && folder.ok && declined === folder.hash ? { declined } : {};
       return withEntry(approved, id, { ...entry, ...kept, auto: same ? ready.trick.auto : false, from: opts.lead });
     });
     const state = trickStateDir(opts.stateDir, id);

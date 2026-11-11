@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, watch, writeFileSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -74,6 +75,31 @@ describe("the person's tap starts the carried tricks", () => {
     await writeCarryNotices(deputy.stateDir, "desk", TAP, result.failed);
     const notices = parseCarryNotices(await readFile(join(tricksStateDir(deputy.stateDir), TAKEOVER_NOTICES_FILE), "utf8"));
     expect(notices?.failed[0]?.kind).toBe("rights");
+  });
+
+  // Linux only: the race is made with an inotify watch, which fires before the tap's rename; other
+  // platforms deliver the event later, and the test would race itself.
+  test.if(process.platform === "linux")("a folder that appears while the tap writes is read after the rename: the lead's auto does not come along for it (review 7)", async () => {
+    const lead = await machine("lead");
+    await putOnTrick(lead, { id: "legs", name: "Leg day", auto: true });
+    const { deputy, store } = await deputyWith(lead);
+    const root = tricksConfigDir(deputy.configDir);
+    const target = join(root, "legs");
+    // As soon as the tap's staging folder shows, another process of the same user puts its own folder there.
+    const watcher = watch(root, (_event, name) => {
+      if (name === null || !String(name).startsWith(".collie-carry-") || existsSync(target)) return;
+      mkdirSync(target);
+      writeFileSync(join(target, "trick.toml"), 'id = "legs"\nname = "Mine"\nrun = "./p.sh"\nplaces = ["belt"]\n');
+      writeFileSync(join(target, "p.sh"), "#!/bin/sh\necho mine\n");
+    });
+    try {
+      const result = await adoptCarriedTricks({ stateDir: deputy.stateDir, configDir: deputy.configDir, store, lead: "desk", by: "takeover", now: () => TAP });
+      expect(result.started.map((t) => t.id)).toEqual(["legs"]);
+    } finally {
+      watcher.close();
+    }
+    expect(await readFile(join(target, "p.sh"), "utf8")).toBe("#!/bin/sh\necho mine\n");
+    expect((await switchesOf(deputy)).on.get("legs")?.auto).toBe(false);
   });
 
   test("held code changed on the deputy's disk does not start, and is answered for the Hill", async () => {
