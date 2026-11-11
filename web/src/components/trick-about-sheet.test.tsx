@@ -272,3 +272,19 @@ describe("an agent view and its rules (contract 2)", () => {
     expect(screen.getByRole("dialog").querySelector('[data-line="rules-text"]')?.textContent).toBe(RULES_TEXT);
   });
 });
+
+describe("review 8 V-N5: rules the phone cannot show, and no auto switch on any agent view", () => {
+  const VIEW: WireTrickInfo = { host: "lodge", id: "morph", name: "Morph", icon: "eye", on: true, state: "ok", places: [], agentView: true, provenance: { via: "folder" } };
+
+  it("says the instructions cannot be shown here, draws no fold, and no Updates switch", () => {
+    render(<TrickAboutSheet trick={{ ...VIEW, rulesUnshown: true, auto: false }} open onClose={vi.fn()} onAuto={vi.fn()} />);
+    expect(screen.getByRole("dialog").querySelector('[data-line="rules-unshown"]')).toHaveTextContent("This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.");
+    expect(screen.queryByRole("button", { name: "Read the instructions" })).toBeNull();
+    expect(screen.queryByText("Updates")).toBeNull();
+  });
+
+  it("an agent view never shows the Updates switch, even when its rules did not arrive", () => {
+    render(<TrickAboutSheet trick={VIEW} open onClose={vi.fn()} onAuto={vi.fn()} />);
+    expect(screen.queryByText("Updates")).toBeNull();
+  });
+});

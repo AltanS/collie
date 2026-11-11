@@ -726,3 +726,34 @@ describe("an agent view (contract 2)", () => {
     }
   });
 });
+
+describe("review 8 V-N5: rules the phone cannot show", () => {
+  const BAD: WireTrickInfo = {
+    host: "lodge",
+    id: "morph",
+    name: "Morph",
+    icon: "eye",
+    on: false,
+    state: "off",
+    places: [],
+    agentView: true,
+    provenance: { via: "folder" },
+  };
+  const UNSHOWN = "This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.";
+
+  it("the wire keeps that rules were sent but could not be read, and a view without rules counts the same", () => {
+    const wire = (extra: JsonObject) => readTrick(JSON.parse(JSON.stringify({ ...BAD, ...extra })));
+    expect(wire({ rules: { file: "rules.md", text: "tab\there\n" } })?.rulesUnshown).toBe(true);
+    expect(wire({})?.rulesUnshown).toBe(true);
+    expect(wire({ rules: { file: "rules.md", text: "Draw.\n" } })?.rulesUnshown).toBeUndefined();
+  });
+
+  it("the row says so and its switch cannot switch the trick on; one that is on can still be switched off", async () => {
+    const store = await storeWith([{ ...BAD, rulesUnshown: true }, { ...BAD, id: "morph-on", name: "Morph on", on: true, state: "ok", rulesUnshown: true }]);
+    renderCard(store);
+    const row = rowOf("morph");
+    expect(row.querySelector('[data-line="rules-unshown"]')).toHaveTextContent(UNSHOWN);
+    expect(within(row).getByRole("switch", { name: "Morph" })).toBeDisabled();
+    expect(within(rowOf("morph-on")).getByRole("switch", { name: "Morph on" })).toBeEnabled();
+  });
+});

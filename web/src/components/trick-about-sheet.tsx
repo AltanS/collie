@@ -195,9 +195,14 @@ export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite =
         )}
         {does.length > 0 && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={does} />}
         {trick.rules !== undefined && <RulesFold rules={trick.rules} />}
+        {trick.rulesUnshown === true && (
+          <p data-line="rules-unshown" className="pt-3 text-sm break-words text-muted-foreground">
+            {t("settings.tricks.about.rulesUnshown")}
+          </p>
+        )}
         <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
         {/* A trick that gives agents instructions never takes changes without asking: no switch to offer. */}
-        {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
+        {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && trick.rulesUnshown !== true && trick.agentView !== true && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
       </div>
     </BottomSheet>
   );

@@ -1371,6 +1371,11 @@ export interface WireTrickInfo {
    */
   rules?: WireTrickRules;
   /**
+   * Set by the phone's own reader, never by a bridge (review 8 V-N5): the trick is an agent view, or the
+   * bridge sent rules, but no rules this phone can show arrived. The trick then cannot be switched on here.
+   */
+  rulesUnshown?: true;
+  /**
    * What a text search of the code flags (bridge/tricks/scan.ts), one entry per kind, for a trick that is
    * off or changed, so the person sees them before the switch. Absent when there is none, on a trick that
    * is on and unchanged, and from an older bridge. A warning never refuses: the switch stays one tap.

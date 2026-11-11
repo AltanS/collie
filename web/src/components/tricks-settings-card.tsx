@@ -383,6 +383,11 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
               {t("settings.tricks.agentView.later")}
             </p>
           )}
+          {trick.rulesUnshown === true && (
+            <p data-line="rules-unshown" className="break-words text-xs text-muted-foreground">
+              {t("settings.tricks.about.rulesUnshown")}
+            </p>
+          )}
           {trick.inputs !== undefined && (
             <p data-line="reads" className="break-words text-xs text-muted-foreground">
               {readsLine(trick.inputs)}
@@ -393,7 +398,8 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
           </p>
           <Collapse open={showWarnings}>{showWarnings ? <TrickWarnings lines={warnings} /> : null}</Collapse>
         </div>
-        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite} aria-label={trick.name} />
+        {/* Rules this phone cannot show (review 8 V-N5): no yes from here; a trick that is on can still go off. */}
+        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || (trick.rulesUnshown === true && !checked)} aria-label={trick.name} />
       </div>
       {trick.on && changed !== null && <TrickChanges trick={trick} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
       {update !== undefined && <OfficialUpdateLine name={trick.name} busy={update.busy} canWrite={canWrite} onUpdate={update.onUpdate} />}

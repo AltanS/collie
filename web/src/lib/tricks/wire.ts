@@ -197,7 +197,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const viewed = body.agentView;
   const ruled = body.rules;
   if (!isTrickValue(body)) return undefined;
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -206,7 +206,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -216,8 +216,11 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (autoAt !== undefined && Number.isFinite(Date.parse(autoAt))) out.autoAt = autoAt;
   if (viewed === true) out.agentView = true;
   if (rules !== undefined) out.rules = rules;
+  // Review 8 V-N5: rules that were sent but do not read, or an agent view that came without them, are kept
+  // as a state of their own, never dropped: the trick cannot be switched on from this phone.
+  if (rules === undefined && (ruled !== undefined || viewed === true)) out.rulesUnshown = true;
   // A trick with rules never takes changes without asking: an older switch file that says so reads as off.
-  if (out.rules !== undefined && out.auto === true) out.auto = false;
+  if ((out.rules !== undefined || out.rulesUnshown === true || out.agentView === true) && out.auto === true) out.auto = false;
   return out;
 }
 
