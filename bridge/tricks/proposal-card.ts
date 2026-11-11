@@ -175,7 +175,8 @@ function fitsCard(view: View): View | undefined {
  * words when they still fit (they never displace a fact). Null when the facts alone do not fit.
  */
 function factsCard(head: readonly ViewNode[], count: number, codeCards: number, tables: readonly ViewNode[], author: readonly ViewNode[], helpers: ReadonlyMap<string, number> = new Map()): View | null {
-  const helperLines = [...helpers.values()].map((version): ViewNode => ({ kind: "line", text: helperNote(version), attrs: { role: "note" } }));
+  // A paragraph, not a note line: it is a sentence, and a line does not wrap.
+  const helperLines = [...helpers.values()].map((version): ViewNode => ({ kind: "para", text: helperNote(version) }));
   const facts: View = [...head, { kind: "line", text: filesOnCards(count - helpers.size, codeCards), attrs: { role: "note" } }, ...helperLines, ...tables];
   return (author.length > 0 ? fitsCard([...facts, ...author]) : undefined) ?? fitsCard(facts) ?? null;
 }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { postHillAnswer } from "@/lib/api";
 import { HILL_LIST_READ_AFTER_MS } from "@/lib/hill/motion";
 import { noteHillAnswer, readHillNow, useHillAnswerHeld } from "@/lib/hill/store";
-import { hillNode, type HillReceipt } from "@/lib/hill/wire";
+import { hillNode, type HillAnswerRequest, type HillGroupAnswer, type HillReceipt } from "@/lib/hill/wire";
 import { mintRequestId } from "@/lib/worktree-name";
 
 /**
@@ -24,7 +24,8 @@ export const HILL_IDLE: HillAnswerState = { phase: "idle" };
 /** One card's answer: where it is, and the call that sends one. */
 export interface HillAnswer {
   state: HillAnswerState;
-  send: (intent: string, text: string | null) => Promise<void>;
+  /** `group` is a group's digest and the cards opened (crew slice 8), sent with any answer to one. */
+  send: (intent: string, text: string | null, group?: HillGroupAnswer) => Promise<void>;
 }
 
 /**
@@ -52,7 +53,7 @@ export function useHillAnswer(decisionId: string): HillAnswer {
   useEffect(() => () => clearTimeout(readTimer.current), []);
 
   const send = useCallback(
-    async (intent: string, text: string | null) => {
+    async (intent: string, text: string | null, group?: HillGroupAnswer) => {
       if (inFlight.current) return;
       const key = JSON.stringify([intent, text]);
       if (attempt.current?.key !== key) attempt.current = { key, rid: mintRequestId() };
@@ -61,7 +62,9 @@ export function useHillAnswer(decisionId: string): HillAnswer {
       const tappedAt = Date.now();
       setLocal({ phase: "sending", intent, text });
       try {
-        const receipt = await postHillAnswer({ rid, node: hillNode(decisionId), intent, value: { text } });
+        const request: HillAnswerRequest = { rid, node: hillNode(decisionId), intent, value: { text } };
+        if (group !== undefined) request.group = group;
+        const receipt = await postHillAnswer(request);
         attempt.current = null;
         noteHillAnswer(decisionId, { receipt, intent, text });
         setLocal(HILL_IDLE);

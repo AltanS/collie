@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 
 import { AgentIcon } from "@/components/agent-icon";
 import { BrandMark } from "@/components/brand-mark";
+import { DecisionGroupPager, GroupCount } from "@/components/decision-group";
 import { DecisionView } from "@/components/decision-view";
 import { HillPriorityMark } from "@/components/hill-priority";
 import { HillImageStrip, hillMediaSource, type HillMediaSource } from "@/components/hill-media";
@@ -24,11 +25,12 @@ import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
 import { hasResizeObserver, pageFonts } from "@/lib/env";
 import { HILL_ACK_MS } from "@/lib/hill/motion";
 import { linkHost } from "@/lib/hill/reader";
-import type { HillDecision, HillOption, HillReceipt } from "@/lib/hill/wire";
+import { useOpenedCards } from "@/lib/hill/group-opened";
+import type { HillDecision, HillGroupAnswer, HillOption, HillReceipt } from "@/lib/hill/wire";
 import { HILL_ANSWER_TEXT_MAX } from "@/lib/hill/wire";
 import { ageWords, collieOkWords, receiptWords, targetLabel, targetLine } from "@/lib/hill/words";
 import { HOST_TEXT_CLASSES } from "@/lib/hosts";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { onBridgeClock } from "@/lib/server-clock";
 import { trickIconOf } from "@/lib/tricks/icons";
 import { viewImageRefs } from "@/lib/tricks/layout";
@@ -95,6 +97,14 @@ import { cn } from "@/lib/utils";
 // with Copy, so nothing they wrote is lost. A request that got no answer says "Not sent." with Try
 // again, which sends the same attempt with the same request id (`useHillAnswer`). The card owns no
 // network: `onSend` is the caller's.
+//
+// A GROUP OF CARDS (crew slice 8, decision-group.tsx). Collie's own Decision whose code does not fit one
+// card shows its cards one at a time in the view's place, always from card 1: the page is this card's
+// state, never restored, so a link, a push or a second phone cannot open it past the facts. The first
+// line carries "4 cards". The options show on the last card only; the decline ("Not now") shows on
+// every card, quiet. A yes stays off until every card was on screen, with "Open all 4 cards first." and
+// a "Card 3" tap for each card not yet opened (lib/hill/group-opened.ts keeps the marks). Every answer
+// to a group carries its digest and the cards opened; the bridge refuses a yes without them.
 
 /** The bridge's clock, ticked once a second by the page's one shared clock (lib/cache-clock.ts). */
 function hillClockNow(): number {
@@ -163,6 +173,7 @@ function MetaLine({ decision, hostSlot, trickIcon }: { decision: HillDecision; h
           <span className="truncate">{from.host}</span>
         </span>
       )}
+      {decision.group !== undefined && <GroupCount count={decision.group.parts.length} />}
       <Age at={decision.at} />
     </div>
   );
@@ -349,7 +360,7 @@ function AnswerNotice({ decision, answer, onRetry }: { decision: HillDecision; a
  * playground), `onSend` sends one: an option's intent, `answer` for words alone, or `dismiss`.
  * `mediaSource` says where an image's bytes are: the bridge's route unless the playground says otherwise.
  * `hostSlot` is the poster's machine tint on a crew (`lib/hosts.ts`), null on a solo install;
- * `trickIcon` a trick's own icon word, when the caller knows it.
+ * `trickIcon` a trick's own icon word, when the caller knows it. A group of cards opens on card 1.
  */
 export function DecisionCard({
   decision,
@@ -358,13 +369,19 @@ export function DecisionCard({
   mediaSource = hillMediaSource,
   hostSlot = null,
   trickIcon,
+  playgroundCard,
 }: {
   decision: HillDecision;
   answer: HillAnswerState;
-  onSend: (intent: string, text: string | null) => void;
+  onSend: (intent: string, text: string | null, group?: HillGroupAnswer) => void;
   mediaSource?: HillMediaSource;
   hostSlot?: number | null;
   trickIcon?: string;
+  /**
+   * The playground's way to draw a group on a later card, without the cards before it marked opened.
+   * The live card never passes it: a group always opens on card 1.
+   */
+  playgroundCard?: number;
 }) {
   useLocale();
   const [draft, setDraft] = useState("");
@@ -377,6 +394,17 @@ export function DecisionCard({
   const hintId = useId();
   const locked = lockedBy(answer);
   const settled = useSettled(locked);
+  const group = decision.group;
+  const [page, setPage] = useState(() => (playgroundCard === undefined ? 0 : playgroundCard - 1));
+  const { opened, mark } = useOpenedCards(decision.id, group?.digest ?? "");
+  useEffect(() => {
+    if (group !== undefined) mark(page + 1);
+  }, [group, page, mark]);
+  const cardCount = group?.parts.length ?? 0;
+  const lastCard = group === undefined || page >= cardCount - 1;
+  const unopened = group === undefined ? [] : group.parts.map((_, i) => i + 1).filter((card) => !opened.has(card));
+  const groupAnswer: HillGroupAnswer | undefined = group === undefined ? undefined : { digest: group.digest, opened: [...opened].toSorted((a, b) => a - b) };
+  const declineOption = group === undefined ? undefined : decision.options.find((option) => option.intent === group.decline);
   // An image the view places among its facts is drawn there, not again in the row above it.
   const stripMedia = useMemo(() => {
     const placed = decision.view === undefined ? new Set<number>() : viewImageRefs(decision.view);
@@ -407,29 +435,35 @@ export function DecisionCard({
   const target = decision.target;
   const goesTo = targetLine(decision);
 
+  // An answer to a group carries its digest and the cards opened; any other answer is as it was.
+  function answerWith(intent: string, answerText: string | null) {
+    if (groupAnswer === undefined) onSend(intent, answerText);
+    else onSend(intent, answerText, groupAnswer);
+  }
+
   function choose(option: HillOption) {
     if (optionsBlocked) return;
     if (option.confirm !== undefined) {
       if (tap(`option:${option.intent}`) !== "fire") return;
     } else disarm();
-    onSend(option.intent, text);
+    answerWith(option.intent, text);
   }
 
   function sendWords() {
     if (locked || text === null) return;
     disarm();
-    onSend("answer", text);
+    answerWith("answer", text);
   }
 
   function dismiss() {
     if (locked) return;
     if (tap("dismiss") !== "fire") return;
-    onSend("dismiss", null);
+    answerWith("dismiss", null);
   }
 
   function retry() {
     if (answer.phase !== "failed") return;
-    onSend(answer.intent, answer.text);
+    answerWith(answer.intent, answer.text);
   }
 
   const dismissArmed = armed === "dismiss";
@@ -506,7 +540,11 @@ export function DecisionCard({
         <HillImageStrip decisionId={decision.id} media={stripMedia} source={mediaSource} className="-mx-4" scrollerClassName="px-4" />
       )}
 
-      {decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} />}
+      {group !== undefined ? (
+        <DecisionGroupPager decisionId={decision.id} group={group} page={page} onPage={setPage} sender={decision.from.label} mediaSource={mediaSource} />
+      ) : (
+        decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} />
+      )}
 
       {decision.recommends !== null && recommended !== undefined && (
         <figure data-slot="decision-recommends" className="flex flex-col gap-1.5 border-y border-border py-3">
@@ -594,7 +632,24 @@ export function DecisionCard({
               key: "answer",
               node: (
                 <div className="flex flex-col gap-4">
-                  {hasOptions && (
+                  {hasOptions && !lastCard && declineOption !== undefined && (
+                    // Before the last card only the decline is offered, quiet: the yes waits on the last card.
+                    <div data-slot="decision-options" className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        data-slot="decision-option"
+                        data-intent={declineOption.intent}
+                        disabled={optionsBlocked}
+                        onClick={() => choose(declineOption)}
+                        className="-mr-3 h-11 px-3 text-muted-foreground"
+                      >
+                        {sendingIntent === declineOption.intent && <Icon name="busy" aria-hidden className="size-3.5 animate-spin" />}
+                        {declineOption.label}
+                      </Button>
+                    </div>
+                  )}
+                  {hasOptions && lastCard && (
                     <div data-slot="decision-options" className="flex flex-col gap-2">
                       {decision.options.map((option, i) => {
                         const isArmed = armed === `option:${option.intent}`;
@@ -627,7 +682,7 @@ export function DecisionCard({
                             aria-label={isArmed && option.confirm !== undefined ? t("hill.armed", { label: option.confirm }) : undefined}
                             aria-describedby={required ? hintId : undefined}
                             description={option.detail}
-                            disabled={optionsBlocked}
+                            disabled={optionsBlocked || (group !== undefined && option.intent !== group.decline && unopened.length > 0)}
                             onClick={() => choose(option)}
                             className="min-h-12 items-center px-3"
                             trailing={
@@ -646,6 +701,18 @@ export function DecisionCard({
                       })}
                       {/* The mark is decorative; a reader hears which option it is here. */}
                       {recommended !== undefined && <span className="sr-only">{t("hill.recommended", { label: recommended.label })}</span>}
+                      {group !== undefined && unopened.length > 0 && (
+                        <div data-slot="decision-group-unopened" className="flex flex-col">
+                          <p className="text-xs text-muted-foreground">{tn("hill.group.openAll", cardCount)}</p>
+                          <div className="-mx-3 flex flex-wrap">
+                            {unopened.map((card) => (
+                              <Button key={card} type="button" variant="ghost" data-slot="decision-group-goto" className="h-11 px-3" onClick={() => setPage(card - 1)}>
+                                {t("hill.group.card", { index: card })}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   {fieldOpen && (

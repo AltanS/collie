@@ -7,6 +7,7 @@
 
 import type { HillMediaSource } from "@/components/hill-media";
 import type { HillDecision, HillMedia, HillReceipt } from "@/lib/hill/wire";
+import type { View, ViewNode } from "@/lib/tricks/schema";
 
 // Three flat colour panels with a word on them, made for this page (never a capture of anyone's
 // screen), inlined as data URLs: the page has no bridge, and a data URL needs no token.
@@ -813,4 +814,157 @@ export const versionRights = decision({
       ].join("\n"),
     },
   ],
+});
+
+// ── A GROUP OF CARDS (crew slice 8) ──────────────────────────────────────────────────────────────────
+// The cards as the bridge lays them out (bridge/tricks/card-group.ts): card 1 the facts, the rest every
+// line of the code, a seam where a file goes on. The digest stands in for the bridge's SHA-256.
+
+const seamNote = (text: string): ViewNode => ({ kind: "line", text, attrs: { role: "note" } });
+
+/** The program of the "legs" proposal, numbered so a seam shows where it goes on. */
+function legsRows(from: number, to: number): string {
+  return Array.from({ length: to - from }, (_, i) => {
+    const n = from + i;
+    return n % 9 === 0 ? `+  // Step ${String(n / 9)}: read the next leg and say where it stands.` : `+  const leg${String(n)} = legs.at(${String(n)}) ?? null;`;
+  }).join("\n");
+}
+
+const PROPOSAL_FACTS: View = [
+  { kind: "para", text: "An agent session (crew-08#propose) on minibuch proposes it." },
+  { kind: "bar", attrs: { label: "It asks for" }, kids: [{ kind: "chip", text: "the belt" }, { kind: "chip", text: "the Dashboard" }] },
+  { kind: "para", text: "This trick reaches the network." },
+  { kind: "line", text: "3 files, on cards 2 to 3.", attrs: { role: "note" } },
+  {
+    kind: "table",
+    kids: [
+      { kind: "col", text: "File" },
+      { kind: "col", text: "Size" },
+      { kind: "col", text: "Card" },
+      { kind: "cell", text: "trick.toml" },
+      { kind: "cell", text: "212 B" },
+      { kind: "cell", text: "2" },
+      { kind: "cell", text: "program.ts" },
+      { kind: "cell", text: "7.4 KB" },
+      { kind: "cell", text: "2 to 3" },
+      { kind: "cell", text: "lib/legs.ts" },
+      { kind: "cell", text: "1.1 KB" },
+      { kind: "cell", text: "3" },
+    ],
+  },
+  {
+    kind: "group",
+    attrs: { label: "Its author's words. Collie did not check them." },
+    kids: [{ kind: "para", text: "Browser legs: shows which browser leg is red, on the belt and the Dashboard." }],
+  },
+];
+
+const PROPOSAL_CODE_2: View = [
+  {
+    kind: "diff",
+    attrs: { file: "trick.toml" },
+    text: ["@@ -0,0 +1,6 @@", '+id = "legs"', '+name = "Browser legs"', '+run = "program.ts"', '+every = "60s"', '+places = ["belt", "dashboard"]', "+contract = 2"].join("\n"),
+  },
+  { kind: "diff", attrs: { file: "program.ts" }, text: `@@ -0,0 +1,96 @@\n${legsRows(0, 48)}` },
+  seamNote("continues on the next card"),
+];
+
+const PROPOSAL_CODE_3: View = [
+  seamNote("continued from the last card"),
+  { kind: "diff", attrs: { file: "program.ts" }, text: legsRows(48, 96) },
+  { kind: "diff", attrs: { file: "lib/legs.ts" }, text: ["@@ -0,0 +1,4 @@", "+export function red(legs) {", "+  return legs.filter((leg) => leg.state === \"red\");", "+}", "+"].join("\n") },
+];
+
+/** 52 to 56: a proposal of three files on three cards. Each call is its own Decision, so each case keeps its own opened cards. */
+export function proposalGroup(): HillDecision {
+  return decision({
+    title: "Switch on the trick legs?",
+    summary: "An agent session (crew-08#propose) on minibuch proposes it. It has 3 files. It asks for the belt and the Dashboard, and reaches the network. It shows on 3 cards.",
+    ago: 1,
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "proposal", id: "legs", hash: "5d".repeat(32) } },
+    target: null,
+    text: "none",
+    options: [
+      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "later", label: "Not now" },
+    ],
+    group: {
+      digest: "a7".repeat(32),
+      decline: "later",
+      parts: [
+        { view: PROPOSAL_FACTS, sha256: "01".repeat(32) },
+        { view: PROPOSAL_CODE_2, sha256: "02".repeat(32) },
+        { view: PROPOSAL_CODE_3, sha256: "03".repeat(32) },
+      ],
+    },
+  });
+}
+
+/** 57: a proposed new version on two cards: the facts and new rights, then the diff by file. */
+export const versionGroup = decision({
+  title: "Use the new version of legs?",
+  summary: "An agent session (crew-08#propose) on minibuch proposes it. 2 files changed. It now also reaches the network. It shows on 2 cards.",
+  ago: 2,
+  from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "proposal", id: "legs", hash: "6e".repeat(32) } },
+  target: null,
+  text: "none",
+  options: [
+    { intent: "on", label: "Use the new version", confirm: "Yes, use it" },
+    { intent: "later", label: "Keep the old version" },
+  ],
+  group: {
+    digest: "b8".repeat(32),
+    decline: "later",
+    parts: [
+      {
+        view: [
+          { kind: "para", text: "An agent session (crew-08#propose) on minibuch proposes it." },
+          { kind: "para", text: "This trick reaches the network." },
+          { kind: "line", text: "2 files, on card 2.", attrs: { role: "note" } },
+          {
+            kind: "table",
+            kids: [
+              { kind: "col", text: "File" },
+              { kind: "col", text: "Change" },
+              { kind: "col", text: "Lines" },
+              { kind: "col", text: "Card" },
+              { kind: "cell", text: "program.ts" },
+              { kind: "cell", text: "changed" },
+              { kind: "cell", text: "+9 −1" },
+              { kind: "cell", text: "2" },
+              { kind: "cell", text: "trick.ts" },
+              { kind: "cell", text: "changed" },
+              { kind: "cell", text: "" },
+              { kind: "cell", text: "Collie's helper v4" },
+            ],
+          },
+          { kind: "para", text: "trick.ts is the helper Collie ships (v4), byte for byte, so no card shows it." },
+        ],
+        sha256: "11".repeat(32),
+      },
+      {
+        view: [
+          {
+            kind: "diff",
+            attrs: { file: "program.ts" },
+            text: [
+              "@@ -8,3 +8,11 @@ run(async (t) => {",
+              "-  const open = readLocalLegs(t.dir);",
+              '+  const res = await fetch("https://ci.example.com/api/legs", {',
+              '+    headers: { accept: "application/json" },',
+              "+  });",
+              "+  const open = await res.json();",
+              "+  if (!Array.isArray(open)) {",
+              '+    t.status({ text: "no legs", tone: "muted" });',
+              "+    return;",
+              "+  }",
+              "+  t.status({ text: `${open.length} red` });",
+              "   t.dashboard({ label: \"legs\", badge: open.length });",
+            ].join("\n"),
+          },
+        ],
+        sha256: "12".repeat(32),
+      },
+    ],
+  },
 });
