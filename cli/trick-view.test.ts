@@ -261,7 +261,8 @@ describe("help", () => {
     expect(lines[1]).toStartWith("  tone (");
     expect(lines[1]).toContain(TONES.join(", "));
     expect(lines[1]).not.toContain("success");
-    expect(lines.join("\n")).toContain("pressed (button): true, false, mixed");
+    // `pressed` is Collie's to mark in an agent view (review 10 W7): no closed set offers it.
+    expect(lines.join("\n")).not.toContain("pressed");
     // Every (kind, attribute) pair the table names exists in the schema's own table.
     for (const set of VIEW_CLOSED_SETS) {
       expect(set.kinds.length).toBeGreaterThan(0);
@@ -272,7 +273,8 @@ describe("help", () => {
   test("the kinds come from the schema: every kind is named, with every attribute", () => {
     const kinds = viewKindLines().join("\n");
     for (const kind of NODE_KINDS) expect(kinds).toContain(kind);
-    expect(kinds).toContain(`  button  attrs: ${NODE_ATTRS.button.map((name) => (name === "label" ? "label*" : name)).join(", ")}`);
+    // Every attribute but `pressed`, which Collie marks (review 10 W7).
+    expect(kinds).toContain(`  button  attrs: ${NODE_ATTRS.button.filter((name) => name !== "pressed").map((name) => (name === "label" ? "label*" : name)).join(", ")}`);
   });
 
   test("help names the rules id it is given, in the text and in command 1", () => {
@@ -743,8 +745,8 @@ describe("against a bridge", () => {
     expect(removed.io.stdout[0]).toBe("removed: block intro, rev 5");
 
     const choice = deps(sockets);
-    expect(await cmdViewChoice(choice, [screenFile(choice, JSON.stringify({ question: "Go on?", options: [{ label: "Yes" }, { label: "No" }], picked: 0 }), "choice.json")])).toBe(EXIT.OK);
-    expect(choice.io.stdout).toContain("choice: 2 options, picked 0");
+    expect(await cmdViewChoice(choice, [screenFile(choice, JSON.stringify({ question: "Go on?", options: [{ label: "Yes" }, { label: "No" }] }), "choice.json")])).toBe(EXIT.OK);
+    expect(choice.io.stdout).toContain("choice: 2 options");
 
     const kept = deps(sockets);
     expect(await cmdViewKeep(kept, ["summary", "choice"])).toBe(EXIT.OK);
@@ -775,13 +777,15 @@ describe("against a bridge", () => {
 });
 
 describe("the block verbs' arguments", () => {
-  test("help lists every verb's usage and the cycle, keep and picked rules", () => {
+  test("help lists every verb's usage and the cycle, keep and pick rules (review 10 W7: Collie marks the pick)", () => {
     const text = viewHelp({ trick: T, session: "local/%1#aaaa" }).join("\n");
     for (const verb of VIEW_SUBCOMMANDS) expect(text).toContain(`collie trick view morph ${verb} `);
     expect(text).toContain("Draw the outline first: `trick view morph show` with the blocks you know, or `trick view morph pending <id>");
     expect(text).toContain("do not redraw the whole screen");
     expect(text).toContain("When a new request arrives, the operator's screen is cleared of your old blocks.");
-    expect(text).toContain("To show a past decision as settled, send its `choice` with \"picked\"");
+    expect(text).toContain("Keep the question's block when you draw the next step; Collie marks the pick.");
+    expect(text).not.toContain('"picked"');
+    expect(text).not.toMatch(/send its `choice` with/u);
     expect(text).toContain("collie trick view morph pending --session local/%1#aaaa tests \"Running the tests\"");
   });
 

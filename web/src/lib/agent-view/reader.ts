@@ -36,7 +36,7 @@ import { kidsOf } from "@/lib/tricks/layout";
 import type { View, ViewNode } from "@/lib/tricks/schema";
 import type { TranscriptEntry } from "@/lib/types";
 
-import { isViewHeadLine, readsAsAddress, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
+import { isViewHeadLine, readsAsAddress, VIEW_CHOICE_BLOCK, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
 
 /** The longest trick name the switch row and the View choice show, in characters, the cut included. */
 export const VIEW_NAME_SHOWN = 12;
@@ -241,6 +241,24 @@ export function livePrefixes(view: ViewScreen | undefined): Set<string> {
 function prefixOf(control: string): string {
   const slash = control.indexOf("/");
   return slash < 0 ? control : control.slice(0, slash);
+}
+
+/**
+ * The picks Collie marked on the screen (review 10 W7, the bridge's own record of a tap), as the controls
+ * the view files picks under, followed by `local` (the taps the phone saw confirmed since). A local pick
+ * in a bar, or on the decision block, outranks a mark the bridge holds there: it is the newer.
+ */
+export function markedControls(view: ViewScreen | undefined, local: readonly string[]): readonly string[] {
+  if (view?.picks === undefined) return local;
+  const blocks = screenBlocks(view);
+  const marked = view.picks.flatMap((pick) => {
+    if (pick.block === VIEW_CHOICE_BLOCK) return view.choice === undefined ? [] : [choiceControl(view.choice, Number(pick.path))];
+    const block = blocks.find((held) => held.id === pick.block);
+    return block === undefined ? [] : [`${block.prefix}/${pick.path}`];
+  });
+  const bars = new Set(local.map((control) => (control.startsWith("choice#") ? "choice" : parentControl(control))));
+  const kept = marked.filter((control) => !bars.has(control.startsWith("choice#") ? "choice" : parentControl(control)));
+  return [...kept, ...local];
 }
 
 /** A block's node with the picks filed under it marked pressed. */

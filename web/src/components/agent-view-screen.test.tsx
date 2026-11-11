@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ARM_DWELL_MS } from "@/lib/arm";
 import type { JsonValue } from "@/lib/json";
-import { parseAgentView, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
+import { parseAgentView, readViewScreen, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
 import type { TranscriptEntry } from "@/lib/types";
 
 import { choiceControl, screenBlocks, type ViewRequest } from "@/lib/agent-view/reader";
@@ -694,8 +694,8 @@ describe("the receipt of a pick, and a settled choice", () => {
     expect(container.querySelector("[data-slot=view-request]")).toHaveTextContent("Compare the two plans");
   });
 
-  it("a choice the agent sent with picked is settled: the pick marked with the badge, the others quiet rows, nothing to tap", () => {
-    const { container } = draw({ view: { ...asked, choice: { ...CHOICE, picked: 1 } } });
+  it("review 10 W7: a choice Collie marked picked is settled: the pick marked with the badge, the others quiet rows, nothing to tap", () => {
+    const { container } = draw({ view: { ...asked, choice: CHOICE, picks: [{ block: "choice", path: "1" }] } });
     const done = container.querySelector("[data-slot=view-choice][data-done]");
     expect(done).not.toBeNull();
     expect(done?.querySelector("[data-slot=view-answered-badge]")).toHaveTextContent("Answered");
@@ -912,5 +912,31 @@ describe("review 10 W5: a long trick name never squeezes Collie's words in the b
     expect(shown.textContent).toBe(name);
     expect(shown.className).toMatch(/(^|\s)truncate(\s|$)/u);
     expect(shown.className).toMatch(/(^|\s)min-w-0(\s|$)/u);
+  });
+});
+
+describe("review 10 W7: the phone draws the picks Collie marked, and none of the agent's", () => {
+  it("W7: a button Collie marked is pressed, its sibling is not", () => {
+    // BUTTONS has no block ids: its bar is b2, and Wait is its second kid.
+    draw({ view: { ...BUTTONS, picks: [{ block: "b2", path: "1" }] } });
+    expect(screen.getByRole("button", { name: "Wait" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Ship" })).not.toHaveAttribute("aria-pressed");
+  });
+
+  it("W7: a tap the phone saw confirmed outranks an older mark in the same bar", () => {
+    const bar = screenBlocks(BUTTONS)[1]!;
+    draw({ view: { ...BUTTONS, picks: [{ block: "b2", path: "1" }] }, pressed: [`${bar.prefix}/0`] });
+    expect(screen.getByRole("button", { name: "Ship" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Wait" })).not.toHaveAttribute("aria-pressed");
+  });
+
+  it("W7: a screen whose button says pressed, or whose choice says picked, is not read at all", () => {
+    const pressed = { rev: 1, at: AT, view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Yes", intent: "reply", pressed: "true" } }] }] };
+    expect(readViewScreen(pressed)).toBeNull();
+    const picked = { rev: 1, at: AT, view: [{ kind: "para", text: "x" }], choice: { question: "Which?", options: [{ label: "A" }, { label: "B" }], picked: 0 } };
+    expect(readViewScreen(picked)).toBeNull();
+    // A pick that names no button of the screen is dropped, never drawn.
+    const stray = readViewScreen({ rev: 1, at: AT, view: [{ kind: "para", text: "x" }], picks: [{ block: "b1", path: "0" }, { block: "choice", path: "0" }] });
+    expect(stray?.picks).toBeUndefined();
   });
 });

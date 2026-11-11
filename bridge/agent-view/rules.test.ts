@@ -21,6 +21,8 @@ import {
   VIEW_SENDS_PER_MINUTE,
   VIEW_TAP_GROUP_MAX,
   VIEW_TAP_LABEL_MAX,
+  VIEW_NO_PICKED,
+  VIEW_NO_PRESSED,
   VIEW_NO_PROFILE,
   VIEW_WRITES_PER_MINUTE,
   viewTapWords,
@@ -618,6 +620,93 @@ describe("rule 7: one head, one door", () => {
     expect(await res.text()).toBe(VIEW_PAIRED_ONLY);
   });
 
+});
+
+// ── review 10 W7: Collie marks the pick ───────────────────────────────────────────────────────────
+
+describe("review 10 W7: only the bridge's record of a tap marks a pick", () => {
+  /** The picks the served screen carries. */
+  const picksOf = (r: Rig) => served(r).view?.picks ?? [];
+
+  test("W7: a tap that went marks its button, and a pick marks its option, from the bridge's own record", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    expect(picksOf(r)).toEqual([]);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    // PLAIN is v/2/0: the third block (b3), its first kid.
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }]);
+    const next = await r.service.keep(T, ONE, "all");
+    if (!next.ok) throw new Error(next.error);
+    plan(await tap(r, next.session.view!.rev, "choice/1")).done({ rid: "rid-2", sent: true, reason: null });
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }, { block: "choice", path: "1" }]);
+    // A settled choice takes no second pick, on the next screen too.
+    const kept = await r.service.keep(T, ONE, "all");
+    if (!kept.ok) throw new Error(kept.error);
+    expect(kept.session.view?.picks).toEqual([{ block: "b3", path: "0" }, { block: "choice", path: "1" }]);
+    expect(await tap(r, kept.session.view!.rev, "choice/0")).toMatchObject({ ok: false, code: "bad_control" });
+  });
+
+  test("W7: a send that did not go marks nothing; keys that landed in the box mark, as they took the screen", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: false, reason: "busy" });
+    expect(picksOf(r)).toEqual([]);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-2", sent: false, reason: "typed", landed: "typed_not_submitted" });
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }]);
+  });
+
+  test("W7: a redraw of the same block keeps the mark; a new block id, or a removed block, shows none", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    // The agent redraws b3 with new words: the same block id, a button at the same place.
+    const redrawn = await r.service.set(T, ONE, { id: "b3", node: { kind: "bar", kids: [{ kind: "button", attrs: { label: "Revert all", intent: "reply" } }] }, place: { kind: "end" }, images: [] });
+    if (!redrawn.ok) throw new Error(redrawn.error);
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }]);
+    // An edit of another block keeps it too.
+    const other = await r.service.set(T, ONE, { id: "b1", node: { kind: "para", text: "One test fails" }, place: { kind: "end" }, images: [] });
+    if (!other.ok) throw new Error(other.error);
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }]);
+    // The block redrawn with no button where the mark was: the mark goes.
+    const moved = await r.service.set(T, ONE, { id: "b3", node: { kind: "para", text: "Reverted" }, place: { kind: "end" }, images: [] });
+    if (!moved.ok) throw new Error(moved.error);
+    expect(picksOf(r)).toEqual([]);
+  });
+
+  test("W7: a new screen under new block ids shows no mark", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    const fresh = await r.service.show(T, ONE, { view: [{ id: "next", kind: "bar", kids: [{ kind: "button", attrs: { label: "Revert", intent: "reply" } }] }], title: null });
+    if (!fresh.ok) throw new Error(fresh.error);
+    expect(picksOf(r)).toEqual([]);
+  });
+
+  test("W7: the decision block keeps its pick while the agent keeps the same question; a new question shows none", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    plan(await tap(r, rev, "choice/1")).done({ rid: "rid-1", sent: true, reason: null });
+    const same = await r.service.setChoice(T, ONE, CHOICE);
+    if (!same.ok) throw new Error(same.error);
+    expect(picksOf(r)).toEqual([{ block: "choice", path: "1" }]);
+    const next = await r.service.setChoice(T, ONE, { question: "Which footer?", options: [{ label: "Compact" }, { label: "Tall" }] });
+    if (!next.ok) throw new Error(next.error);
+    expect(picksOf(r)).toEqual([]);
+  });
+
+  test("W7: the agent cannot mark a pick: a button's pressed and a choice's picked are refused at the write, in plain words", async () => {
+    const r = rig();
+    await on(r);
+    const pressed = await r.service.show(T, ONE, { view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Yes", intent: "reply", pressed: "true" } }] }], title: null });
+    expect(pressed).toMatchObject({ ok: false, code: "bad_view" });
+    expect(pressed.ok ? "" : pressed.error).toContain(VIEW_NO_PRESSED);
+    const picked = await r.service.show(T, ONE, { view: SCREEN, title: null, choice: { question: "Which?", options: [{ label: "A" }, { label: "B" }], picked: 0 } });
+    expect(picked).toMatchObject({ ok: false, code: "bad_choice" });
+    expect(picked.ok ? "" : picked.error).toContain(VIEW_NO_PICKED);
+    expect(VIEW_NO_PICKED).toContain("Collie marks the pick");
+    expect(VIEW_NO_PRESSED).toContain("Collie marks the pick");
+    expect(r.store.get(T, ONE)?.view).toBeUndefined();
+  });
 });
 
 // ── rule 8 ────────────────────────────────────────────────────────────────────────────────────────

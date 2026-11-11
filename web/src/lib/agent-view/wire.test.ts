@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { VIEW_HEAD_MAX,
+  VIEW_NO_PICKED,
   VIEW_HINT_MAX,
   VIEW_NOTE_MAX,
   VIEW_NOTES_MAX,
@@ -257,10 +258,12 @@ describe("blocks", () => {
     expect(nextBlockId(new Set(["b1", "x"]))).toBe("b2");
   });
 
-  it("a choice's time defaults to the screen's, and a choice may carry the option picked", () => {
-    const choice = { options: [{ label: "Yes" }, { label: "No" }], picked: 1 };
-    expect(readViewScreen({ rev: 1, at: AT, view: two, choice })).toMatchObject({ choiceAt: AT, choice: { picked: 1 } });
-    expect(parseViewChoice({ ...choice, picked: 2 }, "/choice", { images: 0 }).refusals[0]).toMatchObject({ code: "range", path: "/choice/picked" });
+  it("a choice's time defaults to the screen's; review 10 W7: a choice carries no picked, the screen carries Collie's picks", () => {
+    const choice = { options: [{ label: "Yes" }, { label: "No" }] };
+    expect(readViewScreen({ rev: 1, at: AT, view: two, choice })).toMatchObject({ choiceAt: AT, choice });
+    expect(parseViewChoice({ ...choice, picked: 1 }, "/choice", { images: 0 }).refusals[0]).toMatchObject({ code: "unknown-key", path: "/choice/picked", reason: VIEW_NO_PICKED });
+    expect(readViewScreen({ rev: 1, at: AT, view: two, choice, picks: [{ block: "choice", path: "1" }] })?.picks).toEqual([{ block: "choice", path: "1" }]);
+    expect(readViewScreen({ rev: 1, at: AT, view: two, choice, picks: [{ block: "choice", path: "x" }] })).toBeNull();
   });
 
   it("a drawing keeps its run's notes, newest last, at most eight, and leaves out one that does not fit", () => {

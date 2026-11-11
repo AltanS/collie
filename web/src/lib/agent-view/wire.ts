@@ -251,9 +251,28 @@ export interface ViewChoice {
   options: ViewOption[];
   /** The option the agent suggests (an index into `options`), and why. Never pre-selected. */
   recommends?: { option: number; why?: string };
-  /** A settled decision: the option that was picked. The block then draws as done and takes no tap. */
-  picked?: number;
 }
+
+/**
+ * A pick COLLIE marks (review 10 W7): the bridge writes one when a tap or a pick from the view went (its
+ * keys landed), from its own record of the send. Never the agent's: a button's `pressed` and a choice's
+ * `picked` are refused at the write. `block` is the block's id ({@link VIEW_CHOICE_BLOCK} for the decision
+ * block); `path` is the button's steps under that block's node (`0`, `1/0`), or the option's index.
+ */
+export interface ViewPick {
+  block: string;
+  path: string;
+}
+
+/** The most picks one screen carries: one per bar, and the decision block. */
+export const VIEW_PICKS_MAX = 32;
+/** A pick's path: one to eight steps of up to three digits. */
+const PICK_PATH_RE = /^\d{1,3}(?:\/\d{1,3}){0,7}$/u;
+
+/** Why a button's `pressed` is refused in an agent view (review 10 W7). */
+export const VIEW_NO_PRESSED = 'A button in an agent view takes no "pressed": Collie marks the pick when the operator taps. Keep the question\'s block when you draw the next step.';
+/** Why a choice's `picked` is refused (review 10 W7). */
+export const VIEW_NO_PICKED = 'A choice takes no "picked": Collie marks the pick when the operator picks. Keep the question\'s block when you draw the next step.';
 
 /** A block id: 1 to 32 of a-z, 0-9 and `-`. `choice` names the decision block in `keep`, never a block. */
 export const VIEW_BLOCK_ID_RE = /^[a-z0-9-]{1,32}$/u;
@@ -294,6 +313,8 @@ export interface ViewScreen {
   choiceAt?: string;
   /** One per top-level node of `view`, same order. Absent on a screen stored before blocks: {@link viewBlocksOf} derives them. */
   blocks?: ViewBlock[];
+  /** The picks Collie marked on this screen, oldest first (review 10 W7). Absent: none. */
+  picks?: ViewPick[];
 }
 
 /** One `start` note, with the time it came. */
@@ -632,6 +653,7 @@ function agentViewRefusals(view: View, path: string): Refusal[] {
     nodes.forEach((node, i) => {
       const here = `${at}/${String(i)}`;
       if (node.kind === "button") {
+        if (node.attrs.pressed !== undefined) out.push({ code: "unknown-key", path: `${here}/attrs/pressed`, reason: VIEW_NO_PRESSED });
         if (node.attrs.value !== undefined) out.push({ code: "unknown-key", path: `${here}/attrs/value`, reason: VIEW_NO_VALUE });
         if (node.attrs.does !== undefined) out.push({ code: "unknown-key", path: `${here}/attrs/does`, reason: VIEW_NO_DOES });
         if (!shownLine(node.attrs.label) || node.attrs.label.trim().length > VIEW_TAP_LABEL_MAX) out.push({ code: "text", path: `${here}/attrs/label`, reason: `A button's label is one line of shown characters, at most ${String(VIEW_TAP_LABEL_MAX)}.` });
@@ -695,13 +717,13 @@ export const VIEW_CONTROL_MAX = 64;
  * by {@link quoteTapWord} and capped. Null when the control names no button or option a tap could reach:
  * a disabled button, a settled choice, a pending block, a label that is no line of shown characters.
  */
-export function viewTapWords(screen: Pick<ViewScreen, "view" | "choice">, control: string): string | null {
+export function viewTapWords(screen: Pick<ViewScreen, "view" | "choice" | "picks">, control: string): string | null {
   if (control.length > VIEW_CONTROL_MAX) return null;
   const pick = /^choice\/(\d{1,2})$/u.exec(control);
   if (pick !== null) {
     const choice = screen.choice;
     const option = choice?.options[Number(pick[1])];
-    if (choice === undefined || option === undefined || choice.picked !== undefined) return null;
+    if (choice === undefined || option === undefined || choicePick(screen) !== null) return null;
     const label = option.label.trim();
     if (label === "" || !shownLine(label) || label.length > VIEW_TAP_LABEL_MAX) return null;
     return `picked ${quoteTapWord(label)}`;
@@ -777,7 +799,7 @@ export interface ParsedViewChoice {
   refusals: Refusal[];
 }
 
-const CHOICE_KEYS = ["question", "options", "recommends", "picked"] as const;
+const CHOICE_KEYS = ["question", "options", "recommends"] as const;
 const OPTION_KEYS = ["label", "detail", "confirm", "preview"] as const;
 const RECOMMENDS_KEYS = ["option", "why"] as const;
 
@@ -847,7 +869,9 @@ function readOption(raw: JsonValue | undefined, path: string, images: number): O
 export function parseViewChoice(raw: JsonValue | undefined, path = "/choice", { images }: { images: number }): ParsedViewChoice {
   const obj = asJsonObject(raw);
   if (obj === undefined) return { refusals: [{ code: "type", path, reason: 'A choice is an object: { "question"?, "options": [...], "recommends"? }.' }] };
-  const refusals = unknownKeys(obj, CHOICE_KEYS, path, "A choice");
+  // `picked` is Collie's to mark (review 10 W7): refused in its own words, not as an unknown key.
+  const refusals = unknownKeys(obj, [...CHOICE_KEYS, "picked"], path, "A choice");
+  if (obj.picked !== undefined) refusals.push({ code: "unknown-key", path: `${path}/picked`, reason: VIEW_NO_PICKED });
   const question = lineField(obj, "question", VIEW_QUESTION_MAX, path, "A choice's question");
   if (question.refusal !== undefined) refusals.push(question.refusal);
   const list = Array.isArray(obj.options) ? obj.options : null;
@@ -866,13 +890,10 @@ export function parseViewChoice(raw: JsonValue | undefined, path = "/choice", { 
     options.push(read.option);
   });
   const recommends = obj.recommends === undefined ? undefined : readRecommends({ raw: obj.recommends, path: `${path}/recommends`, options: list.length, refusals });
-  const picked = obj.picked === undefined ? undefined : indexBelow(obj.picked, list.length);
-  if (picked === null) refusals.push({ code: "range", path: `${path}/picked`, reason: `"picked" is the picked option's index, 0 to ${String(list.length - 1)}.` });
   if (refusals.length > 0) return { refusals };
   const choice: ViewChoice = { options };
   if (question.value !== undefined) choice.question = question.value;
   if (recommends !== undefined) choice.recommends = recommends;
-  if (picked !== undefined && picked !== null) choice.picked = picked;
   return { choice, refusals: [] };
 }
 
@@ -1015,6 +1036,13 @@ export function readViewScreen(raw: JsonValue | undefined): ViewScreen | null {
     const blocks = readViewBlocks(obj.blocks, parsed.view.length);
     if (blocks === null) return null;
     out.blocks = blocks;
+  }
+  if (obj.picks !== undefined) {
+    const picks = readViewPicks(obj.picks);
+    if (picks === null) return null;
+    // A pick that names no button or option of this screen is no mark: dropped, never drawn.
+    const kept = picks.filter((pick) => pickFits(out, pick));
+    if (kept.length > 0) out.picks = kept;
   }
   if (obj.title === undefined) return out;
   const title = asJsonString(obj.title);
@@ -1174,4 +1202,84 @@ export function readViewSendField(raw: JsonValue | undefined): ViewSendField | n
   const control = asJsonString(obj.control);
   if (!isRev(rev) || control === undefined || control === "" || control.length > VIEW_CONTROL_MAX) return null;
   return { trick, session, rev, control };
+}
+
+// ── picks Collie marks (review 10 W7) ───────────────────────────────────────────────────────────────
+
+/** One stored or served pick, or null when a field does not fit. */
+function readViewPick(raw: JsonValue): ViewPick | null {
+  const obj = asJsonObject(raw);
+  const block = asJsonString(obj?.block);
+  const path = asJsonString(obj?.path);
+  if (block === undefined || path === undefined || !VIEW_BLOCK_ID_RE.test(block) || !PICK_PATH_RE.test(path)) return null;
+  return { block, path };
+}
+
+/** A screen's picks, or null when the list does not fit. */
+function readViewPicks(raw: JsonValue): ViewPick[] | null {
+  if (!Array.isArray(raw) || raw.length > VIEW_PICKS_MAX) return null;
+  const picks = raw.map(readViewPick);
+  return picks.some((pick) => pick === null) ? null : picks.filter((pick): pick is ViewPick => pick !== null);
+}
+
+/** The node at `path`'s steps under `node`, or undefined. */
+function nodeUnder(node: ViewNode, path: string): ViewNode | undefined {
+  let at: ViewNode | undefined = node;
+  for (const step of path.split("/")) {
+    const kids: readonly ViewNode[] = at !== undefined && "kids" in at && Array.isArray(at.kids) ? at.kids : [];
+    at = kids[Number(step)];
+  }
+  return at;
+}
+
+/** Whether a pick names a button of the screen (its block by id) or an option of its decision block. */
+export function pickFits(screen: Pick<ViewScreen, "view" | "choice" | "blocks" | "at">, pick: ViewPick): boolean {
+  if (pick.block === VIEW_CHOICE_BLOCK) return screen.choice?.options[Number(pick.path)] !== undefined && /^\d{1,2}$/u.test(pick.path);
+  const index = viewBlocksOf({ ...screen, rev: 0 }).findIndex((block) => block.id === pick.block);
+  const node = index < 0 ? undefined : screen.view[index];
+  return node !== undefined && nodeUnder(node, pick.path)?.kind === "button";
+}
+
+/** The decision block's marked option, or null. */
+export function choicePick(screen: Pick<ViewScreen, "picks">): number | null {
+  const pick = screen.picks?.find((held) => held.block === VIEW_CHOICE_BLOCK);
+  return pick === undefined ? null : Number(pick.path);
+}
+
+/** The pick a tap at a control names on a screen (`v/2/0` → the third block, `0`; `choice/1`), or null. */
+export function pickOfControl(screen: Pick<ViewScreen, "view" | "blocks" | "at">, control: string): ViewPick | null {
+  const option = /^choice\/(\d{1,2})$/u.exec(control);
+  if (option !== null) return { block: VIEW_CHOICE_BLOCK, path: option[1] ?? "" };
+  const steps = /^v\/(\d{1,3})\/(\d{1,3}(?:\/\d{1,3}){0,7})$/u.exec(control);
+  if (steps === null) return null;
+  const block = viewBlocksOf({ ...screen, rev: 0 })[Number(steps[1])];
+  return block === undefined ? null : { block: block.id, path: steps[2] ?? "" };
+}
+
+/** The bar a pick sits in: its block and its parent's steps. Two picks in one bar: the newer stays. */
+function barOf(pick: ViewPick): string {
+  const slash = pick.path.lastIndexOf("/");
+  return pick.block === VIEW_CHOICE_BLOCK ? VIEW_CHOICE_BLOCK : `${pick.block}#${slash < 0 ? "" : pick.path.slice(0, slash)}`;
+}
+
+/** The picks after one more: the others of its bar (or the decision block's) go, the cap holds, the newest last. */
+export function picksWith(held: readonly ViewPick[] | undefined, pick: ViewPick): ViewPick[] {
+  const bar = barOf(pick);
+  return [...(held ?? []).filter((other) => barOf(other) !== bar), pick].slice(-VIEW_PICKS_MAX);
+}
+
+/** Whether two decision blocks ask the same: the same question and the same option labels in order. */
+function sameDecision(a: ViewChoice | undefined, b: ViewChoice | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  return a.question === b.question && a.options.length === b.options.length && a.options.every((option, i) => option.label === b.options[i]?.label);
+}
+
+/**
+ * The picks a new screen keeps from the one it replaces (review 10 W7): a button's while a block of the
+ * same id still holds a button at the same steps (the agent redrew that block, or another one); the
+ * decision block's while it asks the same question with the same options. A block removed, or drawn
+ * under a new id, or a new decision, shows no mark.
+ */
+export function carriedPicks(held: Pick<ViewScreen, "picks" | "choice"> | undefined, next: Pick<ViewScreen, "view" | "choice" | "blocks" | "at">): ViewPick[] {
+  return (held?.picks ?? []).filter((pick) => pickFits(next, pick) && (pick.block !== VIEW_CHOICE_BLOCK || sameDecision(held?.choice, next.choice)));
 }

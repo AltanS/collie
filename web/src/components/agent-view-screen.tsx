@@ -17,6 +17,7 @@ import {
   blockControl,
   choiceControl,
   isUnanswered,
+  markedControls,
   optionControl,
   pickedOption,
   pickReceiptOf,
@@ -36,7 +37,7 @@ import {
   type ViewStatus,
 } from "@/lib/agent-view/reader";
 import { useAgentViewLive } from "@/lib/agent-view/store";
-import { viewMediaPath, viewTapWords, type ViewDrawing, type ViewMedia, type ViewNote, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
+import { choicePick, viewMediaPath, viewTapWords, type ViewDrawing, type ViewMedia, type ViewNote, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
 import { linkHost } from "@/lib/hill/reader";
 import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
@@ -331,7 +332,7 @@ function ViewRequestBubble({ text }: { text: string }) {
   );
 }
 
-/** The decision block as it stands: settled when the agent sent `picked` or the operator picked it, live otherwise. */
+/** The decision block as it stands: settled when Collie marked its pick (review 10 W7) or the operator picked it, live otherwise. */
 function ChoicePart({
   view,
   pictures,
@@ -352,7 +353,7 @@ function ChoicePart({
 }) {
   const choice = view.choice;
   if (choice === undefined) return null;
-  const picked = choice.picked ?? (canAct === "stale" ? pickedOption(pressed) : null);
+  const picked = choicePick(view) ?? (canAct === "stale" ? pickedOption(pressed) : null);
   if (picked !== null) return <ViewChoiceDone choice={choice} picked={picked} pictures={pictures} />;
   return (
     <ViewChoiceBlock
@@ -383,7 +384,7 @@ export function AgentViewScreen({
   request: told,
   sent = NO_SENT,
   drawing,
-  pressed = NO_CONTROLS,
+  pressed: confirmed = NO_CONTROLS,
   onPressed,
   working,
   question = false,
@@ -399,6 +400,8 @@ export function AgentViewScreen({
 }: AgentViewScreenProps) {
   useLocale();
   const clock = useBridgeNow(now);
+  // The picks Collie marked (the bridge's record), and the taps this phone saw confirmed since.
+  const pressed = useMemo(() => markedControls(view, confirmed), [view, confirmed]);
   const [busyControl, setBusyControl] = useState<string | null>(null);
   const request = useMemo(() => viewRequestOf({ local: told, entries, sent }), [told, entries, sent]);
   const status = useMemo(() => viewStatusOf({ request, view, drawing, working, entries, now: clock }), [request, view, drawing, working, entries, clock]);
