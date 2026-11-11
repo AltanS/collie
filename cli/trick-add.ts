@@ -12,6 +12,7 @@ import {
   gitHardening,
   gitRunEnv,
   readCandidate,
+  refNamespaceProblem,
   spawnGit,
   writeCandidateFiles,
   type Candidate,
@@ -76,6 +77,23 @@ const SUBDIR_SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$/u;
 export function refProblem(ref: string): string | null {
   if (!REF.test(ref) || ref.includes("..") || ref.includes("//") || ref.endsWith("/") || ref.endsWith(".lock")) {
     return `"${ref}" is not a branch, tag or commit name Collie fetches (letters, digits, . _ / -; a commit as all 40 hex digits)`;
+  }
+  // A `refs/` name outside heads and tags (`refs/pull/N/head` is a stranger's pull request): fetch.ts.
+  return refNamespaceProblem(ref);
+}
+
+/**
+ * Why a source's ref is refused for its repository, or null: the official repository is fetched by a
+ * branch or a tag only. A bare commit id there could be a pull request's or a fork's: GitHub serves both
+ * through the repository's own URL. Any other repository takes a full commit id, as the README documents.
+ */
+export function sourceRefProblem(source: Pick<TrickSource, "url" | "ref">, seam?: TrickAddSeam): string | null {
+  if (source.ref === null) return null;
+  const bad = refProblem(source.ref);
+  if (bad !== null) return bad;
+  const official = source.url === (seam?.officialRepo ?? OFFICIAL_TRICKS_REPO);
+  if (official && /^[0-9a-f]{40}$/u.test(source.ref)) {
+    return "The official repository is added by a branch or a tag, not by a commit id: a commit there may be a pull request's or a fork's. Name a branch or a tag.";
   }
   return null;
 }
@@ -142,10 +160,8 @@ export function parseTrickSource(raw: string, seam?: TrickAddSeam): TrickSource 
     const bad = subdirProblem(subdir);
     if (bad !== null) return { error: bad };
   }
-  if (ref !== null) {
-    const bad = refProblem(ref);
-    if (bad !== null) return { error: bad };
-  }
+  const bad = sourceRefProblem({ url, ref }, seam);
+  if (bad !== null) return { error: bad };
   return { url, ref, subdir };
 }
 
@@ -367,6 +383,8 @@ export async function cmdTrickUpdate(deps: TrickAddDeps, args: readonly string[]
   const source: TrickSource = { url: origin.url, ref: askedRef ?? origin.ref, subdir: origin.subdir };
   const badUrl = urlProblem(source.url, deps.seam);
   if (badUrl !== null) return refuse(deps, `the origin record of ${id} names a source Collie does not fetch: ${badUrl}`);
+  const badRef = sourceRefProblem(source, deps.seam);
+  if (badRef !== null) return refuse(deps, askedRef === undefined ? `the origin record of ${id} names a ref Collie does not fetch: ${badRef} Name one with --ref.` : badRef);
   if (source.subdir !== null && subdirProblem(source.subdir) !== null) return refuse(deps, `the origin record of ${id} names a folder Collie does not take`);
   try {
     return await withCandidate(deps, source, async (candidate) => {

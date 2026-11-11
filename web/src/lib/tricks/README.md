@@ -266,7 +266,11 @@ collie trick remove legs                           # only while it is off
 
 The official repository is `https://github.com/AltanS/collie-tricks` (`OFFICIAL_TRICKS_REPO` in
 `cli/trick-add.ts`). A source is `<https-url>[//<folder>][#<ref>]`, and `#<ref>//<folder>` reads too; a
-ref is a branch, a tag or a full 40-digit commit. A URL with a user name or a password is refused. The
+ref is a branch, a tag or a full 40-digit commit. A `refs/` name must be `refs/heads/...` or
+`refs/tags/...`: `refs/pull/N/head`, which GitHub serves through the repository's own URL, is refused. A
+short name is looked up as exactly a tag or a branch of that name, so `pull/5/head` never reaches a pull
+request through git's own lookup. The official repository takes no commit id at all: a fork's commit is
+reachable there by its id too. A URL with a user name or a password is refused. The
 list with no source names each folder of the official repository that holds a `trick.toml`, with the
 manifest's `name` and its first comment line as the description.
 
