@@ -7,6 +7,7 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
+import { HillAboutSheet } from "@/components/hill-entry";
 import { StatusArea } from "@/components/status-area";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
@@ -138,6 +139,34 @@ function SheetBox({ n, state, label, trick: info, updates = false }: { n: number
           About {info.name}
         </button>
         <TrickAboutSheet trick={info} open={open} onClose={() => setOpen(false)} auto={auto} onAuto={updates ? setAuto : undefined} />
+      </div>
+    </Card>
+  );
+}
+
+// The Hill's About sheet (2026-11-11): the built-in entry's sheet, in a phone-sized box as the trick's. It holds the
+// switch's value itself and writes after a moment, as the bridge would; the first tap on a switch with Collie's own
+// question waiting arms it (tap the switch once), the second goes off.
+
+function HillSheetBox({ n, state, label, on: initial, count }: { n: number; state: string; label: string; on: boolean; count: number }) {
+  const [open, setOpen] = useState(true);
+  const [on, setOn] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const style: CSSProperties & { "--app-h"?: string } = { width: 390, height: 844, transform: "translate(0)", "--app-h": "844px" };
+  const set = (next: boolean) => {
+    setBusy(true);
+    setTimeout(() => {
+      setOn(next);
+      setBusy(false);
+    }, 400);
+  };
+  return (
+    <Card state={state} label={`${n} · ${label}`}>
+      <div data-pg-frame="" className="relative isolate overflow-hidden rounded-xl border border-border bg-background" style={style}>
+        <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
+          About Hill
+        </button>
+        <HillAboutSheet open={open} onClose={() => setOpen(false)} on={on} canSet={!busy} waiting={count} onSet={set} />
       </div>
     </Card>
   );
@@ -357,6 +386,12 @@ export function TrickSettingsSection(): ReactNode {
             provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
           })}
         />
+      </Group>
+      <Group title="The Hill, built in">
+        <ListCard n={31} state="trick-settings-hill-entry-row" label="the Hill is the first row, with no switch: tap it" tricks={HEALTHY.slice(0, 2)} />
+        <HillSheetBox n={32} state="trick-settings-hill-entry-on" label="the sheet with the switch on, nothing waiting" on count={0} />
+        <HillSheetBox n={33} state="trick-settings-hill-entry-armed" label="3 waiting: tap the switch once, it arms; tap again inside four seconds, it goes off" on count={3} />
+        <HillSheetBox n={34} state="trick-settings-hill-entry-off" label="the switch off" on={false} count={3} />
       </Group>
       <Group title="An agent view (contract 2)">
         <ListCard n={26} state="trick-settings-agent-view" label="a view-only trick: agent view as its place, a switch" tricks={[VIEW_TRICK, HEALTHY[2] ?? trick("x", "x")]} />
