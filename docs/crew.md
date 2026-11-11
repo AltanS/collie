@@ -523,8 +523,9 @@ and shows the folder's own code as a new version that waits for your yes.
 `collie crew status` on the lead says whether its deputy holds the copy. `collie crew approve-promote`
 says whether the tricks come along: only the deputy holds a copy.
 
-The copy holds each trick's `config.toml`. A token or key in that file also rests on the deputy, until
-it stops being the deputy. When the deputy changes, the old one removes its copy.
+The copy holds each trick's `config.toml` and its state folder. A token or key in either also rests on
+the deputy, until it stops being the deputy: a trick may keep a login token in its state folder. When
+the deputy changes, the old one removes its copy.
 
 ### Open questions on the Hill come along
 
