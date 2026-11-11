@@ -16,7 +16,7 @@ export const HILL_RULES = [
   "A --view only shows facts. No buttons: the options are the taps.",
   "When your operator settles the question in your session, take the card back: collie hill withdraw <id>.",
   "Before you post, read the crew state: collie hill state. here: post as usual. quiet: post, but do not wait for a fast answer. away: post nothing that needs an answer now; do work that needs no answer, then end your turn.",
-  'A receipt or a post result can end with a line such as "Crew state: away." It is the state at that moment.',
+  'A typed answer or a post result can end with a line such as "Crew state: away." It is the state at that moment.',
 ] as const;
 
 /**

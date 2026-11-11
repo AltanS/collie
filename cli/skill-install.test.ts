@@ -93,7 +93,7 @@ describe("the rendered skill", () => {
     expect(out).toContain(`${bin} hill status dc_...`);
     expect(out).toContain(`take the card back: ${bin} hill withdraw <id>.`);
     expect(out).toContain(`read the crew state: ${bin} hill state. here: post as usual.`);
-    expect(out).toContain('A receipt or a post result can end with a line such as "Crew state: away."');
+    expect(out).toContain('A typed answer or a post result can end with a line such as "Crew state: away."');
   });
 
   test("teaches the wording rules of a Decision from the same list the help prints, right before the rules", () => {
