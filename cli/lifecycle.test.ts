@@ -922,7 +922,8 @@ describe("the Task Scheduler tier (Windows)", () => {
       answers: [...(over.answers ?? []), ...WHOAMI],
       files: { [WIN_BINARY]: "", ...over.files },
     });
-  const schtasks = (h: Harness): string[] => h.exec.calls.filter((c) => c.startsWith("schtasks"));
+  // The writes and runs only: the read-only `/Query` of #762 is asserted where it is the subject.
+  const schtasks = (h: Harness): string[] => h.exec.calls.filter((c) => c.startsWith("schtasks") && !c.startsWith("schtasks /Query"));
 
   describe("the tier", () => {
     test("Windows is Task Scheduler, and asks systemd nothing", () => {
@@ -984,6 +985,30 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.files.read(HANDLER_FILE)).toBe("https:443|desk.tail.ts.net:443|http://127.0.0.1:8787\n");
       expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
       expect(h.io.stderr.join("\n")).not.toContain("front door did not come up");
+    });
+
+    test("a task that cannot be read is not registered over blind, and the slow bound is used (#762)", async () => {
+      const h = windows({
+        answers: [
+          ["schtasks /Query", { code: 1 }],
+          [QUERY, { code: 124 }],
+        ],
+      });
+      expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
+      expect(schtasks(h)).toEqual([]);
+      expect(h.io.stderr).toEqual([
+        "error: Collie could not read the task herdr.collie (PowerShell did not answer within 60s), so it did not register over it",
+        "       wait a minute and run: collie start",
+      ]);
+      expect(h.exec.timeouts.filter((t) => t.call.startsWith("powershell")).map((t) => t.ms)).toEqual([PROCESS_QUERY_SLOW_START_MS]);
+    });
+
+    test("a task schtasks reads in one call needs no PowerShell, and another install's is still refused", async () => {
+      const xml = `<Task><Settings><Enabled>true</Enabled></Settings><Exec><Command>${CONHOST}</Command><Arguments>--headless D:\\other\\bin\\collie.exe _supervise</Arguments></Exec></Task>`;
+      const h = windows({ answers: [["schtasks /Query", { stdout: xml }]] });
+      expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
+      expect(h.exec.calls.some((c) => c.startsWith("powershell"))).toBe(false);
+      expect(h.io.stderr.join("\n")).toContain("one Collie per Windows machine");
     });
 
     test("a path with a '%' is refused before the task is written: Task Scheduler would expand it", async () => {
@@ -1565,6 +1590,23 @@ describe("the Task Scheduler tier (Windows)", () => {
         expect(h.exec.killed).toEqual([7200]);
       });
 
+      test("a task that cannot be read in time is left alone, with one line that says so (#762)", async () => {
+        const h = windows({
+          files: { [RECORD]: V2(7100, 7200) },
+          ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE },
+          answers: [
+            ["schtasks /Query", { code: 1 }],
+            [QUERY, { code: 124 }],
+          ],
+        });
+        expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+        expect(schtasks(h)).toEqual([]);
+        expect(h.io.stderr.join("\n")).toContain(
+          "could not read the task herdr.collie (PowerShell did not answer within 60s), so its priority was not checked",
+        );
+        expect(h.exec.killed).toEqual([7200]);
+      });
+
       test("start writes the priority into the task it registers", async () => {
         const h = windows();
         expect(await cmdStart(h.deps)).toBe(EXIT.OK);
@@ -1663,7 +1705,7 @@ describe("the Task Scheduler tier (Windows)", () => {
       };
       const ask = h.exec.capture.bind(h.exec);
       h.exec.capture = (tool, args, ...rest) => {
-        if (tool === "schtasks") order.push(`schtasks ${args[0]}`);
+        if (tool === "schtasks" && args[0] !== "/Query") order.push(`schtasks ${args[0]}`);
         return ask(tool, args, ...rest);
       };
       expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
@@ -1849,6 +1891,27 @@ describe("the Task Scheduler tier (Windows)", () => {
       );
       const other = windows({ answers: [[QUERY, { stdout: taskAnswer('--headless "D:\\other\\bin\\collie.exe" _supervise') }]] });
       expect(serviceDescription(other.deps)).toBe("Task Scheduler (herdr.collie) · Running · runs another install: D:\\other\\bin\\collie.exe");
+    });
+
+    test("a task that cannot be read says so, with the time limit, and never says not registered (#762)", () => {
+      const slow = windows({
+        answers: [
+          ["schtasks /Query", { code: 1 }],
+          [QUERY, { code: 124 }],
+        ],
+        files: { [`${CONFIG}/collie.pid`]: "4242\n" },
+      });
+      const said = serviceDescription(slow.deps);
+      expect(said).toBe("Task Scheduler (herdr.collie) · could not read the task (PowerShell did not answer within 60s)");
+      expect(said).not.toContain("not registered");
+      expect(said).not.toContain("unsupervised");
+    });
+
+    test("schtasks alone answers a status: the state it can give is that the task is registered", () => {
+      const xml = `<Task><Settings><Enabled>true</Enabled></Settings><Exec><Command>${CONHOST}</Command><Arguments>--headless ${WIN_BINARY} _supervise</Arguments></Exec></Task>`;
+      const h = windows({ answers: [["schtasks /Query", { stdout: xml }]] });
+      expect(serviceDescription(h.deps)).toBe("Task Scheduler (herdr.collie) · registered · launcher: Collie's");
+      expect(h.exec.calls.some((c) => c.startsWith("powershell"))).toBe(false);
     });
 
     test("logs reads the log file the launcher appends to", () => {

@@ -88,7 +88,7 @@ import {
 import { packageCommand } from "./package-command.ts";
 import { linkPath, type LinkReader, realLinkFs, resolveLinkTarget } from "./link.ts";
 import { classifyExe, exePathOf, type ExeEvidence } from "../bridge/exe-replaced.ts";
-import { queryTask, taskOwner, windowsPathKey } from "./task-scheduler.ts";
+import { queryTask, TASK_QUERY_PATIENT_MS, taskOwner, windowsPathKey } from "./task-scheduler.ts";
 import { agentLabel, collieBinary, unitName } from "./unit.ts";
 import { pidFilePath } from "./lifecycle.ts";
 import { DEFAULT_COLUMNS, type Ui } from "./render.ts";
@@ -1718,9 +1718,13 @@ export function secretsPrivate(deps: Pick<DoctorDeps, "ctx" | "host" | "ownerOnl
 export function windowsTask(deps: Pick<DoctorDeps, "ctx" | "exec" | "host" | "link">): Finding {
   const check = "windows-task";
   const name = agentLabel(deps.ctx.instance);
-  const query = queryTask(deps.exec, name, deps.host);
-  if (query === undefined) return skipped(check, "no PowerShell to read Task Scheduler with", "run `collie status` from a PowerShell");
-  if (query === null) return skipped(check, `no task ${name} is registered`, "`collie start` registers it");
+  const lookup = queryTask(deps.exec, name, deps.host, TASK_QUERY_PATIENT_MS);
+  // Not "no task is registered": the query did not answer, so Collie does not know (#762).
+  if (lookup.kind === "unknown") {
+    return skipped(check, `could not read the task ${name} (${lookup.why})`, `run \`collie doctor\` again, or \`schtasks /query /tn ${name}\` from a terminal`);
+  }
+  if (lookup.kind === "absent") return skipped(check, `no task ${name} is registered`, "`collie start` registers it");
+  const query = lookup.task;
   switch (taskOwner(query, deps.ctx.root, deps.host)) {
     case "legacy":
       return warn(check, `Task ${name} still runs the old script (contrib\\windows\\collie-ctl.ps1)`, "Run: collie restart");
