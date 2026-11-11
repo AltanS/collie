@@ -1593,7 +1593,9 @@ export class TricksService implements TricksSurface {
   private tapRefusal(id: string, request: TapRequest, rev: number | undefined): TapRefusal | null {
     const host = this.deps.memberId;
     const held = this.store.held({ host, trick: id, part: request.node });
-    if (held === undefined) return "part";
+    // N8 (review 11): a trick that holds no part at all has not drawn since this bridge started (a restart
+    // empties the store), so the phone's copy is older than this bridge: `changed`, not the forgery line.
+    if (held === undefined) return this.store.trickParts(host, id, -Infinity).parts.length === 0 ? "changed" : "part";
     // A phone that sends no rev predates the check: it cannot say what it drew, so the tap is a race it lost.
     if (rev === undefined || !held.shows(rev)) return "changed";
     const controls = tapControls(held.part.value).filter((control) => control.intent === request.intent);

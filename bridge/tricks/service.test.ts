@@ -980,6 +980,20 @@ describe("fault A: a tap names what the bridge drew", () => {
     expect(await route(r, { rid: rid(5), node: "belt", intent: "open", rev: await revOf(r, "belt") })).toMatchObject({ code: "ok" });
   });
 
+  test("N8: after a restart, before the trick drew again, an honest tap answers changed, not the forgery line", async () => {
+    const r = await drawnRig();
+    const rev = await revOf(r, "belt");
+    // A second bridge over the same folders: its store is empty until the trick runs.
+    const again = await rig([exited(PLACES)], { stateDir: r.stateDir, configDir: r.configDir });
+    await again.service.refresh(true);
+    const reply = await route(again, { rid: rid(1), node: "belt", intent: "open", rev });
+    expect(reply).toMatchObject({ code: "changed", refused: "changed", parts: [] });
+    expect(again.specs).toHaveLength(0);
+    // Once it drew, a node it does not hold is the forgery line again.
+    await tickAt(again, T0);
+    expect(await route(again, { rid: rid(2), node: "ghost", intent: "open", rev })).toMatchObject({ refused: "part" });
+  });
+
   test("N5: refused taps write one audit line per trick and reason a minute", async () => {
     const r = await drawnRig();
     const rev = await revOf(r, "belt");
