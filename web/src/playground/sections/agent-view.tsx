@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 
-import { AgentViewScreen, type AgentViewScreenProps } from "@/components/agent-view-screen";
+import { AgentViewScreen, VIEW_SETTLE_MS, type AgentViewScreenProps } from "@/components/agent-view-screen";
 import type { ViewSendResult } from "@/components/composer";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { phoneRefusal, SendRefusalNotice } from "@/components/send-notice";
@@ -18,7 +18,7 @@ import { viewRefusalKey } from "@/lib/agent-view/reader";
 import { t } from "@/lib/i18n";
 import { fixtureAgents } from "@/test/handlers";
 
-import { VIEW_NOW, VIEW_SCREEN, VIEW_SESSION, VIEW_TAP_LINE } from "../fixtures/agent-view";
+import { VIEW_LONG_NAME, VIEW_LONG_SCREEN, VIEW_NOW, VIEW_PICKED_SCREEN, VIEW_SCREEN, VIEW_SESSION, VIEW_TAP_LINE } from "../fixtures/agent-view";
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
@@ -27,7 +27,7 @@ export const DEF: SectionDef = {
   intent: "A screen a session's agent draws for a trick, under Collie's band, and its switch in the session's sheet.",
 };
 
-const CASES = ["switch-off", "switch-on", "two-tricks", "no-profile", "screen", "working", "question", "old", "sent", "armed", "changed", "draft"] as const;
+const CASES = ["switch-off", "switch-on", "two-tricks", "no-profile", "screen", "working", "question", "old", "sent", "armed", "changed", "draft", "long", "long-armed", "picked"] as const;
 type CaseId = (typeof CASES)[number];
 
 function isCaseId(word: string | null): word is CaseId {
@@ -112,16 +112,22 @@ function Screen(over: Partial<AgentViewScreenProps>) {
   );
 }
 
-/** A screen with the confirm button of the bar armed: the first tap, made once on mount. */
-function ArmedScreen() {
+/**
+ * A screen with a confirm button armed: the first tap, made once, after the screen stood still for its
+ * settle window (a tap before it does nothing, review 10 W3).
+ */
+function ArmedScreen({ label = "Drop the tag", ...over }: Partial<AgentViewScreenProps> & { label?: string }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const button = [...(box.current?.querySelectorAll("button") ?? [])].find((found) => found.textContent?.includes("Drop the tag") === true);
-    button?.click();
-  }, []);
+    const timer = setTimeout(() => {
+      const button = [...(box.current?.querySelectorAll("button") ?? [])].find((found) => found.textContent?.includes(label) === true);
+      button?.click();
+    }, VIEW_SETTLE_MS + 100);
+    return () => clearTimeout(timer);
+  }, [label]);
   return (
     <div ref={box} className="h-full">
-      <Screen />
+      <Screen {...over} />
     </div>
   );
 }
@@ -160,6 +166,12 @@ function CaseBody({ id }: { id: CaseId }): ReactNode {
       return <ArmedScreen />;
     case "changed":
       return <Screen changed view={{ ...VIEW_SCREEN, rev: 4 }} />;
+    case "long":
+      return <Screen name={VIEW_LONG_NAME} view={VIEW_LONG_SCREEN} />;
+    case "long-armed":
+      return <ArmedScreen name={VIEW_LONG_NAME} view={VIEW_LONG_SCREEN} label="タグを消して" />;
+    case "picked":
+      return <Screen view={VIEW_PICKED_SCREEN} />;
   }
 }
 
@@ -176,6 +188,9 @@ const LABELS = {
   changed: "10: stale tap, read again",
   "no-profile": "11: switch refused, no profile",
   draft: "12: send refused over a draft",
+  long: "13: long name, CJK labels, hosts",
+  "long-armed": "14: long confirm armed",
+  picked: "15: picks Collie marked",
 } as const satisfies Record<CaseId, string>;
 
 /** One case over the whole screen, for a phone and for the shots. */
@@ -213,7 +228,7 @@ export function AgentViewSection() {
         ))}
       </Group>
       <Group title="The view">
-        {(["screen", "working", "question", "old", "sent", "armed", "changed", "draft"] as const).map((id) => (
+        {(["screen", "working", "question", "old", "sent", "armed", "changed", "draft", "long", "long-armed", "picked"] as const).map((id) => (
           <Card key={id} state={`agent-view-${id}`} label={LABELS[id]}>
             <Stage height={760}>
               <CaseBody id={id} />
