@@ -111,6 +111,15 @@ import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type 
 import type { HillStore, HillTombstone } from "./store.ts";
 import type { HillLeadForward, HillListAnswer } from "./crew.ts";
 
+/**
+ * A session's or a trick's name, never Collie's own (crew slice 8 review Q1, Q2): a name that reads
+ * "Collie" once case, width and compatibility forms are set aside gets `(a session)` or `(a trick)` after
+ * it. The card's mark (the agent's logo or the trick's glyph, never the app's) says the rest.
+ */
+export function notCollie(label: string, what: "a session" | "a trick"): string {
+  return label.normalize("NFKC").trim().toLowerCase() === "collie" ? `${label} (${what})` : label;
+}
+
 /** An agent in a pane this bridge placed: what the socket can name. */
 export interface HillAgentSender {
   readonly kind: "agent";
@@ -671,7 +680,7 @@ export class HillService {
   private nameOf(address: string | null, fallback: string): string {
     const name = address === null ? null : (this.deps.sessionName?.(address) ?? null);
     const label = name === null ? "" : sessionLabel(name);
-    return label === "" ? fallback : label;
+    return notCollie(label === "" ? fallback : label, "a session");
   }
 
   /** An open decision with the names its sessions have now, while they are live. A closed one, as stored. */
@@ -882,7 +891,7 @@ export class HillService {
       return { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: this.nameOf(from.address, from.label), host: from.host, trickHost: null };
     }
     if (from.kind === "trick") {
-      return { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: from.memberId };
+      return { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: notCollie(headerField(from.label, WALKY_LABEL_MAX), "a trick"), host: this.deps.machine, trickHost: from.memberId };
     }
     const ref = { type: from.ref.type, id: from.ref.id, hash: from.ref.hash };
     return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: null, ref };

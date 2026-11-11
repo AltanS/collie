@@ -12,7 +12,7 @@ import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { recoverProposalWrites } from "./proposal-install.ts";
 import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, PROPOSAL_TOO_LARGE, type ProposerFacts } from "./proposal-card.ts";
-import { checkProposedFiles, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
+import { checkProposedFiles, foldKey, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
 import { versionDiff, type VersionDiff } from "./version-diff.ts";
@@ -597,7 +597,9 @@ function clean(raw: string): string {
 
 /** The proposer's facts for a card and a record: display words, cleaned. */
 function facts(proposer: Proposer): ProposerFacts {
-  return { by: proposer.by, host: clean(proposer.host), label: proposer.label === null ? null : clean(proposer.label) };
+  // A session named "Collie" is named by its machine only: the card speaks as Collie (review Q1).
+  const label = proposer.label === null ? null : clean(proposer.label);
+  return { by: proposer.by, host: clean(proposer.host), label: label === null || foldKey(label).trim() === "collie" ? null : label };
 }
 
 /** The sender of a proposal card. */

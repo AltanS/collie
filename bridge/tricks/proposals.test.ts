@@ -668,6 +668,13 @@ describe("the card belongs to Collie and to the person", () => {
     expect(l.sent).toEqual([]);
   });
 
+  test("Q1: a session named Collie is named by its machine only, so the card's words stay Collie's own", async () => {
+    const l = await lead();
+    await l.proposals.propose(proposal("legs"), { ...AGENT, label: "ｃｏｌｌｉｅ" });
+    const [card] = openCards(l);
+    expect(card?.summary).toStartWith("An agent session on minibuch proposes it.");
+  });
+
   test("a terminal's proposal names no session", async () => {
     const l = await lead();
     await l.proposals.propose(proposal("legs"), TERMINAL);
