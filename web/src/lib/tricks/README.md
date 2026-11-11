@@ -482,7 +482,11 @@ keeps one card, as before. Otherwise the card is one Decision with a `group` of 
   character is any one `web/src/lib/hidden-chars.ts` names: a control but the line feed and the tab, a
   format or direction character, U+2028 and U+2029 (a JavaScript line end), a zero-width joiner, a
   variation selector, a blank-looking letter (U+3164, U+115F, U+2800), a space that is not U+0020, a
-  private-use or unassigned code point. The phone's `diff` rule refuses the same characters. A line
+  private-use or unassigned code point. The phone's `diff` rule refuses the same characters. Windows
+  line ends (CRLF) are proposed: the CR of a CRLF line end is the line's end and shows nothing. A CR
+  inside a line (old or mixed line ends) is a hidden character, and when it is the only one the refusal
+  says so and names the file ("This trick holds a file with old or mixed line ends (program.ts), so it
+  was not proposed. Save it with Unix line ends, or ask your person to add it on the machine."). A line
   with a run of more than 40 spaces (a tab counts as two) is refused too (`cannot_show`): on a Decision's
   card the phone soft-wraps code, each row that goes on marked `↪` in the sign column, and such a run
   would still push the code after it far down and out of the reader's way. A new version whose diff
@@ -736,6 +740,12 @@ With the Hill switched off (`bridge/hill/switch.ts`, Settings → Alerts, `colli
 bridge posts, replaces and withdraws none of a trick's Decisions and keeps its map of the posted ones
 as it was. The trick still runs, and its row in Settings → Tricks says its Decisions are not shown.
 The first run after the Hill is back on syncs the list again.
+
+The crew state (`bridge/hill/crew-state.ts`, 1.29.0: `here`, `quiet` or `away`, set at the top of the
+Hill or with `collie hill state` from a terminal) changes nothing for a trick. Its Decisions post,
+replace and withdraw as always; under quiet and away a `now` Decision sends no notification, as an
+agent's does not, and the tap that answers it carries no crew state line. "Tell all sessions now"
+types into agent sessions only, never into a trick.
 
 ### Wording a Decision
 

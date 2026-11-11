@@ -4118,7 +4118,10 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
   the same reader and the same rules as a post on its own machine (the clean pass, the view parser,
   every cap). An image it does not hold is refused `bad_image`, and the member sends it again.
 - `hill/op` is `status`, `withdraw` or `list`, for the session `as` names. `id` is required for the
-  first two.
+  first two. Since the crew state (1.29.0) it also takes `state`, with no `id` and no `as`: the lead
+  answers `{ ok, crewState: { state, at, by, told } }`. Every member, and its agents through
+  `collie hill state --json`, so learns who set it (a phone's label, or `terminal`) and how many sessions
+  the last tell reached. A lead before it answers `400`, which the member reads as `lead_too_old`.
 - **Content refusals are `200` with `{ ok: false, code, error }`**, the codes of the socket
   (`docs/commands.md`): `bad_title`, `too_many_open`, `hill_off`, `bad_image` and the others. `400`
   is a body the lead cannot read. `401` is the uniform 401.
@@ -4512,7 +4515,10 @@ many code and state parts it still lacks) on `hello` and `snapshot`, in the seat
 A deputy that holds no copy reports none of the three. The Hill copy reports `hillDigest`, `hillSeq`
 and `hillNeed` (how many pictures of the plan it still lacks) in the same seat, by the same rule. The
 digest is over the list as it arrived, before a record was left out, so a left-out record does not
-make the lead send the list again. The lead syncs off its sweep, never awaited,
+make the lead send the list again. From 1.29.0 the Hill report also carries `hillCopyKnows`, the list
+fields past the first four that the deputy reads (`["crewState"]`), even before its first list. The lead
+sends and digests `crewState` only for a deputy that names it, so a deputy before 1.29.0, which digests
+the four old fields, still reads current and is not sent the whole list every round. The lead syncs off its sweep, never awaited,
 one sync at a time: a list when the digest differs, and the missing parts again at most once a minute
 while it is the same. A `404` marks an older deputy, said once in the lead's journal: "<deputy>: keeps
 no copy of the tricks (an older Collie), so it cannot resume them after a takeover; not sent again until

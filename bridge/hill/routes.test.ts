@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { BeaconMatcher } from "../beacon/decorate.ts";
 import type { AuditEntry } from "../audit.ts";
 import { HOST } from "../host.ts";
-import { HILL_CLEAR_UNSAVED_TEXT, HILL_LOCAL_TEXT, HILL_OFF_TEXT, HILL_RID_REUSED, HILL_UNSAVED_TEXT, hillAnswerRoute, hillClearRoute, hillListRoute, pairedDeviceId, withHillRev } from "../server.ts";
+import { HILL_CLEAR_UNSAVED_TEXT, HILL_LOCAL_TEXT, HILL_OFF_TEXT, HILL_RID_REUSED, HILL_UNSAVED_TEXT, hillAnswerRoute, hillClearRoute, hillListRoute, hillSpokenClearRoute, pairedDeviceId, withHillRev } from "../server.ts";
 import type { SnapshotResponse } from "../types.ts";
 import type { WalkyHost, WalkyPane } from "../walky/deliver.ts";
 import { WalkyLog } from "../walky/log.ts";
@@ -119,7 +119,7 @@ describe("GET /api/hill", () => {
   test("lists open and closed decisions with the revision; `since` equal to the revision answers unchanged", async () => {
     const r = rig();
     const empty = await hillListRoute(r.hill, null, null).json();
-    expect(empty).toEqual({ rev: 0, open: [], closed: [], closedTotal: 0 });
+    expect(empty).toEqual({ rev: 0, open: [], closed: [], closedTotal: 0, crewState: { state: "here", at: null, by: null, told: null } });
     const id = await posted(r);
     const list = await hillListRoute(r.hill, null, null).json();
     expect(list).toMatchObject({ open: [{ id, state: "open", title: post.title }], closed: [] });
@@ -422,5 +422,18 @@ describe("end to end", () => {
     expect(r.walky.status("wt_e2e0000001").message).toMatchObject({ kind: "operator", from: { label: "Pixel 9", address: null } });
     const after = await overSocket(walkySocketPath(r.stateDir), { v: 1, op: "hill.status", markers, id: "dc_e2e000000001" });
     expect(after).toMatchObject({ ok: true, decision: { state: "answered", answer: { intent: "yes", by: "Pixel 9", delivery: "typed" } } });
+  });
+});
+
+describe("the second Clear through the real walky send (1.29.0)", () => {
+  test("a card answered in the session leaves the Hill and the multiplexer types nothing", async () => {
+    const r = rig();
+    const id = await posted(r);
+    expect(r.hill.noteSpoke("local/%1#aaaa", 2000)).toBe(1);
+    const answer = hillSpokenClearRoute(r.hill, {}, { device: "Pixel 9", acceptEncoding: null });
+    expect(await answer.json()).toEqual({ cleared: 1 });
+    expect(r.hill.list().open).toEqual([]);
+    expect(r.hill.clearedState(id)).toBe("withdrawn");
+    expect(r.typed).toEqual([]);
   });
 });

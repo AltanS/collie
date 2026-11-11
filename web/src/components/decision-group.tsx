@@ -5,7 +5,8 @@ import type { HillMediaSource } from "@/components/hill-media";
 import { Icon } from "@/components/icons/icon";
 import { Button } from "@/components/ui/button";
 import { t, tn } from "@/lib/i18n";
-import type { HillGroup } from "@/lib/hill/wire";
+import type { HillGroup, HillMedia } from "@/lib/hill/wire";
+import type { View } from "@/lib/tricks/schema";
 
 // A GROUP OF CARDS ON A DECISION (crew slice 8). Collie's own Decision whose code does not fit one card
 // carries 2 to 8 cards: card 1 the facts, the rest every line of the code. The Decision card shows one
@@ -17,7 +18,8 @@ import type { HillGroup } from "@/lib/hill/wire";
 // A CARD IS OPENED WHEN ITS END WAS ON SCREEN (review 7 R1). A card of a group never folds (its whole code
 // shows), and it counts as opened only once the mark after its last line has been inside the screen: a
 // card no taller than the screen counts as it draws, a longer one once the person scrolled to its end.
-// Paging past a long card does not open it. `onOpened` gets the card's number, from 1.
+// Paging past a long card does not open it. `onOpened` gets the card's number, from 1. A single card of
+// Collie's own that carries code is held to the same rule (`DecisionWholeView`, lib/hill/code-card.ts).
 
 /** The quiet chip on a group's Decision: "4 cards". */
 export function GroupCount({ count }: { count: number }) {
@@ -76,6 +78,35 @@ function useEndSeen(card: RefObject<HTMLElement | null>, end: RefObject<HTMLElem
       window.removeEventListener("resize", look);
     };
   }, [card, end, page]);
+}
+
+/**
+ * A single card of code (lib/hill/code-card.ts), held to a group card's rule: it never folds, and
+ * `onOpened(1)` fires once its end was on screen.
+ */
+export function DecisionWholeView({
+  decisionId,
+  view,
+  sender,
+  media,
+  mediaSource,
+  onOpened,
+}: {
+  decisionId: string;
+  view: View;
+  sender: string;
+  media: readonly HillMedia[];
+  mediaSource?: HillMediaSource;
+  onOpened: (card: number) => void;
+}) {
+  const card = useRef<HTMLDivElement>(null);
+  const end = useRef<HTMLDivElement>(null);
+  useEndSeen(card, end, 0, () => onOpened(1));
+  return (
+    <div ref={card} data-slot="decision-code-card" className="flex min-w-0 flex-col">
+      <DecisionView decisionId={decisionId} view={view} sender={sender} media={media} mediaSource={mediaSource} folds={false} endRef={end} />
+    </div>
+  );
 }
 
 /** The card on screen, its position, and Back and Next. `page` counts from 0. */

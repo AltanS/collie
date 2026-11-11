@@ -10,7 +10,7 @@
 import { isScopeAddress, isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
-import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, isResting, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
+import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, isResting, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type DeliverOptions, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
 import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import { WalkyOff, type WalkyOffBy } from "./off.ts";
 import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
@@ -223,7 +223,7 @@ export class WalkyService {
   }
 
   /** One send, from the socket or the phone. A reply goes to the stored sender of what it answers. */
-  async send(input: SendInput, sender: WalkySenderRef): Promise<SendAnswer> {
+  async send(input: SendInput, sender: WalkySenderRef, options: Pick<DeliverOptions, "budget"> = {}): Promise<SendAnswer> {
     let to = input.to;
     if (input.replyTo !== null) {
       const parent = this.replyParent(input.replyTo, sender);
@@ -236,7 +236,7 @@ export class WalkyService {
     const message = this.compose({ ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
     const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId, instance: sender.pane.instance } : null;
-    const receipts = await this.deliverer.deliver(message, from);
+    const receipts = await this.deliverer.deliver(message, from, options.budget === undefined ? {} : { budget: options.budget });
     const target = this.targetOf(message.to);
     return target === null ? { ok: true, receipts } : { ok: true, receipts, target };
   }

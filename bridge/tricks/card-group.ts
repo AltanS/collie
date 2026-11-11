@@ -70,6 +70,16 @@ export const GROUP_WRAP = "↪";
 /** The note on a card that shows a masked line (only a version made by hand). */
 export const GROUP_MASKED_NOTE = "Some text on this card is masked: a key, or a hidden character.";
 
+/**
+ * Card 1's sentence for a file with masked lines (only a version made by hand): how many lines, and the
+ * file, so the person knows what the masked text on the code cards is and where.
+ */
+export function maskedLinesNote(rel: string, count: number): string {
+  const lines = count === 1 ? "1 line" : `${String(count)} lines`;
+  const rest = count === 1 ? "as it is (a key, or a hidden character), so it shows masked." : "as they are (a key, or a hidden character), so they show masked.";
+  return `Collie could not show ${lines} of ${cellPath(rel)} ${rest}`;
+}
+
 /** The capacity in words, for `collie trick guide` and `collie trick check`. */
 export const GROUP_CAPACITY_WORDS = `A proposal shows on at most ${String(GROUP_CODE_CARDS + 1)} cards: card 1 holds the facts, and ${String(GROUP_CODE_CARDS)} cards hold every line of the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all, ${String(GROUP_FILES_MAX)} files at most). A larger trick, a file that is not text, a line with a key or a hidden character, or a run of more than ${String(VIEW_GAP_MAX)} spaces cannot be proposed.`;
 
@@ -77,6 +87,14 @@ export const GROUP_CAPACITY_WORDS = `A proposal shows on at most ${String(GROUP_
 export const GROUP_TOO_LARGE = "This trick is too large to show on the phone, so it was not proposed. Ask your person to add it on the machine.";
 export const GROUP_MASKED = "This trick holds text that a card cannot show as it is (a key, or a hidden character), so it was not proposed. Ask your person to add it on the machine.";
 export const GROUP_NOT_TEXT = "This trick holds a file that a card cannot show as text, so it was not proposed. Ask your person to add it on the machine.";
+/**
+ * The refusal of a proposal whose only text a card cannot show is a carriage return inside a line: a file
+ * saved with old or mixed line ends. A file with plain Windows line ends (CRLF) is proposed: the CR of a
+ * CRLF line end is the line's end, and it hides nothing (version-diff.ts `readViewLine`).
+ */
+export function groupLineEnds(rel: string): string {
+  return `This trick holds a file with old or mixed line ends (${cellPath(rel)}), so it was not proposed. Save it with Unix line ends, or ask your person to add it on the machine.`;
+}
 export const GROUP_WIDE_GAP = `This trick holds a line with a run of more than ${String(VIEW_GAP_MAX)} spaces, which pushes code out of sight on a phone, so it was not proposed. Shorten the run, or ask your person to add it on the machine.`;
 
 /** One file's rows for the cards: diff lines with their sign, and whether any was masked. */
@@ -106,7 +124,12 @@ export function addedFile(file: Pick<ProposedFile, "rel" | "bytes">): ChangedFil
   const read = lines.map((line) => readViewLine(line));
   const hunk = [`@@ -0,0 +1,${String(read.length)} @@`, ...read.map((line) => `+${line.line}`)];
   const changed: ChangedFile = { rel: file.rel, change: "added", plus: read.length, minus: 0, hunk };
-  if (read.some((line) => line.masked)) changed.cut = true;
+  const masked = read.filter((line) => line.masked);
+  if (masked.length > 0) {
+    changed.cut = true;
+    changed.masked = masked.length;
+  }
+  if (masked.length > 0 && masked.every((line) => line.strayCr)) changed.strayCr = true;
   if (read.some((line) => line.gap)) changed.gap = true;
   return changed;
 }
@@ -282,7 +305,12 @@ export function codeGroup(files: readonly ChangedFile[], run: string | null, mas
   }
   // Too large first: a cut git output is far past the capacity, and is no masked line.
   if (read.reduce((sum, file) => sum + file.rows.reduce((bytes, row) => bytes + rowBytes(row) + 1, 0), 0) > GROUP_CODE_BYTES) return { ok: false, code: "too_large", error: GROUP_TOO_LARGE };
-  if (masked === "refuse" && read.some((file) => file.masked)) return { ok: false, code: "cannot_show", error: GROUP_MASKED };
+  if (masked === "refuse" && read.some((file) => file.masked)) {
+    // Line ends alone get their own words and the file; a key or any other hidden character the general ones.
+    const cut = ordered.filter((file) => file.cut === true);
+    const lineEnds = cut.length > 0 && cut.every((file) => file.strayCr === true);
+    return { ok: false, code: "cannot_show", error: lineEnds ? groupLineEnds(cut[0]?.rel ?? "") : GROUP_MASKED };
+  }
   const packed = packCode(read);
   return packed.ok ? packed : { ok: false, code: "too_large", error: GROUP_TOO_LARGE };
 }

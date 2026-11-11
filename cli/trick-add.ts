@@ -156,8 +156,9 @@ export function parseTrickSource(raw: string, seam?: TrickAddSeam): TrickSource 
     url = seam?.officialRepo ?? OFFICIAL_TRICKS_REPO;
     subdir = base;
   } else {
-    // The `//` after the scheme is the scheme's; a second `//` names the folder.
-    const scheme = url.startsWith("https://") ? "https://".length : url.startsWith("file://") ? "file://".length : 0;
+    // The `//` after the scheme is the scheme's, any scheme's (so `ssh://…` is refused by its whole URL);
+    // a second `//` names the folder.
+    const scheme = /^[a-z][a-z0-9+.-]*:\/\//iu.exec(url)?.[0].length ?? 0;
     const cut = url.indexOf("//", scheme);
     if (cut >= 0) {
       if (subdir !== null) return { error: "Name the folder once: <url>//<folder>#<ref>" };

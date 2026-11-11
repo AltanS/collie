@@ -133,21 +133,32 @@ export function proposalShort(origin: ProposalOrigin): string {
   return `proposed by ${origin.by} on ${origin.host}`;
 }
 
+/** The git protocols whose URL names the same repository as `https://` with its host and path. */
+const GIT_PROTOCOLS: ReadonlySet<string> = new Set(["ssh:", "git+ssh:", "ssh+git:", "git:"]);
+
 /**
  * The one form of a repository URL every comparison of two sources uses (review 7 M2): `https://`, the
  * host in lower case without `www.` and without a trailing dot, the path decoded and in lower case, no
  * doubled `/`, no `.git` and no `/` at its end. `https://www.GitHub.com/altans/Collie-Tricks.git/` and
  * `https://github.com/AltanS/collie-tricks` are one repository: GitHub serves both, and a fork's or a
- * pull request's commit through either. A text that is not an http or https URL (a local path under the
- * tests' seam) is its own form.
+ * pull request's commit through either. The git forms of the same host and path, `ssh://git@host/path`,
+ * `git://host/path` and `git@host:path`, are that repository too: `collie trick add` refuses each (https
+ * only), and a record written by hand in one reads as the official repository and so as not on the list,
+ * never as listed (official.ts `isListedOrigin` takes the list's own spelling only). A user name in an
+ * https URL is dropped the same way. Any other text (a local path under the tests' seam) is its own form.
  */
 export function canonicalRepoUrl(url: string): string {
+  // `git@github.com:owner/repo.git`, git's short ssh form; a host needs a dot, so a drive letter is none.
+  const scp = /^(?:[^@\s/:]+@)?([^@\s/:]+\.[^@\s/:]+):(?!\/)(\S+)$/u.exec(url);
+  if (scp !== null) return canonicalRepoUrl(`https://${scp[1] ?? ""}/${scp[2] ?? ""}`);
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return url;
   }
+  // The port of an ssh or git URL is that protocol's, never the https one.
+  if (GIT_PROTOCOLS.has(parsed.protocol) && parsed.hostname !== "") return canonicalRepoUrl(`https://${parsed.hostname}${parsed.pathname}`);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return url;
   const host = parsed.hostname.toLowerCase().replace(/\.+$/u, "").replace(/^www\./u, "");
   let path = parsed.pathname;

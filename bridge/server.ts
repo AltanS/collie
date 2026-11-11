@@ -4,7 +4,7 @@ import { homedir, hostname, networkInterfaces } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
-import { asJsonBoolean, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
@@ -253,8 +253,8 @@ import { PinKeys } from "./pins/keys.ts";
 import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
 import { readAnswerRequest } from "./hill/parse.ts";
-import { HILL_ID_RE, HILL_MEDIA_ID_RE } from "../web/src/lib/hill/wire.ts";
-import { hillDeviceId, type HillService } from "./hill/service.ts";
+import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
+import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -3282,7 +3282,12 @@ export function startServer(opts: {
         } catch {
           body = undefined;
         }
-        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+        // The Hill's quiet mark (1.29.0): a send that reached an agent's pane marks the open Decisions it posted.
+        const spoke = (paneId: string) => {
+          const pane = walky?.paneAt(rt.name, paneId) ?? null;
+          if (walky !== undefined && pane !== null && pane.agent) hill?.noteSpoke(walky.addressOf(pane.paneId, pane.instance));
+        };
+        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding"), spoke });
       }
       // `DELETE /api/send/<id>?session=<name>&pane=<id>` (M56 spec 15): the Cancel on a queued row. A held
       // request ends `cancelled`, an ended row is dismissed, one going out now is refused `busy`.
@@ -3371,6 +3376,38 @@ export function startServer(opts: {
         }
         return hillSwitchRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
+      // The crew state (1.29.0): read by any paired device, set with the write right, as the switch is,
+      // because every agent of the crew reads it. The value also rides on `GET /api/hill` as `crewState`.
+      if (pathname === "/api/hill/state" && (req.method === "GET" || req.method === "POST")) {
+        const denied = browserGate(req.method === "GET" ? "read" : "write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        if (req.method === "POST") {
+          try {
+            // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillStateRoute` checks the one field.
+            body = (await req.json()) as JsonValue;
+          } catch {
+            body = undefined;
+          }
+        }
+        return hillStateRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // "Tell all sessions now": one operator line into the sessions with a Decision, once per change of
+      // the crew state. Typed as an answer is, so the write right of an answer.
+      if (pathname === "/api/hill/state/tell" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillTellRoute` checks the one field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillTellRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
       if (pathname === "/api/hill/answer" && req.method === "POST") {
         const denied = browserGate("write");
         if (denied) return denied;
@@ -3398,6 +3435,21 @@ export function startServer(opts: {
           body = undefined;
         }
         return hillClearRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // The second Clear (1.29.0): withdraw and clear the OPEN cards the person answered in the session.
+      // Its own path, so an older bridge answers 404 and never reads it as the first Clear. Types nothing.
+      if (pathname === "/api/hill/clear/spoken" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillSpokenClearRoute` takes only `{}`.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillSpokenClearRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const hillImage = pathname.match(HILL_IMAGE_ROUTE);
       if (hillImage && req.method === "GET") {
@@ -8919,10 +8971,30 @@ export interface SendRouteRuntime {
   };
 }
 
+/**
+ * The send modes that put the person's own words into the session. Not a `command` (a `/compact` answers
+ * no question), and not a staged `append`/`replace`/`prepare` or a discard (C-N1, review 8).
+ */
+const SPOKE_MODES: ReadonlySet<SendRequest["mode"]> = new Set(["send", "submit"]);
+/** The outcomes of a send whose words reached the session now. Not `held`: it may still be cancelled or expire. */
+const SPOKE_OUTCOMES: ReadonlySet<string> = new Set(["effective", "sent", "steered"]);
+
+/** Whether one phone send counts as the person writing to the session (1.29.0, the Hill's quiet mark). */
+export function sendSpoke(mode: SendRequest["mode"], outcome: string): boolean {
+  return SPOKE_MODES.has(mode) && SPOKE_OUTCOMES.has(outcome);
+}
+
 export async function sendRoute(
   rt: SendRouteRuntime,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: {
+    readonly audit: AuditLog;
+    readonly device: string | null;
+    readonly redact: boolean;
+    readonly acceptEncoding: string | null;
+    /** Told once per send whose words reached a pane (`sendSpoke`): the Hill marks that session's open cards. */
+    readonly spoke?: (paneId: string) => void;
+  },
 ): Promise<Response> {
   if (rt.driver !== undefined) return programSendRoute(rt, rt.driver, body, context);
   if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
@@ -8970,6 +9042,7 @@ export async function sendRoute(
     if (resendOf !== undefined) detail.resend = true;
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
+    if (sendSpoke(sendRequest.mode, receipt.outcome)) context.spoke?.(paneId);
     if (receipt.keys.length > 0) {
       rt.engine.noteInput();
       rt.engine.pokeNow();
@@ -9172,7 +9245,55 @@ export function hillListRoute(hill: HillService | undefined, since: string | nul
   if (hill === undefined) return text(HILL_OFF_TEXT, 404);
   const list = hill.list();
   if (since !== null && since === String(list.rev)) return json({ rev: list.rev, unchanged: true }, acceptEncoding);
-  return json(list, acceptEncoding);
+  // The crew state rides along (1.29.0); a change of it moves the revision, so `unchanged` stays true to it.
+  // Not from a member or a deposed lead: its own file is not the crew's state (C-N4).
+  const crewState = hill.servedCrewState();
+  return json(crewState === null ? list : { ...list, crewState }, acceptEncoding);
+}
+
+/**
+ * `GET` and `POST /api/hill/state` (1.29.0): the crew state. `GET` (`write` null) answers the state
+ * `{ state, at, by, told }`. `POST` takes `{ "state": "here" | "quiet" | "away" }` and nothing else and
+ * answers the state as it reads now; 400 for another body, 409 on a machine that is not the crew's lead,
+ * 503 when the file could not be written. The audit line `hill.state` names the device and the value.
+ */
+export function hillStateRoute(
+  hill: Pick<HillService, "servedCrewState" | "setCrewState"> | undefined,
+  write: { readonly body: JsonValue | undefined } | null,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  if (write === null) {
+    // A member or a deposed lead answers as its POST does (C-N4): the state lives on the lead.
+    const served = hill.servedCrewState();
+    return served === null ? text(HILL_STATE_ON_LEAD, 409) : json(served, context.acceptEncoding);
+  }
+  const doc = asJsonObject(write.body);
+  const state = doc?.state;
+  if (doc === undefined || !isHillCrewState(state) || Object.keys(doc).length !== 1) return text('bad request: the body is { "state": "here" }, "quiet" or "away"', 400);
+  const set = hill.setCrewState(state, context.device ?? "phone", context.device);
+  if (!set.ok) return text(set.error, set.notLead ? 409 : 503);
+  return json(set.crewState, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/hill/state/tell` (1.29.0): "Tell all sessions now". The body is `{ "at": <ms> }`, the
+ * change of the crew state the phone showed. 200 `{ told }`, how many sessions walky typed the line into,
+ * once the sends settled (up to HILL_SEND_WAIT_MS); 409 with the
+ * words when the state moved, was told already, is `here`, or the Hill or WalkyTalky is off.
+ */
+export async function hillTellRoute(
+  hill: Pick<HillService, "tellAll"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const doc = asJsonObject(body);
+  const at = asJsonNumber(doc?.at);
+  if (doc === undefined || at === undefined || !Number.isSafeInteger(at) || Object.keys(doc).length !== 1) return text('bad request: the body is { "at": <the time the crew state was set> }', 400);
+  const told = await hill.tellAll(at, context.device ?? "phone", context.device);
+  if (!told.ok) return text(told.error, 409);
+  return json({ told: told.told }, context.acceptEncoding);
 }
 
 /**
@@ -9207,6 +9328,43 @@ export const HILL_CLEAR_UNSAVED_TEXT = "the Hill could not be saved on this mach
 export const HILL_CLEAR_IDS_MAX = 200;
 
 /**
+ * `POST /api/hill/clear/spoken` (1.29.0): `{}` or `{ "ids": [...] }` in (the cards the phone showed, C-N5),
+ * `{ cleared }` out. Withdraws and clears every open
+ * Decision the person answered in its session (`spokeAfter`); nothing is typed into any session. 409 on a
+ * member or a deposed lead, 503 when the Hill could not be saved.
+ */
+export function hillSpokenClearRoute(
+  hill: Pick<HillService, "clearSpoken"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const ids = readClearIds(body);
+  if (ids === undefined) return text(HILL_CLEAR_BAD_BODY, 400);
+  const answer = hill.clearSpoken(context.device, ids);
+  if (!answer.ok) return text(answer.error, answer.notLead ? 409 : 503);
+  return json({ cleared: answer.cleared }, context.acceptEncoding);
+}
+
+const HILL_CLEAR_BAD_BODY = 'bad request: the body is {} or { "ids": ["dc_..."] }';
+
+/** A Clear's body: `{}` (null, every one) or `{ "ids": [...] }`; undefined for any other shape. */
+function readClearIds(body: JsonValue | undefined): string[] | null | undefined {
+  const doc = asJsonObject(body);
+  if (doc === undefined || Object.keys(doc).some((key) => key !== "ids")) return undefined;
+  if (doc.ids === undefined) return null;
+  const raw = doc.ids;
+  if (!Array.isArray(raw) || raw.length > HILL_CLEAR_IDS_MAX) return undefined;
+  const ids: string[] = [];
+  for (const entry of raw) {
+    const id = asJsonString(entry);
+    if (id === undefined || !HILL_ID_RE.test(id)) return undefined;
+    ids.push(id);
+  }
+  return ids;
+}
+
+/**
  * `POST /api/hill/clear`: remove closed decisions. The body is `{}` (every closed decision) or
  * `{ "ids": ["dc_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
  * `skipped` the ids left alone, `open` for an open decision and `missing` for one this bridge does not
@@ -9218,20 +9376,8 @@ export function hillClearRoute(
   context: { readonly device: string | null; readonly acceptEncoding: string | null },
 ): Response {
   if (hill === undefined) return text(HILL_OFF_TEXT, 404);
-  const doc = asJsonObject(body);
-  const bad = text('bad request: the body is {} or { "ids": ["dc_..."] }', 400);
-  if (doc === undefined || Object.keys(doc).some((key) => key !== "ids")) return bad;
-  let ids: string[] | null = null;
-  if (doc.ids !== undefined) {
-    const raw = doc.ids;
-    if (!Array.isArray(raw) || raw.length > HILL_CLEAR_IDS_MAX) return bad;
-    ids = [];
-    for (const entry of raw) {
-      const id = asJsonString(entry);
-      if (id === undefined || !HILL_ID_RE.test(id)) return bad;
-      ids.push(id);
-    }
-  }
+  const ids = readClearIds(body);
+  if (ids === undefined) return text(HILL_CLEAR_BAD_BODY, 400);
   const answer = hill.clear(ids, context.device);
   if (answer === null) return text(HILL_CLEAR_UNSAVED_TEXT, 503);
   return json({ cleared: answer.cleared.length, skipped: answer.skipped }, context.acceptEncoding);

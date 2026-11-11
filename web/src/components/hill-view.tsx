@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { RouteHeader } from "@/components/app-header";
+import { ActionRow } from "@/components/action-sheet-rows";
 import { BrandMark } from "@/components/brand-mark";
 import { useCrew } from "@/components/crew-provider";
 import { DecisionCard, KeptWords } from "@/components/decision-card";
@@ -13,6 +14,7 @@ import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { ListGroup } from "@/components/ui/list-group";
 import { OneOf } from "@/components/ui/one-of";
 import { PresenceList } from "@/components/ui/presence";
+import { BottomSheet } from "@/components/ui/sheet";
 import { useArm } from "@/hooks/use-arm";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
@@ -132,6 +134,12 @@ export interface HillClearControl {
   canWrite: boolean;
   busy: boolean;
   onClear: () => void;
+  /**
+   * The second Clear (1.29.0): how many open cards the person answered in their session (`spokeAfter`),
+   * and the way to withdraw and clear them. With one or more, Clear opens a menu of the two choices.
+   */
+  spoken?: number;
+  onClearSpoken?: () => void;
 }
 
 /**
@@ -142,10 +150,54 @@ export interface HillClearControl {
  */
 function ClearButton({ count, control }: { count: number; control: HillClearControl }) {
   const { armed, tap, disarm } = useArm<"clear">();
+  const [menu, setMenu] = useState(false);
   const isArmed = armed === "clear";
   const armedWords = tn("hill.clear.armed", count);
+  const spoken = control.spoken ?? 0;
   // An arm is for the entries as they stood: a new count (another phone cleared, a row closed) drops it.
   useEffect(() => disarm(), [count, disarm]);
+  // With open cards answered in their session, Clear asks which: the menu is the ask, so a row acts at once.
+  if (spoken > 0 && control.onClearSpoken !== undefined) {
+    const onClearSpoken = control.onClearSpoken;
+    return (
+      <>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-slot="hill-clear"
+          data-menu=""
+          disabled={!control.canWrite || control.busy}
+          aria-haspopup="dialog"
+          onClick={() => setMenu(true)}
+          className="-mr-3 h-11 shrink-0 px-3 text-muted-foreground"
+        >
+          {t("hill.clear.button")}
+        </Button>
+        <BottomSheet open={menu} onClose={() => setMenu(false)} title={t("hill.clear.button")}>
+          <div data-slot="hill-clear-menu" className="flex flex-col gap-1">
+            <ActionRow
+              icon={<Icon name="clear" className="size-4 shrink-0 text-muted-foreground" />}
+              label={tn("hill.clear.closed", count)}
+              disabled={count === 0}
+              onClick={() => {
+                setMenu(false);
+                control.onClear();
+              }}
+            />
+            <ActionRow
+              icon={<Icon name="decision-withdrawn" className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("hill.clear.spoken")}
+              onClick={() => {
+                setMenu(false);
+                onClearSpoken();
+              }}
+            />
+          </div>
+        </BottomSheet>
+      </>
+    );
+  }
   return (
     <>
       <Button
@@ -299,7 +351,7 @@ export function HillView({
           (the group is held while it goes, so the header does not show a count of 0 on the way out).
           A clear that fails puts the rows back, and the group grows back with them. */}
       <PresenceList gap={28}>
-        {closedRows.length === 0
+        {closedRows.length === 0 && (clear?.spoken ?? 0) === 0
           ? []
           : [
               <section key="answered" data-slot="hill-answered" className="flex flex-col gap-2">

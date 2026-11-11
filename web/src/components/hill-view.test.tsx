@@ -426,3 +426,39 @@ describe("the Clear button on the Answered group", () => {
     expect(clear.className).toContain("bg-destructive/10");
   });
 });
+
+// The second Clear (1.29.0): with open cards the person answered in their session, Clear opens a menu
+// of two choices; the second withdraws and clears those cards. Without such cards, Clear is as before.
+describe("the Clear menu with the second choice", () => {
+  const closed = () => [hillDecision({ state: "answered", closedAt: HILL_T0 })];
+
+  function renderMenu(rows: HillDecision[], spoken: number) {
+    const onClear = vi.fn();
+    const onClearSpoken = vi.fn();
+    const view = render(<HillView open={[]} closed={rows} kept={NO_KEPT} renderCard={() => null} clear={{ canWrite: true, busy: false, onClear, spoken, onClearSpoken }} />);
+    return { ...view, onClear, onClearSpoken };
+  }
+
+  it("offers both choices, and the second clears only the cards answered in the session", () => {
+    const { container, getByRole, onClear, onClearSpoken } = renderMenu(closed(), 2);
+    fireEvent.click(container.querySelector('[data-slot="hill-clear"]')!);
+    expect(getByRole("button", { name: "Clear 1 entry" })).toBeEnabled();
+    fireEvent.click(getByRole("button", { name: "Clear cards you answered in the session" }));
+    expect(onClearSpoken).toHaveBeenCalledTimes(1);
+    expect(onClear).not.toHaveBeenCalled();
+  });
+
+  it("shows Clear with only cards answered in the session, and the first choice is then not offered as live", () => {
+    const { container, getByRole } = renderMenu([], 1);
+    fireEvent.click(container.querySelector('[data-slot="hill-clear"]')!);
+    expect(getByRole("button", { name: "Clear 0 entries" })).toBeDisabled();
+    expect(getByRole("button", { name: "Clear cards you answered in the session" })).toBeEnabled();
+  });
+
+  it("keeps the arm-and-tap Clear when no card was answered in its session", () => {
+    const { container, queryByRole } = renderMenu(closed(), 0);
+    expect(container.querySelector('[data-slot="hill-clear"]')).not.toHaveAttribute("data-menu");
+    fireEvent.click(container.querySelector('[data-slot="hill-clear"]')!);
+    expect(queryByRole("button", { name: "Clear cards you answered in the session" })).toBeNull();
+  });
+});

@@ -476,5 +476,9 @@ export function readDecision(value: JsonValue | undefined, opts: ReadDecisionOpt
     decision.group = group;
   }
   if (pushTag !== undefined) decision.pushTag = pushTag;
+  // Absent until the person wrote to the posting session (1.29.0): kept absent; a bad value drops only the
+  // mark. Only an agent's card has a posting session (C-A7): a trick's or Collie's own never carries it.
+  const spokeAfter = asJsonNumber(row.spokeAfter);
+  if (spokeAfter !== undefined && Number.isSafeInteger(spokeAfter) && spokeAfter > 0 && decision.state === "open" && from.kind === "agent") decision.spokeAfter = spokeAfter;
   return postDigest === undefined ? decision : { ...decision, postDigest };
 }

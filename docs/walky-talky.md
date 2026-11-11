@@ -730,7 +730,7 @@ These are the limits that stay on. Each bridge counts them for its own panes, on
 
 | Limit | Refused as |
 | --- | --- |
-| 30 messages per sender in 10 minutes. A sender is its kind, machine and pane, never its label | `rate limit` |
+| 30 messages per sender in 10 minutes. A sender is its kind, machine and pane, never its label. The Hill's "Tell all sessions now" counts in a budget of its own, so it never uses up the one your answers go out on | `rate limit` |
 | Your broadcast to `all` or `<member>/all` counts one message per pane it reaches | `rate limit` |
 | 6 messages in 10 minutes between the same two panes, either direction. `COLLIE_WALKY_PAIR_LIMIT` (`walky_pair_limit` in the `[bridge]` section of the config file) sets it, from 1 to 100, and each machine counts for itself | `pair limit` |
 | On a lead, 60 messages in 10 minutes from one machine, all its panes together | `rate limit` |
