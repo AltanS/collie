@@ -173,8 +173,9 @@ describe("the card", () => {
   };
 
   test("names the trick by id, recommends nothing, and offers on or not now", () => {
-    const card = proposalCard(input);
-    if (card === null) throw new Error("no card");
+    const made = proposalCard(input);
+    if (!made.ok) throw new Error(made.error);
+    const card = made.card;
     expect(card.title).toBe(proposalTitle("legs"));
     expect(card.title).toBe("Switch on the trick legs?");
     expect(card.recommends).toBeNull();
@@ -197,8 +198,9 @@ describe("the card", () => {
 
   test("an about text of 30 paragraphs leaves the rights, the warnings and the code on the card, and is cut to 3 paragraphs", () => {
     const about = Array.from({ length: 30 }, (_, i) => `Paragraph ${String(i)} of the author's own story.`).join("\n\n");
-    const card = proposalCard({ ...input, manifest: { ...input.manifest, env: ["GITHUB_TOKEN"], about }, warnings: ["network"] });
-    if (card === null) throw new Error("no card");
+    const made = proposalCard({ ...input, manifest: { ...input.manifest, env: ["GITHUB_TOKEN"], about }, warnings: ["network"] });
+    if (!made.ok) throw new Error(made.error);
+    const card = made.card;
     const words = texts(card.view);
     expect(words).toContain('"GITHUB_TOKEN"');
     expect(words).toContain(JSON.stringify(WARN_PLAIN.network));
@@ -210,8 +212,9 @@ describe("the card", () => {
   });
 
   test("32 environment names of 64 characters and 8 long globs: every name and every glob shows in full", () => {
-    const card = proposalCard({ ...input, manifest: { ...input.manifest, contract: 2, env: ENVS, inputs: GLOBS }, warnings: ["network", "spawn", "write", "model", "import"] });
-    if (card === null) throw new Error("no card");
+    const made = proposalCard({ ...input, manifest: { ...input.manifest, contract: 2, env: ENVS, inputs: GLOBS }, warnings: ["network", "spawn", "write", "model", "import"] });
+    if (!made.ok) throw new Error(made.error);
+    const card = made.card;
     const words = texts(card.view);
     for (const name of ENVS) expect(words).toContain(name);
     for (const glob of GLOBS) expect(words).toContain(glob);
@@ -221,7 +224,7 @@ describe("the card", () => {
 
   test("a card whose facts alone do not fit is no card: the proposal is refused in plain words", () => {
     const env = Array.from({ length: 200 }, (_, i) => `TOKEN_${String(i).padStart(3, "0")}_${"X".repeat(54)}`);
-    expect(proposalCard({ ...input, manifest: { ...input.manifest, env } })).toBeNull();
+    expect(proposalCard({ ...input, manifest: { ...input.manifest, env } })).toEqual({ ok: false, code: "card_too_large", error: PROPOSAL_TOO_LARGE });
     expect(PROPOSAL_TOO_LARGE).toBe("This trick asks for more than a card can show, so it was not proposed. Ask your person to add it on the machine.");
   });
 });

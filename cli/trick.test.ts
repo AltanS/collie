@@ -8,7 +8,8 @@ import { approvedCopyDir, switchesPath } from "../bridge/tricks/paths.ts";
 import { HILL_WRITING } from "./hill-rules.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
-import { agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { GROUP_CAPACITY_WORDS, GROUP_TOO_LARGE } from "../bridge/tricks/card-group.ts";
+import { TAP_SHOWS_NOTHING, agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { checkWarnings, HELPER_VERSION, helperVersion, isBareImport, isScannedFile, looksBinary, runsLines, shippedHelperVersion, TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { realFiles } from "./sys.ts";
 import { leadStore, member } from "../bridge/crew/fixtures.ts";
@@ -36,7 +37,7 @@ function capture(): Captured {
   return { io: { out: (l) => out.push(l), err: (l) => err.push(l) }, out, err };
 }
 
-const KEY = "sk-or-v1-0123456789abcdef0123456789abcdef";
+const KEY = "sk-or-v1-your-key-here-placeholder00";
 
 /** Deps over a fresh config and state folder. `answer` is what the bridge's `GET /api/tricks` says. */
 function fail(): never {
@@ -200,6 +201,54 @@ describe("collie trick check", () => {
     }
     return dir;
   }
+
+  test("it says how many cards the trick shows on as a proposal, with the capacity; the helper Collie ships is not counted (crew slice 8)", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["hello"]);
+    const dir = join(d.configDir, "tricks", "hello");
+    expect(await cmdTrickCheck(d, [dir])).toBe(EXIT.OK);
+    // trick.ts (about 42 KB, a group's whole capacity) is Collie's own helper: card 1 names it, and only
+    // program.ts, trick.toml and AGENTS.md take cards of code.
+    expect(d.out.join("\n")).toMatch(/ {2}cards: {2}This trick shows as [2-8] cards\. /u);
+    expect(d.out.join("\n")).toContain(GROUP_CAPACITY_WORDS);
+    expect(GROUP_CAPACITY_WORDS).toContain("at most 8 cards");
+    expect(d.out.at(-1)).toBe("ok: no problems.");
+    const small = await folder('id = "tiny"\nname = "tiny"\nrun = "./tiny.sh"\nplaces = ["belt"]\n', { "tiny.sh": "#!/bin/sh\necho '{}'\n" });
+    const e = await deps();
+    expect(await cmdTrickCheck(e, [small])).toBe(EXIT.OK);
+    expect(e.out.join("\n")).toContain("  cards:  This trick shows as 1 card.");
+  });
+
+  test("a trick larger than a group passes the check, with an error that it cannot be proposed", async () => {
+    const big = Array.from({ length: 900 }, (_, i) => `echo "line ${String(i).padStart(4, "0")} of a long program, longer than a group of cards holds"`).join("\n");
+    const dir = await folder('id = "huge"\nname = "huge"\nrun = "./huge.sh"\nplaces = ["belt"]\n', { "huge.sh": `#!/bin/sh\n${big}\n` });
+    const d = await deps();
+    expect(await cmdTrickCheck(d, [dir])).toBe(EXIT.OK);
+    expect(d.err).toContain(`error: propose: ${GROUP_TOO_LARGE}`);
+    expect(d.out.at(-1)).toBe("ok: it runs on this machine, but it cannot be proposed.");
+  });
+
+  test("--run notes a tile a tap leaves as it was; a tap that changes it, or a session page, gets no note", async () => {
+    const still = await folder('id = "still"\nname = "S"\nrun = "./p.sh"\nplaces = ["belt"]\n', { "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"3","intent":"refresh"}}]}'\n` });
+    const d = await deps();
+    expect(await cmdTrickCheck(d, ["--run", still])).toBe(EXIT.OK);
+    expect(d.out).toContain(`  note: ${TAP_SHOWS_NOTHING}`);
+    expect(d.out.at(-1)).toBe("ok: no problems.");
+    // Without --run there is no output to judge: no note.
+    const quiet = await deps();
+    expect(await cmdTrickCheck(quiet, [still])).toBe(EXIT.OK);
+    expect(quiet.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
+    const tapped = await folder('id = "tapped"\nname = "T"\nrun = "./p.sh"\nplaces = ["belt"]\n', {
+      "p.sh": `#!/bin/sh\nread -r facts\ncase "$facts" in *'"kind":"tap"'*) n=4;; *) n=3;; esac\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s","intent":"refresh"}}]}\\n' "$n"\n`,
+    });
+    const e = await deps();
+    expect(await cmdTrickCheck(e, ["--run", tapped])).toBe(EXIT.OK);
+    expect(e.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
+    const paged = await folder('id = "paged"\nname = "P"\nrun = "./p.sh"\nplaces = ["belt", "session"]\n', { "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"3"}}]}'\n` });
+    const f = await deps();
+    expect(await cmdTrickCheck(f, ["--run", paged])).toBe(EXIT.OK);
+    expect(f.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
+  });
 
   test("the checked-in fixture is clean", async () => {
     const d = await deps();

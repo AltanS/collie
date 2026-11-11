@@ -1,3 +1,4 @@
+import { GROUP_CARD_CODE_BYTES, GROUP_CODE_BYTES, GROUP_CODE_CARDS } from "../bridge/tricks/card-group.ts";
 import { EXIT, type Io } from "./io.ts";
 import { PROPOSE_LIMITS } from "../bridge/tricks/propose-wire.ts";
 import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../bridge/tricks/proposals.ts";
@@ -108,6 +109,11 @@ export function trickGuide(): string[] {
     "Dot files, node_modules, logs, inputs/, media/, captures/ and config.toml stay behind.",
     "A proposal cannot carry a config.toml: the program reads it, so your person writes it.",
     "The person sees a card on the Hill with your code. Nothing runs before their yes.",
+    `Code that does not fit one card shows on a group of up to ${String(GROUP_CODE_CARDS + 1)} cards, every line of it.`,
+    `Card 1 holds the facts. ${String(GROUP_CODE_CARDS)} cards hold the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all).`,
+    "The yes waits until the person opened every card. collie trick check says how many.",
+    "A larger trick, a file that is not text, or a line with a key or a hidden character is refused.",
+    "The trick.ts helper Collie ships is named on card 1, not shown, and takes no room.",
     "When they say yes, the trick is added and switched on.",
     `The card closes on its own after ${String(days)} days.`,
     "From your agent session, propose the same folder again to replace your open proposal.",

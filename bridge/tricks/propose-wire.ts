@@ -82,6 +82,8 @@ export type ProposeRefusalCode =
   | "too_many_open"
   | "too_many_bytes"
   | "card_too_large"
+  | "too_large"
+  | "cannot_show"
   | "rate"
   | "request_id_reused"
   | "no_tricks"
@@ -101,6 +103,8 @@ export const PROPOSE_REFUSAL_CODES: readonly ProposeRefusalCode[] = [
   "too_many_open",
   "too_many_bytes",
   "card_too_large",
+  "too_large",
+  "cannot_show",
   "rate",
   "request_id_reused",
   "no_tricks",

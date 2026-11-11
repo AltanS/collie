@@ -102,8 +102,10 @@ as many as fit, and "and N more files"; it stays under 8 KiB. The counts and dif
 the view refuses becomes `?`. Without git the table lists the files only. Collie recommends "Use the new
 version" only when the rights did not change, the text search finds nothing new, and every changed file
 is shown whole: its whole diff in the view, no line cut at 200 characters, no key masked, git's output
-not cut. Otherwise the summary says how much is shown ("1 of 3 files shown."), and a card with no view at
-all says "The change is too large to show here. Read it on the machine before you say yes." The options are "Use the new version", "Use it and stop asking" (only when no new right
+not cut. A change that does not fit one card shows whole on a group of cards (see "A group of cards"
+under `collie trick propose`): every line, masked lines masked and said so, and no recommendation when
+any is. Past 8 cards, for a file that is not text, or without git, the summary says how much is shown
+("1 of 3 files shown."), and a card with no view at all says "The change is too large to show here. Read it on the machine before you say yes." The options are "Use the new version", "Use it and stop asking" (only when no new right
 is asked) and "Keep the old version". A tap acts on exactly the hash on the card: when the folder moved
 since, the tap is refused with "The trick changed again since this card. A new card replaces this one."
 and the card stays open. A newer change replaces the card; approving elsewhere, the folder going back,
@@ -359,10 +361,49 @@ agent and no crew member reaches (`HillService.postCollie`):
   every `inputs` glob and every warning of the code search in full (as chips when each fits a chip and
   one bar holds them all, else as paragraphs), then the author's name, description and About under
   "Its author's words. Collie did not check them." (at most 3 paragraphs and 400 characters), and the
-  code, cut to fit as the new version card cuts it. The author's words go before any code when they
-  would cost code, and the facts are never cut: when they alone do not fit a Decision's view, the
-  proposal is refused (`card_too_large`, "This trick asks for more than a card can show, so it was not
-  proposed. Ask your person to add it on the machine.").
+  code. The facts are never cut: when they alone do not fit a Decision's view, the proposal is refused
+  (`card_too_large`, "This trick asks for more than a card can show, so it was not proposed. Ask your
+  person to add it on the machine.").
+
+**A group of cards.** A proposal shows all of its code, never a part. Code that fits one card whole
+keeps one card, as before. Otherwise the card is one Decision with a `group` of 2 to 8 cards
+(`bridge/tricks/card-group.ts`, `bridge/hill/group.ts`):
+
+- card 1 is the facts and never code: who proposes, every right and warning in full, "7 files, on cards
+  2 to 4.", a table of the files with their size (a version: the change and its line counts) and the
+  cards each is on, then the author's words when they still fit (they never push a fact off);
+- cards 2 to n hold every line of every file, whole files in a fixed order: `trick.toml`, the file `run`
+  names, then the rest by path in byte order. A file that goes on to the next card ends with "continues
+  on the next card", and the next card starts with "continued from the last card". A line longer than a
+  row (200 characters) goes on in the rows after it, each marked `↪`. No line is dropped;
+- the capacity is a named constant: 7 cards of code (`GROUP_CODE_CARDS`), 6 KiB of code each
+  (`GROUP_CARD_CODE_BYTES`), so 42 KiB (`GROUP_CODE_BYTES`) and 64 files (`GROUP_FILES_MAX`) in all,
+  every card under the one Decision view cap. `collie trick guide` prints it, and `collie trick check`
+  says "This trick shows as N cards.", or an error that it cannot be proposed (the check still
+  passes: the trick runs on the machine);
+- a `trick.ts` whose bytes are a helper this Collie ships (by SHA-256, as the code search already
+  knows it) is Collie's own code: card 1 names it ("trick.ts is the helper Collie ships (v4), byte for
+  byte, so no card shows it.") and it takes no room. A changed helper is the author's code and counts;
+- refused before anything is stored, by the CLI before it sends (counting the whole trick) and again
+  by the lead (counting what it shows): code larger than the group (`too_large`, "This trick is too
+  large to show on the phone, so it was not proposed. Ask your person to add it on the machine."), and a
+  file that is not UTF-8 text or a line the card would mask or show with `?` (`cannot_show`, "This trick
+  holds text that a card cannot show as it is (a key, or a hidden character), so it was not proposed.
+  Ask your person to add it on the machine."). The single card of before showed such a line masked and
+  said "N of M files shown."; a proposal now never shows code other than as it is;
+- each card is stored with the SHA-256 of its view, and the group with a digest over the Decision's ref
+  and the cards' hashes in order. Only `postCollie` makes a group: a post that carries `group` or
+  `parts` from an agent, a trick, the walky socket or a crew member is refused, and the decisions file
+  drops a group whose hashes do not match;
+- the yes needs the group's digest and every card opened on the phone. A yes without them is a
+  rejected receipt that keeps the card open: "Open all N cards first.", "These cards changed since this
+  phone showed them. Open them again from card 1.", or, from an app before groups, "This app does not
+  show a group of cards yet. Reload Collie on this phone, then open every card and answer again." "Not
+  now" and a dismiss need neither. At the install the stored bytes are hashed again, as before.
+
+The runner's own version card (above) groups its diff by the same rule, with masked lines shown masked,
+a note on that card, and no recommendation. Past 8 cards, for a file that is not text, or with more
+files than a group lists, it keeps the one card and its words.
 
 The session's name on the card is the lead's own word for that session, or none; a member cannot name
 it. A session named "Collie" (folded) is named by its machine only, and on any Decision a session or a
@@ -834,6 +875,14 @@ written as what a trick, or a person who controls one, can do today.
 - **A pane label reaches the card.** The session's name (folder and branch, or the Dashboard's name)
   is agent-influenced. It is cleaned and cut to 40 characters, and a name that folds to "Collie" is
   marked, but a look-alike such as "Colli3" is not.
+- **"Every card opened" is the phone's claim, a display check, not proof of reading.** The answer
+  names the cards the phone opened, and the bridge refuses a yes that does not name them all, or names
+  another digest. A phone, or anything that holds the phone's session, can send the list without
+  showing a card. It stops a yes from a tap on card 1 alone in the app; it does not prove a person
+  read the code.
+- **A version proposal is counted twice, differently.** The CLI counts the whole trick against the
+  capacity; the lead counts only the changed files. A version of a trick that was added on the machine
+  past the capacity cannot be proposed from the CLI, even when its change is small.
 - **A proposal costs memory before it is checked.** Each machine's walky socket reads up to 2 lines of
   8 MiB at once, and the lead's crew route up to 2 bodies of 8 MiB, apart from the other routes. The
   structure is counted before `JSON.parse`, so the parsed form stays near the text's size. On the crew

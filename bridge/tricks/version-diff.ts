@@ -80,6 +80,8 @@ export interface VersionDiffOptions {
   git?: string | null;
   /** Runs one argv. Default: a hardened spawn. A test passes a fake. */
   run?: (argv: readonly string[]) => Promise<DiffRun>;
+  /** How many files get a line count and a hunk. Default {@link DIFF_FILES_MAX}; a group of cards asks for more. */
+  filesMax?: number;
 }
 
 /** The sum of one code entry: its kind and the sha256 of its bytes (or its link target). */
@@ -216,7 +218,7 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
   if (git === null) return { files, counted: false };
   const run = opts.run ?? spawnDiff;
   let counted = false;
-  for (const file of files.slice(0, DIFF_FILES_MAX)) {
+  for (const file of files.slice(0, opts.filesMax ?? DIFF_FILES_MAX)) {
     const left = file.change === "added" || opts.base === null ? "/dev/null" : join(opts.base, file.rel);
     const right = file.change === "removed" ? "/dev/null" : join(opts.next, file.rel);
     // A symlink or a binary is listed, not counted: git would print a link target or "Binary files differ".

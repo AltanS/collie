@@ -4342,7 +4342,7 @@ nothing installs or runs it before a person's tap on the lead.
   need, so it was not read." A proposal of 300 files needs about 2400.
 - **Content refusals are `200` with `{ ok: false, code, error }`**: `bad_request`, `bad_files`,
   `bad_manifest`, `reserved_id`, `hill_off`, `exists`, `open_elsewhere`, `answering`, `too_many_open`,
-  `too_many_bytes`, `card_too_large`, `rate`, `request_id_reused`, `no_tricks`, `failed`. `400` is a
+  `too_many_bytes`, `card_too_large`, `too_large`, `cannot_show`, `rate`, `request_id_reused`, `no_tricks`, `failed`. `400` is a
   body the lead cannot read, `401` the uniform 401. A member that does not know a code
   reads it as `failed` and prints the lead's line.
 
@@ -4360,6 +4360,35 @@ nothing installs or runs it before a person's tap on the lead.
   facts alone do not fit a Decision's view, nothing is stored or posted, and the answer is
   `card_too_large`, "This trick asks for more than a card can show, so it was not proposed. Ask your
   person to add it on the machine."
+- **A group of cards.** Code that does not fit one card whole shows on one Decision with a `group`
+  of 2 to 8 cards (`{ digest, decline, parts: [{ view, sha256 }] }`). Card 1 is the facts and never
+  code: who proposes, every right and warning in full, the file table with each file's size and the
+  cards it is on, then the author's words when they still fit. Cards 2 to 8 hold every line of every
+  file, `trick.toml` first, then the file `run` names, then by path in byte order; a file that goes on
+  says "continues on the next card" and "continued from the last card", and a line longer than a row
+  goes on in the rows after it, marked `↪`. Each card is under the one Decision view cap; the code cards
+  hold 6 KiB of code each, 42 KiB and 64 files in all. A `trick.ts` whose bytes are a helper Collie
+  ships is named on card 1 and shown on none. `sha256` is the SHA-256 of a card's view as JSON text;
+  `digest` is the SHA-256 of `collie-hill-group`, the ref's type, id and hash, and the cards' hashes in
+  order, joined by NUL. Only Collie's own post makes a group: `group` or `parts` in a post from an
+  agent, a trick, the walky socket or `hill/post` (§22) is `bad_body`, "a group of cards is Collie's
+  own; post one card with a view". A trick that fits one card keeps one card.
+- **Refused at the door.** Code larger than a group is `too_large`, "This trick is too large to show on
+  the phone, so it was not proposed. Ask your person to add it on the machine." A file that is not
+  UTF-8 text, or a line the card would mask (a key) or show with `?` (a control, bidi or invisible
+  character), is `cannot_show`: no card ever shows a proposal other than as it is. The CLI refuses both
+  before it sends, counting the whole trick; the lead counts again on what it shows.
+- **The answer to a group.** The phone's answer (`POST /api/hill/<id>/answer`, on the lead) carries
+  `group: { digest, opened }`: the digest the phone was given, and the cards it opened, each of 1 to 8
+  once. A yes (any option but the group's `decline`) with no `group` is refused with "This app does not
+  show a group of cards yet. Reload Collie on this phone, then open every card and answer again."; with
+  another digest, "These cards changed since this phone showed them. Open them again from card 1.";
+  without every card, "Open all N cards first." Each is a rejected receipt that keeps the card open
+  and keeps nothing, so the same request id may try again. "Not now" and a dismiss need neither field.
+  `opened` is the phone's own claim, a display check that the person paged through the cards, never a
+  proof that they read them. The answer travels on no crew route: a member's own page refuses a Hill
+  answer and points to the lead's (§22), so an old member build answers nothing here; an old phone
+  app on the lead gets the reload words above.
 - **The tap.** "Switch it on" reads the stored bytes again and installs them only when their hash is
   the card's. The trick folder is written beside the tricks and renamed into place, never over a folder
   of that name, then the code written is approved and switched on.

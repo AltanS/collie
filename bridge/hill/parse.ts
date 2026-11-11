@@ -28,9 +28,13 @@ import {
   type HillRefusalCode,
   type HillState,
   type HillTextMode,
+  HILL_GROUP_HASH_RE,
+  HILL_GROUP_PARTS,
+  type HillGroupAnswer,
 } from "../../web/src/lib/hill/wire.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import { isHillPushTag } from "./push.ts";
+import { readGroup } from "./group.ts";
 import { parseDecisionView, type View } from "../../web/src/lib/tricks/schema.ts";
 
 /** What the socket answers a status or withdraw whose id is not a decision id. */
@@ -115,6 +119,8 @@ function readLink(value: JsonValue | undefined): { label: string; href: string }
  * all three before it asks), and the words say so.
  */
 export function readPostFields(row: JsonObject): HillPostRead {
+  // A group of cards is Collie's own (crew slice 8): no post from a session, a crew member or a trick carries one.
+  if (row.group !== undefined || row.parts !== undefined) return refused("bad_body", HILL_GROUP_NOT_YOURS);
   const requestId = asJsonString(row.requestId);
   if (!isRequestId(requestId)) return refused(null, "bad request: a decision's request id is a UUID");
   const title = asJsonString(row.title);
@@ -185,6 +191,25 @@ export function readPostFields(row: JsonObject): HillPostRead {
   return { ok: true, input };
 }
 
+/** The refusal of a post that carries a group of cards: only Collie's own Decision has one. */
+export const HILL_GROUP_NOT_YOURS = "a group of cards is Collie's own; post one card with a view";
+
+/** An answer's group fields: the digest and the opened cards, 1 to {@link HILL_GROUP_PARTS}.max, each once. */
+function readGroupAnswer(value: JsonValue | undefined): HillGroupAnswer | null | undefined {
+  if (value === undefined || value === null) return null;
+  const row = asJsonObject(value);
+  const digest = asJsonString(row?.digest);
+  const opened = row?.opened;
+  if (digest === undefined || !HILL_GROUP_HASH_RE.test(digest) || !Array.isArray(opened) || opened.length > HILL_GROUP_PARTS.max) return undefined;
+  const cards: number[] = [];
+  for (const entry of opened) {
+    const n = asJsonNumber(entry);
+    if (n === undefined || !Number.isSafeInteger(n) || n < 1 || n > HILL_GROUP_PARTS.max || cards.includes(n)) return undefined;
+    cards.push(n);
+  }
+  return { digest, opened: cards };
+}
+
 /** What `readAnswerRequest` answers: the request, or the words of the 400. */
 export type HillAnswerRead = { readonly ok: true; readonly request: HillAnswerRequest; readonly id: string } | { readonly ok: false; readonly error: string };
 
@@ -207,7 +232,9 @@ export function readAnswerRequest(value: JsonValue | undefined): HillAnswerRead 
   if (box === undefined) return { ok: false, error: "bad value" };
   const text = box.text === null || box.text === undefined ? null : asJsonString(box.text);
   if (text === undefined || (text !== null && text.length > HILL_RAW_MAX)) return { ok: false, error: "bad value" };
-  return { ok: true, id, request: { rid, node, intent, value: { text } } };
+  const group = readGroupAnswer(row.group);
+  if (group === undefined) return { ok: false, error: "bad group" };
+  return { ok: true, id, request: group === null ? { rid, node, intent, value: { text } } : { rid, node, intent, value: { text }, group } };
 }
 
 // ── The decisions file ──────────────────────────────────────────────────────────────────────────
@@ -442,6 +469,12 @@ export function readDecision(value: JsonValue | undefined, opts: ReadDecisionOpt
     answer,
   };
   if (view !== undefined) decision.view = view;
+  // A group of cards rides only on Collie's own Decision, and only whole: any card or hash that fails drops the decision.
+  if (row.group !== undefined) {
+    const group = from.kind === "collie" && from.ref !== undefined ? readGroup(row.group, from.ref, options) : null;
+    if (group === null || view !== undefined) return null;
+    decision.group = group;
+  }
   if (pushTag !== undefined) decision.pushTag = pushTag;
   return postDigest === undefined ? decision : { ...decision, postDigest };
 }

@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
 import { redactText } from "../bridge/redact.ts";
+import { GROUP_CAPACITY_WORDS } from "../bridge/tricks/card-group.ts";
+import { proposalCardCount, type ProposalCardCount } from "../bridge/tricks/proposal-card.ts";
 import { approvedDirOf, approveFolder, pruneCopies, verifyCopy } from "../bridge/tricks/approved.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
 import { originShort, proposalShort } from "../bridge/tricks/origin.ts";
@@ -49,6 +52,7 @@ import {
   type Refusal,
 } from "../web/src/lib/tricks/schema.ts";
 import { readEnvMarkers } from "./beacon.ts";
+import { readTrickFolder } from "./trick-folder.ts";
 import type { PaneKind } from "./walky.ts";
 import type { CliContext } from "./context.ts";
 import { hillWordingWarnings, HILL_WRITING } from "./hill-rules.ts";
@@ -481,6 +485,8 @@ export interface TrickCheckReport {
   reads?: string;
   /** The code hash `collie trick on` would approve. */
   codeHash?: string;
+  /** The cards the trick shows on as a proposal (crew slice 8), or why it cannot be proposed. Never fails the check. */
+  cards?: ProposalCardCount;
   run?: {
     outcome: RunOutcome["kind"];
     ms: number;
@@ -491,6 +497,8 @@ export interface TrickCheckReport {
     notes: Refusal[];
     /** The soft wording warnings of each Decision (`hillWordingWarnings`), by its key. Never fails the check. */
     wording: { key: string; text: string }[];
+    /** The soft note that a tap on the trick's tile shows nothing new ({@link TAP_SHOWS_NOTHING}), or absent. Never fails the check. */
+    tapNote?: string;
     stderr: string;
   };
 }
@@ -645,6 +653,32 @@ export function decisionWording(decisions: readonly TrickDecision[]): { key: str
   return decisions.flatMap((d) => hillWordingWarnings(d).map((text) => ({ key: d.key, text })));
 }
 
+/** The soft note of `check --run` on a trick whose tile a tap leaves as it was. */
+export const TAP_SHOWS_NOTHING = "A tap on this trick's tile shows nothing new. Give it a session page, or make the tap change what the tile says.";
+
+/** The places a person taps a trick on: its tile, its belt mark, its status chip, its tab. */
+const TAPPED_PLACES: ReadonlySet<string> = new Set(["belt", "status", "dashboard", "tabbar"]);
+/** The most belt intents the tap note runs the program for. */
+const TAP_NOTE_RUNS = 3;
+
+/**
+ * Whether a tap on the trick's tile shows nothing new: it draws a part a person taps, it has no session
+ * page for the tap to open, and no tap the run offers (a belt mark's intent) changes what it prints. Each
+ * intent is one more fixture run, at most {@link TAP_NOTE_RUNS}; a run that fails counts as a change, so
+ * the note stays quiet when unsure.
+ */
+async function tapShowsNothing(manifest: TrickManifest, folder: string, env: CliContext["env"], parsed: ParsedTrickDocument): Promise<boolean> {
+  if (manifest.places.includes("session")) return false;
+  if (!parsed.parts.some((p) => TAPPED_PLACES.has(p.place))) return false;
+  const shown = JSON.stringify(parsed.parts);
+  const taps = parsed.parts.flatMap((p) => (p.place === "belt" && p.part.mark.intent !== undefined ? [{ node: p.part.id, intent: p.part.mark.intent }] : [])).slice(0, TAP_NOTE_RUNS);
+  for (const tap of taps) {
+    const after = await runAgainstFixture(manifest, folder, env, { trigger: { kind: "tap", rid: randomUUID(), node: tap.node, intent: tap.intent } });
+    if (after.parsed === null || JSON.stringify(after.parsed.parts) !== shown) return false;
+  }
+  return true;
+}
+
 /** Run the program once against fixture facts and parse its output, as the bridge would. */
 export async function checkRun(report: TrickCheckReport, env: CliContext["env"]): Promise<void> {
   const manifest = report.manifest;
@@ -658,6 +692,7 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"])
     run.refusals = ran.parsed.refusals;
     run.notes = ran.parsed.notes;
     run.wording = decisionWording(ran.parsed.decisions);
+    if (problem === null && run.refusals.length === 0 && (await tapShowsNothing(manifest, report.folder, env, ran.parsed))) run.tapNote = TAP_SHOWS_NOTHING;
   }
   report.run = run;
 }
@@ -668,6 +703,11 @@ export function reportFails(report: TrickCheckReport): boolean {
   if (report.refusals.some((r) => r.code !== "later") || report.problems.length > 0) return true;
   const run = report.run;
   return run !== undefined && (run.problem !== null || run.refusals.length > 0);
+}
+
+/** "This trick shows as 3 cards." */
+export function cardsCheckWords(count: number): string {
+  return count === 1 ? "This trick shows as 1 card." : `This trick shows as ${String(count)} cards.`;
 }
 
 function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): void {
@@ -713,12 +753,27 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     for (const n of run.notes) io.out(`  note: output ${n.path === "" ? "" : `${n.path} `}${n.reason}`);
     // Soft too: how a Decision is worded is the author's call (HILL_WRITING).
     for (const w of run.wording) io.out(`  warn: decision ${w.key}: ${w.text}`);
+    if (run.tapNote !== undefined) io.out(`  note: ${run.tapNote}`);
     if (run.problem !== null && run.stderr.trim() !== "") {
       io.err("  stderr:");
       for (const line of run.stderr.trimEnd().split(/\r?\n/).slice(-10)) io.err(`    ${line}`);
     }
   }
-  io.out(reportFails(report) ? "Refused. Fix the errors above, then check again." : "ok: no problems.");
+  const cards = report.cards;
+  if (cards !== undefined) {
+    if (cards.ok) io.out(`  cards:  ${cardsCheckWords(cards.cards)} ${GROUP_CAPACITY_WORDS}`);
+    else io.err(`error: propose: ${cards.error}`);
+  }
+  if (reportFails(report)) io.out("Refused. Fix the errors above, then check again.");
+  else io.out(cards !== undefined && !cards.ok ? "ok: it runs on this machine, but it cannot be proposed." : "ok: no problems.");
+}
+
+/** The cards of the folder as a proposal, read as `collie trick propose` reads it. A folder it cannot read counts nothing: propose says why. */
+async function countCards(report: TrickCheckReport, crew: boolean): Promise<void> {
+  if (report.manifest === undefined) return;
+  const read = await readTrickFolder(report.folder);
+  if (!read.ok) return;
+  report.cards = proposalCardCount({ manifest: report.manifest, files: read.files, warnings: [...new Set(report.warnings.map((w) => w.kind))], crew });
 }
 
 export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): Promise<number> {
@@ -734,8 +789,10 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
     deps.io.err(`error: ${named} is not a folder.`);
     return EXIT.USAGE;
   }
-  const report = await checkStatic(folder, deps.files, { crew: leadsCrewOnDisk(deps) });
+  const crew = leadsCrewOnDisk(deps);
+  const report = await checkStatic(folder, deps.files, { crew });
   if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env);
+  await countCards(report, crew);
   if (json) deps.io.out(JSON.stringify(report, null, 2));
   else printReport(deps, report);
   return reportFails(report) ? EXIT.FAIL : EXIT.OK;

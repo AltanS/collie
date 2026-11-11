@@ -11,11 +11,12 @@ import { unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { recoverProposalWrites } from "./proposal-install.ts";
-import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, PROPOSAL_TOO_LARGE, type ProposerFacts } from "./proposal-card.ts";
+import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposalCardResult, type ProposerFacts } from "./proposal-card.ts";
 import { checkProposedFiles, foldKey, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
 import { versionDiff, type VersionDiff } from "./version-diff.ts";
+import { addedDiff, GROUP_FILES_MAX, shippedHelpers } from "./card-group.ts";
 
 // TRICK PROPOSALS ON THE LEAD (crew slice 8). `collie trick propose <folder>` hands a trick's files to this
 // bridge, from a session or a terminal on this machine (the walky socket) or on a crew member (the signed
@@ -298,7 +299,8 @@ export class TrickProposals {
     this.deps = deps;
     this.now = deps.now ?? Date.now;
     this.warn = deps.warn ?? ((line) => console.warn(`[tricks] ${line}`));
-    this.diff = deps.diff ?? ((base, next) => versionDiff({ base, next }));
+    // Every changed file gets its diff, up to the most a group of cards shows (card-group.ts).
+    this.diff = deps.diff ?? ((base, next) => versionDiff({ base, next, filesMax: GROUP_FILES_MAX }));
   }
 
   /** `<configDir>/tricks/.collie-proposed`. */
@@ -400,17 +402,18 @@ export class TrickProposals {
   }
 
   /** The card for a stored proposal: a new trick, or a new version shown against the approved copy. */
-  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null, replaces: boolean): Promise<Omit<HillPostInput, "requestId"> | null> {
+  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null, replaces: boolean): Promise<ProposalCardResult> {
     const id = proposal.manifest.id;
     const crew = this.deps.crew?.() ?? false;
     const kinds = await this.warningKinds(dir, proposal.manifest);
     if (base === null) {
-      const diff = await this.diff(null, dir).catch((): VersionDiff => ({ files: [], counted: false }));
-      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff, warnings: kinds, crew, replaces });
+      // A new trick's code is its files' own bytes, every line added: no git run, nothing left out.
+      const sizes = new Map(proposal.files.map((file) => [file.rel, file.bytes.byteLength]));
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff: addedDiff(proposal.files), warnings: kinds, crew, replaces, sizes, helpers: shippedHelpers(proposal.files) });
     }
     const diff = await this.diff(base.baseDir, dir).catch((): VersionDiff => ({ files: [], counted: false }));
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
-    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces });
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, helpers: shippedHelpers(proposal.files) });
   }
 
   private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {
@@ -418,11 +421,12 @@ export class TrickProposals {
     const { hash } = proposal;
     const dir = await this.store(id, hash, proposal.files);
     if (dir === null) return refused("failed", "The proposal could not be kept on this machine, so nothing was proposed.");
-    const card = await this.cardOf(dir, proposal, proposer, base, old !== null);
-    if (card === null) {
+    const made = await this.cardOf(dir, proposal, proposer, base, old !== null);
+    if (!made.ok) {
       await rm(dir, { recursive: true, force: true });
-      return refused("card_too_large", PROPOSAL_TOO_LARGE);
+      return refused(made.code, made.error);
     }
+    const { card } = made;
     const input: HillPostInput = { ...card, requestId: proposalRequestId(id, hash, proposal.requestId), expiresAt: now + PROPOSAL_EXPIRY_MS };
     if (old !== null) input.supersedes = old.decision;
     const posted = this.deps.hill.postCollie(senderOf(id, hash), input, proposer.address === null ? {} : { tellOf: proposer.address });
