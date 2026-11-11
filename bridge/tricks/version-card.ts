@@ -29,8 +29,8 @@ import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import type { TrickVersionsPort, TrickVersionSubject, VersionAnswer } from "./service.ts";
 import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.ts";
-import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_FILES_MAX, groupOrder, placesTables } from "./card-group.ts";
-import { rulesChange } from "./rules-diff.ts";
+import { changeCells, changeWord, codeGroup, filesOnCards, GROUP_CODE_CARDS, GROUP_FILES_MAX, groupOrder, placesTables } from "./card-group.ts";
+import { rulesChange, rulesDiffRows } from "./rules-diff.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): one Decision of Collie's own on the Hill for each trick that is
 // on and whose new version waits for a yes. It asks the same yes the Settings row and `collie trick on`
@@ -179,8 +179,11 @@ export function shownSentence(shown: number, total: number): string {
   return `${String(shown)} of ${String(total)} ${total === 1 ? "file" : "files"} shown.`;
 }
 
-/** The card for one waiting version: title, summary, options, recommendation and view. */
-export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, crew = false): Omit<HillPostInput, "requestId"> | null {
+/**
+ * The card for one waiting version: title, summary, options, recommendation and view. `room`: the cards an
+ * agent view's rules may take on their own, {@link GROUP_CODE_CARDS} (a test passes fewer).
+ */
+export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, crew = false, room: number = GROUP_CODE_CARDS): Omit<HillPostInput, "requestId"> | null {
   const pending = subject.pending;
   if (pending === null) return null;
   const base = subject.base?.manifest;
@@ -249,7 +252,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const group = codeGroup(files, run, "show", new Map(), lead);
   const rows = groupOrder(files, run, lead).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
   const first = group.ok ? checked([...facts, { kind: "line", text: filesOnCards(files.length, group.cards.length), attrs: { role: "note" } }, ...placesTables(rows, ["Change", "Lines"], group.places)]) : undefined;
-  if (group.ok && first !== undefined && bytesOf(first) <= DECISION_VIEW_LIMITS.bytes) {
+  if (group.ok && (rules === null || group.cards.length <= room) && first !== undefined && bytesOf(first) <= DECISION_VIEW_LIMITS.bytes) {
     const masked = files.some((file) => file.cut === true);
     const many = ` It shows on ${String(group.cards.length + 1)} cards.`;
     const fullGroup = `${filesSentence(fileCount)} ${fact}${many}`;
@@ -261,21 +264,45 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
     };
   }
   if (rules === null || rulesFit) return single;
-  // The rules never fall back to "not shown": the card as it fits, then the rules whole on cards of their own.
-  const alone = codeGroup([rules], null, "show");
-  if (!alone.ok) return single;
-  const fitted = fitView([...facts, rulesNote(alone.cards.length)], code);
-  if (fitted.view === null) return single;
-  const aloneShown = fitted.shown + 1;
-  const aloneTail = aloneShown >= total ? "" : ` ${shownSentence(aloneShown, total)}`;
-  const many = ` It shows on ${String(alone.cards.length + 1)} cards.`;
-  const fullAlone = `${filesSentence(fileCount)} ${fact}${aloneTail}${many}`;
-  return {
+  // The rules never fall back to "not shown" (review 8 V-S1): the change line by line on cards of their own;
+  // when that is too long, the new text whole (at most 8 KiB, so it fits); and when even that cannot show,
+  // no "Use" at all. Never a yes without the rules on screen.
+  const nowText = next?.rules === undefined ? null : (next.rulesText ?? "");
+  const wholeRules: ChangedFile | null = rules.change === "changed" && nowText !== null ? { ...rules, hunk: rulesDiffRows(null, nowText) } : null;
+  const tries: [ChangedFile, (cards: number) => ViewNode][] = [[rules, rulesNote]];
+  if (wholeRules !== null) tries.push([wholeRules, rulesWholeNote]);
+  for (const [shownRules, note] of tries) {
+    const alone = codeGroup([shownRules], null, "show");
+    if (!alone.ok || alone.cards.length > room) continue;
+    const fitted = fitView([...facts, note(alone.cards.length)], code);
+    if (fitted.view === null) continue;
+    const aloneShown = fitted.shown + 1;
+    const aloneTail = aloneShown >= total ? "" : ` ${shownSentence(aloneShown, total)}`;
+    const many = ` It shows on ${String(alone.cards.length + 1)} cards.`;
+    const fullAlone = `${filesSentence(fileCount)} ${fact}${aloneTail}${many}`;
+    return {
+      ...card,
+      summary: [...fullAlone].length <= HILL_SUMMARY_MAX ? fullAlone : `${filesSentence(fileCount)} ${short}${many}`,
+      recommends: null,
+      group: { decline: "keep", parts: [fitted.view, ...alone.cards] },
+    };
+  }
+  const fullMachine = `${filesSentence(fileCount)} ${fact} ${RULES_ON_MACHINE}`;
+  const machineView = checked([...facts, { kind: "line", text: rulesOnMachineLine(subject.id), attrs: { role: "note" } }]);
+  const machine: Omit<HillPostInput, "requestId"> = {
     ...card,
-    summary: [...fullAlone].length <= HILL_SUMMARY_MAX ? fullAlone : `${filesSentence(fileCount)} ${short}${many}`,
+    summary: [...fullMachine].length <= HILL_SUMMARY_MAX ? fullMachine : `${filesSentence(fileCount)} ${RULES_ON_MACHINE}`,
+    options: [{ intent: "keep", label: "Keep the old version" }],
     recommends: null,
-    group: { decline: "keep", parts: [fitted.view, ...alone.cards] },
   };
+  if (machineView !== undefined) machine.view = machineView;
+  return machine;
+}
+
+/** The card's words when the rules cannot show on the phone at all: no "Use", the machine takes it. */
+export const RULES_ON_MACHINE = "The new agent instructions do not fit on the phone, so this version can only be taken on the machine.";
+export function rulesOnMachineLine(id: string): string {
+  return `Read them there, then take it with: collie trick on ${id}`;
 }
 
 /** The words above the rules' diff, and the note that sends a person to the cards that hold it. */
@@ -283,6 +310,11 @@ export const RULES_DIFF_LABEL = "The agent instructions, every line:";
 function rulesNote(cards: number): ViewNode {
   const where = cards === 1 ? "card 2" : `cards 2 to ${String(cards + 1)}`;
   return { kind: "line", text: `The agent instructions are on ${where}, every line.`, attrs: { role: "note" } };
+}
+/** The note when the change is too long line by line, so the new text shows whole instead. */
+function rulesWholeNote(cards: number): ViewNode {
+  const where = cards === 1 ? "card 2" : `cards 2 to ${String(cards + 1)}`;
+  return { kind: "line", text: `The change is too long to show line by line, so the new agent instructions show whole on ${where}, every line.`, attrs: { role: "note" } };
 }
 
 /** The whole diff of the rules as view nodes: the label, then the rows in diff nodes of at most {@link DIFF_LIMITS} lines. */

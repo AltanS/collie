@@ -13,8 +13,8 @@ import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
-import { GROUP_MASKED_NOTE } from "./card-group.ts";
-import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
+import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
+import { RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): the diff of two copies, the card's words and view, and the
@@ -621,5 +621,66 @@ describe("an agent view's rules on the card (contract 2)", () => {
     await cards.settled();
     expect(await cards.answer({ type: "version", id: "morph", hash: "b".repeat(64) }, "always")).toEqual({ ok: false, reason: RULES_NEVER_AUTO });
     expect(calls).toEqual([]);
+  });
+});
+
+describe("review 8 V-S1: no yes without the rules on screen", () => {
+  const sha = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex");
+  const view = (text: string): TrickManifest => ({ id: "morph", name: "Morph", mode: "once", contract: 2, icon: "eye", places: [], agentView: true, rules: "rules.md", rulesText: text, rulesSha256: sha(text) });
+  const held = (old: string, now: string): TrickVersionSubject => ({
+    id: "morph",
+    name: "Morph",
+    waiting: true,
+    pending: { hash: "b".repeat(64), dir: "/x", info: { hash: "b".repeat(64), files: { added: 0, changed: 1, removed: 0 }, powersChanged: true, warnings: [] }, manifest: view(now) },
+    base: { dir: "/y", manifest: view(old) },
+  });
+  const masked: VersionDiff = { counted: true, files: [{ rel: "rules.md", change: "changed", plus: 4000, minus: 4000, hunk: null }] };
+  /** Every diff row on the cards after card 1, in order. */
+  const rowsAfterFirst = (card: ReturnType<typeof versionCard>): string[] =>
+    (card?.group?.parts ?? []).slice(1).flatMap((part) => part.flatMap((node) => (node.kind === "diff" ? node.text.split("\n") : [])));
+  /** The text the `+` and context rows say, without the wrap marks of a long line. */
+  const newOf = (rows: readonly string[]): string => {
+    const lines: string[] = [];
+    for (const row of rows) {
+      if (row.startsWith("@@") || row.startsWith("-")) continue;
+      const body = row.slice(1);
+      if (body.startsWith(GROUP_WRAP)) lines[lines.length - 1] += body.slice(GROUP_WRAP.length);
+      else lines.push(body);
+    }
+    return `${lines.join("\n")}\n`;
+  };
+
+  test("a change of 4000 lines for 4000 shows the new rules whole on cards of their own, and only then offers Use", () => {
+    const old = "a\n".repeat(4000);
+    const now = "b\n".repeat(4000);
+    const card = versionCard(held(old, now), masked);
+    const parts = card?.group?.parts ?? [];
+    expect(parts.length).toBeGreaterThan(1);
+    expect(newOf(rowsAfterFirst(card))).toBe(now);
+    const first = JSON.stringify(parts[0]);
+    expect(first).toContain("The change is too long to show line by line, so the new agent instructions show whole");
+    expect(first).not.toContain("on card 2, every line");
+    expect(card?.options?.map((o) => o.intent)).toEqual(["use", "keep"]);
+    for (const part of parts) expect(parseDecisionView(parseJson(JSON.stringify(part))).view).toBeDefined();
+  });
+
+  test("the worst rules a file may hold fit: 8 KiB of the longest escapes, one character a line, or 160 a line", () => {
+    for (const now of ['"\n'.repeat(4096), `${'"\\'.repeat(80)}\n`.repeat(50), "a\n\n".repeat(2730)]) {
+      expect(now.length).toBeLessThanOrEqual(8 * 1024);
+      const card = versionCard(held("x\n".repeat(4096), now), masked);
+      expect(newOf(rowsAfterFirst(card)), JSON.stringify(now.slice(0, 8))).toBe(now);
+      expect(card?.options?.map((o) => o.intent)).toEqual(["use", "keep"]);
+    }
+  });
+
+  test("when the rules cannot be shown at all, the card offers only Keep and says to take it on the machine", () => {
+    // No room for the rules' own cards: the case a larger cap would reach.
+    const card = versionCard(held("a\n".repeat(2000), "b\n".repeat(2000)), masked, false, 0);
+    expect(card?.options?.map((o) => o.intent)).toEqual(["keep"]);
+    expect(card?.group).toBeUndefined();
+    expect(card?.summary).toBe(`1 file changed. It now also gives your agents new instructions. ${RULES_ON_MACHINE}`);
+    expect(RULES_ON_MACHINE).toBe("The new agent instructions do not fit on the phone, so this version can only be taken on the machine.");
+    expect(JSON.stringify(card?.view)).toContain("Read them there, then take it with: collie trick on morph");
+    expect(JSON.stringify(card)).not.toContain("on card 2");
   });
 });
