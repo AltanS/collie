@@ -58,6 +58,20 @@ describe("the paths a proposal may carry", () => {
     expect(refusedWith(wire([...base(), file(rel)]))).toContain(words);
   });
 
+  test.each([
+    ["Inputs/a.md", "inputs/"],
+    ["INPUTS/a.md", "inputs/"],
+    ["NODE_MODULES/x.js", "node_modules"],
+    ["lib/Node_Modules/x.js", "node_modules"],
+  ])("a reserved name in another case is refused too: %p", (rel, words) => {
+    expect(proposedPathProblem(rel)).toContain(words);
+  });
+
+  test("a picture folder in another case keeps the picture rule", () => {
+    expect(refusedWith(wire([...base(), file("Media/run.ts", "code")]))).toContain("picture folder");
+    expect(refusedWith(wire([...base(), file("CAPTURES/x.png", "#!/bin/sh")]))).toContain("picture folder");
+  });
+
   test("ordinary names, a nested folder and config.toml are taken", () => {
     for (const rel of ["program.ts", "lib/util.ts", "config.toml", "README.md", "a-b_c.d.ts"]) expect(proposedPathProblem(rel)).toBeNull();
   });

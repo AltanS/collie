@@ -143,17 +143,18 @@ export function proposedPathProblem(rel: string): string | null {
     if (step === "") return "has an empty step";
     if (step === "." || step === "..") return "has a . or .. step";
     if (step.startsWith(".")) return "names a dot file or a dot folder, which a trick does not carry";
-    if (step === "node_modules") return "names node_modules, which a trick does not carry";
+    // Reserved names are compared folded: on a case-insensitive disk `Node_Modules` is `node_modules`.
+    if (foldKey(step) === "node_modules") return "names node_modules, which a trick does not carry";
     if (Buffer.byteLength(step, "utf8") > PROPOSE_LIMITS.stepBytes) return `has a step longer than ${String(PROPOSE_LIMITS.stepBytes)} bytes`;
   }
-  if (steps[0] === "inputs") return "is under inputs/, which the bridge fills";
+  if (foldKey(steps[0] ?? "") === "inputs") return "is under inputs/, which the bridge fills";
   if (rel.endsWith(".log")) return "is a .log file, which is not code";
   return null;
 }
 
 /** Whether a path is in one of the picture folders, `media/` or `captures/`. */
 export function inPictureDir(rel: string): boolean {
-  const top = rel.split("/")[0] ?? "";
+  const top = foldKey(rel.split("/")[0] ?? "");
   return rel.includes("/") && PICTURE_DIRS.some((dir) => dir === top);
 }
 
