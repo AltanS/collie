@@ -15,7 +15,7 @@ afterAll(removeCarryDirs);
 const T0 = 1_762_000_000_000;
 const FAIL = { id: "legs", name: "Leg day", hash: "c".repeat(64), reason: "its copy on this machine does not match the version you approved" };
 
-function hillOf(opts: { mode?: "lead" | "peer"; on?: boolean } = {}) {
+function hillOf(opts: { mode?: "lead" | "peer"; on?: boolean; deposed?: boolean } = {}) {
   let n = 0;
   return new HillService({
     store: new HillStore(null, () => T0),
@@ -23,6 +23,7 @@ function hillOf(opts: { mode?: "lead" | "peer"; on?: boolean } = {}) {
     place: () => null,
     send: async () => "typed",
     crewMode: () => opts.mode ?? "lead",
+    deposed: () => opts.deposed ?? false,
     walkyOn: () => false,
     memberId: "laptop",
     machine: "laptop",
@@ -65,6 +66,11 @@ describe("a carried trick that did not start is said on the Hill (§25)", () => 
     expect(await readdir(tricksStateDir(m.stateDir))).toContain(TAKEOVER_NOTICES_FILE);
     expect(warned).toHaveLength(1);
     expect(await postCarryNotices({ stateDir: m.stateDir, hill: hillOf(), warn: () => {} })).toBe(1);
+  });
+
+  test("a deposed lead takes no post: its Hill is nobody's after the takeover", async () => {
+    const hill = hillOf({ deposed: true });
+    expect(hill.postCollie({ kind: "collie", ref: { type: "carried", id: "legs", hash: FAIL.hash }, label: "Collie" }, carriedCard("desk", T0, FAIL))).toMatchObject({ ok: false, code: "not_on_lead" });
   });
 
   test("OK closes it, and nothing else is an option", () => {

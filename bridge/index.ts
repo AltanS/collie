@@ -2365,6 +2365,8 @@ const hill = new HillService({
   // The sweep closes a decision whose target ended only once the bridge lists sessions at all.
   sessionsKnown: () => walky.who().length > 0,
   crewMode: () => crew.mode,
+  // §25: a deposed lead's Hill is nobody's; the crown and its Decisions moved to the deputy.
+  deposed: () => deposed !== null,
   walkyOn: () => cfg.walky,
   memberId: bridgeId.id,
   keepId: bridgeId.keep,

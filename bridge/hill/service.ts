@@ -208,6 +208,11 @@ export interface HillServiceDeps {
   /** Type `body` into the session at `to` as an operator walky message under the label `by`. */
   send(to: string, body: string, by: string): Promise<HillDelivery>;
   crewMode(): HillCrewMode;
+  /**
+   * True while this bridge is a deposed lead (CREW_PROTOCOL §18.12): another machine took the crown, so
+   * a post here would sit on a Hill nobody leads. Refused like a peer's (§25). Absent: never deposed.
+   */
+  readonly deposed?: () => boolean;
   /** False with COLLIE_WALKY=off: no answer could be typed, so no decision is taken. */
   walkyOn(): boolean;
   /**
@@ -783,7 +788,7 @@ export class HillService {
     if (!this.isOn()) return refuse("hill_off", HILL_OFF);
     // Collie's own answer types nothing, so only a post whose answer is typed needs WalkyTalky.
     if (from.kind !== "collie" && !this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
-    if (this.deps.crewMode() === "peer") return refuse("not_on_lead", NOT_ON_LEAD);
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return refuse("not_on_lead", NOT_ON_LEAD);
     const key = senderKey(from);
     const digest = hillPostDigest(input);
     // A repeated request id from the same sender with the same payload is the same decision: answered as
