@@ -238,8 +238,9 @@ describe("an agent view and its rules (contract 2)", () => {
     const wired = readTrick(JSON.parse(JSON.stringify(MORPH)));
     expect(wired?.rules?.text).toBe(RULES_TEXT);
     expect(Buffer.from(pre?.textContent ?? "", "latin1").equals(RULES_BYTES)).toBe(true);
-    // Never markdown: no element inside, just the text.
-    expect(pre?.children.length).toBe(0);
+    // Never markdown: only the line and piece spans the wrap draws, no other element.
+    expect(pre?.querySelectorAll(":not([data-prose-line]):not([data-prose-piece]):not([data-prose-wrap])").length).toBe(0);
+    expect(pre?.querySelectorAll("[data-prose-line]").length).toBe(RULES_TEXT.split("\n").length - 1);
   });
 
   it("the playground's Morph rules are the bridge fixture's bytes", async () => {

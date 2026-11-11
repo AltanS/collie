@@ -2,6 +2,7 @@ import { useId, useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { Button } from "@/components/ui/button";
+import { ProseText } from "@/components/ui/diff-lines";
 import { FoldPanel, MoreToggle } from "@/components/ui/fold-toggle";
 import { ListGroup } from "@/components/ui/list-group";
 import { OneOf } from "@/components/ui/one-of";
@@ -123,9 +124,7 @@ function RulesFold({ rules }: { rules: WireTrickRules }) {
       />
       <FoldPanel id={id} open={open} data-slot="trick-rules">
         <p className="pb-1 font-mono text-xs text-muted-foreground">{rules.file}</p>
-        <pre data-line="rules-text" className="rounded-md border border-border bg-muted/40 p-3 font-mono text-xs [font-variant-ligatures:none] break-words whitespace-pre-wrap">
-          {rules.text}
-        </pre>
+        <ProseText data-line="rules-text" text={rules.text} className="rounded-md border border-border bg-muted/40" />
       </FoldPanel>
     </section>
   );
