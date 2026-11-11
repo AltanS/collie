@@ -254,7 +254,13 @@ export interface HillCrewLeadDeps {
 }
 
 /** The fields a forwarded post may never carry: the member's socket frame, the bridge's own `from`, and the paths. */
-const FRAME_KEYS = new Set(["v", "op", "markers", "from", "images"]);
+const FRAME_KEYS = new Set(["v", "op", "markers", "from", "images", "__proto__"]);
+/**
+ * M1 (review 11): `__proto__` in a member's fields. JSON.parse makes it an own key, and copying it onto a
+ * plain object sets that object's prototype, so a field such as `replyTo` or `images` would be read from
+ * it past every check of the lead's. The lead refuses such a post; both copies also skip the key.
+ */
+const PROTO_KEY_LINE = 'a post has no "__proto__" field';
 
 /**
  * The lead's half of §22: a member's image, post and follow-up call, each answered for the member the
@@ -295,6 +301,7 @@ export class HillCrewLead {
     const fields = asJsonObject(row?.fields);
     const address = asJsonString(from?.address);
     if (row === undefined || from === undefined || fields === undefined || address === undefined) return badRequest("a post is { from: { address, harness, label, host }, fields, images }");
+    if (Object.hasOwn(fields, "__proto__")) return badRequest(PROTO_KEY_LINE);
     if (!resolvesToOwn(address, memberId, this.deps.place)) return UNAUTHORIZED;
     const foreign = foreignTarget(fields, memberId, this.deps.place);
     if (foreign !== null) return refused("bad_target", foreign);

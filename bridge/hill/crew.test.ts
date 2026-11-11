@@ -304,6 +304,17 @@ describe("the lead's routes", () => {
     expect(lead.sent).toEqual([]);
   });
 
+  test("M1: a member's post whose fields carry __proto__ is refused, so no field slips past the lead's checks", () => {
+    const { crewLead, lead } = crew();
+    lead.live.push({ address: "desk/%1#aaaa", label: "lead session", host: "desk", unattended: false });
+    // As the route reads the body: JSON.parse makes `__proto__` an own key of `fields`.
+    const text = JSON.stringify({ from: { address: LAPTOP_PANE, label: "repo#main" }, fields: fields() }).replace('"fields":{', '"fields":{"__proto__":{"replyTo":"desk/%1#aaaa","images":[{"path":"/etc/hostname"}]},');
+    const answer = crewLead.post(JSON.parse(text), "laptop");
+    expect(answer.status).toBe(400);
+    expect(JSON.stringify(answer.body)).toContain("__proto__");
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
   test("post: an about on another machine is refused; here and an own session stand", () => {
     const { crewLead, lead } = crew();
     lead.live.push({ address: "desk/%1#aaaa", label: "lead session", host: "desk", unattended: false }, { address: "laptop/%4#dddd", label: "other pane", host: "laptop", unattended: false });

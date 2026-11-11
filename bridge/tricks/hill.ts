@@ -237,7 +237,8 @@ export function carriedMapRecords(stateDir: string, ids: ReadonlySet<string>): J
   const tricks = asJsonObject(parseJsonObject(raw)?.tricks) ?? {};
   const out: JsonObject = {};
   for (const id of ids) {
-    const record = tricks[id];
+    // An own key only: a trick id such as `constructor` must not find Object's prototype (review 11 M1).
+    const record = Object.hasOwn(tricks, id) ? tricks[id] : undefined;
     if (record !== undefined) out[id] = record;
   }
   return out;
@@ -427,7 +428,8 @@ export class TrickHill {
         decision,
         images.map((image) => ({ bytes: imageFileDigest(image.path), caption: image.caption ?? null })),
       );
-      const held = keys[decision.key];
+      // An own key only: the decision key `constructor` must not find Object's prototype (review 11 M1).
+      const held = Object.hasOwn(keys, decision.key) ? keys[decision.key] : undefined;
       // Unchanged: open stays open, and an answered or dismissed one stays closed. One that closed without
       // the person asks again, once per REASK_AFTER_MS.
       if (held !== undefined && held.hash === hash && !this.mayReask(held)) return;
