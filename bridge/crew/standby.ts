@@ -287,8 +287,9 @@ document.getElementById('go').addEventListener('click', async function () {
   btn.disabled = true;
   out.textContent = 'Asking your lead, then every other machine…';
   try {
-    var res = await fetch('/standby/takeover', { method: 'POST', headers: { authorization: 'Bearer ' + token } });
+    var res = await fetch('/standby/takeover', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'x-collie-carried': btn.getAttribute('data-seen') || '' } });
     var body = await res.json();
+    if (body.changed) { location.replace('/standby?changed=1'); return; }
     out.textContent = body.message || ('HTTP ' + res.status);
     if (body.ok) { setTimeout(function () { location.replace('/'); }, 1500); return; }
   } catch (e) {
@@ -343,6 +344,11 @@ export interface CarriedSummary {
   readonly questions?: number;
 }
 
+/** The line a refused tap redraws the page with: the copies hold another list than the page showed. */
+export const CARRIED_CHANGED = "The list changed. Read it again.";
+/** The header the tap names the shown list in (`carriedSeen`, crew/carry-boot.ts). */
+export const CARRIED_SEEN_HEADER = "x-collie-carried";
+
 /** The most trick names the page lists; the rest read "and N more". */
 export const CARRIED_NAMES_SHOWN = 8;
 /** The longest trick name the page shows. */
@@ -374,7 +380,13 @@ export function carriedLines(carried: CarriedSummary | null): string[] {
   return out;
 }
 
-export function standbyPage(facts: StandbyFacts, carried: CarriedSummary | null = null): string {
+/** How the page is drawn beyond the facts: the mark of the shown list, and whether a tap was refused for it. */
+export interface StandbyView {
+  readonly seen?: string;
+  readonly changed?: boolean;
+}
+
+export function standbyPage(facts: StandbyFacts, carried: CarriedSummary | null = null, view: StandbyView = {}): string {
   const report = armingReport(facts);
   const self = escapeHtml(facts.selfMemberId);
   const lead = facts.leadMemberId === null ? "your lead" : `<code>${escapeHtml(facts.leadMemberId)}</code>`;
@@ -399,8 +411,10 @@ export function standbyPage(facts: StandbyFacts, carried: CarriedSummary | null 
           `them. Any &ldquo;yes&rdquo; stops the takeover.</p>`,
       );
     }
+    if (view.changed === true) body.push(`<p class="warn">${escapeHtml(CARRIED_CHANGED)}</p>`);
     body.push(...carriedLines(carried));
-    body.push(`<button id="go" type="button">Take over</button>`, `<p class="out" id="out"></p>`);
+    const seen = view.seen === undefined ? "" : ` data-seen="${escapeHtml(view.seen)}"`;
+    body.push(`<button id="go" type="button"${seen}>Take over</button>`, `<p class="out" id="out"></p>`);
   } else {
     body.push(
       `<h1>Standby</h1>`,
@@ -443,6 +457,8 @@ export interface TakeoverAnswer {
   readonly ok: boolean;
   /** The sentence the page prints verbatim. Never paraphrased and never re-derived client-side. */
   readonly message: string;
+  /** The copies hold another list than the page showed: the page is drawn again (§25). */
+  readonly changed?: boolean;
 }
 
 export interface StandbyDoorDeps {
@@ -461,6 +477,8 @@ export interface StandbyDoorDeps {
   readonly takeover: (device: string) => Promise<TakeoverAnswer>;
   /** What the tap also starts, read off this machine's own disk per page (§25). Absent: nothing listed. */
   readonly carried?: () => Promise<CarriedSummary | null>;
+  /** The mark of the lists the copies hold now (`carriedSeen`). Absent: the tap is not checked. */
+  readonly seen?: () => string;
 }
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" } as const;
@@ -544,7 +562,9 @@ export function createStandbyDoor(deps: StandbyDoorDeps) {
       // is what lets an operator confirm the door exists before the bad day rather than during it.
       // Read only for the armed page, the one with the button: the cold page lists nothing.
       const carried = report.armed ? ((await deps.carried?.().catch(() => null)) ?? null) : null;
-      return new Response(standbyPage(facts, carried), {
+      const changed = url.searchParams.get("changed") === "1";
+      const view: StandbyView = deps.seen === undefined ? { changed } : { seen: deps.seen(), changed };
+      return new Response(standbyPage(facts, carried, view), {
         status: 200,
         headers: {
           "content-type": "text/html; charset=utf-8",
@@ -568,6 +588,11 @@ export function createStandbyDoor(deps: StandbyDoorDeps) {
       const device = resolveSyncedToken(deps.devices(), bearerToken(req.headers));
       if (device === null) {
         return json({ ok: false, message: "This device is not paired with your lead." } satisfies TakeoverAnswer, 401);
+      }
+      // §25: the tap takes what the page showed. A list that changed since is not taken over; the page
+      // is drawn again with what the copies hold now. Checked here, then the takeover holds the copies.
+      if (deps.seen !== undefined && (req.headers.get(CARRIED_SEEN_HEADER) ?? "") !== deps.seen()) {
+        return json({ ok: false, message: CARRIED_CHANGED, changed: true } satisfies TakeoverAnswer, 409);
       }
       const answer = await deps.takeover(device.label);
       return json(answer, answer.ok ? 200 : 409);

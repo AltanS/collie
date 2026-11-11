@@ -756,6 +756,11 @@ export class StandbyTricksStore {
     return out;
   }
 
+  /** Whether a takeover holds the copy now: then it takes nothing from the lead (§25). */
+  held(): boolean {
+    return this.holdDepth > 0;
+  }
+
   /** Hold the copy against a role change while the person's tap adopts it. Answers the release. */
   hold(): () => void {
     this.holdDepth += 1;

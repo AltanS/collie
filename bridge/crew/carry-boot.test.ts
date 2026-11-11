@@ -7,8 +7,10 @@ import type { JsonValue } from "../json.ts";
 import { decision } from "../hill/fixtures.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
 import { switchesPath } from "../tricks/paths.ts";
-import { ADOPT_MARKER_FILE, adoptAtBoot, holdCopies, readAdoptMarker, writeAdoptMarker, type BootAdoptDeps } from "./carry-boot.ts";
+import { ADOPT_MARKER_FILE, adoptAtBoot, carriedSeen, holdCopies, readAdoptMarker, writeAdoptMarker, type BootAdoptDeps } from "./carry-boot.ts";
 import { carryAll, machine, putOnTrick, removeCarryDirs } from "./carry-fixtures.ts";
+import { hillCarryRoutes, tricksCarryRoutes } from "./carry-surface.ts";
+import { CREW_HILL_COPY_PATH, CREW_TRICKS_COPY_PATH } from "./router.ts";
 import { parseHillList, StandbyHillStore } from "./standby-hill.ts";
 import { StandbyTricksStore } from "./standby-tricks.ts";
 
@@ -46,6 +48,33 @@ describe("the takeover commit holds both copies (§25)", () => {
     release();
     expect(await hill.reconcile(LEADS)).toBe(true);
     expect(await tricks.reconcile(LEADS)).toBe(true);
+  });
+});
+
+describe("what the page showed is what the tap takes (§25)", () => {
+  test("the mark changes with a new list of either copy, and not without one", async () => {
+    const { tricks, hill } = await deputyWithCopies();
+    const first = carriedSeen(tricks, hill);
+    expect(carriedSeen(tricks, hill)).toBe(first);
+    const list = parseHillList({ seq: 2, on: true, decisions: [], closed: ["dc_carried00001"], tricks: {} });
+    if (list === null) throw new Error("bad list");
+    await hill.applyList({ from: "desk", crewId: "crew-1", list });
+    expect(carriedSeen(tricks, hill)).not.toBe(first);
+    expect(carriedSeen(null, null)).toBe(carriedSeen(null, null));
+  });
+
+  test("while the tap holds the copies, neither takes a list from the lead", async () => {
+    const { tricks, hill } = await deputyWithCopies();
+    const before = carriedSeen(tricks, hill);
+    const release = holdCopies([tricks, hill]);
+    const ctx = { from: "desk", crewId: "crew-1" };
+    const hillAnswer = await hillCarryRoutes(hill).handle(CREW_HILL_COPY_PATH, ctx, { seq: 9, on: true, decisions: [], closed: [], tricks: {} });
+    const tricksAnswer = await tricksCarryRoutes(tricks).handle(CREW_TRICKS_COPY_PATH, ctx, { seq: 9, tricks: [] });
+    expect([hillAnswer?.status, tricksAnswer?.status]).toEqual([409, 409]);
+    expect(hillAnswer?.body).toMatchObject({ code: "held" });
+    expect(carriedSeen(tricks, hill)).toBe(before);
+    release();
+    expect((await hillCarryRoutes(hill).handle(CREW_HILL_COPY_PATH, ctx, { seq: 9, on: true, decisions: [], closed: [], tricks: {} }))?.status).toBe(200);
   });
 });
 

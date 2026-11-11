@@ -29,6 +29,8 @@ import {
   STANDBY_HEALTH_PATH,
   STANDBY_PATH,
   STANDBY_TAKEOVER_PATH,
+  CARRIED_CHANGED,
+  CARRIED_SEEN_HEADER,
   STANDBY_VERSION_HEADER,
   STANDBY_UPDATE_PATH,
   standbyUpdateAnswer,
@@ -359,6 +361,45 @@ describe("the door's three routes", () => {
     expect(res!.status).toBe(409);
     expect(await res!.json()).toMatchObject({ ok: false });
     expect(d.calls).toEqual([]);
+  });
+
+  test("§25: the tap names the list it read; a list that changed since the page was drawn is not taken over", async () => {
+    let now = "t:aaaa:0;h:1";
+    const calls: string[] = [];
+    const handler = createStandbyDoor({
+      version: "1.4.0+abc1234",
+      build: () => Promise.resolve("b"),
+      facts: () => facts(),
+      devices: () => [DEVICE],
+      takeover: async (device) => {
+        calls.push(device);
+        return { ok: true, message: "done" };
+      },
+      carried: async () => ({ tricks: ["Leg day"], questions: 2 }),
+      seen: () => now,
+    });
+    const page = await (await handler(req(STANDBY_PATH), new URL(`http://x${STANDBY_PATH}`)))!.text();
+    expect(page).toContain(`<button id="go" type="button" data-seen="t:aaaa:0;h:1">`);
+    // The lead sent a new list after the draw.
+    now = "t:bbbb:0;h:2";
+    const tap = (shown: string | null) => {
+      const headers = new Headers({ authorization: `Bearer ${TOKEN}` });
+      if (shown !== null) headers.set(CARRIED_SEEN_HEADER, shown);
+      return handler(req(STANDBY_TAKEOVER_PATH, { method: "POST", headers }), new URL(`http://x${STANDBY_TAKEOVER_PATH}`));
+    };
+    for (const shown of ["t:aaaa:0;h:1", null]) {
+      const res = (await tap(shown))!;
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ ok: false, message: CARRIED_CHANGED, changed: true });
+    }
+    expect(calls).toEqual([]);
+    // The page drawn again says so, above the list, and carries the new list's mark.
+    const again = await (await handler(req(`${STANDBY_PATH}?changed=1`), new URL(`http://x${STANDBY_PATH}?changed=1`)))!.text();
+    expect(again).toContain(`<p class="warn">The list changed. Read it again.</p>`);
+    expect(again.indexOf("The list changed")).toBeLessThan(again.indexOf("This also starts"));
+    expect(again).toContain(`data-seen="t:bbbb:0;h:2"`);
+    expect((await tap("t:bbbb:0;h:2"))!.status).toBe(200);
+    expect(calls).toEqual(["phone"]);
   });
 
   test("the auth matrix: pairing bearer ONLY, and a device header does NOT count (RFC §16, decision 2)", async () => {

@@ -404,6 +404,11 @@ export class StandbyHillStore {
     return (await this.load())?.decisions.length ?? 0;
   }
 
+  /** Whether a takeover holds the copy now: then it takes nothing from the lead (§25). */
+  held(): boolean {
+    return this.holdDepth > 0;
+  }
+
   hold(): () => void {
     this.holdDepth += 1;
     let released = false;

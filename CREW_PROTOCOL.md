@@ -4507,6 +4507,12 @@ it reconnects".
   in its own box; at most 8 are named, then "and N more". When the Hill copy holds open Decisions, read
   off this machine's disk too, one more line says "1 open question on the Hill comes along." or "N
   open questions on the Hill come along."
+- **What the page showed is what the tap takes.** The armed page carries a mark of the lists it read:
+  the tricks copy's digest and how much of it is missing, and the Hill copy's `seq`. The tap sends it
+  back (`x-collie-carried`). When the copies hold another list by then, the tap is refused (`409`,
+  `changed: true`), nothing is asked or written, and the page is drawn again with the line "The list
+  changed. Read it again." From the tap until its answer, both copies are held: a list or a part from
+  the lead is answered `409` (`held`), and the lead sends it again later.
 - **The tap.** The takeover commit (§18), and `collie promote` (§14) typed on the deputy, are the
   person's yes. Each holds both copies through its role change and writes one marker,
   `<stateDir>/standby-adopt.json` (0600): the lead it took over from, `by` (`takeover`, or `handover`

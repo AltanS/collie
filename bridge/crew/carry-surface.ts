@@ -18,11 +18,18 @@ function answer(status: number, body: JsonObject): CarryAnswer {
   return { status, body };
 }
 
+/** The answer while a takeover holds the copy: what the page showed is what the tap takes (§25). */
+const HELD = answer(409, { error: "this deputy is taking over; its copy takes nothing now", code: "held" });
+
+const TRICKS_PATHS: ReadonlySet<string> = new Set([CREW_TRICKS_COPY_PATH, CREW_TRICKS_COPY_CODE_PATH, CREW_TRICKS_COPY_STATE_PATH]);
+const HILL_PATHS: ReadonlySet<string> = new Set([CREW_HILL_COPY_PATH, CREW_HILL_COPY_MEDIA_PATH]);
+
 /** The tricks half of the surface. */
 export function tricksCarryRoutes(store: StandbyTricksStore): CarryRoutes {
   return {
     report: () => tricksReportFields(store.report()),
     handle: async (path, ctx, body) => {
+      if (store.held() && TRICKS_PATHS.has(path)) return HELD;
       if (path === CREW_TRICKS_COPY_PATH) {
         const list = parseTricksList(body);
         if (list === null) return answer(400, { error: "a tricks copy is { seq, tricks }, each trick checked" });
@@ -54,6 +61,7 @@ export function hillCarryRoutes(store: StandbyHillStore): CarryRoutes {
   return {
     report: () => hillReportFields(store.report()),
     handle: async (path, ctx, body) => {
+      if (store.held() && HILL_PATHS.has(path)) return HELD;
       if (path === CREW_HILL_COPY_PATH) {
         const list = parseHillList(body);
         if (list === null) return answer(400, { error: "a Hill copy is { seq, on, decisions, closed, tricks }" });

@@ -43,6 +43,22 @@ export interface HeldCopy {
   hold(): () => void;
 }
 
+/** What a copy reports of the list it holds, for {@link carriedSeen}. */
+export interface SeenCopy {
+  report(): { readonly digest: string; readonly seq: number; readonly need: number } | null;
+}
+
+/**
+ * The mark of the lists the standby page showed (§25): the tricks copy's digest and how much of it is
+ * still missing, and the Hill copy's seq. Drawn into the page and sent back by the tap; the tap is refused
+ * when the copies hold another list by then. Read from memory, so it never fails.
+ */
+export function carriedSeen(tricks: SeenCopy | null, hill: SeenCopy | null): string {
+  const t = tricks?.report() ?? null;
+  const h = hill?.report() ?? null;
+  return `t:${t === null ? "-" : `${t.digest.slice(0, 16)}:${String(t.need)}`};h:${String(h?.seq ?? 0)}`;
+}
+
 /** Hold every copy at once. The one release lets go of all of them, once. */
 export function holdCopies(copies: readonly (HeldCopy | null)[]): () => void {
   const releases = copies.flatMap((copy) => (copy === null ? [] : [copy.hold()]));
