@@ -33,7 +33,7 @@
 
 import { reservedLead } from "@/lib/surface/send";
 import { kidsOf } from "@/lib/tricks/layout";
-import type { View, ViewNode } from "@/lib/tricks/schema";
+import { isTrickUrl, type View, type ViewNode } from "@/lib/tricks/schema";
 import type { TranscriptEntry } from "@/lib/types";
 
 import { isViewHeadLine, readsAsAddress, tapAbout, VIEW_CHOICE_BLOCK, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
@@ -129,17 +129,29 @@ export function shownLinkText(text: string, href: string): string {
   return readsAsAddress(text) && text.trim() !== href ? href : text;
 }
 
-/** The view with every link's and linked run's words held to {@link shownLinkText}. The view given is not changed. */
+/**
+ * The view with every link's and linked run's words held to {@link shownLinkText}, and every `href` that
+ * is no web address (a session's, review 10 W11) blanked, so the renderer draws its words with nothing to
+ * open. The wire refuses both already; this holds on the phone for a screen that slipped past. The view
+ * given is not changed.
+ */
 export function withTrueLinks(view: View): View {
   const walk = (nodes: readonly ViewNode[]): ViewNode[] =>
     nodes.map((node) => {
       if (node.kind === "link") {
-        const text = shownLinkText(node.text, node.attrs.href);
-        return text === node.text ? node : { ...node, text };
+        const href = isTrickUrl(node.attrs.href) ? node.attrs.href : "";
+        const text = href === "" ? node.text : shownLinkText(node.text, href);
+        return text === node.text && href === node.attrs.href ? node : { ...node, text, attrs: { ...node.attrs, href } };
       }
       if (node.kind === "run" && node.attrs?.href !== undefined) {
-        const text = shownLinkText(node.text, node.attrs.href);
-        return text === node.text ? node : { ...node, text };
+        const href = isTrickUrl(node.attrs.href) ? node.attrs.href : "";
+        const text = href === "" ? node.text : shownLinkText(node.text, href);
+        return text === node.text && href === node.attrs.href ? node : { ...node, text, attrs: { ...node.attrs, href } };
+      }
+      if (node.kind === "row" && node.attrs?.href !== undefined && !isTrickUrl(node.attrs.href)) {
+        const kids = kidsOf(node);
+        const row = { ...node, attrs: { ...node.attrs, href: "" } };
+        return kids.length === 0 ? row : Object.assign(row, { kids: walk(kids) });
       }
       const kids = kidsOf(node);
       return kids.length === 0 ? node : Object.assign({}, node, { kids: walk(kids) });

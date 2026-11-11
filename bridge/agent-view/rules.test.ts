@@ -24,6 +24,7 @@ import {
   VIEW_NO_PICKED,
   VIEW_NO_PRESSED,
   VIEW_NO_PROFILE,
+  VIEW_WEB_LINKS_ONLY,
   VIEW_WRITES_PER_MINUTE,
   viewTapWords,
   type TrickViewSession,
@@ -723,6 +724,28 @@ describe("review 10 W8: a tap's sent line keeps what it answered, from the scree
     plan(await typed(r, "and the docs")).done({ rid: "rid-3", sent: true, reason: null });
     const sent = served(r).sent ?? [];
     expect(sent.map((item) => item.about)).toEqual(["Which header?", "Next step", undefined]);
+  });
+});
+
+describe("review 10 W11: an agent view links to web addresses only", () => {
+  test("W11: a link, a row and a run whose href names a session are refused at the write", async () => {
+    const session = "lodge:w6X:3";
+    const nodes: JsonValue[] = [
+      { kind: "para", kids: [{ kind: "link", text: "the other session", attrs: { href: session } }] },
+      { kind: "list", kids: [{ kind: "row", text: "Other session", attrs: { href: session } }] },
+    ];
+    for (const node of nodes) {
+      const parsed = parseAgentView([node]);
+      expect(parsed.view, JSON.stringify(node)).toBeUndefined();
+      expect(parsed.refusals.map((x) => x.reason)).toContain(VIEW_WEB_LINKS_ONLY);
+    }
+    // A run takes a web address only in every trick: the schema refuses a session there already.
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "run", text: "go there", attrs: { href: session } }] }]).view).toBeUndefined();
+    const r = rig();
+    await on(r);
+    expect(await r.service.show(T, ONE, { view: [nodes[0]!], title: null })).toMatchObject({ ok: false, code: "bad_view" });
+    // A web address still passes.
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the docs", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
   });
 });
 

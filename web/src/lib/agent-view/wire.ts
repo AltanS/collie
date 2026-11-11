@@ -54,7 +54,7 @@ import {
   type HillMedia,
 } from "../hill/wire";
 import { hasHiddenChar, isHiddenChar } from "../hidden-chars";
-import { DOCUMENT_VERSION, isTrickId, PART_MAX_BYTES, parseDecisionView, parseTrickDocument, VIEW_LIMITS, type Refusal, type View, type ViewNode } from "../tricks/schema";
+import { DOCUMENT_VERSION, isTrickId, isTrickUrl, PART_MAX_BYTES, parseDecisionView, parseTrickDocument, VIEW_LIMITS, type Refusal, type View, type ViewNode } from "../tricks/schema";
 
 /** A screen's title, in characters. */
 export const VIEW_TITLE_MAX = 80;
@@ -642,6 +642,9 @@ export function readsAsAddress(text: string): boolean {
   return ADDRESS_SCHEME.test(folded) || ADDRESS_WWW.test(folded) || ADDRESS_HOST.test(folded);
 }
 
+/** Why a link, a row or a run whose `href` names a session is refused in an agent view (review 10 W11). */
+export const VIEW_WEB_LINKS_ONLY = "A link in an agent view goes to a web address (https) only: it cannot open another session.";
+
 /** Whether a tap word (a label, a group's label) is one line of shown characters. */
 function shownLine(text: string): boolean {
   // eslint-disable-next-line no-control-regex
@@ -667,6 +670,8 @@ function agentViewRefusals(view: View, path: string): Refusal[] {
       if (node.kind === "group" && node.attrs?.label !== undefined && (!shownLine(node.attrs.label) || node.attrs.label.trim().length > VIEW_TAP_GROUP_MAX)) {
         out.push({ code: "text", path: `${here}/attrs/label`, reason: `A group's label in an agent view is one line of shown characters, at most ${String(VIEW_TAP_GROUP_MAX)}: a tap inside it sends it.` });
       }
+      const href = node.kind === "link" ? node.attrs.href : node.kind === "row" || node.kind === "run" ? node.attrs?.href : undefined;
+      if (href !== undefined && !isTrickUrl(href)) out.push({ code: "text", path: `${here}/attrs/href`, reason: VIEW_WEB_LINKS_ONLY });
       if (node.kind === "link" && readsAsAddress(node.text) && node.text.trim() !== node.attrs.href) out.push({ code: "text", path: `${here}/text`, reason: VIEW_LINK_TEXT });
       if (node.kind === "run" && node.attrs?.href !== undefined && readsAsAddress(node.text) && node.text.trim() !== node.attrs.href) out.push({ code: "text", path: `${here}/text`, reason: VIEW_LINK_TEXT });
       if ("kids" in node && Array.isArray(node.kids)) walk(node.kids, `${here}/kids`);

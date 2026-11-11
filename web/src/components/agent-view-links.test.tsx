@@ -146,3 +146,22 @@ describe("review 10 W10: a bare web address in an agent view's text shows where 
     expect(link.nextElementSibling?.textContent).toBe("evil.example");
   });
 });
+
+describe("review 10 W11: a session link in an agent view goes nowhere", () => {
+  it("W11: a screen that names a session in a link is not read at all", () => {
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the other one", attrs: { href: "lodge:w6X:3" } }] }]).view).toBeUndefined();
+  });
+
+  it("W11: a session link that slipped past the parse does not open the session", () => {
+    const view: View = [{ kind: "para", kids: [{ kind: "link", text: "the other one", attrs: { href: "lodge:w6X:3" } }] }];
+    const onLink = vi.fn();
+    render(
+      <FileLinksProvider value={null}>
+        <AgentViewScreen name="Morph" session="local/w1:p1#ab12" view={{ rev: 1, at: AT, view }} working={false} entries={[]} canAct onTap={onTap} onLink={onLink} now={NOW} />
+      </FileLinksProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "the other one" })).toBeNull();
+    fireEvent.click(screen.getByText("the other one"));
+    expect(onLink).not.toHaveBeenCalled();
+  });
+});
