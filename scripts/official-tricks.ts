@@ -20,6 +20,14 @@
 // stale hash, a renamed trick), printing each difference. `--file` names another list (the tests' temp
 // copy); the default is bridge/tricks/official.json.
 //
+// THE COMMIT MUST BE ON MAIN: the script refuses a commit that is not an ancestor of `origin/main` in the
+// given checkout (`git merge-base --is-ancestor`, local, no fetch), so a list never names a pull request's
+// or a side branch's commit. Fetch the checkout first (`git -C <checkout> fetch origin`); the script never
+// does. CI does not run `--check`: no workflow has the tricks repository checked out, and the check is not
+// worth a network step there. Before a release that touches the list, run by hand:
+//
+//   git -C <checkout> fetch origin && bun scripts/official-tricks.ts --repo-dir <checkout> --commit <sha> --check
+//
 // The fetch holds the bridge's own byte cap (`OFFICIAL_FETCH_BYTES_MAX`), so a list never names a commit the
 // bridge would refuse as too large. The checkout is read through git only (`file://`), never its working tree: an edit not committed never
 // reaches a hash. Nothing here reaches the network.
@@ -27,6 +35,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { gitRunEnv, spawnGit } from "../bridge/tricks/fetch.ts";
 import { candidateHash, fetchOfficial, OFFICIAL_FETCH_BYTES_MAX } from "../bridge/tricks/official-install.ts";
 import { OFFICIAL_PREVIOUS_MAX, parseOfficialList, renderOfficialList, type OfficialEntry, type OfficialVersion } from "../bridge/tricks/official.ts";
 import { parseJson } from "../web/src/lib/json.ts";
@@ -76,6 +85,14 @@ function differences(was: OfficialEntry, now: OfficialEntry): string[] {
   return lines;
 }
 
+/** Why `commit` may not be listed: not an ancestor of `origin/main` in the checkout, or the check could not run. Null when it is. */
+export async function mainProblem(repoDir: string, commit: string, env: Record<string, string | undefined> = process.env): Promise<string | null> {
+  const run = await spawnGit(["-C", resolve(repoDir), "merge-base", "--is-ancestor", "--end-of-options", commit, "refs/remotes/origin/main"], { cwd: resolve(repoDir), env: gitRunEnv(env, true), timeoutMs: 30_000 });
+  if (run.code === 0) return null;
+  if (run.code === 1) return `${commit.slice(0, 12)} is not on origin/main of ${repoDir}: list only a commit of main (git -C ${repoDir} fetch origin first)`;
+  return `cannot check ${commit.slice(0, 12)} against origin/main of ${repoDir}: ${run.stderr.trim().slice(0, 200)}`;
+}
+
 /** Read the list, refresh every entry from the checkout, then write it or check it. */
 export async function runOfficial(opts: OfficialRunOptions): Promise<OfficialRun> {
   if (!/^[0-9a-f]{40}$/u.test(opts.commit)) return { code: 2, lines: ["error: --commit takes a full commit id, 40 hex digits"] };
@@ -83,6 +100,8 @@ export async function runOfficial(opts: OfficialRunOptions): Promise<OfficialRun
   if (text === null) return { code: 2, lines: [`error: cannot read ${opts.file}`] };
   const list = parseOfficialList(parseJson(text));
   if (!list.ok) return { code: 1, lines: [`error: the list is refused: ${list.reason}`] };
+  const offMain = await mainProblem(opts.repoDir, opts.commit, opts.env);
+  if (offMain !== null) return { code: 1, lines: [`error: ${offMain}`] };
   const next: OfficialEntry[] = [];
   const lines: string[] = [];
   for (const entry of list.entries) {

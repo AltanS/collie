@@ -36,7 +36,10 @@ const PROGRAM = (v: string): string => `#!/bin/sh\n# ${v}\nprintf '{"v":1,"parts
 
 interface Repo {
   dir: string;
+  /** Commit the files; `origin/main` follows, as after a push and a fetch. */
   commit(files: Record<string, string>): Promise<string>;
+  /** Point `origin/main` at `sha`. */
+  pinMain(sha: string): void;
 }
 
 async function repo(): Promise<Repo> {
@@ -55,7 +58,12 @@ async function repo(): Promise<Repo> {
       }
       git(dir, ["add", "-A"], home);
       git(dir, ["commit", "-q", "-m", "c"], home);
-      return git(dir, ["rev-parse", "HEAD"], home);
+      const sha = git(dir, ["rev-parse", "HEAD"], home);
+      git(dir, ["update-ref", "refs/remotes/origin/main", sha], home);
+      return sha;
+    },
+    pinMain(sha) {
+      git(dir, ["update-ref", "refs/remotes/origin/main", sha], home);
     },
   };
 }
@@ -143,6 +151,22 @@ describe.if(posix)("scripts/official-tricks.ts", () => {
     const many = Array.from({ length: 12 }, (_, i) => ({ commit: String(i + 1).padStart(40, "a"), hash: "c".repeat(64) }));
     expect(rolled({ commit: first, hash: h1, previous: many.slice(0, 8) }, second)).toHaveLength(8);
     expect(rolled({ commit: first, hash: h1, previous: many.slice(0, 8) }, second)[0]).toEqual({ commit: first, hash: h1 });
+  });
+
+  test("a commit that is not on origin/main is refused before any fetch, and the list stays as it was", async () => {
+    const r = await repo();
+    const first = await r.commit({ "legs/trick.toml": MANIFEST("Legs"), "legs/program.sh": PROGRAM("one") });
+    const side = await r.commit({ "legs/program.sh": PROGRAM("a pull request") });
+    r.pinMain(first);
+    const file = await listFile([START]);
+    const before = await readFile(file, "utf8");
+    for (const check of [false, true]) {
+      const run = await runOfficial({ repoDir: r.dir, commit: side, check, file });
+      expect(run.code).toBe(1);
+      expect(run.lines[0]).toBe(`error: ${side.slice(0, 12)} is not on origin/main of ${r.dir}: list only a commit of main (git -C ${r.dir} fetch origin first)`);
+    }
+    expect(await readFile(file, "utf8")).toBe(before);
+    expect((await runOfficial({ repoDir: r.dir, commit: first, check: false, file })).code).toBe(0);
   });
 
   test("an uncommitted edit never reaches a hash: the script reads git, not the working tree", async () => {
