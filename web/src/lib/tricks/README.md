@@ -670,6 +670,33 @@ regular file of at most 2 MB, opened without following a link, and PNG, JPEG or 
 bytes, never its name. Every miss is the same 404, and the answer carries `no-store` and a sandboxed
 CSP. Until the bytes arrive, and when they fail, the box keeps its size and says its `alt`.
 
+## Known limits (security)
+
+These gaps are known and still open. The next security review starts from this list. Each one is
+written as what a trick, or a person who controls one, can do today.
+
+- **A relative import can reach outside the approved copy.** The approved copy holds only code a
+  person saw, but a program in it can still import `../../somewhere/else.ts`. That file is not in the
+  hash and is not on the version card.
+- **A bare import looks in parent folders.** An import such as `import "pkg"` with no `node_modules/`
+  in the copy is looked up in the folders above the copy, the way the runtime always does. A package
+  placed there runs with the trick and was never shown.
+- **A change to `config.toml` takes effect without a yes.** The file is outside the hash on purpose,
+  and the bridge copies a new one into the approved copy and restarts the trick. A program that reads
+  a command, a path or a URL from its config can be steered this way.
+- **The `replyTo` of a WalkyTalky message is not checked as the sender's own.** An agent can name
+  any message id as the one it answers. Collie does not check that this message was sent to it.
+- **The media upload has no read timeout of its own.** A slow sender can keep an upload open, as no
+  timer of the upload's own ends it.
+- **The files a trick's inputs fetch are data, but nothing stops approved code from running them.**
+  They land in `inputs/` of the approved copy, outside the hash, and change on every run. The code
+  that would import or execute one is on the version card; the file itself never is.
+- **An `inputs` glob reads any file it matches in a session's folder, except what the Files view
+  hides.** `.git`, `.env` files, symbolic links, Collie's state and the private folders are never
+  read. A secret in any other file the glob names, such as a key file or a credentials JSON, is read
+  and handed to the trick. Text files are masked only when the bridge's key mask is on, and a
+  picture is never masked. The person approves the globs, not the files they match.
+
 ## Places in the app
 
 `places.ts` takes the panes of `kind: "trick"` out of the snapshot's lists into
