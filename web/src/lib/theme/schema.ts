@@ -240,10 +240,10 @@ export interface ParseThemeOptions {
   allowReservedId?: boolean;
 }
 
-const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
-const NAME_MAX = 40;
-const AUTHOR_MAX = 60;
-const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs"] as const;
+export const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+export const NAME_MAX = 40;
+export const AUTHOR_MAX = 60;
+export const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs"] as const;
 const HALVES = ["light", "dark"] as const;
 
 export function isThemeToken(value: string): value is ThemeToken {
@@ -864,7 +864,7 @@ function readFace(fonts: JsonObject, key: "ui" | "display", refusals: Refusal[])
 export const ANSI_BRIGHT_LUMINANCE = 0.6;
 /** The slots that must sit above the line; every other slot must not. */
 export const ANSI_BRIGHT_SLOTS: readonly AnsiKey[] = ["3", "7", "11", "15"];
-const ANSI_SLOT_FLOOR = 3;
+export const ANSI_SLOT_FLOOR = 3;
 
 function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): Ansi | undefined {
   if (doc.ansi === undefined) return undefined;
@@ -1258,13 +1258,13 @@ export interface Finding {
   pass: boolean;
 }
 
-const TEXT_FLOOR = 4.5;
-const RULE_FLOOR = 1.3;
-const CHIP_ALPHA = 0.15;
+export const TEXT_FLOOR = 4.5;
+export const RULE_FLOOR = 1.3;
+export const CHIP_ALPHA = 0.15;
 /** WCAG 1.4.11, for a colour that only draws a shape: the destructive icon. */
-const NON_TEXT_FLOOR = 3;
+export const NON_TEXT_FLOOR = 3;
 /** The least oklab distance between `status-blocked` and `status-done`, so the two never look alike. */
-const BLOCKED_DONE_FLOOR = 0.15;
+export const BLOCKED_DONE_FLOOR = 0.15;
 
 const STATUS_TOKENS = [
   "status-blocked",

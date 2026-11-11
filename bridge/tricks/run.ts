@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { HOST } from "../host.ts";
 import { redactText } from "../redact.ts";
 import { isEmbedded } from "../root.ts";
+import { RUN_TIMEOUT_MS, STDERR_CAP_BYTES, STDOUT_CAP_BYTES } from "../../web/src/lib/tricks/limits.ts";
 
 // ONE RUN OF A TRICK'S PROGRAM (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
 //
@@ -17,12 +18,8 @@ import { isEmbedded } from "../root.ts";
 // Every byte that leaves this file has been through the secret mask (`redactText`), stdout before the
 // parser sees it and stderr before a log line or the doctor row does.
 
-/** How long one run may take. */
-export const RUN_TIMEOUT_MS = 10_000;
-/** The most stdout a run may print. The document cap of the schema, so the parser never sees more. */
-export const STDOUT_CAP_BYTES = 64 * 1024;
-/** The most stderr kept for the error line. */
-export const STDERR_CAP_BYTES = 8 * 1024;
+// The three caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
+export { RUN_TIMEOUT_MS, STDERR_CAP_BYTES, STDOUT_CAP_BYTES };
 
 export interface RunSpec {
   /**

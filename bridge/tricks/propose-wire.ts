@@ -7,6 +7,7 @@ import { isRequestId } from "../worktree-receipts.ts";
 import { CONFIG_FILE, PICTURE_DIRS, unsafeText } from "./code-hash.ts";
 import { MANIFEST_BYTES_MAX, readManifestText } from "./discover.ts";
 import { MANIFEST_FILE } from "./paths.ts";
+import { PROPOSE_LIMITS } from "../../web/src/lib/tricks/limits.ts";
 
 // A TRICK PROPOSAL ON THE WIRE (crew slice 8): the one reader of the files a proposal carries.
 //
@@ -32,17 +33,8 @@ import { MANIFEST_FILE } from "./paths.ts";
 //     `collie trick add`. `trick.toml` is required and at most 64 KiB; the manifest
 //     is read by the strict reader, and its `id` names the trick.
 
-/** Every cap of a proposal. The file and byte caps are `collie trick add`'s (`ADD_LIMITS`, held to it by a test). */
-export const PROPOSE_LIMITS = {
-  files: 300,
-  bytes: 5 * 1024 * 1024,
-  /** Folder levels inside the trick's folder. */
-  depth: 8,
-  /** Characters of one relative path. */
-  pathChars: 256,
-  /** Bytes of one step of a path, the common file system limit. */
-  stepBytes: 255,
-} as const;
+// The caps of a proposal live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
+export { PROPOSE_LIMITS };
 
 /**
  * Trick ids a proposal may not take, though they are valid ids: they read as Collie's own words on a card. They

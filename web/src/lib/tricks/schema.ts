@@ -2269,7 +2269,8 @@ interface ViewCaps {
   images?: number;
 }
 
-type AttrRule =
+/** How one node attribute's text is read. Exported so the tricks catalogue describes each attribute from this table, never from a copy. */
+export type AttrRule =
   | { readonly kind: "word"; readonly list: readonly string[] }
   | { readonly kind: "tone" }
   | { readonly kind: "icon" }
@@ -2299,7 +2300,7 @@ const CLOCK_RULE = { kind: "word", list: CLOCKS } as const;
 const STYLE_RULE = { kind: "style" } as const;
 
 /** Each attribute's rule, by kind. The compiler holds the names to `NODE_ATTRS`. */
-const NODE_ATTR_RULES = {
+export const NODE_ATTR_RULES = {
   card: { tone: TONE_RULE },
   group: { label: { kind: "text", rule: { max: TITLE_MAX } }, fold: { kind: "word", list: FOLDS }, badge: BADGE_RULE },
   list: {},
@@ -2368,7 +2369,7 @@ const NODE_ATTR_RULES = {
 } as const satisfies { readonly [K in NodeKind]: { readonly [A in (typeof NODE_ATTRS)[K][number]]: AttrRule } };
 
 /** The kids count each container takes. */
-const KIDS_COUNT = {
+export const KIDS_COUNT = {
   card: VIEW_LIMITS.kids,
   group: VIEW_LIMITS.kids,
   list: VIEW_LIMITS.listKids,
@@ -3953,7 +3954,7 @@ export const AGENT_VIEW_NEEDS_RULES = `"agent-view" needs "rules": the file of i
 export const RULES_NEED_AGENT_VIEW = `"rules" goes with the place "agent-view": they are the instructions of the agent that draws the view. Add "agent-view" to places, or remove "rules".`;
 
 /** The highest `contract` a manifest may write before it is refused as a typo rather than a newer Collie. */
-const CONTRACT_MAX = 999;
+export const CONTRACT_MAX = 999;
 
 /**
  * The refusal of a manifest that asks for a contract this Collie does not speak. Exported so the CLI

@@ -72,6 +72,7 @@
 import { randomBytes } from "node:crypto";
 
 import type { AuditEntry } from "../audit.ts";
+import { HILL_DEFAULT_EXPIRY_DAYS, HILL_DEFAULT_EXPIRY_MS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS } from "../../web/src/lib/tricks/limits.ts";
 import type { JsonObject } from "../json.ts";
 import {
   HILL_ANSWER_TEXT_MAX,
@@ -453,17 +454,8 @@ export const HILL_OPEN_MEMBER_MAX = 40;
 export function notAnswering(machine: string): string {
   return `${machine} is not answering. Your answer was not sent.`;
 }
-/** The days a decision posted with no expiry stays open; `collie hill post --help` says so. */
-export const HILL_DEFAULT_EXPIRY_DAYS = 14;
-/** {@link HILL_DEFAULT_EXPIRY_DAYS} in milliseconds: a post with no `expiresAt` gets `at` plus this. */
-export const HILL_DEFAULT_EXPIRY_MS = HILL_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-/**
- * The most days any decision stays open, a crew member's too: a later `expiresAt` is held to `at` plus
- * this (never refused, so a trick's long expiry still posts). `collie hill post --expires` refuses more.
- */
-export const HILL_MAX_EXPIRY_DAYS = 30;
-/** {@link HILL_MAX_EXPIRY_DAYS} in milliseconds. */
-export const HILL_MAX_EXPIRY_MS = HILL_MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+// The expiry days live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
+export { HILL_DEFAULT_EXPIRY_DAYS, HILL_DEFAULT_EXPIRY_MS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS };
 
 /** Mint a decision id: `dc_` and 12 characters of [a-z0-9], from a uniform random source. */
 export function mintDecisionId(random: (n: number) => Uint8Array = (n) => randomBytes(n)): string {
