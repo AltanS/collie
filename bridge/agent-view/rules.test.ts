@@ -1001,6 +1001,23 @@ describe("fault C: an agent view write is read closed", () => {
     }
   });
 
+  test("M1: an attribute named like an inherited Object member refuses an agent view's show", async () => {
+    const r = rig();
+    const socket = socketOf(r);
+    try {
+      await on(r);
+      for (const name of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+        const view: JsonValue = JSON.parse(`[{"kind":"para","text":"x","attrs":{${JSON.stringify(name)}:${JSON.stringify(`${"x".repeat(5000)}\u202e`)}}}]`);
+        const shown = await socket.ask("%1", { op: "trick.view.show", trick: T, view });
+        expect(shown).toMatchObject({ ok: false, code: "bad_view" });
+        expect(JSON.stringify(shown)).toContain(`/view/0/attrs/${name}`);
+      }
+      expect(r.service.status(T, ONE).view).toBeUndefined();
+    } finally {
+      socket.done();
+    }
+  });
+
   test("fault C: an unknown key on the request or the decision block refuses the write too, and names the key", async () => {
     const r = rig();
     const socket = socketOf(r);

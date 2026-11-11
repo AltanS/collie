@@ -2566,7 +2566,10 @@ function readAttrs(kind: NodeKind, f: Fields): JsonObject | undefined {
   const out: JsonObject = {};
   let ignored = false;
   for (const name of Object.keys(a.obj)) {
-    const rule = rules[name];
+    // M1 (review 11): an OWN rule only. `rules[name]` alone finds `constructor`, `toString` and the other
+    // members of Object's prototype, which then passed with no cap and no filter; `__proto__` was dropped
+    // with no note. Each is an attribute this Collie does not know: a note, or a refusal where it is closed.
+    const rule = hasKey(rules, name) ? rules[name] : undefined;
     if (rule === undefined) {
       a.unknown(attrCode(name), name, attrReason(kind, name));
       ignored = true;

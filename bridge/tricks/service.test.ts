@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
-import { CLOSED_KEY_LINE, FACT_SESSIONS_MAX, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { CLOSED_KEY_LINE, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import type { AgentView } from "../types.ts";
 import { legacyPowersOf, powersOfDir } from "./approved.ts";
 import { factsWorldOf, NO_FACTS_CAPS, type FactsWorldInput } from "./facts.ts";
@@ -973,6 +973,53 @@ describe("fault A: a tap names what the bridge drew", () => {
     // A session that is not open here is still refused, with the line that is true for it.
     const gone = await route(r, { rid: "00000000-3b4a-4c5d-8e6f-708192a3b4c6", node: "belt", intent: "x", from: { session: `${HOST}:w6X:301` }, rev: await revOf(r, "belt") });
     expect(gone).toMatchObject({ code: "rejected", refused: "session", message: TAP_REFUSED_LINES.session });
+  });
+});
+
+// M1 (review 11): an attribute named like an inherited Object member found a "rule" on the prototype and
+// passed with no cap and no hidden-character filter. Each name, at every door a node's attrs pass.
+describe("M1: an attribute named like an inherited Object member is no known attribute", () => {
+  const NAMES = ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"] as const;
+  /** A value past every cap, with a direction mark in it. */
+  const LONG = `${"x".repeat(5000)}\u202e`;
+  /** The document as text, so `__proto__` is an own key as JSON.parse makes it. */
+  const docWith = (name: string): string =>
+    `{"v":1,"asOf":"2026-11-08T09:00:00Z","parts":[{"at":"belt","id":"belt","mark":{"label":"1"}},{"at":"session","id":"legs","view":[{"kind":"para","text":"x","attrs":{${JSON.stringify(name)}:${JSON.stringify(LONG)}}}]}]}`;
+  const TWO = 'id = "legs"\nname = "Browser leg"\ncontract = 2\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt", "session"]\n';
+
+  test("M1: at contract 1 each name is ignored with a note, and nothing of its value is drawn", async () => {
+    for (const name of NAMES) {
+      const r = await rig([exited(docWith(name))]);
+      await makeTrick(r.configDir, "legs", MANIFEST);
+      await switchOn(r.stateDir, "legs");
+      await tickAt(r, T0);
+      const part = (await r.service.reply(undefined)).parts.find((p) => p.part === "legs");
+      expect(part).toBeDefined();
+      expect(JSON.stringify(part?.value)).not.toContain("xxxx");
+      const parsed = parseTrickDocumentText(docWith(name), { declared: ["belt", "session"] });
+      expect(parsed.notes.map((note) => [note.code, note.path])).toContainEqual(["ignored", `/parts/1/view/0/attrs/${name}`]);
+    }
+  });
+
+  test("M1: at contract 2 each name refuses its part", async () => {
+    for (const name of NAMES) {
+      const r = await rig([exited(docWith(name))]);
+      await makeTrick(r.configDir, "legs", TWO);
+      await switchOn(r.stateDir, "legs");
+      await tickAt(r, T0);
+      const reply = await r.service.reply(undefined);
+      expect(reply.present).toEqual(["lodge/legs/belt"]);
+      expect(reply.tricks[0]?.refusals?.map((refusal) => [refusal.code, refusal.path])).toEqual([["unknown-key", `/parts/1/view/0/attrs/${name}`]]);
+    }
+  });
+
+  test("M1: in a Decision's view each name is refused", () => {
+    for (const name of NAMES) {
+      const view = JSON.parse(`[{"kind":"para","text":"x","attrs":{${JSON.stringify(name)}:${JSON.stringify(LONG)}}}]`);
+      const parsed = parseDecisionView(view);
+      expect(parsed.view).toBeUndefined();
+      expect(parsed.refusals.map((refusal) => refusal.path)).toContain(`/view/0/attrs/${name}`);
+    }
   });
 });
 
