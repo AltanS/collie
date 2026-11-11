@@ -9,7 +9,7 @@ import { HOST } from "../bridge/host.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
 import { WalkyLog } from "../bridge/walky/log.ts";
 import { WalkyOff } from "../bridge/walky/off.ts";
-import { UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
+import { unknownOp, UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
 import { SENDER_OFF, WALKY_OFF } from "../bridge/walky/types.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
@@ -132,6 +132,27 @@ async function olderBridge(): Promise<{ readonly path: string; readonly lines: s
     socket.once("data", (chunk: string) => {
       lines.push(chunk);
       socket.end(`${JSON.stringify({ ok: false, error: "bad request" })}\n`);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(path, resolve));
+  cleanups.push(() => {
+    server.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+  return { path, lines };
+}
+
+/** A bridge that answers every line with one refusal, as far as the CLI sees it. A real socket in a private dir. POSIX only. */
+async function refusingBridge(error: string): Promise<{ readonly path: string; readonly lines: string[] }> {
+  const stateDir = mkdtempSync(join(tmpdir(), "walky-refusing-"));
+  const path = walkySocketPath(stateDir);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const lines: string[] = [];
+  const server = createServer((socket) => {
+    socket.setEncoding("utf8");
+    socket.once("data", (chunk: string) => {
+      lines.push(chunk);
+      socket.end(`${JSON.stringify({ ok: false, error })}\n`);
     });
   });
   await new Promise<void>((resolve) => server.listen(path, resolve));
@@ -726,17 +747,24 @@ describe("reply, inbox, status, who", () => {
     expect(await askPaneKind(deps(b, inPane("%1"), { sockets: () => [] }))).toBe("unknown");
   });
 
-  socketTest("askPanePlace: the pane's session and id as the bridge placed them; an older bridge says unknown", async () => {
+  socketTest("askPanePlace: the pane's kind, session and id as the bridge placed them; no pane, no bridge or an older one say unknown", async () => {
     const b = await bridge();
     expect(await askPanePlace(deps(b, inPane("%1")))).toEqual({ kind: "agent", session: "main", paneId: "%1" });
     expect(await askPanePlace(deps(b))).toEqual({ kind: "unknown" });
     expect(await askPanePlace(deps(b, inPane("%9")))).toEqual({ kind: "unknown" });
+    expect(await askPanePlace(deps(b, inPane("%1"), { sockets: () => [] }))).toEqual({ kind: "unknown" });
+    // A bridge before the `pane` op: one before 2026-10-30 says the bare `bad request`, a later one
+    // (1.28.1 and earlier) names the op it does not know. Both are unknown, so `collie pair` runs.
     const older = await olderBridge();
     expect(await askPanePlace(deps(b, inPane("%1"), { sockets: () => [older.path] }))).toEqual({ kind: "unknown" });
+    const noOp = await refusingBridge(unknownOp("pane"));
+    expect(await askPanePlace(deps(b, inPane("%1"), { sockets: () => [noOp.path] }))).toEqual({ kind: "unknown" });
+    expect(noOp.lines.map((line) => parseJsonObject(line)?.op)).toEqual(["pane"]);
     // Outside a pane no bridge is asked at all; a pane marker without its scope variable is no marker.
     let asked = 0;
     const counting = { ask: async () => { asked += 1; return ""; } };
     expect(await askPanePlace(deps(b, {}, counting))).toEqual({ kind: "unknown" });
+    expect(await askPanePlace(deps(b, { TMUX_PANE: "%1" }, counting))).toEqual({ kind: "unknown" });
     expect(await askPanePlace(deps(b, { HERDR_PANE_ID: "%1" }, counting))).toEqual({ kind: "unknown" });
     expect(asked).toBe(0);
   });

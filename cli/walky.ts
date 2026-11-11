@@ -135,7 +135,12 @@ export interface PanePlace {
   readonly paneId?: string;
 }
 
-/** {@link askPaneKind}, and the pane's session and id when the bridge names them. */
+/**
+ * Ask the local bridges whether this pane runs an agent, and where they placed it. Outside a pane, with
+ * no bridge answering, or with a bridge that does not know the op (1.28.1 and older answer `unknown op`
+ * or the bare `bad request`), the answer is `unknown`: the caller decides what that means. `collie pair`
+ * treats it as a shell, a speed bump and not a wall.
+ */
 export async function askPanePlace(deps: WalkyDeps): Promise<PanePlace> {
   if (readEnvMarkers(deps.ctx.env).length === 0) return { kind: "unknown" };
   const answer = await request(deps, { op: "pane" }).catch(() => null);

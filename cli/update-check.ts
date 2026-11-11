@@ -36,7 +36,7 @@ import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, realLinkFs } from "./link.ts";
 import { agentFilePath, agentLabel, unitFilePath, unitName } from "./unit.ts";
 import { supervisionTier } from "./lifecycle.ts";
-import { queryTask } from "./task-scheduler.ts";
+import { queryTask, TASK_QUERY_PATIENT_MS } from "./task-scheduler.ts";
 import {
   type RemoteResult,
   type RemoteRunner,
@@ -688,13 +688,15 @@ export function serviceCheck(deps: UpdateCheckDeps): PreflightCheck {
     // be there. This branch was missing, and the systemd one below refused every update from the
     // phone with "no systemd user unit" (M43 spec 08 rehearsal, 2026-10-02).
     const name = agentLabel(deps.ctx.instance);
-    const task = queryTask(deps.exec, name, deps.host);
-    if (task === undefined) {
-      return amber("service", `Task Scheduler could not be asked about the task ${name} (no PowerShell), and the update will still try to restart it`);
+    const task = queryTask(deps.exec, name, deps.host, TASK_QUERY_PATIENT_MS);
+    // Amber, never red: a query that timed out is not a missing task, and a red here would block the
+    // phone's Update button on a machine whose task is fine (#762).
+    if (task.kind === "unknown") {
+      return amber("service", `Collie could not check the Task Scheduler task ${name} in time (${task.why}), and the update can go on`);
     }
-    return task === null
+    return task.kind === "absent"
       ? red("service", `no Task Scheduler task ${name}, so an update would have nothing to restart`, "collie start")
-      : green("service", `the Task Scheduler task ${name} is ${task.state}, and the update can restart it`);
+      : green("service", `the Task Scheduler task ${name} is ${task.task.state}, and the update can restart it`);
   }
   if (tier === "unsupervised") {
     return amber(
