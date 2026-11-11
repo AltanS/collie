@@ -320,7 +320,7 @@ const PAGE_STYLE =
   ".warn{color:#f5c451}.out{margin-top:1rem;min-height:1.5rem}" +
   "button{width:100%;padding:1rem;font-size:1.1rem;border:0;border-radius:.5rem;background:#c0392b;color:#fff}" +
   "button[disabled]{opacity:.5}" +
-  "details{margin:0 0 1rem}summary{min-height:44px;display:flex;align-items:center;color:#9ecbff}" +
+  "details{margin:0 0 1rem}summary{padding:.6rem 0;cursor:pointer;color:#9ecbff}" +
   "details p{margin:.25rem 0 0}";
 
 /**

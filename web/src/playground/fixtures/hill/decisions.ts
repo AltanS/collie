@@ -709,7 +709,7 @@ function collieFrom(trickId: string, hash: string): HillDecision["from"] {
 /** 46: a trick's new version that asks for no new rights: three files, two hunks, Collie recommends it. */
 export const versionPlain = decision({
   title: "Use the new version of Browser leg?",
-  summary: "3 files changed. It asks for no new rights.",
+  summary: "4 files changed. It asks for no new rights.",
   ago: 1,
   from: collieFrom("legs", "4c".repeat(32)),
   target: null,
@@ -740,6 +740,11 @@ export const versionPlain = decision({
         { kind: "cell", text: "removed" },
         { kind: "cell", text: "" },
         { kind: "cell", text: "−18" },
+        // Review 7: a file whose executable bit alone changed.
+        { kind: "cell", text: "bin/fetch.sh" },
+        { kind: "cell", text: "changed +x" },
+        { kind: "cell", text: "" },
+        { kind: "cell", text: "" },
       ],
     },
     {
@@ -903,7 +908,7 @@ export function proposalGroup(): HillDecision {
 /** 57: a proposed new version on two cards: the facts and new rights, then the diff by file. */
 export const versionGroup = decision({
   title: "Use the new version of legs?",
-  summary: "An agent session (crew-08#propose) on workshop proposes it. 2 files changed. It now also reaches the network. It shows on 2 cards.",
+  summary: "An agent session (crew-08#propose) on workshop proposes it. 3 files changed. It now also reaches the network. It shows on 2 cards.",
   ago: 2,
   from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "6e".repeat(32) } },
   target: null,
@@ -920,7 +925,7 @@ export const versionGroup = decision({
         view: [
           { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
           { kind: "para", text: "This trick reaches the network." },
-          { kind: "line", text: "2 files, on card 2.", attrs: { role: "note" } },
+          { kind: "line", text: "3 files, on card 2.", attrs: { role: "note" } },
           {
             kind: "table",
             kids: [
@@ -932,6 +937,11 @@ export const versionGroup = decision({
               { kind: "cell", text: "changed" },
               { kind: "cell", text: "+9 −1" },
               { kind: "cell", text: "2" },
+              // Review 7: the executable bit alone moved; no line to show, so no card.
+              { kind: "cell", text: "bin/fetch.sh" },
+              { kind: "cell", text: "changed +x" },
+              { kind: "cell", text: "" },
+              { kind: "cell", text: "" },
               { kind: "cell", text: "trick.ts" },
               { kind: "cell", text: "changed" },
               { kind: "cell", text: "" },
@@ -951,7 +961,8 @@ export const versionGroup = decision({
               "@@ -8,3 +8,11 @@ run(async (t) => {",
               "-  const open = readLocalLegs(t.dir);",
               '+  const res = await fetch("https://ci.example.com/api/legs", {',
-              '+    headers: { accept: "application/json" },',
+              // Review 7 R2: a line wider than a phone wraps, each row after the first marked ↪.
+              '+    headers: { accept: "application/json", "user-agent": "collie-trick-legs/2 (+https://ci.example.com/about/legs)" },',
               "+  });",
               "+  const open = await res.json();",
               "+  if (!Array.isArray(open)) {",
