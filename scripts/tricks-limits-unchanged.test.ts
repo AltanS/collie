@@ -59,7 +59,7 @@ const PINNED: ReadonlyArray<readonly [name: string, value: unknown, was: string]
 ];
 
 /** What limits.ts exports, by name. */
-const EXPORTED = new Map(Object.entries(limits));
+const EXPORTED = new Map<string, unknown>(Object.entries(limits));
 
 describe("tricks limits: no value moved with the constants", () => {
   test("the pinned names are exactly the names limits.ts exports", () => {
