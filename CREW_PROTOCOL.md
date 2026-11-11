@@ -4472,8 +4472,14 @@ it reconnects".
   name is never written over; the carried version then runs from its approved copy, and the folder is
   the usual new version card), makes the approved copy with the normal path, and writes the switch
   with `by: "takeover"`, `from: <the old lead>`, the time of the tap and the lead's `auto`. The state
-  folder is written only where this machine has none. A trick whose check fails does not start; the
-  next boot puts a Decision on the Hill that says so.
+  folder is written only where this machine has none. A trick whose check fails does not start.
+- **A trick that did not start is said on the Hill.** The process that commits is still a peer and
+  cannot post, so it leaves the failures in `<stateDir>/tricks/carried-notices.json` (0600), and the
+  next boot, as the lead, posts one Decision of Collie's own for each, with `ref.type` `carried`: "The
+  trick <name> did not start after the takeover", "It ran on <old lead>. Collie did not start it on
+  this machine: <reason>. Switch it on again in Settings → Tricks when you want it here.", and one
+  option, OK, which closes it. Its request id is fixed per tap and trick, so a second boot posts it
+  once. A Hill that is off or full keeps the file for a later boot.
 
 ### Audit
 

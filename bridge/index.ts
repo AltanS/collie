@@ -189,6 +189,7 @@ import { leadTricks } from "./crew/standby-tricks-lead.ts";
 import { carrySurface, tricksCarryRoutes } from "./crew/carry-surface.ts";
 import { TricksCopySync } from "./crew/carry-sync.ts";
 import { adoptCarriedTricks, tricksStartingAtTap, writeCarryNotices } from "./crew/carry-adopt.ts";
+import { answerCarried, postCarryNotices } from "./crew/carry-notices.ts";
 import {
   adoptLeadership,
   clearRePin,
@@ -2375,7 +2376,9 @@ const hill = new HillService({
   // A Decision of Collie's own (crew slice 3): its answer acts here, on exactly the version the card shows.
   // A trick proposal's card (crew slice 8) goes to the proposals, a new version's to its card.
   onCollieAnswer: (ref, intent) =>
-    (ref.type === "proposal" ? trickProposals?.answer(ref, intent) : versionCards?.answer(ref, intent)) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." }),
+    ref.type === "carried"
+      ? Promise.resolve(answerCarried(intent))
+      : ((ref.type === "proposal" ? trickProposals?.answer(ref, intent) : versionCards?.answer(ref, intent)) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." })),
   // A `now` Decision rings the phone once (hill/push.ts): push live, its switch on, not snoozed. A crew
   // member refuses posts anyway; the lead holds the subscriptions, as for every other push.
   push: new HillPush({
@@ -2419,6 +2422,8 @@ trickProposals =
       });
 // At start: the proposals whose card closed while the bridge was down, and copies nothing names, go.
 void trickProposals?.start();
+// §25: the carried tricks a takeover could not start are said on the Hill, once this machine leads.
+if (crew.mode !== "peer") void postCarryNotices({ stateDir: cfg.stateDir, hill, warn: (line) => console.warn(`[crew] ${line}`) });
 // `collie trick propose` (crew slice 8): from this machine's walky socket, and on a lead from a member.
 const proposeDoor = new ProposeDoor({
   mode: () => crew.mode,
