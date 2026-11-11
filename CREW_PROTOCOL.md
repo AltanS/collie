@@ -4118,7 +4118,10 @@ none. Before 1.29.0 a member refused every post with `not_on_lead`.
   the same reader and the same rules as a post on its own machine (the clean pass, the view parser,
   every cap). An image it does not hold is refused `bad_image`, and the member sends it again.
 - `hill/op` is `status`, `withdraw` or `list`, for the session `as` names. `id` is required for the
-  first two.
+  first two. Since the crew state (1.29.0) it also takes `state`, with no `id` and no `as`: the lead
+  answers `{ ok, crewState: { state, at, by, told } }`. Every member, and its agents through
+  `collie hill state --json`, so learns who set it (a phone's label, or `terminal`) and how many sessions
+  the last tell reached. A lead before it answers `400`, which the member reads as `lead_too_old`.
 - **Content refusals are `200` with `{ ok: false, code, error }`**, the codes of the socket
   (`docs/commands.md`): `bad_title`, `too_many_open`, `hill_off`, `bad_image` and the others. `400`
   is a body the lead cannot read. `401` is the uniform 401.
