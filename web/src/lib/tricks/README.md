@@ -273,10 +273,10 @@ manifest's `name` and its first comment line as the description.
 **What a repository may not do.** Nothing from it runs, and git never writes a working tree. The fetch
 goes into a fresh bare repository in a temp folder under the state folder, depth 1, no tags, no
 submodules, https only, no hook, no LFS smudge, no prompt, with a timeout; the header of
-`cli/trick-add.ts` has the git lines. The tree is read from git's own objects, so a symlink or a
+`bridge/tricks/fetch.ts` has the git lines (the CLI and the bridge run the same code). The tree is read from git's own objects, so a symlink or a
 submodule anywhere in the trick's folder refuses it on every platform, and Collie writes each regular
 file itself. Then the strict manifest reader must accept `trick.toml` at this contract, the caps must
-hold (300 files and 5 MB, `ADD_LIMITS`), and the id must be free. Dot files, dot folders and
+hold (300 files and 5 MB, `ADD_LIMITS` in `bridge/tricks/fetch.ts`), and the id must be free. Dot files, dot folders and
 `node_modules/` are not copied: they are outside the code hash, so they would be code nobody approved.
 Every refusal exits 1 with one reason, and the temp folder goes on every path.
 
