@@ -85,7 +85,7 @@ describe("the diff of two copies", () => {
 
   test("a patch's counts skip its headers; a view line is masked and holds no control character", () => {
     expect(readPatch("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n\\ No newline at end of file\n")).toEqual({ plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-a", "+b"] });
-    expect(viewLine("+\tx\u0007‮")).toBe("+  x??");
+    expect(viewLine("+\tx\u0007\u{202e}")).toBe("+  x??");
     // B2: every character a Decision's view refuses becomes a `?`, so one line never drops the view.
     expect(viewLine("+a\u200bb\u2060c\ufeffd\u061ce\u{e0041}f")).toBe("+a?b?c?d?e?f");
   });
