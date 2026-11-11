@@ -12,7 +12,9 @@ import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_POST_ASK_MS } from "../bridge/hill/crew.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
-import { HILL_DEFAULT_EXPIRY_DAYS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS } from "../bridge/hill/service.ts";
+import { HILL_DEFAULT_EXPIRY_DAYS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS, HILL_STATE_ON_LEAD } from "../bridge/hill/service.ts";
+import { deriveMode } from "../bridge/crew/mode.ts";
+import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { readHillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
 import { hillCrewStatePath, readHillCrewState, writeHillCrewState } from "../bridge/hill/crew-state.ts";
 import { readCrewStateView } from "../bridge/hill/crew.ts";
@@ -697,9 +699,22 @@ function localCrewState(deps: HillDeps): HillCrewStateView {
 }
 
 /**
+ * Why `collie hill state` says `unknown` on a crew member no running bridge answers for (C-N3, review 8):
+ * the state is the lead's, and this machine's own file is not it. An agent reads this before each post.
+ */
+export const HILL_STATE_UNKNOWN_ON_MEMBER = "no running Collie here could ask the crew's lead, and the crew state lives there; start Collie, or look on the phone";
+
+/** Whether this machine is a crew member by its trust store on disk (cli/serve.ts `crewModeOnDisk`). */
+function memberOnDisk(deps: HillDeps): boolean {
+  const raw = deps.files.read(trustStorePath(deps.ctx.stateDir));
+  return deriveMode(enrollmentOf(raw === null ? null : parseTrustStore(raw))).mode === "peer";
+}
+
+/**
  * `hill state [here|quiet|away] [--json]`: with no word, the crew state, read from the running bridge (on
  * a crew member, from its lead), else this machine's file: one word, then a line with since when. A lead
- * too old to say is a plain line and exit 4. With a word, the person sets it: refused inside an agent's
+ * too old to say is a plain line and exit 4; so is a crew member no running bridge answers for, which
+ * prints `unknown` (its own file is not the lead's). With a word, the person sets it: refused inside an agent's
  * pane (exit 4, as `collie trick on`), refused on a crew member (the state is the lead's), written by the
  * running bridge, which audits it, or into the file when no bridge answers.
  */
@@ -716,11 +731,18 @@ export async function cmdHillState(deps: HillDeps, args: readonly string[]): Pro
     }
   };
   const socket = deps.platform !== "win32";
-  if (word === undefined) {
-    if (!socket) {
+  // The file fallback for a read: on a member it is not the lead's state, so the answer is `unknown`.
+  const fallback = (): number => {
+    if (!memberOnDisk(deps)) {
       print(localCrewState(deps));
       return EXIT.OK;
     }
+    deps.io.out(json ? JSON.stringify({ crewState: null }) : "unknown");
+    if (!json) deps.io.err(`hill: ${HILL_STATE_UNKNOWN_ON_MEMBER}`);
+    return EXIT.REFUSED;
+  };
+  if (word === undefined) {
+    if (!socket) return fallback();
     const answer = await request(deps, { op: "hill.state" });
     if (answer.ok) {
       const view = readCrewStateView(answer.body.crewState);
@@ -728,11 +750,8 @@ export async function cmdHillState(deps: HillDeps, args: readonly string[]): Pro
       print(view);
       return EXIT.OK;
     }
-    // No running Collie here knows the crew state: this machine's own file is the answer.
-    if (answer.error === HILL_UNKNOWN) {
-      print(localCrewState(deps));
-      return EXIT.OK;
-    }
+    // No running Collie here knows the crew state: this machine's own file is the answer, on a lead.
+    if (answer.error === HILL_UNKNOWN) return fallback();
     return failed(deps, answer);
   }
   if (await inAgentPane(deps)) {
@@ -757,6 +776,8 @@ export async function cmdHillState(deps: HillDeps, args: readonly string[]): Pro
     if (answer.error !== HILL_UNKNOWN) return failed(deps, answer);
   }
   // No running Collie here knows the crew state: write this machine's file, as `collie hill on|off` does.
+  // Not on a member: the state is the lead's, and a file here would only mislead its next read.
+  if (memberOnDisk(deps)) return failed(deps, { ok: false, error: HILL_STATE_ON_LEAD, code: "not_on_lead", exit: EXIT.REFUSED });
   try {
     writeHillCrewState(deps.ctx.stateDir, { state: word, by: "terminal" }, (deps.now ?? Date.now)());
   } catch (err) {

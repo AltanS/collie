@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AuditEntry } from "../bridge/audit.ts";
 import type { BeaconMatcher } from "../bridge/beacon/decorate.ts";
+import { peerStore } from "../bridge/crew/fixtures.ts";
+import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { hillCrewStatePath, HillCrewStateFile, readHillCrewState, writeHillCrewState } from "../bridge/hill/crew-state.ts";
 import type { HillLeadForward } from "../bridge/hill/crew.ts";
 import { memoryHillReceipts } from "../bridge/hill/receipts.ts";
-import { HillService, type HillCrewMode } from "../bridge/hill/service.ts";
+import { HILL_STATE_ON_LEAD, HillService, type HillCrewMode } from "../bridge/hill/service.ts";
 import { HillStore } from "../bridge/hill/store.ts";
 import { walkyPlace } from "../bridge/hill/walky.ts";
 import type { WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
@@ -18,7 +20,7 @@ import { WalkyService } from "../bridge/walky/service.ts";
 import { answerRequest, HILL_PERSON_ONLY, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
 import { capture, context } from "./fakes.ts";
-import { cmdHillClear, cmdHillPost, cmdHillState, spokenClearedWords, CREW_STATE_MEANING, crewStateSince, personOnlyRefusal, type HillDeps } from "./hill.ts";
+import { cmdHillClear, cmdHillPost, cmdHillState, HILL_STATE_UNKNOWN_ON_MEMBER, spokenClearedWords, CREW_STATE_MEANING, crewStateSince, personOnlyRefusal, type HillDeps } from "./hill.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 
@@ -172,6 +174,22 @@ describe("collie hill state", () => {
     const set = deps({ ask: b.ask });
     expect(await cmdHillState(set, ["away"])).toBe(EXIT.REFUSED);
     expect(set.io.stderr[0]).toContain("the crew state lives on the crew's lead");
+  });
+
+  test("on a crew member with no running Collie, the state is unknown and exit 4: the member's own file is not the lead's (C-N3)", async () => {
+    const d = deps({ sockets: () => [] });
+    writeFileSync(trustStorePath(d.ctx.stateDir), serializeTrustStore(peerStore()));
+    writeHillCrewState(d.ctx.stateDir, { state: "here", by: "terminal" }, 1000);
+    expect(await cmdHillState(d, [])).toBe(EXIT.REFUSED);
+    expect(d.io.stdout).toEqual(["unknown"]);
+    expect(d.io.stderr).toEqual([`hill: ${HILL_STATE_UNKNOWN_ON_MEMBER}`]);
+    const set = deps({ sockets: () => [], ctx: d.ctx });
+    expect(await cmdHillState(set, ["away"])).toBe(EXIT.REFUSED);
+    expect(set.io.stderr).toEqual([`hill: ${HILL_STATE_ON_LEAD} (not_on_lead)`]);
+    expect(readHillCrewState(d.ctx.stateDir).view.state).toBe("here");
+    const win = deps({ platform: "win32", ctx: d.ctx });
+    expect(await cmdHillState(win, ["--json"])).toBe(EXIT.REFUSED);
+    expect(win.io.stdout).toEqual([JSON.stringify({ crewState: null })]);
   });
 
   test("with no running Collie it reads and writes this machine's file", async () => {
