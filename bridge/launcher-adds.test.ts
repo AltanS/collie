@@ -466,7 +466,12 @@ describe("revoke cleanup", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const revoke = src.indexOf('if (pathname === "/api/devices/revoke"');
     const revoked = src.indexOf("revoked = await pairing.revoke(label);", revoke);
-    expect(src.indexOf('await forgetDevice(label, "device-revoked");', revoked)).toBeGreaterThan(revoked);
+    // The device list's revoke and a pairing request's never-collected device share one helper, which
+    // forgets the device's rows (ADR 0139).
+    expect(src.indexOf("await deviceRevoked(label, whois(req).device);", revoked)).toBeGreaterThan(revoked);
+    const helper = src.indexOf("const deviceRevoked = async (label: string");
+    expect(src.indexOf('await forgetDevice(label, "device-revoked");', helper)).toBeGreaterThan(helper);
+    expect(src.indexOf('await forgetDevice(label, "device-revoked");', helper)).toBeLessThan(src.indexOf("const noticeRevokes = async", helper));
     expect(src).toContain('await forgetDevice(parsed.label, "expired-replaced");');
     // The browser path answers the crew forget with a 404, before any session route.
     const browser = src.indexOf("if (pathname === FORGET_DEVICE_PATH) {");

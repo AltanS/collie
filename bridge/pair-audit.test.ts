@@ -5,7 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { formatAuditLine } from "./audit.ts";
-import { addressClass, NOT_PLACED, pairAuditEntry, pairRoute } from "./pair-audit.ts";
+import {
+  addressClass,
+  NOT_PLACED,
+  pairApproveAuditEntry,
+  pairAuditEntry,
+  pairRequestAuditEntry,
+  pairRequestRefusedAuditEntry,
+  pairRoute,
+} from "./pair-audit.ts";
 import { coercePending, filePairingIo, newPending, PairingStore } from "./pairing.ts";
 
 // The audit line of one pairing (bridge/pair-audit.ts): the route as an address class, the pane the code
@@ -152,3 +160,43 @@ describe("the pane on the pending code", () => {
     expect(claimed.ok && claimed.mintedIn).toBeNull();
   });
 });
+
+// ── Pairing with a phone (ADR 0139) ──────────────────────────────────────────────────────────
+
+describe("the pairing request's audit lines", () => {
+  test("a request names its route and nothing else", () => {
+    expect(JSON.parse(formatAuditLine(pairRequestAuditEntry({ route: "loopback", forwarded: "tailnet" }), NOW))).toEqual({
+      ts: new Date(NOW).toISOString(),
+      action: "pair-request",
+      detail: { route: "loopback", forwardedFrom: "tailnet" },
+    });
+    expect(JSON.parse(formatAuditLine(pairRequestAuditEntry({ route: "lan" }), NOW)).detail).toEqual({ route: "lan" });
+  });
+
+  test("an approval names the approver, the new label and both routes", () => {
+    const entry = pairApproveAuditEntry({
+      approver: "pixel",
+      label: "Chrome on Linux",
+      asker: { route: "tailnet" },
+      approverRoute: { route: "loopback", forwarded: "tailnet" },
+    });
+    expect(JSON.parse(formatAuditLine(entry, NOW))).toEqual({
+      ts: new Date(NOW).toISOString(),
+      action: "pair-approve",
+      device: "pixel",
+      detail: { approver: "pixel", label: "Chrome on Linux", route: "tailnet", approverRoute: "loopback", approverForwardedFrom: "tailnet" },
+    });
+  });
+
+  test("a refusal names its reason, and the approver when one answered", () => {
+    for (const reason of ["wrong-code", "refused", "expired", "rate"] as const) {
+      expect(JSON.parse(formatAuditLine(pairRequestRefusedAuditEntry(reason), NOW))).toEqual({
+        ts: new Date(NOW).toISOString(),
+        action: "pair-request-refused",
+        detail: { reason },
+      });
+    }
+    expect(JSON.parse(formatAuditLine(pairRequestRefusedAuditEntry("wrong-code", "pixel"), NOW)).device).toBe("pixel");
+  });
+});
+

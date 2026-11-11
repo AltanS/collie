@@ -473,6 +473,20 @@ describe("AgentList — the empty herd", () => {
   it("says only 'Disconnected' when it cannot date the data", () => {
     render(<AgentList agents={[]} onOpen={vi.fn()} error />);
     expect(screen.getByText("Disconnected")).toBeInTheDocument();
+    // An outage is not a refusal: no pairing block.
+    expect(screen.queryByRole("button", { name: "Pair with your phone" })).toBeNull();
+  });
+
+  // ADR 0139: an unpaired browser, and one the bridge refused ("Access refused"), get the phone block.
+  it("offers pairing with a phone beside `collie pair` when the bridge asked to be paired", () => {
+    render(<AgentList agents={[]} onOpen={vi.fn()} error notPaired />);
+    expect(screen.getByText("collie pair")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pair with your phone" })).toBeInTheDocument();
+  });
+
+  it("offers it under Access refused too", () => {
+    render(<AgentList agents={[]} onOpen={vi.fn()} error refused />);
+    expect(screen.getByRole("button", { name: "Pair with your phone" })).toBeInTheDocument();
   });
 });
 

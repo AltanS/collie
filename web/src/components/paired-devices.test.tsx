@@ -511,3 +511,20 @@ describe("PairedDevices — the pair screen names its cause", () => {
     expect(screen.queryByText(line)).not.toBeInTheDocument();
   });
 });
+
+describe("PairedDevices — the phone block (ADR 0139)", () => {
+  test("an unpaired browser gets the phone block under the unchanged code form", () => {
+    render(<PairedDevices data={UNPAIRED} />);
+    const form = screen.getByRole("button", { name: /pair this device/i });
+    const phone = screen.getByRole("button", { name: "Pair with your phone" });
+    expect(screen.getByRole("heading", { name: "Pair this device with your phone" })).toBeInTheDocument();
+    // The form comes first, as it did.
+    expect(form.compareDocumentPosition(phone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test("a paired browser gets neither", () => {
+    setDeviceToken("tok-mine");
+    render(<PairedDevices data={PAIRED} />);
+    expect(screen.queryByRole("button", { name: "Pair with your phone" })).toBeNull();
+  });
+});

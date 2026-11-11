@@ -805,6 +805,12 @@ describe("solo zero-tax — routes", () => {
       // collie answer for every machine they keep watch over; a peer 404s (`crew.not_lead`), and none
       // is forwardable — `bridge/crew/router.test.ts` pins all three as 404 across a link.
       "/^\\/api\\/machines\\/([^/]+)\\/(history|alerts)$/",
+      // Pairing by a request a paired phone approves (ADR 0139): the approver's read and answer of one
+      // request, a paired device's write, and the asking browser's poll, open on its poll secret. SOLO
+      // routes that legitimately extend this list, named here rather than exempted; a crew member answers
+      // 404, because it serves no browser door, and no crew route is added.
+      "/^\\/api\\/pair\\/approve\\/([^/]+)$/",
+      "/^\\/api\\/pair\\/request\\/([^/]+)$/",
       // `changes` is the Changes view (ADR 0065): read-only git over the pane's folder, read-gated
       // like `history` beside it and forwarded to the member that owns the pane. `chat` is the live
       // half of `history` (journal/live.ts): the same log, asked "anything after this?" — a read, on
@@ -973,6 +979,8 @@ describe("solo zero-tax — routes", () => {
       // browser answering its own operator. A solo instance registers it and 404s
       // (`crew.not_lead`) — the same shape `/api/stt` has when no provider is configured.
       "/api/pair",
+      // And the request itself (ADR 0139): open like `/api/pair`, under the same Origin rule, capped.
+      "/api/pair/request",
       // "Look now" (ADR 0031) — a SOLO route that legitimately extends this list, named here rather
       // than exempted. It is session-scoped and read-gated, and it registers no crew route of its
       // own: a lead reaches a peer's through the peer's existing `/crew/v1/*` dispatch.

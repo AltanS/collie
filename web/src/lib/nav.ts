@@ -509,6 +509,8 @@ export function ancestorsOf(pathname: string): string[] {
   // from a trick's Session, where the bar stays too (amended 2026-11-10). A sideways move carries `from`,
   // so the Dashboard is its only parent either way.
   if (head === "hill" && seg.length === 1) return ["/"];
+  // The approver's page (ADR 0139) is opened from a QR, from outside the app: the Dashboard is its parent.
+  if (head === "pair" && seg.length === 2 && id === "approve") return ["/"];
   // A durable program's conversations are opened from a space's sheet (dashboard or space page) and
   // from a pane's menu; one conversation sits below the list.
   if (head === "conversations" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
@@ -745,6 +747,7 @@ export function parentChain(pathname: string, search: string): string[] {
   }
   if (head === "settings" && seg.length === 1) return [home];
   if (head === "hill" && seg.length === 1) return [home];
+  if (head === "pair" && seg.length === 2 && id === "approve") return [home];
   // The conversations list: behind it the pane it was opened for, else the dashboard. One conversation
   // sits under the dashboard, which is a durable machine's conversation list (M53 spec 12).
   if (head === "conversations" && seg.length === 1) {
