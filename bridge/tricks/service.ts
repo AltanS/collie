@@ -31,7 +31,7 @@ import {
 import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
-import { approveFolder, copyListing, fileCounts, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
@@ -718,6 +718,12 @@ export class TricksService implements TricksSurface {
         if (switches.version === 1 || switches.version === 2) {
           const done = await migrateSwitches({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, platform: this.deps.platform });
           if (done !== null) this.warn(`switches.json is version 3 now: ${done.kept.length} trick(s) run from an approved copy, ${done.waiting.length} wait for a yes`);
+          switches = await this.readSwitches();
+        }
+        // N7: powers an earlier migration stored from the current reader go back to null, once.
+        if ([...switches.on.values()].some(holdsMigratedPowers)) {
+          const reset = await forgetMigratedPowers(this.deps.stateDir);
+          if (reset.length > 0) this.warn(`switches.json: the rights a migration stored for ${reset.join(", ")} were not a person's yes; they read as the old build's rights now`);
           switches = await this.readSwitches();
         }
         const scan = await this.scanner.scan(new Set(switches.on.keys()));

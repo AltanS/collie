@@ -1747,6 +1747,23 @@ describe("fault B: a trick runs only while the rights it was approved with are t
     expect(audits.filter((a) => a === "trick.rights.moved")).toHaveLength(1);
   });
 
+  test("N7: powers an earlier migration stored from the current reader go back to null, so a place the old build never drew stops", async () => {
+    const r = await rig([exited(belt("1")), exited(belt("2"))]);
+    const legs = await makeTrick(r.configDir, "legs", VIEW, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    const tabs = await makeTrick(r.configDir, "tabs", 'id = "tabs"\nname = "Tabs"\nrun = "./t.sh"\nevery = "30s"\nplaces = ["belt", "tabbar"]\n', { "t.sh": "#!/bin/sh\necho 1\n" });
+    // As the migration of 0f4c1b4cb..75f1d3748 wrote it: `by: "migrated"`, powers of the reader at boot.
+    const entry = async (dir: string, id: string) => ({ at: "2026-11-10T08:00:00Z", hash: await codeHashOf(dir), auto: false, by: "migrated", powers: await powersOfDir(dir, id) });
+    await mkdir(join(r.stateDir, TRICKS_DIR), { recursive: true });
+    await writeFile(join(r.stateDir, TRICKS_DIR, "switches.json"), `${JSON.stringify({ v: 2, layout: 3, on: { legs: await entry(legs, "legs"), tabs: await entry(tabs, "tabs") } })}\n`);
+    await tickAt(r, T0);
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect([file.on.legs.powers, file.on.tabs.powers]).toEqual([null, null]);
+    const reply = await r.service.reply(undefined);
+    expect(reply.tricks.find((t) => t.id === "legs")).toMatchObject({ on: true, state: "ok" });
+    expect(reply.tricks.find((t) => t.id === "tabs")).toMatchObject({ on: false, rightsMoved: true });
+    expect(r.warnings.filter((line) => line.includes("were not a person's yes"))).toHaveLength(1);
+  });
+
   test("M2: a yes stored with no powers (its manifest did not parse then) holds no right when a later build parses it", async () => {
     const r = await rig([exited(belt("1"))]);
     const toml = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt"]\nenv = ["GH_TOKEN"]\n';

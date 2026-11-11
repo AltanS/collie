@@ -9,7 +9,7 @@ import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureNam
 import { readManifestFile, readSmallFile } from "./discover.ts";
 import { ORIGIN_FILE } from "./origin.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir } from "./paths.ts";
-import { MIGRATED, parseSwitches, updateSwitches, withApproval, type SwitchEntry, type Switches } from "./switches.ts";
+import { MIGRATED, parseSwitches, SWITCHES_VERSION, updateSwitches, withApproval, type SwitchEntry, type Switches } from "./switches.ts";
 
 // THE APPROVED COPY (M94, crew slice 2): a trick runs from a copy of the code a person said yes to, so an
 // edit of its folder never stops it. The folder is where the trick is written; the copy is what runs.
@@ -529,6 +529,37 @@ export async function migrateSwitches(opts: MigrateOptions): Promise<Migration |
     return { on: next, version: 3 };
   });
   return out;
+}
+
+/** Whether an entry, or the version it keeps for undo, is a migration's with powers stored (N7). */
+export function holdsMigratedPowers(entry: SwitchEntry): boolean {
+  return (entry.by === MIGRATED && entry.powers !== null) || (entry.previous?.by === MIGRATED && entry.previous.powers !== null);
+}
+
+/**
+ * N7 (review 11): the boot migration of 0f4c1b4cb to 75f1d3748 stored powers read by the CURRENT reader
+ * for a migrated entry, which no person said yes to. Set them back to null, once: the gate then reads
+ * them as the old build's rights, as for every migrated entry since. Idempotent; only migrated entries
+ * (never approved since) are touched, and only their powers. The ids changed, or none.
+ */
+export async function forgetMigratedPowers(stateDir: string): Promise<string[]> {
+  const changed: string[] = [];
+  await updateSwitches(stateDir, (now) => {
+    changed.length = 0;
+    const next = new Map<string, SwitchEntry>();
+    for (const [id, entry] of now.on) {
+      if (!holdsMigratedPowers(entry)) {
+        next.set(id, entry);
+        continue;
+      }
+      changed.push(id);
+      const reset: SwitchEntry = { ...entry, powers: entry.by === MIGRATED ? null : entry.powers };
+      if (entry.previous !== undefined) reset.previous = { ...entry.previous, powers: entry.previous.by === MIGRATED ? null : entry.previous.powers };
+      next.set(id, reset);
+    }
+    return changed.length === 0 ? now : { on: next, version: SWITCHES_VERSION };
+  });
+  return changed;
 }
 
 // ── pruning ──────────────────────────────────────────────────────────────────
