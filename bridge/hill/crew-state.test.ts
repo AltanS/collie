@@ -204,16 +204,15 @@ describe("Tell all sessions now", () => {
     r.sent.length = 0;
     const set = r.hill.setCrewState("away", "Pixel 9", "Pixel 9");
     if (!set.ok || set.crewState.at === null) throw new Error("not set");
-    expect(r.hill.tellAll(set.crewState.at, "Pixel 9", "Pixel 9")).toEqual({ ok: true, told: 2 });
-    await Promise.resolve();
+    expect(await r.hill.tellAll(set.crewState.at, "Pixel 9", "Pixel 9")).toEqual({ ok: true, told: 2 });
     expect(r.sent).toEqual([
       { to: sender(5).address, body: "[hill] from operator: Crew state: away.", by: "Pixel 9" },
       { to: sender(1).address, body: "[hill] from operator: Crew state: away.", by: "Pixel 9" },
     ]);
-    expect(r.audit).toContainEqual({ action: "hill.state.told", device: "Pixel 9", detail: { state: "away", count: 2 } });
+    expect(r.audit).toContainEqual({ action: "hill.state.told", device: "Pixel 9", detail: { state: "away", count: 2, asked: 2 } });
     expect(r.hill.crewState().told).toBe(2);
     // A second tap, or a second phone, for the same change: refused, nothing typed.
-    expect(r.hill.tellAll(set.crewState.at, "Pixel 9", "Pixel 9")).toEqual({ ok: false, error: HILL_TELL_DONE });
+    expect(await r.hill.tellAll(set.crewState.at, "Pixel 9", "Pixel 9")).toEqual({ ok: false, error: HILL_TELL_DONE });
     expect(r.sent).toHaveLength(2);
   });
 
@@ -225,19 +224,18 @@ describe("Tell all sessions now", () => {
     }
     const set = r.hill.setCrewState("quiet", "Pixel 9", "Pixel 9");
     if (!set.ok || set.crewState.at === null) throw new Error("not set");
-    expect(r.hill.tellAll(set.crewState.at, "Pixel 9", "Pixel 9")).toEqual({ ok: true, told: HILL_TELL_MAX });
-    await Promise.resolve();
+    expect(await r.hill.tellAll(set.crewState.at, "Pixel 9", "Pixel 9")).toEqual({ ok: true, told: HILL_TELL_MAX });
     expect(r.sent).toHaveLength(20);
     expect(r.sent[0]?.to).toBe(sender(25).address);
     expect(r.sent.every((sent) => sent.body === "[hill] from operator: Crew state: quiet.")).toBe(true);
   });
 
-  test("refuses for `here`, and for a change the phone did not see", () => {
+  test("refuses for `here`, and for a change the phone did not see", async () => {
     const r = rig();
     posted(r.hill.post(sender(1), input(1)));
-    expect(r.hill.tellAll(0, "Pixel 9")).toEqual({ ok: false, error: HILL_TELL_HERE });
+    expect(await r.hill.tellAll(0, "Pixel 9")).toEqual({ ok: false, error: HILL_TELL_HERE });
     r.hill.setCrewState("away", "Pixel 9", "Pixel 9");
-    expect(r.hill.tellAll(1, "Pixel 9")).toEqual({ ok: false, error: HILL_TELL_MOVED });
+    expect(await r.hill.tellAll(1, "Pixel 9")).toEqual({ ok: false, error: HILL_TELL_MOVED });
     expect(r.sent).toEqual([]);
   });
 });
@@ -260,9 +258,9 @@ describe("the crew state routes", () => {
     const r = rig();
     posted(r.hill.post(sender(1), input(1)));
     r.hill.setCrewState("away", "Pixel 9", "Pixel 9");
-    expect(hillTellRoute(r.hill, { at: "now" }, { device: "Pixel 9", acceptEncoding: null }).status).toBe(400);
-    expect(await hillTellRoute(r.hill, { at: r.clock }, { device: "Pixel 9", acceptEncoding: null }).json()).toEqual({ told: 1 });
-    const again = hillTellRoute(r.hill, { at: r.clock }, { device: "Pixel 9", acceptEncoding: null });
+    expect((await hillTellRoute(r.hill, { at: "now" }, { device: "Pixel 9", acceptEncoding: null })).status).toBe(400);
+    expect(await (await hillTellRoute(r.hill, { at: r.clock }, { device: "Pixel 9", acceptEncoding: null })).json()).toEqual({ told: 1 });
+    const again = await hillTellRoute(r.hill, { at: r.clock }, { device: "Pixel 9", acceptEncoding: null });
     expect(again.status).toBe(409);
     expect(await again.text()).toBe(HILL_TELL_DONE);
   });

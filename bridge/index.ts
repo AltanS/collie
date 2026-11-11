@@ -2402,6 +2402,8 @@ const hill = new HillService({
   media: hillMedia,
   place: hillPlace,
   send: walkySend(walky),
+  // "Tell all sessions now" in a rate bucket of its own (C-S1): a tell never spends the answers' bucket.
+  tell: walkySend(walky, { budget: "hill-tell" }),
   // A card names a session as the Dashboard's row does, from the same snapshot views (M96).
   sessionName: hillSessionName({
     place: hillPlace,

@@ -9,7 +9,7 @@ import { realAgentPanes } from "../tricks/panes.ts";
 import { isSelf, LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
 import type { WalkyService } from "../walky/service.ts";
 import { mintWalkyId, type WalkyReceipt } from "../walky/types.ts";
-import type { HillDelivery, HillPlace } from "./service.ts";
+import type { HillPlace, HillSendResult } from "./service.ts";
 
 /** How long the answer waits for walky's receipt to leave a bare `accepted`, as `collie walky send` does. */
 export const HILL_SEND_WAIT_MS = 15_000;
@@ -101,10 +101,14 @@ export function hillSessionName(opts: {
   };
 }
 
-/** What walky's receipt says of a typed answer: typed, held by its hold rule, or not confirmed. */
-export function deliveryOf(receipt: WalkyReceipt | undefined): HillDelivery {
+/**
+ * What walky's receipt says of a typed answer: typed, held by its hold rule, refused (walky typed nothing:
+ * a rate limit, a pane that is gone, WalkyTalky off for that session), or not confirmed.
+ */
+export function deliveryOf(receipt: WalkyReceipt | undefined): HillSendResult {
   if (receipt === undefined) return "unknown";
   if (receipt.state === "delivered") return "typed";
+  if (receipt.state === "refused") return "refused";
   if (receipt.state === "accepted" && receipt.reason !== undefined) return "held";
   return "unknown";
 }
@@ -119,21 +123,24 @@ export interface WalkySendOptions {
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly waitMs?: number;
+  /** The rate bucket the sends are counted in (walky/deliver.ts `DeliverOptions.budget`): `hill-tell` for a tell. */
+  readonly budget?: "hill-tell";
 }
 
 /**
  * The send: one operator walky message to one address, under the device's label. It waits up to
- * {@link HILL_SEND_WAIT_MS} for walky's receipt to leave a bare `accepted`, then reports. A refusal, an
- * inbox-only or a receipt still bare at the bound is `unknown`, and nothing is sent again.
+ * {@link HILL_SEND_WAIT_MS} for walky's receipt to leave a bare `accepted`, then reports. A refusal (walky
+ * typed nothing) is `refused`; an inbox-only or a receipt still bare at the bound is `unknown`. Nothing is
+ * sent again.
  */
-export function walkySend(walky: Pick<WalkyService, "send" | "status">, options: WalkySendOptions = {}): (to: string, body: string, by: string) => Promise<HillDelivery> {
+export function walkySend(walky: Pick<WalkyService, "send" | "status">, options: WalkySendOptions = {}): (to: string, body: string, by: string) => Promise<HillSendResult> {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const waitMs = options.waitMs ?? HILL_SEND_WAIT_MS;
   return async (to, body, by) => {
     const id = (options.mintId ?? mintWalkyId)();
-    const answer = await walky.send({ id, to, body, replyTo: null }, { kind: "operator", label: by });
-    if (!answer.ok) return "unknown";
+    const answer = await walky.send({ id, to, body, replyTo: null }, { kind: "operator", label: by }, options.budget === undefined ? {} : { budget: options.budget });
+    if (!answer.ok) return "refused";
     let receipt = answer.receipts[0];
     const until = now() + waitMs;
     while (!settled(receipt) && now() < until) {

@@ -9273,19 +9273,20 @@ export function hillStateRoute(
 
 /**
  * `POST /api/hill/state/tell` (1.29.0): "Tell all sessions now". The body is `{ "at": <ms> }`, the
- * change of the crew state the phone showed. 200 `{ told }`, how many sessions get the line; 409 with the
+ * change of the crew state the phone showed. 200 `{ told }`, how many sessions walky typed the line into,
+ * once the sends settled (up to HILL_SEND_WAIT_MS); 409 with the
  * words when the state moved, was told already, is `here`, or the Hill or WalkyTalky is off.
  */
-export function hillTellRoute(
+export async function hillTellRoute(
   hill: Pick<HillService, "tellAll"> | undefined,
   body: JsonValue | undefined,
   context: { readonly device: string | null; readonly acceptEncoding: string | null },
-): Response {
+): Promise<Response> {
   if (hill === undefined) return text(HILL_OFF_TEXT, 404);
   const doc = asJsonObject(body);
   const at = asJsonNumber(doc?.at);
   if (doc === undefined || at === undefined || !Number.isSafeInteger(at) || Object.keys(doc).length !== 1) return text('bad request: the body is { "at": <the time the crew state was set> }', 400);
-  const told = hill.tellAll(at, context.device ?? "phone", context.device);
+  const told = await hill.tellAll(at, context.device ?? "phone", context.device);
   if (!told.ok) return text(told.error, 409);
   return json({ told: told.told }, context.acceptEncoding);
 }

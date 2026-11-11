@@ -81,10 +81,10 @@ describe("the send: one operator walky message", () => {
     expect(typed).toEqual(['[walky-talky wt_aaaaaaaaaaa1] from operator (Pixel 9)\nAnswer to dc_k3m9x2p7q1ab "Ship?"\nOption: yes (Yes)']);
   });
 
-  test("a session that ended (the token moved) is refused by walky and reports unknown", async () => {
+  test("a session that ended (the token moved) is refused by walky and reports refused: nothing was typed", async () => {
     const typed: string[] = [];
     const send = walkySend(walky(() => ({ outcome: "sent" }), typed), { sleep: async () => undefined });
-    expect(await send("local/%1#zzzz", "Answer", "Pixel 9")).toBe("unknown");
+    expect(await send("local/%1#zzzz", "Answer", "Pixel 9")).toBe("refused");
     expect(typed).toEqual([]);
   });
 
@@ -111,7 +111,8 @@ describe("the send: one operator walky message", () => {
     expect(deliveryOf({ ...base, reason: "turn running" })).toBe("held");
     expect(deliveryOf(base)).toBe("unknown");
     expect(deliveryOf({ ...base, state: "inbox-only", reason: "dialog" })).toBe("unknown");
-    expect(deliveryOf({ ...base, state: "refused", reason: "off" })).toBe("unknown");
+    // C-S1: walky typed nothing, so the Hill opens the Decision again instead of closing it answered.
+    expect(deliveryOf({ ...base, state: "refused", reason: "off" })).toBe("refused");
     expect(deliveryOf(undefined)).toBe("unknown");
   });
 });

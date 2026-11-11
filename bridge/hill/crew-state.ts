@@ -155,4 +155,20 @@ export class HillCrewStateFile {
     }
     return this.read().told === count;
   }
+
+  /**
+   * Write the final count of a tell over its first mark, for the value set at `at` only (C-S1: `told`
+   * counts the sessions walky typed into, known once the sends settled). False when the state moved.
+   */
+  setTold(at: number, count: number): boolean {
+    const held = this.read();
+    if (held.at !== at || held.by === null || held.told === null) return false;
+    try {
+      writeHillCrewState(this.stateDir, { state: held.state, by: held.by, at, told: count }, this.now());
+    } catch (err) {
+      this.warn(`could not write ${hillCrewStatePath(this.stateDir)}: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+    return this.read().told === count;
+  }
 }

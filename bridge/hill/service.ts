@@ -210,6 +210,8 @@ export interface HillPlace {
 
 /** What the walky send reported: typed, held by walky's hold rule, or not confirmed. */
 export type HillDelivery = "typed" | "held" | "unknown";
+/** What one send came to: a delivery, or `refused` when walky typed nothing (a rate limit, a pane gone). */
+export type HillSendResult = HillDelivery | "refused";
 
 /** The crew role of this bridge, as `crew.mode` names it in bridge/index.ts. */
 export type HillCrewMode = "solo" | "lead" | "peer";
@@ -220,7 +222,12 @@ export interface HillServiceDeps {
   /** The one live session a walky pane address names now, or null (gone, a shell, not an address). */
   place(address: string): HillPlace | null;
   /** Type `body` into the session at `to` as an operator walky message under the label `by`. */
-  send(to: string, body: string, by: string): Promise<HillDelivery>;
+  send(to: string, body: string, by: string): Promise<HillSendResult>;
+  /**
+   * The send "Tell all sessions now" uses (1.29.0): the same operator message, counted in a rate bucket of
+   * its own (`hill-tell`), so a tell never spends the bucket the typed answers use. Absent: `send`.
+   */
+  readonly tell?: (to: string, body: string, by: string) => Promise<HillSendResult>;
   crewMode(): HillCrewMode;
   /**
    * True while this bridge is a deposed lead (CREW_PROTOCOL §18.12): another machine took the crown, so
@@ -272,7 +279,7 @@ export interface HillServiceDeps {
    * The crew state (crew-state.ts `HillCrewStateFile`), read on each use. Absent: always `here`, and it
    * cannot be set.
    */
-  readonly crewState?: Partial<Pick<HillCrewStateFile, "set" | "markTold">> & Pick<HillCrewStateFile, "read">;
+  readonly crewState?: Partial<Pick<HillCrewStateFile, "set" | "markTold" | "setTold">> & Pick<HillCrewStateFile, "read">;
   /**
    * On a crew member (CREW_PROTOCOL §22, 1.29.0): the forward to its lead, which holds the one Hill. With
    * it, an agent's post, status, withdraw and list from this machine go to the lead. Absent: a member
@@ -342,6 +349,12 @@ export const HILL_TELL_MOVED = "the crew state changed since this phone showed i
 export const HILL_TELL_DONE = "the sessions were told of this crew state already";
 /** The refusal of a crew state set on a machine that is not the crew's lead. */
 export const HILL_STATE_ON_LEAD = "the crew state lives on the crew's lead; set it there, on the phone or with collie hill state";
+/**
+ * The reason an answer walky refused to type is rejected with (C-S1): nothing was typed, and the card is
+ * open again. The phone shows it as "Not accepted: <reason>".
+ */
+export const HILL_NOT_TYPED = "it could not be typed into the session now, so the Decision stays open; answer again in a few minutes";
+
 /** The reason a card the person answered in its session closes with, at the second Clear (1.29.0). */
 export const HILL_ANSWERED_IN_SESSION = "answered in the session";
 /** What the second Clear answers when the Hill could not be saved: nothing changed. */
@@ -789,7 +802,7 @@ export class HillService {
    * goes, so a second tap (or a second phone) is refused. The sends run in the background; the answer is
    * how many sessions were asked. One `hill.state.told` audit line with the count.
    */
-  tellAll(at: number, by: string, device: string | null = null): HillTellAnswer {
+  async tellAll(at: number, by: string, device: string | null = null): Promise<HillTellAnswer> {
     if (!this.isOn()) return { ok: false, error: HILL_OFF };
     if (!this.deps.walkyOn()) return { ok: false, error: HILL_WALKY_OFF };
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, error: NOT_ON_LEAD };
@@ -802,12 +815,14 @@ export class HillService {
     const file = this.deps.crewState;
     if (file?.markTold === undefined || !file.markTold(at, targets.length)) return { ok: false, error: HILL_TELL_DONE };
     const line = crewStateTellLine(crew.state);
-    for (const to of targets) {
-      // Never awaited here and never sent again: a send that fails is a session that was not told.
-      void this.deps.send(to, line, by).catch(() => "unknown" as const);
-    }
-    this.deps.audit?.({ action: "hill.state.told", device, detail: { state: crew.state, count: targets.length } });
-    return { ok: true, told: targets.length };
+    const send = this.deps.tell ?? this.deps.send;
+    // Never sent again: a send that fails is a session that was not told. Told counts the sends walky
+    // typed or held, not the targets (C-S1), and is written over the first mark once they settled.
+    const results = await Promise.all(targets.map((to) => send(to, line, by).catch((): HillSendResult => "unknown")));
+    const told = results.filter((result) => result === "typed" || result === "held").length;
+    file.setTold?.(at, told);
+    this.deps.audit?.({ action: "hill.state.told", device, detail: { state: crew.state, count: told, asked: targets.length } });
+    return { ok: true, told };
   }
 
   /** The sessions a tell reaches: this machine's agents with an open Decision or one posted in the last hour, live now. */
@@ -1515,13 +1530,17 @@ export class HillService {
     let delivery: NonNullable<HillReceipt["delivery"]> = "none";
     let threw = false;
     if (claim.send !== null) {
+      let sent: HillSendResult;
       try {
-        delivery = await this.deps.send(claim.send.to, claim.send.body, by);
+        sent = await this.deps.send(claim.send.to, claim.send.body, by);
       } catch {
         // Not confirmed, and never sent again: the decision stays answered with `unknown`.
-        delivery = "unknown";
+        sent = "unknown";
         threw = true;
       }
+      // Walky typed nothing (C-S1, review 8): the answer did not happen, so the Decision opens again.
+      if (sent === "refused" && claim.decision.from.kind !== "collie") return await this.unclaim(claim, request, by);
+      delivery = sent === "refused" ? "unknown" : sent;
     }
     // One line of its own: the answer is kept on the decision, and the session reads it with `collie hill status`.
     if (claim.send !== null && delivery === "unknown") this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { decisionId: id, why: threw ? "the send failed" : "not confirmed" } });
@@ -1532,6 +1551,23 @@ export class HillService {
     const now = this.deps.store.get(id);
     if (now?.answer?.rid === request.rid && (now.answer.delivery !== delivery || now.answer.trick !== trick)) this.save({ ...now, answer: { ...now.answer, delivery, trick } });
     this.auditAnswer(claim.decision, request, by, receipt);
+    return { kind: "receipt", receipt };
+  }
+
+  /**
+   * Undo a claim whose answer walky refused to type: the Decision is open again as it was (no answer, no
+   * close), no trick tap runs, and the receipt this `rid` keeps is `rejected` with {@link HILL_NOT_TYPED},
+   * so the card stays answerable and says why. Collie's own card is never undone: its act already ran.
+   */
+  private async unclaim(claim: Extract<Claim, { kind: "deliver" }>, request: HillAnswerRequest, by: string): Promise<HillAnswerOutcome> {
+    const id = claim.decision.id;
+    const held = this.deps.store.get(id);
+    if (held !== undefined && held.state === claim.decision.state && held.answer?.rid === request.rid) {
+      this.save({ ...held, state: "open", closedAt: null, closedReason: null, answer: null });
+    }
+    const receipt = receiptOf(request.rid, this.now(), "rejected", HILL_NOT_TYPED, this.deps.store.get(id)?.state ?? null, "none");
+    await this.deps.receipts.record({ ...claim.record, receipt });
+    this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { decisionId: id, why: "refused, the Decision is open again" } });
     return { kind: "receipt", receipt };
   }
 
