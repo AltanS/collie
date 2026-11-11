@@ -136,7 +136,8 @@ const NOTHING_STARTED: AdoptTricksResult = { started: [], failed: [], keptFolder
 /**
  * Adopt the copies the person's tap left for this boot. Run once at boot, before the Hill and the
  * tricks are built and before the copies are reconciled. Null when there was no marker or this boot
- * does not lead. The copies and the marker are removed after. Throws only what a write throws.
+ * does not lead. The marker is removed first, the copies after. Throws only what a write throws; a
+ * throw never adopts again at the next boot.
  */
 export async function adoptAtBoot(deps: BootAdoptDeps): Promise<BootAdoptResult | null> {
   const marker = await readAdoptMarker(deps.stateDir);
@@ -144,6 +145,15 @@ export async function adoptAtBoot(deps: BootAdoptDeps): Promise<BootAdoptResult 
   if (!deps.leads) {
     deps.log(`[crew] a takeover of "${marker.lead}" left its copies for this boot, but this machine does not lead: nothing adopted`);
     await removeAdoptMarker(deps.stateDir);
+    return null;
+  }
+  // Adopt once (review 7 R7): the marker goes before anything is adopted, so a throw on the way leaves no
+  // marker and the next boot adopts nothing again (its reconcile then clears the copies). A marker that
+  // cannot be removed adopts nothing now either.
+  try {
+    await rm(markerPath(deps.stateDir), { force: true });
+  } catch (err) {
+    deps.log(`[crew] the takeover's marker could not be removed, so nothing was adopted: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
   const tricksFrom = (await deps.tricks.load())?.from ?? null;
@@ -180,6 +190,5 @@ export async function adoptAtBoot(deps: BootAdoptDeps): Promise<BootAdoptResult 
   if (hill.open + hill.closed > 0) deps.log(`[crew] ${by}: brought ${String(hill.open)} open Decision(s) of the lead's Hill here, ${String(hill.closed)} closed with their reason`);
   await deps.tricks.clear();
   await deps.hill.clear();
-  await removeAdoptMarker(deps.stateDir);
   return { marker, tricks, hill };
 }

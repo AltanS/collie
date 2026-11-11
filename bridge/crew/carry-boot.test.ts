@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { AuditEntry } from "../audit.ts";
@@ -143,6 +144,24 @@ describe("the boot after the tap adopts both copies (§25)", () => {
     ]);
     expect(await readAdoptMarker(c.deputy.stateDir)).toBeNull();
     expect(await new StandbyHillStore(c.deputy.stateDir).load()).toBeNull();
+  });
+
+  test("adopt once: a throw on the way leaves no marker, and the next boot switches nothing back on (review 7 R7)", async () => {
+    const c = await deputyWithCopies();
+    await writeAdoptMarker(c.deputy.stateDir, { lead: "desk", by: "takeover", at: T0 });
+    const failing = boot(c, {
+      audit: () => {
+        throw new Error("the disk is full");
+      },
+    });
+    await expect(failing.run()).rejects.toThrow("the disk is full");
+    expect(existsSync(join(c.deputy.stateDir, ADOPT_MARKER_FILE))).toBe(false);
+    // The person switches the started trick off; the next boot must not switch it back on.
+    const switches = switchesPath(c.deputy.stateDir);
+    expect(existsSync(switches)).toBe(true);
+    await writeFile(switches, "{}\n");
+    expect(await boot(c).run()).toBeNull();
+    expect(await readFile(switches, "utf8")).toBe("{}\n");
   });
 
   test("a marker that names another lead than the copies' adopts nothing", async () => {

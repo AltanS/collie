@@ -4550,8 +4550,10 @@ it reconnects".
   person's yes. Each holds both copies through its role change and writes one marker,
   `<stateDir>/standby-adopt.json` (0600): the lead it took over from, `by` (`takeover`, or `handover`
   for the promote) and the time. Nothing else writes it; no crew route can. The boot after it, as the
-  lead, adopts both copies before it builds its Hill and its tricks, then removes them and the marker,
-  so no process with an older list in memory can write over the merge. A copy from another lead than
+  lead, removes the marker, adopts both copies before it builds its Hill and its tricks, then removes
+  the copies, so no process with an older list in memory can write over the merge. The marker goes
+  first: an adoption that throws half way is never run again at a later boot, so a trick the person
+  switched off since stays off. A copy from another lead than
   the marker names is not adopted, and a boot that does not lead drops the marker. While the marker is
   on disk, a role change removes neither copy. For each held trick
   it hashes the code again, writes the trick folder only where this machine has none (a folder of that
