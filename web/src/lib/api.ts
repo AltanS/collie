@@ -42,7 +42,7 @@ import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow,
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import { readHillCrewStateView, readHillList, readHillReceipt } from "./hill/reader";
 import type { HillAnswerRequest, HillCrewState, HillCrewStateView, HillList, HillReceipt } from "./hill/wire";
-import { MORPH_ROUTE, MORPH_SWITCH_ROUTE, readMorphAnswer, readMorphSession, type MorphAnswer, type MorphSession, type MorphSwitchBody } from "./morph/wire";
+import { readTrickViewsAnswer, readTrickViewSession, TRICK_VIEWS_ROUTE, TRICK_VIEWS_SWITCH_ROUTE, type TrickViewSession, type TrickViewsAnswer, type TrickViewSwitchBody } from "./agent-view/wire";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
@@ -1742,32 +1742,34 @@ export async function fetchHill(since?: number, signal?: AbortSignal): Promise<H
 }
 
 /**
- * GET /api/trick-views (agent views, read through the Morph adapter): every session's view, its switch,
- * head, tail and the screen its agent drew last. TODO(agent-view web): a `since` read that answers only
- * the views that moved is read again whole, since the Morph store holds one view per session.
- * `since` is the revision this phone holds; the bridge answers `unchanged` when nothing moved. Omit it
- * for a whole read, after a bridge restart put the revision below the one held. Carries no scope, as
- * the hill's read does. Every session is read by `lib/morph/wire.ts`, and a body that is no answer at
- * all throws.
+ * GET /api/trick-views: the views of the sessions named, keyed by (trick, session), each with its switch,
+ * head, tail, the screen its agent drew last and the lines the bridge sent from it. `since` is the
+ * revision this phone holds for the same sessions; the bridge answers `unchanged` when nothing moved, or
+ * only the views that moved and `keys`, the views held. Omit it for a whole read. `sessions` names the
+ * sessions the phone shows (`session=<address>` once each); none is every session. Carries no scope, as
+ * the hill's read does: views live on the lead. A body that is no answer at all throws.
  */
-export async function fetchMorph(since?: number, signal?: AbortSignal): Promise<MorphAnswer> {
-  const query = since === undefined ? "" : `?since=${Math.max(0, Math.floor(since))}`;
-  const got = await req<JsonValue>(`${MORPH_ROUTE}${query}`, { signal });
-  const answer = readMorphAnswer(got) ?? (since === undefined ? null : readMorphAnswer(await req<JsonValue>(MORPH_ROUTE, { signal })));
-  if (answer === null) throw new ApiError("The Morph route sent a body this phone cannot read.", 502);
+export async function fetchTrickViews({ since, sessions = [], signal }: { since?: number | undefined; sessions?: readonly string[]; signal?: AbortSignal } = {}): Promise<TrickViewsAnswer> {
+  const query = new URLSearchParams();
+  if (since !== undefined) query.set("since", String(Math.max(0, Math.floor(since))));
+  for (const session of sessions) query.append("session", session);
+  const text = query.toString();
+  const got = await req<JsonValue>(`${TRICK_VIEWS_ROUTE}${text === "" ? "" : `?${text}`}`, { signal });
+  const answer = readTrickViewsAnswer(got);
+  if (answer === null) throw new ApiError("The agent views route sent a body this phone cannot read.", 502);
   return answer;
 }
 
 /**
- * POST /api/trick-views/switch (agent views, through the Morph adapter): turn one session's view of one
- * trick on or off. TODO(agent-view web): the phone names the trick (lib/morph/wire.ts `DEFAULT_VIEW_TRICK`). An idempotent set, a paired
- * device's write, on this bridge's own sessions only (a crew member's answers 400). The bridge answers
- * 200 with the session as it now holds it; null when that body does not read, and the next read brings
- * it. A 400, a 404 (no live agent session) and a 503 (not saved) throw.
+ * POST /api/trick-views/switch: turn one session's view of one trick on or off. An idempotent set, a
+ * paired device's write, on this bridge's own sessions only (a crew member's answers 400). Turning one
+ * trick's view on turns every other trick's view of that session off. The bridge answers 200 with the
+ * view as it now holds it; null when that body does not read, and the next read brings it. A 400, a 404
+ * (no live agent session), a 409 (the trick does not pass the gate) and a 503 (not saved) throw.
  */
-export async function postMorphSwitch(body: MorphSwitchBody): Promise<MorphSession | null> {
-  const got = await req<JsonValue>(MORPH_SWITCH_ROUTE, { method: "POST", body: JSON.stringify(body) });
-  return readMorphSession(got);
+export async function postTrickViewSwitch(body: TrickViewSwitchBody): Promise<TrickViewSession | null> {
+  const got = await req<JsonValue>(TRICK_VIEWS_SWITCH_ROUTE, { method: "POST", body: JSON.stringify(body) });
+  return readTrickViewSession(got);
 }
 
 /** The words of a refused answer: a JSON body's `reason`, else the plain text the bridge sends, else none. */

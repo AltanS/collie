@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 // KEYED FLOW: A COLUMN OF KEYED BLOCKS THAT AN OUTSIDE HAND REWRITES WHILE YOU READ IT.
 //
-// The first user is Morph (2026-11-10): an agent builds one screen block by block, so blocks arrive,
+// The first user is the agent view (2026-11-10): an agent builds one screen block by block, so blocks arrive,
 // change, move and leave while the operator looks at them. `PresenceList` (ui/presence.tsx) already does
 // the arriving and the leaving; this file adds only what a list rewritten from outside needs on top, and
 // builds every motion out of the primitives that exist:

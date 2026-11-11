@@ -3,24 +3,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ARM_DWELL_MS } from "@/lib/arm";
 import type { JsonValue } from "@/lib/json";
-import { parseMorphView, type MorphView as MorphScreen } from "@/lib/morph/wire";
+import { parseAgentView, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
 import type { TranscriptEntry } from "@/lib/types";
 
-import { choiceControl, screenBlocks, type MorphRequest } from "@/lib/morph/reader";
-import { MORPH_SCREEN_CLASS, MorphView, type MorphViewProps } from "./morph-view";
+import { choiceControl, screenBlocks, type ViewRequest } from "@/lib/agent-view/reader";
+import type { ViewSendResult, ViewTap } from "./composer";
+import { AgentViewScreen, VIEW_SCREEN_CLASS, type AgentViewScreenProps } from "./agent-view-screen";
 import { PRESENCE_MS } from "./ui/presence";
 
-// The Morph body: its states (no screen, a screen alone, a request in work, answered, not sent), the split
-// of fresh blocks from the ones drawn for an earlier request, its taps (the label, the
-// confirm's second tap, one send at a time), and the receipt of a pick.
+// An agent view: Collie's band over it, its states (no screen, a screen alone, a request in work,
+// answered, not sent), the split of fresh blocks from the ones drawn for an earlier request, its taps (the
+// rev and the control, the confirm's second tap in Collie's words, one send at a time, held while a turn
+// runs, a question waits or the screen is old, a stale screen read again), and the receipts.
 
 const AT = "2026-11-10T10:00:00.000Z";
 const NOW = Date.parse("2026-11-10T10:03:00.000Z");
 
-function screenOf(raw: JsonValue, title?: string): MorphScreen {
-  const parsed = parseMorphView(raw);
+function screenOf(raw: JsonValue, title?: string): ViewScreen {
+  const parsed = parseAgentView(raw);
   if (parsed.view === undefined) throw new Error(JSON.stringify(parsed.refusals));
-  const out: MorphScreen = { rev: 1, at: AT, view: parsed.view };
+  const out: ViewScreen = { rev: 1, at: AT, view: parsed.view };
   if (title !== undefined) out.title = title;
   return out;
 }
@@ -44,19 +46,25 @@ function entry(role: TranscriptEntry["role"], ts: string, text: string): Transcr
   return { uuid: `${role}-${ts}`, ts, role, parts: [{ kind: "text", text }] };
 }
 
-function draw(overrides: Partial<MorphViewProps> = {}) {
-  const props: MorphViewProps = {
+/** A tap the bridge sent. */
+const tapped = (): Promise<ViewSendResult> => Promise.resolve({ sent: true, line: null, code: null });
+/** A tap as the screen hands it to the composer. */
+const tapOf = (rev: number, control: string, words: string): ViewTap => ({ rev, control, words });
+
+function draw(overrides: Partial<AgentViewScreenProps> = {}) {
+  const props: AgentViewScreenProps = {
+    name: "Morph",
     session: "local/w1:p1#ab12",
     view: BUTTONS,
     working: false,
     entries: [],
     canAct: true,
-    onSend: vi.fn(() => Promise.resolve(true)),
+    onTap: vi.fn(tapped),
     onLink: vi.fn(),
     now: NOW,
     ...overrides,
   };
-  const result = render(<MorphView {...props} />);
+  const result = render(<AgentViewScreen {...props} />);
   return { ...result, props };
 }
 
@@ -65,27 +73,27 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the Morph body's states", () => {
+describe("the agent view's states", () => {
   it("with no screen yet and no request, says how to begin", () => {
     const { container } = draw({ view: undefined });
     expect(screen.getByText("Ask for something. The agent draws the answer here.")).toBeInTheDocument();
-    expect(container.querySelector("[data-slot=morph-view]")?.getAttribute("data-state")).toBe("empty");
+    expect(container.querySelector("[data-slot=agent-view]")?.getAttribute("data-state")).toBe("empty");
   });
 
-  it("draws the title, the caption with the screen's age, and the screen", () => {
+  it("draws the title, the band with the screen's age, and the screen", () => {
     const { container } = draw();
     expect(screen.getByRole("heading", { name: "Release" })).toBeInTheDocument();
-    expect(screen.getByText("Drawn by the agent · 3 min ago")).toBeInTheDocument();
+    expect(container.querySelector("[data-slot=view-band-line]")).toHaveTextContent("3 min ago");
     expect(screen.getByText("Ready to ship?")).toBeInTheDocument();
-    expect(container.querySelector("[data-slot=morph-view]")?.getAttribute("data-state")).toBe("view");
+    expect(container.querySelector("[data-slot=agent-view]")?.getAttribute("data-state")).toBe("view");
   });
 
-  it("while the turn runs with no request, keeps the screen at full contrast with the working mark", () => {
+  it("while the turn runs with no request, keeps the screen at full contrast with the working mark in the band", () => {
     const { container } = draw({ working: true });
-    expect(container.querySelector("[data-slot=morph-view]")?.getAttribute("data-state")).toBe("view");
-    expect(container.querySelector("[data-slot=morph-screen]")?.className).not.toContain("opacity");
+    expect(container.querySelector("[data-slot=agent-view]")?.getAttribute("data-state")).toBe("view");
+    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toContain("opacity");
     expect(screen.getByText("Ready to ship?")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Still working…");
+    expect(container.querySelector("[data-slot=view-band]")?.getAttribute("data-line")).toBe("working");
   });
 
   it("a text answer to a later request: the text, and the earlier screen folded under one row, never promoted", () => {
@@ -96,9 +104,9 @@ describe("the Morph body's states", () => {
       entry("assistant", "2026-11-10T10:01:30.000Z", "CI is still **red**."),
     ];
     const { container } = draw({ entries });
-    expect(container.querySelector("[data-slot=morph-view]")?.getAttribute("data-state")).toBe("answered");
+    expect(container.querySelector("[data-slot=agent-view]")?.getAttribute("data-state")).toBe("answered");
     expect(screen.getByText("The agent answered in text")).toBeInTheDocument();
-    expect(container.querySelector("[data-slot=morph-text]")).toHaveTextContent("CI is still red.");
+    expect(container.querySelector("[data-slot=view-text]")).toHaveTextContent("CI is still red.");
     expect(screen.queryByText("Drew the release screen.")).toBeNull();
     expect(screen.queryByText("Ready to ship?")).toBeNull();
     const row = screen.getByRole("button", { name: /Earlier screen/ });
@@ -113,40 +121,46 @@ describe("the Morph body's states", () => {
   });
 });
 
-describe("a tap on the Morph screen", () => {
-  it("sends tapped with the label", async () => {
+describe("a tap on an agent view", () => {
+  it("rule 2, rule 3: a tap names the screen's rev and the control; its words are the label on screen", async () => {
     const { props } = draw();
+    // The button shows its label alone.
+    const ship = screen.getByRole("button", { name: "Ship" });
+    expect(ship).toHaveTextContent("Ship");
+    expect(ship.textContent).not.toContain("tapped");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Ship" }));
     });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Wait" }));
     });
-    // The bridge builds the line: the tap names the screen's rev and the button's control path.
-    expect(props.onSend).toHaveBeenNthCalledWith(1, 'tapped "Ship"', { rev: 1, control: "v/1/0" });
-    expect(props.onSend).toHaveBeenNthCalledWith(2, 'tapped "Wait"', { rev: 1, control: "v/1/1" });
+    // The bridge builds the line from its own stored screen; the words are only for the receipt in flight.
+    expect(props.onTap).toHaveBeenNthCalledWith(1, tapOf(1, "v/1/0", 'tapped "Ship"'));
+    expect(props.onTap).toHaveBeenNthCalledWith(2, tapOf(1, "v/1/1", 'tapped "Wait"'));
   });
 
-  it("with confirm, arms on the first tap and sends on the second", () => {
+  it("lead 6: with confirm, arms on the first tap in Collie's words and sends on the second", () => {
     vi.useFakeTimers();
     const { props } = draw();
     fireEvent.click(screen.getByRole("button", { name: "Drop" }));
-    expect(props.onSend).not.toHaveBeenCalled();
-    const armed = screen.getByRole("button", { name: "Really drop?" });
+    expect(props.onTap).not.toHaveBeenCalled();
+    const armed = screen.getByRole("button", { name: "Tap again" });
+    expect(armed).toHaveAttribute("data-armed");
+    expect(screen.queryByRole("button", { name: "Really drop?" })).toBeNull();
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
     fireEvent.click(armed);
-    expect(props.onSend).toHaveBeenCalledExactlyOnceWith('tapped "Drop"', { rev: 1, control: "v/1/2" });
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(1, "v/1/2", 'tapped "Drop"'));
   });
 
   it("waits on every button while a send is in flight", async () => {
-    let finish: (sent: boolean) => void = () => {};
-    const onSend = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
-    draw({ onSend });
+    let finish: (result: ViewSendResult) => void = () => {};
+    const onTap = vi.fn(() => new Promise<ViewSendResult>((resolve) => (finish = resolve)));
+    draw({ onTap });
     fireEvent.click(screen.getByRole("button", { name: "Ship" }));
     expect(screen.getByRole("button", { name: "Wait" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Wait" }));
-    expect(onSend).toHaveBeenCalledTimes(1);
-    await act(async () => finish(false));
+    expect(onTap).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ sent: false, line: null, code: null }));
     expect(screen.getByRole("button", { name: "Wait" })).not.toBeDisabled();
   });
 
@@ -154,26 +168,103 @@ describe("a tap on the Morph screen", () => {
     const { props } = draw({ canAct: false });
     expect(screen.getByRole("button", { name: "Ship" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Ship" }));
-    expect(props.onSend).not.toHaveBeenCalled();
+    expect(props.onTap).not.toHaveBeenCalled();
+  });
+
+  it("lead 4, rule 5: holds every button in the working look while a turn runs", () => {
+    const { container, props } = draw({ working: true });
+    expect(screen.getByRole("button", { name: "Ship" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-slot=view-band]")?.getAttribute("data-line")).toBe("working");
+    expect(container.querySelector("[data-slot=view-band-line] [data-active]")).toHaveTextContent("The agent is working. The buttons wait until it is done.");
+  });
+
+  it("lead 2, rule 5: holds every button while a question waits, and says the typing answers the question", () => {
+    const { container, props } = draw({ question: true });
+    expect(screen.getByRole("button", { name: "Wait" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Wait" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-slot=view-band]")?.getAttribute("data-line")).toBe("question");
+    expect(container.querySelector("[data-slot=view-band-line] [data-active]")).toHaveTextContent("A question waits in this session. Your typing answers the question, not this screen.");
+  });
+
+  it("rule 6: a screen from an earlier conversation says so and its buttons are off", () => {
+    const { container, props } = draw({ stale: true });
+    expect(screen.getByRole("button", { name: "Ship" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-slot=view-band-line] [data-active]")).toHaveTextContent("Drawn in an earlier conversation");
+  });
+
+  it("lead 5: a tap refused stale_view reads the screen again once and is never sent again", async () => {
+    const onStale = vi.fn();
+    const onTap = vi.fn(() => Promise.resolve<ViewSendResult>({ sent: false, line: null, code: "stale_view" }));
+    const onPressed = vi.fn();
+    const { container, rerender, props } = draw({ onTap, onStale, onPressed });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    });
+    expect(onTap).toHaveBeenCalledTimes(1);
+    expect(onStale).toHaveBeenCalledTimes(1);
+    expect(onPressed).not.toHaveBeenCalled();
+    // The hook marks the view as changed: the band says so in one quiet line, and the new screen draws.
+    const redrawn = screenOf([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship now", intent: "ship" } }] }]);
+    rerender(<AgentViewScreen {...props} view={{ ...redrawn, rev: 2 }} changed />);
+    expect(screen.getByRole("button", { name: "Ship now" })).not.toBeDisabled();
+    expect(container.querySelector("[data-slot=view-band-line] [data-active]")).toHaveTextContent("The screen changed. Look at it, then tap again.");
+    expect(onTap).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("rule 8: Collie's band", () => {
+  it("stands above the screen and outside the agent's area, with Collie's mark, the trick's name and Collie's words", () => {
+    const { container } = draw();
+    const view = container.querySelector("[data-slot=agent-view]")!;
+    const band = view.querySelector("[data-slot=view-band]")!;
+    expect(view.firstElementChild).toBe(band);
+    expect(band.querySelector("[data-slot=view-band-name]")).toHaveTextContent("Morph");
+    expect(band).toHaveTextContent("Drawn by this session's agent");
+    expect(band.querySelector("svg")).not.toBeNull();
+    expect(container.querySelector("[data-slot=view-screen] [data-slot=view-band]")).toBeNull();
+  });
+
+  it("no node an agent draws takes the band's look: the same words drawn by the agent stay inside its area", () => {
+    const { container } = draw({ view: screenOf([{ kind: "card", kids: [{ kind: "line", text: "Morph Drawn by this session's agent" }] }]) });
+    expect(container.querySelectorAll("[data-slot=view-band]")).toHaveLength(1);
+    const copy = screen.getByText("Morph Drawn by this session's agent");
+    expect(copy.closest("[data-slot=view-screen]")).not.toBeNull();
+    expect(copy.closest("[data-slot=view-band]")).toBeNull();
+  });
+
+  it("has a choice block in its own look: list rows, never Hill option buttons or a Decision card", () => {
+    const { container } = draw({ view: { ...BUTTONS, choice: { question: "Which?", options: [{ label: "A" }, { label: "B" }] } } });
+    const choice = container.querySelector("[data-slot=view-choice]")!;
+    expect(choice.querySelector("[data-slot=list-group]")).not.toBeNull();
+    expect(choice.querySelector("[data-slot=decision-card]")).toBeNull();
+    expect(choice.querySelectorAll("li > [data-slot=view-option]")).toHaveLength(2);
   });
 });
 
 // ── the request block ──────────────────────────────────────────────────────────────────────────
 
-const HEAD = "[morph] from operator:";
-const HINT = "[rules: /bin/collie morph help --session local/w1:p1#ab12]";
+const HEAD = "[view:morph local/w1:p1#ab12] from operator:";
+const TAIL = "[rules: /bin/collie trick view morph help --session local/w1:p1#ab12]";
+/** The line the bridge typed for a request. */
+const LINE = `${HEAD} Compare the two plans ${TAIL}`;
+const sentOf = (line: string, at = "2026-11-10T10:02:00.000Z", kind: ViewSent["kind"] = "text"): ViewSent => ({ rid: "r1", at, kind, line });
 const SENT_AT = Date.parse("2026-11-10T10:02:00.000Z");
-const mine = (phase: MorphRequest["phase"], over: Partial<MorphRequest> = {}): MorphRequest => ({ text: "Compare the two plans", phase, reason: null, at: SENT_AT, ...over });
+const mine = (phase: ViewRequest["phase"], over: Partial<ViewRequest> = {}): ViewRequest => ({ text: "Compare the two plans", phase, reason: null, at: SENT_AT, line: null, ...over });
 /** A grey wash on content: a lowered opacity or a grayscale as a class of its own (a `disabled:` variant is a control's). */
 const WASH = /(?<![\w:-])(opacity-(50|60)|grayscale)/;
-const statusLine = (container: HTMLElement): string | null => container.querySelector("[data-slot=morph-status]")?.textContent ?? null;
+const statusLine = (container: HTMLElement): string | null => container.querySelector("[data-slot=view-status]")?.textContent ?? null;
 
-describe("the operator's request in the Morph body", () => {
-  it("shows the request at once on send, with no head and no hint in it, and Sending…", () => {
-    const { container } = draw({ view: undefined, request: mine("sending"), head: HEAD, hint: HINT });
-    expect(container.querySelector("[data-slot=morph-request]")).toHaveTextContent("Compare the two plans");
-    expect(container.querySelector("[data-slot=morph-request]")?.textContent).not.toContain("rules");
-    expect(container.querySelector("[data-slot=morph-request]")?.textContent).not.toContain("[morph]");
+describe("the operator's request in an agent view", () => {
+  it("shows the request at once on send, as typed, and Sending…", () => {
+    const { container } = draw({ view: undefined, request: mine("sending") });
+    expect(container.querySelector("[data-slot=view-request]")).toHaveTextContent("Compare the two plans");
+    expect(container.querySelector("[data-slot=view-request]")?.textContent).not.toContain("rules");
+    expect(container.querySelector("[data-slot=view-sent]")).toBeNull();
     expect(statusLine(container)).toBe("Sending…");
   });
 
@@ -186,16 +277,16 @@ describe("the operator's request in the Morph body", () => {
     expect(screen.queryByText("Ask for something. The agent draws the answer here.")).toBeNull();
     expect(statusLine(working.container)).toBe("The agent is working");
     cleanup();
-    const morphing = draw({ view: undefined, request: mine("sent"), working: true, drawing: { at: "2026-11-10T10:02:30.000Z", note: "Comparing plans" } });
+    const drawingNow = draw({ view: undefined, request: mine("sent"), working: true, drawing: { at: "2026-11-10T10:02:30.000Z", note: "Comparing plans" } });
     expect(screen.queryByText("Ask for something. The agent draws the answer here.")).toBeNull();
-    expect(statusLine(morphing.container)).toBe("Drawing…");
-    expect(morphing.container.querySelector("[data-slot=morph-notes]")).toHaveTextContent("Comparing plans");
+    expect(statusLine(drawingNow.container)).toBe("Drawing…");
+    expect(drawingNow.container.querySelector("[data-slot=view-notes]")).toHaveTextContent("Comparing plans");
   });
 
   it("says Not sent with the composer's own words, and does not dim the old screen", () => {
     const { container } = draw({ request: mine("failed", { reason: "The link is down" }) });
     expect(statusLine(container)).toBe("Not sent: The link is down");
-    expect(container.querySelector("[data-slot=morph-screen]")?.className).not.toContain("opacity");
+    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toContain("opacity");
     // A send that failed folds nothing: the screen is live again.
     expect(screen.getByRole("button", { name: "Ship" })).not.toBeDisabled();
     expect(screen.queryByRole("button", { name: /Earlier screen/ })).toBeNull();
@@ -204,7 +295,7 @@ describe("the operator's request in the Morph body", () => {
   it("says Sent, then The agent is working, then Drawing… (without a note too), each as the one line", () => {
     const sent = draw({ request: mine("sent") });
     expect(statusLine(sent.container)).toBe("Sent");
-    expect(sent.container.querySelectorAll("[data-slot=morph-status]")).toHaveLength(1);
+    expect(sent.container.querySelectorAll("[data-slot=view-status]")).toHaveLength(1);
     cleanup();
     expect(statusLine(draw({ request: mine("sent"), working: true }).container)).toBe("The agent is working");
     cleanup();
@@ -213,7 +304,7 @@ describe("the operator's request in the Morph body", () => {
 
   it("while the request is unanswered, folds the old screen under Earlier screen, with the working mark on Drawing…", () => {
     const { container } = draw({ request: mine("sent"), working: true, drawing: { at: "2026-11-10T10:02:30.000Z", note: "Comparing plans" } });
-    expect(container.querySelector("[data-slot=morph-status] [data-slot=status-dot], [data-slot=morph-status] svg, [data-slot=morph-status] span")).not.toBeNull();
+    expect(container.querySelector("[data-slot=view-status] [data-slot=status-dot], [data-slot=view-status] svg, [data-slot=view-status] span")).not.toBeNull();
     expect(screen.queryByText("Ready to ship?")).toBeNull();
     expect(screen.getByRole("button", { name: /Earlier screen/ })).toBeInTheDocument();
     expect(container.innerHTML).not.toMatch(WASH);
@@ -227,53 +318,75 @@ describe("the operator's request in the Morph body", () => {
   });
 
   it("with a text answer and no screen, draws the answer and says Answered", () => {
-    const entries = [entry("user", "2026-11-10T10:02:00.000Z", `${HEAD} Compare the two plans ${HINT}`), entry("assistant", "2026-11-10T10:02:20.000Z", "Plan B is **cheaper**.")];
-    const { container } = draw({ view: undefined, entries, head: HEAD, hint: HINT });
+    const entries = [entry("user", "2026-11-10T10:02:00.000Z", LINE), entry("assistant", "2026-11-10T10:02:20.000Z", "Plan B is **cheaper**.")];
+    const { container } = draw({ view: undefined, entries, sent: [sentOf(LINE)] });
     expect(statusLine(container)).toMatch(/^Answered/);
-    expect(container.querySelector("[data-slot=morph-text]")).toHaveTextContent("Plan B is cheaper.");
+    expect(container.querySelector("[data-slot=view-text]")).toHaveTextContent("Plan B is cheaper.");
     expect(screen.queryByText("Ask for something. The agent draws the answer here.")).toBeNull();
   });
 
-  it("after a reload, falls back to the latest person turn of the chat, its head and hint stripped", () => {
-    const entries = [entry("user", "2026-11-10T10:02:00.000Z", `${HEAD} Compare the two plans ${HINT}`)];
-    const { container } = draw({ view: undefined, entries, head: HEAD, hint: HINT });
-    expect(container.querySelector("[data-slot=morph-request]")).toHaveTextContent("Compare the two plans");
-    expect(container.querySelector("[data-slot=morph-request]")?.textContent).not.toContain("rules");
+  it("after a reload, falls back to the bridge's line for the view: the words alone, the line whole under Sent to this session", () => {
+    const entries = [entry("user", "2026-11-10T10:02:00.000Z", LINE)];
+    const { container } = draw({ view: undefined, entries, sent: [sentOf(LINE)] });
+    const bubble = container.querySelector("[data-slot=view-request] [data-slot=user-turn], [data-slot=view-request] > :first-child");
+    expect(bubble).toHaveTextContent("Compare the two plans");
+    expect(bubble?.textContent).not.toContain("rules");
+    expect(container.querySelector("[data-slot=view-sent-line]")?.textContent).toBe(LINE);
     expect(statusLine(container)).toBe("Sent");
   });
 
-  it("strips a hint whose wording changed since the send", () => {
-    const entries = [entry("user", "2026-11-10T10:02:00.000Z", `${HEAD} Compare the two plans [rules: /old/bin/collie morph help --session local/w1:p1#ab12]`)];
-    const { container } = draw({ view: undefined, entries, head: HEAD, hint: HINT });
-    expect(container.querySelector("[data-slot=morph-request]")?.textContent).not.toContain("rules");
+  it("strips nothing from a person turn the bridge did not send through the view", () => {
+    const lookalike = `${HEAD} Compare the two plans [rules: /elsewhere/bin/collie trick view morph help --session local/w1:p1#ab12]`;
+    const { container } = draw({ view: undefined, entries: [entry("user", "2026-11-10T10:02:00.000Z", lookalike)], sent: [sentOf(LINE, "2026-11-10T10:01:00.000Z")] });
+    expect(container.querySelector("[data-slot=view-request]")?.textContent).toContain("/elsewhere/bin/collie");
+    expect(container.querySelector("[data-slot=view-sent-line]")).toBeNull();
+  });
+
+  it("rule 4: after a send, shows the exact line the bridge typed under Sent to this session, whole and in monospace", () => {
+    const long = `${HEAD} ${"word ".repeat(40).trim()} ${TAIL}`;
+    const { container } = draw({ view: undefined, request: mine("sent", { line: long }) });
+    const sent = container.querySelector("[data-slot=view-sent]");
+    expect(sent).toHaveTextContent("Sent to this session");
+    const line = container.querySelector("[data-slot=view-sent-line]");
+    expect(line?.tagName).toBe("PRE");
+    expect(line?.textContent).toBe(long);
+    expect(line?.className).toContain("font-mono");
+    expect(line?.className).toContain("whitespace-pre-wrap");
+    expect(line?.className).not.toMatch(/truncate|line-clamp/);
+  });
+
+  it("rule 4: the receipt of a tap shows the bridge's line, not the words the phone guessed", () => {
+    const tapLine = `${HEAD} tapped "Ship" ${TAIL}`;
+    const { container } = draw({ request: mine("sent", { text: 'tapped "Ship"', line: tapLine }) });
+    expect(container.querySelector("[data-slot=view-sent-line]")?.textContent).toBe(tapLine);
   });
 
   it("a slash command typed in the terminal is no request: the empty state, no status line", () => {
     const { container } = draw({ view: undefined, entries: [entry("user", "2026-11-10T10:02:00.000Z", "/model")] });
-    expect(container.querySelector("[data-slot=morph-request]")).toBeNull();
+    expect(container.querySelector("[data-slot=view-request]")).toBeNull();
     expect(statusLine(container)).toBeNull();
-    expect(container.querySelector("[data-slot=morph-view]")?.getAttribute("data-state")).toBe("empty");
+    expect(container.querySelector("[data-slot=agent-view]")?.getAttribute("data-state")).toBe("empty");
   });
 
   it("with no request anywhere, draws no request block", () => {
     const { container } = draw({ entries: [entry("assistant", "2026-11-10T10:00:02.000Z", "hello")] });
-    expect(container.querySelector("[data-slot=morph-request]")).toBeNull();
+    expect(container.querySelector("[data-slot=view-request]")).toBeNull();
   });
 
   it("clamps a long request to four lines, and a tap opens it", () => {
     const text = "word ".repeat(60).trim();
     const { container } = draw({ view: undefined, request: mine("sent", { text }) });
-    const clamped = () => container.querySelector("[data-slot=morph-request] .line-clamp-4");
+    const clamped = () => container.querySelector("[data-slot=view-request] .line-clamp-4");
     expect(clamped()).not.toBeNull();
-    fireEvent.click(container.querySelector("[data-slot=morph-request] [role=button]")!);
+    fireEvent.click(container.querySelector("[data-slot=view-request] [role=button]")!);
     expect(clamped()).toBeNull();
-    expect(container.querySelector("[data-slot=morph-request] [role=button]")?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector("[data-slot=view-request] [role=button]")?.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("does not make a short request tappable", () => {
     const { container } = draw({ view: undefined, request: mine("sent") });
-    expect(container.querySelector("[data-slot=morph-request] [role=button]")).toBeNull();
-    expect(container.querySelector("[data-slot=morph-request] .line-clamp-4")).toBeNull();
+    expect(container.querySelector("[data-slot=view-request] [role=button]")).toBeNull();
+    expect(container.querySelector("[data-slot=view-request] .line-clamp-4")).toBeNull();
   });
 });
 
@@ -284,11 +397,11 @@ describe("a long line in a card", () => {
 
   it("wraps and takes its own height: the screen container turns the sideways scroll and the fixed height off", () => {
     const { container } = draw({ view: LONG });
-    const screenBox = container.querySelector("[data-slot=morph-screen]");
+    const screenBox = container.querySelector("[data-slot=view-screen]");
     expect(screenBox?.className).toContain("[&_[data-trick-node=line]]:h-auto!");
     expect(screenBox?.className).toContain("[&_[data-trick-node=line]_span]:whitespace-pre-wrap");
     expect(screenBox?.className).toContain("[&_[data-trick-node=line]_span]:break-words");
-    expect(MORPH_SCREEN_CLASS).toContain("aria-pressed=true");
+    expect(VIEW_SCREEN_CLASS).toContain("aria-pressed=true");
     expect(container.querySelector("[data-trick-node=line]")).toHaveTextContent("sits in the input");
   });
 });
@@ -304,14 +417,14 @@ describe("the operator's pick stays visible", () => {
 
   it("tells the hook the control, under its block, after a confirmed tap, and nothing after a failed one", async () => {
     const onPressed = vi.fn();
-    draw({ onPressed, onSend: vi.fn(() => Promise.resolve(true)) });
+    draw({ onPressed, onTap: vi.fn(tapped) });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Ship" }));
     });
     expect(onPressed).toHaveBeenCalledExactlyOnceWith(`${bar.prefix}/0`);
     cleanup();
     const failed = vi.fn();
-    draw({ onPressed: failed, onSend: vi.fn(() => Promise.resolve(false)) });
+    draw({ onPressed: failed, onTap: vi.fn(() => Promise.resolve<ViewSendResult>({ sent: false, line: null, code: "busy" })) });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Wait" }));
     });
@@ -327,15 +440,15 @@ describe("pictures and the decision block", () => {
     { id: "im_dddddddddddddddd", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 800, height: 400, caption: "Loose" },
   ];
 
-  function pictured(choice: MorphScreen["choice"]): MorphScreen {
-    const parsed = parseMorphView([{ kind: "para", text: "The header" }, { kind: "image", attrs: { ref: "0" } }], "/view", { images: MEDIA.length });
+  function pictured(choice: ViewScreen["choice"]): ViewScreen {
+    const parsed = parseAgentView([{ kind: "para", text: "The header" }, { kind: "image", attrs: { ref: "0" } }], "/view", { images: MEDIA.length });
     if (parsed.view === undefined) throw new Error(JSON.stringify(parsed.refusals));
-    const out: MorphScreen = { rev: 4, at: AT, view: parsed.view, set: "dc_aaaaaaaaaaaa", media: MEDIA };
+    const out: ViewScreen = { rev: 4, at: AT, view: parsed.view, set: "dc_aaaaaaaaaaaa", media: MEDIA };
     if (choice !== undefined) out.choice = choice;
     return out;
   }
 
-  const CHOICE: NonNullable<MorphScreen["choice"]> = {
+  const CHOICE: NonNullable<ViewScreen["choice"]> = {
     question: "Which header?",
     options: [
       { label: "Compact", detail: "One line", preview: 1 },
@@ -356,47 +469,44 @@ describe("pictures and the decision block", () => {
   it("draws the question, each option with its preview card, the star on the recommended one and its why", () => {
     const { container } = draw({ view: pictured(CHOICE) });
     expect(screen.getByText("Which header?")).toBeInTheDocument();
-    expect(container.querySelectorAll("[data-slot=morph-option-card]")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-slot=view-option]")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-slot=view-option-preview]")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Open Compact at full size" })).toBeInTheDocument();
-    expect(container.querySelector("[data-slot=morph-choice-options]")?.getAttribute("data-layout")).toBe("side");
     const compact = screen.getByRole("button", { name: /^Compact/ });
-    expect(compact.querySelector("[data-slot=morph-recommended-mark]")).not.toBeNull();
+    expect(compact.querySelector("[data-slot=view-recommended-mark]")).not.toBeNull();
     expect(screen.getByText("More room for the list")).toBeInTheDocument();
   });
 
   it("a pick sends picked with the label, holds the other option while in flight, and is marked after", async () => {
-    let finish: (sent: boolean) => void = () => undefined;
-    const onSend = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
+    let finish: (result: ViewSendResult) => void = () => undefined;
+    const onTap = vi.fn(() => new Promise<ViewSendResult>((resolve) => (finish = resolve)));
     const onPressed = vi.fn();
-    draw({ view: pictured(CHOICE), onSend, onPressed });
+    draw({ view: pictured(CHOICE), onTap, onPressed });
     fireEvent.click(screen.getByRole("button", { name: /^Compact/ }));
-    expect(onSend).toHaveBeenCalledWith('picked "Compact"', { rev: 4, control: "choice/0" });
+    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/0", 'picked "Compact"'));
     expect(screen.getByRole("button", { name: /^Tall/ })).toBeDisabled();
-    await act(async () => finish(true));
+    await act(async () => finish({ sent: true, line: null, code: null }));
     expect(onPressed).toHaveBeenCalledWith(choiceControl(CHOICE, 0));
   });
 
-  it("an option with confirm needs two taps; a pick sends the label alone", () => {
+  it("lead 6: an option with confirm arms in Collie's words with the agent's line under them, then sends on the second tap", () => {
     vi.useFakeTimers();
-    const onSend = vi.fn(() => Promise.resolve(true));
-    draw({ view: pictured(CHOICE), onSend });
+    const onTap = vi.fn(tapped);
+    draw({ view: pictured(CHOICE), onTap });
     fireEvent.click(screen.getByRole("button", { name: /^Tall/ }));
-    expect(onSend).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Sure?: tap again to confirm" })).toBeInTheDocument();
+    expect(onTap).not.toHaveBeenCalled();
+    const armed = screen.getByRole("button", { name: 'Tap again to send "Tall"' });
+    expect(armed).toHaveAttribute("data-armed");
+    expect(armed).toHaveTextContent("Sure?");
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
-    fireEvent.click(screen.getByRole("button", { name: "Sure?: tap again to confirm" }));
-    expect(onSend).toHaveBeenCalledWith('picked "Tall"', { rev: 4, control: "choice/1" });
+    fireEvent.click(armed);
+    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/1", 'picked "Tall"'));
   });
 
   it("the picked option stays selected until the next screen", () => {
     draw({ view: pictured(CHOICE), pressed: [choiceControl(CHOICE, 1)] });
-    expect(screen.getByRole("button", { name: /^Tall/ }).className).toContain("bg-primary/10");
-  });
-
-  it("stacks options when a text would not stay readable side by side", () => {
-    const long = { ...CHOICE, options: [CHOICE.options[0]!, { label: "Tall", detail: "A title, a subtitle and the search field under them, all in view", preview: 2 }] };
-    const { container } = draw({ view: pictured(long) });
-    expect(container.querySelector("[data-slot=morph-choice-options]")?.getAttribute("data-layout")).toBe("stack");
+    expect(screen.getByRole("button", { name: /^Tall/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^Compact/ })).toHaveAttribute("aria-pressed", "false");
   });
 });
 
@@ -407,8 +517,8 @@ describe("fresh and earlier blocks", () => {
   const NEW = "2026-11-10T10:02:30.000Z";
   const asked = mine("sent");
 
-  function blocked(over: Partial<MorphScreen> = {}): MorphScreen {
-    const parsed = parseMorphView([
+  function blocked(over: Partial<ViewScreen> = {}): ViewScreen {
+    const parsed = parseAgentView([
       { kind: "para", text: "Old summary" },
       { kind: "bar", kids: [{ kind: "button", attrs: { label: "Old button", intent: "reply" } }] },
       { kind: "para", text: "New finding" },
@@ -444,7 +554,7 @@ describe("fresh and earlier blocks", () => {
     // The title belongs to the part with the answer: on top while anything is fresh.
     expect(screen.getByRole("heading", { name: "Plans" })).toBeInTheDocument();
     openEarlier();
-    expect(container.querySelector("[data-slot=morph-earlier-panel]")).toHaveTextContent("Earlier");
+    expect(container.querySelector("[data-slot=view-earlier-panel]")).toHaveTextContent("Earlier");
     expect(screen.getByText("Old summary")).toBeInTheDocument();
     expect(container.innerHTML).not.toMatch(WASH);
   });
@@ -457,8 +567,8 @@ describe("fresh and earlier blocks", () => {
     expect(old).not.toBeDisabled();
     expect(old.closest("[inert]")).not.toBeNull();
     fireEvent.click(old);
-    expect(props.onSend).not.toHaveBeenCalled();
-    expect(container.querySelector("[data-slot=morph-earlier-blocks]")).not.toBeNull();
+    expect(props.onTap).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-slot=view-earlier-blocks]")).not.toBeNull();
   });
 
   it("a kept block is fresh again: it leaves the fold for the answer", () => {
@@ -472,12 +582,12 @@ describe("fresh and earlier blocks", () => {
     vi.useFakeTimers();
     const { rerender, props } = draw({ view: blocked({ blocks: [{ id: "summary", at: OLD }, { id: "actions", at: OLD }, { id: "finding", at: OLD }] }) });
     expect(screen.getByText("Old summary")).toBeInTheDocument();
-    rerender(<MorphView {...props} request={mine("sending")} />);
+    rerender(<AgentViewScreen {...props} request={mine("sending")} />);
     // It leaves with the presence collapse, then is gone from the answer.
     act(() => vi.advanceTimersByTime(PRESENCE_MS));
     expect(screen.queryByText("Old summary")).toBeNull();
     expect(screen.getByRole("button", { name: /Earlier screen/ })).toBeInTheDocument();
-    rerender(<MorphView {...props} request={mine("failed", { reason: "No link" })} />);
+    rerender(<AgentViewScreen {...props} request={mine("failed", { reason: "No link" })} />);
     expect(screen.getByText("Old summary")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Old button" })).not.toBeDisabled();
     expect(screen.queryByRole("button", { name: /Earlier screen/ })).toBeNull();
@@ -487,23 +597,23 @@ describe("fresh and earlier blocks", () => {
     const first = blocked({ blocks: [{ id: "summary", at: OLD }, { id: "actions", at: OLD }, { id: "finding", at: OLD }] });
     const { rerender, props } = draw({ view: first, request: asked, working: true });
     expect(screen.queryByText("Fresh line")).toBeNull();
-    const parsed = parseMorphView([
+    const parsed = parseAgentView([
       { kind: "para", text: "Old summary" },
       { kind: "bar", kids: [{ kind: "button", attrs: { label: "Old button", intent: "reply" } }] },
       { kind: "para", text: "New finding" },
       { kind: "para", text: "Fresh line" },
     ]);
     if (parsed.view === undefined) throw new Error("bad view");
-    rerender(<MorphView {...props} view={{ ...first, rev: 6, view: parsed.view, blocks: [...(first.blocks ?? []), { id: "fresh", at: NEW }] }} />);
+    rerender(<AgentViewScreen {...props} view={{ ...first, rev: 6, view: parsed.view, blocks: [...(first.blocks ?? []), { id: "fresh", at: NEW }] }} />);
     expect(screen.getByText("Fresh line")).toBeInTheDocument();
     expect(screen.queryByText("Old summary")).toBeNull();
   });
 
   it("a pending block shows its label and a calm placeholder while the agent works", () => {
-    const parsed = parseMorphView([{ kind: "para", text: "Old summary" }, { kind: "spacer" }]);
+    const parsed = parseAgentView([{ kind: "para", text: "Old summary" }, { kind: "spacer" }]);
     if (parsed.view === undefined) throw new Error("bad view");
     const { container } = draw({ view: { rev: 2, at: NEW, view: parsed.view, blocks: [{ id: "summary", at: OLD }, { id: "tests", at: NEW, pending: "Running the tests" }] }, request: asked, working: true });
-    const pending = container.querySelector("[data-slot=morph-pending]");
+    const pending = container.querySelector("[data-slot=view-pending]");
     expect(pending).toHaveTextContent("Running the tests");
     expect(pending?.querySelectorAll(".count-skeleton")).toHaveLength(2);
     expect(pending).toHaveAttribute("aria-busy", "true");
@@ -520,7 +630,7 @@ describe("fresh and earlier blocks", () => {
   it("lists the notes of this request under the line, newest last, older ones muted, four at most", () => {
     const notes = Array.from({ length: 5 }, (_, i) => ({ at: `2026-11-10T10:02:1${String(i)}.000Z`, note: `Step ${String(i)}` }));
     const { container } = draw({ view: blocked(), request: asked, working: true, drawing: { at: notes[4]!.at, notes: [{ at: OLD, note: "Before" }, ...notes] } });
-    const shown = [...container.querySelectorAll("[data-slot=morph-note]")];
+    const shown = [...container.querySelectorAll("[data-slot=view-note]")];
     expect(shown.map((note) => note.textContent)).toEqual(["Step 1", "Step 2", "Step 3", "Step 4"]);
     expect(shown.at(-1)?.className).toContain("text-foreground");
     expect(shown[0]?.className).toContain("text-muted-foreground");
@@ -534,43 +644,43 @@ describe("the receipt of a pick, and a settled choice", () => {
     { id: "im_bbbbbbbbbbbbbbbb", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 390, height: 844, caption: "Tall" },
   ];
   const CHOICE = { question: "Which header?", options: [{ label: "Compact", preview: 0 }, { label: "Tall", preview: 1 }] };
-  const picked = (phase: MorphRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact"', reason });
-  const asked: MorphScreen = { ...screenOf([{ kind: "para", text: "Two headers" }]), set: "dc_aaaaaaaaaaaa", media: MEDIA, choice: CHOICE, choiceAt: AT };
+  const picked = (phase: ViewRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact"', reason });
+  const asked: ViewScreen = { ...screenOf([{ kind: "para", text: "Two headers" }]), set: "dc_aaaaaaaaaaaa", media: MEDIA, choice: CHOICE, choiceAt: AT };
 
   it("stands in for the request bubble: the question, the label, the preview, and Sending… then the Answered badge", () => {
     const { container, rerender, props } = draw({ view: asked, request: picked("sending") });
-    const receipt = container.querySelector("[data-slot=morph-receipt]");
+    const receipt = container.querySelector("[data-slot=view-receipt]");
     expect(receipt).toHaveTextContent("Which header?");
-    expect(container.querySelector("[data-slot=morph-receipt-label]")).toHaveTextContent("Compact");
-    expect(container.querySelector("[data-slot=morph-receipt-preview]")).not.toBeNull();
-    expect(container.querySelector("[data-slot=morph-receipt-state] [data-slot=one-of-option][data-active], [data-slot=morph-receipt-state]")).toHaveTextContent("Sending…");
-    expect(container.querySelector("[data-slot=morph-request] [data-slot=morph-status]")).toBeNull();
-    rerender(<MorphView {...props} request={picked("sent")} working />);
-    expect(container.querySelector("[data-slot=morph-receipt] [data-slot=morph-answered-badge]")).toHaveTextContent("Answered");
-    expect(container.querySelector("[data-slot=morph-receipt]")?.getAttribute("data-phase")).toBe("sent");
+    expect(container.querySelector("[data-slot=view-receipt-label]")).toHaveTextContent("Compact");
+    expect(container.querySelector("[data-slot=view-receipt-preview]")).not.toBeNull();
+    expect(container.querySelector("[data-slot=view-receipt-state] [data-slot=one-of-option][data-active], [data-slot=view-receipt-state]")).toHaveTextContent("Sending…");
+    expect(container.querySelector("[data-slot=view-request] [data-slot=view-status]")).toBeNull();
+    rerender(<AgentViewScreen {...props} request={picked("sent")} working />);
+    expect(container.querySelector("[data-slot=view-receipt] [data-slot=view-answered-badge]")).toHaveTextContent("Answered");
+    expect(container.querySelector("[data-slot=view-receipt]")?.getAttribute("data-phase")).toBe("sent");
     expect(statusLine(container)).toBe("The agent is working");
     expect(container.innerHTML).not.toMatch(WASH);
   });
 
   it("says Not sent with the reason, and the choice is live again", () => {
     const { container } = draw({ view: asked, request: picked("failed", "No link") });
-    expect(container.querySelector("[data-slot=morph-receipt]")?.getAttribute("data-phase")).toBe("failed");
-    expect(container.querySelector("[data-slot=morph-receipt-state]")).toHaveTextContent("Not sent: No link");
+    expect(container.querySelector("[data-slot=view-receipt]")?.getAttribute("data-phase")).toBe("failed");
+    expect(container.querySelector("[data-slot=view-receipt-state]")).toHaveTextContent("Not sent: No link");
     expect(screen.getByRole("button", { name: /^Tall/ })).not.toBeDisabled();
   });
 
   it("a typed request keeps the chat bubble", () => {
     const { container } = draw({ view: asked, request: mine("sent") });
-    expect(container.querySelector("[data-slot=morph-receipt]")).toBeNull();
-    expect(container.querySelector("[data-slot=morph-request]")).toHaveTextContent("Compare the two plans");
+    expect(container.querySelector("[data-slot=view-receipt]")).toBeNull();
+    expect(container.querySelector("[data-slot=view-request]")).toHaveTextContent("Compare the two plans");
   });
 
   it("a choice the agent sent with picked is settled: the pick marked with the badge, the others quiet rows, nothing to tap", () => {
     const { container } = draw({ view: { ...asked, choice: { ...CHOICE, picked: 1 } } });
-    const done = container.querySelector("[data-slot=morph-choice][data-done]");
+    const done = container.querySelector("[data-slot=view-choice][data-done]");
     expect(done).not.toBeNull();
-    expect(done?.querySelector("[data-slot=morph-answered-badge]")).toHaveTextContent("Answered");
-    const rows = [...container.querySelectorAll("[data-slot=morph-option-done]")];
+    expect(done?.querySelector("[data-slot=view-answered-badge]")).toHaveTextContent("Answered");
+    const rows = [...container.querySelectorAll("[data-slot=view-option-done]")];
     expect(rows.map((row) => row.hasAttribute("data-picked"))).toEqual([false, true]);
     expect(rows[0]?.className).toContain("text-muted-foreground");
     expect(screen.queryByRole("button", { name: /^Tall/ })).toBeNull();
@@ -582,7 +692,7 @@ describe("the receipt of a pick, and a settled choice", () => {
     const { container } = draw({ view: asked, request: picked("sent"), pressed: [choiceControl(CHOICE, 0)] });
     fireEvent.click(screen.getByRole("button", { name: /Earlier screen/ }));
     act(() => vi.runOnlyPendingTimers());
-    const done = container.querySelector("[data-slot=morph-earlier-panel] [data-slot=morph-choice][data-done]");
+    const done = container.querySelector("[data-slot=view-earlier-panel] [data-slot=view-choice][data-done]");
     expect(done).not.toBeNull();
     expect(done?.querySelector("[data-picked]")).toHaveTextContent("Compact");
   });

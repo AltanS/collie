@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import userEvent from "@testing-library/user-event";
 
 import { registeredAgents } from "@/lib/harness/registry";
@@ -18,6 +19,8 @@ import {
 import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
 import { CHAT_LOOK_BEFORE, ChatLookContext } from "@/lib/chat-look";
 import { testFileOpener } from "@/test/file-links";
+import { server } from "@/test/setup";
+import { __resetAgentViews, __settleAgentViews, showAgentViews } from "@/lib/agent-view/store";
 import { FileLinksProvider } from "./file-links";
 
 // The blocks of a session stream. The load-bearing behaviours: a finished run folds to one line and
@@ -691,26 +694,38 @@ describe("a quiet other tool", () => {
   });
 });
 
-describe("a user turn that carried the Morph wording", () => {
-  it("is drawn without the head and the tail, and a plain turn is untouched", () => {
-    const sent = '[morph] from operator: tapped "Fast" in "Speed" [rules: /bin/collie morph help --session local/w1:p1#ab12]';
-    const { container, rerender } = render(<ItemView item={{ id: "u", kind: "user", text: sent }} />);
+describe("a user turn the bridge typed for an agent view", () => {
+  const ADDRESS = "lodge/w1:p1#ab12";
+  const LINE = '[view:morph lodge/w1:p1#ab12] from operator: tapped "Fast" in "Speed" [rules: /bin/collie trick view morph help --session lodge/w1:p1#ab12]';
+
+  /** The bridge lists LINE as sent through the view of ADDRESS, and the screen shows that session. */
+  async function seed(): Promise<() => void> {
+    server.use(http.get("/api/trick-views", () => HttpResponse.json({ rev: 2, views: [{ trick: "morph", session: ADDRESS, on: true, sent: [{ rid: "r1", at: "2026-11-10T10:00:00.000Z", kind: "tap", line: LINE }] }] })));
+    const stop = showAgentViews(ADDRESS);
+    await act(async () => {
+      await __settleAgentViews();
+    });
+    return stop;
+  }
+
+  afterEach(() => __resetAgentViews());
+
+  it("is drawn without the head and the tail when the bridge lists the line as sent through the view", async () => {
+    const stop = await seed();
+    const { container } = render(<ItemView item={{ id: "u", kind: "user", text: LINE }} />);
     expect(container.textContent).toContain('tapped "Fast" in "Speed"');
-    expect(container.textContent).not.toContain("[morph]");
+    expect(container.textContent).not.toContain("[view:");
     expect(container.textContent).not.toContain("rules");
-    rerender(<ItemView item={{ id: "u", kind: "user", text: "please continue" }} />);
-    expect(container.textContent).toContain("please continue");
+    stop();
   });
 
-  it("is drawn without the head that names the session, with the tail and without it", () => {
-    const withTail = '[morph local/w1:p1#ab12] from operator: tapped "Fast" in "Speed" [rules: /bin/collie morph help --session local/w1:p1#ab12]';
-    const { container, rerender } = render(<ItemView item={{ id: "u", kind: "user", text: withTail }} />);
-    expect(container.textContent).toContain('tapped "Fast" in "Speed"');
-    expect(container.textContent).not.toContain("[morph");
-    expect(container.textContent).not.toContain("rules");
-    rerender(<ItemView item={{ id: "u", kind: "user", text: "[morph local/w1:p1#ab12] from operator: show the plan" }} />);
-    expect(container.textContent).toContain("show the plan");
-    expect(container.textContent).not.toContain("[morph");
-    expect(container.textContent).not.toContain("from operator");
+  it("is drawn whole when the bridge did not send it through the view, even with the same head", async () => {
+    const stop = await seed();
+    const lookAlike = "[view:morph lodge/w1:p1#ab12] from operator: show the plan";
+    const { container, rerender } = render(<ItemView item={{ id: "u", kind: "user", text: lookAlike }} />);
+    expect(container.textContent).toContain("[view:morph");
+    rerender(<ItemView item={{ id: "u", kind: "user", text: "please continue" }} />);
+    expect(container.textContent).toContain("please continue");
+    stop();
   });
 });

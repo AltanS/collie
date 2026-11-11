@@ -819,16 +819,27 @@ export const en = {
   // `{reason}` is a whole sentence of its own and leading with a clause would read as one sentence
   // interrupted by another.
   "chat.mode.noChat": "{reason} The terminal stays here.",
-  // Morph (prototype, 2026-11-10): English only until the translation pass, listed in PENDING_TRANSLATION
-  // below. `{name}` is the word Morph, a name that is never translated (lib/morph/reader.ts `MORPH_NAME`).
-  "chat.mode.morph": "{name} view",
-  "view.switch.hint": "The agent answers by drawing one screen.",
+  // Agent views (a trick's view of a session that the session's own agent draws): English only until the
+  // translation pass, listed in PENDING_TRANSLATION below. `{name}` is the trick's own name, never translated.
+  "view.back": "{name} view",
+  "view.switch.hint": "Drawn by this session's agent. A tap sends a message in your name.",
   "view.switch.failed": "Not changed: {error}",
   "view.empty": "Ask for something. The agent draws the answer here.",
-  "view.drawn": "Drawn by the agent",
-  "view.drawnAt": "Drawn by the agent · {time}",
+  // Collie's band over every drawn screen: its first line beside the trick's name, then the one line under it
+  // that says why the buttons wait (agent views SECURITY rule 8).
+  "view.band.by": "Drawn by this session's agent",
+  "view.band.question": "A question waits in this session. Your typing answers the question, not this screen.",
+  "view.band.old": "Drawn in an earlier conversation",
+  "view.band.changed": "The screen changed. Look at it, then tap again.",
+  "view.band.working": "The agent is working. The buttons wait until it is done.",
+  // Over the exact line the bridge typed for a tap or a typed request (rule 4).
+  "view.sent.label": "Sent to this session",
+  // An armed `confirm` option: Collie's words with the label the second tap sends. A button in the screen
+  // is a third of the width, so it takes the short words; its label is the one the person just tapped.
+  "view.armed": "Tap again to send \"{label}\"",
+  "view.armed.short": "Tap again",
   "view.textAnswer": "The agent answered in text",
-  // The status line under the operator's own request in the Morph body. Exactly one shows at a time.
+  // The status line under the operator's own request in an agent view. Exactly one shows at a time.
   "view.request.sending": "Sending…",
   "view.request.notSent": "Not sent",
   "view.request.notSentWhy": "Not sent: {reason}",
@@ -3745,13 +3756,19 @@ export const PENDING_TRANSLATION = [
   // The Hill's push switch (M96, 2026-11-10).
   "settings.notify.decisions.label",
   "settings.notify.decisions.hint",
-  // Morph (prototype, 2026-11-10).
-  "chat.mode.morph",
+  // Agent views.
+  "view.back",
   "view.switch.hint",
   "view.switch.failed",
   "view.empty",
-  "view.drawn",
-  "view.drawnAt",
+  "view.band.by",
+  "view.band.question",
+  "view.band.old",
+  "view.band.changed",
+  "view.band.working",
+  "view.sent.label",
+  "view.armed",
+  "view.armed.short",
   "view.textAnswer",
   "view.request.sending",
   "view.request.notSent",

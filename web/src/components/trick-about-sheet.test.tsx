@@ -199,7 +199,7 @@ describe("an agent view and its rules (contract 2)", () => {
   // The fixture the bridge's own tests read: the bytes on disk are the bytes the sheet draws.
   const RULES_BYTES = readFileSync(join(import.meta.dirname, "..", "..", "..", "bridge", "tricks", "fixtures", "morph", "rules.md"));
   const RULES_TEXT = RULES_BYTES.toString("latin1");
-  const MORPH: WireTrickInfo = {
+  const VIEW_TRICK: WireTrickInfo = {
     host: "lodge",
     id: "morph",
     name: "Morph",
@@ -215,7 +215,7 @@ describe("an agent view and its rules (contract 2)", () => {
   const toggle = () => screen.getByRole("button", { name: "Read the instructions" });
 
   it("lists the two rights lines and the rules line under What it does, with no later note, in the schema's words", () => {
-    render(<TrickAboutSheet trick={MORPH} open onClose={vi.fn()} />);
+    render(<TrickAboutSheet trick={VIEW_TRICK} open onClose={vi.fn()} />);
     const does = screen.getByRole("list", { name: "What it does" });
     expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Draws in: agent view.", AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS]);
     expect(AGENT_VIEW_WORDS).toBe("Adds a view of a session that the session's own agent draws. You switch it on per session.");
@@ -225,7 +225,7 @@ describe("an agent view and its rules (contract 2)", () => {
 
   it("holds the rules behind a closed fold, and opens them whole: the text on the screen is the file's bytes", async () => {
     const user = userEvent.setup();
-    render(<TrickAboutSheet trick={MORPH} open onClose={vi.fn()} />);
+    render(<TrickAboutSheet trick={VIEW_TRICK} open onClose={vi.fn()} />);
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("dialog").querySelector('[data-line="rules-text"]')).toBeNull();
     await user.click(toggle());
@@ -235,7 +235,7 @@ describe("an agent view and its rules (contract 2)", () => {
     expect(pre?.className).toContain("font-mono");
     expect(pre?.className).toContain("whitespace-pre-wrap");
     // Byte for byte: the file, the wire's reader, the drawn text.
-    const wired = readTrick(JSON.parse(JSON.stringify(MORPH)));
+    const wired = readTrick(JSON.parse(JSON.stringify(VIEW_TRICK)));
     expect(wired?.rules?.text).toBe(RULES_TEXT);
     expect(Buffer.from(pre?.textContent ?? "", "latin1").equals(RULES_BYTES)).toBe(true);
     // Never markdown: only the line and piece spans the wrap draws, no other element.
@@ -243,15 +243,15 @@ describe("an agent view and its rules (contract 2)", () => {
     expect(pre?.querySelectorAll("[data-prose-line]").length).toBe(RULES_TEXT.split("\n").length - 1);
   });
 
-  it("the playground's Morph rules are the bridge fixture's bytes", async () => {
-    const { MORPH_RULES } = await import("@/playground/fixtures/morph");
-    expect(MORPH_RULES).toBe(RULES_TEXT);
+  it("the playground's agent view rules are the bridge fixture's bytes", async () => {
+    const { VIEW_TRICK_RULES } = await import("@/playground/fixtures/agent-view");
+    expect(VIEW_TRICK_RULES).toBe(RULES_TEXT);
   });
 
   it("a markdown-looking line stays text", async () => {
     const user = userEvent.setup();
     const text = "# Not a heading\n**not bold** [not a link](https://example.com)\n<b>not html</b>\n";
-    render(<TrickAboutSheet trick={{ ...MORPH, rules: { file: "rules.md", text } }} open onClose={vi.fn()} />);
+    render(<TrickAboutSheet trick={{ ...VIEW_TRICK, rules: { file: "rules.md", text } }} open onClose={vi.fn()} />);
     await user.click(toggle());
     const pre = screen.getByRole("dialog").querySelector('[data-line="rules-text"]');
     expect(pre?.textContent).toBe(text);
@@ -259,7 +259,7 @@ describe("an agent view and its rules (contract 2)", () => {
   });
 
   it("draws no Take changes without asking switch for a trick with rules, even with the write given", () => {
-    render(<TrickAboutSheet trick={{ ...MORPH, auto: true }} open onClose={vi.fn()} onAuto={vi.fn()} />);
+    render(<TrickAboutSheet trick={{ ...VIEW_TRICK, auto: true }} open onClose={vi.fn()} onAuto={vi.fn()} />);
     expect(screen.queryByText("Updates")).toBeNull();
     expect(screen.queryByRole("switch", { name: "Take changes without asking" })).toBeNull();
   });

@@ -6,7 +6,6 @@ import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { CHAT_FONT_MAX, CHAT_FONT_MIN, FONT_MAX, FONT_MIN } from "@/hooks/use-display-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
-import { MORPH_NAME } from "@/lib/morph/reader";
 import type { PaneView } from "@/lib/pane-view";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/components/icons/icon";
@@ -67,11 +66,12 @@ export interface PaneViewControl {
   chatFontSize: number;
   stepChatFontSize: (delta: number) => void;
   /**
-   * The session's Morph is on (components/morph-view.tsx): the View row offers Morph as a third choice.
-   * `selected` while the Morph body shows; picking Terminal or Chat then calls `onChange` and Morph stays
-   * on, picking Morph calls `onPick`. Absent: the row is the two-way it always was.
+   * An agent view of the session is on (components/agent-view-screen.tsx): the View row offers it as a
+   * third choice, named by its trick's `name` (cut for the row, `label`). `selected` while the view shows;
+   * picking Terminal or Chat then calls `onChange` and the view stays on, picking the view calls `onPick`.
+   * Absent: the row is the two-way it always was.
    */
-  morph?: { selected: boolean; onPick: () => void };
+  agentView?: { label: string; selected: boolean; onPick: () => void };
 }
 
 interface DisplayPrefsContentProps {
@@ -175,15 +175,15 @@ function TextSizeRow({
  * app is broken.
  */
 function ViewRow({ view }: { view: PaneViewControl }) {
-  const options: { value: PaneView | "morph"; label: string }[] = [
+  const options: { value: PaneView | "agent-view"; label: string }[] = [
     { value: "terminal", label: t("chat.mode.option.terminal") },
     { value: "chat", label: t("chat.mode.option.chat") },
-    ...(view.morph === undefined ? [] : [{ value: "morph" as const, label: MORPH_NAME }]),
+    ...(view.agentView === undefined ? [] : [{ value: "agent-view" as const, label: view.agentView.label }]),
   ];
-  const picked = view.morph?.selected === true ? "morph" : view.chosen;
-  const pick = (value: PaneView | "morph") => {
-    if (value === "morph") {
-      view.morph?.onPick();
+  const picked = view.agentView?.selected === true ? "agent-view" : view.chosen;
+  const pick = (value: PaneView | "agent-view") => {
+    if (value === "agent-view") {
+      view.agentView?.onPick();
       return;
     }
     view.onChange(value);

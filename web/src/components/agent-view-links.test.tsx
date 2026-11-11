@@ -2,19 +2,20 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FileLinksProvider, type FileLinkOpener } from "@/components/file-links";
-import { MorphView, type MorphViewProps } from "@/components/morph-view";
+import { AgentViewScreen, type AgentViewScreenProps } from "@/components/agent-view-screen";
 import type { JsonValue } from "@/lib/json";
-import { parseMorphView, type MorphView as MorphScreen } from "@/lib/morph/wire";
+import { parseAgentView, type ViewScreen } from "@/lib/agent-view/wire";
+import type { View } from "@/lib/tricks/schema";
 
-// Links in the Morph screen's text: a web address is a link, a path the bridge confirmed opens through the
+// Links in an agent view's text: a web address is a link, a path the bridge confirmed opens through the
 // session's own opener (the one Chat uses), a path it has not confirmed stays text, and nothing inside a
 // button is a link.
 
 const AT = "2026-11-10T10:00:00.000Z";
 const NOW = Date.parse("2026-11-10T10:03:00.000Z");
 
-function screenOf(raw: JsonValue): MorphScreen {
-  const parsed = parseMorphView(raw);
+function screenOf(raw: JsonValue): ViewScreen {
+  const parsed = parseAgentView(raw);
   if (parsed.view === undefined) throw new Error(JSON.stringify(parsed.refusals));
   return { rev: 1, at: AT, view: parsed.view };
 }
@@ -26,18 +27,20 @@ const LINES = screenOf([
   { kind: "bar", kids: [{ kind: "button", attrs: { label: "Open src/a.tsx", intent: "open" } }] },
 ]);
 
-function draw(opener: FileLinkOpener | null, view: MorphScreen = LINES) {
-  const props: MorphViewProps = { session: "local/w1:p1#ab12", view, working: false, entries: [], canAct: true, onSend: vi.fn(() => Promise.resolve(true)), onLink: vi.fn(), now: NOW };
+const onTap = () => Promise.resolve({ sent: true, line: null, code: null });
+
+function draw(opener: FileLinkOpener | null, view: ViewScreen = LINES) {
+  const props: AgentViewScreenProps = { name: "Morph", session: "local/w1:p1#ab12", view, working: false, entries: [], canAct: true, onTap: vi.fn(onTap), onLink: vi.fn(), now: NOW };
   return render(
     <FileLinksProvider value={opener}>
-      <MorphView {...props} />
+      <AgentViewScreen {...props} />
     </FileLinksProvider>,
   );
 }
 
 afterEach(cleanup);
 
-describe("links in the Morph screen's text", () => {
+describe("links in an agent view's text", () => {
   it("draws a web address as a link that opens in a new tab", () => {
     draw(null);
     const link = screen.getByRole("link", { name: "http://workshop:5198" });
@@ -93,9 +96,35 @@ describe("links in the Morph screen's text", () => {
     const onOpen = vi.fn();
     view.rerender(
       <FileLinksProvider value={({ path }) => (path === "section.tsx" ? { href: "/files/section.tsx", onOpen } : null)}>
-        <MorphView session="local/w1:p1#ab12" view={LINES} working={false} entries={[]} canAct onSend={() => Promise.resolve(true)} onLink={vi.fn()} now={NOW} />
+        <AgentViewScreen name="Morph" session="local/w1:p1#ab12" view={LINES} working={false} entries={[]} canAct onTap={onTap} onLink={vi.fn()} now={NOW} />
       </FileLinksProvider>,
     );
     expect(screen.getByRole("link", { name: "section.tsx" })).toBeInTheDocument();
+  });
+});
+
+describe("rule 6: a link in an agent view shows where it goes", () => {
+  it("shows the link's host beside its words, as a Decision's view does", () => {
+    const { container } = draw(null, screenOf([{ kind: "para", kids: [{ kind: "link", text: "The release notes", attrs: { href: "https://example.org/notes" } }] }]));
+    const link = screen.getByRole("link", { name: /The release notes/ });
+    expect(link).toHaveAttribute("href", "https://example.org/notes");
+    expect(container.querySelector("[data-slot=view-screen]")?.textContent).toContain("example.org");
+  });
+
+  it("shows the target in place of words that read as another address", () => {
+    // The parser refuses such a link; a screen built past it still draws the truth.
+    const view: View = [{ kind: "para", kids: [{ kind: "link", text: "https://bank.example/login", attrs: { href: "https://other.example/x" } }] }];
+    draw(null, { rev: 1, at: AT, view });
+    expect(screen.queryByText("https://bank.example/login")).toBeNull();
+    expect(screen.getByRole("link", { name: /https:\/\/other\.example\/x/ })).toHaveAttribute("href", "https://other.example/x");
+  });
+
+  it("refuses a button that copies and a link whose words read as another address", () => {
+    const copies = parseAgentView([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Copy", intent: "copy", does: "copy" } }] }]);
+    expect(copies.view).toBeUndefined();
+    expect(copies.refusals.map((r) => r.reason).join(" ")).toContain("does");
+    const lies = parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "https://bank.example", attrs: { href: "https://other.example" } }] }]);
+    expect(lies.view).toBeUndefined();
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "https://other.example", attrs: { href: "https://other.example" } }] }]).view).toBeDefined();
   });
 });

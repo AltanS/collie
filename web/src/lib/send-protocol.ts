@@ -52,6 +52,11 @@ export interface SendReply {
   readonly queued: boolean;
   /** Which rule decided the answer beside its reason (`notice_key`); null when the bridge named none. */
   readonly cause: SendCause | null;
+  /**
+   * A send from an agent view: the exact text the bridge typed into the session (`view.line`), head and
+   * tail included, for the view's "Sent to this session". Absent on every other send.
+   */
+  readonly viewLine?: string;
 }
 
 const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
@@ -128,7 +133,14 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     cap: readSendCap(node.cap),
     queued: receipt?.queued === true,
     cause: pick(node.cause, SEND_CAUSES),
+    ...viewLineOf(node.view),
   };
+}
+
+/** The `view.line` of a view send's answer, as the field to spread: one string of 1 to 4096 characters, else nothing. */
+function viewLineOf(view: JsonValue | undefined): { viewLine?: string } {
+  const line = asJsonString(asJsonObject(view)?.line);
+  return line === undefined || line === "" || line.length > 4096 ? {} : { viewLine: line };
 }
 
 /** A row of the list being built, field by field. */

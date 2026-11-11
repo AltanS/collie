@@ -13,7 +13,7 @@ import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { addOfficialTrick } from "@/lib/api";
 import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
-import { MORPH } from "../fixtures/morph";
+import { VIEW_TRICK } from "../fixtures/agent-view";
 import { ABOUT_MAX, type OfficialState, type OfficialTricksReply, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 
@@ -359,10 +359,10 @@ export function TrickSettingsSection(): ReactNode {
         />
       </Group>
       <Group title="An agent view (contract 2)">
-        <ListCard n={26} state="trick-settings-agent-view" label="a view-only trick: agent view, the later note, a switch" tricks={[MORPH, HEALTHY[2] ?? trick("x", "x")]} />
-        <SheetBox n={27} state="trick-settings-agent-view-about" label="its About sheet: the rights, the rules line, the fold (tap it to open)" trick={MORPH} />
-        <SheetBox n={28} state="trick-settings-agent-view-about-on" label="switched on: still no Updates switch" updates trick={{ ...MORPH, on: true, state: "ok" }} />
-        <ListCard n={29} state="trick-settings-agent-view-unshown" label="rules this phone cannot show: the row says so, the switch cannot go on" tricks={[{ ...MORPH, rules: undefined, rulesUnshown: true }]} />
+        <ListCard n={26} state="trick-settings-agent-view" label="a view-only trick: agent view as its place, a switch" tricks={[VIEW_TRICK, HEALTHY[2] ?? trick("x", "x")]} />
+        <SheetBox n={27} state="trick-settings-agent-view-about" label="its About sheet: the rights, the rules line, the fold (tap it to open)" trick={VIEW_TRICK} />
+        <SheetBox n={28} state="trick-settings-agent-view-about-on" label="switched on: still no Updates switch" updates trick={{ ...VIEW_TRICK, on: true, state: "ok" }} />
+        <ListCard n={29} state="trick-settings-agent-view-unshown" label="rules this phone cannot show: the row says so, the switch cannot go on" tricks={[{ ...VIEW_TRICK, rules: undefined, rulesUnshown: true }]} />
         <OfficialSheetBox n={30} state="trick-settings-agent-view-official" label="an official agent view before the add: read the instructions after the add" entry={{ ...official("morph", "Morph", "Your agent answers by drawing one screen."), givesRules: true }} />
       </Group>
       <Group title="Official tricks">

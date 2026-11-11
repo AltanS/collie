@@ -960,7 +960,7 @@ describe("linkText, the place's pass over free text", () => {
   });
 
   it("draws a linked row title whole, so the link is one anchor, and keeps the middle cut for a title nothing linked", () => {
-    const long = "web/src/components/morph-view-with-a-very-long-name.tsx";
+    const long = "web/src/components/agent-view-with-a-very-long-name.tsx";
     const linked = draw(viewOfNodes(list(row(long, { cut: "mid" }))), { linkText: (text) => <a href="/x">{text}</a> });
     expect(linked.container.querySelectorAll("a")).toHaveLength(1);
     expect(linked.container.querySelector("a")?.textContent).toBe(long);

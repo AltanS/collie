@@ -171,13 +171,20 @@ export interface RenderCtx {
   wrap?: boolean;
   /**
    * Turns the free text of a `line`, a `para`, a plain `run`, a `row`'s title, second line and `end`, a
-   * `table` cell and a picture's caption into what the place draws for it (Morph: web addresses and
+   * `table` cell and a picture's caption into what the place draws for it (an agent view: web addresses and
    * printed paths as links). It returns the text itself when it has nothing to link. NO DEFAULT: absent
    * (a trick's Session, a Decision on the hill, the playground), every one of those texts draws as it
    * always did, and no text ever becomes a link on its own. It is never applied to a button, a chip, a
    * link or a run that has an `href`, nor to a row that is itself a link: an anchor does not nest.
    */
   linkText?: (text: string) => ReactNode;
+  /**
+   * The words an armed `confirm` button shows, in the place's own voice: given the button's label, the
+   * sentence that says what the second tap does (an agent view: Collie's "Tap again", so the armed state
+   * is never the agent's `confirm` word alone). NO DEFAULT: absent, an
+   * armed button shows its `confirm` word, as it always did.
+   */
+  armedLabel?: (label: string) => string;
 }
 
 /** The words of a free text as the place draws them: through `ctx.linkText` when it has one, else as they are. */
@@ -342,7 +349,8 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const arm = useArm<"confirm">();
   const armed = arm.armed === "confirm";
   const Icon = attrs.icon === undefined ? null : trickIconOf(attrs.icon);
-  const label = armed && attrs.confirm !== undefined ? attrs.confirm : attrs.label;
+  const armedWords = attrs.confirm === undefined ? undefined : (ctx.armedLabel?.(attrs.label) ?? attrs.confirm);
+  const label = armed && armedWords !== undefined ? armedWords : attrs.label;
   const ink = armed ? inkOf("danger", false) : inkOf(attrs.tone, ctx.stale);
   const disabled = attrs.disabled !== undefined;
   const onClick = () => {
@@ -364,7 +372,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
       className="min-w-0 justify-items-center"
       options={[
         { key: "label", node: <span className="truncate">{attrs.label}</span> },
-        ...(attrs.confirm === undefined ? [] : [{ key: "confirm", node: <span className="truncate">{attrs.confirm}</span> }]),
+        ...(armedWords === undefined ? [] : [{ key: "confirm", node: <span className="truncate">{armedWords}</span> }]),
         { key: "unknown", node: <span className="truncate">{t("tricks.tap.unknown")}</span> },
         ...(Icon === null
           ? [

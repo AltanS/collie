@@ -824,7 +824,7 @@ export const versionRights = decision({
 /**
  * 47b: a new version of an agent view's trick whose rules changed (contract 2): the chip "new agent
  * instructions", the rights line, and the rules' diff whole, every line. Taken from the bridge's own
- * `versionCard` for the Morph fixture (bridge/tricks/fixtures/morph), so the words are the bridge's.
+ * `versionCard` for the agent view fixture trick (bridge/tricks/fixtures/morph), so the words are the bridge's.
  */
 export const versionRules = decision({
   title: "Use the new version of Morph?",

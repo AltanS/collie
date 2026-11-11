@@ -475,12 +475,12 @@ function parsePicture(picture: PictureAt, path: string, opts: AgentViewOptions):
 }
 
 /**
- * Read a Morph view: a list of nodes in a trick part's vocabulary, under the part caps, with pictures
+ * Read an agent view: a list of nodes in a trick part's vocabulary, under the part caps, with pictures
  * by `ref` as a Decision's view takes them. Total: garbage is a refusal, never a throw. Strict: what the
  * tolerant trick read would drop or ignore is refused.
  *
  * The part parser refuses a `ref` and the Decision parser refuses a button, and the schema is not
- * Morph's to change. So the view is read in two passes over the same JSON: every picture subtree (an
+ * the agent view's to change. So the view is read in two passes over the same JSON: every picture subtree (an
  * `image` with a `ref`, a `compare` holding one) is read alone by the Decision parser, with the screen's
  * picture count, and the rest by the part parser with each picture swapped for a `spacer`, which is
  * valid everywhere a picture is, so every index, path and depth stays. The part's byte and node caps are
@@ -879,7 +879,7 @@ export function viewBlocksOf(view: ViewScreen): ViewBlock[] {
 /** The first `b<n>` id none of `taken` holds. Of `b1` to `b<size + 1>` at least one is free. */
 export function nextBlockId(taken: ReadonlySet<string>): string {
   const free = Array.from({ length: taken.size + 1 }, (_, i) => `b${String(i + 1)}`).find((id) => !taken.has(id));
-  if (free === undefined) throw new Error("morph: no free block id among size + 1 candidates");
+  if (free === undefined) throw new Error("agent view: no free block id among size + 1 candidates");
   return free;
 }
 
@@ -922,7 +922,7 @@ export function readViewScreen(raw: JsonValue | undefined): ViewScreen | null {
 
 /**
  * An address as one shell word: bare when its characters are safe, in single quotes when not, null when
- * it cannot be quoted (an empty text, a control character or a quote). The hint and `morph help` print
+ * it cannot be quoted (an empty text, a control character or a quote). The tail and `trick view <id> help` print
  * it so a line can be copied as it stands.
  */
 export function viewShellWord(address: string): string | null {

@@ -7,8 +7,13 @@ import type { AgentView } from "@/lib/types";
 import { DisplayPrefsContent, type PaneViewControl } from "./display-prefs";
 import { PaneActionsSheet } from "./pane-actions-sheet";
 
-// Morph's controls: the switch row in the session's menu, the menu's way back to Chat or the terminal
-// with Morph left on, and Morph as the third choice of the display sheet's View row.
+// The agent view controls: one switch row per trick that offers a view in the session's menu, the menu's
+// way back to Chat or the terminal with the view left on, and the view as the third choice of the display
+// sheet's View row, named by its trick. The fixture trick is named Morph.
+
+const HINT = "Drawn by this session's agent. A tap sends a message in your name.";
+const ROWS = [{ trick: "morph", label: "Morph", on: false }];
+const ROWS_ON = [{ trick: "morph", label: "Morph", on: true }];
 
 const agent: AgentView = {
   paneId: "w1:p1",
@@ -39,23 +44,23 @@ function renderSheet(overrides: Partial<SheetProps> = {}): SheetProps {
   return props;
 }
 
-describe("the Morph rows of the session menu", () => {
-  it("draw no Morph row on a pane without Morph", () => {
+describe("the agent view rows of the session menu", () => {
+  it("draw no view row on a pane without agent views", () => {
     renderSheet();
     expect(screen.queryByRole("switch", { name: "Morph" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Morph view" })).toBeNull();
   });
 
-  it("turn Morph on with the switch, which shows the value asked for while it writes", async () => {
+  it("turn a view on with its switch, named by its trick, which shows the value asked for while it writes", async () => {
     const user = userEvent.setup();
     let finish: (failed: string | null) => void = () => {};
     const onSwitch = vi.fn(() => new Promise<string | null>((resolve) => (finish = resolve)));
-    renderSheet({ morph: { on: false, showing: false, onShowMorph: vi.fn(), onSwitch } });
+    renderSheet({ agentViews: { rows: ROWS, label: undefined, on: false, showing: false, onShow: vi.fn(), onSwitch } });
     const toggle = screen.getByRole("switch", { name: "Morph" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText("The agent answers by drawing one screen.")).toBeInTheDocument();
+    expect(screen.getByText(HINT)).toBeInTheDocument();
     await user.click(toggle);
-    expect(onSwitch).toHaveBeenCalledExactlyOnceWith(true);
+    expect(onSwitch).toHaveBeenCalledExactlyOnceWith("morph", true);
     expect(toggle).toHaveAttribute("aria-checked", "true");
     expect(toggle).toBeDisabled();
     finish("Not changed: offline");
@@ -63,25 +68,40 @@ describe("the Morph rows of the session menu", () => {
     expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 
+  it("lead 2: draw one switch row per view trick, each with its own name and the same hint", async () => {
+    const user = userEvent.setup();
+    const onSwitch = vi.fn(() => Promise.resolve(null));
+    const rows = [
+      { trick: "morph", label: "Morph", on: true },
+      { trick: "board", label: "Release boa…", on: false },
+    ];
+    renderSheet({ agentViews: { rows, label: "Morph", on: true, showing: true, onShow: vi.fn(), onSwitch } });
+    expect(screen.getByRole("switch", { name: "Morph" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "Release boa…" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getAllByText(HINT)).toHaveLength(2);
+    await user.click(screen.getByRole("switch", { name: "Release boa…" }));
+    expect(onSwitch).toHaveBeenCalledExactlyOnceWith("board", true);
+  });
+
   it("draw no switch where nothing may write", () => {
-    renderSheet({ morph: { on: true, showing: true, onShowMorph: vi.fn() } });
+    renderSheet({ agentViews: { rows: ROWS_ON, label: "Morph", on: true, showing: true, onShow: vi.fn() } });
     expect(screen.queryByRole("switch", { name: "Morph" })).toBeNull();
   });
 
-  it("while the Morph body shows, open the standing body itself and leave Morph on", async () => {
+  it("while the view shows, open the standing body itself and leave the view on", async () => {
     const user = userEvent.setup();
-    const props = renderSheet({ morph: { on: true, showing: true, onShowMorph: vi.fn(), onSwitch: vi.fn() } });
+    const props = renderSheet({ agentViews: { rows: ROWS_ON, label: "Morph", on: true, showing: true, onShow: vi.fn(), onSwitch: vi.fn() } });
     await user.click(screen.getByRole("button", { name: "Chat view" }));
     expect(props.onPaneViewChange).toHaveBeenCalledExactlyOnceWith("chat");
   });
 
-  it("while Chat stands in, offer the way back to Morph", async () => {
+  it("while Chat stands in, offer the way back to the view by its trick's name", async () => {
     const user = userEvent.setup();
-    const onShowMorph = vi.fn();
-    renderSheet({ morph: { on: true, showing: false, onShowMorph, onSwitch: vi.fn() } });
+    const onShow = vi.fn();
+    renderSheet({ agentViews: { rows: ROWS_ON, label: "Morph", on: true, showing: false, onShow, onSwitch: vi.fn() } });
     expect(screen.getByRole("button", { name: "Terminal view" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Morph view" }));
-    expect(onShowMorph).toHaveBeenCalledOnce();
+    expect(onShow).toHaveBeenCalledOnce();
   });
 });
 
@@ -127,11 +147,11 @@ function drawPrefs(paneView: Partial<PaneViewControl>) {
   return onChange;
 }
 
-describe("Morph in the View row", () => {
-  it("is a third choice, selected while the Morph body shows", async () => {
+describe("an agent view in the View row", () => {
+  it("lead 2: is a third choice named by its trick, selected while the view shows", async () => {
     const user = userEvent.setup();
     const onPick = vi.fn();
-    const onChange = drawPrefs({ morph: { selected: true, onPick } });
+    const onChange = drawPrefs({ agentView: { label: "Morph", selected: true, onPick } });
     expect(screen.getByRole("radio", { name: "Morph" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: "Chat" })).toHaveAttribute("aria-checked", "false");
     await user.click(screen.getByRole("radio", { name: "Terminal" }));
@@ -139,16 +159,16 @@ describe("Morph in the View row", () => {
     expect(onPick).not.toHaveBeenCalled();
   });
 
-  it("brings the Morph body back on its pick", async () => {
+  it("brings the view back on its pick", async () => {
     const user = userEvent.setup();
     const onPick = vi.fn();
-    drawPrefs({ morph: { selected: false, onPick } });
+    drawPrefs({ agentView: { label: "Morph", selected: false, onPick } });
     expect(screen.getByRole("radio", { name: "Chat" })).toHaveAttribute("aria-checked", "true");
     await user.click(screen.getByRole("radio", { name: "Morph" }));
     expect(onPick).toHaveBeenCalledOnce();
   });
 
-  it("is absent with Morph off", () => {
+  it("is absent with no view on", () => {
     drawPrefs({});
     expect(screen.queryByRole("radio", { name: "Morph" })).toBeNull();
   });

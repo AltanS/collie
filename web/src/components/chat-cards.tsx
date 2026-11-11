@@ -58,7 +58,7 @@ import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
 import { clockTimeOf } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
-import { stripMorphHint } from "@/lib/morph/reader";
+import { useViewTurnText } from "@/lib/agent-view/store";
 import { useScope } from "@/lib/session";
 import {
   directionOf,
@@ -428,8 +428,9 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
     case "user":
       // A turn that opens with an envelope header is a CLAIM to be a message; only the pane's own log
       // can make it one. The other user turns never subscribe to the log, so a poll redraws none of them.
-      // The Morph hint a send carried is the agent's instruction, not the operator's words: drawn without it (display only).
-      return item.walky === undefined ? <UserTurn text={stripMorphHint(item.text)} ts={item.ts} /> : <EnvelopeTurn text={item.text} ts={item.ts} header={item.walky} />;
+      // A turn the bridge typed for an agent view carries Collie's head and tail around the person's words:
+      // drawn without them, and only on a turn the bridge marks as sent through the view (display only).
+      return item.walky === undefined ? <ViewUserTurn text={item.text} ts={item.ts} /> : <EnvelopeTurn text={item.text} ts={item.ts} header={item.walky} />;
     case "reply":
       // Agent prose: MarkdownText wears `font-content`, never the app face (DESIGN.md §5).
       return <Growing partial={item.partial === true}><MarkdownText text={item.text} stretches /></Growing>;
@@ -540,6 +541,16 @@ function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> })
       {() => <MarkdownText text={text} className="px-5 pb-1 text-sm text-muted-foreground" />}
     </Disclosure>
   );
+}
+
+/**
+ * A person's turn in the stream that may be a line the bridge typed for an agent view: the head and the
+ * tail come off for display only, and only when the line is one the bridge lists as sent through a view
+ * (lib/agent-view/store.ts `useViewTurnText`). Any other turn draws as it was typed.
+ */
+function ViewUserTurn({ text, ts }: { text: string; ts?: string }) {
+  const shown = useViewTurnText(text);
+  return ts === undefined ? <UserTurn text={shown} /> : <UserTurn text={shown} ts={ts} />;
 }
 
 /**
@@ -657,7 +668,7 @@ function BareUserTurn({
   pending?: PendingState;
   notInLog: boolean;
   hug: boolean;
-  /** At most four lines, the Morph request block's (components/morph-view.tsx). */
+  /** At most four lines, the agent view's request block's (components/agent-view-screen.tsx). */
   clamp: boolean;
 }) {
   const meta = time !== "" || notInLog || pending !== undefined;

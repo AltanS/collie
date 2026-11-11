@@ -5,10 +5,10 @@ import { LINK_CLASS, breakClass } from "@/components/markdown-text";
 import { codeSpanPath, findFilePaths, type FoundPath } from "@/lib/file-paths";
 import { findBareUrls } from "@/lib/markdown";
 
-// LINKS IN THE MORPH SCREEN'S TEXT. The agent draws a line, a row's title, a table cell or a caption as
+// LINKS IN AN AGENT VIEW'S TEXT. The agent draws a line, a row's title, a table cell or a caption as
 // plain words, and the same words in Chat carry links: a web address opens in a new tab, and a printed
 // path opens in the Files view once the bridge has said it exists (components/file-links.tsx, ADR 0088).
-// This is that same pass for the Morph body, and nothing else: it asks Chat's own detectors
+// This is that same pass for an agent view, and nothing else: it asks Chat's own detectors
 // (`findBareUrls`, `findFilePaths`) and Chat's own opener (`useFileLinks`, the one the session's detail
 // screen provides), so the existence check, the pane scoping and the refusal rules are Chat's, and a path
 // the bridge has not confirmed stays text.
@@ -30,7 +30,7 @@ interface Piece {
 
 /**
  * The paths in a run of text. Chat reads prose by `findFilePaths`, which needs a folder in the path, and
- * a code span by `codeSpanPath`, which also takes a bare name (`section.tsx`). A Morph row title, a table
+ * a code span by `codeSpanPath`, which also takes a bare name (`section.tsx`). A row title in an agent view, a table
  * cell or a line is often one file name and nothing else, so a text that is wholly one path is read the
  * way a code span is.
  */
@@ -46,7 +46,7 @@ function pathsIn(text: string): FoundPath[] {
  * renderer and its tests rely on the identity). Asking the opener queues each unknown path for the
  * existence check, as drawing a path in Chat does.
  */
-export function linkMorphText(text: string, open: FileLinkOpener | null): ReactNode {
+export function linkViewText(text: string, open: FileLinkOpener | null): ReactNode {
   const pieces: Piece[] = findBareUrls(text).map((u) => ({
     start: u.start,
     end: u.end,
@@ -95,10 +95,10 @@ export function linkMorphText(text: string, open: FileLinkOpener | null): ReactN
 }
 
 /**
- * The Morph body's `linkText`: stable while the session's opener is, so a block's memo runs again only
+ * An agent view's `linkText`: stable while the session's opener is, so a block's memo runs again only
  * when a path became known to exist.
  */
-export function useMorphLinkText(): (text: string) => ReactNode {
+export function useViewLinkText(): (text: string) => ReactNode {
   const open = useFileLinks();
-  return useMemo(() => (text: string) => linkMorphText(text, open), [open]);
+  return useMemo(() => (text: string) => linkViewText(text, open), [open]);
 }

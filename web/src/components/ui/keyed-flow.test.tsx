@@ -6,7 +6,7 @@ import { FLIP_MS } from "@/hooks/use-flip";
 import { FLOW_HOLD_MAX_MS, FLOW_STAGGER_MAX, FLOW_STAGGER_MS, KeyedFlow, staggerDelay, type FlowItem } from "./keyed-flow";
 import { PRESENCE_MS } from "./presence";
 
-// The keyed flow (2026-11-10, Morph): what it adds over PresenceList and HeightSwap. jsdom has no layout
+// The keyed flow (2026-11-10, agent views): what it adds over PresenceList and HeightSwap. jsdom has no layout
 // and no Web Animations, so a test stands in both: a block's top is its place among the column's blocks
 // times 40 px, and `animate` records what it was asked to play.
 

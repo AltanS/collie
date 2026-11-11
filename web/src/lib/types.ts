@@ -1435,7 +1435,7 @@ export interface SnapshotResponse {
   hillRev?: number;
   /**
    * The agent views' revision: it moves on every switch and every screen an agent draws, and the phone
-   * reads `GET /api/trick-views` when it does (lib/morph/store.ts, TODO(agent-view web)). Absent on a
+   * reads `GET /api/trick-views` when it does (lib/agent-view/store.ts). Absent on a
    * bridge without agent views, which reads as none at all.
    */
   trickViewsRev?: number;

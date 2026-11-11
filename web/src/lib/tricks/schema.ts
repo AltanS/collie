@@ -1360,7 +1360,7 @@ export interface WireTrickInfo {
   about?: string;
   /**
    * Contract 2: the manifest lists `agent-view`. The About sheet says the two lines of that right, and the
-   * row carries the one `later` note: this build draws no agent view yet. Absent: none, or an older bridge.
+   * row names the agent view as the trick's place. Absent: none, or an older bridge.
    */
   agentView?: true;
   /**

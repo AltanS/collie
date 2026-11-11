@@ -683,7 +683,7 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
 });
 
 describe("an agent view (contract 2)", () => {
-  const MORPH: WireTrickInfo = {
+  const VIEW_TRICK: WireTrickInfo = {
     host: "lodge",
     id: "morph",
     name: "Morph",
@@ -699,8 +699,8 @@ describe("an agent view (contract 2)", () => {
 
   it("lists the trick with agent view as its place, no later note, and a switch that switches it on", async () => {
     const user = userEvent.setup();
-    const onSwitch = vi.fn(async () => ({ ...MORPH, on: true, state: "ok" as const }));
-    renderCard(await storeWith([MORPH]), onSwitch);
+    const onSwitch = vi.fn(async () => ({ ...VIEW_TRICK, on: true, state: "ok" as const }));
+    renderCard(await storeWith([VIEW_TRICK]), onSwitch);
     const row = rowOf("morph");
     expect(row.querySelector('[data-line="places"]')).toHaveTextContent(/^agent view$/u);
     expect(row.querySelector('[data-line="later"]')).toBeNull();
@@ -715,7 +715,7 @@ describe("an agent view (contract 2)", () => {
   });
 
   it("the wire keeps agentView and rules only in their shapes, and a trick with rules never reads as auto", () => {
-    const wire = (extra: JsonObject) => readTrick(JSON.parse(JSON.stringify({ ...MORPH, ...extra })));
+    const wire = (extra: JsonObject) => readTrick(JSON.parse(JSON.stringify({ ...VIEW_TRICK, ...extra })));
     expect(wire({})?.rules).toEqual({ file: "rules.md", text: "Draw one screen.\n" });
     expect(wire({})?.agentView).toBe(true);
     expect(wire({ agentView: "yes" })?.agentView).toBeUndefined();
@@ -748,12 +748,12 @@ describe("review 8 V-N5: rules the phone cannot show", () => {
   });
 
   it("the row says so and its switch cannot switch the trick on; one that is on can still be switched off", async () => {
-    const store = await storeWith([{ ...BAD, rulesUnshown: true }, { ...BAD, id: "morph-on", name: "Morph on", on: true, state: "ok", rulesUnshown: true }]);
+    const store = await storeWith([{ ...BAD, rulesUnshown: true }, { ...BAD, id: "view-on", name: "View on", on: true, state: "ok", rulesUnshown: true }]);
     renderCard(store);
     const row = rowOf("morph");
     expect(row.querySelector('[data-line="rules-unshown"]')).toHaveTextContent(UNSHOWN);
     expect(within(row).getByRole("switch", { name: "Morph" })).toBeDisabled();
-    expect(within(rowOf("morph-on")).getByRole("switch", { name: "Morph on" })).toBeEnabled();
+    expect(within(rowOf("view-on")).getByRole("switch", { name: "View on" })).toBeEnabled();
   });
 });
 
