@@ -280,8 +280,7 @@ function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | unde
   const out: WireOfficialTrick = { id, name, description, repo, repoName, commit, state };
   if (body.unlisted === true && state === "taken") out.unlisted = true;
   if (body.changed === true && state === "taken") out.changed = true;
-  const rules = readTrickRules(body.rules);
-  if (rules !== undefined) out.rules = rules;
+  if (body.givesRules === true) out.givesRules = true;
   return out;
 }
 

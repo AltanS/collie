@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { devNull } from "node:os";
 import { join } from "node:path";
 
-import type { OfficialState, OfficialTricksReply, TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { rulesTextProblems, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStanding, officialStateOf, officialWire, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
@@ -144,6 +144,20 @@ export async function fetchOfficial(entry: Pick<OfficialEntry, "id" | "repo" | "
   return candidate;
 }
 
+/**
+ * The sha256 of the instructions a candidate gives its agents, by the manifest's own rules for the file
+ * (schema.ts `rulesTextProblems`), null when its manifest names none. Shared with the maintainer script.
+ */
+export function candidateRules(candidate: Pick<Candidate, "manifest" | "files">): { ok: true; sha256: string | null } | { ok: false; reason: string } {
+  const file = candidate.manifest.rules;
+  if (file === undefined) return { ok: true, sha256: null };
+  const bytes = candidate.files.find((f) => f.rel === file)?.bytes;
+  if (bytes === undefined) return { ok: false, reason: `${file} is not in the folder` };
+  const problem = rulesTextProblems(bytes, file)[0];
+  if (problem !== undefined) return { ok: false, reason: problem.reason };
+  return { ok: true, sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex") };
+}
+
 /** The code hash a candidate's files have once written: written into `dir` (a fresh folder) and hashed, as an install hashes its stage. */
 export async function candidateHash(candidate: Candidate, dir: string): Promise<string> {
   await writeCandidateFiles(dir, candidate.files);
@@ -246,6 +260,13 @@ export class OfficialTricks implements OfficialTricksSurface {
       if (err.step === "local") throw err;
       // More than a listed commit can be: the same answer class as a mismatch, with its own code.
       if (err.step === "size") throw new Stop({ status: 422, body: { error: "too-large", message: mode === "add" ? OFFICIAL_LINES.mismatch : OFFICIAL_LINES.updateMismatch } });
+      throw new Stop(mismatch(mode));
+    }
+    // The instructions the trick gives its agents must be the ones the list pins (review 8 V-N3): the phone
+    // said "gives instructions" or not from the list alone, so a folder that differs installs nothing.
+    const rules = candidateRules(candidate);
+    if (!rules.ok || rules.sha256 !== entry.rules) {
+      this.deps.warn?.(`${entry.id}: the official ${mode} was refused: ${rules.ok ? "the rules differ from the list's" : rules.reason}`);
       throw new Stop(mismatch(mode));
     }
     // An add writes config.toml and media/ too, which the code hash leaves out: the extras hash pins them.

@@ -1505,11 +1505,12 @@ export interface WireOfficialTrick {
    */
   changed?: true;
   /**
-   * Contract 2: the instructions the entry's trick gives its agents, as the list pins them (official.ts), so the
-   * About sheet shows them whole before Add. The add checks the folder's rules file holds exactly these bytes.
-   * Absent: the trick has none, or an older bridge.
+   * Contract 2: the entry's trick gives its agents instructions. The list pins their sha256 (official.ts
+   * `rules`) and the add refuses a folder whose rules file differs (review 8 V-N3). The text is not on the
+   * list and nothing is fetched before Add, so the About sheet says to read them after the add; the trick
+   * stays off until switched on. Absent: it gives none, or an older bridge.
    */
-  rules?: WireTrickRules;
+  givesRules?: true;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */

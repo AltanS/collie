@@ -39,7 +39,7 @@ const C1 = "1".repeat(40);
 const H1 = "a".repeat(64);
 
 function entryFields(over: Partial<Record<keyof OfficialEntry, JsonValue>> = {}) {
-  return { id: "legs", name: "Legs", description: "Counts legs.", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, contract: 1, previous: [], ...over };
+  return { id: "legs", name: "Legs", description: "Counts legs.", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, rules: null, contract: 1, previous: [], ...over };
 }
 const entry = (over: Partial<Record<keyof OfficialEntry, JsonValue>> = {}): JsonValue => entryFields(over);
 const listOf = (...tricks: JsonValue[]): JsonValue => ({ v: 1, tricks });
@@ -269,7 +269,7 @@ const EXTRAS = extrasOf({ "config.toml": { text: "rows = 8\n" } });
 
 /** A list entry for the fixture: its file URL, a commit, and the hashes the tree's folder has. */
 function fixtureEntry(url: string, commit: string, hash: string, id = "legs", extras = EXTRAS): OfficialEntry {
-  return { id, name: `Trick ${id}`, description: "Counts legs.", repo: url, dir: id, commit, hash, extras, contract: 1, previous: [] };
+  return { id, name: `Trick ${id}`, description: "Counts legs.", repo: url, dir: id, commit, hash, extras, rules: null, contract: 1, previous: [] };
 }
 
 /** The list's entry moved to another commit, as the maintainer script moves it: the old version goes first into `previous`. */
@@ -288,7 +288,7 @@ const V2_LEGS = { "trick.toml": V2["legs/trick.toml"], "program.sh": V2["legs/pr
 
 describe("an entry's state on this machine", () => {
   const C0 = "0".repeat(40);
-  const e = { id: "legs", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, previous: [{ commit: C0, hash: "b".repeat(64) }] };
+  const e = { id: "legs", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, rules: null, previous: [{ commit: C0, hash: "b".repeat(64) }] };
   test("absent, added, update and taken", async () => {
     const configDir = await tempDir();
     const dir = join(configDir, TRICKS_DIR, "legs");
@@ -981,5 +981,51 @@ describe.if(posix)("a git run killed at its time cap", () => {
     const run = await spawnGit(["fetch"], { cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` }, timeoutMs: 20_000, signal: controller.signal });
     expect(run.code).not.toBe(0);
     expect(Date.now() - started).toBeLessThan(5_000);
+  });
+});
+
+// ── review 8 V-N3: the list pins an official trick's agent instructions ─────
+
+describe("the list pins the rules of a trick that gives agents instructions", () => {
+  const RULES = "Draw one screen.\n";
+  const SHA = new Bun.CryptoHasher("sha256").update(RULES).digest("hex");
+  const VIEW = (id: string): string => `id = "${id}"\nname = "Trick ${id}"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n`;
+
+  test("every entry names its rules: the sha256 of the file, or null; a contract 1 trick names none", () => {
+    const list = shippedOfficialList();
+    if (!list.ok) throw new Error(list.reason);
+    for (const e of list.entries) expect(e.rules).toBeNull();
+    expect(parseOfficialList(listOf(entry({ rules: null })))).toMatchObject({ ok: true });
+    expect(parseOfficialList(listOf(entry({ rules: SHA, contract: 2 })))).toMatchObject({ ok: true, entries: [{ rules: SHA }] });
+    const { rules: _gone, ...without } = entryFields();
+    expect(parseOfficialList(listOf(without))).toEqual({ ok: false, reason: "legs: the rules are not null or a sha256 of 64 hex digits" });
+    expect(parseOfficialList(listOf(entry({ rules: "nope", contract: 2 })))).toEqual({ ok: false, reason: "legs: the rules are not null or a sha256 of 64 hex digits" });
+    expect(parseOfficialList(listOf(entry({ rules: SHA })))).toEqual({ ok: false, reason: "legs: a trick of contract 1 gives agents no instructions" });
+    const round = parseOfficialList(parseJson(renderOfficialList([{ ...fixtureEntry(REPO, C1, H1), rules: SHA, contract: 2 }])));
+    expect(round).toMatchObject({ ok: true, entries: [{ rules: SHA }] });
+  });
+
+  test("the phone learns that the trick gives instructions, without their text: nothing is fetched before Add", async () => {
+    const configDir = await tempDir();
+    const wire = await officialWire(configDir, [{ ...fixtureEntry(REPO, C1, H1), rules: SHA, contract: 2 }, fixtureEntry(REPO, C1, H1, "other")]);
+    expect(wire.map((w) => w.givesRules)).toEqual([true, undefined]);
+    expect(wire.some((w) => "rules" in w)).toBe(false);
+  });
+
+  test("an add takes only the rules the list pins: other rules, or rules where the list names none, install nothing", async () => {
+    const files = { "morph/trick.toml": { text: VIEW("morph") }, "morph/rules.md": { text: RULES } };
+    const repo = await fixtureRepo([files]);
+    const code = await hashOf({ "trick.toml": files["morph/trick.toml"], "rules.md": files["morph/rules.md"] });
+    const none = extrasOf({});
+    const pinned = (rules: string | null): OfficialEntry => ({ ...fixtureEntry(repo.url, repo.shas[0] ?? "", code, "morph", none), rules, contract: 2 });
+    for (const wrong of [null, "c".repeat(64)]) {
+      const r = await rig([pinned(wrong)]);
+      expect(await r.official.install("morph", "add")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
+      expect(await readdir(join(r.configDir, TRICKS_DIR)).catch(() => [])).not.toContain("morph");
+      await expectNoLeftovers(r);
+    }
+    const right = await rig([pinned(SHA)]);
+    expect((await right.official.install("morph", "add")).status).toBe(200);
+    expect(await readFile(join(trickDir(right, "morph"), "rules.md"), "utf8")).toBe(RULES);
   });
 });

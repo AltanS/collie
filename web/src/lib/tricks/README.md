@@ -355,8 +355,13 @@ refuse, and the switch stays one tap.
 Each Collie release carries a short list of official tricks: `bridge/tricks/official.json`, built into
 the binary, read strictly by `bridge/tricks/official.ts`. An entry is a trick id, its name, one line
 about it, the repository (`https://github.com/AltanS/collie-tricks`, the only one the reader accepts),
-the folder in it, a full commit, the code hash that folder has at that commit, and an extras hash over what
-an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`). Settings, Tricks shows
+the folder in it, a full commit, the code hash that folder has at that commit, an extras hash over what
+an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`), and
+`rules`: the SHA-256 of the instructions a contract 2 trick gives its agents, or null. The code hash
+already covers that file; the pin lets the phone say "Gives your agents instructions written by its
+author." before Add without a fetch, and the add (and an update) refuses a folder whose rules differ. The
+list carries no rules text, so the not-added About sheet says "Read the instructions after you add it. It
+stays off until you switch it on." The added trick's own About sheet shows them before the switch. Settings, Tricks shows
 the entries that are not added under "Official tricks", each with an Add button. On a fresh install, with no tricks
 folder yet, the card shows too when the list is not empty (the bridge sends `tricksRev` for it), and holds
 only the list and the foot line; the first add makes `<configDir>/tricks/` (0700), and the next scan reads

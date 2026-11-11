@@ -3383,6 +3383,7 @@ export const en = {
   "settings.tricks.about.rulesOpen": "Read the instructions",
   "settings.tricks.about.rulesClose": "Hide the instructions",
   "settings.tricks.about.rulesUnshown": "This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.",
+  "settings.tricks.about.rulesAfterAdd": "Read the instructions after you add it. It stays off until you switch it on.",
   "settings.tricks.switchMoved": "The trick changed after you read it. Read it again, then switch it on.",
   // Official tricks, the ones this release can add (M94): English only until the translation pass,
   // listed in PENDING_TRANSLATION below. The failure lines are the bridge's own (bridge/tricks/official-install.ts).
@@ -3755,6 +3756,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.rulesOpen",
   "settings.tricks.about.rulesClose",
   "settings.tricks.about.rulesUnshown",
+  "settings.tricks.about.rulesAfterAdd",
   "settings.tricks.switchMoved",
   // Official tricks (M94).
   "settings.tricks.official.label",

@@ -43,8 +43,9 @@ import type { TricksRunsOn, WireOfficialTrick, WireTrickInfo, WireTrickRules } f
 // that is not on this machine. Only what the list knows: the name, its one line, and "Where it comes from"
 // (the repository and short commit, and that Collie checks the code before it adds it). No "What it does":
 // the manifest is not here yet, so there is nothing true to say. One primary Add at the foot; the card owns
-// the write and closes the sheet once the bridge took it. An entry whose list carries `rules` shows the rules
-// line and the same fold, so the instructions are read whole before the Add.
+// the write and closes the sheet once the bridge took it. An entry whose list pins rules (`givesRules`) shows
+// the rules line and says to read them after the add: the list carries only their hash, nothing is fetched
+// before Add, and the added trick stays off until its own About sheet showed them and the person switched it on.
 
 /** The paragraphs of an `about` text: split on a blank line, each trimmed, none empty. */
 export function aboutParagraphs(about: string): string[] {
@@ -231,8 +232,13 @@ export function OfficialTrickAboutSheet({ entry, open, onClose, busy, canWrite, 
         <p data-line="description" className="text-sm font-medium break-words">
           {entry.description}
         </p>
-        {entry.rules !== undefined && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={[{ key: "rules", node: t("settings.tricks.about.rules") }]} />}
-        {entry.rules !== undefined && <RulesFold rules={entry.rules} />}
+        {entry.givesRules === true && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={[{ key: "rules", node: t("settings.tricks.about.rules") }]} />}
+        {/* The list pins the rules but does not carry them, and nothing is fetched before Add (review 8 V-N3). */}
+        {entry.givesRules === true && (
+          <p data-line="rules-after-add" className="pt-3 text-sm break-words text-muted-foreground">
+            {t("settings.tricks.about.rulesAfterAdd")}
+          </p>
+        )}
         <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
         <div className="pt-6">
           <Button type="button" data-slot="official-add" className="h-11 w-full" disabled={!canWrite || busy} aria-busy={busy || undefined} onClick={onAdd}>

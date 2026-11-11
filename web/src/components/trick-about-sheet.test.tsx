@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs } from "@/components/trick-about-sheet";
-import { readTrick } from "@/lib/tricks/wire";
+import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
 import { ABOUT_MAX, AGENT_VIEW_LATER, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
 // A trick's About sheet: the name as the title, the description and the about paragraphs, then two groups
@@ -264,13 +264,16 @@ describe("an agent view and its rules (contract 2)", () => {
     expect(screen.queryByRole("switch", { name: "Take changes without asking" })).toBeNull();
   });
 
-  it("the not-added sheet shows the rules line and the same fold when the list carries rules", async () => {
-    const user = userEvent.setup();
-    const entry: WireOfficialTrick = { id: "morph", name: "Morph", description: "Your agent answers by drawing one screen.", repo: "https://example.com/tricks.git", repoName: "owner/tricks", commit: "a".repeat(40), state: "absent", rules: { file: "rules.md", text: RULES_TEXT } };
+  it("the not-added sheet says the trick gives instructions and to read them after the add: nothing is fetched before Add (review 8 V-N3)", () => {
+    const entry: WireOfficialTrick = { id: "morph", name: "Morph", description: "Your agent answers by drawing one screen.", repo: "https://example.com/tricks.git", repoName: "owner/tricks", commit: "a".repeat(40), state: "absent", givesRules: true };
     render(<OfficialTrickAboutSheet entry={entry} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
     expect(screen.getByText(RULES_WORDS)).toBeInTheDocument();
-    await user.click(toggle());
-    expect(screen.getByRole("dialog").querySelector('[data-line="rules-text"]')?.textContent).toBe(RULES_TEXT);
+    expect(screen.getByRole("dialog").querySelector('[data-line="rules-after-add"]')).toHaveTextContent("Read the instructions after you add it. It stays off until you switch it on.");
+    expect(screen.queryByRole("button", { name: "Read the instructions" })).toBeNull();
+    // The wire keeps the flag, never a text the list does not carry.
+    const wired = readOfficialTricksReply(JSON.parse(JSON.stringify({ tricks: [{ ...entry, rules: { file: "rules.md", text: RULES_TEXT } }] })));
+    expect(wired?.tricks[0]?.givesRules).toBe(true);
+    expect(wired?.tricks[0] !== undefined && "rules" in wired.tricks[0]).toBe(false);
   });
 });
 
