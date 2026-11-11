@@ -53,6 +53,8 @@ import {
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
+import { cmdTrickGuide } from "./trick-guide.ts";
+import { cmdTrickPropose } from "./trick-propose.ts";
 import { cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate } from "./trick-add.ts";
 import { cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
@@ -1064,6 +1066,16 @@ export const COMMANDS: readonly Command[] = [
         name: "skill",
         summary: "what a trick that is on asks of an agent: <id>; with no id, how to write a trick",
         run: async (args, s) => await cmdTrickSkill(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "guide",
+        summary: "how to write a trick and hand it to your person, in plain text (--json)",
+        run: (args, s) => cmdTrickGuide({ io: s.io }, args),
+      },
+      {
+        name: "propose",
+        summary: "hand a trick folder to your person: a card on the lead's Hill, nothing runs before their yes: <folder> (--json)",
+        run: async (args, s) => await cmdTrickPropose(walkyDeps(s.io), args),
       },
     ],
     run: (args, s) => cmdTrick({ io: s.io }, args),

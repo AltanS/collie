@@ -5,7 +5,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { redactText } from "../bridge/redact.ts";
 import { approvedDirOf, approveFolder, pruneCopies, verifyCopy } from "../bridge/tricks/approved.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
-import { originShort } from "../bridge/tricks/origin.ts";
+import { originShort, proposalShort } from "../bridge/tricks/origin.ts";
 import {
   HELPER_FILE,
   HELPER_VERSION,
@@ -84,11 +84,14 @@ import type { Files } from "./sys.ts";
 //   helper <id>       rewrite `trick.ts` in a trick folder with the helper this Collie carries
 //   skill [<id>]      what an agent reads: the `SKILL.md` of the approved copy of a trick that is ON (what
 //                     the trick that runs asks of the agent), or with no id the brief for writing a trick
+//   guide             how to write a trick and hand it over, plain text from the real constants (cli/trick-guide.ts)
+//   propose <folder>  hand a trick to the person: a card on the lead's Hill, inert until the yes
+//                     (cli/trick-propose.ts, bridge/tricks/proposals.ts); allowed in an agent's pane
 //
 // `check` exits 0 (clean, or only "later" notes), 1 (a refusal or a failed run) or 2 (usage: no
 // folder, or not a folder), like `config check`. `--json` prints one report document instead.
 
-export const TRICK_SUBCOMMANDS = ["list", "add", "update", "remove", "on", "off", "auto", "check", "dev", "init", "helper", "skill"] as const;
+export const TRICK_SUBCOMMANDS = ["list", "add", "update", "remove", "on", "off", "auto", "check", "dev", "init", "helper", "skill", "guide", "propose"] as const;
 
 export interface TrickDeps {
   ctx: Pick<CliContext, "configDir" | "stateDir" | "env" | "port">;
@@ -220,7 +223,7 @@ export async function trickListRows(deps: Pick<TrickDeps, "ctx" | "files" | "fet
       lastRunAt: said?.lastRunAt ?? null,
       error,
       skill: skills[i] === true,
-      origin: m.origin === undefined ? null : originShort(m.origin),
+      origin: m.origin !== undefined ? originShort(m.origin) : m.proposal !== undefined ? proposalShort(m.proposal) : null,
       auto: entry?.auto === true,
       pending: said?.pending ?? (on && isChanged(entry, m)),
     };
@@ -277,6 +280,7 @@ export const TRICK_WRITE_BRIEF = [
   "     Then run `collie trick check --run <folder>`. It reads the folder, runs the program once and greps it.",
   "  4. Fix what it reports, and run it again until it is clean.",
   "The trick stays off. Never switch it on yourself: `collie trick on <id>` is the person's approval of the code, and it refuses inside an agent's pane.",
+  "To hand it to the person, run `collie trick propose <folder>`: they see your code on the Hill, and nothing runs before their yes. `collie trick guide` says more.",
   "To teach other agents what the trick asks of them, add a SKILL.md to the folder. `collie trick skill <id>` prints it while the trick is on. SKILL.md is part of the trick's code: the trick runs the copy a person approved, so an edit waits for their yes before agents read it.",
 ] as const;
 
