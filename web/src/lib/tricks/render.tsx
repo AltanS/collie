@@ -366,14 +366,18 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   // glyph turns into the spinner in its own box. Without one, the busy cell is the spinner AND the
   // label in one grid cell with the label alone (ui/one-of.tsx), so the button never moves. "Unknown"
   // and the armed `confirm` label take the same cell.
+  // A VIEW THAT WRAPS SHOWS A LABEL WHOLE (review 10 W1): a tap sends every word of its label, so no word
+  // of it may sit past an ellipsis. The words wrap and the button grows; a fixed band keeps its one
+  // line and cuts, with the whole label in the button's name.
+  const fit = ctx.wrap === true ? "min-w-0 whitespace-normal break-words text-center" : "truncate";
   const words = (
     <OneOf
       active={state === "unknown" ? "unknown" : busy && Icon === null ? "busy" : armed ? "confirm" : "label"}
       className="min-w-0 justify-items-center"
       options={[
-        { key: "label", node: <span className="truncate">{attrs.label}</span> },
-        ...(armedWords === undefined ? [] : [{ key: "confirm", node: <span className="truncate">{armedWords}</span> }]),
-        { key: "unknown", node: <span className="truncate">{t("tricks.tap.unknown")}</span> },
+        { key: "label", node: <span className={fit}>{attrs.label}</span> },
+        ...(armedWords === undefined ? [] : [{ key: "confirm", node: <span className={fit}>{armedWords}</span> }]),
+        { key: "unknown", node: <span className={fit}>{t("tricks.tap.unknown")}</span> },
         ...(Icon === null
           ? [
               {
@@ -381,7 +385,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
                 node: (
                   <span className="inline-flex min-w-0 items-center gap-2">
                     <Spinner />
-                    <span className="truncate">{attrs.label}</span>
+                    <span className={fit}>{attrs.label}</span>
                   </span>
                 ),
               },
@@ -392,7 +396,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   );
   const name = state === "unknown" ? `${label}, ${t("tricks.tap.unknown")}` : armed ? label : undefined;
   return (
-    <div {...leafBox(node)} className={cn("flex min-w-0 items-center", compact && "shrink-0")}>
+    <div {...floorBox(node, ctx)} className={cn("flex min-w-0 items-center", compact && ctx.wrap !== true && "shrink-0")}>
       <Button
         type="button"
         variant="outline"
@@ -403,7 +407,13 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
         data-armed={armed ? "" : undefined}
         disabled={disabled || (partBusy(ctx) && attrs.does === undefined)}
         onClick={onClick}
-        className={cn("h-11 min-w-0 transition-colors", compact ? "px-3" : "w-full px-4", attrs.hint !== undefined && "h-full flex-col gap-0 py-1.5", ink)}
+        className={cn(
+          "h-11 min-w-0 transition-colors",
+          compact ? "px-3" : "w-full px-4",
+          attrs.hint !== undefined && "h-full flex-col gap-0 py-1.5",
+          ctx.wrap === true && "h-auto min-h-11 whitespace-normal py-2",
+          ink,
+        )}
       >
         <span className="inline-flex min-w-0 max-w-full items-center gap-2">
           {Icon !== null && (busy ? <Spinner /> : <Icon aria-hidden />)}
@@ -1254,7 +1264,7 @@ function RowView({ node, ctx, path, iconLane = false }: { node: RowNode; ctx: Re
     <div {...floorBox(node, ctx)} data-slot="trick-row" className={cn("flex min-w-0 items-stretch", ENTER)}>
       {head}
       {button?.kind === "button" && (
-        <div className="flex shrink-0 items-center pr-1.5">
+        <div className={cn("flex", ctx.wrap === true ? "max-w-1/2 min-w-0" : "shrink-0", "items-center pr-1.5")}>
           <ButtonView node={button} ctx={ctx} path={`${path}/${buttonAt}`} compact />
         </div>
       )}

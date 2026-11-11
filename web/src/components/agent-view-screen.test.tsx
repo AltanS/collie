@@ -713,3 +713,56 @@ describe("the receipt of a pick, and a settled choice", () => {
     expect(done?.querySelector("[data-picked]")).toHaveTextContent("Compact");
   });
 });
+
+// ── review 10 (the web half's security read) ─────────────────────────────────────────────────────
+
+/** Every element between `from` and the view's screen, `from` included: what decides whether its words show. */
+function boxesUp(from: Element): Element[] {
+  const out: Element[] = [];
+  for (let at: Element | null = from; at !== null && at.getAttribute("data-slot") !== "view-screen"; at = at.parentElement) out.push(at);
+  return out;
+}
+
+/**
+ * Whether any box from `from` up cuts its words: to one line (an ellipsis, a clamp, no wrap) or to a fixed
+ * height (`h-11`, an inline height). A box that clips (`overflow-hidden`) but grows with its words cuts nothing.
+ */
+function cutsWords(from: Element): boolean {
+  return boxesUp(from).some((box) => /(^|\s)(truncate|line-clamp-\d|whitespace-nowrap|h-11)(\s|$)/u.test(box.className) || (box instanceof HTMLElement && box.style.height !== ""));
+}
+
+describe("review 10 W1: a button's label is shown whole", () => {
+  // 24 CJK characters, the schema's cap for a label (the wire's 60 never binds), three buttons in a bar: at
+  // 360 px each is a third wide (about seven CJK characters), so the label must
+  // wrap and the button grow. A tap sends every word, so no word may sit past an ellipsis (rule 3).
+  const long = "発".repeat(24);
+  const view = screenOf([
+    {
+      kind: "bar",
+      kids: [
+        { kind: "button", attrs: { label: long, intent: "a" } },
+        { kind: "button", attrs: { label: "Wait", intent: "b" } },
+        { kind: "button", attrs: { label: "Drop", intent: "c" } },
+      ],
+    },
+  ]);
+
+  it("W1: a 24-character CJK label in a bar of three wraps, and its button grows", () => {
+    draw({ view });
+    // The label's cell and the busy cell (one grid, ui/one-of.tsx) both hold it: neither may cut it.
+    const shown = screen.getAllByText(long);
+    expect(shown.length).toBeGreaterThan(0);
+    for (const words of shown) {
+      expect(words.textContent).toBe(long);
+      expect(words.className).toContain("whitespace-normal");
+      expect(cutsWords(words)).toBe(false);
+    }
+    const button = screen.getByRole("button", { name: long });
+    expect(button.className).toContain("min-h-11");
+  });
+
+  it("W1: a long label on a row's own button wraps too", () => {
+    draw({ view: screenOf([{ kind: "list", kids: [{ kind: "row", text: "Deploy", kids: [{ kind: "button", attrs: { label: long, intent: "a" } }] }] }]) });
+    for (const words of screen.getAllByText(long)) expect(cutsWords(words)).toBe(false);
+  });
+});
