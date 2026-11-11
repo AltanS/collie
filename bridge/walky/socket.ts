@@ -92,7 +92,7 @@ export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision be
 export const VIEW_NEEDS_A_PANE = "run this inside an agent's pane: a view's screen belongs to the session that draws it";
 
 /** What the socket needs of the agent views. Absent: the bridge answers their operations as unknown. */
-export type ViewSocket = Pick<AgentViewService, "start" | "show" | "clear" | "status" | "help" | "set" | "pending" | "remove" | "keep" | "setChoice">;
+export type ViewSocket = Pick<AgentViewService, "start" | "show" | "clear" | "status" | "help" | "set" | "pending" | "remove" | "keep" | "setChoice" | "noteRefusedWrite">;
 
 /**
  * What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. The
@@ -358,6 +358,7 @@ async function answerView(
   const session = service.addressOf(pane.paneId, pane.instance);
   // The markers prove the caller. A session the request names must be the same one, or nothing is done.
   if (request.session !== null && !sameSession({ own: session, given: request.session })) {
+    if (isViewWrite(request.op)) views.noteRefusedWrite(request.op, request.trick, session, "wrong_session");
     return { ok: false, error: wrongSessionWords({ own: session, given: request.session }), trickView: true, code: "wrong_session" };
   }
   if (request.op === "trick.view.help") {
@@ -366,7 +367,14 @@ async function answerView(
   }
   const answer = await viewAnswerOf({ request, trick: request.trick, session, views });
   if (answer.ok) return { ok: true, trickView: answer.session };
+  // An agent's refused write leaves one audit line per reason a minute (rule 12, review 9 R5).
+  if (isViewWrite(request.op)) views.noteRefusedWrite(request.op, request.trick, session, answer.code);
   return answer.refusals === undefined ? { ok: false, error: answer.error, trickView: true, code: answer.code } : { ok: false, error: answer.error, trickView: true, code: answer.code, refusals: answer.refusals };
+}
+
+/** Whether a view op writes: every op but the two reads, `status` and `help`. */
+function isViewWrite(op: ViewOp): boolean {
+  return op !== "trick.view.status" && op !== "trick.view.help";
 }
 
 async function viewAnswerOf({ request, trick, session, views }: { request: Extract<WalkyRequest, { op: ViewOp }>; trick: string; session: string; views: ViewSocket }): Promise<ViewOpAnswer> {

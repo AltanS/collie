@@ -27,7 +27,7 @@ import {
   type TrickViewSession,
 } from "../../web/src/lib/agent-view/wire.ts";
 import { rulesTextProblems, type View } from "../../web/src/lib/tricks/schema.ts";
-import type { JsonValue } from "../json.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
 import { AgentViewService, viewHead, VIEW_OWN_TURN_MS, VIEW_STALE_WORDS, type AgentViewServiceDeps, type ViewAuditEntry, type ViewCrewMode, type ViewGate, type ViewSendPlan } from "./service.ts";
 import { AgentViewStore } from "./store.ts";
 import { HEAD_CASES } from "./testdata/head-cases.ts";
@@ -35,11 +35,47 @@ import { listenPersonTurns } from "./person-turns.ts";
 import { walkySend } from "../hill/walky.ts";
 import { WalkyLog } from "../walky/log.ts";
 import { WalkyService } from "../walky/service.ts";
+import { answerRequest, type PlaceTarget, type WalkyAnswer } from "../walky/socket.ts";
+import { parseWalkyRequest } from "../walky/parse.ts";
+import type { BeaconMatcher } from "../beacon/decorate.ts";
 import type { WalkyHost, WalkyPane } from "../walky/deliver.ts";
 import { spaceOf } from "../walky/space.ts";
 
 /** One unnamed space on one machine, for the WalkyTalky door of rule 6. */
 const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
+/**
+ * The real local socket in front of a rig's service: a WalkyService over two agent panes (`%1` is ONE,
+ * `%2` is TWO) and `answerRequest`, the function the socket server frames. A call names the pane its
+ * markers place, as the CLI's environment does.
+ */
+interface ViewSocketRig {
+  readonly ask: (pane: string, line: JsonObject) => Promise<WalkyAnswer>;
+  readonly done: () => void;
+}
+
+function socketOf(r: Rig): ViewSocketRig {
+  const root = mkdtempSync(join(tmpdir(), "view-socket-"));
+  const panes: WalkyPane[] = [
+    { session: "main", paneId: "%1", agent: true, harness: "pi", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+    { session: "main", paneId: "%2", agent: true, harness: "pi", label: "repo#two", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
+  ];
+  const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
+  const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+  const matcher: BeaconMatcher = {
+    namespace: "tmux",
+    scope: async () => "/tmp/tmux-1/default",
+    matches: (pane, marker, scope) => marker.scope === scope && pane.paneId === marker.pane,
+    notesWithoutHooks: { agentDetection: "", agentSessionRef: "" },
+  };
+  const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%2"] };
+  const ask = async (pane: string, line: JsonObject): Promise<WalkyAnswer> => {
+    const request = parseWalkyRequest(JSON.stringify({ v: 1, markers: [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane }], ...line }));
+    if (request === null) throw new Error("the socket line did not parse");
+    return answerRequest(walky, request, [target], undefined, r.service);
+  };
+  return { ask, done: () => rmSync(root, { recursive: true, force: true }) };
+}
 
 // THE AGENT VIEW CONTRACT'S RULES, one test (or more) per rule, named after it: the twelve rules of the
 // security read (section 3), the lead's seven additions (section 5) and V-A2. Doors of rule 7 that live in
@@ -651,6 +687,34 @@ describe("rule 12: caps and record", () => {
     expect(await tap(r, rev, PLAIN)).toMatchObject({ ok: false, code: "rate" });
     r.advance(61_000);
     expect((await tap(r, rev, PLAIN)).ok).toBe(true);
+  });
+
+  test("rule 12 (review 9 R5): an agent write refused at the socket writes an audit line, one per reason per minute per (trick, session)", async () => {
+    const r = rig();
+    const socket = socketOf(r);
+    try {
+      // The view is off: every write is refused view_off, and only the first of the minute is a line.
+      for (let i = 0; i < 5; i++) expect(await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN })).toMatchObject({ ok: false, code: "view_off" });
+      // Another reason is its own line; a write naming another session is refused wrong_session.
+      expect(await socket.ask("%1", { op: "trick.view.clear", trick: T, session: TWO })).toMatchObject({ ok: false, code: "wrong_session" });
+      expect(await socket.ask("%1", { op: "trick.view.clear", trick: T, session: TWO })).toMatchObject({ ok: false, code: "wrong_session" });
+      // Another session is its own key.
+      expect(await socket.ask("%2", { op: "trick.view.start", trick: T })).toMatchObject({ ok: false, code: "view_off" });
+      expect(r.audits).toEqual([
+        { action: "trick.view.refused", session: ONE, device: null, detail: { trick: T, reason: "view_off", op: "trick.view.show", agent: true } },
+        { action: "trick.view.refused", session: ONE, device: null, detail: { trick: T, reason: "wrong_session", op: "trick.view.clear", agent: true } },
+        { action: "trick.view.refused", session: TWO, device: null, detail: { trick: T, reason: "view_off", op: "trick.view.start", agent: true } },
+      ]);
+      r.advance(61_000);
+      await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN });
+      expect(r.audits).toHaveLength(4);
+      // A write that goes writes no refusal line.
+      await on(r);
+      expect((await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN })).ok).toBe(true);
+      expect(r.audits.filter((line) => line.action === "trick.view.refused")).toHaveLength(4);
+    } finally {
+      socket.done();
+    }
   });
 
   test("rule 12: a switch, a send and a refusal each write one audit line with the device, trick, session and reason", async () => {

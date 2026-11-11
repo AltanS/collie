@@ -123,6 +123,11 @@ export type ViewRefusalCode =
   // Typed text that holds a view head on any line (rule 7, review 9 R1): the view's request skips the protocol's check.
   | "bad_head";
 
+/** One refused agent write's audit line per reason per (trick, session) in this time (review 9 R5). */
+export const VIEW_REFUSAL_AUDIT_MS = 60_000;
+/** How many (trick, session, reason) keys the refusal line cap remembers at most. */
+export const VIEW_REFUSAL_KEYS_MAX = 1024;
+
 /**
  * How long after a view's own send a turn start is taken as the turn that send started, not a person's
  * (rule 6, review 9 R3). The bridge sees a turn start on its next poll, at most 12 s apart when idle.
@@ -385,6 +390,8 @@ export class AgentViewService {
   private readonly sends: MinuteWindow;
   /** Sessions with a view send going out now: one at a time per session. */
   private readonly sending = new Set<string>();
+  /** When each (trick, session, reason) last wrote a refused agent write's audit line (review 9 R5). */
+  private readonly refusalLines = new Map<string, number>();
   /** Whether a turn ran in each session with a screen at the last look (rule 6, review 9 R3). */
   private readonly turnSeen = new Map<string, boolean>();
   /** Sessions a view's own send went to, until when the turn it starts is the view's and not a person's. */
@@ -549,6 +556,25 @@ export class AgentViewService {
   }
 
   // ── the agent's writes ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * An agent's write the socket refused (rule 12, review 9 R5): one audit line per reason per minute per
+   * (trick, session), so a loop of refused writes cannot flood the audit log. The device is null: an agent.
+   * The memory is bounded: when {@link VIEW_REFUSAL_KEYS_MAX} keys are fresh, a new key writes no line.
+   */
+  noteRefusedWrite(op: string, trick: string, session: string, code: ViewRefusalCode | undefined): void {
+    const reason = code ?? "refused";
+    const key = `${viewKey(trick, session)}\u0000${reason}`;
+    const now = this.now();
+    const last = this.refusalLines.get(key);
+    if (last !== undefined && now - last < VIEW_REFUSAL_AUDIT_MS) return;
+    if (last === undefined && this.refusalLines.size >= VIEW_REFUSAL_KEYS_MAX) {
+      for (const [held, at] of this.refusalLines) if (now - at >= VIEW_REFUSAL_AUDIT_MS) this.refusalLines.delete(held);
+      if (this.refusalLines.size >= VIEW_REFUSAL_KEYS_MAX) return;
+    }
+    this.refusalLines.set(key, now);
+    this.audit("trick.view.refused", session, null, { trick, reason, op, agent: true });
+  }
 
   /**
    * Whether an agent write may run: the session is on this lead, the (trick, session) is under its cap, the
