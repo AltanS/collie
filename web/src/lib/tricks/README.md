@@ -347,9 +347,14 @@ written over, also when one appears during the fetch. A trick added from the sam
 trick add` counts as added from the list. A crew member answers an empty list with `runsOn`.
 
 **Update.** On a new release the list may name another commit; the installed row then offers Update
-(`POST /api/tricks/official/<id>/update`). The bridge fetches and checks the same way, then replaces the
-folder's code and keeps `config.toml`. A trick that is on keeps running the approved copy, and the new
-version waits for the yes on its version card, the path every changed trick takes. Remove stays as it is.
+(`POST /api/tricks/official/<id>/update`). The bridge fetches and checks the same way, then moves only
+code, by the rule of a proposal's version write: each file the code hash walks is written or removed,
+and every other entry of the folder, at any depth, stays untouched (`config.toml`, `media/`,
+`captures/`, `inputs/`, logs, dot files). The new version's own `config.toml` and pictures are not taken.
+**A code edit you made in an official trick's folder is replaced by an update.** A name the new code
+needs where an entry of yours stands refuses the update, and nothing changes. A trick that is on keeps
+running the approved copy, and the new version waits for the yes on its version card, the path every
+changed trick takes. Remove stays as it is.
 
 **The maintainer script.** `bun scripts/official-tricks.ts --repo-dir <checkout> --commit <sha>` writes
 the commit, each hash (the real hash function, over the folder git holds at that commit) and each
@@ -896,8 +901,10 @@ written as what a trick, or a person who controls one, can do today.
   `.collie-origin.json` naming the official repository can make a hand-made folder read as `added` or
   `update`. An Update then replaces that folder's code with the listed, hash-checked code; it never
   runs anything, and a trick that is on waits for the yes.
-- **An Update from the list replaces local edits of an official trick's folder.** Only `config.toml`
-  stays. A trick that is off gets no version card for this, as it runs nothing.
+- **An Update from the list replaces code edits in an official trick's folder.** Every file the code
+  hash walks is the list's afterwards; what the hash does not walk stays. A trick that is off gets no
+  version card for this, as it runs nothing. A plain file you added beside the code (`notes.txt`) is
+  code by the hash's rule, so an update that does not carry it removes it.
 
 ## Places in the app
 

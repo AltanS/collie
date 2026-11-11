@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 
 import { parseJson, type JsonValue } from "../../web/src/lib/json.ts";
 import { parseWalkyRequest } from "../walky/parse.ts";
-import { trickCodeHash } from "./code-hash.ts";
+import { isCodePath, trickCodeHash } from "./code-hash.ts";
 import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
 import { officialStateOf, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
@@ -505,6 +505,84 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     expect(parseOrigin(await readFile(join(trickDir(r, "legs"), ORIGIN_FILE), "utf8"))?.commit).toBe(repo.shas[1]);
     expect(await r.official.install("legs", "update")).toMatchObject({ status: 409, body: { error: "no-update" } });
     await expectNoLeftovers(r);
+  });
+
+  test("off: only code moves; media/, captures/, inputs/, logs, dot files and config.toml stay untouched, and a code edit is replaced", async () => {
+    // The new version brings a picture and a config.toml of its own: neither is taken.
+    const V2_MORE = { ...V2, "legs/media/new.png": { text: "theirs-new" }, "legs/lib/util.sh": { text: "# util v2\n" } };
+    const V1_MORE = { ...V1, "legs/lib/util.sh": { text: "# util v1\n" }, "legs/old.sh": { text: "# goes\n" } };
+    const repo = await fixtureRepo([V1_MORE, V2_MORE]);
+    const legsOf = (tree: Record<string, FixtureFile>): Record<string, FixtureFile> =>
+      Object.fromEntries(Object.entries(tree).filter(([rel]) => rel.startsWith("legs/")).map(([rel, file]) => [rel.slice(5), file]));
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(legsOf(V1_MORE)))]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    const dir = trickDir(r, "legs");
+    // The person's own: settings, pictures, captures, inputs, a log at the top and one inside a code folder,
+    // a dot file, and an edit of a code file.
+    await writeFile(join(dir, "config.toml"), "rows = 3\n");
+    await mkdir(join(dir, "media"), { recursive: true });
+    await writeFile(join(dir, "media", "mine.png"), "mine");
+    await mkdir(join(dir, "captures"));
+    await writeFile(join(dir, "captures", "shot.png"), "shot");
+    await mkdir(join(dir, "inputs"));
+    await writeFile(join(dir, "inputs", "TODO.md"), "todo");
+    await writeFile(join(dir, "run.log"), "log");
+    await writeFile(join(dir, "lib", "debug.log"), "deep log");
+    await writeFile(join(dir, ".mine"), "a dot file Collie does not know");
+    await writeFile(join(dir, "program.sh"), "#!/bin/sh\n# my edit\n");
+    r.entries = [fixtureEntry(repo.url, repo.shas[1] ?? "", await hashOf(legsOf(V2_MORE)))];
+    expect(await r.official.install("legs", "update")).toEqual({ status: 200, body: { id: "legs", state: "added" } });
+    const read = async (rel: string): Promise<string | null> => await readFile(join(dir, rel), "utf8").catch(() => null);
+    expect(await read("config.toml")).toBe("rows = 3\n");
+    expect(await read("media/mine.png")).toBe("mine");
+    expect(await read("media/new.png")).toBeNull();
+    expect(await read("captures/shot.png")).toBe("shot");
+    expect(await read("inputs/TODO.md")).toBe("todo");
+    expect(await read("run.log")).toBe("log");
+    expect(await read("lib/debug.log")).toBe("deep log");
+    expect(await read(".mine")).toBe("a dot file Collie does not know");
+    // Code: the new version's, the person's edit replaced, a file the new version dropped removed.
+    expect(await read("program.sh")).toContain("# two");
+    expect(await read("lib/util.sh")).toBe("# util v2\n");
+    expect(await read("old.sh")).toBeNull();
+    expect(parseOrigin((await read(ORIGIN_FILE)) ?? "")?.commit).toBe(repo.shas[1]);
+    // The folder now hashes to the list's hash: the switch would approve exactly it.
+    const hashed = await trickCodeHash(dir);
+    expect(hashed.ok ? hashed.hash : hashed.reason).toBe(r.entries[0]?.hash ?? "no entry");
+    await expectNoLeftovers(r);
+  });
+
+  test("isCodePath names exactly what the code hash walks", () => {
+    for (const rel of ["program.sh", "trick.toml", "lib/util.ts", "notes.txt", "deep/config.toml"]) expect({ rel, code: isCodePath(rel) }).toEqual({ rel, code: true });
+    for (const rel of ["config.toml", "media/a.png", "captures/b.png", "inputs/TODO.md", "run.log", "lib/debug.log", ".mine", "lib/.hidden", "node_modules/x/index.js"]) {
+      expect({ rel, code: isCodePath(rel) }).toEqual({ rel, code: false });
+    }
+  });
+
+  test("off: a name the new code needs where the person's own entry stands refuses, and nothing changes", async () => {
+    const V2_DIR = { ...V2, "legs/notes/index.sh": { text: "# a code folder now\n" } };
+    const repo = await fixtureRepo([V1, V2_DIR]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    // A log of the person's inside a folder the new version's code moves into.
+    await mkdir(join(trickDir(r, "legs"), "notes"));
+    await writeFile(join(trickDir(r, "legs"), "notes", "index.sh.log"), "mine");
+    const V2_DIR_LEGS = { "trick.toml": V2["legs/trick.toml"], "program.sh": V2["legs/program.sh"], "notes/index.sh": { text: "# a code folder now\n" } };
+    r.entries = [fixtureEntry(repo.url, repo.shas[1] ?? "", await hashOf(V2_DIR_LEGS))];
+    // The log inside notes/ is the person's; the new code's notes/index.sh beside it is fine.
+    expect((await r.official.install("legs", "update")).status).toBe(200);
+    expect(await readFile(join(trickDir(r, "legs"), "notes", "index.sh.log"), "utf8")).toBe("mine");
+    // Now a file of the person's where the next version needs a folder.
+    const repo3 = await fixtureRepo([V1, { ...V2, "legs/run.log/x.sh": { text: "# never\n" } }]);
+    const blocked = await rig([fixtureEntry(repo3.url, repo3.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect((await blocked.official.install("legs", "add")).status).toBe(200);
+    await writeFile(join(trickDir(blocked, "legs"), "run.log"), "mine");
+    const V3_LEGS = { "trick.toml": V2["legs/trick.toml"], "program.sh": V2["legs/program.sh"], "run.log/x.sh": { text: "# never\n" } };
+    blocked.entries = [fixtureEntry(repo3.url, repo3.shas[1] ?? "", await hashOf(V3_LEGS))];
+    const answer = await blocked.official.install("legs", "update");
+    expect(answer).toMatchObject({ status: 500, body: { error: "failed" } });
+    expect(await readFile(join(trickDir(blocked, "legs"), "run.log"), "utf8")).toBe("mine");
+    expect(await readFile(join(trickDir(blocked, "legs"), "program.sh"), "utf8")).toContain("# one");
   });
 
   test("on: the approved copy keeps running and the new version waits for the yes through the runner's own path; a downgrade too", async () => {
