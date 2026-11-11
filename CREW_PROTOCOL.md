@@ -4225,7 +4225,9 @@ data. It never reaches a member any other way: no socket, no token, no command.
   get the uniform 401. A lead or a solo install answers 404.
 - **The member's gate.** `COLLIE_CREW_TRICK_READS` on the member: `on` allows, `off` refuses, and any
   other word refuses (it fails closed). Unset follows the member's device gate: allowed while
-  `COLLIE_DEVICE_HEADER` is off (like the Files view to a crew link today), refused while it is on.
+  `COLLIE_DEVICE_HEADER` is unset (like the Files view to a crew link today), refused while it is set.
+  The member reads the gate at start (`.env`, or `[crew] crew_trick_reads` in `config.toml`), so a
+  change needs a restart. With neither variable set, the reads are on.
   Refused is `403` with `{ code: "trick_reads_off" }`, and the member reads nothing. The gate is read
   before the body is parsed.
 - **The body.** `trick` is the trick's id (`isTrickId`), `run` a run id for the audit, `globs` the
@@ -4243,7 +4245,8 @@ data. It never reaches a member any other way: no socket, no token, no command.
   lead files the answer under the member id of the link it dialled.
 - **The member's read** is the Files view's own: the same root, home bound, real-path containment, deny
   list (`.git`, the state secrets, the bridge's own state and config folders) and no-follow open. A link
-  is never followed at any level. A `.env` file (`.env`, `.env.local`, `.envrc`, in any case) is never
+  is never followed at any level. A glob's `*` never matches a leading dot, so a dot name is read only
+  by a glob step that starts with a dot. A `.env` file (`.env`, `.env.local`, `.envrc`, in any case) is never
   read, whatever the glob says: the Files view shows one to a person who opens it, a trick reads
   unattended. A file over 2 MB, or a text file over 256 KiB, is listed as `skipped: "too-large"`; a
   file that is neither UTF-8 text without NUL nor a PNG, JPEG or WebP picture is `skipped: "type"`. A
