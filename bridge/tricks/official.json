@@ -7,8 +7,8 @@
       "description": "Turns an agent's UI notes into Decisions you approve by name.",
       "repo": "https://github.com/AltanS/collie-tricks",
       "dir": "design-review",
-      "commit": "0d8039936aef44961a5641f4bfdc4583ed0c3e60",
-      "hash": "9e3f1daaa37aa4f3ce47a4403480b071748fca15645a9ab94762da28110115c2",
+      "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
+      "hash": "705e3e44ae3e22942842dff079f70450d8e9d7f362856ad5c7dcb79efc65631a",
       "extras": "b1039966e31072a10ef6a45aeb299d8e94626d4fa244b145ed8281d1c80a6653",
       "contract": 1,
       "previous": []
@@ -19,8 +19,8 @@
       "description": "Open pull requests and issues that wait for you.",
       "repo": "https://github.com/AltanS/collie-tricks",
       "dir": "pr-inbox",
-      "commit": "0d8039936aef44961a5641f4bfdc4583ed0c3e60",
-      "hash": "ff264bf1eda649a9ccfdbce11e063c3ffe3de104fa06f32d6dd0eecdba1be6d1",
+      "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
+      "hash": "154877527ed1684a723bed5829fb8f7352970f3268432fd855ddcd175996cf9d",
       "extras": "a4ba4db96bd317b5f4c7223417f9fc8098682460256817b060f05b670967b63d",
       "contract": 1,
       "previous": []
@@ -31,8 +31,8 @@
       "description": "Builds and long commands running in your sessions now.",
       "repo": "https://github.com/AltanS/collie-tricks",
       "dir": "running-builds",
-      "commit": "0d8039936aef44961a5641f4bfdc4583ed0c3e60",
-      "hash": "2d583928a4dc6a1d60c2ce4ef41173be8cad32af18e66dff03a3e1ff98bbebe1",
+      "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
+      "hash": "ad74b18f54faebe21c6092a8524314a6bbc678cce94914d41db9786ada56992e",
       "extras": "0abbef9a24224b0853c24cf3a1ef80f1c66a2616d6795e08c012857c5466ebe3",
       "contract": 1,
       "previous": []
