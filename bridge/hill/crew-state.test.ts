@@ -112,7 +112,8 @@ describe("the crew state file", () => {
     expect(parseHillCrewState('{"v":1,"state":"asleep","at":1,"by":"x"}').view.state).toBe("here");
     expect(parseHillCrewState("not json").problem).toContain("reads as here");
     writeHillCrewState(dir, { state: "away", by: "Pixel 9" }, 1234);
-    expect(statSync(hillCrewStatePath(dir)).mode & 0o777).toBe(0o600);
+    // POSIX modes; Windows keeps the file in the user's profile, as the Hill's switch does.
+    if (process.platform !== "win32") expect(statSync(hillCrewStatePath(dir)).mode & 0o777).toBe(0o600);
     expect(JSON.parse(readFileSync(hillCrewStatePath(dir), "utf8"))).toEqual({ v: 1, state: "away", at: 1234, by: "Pixel 9" });
     expect(readHillCrewState(dir).view).toEqual({ state: "away", at: 1234, by: "Pixel 9", told: null });
   });
