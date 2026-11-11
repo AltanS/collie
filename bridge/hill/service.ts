@@ -342,6 +342,10 @@ export const HILL_TELL_MOVED = "the crew state changed since this phone showed i
 export const HILL_TELL_DONE = "the sessions were told of this crew state already";
 /** The refusal of a crew state set on a machine that is not the crew's lead. */
 export const HILL_STATE_ON_LEAD = "the crew state lives on the crew's lead; set it there, on the phone or with collie hill state";
+/** The reason a card the person answered in its session closes with, at the second Clear (1.29.0). */
+export const HILL_ANSWERED_IN_SESSION = "answered in the session";
+/** What the second Clear answers when the Hill could not be saved: nothing changed. */
+export const HILL_SPOKEN_UNSAVED = "the Hill could not be saved on this machine; nothing was cleared";
 /** The refusal of a crew state set whose file could not be written. */
 export const HILL_STATE_UNSAVED = "the crew state could not be saved on this machine; nothing changed";
 /** The refusal of a tell while the state is `here`: there is nothing to tell. */
@@ -1313,6 +1317,30 @@ export class HillService {
     if (sender.kind !== "agent") return null;
     const decision = this.deps.store.get(id);
     return decision !== undefined && this.isReplyTo(decision.replyTo, sender.address) ? decision : null;
+  }
+
+  /**
+   * The second Clear (1.29.0): withdraw and clear every OPEN agent Decision the person already answered in
+   * its session (`spokeAfter`). Each closes `withdrawn` with {@link HILL_ANSWERED_IN_SESSION}, then leaves
+   * the Hill as Clear removes a closed one, with a tombstone. NOTHING IS TYPED: the person already spoke
+   * to that session, and a line from the Hill now would be a second, stale answer. One `hill.clear.spoken`
+   * audit line with the count. Refused on a member and a deposed lead, which hold no Hill.
+   */
+  clearSpoken(device: string | null = null): { readonly ok: true; readonly cleared: number } | { readonly ok: false; readonly error: string; readonly notLead: boolean } {
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, error: NOT_ON_LEAD, notLead: true };
+    const now = this.now();
+    const closed: HillDecision[] = [];
+    for (const decision of this.deps.store.all()) {
+      if (decision.state !== "open" || decision.spokeAfter === undefined) continue;
+      closed.push({ ...decision, state: "withdrawn", closedAt: now, closedReason: HILL_ANSWERED_IN_SESSION });
+    }
+    if (closed.length === 0) return { ok: true, cleared: 0 };
+    if (!this.save(...closed)) return { ok: false, error: HILL_SPOKEN_UNSAVED, notLead: false };
+    // Withdrawn and saved: they left the open list. A removal that fails leaves them closed under
+    // Answered, where the first Clear takes them.
+    this.clear(closed.map((decision) => decision.id), device);
+    this.deps.audit?.({ action: "hill.clear.spoken", device, detail: { count: closed.length } });
+    return { ok: true, cleared: closed.length };
   }
 
   /** The poster takes an open decision back. It closes `withdrawn`, "by the poster" (a trick's runner names its own reason). */

@@ -905,6 +905,8 @@ describe("solo zero-tax — routes", () => {
       "/api/hill/answer",
       // Clear (the Answered group's button): a SOLO write under the same device gate, named here.
       "/api/hill/clear",
+      // The second Clear (1.29.0): the open cards answered in the session, a SOLO write under the same gate.
+      "/api/hill/clear/spoken",
       // The crew state (1.29.0): a SOLO read and write under the same gates as the switch, and the
       // "Tell all sessions now" tap, a write that types one operator line per waiting session.
       "/api/hill/state",

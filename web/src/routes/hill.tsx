@@ -76,7 +76,7 @@ export function HillRoute() {
                 onTell={() => void crew.tell()}
               />
             )}
-            <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear() }} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
+            <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: open.filter((d) => d.spokeAfter !== undefined).length, onClearSpoken: () => void clearing.clearSpoken() }} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
           </>
         )}
       </BandMain>

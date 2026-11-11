@@ -162,7 +162,7 @@ export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "
 export const HILL_BAD_CREW_STATE = "bad request: the crew state is here, quiet or away";
 
 /** The hill's operations (M96), beside walky's own. Added, never a change to one of them. */
-export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear" | "hill.state";
+export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear" | "hill.state" | "hill.spoken.clear";
 
 export type WalkyRequest =
   | {
@@ -187,6 +187,9 @@ export type WalkyRequest =
   | { readonly op: "hill.list"; readonly markers: readonly BeaconMarker[] }
   // Clear every closed decision, from the person's terminal: it names no pane and no id.
   | { readonly op: "hill.clear"; readonly markers: readonly BeaconMarker[] }
+  // The second Clear (1.29.0): withdraw and clear the open cards answered in the session. A new op, not a
+  // flag on `hill.clear`, so a bridge before it refuses it as unknown instead of clearing the closed ones.
+  | { readonly op: "hill.spoken.clear"; readonly markers: readonly BeaconMarker[] }
   // The crew state (1.29.0): a read with no `state`, a person's write with one. A new op, so a bridge
   // before it answers it as unknown and never takes a write it cannot read.
   | { readonly op: "hill.state"; readonly markers: readonly BeaconMarker[]; readonly state: HillCrewState | null }
@@ -195,7 +198,7 @@ export type WalkyRequest =
 
 /** Whether a request is one of the hill's operations (M96). */
 export function isHillOp(op: string | null): op is HillOp {
-  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear" || op === "hill.state";
+  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear" || op === "hill.state" || op === "hill.spoken.clear";
 }
 
 /**
@@ -253,7 +256,7 @@ export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): Wa
     const id = text(row, "id");
     return id !== null && HILL_ID_RE.test(id) ? done({ op, markers, id }) : unread(HILL_BAD_ID, markers);
   }
-  if (op === "hill.list" || op === "hill.clear") return done({ op, markers });
+  if (op === "hill.list" || op === "hill.clear" || op === "hill.spoken.clear") return done({ op, markers });
   if (op === "hill.state") {
     const state = row.state ?? null;
     if (state !== null && !isHillCrewState(state)) return unread(HILL_BAD_CREW_STATE, markers);

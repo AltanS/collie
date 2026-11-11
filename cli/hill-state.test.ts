@@ -18,7 +18,7 @@ import { WalkyService } from "../bridge/walky/service.ts";
 import { answerRequest, HILL_PERSON_ONLY, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
 import { capture, context } from "./fakes.ts";
-import { cmdHillPost, cmdHillState, CREW_STATE_MEANING, crewStateSince, personOnlyRefusal, type HillDeps } from "./hill.ts";
+import { cmdHillClear, cmdHillPost, cmdHillState, spokenClearedWords, CREW_STATE_MEANING, crewStateSince, personOnlyRefusal, type HillDeps } from "./hill.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 
@@ -205,5 +205,41 @@ describe("collie hill post's result", () => {
     const json = deps({ ask: b.ask, env: inPane("%1") });
     expect(await cmdHillPost(json, [...POST, "--json"])).toBe(EXIT.OK);
     expect(JSON.parse(json.io.stdout[0] ?? "{}")).toMatchObject({ crewState: "away", decision: { id: "dc_state0000001" } });
+  });
+});
+
+describe("collie hill clear --spoken", () => {
+  function spokenBridge(): Bridge {
+    const b = bridge();
+    const sender = b.hill.agentSender(panes[0]!, "local/%1#aaaa");
+    const posted = b.hill.post(sender, { requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e01", title: "Ship?", summary: "Green.", options: [{ intent: "yes", label: "Yes" }], recommends: null });
+    if (!posted.ok) throw new Error("not posted");
+    b.hill.noteSpoke("local/%1#aaaa", Date.UTC(2026, 10, 11, 15, 0));
+    return b;
+  }
+
+  test("an agent's pane is refused, by the CLI and by the bridge, and nothing is cleared", async () => {
+    const b = spokenBridge();
+    const cli = deps({ ask: b.ask, env: inPane("%1"), paneKind: async () => "agent" });
+    expect(await cmdHillClear(cli, ["--spoken"])).toBe(EXIT.REFUSED);
+    expect(cli.io.stderr).toEqual(personOnlyRefusal("collie hill clear --spoken"));
+    expect(b.lines).toEqual([]);
+    const socket = deps({ ask: b.ask, env: inPane("%1") });
+    expect(await cmdHillClear(socket, ["--spoken"])).toBe(EXIT.REFUSED);
+    expect(socket.io.stderr).toEqual([`hill: ${HILL_PERSON_ONLY} (person_only)`]);
+    expect(b.hill.list().open).toHaveLength(1);
+  });
+
+  test("a terminal withdraws and clears the cards and says nothing was typed", async () => {
+    const b = spokenBridge();
+    const d = deps({ ask: b.ask, env: inPane("%3"), paneKind: async () => "shell" });
+    expect(await cmdHillClear(d, ["--spoken"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([spokenClearedWords(1)]);
+    expect(spokenClearedWords(1)).toBe("Withdrew and cleared 1 card you answered in the session. Nothing was typed.");
+    expect(b.hill.list().open).toEqual([]);
+    expect(b.audit).toContainEqual({ action: "hill.clear.spoken", device: "terminal", detail: { count: 1 } });
+    const again = deps({ ask: b.ask });
+    expect(await cmdHillClear(again, ["--spoken", "--json"])).toBe(EXIT.OK);
+    expect(again.io.stdout).toEqual(['{"cleared":0}']);
   });
 });

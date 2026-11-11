@@ -23,6 +23,9 @@
 //   hill.state    { state? }                   → { ok, crewState }  (1.29.0: a read for anyone, from anywhere; on a
 //                                                                     member the lead's. With `state` a person's write,
 //                                                                     refused from an agent's pane, and on a member)
+//   hill.spoken.clear {}                       → { ok, cleared }    (1.29.0: withdraw and clear the open cards answered
+//                                                                     in the session; types nothing; refused from an
+//                                                                     agent's pane, and on a member)
 // A trick handed to the lead (crew slice 8), answered only by a bridge built with it:
 //   trick.propose { requestId, files }        → { ok, kind, id, hash, decision, replaced } | { ok: false, error, code, propose: true }
 //     From an agent's pane the proposer is that session; from a bare shell or with no markers, a terminal.
@@ -69,7 +72,7 @@ export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision be
  * What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. The
  * `ask` calls answer from this bridge, or on a crew member from its lead (CREW_PROTOCOL §22).
  */
-export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear" | "askCrewState" | "setCrewState">;
+export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear" | "askCrewState" | "setCrewState" | "clearSpoken">;
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -180,6 +183,7 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
   if (request.op === "hill.clear" && hill !== undefined) return answerClear(hill);
   // The crew state: a read names no pane; a write only looks at the pane to refuse an agent's.
   if (request.op === "hill.state" && hill !== undefined) return await answerCrewState(service, request, targets, hill);
+  if (request.op === "hill.spoken.clear" && hill !== undefined) return await answerSpokenClear(service, request.markers, targets, hill);
   const placed = request.markers.length === 0 ? null : await placeMarkers(request.markers, targets);
   const notHere: WalkyAnswer = hill !== undefined && isHillOp(request.op) ? { ok: false, error: "not here", hill: true } : { ok: false, error: "not here" };
   if (request.markers.length > 0 && placed === null) return notHere;
@@ -266,6 +270,8 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       return hill === undefined ? { ok: false, error: unknownOp(request.op) } : answerClear(hill);
     case "hill.state":
       return hill === undefined ? { ok: false, error: unknownOp(request.op) } : await answerCrewState(service, request, targets, hill);
+    case "hill.spoken.clear":
+      return hill === undefined ? { ok: false, error: unknownOp(request.op) } : await answerSpokenClear(service, request.markers, targets, hill);
     case "trick.propose": {
       if (propose === undefined) return { ok: false, error: unknownOp(request.op) };
       // An agent's pane proposes as that session; a bare shell, or no markers at all, as a terminal.
@@ -314,6 +320,17 @@ async function answerCrewState(service: WalkyService, request: Extract<WalkyRequ
   const set = hill.setCrewState(request.state, "terminal", "terminal");
   if (!set.ok) return set.notLead ? { ok: false, error: set.error, hill: true, code: "not_on_lead" } : { ok: false, error: set.error, hill: true };
   return { ok: true, crewState: set.crewState };
+}
+
+/** The second Clear (1.29.0): the person's verb, refused from an agent's pane and on a member. Types nothing. */
+async function answerSpokenClear(service: WalkyService, markers: WalkyRequest["markers"], targets: readonly PlaceTarget[], hill: HillSocket): Promise<WalkyAnswer> {
+  if (await fromAgentPane(service, markers, targets)) {
+    service.noteRefusal("agent pane");
+    return { ok: false, error: HILL_PERSON_ONLY, hill: true, code: "person_only" };
+  }
+  const cleared = hill.clearSpoken("terminal");
+  if (!cleared.ok) return cleared.notLead ? { ok: false, error: cleared.error, hill: true, code: "not_on_lead" } : { ok: false, error: cleared.error, hill: true };
+  return { ok: true, cleared: cleared.cleared };
 }
 
 /**

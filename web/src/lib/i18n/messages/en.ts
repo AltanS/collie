@@ -3479,6 +3479,9 @@ export const en = {
   "hill.state.toldNone": "No session was waiting",
   "hill.state.tellFailed": "Could not tell the sessions. Try again.",
   "hill.spoke": "You wrote to this session after it asked.",
+  "hill.clear.closed.one": "Clear {count} entry",
+  "hill.clear.closed.other": "Clear {count} entries",
+  "hill.clear.spoken": "Clear cards you answered in the session",
   "settings.hill.label": "The Hill",
   "settings.hill.hint": "Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar.",
   "settings.hill.switchFailed": "Could not switch the Hill. Try again.",
@@ -3737,6 +3740,10 @@ export const PENDING_TRANSLATION = [
   "hill.state.tellFailed",
   // The quiet mark on a card whose session the person wrote to (1.29.0).
   "hill.spoke",
+  // The Clear menu's two choices (1.29.0).
+  "hill.clear.closed.one",
+  "hill.clear.closed.other",
+  "hill.clear.spoken",
   // An answer refused for a crew machine that is not answering (2026-11-10).
   "hill.receipt.offline",
   // A trick's new version on the Hill and in Settings (crew slice 3).

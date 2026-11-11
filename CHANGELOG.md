@@ -73,6 +73,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A Hill card says when you already wrote to its session.** When you send a message from the phone's composer into an agent's session after it posted a Decision, its open card reads "You wrote to this session after it asked." and moves below the fresh cards of its priority. It stays open and answerable.
 
+- **Clear the cards you already answered in the session.** When a card on the Hill carries "You wrote to this session after it asked.", the Clear button on Answered opens a menu with two choices: the closed entries as before, or "Clear cards you answered in the session", which withdraws those open cards and clears them. Nothing is typed into any session. From a terminal it is `collie hill clear --spoken`, which an agent's pane is refused.
+
 ### Changed
 
 - **Agents take a Hill card back when you settle it in the session, and read the crew state before they post.** The rules `collie hill --help` prints and the installed WalkyTalky skill teaches gain three lines for it; `collie skill sync` brings an installed skill up to date.

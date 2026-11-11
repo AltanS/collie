@@ -81,7 +81,10 @@ const USAGE = {
   status: ["usage: collie hill status <dc_id> [--json]   (yours, or one whose answer goes to this session)"],
   withdraw: ["usage: collie hill withdraw <dc_id> [--json]"],
   list: ["usage: collie hill list [--json]   (your own decisions, open first)"],
-  clear: ["usage: collie hill clear [--json]   (remove every closed decision from the Hill; open ones stay)"],
+  clear: [
+    "usage: collie hill clear [--json]   (remove every closed decision from the Hill; open ones stay)",
+    "       collie hill clear --spoken [--json]   (withdraw and clear the open cards you answered in the session; types nothing; not from an agent's pane)",
+  ],
   state: ["usage: collie hill state [here|quiet|away] [--json]   (read the crew state; with a word, your person sets it)"],
   on: ["usage: collie hill on    (switch the Hill on for this Collie; it is on unless switched off)"],
   off: ["usage: collie hill off   (switch the Hill off: every post is refused, the open decisions stay)"],
@@ -632,14 +635,26 @@ export function clearedWords(count: number): string {
  */
 export async function cmdHillClear(deps: HillDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
-  const unknown = args.find((arg) => arg !== "--json");
+  const unknown = args.find((arg) => arg !== "--json" && arg !== "--spoken");
   if (unknown !== undefined) return usage(deps, "clear", `unknown argument \`${unknown}\``);
-  const answer = await request(deps, { op: "hill.clear" });
+  const spoken = args.includes("--spoken");
+  // The second Clear is the person's choice: refused in an agent's pane, here and again by the bridge.
+  if (spoken && (await inAgentPane(deps))) {
+    for (const line of personOnlyRefusal("collie hill clear --spoken")) deps.io.err(line);
+    return EXIT.REFUSED;
+  }
+  const answer = await request(deps, { op: spoken ? "hill.spoken.clear" : "hill.clear" });
   if (!answer.ok) return failed(deps, answer);
   const count = asJsonNumber(answer.body.cleared);
   if (count === undefined) return failed(deps, { ok: false, error: "the bridge answered without a count", code: null, exit: EXIT.FAIL });
-  deps.io.out(args.includes("--json") ? JSON.stringify({ cleared: count }) : clearedWords(count));
+  deps.io.out(args.includes("--json") ? JSON.stringify({ cleared: count }) : spoken ? spokenClearedWords(count) : clearedWords(count));
   return EXIT.OK;
+}
+
+/** What `collie hill clear --spoken` prints for a count. */
+export function spokenClearedWords(count: number): string {
+  if (count === 0) return "Nothing to clear: no open card you answered in its session.";
+  return `Withdrew and cleared ${String(count)} ${count === 1 ? "card" : "cards"} you answered in the session. Nothing was typed.`;
 }
 
 // ── The crew state (1.29.0) ──────────────────────────────────────────────────────────────────────────

@@ -108,6 +108,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "Tell all sessions now, under the crew state (1.29.0): the button turns to its done words with the count in place, which is the receipt where the person tapped; a refusal (told already, the state moved) and a failed call land as a line under it, because a status line would be gone before the person read it.",
   },
+  clearHillSpoken: {
+    channel: "silent",
+    why: "Clear cards you answered in the session, the second choice of the Hill's Clear menu (1.29.0): the cards leaving the open list IS the receipt, as for the first Clear; a failed call leaves them where they are and is said on the status channel as `Could not clear. Try again.`",
+  },
   clearHillClosed: {
     channel: "silent",
     why: "Clear on the Hill's Answered group (the second tap of its arm): the closed rows leaving the list IS the receipt, and the group goes with them, so a success says nothing more; a failed call puts the rows back and is said on the status channel as `Could not clear. Try again.`",

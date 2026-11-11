@@ -3436,6 +3436,21 @@ export function startServer(opts: {
         }
         return hillClearRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
+      // The second Clear (1.29.0): withdraw and clear the OPEN cards the person answered in the session.
+      // Its own path, so an older bridge answers 404 and never reads it as the first Clear. Types nothing.
+      if (pathname === "/api/hill/clear/spoken" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillSpokenClearRoute` takes only `{}`.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillSpokenClearRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
       const hillImage = pathname.match(HILL_IMAGE_ROUTE);
       if (hillImage && req.method === "GET") {
         const denied = browserGate("read");
@@ -9312,6 +9327,24 @@ export const HILL_CLEAR_IDS_MAX = 200;
  * `skipped` the ids left alone, `open` for an open decision and `missing` for one this bridge does not
  * hold. 400 for another body, 503 when the write failed. Works with the Hill off.
  */
+/**
+ * `POST /api/hill/clear/spoken` (1.29.0): `{}` in, `{ cleared }` out. Withdraws and clears every open
+ * Decision the person answered in its session (`spokeAfter`); nothing is typed into any session. 409 on a
+ * member or a deposed lead, 503 when the Hill could not be saved.
+ */
+export function hillSpokenClearRoute(
+  hill: Pick<HillService, "clearSpoken"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const doc = asJsonObject(body);
+  if (doc === undefined || Object.keys(doc).length > 0) return text("bad request: the body is {}", 400);
+  const answer = hill.clearSpoken(context.device);
+  if (!answer.ok) return text(answer.error, answer.notLead ? 409 : 503);
+  return json({ cleared: answer.cleared }, context.acceptEncoding);
+}
+
 export function hillClearRoute(
   hill: Pick<HillService, "clear"> | undefined,
   body: JsonValue | undefined,

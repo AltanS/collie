@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { useRevalidator } from "react-router";
 
-import { clearHillClosed } from "@/lib/api";
-import { clearClosedLocally } from "@/lib/hill/store";
+import { clearHillClosed, clearHillSpoken } from "@/lib/api";
+import { clearClosedLocally, readHillNow } from "@/lib/hill/store";
 import { t } from "@/lib/i18n";
 import { mutate } from "@/lib/mutate";
 import { usePairing } from "@/lib/pairing";
@@ -22,6 +22,8 @@ export interface HillClearState {
   /** This device may clear: it is paired with the write right. */
   canWrite: boolean;
   clear: () => Promise<void>;
+  /** The second Clear (1.29.0): the open cards answered in the session. Nothing is typed. */
+  clearSpoken: () => Promise<void>;
 }
 
 export function useHillClear(): HillClearState {
@@ -47,5 +49,19 @@ export function useHillClear(): HillClearState {
     setBusy(false);
   }
 
-  return { busy, canWrite, clear };
+  async function clearSpoken(): Promise<void> {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    // Not optimistic: the cards are open, and an open card that left and came back would be a jump.
+    const res = await mutate(() => clearHillSpoken(), { ownError: true });
+    if (res.ok) {
+      readHillNow();
+      revalidator.revalidate();
+    } else setStatus(t("hill.clear.failed"), "error");
+    inFlight.current = false;
+    setBusy(false);
+  }
+
+  return { busy, canWrite, clear, clearSpoken };
 }
