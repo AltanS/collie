@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,9 +20,11 @@ import {
   PROPOSALS_SENDER_OPEN_MAX,
   PROPOSED_BYTES_MAX,
   PROPOSED_DIR,
+  PROPOSALS_FILE,
   TrickProposals,
   type Proposer,
 } from "./proposals.ts";
+import { ProposeDoor } from "./propose-door.ts";
 import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
@@ -672,5 +674,92 @@ describe("the card belongs to Collie and to the person", () => {
     const [card] = openCards(l);
     expect(card?.replyTo).toBeNull();
     expect(card?.summary).toStartWith("Someone on bluefin proposes it. Collie could not confirm which session.");
+  });
+});
+
+// Review S5: before the person's yes, nothing a proposer sends changes a file on the lead outside the
+// proposals' own store and their state file, read with lstat over the WHOLE config and state folders.
+describe("nothing outside the store moves before the yes (review S5)", () => {
+  const STORE = `${TRICKS_DIR}/${PROPOSED_DIR}`;
+  /** Every entry under the lead's config and state folders, by lstat: kind, mode, bytes or link target. */
+  async function wholeTree(l: Lead, skip: (rel: string) => boolean): Promise<string[]> {
+    const out: string[] = [];
+    const go = async (top: string, base: string, rel: string): Promise<void> => {
+      for (const name of (await readdir(join(base, rel))).toSorted()) {
+        const sub = rel === "" ? name : `${rel}/${name}`;
+        if (skip(sub)) continue;
+        const path = join(base, sub);
+        const st = await lstat(path);
+        const mode = (st.mode & 0o7777).toString(8);
+        if (st.isSymbolicLink()) out.push(`${top}:${sub} link ${await readlink(path)}`);
+        else if (st.isDirectory()) {
+          out.push(`${top}:${sub}/ ${mode}`);
+          await go(top, base, sub);
+        } else out.push(`${top}:${sub} ${mode} ${st.size} ${(await readFile(path)).toString("base64")}`);
+      }
+    };
+    await go("config", l.configDir, "");
+    await go("state", l.stateDir, "");
+    return out;
+  }
+  const outsideStore = (rel: string): boolean => rel === STORE || rel === `${TRICKS_DIR}/${PROPOSALS_FILE}`;
+  /** Files (not folders) left in the store. */
+  async function storeFiles(l: Lead): Promise<string[]> {
+    const tree = await wholeTree(l, () => false);
+    return tree.filter((row) => row.startsWith(`config:${STORE}/`) && !row.split(" ")[0]!.endsWith("/"));
+  }
+
+  test("a new trick, then the same session's replacement: only the store and its state file change", async () => {
+    const l = await lead();
+    await l.service.refresh(true);
+    // A lead's tricks state folder exists; the proposals' state file is the one thing written in it.
+    await mkdir(join(l.stateDir, TRICKS_DIR), { recursive: true, mode: 0o700 });
+    const before = await wholeTree(l, outsideStore);
+    const first = proposal("legs", "1\n");
+    expect((await l.proposals.propose(first, AGENT)).ok).toBe(true);
+    await l.service.refresh(true);
+    expect(await wholeTree(l, outsideStore)).toEqual(before);
+    expect((await lstat(l.proposals.storeDir("legs", first.hash))).isDirectory()).toBe(true);
+    const second = proposal("legs", "2\n");
+    expect(await l.proposals.propose(second, AGENT)).toMatchObject({ ok: true, replaced: expect.stringMatching(/^dc_/u) });
+    await l.service.refresh(true);
+    expect(await wholeTree(l, outsideStore)).toEqual(before);
+    expect(await lstat(l.proposals.storeDir("legs", first.hash)).catch(() => null)).toBeNull();
+    expect(await listed(l)).toEqual([]);
+  });
+
+  test("a post the Hill refuses after the store leaves no file behind, and no state", async () => {
+    const l = await lead();
+    await l.service.refresh(true);
+    const before = await wholeTree(l, (rel) => rel === STORE);
+    l.hill.postCollie = () => ({ ok: false, code: null, error: "no room" });
+    expect(await l.proposals.propose(proposal("legs"), AGENT)).toEqual({ ok: false, code: "failed", error: "The Hill did not take the card, so nothing was proposed: no room" });
+    expect(await storeFiles(l)).toEqual([]);
+    expect(await wholeTree(l, (rel) => rel === STORE)).toEqual(before);
+  });
+
+  test("a member's door forwards and keeps no copy, even with a proposals store of its own", async () => {
+    const l = await lead();
+    await l.service.refresh(true);
+    const before = await wholeTree(l, () => false);
+    let local = 0;
+    const own = { propose: async (...args: Parameters<TrickProposals["propose"]>) => ((local += 1), await l.proposals.propose(...args)) };
+    const sent: string[] = [];
+    const door = new ProposeDoor({
+      mode: () => "peer",
+      proposals: () => own,
+      memberId: "laptop",
+      machine: "laptop",
+      leadName: () => "desk",
+      call: async (_route, payload) => {
+        sent.push(payload);
+        return { kind: "answer", status: 200, body: { ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null } };
+      },
+    });
+    const fields = { requestId: nextRid(), files: wireFiles(proposal("legs").files) };
+    expect(await door.local(fields, { kind: "agent", address: "laptop/%1#abcd", label: "repo#one" })).toMatchObject({ ok: true, decision: "dc_k3m9x2p7q1ab" });
+    expect(sent).toHaveLength(1);
+    expect(local).toBe(0);
+    expect(await wholeTree(l, () => false)).toEqual(before);
   });
 });
