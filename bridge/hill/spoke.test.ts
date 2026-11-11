@@ -151,4 +151,21 @@ describe("Clear cards you answered in the session", () => {
     expect(await hillSpokenClearRoute(r.hill, {}, { device: "Pixel 9", acceptEncoding: null }).json()).toEqual({ cleared: 1 });
     expect(r.state.sent).toBe(0);
   });
+
+  test("with ids it clears only the cards the phone showed: one marked after the menu opened stays open (C-N5)", async () => {
+    const r = rig();
+    const shown = r.hill.post(ONE, input(1));
+    const later = r.hill.post(TWO, input(2));
+    if (!shown.ok || !later.ok) throw new Error("not posted");
+    r.state.clock = 5000;
+    r.hill.noteSpoke(ONE.address);
+    // The phone opened the menu with one marked card; then the person wrote to the second session.
+    r.state.clock = 6000;
+    r.hill.noteSpoke(TWO.address);
+    const answer = hillSpokenClearRoute(r.hill, { ids: [shown.decision.id] }, { device: "Pixel 9", acceptEncoding: null });
+    expect(await answer.json()).toEqual({ cleared: 1 });
+    expect(r.hill.list().open.map((d) => d.id)).toEqual([later.decision.id]);
+    expect(hillSpokenClearRoute(r.hill, { ids: ["nope"] }, { device: "Pixel 9", acceptEncoding: null }).status).toBe(400);
+  });
 });
+

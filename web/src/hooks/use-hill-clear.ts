@@ -23,7 +23,8 @@ export interface HillClearState {
   canWrite: boolean;
   clear: () => Promise<void>;
   /** The second Clear (1.29.0): the open cards answered in the session. Nothing is typed. */
-  clearSpoken: () => Promise<void>;
+  /** Clear the marked cards of `ids`, the ones the person saw in the menu. */
+  clearSpoken: (ids: readonly string[]) => Promise<void>;
 }
 
 export function useHillClear(): HillClearState {
@@ -49,12 +50,12 @@ export function useHillClear(): HillClearState {
     setBusy(false);
   }
 
-  async function clearSpoken(): Promise<void> {
+  async function clearSpoken(ids: readonly string[]): Promise<void> {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     // Not optimistic: the cards are open, and an open card that left and came back would be a jump.
-    const res = await mutate(() => clearHillSpoken(), { ownError: true });
+    const res = await mutate(() => clearHillSpoken(ids), { ownError: true });
     if (res.ok) {
       readHillNow();
       revalidator.revalidate();

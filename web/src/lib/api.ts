@@ -3087,12 +3087,12 @@ export async function clearHillClosed(): Promise<number> {
 }
 
 /**
- * POST /api/hill/clear/spoken (1.29.0): withdraw and clear every open Decision the person answered in its
- * session. Nothing is typed. Answers how many went; the list comes back through the snapshot's `hillRev`.
+ * POST /api/hill/clear/spoken (1.29.0): withdraw and clear the open Decisions the person answered in their
+ * session, of `ids` (the ones this phone showed) only. Nothing is typed. Answers how many went; the list comes back through the snapshot's `hillRev`.
  * An older bridge answers 404 and a refusal throws, so the caller says it on the status line.
  */
-export async function clearHillSpoken(): Promise<number> {
-  const raw = await req<JsonValue>("/api/hill/clear/spoken", { method: "POST", body: JSON.stringify({}) });
+export async function clearHillSpoken(ids: readonly string[]): Promise<number> {
+  const raw = await req<JsonValue>("/api/hill/clear/spoken", { method: "POST", body: JSON.stringify({ ids }) });
   const cleared = asJsonNumber(asJsonObject(raw)?.cleared);
   if (cleared === undefined) throw new Error("/api/hill/clear/spoken answered with a body that is not { cleared }");
   return cleared;

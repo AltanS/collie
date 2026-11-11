@@ -9334,7 +9334,8 @@ export const HILL_CLEAR_IDS_MAX = 200;
  * hold. 400 for another body, 503 when the write failed. Works with the Hill off.
  */
 /**
- * `POST /api/hill/clear/spoken` (1.29.0): `{}` in, `{ cleared }` out. Withdraws and clears every open
+ * `POST /api/hill/clear/spoken` (1.29.0): `{}` or `{ "ids": [...] }` in (the cards the phone showed, C-N5),
+ * `{ cleared }` out. Withdraws and clears every open
  * Decision the person answered in its session (`spokeAfter`); nothing is typed into any session. 409 on a
  * member or a deposed lead, 503 when the Hill could not be saved.
  */
@@ -9344,11 +9345,29 @@ export function hillSpokenClearRoute(
   context: { readonly device: string | null; readonly acceptEncoding: string | null },
 ): Response {
   if (hill === undefined) return text(HILL_OFF_TEXT, 404);
-  const doc = asJsonObject(body);
-  if (doc === undefined || Object.keys(doc).length > 0) return text("bad request: the body is {}", 400);
-  const answer = hill.clearSpoken(context.device);
+  const ids = readClearIds(body);
+  if (ids === undefined) return text(HILL_CLEAR_BAD_BODY, 400);
+  const answer = hill.clearSpoken(context.device, ids);
   if (!answer.ok) return text(answer.error, answer.notLead ? 409 : 503);
   return json({ cleared: answer.cleared }, context.acceptEncoding);
+}
+
+const HILL_CLEAR_BAD_BODY = 'bad request: the body is {} or { "ids": ["dc_..."] }';
+
+/** A Clear's body: `{}` (null, every one) or `{ "ids": [...] }`; undefined for any other shape. */
+function readClearIds(body: JsonValue | undefined): string[] | null | undefined {
+  const doc = asJsonObject(body);
+  if (doc === undefined || Object.keys(doc).some((key) => key !== "ids")) return undefined;
+  if (doc.ids === undefined) return null;
+  const raw = doc.ids;
+  if (!Array.isArray(raw) || raw.length > HILL_CLEAR_IDS_MAX) return undefined;
+  const ids: string[] = [];
+  for (const entry of raw) {
+    const id = asJsonString(entry);
+    if (id === undefined || !HILL_ID_RE.test(id)) return undefined;
+    ids.push(id);
+  }
+  return ids;
 }
 
 export function hillClearRoute(
@@ -9357,20 +9376,8 @@ export function hillClearRoute(
   context: { readonly device: string | null; readonly acceptEncoding: string | null },
 ): Response {
   if (hill === undefined) return text(HILL_OFF_TEXT, 404);
-  const doc = asJsonObject(body);
-  const bad = text('bad request: the body is {} or { "ids": ["dc_..."] }', 400);
-  if (doc === undefined || Object.keys(doc).some((key) => key !== "ids")) return bad;
-  let ids: string[] | null = null;
-  if (doc.ids !== undefined) {
-    const raw = doc.ids;
-    if (!Array.isArray(raw) || raw.length > HILL_CLEAR_IDS_MAX) return bad;
-    ids = [];
-    for (const entry of raw) {
-      const id = asJsonString(entry);
-      if (id === undefined || !HILL_ID_RE.test(id)) return bad;
-      ids.push(id);
-    }
-  }
+  const ids = readClearIds(body);
+  if (ids === undefined) return text(HILL_CLEAR_BAD_BODY, 400);
   const answer = hill.clear(ids, context.device);
   if (answer === null) return text(HILL_CLEAR_UNSAVED_TEXT, 503);
   return json({ cleared: answer.cleared.length, skipped: answer.skipped }, context.acceptEncoding);

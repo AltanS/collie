@@ -45,6 +45,8 @@ export function HillRoute() {
   const nav = useNav();
   const scope = useScope();
   const open = useHillOpen();
+  // The marked cards this page shows: the second Clear sends their ids, so a card marked later stays (C-N5).
+  const spoken = open.flatMap((d) => (d.spokeAfter === undefined ? [] : [d.id]));
   const closed = useHillClosed();
   const kept = useHillKept();
   const closedTotal = useHillClosedTotal();
@@ -76,7 +78,7 @@ export function HillRoute() {
                 onTell={() => void crew.tell()}
               />
             )}
-            <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: open.filter((d) => d.spokeAfter !== undefined).length, onClearSpoken: () => void clearing.clearSpoken() }} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
+            <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: spoken.length, onClearSpoken: () => void clearing.clearSpoken(spoken) }} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
           </>
         )}
       </BandMain>

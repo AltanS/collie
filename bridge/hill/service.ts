@@ -1350,12 +1350,15 @@ export class HillService {
    * to that session, and a line from the Hill now would be a second, stale answer. One `hill.clear.spoken`
    * audit line with the count. Refused on a member and a deposed lead, which hold no Hill.
    */
-  clearSpoken(device: string | null = null): { readonly ok: true; readonly cleared: number } | { readonly ok: false; readonly error: string; readonly notLead: boolean } {
+  clearSpoken(device: string | null = null, ids: readonly string[] | null = null): { readonly ok: true; readonly cleared: number } | { readonly ok: false; readonly error: string; readonly notLead: boolean } {
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, error: NOT_ON_LEAD, notLead: true };
     const now = this.now();
+    // With `ids` (the phone's), only the cards it showed: one marked since stays for the next look (C-N5).
+    const shown = ids === null ? null : new Set(ids);
     const closed: HillDecision[] = [];
     for (const decision of this.deps.store.all()) {
       if (decision.state !== "open" || decision.spokeAfter === undefined) continue;
+      if (shown !== null && !shown.has(decision.id)) continue;
       closed.push({ ...decision, state: "withdrawn", closedAt: now, closedReason: HILL_ANSWERED_IN_SESSION });
     }
     if (closed.length === 0) return { ok: true, cleared: 0 };
