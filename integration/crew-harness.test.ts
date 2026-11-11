@@ -1838,6 +1838,18 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
   const standby = (path: string, init: RequestInit = {}) =>
     fetch(`http://127.0.0.1:${standbyPort}${path}`, init);
   /**
+   * What a phone does before it taps: read the page and take the mark of the lists it showed off the
+   * button (`data-seen`). The tap sends it back in `x-collie-carried`, and the door refuses a missing
+   * or stale one with 409 (`CARRIED_CHANGED`).
+   */
+  async function shownMark(): Promise<string> {
+    const html = await (await standby("/standby")).text();
+    const button = html.match(/<button\b[^>]*\bid="go"[^>]*>/)?.[0] ?? "";
+    const mark = button.match(/\bdata-seen="([^"]*)"/)?.[1];
+    expect({ button, mark }).toEqual({ button: expect.stringContaining('id="go"'), mark: expect.any(String) });
+    return mark!;
+  }
+  /**
    * `GET /crew/v1/hello` at a peer, dialled as the LEAD does it — the exact bytes the lead's own
    * `crew status` reads its answers off. Two factors: the lead's certificate at the handshake and the
    * crew secret in the header.
@@ -2157,7 +2169,9 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
     const html = await (await standby("/standby")).text();
     expect(html).toContain("Take over");
     expect(html).toContain(`has not called this machine for`);
-    expect(html).toContain(`<button id="go" type="button">Take over</button>`);
+    // The button, by its id and its words: the attribute list is not pinned, because the page adds
+    // marks to it (the `data-seen` mark of the lists shown, which the tap must send back).
+    expect(html).toMatch(/<button\b[^>]*\bid="go"[^>]*>Take over<\/button>/);
     // One witness exists, so the page says who will be asked rather than the two-machine warning.
     expect(html).toContain("ask 1 other machine whether it has called");
   }, 60_000);
@@ -2185,12 +2199,32 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
     expect(witness.store()!.lead!.memberId).toBe(idOf(hq));
   }, 30_000);
 
+  test("a tap with a stale or missing mark is refused with 409, and nothing is taken over", async () => {
+    const shown = await shownMark();
+    for (const stale of [`${shown}-stale`, "t:-;h:999999", null]) {
+      const headers = new Headers({ authorization: `Bearer ${TOKEN}` });
+      if (stale !== null) headers.set("x-collie-carried", stale);
+      const res = await standby("/standby/takeover", { method: "POST", headers });
+      expect({ status: res.status, answer: await res.json() }).toEqual({
+        status: 409,
+        answer: { ok: false, message: "The list changed. Read it again.", changed: true },
+      });
+    }
+    // Still a deputy: it follows the old lead, holds no crown, and its process did not restart.
+    const kept = aide.store()!;
+    expect(kept.lead?.memberId).toBe(idOf(hq));
+    expect(kept.warrant).not.toBeNull();
+    expect(aide.proc!.exitCode).toBeNull();
+    expect(witness.store()!.lead!.memberId).toBe(idOf(hq));
+  }, 30_000);
+
   test("the takeover: the witness re-pins, and the deputy commits LAST", async () => {
     const aideId = idOf(aide);
     const hqId = idOf(hq);
+    // As a phone does: the mark the page showed rides the tap.
     const res = await standby("/standby/takeover", {
       method: "POST",
-      headers: { authorization: `Bearer ${TOKEN}` },
+      headers: { authorization: `Bearer ${TOKEN}`, "x-collie-carried": await shownMark() },
     });
     // Asserted WITH the body: every refusal here is a sentence, and a bare status would hide the one
     // fact a failure needs (which of RFC §7's steps said no).
