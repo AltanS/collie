@@ -25,6 +25,7 @@ const NOT_STORAGE = new Map<string, string>([
   ["collie:open", "a service-worker postMessage type (lib/notification-open.ts)"],
   ["collie:herd", "a notification tag (lib/push-decision.ts)"],
   ["collie:herd@<host>", "the per-host notification tag, named in a comment"],
+  ["collie.json", "a theme file name in the theme catalogue (lib/theme/catalogue.ts), not a storage key"],
 ]);
 
 type Area = "local" | "session";
