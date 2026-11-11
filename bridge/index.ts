@@ -192,6 +192,7 @@ import { carrySurface, hillCarryRoutes, tricksCarryRoutes } from "./crew/carry-s
 import { StandbyHillStore } from "./crew/standby-hill.ts";
 import { HillCopySync } from "./crew/hill-copy-sync.ts";
 import { adoptCarriedHill } from "./crew/hill-adopt.ts";
+import { holdCopies } from "./crew/carry-boot.ts";
 import { TricksCopySync } from "./crew/carry-sync.ts";
 import { adoptCarriedTricks, tricksStartingAtTap, writeCarryNotices } from "./crew/carry-adopt.ts";
 import { answerCarried, postCarryNotices } from "./crew/carry-notices.ts";
@@ -3479,8 +3480,8 @@ async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; mess
       if (own === null) return { kind: "refused", reason: "commit-failed" };
       const clash = collidingLabels(own, devices);
       if (clash.length > 0) return { kind: "refused", reason: "pairing-collision", labels: clash };
-      // §25: the role change below would otherwise remove the tricks copy before this tap adopts it.
-      const release = tricksCopyStore?.hold() ?? (() => {});
+      // §25: the role change below would otherwise remove the copies before this tap adopts them.
+      const release = holdCopies([tricksCopyStore, hillCopyStore]);
       try {
         const formerLead = held.lead.memberId;
         const result = await commitCrewChange(trustStore, audit, (current) =>
