@@ -1184,6 +1184,15 @@ written as what a trick, or a person who controls one, can do today.
   an address must be that address; the person still looks before tapping.
 - **Any program of the user can draw.** The walky socket takes a view write from any process that runs as
   the user on that machine, in any session's view that is on. The rest of Collie has the same limit.
+- **Any program of the user can speak as a session.** The socket knows a session by the pane markers
+  the caller sends, and any process of the same user can send another live pane's markers. It can then
+  read that session's view (`status`, with the lines the person typed from it), read its `help`, and
+  spend that session's write cap, so the agent's own writes are refused `rate` for a minute.
+- **The key mask does not cover a view.** `redact` masks the pane mirror; it does not mask a screen's
+  words or the lines kept in `sent`, as it does not mask the Hill.
+- **The gate under the lock reads the cached scan.** Right before the first key the bridge asks again
+  whether the trick is approved and on, from the scan it holds; a trick folder changed on disk since that
+  scan counts from the next scan.
 - **The lead only.** Agent views work only for sessions on the lead machine in this version.
 
 ## Places in the app
