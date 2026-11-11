@@ -27,6 +27,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Collie mark rests until you touch the app.** Since 1.28.1 a page you opened drifted the mark for its first 20 seconds with no touch at all, background tabs included. Now the mark rests until your first touch, key press or mouse wheel, and 20 seconds after the last one it slows to a stop as before. A page left open and a page in the background draw nothing for the mark. A scroll the app makes by itself, such as the chat following new output, does not count as a touch. This undoes a slowdown seen in WebKit (Safari's engine) tests since 1.28.1.
 
+- **A slow Windows PowerShell no longer makes Collie say its task is missing.** On a laptop where PowerShell takes more than 10 seconds to answer, `collie status`, `collie doctor` and the update check read the timeout as "no Task Scheduler task", and the check went red and blocked the Update button on the phone. Collie now asks `schtasks /Query /XML` first, which needs no PowerShell, and asks PowerShell only when that cannot decide, for up to 60 seconds. A task it could not read is reported as "could not read", with the time limit: amber in the update check, and `collie start` and `collie restart` never register a task over one they could not read. Because `schtasks` does not report whether a task is running, `status` now says `registered` where it said `Running` when `schtasks` answers. Thanks @EricSanzLuna (#762).
+
 ## [1.28.1] - 2026-11-10
 
 ### Changed

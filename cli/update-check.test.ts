@@ -749,8 +749,44 @@ describe("preflight — the service check", () => {
     expect(missing.reason).toContain("no Task Scheduler task herdr.collie");
     expect(missing.remedy).toBe("collie start");
 
-    const blind = harness({ absent: ["powershell"] });
+    const blind = harness({ absent: ["schtasks", "powershell"] });
     expect(serviceCheck({ ...blind.deps, host: hostFor("win32") }).verdict).toBe("amber");
+  });
+
+  // #762: a slow PowerShell start read as "no task", which went red and blocked the phone's Update button.
+  test("on Windows a task that could not be checked in time is amber, never red, and the update can go on", () => {
+    const QUERY = "powershell -NoProfile -NonInteractive -Command";
+    const slow = harness({
+      answers: [
+        ["schtasks /Query", { code: 1 }],
+        [QUERY, { code: 124 }],
+      ],
+    });
+    const deps: UpdateCheckDeps = { ...slow.deps, host: hostFor("win32") };
+    const check = serviceCheck(deps);
+    expect(check.verdict).toBe("amber");
+    expect(check.reason).toBe(
+      "Collie could not check the Task Scheduler task herdr.collie in time (PowerShell did not answer within 60s), and the update can go on",
+    );
+    expect(check.remedy).toBeUndefined();
+    // PowerShell was given the patient bound, not the 10 s one.
+    expect(slow.exec.timeouts.filter((t) => t.call.startsWith("powershell")).map((t) => t.ms)).toEqual([60_000]);
+  });
+
+  test("on Windows schtasks alone confirms the task, and an exit 1 confirmed by PowerShell is the red 'no task'", () => {
+    const xml = "<Task><Settings><Enabled>true</Enabled></Settings><Exec><Command>C:\\conhost.exe</Command><Arguments>--headless x _supervise</Arguments></Exec></Task>";
+    const fast = harness({ answers: [["schtasks /Query", { stdout: xml }]] });
+    const live = serviceCheck({ ...fast.deps, host: hostFor("win32") });
+    expect(live.verdict).toBe("green");
+    expect(fast.exec.calls.some((c) => c.startsWith("powershell"))).toBe(false);
+
+    const gone = harness({
+      answers: [
+        ["schtasks /Query", { code: 1 }],
+        ["powershell", { code: 1 }],
+      ],
+    });
+    expect(serviceCheck({ ...gone.deps, host: hostFor("win32") }).verdict).toBe("red");
   });
 });
 

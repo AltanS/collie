@@ -11,7 +11,7 @@ import { sweepAsides } from "./build.ts";
 import { instanceSuffix, loadContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, realLinkFs } from "./link.ts";
-import { type Exec, type Files, POWERSHELL_UTF8, type ProcessLookup, PROCESS_QUERY_TIMEOUT_MS, realExec } from "./sys.ts";
+import { type Exec, type Files, POWERSHELL_UTF8, type ProcessLookup, PROCESS_QUERY_SLOW_START_MS, PROCESS_QUERY_TIMEOUT_MS, realExec } from "./sys.ts";
 import { logFileName } from "./unit.ts";
 import { probeConfigOf, type ProbeConfig, probeTarget } from "./update-run.ts";
 
@@ -227,26 +227,122 @@ export function taskQueryScript(name: string): string {
   return `${POWERSHELL_UTF8}$t = Get-ScheduledTask -TaskName '${name.replaceAll("'", "''")}' -ErrorAction Stop; $a = @($t.Actions)[0]; [string]$t.State; [string]$a.Execute; [string]$a.Arguments; [string]$t.Settings.Priority`;
 }
 
+/** A {@link TaskQuery} from the three strings a query reads: the action's command and arguments, and the state and priority. */
+function taskFromAction(state: string, command: string, argline: string, priority: number | null, host: Host): TaskQuery {
+  const words = parseWindowsArgs(argline);
+  const underConhost = host.path.basename(command.trim()).toLowerCase() === "conhost.exe" && words[0] === "--headless";
+  return underConhost
+    ? { state, program: words[1] ?? "", args: words.slice(2), priority }
+    : { state, program: command.trim(), args: words, priority };
+}
+
 /** The four lines {@link taskQueryScript} prints, read back. `null` when there is no state line. */
 export function parseTaskQuery(stdout: string, host: Host): TaskQuery | null {
   const [state = "", command = "", argline = "", priorityLine = ""] = stdout.split(/\r?\n/);
   if (state.trim() === "") return null;
   const priority = /^\d+$/.test(priorityLine.trim()) ? Number(priorityLine.trim()) : null;
-  const words = parseWindowsArgs(argline);
-  const underConhost = host.path.basename(command.trim()).toLowerCase() === "conhost.exe" && words[0] === "--headless";
-  return underConhost
-    ? { state: state.trim(), program: words[1] ?? "", args: words.slice(2), priority }
-    : { state: state.trim(), program: command.trim(), args: words, priority };
+  return taskFromAction(state.trim(), command, argline, priority, host);
+}
+
+/** The state {@link parseTaskXml} reports for a task that is switched on: the XML does not say `Ready` or `Running`. */
+export const TASK_STATE_REGISTERED = "registered";
+
+/** What Task Scheduler gives a task whose XML names no `<Priority>`: the schema's default. */
+const TASK_DEFAULT_PRIORITY = 7;
+
+const decodeXmlText = (text: string): string =>
+  text
+    .replace(/&#x([0-9a-f]+);/giu, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/gu, (_, dec: string) => String.fromCodePoint(Number(dec)))
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&amp;", "&");
+
+/**
+ * The text of the first `<tag>` inside `block`, decoded; `""` for a tag that is absent or empty.
+ * `null` when the text holds a character outside printable ASCII: see {@link parseTaskXml}.
+ */
+function xmlText(block: string, tag: string): string | null {
+  const raw = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "u").exec(block)?.[1] ?? "";
+  return /[^\x20-\x7e\t\r\n]/u.test(raw) ? null : decodeXmlText(raw);
 }
 
 /**
- * Ask Task Scheduler for a task, through PowerShell because `schtasks /Query` prints the state in the
- * system's language. `undefined` when there is no PowerShell to ask, `null` when no such task exists.
+ * The task XML `schtasks /Query /XML` prints, read back as a {@link TaskQuery}. `null` when it is not
+ * a task's XML, or when the action's text cannot be trusted.
+ *
+ * WHY THE XML, NOT `/FO LIST /V`. The text formats print every label and the state in the system's
+ * language, so a German or Japanese Windows needs a table of translations. The XML is the same
+ * schema everywhere, so its element names are fixed. What it does not carry is the run state: there
+ * is no `Ready` or `Running` in a task's definition, only `<Enabled>`. The state here is therefore
+ * `Disabled` or {@link TASK_STATE_REGISTERED}.
+ *
+ * WHY `null` FOR A NON-ASCII ACTION. `schtasks` writes the XML to a pipe in the OEM code page, and
+ * says `UTF-16` in its header, so a program or argument with a letter outside ASCII (a user called
+ * `Jürgen`) comes back changed. {@link taskOwner} would then call this install's own task foreign.
+ * The caller asks PowerShell instead, which {@link POWERSHELL_UTF8} makes exact.
  */
-export function queryTask(exec: Pick<Exec, "capture">, name: string, host: Host): TaskQuery | null | undefined {
-  const r = exec.capture("powershell", ["-NoProfile", "-NonInteractive", "-Command", taskQueryScript(name)], PROCESS_QUERY_TIMEOUT_MS);
-  if (!r.found) return undefined;
-  return r.code === 0 ? parseTaskQuery(r.stdout, host) : null;
+export function parseTaskXml(xml: string, host: Host): TaskQuery | null {
+  if (!/<Task[\s>]/u.test(xml)) return null;
+  const settings = /<Settings[\s>][\s\S]*?<\/Settings>/u.exec(xml)?.[0] ?? "";
+  const exec = /<Exec>[\s\S]*?<\/Exec>/u.exec(xml)?.[0] ?? "";
+  const command = xmlText(exec, "Command");
+  const argline = xmlText(exec, "Arguments");
+  if (command === null || argline === null) return null;
+  const enabled = !/<Enabled>\s*false\s*<\/Enabled>/iu.test(settings);
+  const priorityText = xmlText(settings, "Priority")?.trim() ?? "";
+  const priority = /^\d+$/.test(priorityText) ? Number(priorityText) : TASK_DEFAULT_PRIORITY;
+  return taskFromAction(enabled ? TASK_STATE_REGISTERED : "Disabled", command, argline, priority, host);
+}
+
+/**
+ * What a query for a task answers. THREE results, because "no such task" and "could not ask" are
+ * different facts and a caller that reads the second as the first tells a working install to run
+ * `collie start` (#762).
+ */
+export type TaskLookup =
+  | { readonly kind: "found"; readonly task: TaskQuery }
+  /** The query ran and says there is no task of that name. */
+  | { readonly kind: "absent" }
+  /** The query timed out, could not be started, or printed something unreadable. `why` says which. */
+  | { readonly kind: "unknown"; readonly why: string };
+
+/** `schtasks /Query` answers in under a second where PowerShell needs seconds; this bound is for a host where even it is slow. */
+export const SCHTASKS_QUERY_TIMEOUT_MS = PROCESS_QUERY_TIMEOUT_MS;
+
+/** The bound for a caller that can wait: `status`, `doctor` and the update preflight. */
+export const TASK_QUERY_PATIENT_MS = PROCESS_QUERY_SLOW_START_MS;
+
+/** A tool run that ended on the bound or on a signal: code 124 is {@link Exec.capture}'s timeout. */
+const cutOff = (r: { code: number; signal?: string }): boolean => r.code === 124 || r.signal !== undefined;
+
+/**
+ * Ask Task Scheduler for a task, in two steps.
+ *
+ * 1. `schtasks /Query /TN <name> /XML`. It needs no PowerShell start, which costs 4 to 6 s on a
+ *    machine with endpoint security (#762, `schtasks` answered in 0.7 s beside it). Exit code 0 with a
+ *    task's XML is `found`, and what the XML cannot say is in {@link parseTaskXml}.
+ * 2. PowerShell {@link taskQueryScript}, bounded by `timeoutMs`, when step 1 could not decide: it did
+ *    not run, timed out, printed no readable XML, or exited non-zero. A non-zero exit is NOT taken for
+ *    "absent". A missing task and an access-denied task both exit 1, and the message that tells them
+ *    apart is in the system's language. PowerShell confirms: exit 1 there is `absent`, a timeout is
+ *    `unknown`.
+ */
+export function queryTask(exec: Pick<Exec, "capture">, name: string, host: Host, timeoutMs: number): TaskLookup {
+  const asked = exec.capture("schtasks", ["/Query", "/TN", name, "/XML"], SCHTASKS_QUERY_TIMEOUT_MS);
+  if (asked.found && asked.code === 0) {
+    const task = parseTaskXml(asked.stdout, host);
+    if (task !== null) return { kind: "found", task };
+  }
+  const r = exec.capture("powershell", ["-NoProfile", "-NonInteractive", "-Command", taskQueryScript(name)], timeoutMs);
+  if (!r.found) return { kind: "unknown", why: "neither schtasks nor PowerShell could be run" };
+  if (cutOff(r)) return { kind: "unknown", why: `PowerShell did not answer within ${Math.round(timeoutMs / 1000)}s` };
+  if (r.code === 1) return { kind: "absent" };
+  if (r.code !== 0) return { kind: "unknown", why: `PowerShell exited ${r.code}` };
+  const task = parseTaskQuery(r.stdout, host);
+  return task === null ? { kind: "unknown", why: "PowerShell printed no task state" } : { kind: "found", task };
 }
 
 /**

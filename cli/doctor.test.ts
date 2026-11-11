@@ -2867,6 +2867,33 @@ describe("windows-task", () => {
     expect(run([[QUERY, { code: 1 }]]).status).toBe("skipped");
     expect(run([], ["powershell"]).status).toBe("skipped");
   });
+
+  // #762: a PowerShell that runs past its bound said "no task is registered" on a machine whose task was fine.
+  test("a task that cannot be read in time is not 'not registered': it says so, with the time limit", () => {
+    const f = run([
+      ["schtasks /Query", { code: 1 }],
+      [QUERY, { code: 124 }],
+    ]);
+    expect(f.status).toBe("skipped");
+    expect(f.detail).toBe("could not read the task herdr.collie (PowerShell did not answer within 60s)");
+    expect(f.detail).not.toContain("registered");
+    expect(f.remedy).toBe("run `collie doctor` again, or `schtasks /query /tn herdr.collie` from a terminal");
+  });
+
+  test("a task that schtasks reads is judged without PowerShell; one that does not exist is still 'not registered'", () => {
+    const xml = `<Task><Settings><Enabled>true</Enabled></Settings><Exec><Command>C:\\conhost.exe</Command><Arguments>--headless ${BIN} _supervise</Arguments></Exec></Task>`;
+    const exec = fakeExec({ answers: [["schtasks /Query", { stdout: xml }]] });
+    const f = windowsTask({ ctx: context(), exec, host: WIN, link: fakeLinkFs() });
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe(`Task herdr.collie runs ${BIN} (registered)`);
+    expect(exec.calls.some((c) => c.startsWith("powershell"))).toBe(false);
+
+    const none = run([
+      ["schtasks /Query", { code: 1 }],
+      [QUERY, { code: 1 }],
+    ]);
+    expect(none.detail).toBe("no task herdr.collie is registered");
+  });
 });
 
 // ── POSIX parity (M43 spec 04) ──────────────────────────────────────────────
