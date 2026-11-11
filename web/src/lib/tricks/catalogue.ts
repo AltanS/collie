@@ -296,8 +296,8 @@ export const PLACES = {
   },
   session: {
     id: "session",
-    name: "Session",
-    where: "A session of the trick's own: a row on the Dashboard under Tricks, and a screen of its own.",
+    name: "Page",
+    where: "A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`.",
     shows: "A name, an icon, a tone, a subtitle, a badge, a progress meter, up to four action buttons and a `view`: a list of nodes of any kind in the Parts table.",
     tap: "A button, or an action, sends its intent to the trick, which runs once with that tap. A `row` or a `link` with an `href` opens a web page or a session.",
     limits: [
@@ -338,7 +338,7 @@ export const PLACES = {
     name: "Dashboard tile",
     where: "A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile.",
     shows: "One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.",
-    tap: "A tap opens the trick's session when it has one. Without a session the tile is drawn and takes no tap.",
+    tap: "A tap opens the trick's Page when it has one. Without a Page the tile is drawn and takes no tap.",
     limits: [
       ONE_PER_TRICK,
       { what: "`label`", value: `1 to ${String(ITEM_LABEL_MAX)} characters` },
@@ -353,7 +353,7 @@ export const PLACES = {
     name: "Status chip",
     where: "One chip in the status line above the Belt, after Collie's own items.",
     shows: "One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view.",
-    tap: "A tap opens the trick's session when it has one. The chip is not a control and takes no intent.",
+    tap: "A tap opens the trick's Page when it has one. The chip is not a control and takes no intent.",
     limits: [ONE_PER_TRICK, { what: "`text`", value: `1 to ${String(STATUS_TEXT_MAX)} characters` }, PART_SIZE],
     who: "program",
     examples: [{ kind: "document", json: { v: 1, parts: [{ at: "status", id: "ci", chip: { text: "CI green", icon: "check", tone: "ok" } }] } }],
@@ -363,7 +363,7 @@ export const PLACES = {
     name: "Bottom bar item",
     where: "An item in the Dashboard's bottom bar, after the Hill.",
     shows: "One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.",
-    tap: "A tap opens the trick's session when it has one. Without a session the item is drawn and takes no tap.",
+    tap: "A tap opens the trick's Page when it has one. Without a Page the item is drawn and takes no tap.",
     limits: [
       ONE_PER_TRICK,
       { what: "`label`", value: `1 to ${String(ITEM_LABEL_MAX)} characters` },
@@ -707,7 +707,7 @@ export const PARTS: readonly PartEntry[] = NODE_KINDS.map((kind) => ({
 
 /** What the views have in common, in words: the three places a view of nodes shows. */
 export const VIEW_KINDS_OF = {
-  program: "A program's view, in a `session` part: every kind.",
+  program: "A program's view, on its Page (a `session` part): every kind.",
   decision: `A Decision's view, under its summary: display only. It takes ${orList(DECISION_VIEW_KINDS)}. At most ${sizeWords(DECISION_VIEW_LIMITS.bytes)}, ${String(DECISION_VIEW_LIMITS.nodes)} nodes and ${String(DECISION_VIEW_LIMITS.depth)} levels.`,
   agentView: "An agent view: every kind, read strictly. A kind or an attribute that a program's part would only leave out is refused.",
 } as const;
@@ -1003,7 +1003,7 @@ function helperRows(n: ProgramNumbers): HelperRow[] {
     { call: "`t.status({ text, icon?, tone? })`", names: ["t.status"], what: `The chip in the status line. \`text\` is at most ${String(STATUS_TEXT_MAX)} characters.` },
     { call: "`t.belt({ label, icon?, tone?, badge?, intent? })`", names: ["t.belt"], what: "The mark at the end of the Belt." },
     { call: "`t.dashboard(item)`, `t.tabbar(item)`", names: ["t.dashboard", "t.tabbar"], what: "The Dashboard tile and the bottom bar item: `{ label, icon?, badge?, tone? }`." },
-    { call: "`t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })`", names: ["t.session"], what: "The trick's own session. Keep the default id `main`." },
+    { call: "`t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })`", names: ["t.session"], what: "The trick's own Page. Keep the default id `main`." },
     { call: "`v.card`, `v.list`, `v.row`, and one builder for each other kind in Parts", names: ["v.card", "v.list", "v.row", "v.table", "v.checks", "v.stat", "v.beforeAfter"], what: "Build a view. `v.table` makes the `col` and `cell` kids, so those two have no builder. `v.checks`, `v.stat` and `v.beforeAfter` put kinds together." },
     { call: "`t.decide({ key, title, summary, options, ... })`", names: ["t.decide"], what: "Ask the person on the Hill." },
     { call: "`t.keepDecisions()`", names: ["t.keepDecisions"], what: "Leave the `decisions` key out, so the open Decisions stay. It wins over `t.decide`." },
@@ -1046,7 +1046,7 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
     helper: helperRows(n),
     helperAfter: [
       "A run that calls neither `t.decide` nor `t.keepDecisions` prints `\"decisions\": []`, so it withdraws the open ones.",
-      "A thrown error prints one warning card in the trick's session and exits 0, when the trick has a session. The document has no `decisions` key, so the open Decisions stay. A trick with no session exits 1, so the failure rules apply.",
+      "A thrown error prints one warning card on the trick's Page and exits 0, when the trick has a Page. The document has no `decisions` key, so the open Decisions stay. A trick with no Page exits 1, so the failure rules apply.",
       "`collie trick helper <id>` rewrites `trick.ts` with the newest helper. The helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new helper waits for a yes.",
     ],
     globs: [

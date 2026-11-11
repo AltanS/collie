@@ -49,7 +49,7 @@ contract = 1
 description = "Lists agents idle for 20 minutes or more, and asks before you wake one."
 ```
 
-It draws in three places: a chip in the status line, a tile on the Dashboard, and a session of its
+It draws in three places: a chip in the status line, a tile on the Dashboard, and a Page of its
 own. Every key is in [Manifest keys](tricks-reference.md#manifest-keys).
 
 `program.ts`:

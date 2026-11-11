@@ -11,7 +11,7 @@ A place is a spot on the phone where a trick can show (a surface). A program tri
 | Place | Name | Where it shows | Drawn by |
 | --- | --- | --- | --- |
 | `belt` | Belt | A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room. | A program |
-| `session` | Session | A session of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. | A program |
+| `session` | Page | A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`. | A program |
 | `dashboard` | Dashboard tile | A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile. | A program |
 | `status` | Status chip | One chip in the status line above the Belt, after Collie's own items. | A program |
 | `tabbar` | Bottom bar item | An item in the Dashboard's bottom bar, after the Hill. | A program |
@@ -55,7 +55,7 @@ A program prints:
 
 ### `session`
 
-**Where.** A session of the trick's own: a row on the Dashboard under Tricks, and a screen of its own.
+**Where.** A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`.
 
 **Shows.** A name, an icon, a tone, a subtitle, a badge, a progress meter, up to four action buttons and a `view`: a list of nodes of any kind in the Parts table.
 
@@ -125,7 +125,7 @@ A program prints:
 
 **Shows.** One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.
 
-**A tap.** A tap opens the trick's session when it has one. Without a session the tile is drawn and takes no tap.
+**A tap.** A tap opens the trick's Page when it has one. Without a Page the tile is drawn and takes no tap.
 
 | Limit | Value |
 | --- | --- |
@@ -160,7 +160,7 @@ A program prints:
 
 **Shows.** One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view.
 
-**A tap.** A tap opens the trick's session when it has one. The chip is not a control and takes no intent.
+**A tap.** A tap opens the trick's Page when it has one. The chip is not a control and takes no intent.
 
 | Limit | Value |
 | --- | --- |
@@ -193,7 +193,7 @@ A program prints:
 
 **Shows.** One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.
 
-**A tap.** A tap opens the trick's session when it has one. Without a session the item is drawn and takes no tap.
+**A tap.** A tap opens the trick's Page when it has one. Without a Page the item is drawn and takes no tap.
 
 | Limit | Value |
 | --- | --- |
@@ -399,7 +399,7 @@ A person opens the card cold, between other things, so the words carry the decis
 
 A part, in this page, is one node of a view: the building block a view is made of (the schema calls it a node kind). A node is `{ "kind": ..., "text"?: ..., "attrs"?: ..., "kids"?: ... }`, and every attribute value is text.
 
-- A program's view, in a `session` part: every kind.
+- A program's view, on its Page (a `session` part): every kind.
 - A Decision's view, under its summary: display only. It takes `group`, `list`, `row`, `bar`, `chip`, `para`, `line`, `run`, `code`, `link`, `meter`, `spacer`, `number`, `image`, `compare`, `table`, `col`, `cell`, `diff` or `spark`. At most 8 KiB, 100 nodes and 4 levels.
 - An agent view: every kind, read strictly. A kind or an attribute that a program's part would only leave out is refused.
 
@@ -1240,7 +1240,7 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 | `t.status({ text, icon?, tone? })` | The chip in the status line. `text` is at most 12 characters. |
 | `t.belt({ label, icon?, tone?, badge?, intent? })` | The mark at the end of the Belt. |
 | `t.dashboard(item)`, `t.tabbar(item)` | The Dashboard tile and the bottom bar item: `{ label, icon?, badge?, tone? }`. |
-| `t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })` | The trick's own session. Keep the default id `main`. |
+| `t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })` | The trick's own Page. Keep the default id `main`. |
 | `v.card`, `v.list`, `v.row`, and one builder for each other kind in Parts | Build a view. `v.table` makes the `col` and `cell` kids, so those two have no builder. `v.checks`, `v.stat` and `v.beforeAfter` put kinds together. |
 | `t.decide({ key, title, summary, options, ... })` | Ask the person on the Hill. |
 | `t.keepDecisions()` | Leave the `decisions` key out, so the open Decisions stay. It wins over `t.decide`. |
@@ -1256,7 +1256,7 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 
 A run that calls neither `t.decide` nor `t.keepDecisions` prints `"decisions": []`, so it withdraws the open ones.
 
-A thrown error prints one warning card in the trick's session and exits 0, when the trick has a session. The document has no `decisions` key, so the open Decisions stay. A trick with no session exits 1, so the failure rules apply.
+A thrown error prints one warning card on the trick's Page and exits 0, when the trick has a Page. The document has no `decisions` key, so the open Decisions stay. A trick with no Page exits 1, so the failure rules apply.
 
 `collie trick helper <id>` rewrites `trick.ts` with the newest helper. The helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new helper waits for a yes.
 

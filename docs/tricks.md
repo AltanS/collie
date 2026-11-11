@@ -34,7 +34,7 @@ names the places it wants in its manifest, and its parts appear there, drawn by 
 Collie's own look.
 
 - **Five places take a program's parts.** On the Dashboard: a tile in the strip at the top, a row
-  under Tricks that opens the trick's own session, and an item in the bottom bar. In an agent
+  under Tricks that opens the trick's own Page, and an item in the bottom bar. In an agent
   session: a chip in the status line, and a mark at the end of the Belt.
 - **The agent view is the sixth.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
@@ -44,8 +44,8 @@ Collie's own look.
 The [Places](tricks-reference.md#places) section of the reference describes each place: where it
 shows, what it takes, what a tap does, its limits and an example.
 
-A tile, an item and a chip are not buttons. A tap on one opens the trick's session, when the trick has
-one. A mark on the Belt can run the trick when you tap it. A button on a session screen runs the
+A tile, an item and a chip are not buttons. A tap on one opens the trick's Page, when the trick has
+one. A mark on the Belt can run the trick when you tap it. A button on a Page runs the
 trick's program once, with your tap.
 
 A part for a place that this Collie does not know is left out, with a note, and the other parts still
@@ -523,7 +523,7 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | "This trick needs a newer Collie: ..." | The trick was written for a later Collie. Run `collie update` |
 | "The trick is busy. Try again in a moment." | A tap came while another waited. Tap again |
 | "The bridge restarted while this tap ran. ..." | Check the result, then tap again if needed |
-| "A decision is answered on the Hill, not with a tap." | A Decision's card is answered on the Hill, not from the trick's session |
+| "A decision is answered on the Hill, not with a tap." | A Decision's card is answered on the Hill, not from the trick's Page |
 
 A trick that runs but shows nothing on a timer may be waiting for a phone. Open the app, and give it a
 minute.

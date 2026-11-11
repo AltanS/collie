@@ -237,14 +237,21 @@ you add one by its address, and its row says "ColliePWA did not check this code.
 ## Place
 
 A spot on the phone where a trick can show (a surface). A program trick draws in five: `belt`,
-`session`, `dashboard`, `status` and `tabbar`. An agent view is the sixth, `agent-view`. The Hill is
+`session` (shown as Page), `dashboard`, `status` and `tabbar`. An agent view is the sixth, `agent-view`. The Hill is
 built in, and a trick posts there without naming it. A place is not a [space](#space). Each place is
 described in [Places](tricks-reference.md#places).
+
+## Page
+
+A trick's own screen: a row on the Dashboard under Tricks, and the screen it opens. A tap on the
+trick's tile, bottom bar item or chip opens it too. It has no reply box, because a trick is not an
+agent you talk to. The code word in `places` is `session`
+([Where a trick can show](tricks.md#where-a-trick-can-show)).
 
 ## Part
 
 What a trick draws in one place: one mark on the Belt, one chip, one tile, one bottom bar item, or one
-session screen. The word also names the pieces a screen is built from, such as a row, a chip or a
+Page. The word also names the pieces a screen is built from, such as a row, a chip or a
 button, from a closed list of 22 kinds. A part is data, never code, and one bad part does not hide the
 others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
 
