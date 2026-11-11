@@ -130,7 +130,8 @@ an action, a node of its view, a node's `attrs`), is no longer ignored: that par
 may carry a meaning this Collie cannot keep, such as a confirm, so the part is not drawn at all, and the
 runner keeps no last good version of it either (it is not in `refusedParts`): that version would be stale
 for good. A node of a kind, or a part in a place, this Collie does not draw is still only left out with
-its `dropped` note, since leaving it out changes no meaning of what does draw. Contract 1 stays as above.
+its `dropped` note, also inside a contract 2 part (accepted in review 11, N6b), since leaving it out
+changes no meaning of what does draw. Contract 1 stays as above.
 
 **The document's own keys stay open at contract 2** (fault C, decided). A key this Collie does not know at
 the top of a document (beside `v`, `parts`, `asOf`, `fresh`, `decisions`) is ignored with an `ignored`
@@ -818,7 +819,10 @@ Anything else, `javascript:alert(1)` included, is refused at the bridge.
 ## The intent shape
 
 A tap is `{ rid, node, intent, value, from }`, the tree's `POST /intent`. `node` is the part id or
-`hill/<key>`. `from` names the session the phone was on. A receipt is one of `ok`, `changed`,
+`hill/<key>`. `from` names the session the phone was on. It is NOT proof of who tapped or of the session
+the part was drawn for (N3, review 11): the bridge checks only that it is an agent session open here now,
+and a program must not let it decide who may do what. Until a mark is bound to its session, it is a hint.
+A receipt is one of `ok`, `changed`,
 `rejected`, `gone`, `denied` or `unknown`; `ok` and `changed` may carry new parts. The store
 (`store.ts`) holds one tap per part: a second tap on that part is ignored until the receipt lands,
 and an `unknown` shows on the pressed control until the next tap.

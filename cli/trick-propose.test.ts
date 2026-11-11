@@ -63,6 +63,11 @@ describe("collie trick guide", () => {
     expect(text).not.toMatch(/\/home\/|\/var\/home\/|~\//u);
   });
 
+  test("N3: says that from.session is not proof of who tapped", () => {
+    const text = trickGuide().join("\n");
+    expect(text).toContain("from.session is not proof of who tapped or where the part was drawn.");
+  });
+
   test("says the numbers the bridge checks with", () => {
     const text = trickGuide().join("\n");
     expect(text).toContain(`at most ${String(PROPOSE_LIMITS.files)} files and 5 MB`);
