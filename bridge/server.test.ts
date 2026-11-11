@@ -171,6 +171,8 @@ import {
   type SnapshotResponse,
 } from "./types.ts";
 import type { StateEngine } from "./state-engine.ts";
+import { HEAD_CASES, NOT_HEAD_CASES } from "./agent-view/testdata/head-cases.ts";
+import { BAD_HEAD } from "../web/src/lib/agent-view/wire.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -936,6 +938,26 @@ describe("pane write prompt binding", () => {
     expect(client.texts).toEqual([]);
     expect(client.keys).toEqual([]);
     expect(entries[0]?.detail).toMatchObject({ submitted: false, textDelivered: false, reason: "old_phone" });
+  });
+
+  test.each(HEAD_CASES.map((c) => [c.name, c.text] as const))("rule 7 (reply door with submit false, review 9 R2, shared case table): text with a view head is refused and nothing reaches the pane: %s", async (_name, text) => {
+    const client = new FakePaneClient();
+    const { audit, entries } = auditEntries();
+    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text, submit: false }), audit, null, "default");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: false, textDelivered: false, error: BAD_HEAD, code: "reply.send_failed", detail: { reason: BAD_HEAD } });
+    expect(client.reads).toEqual([]);
+    expect(client.texts).toEqual([]);
+    expect(client.keys).toEqual([]);
+    expect(entries[0]?.detail).toMatchObject({ submit: false, submitted: false, textDelivered: false, reason: "bad_head" });
+  });
+
+  test.each(NOT_HEAD_CASES.filter((c) => !c.text.includes("\u001b")).map((c) => [c.name, c.text] as const))("rule 7 (reply door with submit false, shared case table): text with no head is typed: %s", async (_name, text) => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text, submit: false }), audit, null, "default");
+    expect(res.status).toBe(200);
+    expect(client.texts).toHaveLength(1);
   });
 
   test("an old phone's keys and its raw text with submit false still work (M56 compat)", async () => {

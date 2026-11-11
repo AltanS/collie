@@ -257,7 +257,7 @@ import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
 import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
 import type { AgentViewService } from "./agent-view/service.ts";
-import { VIEW_MEDIA_ID_RE, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField } from "../web/src/lib/agent-view/wire.ts";
+import { BAD_HEAD, hasViewHead, VIEW_MEDIA_ID_RE, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField } from "../web/src/lib/agent-view/wire.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -6203,6 +6203,14 @@ export async function replyPane(
     return replyThroughProtocol(send, paneId, session, fields, { audit, device, redact: cfg.redact, acceptEncoding: ae });
   }
   if (submit && binding === null) return text("a submit with no text needs expected_prompt", 400);
+  // One head, one door (agent views SECURITY rule 7, review 9 R2): the raw text this route types with
+  // `submit: false` never passes the Send Protocol, so it is read for a view head here, before any key.
+  // A crew member answers its lead's forwarded reply through this same function.
+  if (txt !== "" && hasViewHead(txt)) {
+    audit.record({ action: "reply", paneId, session, device, detail: { submit, submitted: false, textDelivered: false, reason: "bad_head" } });
+    const refusal: ActionResponse = { ok: false, textDelivered: false, ...apiError("reply.send_failed", { reason: BAD_HEAD }) };
+    return json(refusal, ae);
+  }
   const outcome = await sendReplySteps(herdr, paneId, txt, submit, cfg.submitKeys);
   const replyDetail: AuditDetail = {
     text: txt,
