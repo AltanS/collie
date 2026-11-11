@@ -545,6 +545,15 @@ lead.
 A question you answered on the lead stays answered. After the takeover the old lead takes no answer:
 "This machine is not the crew's lead any more. Answer on the new lead."
 
+Known limits:
+
+- A carried question keeps the old lead's sender address and reply address. An answer that goes back
+  to an agent goes to that address, which names a pane on the old lead.
+- A takeover against a lead that is up but cut off splits the crew, and both machines can run the
+  same tricks at the same time.
+- While the standby door is armed, its page names the tricks and the number of open questions to a
+  browser that has not signed in. The Take over button needs a paired device.
+
 > **Note.** The copy needs Collie 1.29.0 on the lead and on the deputy. An older deputy keeps no copy;
 > `collie crew status` on the lead says so, and a takeover there starts no trick and brings no
 > question along. An answer you gave on the lead in the last seconds before it went down may not have

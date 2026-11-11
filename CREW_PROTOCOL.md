@@ -4608,6 +4608,18 @@ On the deputy: `tricks.carried` at the adoption, with `by`, with the ids started
 kept. Never a file's bytes. `hill.carried` at the adoption, with the counts of Decisions stored open,
 closed with their reason, and Collie cards the copy left out (`dropped`). Never a Decision's text.
 
+### Known limits
+
+- `seq` is a JavaScript number. A lead whose clock reads near `Number.MAX_SAFE_INTEGER` (far past any
+  real time in milliseconds) would send a `seq` that cannot rise by one; the copy then stays at the
+  last list it took. Nothing checks for it.
+- The group digest of a proposal's cards is an unkeyed sha256 that anyone can compute: it proves the
+  cards belong together, not who made them. `docs/security.md` lists the files it protects.
+- A carried Decision keeps the old lead's `from.address` and `replyTo`.
+- A takeover against a lead that is cut off but up is a split brain (§14), and both machines can run
+  the same tricks at the same time.
+- The armed `/standby` GET names the carried tricks and the count of open Decisions without a login.
+
 ### Compatibility
 
 Additive inside protocol version 2 (§7.1). A lead before 1.29.0 sends nothing, and a deputy before
