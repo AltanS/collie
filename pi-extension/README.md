@@ -34,15 +34,23 @@ None of them runs anything.
 ## Install
 
 ```sh
-mkdir -p ~/.pi/agent/extensions
-cp pi-extension/collie-inbox.ts ~/.pi/agent/extensions/
+collie inbox install pi
 ```
 
-Run `/reload` in a running pi to load it. To check that it works, run this in another terminal while
-pi is open:
+That writes `collie-inbox.ts` into pi's extensions folder, `~/.pi/agent/extensions/` (under
+`PI_CODING_AGENT_DIR` when that is set). It is the only thing that installs it: the bridge, `collie doctor`
+and `collie update` never do. Run `/reload` in a running pi to load it.
+
+```sh
+collie inbox status pi     # not installed, current, stale, or a file of yours is in the way
+collie inbox uninstall pi  # removes it, only when it is Collie's
+```
+
+Collie owns a file only when its first line is `// collie-inbox v<N>`. A file without that line is left alone,
+and `install` refuses to write over it. An older copy of ours is replaced by the next `install`.
+
+To check that it works, run this in another terminal while pi is open:
 
 ```sh
 ls ~/.local/state/collie/inbox/
 ```
-
-To remove it, delete `~/.pi/agent/extensions/collie-inbox.ts`.

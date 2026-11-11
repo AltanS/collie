@@ -26,6 +26,7 @@ import {
   type HooksDeps,
   HOOKS_SUBCOMMANDS,
 } from "./hooks.ts";
+import { cmdInbox, cmdInboxInstall, cmdInboxStatus, cmdInboxUninstall, INBOX_SUBCOMMANDS, type InboxDeps } from "./inbox.ts";
 import { lifecycleDeps, updateDeps } from "./deps.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
 import { chooseDoctorInstanceHere } from "./doctor-instance.ts";
@@ -282,6 +283,11 @@ function linkDeps(io: Io): LinkDeps {
  * network, and nothing under the state dir.
  */
 function hooksDeps(io: Io): HooksDeps {
+  return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
+}
+
+/** `inbox install|uninstall|status`: the same three seams as `hooks`. */
+function inboxDeps(io: Io): InboxDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
 }
 
@@ -857,6 +863,30 @@ export const COMMANDS: readonly Command[] = [
       },
     ],
     run: (args, s) => cmdHooks(hooksDeps(s.io), args),
+  },
+  // The pi inbox (ADR 0141): the person's opt-in install of the extension that hands a phone message
+  // to pi's live session. Declared beside `hooks`, which it is modelled on; no other verb installs it.
+  {
+    name: "inbox",
+    summary: `pi's own door for a phone message: ${INBOX_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "install",
+        summary: "write the pi extension into pi's extensions folder: `inbox install pi` (a running pi loads it after `/reload`)",
+        run: (args, s) => cmdInboxInstall(inboxDeps(s.io), args),
+      },
+      {
+        name: "uninstall",
+        summary: "remove it again, only when it is Collie's: `inbox uninstall pi`",
+        run: (args, s) => cmdInboxUninstall(inboxDeps(s.io), args),
+      },
+      {
+        name: "status",
+        summary: "whether it is installed, current or stale (reads only)",
+        run: (args, s) => cmdInboxStatus(inboxDeps(s.io), args),
+      },
+    ],
+    run: (args, s) => cmdInbox(inboxDeps(s.io), args),
   },
   {
     name: "beacon",

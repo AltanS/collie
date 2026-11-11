@@ -81,8 +81,9 @@ const LINK_VERBS = ["link", "unlink"];
 
 // The agent-beacon verbs (M11/02). Declared right after the PATH-name pair because `hooks install`
 // writes that published name into the agent's own settings.json (ADR 0021), and `beacon` is the
-// internal emitter the entry it writes calls.
-const BEACON_VERBS = ["hooks", "beacon"];
+// internal emitter the entry it writes calls. `inbox` (ADR 0141) is `hooks`' sibling for pi's own door:
+// it writes one extension file into pi's folder, and sits between `hooks` and `beacon` in the table.
+const BEACON_VERBS = ["hooks", "inbox", "beacon"];
 
 // The device-pairing verbs. Declared between the diagnostics and the crew, because that is where
 // they sit in the table, and grouped separately for the same reason as the two above.
@@ -471,6 +472,7 @@ describe("the subcommand trees", () => {
       // `serve` publishes; `serve status` reads what tailscale serve publishes (M76).
       "serve",
       "hooks",
+      "inbox",
       "beacon",
       "devices",
       "push",
@@ -600,6 +602,8 @@ describe("exit codes", () => {
       ...STT_VERBS,
       // `hooks` edits the developer's own ~/.claude/settings.json, and `hooks status` resolves the
       // same real paths before it reads them. cli/hooks.test.ts drives all three against fakes.
+      // `inbox` writes pi's real `~/.pi/agent/extensions/collie-inbox.ts`. cli/inbox.test.ts drives all
+      // three against fakes.
       // `beacon` is world-touching in the other direction: it would write a beacon into this host's
       // real state dir. cli/beacon.test.ts drives it against fakes.
       ...BEACON_VERBS,
