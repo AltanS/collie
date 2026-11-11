@@ -8,6 +8,7 @@ import { AuditLog } from "../audit.ts";
 import { sendRoute, viewWriteGate, VIEW_PAIRED_ONLY, type PairingGate, type SendRouteRuntime } from "../server.ts";
 import { powersOf } from "../tricks/approved.ts";
 import {
+  BAD_HEAD,
   hasViewHead,
   neutraliseViewHeads,
   parseAgentView,
@@ -28,6 +29,7 @@ import { rulesTextProblems, type View } from "../../web/src/lib/tricks/schema.ts
 import type { JsonValue } from "../json.ts";
 import { AgentViewService, viewHead, VIEW_STALE_WORDS, type AgentViewServiceDeps, type ViewAuditEntry, type ViewCrewMode, type ViewGate, type ViewSendPlan } from "./service.ts";
 import { AgentViewStore } from "./store.ts";
+import { HEAD_CASES } from "./testdata/head-cases.ts";
 
 // THE AGENT VIEW CONTRACT'S RULES, one test (or more) per rule, named after it: the twelve rules of the
 // security read (section 3), the lead's seven additions (section 5) and V-A2. Doors of rule 7 that live in
@@ -423,6 +425,19 @@ describe("rule 6: no stale taps", () => {
 // ── rule 7 (the wire's half) ──────────────────────────────────────────────────────────────────────
 
 describe("rule 7: one head, one door", () => {
+  test.each(HEAD_CASES.map((c) => [c.name, c.text] as const))("rule 7 (a view's typed text, review 9 R1, shared case table): typed text with a head on any line is refused bad_head, on a free session and with a question open: %s", async (_name, text) => {
+    for (const setup of ["free", "question"] as const) {
+      const r = rig();
+      await drawn(r);
+      if (setup === "question") r.questions.add(ONE);
+      for (const words of [text, `please look\n${text}`]) {
+        expect(await typed(r, words), setup).toMatchObject({ ok: false, code: "bad_head", error: BAD_HEAD });
+      }
+      // Nothing is held for the session: the next plain send goes.
+      expect((await typed(r, "please look at the second test")).ok).toBe(true);
+    }
+  });
+
   test("rule 7: a head is read through spaces, format characters, case and every line break; the old morph head counts", () => {
     for (const text of ["[view:morph x] go", "  [ VIEW : x", "​⁠[view:", "first\r\n[view:x", "first [view:x", "first\u0085[view:x", "[morph x] go", "[MORPH] go", "[morph]"]) {
       expect(hasViewHead(text), JSON.stringify(text)).toBe(true);

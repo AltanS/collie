@@ -47,7 +47,9 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
 import {
+  BAD_HEAD,
   cleanViewLine,
+  hasViewHead,
   VIEW_CHOICE_BLOCK,
   VIEW_DRAWING_MAX_MS,
   VIEW_HEAD_MAX,
@@ -117,7 +119,9 @@ export type ViewRefusalCode =
   // A tap while a question, a dialog or an answer box shows (rule 5).
   | "question"
   // The pane's program has no profile: Collie types there blind and cannot keep rule 5 (review 9 M1).
-  | "no_profile";
+  | "no_profile"
+  // Typed text that holds a view head on any line (rule 7, review 9 R1): the view's request skips the protocol's check.
+  | "bad_head";
 
 /** The sentence a crew member answers a write or a switch with. */
 export const VIEW_NOT_ON_LEAD = "agent views work on the lead machine only; run it in a session on the lead";
@@ -802,11 +806,15 @@ export class AgentViewService {
       if (entry.view === undefined || this.isStale(entry) || entry.view.rev !== field.rev) return refuse("stale_view", VIEW_STALE_WORDS);
       words = viewTapWords(entry.view, field.control ?? "");
       if (words === null) return refuse("bad_control", VIEW_BAD_CONTROL_WORDS);
+      if (hasViewHead(words)) return refuse("bad_head", BAD_HEAD);
       if (question) return refuse("question", VIEW_QUESTION_WORDS);
       line = this.withHeadAndTail(entry, gate.rules, words);
     } else {
       const typed = (input.typed ?? "").trim();
       if (typed === "") return refuse("bad_control", "a send from a view carries a tap or typed text");
+      // The view's own request carries a head, so the Send Protocol does not read its text for one: a head
+      // on any line of the typed words would be a second head typed through the one door (review 9 R1).
+      if (hasViewHead(typed)) return refuse("bad_head", BAD_HEAD);
       // The person's own typing is never refused for the session's state (lead addition 2): with a
       // question open, a turn running or a command, it goes as their plain send, with no head.
       plain = question || this.deps.working?.(session) === true || isCommand(typed);
