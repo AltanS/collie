@@ -17,6 +17,7 @@ import {
   normalizePeerAddress,
   guard,
   isOpenApiRoute,
+  OPEN_API_PATTERNS,
   OPEN_API_ROUTES,
   paneGateLevel,
   type PairingGate,
@@ -27,8 +28,8 @@ import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH } from "./types.ts";
 // ── DENY BY DEFAULT, PINNED (ADR 0086) ────────────────────────────────────────────────────────
 // `apiFrontGate` is the one pairing check in front of the whole `/api/` dispatcher. These tests hold
 // it to three promises: every `/api/` path `bridge/server.ts` names is refused without a token, the
-// allowlist is exactly `GET|HEAD /api/health` and `POST /api/pair`, and no spelling of a path reaches
-// a route without passing the same check the route would. `Bun.serve` is not stood up for the real
+// allowlist is exactly `GET|HEAD /api/health`, `POST /api/pair` and the pairing request with its poll
+// (ADR 0139), and no spelling of a path reaches a route without passing the same check the route would. `Bun.serve` is not stood up for the real
 // dispatcher (CLAUDE.md), so its wiring is pinned by source below, as access-jwt.test.ts pins its own.
 
 const SERVER_SRC = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
@@ -163,14 +164,27 @@ describe("the route table read off server.ts", () => {
 });
 
 describe("apiFrontGate: every /api/ path but the allowlist is refused without a token", () => {
-  test("the allowlist is GET|HEAD /api/health and POST /api/pair, and nothing else", () => {
+  test("the allowlist is GET|HEAD /api/health, POST /api/pair, the pairing request and its poll, and nothing else", () => {
     expect(OPEN_API_ROUTES).toEqual([
       { path: "/api/health", methods: ["GET", "HEAD"] },
       { path: "/api/pair", methods: ["POST"] },
+      { path: "/api/pair/request", methods: ["POST"] },
+    ]);
+    expect(OPEN_API_PATTERNS.map((p) => ({ pattern: p.pattern.source, methods: p.methods }))).toEqual([
+      { pattern: "^\\/api\\/pair\\/request\\/([^/]+)$", methods: ["GET"] },
     ]);
     expect(isOpenApiRoute("/api/pair", "GET")).toBe(false);
     expect(isOpenApiRoute("/api/health", "POST")).toBe(false);
     expect(isOpenApiRoute("/api/health/", "GET")).toBe(false);
+    // The poll is open for GET on one segment, and for nothing else.
+    expect(isOpenApiRoute("/api/pair/request/abc", "GET")).toBe(true);
+    expect(isOpenApiRoute("/api/pair/request/abc", "POST")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request/", "GET")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request/a/b", "GET")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request", "GET")).toBe(false);
+    // The approver's routes are never open.
+    expect(isOpenApiRoute("/api/pair/approve/abc", "GET")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/approve/abc", "POST")).toBe(false);
   });
 
   for (const paired of [true, false]) {

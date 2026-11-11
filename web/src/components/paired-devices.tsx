@@ -4,6 +4,7 @@ import { useLocation, useRevalidator, useSearchParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PairWithPhone } from "@/components/pair-with-phone";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { pairDevice, revokeDevice } from "@/lib/api";
@@ -34,6 +35,10 @@ function splitAroundValue(message: string, value: string): [string, string] {
 // host and types the 8-character code in here, or scans the QR that verb prints and arrives with
 // `?pair=<code>` already filled in. Nothing on this screen can mint a code, which is the whole
 // point — a phone that could ask for one would be a phone that could pair itself.
+//
+// The phone block under the form (ADR 0139) does not change that: it asks for a REQUEST, which holds
+// no credential, and a token is minted only when a device that is already paired answers it with the
+// code this screen shows. Nothing an unpaired browser does alone gets it in.
 
 export function PairedDevices({ data }: { data: DevicesData }) {
   useLocale();
@@ -147,6 +152,14 @@ export function PairedDevices({ data }: { data: DevicesData }) {
           heldToken={token !== null}
           onPaired={() => revalidator.revalidate()}
         />
+      )}
+
+      {/* The second way in (ADR 0139): a paired phone lets this browser in by scanning a code. The form
+          above is unchanged; this block sits under it. */}
+      {unpaired && (
+        <div className="border-t border-border p-4">
+          <PairWithPhone />
+        </div>
       )}
     </Card>
   );

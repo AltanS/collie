@@ -100,3 +100,47 @@ export function pairAuditEntry(label: string, where: PairRoute, mintedIn: Minted
     },
   };
 }
+
+// ── Pairing by a request a paired phone approves (bridge/pair-request.ts, ADR 0139) ────────────
+// Three lines, built here so the same rule holds: the parameters are classes, labels and a reason,
+// never the code on the screen, the request's ids, the poll secret or the token.
+
+/** One `POST /api/pair/request`: a browser asked to be paired, from this route. */
+export function pairRequestAuditEntry(where: PairRoute): AuditEntry {
+  return { action: "pair-request", detail: { route: where.route, forwardedFrom: where.forwarded } };
+}
+
+/**
+ * One approved request: the paired device that tapped the right code (`device` and `detail.approver`),
+ * the label the new device got, and both routes, the asker's from its request and the approver's from
+ * its tap.
+ */
+export function pairApproveAuditEntry(args: {
+  readonly approver: string;
+  readonly label: string;
+  readonly asker: PairRoute;
+  readonly approverRoute: PairRoute;
+}): AuditEntry {
+  return {
+    action: "pair-approve",
+    device: args.approver,
+    detail: {
+      approver: args.approver,
+      label: args.label,
+      route: args.asker.route,
+      forwardedFrom: args.asker.forwarded,
+      approverRoute: args.approverRoute.route,
+      approverForwardedFrom: args.approverRoute.forwarded,
+    },
+  };
+}
+
+/** Why a request ended without a device, or was never made. */
+export type PairRequestRefusal = "wrong-code" | "refused" | "expired" | "rate";
+
+/** One request that ended without a device (`wrong-code`, `refused`, `expired`), or was refused at the door (`rate`). */
+export function pairRequestRefusedAuditEntry(reason: PairRequestRefusal, approver?: string): AuditEntry {
+  const entry: AuditEntry = { action: "pair-request-refused", detail: { reason } };
+  if (approver !== undefined) entry.device = approver;
+  return entry;
+}

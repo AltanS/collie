@@ -554,6 +554,38 @@ describe("PairingStore", () => {
     if (!claimed.ok) throw new Error("claim failed");
     expect(claimed.token).toBe(Buffer.alloc(32, 0x41).toString("base64url"));
   });
+
+  // ADR 0139: an approved pairing request enrols through the same code as a claim, with no lifetime,
+  // under a label made unique, and touches no pending code.
+  test("enrolApproved enrols like a claim: same token form, hash only, no expiry, the pending code untouched", async () => {
+    const pending = newPending("ABCD2345", 0);
+    const { io, state } = memoryIo({ pending });
+    const store = new PairingStore(io, () => 1000, fixedRandom(0x42));
+    const got = await store.enrolApproved("desk");
+    expect(got).toEqual({ token: Buffer.alloc(32, 0x42).toString("base64url"), label: "desk" });
+    expect(state.registry?.devices).toEqual([{ label: "desk", tokenHash: sha256Hex(got.token), createdAt: 1000, lastSeenAt: 1000 }]);
+    expect(store.resolve(got.token)?.label).toBe("desk");
+    expect(state.pending).toEqual(pending);
+  });
+
+  test("enrolApproved never replaces a device: a taken label gets a number", async () => {
+    const { io, state } = memoryIo({ registry: { devices: [{ label: "desk", tokenHash: sha256Hex("h"), createdAt: 1, lastSeenAt: 1 }] } });
+    const store = new PairingStore(io, () => 1000);
+    expect((await store.enrolApproved("desk")).label).toBe("desk 2");
+    expect(state.registry?.devices.map((d) => d.label)).toEqual(["desk", "desk 2"]);
+  });
+
+  test("hasLiveDevice: true only while a device that has not expired is paired", async () => {
+    const empty = new PairingStore(memoryIo().io, () => 1000);
+    expect(empty.hasLiveDevice()).toBe(false);
+    const expired = new PairingStore(
+      memoryIo({ registry: { devices: [{ label: "old", tokenHash: sha256Hex("h"), createdAt: 1, lastSeenAt: 1, expiresAt: 500 }] } }).io,
+      () => 1000,
+    );
+    expect(expired.hasLiveDevice()).toBe(false);
+    const live = new PairingStore(memoryIo({ registry: { devices: [{ label: "pixel", tokenHash: sha256Hex("h"), createdAt: 1, lastSeenAt: 1 }] } }).io, () => 1000);
+    expect(live.hasLiveDevice()).toBe(true);
+  });
 });
 
 // ── Token expiry (M46 spec 01) ───────────────────────────────────────────────────────────────

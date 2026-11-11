@@ -369,6 +369,9 @@ export function escapeLabelForTerminal(label: string): string {
   return label.replace(new RegExp(HIDDEN_LABEL_CHAR.source, "gu"), (c) => `\\u{${(c.codePointAt(0) ?? 0).toString(16).toUpperCase()}}`);
 }
 
+/** The longest label {@link normalizeLabel} keeps. */
+export const LABEL_MAX = 48;
+
 /**
  * Validate and bound a client-supplied label. Returns null when it is unusable — the same answer for
  * "empty" and "1 KB of newlines", because the label is echoed into the audit log and the UI.
@@ -380,7 +383,7 @@ export function normalizeLabel(raw: JsonValue | undefined): string | null {
   // Checked before `trim`, which would quietly drop a BOM at the edge.
   if (hasHiddenLabelChar(flat)) return null;
   const label = flat.trim();
-  if (label === "" || label.length > 48) return null;
+  if (label === "" || label.length > LABEL_MAX) return null;
   return label;
 }
 
@@ -469,6 +472,24 @@ export function enrolDevice(
   const rest = holder === undefined ? registry : { devices: registry.devices.filter((d) => d.label !== device.label) };
   const next = addDevice(rest, device);
   return next === null ? null : { registry: next, replaced: holder !== undefined };
+}
+
+/**
+ * `label`, or `label` with the lowest number from 2 up that no device in `registry` holds (`Chrome on
+ * Linux 2`). A device holding the name counts whether or not it expired: an approved request never
+ * replaces an entry the way a claim may ({@link enrolDevice}). The base is cut so the result stays
+ * within the label rule's 48 characters.
+ */
+export function uniqueLabel(registry: PairedRegistry, label: string): string {
+  const taken = new Set(registry.devices.map((d) => d.label));
+  if (!taken.has(label)) return label;
+  for (let n = 2; n <= registry.devices.length + 2; n++) {
+    const suffix = ` ${n}`;
+    const candidate = `${label.slice(0, LABEL_MAX - suffix.length).trimEnd()}${suffix}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  // n runs one past the number of devices and every candidate is distinct, so one is always free.
+  throw new Error("pairing: no free label");
 }
 
 /**
@@ -843,23 +864,63 @@ export class PairingStore {
       else await this.io.writePending(verdict.pending);
       return { ok: false, reason: verdict.reason };
     }
-    const token = generateToken(this.random);
-    const now = this.now();
-    // The operator's `--expires`, carried on the pending code, counts from THIS moment.
-    const lifetime = pending?.tokenLifetimeMs;
-    const enrolment: Enrolment = {
-      label,
-      tokenHash: sha256Hex(token),
-      now,
-    };
-    if (lifetime !== undefined) enrolment.expiresAt = now + lifetime;
-    const enrolled = enrolDevice(coerceRegistry(await this.io.readRegistry()), enrolment);
+    // The operator's `--expires`, carried on the pending code, counts from the moment of enrolment.
+    const enrolled = await this.enrolInQueue(coerceRegistry(await this.io.readRegistry()), label, pending?.tokenLifetimeMs);
     // A duplicate label leaves the pending pairing alive: the operator retries with another name
     // rather than re-running `collie pair`.
     if (!enrolled) return { ok: false, reason: "duplicate-label" };
-    await this.io.writeRegistry(enrolled.registry);
     await this.io.deletePending();
-    return { ok: true, token, replacedExpired: enrolled.replaced, mintedIn: pending?.mintedIn ?? null };
+    return { ok: true, token: enrolled.token, replacedExpired: enrolled.replaced, mintedIn: pending?.mintedIn ?? null };
+  }
+
+  /**
+   * THE ONE ENROLMENT: mint a token, enrol `label` into `registry` through {@link enrolDevice} and write
+   * the registry. Both ways in end here, a `collie pair` claim ({@link claim}) and a request a paired
+   * phone approved ({@link enrolApproved}), so the deputy's copy of the registry, the expiry rule and
+   * the device list see one shape of entry whichever way the device came. Null when a live device
+   * holds the label; nothing is written then. Runs inside {@link serialize} only.
+   */
+  private async enrolInQueue(
+    registry: PairedRegistry,
+    label: string,
+    lifetimeMs: number | undefined,
+  ): Promise<{ token: string; replaced: boolean } | null> {
+    const token = generateToken(this.random);
+    const now = this.now();
+    const enrolment: Enrolment = { label, tokenHash: sha256Hex(token), now };
+    if (lifetimeMs !== undefined) enrolment.expiresAt = now + lifetimeMs;
+    const enrolled = enrolDevice(registry, enrolment);
+    if (!enrolled) return null;
+    await this.io.writeRegistry(enrolled.registry);
+    return { token, replaced: enrolled.replaced };
+  }
+
+  /**
+   * Enrol a device a paired phone approved (bridge/pair-request.ts, ADR 0139). The label is made
+   * unique first ({@link uniqueLabel}): a name any device holds, live or expired, gets a number, so
+   * this path never replaces an entry. No expiry, as `collie pair` without `--expires`; the device
+   * list can set one after. The token is returned once, as a claim returns it. THROWS
+   * {@link RegistryUnreadableError} when the registry is there and unreadable, and writes nothing.
+   */
+  async enrolApproved(label: string): Promise<{ token: string; label: string }> {
+    return this.serialize(async () => {
+      const registry = coerceRegistry(await this.io.readRegistry());
+      const unique = uniqueLabel(registry, label);
+      const enrolled = await this.enrolInQueue(registry, unique, undefined);
+      // `uniqueLabel` picked a name no entry holds, so `enrolDevice` cannot refuse it.
+      if (!enrolled) throw new Error("pairing: a unique label was refused");
+      return { token: enrolled.token, label: unique };
+    });
+  }
+
+  /**
+   * Whether at least one paired device could approve a request right now: a device whose token has
+   * not expired. False on an empty registry. THROWS {@link RegistryUnreadableError} as
+   * {@link registry} does.
+   */
+  hasLiveDevice(): boolean {
+    const now = this.now();
+    return this.registry().devices.some((d) => !isExpired(d, now));
   }
 
   /**
