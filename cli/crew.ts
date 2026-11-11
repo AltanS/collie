@@ -61,13 +61,9 @@ import {
   type StandbyDevices,
 } from "../bridge/crew/standby-devices.ts";
 import { crewRuntimePath, parseMarker, rosterDrift } from "../bridge/crew/staleness.ts";
-import { adoptCarriedTricks, writeCarryNotices } from "../bridge/crew/carry-adopt.ts";
 import { StandbyTricksStore } from "../bridge/crew/standby-tricks.ts";
 import { StandbyHillStore } from "../bridge/crew/standby-hill.ts";
-import { adoptCarriedHill } from "../bridge/crew/hill-adopt.ts";
-import { adoptCarriedInto } from "../bridge/hill/service.ts";
-import { hillDir, HillStore } from "../bridge/hill/store.ts";
-import { HillMediaStore } from "../bridge/hill/media.ts";
+import { writeAdoptMarker } from "../bridge/crew/carry-boot.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { deriveConfigRoot, discoverSessionSockets } from "../bridge/mux/herdr/sessions.ts";
 import { herdTagFor } from "../bridge/sessions.ts";
@@ -2387,56 +2383,29 @@ export async function cmdCrewApprovePromote(deps: CrewDeps, args: readonly strin
 // ── promote (on the peer becoming lead) ──────────────────────────────────────
 
 /**
- * Start the copy of `lead`'s tricks this machine holds as its deputy (CREW_PROTOCOL §25), bring the copy
- * of its open Decisions along, and say what came. A machine that was not the deputy holds none, and
- * nothing is said. Never fails the promote.
+ * Leave the copies of `lead`'s tricks and open Decisions this machine holds as its deputy (CREW_PROTOCOL
+ * §25) for the restart below: the bridge adopts them at its next boot, as the lead, before it builds its
+ * Hill and its tricks (bridge/crew/carry-boot.ts). This command writes only the marker that names the
+ * lead, because the bridge that runs now holds its own Hill in memory and would write over a merge.
+ * A machine that was not the deputy holds no copy, and nothing is said. Never fails the promote.
  */
-async function startCarriedAtPromote(deps: CrewDeps, lead: string, self: string): Promise<void> {
-  const started = await startCarriedTricksAtPromote(deps, lead);
-  // After the tricks: a trick's Decision stays open only when its trick started here.
+async function startCarriedAtPromote(deps: CrewDeps, lead: string): Promise<void> {
+  const tricks = new StandbyTricksStore(deps.ctx.stateDir);
+  const hill = new StandbyHillStore(deps.ctx.stateDir);
+  const trickCount = (await tricks.load())?.from === lead ? (await tricks.ready()).length : 0;
+  const questions = (await hill.load())?.from === lead ? await hill.openCount() : 0;
+  if (trickCount === 0 && questions === 0) return;
   try {
-    await bringCarriedHillAtPromote(deps, lead, self, started);
+    await writeAdoptMarker(deps.ctx.stateDir, { lead, by: "handover", at: deps.now() });
   } catch (err) {
-    deps.io.err(`warn: could not bring "${lead}"'s open questions here: ${err instanceof Error ? err.message : String(err)}`);
+    deps.io.err(`warn: could not leave "${lead}"'s tricks and open questions for the restart: ${err instanceof Error ? err.message : String(err)}`);
+    return;
   }
-}
-
-/** The tricks half of {@link startCarriedAtPromote}: the ids that started here. */
-async function startCarriedTricksAtPromote(deps: CrewDeps, lead: string): Promise<Set<string>> {
-  const store = new StandbyTricksStore(deps.ctx.stateDir);
-  if ((await store.load()) === null) return new Set();
-  try {
-    const result = await adoptCarriedTricks({ stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir, store, lead, by: "handover", now: deps.now });
-    await writeCarryNotices(deps.ctx.stateDir, lead, deps.now(), result.failed);
-    if (result.started.length > 0) deps.io.out(`✓ started ${String(result.started.length)} of "${lead}"'s tricks here: ${result.started.map((t) => t.name).join(", ")}`);
-    for (const failed of result.failed) deps.io.err(`warn: did not start the trick ${failed.name}: ${failed.reason}. The Hill says so too.`);
-    await store.clear();
-    return new Set(result.started.map((t) => t.id));
-  } catch (err) {
-    deps.io.err(`warn: could not start "${lead}"'s tricks here: ${err instanceof Error ? err.message : String(err)}`);
-    return new Set();
-  }
-}
-
-/** The open Decisions come along with the promote (§25), straight into this machine's Hill file before the restart. */
-async function bringCarriedHillAtPromote(deps: CrewDeps, lead: string, self: string, started: ReadonlySet<string>): Promise<void> {
-  const store = new StandbyHillStore(deps.ctx.stateDir);
-  if ((await store.load()) === null) return;
-  const dir = hillDir(deps.ctx.stateDir);
-  const live = new HillStore(dir, deps.now);
-  const media = new HillMediaStore(dir, []);
-  const result = await adoptCarriedHill({
-    store,
-    hill: { adoptCarried: (decisions, files) => adoptCarriedInto(live, media, decisions, files) },
-    lead,
-    self,
-    machine: deps.hostname?.() ?? hostname(),
-    started,
-    stateDir: deps.ctx.stateDir,
-    now: deps.now,
-  });
-  if (result.open > 0) deps.io.out(`✓ brought ${result.open === 1 ? "1 open question" : `${String(result.open)} open questions`} of "${lead}"'s Hill here`);
-  await store.clear();
+  const parts = [
+    ...(trickCount === 0 ? [] : [trickCount === 1 ? "1 trick" : `${String(trickCount)} tricks`]),
+    ...(questions === 0 ? [] : [questions === 1 ? "1 open question" : `${String(questions)} open questions`]),
+  ];
+  deps.io.out(`✓ "${lead}"'s ${parts.join(" and ")} come along: this machine takes them up when it restarts as the lead`);
 }
 
 /**
@@ -2521,9 +2490,9 @@ export async function cmdPromote(deps: CrewDeps, args: readonly string[]): Promi
     current === null ? null : promoteSelf(current, roster, deps.now()),
   );
   if (promoted === null) return EXIT.FAIL;
-  // §25: this command is the person's own yes on this machine, as the takeover tap is. The copy of the
-  // old lead's tricks starts here before the restart below, which as a lead would remove it.
-  await startCarriedAtPromote(deps, data.lead.memberId, data.self.memberId);
+  // §25: this command is the person's own yes on this machine, as the takeover tap is. It leaves the
+  // copies of the old lead's tricks and open Decisions for the restart below, which adopts them.
+  await startCarriedAtPromote(deps, data.lead.memberId);
 
   // NOBODY ELSE IS SWEPT — §14.4/§14.5 (2026-08-12). A peer pins its CURRENT lead's certificate as
   // the sole anchor of its listener (`peerListenerTls`, bridge/crew/transport.ts), so a dial from a

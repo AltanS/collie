@@ -4507,8 +4507,14 @@ it reconnects".
   in its own box; at most 8 are named, then "and N more". When the Hill copy holds open Decisions, read
   off this machine's disk too, one more line says "1 open question on the Hill comes along." or "N
   open questions on the Hill come along."
-- **The tap.** The takeover commit (§18) adopts the copy, and so does `collie promote` (§14) typed on
-  the deputy, before its restart, with `by: "handover"`. Nothing else does. For each held trick
+- **The tap.** The takeover commit (§18), and `collie promote` (§14) typed on the deputy, are the
+  person's yes. Each holds both copies through its role change and writes one marker,
+  `<stateDir>/standby-adopt.json` (0600): the lead it took over from, `by` (`takeover`, or `handover`
+  for the promote) and the time. Nothing else writes it; no crew route can. The boot after it, as the
+  lead, adopts both copies before it builds its Hill and its tricks, then removes them and the marker,
+  so no process with an older list in memory can write over the merge. A copy from another lead than
+  the marker names is not adopted, and a boot that does not lead drops the marker. While the marker is
+  on disk, a role change removes neither copy. For each held trick
   it hashes the code again, writes the trick folder only where this machine has none (a folder of that
   name is never written over; the carried version then runs from its approved copy, and the folder is
   the usual new version card), makes the approved copy with the normal path, and writes the switch
@@ -4517,15 +4523,13 @@ it reconnects".
   with other code gets `auto: false`, so that code waits as a new version card for a person's yes; a
   decline this machine already held for that code stays. The state folder is written only where this
   machine has none. A trick whose check fails does not start.
-- **A trick that did not start is said on the Hill.** The process that commits is still a peer and
-  cannot post, so it leaves the failures in `<stateDir>/tricks/carried-notices.json` (0600), and the
-  next boot, as the lead, posts one Decision of Collie's own for each, with `ref.type` `carried`: "The
+- **A trick that did not start is said on the Hill.** The adoption leaves the failures in `<stateDir>/tricks/carried-notices.json` (0600), and the
+  same boot, as the lead, posts one Decision of Collie's own for each, with `ref.type` `carried`: "The
   trick <name> did not start after the takeover", "It ran on <old lead>. Collie did not start it on
   this machine: <reason>. Switch it on again in Settings → Tricks when you want it here.", and one
   option, OK, which closes it. Its request id is fixed per tap and trick, so a second boot posts it
   once. A Hill that is off or full keeps the file for a later boot.
-- **The tap brings the open Decisions along,** after the tricks, in the same takeover commit and the
-  same `collie promote`. Only a copy from the lead the tap takes over from is read. Each Decision keeps
+- **The tap brings the open Decisions along,** after the tricks, in the same adoption at boot. Only a copy from the lead the tap takes over from is read. Each Decision keeps
   its id, and goes into this machine's Hill in one write; an id this Hill already holds or cleared is
   left as it is here. Nothing is pushed, told or posted: they are not new. Each picture is read again
   off this machine's disk and its type read again from its bytes; a Decision whose picture is not here
@@ -4555,8 +4559,8 @@ no trick).
 
 ### Audit
 
-On the deputy: `tricks.carried` at the tap, with the ids started, the ids that failed and the folders
-kept. Never a file's bytes. `hill.carried` at the tap, with the counts of Decisions stored open,
+On the deputy: `tricks.carried` at the adoption, with `by`, with the ids started, the ids that failed and the folders
+kept. Never a file's bytes. `hill.carried` at the adoption, with the counts of Decisions stored open,
 closed with their reason, and Collie cards the copy left out (`dropped`). Never a Decision's text.
 
 ### Compatibility

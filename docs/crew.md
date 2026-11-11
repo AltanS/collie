@@ -508,6 +508,7 @@ The lead keeps a copy of each trick that is on, on its deputy: the trick's code,
 timer setting, its `config.toml`, and its small state with its pictures, up to 32 tricks. The deputy
 runs none of it while the lead is alive. Its standby page lists the tricks that the Take over button
 starts again, and only that button starts them. `collie promote` typed on the deputy starts them too.
+Either way the deputy starts them as it restarts as the lead.
 
 Before a trick starts, the deputy checks its code against the version you approved. A trick that does
 not match does not start, and the Hill says so after the takeover, with an OK button. When the deputy

@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { carryAll, machine, putOnTrick, removeCarryDirs } from "../bridge/crew/carry-fixtures.ts";
@@ -6,6 +7,7 @@ import { crewRuntimePath, formatMarker, NO_RUNTIME_FACTS } from "../bridge/crew/
 import { StandbyTricksStore } from "../bridge/crew/standby-tricks.ts";
 import { parseHillList, StandbyHillStore } from "../bridge/crew/standby-hill.ts";
 import { decision } from "../bridge/hill/fixtures.ts";
+import { adoptAtBoot, readAdoptMarker } from "../bridge/crew/carry-boot.ts";
 import { hillDir, HillStore } from "../bridge/hill/store.ts";
 import { switchesPath } from "../bridge/tricks/paths.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
@@ -2952,24 +2954,11 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
     }
   });
 
-  test("promote on the deputy starts the carried tricks by handover, before the restart", async () => {
+  test("promote on the deputy writes only the marker: no switch and no Hill file while the old bridge runs", async () => {
     const lead = await machine("lead");
     await putOnTrick(lead, { id: "legs", name: "Leg day", auto: true });
     const deputy = await machine("deputy");
     await carryAll(lead, new StandbyTricksStore(deputy.stateDir));
-    const h = harness(peerStore(), [jsonReply({ demoted: "desk", roster: [] }, 200, "desk")], {
-      ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }, { socket: HERDR_SOCKET, stateDir: deputy.stateDir, configDir: deputy.configDir }),
-    });
-    expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
-    expect(text(h.io)).toContain(`✓ started 1 of "desk"'s tricks here: Leg day`);
-    const switches = parseSwitches(await readFile(switchesPath(deputy.stateDir), "utf8")).switches;
-    expect(switches.on.get("legs")).toMatchObject({ by: "handover", from: "desk", auto: true });
-    // The copy is gone: this machine leads now.
-    expect(await new StandbyTricksStore(deputy.stateDir).load()).toBeNull();
-  });
-
-  test("promote on the deputy brings the open questions of the lead's Hill into this machine's Hill", async () => {
-    const deputy = await machine("deputy");
     const list = parseHillList({ seq: 1, on: true, decisions: [JSON.parse(JSON.stringify(decision("dc_carried00001")))], closed: [], tricks: {} });
     if (list === null) throw new Error("bad list");
     await new StandbyHillStore(deputy.stateDir).applyList({ from: "desk", crewId: CREW.crewId, list });
@@ -2977,9 +2966,22 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
       ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }, { socket: HERDR_SOCKET, stateDir: deputy.stateDir, configDir: deputy.configDir }),
     });
     expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
-    expect(text(h.io)).toContain(`✓ brought 1 open question of "desk"'s Hill here`);
+    expect(text(h.io)).toContain(`✓ "desk"'s 1 trick and 1 open question come along: this machine takes them up when it restarts as the lead`);
+    // The bridge that runs now holds its own Hill in memory: this command writes neither file.
+    expect(existsSync(switchesPath(deputy.stateDir))).toBe(false);
+    expect(existsSync(join(hillDir(deputy.stateDir), "decisions.json"))).toBe(false);
+    expect(await readAdoptMarker(deputy.stateDir)).toMatchObject({ lead: "desk", by: "handover" });
+    // The restart is that boot: it adopts both, by handover.
+    const lines: AuditEntry[] = [];
+    const tricks = new StandbyTricksStore(deputy.stateDir);
+    const hill = new StandbyHillStore(deputy.stateDir);
+    await adoptAtBoot({ stateDir: deputy.stateDir, configDir: deputy.configDir, tricks, hill, leads: true, self: "laptop", machine: "laptop", now: () => T0, audit: (e) => void lines.push(e), log: () => {} });
+    const switches = parseSwitches(await readFile(switchesPath(deputy.stateDir), "utf8")).switches;
+    expect(switches.on.get("legs")).toMatchObject({ by: "handover", from: "desk", auto: true });
     expect(new HillStore(hillDir(deputy.stateDir)).get("dc_carried00001")?.state).toBe("open");
+    expect(await new StandbyTricksStore(deputy.stateDir).load()).toBeNull();
     expect(await new StandbyHillStore(deputy.stateDir).load()).toBeNull();
+    expect(await readAdoptMarker(deputy.stateDir)).toBeNull();
   });
 
   test("promote on a machine with no copy says nothing about tricks", async () => {

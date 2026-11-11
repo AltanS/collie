@@ -191,10 +191,9 @@ import { leadTricks } from "./crew/standby-tricks-lead.ts";
 import { carrySurface, hillCarryRoutes, tricksCarryRoutes } from "./crew/carry-surface.ts";
 import { StandbyHillStore } from "./crew/standby-hill.ts";
 import { HillCopySync } from "./crew/hill-copy-sync.ts";
-import { adoptCarriedHill } from "./crew/hill-adopt.ts";
-import { holdCopies } from "./crew/carry-boot.ts";
+import { adoptAtBoot, holdCopies, readAdoptMarker, writeAdoptMarker } from "./crew/carry-boot.ts";
 import { TricksCopySync } from "./crew/carry-sync.ts";
-import { adoptCarriedTricks, tricksStartingAtTap, writeCarryNotices } from "./crew/carry-adopt.ts";
+import { tricksStartingAtTap } from "./crew/carry-adopt.ts";
 import { answerCarried, postCarryNotices } from "./crew/carry-notices.ts";
 import {
   adoptLeadership,
@@ -2330,6 +2329,46 @@ const walkyCrew = new WalkyCrew({
 });
 const walkyRecovered = walky.deliverer.recover();
 if (walkyRecovered > 0) console.log(`[walky] settled ${String(walkyRecovered)} message(s) left open by the last run`);
+/**
+ * The lead's tricks, kept on the DEPUTY as an inert copy (CREW_PROTOCOL §25, `crew/standby-tricks.ts`):
+ * under `<stateDir>/standby-tricks/`, which no tricks loader reads, named by no switch, run by nothing.
+ * Only the person's tap adopts it, at the boot after it (`crew/carry-boot.ts`).
+ * Constructed for any machine with a trust store; constructing it writes nothing (§11).
+ */
+const tricksCopyStore = bootTrust !== null ? new StandbyTricksStore(cfg.stateDir) : null;
+await tricksCopyStore?.load();
+/** The config folder tricks live under, or null on a bridge with no tricks. */
+const tricksConfigRoot = cfg.tricksDir === undefined ? null : dirname(cfg.tricksDir);
+
+/**
+ * The lead's open Decisions, kept on the DEPUTY as an inert copy (§25, `crew/standby-hill.ts`), under
+ * `<stateDir>/standby-hill/`, which this machine's Hill never reads. The same tap adopts it.
+ */
+const hillCopyStore = bootTrust !== null ? new StandbyHillStore(cfg.stateDir) : null;
+await hillCopyStore?.load();
+
+// §25: the person's tap (the takeover commit, or `collie promote` here) left a marker naming the lead it
+// took over from. This boot leads now, so it adopts both copies here, before the Hill and the tricks are
+// built: neither has a list in memory yet that a later write could put back over the merge.
+if (tricksCopyStore !== null && hillCopyStore !== null) {
+  try {
+    await adoptAtBoot({
+      stateDir: cfg.stateDir,
+      configDir: tricksConfigRoot,
+      tricks: tricksCopyStore,
+      hill: hillCopyStore,
+      leads: crew.mode === "lead" && deposed === null,
+      self: bridgeId.id,
+      machine: hostname(),
+      now: Date.now,
+      audit: (entry) => audit.record(entry),
+      log: (line) => console.log(line),
+    });
+  } catch (err) {
+    console.warn(`[crew] could not adopt the copies the takeover left: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 // The hill (M96): decisions agents post over the walky socket, answered on the phone and typed back as
 // the person's own operator walky message. `<stateDir>/hill/` is made by the first post, never at boot.
 const hillReceipts = new HillReceiptStore(cfg.stateDir);
@@ -2604,28 +2643,12 @@ async function reconcileLauncherCopy(): Promise<void> {
 }
 await reconcileLauncherCopy();
 
-/**
- * The lead's tricks, kept on the DEPUTY as an inert copy (CREW_PROTOCOL §25, `crew/standby-tricks.ts`):
- * under `<stateDir>/standby-tricks/`, which no tricks loader reads, named by no switch, run by nothing.
- * Only the person's takeover tap on this machine's own standby page adopts it (`crew/carry-adopt.ts`).
- * Constructed for any machine with a trust store; constructing it writes nothing (§11).
- */
-const tricksCopyStore = bootTrust !== null ? new StandbyTricksStore(cfg.stateDir) : null;
-await tricksCopyStore?.load();
-/** The config folder tricks live under, or null on a bridge with no tricks. */
-const tricksConfigRoot = cfg.tricksDir === undefined ? null : dirname(cfg.tricksDir);
-
-/**
- * The lead's open Decisions, kept on the DEPUTY as an inert copy (§25, `crew/standby-hill.ts`), under
- * `<stateDir>/standby-hill/`, which this machine's Hill never reads. The same tap adopts it.
- */
-const hillCopyStore = bootTrust !== null ? new StandbyHillStore(cfg.stateDir) : null;
-await hillCopyStore?.load();
-
 /** Remove the tricks and Hill copies once they are not this machine's to hold, by `tricksCopyKept`. Never throws. */
 async function reconcileTricksCopy(): Promise<void> {
   if (tricksCopyStore === null) return;
   try {
+    // A tap left them for the next boot to adopt: they stay through the role change it made (§25).
+    if ((await readAdoptMarker(cfg.stateDir)) !== null) return;
     if (await tricksCopyStore.reconcile(copyRole())) {
       console.log("[crew] this machine is no longer its lead's deputy: removed its copy of the lead's tricks");
     }
@@ -2637,50 +2660,6 @@ async function reconcileTricksCopy(): Promise<void> {
   }
 }
 await reconcileTricksCopy();
-
-/**
- * The person's tap starts the carried tricks (§25): run only inside the takeover commit on this machine's
- * own standby page. A trick that does not start is left for the next boot, which puts a Decision on the
- * Hill for it (the process that commits is still a peer, so it cannot). Never throws; the copy is
- * removed after, as this machine leads now.
- */
-async function startCarriedTricks(lead: string, by: "takeover" | "handover"): Promise<void> {
-  const started = await startCarriedTrickCode(lead, by);
-  await bringCarriedHill(lead, by, started);
-}
-
-/** The open Decisions come along (§25), after the tricks, as a trick Decision stays open only when its trick started. Never throws. */
-async function bringCarriedHill(lead: string, by: "takeover" | "handover", started: ReadonlySet<string>): Promise<void> {
-  if (hillCopyStore === null) return;
-  try {
-    const result = await adoptCarriedHill({ store: hillCopyStore, hill, lead, self: bridgeId.id, machine: hostname(), started, stateDir: cfg.stateDir, now: Date.now });
-    audit.record({ action: "hill.carried", detail: { from: lead, by, open: result.open, closed: result.closed, dropped: result.dropped } });
-    if (result.open + result.closed > 0) console.log(`[crew] ${by}: brought ${String(result.open)} open Decision(s) of the lead's Hill here, ${String(result.closed)} closed with their reason`);
-    await hillCopyStore.clear();
-  } catch (err) {
-    console.warn(`[crew] ${by}: could not bring the lead's open Decisions: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-/** The tricks half; answers the ids it started. */
-async function startCarriedTrickCode(lead: string, by: "takeover" | "handover"): Promise<ReadonlySet<string>> {
-  if (tricksCopyStore === null || tricksConfigRoot === null) return new Set();
-  try {
-    const result = await adoptCarriedTricks({ stateDir: cfg.stateDir, configDir: tricksConfigRoot, store: tricksCopyStore, lead, by, now: Date.now });
-    await writeCarryNotices(cfg.stateDir, lead, Date.now(), result.failed);
-    audit.record({
-      action: "tricks.carried",
-      detail: { from: lead, by, started: result.started.map((t) => t.id), failed: result.failed.map((t) => t.id), keptFolder: [...result.keptFolder] },
-    });
-    if (result.started.length > 0) console.log(`[crew] ${by}: started ${String(result.started.length)} of the lead's tricks here: ${result.started.map((t) => t.id).join(", ")}`);
-    if (result.failed.length > 0) console.warn(`[crew] ${by}: did not start ${result.failed.map((t) => `${t.id} (${t.reason})`).join(", ")}`);
-    await tricksCopyStore.clear();
-    return new Set(result.started.map((t) => t.id));
-  } catch (err) {
-    console.warn(`[crew] ${by}: could not start the lead's tricks: ${err instanceof Error ? err.message : String(err)}`);
-    return new Set();
-  }
-}
 
 /**
  * The read of the rows a launch here matches, handed over by the server once it is built
@@ -3495,7 +3474,12 @@ async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; mess
           // say so rather than pretending the adoption happened.
           console.warn(`[crew] takeover: could not adopt ${collisions.join(", ")} — rename or revoke, then re-pair.`);
         }
-        await startCarriedTricks(formerLead, "takeover");
+        // §25: the copies are adopted at the next boot, as the lead; the restart below is that boot.
+        try {
+          await writeAdoptMarker(cfg.stateDir, { lead: formerLead, by: "takeover", at: Date.now() });
+        } catch (err) {
+          console.warn(`[crew] takeover: could not leave the copies for the next boot: ${err instanceof Error ? err.message : String(err)}`);
+        }
         return { kind: "committed", pending: result.pending };
       } finally {
         release();

@@ -1488,6 +1488,10 @@ const CREW_STATE_DIR_ENTRIES = [
   // state directory that never saw 1.8.x is named rather than adopted in silence. One `exists()` on
   // the boot path, no open, no rename; a solo instance finds nothing and says nothing.
   "pack-trust.json",
+  // The person's takeover tap, waiting for the next boot to adopt the two copies below (CREW_PROTOCOL
+  // §25). Written only by the takeover commit or `collie promote` on a deputy, which a solo instance
+  // never is.
+  "standby-adopt.json",
   "standby-devices.json",
   // The lead's open Decisions, kept as an inert copy on the DEPUTY beside its tricks (CREW_PROTOCOL
   // §25). Written only by the Hill half of the §25 routes from this collie's own lead while a warrant
