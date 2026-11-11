@@ -17,13 +17,14 @@
 // stale hash, a renamed trick), printing each difference. `--file` names another list (the tests' temp
 // copy); the default is bridge/tricks/official.json.
 //
-// The checkout is read through git only (`file://`), never its working tree: an edit not committed never
+// The fetch holds the bridge's own byte cap (`OFFICIAL_FETCH_BYTES_MAX`), so a list never names a commit the
+// bridge would refuse as too large. The checkout is read through git only (`file://`), never its working tree: an edit not committed never
 // reaches a hash. Nothing here reaches the network.
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { candidateHash, fetchOfficial } from "../bridge/tricks/official-install.ts";
+import { candidateHash, fetchOfficial, OFFICIAL_FETCH_BYTES_MAX } from "../bridge/tricks/official-install.ts";
 import { parseOfficialList, renderOfficialList, type OfficialEntry } from "../bridge/tricks/official.ts";
 import { parseJson } from "../web/src/lib/json.ts";
 
@@ -49,7 +50,7 @@ async function refreshed(entry: OfficialEntry, opts: OfficialRunOptions): Promis
   const tmp = await mkdtemp(join(tmpdir(), "collie-official-"));
   try {
     const source = { ...entry, repo: `file://${resolve(opts.repoDir)}`, commit: opts.commit };
-    const candidate = await fetchOfficial(source, join(tmp, ""), { env: opts.env ?? process.env, allowFile: true });
+    const candidate = await fetchOfficial(source, join(tmp, ""), { env: opts.env ?? process.env, allowFile: true, maxBytes: OFFICIAL_FETCH_BYTES_MAX });
     const hash = await candidateHash(candidate, join(tmp, "stage"));
     const description = candidate.manifest.description ?? entry.description;
     return { ...entry, name: candidate.manifest.name, description, commit: opts.commit, hash, contract: candidate.manifest.contract };

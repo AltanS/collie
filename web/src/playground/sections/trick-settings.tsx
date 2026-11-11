@@ -178,7 +178,7 @@ function useRefusedAdd(on: boolean): void {
     window.fetch = (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
       if (!/^\/api\/tricks\/official\/[^/]+\/(add|update)$/u.test(url.pathname)) return real(input, init);
-      const body = JSON.stringify({ error: "mismatch", message: "The trick did not match what this Collie release expects, so nothing was added." });
+      const body = JSON.stringify({ error: "mismatch", message: "The code did not match this release. Nothing was added." });
       return new Promise((resolve) => setTimeout(() => resolve(new Response(body, { status: 422, headers: { "content-type": "application/json" } })), 500));
     };
     return () => {

@@ -192,8 +192,9 @@ describe("From Collie: Add", () => {
     const { store } = await liveStore([LEGS]);
     renderCard(store);
     const cases: [number, string, string][] = [
-      [502, "unreachable", "Could not reach GitHub, so nothing was added."],
-      [422, "mismatch", "The trick did not match what this Collie release expects, so nothing was added."],
+      [502, "unreachable", "GitHub did not answer. Nothing was added."],
+      [422, "mismatch", "The code did not match this release. Nothing was added."],
+      [422, "too-large", "The code did not match this release. Nothing was added."],
       [409, "busy", "Collie is adding another trick. Try again in a moment."],
       [409, "taken", "A trick with this name is already here."],
       [500, "failed", "Could not add Design Review. Try again."],
@@ -243,7 +244,7 @@ describe("From Collie: the About sheet before the add", () => {
     renderCard(store);
     await user.click(await screen.findByRole("button", { name: "About Design Review" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add" }));
-    await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not reach GitHub, so nothing was added."));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("GitHub did not answer. Nothing was added."));
     expect(screen.getByRole("dialog", { name: "Design Review" })).toBeInTheDocument();
   });
 });
@@ -284,11 +285,11 @@ describe("From Collie: Update", () => {
     const { store } = await liveStore([installed(BUILDS)]);
     renderCard(store);
     await user.click(await screen.findByRole("button", { name: "Update Running Builds" }));
-    await vi.waitFor(() => expect(currentStatus()?.text).toBe("The new version did not match what this Collie release expects, so nothing was changed."));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("The code did not match this release. Nothing was changed."));
     server.use(http.post("/api/tricks/official/:id/:mode", () => HttpResponse.json({ error: "unreachable", message: "x" }, { status: 502 })));
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "Update Running Builds" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Update Running Builds" }));
-    await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not reach GitHub, so nothing was changed."));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("GitHub did not answer. Nothing was changed."));
   });
 });
 

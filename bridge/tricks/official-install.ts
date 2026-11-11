@@ -20,13 +20,15 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 //   1. FETCH exactly the listed commit from the listed repository, with the hardened fetch `collie trick add`
 //      runs (fetch.ts), into a fresh temp folder under the state folder, plus {@link OFFICIAL_GIT}: no
 //      redirect followed, no credential helper, and no global git config read (`GIT_CONFIG_GLOBAL` is the
-//      null device), so nothing of the operator's or the repository's config steers it. The commit git
-//      resolved must be the listed one.
+//      null device), so nothing of the operator's or the repository's config steers it. The temp repository
+//      may hold at most {@link OFFICIAL_FETCH_BYTES_MAX}: it is measured while git runs and once after, and
+//      past it the fetch (git's whole process group) is killed and refused as `too-large`, before anything
+//      is read from it. The commit git resolved must be the listed one.
 //   2. READ the one folder by fetch.ts `readCandidate`: no link, no submodule, regular files only, 300 files,
 //      5 MB, 8 levels, safe names, a manifest the strict reader takes, and its id must be the entry's.
 //   3. HASH what would land: the files are written into a staged sibling in the tricks folder and hashed by
 //      code-hash.ts `trickCodeHash`, the hash a switch approves. Another hash than the list's removes the
-//      stage and answers "The trick did not match what this Collie release expects, so nothing was added."
+//      stage and answers "The code did not match this release. Nothing was added."
 //   4. INSTALL by one rename (proposal-install.ts `writeNewTrick`), never over a folder of that name, with the
 //      origin record `{ url, ref: commit, commit, subdir, at, official: true }`, SWITCHED OFF: a switch entry
 //      left for that id is written off first. No approved copy is made: the switch makes it, as for any trick.
@@ -46,15 +48,22 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 /** The whole add or update, fetch included, from the tap. */
 export const OFFICIAL_ADD_TIMEOUT_MS = 120_000;
 
+/**
+ * The most bytes a From Collie fetch may bring into its temp repository: one commit at depth 1. The tricks
+ * themselves are capped at 5 MB (fetch.ts `ADD_LIMITS.bytes`); the rest is room for the other folders of
+ * the repository at that commit.
+ */
+export const OFFICIAL_FETCH_BYTES_MAX = 20 * 1024 * 1024;
+
 /** The `-c` settings a From Collie fetch adds to fetch.ts's hardening. */
 export const OFFICIAL_GIT: readonly string[] = ["http.followRedirects=false", "credential.helper="];
 
 /** The plain refusals, as the bridge says them; the phone says them in its own words by `error`. */
 export const OFFICIAL_LINES = {
-  unreachable: "Could not reach GitHub, so nothing was added.",
-  mismatch: "The trick did not match what this Collie release expects, so nothing was added.",
-  updateUnreachable: "Could not reach GitHub, so nothing was changed.",
-  updateMismatch: "The new version did not match what this Collie release expects, so nothing was changed.",
+  unreachable: "GitHub did not answer. Nothing was added.",
+  mismatch: "The code did not match this release. Nothing was added.",
+  updateUnreachable: "GitHub did not answer. Nothing was changed.",
+  updateMismatch: "The code did not match this release. Nothing was changed.",
   busy: "Collie is adding another trick. Try again in a moment.",
   taken: "A trick with this name is already here.",
   added: "This trick is already added.",
@@ -68,7 +77,7 @@ export type OfficialAnswer =
   | { status: 400; body: { error: "official-invalid" } }
   | { status: 404; body: { error: "unknown-official" } }
   | { status: 409; body: { error: "runs-on" | "busy" | "taken" | "added" | "no-update" | "not-added"; message: string } }
-  | { status: 422; body: { error: "mismatch"; message: string } }
+  | { status: 422; body: { error: "mismatch" | "too-large"; message: string } }
   | { status: 502; body: { error: "unreachable"; message: string } }
   | { status: 500; body: { error: "failed"; message: string } };
 
@@ -95,10 +104,11 @@ export interface OfficialTricksDeps {
   audit?: (entry: { action: string; detail: Record<string, string> }) => void;
   warn?: (line: string) => void;
   now?: () => number;
-  /** TEST SEAM: the git runner, a `file://` source, a shorter deadline. The bridge never sets them. */
+  /** TEST SEAM: the git runner, a `file://` source, a shorter deadline, a lower byte cap. The bridge never sets them. */
   git?: GitRunner;
   allowFile?: boolean;
   timeoutMs?: number;
+  maxBytes?: number;
 }
 
 /** A refusal of one step, as a route answers it. */
@@ -130,8 +140,15 @@ export async function candidateHash(candidate: Candidate, dir: string): Promise<
 }
 
 /** The fetch options of a From Collie fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline. */
-export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git" | "allowFile" | "now">, deadline: number): FetchOptions {
-  const opts: FetchOptions = { env: deps.env, allowFile: deps.allowFile === true, extraConfig: OFFICIAL_GIT, extraEnv: { GIT_CONFIG_GLOBAL: devNull }, deadline };
+export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git" | "allowFile" | "now" | "maxBytes">, deadline: number): FetchOptions {
+  const opts: FetchOptions = {
+    env: deps.env,
+    allowFile: deps.allowFile === true,
+    extraConfig: OFFICIAL_GIT,
+    extraEnv: { GIT_CONFIG_GLOBAL: devNull },
+    deadline,
+    maxBytes: deps.maxBytes ?? OFFICIAL_FETCH_BYTES_MAX,
+  };
   if (deps.git !== undefined) opts.git = deps.git;
   if (deps.now !== undefined) opts.now = deps.now;
   return opts;
@@ -199,6 +216,8 @@ export class OfficialTricks implements OfficialTricksSurface {
       this.deps.warn?.(`${entry.id}: the From Collie fetch was refused (${err.step}): ${err.message}`);
       if (err.step === "fetch") throw new Stop(unreachable(mode));
       if (err.step === "local") throw err;
+      // More than a listed commit can be: the same answer class as a mismatch, with its own code.
+      if (err.step === "size") throw new Stop({ status: 422, body: { error: "too-large", message: mode === "add" ? OFFICIAL_LINES.mismatch : OFFICIAL_LINES.updateMismatch } });
       throw new Stop(mismatch(mode));
     }
   }

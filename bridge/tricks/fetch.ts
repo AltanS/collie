@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
+import { HOST } from "../host.ts";
 import { redactText } from "../redact.ts";
 import type { JsonValue } from "../json.ts";
 import { asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
@@ -28,7 +29,11 @@ import { MANIFEST_FILE } from "./paths.ts";
 // environment, which outranks any config), no submodule, no LFS smudge, no askpass program. Every
 // inherited `GIT_*` variable is dropped; `GIT_TERMINAL_PROMPT=0`, `GIT_CONFIG_NOSYSTEM=1` and
 // `GIT_LFS_SKIP_SMUDGE=1` are set. Each git run is argv, never a shell, killed at {@link ADD_LIMITS}
-// `gitTimeoutMs` (or sooner, at the caller's deadline), its output capped. For `collie trick add` the
+// `gitTimeoutMs` (or sooner, at the caller's deadline), its output capped. On POSIX each run starts its own
+// process group and a kill takes the whole group, so `git-remote-https` and any other helper git starts go
+// with it. With `maxBytes` (the From Collie list), the temp repository is measured while the fetch runs and
+// once after it: past the cap the fetch is killed and refused, before anything is read from it. git itself
+// offers no size limit on a fetch (`receive.maxInputSize` is the push side only). For `collie trick add` the
 // operator's own global git config is trusted, as their shell is (a credential helper for a private
 // repository keeps working); the From Collie list reads none (official-install.ts `OFFICIAL_GIT`).
 //
@@ -95,6 +100,8 @@ export interface GitRunOptions {
   stdin?: Uint8Array;
   /** Kill the run after this many ms. Default {@link ADD_LIMITS} `gitTimeoutMs`. */
   timeoutMs?: number;
+  /** Kill the run when this aborts (the byte watch of a fetch). */
+  signal?: AbortSignal;
 }
 
 /** How git is run. The real one spawns `git`; a test may wrap it. */
@@ -125,31 +132,75 @@ async function readCapped(stream: ReadableStream<Uint8Array>, cap: number): Prom
   return { bytes: out, capped: false };
 }
 
-/** The real runner: `git` from the PATH the run gets, argv only, killed at the timeout. */
+/** Each run leads a process group of its own on POSIX, so a kill reaches every helper git started. */
+const GROUP = HOST.platform !== "win32";
+
+/** Kill a run and, on POSIX, its whole process group. */
+function killRun(proc: { pid: number; kill: (signal?: number) => void }): void {
+  if (GROUP) {
+    try {
+      process.kill(-proc.pid, "SIGKILL");
+      return;
+    } catch {
+      // The group is gone already; the leader below is the last thing to make sure of.
+    }
+  }
+  proc.kill(9);
+}
+
+/** The real runner: `git` from the PATH the run gets, argv only, killed (with its group) at the timeout. */
 export const spawnGit: GitRunner = async (args, opts) => {
   const git = Bun.which("git", { PATH: opts.env.PATH ?? "" });
   if (git === null) return { code: 127, stdout: new Uint8Array(0), stderr: "git is not on PATH", timedOut: false, capped: false };
   // stdin is always a pipe: written and closed at once when the run has input, closed empty when not.
-  const proc = Bun.spawn([git, ...args], { cwd: opts.cwd, env: opts.env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn([git, ...args], { cwd: opts.cwd, env: opts.env, stdin: "pipe", stdout: "pipe", stderr: "pipe", detached: GROUP });
   let timedOut = false;
   const timer = setTimeout(
     () => {
       timedOut = true;
-      proc.kill(9);
+      killRun(proc);
     },
     Math.max(0, opts.timeoutMs ?? ADD_LIMITS.gitTimeoutMs),
   );
+  const onAbort = (): void => killRun(proc);
+  opts.signal?.addEventListener("abort", onAbort, { once: true });
+  if (opts.signal?.aborted === true) killRun(proc);
   try {
     if (opts.stdin !== undefined) proc.stdin.write(opts.stdin);
     await proc.stdin.end();
     const [out, err] = await Promise.all([readCapped(proc.stdout, ADD_LIMITS.gitStdoutBytes), readCapped(proc.stderr, 64 * 1024)]);
-    if (out.capped) proc.kill(9);
+    if (out.capped) killRun(proc);
     const code = await proc.exited;
     return { code, stdout: out.bytes, stderr: new TextDecoder().decode(err.bytes), timedOut, capped: out.capped };
   } finally {
     clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onAbort);
   }
 };
+
+/**
+ * The bytes under `dir`, by lstat (a link is its own size, never followed), counting stops once past
+ * `cap`. Bounded by `entries` so a folder of many tiny files cannot keep it walking.
+ */
+export async function folderBytes(dir: string, cap: number, entries = 100_000): Promise<number> {
+  let total = 0;
+  let seen = 0;
+  const queue = [dir];
+  for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
+    const names = await readdir(next).catch(() => []);
+    for (const name of names) {
+      seen += 1;
+      if (seen > entries) return Number.POSITIVE_INFINITY;
+      const path = join(next, name);
+      const st = await lstat(path).catch(() => null);
+      if (st === null) continue;
+      if (st.isDirectory()) queue.push(path);
+      total += st.size;
+      if (total > cap) return total;
+    }
+  }
+  return total;
+}
 
 /** The environment of a git run: the caller's, minus every `GIT_*`, plus ours. */
 export function gitRunEnv(base: Record<string, string | undefined>, allowFile: boolean) {
@@ -167,8 +218,11 @@ export function gitRunEnv(base: Record<string, string | undefined>, allowFile: b
 
 // ── the fetch ────────────────────────────────────────────────────────────────
 
-/** Which step refused: `local` (Collie's own temp repository), `fetch` (reaching the source), `check` (what came back). */
-export type FetchStep = "local" | "fetch" | "check";
+/**
+ * Which step refused: `local` (Collie's own temp repository), `fetch` (reaching the source), `size` (the
+ * source sent more than `maxBytes`), `check` (what came back).
+ */
+export type FetchStep = "local" | "fetch" | "size" | "check";
 
 /** A refusal with one plain reason, and the step it came from. */
 export class FetchRefused extends Error {
@@ -193,6 +247,10 @@ export interface FetchOptions {
   /** An instant (epoch ms) by which every git run must have ended: each run is killed at the sooner of it and its own cap. */
   deadline?: number;
   now?: () => number;
+  /** The most bytes the temp repository may hold after the fetch, watched while it runs. Absent: no cap. */
+  maxBytes?: number;
+  /** How often the byte watch measures, in ms. Default 200. */
+  watchMs?: number;
 }
 
 /** One entry of the fetched tree. */
@@ -258,16 +316,26 @@ export async function fetchSource(source: { url: string; ref: string | null }, t
   const env = { ...gitRunEnv(opts.env, opts.allowFile), ...opts.extraEnv };
   const repo = join(tmp, "repo.git");
   const hard = [...gitHardening(opts.allowFile), ...(opts.extraConfig ?? []).flatMap((kv) => ["-c", kv])];
-  const git = async (args: readonly string[], stdin?: Uint8Array): Promise<GitResult> => {
+  const git = async (args: readonly string[], stdin?: Uint8Array, signal?: AbortSignal): Promise<GitResult> => {
     const left = opts.deadline === undefined ? ADD_LIMITS.gitTimeoutMs : Math.min(ADD_LIMITS.gitTimeoutMs, opts.deadline - now());
     // Past the caller's deadline nothing more runs: the whole fetch took too long, as a slow source does.
     if (left <= 0) throw new FetchRefused("the fetch took longer than Collie waits", "fetch");
-    const base: GitRunOptions = { cwd: tmp, env, timeoutMs: left };
+    const base: GitRunOptions = signal === undefined ? { cwd: tmp, env, timeoutMs: left } : { cwd: tmp, env, timeoutMs: left, signal };
     return await run([...hard, ...args], stdin === undefined ? base : { ...base, stdin });
   };
   const init = await git(["init", "--bare", "--quiet", "--template=", repo]);
   if (init.code !== 0) throw new FetchRefused(`could not make a temp repository: ${gitLine(init)}`, "local");
-  const fetched = await git([`--git-dir=${repo}`, "fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", "--", source.url, source.ref ?? "HEAD"]);
+  const watch = opts.maxBytes === undefined ? null : watchBytes(repo, opts.maxBytes, opts.watchMs ?? 200);
+  let fetched: GitResult;
+  try {
+    fetched = await git([`--git-dir=${repo}`, "fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", "--", source.url, source.ref ?? "HEAD"], undefined, watch?.signal);
+  } finally {
+    watch?.stop();
+  }
+  // Past the cap while it ran, or once it ended: refused before anything is read from it.
+  if (opts.maxBytes !== undefined && (watch?.signal.aborted === true || (await folderBytes(repo, opts.maxBytes)) > opts.maxBytes)) {
+    throw new FetchRefused(`the repository sent more than ${String(Math.round(opts.maxBytes / 1024))} KiB`, "size");
+  }
   if (fetched.code !== 0 || fetched.timedOut) throw new FetchRefused(`could not fetch ${source.url}${source.ref === null ? "" : ` at ${source.ref}`}: ${gitLine(fetched)}`, "fetch");
   const parsed = await git([`--git-dir=${repo}`, "rev-parse", "--verify", "--end-of-options", "FETCH_HEAD^{commit}"]);
   const commit = new TextDecoder().decode(parsed.stdout).trim();
@@ -284,6 +352,33 @@ export async function fetchSource(source: { url: string; ref: string | null }, t
       return parseBatch(read.stdout);
     },
   };
+}
+
+/** A running byte watch: its signal aborts past the cap; `stop` ends the measuring. */
+interface ByteWatch {
+  signal: AbortSignal;
+  stop: () => void;
+}
+
+/** Measure `dir` every `everyMs` while a fetch runs, and abort the run once it holds more than `cap` bytes. */
+function watchBytes(dir: string, cap: number, everyMs: number): ByteWatch {
+  const controller = new AbortController();
+  let measuring = false;
+  const timer = setInterval(() => {
+    if (measuring || controller.signal.aborted) return;
+    measuring = true;
+    void folderBytes(dir, cap).then(
+      (bytes) => {
+        measuring = false;
+        if (bytes > cap) controller.abort();
+        return bytes;
+      },
+      () => {
+        measuring = false;
+      },
+    );
+  }, everyMs);
+  return { signal: controller.signal, stop: () => clearInterval(timer) };
 }
 
 // ── the trick inside it ──────────────────────────────────────────────────────

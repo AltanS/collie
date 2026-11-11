@@ -318,15 +318,22 @@ never the local credential an agent can hold, and no WalkyTalky op reaches it). 
 one commit with the fetch of `collie trick add` (`bridge/tricks/fetch.ts`), reads the folder by the same
 rules, and takes its code hash. Only when the hash is the list's does it write the folder, off, with an
 origin record `{ url, commit, subdir, official: true }` and no approved copy. The person's switch makes
-the approved copy, as for any trick. A hash that differs adds nothing: "The trick did not match what this
-Collie release expects, so nothing was added." One add runs at a time, the whole add has a two-minute
-cap, and the temp folder under `<stateDir>/tricks/` goes on every path.
+the approved copy, as for any trick. A hash that differs adds nothing: "The code did not match this release.
+Nothing was added." One add runs at a time, the whole add has a two-minute cap, and the temp folder under
+`<stateDir>/tricks/` goes on every path.
+
+**Two caps on the fetch.** Time: every git run ends by two minutes after the tap, and a kill takes git's
+whole process group, so `git-remote-https` goes with it. Size: the temp repository may hold at most 20 MiB
+(`OFFICIAL_FETCH_BYTES_MAX`). It is measured while git runs and once after; past the cap the fetch is
+killed and refused as `too-large`, before anything is read from it, and the phone says the same line as
+for a hash that differs. git offers no size limit of its own on a fetch.
 
 **The one network request.** A tap on Add or Update makes one git fetch over https from
 `github.com/AltanS/collie-tricks`: depth 1, the listed commit only, no redirects, no credential helper,
 no global git config. Nothing else in this feature touches the network: the list comes from the
 binary, `GET /api/tricks/official` reads only the tricks folder, and there is no background check and
-no count. Offline, the tap says "Could not reach GitHub, so nothing was added."
+no count. Offline, the tap says "GitHub did not answer. Nothing was added." That line is also true
+when the repository no longer serves the commit.
 
 **The trust root is the binary.** The commit pins what git fetches, and the hash pins what Collie
 writes. A repository that serves other content at that commit fails git's own object check or the hash.
@@ -859,10 +866,6 @@ written as what a trick, or a person who controls one, can do today.
   runs anything, and a trick that is on waits for the yes.
 - **An Update from the list replaces local edits of an official trick's folder.** Only `config.toml`
   stays. A trick that is off gets no version card for this, as it runs nothing.
-- **The From Collie fetch has a time cap, not a byte cap.** It fetches one pinned commit at depth 1, so
-  the repository decides its size; a slow or large answer ends at two minutes.
-- **"Could not reach GitHub" also covers a commit the repository no longer serves.** git does not tell
-  the two apart in a way the bridge reads.
 
 ## Places in the app
 

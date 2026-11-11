@@ -1,13 +1,14 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { parseJson, type JsonValue } from "../../web/src/lib/json.ts";
 import { parseWalkyRequest } from "../walky/parse.ts";
 import { trickCodeHash } from "./code-hash.ts";
-import { spawnGit, type GitRunner } from "./fetch.ts";
-import { OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
+import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
+import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
 import { officialStateOf, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin } from "./origin.ts";
 import { APPROVED_DIR, approvedCopyDir, switchesPath, TRICKS_DIR } from "./paths.ts";
@@ -351,7 +352,7 @@ describe.if(posix)("adding from the list", () => {
     const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", "b".repeat(64))]);
     const answer = await r.official.install("legs", "add");
     expect(answer).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
-    expect(OFFICIAL_LINES.mismatch).toBe("The trick did not match what this Collie release expects, so nothing was added.");
+    expect(OFFICIAL_LINES.mismatch).toBe("The code did not match this release. Nothing was added.");
     expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
     expect(r.audit).toEqual([]);
     await expectNoLeftovers(r);
@@ -361,7 +362,7 @@ describe.if(posix)("adding from the list", () => {
     const repo = await fixtureRepo([V1]);
     const hash = await hashOf(V1_LEGS);
     const missing = await rig([fixtureEntry(repo.url, "e".repeat(40), hash)]);
-    expect(await missing.official.install("legs", "add")).toEqual({ status: 502, body: { error: "unreachable", message: "Could not reach GitHub, so nothing was added." } });
+    expect(await missing.official.install("legs", "add")).toEqual({ status: 502, body: { error: "unreachable", message: "GitHub did not answer. Nothing was added." } });
     await expectNoLeftovers(missing);
     const gone = await rig([fixtureEntry(`file://${join(await tempDir(), "nothing.git")}`, repo.shas[0] ?? "", hash)]);
     expect((await gone.official.install("legs", "add")).status).toBe(502);
@@ -444,6 +445,36 @@ describe.if(posix)("adding from the list", () => {
     expect(await r.official.install("legs", "add")).toMatchObject({ status: 502, body: { error: "unreachable" } });
     expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
     await expectNoLeftovers(r);
+  });
+
+  test("a repository that sends more than the byte cap is refused as too large before anything is read, and nothing stays", async () => {
+    // Random bytes do not compress: the pack holds about what the file holds.
+    const big = await fixtureRepo([{ ...V1, "other/blob.txt": { text: randomBytes(96 * 1024).toString("base64") } }]);
+    const r = await rig([fixtureEntry(big.url, big.shas[0] ?? "", await hashOf(V1_LEGS))], { maxBytes: 64 * 1024 });
+    const answer = await r.official.install("legs", "add");
+    expect(answer).toEqual({ status: 422, body: { error: "too-large", message: OFFICIAL_LINES.mismatch } });
+    // Refused after the fetch, before the tree was listed or a file read.
+    expect(r.gitArgs.some((a) => a.includes("ls-tree") || a.includes("cat-file"))).toBe(false);
+    expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
+    await expectNoLeftovers(r);
+    // The same repository under the real cap is fine: the cap is about size, not about content.
+    expect(OFFICIAL_FETCH_BYTES_MAX).toBe(20 * 1024 * 1024);
+    const roomy = await rig([fixtureEntry(big.url, big.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect((await roomy.official.install("legs", "add")).status).toBe(200);
+  });
+
+  test("folderBytes counts by lstat, never through a link, and stops once past the cap", async () => {
+    const dir = await tempDir();
+    await writeFile(join(dir, "a"), "x".repeat(1000));
+    await mkdir(join(dir, "sub"));
+    await writeFile(join(dir, "sub", "b"), "y".repeat(500));
+    const outside = await tempDir();
+    await writeFile(join(outside, "huge"), "z".repeat(100_000));
+    await symlink(outside, join(dir, "link"));
+    const all = await folderBytes(dir, 1_000_000);
+    expect(all).toBeGreaterThanOrEqual(1500);
+    expect(all).toBeLessThan(100_000);
+    expect(await folderBytes(dir, 10)).toBeGreaterThan(10);
   });
 
   test("not on the list is 404; a crew member offers nothing and adds nothing", async () => {
@@ -550,5 +581,48 @@ describe("the add route", () => {
     for (const op of ["trick.official.add", "trick.add", "tricks.official", "trick.official"]) {
       expect(parseWalkyRequest(JSON.stringify({ v: 1, op, id: "legs" }))).toBeNull();
     }
+  });
+});
+
+// ── the git run's process group ──────────────────────────────────────────────
+
+describe.if(posix)("a git run killed at its time cap", () => {
+  test("takes its whole process group: a helper git started dies with it", async () => {
+    // A stand-in `git` that starts a helper in the background (as `git fetch` starts `git-remote-https`),
+    // writes the helper's pid, and waits. The run is killed at 300 ms; the helper must be gone too.
+    const bin = await tempDir();
+    const pidFile = join(bin, "helper.pid");
+    await writeFile(join(bin, "git"), `#!/bin/sh\nsleep 30 &\necho $! > "${pidFile}"\nwait\n`);
+    await chmod(join(bin, "git"), 0o755);
+    const run = await spawnGit(["fetch"], { cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` }, timeoutMs: 300 });
+    expect(run.timedOut).toBe(true);
+    const pid = Number((await readFile(pidFile, "utf8")).trim());
+    expect(pid).toBeGreaterThan(0);
+    // Give the kernel a moment to reap; then the helper's pid answers no signal.
+    let alive = true;
+    for (let i = 0; i < 20 && alive; i += 1) {
+      await Bun.sleep(50);
+      alive = (() => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      })();
+    }
+    expect(alive).toBe(false);
+  });
+
+  test("an aborted signal kills the run and its group at once", async () => {
+    const bin = await tempDir();
+    await writeFile(join(bin, "git"), "#!/bin/sh\nsleep 30\n");
+    await chmod(join(bin, "git"), 0o755);
+    const controller = new AbortController();
+    const started = Date.now();
+    setTimeout(() => controller.abort(), 100);
+    const run = await spawnGit(["fetch"], { cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` }, timeoutMs: 20_000, signal: controller.signal });
+    expect(run.code).not.toBe(0);
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 });

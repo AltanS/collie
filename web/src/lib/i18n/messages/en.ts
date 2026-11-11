@@ -3381,12 +3381,12 @@ export const en = {
   "settings.tricks.official.update": "Update",
   "settings.tricks.official.updateAria": "Update {name}",
   "settings.tricks.official.checks": "Collie checks that the code matches this release before it adds it.",
-  "settings.tricks.official.unreachable": "Could not reach GitHub, so nothing was added.",
-  "settings.tricks.official.mismatch": "The trick did not match what this Collie release expects, so nothing was added.",
+  "settings.tricks.official.unreachable": "GitHub did not answer. Nothing was added.",
+  "settings.tricks.official.mismatch": "The code did not match this release. Nothing was added.",
   "settings.tricks.official.busy": "Collie is adding another trick. Try again in a moment.",
   "settings.tricks.official.failed": "Could not add {name}. Try again.",
-  "settings.tricks.official.updateUnreachable": "Could not reach GitHub, so nothing was changed.",
-  "settings.tricks.official.updateMismatch": "The new version did not match what this Collie release expects, so nothing was changed.",
+  "settings.tricks.official.updateUnreachable": "GitHub did not answer. Nothing was changed.",
+  "settings.tricks.official.updateMismatch": "The code did not match this release. Nothing was changed.",
   "settings.tricks.official.updateFailed": "Could not update {name}. Try again.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---

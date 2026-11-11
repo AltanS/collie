@@ -319,7 +319,8 @@ export function officialFailureLine<TThrown>(thrown: TThrown, mode: "add" | "upd
   const code = apiErrorFields(thrown)?.error;
   const add = mode === "add";
   if (code === "unreachable") return t(add ? "settings.tricks.official.unreachable" : "settings.tricks.official.updateUnreachable");
-  if (code === "mismatch") return t(add ? "settings.tricks.official.mismatch" : "settings.tricks.official.updateMismatch");
+  // A repository that sent more than a listed commit can be is the same class of refusal as a mismatch.
+  if (code === "mismatch" || code === "too-large") return t(add ? "settings.tricks.official.mismatch" : "settings.tricks.official.updateMismatch");
   if (code === "busy") return t("settings.tricks.official.busy");
   if (code === "taken") return t("settings.tricks.official.taken");
   return add ? t("settings.tricks.official.failed", { name }) : t("settings.tricks.official.updateFailed", { name });
