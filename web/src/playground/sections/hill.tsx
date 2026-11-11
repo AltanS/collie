@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (lodge and workshop), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 52.
+// Cards are numbered 1 to 64.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -13,11 +13,12 @@ import { AgentList } from "@/components/agent-list";
 import { AppHeaderHost, RouteHeader } from "@/components/app-header";
 import { DecisionCard } from "@/components/decision-card";
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
+import { HillCrewStateBar } from "@/components/hill-crew-state";
 import { HillHeader, HillOff, HillView } from "@/components/hill-view";
 import { HillSwitchCard } from "@/components/hill-switch-card";
 import { TrickDashboardStrip } from "@/components/trick-place-items";
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
-import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
+import type { HillCrewState, HillDecision, HillReceipt } from "@/lib/hill/wire";
 import { sortOpenDecisions } from "@/lib/hill/wire";
 import type { PaneOrder } from "@/lib/pane-order";
 import { partKey, type PlaceItem, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
@@ -266,6 +267,81 @@ function ClearPhone({ armed = false }: { armed?: boolean }) {
       <Phone height={560}>
         <RootRouter data={homeSolo}>
           <ClearBody />
+        </RootRouter>
+      </Phone>
+    </div>
+  );
+}
+
+/**
+ * The crew state at the top of the Hill (1.29.0), live in the page: a tap moves the control and its helper
+ * line, and "Tell all sessions now" turns to its done words with a count of 3. `told` starts it done.
+ */
+function CrewStateBody({ initial, told: firstTold }: { initial: HillCrewState; told: number | null }) {
+  const [value, setValue] = useState<HillCrewState>(initial);
+  const [told, setTold] = useState<number | null>(firstTold);
+  return (
+    <AppHeaderHost bridge="connected" error={false}>
+      <HillHeader count={quietOpen.length} nowCount={0} onBack={noSend} />
+      <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
+        <HillCrewStateBar
+          value={value}
+          saved={value}
+          told={told}
+          canWrite
+          busy={false}
+          failed={false}
+          telling={false}
+          tellFailed={false}
+          onChange={(next) => {
+            setValue(next);
+            setTold(null);
+          }}
+          onTell={() => setTold(3)}
+        />
+        <HillView open={sortOpenDecisions([...quietOpen])} closed={[]} kept={NO_KEPT} renderCard={(decision) => <PlaygroundCard key={decision.id} decision={decision} />} />
+      </div>
+    </AppHeaderHost>
+  );
+}
+
+function CrewStatePhone({ initial, told = null }: { initial: HillCrewState; told?: number | null }) {
+  return (
+    <Phone height={620}>
+      <RootRouter data={homeSolo}>
+        <CrewStateBody initial={initial} told={told} />
+      </RootRouter>
+    </Phone>
+  );
+}
+
+/** The quiet mark: the older card was written to in its session, so it sits below the fresh one of its priority. */
+const SPOKEN_OPEN: readonly HillDecision[] = [{ ...twoOptions, spokeAfter: twoOptions.at + 60_000 }, { ...threeWithConfirm, priority: twoOptions.priority, at: twoOptions.at + 120_000 }];
+
+/** The Clear menu with its second choice, opened once mounted, as a person's tap on Clear opens it. */
+function ClearMenuPhone() {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Answered grows in after the first frame (ui/presence.tsx), so the tap waits for its button.
+    const id = window.setTimeout(() => root.current?.querySelector<HTMLButtonElement>('[data-slot="hill-clear"]')?.click(), 400);
+    return () => window.clearTimeout(id);
+  }, []);
+  return (
+    <div ref={root}>
+      <Phone height={620}>
+        <RootRouter data={homeSolo}>
+          <AppHeaderHost bridge="connected" error={false}>
+            <HillHeader count={1} nowCount={0} onBack={noSend} />
+            <div data-pg-scroll className="min-h-0 flex-1 overflow-y-auto p-4">
+              <HillView
+                open={sortOpenDecisions([SPOKEN_OPEN[0]!])}
+                closed={closedRows.slice(0, 2)}
+                kept={NO_KEPT}
+                renderCard={(decision) => <PlaygroundCard key={decision.id} decision={decision} />}
+                clear={{ canWrite: true, busy: false, onClear: noSend, spoken: 1, onClearSpoken: noSend }}
+              />
+            </div>
+          </AppHeaderHost>
         </RootRouter>
       </Phone>
     </div>
@@ -875,6 +951,33 @@ export function HillSection() {
         <Card state="hill-group-version" label="57: a new version on 2 cards">
           <CardHead n={57} title="A proposed new version on 2 cards" />
           <OneCard decision={versionGroup} />
+        </Card>
+      </Group>
+
+      <Group title="The crew state">
+        <Card state="hill-crew-here" label="59: crew state, here">
+          <CardHead n={59} title="Here: agents post as usual" />
+          <CrewStatePhone initial="here" />
+        </Card>
+        <Card state="hill-crew-quiet" label="60: crew state, quiet">
+          <CardHead n={60} title="Quiet, Tell all sessions now offered" />
+          <CrewStatePhone initial="quiet" />
+        </Card>
+        <Card state="hill-crew-away" label="61: crew state, away">
+          <CardHead n={61} title="Away, Tell all sessions now offered" />
+          <CrewStatePhone initial="away" />
+        </Card>
+        <Card state="hill-crew-told" label="62: crew state, told">
+          <CardHead n={62} title="Away, told: the button reads done" />
+          <CrewStatePhone initial="away" told={3} />
+        </Card>
+        <Card state="hill-spoke-sunk" label="63: a card answered in the session, sunk">
+          <CardHead n={63} title="A card you wrote to its session about, below a fresh one" />
+          <HillPhone open={SPOKEN_OPEN} closed={[]} />
+        </Card>
+        <Card state="hill-clear-menu" label="64: the Clear menu">
+          <CardHead n={64} title="Clear with a card answered in the session: two choices" />
+          <ClearMenuPhone />
         </Card>
       </Group>
 
