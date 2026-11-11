@@ -97,7 +97,7 @@ describe("the QR link", () => {
 });
 
 /** A fake bridge: one request, then the poll answers from `polls` in turn (the last one repeats). */
-function bridge(polls: readonly (() => Response)[]) {
+function bridge(polls: readonly (() => Response)[], cancels: { url: string; header: string | null }[] = []) {
   const seen: { url: string; header: string | null }[] = [];
   let n = 0;
   server.use(
@@ -109,6 +109,10 @@ function bridge(polls: readonly (() => Response)[]) {
       const answer = polls[Math.min(n, polls.length - 1)]!;
       n++;
       return answer();
+    }),
+    http.delete("/api/pair/request/:id", ({ request }) => {
+      cancels.push({ url: request.url, header: request.headers.get("x-collie-pair-poll") });
+      return HttpResponse.json({ state: "cancelled" });
     }),
   );
   return seen;
@@ -166,17 +170,47 @@ describe("PairWithPhone against a bridge", () => {
     expect(await screen.findByText("The code ran out.")).toBeInTheDocument();
   });
 
-  it("Cancel forgets the request and stops the poll", async () => {
+  it("Cancel ends the request on the bridge with the secret in a header, and stops the poll", async () => {
     const user = userEvent.setup();
-    const seen = bridge([WAITING]);
+    const cancels: { url: string; header: string | null }[] = [];
+    const seen = bridge([WAITING], cancels);
     render(<PairWithPhone onPaired={NOOP} pollMs={10} />);
     await user.click(screen.getByRole("button", { name: "Pair with your phone" }));
     await screen.findByText("K7MP2Q");
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Pair with your phone" })).toBeInTheDocument();
+    await waitFor(() => expect(cancels).toHaveLength(1));
+    expect(cancels[0]!.header).toBe(SECRET);
+    expect(cancels[0]!.url).toContain(`/api/pair/request/${ID}`);
+    expect(cancels[0]!.url).not.toContain(SECRET);
     const after = seen.length;
     await new Promise((r) => setTimeout(r, 60));
     expect(seen.length).toBe(after);
+  });
+
+  it("leaving the screen ends the open request too", async () => {
+    const user = userEvent.setup();
+    const cancels: { url: string; header: string | null }[] = [];
+    bridge([WAITING], cancels);
+    const { unmount } = render(<PairWithPhone onPaired={NOOP} pollMs={10} />);
+    await user.click(screen.getByRole("button", { name: "Pair with your phone" }));
+    await screen.findByText("K7MP2Q");
+    unmount();
+    await waitFor(() => expect(cancels).toHaveLength(1));
+    expect(cancels[0]!.header).toBe(SECRET);
+  });
+
+  it("an answered request is not cancelled when the block goes away", async () => {
+    const user = userEvent.setup();
+    const cancels: { url: string; header: string | null }[] = [];
+    bridge([() => HttpResponse.json({ state: "approved", token: "tok-new-device", label: "desk" })], cancels);
+    const onPaired = vi.fn();
+    const { unmount } = render(<PairWithPhone onPaired={onPaired} pollMs={10} />);
+    await user.click(screen.getByRole("button", { name: "Pair with your phone" }));
+    await waitFor(() => expect(onPaired).toHaveBeenCalledTimes(1));
+    unmount();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(cancels).toEqual([]);
   });
 
   it.each([

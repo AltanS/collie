@@ -16,7 +16,7 @@ export const DEF: SectionDef = {
   intent:
     "An unpaired browser shows a QR code and a six-letter code. A phone that is already paired scans it, " +
     "sees which browser asks and from where, and taps the matching code out of three. A wrong tap or Not my device " +
-    "ends the request. Cards 1 to 9 are the new device's block, cards 10 to 20 the phone's page.",
+    "ends the request. Cards 1 to 9 are the new device's block, cards 10 to 23 the phone's page.",
 };
 
 const NOOP = () => {};
@@ -24,10 +24,12 @@ const ACTIONS: PairApproveActions = { onPick: NOOP, onRefuse: NOOP, onName: NOOP
 const LINK = "https://collie.example.ts.net/pair/approve?r=Pg0FixtureRequest0001";
 const CHOICES = ["K7MP2Q", "D4XW9H", "R2TN6F"] as const;
 
-const OPEN: PairApproveState = {
+const OPEN: Extract<PairApproveState, { kind: "open" }> = {
   kind: "open",
   asker: "Chrome on Linux",
   route: "tailnet",
+  claimed: null,
+  endsAt: null,
   choices: CHOICES,
   remainingMs: 94_000,
   name: "Chrome on Linux",
@@ -59,6 +61,9 @@ const APPROVE_STATES: readonly { state: string; label: string; reach: string; va
   { state: "pair-approve-answered", label: "18. already answered", reach: "open the link again after an answer", value: { kind: "answered" } },
   { state: "pair-approve-forbidden", label: "19. read-only device", reach: "a device the proxy allowlist does not name", value: { kind: "forbidden" } },
   { state: "pair-approve-error", label: "20. bridge not reached", reach: "stop the bridge, then open the link", value: { kind: "error" } },
+  { state: "pair-approve-front-door", label: "21. through a front door", reach: "a request through tailscale serve on the bridge's computer", value: { ...OPEN, route: "loopback", claimed: "tailnet" } },
+  { state: "pair-approve-outside", label: "22. outside address, warning", reach: "a request from an internet or unknown address", value: { ...OPEN, route: "internet" } },
+  { state: "pair-approve-ends-with-yours", label: "23. access ends with yours", reach: "approve from a phone paired with an expiry", value: { ...OPEN, endsAt: Date.UTC(2026, 11, 11, 18, 0) } },
 ];
 
 function Framed({ children }: { children: ReactNode }) {

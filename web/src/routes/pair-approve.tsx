@@ -5,11 +5,13 @@ import { Icon } from "@/components/icons/icon";
 import { SettingsPage } from "@/components/settings-page";
 import { clockOf } from "@/components/pair-with-phone";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { answerPairApproval, fetchPairApproval, type PairApproval, type PairApproveResult, type PairRoute } from "@/lib/api";
 import { t, type MessageKey } from "@/lib/i18n";
 import { homePath } from "@/lib/nav";
+import { dateTime } from "@/lib/format";
 import { usePairing } from "@/lib/pairing";
 import { useScope } from "@/lib/session";
 
@@ -31,9 +33,14 @@ export type PairApproveState =
   | {
       kind: "open";
       asker: string;
+      /** The socket's class: the fact. */
       route: PairRoute;
+      /** What a front door on this machine passed on: a claim, shown as one. */
+      claimed: PairRoute | null;
       choices: readonly string[];
       remainingMs: number;
+      /** The approver's own end, which the new device inherits; null for none. */
+      endsAt: number | null;
       name: string;
       nameError: boolean;
       busy: boolean;
@@ -46,6 +53,10 @@ export type PairApproveState =
   | { kind: "forbidden" }
   | { kind: "error" };
 
+// THE NETWORK LINE STATES ONLY WHAT THE SOCKET SAYS. A request through a front door on this machine
+// (`tailscale serve`, Caddy) reaches the bridge from loopback, and the class the door passed on is a
+// header a local program can write too, so it is shown as the door's word, never as fact. An internet
+// or unknown class, said either way, adds a warning.
 const ROUTE_LINE = {
   loopback: "pairApprove.route.loopback",
   tailnet: "pairApprove.route.tailnet",
@@ -53,6 +64,31 @@ const ROUTE_LINE = {
   internet: "pairApprove.route.internet",
   unknown: "pairApprove.route.unknown",
 } as const satisfies Record<PairRoute, MessageKey>;
+
+const WHERE = {
+  loopback: "pairApprove.where.loopback",
+  tailnet: "pairApprove.where.tailnet",
+  lan: "pairApprove.where.lan",
+  internet: "pairApprove.where.internet",
+  unknown: "pairApprove.where.unknown",
+} as const satisfies Record<PairRoute, MessageKey>;
+
+/** The network lines for a request: the fact, the front door's claim if any, and whether to warn. */
+export interface RouteLines {
+  readonly line: string;
+  readonly claim: string | null;
+  readonly outside: boolean;
+}
+
+export function routeLines(route: PairRoute, claimed: PairRoute | null): RouteLines {
+  const throughDoor = route === "loopback" && claimed !== null;
+  const outside = [route, claimed].some((r) => r === "internet" || r === "unknown");
+  return {
+    line: t(throughDoor ? "pairApprove.route.frontDoor" : ROUTE_LINE[route]),
+    claim: throughDoor ? t("pairApprove.claim", { where: t(WHERE[claimed]) }) : null,
+    outside,
+  };
+}
 
 /** "Chrome on Linux", or whichever half the bridge knew. */
 export function askerName(browser: string | null, os: string | null): string | null {
@@ -122,6 +158,7 @@ function OpenRequest({ state, actions }: { state: Extract<PairApproveState, { ki
   const pickId = useId();
   const nameId = useId();
   const errorId = useId();
+  const where = routeLines(state.route, state.claimed);
   return (
     <>
       <div className="flex flex-col gap-1">
@@ -130,11 +167,18 @@ function OpenRequest({ state, actions }: { state: Extract<PairApproveState, { ki
           <Icon name="phone" className="size-4 shrink-0 text-muted-foreground" />
           {state.asker}
         </p>
-        <p className="text-sm text-muted-foreground">{t(ROUTE_LINE[state.route])}</p>
+        <p className="text-sm text-muted-foreground">{where.line}</p>
+        {where.claim !== null && <p className="text-xs text-muted-foreground">{where.claim}</p>}
         <p role="timer" className="text-sm tabular-nums text-muted-foreground">
           {t("pair.endsIn", { time: clockOf(state.remainingMs) })}
         </p>
       </div>
+      {where.outside && (
+        <Notice tone="caution" variant="box" icon={<Icon name="error" />}>
+          {t("pairApprove.outside")}
+        </Notice>
+      )}
+      {state.endsAt !== null && <p className="text-sm">{t("pairApprove.endsWithYours", { date: dateTime(state.endsAt) })}</p>}
       <label htmlFor={nameId} className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">{t("pairApprove.nameLabel")}</span>
         <input
@@ -154,9 +198,12 @@ function OpenRequest({ state, actions }: { state: Extract<PairApproveState, { ki
           {t("pairApprove.nameBad")}
         </p>
       )}
-      <p id={pickId} className="text-sm font-medium">
-        {t("pairApprove.pick")}
-      </p>
+      <div className="flex flex-col gap-0.5">
+        <p id={pickId} className="text-sm font-medium">
+          {t("pairApprove.pick")}
+        </p>
+        <p className="text-sm text-muted-foreground">{t("pairApprove.onlyYours")}</p>
+      </div>
       <div role="group" aria-labelledby={pickId} className="grid grid-cols-1 gap-2">
         {state.choices.map((code) => (
           <Button
@@ -241,6 +288,8 @@ export function PairApproveRoute() {
         kind: "open",
         asker: askerName(view.browser, view.os) ?? t("pairApprove.askerUnknown"),
         route: view.route,
+        claimed: view.claimed,
+        endsAt: view.endsAt,
         choices: view.choices,
         deadline: at + view.expiresInMs,
         name: askerName(view.browser, view.os) ?? t("pairApprove.nameDefault"),
@@ -299,6 +348,8 @@ export function PairApproveRoute() {
           kind: "open",
           asker: phase.asker,
           route: phase.route,
+          claimed: phase.claimed,
+          endsAt: phase.endsAt,
           choices: phase.choices,
           remainingMs: phase.deadline - now,
           name: phase.name,

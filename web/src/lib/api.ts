@@ -2786,10 +2786,17 @@ export type PairApproval =
       state: "open";
       browser: string | null;
       os: string | null;
-      /** Where the asker came from: the class a front door passed on, else the socket's own. */
+      /** The class of the socket the asker came in by: the kernel's, the one fact here. */
       route: PairRoute;
+      /**
+       * The class a front door on the bridge's machine passed on (`X-Forwarded-For`), or null. A claim:
+       * a local program can write that header too, so the page never states it as fact.
+       */
+      claimed: PairRoute | null;
       choices: readonly string[];
       expiresInMs: number;
+      /** When the approver's own access ends, and so the new device's with it; null for no end. */
+      endsAt: number | null;
     }
   | { state: "gone" }
   | { state: "answered" }
@@ -2858,6 +2865,18 @@ export async function pollPairRequest(publicId: string, pollSecret: string, sign
   throw new ApiError(`/api/pair/request → 200 with no known state`, 200);
 }
 
+/**
+ * End a request this browser started (Cancel, or the block went away). `keepalive`, so it still leaves
+ * when the page is being closed. Nothing waits on it: the request runs out on its own anyway.
+ */
+export async function cancelPairRequest(publicId: string, pollSecret: string): Promise<void> {
+  await req<JsonObject>(
+    `/api/pair/request/${encodeURIComponent(publicId)}`,
+    { method: "DELETE", keepalive: true, provesNothing: true, headers: { [PAIR_POLL_HEADER]: pollSecret } },
+    (status) => (status === 404 ? {} : null),
+  );
+}
+
 /** A 403 from the approver's gate is an answer the page can name, whatever the body said. */
 function approverRefusal(status: number, detail: string): JsonObject | null {
   if (status === 404) return { state: "gone" };
@@ -2878,9 +2897,11 @@ export async function fetchPairApproval(publicId: string, signal?: AbortSignal):
     state: "open",
     browser: asJsonString(body.browser) ?? null,
     os: asJsonString(body.os) ?? null,
-    route: pairRouteOf(body.forwardedFrom ?? body.route),
+    route: pairRouteOf(body.route),
+    claimed: body.forwardedFrom === null || body.forwardedFrom === undefined ? null : pairRouteOf(body.forwardedFrom),
     choices,
     expiresInMs: asJsonNumber(body.expiresInMs) ?? 0,
+    endsAt: asJsonNumber(body.endsAt) ?? null,
   };
 }
 

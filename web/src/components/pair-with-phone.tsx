@@ -4,7 +4,7 @@ import { Icon } from "@/components/icons/icon";
 import { QrCode } from "@/components/qr-code";
 import { Button } from "@/components/ui/button";
 import { useLocale } from "@/hooks/use-locale";
-import { pollPairRequest, startPairRequest } from "@/lib/api";
+import { cancelPairRequest, pollPairRequest, startPairRequest } from "@/lib/api";
 import { mounted } from "@/lib/base-path";
 import { t } from "@/lib/i18n";
 import { setDeviceToken } from "@/lib/pairing";
@@ -14,7 +14,8 @@ import { setDeviceToken } from "@/lib/pairing";
 // and the code to tap there, then polls until a paired phone answers or the two minutes run out.
 //
 // The poll secret lives in a ref of this component and nowhere else: not in state a devtools panel
-// shows, not in storage, not in a URL. Cancel, an unmount or an answer forgets it. The token the
+// shows, not in storage, not in a URL. Cancel, an unmount or an answer forgets it; Cancel and an
+// unmount first end the request on the bridge with it (`DELETE`), so it frees its place at once. The token the
 // approved poll hands over is stored the way the code form stores it (`setDeviceToken`), and the page
 // then reloads so every loader reads with it.
 //
@@ -185,16 +186,22 @@ export function PairWithPhone({
     paired.current = onPaired;
   }, [onPaired]);
 
-  // Forget the secret when the block goes away.
-  useEffect(
-    () => () => {
-      open.current = null;
-    },
-    [],
-  );
+  // End the open request, if any, and forget its secret. Nothing waits on the bridge's answer.
+  const drop = () => {
+    const request = open.current;
+    open.current = null;
+    if (request !== null) void cancelPairRequest(request.publicId, request.pollSecret).catch(() => {});
+  };
+  const dropRef = useRef(drop);
+  useEffect(() => {
+    dropRef.current = drop;
+  });
+
+  // The block went away (the operator left the screen): end the request it showed.
+  useEffect(() => () => dropRef.current(), []);
 
   async function start() {
-    open.current = null;
+    drop();
     setFlow({ kind: "starting" });
     try {
       const res = await startPairRequest();
@@ -214,9 +221,7 @@ export function PairWithPhone({
   }
 
   function cancel() {
-    // The bridge keeps the request until it runs out (there is no cancel route, ADR 0139): forgetting
-    // the secret here is what makes it unusable, since only this tab could ever collect it.
-    open.current = null;
+    drop();
     setFlow({ kind: "idle" });
   }
 

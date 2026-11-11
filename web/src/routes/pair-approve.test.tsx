@@ -19,10 +19,12 @@ const ID = "AbCdEfGhIjKlMnOpQrStUv";
 const TOKEN = "tok-approver-0123456789abcdef";
 const CHOICES = ["K7MP2Q", "D4XW9H", "R2TN6F"];
 
-const OPEN: PairApproveState = {
+const OPEN: Extract<PairApproveState, { kind: "open" }> = {
   kind: "open",
   asker: "Chrome on Linux",
   route: "tailnet",
+  claimed: null,
+  endsAt: null,
   choices: CHOICES,
   remainingMs: 94_000,
   name: "Chrome on Linux",
@@ -41,7 +43,11 @@ describe("PairApproveView, each state", () => {
     render(<PairApproveView state={OPEN} actions={a} />);
     expect(screen.getByRole("heading", { name: "Give this device access?" })).toBeInTheDocument();
     expect(screen.getByText("Chrome on Linux", { selector: "p" })).toBeInTheDocument();
-    expect(screen.getByText("Asks over your tailnet")).toBeInTheDocument();
+    expect(screen.getByText("Asks from a tailnet address")).toBeInTheDocument();
+    expect(screen.getByText("Only if you started this on a screen in front of you.")).toBeInTheDocument();
+    expect(screen.queryByText(/Collie cannot check this/)).toBeNull();
+    expect(screen.queryByText(/outside your own network/)).toBeNull();
+    expect(screen.queryByText(/ends with yours/)).toBeNull();
     expect(screen.getByRole("timer")).toHaveTextContent("Ends in 1:34");
     expect(screen.getByRole("textbox", { name: "Name for the new device" })).toHaveValue("Chrome on Linux");
     const group = screen.getByRole("group", { name: "Tap the code that shows on the other screen." });
@@ -55,6 +61,36 @@ describe("PairApproveView, each state", () => {
     expect(a.onPick).toHaveBeenCalledWith("D4XW9H");
     await user.click(screen.getByRole("button", { name: "Not my device" }));
     expect(a.onRefuse).toHaveBeenCalledTimes(1);
+  });
+
+  it("through a front door: the socket's fact, and the door's word as a claim, never as fact (N1)", () => {
+    render(<PairApproveView state={{ ...OPEN, route: "loopback", claimed: "tailnet" }} actions={actions()} />);
+    expect(screen.getByText("Asks through a front door on this computer")).toBeInTheDocument();
+    expect(screen.getByText("The front door says it came from a tailnet address. Collie cannot check this.")).toBeInTheDocument();
+    expect(screen.queryByText("Asks from a tailnet address")).toBeNull();
+    expect(screen.queryByText(/outside your own network/)).toBeNull();
+  });
+
+  it("loopback with no front door's word says both ways it could have come", () => {
+    render(<PairApproveView state={{ ...OPEN, route: "loopback" }} actions={actions()} />);
+    expect(screen.getByText("Asks from this computer, or through a front door on it")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["internet", null, "Asks from an internet address"],
+    ["unknown", null, "Asks from an address Collie does not know"],
+    ["loopback", "internet", "Asks through a front door on this computer"],
+    ["loopback", "unknown", "Asks through a front door on this computer"],
+  ] as const)("a %s socket with a %s claim adds the warning line", (route, claimed, line) => {
+    render(<PairApproveView state={{ ...OPEN, route, claimed }} actions={actions()} />);
+    expect(screen.getByText(line)).toBeInTheDocument();
+    expect(screen.getByText("This request may come from outside your own network.")).toBeInTheDocument();
+  });
+
+  it("an approver with an end says the new device's access ends with it (N2)", () => {
+    const endsAt = Date.UTC(2026, 11, 11, 18, 0);
+    render(<PairApproveView state={{ ...OPEN, endsAt }} actions={actions()} />);
+    expect(screen.getByText(/^This device's access ends with yours, on .+\.$/)).toBeInTheDocument();
   });
 
   it("open and busy: every answer waits", () => {
@@ -124,6 +160,7 @@ const OPEN_WIRE = {
   choices: CHOICES,
   expiresAt: Date.now() + 94_000,
   expiresInMs: 94_000,
+  endsAt: null,
 };
 
 describe("PairApproveRoute against a bridge", () => {
@@ -136,7 +173,7 @@ describe("PairApproveRoute against a bridge", () => {
     expect(screen.queryByRole("group")).toBeNull();
   });
 
-  it("reads the request with this device's token, shows the route a front door passed on, and sends the tapped code with the name", async () => {
+  it("reads the request with this device's token, shows the front door's word as a claim, and sends the tapped code with the name", async () => {
     setDeviceToken(TOKEN);
     const user = userEvent.setup();
     let auth: string | null = null;
@@ -155,7 +192,8 @@ describe("PairApproveRoute against a bridge", () => {
     renderAt(`/pair/approve?r=${ID}`);
     const group = await screen.findByRole("group", { name: "Tap the code that shows on the other screen." });
     expect(auth).toBe(`Bearer ${TOKEN}`);
-    expect(screen.getByText("Asks over your tailnet")).toBeInTheDocument();
+    expect(screen.getByText("Asks through a front door on this computer")).toBeInTheDocument();
+    expect(screen.getByText(/The front door says it came from a tailnet address/)).toBeInTheDocument();
     const name = screen.getByRole("textbox", { name: "Name for the new device" });
     await user.clear(name);
     await user.type(name, "  desk ");

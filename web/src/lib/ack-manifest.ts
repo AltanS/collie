@@ -304,6 +304,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The pairing block itself is the answer: it turns into the QR and the code, or says in place why no request was made (no paired device, too many codes, refused), so the operator reads it where they tapped (components/pair-with-phone.tsx).",
   },
+  cancelPairRequest: {
+    channel: "silent",
+    why: "Cancel already put the block back to its start, and on leaving the page nobody is there to tell; a cancel that fails changes nothing, because the request runs out in two minutes on its own.",
+  },
   answerPairApproval: {
     channel: "inline",
     why: "The approver page replaces the three codes with the outcome, paired, wrong code or ended, and a refused name marks its own field, so the answer sits where the tap was (routes/pair-approve.tsx).",
