@@ -249,7 +249,10 @@ describe("rule 8: Collie's band", () => {
   });
 
   it("no node an agent draws takes the band's look: the same words drawn by the agent stay inside its area", () => {
-    const { container } = draw({ view: screenOf([{ kind: "card", kids: [{ kind: "line", text: "Morph Drawn by this session's agent" }] }]) });
+    // The write refuses the band's words (review 10, Collie's own words); a screen that slipped past
+    // still draws them inside the agent's area, never in the band.
+    expect(parseAgentView([{ kind: "card", kids: [{ kind: "line", text: "Morph Drawn by this session's agent" }] }]).view).toBeUndefined();
+    const { container } = draw({ view: { rev: 1, at: AT, view: [{ kind: "card", kids: [{ kind: "line", text: "Morph Drawn by this session's agent" }] }] } });
     expect(container.querySelectorAll("[data-slot=view-band]")).toHaveLength(1);
     const copy = screen.getByText("Morph Drawn by this session's agent");
     expect(copy.closest("[data-slot=view-screen]")).not.toBeNull();

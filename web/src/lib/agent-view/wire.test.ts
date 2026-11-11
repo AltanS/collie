@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { t } from "@/lib/i18n";
+
 import { VIEW_HEAD_MAX,
+  VIEW_COLLIE_PHRASES,
+  collieWordsIn,
   VIEW_NO_PICKED,
   VIEW_HINT_MAX,
   VIEW_NOTE_MAX,
@@ -272,5 +276,21 @@ describe("blocks", () => {
     expect(read?.notes).toHaveLength(VIEW_NOTES_MAX - 1);
     expect(read?.notes?.at(-1)?.note).toBe(`Step ${String(VIEW_NOTES_MAX + 1)}`);
     expect(readViewDrawing({ at: AT })?.notes).toBeUndefined();
+  });
+});
+
+describe("review 10 accept: Collie's own words", () => {
+  // The phone's own frame words around a view: each must be refused in an agent's text, so the shared
+  // list (VIEW_COLLIE_PHRASES, read by the bridge's write) can never fall behind the words the phone shows.
+  const OWN = ["view.band.by", "view.sent.label", "view.band.question", "view.band.old", "view.band.changed", "view.band.working", "view.request.working", "view.textAnswer", "view.earlier.row", "view.refused.noProfile"] as const;
+
+  it("review 10 accept: every frame line the phone draws around a view reads as Collie's own words", () => {
+    for (const key of OWN) expect(collieWordsIn(t(key)), key).not.toBeNull();
+    expect(collieWordsIn(t("view.armed", { label: "Ship" }))).not.toBeNull();
+  });
+
+  it("review 10 accept: the list holds the phrases named in the review", () => {
+    for (const phrase of ["Drawn by this session's agent", "Sent to this session", "From Collie", "Collie"]) expect(collieWordsIn(phrase), phrase).not.toBeNull();
+    expect(VIEW_COLLIE_PHRASES.length).toBeGreaterThan(0);
   });
 });

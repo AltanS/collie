@@ -65,6 +65,8 @@ import {
   VIEW_TITLE_MAX,
   VIEW_WRITES_PER_MINUTE,
   carriedPicks,
+  collieWordsIn,
+  collieWordsReason,
   parseAgentView,
   parseViewChoice,
   pickFits,
@@ -615,6 +617,8 @@ export class AgentViewService {
     if ("ok" in admitted) return admitted;
     const note = fields.note === null ? null : cleanViewLine(fields.note, VIEW_NOTE_MAX);
     if (fields.note !== null && note === null) return { ok: false, error: `a note is one line of 1 to ${String(VIEW_NOTE_MAX)} characters`, code: "bad_note" };
+    const noted = note === null ? null : collieWordsIn(note);
+    if (noted !== null) return { ok: false, error: collieWordsReason(noted), code: "bad_note" };
     const at = new Date(this.now()).toISOString();
     const base = admitted.entry;
     const key = viewKey(trick, session);
@@ -655,6 +659,8 @@ export class AgentViewService {
     if ("ok" in admitted) return admitted;
     const title = fields.title === null ? null : cleanViewLine(fields.title, VIEW_TITLE_MAX);
     if (fields.title !== null && title === null) return { ok: false, error: `a title is one line of 1 to ${String(VIEW_TITLE_MAX)} characters`, code: "bad_title" };
+    const titled = title === null ? null : collieWordsIn(title);
+    if (titled !== null) return { ok: false, error: collieWordsReason(titled), code: "bad_title" };
     const named = fields.images ?? [];
     const images = named.length;
     if (images > VIEW_MEDIA_MAX) return { ok: false, error: VIEW_TOO_MANY_IMAGES, code: "too_many_images" };
@@ -707,6 +713,8 @@ export class AgentViewService {
     const admitted = await this.admit(trick, session);
     if ("ok" in admitted) return admitted;
     const held = this.liveScreen(admitted.entry);
+    const labelled = collieWordsIn(fields.label);
+    if (labelled !== null) return { ok: false, error: collieWordsReason(labelled), code: "bad_block" };
     const block: ViewBlock = { id: fields.id, at: new Date(this.now()).toISOString(), pending: fields.label };
     const draft = placed(draftOf(held), { node: PENDING_NODE, block, place: fields.place });
     if ("error" in draft) return { ok: false, error: draft.error, code: "bad_block" };

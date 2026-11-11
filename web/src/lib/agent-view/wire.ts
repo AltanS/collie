@@ -138,6 +138,9 @@ const CONFUSABLE = new Map(Object.entries({
   "\u03c1": "p", "\u03c4": "t", "\u03c9": "w",
   "\u1d00": "a", "\u1d07": "e", "\u026a": "i", "\u1d0d": "m", "\u0274": "n", "\u1d0f": "o", "\u1d18": "p",
   "\u0280": "r", "\u1d1b": "t", "\u1d20": "v", "\u1d21": "w", "\u029c": "h", "\ua730": "f",
+  // The letters of Collie's own words (review 10): Cyrillic c, s, d, y, x, k, the palochka, and small capitals.
+  "\u0441": "c", "\u0455": "s", "\u0501": "d", "\u0443": "y", "\u0445": "x", "\u043a": "k", "\u04cf": "l",
+  "\u1d04": "c", "\u029f": "l",
   "\u27e6": "[", "\u27e8": "[", "\u3014": "[", "\u3010": "[", "\u3016": "[", "\u3018": "[", "\u301a": "[",
   "\u2768": "[", "\u276a": "[", "\u2772": "[", "\u2045": "[", "\u298b": "[", "\u298d": "[", "\u298f": "[",
   "\u27e7": "]", "\u27e9": "]", "\u3015": "]", "\u3011": "]", "\u3017": "]", "\u3019": "]", "\u301b": "]",
@@ -645,6 +648,76 @@ export function readsAsAddress(text: string): boolean {
 /** Why a link, a row or a run whose `href` names a session is refused in an agent view (review 10 W11). */
 export const VIEW_WEB_LINKS_ONLY = "A link in an agent view goes to a web address (https) only: it cannot open another session.";
 
+// ── Collie's own words (review 10, the reviewer's accept) ──────────────────────────────────────────
+
+/**
+ * The words Collie draws around an agent view, which no text of the agent's may say, so a screen cannot
+ * pass for Collie's frame: Collie's name, the band's words, the line over a sent message, the band's lines
+ * for a held button, the armed words, and the fold. ONE LIST for the bridge's write and the phone's read
+ * (both run {@link parseAgentView} and {@link parseViewChoice}); the web's tests pin that the phone's own
+ * strings stay in it. English: the phone draws the frame in the person's language, and a screen in
+ * another one is the agent's to write.
+ */
+export const VIEW_COLLIE_PHRASES = [
+  "Collie",
+  "From Collie",
+  "Drawn by this session's agent",
+  "Drawn in an earlier conversation",
+  "Sent to this session",
+  "A question waits in this session",
+  "Your typing answers the question",
+  "The screen changed",
+  "The buttons wait",
+  "The agent is working",
+  "Tap again to send",
+  "Earlier screen",
+  "The agent answered in text",
+] as const;
+
+/** A text's words, folded as the head rule folds ({@link foldViewLine}), every run of other characters one space, padded. */
+function foldedWords(text: string): string {
+  return ` ${foldViewLine(text).replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+}
+
+const COLLIE_PHRASES_FOLDED = VIEW_COLLIE_PHRASES.map((phrase) => ({ phrase, words: foldedWords(phrase) }));
+
+/**
+ * The first of Collie's own phrases a text says, or null. Both sides are folded as the head rule folds
+ * (hidden characters out, NFKC, lower case, marks out, look-alikes folded), then every run of characters
+ * that are not letters or digits becomes one space; a phrase counts as whole words only, so `colliepwa`
+ * or "The screens changed" pass. A text with a hidden character is read a second time with each one a
+ * blank.
+ */
+export function collieWordsIn(text: string): string | null {
+  // A hidden character is read both ways: dropped (`Col\u200blie` is "Collie") and as a blank (a wide
+  // blank, which the shared predicate counts as hidden, still parts two words).
+  let blanked = "";
+  for (const ch of text) blanked += isHiddenChar(ch) ? " " : ch;
+  const reads = [foldedWords(text), foldedWords(blanked)];
+  return COLLIE_PHRASES_FOLDED.find((folded) => reads.some((words) => words.includes(folded.words)))?.phrase ?? null;
+}
+
+/** Why a text that says Collie's own words is refused. */
+export function collieWordsReason(phrase: string): string {
+  return `"${phrase}" is Collie's own words: a screen an agent draws cannot say them. Write it another way.`;
+}
+
+/** The attributes that hold no words a person reads as a sentence: an address, a picture, a command word. */
+const NOT_WORDS = new Set(["href", "src", "ref", "intent"]);
+
+/** Every text of one node a person reads: its `text` and its attributes' words, each with its pointer. */
+function wordsOfNode(node: ViewNode, here: string): { readonly text: string; readonly path: string }[] {
+  const out: { text: string; path: string }[] = [];
+  const text = "text" in node ? asJsonString(node.text) : undefined;
+  if (text !== undefined) out.push({ text, path: `${here}/text` });
+  const attrs = "attrs" in node && node.attrs !== undefined ? Object.entries(node.attrs) : [];
+  for (const [key, value] of attrs) {
+    const words = NOT_WORDS.has(key) ? undefined : asJsonString(value);
+    if (words !== undefined) out.push({ text: words, path: `${here}/attrs/${key}` });
+  }
+  return out;
+}
+
 /** Whether a tap word (a label, a group's label) is one line of shown characters. */
 function shownLine(text: string): boolean {
   // eslint-disable-next-line no-control-regex
@@ -669,6 +742,10 @@ function agentViewRefusals(view: View, path: string): Refusal[] {
       }
       if (node.kind === "group" && node.attrs?.label !== undefined && (!shownLine(node.attrs.label) || node.attrs.label.trim().length > VIEW_TAP_GROUP_MAX)) {
         out.push({ code: "text", path: `${here}/attrs/label`, reason: `A group's label in an agent view is one line of shown characters, at most ${String(VIEW_TAP_GROUP_MAX)}: a tap inside it sends it.` });
+      }
+      for (const words of wordsOfNode(node, here)) {
+        const phrase = collieWordsIn(words.text);
+        if (phrase !== null) out.push({ code: "text", path: words.path, reason: collieWordsReason(phrase) });
       }
       const href = node.kind === "link" ? node.attrs.href : node.kind === "row" || node.kind === "run" ? node.attrs?.href : undefined;
       if (href !== undefined && !isTrickUrl(href)) out.push({ code: "text", path: `${here}/attrs/href`, reason: VIEW_WEB_LINKS_ONLY });
@@ -858,6 +935,10 @@ function readOption(raw: JsonValue | undefined, path: string, images: number): O
   const detail = lineField(obj, "detail", HILL_OPTION_DETAIL_MAX, path, "An option's detail");
   const confirm = lineField(obj, "confirm", HILL_OPTION_CONFIRM_MAX, path, "An option's confirm word");
   for (const field of [label, detail, confirm]) if (field.refusal !== undefined) refusals.push(field.refusal);
+  for (const [key, field] of [["label", label], ["detail", detail], ["confirm", confirm]] as const) {
+    const phrase = field.value === undefined ? null : collieWordsIn(field.value);
+    if (phrase !== null) refusals.push({ code: "text", path: `${path}/${key}`, reason: collieWordsReason(phrase) });
+  }
   if (label.value !== undefined && !shownLine(label.value)) refusals.push({ code: "text", path: `${path}/label`, reason: "An option's label is one line of shown characters: a pick sends it." });
   const preview = obj.preview === undefined ? undefined : indexBelow(obj.preview, images);
   if (preview === null) {
@@ -885,6 +966,8 @@ export function parseViewChoice(raw: JsonValue | undefined, path = "/choice", { 
   if (obj.picked !== undefined) refusals.push({ code: "unknown-key", path: `${path}/picked`, reason: VIEW_NO_PICKED });
   const question = lineField(obj, "question", VIEW_QUESTION_MAX, path, "A choice's question");
   if (question.refusal !== undefined) refusals.push(question.refusal);
+  const asked = question.value === undefined ? null : collieWordsIn(question.value);
+  if (asked !== null) refusals.push({ code: "text", path: `${path}/question`, reason: collieWordsReason(asked) });
   const list = Array.isArray(obj.options) ? obj.options : null;
   if (list === null || list.length < 1 || list.length > VIEW_OPTIONS_MAX) {
     refusals.push({ code: "count", path: `${path}/options`, reason: `A choice has 1 to ${String(VIEW_OPTIONS_MAX)} options.` });
@@ -920,6 +1003,8 @@ function readRecommends({ raw, path, options, refusals }: { raw: JsonValue; path
   if (option === null) refusals.push({ code: "range", path: `${path}/option`, reason: `"option" is an option's index, 0 to ${String(options - 1)}.` });
   const why = lineField(rec, "why", HILL_WHY_MAX, path, "The why");
   if (why.refusal !== undefined) refusals.push(why.refusal);
+  const said = why.value === undefined ? null : collieWordsIn(why.value);
+  if (said !== null) refusals.push({ code: "text", path: `${path}/why`, reason: collieWordsReason(said) });
   if (option === null) return undefined;
   return why.value === undefined ? { option } : { option, why: why.value };
 }

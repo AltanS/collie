@@ -25,7 +25,9 @@ import {
   VIEW_NO_PRESSED,
   VIEW_NO_PROFILE,
   VIEW_WEB_LINKS_ONLY,
+  VIEW_COLLIE_PHRASES,
   VIEW_WRITES_PER_MINUTE,
+  collieWordsIn,
   viewTapWords,
   type TrickViewSession,
 } from "../../web/src/lib/agent-view/wire.ts";
@@ -746,6 +748,50 @@ describe("review 10 W11: an agent view links to web addresses only", () => {
     expect(await r.service.show(T, ONE, { view: [nodes[0]!], title: null })).toMatchObject({ ok: false, code: "bad_view" });
     // A web address still passes.
     expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the docs", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
+  });
+});
+
+describe("review 10 accept: an agent's text cannot say Collie's own words", () => {
+  // The list is the wire's (VIEW_COLLIE_PHRASES); the web's tests pin that the phone's own frame words are in it.
+  const forms = (phrase: string): string[] => [
+    phrase,
+    phrase.toUpperCase(),
+    `See: ${phrase}!`,
+    phrase.replace(/o/gu, "\u043e").replace(/c/gu, "\u0441"),
+    phrase.replace(/ /gu, "\u3000"),
+    [...phrase].join("\u00ad"),
+    phrase.replace(/ /gu, " - "),
+  ];
+
+  test("review 10 accept: every phrase, folded, is refused in a para, a button, a group label, a choice, a title, a pending label and a note", async () => {
+    for (const phrase of VIEW_COLLIE_PHRASES) {
+      for (const text of forms(phrase)) {
+        const where = JSON.stringify(text);
+        expect(collieWordsIn(text), where).not.toBeNull();
+        const para = parseAgentView([{ kind: "para", text }]);
+        expect(para.view, where).toBeUndefined();
+        expect(para.refusals.map((x) => x.reason).join(" ")).toContain("Collie's own words");
+      }
+    }
+    const r = rig();
+    await on(r);
+    const said = "Sent to this session";
+    expect(await r.service.show(T, ONE, { view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "From Collie", intent: "reply" } }] }], title: null })).toMatchObject({ ok: false, code: "bad_view" });
+    expect(await r.service.show(T, ONE, { view: [{ kind: "group", attrs: { label: said }, kids: [{ kind: "para", text: "x" }] }], title: null })).toMatchObject({ ok: false, code: "bad_view" });
+    expect(await r.service.show(T, ONE, { view: SCREEN, title: said })).toMatchObject({ ok: false, code: "bad_title" });
+    expect(await r.service.show(T, ONE, { view: SCREEN, title: null, choice: { question: said, options: [{ label: "A" }] } })).toMatchObject({ ok: false, code: "bad_choice" });
+    expect(await r.service.show(T, ONE, { view: SCREEN, title: null, choice: { options: [{ label: "A", detail: "The agent is working" }] } })).toMatchObject({ ok: false, code: "bad_choice" });
+    expect(await r.service.start(T, ONE, { note: "Tap again to send", rules: null })).toMatchObject({ ok: false, code: "bad_note" });
+    const shown = await r.service.show(T, ONE, { view: SCREEN, title: null });
+    if (!shown.ok) throw new Error(shown.error);
+    expect(await r.service.pending(T, ONE, { id: "wait", label: "The buttons wait", place: { kind: "end" } })).toMatchObject({ ok: false, code: "bad_block" });
+  });
+
+  test("review 10 accept: words that only hold the letters pass: colliepwa.dev, a link's address, a word inside another", () => {
+    expect(collieWordsIn("Read colliepwa.dev for more")).toBeNull();
+    expect(collieWordsIn("The screens changed")).toBeNull();
+    expect(collieWordsIn("Sent to the session list")).toBeNull();
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the docs", attrs: { href: "https://docs.example/collie/x" } }] }]).view).toBeDefined();
   });
 });
 
