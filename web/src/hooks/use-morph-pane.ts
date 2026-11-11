@@ -5,7 +5,7 @@ import { describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
 import { noteMorphSwitch, useMorphAvailable, useMorphSession } from "@/lib/morph/store";
 import { livePrefixes, picksAfter, picksFor, requestAfter, type MorphPicks, type MorphRequest, type MorphRequestNote } from "@/lib/morph/reader";
-import type { MorphDrawing, MorphView } from "@/lib/morph/wire";
+import { DEFAULT_VIEW_TRICK, type MorphDrawing, type MorphView } from "@/lib/morph/wire";
 import type { PaneView } from "@/lib/pane-view";
 import { onBridgeClock } from "@/lib/server-clock";
 
@@ -46,6 +46,8 @@ export interface MorphPane {
   notePressed: (control: string) => void;
   /** The screen the agent drew last. */
   view: MorphView | undefined;
+  /** TODO(agent-view web): the view a send goes to while the body shows, `{ trick, session }`, or undefined. */
+  target: { readonly trick: string; readonly session: string } | undefined;
   /** The body the operator looks at instead of Morph, or null. */
   aside: PaneView | null;
   /** Look at Terminal or Chat instead (`null` returns to Morph). */
@@ -104,16 +106,17 @@ export function useMorphPane({
   const setOn = useCallback(
     async (next: boolean): Promise<string | null> => {
       try {
-        const answered = await postMorphSwitch({ session: address, on: next });
+        // TODO(agent-view web): the phone offers no choice of trick yet: the one held, else Morph's.
+        const answered = await postMorphSwitch({ trick: session?.trick ?? DEFAULT_VIEW_TRICK, session: address, on: next });
         noteMorphSwitch(address, next, answered);
         setAsideHeld(null);
         onChanged();
         return null;
       } catch (thrown) {
-        return t("morph.switch.failed", { error: describeThrownError(thrown) });
+        return t("view.switch.failed", { error: describeThrownError(thrown) });
       }
     },
-    [address, onChanged],
+    [address, onChanged, session?.trick],
   );
 
   return {
@@ -128,6 +131,7 @@ export function useMorphPane({
     pressed,
     notePressed,
     view: shown,
+    target: showing && session !== null ? { trick: session.trick, session: session.session } : undefined,
     aside,
     setAside,
     setOn,

@@ -3,20 +3,20 @@ import { useEffect, useSyncExternalStore } from "react";
 import { apiErrorStatus, fetchMorph } from "@/lib/api";
 import { bareAddress } from "@/lib/walky";
 
-import type { MorphAnswer, MorphSession } from "./wire";
+import { DEFAULT_VIEW_TRICK, type MorphAnswer, type MorphSession } from "./wire";
 
 // MORPH, HELD ON THE PHONE: every session's switch, its hint and the screen its agent drew last, in one
 // small store read with `useSyncExternalStore`. Modelled on the hill's store (lib/hill/store.ts).
 //
 // ── ONE READ SAYS WHETHER THE BRIDGE HAS MORPH ───────────────────────────────────────────────────
 // The first live snapshot starts one whole read of `GET /api/morph`. A 200 is a bridge that knows
-// Morph; a 404 is one that does not, and the switch is offered nowhere. `morphRev` cannot say it: a
+// Morph; a 404 is one that does not, and the switch is offered nowhere. `trickViewsRev` cannot say it: a
 // fresh bridge sends no number until some Morph state exists. Any other failure leaves the question
 // open, and the next snapshot asks again. A snapshot that does carry a number proves Morph, so a "no"
 // is asked again then (a bridge that was updated under the page).
 //
 // ── THEN THE SNAPSHOT SAYS WHEN TO READ ──────────────────────────────────────────────────────────
-// The bridge moves `morphRev` on every switch and every show. The root loader hands it to `syncMorph`
+// The bridge moves `trickViewsRev` on every switch and every show. The root loader hands it to `syncMorph`
 // on every live snapshot, and that is the only door: the store reads `GET /api/morph?since=<held rev>`
 // when the number differs from the one it holds. A number BELOW the held one is a bridge that
 // restarted, so the store reads the whole list without `since`. A snapshot with no number reads nothing
@@ -169,7 +169,7 @@ async function probe(): Promise<void> {
 }
 
 /**
- * The root loader's call on every live snapshot, with the snapshot's `morphRev`. Asks once whether the
+ * The root loader's call on every live snapshot, with the snapshot's `trickViewsRev`. Asks once whether the
  * bridge has Morph, then reads the list when the number moved.
  */
 export function syncMorph(rev: number | undefined): void {
@@ -288,7 +288,8 @@ export function noteMorphSwitch(address: string, on: boolean, answered: MorphSes
     return;
   }
   const had = morphSessionOf(held.sessions, address);
-  const next: MorphSession = had === null ? { session: address, on, hint: "" } : { ...had, on };
+  // TODO(agent-view web): a session held with no view yet takes the Morph trick's id.
+  const next: MorphSession = had === null ? { trick: DEFAULT_VIEW_TRICK, session: address, on, hint: "" } : { ...had, on };
   sessions.set(next.session, next);
   publish({ ...held, sessions });
 }

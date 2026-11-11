@@ -523,7 +523,7 @@ export function PaneActionsSheet({
             <SwitchActionRow
               icon={<Icon name="view-preview" className={ROW_ICON} />}
               label={MORPH_NAME}
-              hint={t("morph.switch.hint")}
+              hint={t("view.switch.hint")}
               checked={morph.on}
               onChange={morph.onSwitch}
             />

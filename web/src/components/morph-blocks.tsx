@@ -61,12 +61,12 @@ export function MorphEarlier({ title, age, children }: MorphEarlierProps) {
         className="h-11 w-full min-w-0 justify-start gap-2 px-0 text-muted-foreground"
       >
         <Icon name="expand" aria-hidden className={cn("shrink-0 transition-transform motion-reduce:transition-none", open && "rotate-180")} />
-        <span className="shrink-0 font-medium">{t("morph.earlier.row")}</span>
+        <span className="shrink-0 font-medium">{t("view.earlier.row")}</span>
         {title !== undefined && <span className="min-w-0 truncate font-normal">{title}</span>}
         {age !== null && <span className="ml-auto shrink-0 font-normal tabular-nums">{age}</span>}
       </Button>
       <FoldPanel id={panel} open={open} data-slot="morph-earlier-panel" className="min-w-0 pb-2">
-        <p className="mb-2 text-[11px] font-semibold text-muted-foreground">{t("morph.earlier.label")}</p>
+        <p className="mb-2 text-[11px] font-semibold text-muted-foreground">{t("view.earlier.label")}</p>
         <div inert className="min-w-0">
           {children}
         </div>
@@ -91,7 +91,7 @@ export interface MorphReceiptCardProps {
  */
 export function MorphReceiptCard({ receipt, phase, reason, pictures }: MorphReceiptCardProps) {
   useLocale();
-  const failed = reason === null ? t("morph.request.notSent") : t("morph.request.notSentWhy", { reason });
+  const failed = reason === null ? t("view.request.notSent") : t("view.request.notSentWhy", { reason });
   return (
     <div data-slot="morph-receipt" data-phase={phase} className="flex min-w-0 items-start gap-3 rounded-lg border border-rule bg-card p-3">
       <div className="min-w-0 flex-1">
@@ -104,13 +104,13 @@ export function MorphReceiptCard({ receipt, phase, reason, pictures }: MorphRece
             active={phase}
             className="min-w-0 justify-items-start"
             options={[
-              { key: "sending", node: <span className="truncate">{t("morph.request.sending")}</span> },
+              { key: "sending", node: <span className="truncate">{t("view.request.sending")}</span> },
               {
                 key: "sent",
                 node: (
                   <Badge variant="ok" data-slot="morph-answered-badge">
                     <Icon name="answered" aria-hidden />
-                    {t("morph.receipt.answered")}
+                    {t("view.receipt.answered")}
                   </Badge>
                 ),
               },

@@ -149,6 +149,7 @@ export function tapTextOf({ view, control }: { view: View; control: string }): s
   if (label === "") return null;
   const group = groupLabelOf(view, control);
   const named = group === null ? `tapped "${label}"` : `tapped "${label}" in "${group}"`;
+  // TODO(agent-view web): an agent view's button carries no value (SECURITY rule 3); this branch is dead.
   const value = node.attrs.value?.trim() ?? "";
   return value === "" || value === label ? named : `${named}: ${node.attrs.value ?? ""}`;
 }
@@ -299,15 +300,14 @@ export function splitScreen(view: MorphView | undefined, requestAt: number | nul
 }
 
 /**
- * The words a pick in the decision block sends: `picked "<label>"`, or `picked "<label>": <value>` when the
- * option has a value that is not its label. Null when the index names no option, so nothing is sent.
+ * The words a pick in the decision block sends: `picked "<label>"`. An option of an agent view carries no
+ * value. Null when the index names no option, so nothing is sent. TODO(agent-view web): the bridge builds
+ * the line itself from its stored screen; these words only draw the phone's own receipt.
  */
 export function pickTextOf(choice: MorphChoice, index: number): string | null {
   const option = choice.options[index];
   if (option === undefined) return null;
-  const label = option.label.trim();
-  const value = option.value?.trim() ?? "";
-  return value === "" || value === label ? `picked "${label}"` : `picked "${label}": ${value}`;
+  return `picked "${option.label.trim()}"`;
 }
 
 /** The picture refs the decision block draws as previews: the row of pictures leaves them out. */

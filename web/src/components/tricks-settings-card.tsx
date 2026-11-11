@@ -377,12 +377,6 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
           <p data-line="places" className="truncate text-sm text-muted-foreground">
             {placesLine(trick.places, trick.agentView === true)}
           </p>
-          {/* The one note of an agent view (contract 2): this build reads the keys; the view itself comes later. */}
-          {trick.agentView === true && (
-            <p data-line="later" className="break-words text-xs text-muted-foreground">
-              {t("settings.tricks.agentView.later")}
-            </p>
-          )}
           {trick.rulesUnshown === true && (
             <p data-line="rules-unshown" className="break-words text-xs text-muted-foreground">
               {t("settings.tricks.about.rulesUnshown")}

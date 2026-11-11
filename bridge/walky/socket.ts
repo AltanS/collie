@@ -32,18 +32,22 @@
 //     Its line may be up to PROPOSE_LINE_MAX when it opens with PROPOSE_LINE_PREFIX, read within
 //     PROPOSE_LINE_MS, at most PROPOSE_LINES_MAX such lines at once.
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
-// Morph, six operations beside these, answered only by a bridge built with it, always for the asking
-// pane's own session (bridge/morph/service.ts). Every one MAY carry `session` (the address the caller
-// names); the bridge refuses `wrong_session` unless it is the session the markers placed.
-//   morph.start   { note?, rules? } → { ok, morph } | { ok: false, error, code }   (rules: the rules id the session holds; another id is no refusal)
-//   morph.show    { view, title?, images?: [{ path, caption? }], choice? }  → { ok, morph } | { ok: false, error, code, refusals? }
-//   morph.clear | morph.on | morph.off | morph.status  {}  → { ok, morph }
-//   morph.set     { id, node, after? | first?, images? }   → { ok, morph } | { ok: false, error, code, refusals? }
-//   morph.pending { id, label, after? | first? }           → the same
-//   morph.remove  { id }                                    → the same
-//   morph.keep    { ids: [...] } | { all: true }            → the same ("choice" names the decision block)
-//   morph.choice  { choice } | { clear: true }              → the same
-// Every Morph refusal carries `morph: true`, as the hill's carry `hill: true`.
+// Agent views (a trick's view of a session the agent draws), answered only by a bridge built with them,
+// always for the asking pane's own session (bridge/agent-view/service.ts). Every one names its trick
+// (`trick`, a trick id) and MAY carry `session` (the address the caller names); the bridge refuses
+// `wrong_session` unless it is the session the markers placed. No op turns a view on or off: only the
+// person does, on the phone (agent views SECURITY N9).
+//   trick.view.start   { trick, note?, rules? } → { ok, trickView } | { ok: false, error, code }   (rules: the rules id the session holds)
+//   trick.view.show    { trick, view, title?, images?: [{ path, caption? }], choice? }  → { ok, trickView } | { ok: false, error, code, refusals? }
+//   trick.view.clear | trick.view.status  { trick } → { ok, trickView }
+//   trick.view.help    { trick } → { ok, trickView, help: [lines] }   (core help and the trick's own rules, framed;
+//                                                                       only while the view is on for the session)
+//   trick.view.set     { trick, id, node, after? | first?, images? }   → { ok, trickView } | { ok: false, error, code, refusals? }
+//   trick.view.pending { trick, id, label, after? | first? }           → the same
+//   trick.view.remove  { trick, id }                                    → the same
+//   trick.view.keep    { trick, ids: [...] } | { trick, all: true }     → the same ("choice" names the decision block)
+//   trick.view.choice  { trick, choice } | { trick, clear: true }       → the same
+// Every agent view refusal carries `trickView: true`, as the hill's carry `hill: true`.
 // On a crew member from 1.29.0 the four go to the lead, which holds the one Hill (CREW_PROTOCOL §22).
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine; a request this bridge cannot read answers the same when
@@ -64,11 +68,11 @@ import type { LocalProposer } from "../tricks/propose-door.ts";
 import type { ProposeAnswer } from "../tricks/proposals.ts";
 import { PROPOSE_TOO_MANY_PARTS, proposalParseable, type ProposeRefusalCode } from "../tricks/propose-wire.ts";
 import type { JsonObject } from "../json.ts";
-import { readChoiceFields, readKeepFields, readPendingFields, readRemoveFields, readSetFields } from "../morph/blocks.ts";
-import { readShowFields, readStartFields, sameSession, wrongSessionWords, type MorphRefusalCode, type MorphService } from "../morph/service.ts";
-import type { MorphSession } from "../../web/src/lib/morph/wire.ts";
+import { readChoiceFields, readKeepFields, readPendingFields, readRemoveFields, readSetFields } from "../agent-view/blocks.ts";
+import { readShowFields, readStartFields, sameSession, wrongSessionWords, type AgentViewService, type ViewOpAnswer, type ViewRefusalCode } from "../agent-view/service.ts";
+import type { TrickViewSession } from "../../web/src/lib/agent-view/wire.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
-import { isHillOp, isMorphOp, PROPOSE_LINE_MAX, PROPOSE_LINE_PREFIX, readWalkyRequest, WALKY_LINE_MAX, type MorphOp, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
+import { isHillOp, isViewOp, PROPOSE_LINE_MAX, PROPOSE_LINE_PREFIX, readWalkyRequest, WALKY_LINE_MAX, type ViewOp, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
 import { unknownOp } from "./refusals.ts";
 import type { WalkyDelivery, WalkyService } from "./service.ts";
 import type { TakeBack, WalkyPane } from "./deliver.ts";
@@ -84,11 +88,11 @@ export const SWITCH_NEEDS_A_PANE = "run this inside an agent pane";
 /** What the socket answers a hill operation from outside an agent pane (M96): a decision belongs to a session. */
 export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision belongs to the session that posts it";
 
-/** What the socket answers a Morph operation from outside an agent pane: a screen belongs to a session. */
-export const MORPH_NEEDS_A_PANE = "run this inside an agent's pane: a Morph screen belongs to the session that draws it";
+/** What the socket answers an agent view operation from outside an agent pane: a screen belongs to a session. */
+export const VIEW_NEEDS_A_PANE = "run this inside an agent's pane: a view's screen belongs to the session that draws it";
 
-/** What the socket needs of Morph. Absent: the bridge answers the five operations as unknown. */
-export type MorphSocket = Pick<MorphService, "start" | "show" | "clear" | "setOn" | "status" | "set" | "pending" | "remove" | "keep" | "setChoice">;
+/** What the socket needs of the agent views. Absent: the bridge answers their operations as unknown. */
+export type ViewSocket = Pick<AgentViewService, "start" | "show" | "clear" | "status" | "help" | "set" | "pending" | "remove" | "keep" | "setChoice">;
 
 /**
  * What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. The
@@ -155,8 +159,8 @@ export interface WalkyServerDeps {
   readonly proposeLineMs?: number;
   /** The hill (M96). Absent: its operations are answered as an older bridge answers them. */
   readonly hill?: HillSocket;
-  /** Morph. Absent: its operations are answered as an older bridge answers them. */
-  readonly morph?: MorphSocket;
+  /** The agent views. Absent: their operations are answered as an older bridge answers them. */
+  readonly views?: ViewSocket;
   /** `collie trick propose` (crew slice 8). Absent: the op is answered as unknown. */
   readonly propose?: ProposeSocket;
 }
@@ -189,9 +193,9 @@ export type WalkyAnswer =
   // A trick proposal (crew slice 8).
   | { readonly ok: true; readonly kind: "proposal" | "version"; readonly id: string; readonly hash: string; readonly decision: string | null; readonly replaced: string | null }
   | { readonly ok: false; readonly error: string; readonly code: ProposeRefusalCode; readonly propose: true }
-  // Morph.
-  | { readonly ok: false; readonly error: string; readonly morph: true; readonly code?: MorphRefusalCode; readonly refusals?: readonly Refusal[] }
-  | { readonly ok: true; readonly morph: MorphSession };
+  // Agent views.
+  | { readonly ok: false; readonly error: string; readonly trickView: true; readonly code?: ViewRefusalCode; readonly refusals?: readonly Refusal[] }
+  | { readonly ok: true; readonly trickView: TrickViewSession; readonly help?: readonly string[] };
 
 /**
  * A bridge that knows the pane but holds no message with the id (added 2026-10-30). It answers `not here`,
@@ -208,20 +212,20 @@ export async function answerRequest(
   request: WalkyRequest,
   targets: readonly PlaceTarget[],
   hill?: HillSocket,
-  morph?: MorphSocket,
+  views?: ViewSocket,
   propose?: ProposeSocket,
 ): Promise<WalkyAnswer> {
   // A bridge built without the hill answers its operations as it answers any op it does not know.
   if (hill === undefined && isHillOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
-  // And so does a bridge built without Morph.
-  if (morph === undefined && isMorphOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
+  // And so does a bridge built without agent views.
+  if (views === undefined && isViewOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
   // Clear is the person's verb from a terminal: it names no pane, so the markers are not placed.
   if (request.op === "hill.clear" && hill !== undefined) return answerClear(hill);
   // The crew state: a read names no pane; a write only looks at the pane to refuse an agent's.
   if (request.op === "hill.state" && hill !== undefined) return await answerCrewState(service, request, targets, hill);
   if (request.op === "hill.spoken.clear" && hill !== undefined) return await answerSpokenClear(service, request.markers, targets, hill);
   const placed = request.markers.length === 0 ? null : await placeMarkers(request.markers, targets);
-  const notHere = notHereFor(request.op, hill !== undefined, morph !== undefined);
+  const notHere = notHereFor(request.op, hill !== undefined, views !== undefined);
   if (request.markers.length > 0 && placed === null) return notHere;
   const pane = placed === null ? null : service.paneAt(placed.session, placed.paneId);
   if (placed !== null && pane === null) return notHere;
@@ -315,95 +319,92 @@ export async function answerRequest(
       const answer = await propose.local(request.fields, who);
       return answer.ok ? answer : { ok: false, error: answer.error, code: answer.code, propose: true };
     }
-    case "morph.start":
-    case "morph.show":
-    case "morph.clear":
-    case "morph.on":
-    case "morph.off":
-    case "morph.status":
-    case "morph.set":
-    case "morph.pending":
-    case "morph.remove":
-    case "morph.keep":
-    case "morph.choice":
-      return answerMorph(service, request, pane, morph);
+    case "trick.view.start":
+    case "trick.view.show":
+    case "trick.view.clear":
+    case "trick.view.status":
+    case "trick.view.help":
+    case "trick.view.set":
+    case "trick.view.pending":
+    case "trick.view.remove":
+    case "trick.view.keep":
+    case "trick.view.choice":
+      return await answerView(service, request, pane, views);
   }
 }
 
-/** `not here`, marked for the hill or Morph when the op is theirs and this bridge knows it. */
-function notHereFor(op: WalkyRequest["op"], knowsHill: boolean, knowsMorph: boolean): WalkyAnswer {
+/** `not here`, marked for the hill or the agent views when the op is theirs and this bridge knows it. */
+function notHereFor(op: WalkyRequest["op"], knowsHill: boolean, knowsViews: boolean): WalkyAnswer {
   if (knowsHill && isHillOp(op)) return { ok: false, error: "not here", hill: true };
-  if (knowsMorph && isMorphOp(op)) return { ok: false, error: "not here", morph: true };
+  if (knowsViews && isViewOp(op)) return { ok: false, error: "not here", trickView: true };
   return { ok: false, error: "not here" };
 }
 
 /**
- * One Morph operation, for the session of the pane the markers placed, never a session an argument
+ * One agent view operation, for the session of the pane the markers placed, never a session an argument
  * names: its walky address with the instance token, the key the hill names a session with.
  */
-function answerMorph(
+async function answerView(
   service: WalkyService,
-  request: Extract<WalkyRequest, { op: MorphOp }>,
+  request: Extract<WalkyRequest, { op: ViewOp }>,
   pane: WalkyPane | null,
-  morph: MorphSocket | undefined,
-): WalkyAnswer {
-  if (morph === undefined) return { ok: false, error: unknownOp(request.op) };
+  views: ViewSocket | undefined,
+): Promise<WalkyAnswer> {
+  if (views === undefined) return { ok: false, error: unknownOp(request.op) };
   if (pane === null || !pane.agent) {
     service.noteRefusal("no pane");
-    return { ok: false, error: MORPH_NEEDS_A_PANE, morph: true };
+    return { ok: false, error: VIEW_NEEDS_A_PANE, trickView: true };
   }
   const session = service.addressOf(pane.paneId, pane.instance);
   // The markers prove the caller. A session the request names must be the same one, or nothing is done.
   if (request.session !== null && !sameSession({ own: session, given: request.session })) {
-    return { ok: false, error: wrongSessionWords({ own: session, given: request.session }), morph: true, code: "wrong_session" };
+    return { ok: false, error: wrongSessionWords({ own: session, given: request.session }), trickView: true, code: "wrong_session" };
   }
-  const answer = morphAnswerOf(request, session, morph);
-  if (answer.ok) return { ok: true, morph: answer.session };
-  return answer.refusals === undefined ? { ok: false, error: answer.error, morph: true, code: answer.code } : { ok: false, error: answer.error, morph: true, code: answer.code, refusals: answer.refusals };
+  if (request.op === "trick.view.help") {
+    const help = await views.help(request.trick, session);
+    return help.ok ? { ok: true, trickView: help.session, help: help.lines } : { ok: false, error: help.error, trickView: true, code: help.code };
+  }
+  const answer = await viewAnswerOf({ request, trick: request.trick, session, views });
+  if (answer.ok) return { ok: true, trickView: answer.session };
+  return answer.refusals === undefined ? { ok: false, error: answer.error, trickView: true, code: answer.code } : { ok: false, error: answer.error, trickView: true, code: answer.code, refusals: answer.refusals };
 }
 
-function morphAnswerOf(
-  request: Extract<WalkyRequest, { op: MorphOp }>,
-  session: string,
-  morph: MorphSocket,
-): ReturnType<MorphSocket["show"]> {
+async function viewAnswerOf({ request, trick, session, views }: { request: Extract<WalkyRequest, { op: ViewOp }>; trick: string; session: string; views: ViewSocket }): Promise<ViewOpAnswer> {
   switch (request.op) {
-    case "morph.start": {
+    case "trick.view.start": {
       const fields = readStartFields(request.fields);
       if ("error" in fields) return { ok: false, error: fields.error, code: "bad_note" };
-      return morph.start(session, fields);
+      return await views.start(trick, session, fields);
     }
-    case "morph.show": {
+    case "trick.view.show": {
       const fields = readShowFields(request.fields);
       if ("error" in fields) return { ok: false, error: fields.error, code: fields.code };
-      return morph.show(session, fields);
+      return await views.show(trick, session, fields);
     }
-    case "morph.clear":
-      return morph.clear(session);
-    case "morph.on":
-    case "morph.off":
-      return morph.setOn(session, request.op === "morph.on");
-    case "morph.status":
-      return { ok: true, session: morph.status(session) };
-    case "morph.set": {
+    case "trick.view.clear":
+      return await views.clear(trick, session);
+    case "trick.view.status":
+    case "trick.view.help":
+      return { ok: true, session: views.status(trick, session) };
+    case "trick.view.set": {
       const fields = readSetFields(request.fields);
-      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.set(session, fields);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : await views.set(trick, session, fields);
     }
-    case "morph.pending": {
+    case "trick.view.pending": {
       const fields = readPendingFields(request.fields);
-      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.pending(session, fields);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : await views.pending(trick, session, fields);
     }
-    case "morph.remove": {
+    case "trick.view.remove": {
       const fields = readRemoveFields(request.fields);
-      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.remove(session, fields.id);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : await views.remove(trick, session, fields.id);
     }
-    case "morph.keep": {
+    case "trick.view.keep": {
       const fields = readKeepFields(request.fields);
-      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.keep(session, fields.ids);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : await views.keep(trick, session, fields.ids);
     }
-    case "morph.choice": {
+    case "trick.view.choice": {
       const fields = readChoiceFields(request.fields);
-      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : morph.setChoice(session, fields.choice);
+      return "error" in fields ? { ok: false, error: fields.error, code: fields.code } : await views.setChoice(trick, session, fields.choice);
     }
   }
 }
@@ -641,7 +642,7 @@ export class WalkyServer {
       if (!read.ok) return this.reply(socket, await answerUnread(this.deps.service, read, this.deps.targets()));
       // A long line is a proposal's, or nothing: a second `op` key cannot turn it into another request.
       if (big && read.request.op !== "trick.propose") return this.reply(socket, { ok: false, error: "bad request: a long line is a trick proposal only" });
-      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill, this.deps.morph, this.deps.propose));
+      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill, this.deps.views, this.deps.propose));
     } catch (err) {
       this.log(`[walky] request failed: ${err instanceof Error ? err.message : String(err)}`);
       this.reply(socket, { ok: false, error: "failed" });

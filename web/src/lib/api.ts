@@ -1742,7 +1742,9 @@ export async function fetchHill(since?: number, signal?: AbortSignal): Promise<H
 }
 
 /**
- * GET /api/morph (Morph): every session's Morph switch, its hint and the screen its agent drew last.
+ * GET /api/trick-views (agent views, read through the Morph adapter): every session's view, its switch,
+ * head, tail and the screen its agent drew last. TODO(agent-view web): a `since` read that answers only
+ * the views that moved is read again whole, since the Morph store holds one view per session.
  * `since` is the revision this phone holds; the bridge answers `unchanged` when nothing moved. Omit it
  * for a whole read, after a bridge restart put the revision below the one held. Carries no scope, as
  * the hill's read does. Every session is read by `lib/morph/wire.ts`, and a body that is no answer at
@@ -1751,13 +1753,14 @@ export async function fetchHill(since?: number, signal?: AbortSignal): Promise<H
 export async function fetchMorph(since?: number, signal?: AbortSignal): Promise<MorphAnswer> {
   const query = since === undefined ? "" : `?since=${Math.max(0, Math.floor(since))}`;
   const got = await req<JsonValue>(`${MORPH_ROUTE}${query}`, { signal });
-  const answer = readMorphAnswer(got);
+  const answer = readMorphAnswer(got) ?? (since === undefined ? null : readMorphAnswer(await req<JsonValue>(MORPH_ROUTE, { signal })));
   if (answer === null) throw new ApiError("The Morph route sent a body this phone cannot read.", 502);
   return answer;
 }
 
 /**
- * POST /api/morph/switch (Morph): turn one session's Morph on or off. An idempotent set, a paired
+ * POST /api/trick-views/switch (agent views, through the Morph adapter): turn one session's view of one
+ * trick on or off. TODO(agent-view web): the phone names the trick (lib/morph/wire.ts `DEFAULT_VIEW_TRICK`). An idempotent set, a paired
  * device's write, on this bridge's own sessions only (a crew member's answers 400). The bridge answers
  * 200 with the session as it now holds it; null when that body does not read, and the next read brings
  * it. A 400, a 404 (no live agent session) and a 503 (not saved) throw.

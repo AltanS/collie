@@ -529,7 +529,7 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
     // only: a saved copy's number is as old as the copy, and the store keeps what it last read.
     syncHill(snap.hillRev);
     // Morph reads its sessions the same way, on its own number (lib/morph/store.ts).
-    syncMorph(snap.morphRev);
+    syncMorph(snap.trickViewsRev);
     lastSnapshot.set(snapshotKey(scope, viewAll), snap);
     lastSnapshotAt.set(snapshotKey(scope, viewAll), Date.now());
     // Write-through: the same body, dated, in a store that outlives this page (lib/last-seen.ts).

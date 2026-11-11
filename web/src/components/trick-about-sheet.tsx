@@ -31,7 +31,7 @@ import type { TricksRunsOn, WireOfficialTrick, WireTrickInfo, WireTrickRules } f
 //      one line a bridge that runs no tricks says;
 //   3b. "Read the instructions": for a trick with `rules` (contract 2), a fold with the rules file's text
 //      whole, monospace, wrapped, never markdown (`RulesFold`). "What it does" names the agent view's two
-//      rights lines and the rules line, and the one note that the view itself comes in a later build;
+//      rights lines and the rules line;
 //   5. "Updates": the "Take changes without asking" switch with its hint, for a trick that is switched on
 //      and only on a bridge that runs tricks (a crew member runs none, so it has nothing to take). It is the
 //      same field `collie trick auto` writes. The switch shows only here, not on the card; the card owns the
@@ -71,7 +71,6 @@ function doesRows(trick: WireTrickInfo): FactRow[] {
     rows.push({ key: "agent-view-tap", node: t("settings.tricks.about.agentViewTap") });
   }
   if (trick.rules !== undefined) rows.push({ key: "rules", node: t("settings.tricks.about.rules") });
-  if (view) rows.push({ key: "later", node: <span className="text-muted-foreground">{t("settings.tricks.agentView.later")}</span> });
   if (trick.inputs !== undefined) rows.push({ key: "reads", node: readsLine(trick.inputs) });
   if (trick.env !== undefined && trick.env.length > 0) rows.push({ key: "env", node: t("settings.tricks.about.env", { names: trick.env.join(", ") }) });
   for (const line of warningLines(trick)) {

@@ -1,34 +1,34 @@
 // Morph's blocks: a screen is a list of top-level nodes, each with a stable id and the time it was last
-// set, kept or shown (web/src/lib/morph/wire.ts, "A SCREEN IS A LIST OF BLOCKS"). This file holds the
+// set, kept or shown (web/src/lib/agent-view/wire.ts, "A SCREEN IS A LIST OF BLOCKS"). This file holds the
 // pure edits the block verbs make to a screen (`morph set`, `pending`, `remove`, `keep`) and the socket
 // fields they read. The service (service.ts) runs each edit, checks the WHOLE screen that results with
-// `parseMorphView`, and stores it only when it passes: a refused edit leaves the screen as it was.
+// `parseAgentView`, and stores it only when it passes: a refused edit leaves the screen as it was.
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import {
-  cleanMorphLine,
-  MORPH_BLOCK_ID_RE,
-  MORPH_CHOICE_BLOCK,
-  MORPH_PENDING_MAX,
-  morphBlocksOf,
+  cleanViewLine,
+  VIEW_BLOCK_ID_RE,
+  VIEW_CHOICE_BLOCK,
+  VIEW_PENDING_MAX,
+  viewBlocksOf,
   nextBlockId,
-  type MorphBlock,
-  type MorphView,
-} from "../../web/src/lib/morph/wire.ts";
-import { readImageFields, type MorphFieldError, type MorphImageInput } from "./media.ts";
+  type ViewBlock,
+  type ViewScreen,
+} from "../../web/src/lib/agent-view/wire.ts";
+import { readImageFields, type ViewFieldError, type ViewImageInput } from "./media.ts";
 
 /** Where a block goes: at the end (or where it stands, when it exists), first, or after another block. */
-export type MorphPlace = { readonly kind: "end" } | { readonly kind: "first" } | { readonly kind: "after"; readonly id: string };
+export type ViewPlace = { readonly kind: "end" } | { readonly kind: "first" } | { readonly kind: "after"; readonly id: string };
 
 /** A screen being edited: its nodes as JSON and its blocks, one per node, same order. */
-export interface MorphDraft {
+export interface ViewDraft {
   readonly nodes: readonly JsonValue[];
-  readonly blocks: readonly MorphBlock[];
+  readonly blocks: readonly ViewBlock[];
 }
 
 /** An edit's refusal, in the words the CLI prints. */
-export interface MorphEditError {
+export interface ViewEditError {
   readonly error: string;
 }
 
@@ -36,14 +36,14 @@ export interface MorphEditError {
 export const PENDING_NODE: JsonObject = { kind: "spacer" };
 
 /** The screen as a draft: no screen is an empty one. */
-export function draftOf(view: MorphView | undefined): MorphDraft {
+export function draftOf(view: ViewScreen | undefined): ViewDraft {
   if (view === undefined) return { nodes: [], blocks: [] };
   const nodes = parseJson(JSON.stringify(view.view));
-  return { nodes: Array.isArray(nodes) ? nodes : [], blocks: morphBlocksOf(view) };
+  return { nodes: Array.isArray(nodes) ? nodes : [], blocks: viewBlocksOf(view) };
 }
 
 /** The blocks of a `show`: the ids its nodes named, `b1`, `b2`… for the rest, every one stamped `at`. */
-export function shownBlocks(ids: readonly (string | null)[], at: string): MorphBlock[] {
+export function shownBlocks(ids: readonly (string | null)[], at: string): ViewBlock[] {
   const taken = new Set(ids.filter((id): id is string => id !== null));
   return ids.map((id) => {
     if (id !== null) return { id, at };
@@ -61,7 +61,7 @@ function blockWords(id: string): string {
  * Put one block at its place: replace the block with that id where it stands, or insert it at the end,
  * first, or after another block. A place given for a block that exists moves it there.
  */
-export function placed(draft: MorphDraft, { node, block, place }: { node: JsonValue; block: MorphBlock; place: MorphPlace }): MorphDraft | MorphEditError {
+export function placed(draft: ViewDraft, { node, block, place }: { node: JsonValue; block: ViewBlock; place: ViewPlace }): ViewDraft | ViewEditError {
   const at = draft.blocks.findIndex((held) => held.id === block.id);
   if (at >= 0 && place.kind === "end") {
     return { nodes: draft.nodes.map((held, i) => (i === at ? node : held)), blocks: draft.blocks.map((held, i) => (i === at ? block : held)) };
@@ -74,7 +74,7 @@ export function placed(draft: MorphDraft, { node, block, place }: { node: JsonVa
   return { nodes: [...nodes.slice(0, index), node, ...nodes.slice(index)], blocks: [...blocks.slice(0, index), block, ...blocks.slice(index)] };
 }
 
-function insertAt(blocks: readonly MorphBlock[], place: MorphPlace): number | null {
+function insertAt(blocks: readonly ViewBlock[], place: ViewPlace): number | null {
   switch (place.kind) {
     case "end":
       return blocks.length;
@@ -88,7 +88,7 @@ function insertAt(blocks: readonly MorphBlock[], place: MorphPlace): number | nu
 }
 
 /** The screen without one block. The last block cannot go: a screen holds at least one, and `morph clear` takes the screen. */
-export function removed(draft: MorphDraft, id: string): MorphDraft | MorphEditError {
+export function removed(draft: ViewDraft, id: string): ViewDraft | ViewEditError {
   const at = draft.blocks.findIndex((held) => held.id === id);
   if (at < 0) return { error: blockWords(id) };
   if (draft.blocks.length === 1) return { error: "a screen keeps at least one block; `morph clear` takes the whole screen away" };
@@ -96,9 +96,9 @@ export function removed(draft: MorphDraft, id: string): MorphDraft | MorphEditEr
 }
 
 /** The screen with these blocks stamped `at` again: still valid for the current request. Every id must name a block. */
-export function keptBlocks(draft: MorphDraft, { ids, at }: { ids: readonly string[] | "all"; at: string }): MorphDraft | MorphEditError {
+export function keptBlocks(draft: ViewDraft, { ids, at }: { ids: readonly string[] | "all"; at: string }): ViewDraft | ViewEditError {
   if (ids !== "all") {
-    const missing = ids.find((id) => id !== MORPH_CHOICE_BLOCK && !draft.blocks.some((held) => held.id === id));
+    const missing = ids.find((id) => id !== VIEW_CHOICE_BLOCK && !draft.blocks.some((held) => held.id === id));
     if (missing !== undefined) return { error: blockWords(missing) };
   }
   const keep = (id: string) => ids === "all" || ids.includes(id);
@@ -108,14 +108,14 @@ export function keptBlocks(draft: MorphDraft, { ids, at }: { ids: readonly strin
 // ── the socket's fields ──────────────────────────────────────────────────────────────────────────
 
 /** A block id field: the pattern, and never the word that names the decision block. */
-function blockId(raw: JsonValue | undefined, what = "a block id"): { readonly id: string } | MorphFieldError {
+function blockId(raw: JsonValue | undefined, what = "a block id"): { readonly id: string } | ViewFieldError {
   const id = asJsonString(raw);
-  if (id === undefined || !MORPH_BLOCK_ID_RE.test(id) || id === MORPH_CHOICE_BLOCK) return { error: `${what} is 1 to 32 of a-z, 0-9 and -, and not "${MORPH_CHOICE_BLOCK}"`, code: "bad_block" };
+  if (id === undefined || !VIEW_BLOCK_ID_RE.test(id) || id === VIEW_CHOICE_BLOCK) return { error: `${what} is 1 to 32 of a-z, 0-9 and -, and not "${VIEW_CHOICE_BLOCK}"`, code: "bad_block" };
   return { id };
 }
 
 /** `after` (a block id) or `first` (true), never both; neither is the end. */
-function placeOf(fields: JsonObject): MorphPlace | MorphFieldError {
+function placeOf(fields: JsonObject): ViewPlace | ViewFieldError {
   const first = asJsonBoolean(fields.first) === true;
   if (fields.after === undefined || fields.after === null) return first ? { kind: "first" } : { kind: "end" };
   if (first) return { error: "a block goes --first or --after <id>, not both", code: "bad_block" };
@@ -124,14 +124,14 @@ function placeOf(fields: JsonObject): MorphPlace | MorphFieldError {
 }
 
 /** `morph.set`'s fields: the block id, ONE node, where it goes, and pictures to add to the screen's set. */
-export interface MorphSetFields {
+export interface ViewSetFields {
   readonly id: string;
   readonly node: JsonValue;
-  readonly place: MorphPlace;
-  readonly images: readonly MorphImageInput[];
+  readonly place: ViewPlace;
+  readonly images: readonly ViewImageInput[];
 }
 
-export function readSetFields(fields: JsonObject): MorphSetFields | MorphFieldError {
+export function readSetFields(fields: JsonObject): ViewSetFields | ViewFieldError {
   const checked = blockId(fields.id);
   if ("error" in checked) return checked;
   const id = checked.id;
@@ -144,31 +144,31 @@ export function readSetFields(fields: JsonObject): MorphSetFields | MorphFieldEr
 }
 
 /** `morph.pending`'s fields: the block id, its label, where it goes. */
-export interface MorphPendingFields {
+export interface ViewPendingFields {
   readonly id: string;
   readonly label: string;
-  readonly place: MorphPlace;
+  readonly place: ViewPlace;
 }
 
-export function readPendingFields(fields: JsonObject): MorphPendingFields | MorphFieldError {
+export function readPendingFields(fields: JsonObject): ViewPendingFields | ViewFieldError {
   const checked = blockId(fields.id);
   if ("error" in checked) return checked;
   const id = checked.id;
   const raw = asJsonString(fields.label);
-  const label = raw === undefined ? null : cleanMorphLine(raw, MORPH_PENDING_MAX);
-  if (label === null) return { error: `a pending block's label is one line of 1 to ${String(MORPH_PENDING_MAX)} characters`, code: "bad_block" };
+  const label = raw === undefined ? null : cleanViewLine(raw, VIEW_PENDING_MAX);
+  if (label === null) return { error: `a pending block's label is one line of 1 to ${String(VIEW_PENDING_MAX)} characters`, code: "bad_block" };
   const place = placeOf(fields);
   if ("error" in place) return place;
   return { id, label, place };
 }
 
 /** `morph.remove`'s field: the block id. */
-export function readRemoveFields(fields: JsonObject): { readonly id: string } | MorphFieldError {
+export function readRemoveFields(fields: JsonObject): { readonly id: string } | ViewFieldError {
   return blockId(fields.id);
 }
 
 /** `morph.choice`'s fields: the decision block, or null to drop it (`clear: true`). */
-export function readChoiceFields(fields: JsonObject): { readonly choice: JsonValue | null } | MorphFieldError {
+export function readChoiceFields(fields: JsonObject): { readonly choice: JsonValue | null } | ViewFieldError {
   if (asJsonBoolean(fields.clear) === true) {
     return fields.choice === undefined || fields.choice === null ? { choice: null } : { error: "`--clear` takes no choice", code: "bad_choice" };
   }
@@ -177,13 +177,13 @@ export function readChoiceFields(fields: JsonObject): { readonly choice: JsonVal
 }
 
 /** `morph.keep`'s fields: block ids (and `choice`), or every block (`all: true`). */
-export function readKeepFields(fields: JsonObject): { readonly ids: readonly string[] | "all" } | MorphFieldError {
+export function readKeepFields(fields: JsonObject): { readonly ids: readonly string[] | "all" } | ViewFieldError {
   if (asJsonBoolean(fields.all) === true) return Array.isArray(fields.ids) && fields.ids.length > 0 ? { error: "`--all` takes no ids", code: "bad_block" } : { ids: "all" };
   if (!Array.isArray(fields.ids) || fields.ids.length === 0) return { error: "name the blocks to keep, or --all", code: "bad_block" };
   const ids: string[] = [];
   for (const raw of fields.ids) {
     const id = asJsonString(raw);
-    if (id === MORPH_CHOICE_BLOCK) {
+    if (id === VIEW_CHOICE_BLOCK) {
       ids.push(id);
       continue;
     }

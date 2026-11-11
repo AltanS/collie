@@ -11,7 +11,7 @@ import { MORPH_SCREEN_CLASS, MorphView, type MorphViewProps } from "./morph-view
 import { PRESENCE_MS } from "./ui/presence";
 
 // The Morph body: its states (no screen, a screen alone, a request in work, answered, not sent), the split
-// of fresh blocks from the ones drawn for an earlier request, its taps (the value or the label, the
+// of fresh blocks from the ones drawn for an earlier request, its taps (the label, the
 // confirm's second tap, one send at a time), and the receipt of a pick.
 
 const AT = "2026-11-10T10:00:00.000Z";
@@ -31,7 +31,7 @@ const BUTTONS = screenOf(
     {
       kind: "bar",
       kids: [
-        { kind: "button", attrs: { label: "Ship", intent: "ship", value: "Ship it now" } },
+        { kind: "button", attrs: { label: "Ship", intent: "ship" } },
         { kind: "button", attrs: { label: "Wait", intent: "wait" } },
         { kind: "button", attrs: { label: "Drop", intent: "drop", confirm: "Really drop?" } },
       ],
@@ -114,7 +114,7 @@ describe("the Morph body's states", () => {
 });
 
 describe("a tap on the Morph screen", () => {
-  it("sends tapped with the label, and the value after a colon", async () => {
+  it("sends tapped with the label", async () => {
     const { props } = draw();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Ship" }));
@@ -122,8 +122,9 @@ describe("a tap on the Morph screen", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Wait" }));
     });
-    expect(props.onSend).toHaveBeenNthCalledWith(1, 'tapped "Ship": Ship it now');
-    expect(props.onSend).toHaveBeenNthCalledWith(2, 'tapped "Wait"');
+    // The bridge builds the line: the tap names the screen's rev and the button's control path.
+    expect(props.onSend).toHaveBeenNthCalledWith(1, 'tapped "Ship"', { rev: 1, control: "v/1/0" });
+    expect(props.onSend).toHaveBeenNthCalledWith(2, 'tapped "Wait"', { rev: 1, control: "v/1/1" });
   });
 
   it("with confirm, arms on the first tap and sends on the second", () => {
@@ -134,7 +135,7 @@ describe("a tap on the Morph screen", () => {
     const armed = screen.getByRole("button", { name: "Really drop?" });
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
     fireEvent.click(armed);
-    expect(props.onSend).toHaveBeenCalledExactlyOnceWith('tapped "Drop"');
+    expect(props.onSend).toHaveBeenCalledExactlyOnceWith('tapped "Drop"', { rev: 1, control: "v/1/2" });
   });
 
   it("waits on every button while a send is in flight", async () => {
@@ -187,7 +188,7 @@ describe("the operator's request in the Morph body", () => {
     cleanup();
     const morphing = draw({ view: undefined, request: mine("sent"), working: true, drawing: { at: "2026-11-10T10:02:30.000Z", note: "Comparing plans" } });
     expect(screen.queryByText("Ask for something. The agent draws the answer here.")).toBeNull();
-    expect(statusLine(morphing.container)).toBe("Morphing…");
+    expect(statusLine(morphing.container)).toBe("Drawing…");
     expect(morphing.container.querySelector("[data-slot=morph-notes]")).toHaveTextContent("Comparing plans");
   });
 
@@ -200,17 +201,17 @@ describe("the operator's request in the Morph body", () => {
     expect(screen.queryByRole("button", { name: /Earlier screen/ })).toBeNull();
   });
 
-  it("says Sent, then The agent is working, then Morphing… (without a note too), each as the one line", () => {
+  it("says Sent, then The agent is working, then Drawing… (without a note too), each as the one line", () => {
     const sent = draw({ request: mine("sent") });
     expect(statusLine(sent.container)).toBe("Sent");
     expect(sent.container.querySelectorAll("[data-slot=morph-status]")).toHaveLength(1);
     cleanup();
     expect(statusLine(draw({ request: mine("sent"), working: true }).container)).toBe("The agent is working");
     cleanup();
-    expect(statusLine(draw({ request: mine("sent"), working: true, drawing: { at: "2026-11-10T10:02:30.000Z" } }).container)).toBe("Morphing…");
+    expect(statusLine(draw({ request: mine("sent"), working: true, drawing: { at: "2026-11-10T10:02:30.000Z" } }).container)).toBe("Drawing…");
   });
 
-  it("while the request is unanswered, folds the old screen under Earlier screen, with the working mark on Morphing…", () => {
+  it("while the request is unanswered, folds the old screen under Earlier screen, with the working mark on Drawing…", () => {
     const { container } = draw({ request: mine("sent"), working: true, drawing: { at: "2026-11-10T10:02:30.000Z", note: "Comparing plans" } });
     expect(container.querySelector("[data-slot=morph-status] [data-slot=status-dot], [data-slot=morph-status] svg, [data-slot=morph-status] span")).not.toBeNull();
     expect(screen.queryByText("Ready to ship?")).toBeNull();
@@ -337,7 +338,7 @@ describe("pictures and the decision block", () => {
   const CHOICE: NonNullable<MorphScreen["choice"]> = {
     question: "Which header?",
     options: [
-      { label: "Compact", detail: "One line", value: "Use the compact header.", preview: 1 },
+      { label: "Compact", detail: "One line", preview: 1 },
       { label: "Tall", confirm: "Sure?", preview: 2 },
     ],
     recommends: { option: 0, why: "More room for the list" },
@@ -363,19 +364,19 @@ describe("pictures and the decision block", () => {
     expect(screen.getByText("More room for the list")).toBeInTheDocument();
   });
 
-  it("a pick sends picked with the value, holds the other option while in flight, and is marked after", async () => {
+  it("a pick sends picked with the label, holds the other option while in flight, and is marked after", async () => {
     let finish: (sent: boolean) => void = () => undefined;
     const onSend = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
     const onPressed = vi.fn();
     draw({ view: pictured(CHOICE), onSend, onPressed });
     fireEvent.click(screen.getByRole("button", { name: /^Compact/ }));
-    expect(onSend).toHaveBeenCalledWith('picked "Compact": Use the compact header.');
+    expect(onSend).toHaveBeenCalledWith('picked "Compact"', { rev: 4, control: "choice/0" });
     expect(screen.getByRole("button", { name: /^Tall/ })).toBeDisabled();
     await act(async () => finish(true));
     expect(onPressed).toHaveBeenCalledWith(choiceControl(CHOICE, 0));
   });
 
-  it("an option with confirm needs two taps; a pick without a value sends the label alone", () => {
+  it("an option with confirm needs two taps; a pick sends the label alone", () => {
     vi.useFakeTimers();
     const onSend = vi.fn(() => Promise.resolve(true));
     draw({ view: pictured(CHOICE), onSend });
@@ -384,7 +385,7 @@ describe("pictures and the decision block", () => {
     expect(screen.getByRole("button", { name: "Sure?: tap again to confirm" })).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
     fireEvent.click(screen.getByRole("button", { name: "Sure?: tap again to confirm" }));
-    expect(onSend).toHaveBeenCalledWith('picked "Tall"');
+    expect(onSend).toHaveBeenCalledWith('picked "Tall"', { rev: 4, control: "choice/1" });
   });
 
   it("the picked option stays selected until the next screen", () => {
@@ -523,7 +524,7 @@ describe("fresh and earlier blocks", () => {
     expect(shown.map((note) => note.textContent)).toEqual(["Step 1", "Step 2", "Step 3", "Step 4"]);
     expect(shown.at(-1)?.className).toContain("text-foreground");
     expect(shown[0]?.className).toContain("text-muted-foreground");
-    expect(statusLine(container)).toBe("Morphing…");
+    expect(statusLine(container)).toBe("Drawing…");
   });
 });
 
@@ -532,8 +533,8 @@ describe("the receipt of a pick, and a settled choice", () => {
     { id: "im_aaaaaaaaaaaaaaaa", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 390, height: 844, caption: "Compact" },
     { id: "im_bbbbbbbbbbbbbbbb", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 390, height: 844, caption: "Tall" },
   ];
-  const CHOICE = { question: "Which header?", options: [{ label: "Compact", value: "Use the compact header.", preview: 0 }, { label: "Tall", preview: 1 }] };
-  const picked = (phase: MorphRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact": Use the compact header.', reason });
+  const CHOICE = { question: "Which header?", options: [{ label: "Compact", preview: 0 }, { label: "Tall", preview: 1 }] };
+  const picked = (phase: MorphRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact"', reason });
   const asked: MorphScreen = { ...screenOf([{ kind: "para", text: "Two headers" }]), set: "dc_aaaaaaaaaaaa", media: MEDIA, choice: CHOICE, choiceAt: AT };
 
   it("stands in for the request bubble: the question, the label, the preview, and Sending… then the Answered badge", () => {

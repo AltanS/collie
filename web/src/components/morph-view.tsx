@@ -99,8 +99,11 @@ export interface MorphViewProps {
   entries: readonly TranscriptEntry[];
   /** A tap may send: a live pane on a device that may write. False: every button waits. */
   canAct: boolean;
-  /** Send one line through the composer. True on a send the bridge confirmed. */
-  onSend: (text: string) => Promise<boolean>;
+  /**
+   * Send one line through the composer. True on a send the bridge confirmed. TODO(agent-view web): a tap
+   * carries the screen's rev and the control path the bridge reads (`v/<index>/...` or `choice/<index>`).
+   */
+  onSend: (text: string, tap?: { readonly rev: number; readonly control: string }) => Promise<boolean>;
   /** A row's `href` or a link was tapped. */
   onLink: (target: LinkTarget) => void;
   /** Pin the clock (epoch ms on the bridge's clock), for a test. */
@@ -136,18 +139,18 @@ export const MORPH_SCREEN_CLASS = cn(
 function statusWords(status: MorphStatus, clock: number): string {
   switch (status.kind) {
     case "sending":
-      return t("morph.request.sending");
+      return t("view.request.sending");
     case "notSent":
-      return status.reason === null ? t("morph.request.notSent") : t("morph.request.notSentWhy", { reason: status.reason });
+      return status.reason === null ? t("view.request.notSent") : t("view.request.notSentWhy", { reason: status.reason });
     case "sent":
-      return t("morph.request.sent");
+      return t("view.request.sent");
     case "working":
-      return t("morph.request.working");
+      return t("view.request.working");
     case "morphing":
-      return t("morph.request.morphing");
+      return t("view.request.drawing");
     case "answered": {
       const age = trickTimeText(status.at, "ago", clock);
-      return age === null ? t("morph.request.answered") : t("morph.request.answeredAt", { time: age });
+      return age === null ? t("view.request.answered") : t("view.request.answeredAt", { time: age });
     }
   }
 }
@@ -211,7 +214,7 @@ function MorphRequestBubble({ text }: { text: string }) {
 function MorphCaption({ view, working, now }: { view: MorphScreen | undefined; working: boolean; now?: number }) {
   const clock = useBridgeNow(now);
   const age = view === undefined ? null : trickTimeText(view.at, "ago", clock);
-  const drawn = age === null ? t("morph.drawn") : t("morph.drawnAt", { time: age });
+  const drawn = age === null ? t("view.drawn") : t("view.drawnAt", { time: age });
   return (
     <div data-slot="morph-caption" className="flex h-6 min-w-0 items-center text-xs text-muted-foreground">
       <OneOf
@@ -276,6 +279,12 @@ function stripMediaOf(view: MorphScreen | undefined): MorphMedia[] {
   return view.media.filter((_, i) => !placed.has(i) && !previews.has(i));
 }
 
+// TODO(agent-view web): SECURITY rule 8, a band the agent cannot draw over: "Drawn by the agent in
+// <session>, <trick name>" (the name from the tricks list, the served view carries the id). Rule 4: after a
+// tap, show the served `sent` line (or the send answer's `view.line`) under "Sent to this session". Lead
+// addition 5: a `stale_view` refusal refetches and shows the new screen, with no retry of the tap.
+// Lead addition 4: buttons are held while a turn runs. The served `stale` and `question` flags still need
+// their own look here.
 export function MorphView({ session, view, request: told, head, hint, drawing, pressed = NO_CONTROLS, onPressed, working, entries, canAct, onSend, onLink, now }: MorphViewProps) {
   useLocale();
   const clock = useBridgeNow(now);
@@ -303,9 +312,9 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
 
   /** Send one line for a control, mark the control once the bridge confirmed it. */
   const send = useCallback(
-    (control: string, text: string) => {
+    (control: string, text: string, tap?: { readonly rev: number; readonly control: string }) => {
       setBusyControl(control);
-      void onSend(text)
+      void onSend(text, tap)
         .then((sent) => {
           if (sent) onPressed?.(control);
           return sent;
@@ -320,7 +329,8 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
       if (view === undefined || busyControl !== null || !canAct) return;
       const text = blockTapTextOf({ view: view.view, block, rendered });
       if (text === null) throw new Error(`morph: the tapped control ${rendered} in block ${block.id} names no button`);
-      send(blockControl(block.prefix, rendered), text);
+      // TODO(agent-view web): the bridge's own control path over the whole screen, for the line it builds.
+      send(blockControl(block.prefix, rendered), text, { rev: view.rev, control: `v/${String(block.index)}${rendered.slice("v/0".length)}` });
     },
     [view, busyControl, canAct, send],
   );
@@ -331,9 +341,9 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
       if (choice === undefined || busyControl !== null || !canAct) return;
       const text = pickTextOf(choice, index);
       if (text === null) throw new Error(`morph: the picked option ${String(index)} is not in the choice`);
-      send(choiceControl(choice, index), text);
+      send(choiceControl(choice, index), text, view === undefined ? undefined : { rev: view.rev, control: `choice/${String(index)}` });
     },
-    [view?.choice, busyControl, canAct, send],
+    [view, busyControl, canAct, send],
   );
 
   /**
@@ -395,7 +405,7 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
         {isTopOwner && strip}
         {view === undefined && request === null && (
           <p data-slot="morph-empty" className="py-16 text-center text-sm text-muted-foreground">
-            {t("morph.empty")}
+            {t("view.empty")}
           </p>
         )}
         {view !== undefined && (
@@ -406,7 +416,7 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
         )}
         {answer !== null && (
           <div data-slot="morph-text" className="mt-4 min-w-0 border-t border-rule pt-3">
-            <p className="mb-2 text-xs text-muted-foreground">{t("morph.textAnswer")}</p>
+            <p className="mb-2 text-xs text-muted-foreground">{t("view.textAnswer")}</p>
             <MarkdownText text={answer.text} stretches />
           </div>
         )}

@@ -107,10 +107,10 @@
 #                - "says the branch stayed behind when its delete fails" (the same)
 #                - "keeps the branch when the checkout could not be removed" (the same)
 #                - "never removes a folder that was there before the call" (the same)
-#              Agent view pictures, bridge (15). Every test of bridge/morph/media.test.ts is `posix(...)`, a `test.skipIf`
+#              Agent view pictures, bridge (15). Every test of bridge/agent-view/media.test.ts is `posix(...)`, a `test.skipIf`
 #                on win32: it keeps pictures in 0700 folders and reads them through the hill's POSIX file checks
 #                (owner, mode, no link), which Windows does not have. The store and service tests beside it run on Windows.
-#              cli 90 in all: 21 in the next paragraph, then 3 of the statusLine wrapper, 50 of walky talky and 16 of the agent view. Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              cli 95 in all: 21 in the next paragraph, then 3 of the statusLine wrapper, 50 of walky talky and 21 of the agent view. Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 9:
 #                "a per-call override wins over the Exec's own environment (#283) > a child killed by a signal says which one"
@@ -135,7 +135,7 @@
 #                `socketTest`, 13 in "send" (M98 added the outside flag and the broadcast refusal), 33 in "reply, inbox, status, who" (two of them, from M85, are the resting-session sends and the `--wake` refusal on a reply; three, from M89, are `off` and `on`, the who marks and the two off refusals; M98 added the who space cases; the pairing fix added one) and 4 in "on a crew member". The
 #                tests that never reach the socket run on Windows: the usage errors, "no bridge at all is
 #                UNREACHABLE" and "on Windows it says why and exits STATE".
-#              Agent view, cli (16). cli/morph.test.ts drives the view verbs against a real bridge socket, as
+#              Agent view, cli (21). cli/trick-view.test.ts drives the `trick view` verbs against a real bridge socket, as
 #                cli/walky.test.ts does, and Windows cannot bind it. Each of those tests is `socketTest`; the parse
 #                and screen-reading tests beside them run on Windows.
 #              scripts 25: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
@@ -147,7 +147,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 130,
-  [int]$MaxSkipsCli = 90,
+  [int]$MaxSkipsCli = 95,
   [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

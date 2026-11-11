@@ -277,7 +277,7 @@ const SNAPSHOT_KEYS = {
   hillRev: true,
   // Not a crew dimension: Morph's revision, absent until a session's Morph is switched on or a screen
   // is shown on this bridge, so a solo body that never used Morph carries no such key.
-  morphRev: true,
+  trickViewsRev: true,
   // Not a crew dimension: the Hill's switch, present only while it is off, so a solo body that never
   // switched it carries no such key and no golden byte moved.
   hillOff: true,
@@ -517,15 +517,15 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       // The Hill's switch: present only while it is off, `true` and nothing of the crew.
       "hillOff",
       "hillRev",
-      // Morph's revision: present only once Morph was used on this bridge, a number and nothing of the
-      // crew; the phone refetches `GET /api/morph` when it moves.
-      "morphRev",
       "muxFault",
       "notifications",
       "servers",
       "sessions",
       "shellPanes",
       "tabs",
+      // The agent views' revision: present only once a view was used on this bridge, a number and
+      // nothing of the crew; the phone refetches `GET /api/trick-views` when it moves.
+      "trickViewsRev",
       "tricksRev",
       "ts",
       "update",
@@ -805,9 +805,6 @@ describe("solo zero-tax — routes", () => {
       // collie answer for every machine they keep watch over; a peer 404s (`crew.not_lead`), and none
       // is forwardable — `bridge/crew/router.test.ts` pins all three as 404 across a link.
       "/^\\/api\\/machines\\/([^/]+)\\/(history|alerts)$/",
-      // One picture of a Morph screen: a read, both ids checked against their patterns before any path is
-      // built, lead-local like the hill's image route. A bridge that never kept a picture answers 404.
-      "/^\\/api\\/morph\\/media\\/([^/]+)\\/([^/]+)$/",
       // `changes` is the Changes view (ADR 0065): read-only git over the pane's folder, read-gated
       // like `history` beside it and forwarded to the member that owns the pane. `chat` is the live
       // half of `history` (journal/live.ts): the same log, asked "anything after this?" — a read, on
@@ -845,6 +842,9 @@ describe("solo zero-tax — routes", () => {
       // with the held file's and never made into a path. Lead-local, not forwardable.
       "/^\\/api\\/stt\\/model\\/([^/]+)$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
+      // One picture of an agent view's screen: a read, both ids checked against their patterns before any
+      // path is built, lead-local like the hill's image route. A bridge that never kept a picture answers 404.
+      "/^\\/api\\/trick-views\\/media\\/([^/]+)\\/([^/]+)$/",
       // Collie tricks (M94 slice 01): a tap on a trick's control. A SOLO route that legitimately extends
       // this list, named here rather than exempted: this bridge's own host only (another host is 404
       // until the crew merge), write-gated because it runs the program, and 404 with no runner.
@@ -958,11 +958,6 @@ describe("solo zero-tax — routes", () => {
       // than exempted. Lead-local like the Whistle route, gated like it, and not forwardable. A bridge
       // whose operator never taps "Download the math engines" fetches nothing and writes nothing.
       "/api/math",
-      // Morph: the one screen an agent drew per session (a read) and the phone's per-session switch (a
-      // write under the device gate, like the hill's answer). Two SOLO routes, named here rather than
-      // exempted, lead-local like the hill. A bridge that never used Morph answers an empty list.
-      "/api/morph",
-      "/api/morph/switch",
       // The prompt-cache watch list (M28/03, ADR 0042). Three SOLO routes in the notifications family,
       // named here rather than exempted: the preference lives on the collie holding the subscription, so
       // none of the three is forwardable and `bridge/crew/router.test.ts` pins all three as 404 across a
@@ -1031,6 +1026,11 @@ describe("solo zero-tax — routes", () => {
       "/api/themes/registry",
       // Collie tricks (M94 slice 01): the tricks list and the parts changed since a rev. A read, gated like
       // the snapshot, and its body is empty of tricks on an install with no `<configDir>/tricks/`.
+      // Agent views: the screens agents drew per (trick, session) (a read) and the person's per-session
+      // switch (a write that needs a paired device's own token). Two SOLO routes, named here rather than
+      // exempted, lead-local like the hill. A bridge that never used a view answers an empty list.
+      "/api/trick-views",
+      "/api/trick-views/switch",
       "/api/tricks",
       // Official tricks (M94): the list this release carries, each entry's state on this machine. A read, gated
       // like the tricks list; it reads the list from the binary and the tricks folder, and fetches nothing.
@@ -1395,9 +1395,6 @@ const STATE_DIR_ENTRIES = [
   // The math pack (ADR 0132): `<stateDir>/math/<version>/`, the engines a tap in Settings fetched.
   // Written by that tap and by nothing else: absent on every bridge whose operator never taps it.
   "math",
-  // Morph: `<stateDir>/morph/state.json`, each session's switch and screen. Written by use and by
-  // nothing else: absent until the first switch from a phone or the first `collie morph` write.
-  "morph",
   "notify-prefs.json",
   // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
   // never does keeps writing exactly the six entries above it.
@@ -1440,6 +1437,9 @@ const STATE_DIR_ENTRIES = [
   // The community theme registry (M59 spec 06): `<stateDir>/themes/registry.json`, the copy a tap on
   // Refresh in the Theme card fetched. Written by that tap and by nothing else.
   "themes",
+  // Agent views: `<stateDir>/trick-views/views/<key>.json`, one file per (trick, session), and
+  // `media/`. Written by use and by nothing else: absent until the first switch from a phone.
+  "trick-views",
   // Collie tricks (M94, bridge/tricks/paths.ts): `switches.json` and one state folder per trick that ran.
   // Written only by `collie trick on`/`off` and by a trick's run, so an install with no tricks has none.
   "tricks",

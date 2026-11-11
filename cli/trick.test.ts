@@ -1002,7 +1002,7 @@ describe("an agent view (contract 2)", () => {
     return dir;
   }
 
-  test("check prints the rights lines, the rules file, the later note and no program", async () => {
+  test("check prints the rights lines, the rules file and no program", async () => {
     const d = await deps();
     const dir = await viewFolder(d.configDir);
     expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
@@ -1010,7 +1010,7 @@ describe("an agent view (contract 2)", () => {
     expect(out).toContain("Adds a view of a session that the session's own agent draws. You switch it on per session.");
     expect(out).toContain("A tap in that view sends a message in your name to that session only.");
     expect(out).toContain("rules.md. Gives your agents instructions written by its author.");
-    expect(out).toContain("Agent views come with a later build of this version.");
+    expect(out).not.toContain("later build");
     expect(out).toContain("none: this trick is an agent view and has no program, so nothing runs.");
     expect(d.err).toEqual([]);
   });

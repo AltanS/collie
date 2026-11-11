@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import { morphPaneMark, type MarkablePane } from "./mark.ts";
+import { markHasConversation, viewPaneMark, type MarkablePane } from "./mark.ts";
 
-// The pane mark Morph's rules proof is held against: the harness and the conversation the snapshot
+// The pane mark an agent view's rules proof and screen are held against: the harness and the conversation the snapshot
 // holds for the pane a session names, and null when the pane is not live here.
 
 const ONE = "local/w1:p1#aaaa";
 
 function marker(views: MarkablePane[], placed: string | null = ONE) {
-  return morphPaneMark({ place: () => (placed === null ? null : { address: placed }), views: () => views, memberId: "lead" });
+  return viewPaneMark({ place: () => (placed === null ? null : { address: placed }), views: () => views, memberId: "lead" });
 }
 
 describe("the pane mark", () => {
@@ -34,5 +34,10 @@ describe("the pane mark", () => {
     expect(marker([])(ONE)).toBeNull();
     expect(marker([view, view])(ONE)).toBeNull();
     expect(marker([{ paneId: "w1:p1", agent: "trick", kind: "trick" }])(ONE)).toBeNull();
+  });
+
+  test("a mark names a conversation only when the harness reported one", () => {
+    expect(markHasConversation(marker([{ paneId: "w1:p1", agent: "claude", agentSession: { kind: "id", value: "conv-1" } }])(ONE) ?? "")).toBe(true);
+    expect(markHasConversation(marker([{ paneId: "w1:p1", agent: "agent-x" }])(ONE) ?? "")).toBe(false);
   });
 });

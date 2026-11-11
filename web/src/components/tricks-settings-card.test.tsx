@@ -693,18 +693,17 @@ describe("an agent view (contract 2)", () => {
     places: [],
     agentView: true,
     rules: { file: "rules.md", text: "Draw one screen.\n" },
-    refusals: [{ code: "later", path: "/places/0", reason: "Agent views come with a later build of this version." }],
+    refusals: [],
     provenance: { via: "folder" },
   };
 
-  it("lists the trick with agent view as its place, one later note, and a switch that switches it on", async () => {
+  it("lists the trick with agent view as its place, no later note, and a switch that switches it on", async () => {
     const user = userEvent.setup();
     const onSwitch = vi.fn(async () => ({ ...MORPH, on: true, state: "ok" as const }));
     renderCard(await storeWith([MORPH]), onSwitch);
     const row = rowOf("morph");
     expect(row.querySelector('[data-line="places"]')).toHaveTextContent(/^agent view$/u);
-    const notes = [...row.querySelectorAll('[data-line="later"]')];
-    expect(notes.map((n) => n.textContent)).toEqual(["Agent views come with a later build of this version."]);
+    expect(row.querySelector('[data-line="later"]')).toBeNull();
     expect(row.querySelector('[data-line="slot"]')?.getAttribute("data-trouble")).toBeNull();
     await user.click(within(row).getByRole("switch", { name: "Morph" }));
     expect(onSwitch).toHaveBeenCalledWith("lodge", "morph", true);

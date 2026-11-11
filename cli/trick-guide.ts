@@ -4,7 +4,7 @@ import { PROPOSE_LIMITS } from "../bridge/tricks/propose-wire.ts";
 import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../bridge/tricks/proposals.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../web/src/lib/tricks/contract.ts";
-import { ABOUT_MAX, AGENT_VIEW_CONTRACT, AGENT_VIEW_LATER, AGENT_VIEW_PLACE, DESCRIPTION_MAX, ENV_NAMES_MAX, EVERY_MAX_MS, EVERY_MIN_MS, INPUTS_MAX, MANIFEST_KEYS, PLACE_KINDS, RESERVED_TRICK_IDS, RULES_BLANK_LINES_MAX, RULES_LINE_MAX, RULES_MAX_BYTES, RULES_SPACES_MAX, TRICK_MODES, type PlaceKind } from "../web/src/lib/tricks/schema.ts";
+import { ABOUT_MAX, AGENT_VIEW_CONTRACT, AGENT_VIEW_PLACE, DESCRIPTION_MAX, ENV_NAMES_MAX, EVERY_MAX_MS, EVERY_MIN_MS, INPUTS_MAX, MANIFEST_KEYS, PLACE_KINDS, RESERVED_TRICK_IDS, RULES_BLANK_LINES_MAX, RULES_LINE_MAX, RULES_MAX_BYTES, RULES_SPACES_MAX, TRICK_MODES, type PlaceKind } from "../web/src/lib/tricks/schema.ts";
 
 // `collie trick guide` (crew slice 8): how to write a trick and hand it to the person, as plain text an
 // agent reads once. It needs no bridge. Its numbers and lists come from the constants the bridge checks
@@ -82,7 +82,9 @@ export function trickGuide(): string[] {
     "The person reads the rules whole before they switch the trick on, and again on every change.",
     "A trick with rules never takes a new version without asking.",
     "An agent cannot propose a trick with an agent view or rules. Ask your person to add it on the machine.",
-    AGENT_VIEW_LATER,
+    "The person switches the view on per session, on the phone. Only then does the session read your rules:",
+    "  collie trick view <id> help --session <address>",
+    "Collie prints its own view help first and your rules after it, between two marked lines.",
     "",
     "THE HELPER, trick.ts",
     "The program imports it: import { run, v } from \"./trick.ts\";",

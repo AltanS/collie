@@ -129,7 +129,7 @@ describe("the Windows check runs the flake's Bun", () => {
   test("windows-suites.ps1 gives each suite its own skip budget, 245 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([130, 90, 25]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([130, 95, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -182,11 +182,11 @@ describe("the Windows check runs the flake's Bun", () => {
     const rawEnterSkips = readFileSync(join(ROOT, "bridge", "surface", "protocol.unstyled.test.ts"), "utf8").includes('test.if(harness.id === "claude" || harness.id === "omp")(') ? 1 : 0;
     expect(rawEnterSkips).toBe(1);
     expect(script).toContain("protocol.unstyled.test.ts");
-    // The agent view's pictures (bridge/morph/media.test.ts): each test keeps files under a 0700 folder and
+    // The agent view's pictures (bridge/agent-view/media.test.ts): each test keeps files under a 0700 folder and
     // reads them through the hill's POSIX checks, so each is `posix(...)`, a `test.skipIf` on win32.
-    const viewMediaSkips = [...readFileSync(join(ROOT, "bridge", "morph", "media.test.ts"), "utf8").matchAll(/^ {2}posix\("([^"]+)"/gm)].map((m) => m[1]!);
+    const viewMediaSkips = [...readFileSync(join(ROOT, "bridge", "agent-view", "media.test.ts"), "utf8").matchAll(/^ {2}posix\("([^"]+)"/gm)].map((m) => m[1]!);
     expect(viewMediaSkips).toHaveLength(15);
-    expect(script).toContain("bridge/morph/media.test.ts");
+    expect(script).toContain("bridge/agent-view/media.test.ts");
     expect(budget("Bridge")).toBe(viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips);
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
     // 50 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
@@ -207,10 +207,10 @@ describe("the Windows check runs the flake's Bun", () => {
     const dirtyProbe = "the probe's dirty check, run for real";
     expect(readFileSync(join(ROOT, "cli", "remote.test.ts"), "utf8")).toContain(`("${dirtyProbe}"`);
     expect(script).toContain(dirtyProbe);
-    // The agent view verbs (cli/morph.test.ts) talk to a real walky socket, as cli/walky.test.ts does (`socketTest`).
-    const viewSocketTests = readFileSync(join(ROOT, "cli", "morph.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
-    expect(viewSocketTests).toHaveLength(16);
-    expect(script).toContain("cli/morph.test.ts");
+    // The agent view verbs (cli/trick-view.test.ts) talk to a real walky socket, as cli/walky.test.ts does (`socketTest`).
+    const viewSocketTests = readFileSync(join(ROOT, "cli", "trick-view.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
+    expect(viewSocketTests).toHaveLength(21);
+    expect(script).toContain("cli/trick-view.test.ts");
     expect(budget("Cli")).toBe(sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + viewSocketTests.length + 3 + 1 + 2);
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");

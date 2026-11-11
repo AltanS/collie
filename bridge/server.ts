@@ -177,7 +177,8 @@ import type { StopService } from "./surface/stop.ts";
 import type { ReceiptQueued } from "./surface/queued.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, RETURNED_CARD_DROPPED, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, RETURNED_CARD_DROPPED, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceipt, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { isCommand } from "../web/src/lib/send-protocol.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -255,8 +256,8 @@ import { PinStore } from "./pins/store.ts";
 import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
 import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
-import type { MorphService } from "./morph/service.ts";
-import { MORPH_MEDIA_ID_RE, MORPH_SET_RE, readMorphSwitchBody } from "../web/src/lib/morph/wire.ts";
+import type { AgentViewService } from "./agent-view/service.ts";
+import { VIEW_MEDIA_ID_RE, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField } from "../web/src/lib/agent-view/wire.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -563,8 +564,8 @@ const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
  * like the rest of the hill: not forwarded across a crew link.
  */
 const HILL_IMAGE_ROUTE = /^\/api\/hill\/media\/([^/]+)\/([^/]+)$/;
-/** `GET /api/morph/media/<set id>/<media id>`: one picture of a Morph screen. Both ids are checked before any path is built. */
-const MORPH_IMAGE_ROUTE = /^\/api\/morph\/media\/([^/]+)\/([^/]+)$/;
+/** `GET /api/trick-views/media/<set id>/<media id>`: one picture of an agent view's screen. Both ids are checked before any path is built. */
+const VIEW_IMAGE_ROUTE = /^\/api\/trick-views\/media\/([^/]+)\/([^/]+)$/;
 
 /**
  * Walky talky's list for one pane (M62): the messages that reached it, newest first, each with its
@@ -1266,10 +1267,12 @@ export function startServer(opts: {
    */
   hill?: HillService;
   /**
-   * Morph: the one screen an agent drew per session (`collie morph show`), and the per-session switch.
-   * Absent, `GET /api/morph` and `POST /api/morph/switch` answer 404 and the snapshot carries no `morphRev`.
+   * Agent views: the screen an agent drew per (trick, session) (`collie trick view <trick> show`), the
+   * person's per-session switch, and the `view` field of a send. Absent, `GET /api/trick-views` and
+   * `POST /api/trick-views/switch` answer 404, a send with `view` is refused, and the snapshot carries no
+   * `trickViewsRev`.
    */
-  morph?: MorphService;
+  views?: AgentViewService;
   /**
    * Walky talky's crew half (CREW_PROTOCOL.md §21): on a member, the handler of the lead's
    * `POST /crew/v1/pane/<pane | all>/walky`, reached through the crew dispatch only. Absent (solo, a
@@ -1581,7 +1584,7 @@ export function startServer(opts: {
   };
   const walky = opts.walky;
   const hill = opts.hill;
-  const morph = opts.morph;
+  const views = opts.views;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
   /**
@@ -3139,8 +3142,8 @@ export function startServer(opts: {
         // and a member refuses posts (`not_on_lead`). The revision below is this bridge's own store.
         const merged = crewLead ? crewLead.merge(body, plan) : body;
         const out = crewLead && cfg.redact ? maskSnapshotTitles(merged) : merged;
-        // Morph's revision rides beside the hill's (or its off switch), this bridge's own, lead-local as the hill.
-        return withBuildHeader(json(withMorphRev(withHill(out, hill), morph?.rev()), req.headers.get("accept-encoding")), await buildId());
+        // The agent views' revision rides beside the hill's (or its off switch), this bridge's own, lead-local as the hill.
+        return withBuildHeader(json(withTrickViewsRev(withHill(out, hill), views?.rev()), req.headers.get("accept-encoding")), await buildId());
       }
 
       // ── Surface shadow mode's debug route (M56 spec 04) ──────────────────
@@ -3293,12 +3296,24 @@ export function startServer(opts: {
         } catch {
           body = undefined;
         }
-        // The Hill's quiet mark (1.29.0): a send that reached an agent's pane marks the open Decisions it posted.
-        const spoke = (paneId: string) => {
+        const addressOf = (paneId: string): string | null => {
           const pane = walky?.paneAt(rt.name, paneId) ?? null;
-          if (walky !== undefined && pane !== null && pane.agent) hill?.noteSpoke(walky.addressOf(pane.paneId, pane.instance));
+          return walky !== undefined && pane !== null && pane.agent ? walky.addressOf(pane.paneId, pane.instance) : null;
         };
-        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding"), spoke });
+        // The Hill's quiet mark (1.29.0): a send that reached an agent's pane marks the open Decisions it
+        // posted. The same person turn ends a view's screen on a harness that reports no conversation.
+        const spoke = (paneId: string) => {
+          const address = addressOf(paneId);
+          if (address === null) return;
+          hill?.noteSpoke(address);
+          views?.notePersonTurn(address);
+        };
+        // A send from an agent view (SECURITY rule 3): only a paired device's own token with write access.
+        const viewAsked = readViewSendField(asJsonRecord(body)?.view ?? undefined) !== undefined;
+        const viewDenied = viewAsked ? viewWriteGate(req, pairingGate) : null;
+        if (viewDenied) return viewDenied;
+        const view = viewAsked && views !== undefined ? { service: views, addressOf } : undefined;
+        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding"), spoke, view });
       }
       // `DELETE /api/send/<id>?session=<name>&pane=<id>` (M56 spec 15): the Cancel on a queued row. A held
       // request ends `cancelled`, an ended row is dismissed, one going out now is refused `busy`.
@@ -3432,35 +3447,36 @@ export function startServer(opts: {
         }
         return hillAnswerRoute(hill, body, { device: whois(req).device, deviceId: pairedDeviceId(req, pairingGate), acceptEncoding: req.headers.get("accept-encoding") });
       }
-      // ── Morph ─────────────────────────────────────────────────────────────
-      // The screens agents drew on this bridge (a read), and the phone's per-session switch: a write
-      // under the same gate as the hill's answer. This machine only, as the hill.
-      if (pathname === "/api/morph" && req.method === "GET") {
+      // ── Agent views ───────────────────────────────────────────────────────
+      // The screens agents drew on this bridge (a read), and the phone's per-session switch: a write that
+      // needs a paired device's own token with write access (agent views SECURITY rule 3), beyond the
+      // gate. This machine only, as the hill.
+      if (pathname === "/api/trick-views" && req.method === "GET") {
         const denied = browserGate("read");
         if (denied) return denied;
-        if (host.kind === "member") return text(MORPH_LOCAL_TEXT, 400);
-        return morphListRoute(morph, url.searchParams.get("since"), req.headers.get("accept-encoding"));
+        if (host.kind === "member") return text(VIEW_LOCAL_TEXT, 400);
+        return await trickViewsListRoute(views, url.searchParams.get("since"), req.headers.get("accept-encoding"));
       }
-      if (pathname === "/api/morph/switch" && req.method === "POST") {
-        const denied = browserGate("write");
+      if (pathname === "/api/trick-views/switch" && req.method === "POST") {
+        const denied = browserGate("write") ?? viewWriteGate(req, pairingGate);
         if (denied) return denied;
-        if (host.kind === "member") return text(MORPH_LOCAL_TEXT, 400);
+        if (host.kind === "member") return text(VIEW_LOCAL_TEXT, 400);
         let body: JsonValue | undefined;
         try {
-          // SAFETY: `Request.json()` output IS a JsonValue by construction; `readMorphSwitchBody` checks every field.
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `readTrickViewSwitchBody` checks every field.
           body = (await req.json()) as JsonValue;
         } catch {
           body = undefined;
         }
-        return morphSwitchRoute(morph, body, req.headers.get("accept-encoding"));
+        return await trickViewsSwitchRoute(views, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
-      // A picture of a Morph screen: the read gate, this machine only, as the hill's images.
-      const morphImage = pathname.match(MORPH_IMAGE_ROUTE);
-      if (morphImage && req.method === "GET") {
+      // A picture of an agent view's screen: the read gate, this machine only, as the hill's images.
+      const viewImage = pathname.match(VIEW_IMAGE_ROUTE);
+      if (viewImage && req.method === "GET") {
         const denied = browserGate("read");
         if (denied) return denied;
-        if (host.kind === "member") return text(MORPH_LOCAL_TEXT, 400);
-        return morphMediaRoute(morph, morphImage[1]!, morphImage[2]!);
+        if (host.kind === "member") return text(VIEW_LOCAL_TEXT, 400);
+        return trickViewsMediaRoute(views, viewImage[1]!, viewImage[2]!);
       }
       // Clear: remove closed decisions from the Hill, all of them or the ids named. The write right of an
       // answer, and it works with the Hill off (it types nothing and rings nothing). Never an open one.
@@ -9035,8 +9051,19 @@ export async function sendRoute(
     readonly acceptEncoding: string | null;
     /** Told once per send whose words reached a pane (`sendSpoke`): the Hill marks that session's open cards. */
     readonly spoke?: (paneId: string) => void;
+    /**
+     * The agent views, for a send with a `view` field: given only by `POST /api/send` once the request
+     * passed the paired-device gate. Absent (any other caller, a crew route, a test), a `view` is refused 403.
+     */
+    readonly view?: { readonly service: AgentViewService; readonly addressOf: (paneId: string) => string | null };
   },
 ): Promise<Response> {
+  const viewField = readViewSendField(asJsonRecord(body)?.view ?? undefined);
+  if (viewField !== undefined) {
+    if (context.view === undefined) return text(VIEW_PAIRED_ONLY, 403);
+    if (viewField === null) return text("bad send request", 400);
+    return await viewSendRoute(rt, body, { ...context, view: context.view, field: viewField });
+  }
   if (rt.driver !== undefined) return programSendRoute(rt, rt.driver, body, context);
   if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
   const request = parseSendRequest(body);
@@ -9091,6 +9118,73 @@ export async function sendRoute(
   }
   const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   return json(out, context.acceptEncoding);
+}
+
+/** A view send's refusal before the Send Protocol: HTTP 409 with the code, so the phone shows it and never retries. */
+function viewRefused(code: string, error: string, acceptEncoding: string | null): Response {
+  return json({ error, code, view: true }, acceptEncoding, 409);
+}
+
+/**
+ * A send from an agent view (SECURITY rules 2 to 6, 8): `{ id, pane, view: { trick, session, rev, control } }`
+ * for a tap, `{ id, pane, text, view: { trick, session } }` for typed text. The bridge builds the line from
+ * its own stored screen (`prepareSend`); the phone's `text` of a tap is never read. A refusal before the
+ * protocol answers 409 `{ error, code, view: true }`; a send that reached the protocol answers its receipt,
+ * as any send, with `view: { line }`, the exact text handed to the session. One audit line either way.
+ */
+async function viewSendRoute(
+  rt: SendRouteRuntime,
+  body: JsonValue | undefined,
+  context: {
+    readonly audit: AuditLog;
+    readonly device: string | null;
+    readonly redact: boolean;
+    readonly acceptEncoding: string | null;
+    readonly spoke?: (paneId: string) => void;
+    readonly view: { readonly service: AgentViewService; readonly addressOf: (paneId: string) => string | null };
+    readonly field: ViewSendField;
+  },
+): Promise<Response> {
+  const fields = asJsonRecord(body);
+  const id = fields?.id;
+  const paneId = fields?.pane;
+  const typed = asJsonString(fields?.text);
+  if (typeof id !== "string" || !REQUEST_ID.test(id) || typeof paneId !== "string" || paneId.length === 0 || paneId.length > 256) return text("bad send request", 400);
+  const tap = context.field.rev !== undefined;
+  if (!tap && (typed === undefined || typed.trim() === "" || typed.length > SEND_MAX_TEXT)) return text("bad send request", 400);
+  if (rt.driver !== undefined || rt.send === undefined) return viewRefused("wrong_session", "an agent view sends to a session with a screen only", context.acceptEncoding);
+  const refusal = rawInputRefusal(rt.herdr);
+  if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
+  const harness = replySendOf(rt).harnessOf(paneId);
+  const own = context.view.addressOf(paneId);
+  if (harness === null || own === null) return text("no such terminal pane", 404);
+  const plan = await context.view.service.prepareSend({ field: context.field, own, typed: tap ? null : (typed ?? null), device: context.device });
+  if (!plan.ok) {
+    context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail: { mode: "send", outcome: "refused", reason: plan.code, view: context.field.trick } });
+    return viewRefused(plan.code, plan.error, context.acceptEncoding);
+  }
+  const mode: SendRequest["mode"] = plan.plain && isCommand(plan.line) ? "command" : "send";
+  const sendRequest: SendRequest = { id, text: plan.line, mode, fromPhone: plan.plain, view: { head: !plan.plain, check: plan.check } };
+  let receipt: SendReceipt | undefined;
+  let answer: Awaited<ReturnType<SendProtocol["handle"]>>;
+  try {
+    answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
+    receipt = answer.receipt;
+  } finally {
+    plan.done({ rid: id, sent: receipt !== undefined && SPOKE_OUTCOMES.has(receipt.outcome), reason: receipt?.reason ?? (receipt === undefined ? "crash" : null) });
+  }
+  if (receipt !== undefined) {
+    const detail: AuditDetail = { mode, outcome: receipt.outcome, textLength: receipt.textLength, view: plan.trick };
+    if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
+    if (plan.plain && sendSpoke(mode, receipt.outcome)) context.spoke?.(paneId);
+    if (receipt.keys.length > 0) {
+      rt.engine.noteInput();
+      rt.engine.pokeNow();
+    }
+  }
+  const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  return json({ ...out, view: { line: plan.line } }, context.acceptEncoding);
 }
 
 /** What `stopRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
@@ -9243,53 +9337,68 @@ export function withHillRev(body: SnapshotResponse, rev: number | undefined): Sn
   return rev === undefined ? body : { ...body, hillRev: rev };
 }
 
-/** What a Morph route answers on a bridge built without it. */
-export const MORPH_OFF_TEXT = "Morph is not running on this bridge";
-/** What a Morph route answers with `?host=`: Morph is not merged across the crew. */
-export const MORPH_LOCAL_TEXT = "Morph reads this machine only for now; ask the machine itself";
-/** What the switch answers a body of another shape. */
-export const MORPH_BAD_SWITCH = 'the body is { "session": "<walky address>", "on": true | false }';
+/** What an agent view route answers on a bridge built without them. */
+export const VIEW_OFF_TEXT = "agent views are not running on this bridge";
+/** What an agent view route answers with `?host=`: views are not merged across the crew. */
+export const VIEW_LOCAL_TEXT = "agent views read this machine only; ask the machine itself";
+/** What the switch answers for a body of another shape. */
+export const VIEW_BAD_SWITCH = 'the body is { "trick": "<trick id>", "session": "<walky address>", "on": true | false }';
+/** What a view's switch or send answers a caller that is not a paired device with its own token. */
+export const VIEW_PAIRED_ONLY = "an agent view is switched and sent from a paired device only";
 
-/** The snapshot with Morph's revision when there is one. Absent, the body is unchanged, byte for byte. */
-export function withMorphRev(body: SnapshotResponse, rev: number | undefined): SnapshotResponse {
-  return rev === undefined ? body : { ...body, morphRev: rev };
+/**
+ * The second gate of an agent view's switch and send (SECURITY rule 3): beyond the write gate, the
+ * request must carry a paired device's own token. The host's local credential, a device known only by a
+ * proxy header, and a bridge with no pairing at all are refused 403. Null when the request may go on.
+ */
+export function viewWriteGate(req: Request, pairing: PairingGate | undefined): Response | null {
+  return pairedLabel(req, pairing) === null ? text(VIEW_PAIRED_ONLY, 403) : null;
+}
+
+/** The snapshot with the agent views' revision when there is one. Absent, the body is unchanged, byte for byte. */
+export function withTrickViewsRev(body: SnapshotResponse, rev: number | undefined): SnapshotResponse {
+  return rev === undefined ? body : { ...body, trickViewsRev: rev };
 }
 
 /**
- * `GET /api/morph?since=<rev>`: every session Morph holds, with its switch, its hint and its screen.
- * With `since` equal to the revision, only `{ rev, unchanged: true, sessions: [] }`.
+ * `GET /api/trick-views?since=<rev>`: every view this bridge holds, keyed by (trick, session), with its
+ * switch, head, tail and screen. With `since` equal to the revision, `{ rev, unchanged: true, views: [] }`;
+ * with an older one, only the views that moved after it and the keys of every view held. The tricks are
+ * scanned first (inside their usual cadence), so a trick switched off reads off here at once.
  */
-export function morphListRoute(morph: MorphService | undefined, since: string | null, acceptEncoding: string | null): Response {
-  if (morph === undefined) return text(MORPH_OFF_TEXT, 404);
-  const answer = morph.answer();
-  if (since !== null && since === String(answer.rev)) return json({ rev: answer.rev, unchanged: true, sessions: [] }, acceptEncoding);
-  return json(answer, acceptEncoding);
+export async function trickViewsListRoute(views: AgentViewService | undefined, since: string | null, acceptEncoding: string | null): Promise<Response> {
+  if (views === undefined) return text(VIEW_OFF_TEXT, 404);
+  await views.settle();
+  const at = since === null || !/^\d{1,16}$/u.test(since) ? null : Number(since);
+  return json(views.answer(at), acceptEncoding);
 }
 
 /**
- * `POST /api/morph/switch`: turn one session's Morph on or off. 200 with the session as served, 400 for
- * a body of another shape, 404 for an address that names no live agent session here, 503 when the
- * state could not be written. The gates' own 401 and 403 come before this.
+ * `POST /api/trick-views/switch`: the person turns one session's view of one trick on or off. 200 with the
+ * view as served, 400 for a body of another shape or on a crew member, 404 for an address that names no
+ * live agent session here, 409 when the trick does not pass the gate, 503 when the state could not be
+ * written. The gates' own 401 and 403 come before this. One audit line.
  */
-export function morphSwitchRoute(morph: MorphService | undefined, body: JsonValue | undefined, acceptEncoding: string | null): Response {
-  if (morph === undefined) return text(MORPH_OFF_TEXT, 404);
-  const read = readMorphSwitchBody(body);
-  if (read === null) return text(MORPH_BAD_SWITCH, 400);
-  const answer = morph.switch(read);
-  if (!answer.ok) return text(answer.error, answer.status);
-  return json(answer.session, acceptEncoding);
+export async function trickViewsSwitchRoute(views: AgentViewService | undefined, body: JsonValue | undefined, context: { readonly device: string | null; readonly acceptEncoding: string | null }): Promise<Response> {
+  if (views === undefined) return text(VIEW_OFF_TEXT, 404);
+  const read = readTrickViewSwitchBody(body);
+  if (read === null) return text(VIEW_BAD_SWITCH, 400);
+  const answer = await views.switch(read, context.device);
+  if (!answer.ok) return json({ error: answer.error, code: answer.code, view: true }, context.acceptEncoding, answer.status);
+  return json(answer.session, context.acceptEncoding);
 }
 
 /**
- * `GET /api/morph/media/<set id>/<media id>`: the bytes of one picture of a Morph screen, with the type
- * the bridge read off them when it kept the file and the hill's image headers (`no-store`, a sandboxed
- * CSP, `nosniff`). Each id is checked against its pattern before the service is asked, and the service
- * builds a path only for a pair a held screen names. Every miss is the same 404.
+ * `GET /api/trick-views/media/<set id>/<media id>`: the bytes of one picture of a view's screen, with the
+ * type the bridge read off them when it kept the file and the hill's image headers (`no-store`, a
+ * sandboxed CSP, `nosniff`). Each id is checked against its pattern before the service is asked, and the
+ * service builds a path only for a pair a held screen names, of a view that is on, passes its gate and is
+ * not stale. Every miss is the same 404.
  */
-export function morphMediaRoute(morph: MorphService | undefined, set: string, mediaId: string): Response {
-  if (morph === undefined) return text(MORPH_OFF_TEXT, 404);
-  if (!MORPH_SET_RE.test(set) || !MORPH_MEDIA_ID_RE.test(mediaId)) return text(HILL_MEDIA_MISSING, 404);
-  const file = morph.mediaFile(set, mediaId);
+export function trickViewsMediaRoute(views: AgentViewService | undefined, set: string, mediaId: string): Response {
+  if (views === undefined) return text(VIEW_OFF_TEXT, 404);
+  if (!VIEW_SET_RE.test(set) || !VIEW_MEDIA_ID_RE.test(mediaId)) return text(HILL_MEDIA_MISSING, 404);
+  const file = views.mediaFile(set, mediaId);
   if (file === null) return text(HILL_MEDIA_MISSING, 404);
   return secure(new Response(file.bytes, { headers: { "content-type": file.mime, ...HILL_MEDIA_HEADERS } }));
 }

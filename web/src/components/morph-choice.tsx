@@ -10,6 +10,9 @@ import type { MorphChoice, MorphMedia, MorphOption } from "@/lib/morph/wire";
 import type { ViewPictures } from "@/lib/tricks/render";
 import { cn } from "@/lib/utils";
 
+// TODO(agent-view web): SECURITY rule 8, an agent view draws no Hill-card look. This block still borrows the
+// Decision card's option buttons and arm; the web half must give it a look of its own.
+//
 // THE DECISION BLOCK of a Morph screen: one question and one to five options, drawn under the view with
 // the hill's option buttons and its arm, exactly as the Decision card draws its options
 // (components/decision-card.tsx): the label, the detail as the description, `confirm` as the armed
@@ -184,7 +187,7 @@ export function MorphChoiceDone({ choice, picked, pictures }: MorphChoiceDonePro
         )}
         <Badge variant="ok" data-slot="morph-answered-badge">
           <Icon name="answered" aria-hidden />
-          {t("morph.receipt.answered")}
+          {t("view.receipt.answered")}
         </Badge>
       </div>
       <ul data-slot="morph-choice-options" className="flex min-w-0 flex-col gap-1">
@@ -212,7 +215,7 @@ export function MorphChoiceDone({ choice, picked, pictures }: MorphChoiceDonePro
           );
         })}
       </ul>
-      {chosen !== undefined && <span className="sr-only">{t("morph.receipt.pickedLabel", { label: chosen.label })}</span>}
+      {chosen !== undefined && <span className="sr-only">{t("view.receipt.pickedLabel", { label: chosen.label })}</span>}
     </section>
   );
 }

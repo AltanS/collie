@@ -9,6 +9,7 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../w
 import { MEMBER_ID_RE } from "../crew/identity.ts";
 import { HILL_ID_RE, isHillCrewState, type HillCrewState } from "../../web/src/lib/hill/wire.ts";
 import { HILL_BAD_ID } from "../hill/parse.ts";
+import { isTrickId } from "../../web/src/lib/tricks/schema.ts";
 import { LOCAL_MEMBER, parseAddress } from "./address.ts";
 import type { WalkySpace } from "./space.ts";
 import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
@@ -156,7 +157,7 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────
 
-export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp | "trick.propose" | MorphOp;
+export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp | "trick.propose" | ViewOp;
 
 /** What a `hill.state` request with a word that is no crew state is refused with. */
 export const HILL_BAD_CREW_STATE = "bad request: the crew state is here, quiet or away";
@@ -195,26 +196,31 @@ export type WalkyRequest =
   | { readonly op: "hill.state"; readonly markers: readonly BeaconMarker[]; readonly state: HillCrewState | null }
   // A trick handed to the lead (crew slice 8): its fields are read by bridge/tricks/propose-wire.ts.
   | { readonly op: "trick.propose"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
-  // Morph: a show's and a start's fields are read by bridge/morph/service.ts, which owns their shape.
+  // Agent views: every op names the trick (`trick`, a trick id) whose view it writes or reads. The
+  // fields of a show, a start and a block op are read by bridge/agent-view/, which owns their shape.
   // `session` is the address the caller names with `--session`, or null: the bridge checks it against
-  // the pane the markers placed and never takes it in their place.
-  | { readonly op: "morph.show" | "morph.start" | MorphBlockOp; readonly markers: readonly BeaconMarker[]; readonly session: string | null; readonly fields: JsonObject }
-  | { readonly op: "morph.clear" | "morph.on" | "morph.off" | "morph.status"; readonly markers: readonly BeaconMarker[]; readonly session: string | null };
+  // the pane the markers placed and never takes it in their place. There is no `on` and no `off`: only
+  // the person turns a view on or off, on the phone (agent views SECURITY N9).
+  | { readonly op: "trick.view.show" | "trick.view.start" | ViewBlockOp; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly session: string | null; readonly fields: JsonObject }
+  | { readonly op: "trick.view.clear" | "trick.view.status" | "trick.view.help"; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly session: string | null };
 
-/** Morph's operations, beside walky's own and the hill's. Added, never a change to one of them. */
-export type MorphOp = "morph.start" | "morph.show" | "morph.clear" | "morph.on" | "morph.off" | "morph.status" | MorphBlockOp;
+/** The agent view operations, beside walky's own and the hill's. Added, never a change to one of them. */
+export type ViewOp = "trick.view.start" | "trick.view.show" | "trick.view.clear" | "trick.view.status" | "trick.view.help" | ViewBlockOp;
 
-/** Morph's block operations (a screen is a list of blocks): added beside the six above, never a change to one. */
-export type MorphBlockOp = "morph.set" | "morph.pending" | "morph.remove" | "morph.keep" | "morph.choice";
+/** The agent view block operations (a screen is a list of blocks). */
+export type ViewBlockOp = "trick.view.set" | "trick.view.pending" | "trick.view.remove" | "trick.view.keep" | "trick.view.choice";
 
-/** Whether a request is one of Morph's block operations, which carry fields. */
-export function isMorphBlockOp(op: string | null): op is MorphBlockOp {
-  return op === "morph.set" || op === "morph.pending" || op === "morph.remove" || op === "morph.keep" || op === "morph.choice";
+/** The sentence a view op without a readable trick id is refused with. */
+export const VIEW_BAD_TRICK = "an agent view op names its trick: `trick` is a trick id";
+
+/** Whether a request is one of the agent view block operations, which carry fields. */
+export function isViewBlockOp(op: string | null): op is ViewBlockOp {
+  return op === "trick.view.set" || op === "trick.view.pending" || op === "trick.view.remove" || op === "trick.view.keep" || op === "trick.view.choice";
 }
 
-/** Whether a request is one of Morph's operations. */
-export function isMorphOp(op: string | null): op is MorphOp {
-  return op === "morph.start" || op === "morph.show" || op === "morph.clear" || op === "morph.on" || op === "morph.off" || op === "morph.status" || isMorphBlockOp(op);
+/** Whether a request is one of the agent view operations. */
+export function isViewOp(op: string | null): op is ViewOp {
+  return op === "trick.view.start" || op === "trick.view.show" || op === "trick.view.clear" || op === "trick.view.status" || op === "trick.view.help" || isViewBlockOp(op);
 }
 
 /** Whether a request is one of the hill's operations (M96). */
@@ -284,13 +290,15 @@ export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): Wa
     return done({ op, markers, state });
   }
   if (op === "trick.propose") return done({ op, markers, fields: row });
-  // Morph. A bridge built without it answers these as it answers any op it does not know.
-  if (isMorphOp(op)) {
+  // Agent views. A bridge built without them answers these as it answers any op it does not know.
+  if (isViewOp(op)) {
     // `session` is absent, null, or text; anything else is a request this bridge cannot read.
     const session = row.session === undefined || row.session === null ? null : asJsonString(row.session);
     if (session === undefined) return unread(BAD_REQUEST_LINE, markers);
-    if (op === "morph.show" || op === "morph.start" || isMorphBlockOp(op)) return done({ op, markers, session, fields: row });
-    return done({ op, markers, session });
+    const trick = asJsonString(row.trick);
+    if (trick === undefined || !isTrickId(trick)) return unread(VIEW_BAD_TRICK, markers);
+    if (op === "trick.view.show" || op === "trick.view.start" || isViewBlockOp(op)) return done({ op, markers, trick, session, fields: row });
+    return done({ op, markers, trick, session });
   }
   if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);
   const id = text(row, "id");

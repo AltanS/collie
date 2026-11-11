@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs } from "@/components/trick-about-sheet";
 import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
-import { ABOUT_MAX, AGENT_VIEW_LATER, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
 // A trick's About sheet: the name as the title, the description and the about paragraphs, then two groups
 // built only from what the bridge already sends for the row.
@@ -214,10 +214,10 @@ describe("an agent view and its rules (contract 2)", () => {
   };
   const toggle = () => screen.getByRole("button", { name: "Read the instructions" });
 
-  it("lists the two rights lines, the rules line and the later note under What it does, in the schema's words", () => {
+  it("lists the two rights lines and the rules line under What it does, with no later note, in the schema's words", () => {
     render(<TrickAboutSheet trick={MORPH} open onClose={vi.fn()} />);
     const does = screen.getByRole("list", { name: "What it does" });
-    expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Draws in: agent view.", AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS, AGENT_VIEW_LATER]);
+    expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Draws in: agent view.", AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS]);
     expect(AGENT_VIEW_WORDS).toBe("Adds a view of a session that the session's own agent draws. You switch it on per session.");
     expect(AGENT_VIEW_TAP_WORDS).toBe("A tap in that view sends a message in your name to that session only.");
     expect(RULES_WORDS).toBe("Gives your agents instructions written by its author.");

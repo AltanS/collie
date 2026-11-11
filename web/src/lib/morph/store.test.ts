@@ -17,15 +17,15 @@ import {
   useMorphSession,
 } from "./store";
 
-// The snapshot's morphRev says when to read. The same number reads nothing, a higher one reads with
+// The snapshot's trickViewsRev says when to read. The same number reads nothing, a higher one reads with
 // `since`, a lower one is a restarted bridge and reads the whole list, and no number empties the store.
 
-/** Every GET /api/morph the store made, as its `since` (null for a whole read). */
+/** Every GET /api/trick-views the store made, as its `since` (null for a whole read). */
 let reads: (string | null)[] = [];
 
 function serve(answer: (since: string | null) => object | Response) {
   server.use(
-    http.get("/api/morph", ({ request }) => {
+    http.get("/api/trick-views", ({ request }) => {
       const since = new URL(request.url).searchParams.get("since");
       reads.push(since);
       const got = answer(since);
@@ -37,7 +37,7 @@ function serve(answer: (since: string | null) => object | Response) {
 const ADDRESS = "local/w1:p1#ab12";
 
 function session(on: boolean, view?: JsonValue) {
-  const out: JsonObject = { session: ADDRESS, on, hint: "(answer with collie morph show)" };
+  const out: JsonObject = { trick: "morph", session: ADDRESS, on, hint: "(answer with collie morph show)" };
   if (view !== undefined) out.view = view;
   return out;
 }
@@ -58,7 +58,7 @@ beforeEach(() => {
 
 describe("the Morph store", () => {
   it("reads the whole list on the first number and serves one session by its address", async () => {
-    serve(() => ({ rev: 3, sessions: [session(true, VIEW)] }));
+    serve(() => ({ rev: 3, views: [session(true, VIEW)] }));
     const { result } = renderHook(() => useMorphSession(ADDRESS));
     await sync(3);
     expect(reads).toEqual([null]);
@@ -67,7 +67,7 @@ describe("the Morph store", () => {
   });
 
   it("reads nothing when the number did not move, and reads with since when it went up", async () => {
-    serve((since) => (since === null ? { rev: 3, sessions: [session(true)] } : { rev: 5, unchanged: true, sessions: [] }));
+    serve((since) => (since === null ? { rev: 3, views: [session(true)] } : { rev: 5, unchanged: true, views: [] }));
     const { result } = renderHook(() => useMorphSession(ADDRESS));
     await sync(3);
     await sync(3);
@@ -77,14 +77,23 @@ describe("the Morph store", () => {
   });
 
   it("reads the whole list again when the number went down (a restarted bridge)", async () => {
-    serve((since) => (since === null ? { rev: reads.length === 1 ? 9 : 2, sessions: [session(true)] } : { rev: 9, unchanged: true, sessions: [] }));
+    serve((since) => (since === null ? { rev: reads.length === 1 ? 9 : 2, views: [session(true)] } : { rev: 9, unchanged: true, views: [] }));
     await sync(9);
     await sync(2);
     expect(reads).toEqual([null, null]);
   });
 
+  it("reads the whole list again when a since read answers only the moved views (it carries keys)", async () => {
+    serve((since) => (since === null ? { rev: reads.length === 1 ? 3 : 5, views: [session(true)] } : { rev: 5, views: [], keys: [{ trick: "morph", session: ADDRESS }] }));
+    const { result } = renderHook(() => useMorphSession(ADDRESS));
+    await sync(3);
+    await sync(5);
+    expect(reads).toEqual([null, "3", null]);
+    expect(result.current?.on).toBe(true);
+  });
+
   it("asks once on a snapshot with no number: a fresh bridge has Morph before it has a number", async () => {
-    serve(() => ({ rev: 0, sessions: [] }));
+    serve(() => ({ rev: 0, views: [] }));
     const { result } = renderHook(() => useMorphAvailable());
     expect(result.current).toBe(false);
     await sync(undefined);
@@ -95,7 +104,7 @@ describe("the Morph store", () => {
 
   it("offers Morph nowhere on a 404, and asks again once a snapshot carries a number", async () => {
     let known = false;
-    serve(() => (known ? { rev: 2, sessions: [session(true)] } : new HttpResponse("not found", { status: 404 })));
+    serve(() => (known ? { rev: 2, views: [session(true)] } : new HttpResponse("not found", { status: 404 })));
     const { result } = renderHook(() => ({ available: useMorphAvailable(), one: useMorphSession(ADDRESS) }));
     await sync(undefined);
     await sync(undefined);
@@ -109,7 +118,7 @@ describe("the Morph store", () => {
   });
 
   it("keeps what it holds on a later snapshot with no number", async () => {
-    serve(() => ({ rev: 3, sessions: [session(true)] }));
+    serve(() => ({ rev: 3, views: [session(true)] }));
     const { result } = renderHook(() => useMorphSession(ADDRESS));
     await sync(3);
     await sync(undefined);
@@ -119,7 +128,7 @@ describe("the Morph store", () => {
 
   it("keeps the held list when a read fails, and asks again on the next snapshot", async () => {
     let fail = false;
-    serve(() => (fail ? new HttpResponse("down", { status: 500 }) : { rev: 3, sessions: [session(true)] }));
+    serve(() => (fail ? new HttpResponse("down", { status: 500 }) : { rev: 3, views: [session(true)] }));
     const { result } = renderHook(() => useMorphSession(ADDRESS));
     await sync(3);
     fail = true;
@@ -131,9 +140,9 @@ describe("the Morph store", () => {
   it("matches a held bare address for the same pane, never a held address of another session", async () => {
     serve(() => ({
       rev: 3,
-      sessions: [
-        { session: "local/w1:p1", on: true, hint: "h" },
-        { session: "local/w1:p2#zz99", on: true, hint: "h" },
+      views: [
+        { trick: "morph", session: "local/w1:p1", on: true, hint: "h" },
+        { trick: "morph", session: "local/w1:p2#zz99", on: true, hint: "h" },
       ],
     }));
     const { result } = renderHook(() => ({ bare: useMorphSession(ADDRESS), other: useMorphSession("local/w1:p2#ab12") }));
@@ -143,12 +152,12 @@ describe("the Morph store", () => {
   });
 
   it("takes a switch at once, before the next read", async () => {
-    serve(() => ({ rev: 3, sessions: [] }));
+    serve(() => ({ rev: 3, views: [] }));
     const { result } = renderHook(() => useMorphSession(ADDRESS));
     await sync(3);
     expect(result.current).toBeNull();
     act(() => noteMorphSwitch(ADDRESS, true, null));
-    expect(result.current).toEqual({ session: ADDRESS, on: true, hint: "" });
+    expect(result.current).toEqual({ trick: "morph", session: ADDRESS, on: true, hint: "" });
     act(() => noteMorphSwitch(ADDRESS, false, null));
     expect(result.current?.on).toBe(false);
   });
@@ -188,7 +197,7 @@ describe("the fast read while a screen is in work", () => {
 
   /** A bridge whose number never moves: the whole list once, then `unchanged`. */
   function quiet(since: string | null) {
-    return since === null ? { rev: 3, sessions: [] } : { rev: 3, unchanged: true, sessions: [] };
+    return since === null ? { rev: 3, views: [] } : { rev: 3, unchanged: true, views: [] };
   }
 
   /** A bridge whose number moves on each fast read: rev 3 on the whole read, then 4, 5, ... */
@@ -196,7 +205,7 @@ describe("the fast read while a screen is in work", () => {
     let rev = 3;
     serve((since) => {
       if (since !== null) rev += 1;
-      return { rev, sessions: [session(true, { at: "2026-11-10T10:00:00.000Z", rev, view: [{ kind: "para", text: "Two steps." }] })] };
+      return { rev, views: [session(true, { at: "2026-11-10T10:00:00.000Z", rev, view: [{ kind: "para", text: "Two steps." }] })] };
     });
   }
 
@@ -269,7 +278,7 @@ describe("the fast read while a screen is in work", () => {
 
   it("slows down after three failed reads in a row", async () => {
     let fail = false;
-    serve(() => (fail ? new HttpResponse("down", { status: 500 }) : { rev: 3, sessions: [] }));
+    serve(() => (fail ? new HttpResponse("down", { status: 500 }) : { rev: 3, views: [] }));
     await sync(3);
     fail = true;
     hold(true);

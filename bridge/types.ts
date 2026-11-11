@@ -917,7 +917,7 @@ export interface SnapshotResponse {
    * Morph's revision: it moves on every switch, show and clear on this bridge, and the phone refetches
    * `GET /api/morph` when it does. Absent until Morph's state file exists, as `hillRev`.
    */
-  morphRev?: number;
+  trickViewsRev?: number;
   /**
    * The Hill is switched off on this bridge (bridge/hill/switch.ts): then the snapshot carries no
    * `hillRev`, the phone shows no Hill item, and the Hill's route and Settings say it is off. Absent

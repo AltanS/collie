@@ -1434,11 +1434,11 @@ export interface SnapshotResponse {
    */
   hillRev?: number;
   /**
-   * The Morph revision: it moves on every switch and every screen an agent draws, and the phone reads
-   * `GET /api/morph` when it does (lib/morph/store.ts). Absent on a bridge without Morph, which reads as
-   * no Morph at all.
+   * The agent views' revision: it moves on every switch and every screen an agent draws, and the phone
+   * reads `GET /api/trick-views` when it does (lib/morph/store.ts, TODO(agent-view web)). Absent on a
+   * bridge without agent views, which reads as none at all.
    */
-  morphRev?: number;
+  trickViewsRev?: number;
   /**
    * The Hill is switched off on this bridge (bridge/hill/switch.ts): then the snapshot carries no
    * `hillRev`, the phone shows no Hill item, and the Hill's route and Settings say it is off. Absent

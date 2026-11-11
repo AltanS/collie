@@ -115,20 +115,20 @@ describe("morphStateOf", () => {
 
 describe("tapTextOf", () => {
   const view = screenOf([
-    { kind: "bar", kids: [{ kind: "button", attrs: { label: "Approve", intent: "approve", value: "Approve the plan" } }, { kind: "button", attrs: { label: "Skip", intent: "skip" } }, { kind: "button", attrs: { label: "Same", intent: "same", value: "Same" } }] },
-    { kind: "group", attrs: { label: "Speed" }, kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Fast", intent: "pick" } }, { kind: "button", attrs: { label: "Slow", intent: "pick", value: "slowly" } }] }] },
+    { kind: "bar", kids: [{ kind: "button", attrs: { label: "Approve", intent: "approve" } }, { kind: "button", attrs: { label: "Skip", intent: "skip" } }, { kind: "button", attrs: { label: "Same", intent: "same" } }] },
+    { kind: "group", attrs: { label: "Speed" }, kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Fast", intent: "pick" } }, { kind: "button", attrs: { label: "Slow", intent: "pick" } }] }] },
     { kind: "group", kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Plain", intent: "pick" } }] }] },
   ]).view;
 
-  it("says tapped with the label, and the value after a colon when it is more than the label", () => {
-    expect(tapTextOf({ view, control: "v/0/0" })).toBe('tapped "Approve": Approve the plan');
+  it("says tapped with the label alone: an agent view button has no value", () => {
+    expect(tapTextOf({ view, control: "v/0/0" })).toBe('tapped "Approve"');
     expect(tapTextOf({ view, control: "v/0/1" })).toBe('tapped "Skip"');
     expect(tapTextOf({ view, control: "v/0/2" })).toBe('tapped "Same"');
   });
 
   it("names the labelled group before the colon, and none for a group without a label", () => {
     expect(tapTextOf({ view, control: "v/1/0/0" })).toBe('tapped "Fast" in "Speed"');
-    expect(tapTextOf({ view, control: "v/1/0/1" })).toBe('tapped "Slow" in "Speed": slowly');
+    expect(tapTextOf({ view, control: "v/1/0/1" })).toBe('tapped "Slow" in "Speed"');
     expect(tapTextOf({ view, control: "v/2/0/0" })).toBe('tapped "Plain"');
   });
 
@@ -313,7 +313,7 @@ describe("morphStatusOf", () => {
     expect(morphStatusOf({ ...base, request: request("sent"), working: true })).toEqual({ kind: "working" });
   });
 
-  it("says Morphing once the agent called start for this request, until a show ends it", () => {
+  it("says Drawing once the agent called start for this request, until a show ends it", () => {
     const drawing = { at: iso(T0 + 500), note: "Checking the tests" };
     expect(morphStatusOf({ ...base, request: request("sent"), drawing, working: true })).toEqual({ kind: "morphing" });
     expect(morphStatusOf({ ...base, request: request("sent"), drawing: { at: iso(T0 + 500) } })).toEqual({ kind: "morphing" });
@@ -496,10 +496,10 @@ describe("requestAfter", () => {
 });
 
 describe("the decision block's words", () => {
-  const choice = { options: [{ label: "Cards", value: "Use cards." }, { label: "Table" }, { label: "Same", value: "Same" }] };
+  const choice = { options: [{ label: "Cards" }, { label: "Table" }, { label: "Same" }] };
 
-  it("sends picked with the value after a colon, the label alone without one or when they match", () => {
-    expect(pickTextOf(choice, 0)).toBe('picked "Cards": Use cards.');
+  it("sends picked with the label alone: an option has no value", () => {
+    expect(pickTextOf(choice, 0)).toBe('picked "Cards"');
     expect(pickTextOf(choice, 1)).toBe('picked "Table"');
     expect(pickTextOf(choice, 2)).toBe('picked "Same"');
     expect(pickTextOf(choice, 3)).toBeNull();
@@ -519,7 +519,7 @@ describe("the receipt of a pick or a tap", () => {
     at: iso(T0),
     title: "Header",
     view: [{ kind: "para", text: "x" }],
-    choice: { question: "Which header?", options: [{ label: "Compact", value: "Use it.", preview: 1 }, { label: "Tall" }] },
+    choice: { question: "Which header?", options: [{ label: "Compact", preview: 1 }, { label: "Tall" }] },
   };
 
   it("a pick names the question and the option's preview", () => {
