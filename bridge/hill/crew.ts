@@ -428,12 +428,12 @@ const KNOWN_CODES: readonly HillRefusalCode[] = [
 ];
 
 /** A line of the lead's own words as this member prints it: one line, printable, cut. */
-function leadWords(raw: string | undefined, fallback: string): string {
+export function leadWords(raw: string | undefined, fallback: string): string {
   return raw === undefined || raw.trim() === "" ? fallback : headerField(raw, 300);
 }
 
 /** What one dial came to, read the same way for every route. */
-type Read = { readonly kind: "body"; readonly body: JsonObject } | { readonly kind: "refused" } | { readonly kind: "unknown" } | { readonly kind: "older" } | { readonly kind: "failed"; readonly error: string };
+export type LeadRead = { readonly kind: "body"; readonly body: JsonObject } | { readonly kind: "refused" } | { readonly kind: "unknown" } | { readonly kind: "older" } | { readonly kind: "failed"; readonly error: string };
 
 /** The words of a 401 from a lead known to take Decisions from a member. */
 export const HILL_SIGNATURE_REFUSED = "the lead refused this machine's signature";
@@ -445,8 +445,8 @@ export const HILL_SIGNATURE_REFUSED = "the lead refused this machine's signature
  * known, or older, it reads as an older lead. A 404 (a collie that does not lead, or a lead built without
  * the routes) reads as older too. A 503 is a body the lead did not read: refused, nothing landed.
  */
-function readDial(answer: CrewDialAnswer, atFloor: boolean): Read {
-  const signature: Read = atFloor ? { kind: "failed", error: HILL_SIGNATURE_REFUSED } : { kind: "older" };
+export function readDial(answer: CrewDialAnswer, atFloor: boolean): LeadRead {
+  const signature: LeadRead = atFloor ? { kind: "failed", error: HILL_SIGNATURE_REFUSED } : { kind: "older" };
   if (answer.kind === "refused") return answer.reason === "signature" ? signature : { kind: "refused" };
   if (answer.kind === "unknown") return { kind: "unknown" };
   if (answer.status === 404) return { kind: "older" };
@@ -521,7 +521,7 @@ export class HillMemberForward implements HillLeadForward {
   }
 
   /** One call of the op route, read as far as the dial goes. */
-  private async call(body: JsonObject): Promise<Read> {
+  private async call(body: JsonObject): Promise<LeadRead> {
     return readDial(await this.link.call(CREW_HILL_OP_ROUTE, JSON.stringify(body), this.budgets.callMs), this.link.leadAtFloor());
   }
 

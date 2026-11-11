@@ -20,6 +20,11 @@
 //   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
 //   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
 //   hill.clear    {}                           → { ok, cleared }    (every closed decision; no pane needed, never an open one)
+// A trick handed to the lead (crew slice 8), answered only by a bridge built with it:
+//   trick.propose { requestId, files }        → { ok, kind, id, hash, decision, replaced } | { ok: false, error, code, propose: true }
+//     From an agent's pane the proposer is that session; from a bare shell or with no markers, a terminal.
+//     Its line may be up to PROPOSE_LINE_MAX when it opens with PROPOSE_LINE_PREFIX, read within
+//     PROPOSE_LINE_MS, at most PROPOSE_LINES_MAX such lines at once.
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
 // On a crew member from 1.29.0 the four go to the lead, which holds the one Hill (CREW_PROTOCOL §22).
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
@@ -37,7 +42,11 @@ import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
 import type { HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
 import type { HillService } from "../hill/service.ts";
-import { isHillOp, readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
+import type { LocalProposer } from "../tricks/propose-door.ts";
+import type { ProposeAnswer } from "../tricks/proposals.ts";
+import type { ProposeRefusalCode } from "../tricks/propose-wire.ts";
+import type { JsonObject } from "../json.ts";
+import { isHillOp, PROPOSE_LINE_MAX, PROPOSE_LINE_PREFIX, readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
 import { unknownOp } from "./refusals.ts";
 import type { WalkyDelivery, WalkyService } from "./service.ts";
 import type { TakeBack, WalkyPane } from "./deliver.ts";
@@ -66,6 +75,15 @@ export function walkySocketPath(stateDir: string): string {
 
 /** How long the server waits for the request line. */
 export const REQUEST_LINE_MS = 2000;
+/** How long the server waits for a whole `trick.propose` line, up to 8 MB from a local process. */
+export const PROPOSE_LINE_MS = 30_000;
+/** How many `trick.propose` lines are read at once; one more is turned away unread. */
+export const PROPOSE_LINES_MAX = 2;
+
+/** What the socket needs of the proposals (crew slice 8, bridge/tricks/propose-door.ts). */
+export interface ProposeSocket {
+  local(fields: JsonObject, who: LocalProposer): Promise<ProposeAnswer>;
+}
 
 /** The pane the markers name: a session and a pane id. The service then reads its instance. */
 export interface PlacedPane {
@@ -107,6 +125,8 @@ export interface WalkyServerDeps {
   readonly log?: (line: string) => void;
   /** The hill (M96). Absent: its operations are answered as an older bridge answers them. */
   readonly hill?: HillSocket;
+  /** `collie trick propose` (crew slice 8). Absent: the op is answered as unknown. */
+  readonly propose?: ProposeSocket;
 }
 
 /** What one request is answered with. */
@@ -132,7 +152,10 @@ export type WalkyAnswer =
   | { readonly ok: false; readonly error: string; readonly hill: true; readonly code?: HillRefusalCode; readonly missing?: string }
   | { readonly ok: true; readonly decision: HillDecision }
   | { readonly ok: true; readonly decisions: readonly HillDecision[] }
-  | { readonly ok: true; readonly cleared: number };
+  | { readonly ok: true; readonly cleared: number }
+  // A trick proposal (crew slice 8).
+  | { readonly ok: true; readonly kind: "proposal" | "version"; readonly id: string; readonly hash: string; readonly decision: string | null; readonly replaced: string | null }
+  | { readonly ok: false; readonly error: string; readonly code: ProposeRefusalCode; readonly propose: true };
 
 /**
  * A bridge that knows the pane but holds no message with the id (added 2026-10-30). It answers `not here`,
@@ -144,7 +167,7 @@ export function noMessageHere(sentence: string): WalkyAnswer {
 }
 
 /** Answer one parsed request. Exported for its test: the server only frames it. */
-export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[], hill?: HillSocket): Promise<WalkyAnswer> {
+export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[], hill?: HillSocket, propose?: ProposeSocket): Promise<WalkyAnswer> {
   // A bridge built without the hill answers its operations as it answers any op it does not know.
   if (hill === undefined && isHillOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
   // Clear is the person's verb from a terminal: it names no pane, so the markers are not placed.
@@ -231,6 +254,13 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "hill.clear":
       // Answered above, before any pane is placed; kept so the switch stays exhaustive.
       return hill === undefined ? { ok: false, error: unknownOp(request.op) } : answerClear(hill);
+    case "trick.propose": {
+      if (propose === undefined) return { ok: false, error: unknownOp(request.op) };
+      // An agent's pane proposes as that session; a bare shell, or no markers at all, as a terminal.
+      const who: LocalProposer = pane !== null && pane.agent ? { kind: "agent", address: service.addressOf(pane.paneId, pane.instance), label: pane.label } : { kind: "terminal" };
+      const answer = await propose.local(request.fields, who);
+      return answer.ok ? answer : { ok: false, error: answer.error, code: answer.code, propose: true };
+    }
   }
 }
 
@@ -289,6 +319,8 @@ export async function answerUnread(service: WalkyService, read: Extract<WalkyReq
 export class WalkyServer {
   private server: Server | null = null;
   private readonly log: (line: string) => void;
+  /** `trick.propose` lines being read now. */
+  private bigLines = 0;
 
   constructor(private readonly deps: WalkyServerDeps) {
     this.log = deps.log ?? ((line) => console.log(line));
@@ -351,17 +383,43 @@ export class WalkyServer {
     socket.setEncoding("utf8");
     let buffer = "";
     let taken = false;
-    const timer = setTimeout(() => {
+    // A `trick.propose` line may be long (crew slice 8): it gets its own cap and time, two at a time.
+    let big = false;
+    let decided = false;
+    let timer = setTimeout(() => {
       if (!taken) socket.destroy();
     }, REQUEST_LINE_MS);
     timer.unref?.();
     socket.on("error", () => undefined);
+    socket.on("close", () => {
+      if (big) this.bigLines -= 1;
+      big = false;
+    });
     socket.on("data", (chunk: string) => {
       if (taken) return;
+      const from = buffer.length;
       buffer += chunk;
-      const at = buffer.indexOf("\n");
+      if (!decided && (buffer.length >= PROPOSE_LINE_PREFIX.length || buffer.includes("\n"))) {
+        decided = true;
+        if (buffer.startsWith(PROPOSE_LINE_PREFIX)) {
+          if (this.bigLines >= PROPOSE_LINES_MAX) {
+            taken = true;
+            clearTimeout(timer);
+            this.reply(socket, { ok: false, error: "another proposal is being read; try again in a moment", code: "failed", propose: true });
+            return;
+          }
+          big = true;
+          this.bigLines += 1;
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            if (!taken) socket.destroy();
+          }, PROPOSE_LINE_MS);
+          timer.unref?.();
+        }
+      }
+      const at = buffer.indexOf("\n", from);
       if (at < 0) {
-        if (buffer.length > WALKY_LINE_MAX) {
+        if (buffer.length > (big ? PROPOSE_LINE_MAX : WALKY_LINE_MAX)) {
           taken = true;
           clearTimeout(timer);
           this.reply(socket, { ok: false, error: "too long" });
@@ -370,7 +428,7 @@ export class WalkyServer {
       }
       taken = true;
       clearTimeout(timer);
-      void this.route(socket, buffer.slice(0, at));
+      void this.route(socket, buffer.slice(0, at), big);
     });
   }
 
@@ -379,11 +437,13 @@ export class WalkyServer {
     socket.end(`${JSON.stringify(answer)}\n`);
   }
 
-  private async route(socket: Socket, line: string): Promise<void> {
+  private async route(socket: Socket, line: string, big = false): Promise<void> {
     try {
-      const read = readWalkyRequest(line);
+      const read = readWalkyRequest(line, big ? PROPOSE_LINE_MAX : WALKY_LINE_MAX);
       if (!read.ok) return this.reply(socket, await answerUnread(this.deps.service, read, this.deps.targets()));
-      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill));
+      // A long line is a proposal's, or nothing: a second `op` key cannot turn it into another request.
+      if (big && read.request.op !== "trick.propose") return this.reply(socket, { ok: false, error: "bad request: a long line is a trick proposal only" });
+      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill, this.deps.propose));
     } catch (err) {
       this.log(`[walky] request failed: ${err instanceof Error ? err.message : String(err)}`);
       this.reply(socket, { ok: false, error: "failed" });

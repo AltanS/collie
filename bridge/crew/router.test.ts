@@ -28,6 +28,9 @@ import {
   CREW_TAKEOVER_PATH,
   CREW_WALKY_OUTCOMES_PATH,
   CREW_TRICKS_INPUTS_PATH,
+  CREW_TRICKS_PROPOSE_PATH,
+  PROPOSE_READ_MS,
+  SIGNED_PROPOSE_READS_MAX,
   CREW_WALKY_PATH,
   CREW_WALKY_WHO_PATH,
   CREW_WARRANT_PATH,
@@ -3239,7 +3242,8 @@ describe("signed body caps — a body over its route's cap is refused before it 
     expect(SIGNED_BODY_CAPS.get(CREW_HILL_MEDIA_PATH)).toBe(3 * 1024 * 1024);
     expect(SIGNED_BODY_CAPS.get(CREW_HILL_POST_PATH)).toBe(64 * 1024);
     expect(SIGNED_BODY_CAPS.get(CREW_HILL_OP_PATH)).toBe(4 * 1024);
-    expect(SIGNED_BODY_CAPS.size).toBe(10);
+    expect(SIGNED_BODY_CAPS.get(CREW_TRICKS_PROPOSE_PATH)).toBe(8 * 1024 * 1024);
+    expect(SIGNED_BODY_CAPS.size).toBe(11);
   });
 
   test("a declared Content-Length over the cap is a 413 with its code, and not one byte is pulled", async () => {
@@ -3536,5 +3540,112 @@ describe("POST /crew/v1/hill/* — a member's Decision on its lead's Hill (§22,
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
     expect(res.headers.get("x-crew-protocol")).toBeNull();
+  });
+});
+
+describe("POST /crew/v1/tricks/propose: a member hands its lead a trick (§24, added in 1.29.0)", () => {
+  function proposeRig(answer: (body: JsonValue | undefined, member: string) => Promise<HillCrewAnswer> = async () => ({ status: 200, body: { ok: true } })) {
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const seen: { body: JsonValue | undefined; member: string }[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      proposals: {
+        propose: async (body, from) => {
+          seen.push({ body, member: from.memberId });
+          return await answer(body, from.memberId);
+        },
+      },
+    });
+    return { h, handler, seen };
+  }
+
+  test("a signed member reaches the handler as itself; no floor moves", async () => {
+    const { h, handler, seen } = proposeRig();
+    const res = (await call(handler, CREW_TRICKS_PROPOSE_PATH, signedPost("laptop", CREW_TRICKS_PROPOSE_PATH, { requestId: "x", files: [], from: null }, T0)))!;
+    expect(res.status).toBe(200);
+    expect(seen.map((s) => s.member)).toEqual(["laptop"]);
+    expect(h.data().peers[0]!.signedAt).toBe(0);
+  });
+
+  test("unsigned, forged and unknown callers are the uniform 401; a handler's 401 is too", async () => {
+    const { handler, seen } = proposeRig();
+    const forged = signedPost("laptop", CREW_TRICKS_PROPOSE_PATH, { a: 1 }, T0);
+    for (const init of [{ ...forged, body: JSON.stringify({ a: 2 }) }, signedPost("stranger", CREW_TRICKS_PROPOSE_PATH, {}, T0), post({})]) {
+      expect((await call(handler, CREW_TRICKS_PROPOSE_PATH, init))!.status).toBe(401);
+    }
+    expect(seen).toEqual([]);
+    const refusing = proposeRig(async () => ({ status: 401, body: { error: "unauthorized" } }));
+    const res = (await call(refusing.handler, CREW_TRICKS_PROPOSE_PATH, signedPost("laptop", CREW_TRICKS_PROPOSE_PATH, {}, T0)))!;
+    expect(res.status).toBe(401);
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
+  });
+
+  test("a body over 8 MiB is refused before it is read", async () => {
+    const { handler, seen } = proposeRig();
+    const url = new URL(`https://peer.example${CREW_TRICKS_PROPOSE_PATH}`);
+    const req = new Request(url, {
+      method: "POST",
+      headers: { ...authed, "content-type": "application/json", "content-length": String(8 * 1024 * 1024 + 1), ...signed("laptop", "POST", CREW_TRICKS_PROPOSE_PATH, "{}", T0) },
+      body: "{}",
+    });
+    expect((await handler(req, url))!.status).toBe(413);
+    expect(seen).toEqual([]);
+  });
+
+  test("proposals have their own read count: a third one waits, the Hill's routes do not", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { handler } = proposeRig();
+    const body = JSON.stringify({ requestId: "x", files: [], from: null });
+    const slow = (): ReadableStream<Uint8Array> =>
+      new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          await gate;
+          controller.enqueue(new TextEncoder().encode(body));
+          controller.close();
+        },
+      });
+    const send = (stream: BodyInit) => {
+      const url = new URL(`https://peer.example${CREW_TRICKS_PROPOSE_PATH}`);
+      return handler(new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_TRICKS_PROPOSE_PATH, body, T0) }, body: stream }), url);
+    };
+    const inFlight = Array.from({ length: SIGNED_PROPOSE_READS_MAX }, () => send(slow()));
+    await Bun.sleep(20);
+    const busy = (await send(body))!;
+    expect(busy.status).toBe(503);
+    release();
+    for (const res of await Promise.all(inFlight)) expect(res!.status).toBe(200);
+    expect((await send(body))!.status).toBe(200);
+  });
+
+  test("a body that stalls past its time gives its slot back and is a 400, not a hang", async () => {
+    expect(PROPOSE_READ_MS).toBe(60_000);
+    const { handler, seen } = proposeRig();
+    const url = new URL(`https://peer.example${CREW_TRICKS_PROPOSE_PATH}`);
+    const realTimeout = globalThis.setTimeout;
+    // The read's timer fires at once; every other timer keeps its time.
+    // SAFETY: the wrapper takes and passes the same arguments as setTimeout and answers its handle.
+    globalThis.setTimeout = ((fn: () => void, ms?: number) => realTimeout(fn, ms === PROPOSE_READ_MS ? 5 : ms)) as typeof setTimeout;
+    try {
+      const stalled = new ReadableStream<Uint8Array>({ pull: () => new Promise<void>(() => undefined) });
+      const res = (await handler(new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_TRICKS_PROPOSE_PATH, "{}", T0) }, body: stalled }), url))!;
+      expect(res.status).toBe(400);
+    } finally {
+      globalThis.setTimeout = realTimeout;
+    }
+    expect(seen).toEqual([]);
+  });
+
+  test("a collie that does not lead, and a lead given no proposals, answer 404", async () => {
+    const peer = harness(peerStore());
+    const asPeer = createCrewRouter({ store: peer.store, audit: peer.audit, transportPinned: true, proposals: { propose: async () => ({ status: 200, body: {} }) } });
+    expect((await call(asPeer, CREW_TRICKS_PROPOSE_PATH, post({})))!.status).toBe(404);
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const older = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    expect((await call(older, CREW_TRICKS_PROPOSE_PATH, signedPost("laptop", CREW_TRICKS_PROPOSE_PATH, {}, T0)))!.status).toBe(404);
   });
 });

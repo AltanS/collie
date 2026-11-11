@@ -328,6 +328,8 @@ import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
 import { HillService } from "./hill/service.ts";
 import { atTricksCrewFloor, HillCrewLead, HillHeldMedia, HillMemberForward, olderThanTricksCrew } from "./hill/crew.ts";
+import { TrickProposals } from "./tricks/proposals.ts";
+import { ProposeDoor } from "./tricks/propose-door.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
 import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
@@ -2333,6 +2335,9 @@ let hillOffline: (address: string) => string | null = () => null;
 // The "new version" card of a trick (crew slice 3): built after the Hill, which it posts into; the Hill
 // hands it the answer to one of its cards. An answer only ever comes after boot.
 let versionCards: VersionCards | undefined;
+// The trick proposals (crew slice 8, tricks/proposals.ts): kept on a lead or a solo bridge, inert until the
+// person's yes on the Hill. Built after the Hill, like the version card.
+let trickProposals: TrickProposals | undefined;
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
     for (const id of ids) hillMedia.remove(id);
@@ -2361,7 +2366,9 @@ const hill = new HillService({
   // down; an answer only ever comes after boot.
   tap: (host, trickId, tap, decisionId) => tricks?.tapFromHill(host, trickId, tap, decisionId) ?? Promise.resolve(false),
   // A Decision of Collie's own (crew slice 3): its answer acts here, on exactly the version the card shows.
-  onCollieAnswer: (ref, intent) => versionCards?.answer(ref, intent) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." }),
+  // A trick proposal's card (crew slice 8) goes to the proposals, a new version's to its card.
+  onCollieAnswer: (ref, intent) =>
+    (ref.type === "proposal" ? trickProposals?.answer(ref, intent) : versionCards?.answer(ref, intent)) ?? Promise.resolve({ ok: false, reason: "Tricks are not running on this bridge." }),
   // A `now` Decision rings the phone once (hill/push.ts): push live, its switch on, not snoozed. A crew
   // member refuses posts anyway; the lead holds the subscriptions, as for every other push.
   push: new HillPush({
@@ -2386,7 +2393,38 @@ const hill = new HillService({
   offline: crew.mode === "lead" ? (address) => hillOffline(address) : undefined,
 });
 hill.pruneMedia();
-versionCards = new VersionCards({ hill, tricks: () => tricks ?? null, warn: (line) => console.warn(`[tricks] ${line}`), crew: () => crew.mode === "lead" });
+versionCards = new VersionCards({
+  hill,
+  tricks: () => tricks ?? null,
+  warn: (line) => console.warn(`[tricks] ${line}`),
+  crew: () => crew.mode === "lead",
+  proposedBy: (id, hash) => trickProposals?.proposedBy(id, hash) ?? null,
+});
+trickProposals =
+  cfg.tricksDir === undefined || crew.mode === "peer"
+    ? undefined
+    : new TrickProposals({
+        configDir: dirname(cfg.tricksDir),
+        stateDir: cfg.stateDir,
+        hill,
+        tricks: () => tricks ?? null,
+        crew: () => crew.mode === "lead",
+        audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+      });
+// At start: the proposals whose card closed while the bridge was down, and copies nothing names, go.
+void trickProposals?.start();
+// `collie trick propose` (crew slice 8): from this machine's walky socket, and on a lead from a member.
+const proposeDoor = new ProposeDoor({
+  mode: () => crew.mode,
+  proposals: () => trickProposals ?? null,
+  memberId: bridgeId.id,
+  machine: hostname(),
+  call: crew.mode === "peer" && walkyMemberId !== null ? (route, payload, budgetMs) => walkyToLead(payload, route, budgetMs) : undefined,
+  leadName: () => trustStore.current()?.lead?.memberId ?? null,
+  leadOlder: () => olderThanTricksCrew(heardLeadRelease, crewVersion, compareSemver),
+  leadAtFloor: () => atTricksCrewFloor(heardLeadRelease, crewVersion, compareSemver),
+  place: hillPlace,
+});
 // The lead's half of §22: a member's images wait here by hash for the post that names them.
 // `place` is the same probe the Hill resolves addresses with: what it returns for a member's address is
 // checked against the signing member too, not only the string (security re-review A1).
@@ -2396,6 +2434,7 @@ const walkyServer = new WalkyServer({
   host: HOST,
   service: walky,
   hill,
+  propose: proposeDoor,
   targets: () => {
     const live = new Set(registry.ordered().map((runtime) => runtime.name));
     return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
@@ -2408,6 +2447,8 @@ const refreshTimer = setInterval(() => {
   // The hill's sweep (M96) rides this slow timer: a decision past its `expiresAt` closes `expired`, and
   // one whose target session was gone at two sweeps in a row closes `undeliverable`.
   hill.sweep(Date.now());
+  // A proposal whose card closed (answered elsewhere, dismissed, expired) loses its stored copy.
+  void trickProposals?.sweep();
 }, SESSION_REFRESH_MS);
 refreshTimer.unref();
 
@@ -3708,6 +3749,8 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
                     post: (body, member) => hillCrewLead.post(body, member.memberId),
                     op: (body, member) => hillCrewLead.op(body, member.memberId),
                   },
+            // §24 (added in 1.29.0, crew slice 8): a lead takes a trick a member's agent or terminal proposed.
+            proposals: crew.mode === "lead" && trickProposals !== undefined ? { propose: (body, member) => proposeDoor.fromMember(body, member.memberId) } : undefined,
             transportPinned,
             // Present only on a two-anchored peer. Its presence is what makes a dial attestation
             // mandatory and identity signature-resolved (§8.1's 2026-08-20 amendment).

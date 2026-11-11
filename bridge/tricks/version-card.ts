@@ -75,6 +75,11 @@ export interface VersionCardDeps {
   diff?: (base: string | null, next: string) => Promise<VersionDiff>;
   /** Whether this bridge leads a crew: a new `inputs` glob then reads on every machine, and the card says so. */
   crew?: () => boolean;
+  /**
+   * The proposer of a version handed in with `collie trick propose` (crew slice 8, proposals.ts), as the
+   * card's first sentence, or null. Such a card recommends nothing and has no "always".
+   */
+  proposedBy?: (id: string, hash: string) => string | null;
   warn?: (line: string) => void;
 }
 
@@ -87,13 +92,13 @@ const PLACE_WORDS = {
   tabbar: "the bottom bar",
 } as const satisfies Readonly<Record<PlaceKind, string>>;
 
-function placeWords(place: string): string {
+export function placeWords(place: string): string {
   const kind = PLACE_KINDS.find((candidate) => candidate === place);
   return kind === undefined ? place : PLACE_WORDS[kind];
 }
 
 /** A warning kind as the card's second sentence says it, after "It now also". */
-const WARN_VERBS = {
+export const WARN_VERBS = {
   spawn: "starts other programs",
   network: "reaches the network",
   write: "writes files outside its state folder",
@@ -120,7 +125,7 @@ export function newInputs(base: Pick<TrickManifest, "inputs"> | undefined, next:
 }
 
 /** "a", "a and b", "a, b and c", "a, b and 2 more". */
-function listWords(items: readonly string[], max = 3): string {
+export function listWords(items: readonly string[], max = 3): string {
   if (items.length <= 1) return items.join("");
   const shown = items.length > max ? [...items.slice(0, max - 1), `${String(items.length - max + 1)} more`] : [...items];
   return `${shown.slice(0, -1).join(", ")} and ${shown.at(-1) ?? ""}`;
@@ -147,12 +152,12 @@ function filesSentence(count: number): string {
 export const VERSION_NOT_SHOWN = "The change is too large to show here. Read it on the machine before you say yes.";
 
 /** "1 of 3 files shown." */
-function shownSentence(shown: number, total: number): string {
+export function shownSentence(shown: number, total: number): string {
   return `${String(shown)} of ${String(total)} ${total === 1 ? "file" : "files"} shown.`;
 }
 
 /** The card for one waiting version: title, summary, options, recommendation and view. */
-export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, crew = false): Omit<HillPostInput, "requestId"> | null {
+export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, crew = false, proposedBy: string | null = null): Omit<HillPostInput, "requestId"> | null {
   const pending = subject.pending;
   if (pending === null) return null;
   const rights = newRights(subject.base?.manifest, pending.manifest);
@@ -176,10 +181,12 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
   // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the chips say it all.
   const short = rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below.";
-  const full = `${filesSentence(fileCount)} ${fact}${tail}`;
-  const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${filesSentence(fileCount)} ${short}${tail}`;
+  // A version an agent or a terminal proposed (crew slice 8, proposals.ts) says who, first.
+  const by = proposedBy === null ? "" : `${proposedBy} `;
+  const full = `${by}${filesSentence(fileCount)} ${fact}${tail}`;
+  const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${by}${filesSentence(fileCount)} ${short}${tail}`;
   const options: HillPostInput["options"] = [{ intent: "use", label: "Use the new version" }];
-  if (!powersChanged) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." });
+  if (!powersChanged && proposedBy === null) options.push({ intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." });
   options.push({ intent: "keep", label: "Keep the old version" });
   const card: Omit<HillPostInput, "requestId"> = {
     title: versionTitle(subject.name),
@@ -187,7 +194,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
     options,
     text: "none",
     priority: "today",
-    recommends: powersChanged || warnings.length > 0 || !whole ? null : { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
+    recommends: powersChanged || warnings.length > 0 || !whole || proposedBy !== null ? null : { intent: "use", why: "It asks for no new rights, and a text search of its code finds nothing new." },
   };
   return shown.view === null ? card : { ...card, view: shown.view };
 }
@@ -252,11 +259,24 @@ export interface VersionViewShown {
 
 /** The view, and how many changed files it shows whole: a row in the table and its whole hunk. */
 export function versionViewShown(rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], diff: VersionDiff, reads: string | null = null): VersionViewShown {
+  return fitView(rightsHead("New rights", rights, warnings, reads), diff);
+}
+
+/** The head of a card's view: a bar of right chips under `label`, the inputs sentence, the warnings. */
+export function rightsHead(label: string, rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], reads: string | null): ViewNode[] {
   const head: ViewNode[] = [];
-  if (rights.length > 0) head.push({ kind: "bar", attrs: { label: "New rights" }, kids: rights.slice(0, 8).map((right): ViewNode => ({ kind: "chip", text: [...right].slice(0, 60).join(""), attrs: { tone: "warn" } })) });
+  if (rights.length > 0) head.push({ kind: "bar", attrs: { label }, kids: rights.slice(0, 8).map((right): ViewNode => ({ kind: "chip", text: [...right].slice(0, 60).join(""), attrs: { tone: "warn" } })) });
   // Contract 2: the new globs in the one sentence Settings and `collie trick check` say too.
   if (reads !== null) head.push({ kind: "para", text: [...reads].slice(0, TEXT_MAX).join("") });
   for (const kind of warnings) head.push({ kind: "para", text: WARN_PLAIN[kind] });
+  return head;
+}
+
+/**
+ * A view of `head` and the files of `diff`, cut until it fits (the rule of {@link versionViewShown}), and
+ * how many files it shows whole. The one fitting both the "new version" card and the proposal card use.
+ */
+export function fitView(head: readonly ViewNode[], diff: VersionDiff): VersionViewShown {
   const files = diff.files;
   const largest = files.filter((file) => (file.hunk ?? []).length > 0).toSorted((a, b) => (b.plus ?? 0) + (b.minus ?? 0) - ((a.plus ?? 0) + (a.minus ?? 0)));
   let rows = Math.min(files.length, TABLE_LIMITS.rows.max);
@@ -285,7 +305,7 @@ export function versionViewShown(rights: readonly string[], warnings: readonly (
       hunks -= 1;
       lines = DIFF_LIMITS.lines;
     } else if (rows > 1) rows -= 1;
-    else return { view: head.length > 0 ? (checked(head) ?? null) : null, shown: 0 };
+    else return { view: head.length > 0 ? (checked([...head]) ?? null) : null, shown: 0 };
   }
   return { view: null, shown: 0 };
 }
@@ -369,7 +389,7 @@ export class VersionCards implements TrickVersionsPort {
     // The version may have moved while the diff ran: post only for the one still waiting.
     const now = this.latest.get(subject.id);
     if (now === undefined || !now.waiting || now.pending?.hash !== pending.hash || this.answered(subject.id, pending.hash)) return;
-    const card = versionCard(now, diff, this.deps.crew?.() ?? false);
+    const card = versionCard(now, diff, this.deps.crew?.() ?? false, this.deps.proposedBy?.(subject.id, pending.hash) ?? null);
     if (card === null) return;
     const mine = this.deps.hill.collieDecisions("version").filter((decision) => decision.from.ref?.id === subject.id);
     const older = mine.find((decision) => decision.state === "open");

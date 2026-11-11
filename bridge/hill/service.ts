@@ -284,6 +284,13 @@ export interface HillPostOptions {
    * whose paths then only name them. Absent: each image is read from its path on this machine.
    */
   readonly images?: readonly HillImageBytes[];
+  /**
+   * Collie's own Decision only (crew slice 8, a trick proposal): the live session told of the answer, as
+   * a courtesy. It is stored as `replyTo`, so that session may read the Decision with `collie hill
+   * status`; the card names no target, so the session ending or its machine going away never closes the
+   * card, never holds the person's answer, and the answer is typed there only while it is live.
+   */
+  readonly tellOf?: string;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -740,10 +747,15 @@ export class HillService {
    * WalkyTalky being off does not stop it; it names no session and carries no image. Its answer runs
    * `onCollieAnswer`. Supersede an older one of the same `ref` type and id with `input.supersedes`.
    */
-  postCollie(from: HillCollieSender, input: HillPostInput): HillPostAnswer {
+  postCollie(from: HillCollieSender, input: HillPostInput, opts: Pick<HillPostOptions, "tellOf"> = {}): HillPostAnswer {
     if ((input.images ?? []).length > 0) return refuse("too_many_images", "a Collie decision carries no image");
     if (input.supersedes !== undefined && input.supersedes !== null && this.answering.has(input.supersedes)) return refuse("bad_supersedes", HILL_ANSWER_RUNNING);
-    return this.postAny(from, { ...input, about: null, replyTo: null, images: [] }, {});
+    return this.postAny(from, { ...input, about: null, replyTo: null, images: [] }, opts.tellOf === undefined ? {} : { tellOf: opts.tellOf });
+  }
+
+  /** Whether the Decision `id` is being answered right now (its claim runs). */
+  isAnswering(id: string): boolean {
+    return this.answering.has(id);
   }
 
   /** Collie takes back one of its open Decisions: it closes `withdrawn` with `reason`. Never while its answer runs. */
@@ -790,6 +802,8 @@ export class HillService {
     const own = from.kind === "agent" ? (this.deps.place(from.address) ?? (opts.own?.address === from.address ? opts.own : null)) : null;
     if (from.kind === "agent" && own === null && replyTo === null) return refuse("bad_target", "this session is not a live walky address: run it inside an agent's pane");
     const target = replyTo ?? own;
+    // Collie's own card tells a live session of its answer, without naming it as the card's target.
+    const told = from.kind === "collie" && opts.tellOf !== undefined ? (this.deps.place(opts.tellOf)?.address ?? null) : null;
 
     let superseded: HillDecision | null = null;
     if (input.supersedes !== undefined && input.supersedes !== null) {
@@ -830,7 +844,7 @@ export class HillService {
       priorityAsked: asked,
       ...cleaned.fields,
       media,
-      replyTo: replyTo?.address ?? null,
+      replyTo: replyTo?.address ?? told,
       target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
       supersededBy: null,
@@ -1323,7 +1337,10 @@ export class HillService {
       if (refused !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", refused, "open", null));
     }
     const state: HillState = intent === "dismiss" ? "dismissed" : "answered";
-    const typed = decision.target !== null && to !== null && !untold;
+    // Collie's own card with a session to tell (a trick proposal's proposer): typed only while that session
+    // is live and its machine answers. Never a dismiss, and never a reason to hold the answer.
+    const courtesy = decision.from.kind === "collie" && decision.target === null && decision.replyTo !== null && intent !== "dismiss" && this.deps.walkyOn() && this.deps.place(decision.replyTo)?.address === decision.replyTo && this.away(decision.replyTo) === null;
+    const typed = (decision.target !== null && to !== null && !untold) || courtesy;
     const trick = trickOf(decision);
     // Written first, as not confirmed: a bridge that stops after this line never types the answer twice,
     // and never runs the trick's tap twice (it reads `failed`, the tap that did not run).

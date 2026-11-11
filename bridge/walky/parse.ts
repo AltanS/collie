@@ -31,6 +31,15 @@ import {
 /** The longest request line the socket reads. A body of 4,000 characters fits many times over. */
 export const WALKY_LINE_MAX = 64 * 1024;
 
+/**
+ * The longest `trick.propose` line (crew slice 8): a trick's files, at most 5 MB, written as base64 (about
+ * 6.7 MB), with up to 300 paths and the frame. The socket reads this much only for a line that opens with
+ * {@link PROPOSE_LINE_PREFIX}, at most two at a time.
+ */
+export const PROPOSE_LINE_MAX = 8 * 1024 * 1024;
+/** How a `trick.propose` line opens, as `collie trick propose` writes it: the socket raises its cap for it. */
+export const PROPOSE_LINE_PREFIX = '{"op":"trick.propose",';
+
 /** The longest raw body a request may carry before cleaning. Longer is refused, not cut. */
 export const RAW_BODY_MAX = 32 * 1024;
 
@@ -147,7 +156,7 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────
 
-export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp;
+export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp | "trick.propose";
 
 /** The hill's operations (M96), beside walky's own. Added, never a change to one of them. */
 export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear";
@@ -174,7 +183,9 @@ export type WalkyRequest =
   | { readonly op: "hill.status" | "hill.withdraw"; readonly markers: readonly BeaconMarker[]; readonly id: string }
   | { readonly op: "hill.list"; readonly markers: readonly BeaconMarker[] }
   // Clear every closed decision, from the person's terminal: it names no pane and no id.
-  | { readonly op: "hill.clear"; readonly markers: readonly BeaconMarker[] };
+  | { readonly op: "hill.clear"; readonly markers: readonly BeaconMarker[] }
+  // A trick handed to the lead (crew slice 8): its fields are read by bridge/tricks/propose-wire.ts.
+  | { readonly op: "trick.propose"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject };
 
 /** Whether a request is one of the hill's operations (M96). */
 export function isHillOp(op: string | null): op is HillOp {
@@ -200,8 +211,8 @@ function done(request: WalkyRequest): WalkyRequestRead {
 }
 
 /** One request line: `v` must be 1; an unknown op, a bad id or a bad address fails with its reason. */
-export function readWalkyRequest(line: string): WalkyRequestRead {
-  if (line.length > WALKY_LINE_MAX) return unread(BAD_REQUEST_LINE);
+export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): WalkyRequestRead {
+  if (line.length > max) return unread(BAD_REQUEST_LINE);
   let parsed: JsonValue;
   try {
     // SAFETY: `JSON.parse` output IS a JsonValue by construction.
@@ -237,6 +248,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
     return id !== null && HILL_ID_RE.test(id) ? done({ op, markers, id }) : unread(HILL_BAD_ID, markers);
   }
   if (op === "hill.list" || op === "hill.clear") return done({ op, markers });
+  if (op === "trick.propose") return done({ op, markers, fields: row });
   if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);
   const id = text(row, "id");
   // The address as the bridge spells it: `parseAddress` reads past blanks, and the signed `to` must not

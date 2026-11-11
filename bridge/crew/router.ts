@@ -229,6 +229,12 @@ export const CREW_HILL_OP_PATH = "/crew/v1/hill/op";
  * lead, and only while the member's trick reads are on. A read: it writes nothing on the member.
  */
 export const CREW_TRICKS_INPUTS_PATH = "/crew/v1/tricks/inputs";
+/**
+ * `POST`: a member hands its lead a trick an agent or a terminal there proposed with `collie trick
+ * propose` (§24, added in 1.29.0, crew slice 8). Member → lead and signed per §8.6 like the Hill's routes;
+ * answered only by a collie that leads. The lead stores it inert and asks the person on its Hill.
+ */
+export const CREW_TRICKS_PROPOSE_PATH = "/crew/v1/tricks/propose";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -306,6 +312,9 @@ const SIGNABLE_PATHS: ReadonlySet<string> = new Set([
   CREW_HILL_MEDIA_PATH,
   CREW_HILL_POST_PATH,
   CREW_HILL_OP_PATH,
+  // §24's trick proposal, member → lead (added in 1.29.0). The same direction and reasoning as the Hill's
+  // routes; not in `MEMBERSHIP_PATHS`: it changes no roster, and its request id is its replay key.
+  CREW_TRICKS_PROPOSE_PATH,
 ]);
 
 /**
@@ -335,6 +344,10 @@ export const SIGNED_BODY_CAPS: ReadonlyMap<string, number> = new Map([
   [CREW_HILL_MEDIA_PATH, 3 * 1024 * 1024],
   [CREW_HILL_POST_PATH, 64 * 1024],
   [CREW_HILL_OP_PATH, 4 * 1024],
+  // §24: a trick's files, at most 5 MB, written as base64 (5 MiB × 4/3, about 6.7 MiB), plus up to 300
+  // paths of at most 256 characters each with their JSON frame (under 0.2 MiB). 8 MiB leaves room and no
+  // more; a body past it is refused unread.
+  [CREW_TRICKS_PROPOSE_PATH, 8 * 1024 * 1024],
 ]);
 
 /** The machine-readable `code` on a signed body refused for its size before it was read. */
@@ -353,6 +366,16 @@ export const SIGNED_READS_MAX = 4;
 export const SIGNED_MEDIA_READS_MAX = 4;
 /** A cap above this is a large one, counted against {@link SIGNED_READS_MAX}. */
 export const SIGNED_READS_LARGE_CAP = 256 * 1024;
+/**
+ * How many `tricks/propose` bodies are read at once (§24), counted apart from the others, so proposals
+ * never turn away the crew's own calls or a member's images. At most 2 × 8 MiB unverified in memory.
+ */
+export const SIGNED_PROPOSE_READS_MAX = 2;
+/**
+ * How long one `tricks/propose` body may take to arrive (§24): a stalled upload gives its slot back. Five
+ * megabytes over a slow relayed link fit in it many times over.
+ */
+export const PROPOSE_READ_MS = 60_000;
 /** The machine-readable `code` on a signed body not read because its count was full. */
 export const SIGNED_READS_BUSY = "signed_reads_busy";
 /** The machine-readable `code` on a signed body whose stream broke off before its end. */
@@ -386,7 +409,7 @@ function signedReadsBusyResponse(): Response {
  * `Content-Length` over the cap is refused before a byte is read; a stream that passes the cap is
  * cancelled at the chunk that passes it.
  */
-async function readSignedBody(req: Request, cap: number): Promise<string | null> {
+async function readSignedBody(req: Request, cap: number, timeoutMs?: number): Promise<string | null> {
   const declared = req.headers.get("content-length");
   if (declared !== null) {
     const length = Number(declared.trim());
@@ -394,6 +417,27 @@ async function readSignedBody(req: Request, cap: number): Promise<string | null>
   }
   if (req.body === null) return "";
   const reader = req.body.getReader();
+  // A read past its time is cancelled and throws, which the caller answers as a body that broke off.
+  let late = false;
+  const timer =
+    timeoutMs === undefined
+      ? null
+      : setTimeout(() => {
+          late = true;
+          void reader.cancel().catch(() => undefined);
+        }, timeoutMs);
+  timer?.unref?.();
+  try {
+    const text = await readChunks(reader, cap);
+    if (late) throw new Error("the body took too long");
+    return text;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
+
+/** The body's chunks up to `cap`, as text, or null past it. Throws when the stream breaks. */
+async function readChunks(reader: ReadableStreamDefaultReader<Uint8Array>, cap: number): Promise<string | null> {
   const chunks: Uint8Array[] = [];
   let size = 0;
   for (;;) {
@@ -748,6 +792,13 @@ export interface CrewRouterDeps {
    * call, each for the member §8.6's signature named. A handler's 401 is the uniform 401. Absent ⇒ the
    * three routes 404, which is what a lead before 1.29.0 answers.
    */
+  /**
+   * A trick proposal from a member (§24, added in 1.29.0, crew slice 8), on a LEAD, for the member §8.6's
+   * signature named. A handler's 401 is the uniform 401. Absent ⇒ the route 404s, as before 1.29.0.
+   */
+  readonly proposals?: {
+    readonly propose: (body: JsonValue | undefined, member: TrustedMember) => Promise<HillCrewAnswer>;
+  };
   readonly hill?: {
     readonly media: (body: JsonValue | undefined, member: TrustedMember) => HillCrewAnswer;
     readonly post: (body: JsonValue | undefined, member: TrustedMember) => HillCrewAnswer | Promise<HillCrewAnswer>;
@@ -1073,7 +1124,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
 
   // The large signed bodies being read now, before their signature is known: `hill/media` uploads
   // (SIGNED_MEDIA_READS_MAX) and the crew's own large routes (SIGNED_READS_MAX), counted apart.
-  const reads = { media: 0, large: 0 };
+  const reads = { media: 0, large: 0, propose: 0 };
 
   const refuse = (path: string, factor: RefusedFactor): Response => {
     // Audited locally with the real cause; the caller is told only "unauthorized" (§8.1). The two
@@ -1130,15 +1181,16 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // At most SIGNED_MEDIA_READS_MAX uploads and SIGNED_READS_MAX other large bodies are read at once,
       // each in its own count; one more is turned away unread. The slot is given back however the read
       // ends, and a stream that breaks off is a 400, not a throw.
-      const slot: keyof typeof reads | null = !bodied || cap <= SIGNED_READS_LARGE_CAP ? null : pathname === CREW_HILL_MEDIA_PATH ? "media" : "large";
-      if (slot !== null && reads[slot] >= (slot === "media" ? SIGNED_MEDIA_READS_MAX : SIGNED_READS_MAX)) {
+      const slot: keyof typeof reads | null = !bodied || cap <= SIGNED_READS_LARGE_CAP ? null : pathname === CREW_HILL_MEDIA_PATH ? "media" : pathname === CREW_TRICKS_PROPOSE_PATH ? "propose" : "large";
+      const slotMax = slot === "media" ? SIGNED_MEDIA_READS_MAX : slot === "propose" ? SIGNED_PROPOSE_READS_MAX : SIGNED_READS_MAX;
+      if (slot !== null && reads[slot] >= slotMax) {
         deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "signed-reads-busy" } });
         return signedReadsBusyResponse();
       }
       if (slot !== null) reads[slot] += 1;
       let read: string | null;
       try {
-        read = bodied ? await readSignedBody(req, cap) : "";
+        read = bodied ? await readSignedBody(req, cap, pathname === CREW_TRICKS_PROPOSE_PATH ? PROPOSE_READ_MS : undefined) : "";
       } catch {
         deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "body-unread" } });
         return bodyUnreadResponse();
@@ -1358,6 +1410,14 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       const body = await readJson(req, signedBody);
       const handle = pathname === CREW_HILL_MEDIA_PATH ? deps.hill.media : pathname === CREW_HILL_POST_PATH ? deps.hill.post : deps.hill.op;
       const answer = await handle(body, verdict.member);
+      if (answer.status === 401) return refuse(pathname, "certificate");
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
+    if (pathname === CREW_TRICKS_PROPOSE_PATH && req.method === "POST" && deps.proposals !== undefined && data !== null && isLeading(data)) {
+      // §24 (added in 1.29.0): only a collie that leads takes a proposal, and only from a SIGNED member of
+      // its roster; the handler takes the member from here, and its 401 is the uniform 401.
+      if (signed.member === null) return refuse(pathname, "certificate");
+      const answer = await deps.proposals.propose(await readJson(req, signedBody), verdict.member);
       if (answer.status === 401) return refuse(pathname, "certificate");
       return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
     }
