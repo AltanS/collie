@@ -3714,6 +3714,8 @@ export function rulesTextProblems(bytes: Uint8Array, file = "The rules file"): R
     start = at + 1;
   }
   if (!printable) return [{ line: 0, reason: `${file} is empty. Write the instructions your agents read.` }];
+  // V-N4: one text, one form. Without this, "A\nB" and "A\nB\n" hash apart but read as the same lines.
+  if (bytes[bytes.length - 1] !== 0x0a) out.push({ line: line - 1, reason: `${file} does not end with a line break. End its last line with one.` });
   return out;
 }
 

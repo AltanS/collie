@@ -139,9 +139,14 @@ describe("the content rule of a rules file", () => {
 
   test("takes printable ASCII and newlines, short lines, at most two spaces and two blank lines", () => {
     expect(one("Draw one screen.\n")).toEqual([]);
-    expect(one("Draw one screen.")).toEqual([]);
     expect(one("A  b.\n\n\nC.\n")).toEqual([]);
-    expect(one("x".repeat(160))).toEqual([]);
+    expect(one(`${"x".repeat(160)}\n`)).toEqual([]);
+  });
+
+  test("V-N4: the last line ends with a line break, so A\\nB and A\\nB\\n are never two versions of one text", () => {
+    expect(one("Draw one screen.")).toEqual(["rules.md does not end with a line break. End its last line with one."]);
+    expect(one("A\nB")).toEqual(["rules.md does not end with a line break. End its last line with one."]);
+    expect(one("A\nB\n")).toEqual([]);
   });
 
   test("refuses each break with its own sentence naming the line", () => {

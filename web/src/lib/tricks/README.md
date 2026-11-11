@@ -162,7 +162,7 @@ shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` h
 - `rules = "rules.md"` names the instructions the agent reads: one step, `*.md`, no leading dot, a
   regular file (never a link), at most 8 KiB. Its content rule, `rulesTextProblems`, takes bytes 0x20 to
   0x7E and `\n` only, no tab, no line over 160 characters, no space at a line's end, no run of more than
-  2 spaces, no more than 2 blank lines in a row, and not empty; each break is its own refusal that names
+  2 spaces, no more than 2 blank lines in a row, not empty, and a line break at the end; each break is its own refusal that names
   the line. `rules` without `agent-view` is refused, and so is either one at contract 1.
 - `run` may be left out only when `places` is exactly `["agent-view"]` and there is no `every`,
   `inputs` or `env`. Such a trick never starts anything: no timer, no tap, no program.
