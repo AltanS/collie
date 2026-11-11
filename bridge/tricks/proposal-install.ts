@@ -20,6 +20,13 @@ import type { ProposedFile } from "./propose-wire.ts";
 // Folders are 0700 and files 0644, or 0755 for a file the proposal marked executable, as `collie trick
 // add` writes them (cli/trick-add.ts). A path written twice is a bug, never an overwrite (`wx`).
 //
+// NAMES THAT FOLD ALIKE (security review N5). On a case-insensitive file system (macOS, Windows) `A.sh` and
+// `a.sh` are one file, and a name in another Unicode form can be too. Both ways in refuse files whose paths
+// (or the folders above them) fold alike (`caseClash`, as `mismatch`), and a new version refuses a name
+// that folds like an entry of the person's that stays (as `blocked`), before anything is written. A path
+// the stage already holds is a failed write, never "a trick of that name is here": only the final rename
+// answers `exists`. And the add hashes the stage as it is on disk before that rename (`stageHash`).
+//
 // The From Collie list (official-install.ts) writes through the same two ways in (`writeNewTrick`,
 // `replaceCode`), with its own origin record and the code hash the list expects (`expect`): code that
 // hashes otherwise is refused, and nothing in the tricks folder changes.
@@ -79,6 +86,40 @@ export async function writeProposedTrick(root: string, id: string, files: readon
 /** A folder of that name that appeared after the first look. Answered as `exists`. */
 class AppearedMeanwhile extends Error {}
 
+/** Rename the stage into place; a rename that lost the race to a folder with content (ENOTEMPTY or EEXIST) is {@link AppearedMeanwhile}. */
+async function renameOrRaced(stage: string, target: string, id: string): Promise<void> {
+  try {
+    await rename(stage, target);
+  } catch (err) {
+    if (err instanceof Error && "code" in err && (err.code === "ENOTEMPTY" || err.code === "EEXIST")) throw new AppearedMeanwhile(`a trick named ${id} appeared meanwhile`);
+    throw err;
+  }
+}
+
+/** A path as a case-insensitive file system may compare it: one Unicode form, lower case. */
+function foldPath(rel: string): string {
+  return rel.normalize("NFC").toLowerCase();
+}
+
+/**
+ * A path of `rels` that one file system may hold as the same entry as another of them (they differ only in
+ * case or Unicode form, at the file or at a folder above it), or a file named like a folder another path
+ * needs; undefined when every path is its own.
+ */
+export function caseClash(rels: readonly string[]): string | undefined {
+  // Each folded name with what it is: the exact spelling, and whether it is a file or a folder.
+  const seen = new Map<string, string>();
+  for (const rel of rels) {
+    for (const [name, kind] of [...ancestors(rel).map((up) => [up, "dir"] as const), [rel, "file"] as const]) {
+      const mark = `${kind}:${name}`;
+      const held = seen.get(foldPath(name));
+      if (held === undefined) seen.set(foldPath(name), mark);
+      else if (held !== mark || kind === "file") return rel;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Make `<root>/<id>` from `files` and an origin record's text, through a staged sibling and one rename.
  * Refused when anything named `<id>` is there, before the write or just before the rename, so nothing is
@@ -87,21 +128,23 @@ class AppearedMeanwhile extends Error {}
 export async function writeNewTrick(root: string, id: string, files: readonly ProposedFile[], originText: string, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
   const target = join(root, id);
   if ((await lstat(target).catch(() => null)) !== null) return { ok: false, code: "exists", reason: `A trick named ${id} is here now, so nothing was written over it.` };
+  const clash = caseClash([...files.map((file) => file.rel), ORIGIN_FILE]);
+  if (clash !== undefined) return { ok: false, code: "mismatch", reason: `Two names in the trick differ only in case or form (${clash}): one would write over the other, so nothing was written.` };
   await mkdir(root, { recursive: true, mode: 0o700 });
   const stage = proposalSideName(root, "add", id);
   try {
     await writeStage(stage, files, originText);
+    // The stage as it is on disk, after any name the file system folded: held to `expect` before the rename.
     const codeHash = await stageHash(stage, opts);
     // A rename onto a folder that appeared meanwhile fails when it holds anything; an empty one is replaced.
     if ((await lstat(target).catch(() => null)) !== null) throw new AppearedMeanwhile(`a trick named ${id} appeared meanwhile`);
-    await rename(stage, target);
+    await renameOrRaced(stage, target, id);
     return { ok: true, codeHash };
   } catch (err) {
     await rm(stage, { recursive: true, force: true });
     if (err instanceof StageMismatch) return { ok: false, code: "mismatch", reason: err.message };
-    // A rename that lost the race to a folder with content says ENOTEMPTY or EEXIST: the same answer.
-    const raced = err instanceof AppearedMeanwhile || (err instanceof Error && "code" in err && (err.code === "ENOTEMPTY" || err.code === "EEXIST"));
-    if (raced) return { ok: false, code: "exists", reason: `A trick named ${id} is here now, so nothing was written over it.` };
+    if (err instanceof AppearedMeanwhile) return { ok: false, code: "exists", reason: `A trick named ${id} is here now, so nothing was written over it.` };
+    // An EEXIST while the stage is written is a name the file system folded, never a trick of that name.
     return { ok: false, reason: `The trick could not be written: ${why(err)}` };
   }
 }
@@ -171,6 +214,8 @@ export async function replaceTrickCode(root: string, id: string, files: readonly
  */
 export async function replaceCode(root: string, id: string, files: readonly ProposedFile[], originText: string, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
   if (opts.expect !== undefined && codeHashOfFiles(files) !== opts.expect) return { ok: false, code: "mismatch", reason: "The code does not hash to what was expected." };
+  const twins = caseClash(files.map((file) => file.rel));
+  if (twins !== undefined) return { ok: false, code: "mismatch", reason: `Two names in the new version differ only in case or form (${twins}): one would write over the other, so nothing was changed.` };
   const target = join(root, id);
   const st = await lstat(target).catch(() => null);
   if (st === null || !st.isDirectory()) return { ok: false, reason: `There is no trick folder ${id} to change.` };
@@ -185,6 +230,16 @@ export async function replaceCode(root: string, id: string, files: readonly Prop
   // What stays after the removals: the person's entries, the code kept, the folders.
   const stays = (rel: string): FolderEntry | undefined => (goneSet.has(rel) ? undefined : entries.get(rel));
   const theirsUnder = (rel: string): boolean => [...entries].some(([path, entry]) => entry.kind === "theirs" && path.startsWith(`${rel}/`));
+  // A name of the new version that folds like an entry that stays, spelled otherwise: on a case-insensitive
+  // file system they are one entry, so the write would land in the person's (or the kept code's) place.
+  const folded = new Map([...entries.keys()].filter((rel) => stays(rel) !== undefined).map((rel) => [foldPath(rel), rel]));
+  for (const rel of next) {
+    const twin = [...ancestors(rel), rel].find((name) => {
+      const there = folded.get(foldPath(name));
+      return there !== undefined && there !== name;
+    });
+    if (twin !== undefined) return { ok: false, code: "blocked", reason: `The new version needs the name ${twin}, which differs only in case or form from an entry the trick's folder keeps, so nothing was changed.` };
+  }
   for (const rel of next) {
     const clash = ancestors(rel).find((up) => {
       const there = stays(up);

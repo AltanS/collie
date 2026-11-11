@@ -11,6 +11,7 @@ import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
 import { isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin } from "./origin.ts";
+import { caseClash } from "./proposal-install.ts";
 import { APPROVED_DIR, approvedCopyDir, switchesPath, TRICKS_DIR } from "./paths.ts";
 import { tricksOfficialRoute } from "./routes.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
@@ -444,6 +445,21 @@ describe.if(posix)("adding from the list", () => {
     }
   });
 
+  test("names that differ only in case or Unicode form are one file on some systems: refused as a mismatch, never `exists` or a success", async () => {
+    expect(caseClash(["A.sh", "a.sh"])).toBe("a.sh");
+    expect(caseClash(["lib/x.sh", "Lib/y.sh"])).toBe("Lib/y.sh");
+    expect(caseClash(["notes", "notes/x.sh"])).toBe("notes/x.sh");
+    expect(caseClash(["caf\u00e9.sh", "cafe\u0301.sh"])).toBe("cafe\u0301.sh");
+    expect(caseClash(["x.sh", "x.sh"])).toBe("x.sh");
+    expect(caseClash(["lib/x.sh", "lib/y.sh", "trick.toml"])).toBeUndefined();
+    const repo = await fixtureRepo([{ ...V1, "legs/Helper.sh": { text: "# one\n" }, "legs/helper.sh": { text: "# two\n" } }]);
+    const files = { ...V1_LEGS, "Helper.sh": { text: "# one\n" }, "helper.sh": { text: "# two\n" } };
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(files))]);
+    expect(await r.official.install("legs", "add")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
+    expect(await readdir(join(r.configDir, TRICKS_DIR)).catch(() => [])).not.toContain("legs");
+    await expectNoLeftovers(r);
+  });
+
   test("a commit the repository does not serve, or an unreachable repository, is the plain network line, and nothing stays", async () => {
     const repo = await fixtureRepo([V1]);
     const hash = await hashOf(V1_LEGS);
@@ -767,6 +783,19 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     expect(await readFile(join(dir, "program.sh"), "utf8")).toContain("# hand-made");
     expect(await readFile(join(dir, "mine.txt"), "utf8")).toBe("mine");
     expect(r.gitArgs).toEqual([]);
+  });
+
+  test("a new version's name that differs only in case from an entry the person keeps refuses the update: blocked", async () => {
+    const V2_CASE = { ...V2, "legs/MEDIA/run.sh": { text: "# lands in media/ on a case-insensitive disk\n" } };
+    const repo = await fixtureRepo([V1, V2_CASE]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    await mkdir(join(trickDir(r, "legs"), "media"));
+    await writeFile(join(trickDir(r, "legs"), "media", "mine.png"), "mine");
+    r.entries = [moveTo(r.entries, repo.shas[1] ?? "", await hashOf({ ...V2_LEGS, "MEDIA/run.sh": V2_CASE["legs/MEDIA/run.sh"] }))];
+    expect(await r.official.install("legs", "update")).toEqual({ status: 409, body: { error: "blocked", message: OFFICIAL_LINES.blocked } });
+    expect(await readFile(join(trickDir(r, "legs"), "program.sh"), "utf8")).toContain("# one");
+    expect(await readdir(join(trickDir(r, "legs"), "media"))).toEqual(["mine.png"]);
   });
 
   test("an update whose hash does not match changes nothing", async () => {
