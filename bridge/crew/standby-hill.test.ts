@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import type { HillDecision, HillMedia } from "../../web/src/lib/hill/wire.ts";
 import { decision } from "../hill/fixtures.ts";
+import { makeGroup } from "../hill/group.ts";
 import { hillMovedAway } from "./deposed.ts";
 import { leadStore, peerStore } from "./fixtures.ts";
 import { HillMediaStore } from "../hill/media.ts";
@@ -22,7 +23,7 @@ import { adoptCarriedHill, pictureStayed, TRICK_NOT_STARTED } from "./hill-adopt
 import { HillCopySync, type HillCopyClient } from "./hill-copy-sync.ts";
 import type { CrewLink } from "./peer-client.ts";
 import { CREW_HILL_COPY_MEDIA_PATH, CREW_HILL_COPY_PATH } from "./router.ts";
-import { CARRY_MEDIA_TOTAL_MAX, hillCopyDigest, mediaPlan, parseHillList, parseMediaPush, StandbyHillStore } from "./standby-hill.ts";
+import { CARRY_MEDIA_TOTAL_MAX, hillCopyDigest, mediaPlan, parseHillList, parseMediaPush, readCarriedRecord, StandbyHillStore } from "./standby-hill.ts";
 
 afterAll(removeCarryDirs);
 
@@ -270,6 +271,21 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
     for (const n of [7, 8, 9]) expect(deputy.store.get(collieCard("carried", n).id)).toBeUndefined();
     expect(deputy.store.get(collieCard("carried", 10).id)?.state).toBe("open");
     expect(existsSync(join(deputy.m.configDir, "tricks"))).toBe(false);
+  });
+
+  test("a record with a group of cards never lands: only postCollie mints a group, and the carried notice has none", () => {
+    const notice = collieCard("carried", 11);
+    if (notice.from.kind !== "collie" || notice.from.ref === undefined) throw new Error("a carried notice has a ref");
+    const made = makeGroup({ decline: "ok", parts: [[{ kind: "para", text: "card 1" }], [{ kind: "para", text: "card 2" }]] }, notice.from.ref, notice.options);
+    if (!made.ok) throw new Error(made.error);
+    // SAFETY: a JSON round trip, as the record crosses the wire.
+    const wired = (d: HillDecision) => JSON.parse(JSON.stringify(d)) as JsonValue;
+    // A well-formed group with a matching digest on the carried notice: a Collie card that acts on the lead's files.
+    expect(readCarriedRecord(wired({ ...notice, group: made.group }))).toBe("dropped");
+    // A session's record with a group is no Decision at all.
+    expect(readCarriedRecord(wired({ ...agent(12), group: made.group }))).toBeNull();
+    // The same notice without the group still lands.
+    expect(readCarriedRecord(wired(notice))).toMatchObject({ id: notice.id, state: "open" });
   });
 });
 

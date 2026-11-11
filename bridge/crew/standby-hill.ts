@@ -33,7 +33,8 @@ import { CARRIED_OK } from "./carry-notices.ts";
 // A Decision of Collie's own reads only from this machine's own store (hill/parse.ts). From the wire,
 // the one kind taken is the notice that a carried trick did not start (`ref.type` `carried`), with its
 // single OK answer, which only closes it. Any other Collie card is dropped and counted: a new version
-// or a proposal acts on files that never cross, and a lead must not place a card that acts here.
+// or a proposal acts on files that never cross, and a lead must not place a card that acts here. A
+// record with a group of cards never lands either: only the lead's postCollie mints one.
 //
 // ── THE CLOSED IDS ────────────────────────────────────────────────────────────────────────────────
 // The deputy keeps every closed id the same lead named, newest first, up to {@link HILL_CLOSED_IDS_MAX}.
@@ -206,6 +207,8 @@ function serializeIndex(index: HillIndex): string {
 export function readCarriedRecord(entry: JsonValue): HillDecision | "dropped" | null {
   const read = readDecision(entry, { collie: true });
   if (read === null || read.state !== "open") return null;
+  // A group of cards is minted only by the lead's own postCollie (crew slice 8), for a card that acts on its files.
+  if (read.group !== undefined) return "dropped";
   if (read.from.kind !== "collie") return read;
   const only = read.options.length === 1 ? read.options[0] : undefined;
   return read.from.ref?.type === "carried" && only?.intent === CARRIED_OK ? read : "dropped";
