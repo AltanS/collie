@@ -290,6 +290,15 @@ trick's files to its lead over a signed route, and the lead keeps them as inert 
 files 0600 without an executable bit, until the person taps "Switch it on" on the lead's Hill. That tap
 installs only bytes whose hash is the card's. No member and no agent can answer the card.
 
+The deputy's copy of the tricks is built (crew slice 10, `CREW_PROTOCOL.md` §25, 2026-11-11): the lead
+sends its deputy, and only its deputy, the approved code of each trick that is on, with its switch,
+`config.toml` and small state. The deputy keeps it under its state folder, which no tricks loader
+reads, files 0600 without an executable bit. Two taps on the deputy start it, and nothing else does:
+the Take over button on the standby page the deputy serves from its own disk, which first names every
+trick it starts, and `collie promote` typed on the deputy. Each starts a trick only after the held code
+hashes to the version the person approved on the lead, and never writes over a folder the deputy
+already has. The copy is removed when the machine stops being that lead's deputy.
+
 ### 5. What would justify revisiting
 
 Unchanged from the decision above. A crew that wants a member to run code a lead sends, with no person

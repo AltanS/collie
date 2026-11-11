@@ -878,6 +878,15 @@ written as what a trick, or a person who controls one, can do today.
   ("Written by the trick's author. Collie did not check it."). The rows under "What it does" and the
   warnings are the bridge's own facts, from the manifest and the code search.
 
+- **The deputy holds the lead's trick settings, secrets included.** A crew's lead copies each ON
+  trick's `config.toml` to its deputy, so it can start the trick after a takeover. A token or a key in
+  that file then rests on the deputy too, in its state folder at 0600, until the machine stops being
+  the deputy. Keep a secret the deputy must not hold out of `config.toml`, or name a deputy you trust as
+  much as the lead.
+- **What a takeover starts is what the lead sent.** The deputy checks every carried trick against the
+  code hash the lead says the person approved, and the page names each trick before the tap. A
+  compromised lead can still send a trick it switched on itself; it starts only when a person takes
+  over by hand on the deputy.
 - **A proposal's origin record is a dot file in the trick's folder, and an agent on the lead can write
   it.** `.collie-origin.json` is outside the code hash, like the repository record. An agent with write
   access to the tricks folder could put a false "proposed by" there. It is a label, never a right.

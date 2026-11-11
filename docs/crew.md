@@ -499,6 +499,31 @@ answering shows `offline`.
 > older member shows `older` to the trick, and the lead does not ask that member. Run `collie crew
 > update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
+## Tricks after a takeover
+
+The crew's lead runs its tricks. When the deputy takes over, the tricks start again there, at the
+version you approved on the lead.
+
+The lead keeps a copy of each trick that is on, on its deputy: the trick's code, its switch and
+timer setting, its `config.toml`, and its small state with its pictures, up to 32 tricks. The deputy
+runs none of it while the lead is alive. Its standby page lists the tricks that the Take over button
+starts again, and only that button starts them. `collie promote` typed on the deputy starts them too.
+
+Before a trick starts, the deputy checks its code against the version you approved. A trick that does
+not match does not start, and the Hill says so after the takeover, with an OK button. When the deputy
+already has a trick folder of that name, Collie leaves the folder as it is, runs the approved version,
+and shows the folder's own code as a new version that waits for your yes.
+
+`collie crew status` on the lead says whether its deputy holds the copy. `collie crew approve-promote`
+says whether the tricks come along: only the deputy holds a copy.
+
+The copy holds each trick's `config.toml`. A token or key in that file also rests on the deputy, until
+it stops being the deputy. When the deputy changes, the old one removes its copy.
+
+> **Note.** The copy needs Collie 1.29.0 on the lead and on the deputy. An older deputy keeps no copy;
+> `collie crew status` on the lead says so, and a takeover there starts no trick. Open Decisions on the
+> lead's Hill do not come along yet.
+
 ## A machine can run several Collies
 
 A crew member is one Collie instance: one bridge and one multiplexer. One machine can run more than
