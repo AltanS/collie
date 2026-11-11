@@ -565,6 +565,22 @@ describe.if(posix)("adding from the list", () => {
     expect((await roomy.official.install("legs", "add")).status).toBe(200);
   });
 
+  test("a fetch folder a stopped bridge left behind goes at the next start; nothing else does", async () => {
+    const r = await rig([fixtureEntry("file:///nowhere", "1".repeat(40), H1)]);
+    const root = join(r.stateDir, TRICKS_DIR);
+    await mkdir(join(root, ".fetch-official-abc123", "repo.git", "objects"), { recursive: true });
+    await writeFile(join(root, ".fetch-official-abc123", "repo.git", "objects", "pack"), "half a pack");
+    await mkdir(join(root, ".fetch-official-def456"));
+    // Not a From Collie fetch: a `collie trick add` running now, and a trick's own state folder.
+    await mkdir(join(root, ".fetch-cli1"));
+    await mkdir(join(root, "legs"));
+    expect(await r.official.sweep()).toBe(2);
+    expect((await readdir(root)).toSorted()).toEqual([".fetch-cli1", "legs"]);
+    // No tricks state folder at all: nothing to do.
+    const empty = await rig([]);
+    expect(await empty.official.sweep()).toBe(0);
+  });
+
   test("folderBytes counts by lstat, never through a link, and stops once past the cap", async () => {
     const dir = await tempDir();
     await writeFile(join(dir, "a"), "x".repeat(1000));

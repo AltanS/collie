@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { devNull } from "node:os";
 import { join } from "node:path";
 
@@ -62,6 +62,9 @@ export const OFFICIAL_ADD_TIMEOUT_MS = 120_000;
  * the repository at that commit.
  */
 export const OFFICIAL_FETCH_BYTES_MAX = 20 * 1024 * 1024;
+
+/** The name every From Collie temp folder under `<stateDir>/tricks/` starts with. */
+export const OFFICIAL_FETCH_PREFIX = ".fetch-official-";
 
 /** The `-c` settings a From Collie fetch adds to fetch.ts's hardening. */
 export const OFFICIAL_GIT: readonly string[] = ["http.followRedirects=false", "credential.helper="];
@@ -180,6 +183,20 @@ export class OfficialTricks implements OfficialTricksSurface {
     return [];
   }
 
+  /**
+   * Remove the temp folders a bridge that stopped mid-fetch left under `<stateDir>/tricks/` (a crash, a kill,
+   * a power cut). Run once at bridge start; while an add or update runs it leaves its folder alone. Only names
+   * that start with {@link OFFICIAL_FETCH_PREFIX}; `rm` removes a link itself, never what it points at.
+   */
+  async sweep(): Promise<number> {
+    if (this.busy) return 0;
+    const root = tricksStateDir(this.deps.stateDir);
+    const names = await readdir(root).catch(() => []);
+    const stale = names.filter((name) => name.startsWith(OFFICIAL_FETCH_PREFIX));
+    for (const name of stale) await rm(join(root, name), { recursive: true, force: true }).catch(() => {});
+    return stale.length;
+  }
+
   async reply(): Promise<OfficialTricksReply> {
     const runsOn = this.deps.runsOn?.() ?? null;
     if (runsOn !== null) return { tricks: [], runsOn };
@@ -201,7 +218,7 @@ export class OfficialTricks implements OfficialTricksSurface {
       const deadline = now() + (this.deps.timeoutMs ?? OFFICIAL_ADD_TIMEOUT_MS);
       const root = tricksStateDir(this.deps.stateDir);
       await mkdir(root, { recursive: true, mode: 0o700 });
-      fetchDir = await mkdtemp(join(root, ".fetch-official-"));
+      fetchDir = await mkdtemp(join(root, OFFICIAL_FETCH_PREFIX));
       const candidate = await this.fetch(entry, fetchDir, mode, deadline);
       if (now() > deadline) return unreachable(mode);
       const lane = this.deps.lane ?? (async <T>(work: () => Promise<T>) => await work());

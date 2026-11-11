@@ -327,7 +327,8 @@ the approved copy, as for any trick. A hash that differs adds nothing: "The code
 Nothing was added." The same holds for a `config.toml` or a picture in `media/` other than the list's,
 and for any other file the code hash leaves out (`captures/`, `inputs/`, a `.log`): an official trick
 ships none, so the add refuses it. One add runs at a time, the whole add has a two-minute cap, and the temp folder under
-`<stateDir>/tricks/` goes on every path.
+`<stateDir>/tricks/` goes on every path; one a stopped bridge left behind (`.fetch-official-*`) goes at
+the next bridge start.
 
 **Two caps on the fetch.** Time: every git run ends by two minutes after the tap, and a kill takes git's
 whole process group, so `git-remote-https` goes with it. Size: the temp repository may hold at most 20 MiB

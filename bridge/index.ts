@@ -3638,6 +3638,8 @@ const officialTricks =
         lane: (work) => tricks.officialLane(work),
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
       });
+// A fetch a stopped bridge left behind under <stateDir>/tricks/ goes now, before anyone can tap Add.
+void officialTricks?.sweep();
 
 const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer({
   cfg,
