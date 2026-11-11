@@ -1100,7 +1100,7 @@ export class TricksService implements TricksSurface {
     const origin = shown.origin;
     if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
     // From the official repository, but not a version of the From Collie list: the row must not read as the list.
-    if (origin !== undefined && info.provenance !== undefined && isUnlistedOfficialOrigin(this.officialEntries(), id, origin)) info.provenance.unlisted = true;
+    if (origin !== undefined && info.provenance !== undefined && isUnlistedOfficialOrigin(this.officialEntries(), id, origin, shown.codeHash)) info.provenance.unlisted = true;
     // A proposed trick (`collie trick propose`, crew slice 8): the web reads `proposed` and says "Proposed …"
     // ("Proposed from <host>. The session is not confirmed." when no agent pane was placed); `via` is only
     // for a reader that predates `proposed`.

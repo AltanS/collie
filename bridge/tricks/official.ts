@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
 import { DESCRIPTION_MAX, isTrickId, isTrickText, NAME_MAX, type OfficialState, type WireOfficialTrick } from "../../web/src/lib/tricks/schema.ts";
-import { diskTrickFs, type TrickFs } from "./code-hash.ts";
+import { diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import shipped from "./official.json";
 import { originRepoName, readOrigin, type TrickOrigin } from "./origin.ts";
 import { tricksConfigDir } from "./paths.ts";
@@ -152,12 +152,14 @@ export function isListedOrigin(entry: Pick<OfficialEntry, "repo" | "dir" | "comm
 
 /**
  * Whether a trick's origin names an official repository without being a version of the list: a pull
- * request's ref, a fork's commit, a branch nobody listed. Its row says it is not on the Collie list.
+ * request's ref, a fork's commit, a branch nobody listed, or, given `codeHash`, a listed version whose code
+ * is not that version's code any more. Its row says it is not on the Collie list.
  */
-export function isUnlistedOfficialOrigin(entries: readonly OfficialEntry[], id: string, origin: TrickOrigin): boolean {
+export function isUnlistedOfficialOrigin(entries: readonly OfficialEntry[], id: string, origin: TrickOrigin, codeHash?: string): boolean {
   if (!OFFICIAL_REPOS.includes(origin.url) && !entries.some((e) => e.repo === origin.url)) return false;
   const entry = entries.find((e) => e.id === id);
-  return entry === undefined || !isListedOrigin(entry, origin);
+  if (entry === undefined || !isListedOrigin(entry, origin)) return true;
+  return codeHash !== undefined && listedVersion(entry, origin.commit)?.hash !== codeHash;
 }
 
 /** The list from its JSON value, strictly: every entry or none. */
@@ -202,6 +204,11 @@ export interface OfficialStanding {
   state: OfficialState;
   /** `taken` by a folder from the entry's repository and folder at a commit the list does not know, or without `official`. */
   unlisted: boolean;
+  /**
+   * `taken` by a folder that is a version of the list by its record, but whose code hash is not the hash the
+   * list names for that commit: the person changed its files (or wrote the record by hand). Never updated.
+   */
+  changed: boolean;
   /** The folder's origin record, when it has one. */
   origin: TrickOrigin | null;
 }
@@ -212,15 +219,21 @@ type EntryKeys = Pick<OfficialEntry, "id" | "repo" | "dir" | "commit" | "hash" |
 export async function officialStanding(configDir: string, entry: EntryKeys, fs: TrickFs = diskTrickFs): Promise<OfficialStanding> {
   const dir = join(tricksConfigDir(configDir), entry.id);
   const st = await fs.lstat(dir);
-  if (st === null) return { state: "absent", unlisted: false, origin: null };
-  if (st.kind !== "dir") return { state: "taken", unlisted: false, origin: null };
+  if (st === null) return { state: "absent", unlisted: false, changed: false, origin: null };
+  if (st.kind !== "dir") return { state: "taken", unlisted: false, changed: false, origin: null };
   const origin = await readOrigin(dir, fs);
   // Only a folder from this repository and this folder in it is a candidate. Any other, a proposal's or one
   // made by hand included, is the person's: never written over.
-  if (origin === null || origin.url !== entry.repo || origin.subdir !== entry.dir) return { state: "taken", unlisted: false, origin };
+  if (origin === null || origin.url !== entry.repo || origin.subdir !== entry.dir) return { state: "taken", unlisted: false, changed: false, origin };
   // From the repository, but not a version of the list: `collie trick add` at another ref, or a record by hand.
-  if (!isListedOrigin(entry, origin)) return { state: "taken", unlisted: true, origin };
-  return { state: origin.commit === entry.commit ? "added" : "update", unlisted: false, origin };
+  const version = isListedOrigin(entry, origin) ? listedVersion(entry, origin.commit) : undefined;
+  if (version === undefined) return { state: "taken", unlisted: true, changed: false, origin };
+  // A version of the list by its record: its code must still be the code Collie wrote, the hash the list
+  // names for that commit. Otherwise the files are the person's (an edit, a file they added, a record
+  // written by hand over their own trick), and nothing of the list moves or removes them.
+  const hashed = await trickCodeHash(dir, fs);
+  if (!hashed.ok || hashed.hash !== version.hash) return { state: "taken", unlisted: false, changed: true, origin };
+  return { state: origin.commit === entry.commit ? "added" : "update", unlisted: false, changed: false, origin };
 }
 
 /** {@link officialStanding}'s state alone. */
@@ -235,6 +248,7 @@ export async function officialWire(configDir: string, entries: readonly Official
       const standing = await officialStanding(configDir, e, fs);
       const wire: WireOfficialTrick = { id: e.id, name: e.name, description: e.description, repo: e.repo, repoName: originRepoName(e.repo), commit: e.commit, state: standing.state };
       if (standing.unlisted) wire.unlisted = true;
+      if (standing.changed) wire.changed = true;
       return wire;
     }),
   );

@@ -359,9 +359,15 @@ version of the list (`collie trick add` at a branch or tag nobody listed, a reco
 code, by the rule of a proposal's version write: each file the code hash walks is written or removed,
 and every other entry of the folder, at any depth, stays untouched (`config.toml`, `media/`,
 `captures/`, `inputs/`, logs, dot files). The new version's own `config.toml` and pictures are not taken.
-**A code edit you made in an official trick's folder is replaced by an update.** A name the new code
-needs where an entry of yours stands refuses the update (409 `blocked`, "Your own files block it.
-Nothing was changed."), and nothing changes. A trick that is on keeps
+**An update never moves or removes a file of yours.** Before anything changes, the bridge takes the
+folder's code hash: it must be the hash the list names for the commit in the origin record (the current
+entry or one in `previous`), so every code file is still one Collie wrote. A code edit, or a plain file
+you added beside the code (`notes.txt` is code by the hash's rule), makes that hash another: the From
+Collie row then reads "You edited its files. Update it on the machine." (state `taken`, `changed: true`),
+and an update tap answers 409 `changed` with the same line. Nothing is moved or removed; `collie trick
+update` on the machine is the way. A name the new code needs where an entry of yours stands refuses the
+update (409 `blocked`, "Your own files block it. Nothing was changed."), and nothing changes. The check
+runs again in the runner's lane, right before the write. A trick that is on keeps
 running the approved copy, and the new version waits for the yes on its version card, the path every
 changed trick takes. Remove stays as it is.
 
@@ -906,14 +912,14 @@ written as what a trick, or a person who controls one, can do today.
   route a slot is taken after the crew secret is checked but before the signature is, because the
   signature covers the body: only an enrolled machine can take one, for at most 60 seconds.
 
-- **The From Collie states trust the origin record.** An agent on the lead that writes a false
-  `.collie-origin.json` naming the official repository can make a hand-made folder read as `added` or
-  `update`. An Update then replaces that folder's code with the listed, hash-checked code; it never
-  runs anything, and a trick that is on waits for the yes.
-- **An Update from the list replaces code edits in an official trick's folder.** Every file the code
-  hash walks is the list's afterwards; what the hash does not walk stays. A trick that is off gets no
-  version card for this, as it runs nothing. A plain file you added beside the code (`notes.txt`) is
-  code by the hash's rule, so an update that does not carry it removes it.
+- **The From Collie states read the origin record, and check it.** A false `.collie-origin.json` with
+  `official: true` makes a folder from the list only at a commit the list names, and only while the
+  folder's code hash is that commit's listed hash: a hand-made folder under a forged record reads
+  `taken` (`unlisted`, or `changed`), and an update of it is refused. What is left: someone who can write
+  the tricks folder can copy the listed code there with a forged record; that folder then is exactly the
+  list's code.
+- **The changed check and the write are two steps.** The code hash is taken in the runner's lane right
+  before the write; a file edited in the instant between them is replaced as code.
 
 ## Places in the app
 

@@ -250,6 +250,7 @@ function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | unde
   if (commit === undefined || !/^[0-9a-f]{40}$/u.test(commit) || !isOfficialState(state)) return undefined;
   const out: WireOfficialTrick = { id, name, description, repo, repoName, commit, state };
   if (body.unlisted === true && state === "taken") out.unlisted = true;
+  if (body.changed === true && state === "taken") out.changed = true;
   return out;
 }
 

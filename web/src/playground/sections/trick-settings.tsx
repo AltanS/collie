@@ -164,12 +164,13 @@ function fromList(entry: WireOfficialTrick, extra: Partial<WireTrickInfo> = {}):
   return trick(entry.id, entry.name, { on: false, state: "off", places: ["belt", "session"], description: entry.description, provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: entry.repoName, sha: "9c41d07e2b6a" }, ...extra });
 }
 
-/** How the card's add stand-in answers: it lands, it never answers, or the bridge refuses it (`mismatch`). */
-type AddAnswer = "lands" | "hangs" | "refused";
+/** How the card's add stand-in answers: it lands, it never answers, or the bridge refuses it (`mismatch`, or `changed` for an update). */
+type AddAnswer = "lands" | "hangs" | "refused" | "changed";
 
 /**
  * While mounted, `POST /api/tricks/official/<id>/add` answers what a bridge says when the code does not match
- * the list: 422 `mismatch`. Only the card that shows the failure posts through the real call.
+ * the list (422 `mismatch`), and `/update` what it says when the person changed the trick's files (409
+ * `changed`). Only the cards that show a refusal post through the real call.
  */
 function useRefusedAdd(on: boolean): void {
   useEffect(() => {
@@ -178,8 +179,12 @@ function useRefusedAdd(on: boolean): void {
     window.fetch = (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
       if (!/^\/api\/tricks\/official\/[^/]+\/(add|update)$/u.test(url.pathname)) return real(input, init);
-      const body = JSON.stringify({ error: "mismatch", message: "The code did not match. Nothing was added." });
-      return new Promise((resolve) => setTimeout(() => resolve(new Response(body, { status: 422, headers: { "content-type": "application/json" } })), 500));
+      // An add is refused as a mismatch; an update as files the person changed. Both cards answer the same way.
+      const refused =
+        url.pathname.endsWith("/update")
+          ? { status: 409, body: { error: "changed", message: "You edited its files. Update it on the machine." } }
+          : { status: 422, body: { error: "mismatch", message: "The code did not match. Nothing was added." } };
+      return new Promise((resolve) => setTimeout(() => resolve(new Response(JSON.stringify(refused.body), { status: refused.status, headers: { "content-type": "application/json" } })), 500));
     };
     return () => {
       window.fetch = real;
@@ -202,9 +207,9 @@ function OfficialCard({ n, state, label, tricks, entries, answer = "lands" }: { 
   useEffect(() => {
     void store.syncTricks(held.rev);
   }, [store, held]);
-  useRefusedAdd(answer === "refused");
+  useRefusedAdd(answer === "refused" || answer === "changed");
   const onOfficialAdd = async (id: string, mode: "add" | "update"): Promise<{ id: string; state: OfficialState }> => {
-    if (answer === "refused") return await addOfficialTrick(id, mode);
+    if (answer === "refused" || answer === "changed") return await addOfficialTrick(id, mode);
     if (answer === "hangs") return await new Promise<never>(() => {});
     await new Promise((resolve) => setTimeout(resolve, 900));
     const entry = held.entries.find((e) => e.id === id) ?? REVIEW;
@@ -227,7 +232,7 @@ function OfficialCard({ n, state, label, tricks, entries, answer = "lands" }: { 
             now={NOW}
           />
         </RootRouter>
-        {answer === "refused" && <StatusArea className="mt-4" />}
+        {(answer === "refused" || answer === "changed") && <StatusArea className="mt-4" />}
       </div>
     </Card>
   );
@@ -365,6 +370,14 @@ export function TrickSettingsSection(): ReactNode {
           label="from the repository, not from the list: a pull request's commit"
           tricks={[trick("pr-inbox", "PR Inbox", { on: false, state: "off", places: ["session"], provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "5e1f00d3a9b2", unlisted: true } })]}
           entries={[REVIEW, { ...INBOX, state: "taken", unlisted: true }]}
+        />
+        <OfficialCard
+          n={24}
+          state="trick-settings-official-changed"
+          label="files the person changed: tap Update, it is refused; a changed one is taken"
+          tricks={[fromList(BUILDS, { on: true, state: "ok" }), trick("pr-inbox", "PR Inbox", { on: false, state: "off", places: ["session"], provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a", unlisted: true } })]}
+          entries={[{ ...BUILDS, state: "update" }, { ...INBOX, state: "taken", changed: true }]}
+          answer="changed"
         />
       </Group>
       <Group title="Nothing to list">

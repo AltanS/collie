@@ -285,10 +285,17 @@ describe("an entry's state on this machine", () => {
     expect(await officialStateOf(configDir, e)).toBe("taken");
     const origin = { url: REPO, ref: C1, commit: C1, subdir: "legs", at: "2026-11-11T09:00:00.000Z", official: true as const };
     await writeFile(join(dir, ORIGIN_FILE), renderOrigin(origin));
-    expect(await officialStateOf(configDir, e)).toBe("added");
+    // A version of the list by its record, and its code is the code the list names for that commit.
+    await writeFile(join(dir, "trick.toml"), MANIFEST("legs"));
+    const code = await trickCodeHash(dir);
+    if (!code.ok) throw new Error(code.reason);
+    const listed = { ...e, hash: code.hash, previous: [{ commit: C0, hash: code.hash }] };
+    expect(await officialStateOf(configDir, listed)).toBe("added");
     // A version an earlier release listed is still the list's, and the current one is newer.
     await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, commit: C0 }));
-    expect(await officialStateOf(configDir, e)).toBe("update");
+    expect(await officialStateOf(configDir, listed)).toBe("update");
+    // The same record over other code: taken, and changed.
+    expect(await officialStanding(configDir, e)).toMatchObject({ state: "taken", changed: true });
     await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, url: "https://github.com/someone/else" }));
     expect(await officialStateOf(configDir, e)).toBe("taken");
     await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...origin, subdir: "other" }));
@@ -557,7 +564,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     await expectNoLeftovers(r);
   });
 
-  test("off: only code moves; media/, captures/, inputs/, logs, dot files and config.toml stay untouched, and a code edit is replaced", async () => {
+  test("off: only code moves; media/, captures/, inputs/, logs, dot files and config.toml stay untouched, and code the person never touched is replaced", async () => {
     // The new version brings a picture and a config.toml of its own: neither is taken.
     const V2_MORE = { ...V2, "legs/media/new.png": { text: "theirs-new" }, "legs/lib/util.sh": { text: "# util v2\n" } };
     const V1_MORE = { ...V1, "legs/lib/util.sh": { text: "# util v1\n" }, "legs/old.sh": { text: "# goes\n" } };
@@ -568,7 +575,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     expect((await r.official.install("legs", "add")).status).toBe(200);
     const dir = trickDir(r, "legs");
     // The person's own: settings, pictures, captures, inputs, a log at the top and one inside a code folder,
-    // a dot file, and an edit of a code file.
+    // and a dot file. None of them is code, so the folder's code is still the code Collie wrote.
     await writeFile(join(dir, "config.toml"), "rows = 3\n");
     await mkdir(join(dir, "media"), { recursive: true });
     await writeFile(join(dir, "media", "mine.png"), "mine");
@@ -579,7 +586,6 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     await writeFile(join(dir, "run.log"), "log");
     await writeFile(join(dir, "lib", "debug.log"), "deep log");
     await writeFile(join(dir, ".mine"), "a dot file Collie does not know");
-    await writeFile(join(dir, "program.sh"), "#!/bin/sh\n# my edit\n");
     r.entries = [moveTo(r.entries, repo.shas[1] ?? "", await hashOf(legsOf(V2_MORE)))];
     expect(await r.official.install("legs", "update")).toEqual({ status: 200, body: { id: "legs", state: "added" } });
     const read = async (rel: string): Promise<string | null> => await readFile(join(dir, rel), "utf8").catch(() => null);
@@ -591,7 +597,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     expect(await read("run.log")).toBe("log");
     expect(await read("lib/debug.log")).toBe("deep log");
     expect(await read(".mine")).toBe("a dot file Collie does not know");
-    // Code: the new version's, the person's edit replaced, a file the new version dropped removed.
+    // Code: the new version's, and a file the new version dropped removed: both were Collie's.
     expect(await read("program.sh")).toContain("# two");
     expect(await read("lib/util.sh")).toBe("# util v2\n");
     expect(await read("old.sh")).toBeNull();
@@ -686,6 +692,52 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     expect(unlisted?.provenance).toMatchObject({ via: "repo", sha: repo.shas[1], unlisted: true });
     expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "taken", unlisted: true });
     expect(await r.official.install("legs", "update")).toMatchObject({ status: 409, body: { error: "taken" } });
+  });
+
+  test("an edit of a code file, or a file the person added, refuses the update: changed, nothing moves or goes", async () => {
+    const repo = await fixtureRepo([V1, V2]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    r.entries = [moveTo(r.entries, repo.shas[1] ?? "", await hashOf(V2_LEGS))];
+    expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "update" });
+    const dir = trickDir(r, "legs");
+    for (const [rel, text] of [["program.sh", "#!/bin/sh\n# my edit\n"], ["notes.txt", "my notes"]] as const) {
+      const before = rel === "program.sh" ? await readFile(join(dir, rel), "utf8") : null;
+      await writeFile(join(dir, rel), text);
+      expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "taken", changed: true });
+      expect(await r.official.install("legs", "update")).toEqual({ status: 409, body: { error: "changed", message: OFFICIAL_LINES.changed } });
+      expect(await readFile(join(dir, rel), "utf8")).toBe(text);
+      expect(parseOrigin(await readFile(join(dir, ORIGIN_FILE), "utf8"))?.commit).toBe(repo.shas[0]);
+      if (before === null) await rm(join(dir, rel));
+      else await writeFile(join(dir, rel), before);
+    }
+    expect(OFFICIAL_LINES.changed).toBe("You edited its files. Update it on the machine.");
+    // Put back as Collie wrote it, the update runs.
+    expect(await r.official.install("legs", "update")).toEqual({ status: 200, body: { id: "legs", state: "added" } });
+    await expectNoLeftovers(r);
+  });
+
+  test("a forged record: `official: true` written by hand over a hand-made trick is taken, or a refused update", async () => {
+    const repo = await fixtureRepo([V1, V2]);
+    const h1 = await hashOf(V1_LEGS);
+    const r = await rig([moveTo([fixtureEntry(repo.url, repo.shas[0] ?? "", h1)], repo.shas[1] ?? "", await hashOf(V2_LEGS))]);
+    const dir = trickDir(r, "legs");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "trick.toml"), MANIFEST("legs"));
+    await writeFile(join(dir, "program.sh"), "#!/bin/sh\n# hand-made\n", { mode: 0o755 });
+    await writeFile(join(dir, "mine.txt"), "mine");
+    const forged = { url: repo.url, ref: repo.shas[0] ?? "", subdir: "legs", at: "2026-11-11T09:00:00.000Z", official: true as const };
+    // At a commit the list never named: taken, unlisted.
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...forged, commit: "9".repeat(40) }));
+    expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "taken", unlisted: true });
+    expect(await r.official.install("legs", "update")).toMatchObject({ status: 409, body: { error: "taken" } });
+    // At a listed commit: the code is not the list's, so taken and changed, and the update is refused.
+    await writeFile(join(dir, ORIGIN_FILE), renderOrigin({ ...forged, commit: repo.shas[0] ?? "" }));
+    expect((await r.official.reply()).tricks[0]).toMatchObject({ state: "taken", changed: true });
+    expect(await r.official.install("legs", "update")).toMatchObject({ status: 409, body: { error: "changed" } });
+    expect(await readFile(join(dir, "program.sh"), "utf8")).toContain("# hand-made");
+    expect(await readFile(join(dir, "mine.txt"), "utf8")).toBe("mine");
+    expect(r.gitArgs).toEqual([]);
   });
 
   test("an update whose hash does not match changes nothing", async () => {

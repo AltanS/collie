@@ -305,7 +305,7 @@ function OfficialRow({ entry, busy, canWrite, onAdd, onAbout }: { entry: WireOff
           </p>
           {taken && (
             <p data-line="taken" className="text-xs text-muted-foreground">
-              {t(entry.unlisted === true ? "settings.tricks.official.takenRepo" : "settings.tricks.official.taken")}
+              {t(entry.changed === true ? "settings.tricks.official.changed" : entry.unlisted === true ? "settings.tricks.official.takenRepo" : "settings.tricks.official.taken")}
             </p>
           )}
         </div>
@@ -326,6 +326,8 @@ export function officialFailureLine<TThrown>(thrown: TThrown, mode: "add" | "upd
   if (code === "taken") return t("settings.tricks.official.taken");
   // The new code needs a name the person's own files hold in the trick's folder: nothing was changed.
   if (code === "blocked" && !add) return t("settings.tricks.official.updateBlocked");
+  // A version of the list whose files the person changed: Collie never moves or removes them.
+  if (code === "changed") return t("settings.tricks.official.changed");
   return add ? t("settings.tricks.official.failed", { name }) : t("settings.tricks.official.updateFailed", { name });
 }
 

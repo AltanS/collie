@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { OfficialState, OfficialTricksReply, TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { isCodePath, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
-import { officialStateOf, officialWire, shippedOfficialList, type OfficialEntry } from "./official.ts";
+import { officialStanding, officialStateOf, officialWire, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
 import { renderOrigin } from "./origin.ts";
 import { tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { replaceCode, writeNewTrick, type ProposalWrite } from "./proposal-install.ts";
@@ -71,6 +71,7 @@ export const OFFICIAL_LINES = {
   updateUnreachable: "GitHub did not answer. Nothing was changed.",
   updateMismatch: "The code did not match. Nothing was changed.",
   blocked: "Your own files block it. Nothing was changed.",
+  changed: "You edited its files. Update it on the machine.",
   busy: "Collie is adding another trick. Try again in a moment.",
   taken: "A trick with this name is already here.",
   added: "This trick is already added.",
@@ -83,7 +84,7 @@ export type OfficialAnswer =
   | { status: 200; body: { id: string; state: OfficialState } }
   | { status: 400; body: { error: "official-invalid" } }
   | { status: 404; body: { error: "unknown-official" } }
-  | { status: 409; body: { error: "runs-on" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked"; message: string } }
+  | { status: 409; body: { error: "runs-on" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked" | "changed"; message: string } }
   | { status: 422; body: { error: "mismatch" | "too-large"; message: string } }
   | { status: 502; body: { error: "unreachable"; message: string } }
   | { status: 500; body: { error: "failed"; message: string } };
@@ -192,7 +193,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     this.busy = true;
     let fetchDir: string | null = null;
     try {
-      const wrong = stateRefusal(await officialStateOf(this.deps.configDir, entry), mode);
+      const wrong = stateRefusal(await officialStanding(this.deps.configDir, entry), mode);
       if (wrong !== null) return wrong;
       const now = this.deps.now ?? Date.now;
       const deadline = now() + (this.deps.timeoutMs ?? OFFICIAL_ADD_TIMEOUT_MS);
@@ -231,7 +232,8 @@ export class OfficialTricks implements OfficialTricksSurface {
 
   /** Steps 3 and 4, in the runner's lane: the state again, then the staged write held to the list's hash. */
   private async write(entry: OfficialEntry, candidate: Candidate, mode: "add" | "update"): Promise<OfficialAnswer> {
-    const again = stateRefusal(await officialStateOf(this.deps.configDir, entry), mode);
+    // Again in the lane, the code hash included: a file changed during the fetch stops the update here.
+    const again = stateRefusal(await officialStanding(this.deps.configDir, entry), mode);
     if (again !== null) return again;
     const root = tricksConfigDir(this.deps.configDir);
     const at = new Date((this.deps.now ?? Date.now)()).toISOString();
@@ -266,8 +268,11 @@ function mismatch(mode: "add" | "update"): OfficialAnswer {
   return { status: 422, body: { error: "mismatch", message: mode === "add" ? OFFICIAL_LINES.mismatch : OFFICIAL_LINES.updateMismatch } };
 }
 
-/** Why an entry in `state` cannot take `mode`, or null when it can: add needs `absent`, update needs `update`. */
-function stateRefusal(state: OfficialState, mode: "add" | "update"): OfficialAnswer | null {
+/** Why an entry standing so cannot take `mode`, or null when it can: add needs `absent`, update needs `update`. */
+function stateRefusal(standing: OfficialStanding, mode: "add" | "update"): OfficialAnswer | null {
+  const { state } = standing;
+  // A version of the list whose files the person changed: Collie never moves or removes them.
+  if (standing.changed) return { status: 409, body: { error: "changed", message: OFFICIAL_LINES.changed } };
   if (state === "taken") return { status: 409, body: { error: "taken", message: OFFICIAL_LINES.taken } };
   if (mode === "add" && state === "absent") return null;
   if (mode === "update" && state === "update") return null;

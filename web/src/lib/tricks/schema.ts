@@ -1446,6 +1446,11 @@ export interface WireOfficialTrick {
    * ref (a pull request's, a branch nobody listed) or a record without `official`. Absent otherwise.
    */
   unlisted?: true;
+  /**
+   * Set on a `taken` entry whose folder is a version of the list by its origin record, but whose code is
+   * not that version's code any more: the person changed its files. Collie never updates it. Absent otherwise.
+   */
+  changed?: true;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */

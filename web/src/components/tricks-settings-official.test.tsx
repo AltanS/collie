@@ -309,6 +309,22 @@ describe("From Collie: Update", () => {
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "Update Running Builds" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Update Running Builds" }));
     await vi.waitFor(() => expect(currentStatus()).toMatchObject({ text: "Your own files block it. Nothing was changed.", tone: "error" }));
+    // The person changed the trick's files: Collie moves and removes none of them.
+    server.use(http.post("/api/tricks/official/:id/:mode", () => HttpResponse.json({ error: "changed", message: "x" }, { status: 409 })));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Update Running Builds" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Update Running Builds" }));
+    await vi.waitFor(() => expect(currentStatus()).toMatchObject({ text: "You edited its files. Update it on the machine.", tone: "error" }));
+  });
+
+  it("a taken entry whose files the person changed says so, and offers nothing", async () => {
+    serveList(() => ({ tricks: [{ ...BUILDS, state: "taken", changed: true }] }));
+    const { store } = await liveStore([installed(BUILDS)]);
+    renderCard(store);
+    await vi.waitFor(() => expect(section()).not.toBeNull());
+    const builds = officialRow("running-builds");
+    expect(within(builds).getByText("You edited its files. Update it on the machine.")).toBeInTheDocument();
+    expect(within(builds).queryByRole("button")).toBeNull();
+    expect(readOfficialTricksReply({ tricks: [{ ...BUILDS, state: "taken", changed: true }] })?.tricks[0]?.changed).toBe(true);
   });
 });
 
