@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { UserTurn } from "@/components/chat-cards";
 import { HillImageStrip, viewPictures, type HillMediaSource } from "@/components/hill-media";
 import { MarkdownText } from "@/components/markdown-text";
+import { useMorphLinkText } from "@/components/morph-links";
 import { MorphEarlier, MorphPendingBlock, MorphReceiptCard } from "@/components/morph-blocks";
 import { MorphChoiceBlock, MorphChoiceDone } from "@/components/morph-choice";
 import { StatusDot } from "@/components/status-badge";
@@ -163,6 +164,7 @@ function isLiveStatus(status: MorphStatus | null): boolean {
  */
 function MorphProgress({ status, notes, clock }: { status: MorphStatus | null; notes: readonly MorphNote[]; clock: number }) {
   const live = isLiveStatus(status);
+  const linkText = useMorphLinkText();
   return (
     <div data-slot="morph-progress" className="mt-1 min-w-0">
       <p data-slot="morph-status" data-kind={status?.kind} role="status" className={cn("flex h-6 min-w-0 items-center gap-2 text-sm", live ? "text-foreground" : "text-muted-foreground")}>
@@ -173,7 +175,7 @@ function MorphProgress({ status, notes, clock }: { status: MorphStatus | null; n
         <PresenceList itemAs="li">
           {(live ? notes : []).map((note, i, all) => (
             <span key={`${note.at}:${note.note}`} data-slot="morph-note" className={cn("block truncate text-sm", i === all.length - 1 ? "text-foreground" : "text-muted-foreground")}>
-              {note.note}
+              {linkText(note.note)}
             </span>
           ))}
         </PresenceList>
@@ -296,6 +298,8 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
   const partKey = `morph:${session}`;
   const pictures = useMemo(() => (view?.set === undefined || view.media === undefined ? undefined : viewPictures(view.set, view.media, morphMediaSource)), [view?.set, view?.media]);
   const stripMedia = useMemo(() => stripMediaOf(view), [view]);
+  // The screen's free text carries the links Chat's text carries (components/morph-links.tsx).
+  const linkText = useMorphLinkText();
 
   /** Send one line for a control, mark the control once the bridge confirmed it. */
   const send = useCallback(
@@ -339,7 +343,7 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
   const drawBlock = useCallback(
     (block: MorphBlockView, { isLive, isAfter }: { isLive: boolean; isAfter: boolean }): ReactNode => {
       if (block.pending !== undefined) return <MorphPendingBlock label={block.pending} isLive={isLive} />;
-      const ctx: RenderCtx = { partKey, stale: false, onTap: isLive ? (_key, _intent, _value: TapValue | undefined, control) => onBlockTap(block, control) : () => undefined, onLink, wrap: true };
+      const ctx: RenderCtx = { partKey, stale: false, onTap: isLive ? (_key, _intent, _value: TapValue | undefined, control) => onBlockTap(block, control) : () => undefined, onLink, wrap: true, linkText };
       const busyHere = busyControl === null ? null : renderedControl(block.prefix, busyControl);
       if (isLive && busyHere !== null) ctx.tap = { phase: "busy", rid: "morph", control: busyHere, intent: "" };
       if (isLive && busyHere === null && (busyControl !== null || !canAct)) ctx.tap = ALL_WAIT;
@@ -353,7 +357,7 @@ export function MorphView({ session, view, request: told, head, hint, drawing, p
         </div>
       );
     },
-    [partKey, onBlockTap, onLink, busyControl, canAct, now, pictures, pressed],
+    [partKey, onBlockTap, onLink, busyControl, canAct, now, pictures, pressed, linkText],
   );
 
   const freshItems = useMemo(

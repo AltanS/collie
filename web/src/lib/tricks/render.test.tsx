@@ -879,3 +879,59 @@ describe("the composition of a view that wraps (2026-11-10)", () => {
     expect(fixed.container.querySelectorAll('[data-slot="trick-row-icon-lane"]')).toHaveLength(0);
   });
 });
+
+describe("linkText, the place's pass over free text", () => {
+  const SAID = "see http://bluefin:5198 and src/a.tsx";
+  const END = "http://bluefin:5198";
+  const nodes = [
+    { kind: "line", text: SAID },
+    para(SAID),
+    list(row(SAID, { end: END }, [para(SAID)])),
+    table(["a"], [[SAID]]),
+    shot("media/a.png", "alt", { caption: SAID }),
+  ] satisfies JsonObject[];
+  const wrapKinds = (container: HTMLElement) => container.querySelectorAll("a, button").length;
+
+  it("with no hook draws exactly what it always drew, and no anchor", () => {
+    const bare = draw(viewOfNodes(...nodes));
+    const withUndefined = draw(viewOfNodes(...nodes), { linkText: undefined });
+    expect(withUndefined.container.innerHTML).toBe(bare.container.innerHTML);
+    expect(wrapKinds(bare.container)).toBe(0);
+  });
+
+  it("applies the hook to a line, a para, a row's title, second line and end, a table cell and a caption", () => {
+    const seen: string[] = [];
+    const linkText = vi.fn((text: string) => {
+      seen.push(text);
+      return <mark data-linked="">{text}</mark>;
+    });
+    const { container } = draw(viewOfNodes(...nodes), { linkText, wrap: true });
+    // line, para, title, second line, end, cell, caption.
+    expect(container.querySelectorAll("[data-linked]").length).toBe(7);
+    expect(seen.filter((text) => text === SAID)).toHaveLength(6);
+    expect(seen).toContain(END);
+  });
+
+  it("leaves a button, a chip, a link and a row that is itself a link as they were", () => {
+    const linkText = vi.fn((text: string) => <mark data-linked="">{text}</mark>);
+    const inert = viewOfNodes(
+      bar(button({ label: "Open src/a.tsx", intent: "open" }), { kind: "chip", text: "http://bluefin:5198" }),
+      { kind: "para", kids: [{ kind: "link", text: "http://bluefin:5198", attrs: { href: "https://example.com" } }] },
+      list(row("src/a.tsx", { href: "https://example.com", end: "http://bluefin:5198" })),
+    );
+    const { container } = draw(inert, { linkText });
+    expect(linkText).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-linked]")).toBeNull();
+  });
+
+  it("draws a linked row title whole, so the link is one anchor, and keeps the middle cut for a title nothing linked", () => {
+    const long = "web/src/components/morph-view-with-a-very-long-name.tsx";
+    const linked = draw(viewOfNodes(list(row(long, { cut: "mid" }))), { linkText: (text) => <a href="/x">{text}</a> });
+    expect(linked.container.querySelectorAll("a")).toHaveLength(1);
+    expect(linked.container.querySelector("a")?.textContent).toBe(long);
+    linked.unmount();
+    const plain = draw(viewOfNodes(list(row(long, { cut: "mid" }))), { linkText: (text) => text });
+    expect(plain.container.querySelectorAll("a")).toHaveLength(0);
+    expect(plain.container.textContent).toContain(long);
+  });
+});

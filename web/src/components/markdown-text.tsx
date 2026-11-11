@@ -232,7 +232,7 @@ function Hit({ text }: { text: string }) {
 const NO_BREAK_MAX = 24;
 
 /** How a chip or a link is allowed to break, given the text it holds. See {@link NO_BREAK_MAX}. */
-function breakClass(text: string): string {
+export function breakClass(text: string): string {
   return text.length <= NO_BREAK_MAX ? "whitespace-nowrap" : "wrap-anywhere";
 }
 
@@ -244,7 +244,7 @@ function isPlainClick(e: React.MouseEvent): boolean {
   return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 }
 
-const LINK_CLASS = "text-primary underline underline-offset-2";
+export const LINK_CLASS = "text-primary underline underline-offset-2";
 
 // Inside a link's label nothing else may be a link: an anchor inside an anchor is invalid HTML, and
 // the outer one is what the author meant.

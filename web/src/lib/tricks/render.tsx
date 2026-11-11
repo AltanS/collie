@@ -169,6 +169,20 @@ export interface RenderCtx {
    * whole words in a `title`.
    */
   wrap?: boolean;
+  /**
+   * Turns the free text of a `line`, a `para`, a plain `run`, a `row`'s title, second line and `end`, a
+   * `table` cell and a picture's caption into what the place draws for it (Morph: web addresses and
+   * printed paths as links). It returns the text itself when it has nothing to link. NO DEFAULT: absent
+   * (a trick's Session, a Decision on the hill, the playground), every one of those texts draws as it
+   * always did, and no text ever becomes a link on its own. It is never applied to a button, a chip, a
+   * link or a run that has an `href`, nor to a row that is itself a link: an anchor does not nest.
+   */
+  linkText?: (text: string) => ReactNode;
+}
+
+/** The words of a free text as the place draws them: through `ctx.linkText` when it has one, else as they are. */
+function wordsOf(ctx: RenderCtx, text: string): ReactNode {
+  return ctx.linkText === undefined ? text : ctx.linkText(text);
 }
 
 /** A row's or a link's `href` as a target, or `undefined` for one this Collie cannot open (the bridge checked it). */
@@ -740,7 +754,7 @@ function RunView({ node, ctx }: { node: RunNode; ctx: RenderCtx }) {
   }
   return (
     <span data-trick-node="run" className={className}>
-      {words}
+      {attrs?.at === undefined || attrs.clock === undefined ? wordsOf(ctx, node.text) : words}
     </span>
   );
 }
@@ -778,7 +792,7 @@ function ParaView({ node, ctx }: { node: ParaNode; ctx: RenderCtx }) {
       {attrs?.bullet !== undefined && <span className="w-4 shrink-0 font-content text-sm leading-5 text-muted-foreground tabular-nums">{attrs.bullet}</span>}
       <p style={clamp} className={cn(PARA_ROLE_CLASS[role], "min-w-0 flex-1 overflow-hidden", lines === 1 ? "truncate" : "break-words whitespace-pre-line")}>
         {attrs?.term !== undefined && <span className="font-semibold not-italic">{attrs.term} </span>}
-        {node.text ?? <Inline kids={node.kids} ctx={ctx} />}
+        {node.text === undefined ? <Inline kids={node.kids} ctx={ctx} /> : wordsOf(ctx, node.text)}
       </p>
     </div>
   );
@@ -793,7 +807,7 @@ const SIDEWAYS = "overflow-x-auto overflow-y-hidden overscroll-x-contain [scroll
 function LineBody({ node, ctx, cut = true }: { node: LineNode; ctx: RenderCtx; cut?: boolean }) {
   return (
     <span className={cn("block whitespace-pre [tab-size:4]", cut && "truncate", styleClass(node.attrs?.style, ctx.stale), LINE_ROLE_CLASS[node.attrs?.role ?? "text"])}>
-      {node.text ?? <Inline kids={node.kids} ctx={ctx} />}
+      {node.text === undefined ? <Inline kids={node.kids} ctx={ctx} /> : wordsOf(ctx, node.text)}
     </span>
   );
 }
@@ -883,10 +897,10 @@ function cropOf(node: ImageNode): { fit: ImageFit; crop?: FocusCrop } {
 }
 
 /** A caption under a picture: up to two lines, the whole words in `title`. */
-function PictureCaption({ text }: { text: string }) {
+function PictureCaption({ text, ctx }: { text: string; ctx: RenderCtx }) {
   return (
     <figcaption title={text} className="font-content line-clamp-2 text-[11px] leading-4 break-words text-muted-foreground">
-      {text}
+      {wordsOf(ctx, text)}
     </figcaption>
   );
 }
@@ -915,7 +929,7 @@ function DecisionImageView({ node, at: ref, ctx }: { node: ImageNode; at: number
   return (
     <figure data-trick-node="image" className="flex min-w-0 flex-col gap-1">
       {ctx.pictures.draw(draw)}
-      {node.attrs.caption !== undefined && <PictureCaption text={node.attrs.caption} />}
+      {node.attrs.caption !== undefined && <PictureCaption text={node.attrs.caption} ctx={ctx} />}
     </figure>
   );
 }
@@ -938,7 +952,7 @@ function PartImageView({ node, ctx }: { node: ImageNode; ctx: RenderCtx }) {
           <FocusImage src={url} alt={alt} fit={fit} crop={crop} />
         )}
       </FocusFrame>
-      {caption !== undefined && <PictureCaption text={caption} />}
+      {caption !== undefined && <PictureCaption text={caption} ctx={ctx} />}
     </figure>
   );
 }
@@ -997,7 +1011,7 @@ function TableView({ node, ctx }: { node: TableNode; ctx: RenderCtx }) {
   const grid = tableGrid(node);
   if (grid === undefined) return <Placeholder kind="table" />;
   const columns: MiniTableColumn[] = grid.cols.map((col) => ({ label: col.text, align: col.align }));
-  const rows = grid.rows.map((row) => row.map((cell) => ({ text: cell.text ?? "", className: inkOf(cell.attrs?.tone, ctx.stale) })));
+  const rows = grid.rows.map((row) => row.map((cell) => ({ text: cell.text ?? "", words: ctx.linkText === undefined ? undefined : wordsOf(ctx, cell.text ?? ""), className: inkOf(cell.attrs?.tone, ctx.stale) })));
   const fixed = ctx.wrap !== true;
   return (
     // In a view that wraps the rows take their words' height, so no floor is set at all.
@@ -1113,7 +1127,17 @@ const MID_TAIL = 10;
  * shows every word; in a fixed band it takes two lines when the row has no second line (two 20px lines
  * fit the 44px row) and one when it has, and cuts the rest with the whole title in `title`.
  */
-function RowTitle({ text, cut, wrap, lines }: { text: string; cut: (typeof CUTS)[number] | undefined; wrap: boolean; lines: 1 | 2 }) {
+function RowTitle({ text, cut, wrap, lines, words }: { text: string; cut: (typeof CUTS)[number] | undefined; wrap: boolean; lines: 1 | 2; words?: ReactNode }) {
+  // A title the place linked is drawn whole, so the link is one anchor: the middle cut, which splits the
+  // path in two boxes, waits for a title with nothing to link.
+  const linked = words !== undefined && words !== text;
+  if (linked) {
+    return (
+      <span title={text} className={cn("font-content text-sm leading-5", wrap ? "break-words" : lines === 2 ? "line-clamp-2 break-words" : "truncate")}>
+        {words}
+      </span>
+    );
+  }
   if (cut === "mid" && text.length > MID_TAIL * 2) {
     return (
       <span title={text} className="flex min-w-0 font-content text-sm leading-5">
@@ -1164,16 +1188,18 @@ function RowView({ node, ctx, path, iconLane = false }: { node: RowNode; ctx: Re
   // target has no host to show.
   const host = target?.url === undefined ? "" : (ctx.hostOf?.(target.url) ?? "");
   const wrap = ctx.wrap === true;
+  // The row's own body is an anchor or a button when it has a target: nothing in it is linked then.
+  const linkable = target === undefined;
   const secondText = second === undefined ? undefined : textOf(second);
   const body = (
     <>
       {Icon !== null && <Icon aria-hidden className={cn("size-4 shrink-0 transition-colors", ink)} />}
       {Icon === null && iconLane && <span aria-hidden data-slot="trick-row-icon-lane" className="size-4 shrink-0" />}
       <span data-slot="trick-row-text" className={cn("flex min-w-[40%] flex-auto flex-col", wrap && "py-2.5")}>
-        <RowTitle text={node.text} cut={attrs?.cut} wrap={wrap} lines={second === undefined && host === "" ? 2 : 1} />
+        <RowTitle text={node.text} cut={attrs?.cut} wrap={wrap} lines={second === undefined && host === "" ? 2 : 1} words={linkable ? wordsOf(ctx, node.text) : undefined} />
         {secondText !== undefined && (
           <span title={wrap ? undefined : secondText} className={cn("font-content text-xs leading-4 text-muted-foreground", wrap ? "break-words" : "truncate")}>
-            {secondText}
+            {linkable ? wordsOf(ctx, secondText) : secondText}
           </span>
         )}
         {host !== "" && <HostWords host={host} line />}
@@ -1194,7 +1220,7 @@ function RowView({ node, ctx, path, iconLane = false }: { node: RowNode; ctx: Re
             ink === "" ? "text-muted-foreground" : ink,
           )}
         >
-          {attrs.end}
+          {linkable ? wordsOf(ctx, attrs.end) : attrs.end}
         </span>
       )}
     </>
