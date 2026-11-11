@@ -213,16 +213,18 @@ export function withApproval(switches: Switches, id: string, approval: Approval)
 
 /**
  * The same set with `id` switched on (at `at`, approving the code `hash`) or off. The low-level setter a
- * test and an older caller use: `auto` and `previous` are kept, `by` is `cli`, the powers are not known.
+ * test and an older caller use: `auto` and `previous` are kept, `by` is `cli`, the powers are `powers`, by
+ * default not known. An entry with a hash and unknown powers does not run (fault B: service.ts
+ * `rightsMovedOf`), so a test that switches a trick on passes the powers of its folder (approved.ts `powersOfDir`).
  */
-export function withSwitch(switches: Switches, id: string, on: boolean, at: string, hash: string | null = null): Switches {
+export function withSwitch(switches: Switches, id: string, on: boolean, at: string, hash: string | null = null, powers: string | null = null): Switches {
   const next = new Map(switches.on);
   if (!on) {
     next.delete(id);
     return { on: next, version: SWITCHES_VERSION };
   }
   const held = switches.on.get(id);
-  const entry: SwitchEntry = { at, hash, auto: held?.auto ?? false, by: "cli", powers: null };
+  const entry: SwitchEntry = { at, hash, auto: held?.auto ?? false, by: "cli", powers };
   if (held?.previous !== undefined) entry.previous = held.previous;
   next.set(id, entry);
   return { on: next, version: SWITCHES_VERSION };

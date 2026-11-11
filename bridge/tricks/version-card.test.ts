@@ -11,6 +11,7 @@ import { DECISION_VIEW_LIMITS, parseDecisionView, RULES_NEVER_AUTO, type TrickMa
 import { parseJson } from "../../web/src/lib/json.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
+import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
@@ -424,7 +425,7 @@ async function life(): Promise<Life> {
   await writeFile(join(dir, "legs.sh"), "#!/bin/sh\necho 1\n", { mode: 0o755 });
   const code = await trickCodeHash(dir);
   if (!code.ok) throw new Error(code.reason);
-  await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-10T08:00:00Z", code.hash));
+  await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-10T08:00:00Z", code.hash, await powersOfDir(dir, "legs")));
   const clock = { t: T0 };
   const store = new HillStore(null, () => clock.t);
   let n = 0;

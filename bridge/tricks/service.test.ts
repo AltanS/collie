@@ -5,13 +5,14 @@ import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
 import { parseFacts, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
 import { tricksTapRoute } from "./routes.ts";
-import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, TAP_LOST_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, RIGHTS_LINE, TAP_LOST_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -54,8 +55,9 @@ async function makeTrick(configDir: string, id: string, manifest: string, files:
 async function switchOn(stateDir: string, ...ids: string[]): Promise<void> {
   let switches: Switches = { on: new Map() };
   for (const id of ids) {
-    const code = await trickCodeHash(join(dirname(stateDir), "config", TRICKS_DIR, id));
-    switches = withSwitch(switches, id, true, "2026-11-08T09:00:00Z", code.ok ? code.hash : null);
+    const dir = join(dirname(stateDir), "config", TRICKS_DIR, id);
+    const code = await trickCodeHash(dir);
+    switches = withSwitch(switches, id, true, "2026-11-08T09:00:00Z", code.ok ? code.hash : null, await powersOfDir(dir, id));
   }
   await writeSwitches(stateDir, switches);
 }
@@ -1568,6 +1570,117 @@ describe("migrating switches.json from version 2 at boot", () => {
     expect(r.specs.length).toBe(0);
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file).toEqual({ v: 2, layout: 3, on: { legs: { at: "2026-11-01T00:00:00Z", hash: null, auto: false, by: "migrated", powers: null } } });
+  });
+});
+
+describe("fault B: a trick runs only while the rights it was approved with are the rights its copy asks for", () => {
+  /**
+   * The powers MANIFEST's places hashed the way the first build that stored them did (dd1124193:
+   * `{ env, inputs: [], places }`), kept as literals so a change of the formula cannot move both sides.
+   */
+  const FIRST_POWERS = "d66ecead783fc3a7";
+  /** The same, for a reader that knew only `belt`: what an older Collie stored for a place word it did not read. */
+  const OLDER_READER = "ef82e1c9bd8dcfc4";
+  const VIEW = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt", "session"]\n';
+
+  /** The switch file as a build of that era wrote it: version 2, layout 3, the entry's powers as given. */
+  async function eraSwitch(r: Rig, dir: string, powers: string | null, at = "2026-11-01T08:00:00Z"): Promise<void> {
+    const hash = await codeHashOf(dir);
+    const entry = { at, hash, auto: false, by: "phone", powers };
+    await mkdir(join(r.stateDir, TRICKS_DIR), { recursive: true });
+    await writeFile(join(r.stateDir, TRICKS_DIR, "switches.json"), `${JSON.stringify({ v: 2, layout: 3, on: { legs: entry } }, null, 2)}\n`);
+  }
+
+  test("fault B: a switch file of the first stored-powers era, with no new place word, changes nothing", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1")), exited(belt("2"))], { audit: (e) => audits.push(e.action) });
+    const dir = await makeTrick(r.configDir, "legs", VIEW, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    expect(await powersOfDir(dir, "legs")).toBe(FIRST_POWERS);
+    await eraSwitch(r, dir, FIRST_POWERS);
+    await tickAt(r, T0);
+    await tickAt(r, T0 + 30_000);
+    expect(r.specs.map((spec) => factsOf(spec).trigger.kind)).toEqual(["start", "timer"]);
+    const reply = await r.service.reply(undefined);
+    expect(reply.tricks[0]).toMatchObject({ on: true, state: "ok" });
+    expect(reply.tricks[0]?.rightsMoved).toBeUndefined();
+    expect(reply.tricks[0]?.error).toBeUndefined();
+    expect(reply.present).toEqual(["lodge/legs/belt"]);
+    expect(ok200(await beltTap(r, REQ)).refused).toBeUndefined();
+    expect(r.warnings.filter((line) => line.includes(RIGHTS_LINE))).toEqual([]);
+    expect(audits).not.toContain("trick.rights.moved");
+  });
+
+  test("fault B: a copy that asks for a right the approval did not hold stops: no run, no parts, no tap, no picture, and says so once", async () => {
+    const audits: { action: string; detail: Record<string, string> }[] = [];
+    const r = await rig([exited(belt("1")), exited(belt("2")), exited(belt("3"))], { audit: (e) => audits.push(e) });
+    const dir = await makeTrick(r.configDir, "legs", VIEW, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await mkdir(join(dir, "media"), { recursive: true });
+    await writeFile(join(dir, "media", "a.png"), Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"));
+    await eraSwitch(r, dir, FIRST_POWERS);
+    await tickAt(r, T0);
+    expect(r.specs).toHaveLength(1);
+    expect((await r.service.reply(undefined)).present).toEqual(["lodge/legs/belt"]);
+    const drawn = await revOf(r, "belt");
+    // The same approval, as an older reader stored it: it did not read `session`, so it never approved it.
+    await eraSwitch(r, dir, OLDER_READER);
+    await tickAt(r, T0 + 30_000);
+    await tickAt(r, T0 + 60_000);
+    expect(r.specs).toHaveLength(1);
+    const reply = await r.service.reply(undefined);
+    expect(reply.tricks[0]).toMatchObject({ on: true, state: "stopped", error: RIGHTS_LINE, rightsMoved: true });
+    expect(reply.parts).toEqual([]);
+    expect(reply.present).toEqual([]);
+    expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x", rev: drawn }))).toMatchObject({ code: "rejected", message: RIGHTS_LINE });
+    expect(await r.service.media(HOST, "legs", "media/a.png")).toBeNull();
+    expect(r.specs).toHaveLength(1);
+    // Never silent, and said once for this approval, not on every scan.
+    expect(r.warnings.filter((line) => line.includes(RIGHTS_LINE))).toHaveLength(1);
+    expect(r.warnings.find((line) => line.includes(RIGHTS_LINE))).toContain(`approved with powers ${OLDER_READER}, this Collie reads ${FIRST_POWERS}`);
+    expect(audits.filter((e) => e.action === "trick.rights.moved").map((e) => e.detail)).toEqual([{ trick: "legs", hash: (await codeHashOf(dir)).slice(0, 16), stored: OLDER_READER, now: FIRST_POWERS }]);
+    // Switching it on again is the normal approval: the folder as it is now, with the rights read now.
+    expect(await r.service.setSwitch(HOST, "legs", true)).toMatchObject({ status: 200, body: { state: "ok" } });
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.powers).toBe(FIRST_POWERS);
+    await tickAt(r, T0 + 61_000);
+    expect(r.specs).toHaveLength(2);
+    expect((await r.service.reply(undefined)).tricks[0]?.rightsMoved).toBeUndefined();
+  });
+
+  test("fault B: an approval whose powers were never recorded is a mismatch too, never a silent run", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", VIEW, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await eraSwitch(r, dir, null);
+    await tickAt(r, T0);
+    expect(r.specs).toHaveLength(0);
+    expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ state: "stopped", error: RIGHTS_LINE, rightsMoved: true });
+    expect(r.warnings.find((line) => line.includes(RIGHTS_LINE))).toContain("approved with powers not recorded");
+  });
+
+  test("fault B: a stopped trick takes no new version without asking, whatever its auto says", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", VIEW, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    const hash = await codeHashOf(dir);
+    await mkdir(join(r.stateDir, TRICKS_DIR), { recursive: true });
+    await writeFile(join(r.stateDir, TRICKS_DIR, "switches.json"), `${JSON.stringify({ v: 2, layout: 3, on: { legs: { at: "2026-11-01T08:00:00Z", hash, auto: true, by: "phone", powers: OLDER_READER } } })}\n`);
+    await tickAt(r, T0);
+    await writeFile(join(dir, "legs.sh"), "#!/bin/sh\necho 2\n");
+    await tickAt(r, T0 + 1000);
+    await tickAt(r, T0 + 1000 + PENDING_SETTLE_MS);
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs).toMatchObject({ hash, powers: OLDER_READER });
+    expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ state: "stopped", rightsMoved: true });
+    expect(r.specs).toHaveLength(0);
+  });
+
+  test("fault B: an agent view whose approval did not hold its rules is shut", async () => {
+    const r = await rig(null);
+    const toml = 'id = "legs"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n';
+    const dir = await makeTrick(r.configDir, "legs", toml, { "rules.md": "Draw one screen.\n" });
+    // An approval that stored the place but not the rules: the rules are a right of their own.
+    await eraSwitch(r, dir, "0000000000000000");
+    await tickAt(r, T0);
+    expect(r.service.viewGate("legs")).toMatchObject({ ok: false, code: "trick_off" });
+    expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ rightsMoved: true, error: RIGHTS_LINE });
   });
 });
 

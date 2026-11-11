@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, wr
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, LATER_POWER_KEYS, migrateSwitches, neutralPower, powersHash, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner } from "./discover.ts";
@@ -276,6 +276,28 @@ describe("powers", () => {
     expect(powersOf({ places: ["belt"], inputs: ["notes/*.md", "TODO.md", "TODO.md"] })).toBe(read);
     expect(powersOf({ places: ["belt"], inputs: ["notes/*.md"] })).not.toBe(read);
     expect(read).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":["TODO.md","notes/*.md"],"places":["belt"]}').digest("hex").slice(0, 16));
+  });
+
+  test("fault B: an absent power key equals its neutral value, so a key a later Collie adds moves no stored hash", () => {
+    const first = { env: [], inputs: [], places: ["belt", "session"] };
+    // The first stored formula (dd1124193), as a literal: `{ env, inputs: [], places }`.
+    const era = "d66ecead783fc3a7";
+    expect(powersHash(first)).toBe(era);
+    expect(powersHash(first, {})).toBe(era);
+    expect(powersHash(first, { rules: undefined })).toBe(era);
+    expect(powersOf({ places: ["session", "belt"] })).toBe(era);
+    // Neutral: absent, or an empty list. The empty string is a value: rules named but not read.
+    expect(neutralPower(undefined)).toBe(true);
+    expect(neutralPower([])).toBe(true);
+    expect(neutralPower("")).toBe(false);
+    expect(neutralPower(["x"])).toBe(false);
+    expect(powersHash(first, { rules: "" })).not.toBe(era);
+    expect(powersOf({ places: ["belt", "session"], rules: "rules.md" })).toBe(powersHash(first, { rules: "" }));
+    // A key that holds something is hashed after the first three, keys sorted, as every stored hash was.
+    const sha = "a".repeat(64);
+    expect(powersHash(first, { rules: sha })).toBe(new Bun.CryptoHasher("sha256").update(`{"env":[],"inputs":[],"places":["belt","session"],"rules":"${sha}"}`).digest("hex").slice(0, 16));
+    expect([...LATER_POWER_KEYS]).toEqual([...LATER_POWER_KEYS].toSorted());
+    expect(LATER_POWER_KEYS.every((key) => key > "places")).toBe(true);
   });
 });
 

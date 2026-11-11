@@ -168,6 +168,12 @@ export const NOT_APPROVED_LINE = "No version of this trick is approved yet. Swit
 export const NO_PROGRAM_LINE = "This trick has no program, so nothing runs.";
 /** The line of a trick whose approved copy changed on disk. */
 export const TAMPERED_LINE = "The approved copy changed on disk, so the trick stopped. Switch it on again to approve its code as it is now.";
+/**
+ * The row's line when the rights a trick was approved with are not the rights its approved copy asks for as
+ * this Collie reads it (fault B): a newer reader names a right the older one did not, or the stored powers
+ * are unknown. The trick stops until a person switches it on again, which approves it with the rights read now.
+ */
+export const RIGHTS_LINE = "Asks for a new right. Switch it on again.";
 /** The row's line when the approved copy holds a symbolic link (one made before links were refused). */
 export const LINK_LINE = "The approved copy holds a symbolic link, so the trick stopped. A trick holds regular files only: replace the link in its folder, then switch it on again.";
 /** How long a changed folder must stay still before its snapshot is taken. */
@@ -386,6 +392,16 @@ export type VersionAnswer =
   | { ok: true; info: WireTrickInfo }
   | { ok: false; code: "unknown-trick" | "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules"; message: string };
 
+/** The rights an approval holds against the rights its copy asks for now (fault B). */
+export interface RightsMoved {
+  /** The approved code hash. */
+  hash: string;
+  /** The powers the switch entry stores, or null when it stores none. */
+  stored: string | null;
+  /** The powers of the approved copy's manifest, as this Collie reads it. */
+  now: string;
+}
+
 interface QueuedTap {
   request: TapRequest;
   /** Only on a decision's answer from the hill: the content hash the person saw. */
@@ -416,6 +432,11 @@ interface TrickRuntime {
   copyProblem: string | null;
   /** The approval (`<hash>@<at>`) whose copy was found changed: not checked again until a new approval. */
   tampered: string | null;
+  /**
+   * Fault B: the approved copy asks for other rights than the switch entry approved, as this Collie reads
+   * them. Set with {@link RIGHTS_LINE} as the copy problem; cleared by a new approval or the switch off.
+   */
+  rightsMoved: RightsMoved | null;
   /** The snapshot of a changed folder, waiting for a yes. */
   pending: PendingVersion | null;
   /** The folder's fingerprint and since when it has not moved, for the pending snapshot's wait. */
@@ -753,6 +774,7 @@ export class TricksService implements TricksSurface {
         changed,
         approved: null,
         copyProblem: null,
+        rightsMoved: null,
         tampered: null,
         pending: null,
         settle: null,
@@ -805,6 +827,7 @@ export class TricksService implements TricksSurface {
       rt.approved = null;
       rt.copyProblem = null;
       rt.tampered = null;
+      rt.rightsMoved = null;
       if (had) this.publish(id);
       return;
     }
@@ -821,6 +844,8 @@ export class TricksService implements TricksSurface {
           holds = check.ok;
         }
         if (holds) {
+          // An approval rewritten at the same hash (a switch on again) may store other powers: check them each pass.
+          if (this.rightsMovedOf(rt, loaded) !== null) return this.stopForRights(rt, loaded, `${want}@${rt.entry?.at ?? ""}`);
           await this.syncConfigOf(rt, loaded);
           return;
         }
@@ -837,9 +862,12 @@ export class TricksService implements TricksSurface {
       if (!check.ok) return this.copyFailed(rt, check.missing ? NOT_APPROVED_LINE : check.link === true ? LINK_LINE : TAMPERED_LINE, check.reason, check.missing ? null : approval);
       await syncConfig(rt.found.dir, dir);
       const found = await scanTrickDir(diskTrickFs, dir, id, undefined);
-      rt.approved = { hash: want, dir, found, listing: check.listing };
+      const run: ApprovedRun = { hash: want, dir, found, listing: check.listing };
+      if (this.rightsMovedOf(rt, run) !== null) return this.stopForRights(rt, run, approval);
+      rt.approved = run;
       rt.copyProblem = null;
       rt.tampered = null;
+      rt.rightsMoved = null;
       this.restart(rt);
       this.publish(id);
     } catch (err) {
@@ -856,12 +884,50 @@ export class TricksService implements TricksSurface {
     this.publish(rt.found.id);
   }
 
+  /**
+   * Fault B: whether the approved copy asks for other rights than its switch entry stores, as this Collie
+   * reads its manifest. Stored powers that are unknown (`null`, written by a test helper, a rollback or an
+   * undo to an entry from before powers) never hold: the trick stops and says so. A copy whose manifest is
+   * refused is no question of rights; it does not run anyway.
+   */
+  private rightsMovedOf(rt: TrickRuntime, run: ApprovedRun): RightsMoved | null {
+    const manifest = run.found.manifest;
+    if (manifest === undefined) return null;
+    const now = powersOf(manifest);
+    const stored = rt.entry?.powers ?? null;
+    return stored === now ? null : { hash: run.hash, stored, now };
+  }
+
+  /**
+   * Fault B: stop a trick whose approval holds other rights than its copy asks for. No run, no parts, no
+   * open Decision, no view; the row says {@link RIGHTS_LINE}, the log says it once per approval, and the
+   * Hill card says it once per trick and mismatch (bridge/tricks/rights-card.ts). Not checked again until a
+   * new approval, which a switch on writes with the rights read now.
+   */
+  private stopForRights(rt: TrickRuntime, run: ApprovedRun, approval: string): void {
+    const moved = this.rightsMovedOf(rt, run);
+    if (moved === null) return;
+    const fresh = rt.copyProblem !== RIGHTS_LINE || rt.tampered !== approval;
+    rt.approved = null;
+    rt.tampered = approval;
+    rt.copyProblem = RIGHTS_LINE;
+    rt.rightsMoved = moved;
+    if (!fresh) return;
+    const id = rt.found.id;
+    this.warn(`${id}: ${RIGHTS_LINE} (approved with powers ${moved.stored ?? "not recorded"}, this Collie reads ${moved.now})`);
+    this.deps.audit?.({ action: "trick.rights.moved", detail: { trick: id, hash: moved.hash.slice(0, 16), stored: moved.stored ?? "none", now: moved.now } });
+    this.store.dropParts(this.deps.memberId, id);
+    this.deps.decisions?.off(this.hillTrick(rt));
+    this.publish(id);
+  }
+
   /** The approved copy cannot run: stop the trick with a plain line, once. */
   private copyFailed(rt: TrickRuntime, line: string, why: string, tampered: string | null): void {
     const fresh = rt.copyProblem !== line;
     rt.approved = null;
     rt.tampered = tampered;
     rt.copyProblem = line;
+    rt.rightsMoved = null;
     if (!fresh) return;
     this.warn(`${rt.found.id}: ${line} (${why})`);
     this.store.markStale(this.deps.memberId, rt.found.id, line);
@@ -1208,6 +1274,8 @@ export class TricksService implements TricksSurface {
     if (rt.changed) info.changed = true;
     if (rt.pending !== null) info.pending = rt.pending.info;
     if (rt.decides === true) info.decides = true;
+    // Fault B: the phone says RIGHTS_LINE in its own words, from this flag.
+    if (rt.on && rt.rightsMoved !== null) info.rightsMoved = true;
     if (m?.env !== undefined) info.env = m.env;
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;

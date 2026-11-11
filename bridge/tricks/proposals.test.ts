@@ -33,6 +33,7 @@ import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from ".
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { VersionCards } from "./version-card.ts";
+import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import type { VersionDiff } from "./version-diff.ts";
 import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
@@ -446,7 +447,7 @@ describe("a trick id that exists", () => {
     if (opts.origin !== undefined) await writeFile(join(dir, ORIGIN_FILE), opts.origin);
     const code = await trickCodeHash(dir);
     if (!code.ok) throw new Error(code.reason);
-    if (opts.on) await writeSwitches(l.stateDir, withSwitch({ on: new Map() }, id, true, "2026-11-10T08:00:00Z", code.hash));
+    if (opts.on) await writeSwitches(l.stateDir, withSwitch({ on: new Map() }, id, true, "2026-11-10T08:00:00Z", code.hash, await powersOfDir(dir, id)));
     await l.service.refresh(true);
     return dir;
   }
@@ -632,7 +633,7 @@ describe("a trick id that exists", () => {
     // The helper is code: approve the folder as it is, as the person would.
     const code = await trickCodeHash(dir);
     if (!code.ok) throw new Error(code.reason);
-    await writeSwitches(l.stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-10T09:00:00Z", code.hash));
+    await writeSwitches(l.stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-10T09:00:00Z", code.hash, await powersOfDir(dir, "legs")));
     await l.service.refresh(true);
     await l.proposals.propose(proposal("legs", "v2\n", { extra: [{ rel: "lib/new.ts", bytes: enc("new helper\n"), executable: false }] }), AGENT);
     const [card] = openCards(l);

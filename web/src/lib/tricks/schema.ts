@@ -1407,6 +1407,12 @@ export interface WireTrickInfo {
    * (the snapshot's `hillOff`), its row in Settings says those Decisions are not shown.
    */
   decides?: boolean;
+  /**
+   * Fault B: the trick stopped because its approved copy asks for other rights than the person approved, as
+   * this bridge reads them. The row says so in the phone's words; `error` carries the bridge's English line.
+   * Absent: the rights hold, or an older bridge.
+   */
+  rightsMoved?: true;
   /** The environment names the manifest asks for past the base allow-list, so the person sees them. */
   env?: string[];
   /**
