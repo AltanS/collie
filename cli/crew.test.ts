@@ -2979,6 +2979,13 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
     const switches = parseSwitches(await readFile(switchesPath(deputy.stateDir), "utf8")).switches;
     expect(switches.on.get("legs")).toMatchObject({ by: "handover", from: "desk", auto: true });
     expect(new HillStore(hillDir(deputy.stateDir)).get("dc_carried00001")?.state).toBe("open");
+    // What the promote brought is audited on this machine, by handover, as the tap's is by takeover.
+    expect(lines.map((l) => [l.action, l.detail?.from, l.detail?.by])).toEqual([
+      ["tricks.carried", "desk", "handover"],
+      ["hill.carried", "desk", "handover"],
+    ]);
+    expect(lines[0]?.detail).toMatchObject({ started: ["legs"], failed: [] });
+    expect(lines[1]?.detail).toMatchObject({ open: 1, closed: 0, dropped: 0 });
     expect(await new StandbyTricksStore(deputy.stateDir).load()).toBeNull();
     expect(await new StandbyHillStore(deputy.stateDir).load()).toBeNull();
     expect(await readAdoptMarker(deputy.stateDir)).toBeNull();
