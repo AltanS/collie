@@ -307,6 +307,7 @@ export function SettingsSystemRoute() {
         device={root?.device}
         build={diagnostics.build}
         redact={diagnostics.redact}
+        denied={root?.authError === true}
       />
       {/* The anonymous install count (M86 spec 02, ADR 0129): one row with its state, above the report
           card because both are about what this machine says to Collie's host. The switch, the cause

@@ -98,6 +98,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "new-tab", title: "New tab sheet" }, load: () => import("./sections/new-tab").then((m) => ({ default: m.NewTabSection })) },
   { def: { id: "primitives", title: "Primitives" }, load: () => import("./sections/primitives").then((m) => ({ default: m.PrimitivesSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },
+  { def: { id: "pair-by-phone", title: "Pair by phone" }, load: () => import("./sections/pair-by-phone").then((m) => ({ default: m.PairByPhoneSection })) },
   { def: { id: "trick-render", title: "Trick render" }, load: () => import("./sections/trick-render").then((m) => ({ default: m.TrickRenderSection })) },
   { def: { id: "trick-places", title: "Trick places" }, load: () => import("./sections/trick-places").then((m) => ({ default: m.TrickPlacesSection })) },
   { def: { id: "trick-settings", title: "Trick settings" }, load: () => import("./sections/trick-settings").then((m) => ({ default: m.TrickSettingsSection })) },

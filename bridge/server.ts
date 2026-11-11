@@ -210,6 +210,18 @@ import {
 } from "./pairing.ts";
 import { pairAuditEntry, pairRoute } from "./pair-audit.ts";
 import { createPairLimiter, pairSourceKey } from "./pair-limit.ts";
+import {
+  pairApproveAnswerRoute,
+  pairApproveGateLevel,
+  pairApproveReadRoute,
+  pairRequestCancelRoute,
+  pairRequestCreateRoute,
+  pairRequestPollRoute,
+  PairRequestBook,
+  POLL_HEADER,
+  settlePairRequests,
+  type PairRequestDeps,
+} from "./pair-request.ts";
 import { LOCAL_LABEL, type LocalCredential } from "./local-secret.ts";
 import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
@@ -600,6 +612,12 @@ const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
 const TRICKS_TAP_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
 // And the off switch (M94 slice 04): write-gated like the tap, the same file `collie trick on|off` writes.
 const TRICKS_SWITCH_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
+// Pairing by a request a paired phone approves (ADR 0139, bridge/pair-request.ts). The asking browser's
+// poll is OPEN (its poll secret, in a header, is its credential; `OPEN_API_PATTERNS`), and the approver's
+// read and answer of one request need a paired device's token (`pairApproveGateLevel`). Each id's shape
+// is the handler's check, so the route table keeps one shape of segment.
+const PAIR_REQUEST_ROUTE = /^\/api\/pair\/request\/([^/]+)$/;
+const PAIR_APPROVE_ROUTE = /^\/api\/pair\/approve\/([^/]+)$/;
 // Take changes without asking, and go back one version (crew slice 3): write-gated like the switch.
 const TRICKS_AUTO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/;
 const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
@@ -1726,6 +1744,16 @@ export function startServer(opts: {
   const forgetDevice = async (label: string, reason: string): Promise<void> => {
     await forgetDeviceRows(addedLaunchers, label, "local", audit, reason);
     if (crewLead !== undefined) void forgetOnMembers(label);
+  };
+  /**
+   * What follows a revoke, whoever made it: one `device.revoke` audit line, the rows the device added go
+   * (here and on the crew), and the watch learns the label is gone, so it does not report it again. The
+   * device list's revoke and a pairing request's never-collected device both come through here.
+   */
+  const deviceRevoked = async (label: string, by: string | null | undefined, reason?: string): Promise<void> => {
+    audit.record({ action: "device.revoke", device: by, detail: reason === undefined ? { label } : { label, reason } });
+    await forgetDevice(label, "device-revoked");
+    revokeWatch(pairedLabels());
   };
   const noticeRevokes = async (): Promise<void> => {
     for (const label of revokeWatch(pairedLabels())) await forgetDevice(label, "device-revoked");
@@ -2881,6 +2909,25 @@ export function startServer(opts: {
 
   // Ten attempts per source address per minute on POST /api/pair, in memory (bridge/pair-limit.ts).
   const pairLimiter = createPairLimiter();
+
+  // Requests a paired phone approves (ADR 0139), in memory: a restart drops them all. A crew member
+  // serves no browser door, so it makes none. The sweep runs before every route and on a timer, so a
+  // token nobody collected is revoked within its window plus one tick.
+  const pairRequestDeps: PairRequestDeps = {
+    book: new PairRequestBook(),
+    pairing,
+    // By the token's hash, never by label, and through the device list's own revoke effects.
+    revoke: async (tokenHash) => {
+      const label = pairing === undefined ? null : await pairing.revokeByTokenHash(tokenHash);
+      if (label !== null) await deviceRevoked(label, undefined, "never-collected");
+    },
+    audit: (entry) => audit.record(entry),
+    isPeer: crew.mode === "peer",
+  };
+  setInterval(() => void settlePairRequests(pairRequestDeps), 15_000).unref();
+  // The kernel's peer address for a pairing request. Typed here, outside `fetch`, so the handlers that
+  // read it do not make `server`'s type depend on itself.
+  const peerAddress = (req: Request): string | undefined => server.requestIP(req)?.address;
 
   const server = Bun.serve({
     hostname: cfg.host,
@@ -4587,6 +4634,67 @@ export function startServer(opts: {
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
         return json({ token: claimed.token, label: parsed.label }, req.headers.get("accept-encoding"));
       }
+      // ── Pairing by a request a paired phone approves (ADR 0139, bridge/pair-request.ts) ──
+      // Making a request is OPEN, as `POST /api/pair` is and under the same front-door rule: a
+      // same-origin `Origin` for a write. It grants nothing alone. A token is minted only on a paired
+      // device's tap on the right code, and the creator caps are in the book (3 open, 6 per source in
+      // 10 minutes, keyed like the `/api/pair` limiter).
+      if (pathname === "/api/pair/request" && req.method === "POST") {
+        const gate = checkAccess(req, cfg, "write");
+        if (!gate.ok) return text(gate.reason, 403);
+        const peer = peerAddress(req);
+        const forwardedFor = req.headers.get("x-forwarded-for");
+        return secure(
+          await pairRequestCreateRoute(pairRequestDeps, {
+            source: pairSourceKey(peer, isLoopbackPeer(peer), forwardedFor),
+            route: pairRoute(peer, isLoopbackPeer(peer), forwardedFor),
+            userAgent: req.headers.get("user-agent"),
+          }),
+        );
+      }
+      // The asking browser's poll: open, its credential is the poll secret in a header (never the URL).
+      // An unknown id and a wrong secret are the same 404.
+      const pairRequestMatch = pathname.match(PAIR_REQUEST_ROUTE);
+      if (pairRequestMatch && req.method === "GET") {
+        const gate = checkAccess(req, cfg, "read");
+        if (!gate.ok) return text(gate.reason, 403);
+        return secure(await pairRequestPollRoute(pairRequestDeps, pairRequestMatch[1]!, req.headers.get(POLL_HEADER)));
+      }
+      // Its cancel: the same secret, the same 404, and the write's `Origin` rule.
+      if (pairRequestMatch && req.method === "DELETE") {
+        const gate = checkAccess(req, cfg, "write");
+        if (!gate.ok) return text(gate.reason, 403);
+        return secure(await pairRequestCancelRoute(pairRequestDeps, pairRequestMatch[1]!, req.headers.get(POLL_HEADER)));
+      }
+      // The approver: a paired device's token with the write right, the trick switch's gate (a read is
+      // `device-read`, the same device factors without the write's Origin rule). The host's local
+      // credential, an unpaired browser, a header-allowlisted device with no token and a crew forward
+      // are all refused here, before the book is asked anything.
+      const pairApproveMatch = pathname.match(PAIR_APPROVE_ROUTE);
+      if (pairApproveMatch && (req.method === "GET" || req.method === "POST")) {
+        const denied = guard(req, cfg, pairApproveGateLevel(req.method), pairingGate);
+        if (denied) return denied;
+        // The approver's own device: its label for the audit line, and its expiry, which the new device
+        // inherits (never longer than the approver's access).
+        const approverDevice = pairing?.resolve(bearerToken(req.headers)) ?? null;
+        const approverExpiresAt = approverDevice?.expiresAt;
+        if (req.method === "GET") return secure(await pairApproveReadRoute(pairRequestDeps, pairApproveMatch[1]!, { approverExpiresAt }));
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseApproveBody` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const peer = peerAddress(req);
+        return secure(
+          await pairApproveAnswerRoute(pairRequestDeps, pairApproveMatch[1]!, body, {
+            approver: approverDevice?.label ?? pairedLabel(req, pairingGate) ?? "unknown",
+            approverRoute: pairRoute(peer, isLoopbackPeer(peer), req.headers.get("x-forwarded-for")),
+            approverExpiresAt,
+          }),
+        );
+      }
       if (pathname === "/api/crew" && req.method === "GET") {
         // Read-level, exactly like `/api/devices` and `/api/config`: this is a report about machines
         // the operator already owns, and it drives nothing. Every field is a fact this process was
@@ -4675,11 +4783,9 @@ export function startServer(opts: {
         if (!revoked) {
           return jsonError(apiError("device.unknown"), 404, req.headers.get("accept-encoding"));
         }
-        audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
-        // The rows that device added from its phone go with it, here and on every crew member (ADR 0094).
-        await forgetDevice(label, "device-revoked");
-        // Seen now, so the watch does not report the same label a second time.
-        revokeWatch(pairedLabels());
+        // The audit line, the rows that device added from its phone (here and on every crew member,
+        // ADR 0094), and the watch told, so it does not report the same label a second time.
+        await deviceRevoked(label, whois(req).device);
         let after: DevicesResponseBody;
         try {
           const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
@@ -8715,18 +8821,33 @@ interface DevicesResponseBody {
 
 /**
  * The `/api/*` routes that answer without the pairing credential, and nothing else (ADR 0086):
- * `GET`/`HEAD /api/health`, which the updater and monitors ask before anyone has a token, and
- * `POST /api/pair`, which is how a device gets one. Every other `/api/` path, known or not, any
- * method, any spelling, is gated by {@link apiFrontGate} before the dispatcher routes it.
+ * `GET`/`HEAD /api/health`, which the updater and monitors ask before anyone has a token,
+ * `POST /api/pair`, which is how a device gets one, and `POST /api/pair/request`, which is how an
+ * unpaired browser asks a paired phone for one (ADR 0139). Every other `/api/` path, known or not, any
+ * method, any spelling, is gated by {@link apiFrontGate} before the dispatcher routes it, except the
+ * one shape in {@link OPEN_API_PATTERNS}.
  */
 export const OPEN_API_ROUTES: readonly { readonly path: string; readonly methods: readonly string[] }[] = [
   { path: "/api/health", methods: ["GET", "HEAD"] },
   { path: "/api/pair", methods: ["POST"] },
+  { path: "/api/pair/request", methods: ["POST"] },
 ];
 
-/** Whether this method and path are one of {@link OPEN_API_ROUTES}. Exact path, exact method. */
+/**
+ * The open routes with an id in the path: `GET /api/pair/request/<id>`, the asking browser's poll, and
+ * `DELETE` of the same path, its cancel (ADR 0139). Their credential is the poll secret in a header,
+ * which only the request's creator holds; an unknown id and a wrong secret are the same 404.
+ */
+export const OPEN_API_PATTERNS: readonly { readonly pattern: RegExp; readonly methods: readonly string[] }[] = [
+  { pattern: PAIR_REQUEST_ROUTE, methods: ["GET", "DELETE"] },
+];
+
+/** Whether this method and path are one of {@link OPEN_API_ROUTES} (exact path, exact method) or {@link OPEN_API_PATTERNS}. */
 export function isOpenApiRoute(pathname: string, method: string): boolean {
-  return OPEN_API_ROUTES.some((r) => r.path === pathname && r.methods.includes(method));
+  return (
+    OPEN_API_ROUTES.some((r) => r.path === pathname && r.methods.includes(method)) ||
+    OPEN_API_PATTERNS.some((r) => r.pattern.test(pathname) && r.methods.includes(method))
+  );
 }
 
 /**

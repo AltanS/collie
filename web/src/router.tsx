@@ -36,6 +36,7 @@ import { MachineRoute } from "@/routes/machine";
 import { MachinesRoute } from "@/routes/machines";
 import { UpdatesRoute } from "@/routes/updates";
 import { HillRoute } from "@/routes/hill";
+import { PairApproveRoute } from "@/routes/pair-approve";
 import {
   devicesLoader,
   historyLoader,
@@ -105,6 +106,10 @@ export const router = createBrowserRouter([
       // The hill (M96): the Decisions agents posted, one level below the Dashboard. No loader: its
       // lists live in lib/hill/store.ts, kept current by the root loader.
       { path: "hill", element: <HillRoute /> },
+      // A paired browser answers another device's pairing request here (ADR 0139). Reached only from the
+      // QR the new device shows (`?r=<public id>`); nothing in the app links to it. No loader: the page
+      // reads the request itself, and a browser that is not paired is told so without a read.
+      { path: "pair/approve", element: <PairApproveRoute /> },
       { path: "new", element: <NewRoute /> },
       // "Add your own" (ADR 0094): a page below New, for a launcher this phone adds on one machine.
       { path: "new/add", element: <NewAddRoute /> },

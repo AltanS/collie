@@ -554,6 +554,28 @@ describe("not paired on the first snapshot (ADR 0086)", () => {
     expect(isNotPaired()).toBe(true);
   });
 
+  it("a devices read refused by a proxy (a 403 that is not the pairing refusal) says denied, and leaves the latch alone", async () => {
+    server.use(http.get("/api/devices", () => new HttpResponse("forbidden", { status: 403 })));
+    await expect(devicesLoader()).resolves.toEqual({
+      enforced: false,
+      current: null,
+      devices: [],
+      error: true,
+      denied: true,
+    });
+    expect(isNotPaired()).toBe(false);
+  });
+
+  it("a devices read that fails with a 500 is an error, not a denial", async () => {
+    server.use(http.get("/api/devices", () => new HttpResponse("boom", { status: 500 })));
+    await expect(devicesLoader()).resolves.toEqual({
+      enforced: false,
+      current: null,
+      devices: [],
+      error: true,
+    });
+  });
+
   it("a fresh pairing clears the latch the first snapshot set", async () => {
     const { rootLoader } = await import("./loaders");
     refuseSnapshot(NOT_PAIRED_BODY);

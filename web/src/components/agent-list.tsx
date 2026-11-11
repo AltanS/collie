@@ -47,6 +47,8 @@ import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
+import { PairWithPhone } from "@/components/pair-with-phone";
+import { Card } from "@/components/ui/card";
 
 interface AgentListProps {
   agents: AgentView[];
@@ -86,6 +88,8 @@ interface AgentListProps {
    * pairing rather than a lost connection: the bridge answered, it asked to be paired.
    */
   notPaired?: boolean;
+  /** The bridge refused this browser for a reason other than pairing ("Access refused"). */
+  refused?: boolean;
   /** When the stale data was fetched, for the "last seen HH:MM" half of the disconnected placeholder. */
   lastSeenAt?: number;
   /**
@@ -305,6 +309,7 @@ export function AgentList({
   onFirstStart,
   error = false,
   notPaired = false,
+  refused = false,
   lastSeenAt,
   stale = false,
   tabs,
@@ -393,6 +398,8 @@ export function AgentList({
           <Icon name="pairing" className="size-7" />
           <span className="text-sm font-medium text-foreground">{t("settings.devices.pair.title")}</span>
           <code className="font-mono text-[13px]">collie pair</code>
+          {/* Or, with no terminal at hand, a paired phone lets this browser in (ADR 0139). */}
+          <PhonePairingCard />
         </div>
       );
     }
@@ -405,6 +412,10 @@ export function AgentList({
               ? t("home.empty.disconnected")
               : t("home.empty.disconnectedAt", { time: clockTime(lastSeenAt) })}
           </span>
+          {/* Refused, not offline (the "Access refused" strip above): the phone block is offered here
+              too. When the bridge refuses this browser before pairing, the block says pairing cannot
+              fix it rather than leaving the operator to guess (ADR 0139). */}
+          {refused && <PhonePairingCard />}
         </div>
       );
     }
@@ -885,4 +896,13 @@ function FieldSlot({
     </div>
   );
   return animated ? <Collapse open={open}>{body}</Collapse> : body;
+}
+
+/** The phone pairing block as the empty Dashboard shows it: a card in the column, left-aligned text. */
+function PhonePairingCard() {
+  return (
+    <Card className="mt-6 w-full max-w-sm gap-0 p-4 text-left text-foreground">
+      <PairWithPhone />
+    </Card>
+  );
 }
