@@ -4512,7 +4512,10 @@ many code and state parts it still lacks) on `hello` and `snapshot`, in the seat
 A deputy that holds no copy reports none of the three. The Hill copy reports `hillDigest`, `hillSeq`
 and `hillNeed` (how many pictures of the plan it still lacks) in the same seat, by the same rule. The
 digest is over the list as it arrived, before a record was left out, so a left-out record does not
-make the lead send the list again. The lead syncs off its sweep, never awaited,
+make the lead send the list again. From 1.29.0 the Hill report also carries `hillCopyKnows`, the list
+fields past the first four that the deputy reads (`["crewState"]`), even before its first list. The lead
+sends and digests `crewState` only for a deputy that names it, so a deputy before 1.29.0, which digests
+the four old fields, still reads current and is not sent the whole list every round. The lead syncs off its sweep, never awaited,
 one sync at a time: a list when the digest differs, and the missing parts again at most once a minute
 while it is the same. A `404` marks an older deputy, said once in the lead's journal: "<deputy>: keeps
 no copy of the tricks (an older Collie), so it cannot resume them after a takeover; not sent again until

@@ -50,6 +50,21 @@ export const STANDBY_HILL_VERSION = 1;
 export const HILL_DIGEST_FIELD = "hillDigest";
 export const HILL_SEQ_FIELD = "hillSeq";
 export const HILL_NEED_FIELD = "hillNeed";
+/**
+ * The list fields past the first four this deputy reads (1.29.0: `crewState`). A lead sends a field, and
+ * digests it, only to a deputy that names it here: a deputy before it digests the four old fields, and a
+ * lead that digested more would never match it and send the whole list every round (C-S2, review 8).
+ * Capability by what the deputy says it reads, never by its version.
+ */
+export const HILL_KNOWS_FIELD = "hillCopyKnows";
+/** What this build's deputy reads beyond the four old list fields. */
+export const HILL_COPY_KNOWS: readonly string[] = ["crewState"];
+
+/** Whether a deputy's report says it reads the crew state on a Hill list. */
+export function deputyReadsCrewState(value: JsonValue | undefined): boolean {
+  const knows = asJsonObject(value)?.[HILL_KNOWS_FIELD];
+  return Array.isArray(knows) && knows.includes("crewState");
+}
 
 /** The most open Decisions one list carries. */
 export const CARRIED_DECISIONS_MAX = 500;
@@ -97,8 +112,10 @@ export function parseHillReport(value: JsonValue | undefined): HillReport | null
 }
 
 export function hillReportFields(report: HillReport | null): JsonObject {
-  if (report === null) return {};
-  return { [HILL_DIGEST_FIELD]: report.digest, [HILL_SEQ_FIELD]: report.seq, [HILL_NEED_FIELD]: report.need };
+  // What it reads goes along even before its first list, so the first list it gets is the whole one.
+  const knows = { [HILL_KNOWS_FIELD]: [...HILL_COPY_KNOWS] };
+  if (report === null) return knows;
+  return { [HILL_DIGEST_FIELD]: report.digest, [HILL_SEQ_FIELD]: report.seq, [HILL_NEED_FIELD]: report.need, ...knows };
 }
 
 /** One list as the deputy reads it. `decisions` are the raw records, each read again by `readDecision`. */
