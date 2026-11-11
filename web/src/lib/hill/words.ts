@@ -34,8 +34,8 @@ export function targetLabel(decision: Pick<HillDecision, "target" | "from">): st
 }
 
 /**
- * "Your answer goes to collie lead on bluefin", or without the machine when the bridge names none.
- * A trick's decision names the trick too: "... goes to m96-hill on bluefin and to the Look trick", or
+ * "Your answer goes to collie lead on lodge", or without the machine when the bridge names none.
+ * A trick's decision names the trick too: "... goes to m96-hill on lodge and to the Look trick", or
  * alone "... goes to the Look trick" when the answer is typed nowhere. Null when there is nothing to say.
  */
 export function targetLine(decision: Pick<HillDecision, "target" | "from">): string | null {

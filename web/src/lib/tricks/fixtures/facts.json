@@ -9,15 +9,15 @@
       "dir": "/var/home/altan/.config/collie/tricks/legs",
       "state": "/var/home/altan/.local/state/collie/tricks/legs"
     },
-    "memberId": "bluefin",
-    "host": "bluefin",
+    "memberId": "lodge",
+    "host": "lodge",
     "sessions": [
       {
-        "id": "bluefin:w6X:3",
-        "memberId": "bluefin",
-        "sessionId": "bluefin:w6X:3",
+        "id": "lodge:w6X:3",
+        "memberId": "lodge",
+        "sessionId": "lodge:w6X:3",
         "paneId": "w6X:3",
-        "host": "bluefin",
+        "host": "lodge",
         "name": "composer",
         "agent": "claude",
         "status": "working",
@@ -27,11 +27,11 @@
         "lastActiveAt": "2026-11-08T09:41:00Z"
       },
       {
-        "id": "bluefin:w6X:4",
-        "memberId": "bluefin",
-        "sessionId": "bluefin:w6X:4",
+        "id": "lodge:w6X:4",
+        "memberId": "lodge",
+        "sessionId": "lodge:w6X:4",
         "paneId": "w6X:4",
-        "host": "bluefin",
+        "host": "lodge",
         "status": "idle",
         "cwd": "/var/home/altan"
       }
@@ -52,7 +52,7 @@
       "intent": "open-case",
       "value": "24",
       "from": {
-        "session": "bluefin:w6X:3"
+        "session": "lodge:w6X:3"
       }
     },
     "trick": {
@@ -60,8 +60,8 @@
       "dir": "/var/home/altan/.config/collie/tricks/legs",
       "state": "/var/home/altan/.local/state/collie/tricks/legs"
     },
-    "memberId": "bluefin",
-    "host": "bluefin",
+    "memberId": "lodge",
+    "host": "lodge",
     "sessions": [],
     "spaces": []
   },
@@ -81,8 +81,8 @@
       "dir": "/var/home/altan/.config/collie/tricks/legs",
       "state": "/var/home/altan/.local/state/collie/tricks/legs"
     },
-    "memberId": "bluefin",
-    "host": "bluefin",
+    "memberId": "lodge",
+    "host": "lodge",
     "sessions": [],
     "spaces": []
   },
@@ -96,8 +96,8 @@
       "dir": "/var/home/altan/.config/collie/tricks/tracker",
       "state": "/var/home/altan/.local/state/collie/tricks/tracker"
     },
-    "memberId": "bluefin",
-    "host": "bluefin",
+    "memberId": "lodge",
+    "host": "lodge",
     "sessions": [],
     "spaces": [
       {

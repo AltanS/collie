@@ -1419,28 +1419,28 @@ const switcherSpace = (host: string, workspaceId: string, number: number, label:
 });
 
 const switcherAgents: AgentView[] = [
-  switcherRow({ paneId: "w1:p1", host: "bluefin", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, paneLabel: "release notes", status: "working", gitHead: { kind: "branch", name: "main" } }),
-  switcherRow({ paneId: "w1:p2", host: "bluefin", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, paneLabel: "triage 1.29", status: "blocked", gitHead: { kind: "branch", name: "main" } }),
-  switcherRow({ paneId: "w2:p1", host: "bluefin", workspaceId: "w2", workspaceLabel: "fix-748", workspaceNumber: 2, paneLabel: "sheet drag glitch", status: "working", cwd: "/home/you/projects/fix-748", gitHead: { kind: "branch", name: "fix/748-sheet" } }),
-  switcherRow({ paneId: "w3:p1", host: "bluefin", workspaceId: "w3", workspaceLabel: "session-filter", workspaceNumber: 3, paneLabel: "the filter in the switcher", cwd: "/home/you/projects/session-filter", gitHead: { kind: "branch", name: "feat/session-filter" } }),
-  switcherRow({ paneId: "w3:p2", host: "bluefin", workspaceId: "w3", workspaceLabel: "session-filter", workspaceNumber: 3, agent: "codex", paneLabel: "review", lastActiveAt: TS - 2 * MIN, cwd: "/home/you/projects/session-filter", gitHead: { kind: "branch", name: "feat/session-filter" } }),
-  switcherRow({ paneId: "w4:p1", host: "bluefin", workspaceId: "w4", workspaceLabel: "collie-website", workspaceNumber: 4, agent: "pi", paneLabel: "hero copy", cwd: "/home/you/projects/collie-website", gitHead: { kind: "branch", name: "main" } }),
-  switcherRow({ paneId: "w1:p1", host: "minibuch", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, paneLabel: "deputy rebuild", status: "working", cwd: "/home/you/apps/collie-next" }),
-  switcherRow({ paneId: "w1:p2", host: "minibuch", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, agent: "omp", paneLabel: "nix flake check", cwd: "/home/you/apps/collie-next" }),
-  switcherRow({ paneId: "w2:p1", host: "minibuch", workspaceId: "w2", workspaceLabel: "showreel", workspaceNumber: 2, paneLabel: "render plates", status: "blocked", cwd: "/tmp/showreel" }),
-  switcherRow({ paneId: "w3:p1", host: "minibuch", workspaceId: "w3", workspaceLabel: "collie-hc", workspaceNumber: 3, agent: "opencode", paneLabel: "core leg", cwd: "/home/you/apps/collie-next" }),
+  switcherRow({ paneId: "w1:p1", host: "lodge", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, paneLabel: "release notes", status: "working", gitHead: { kind: "branch", name: "main" } }),
+  switcherRow({ paneId: "w1:p2", host: "lodge", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, paneLabel: "triage 1.29", status: "blocked", gitHead: { kind: "branch", name: "main" } }),
+  switcherRow({ paneId: "w2:p1", host: "lodge", workspaceId: "w2", workspaceLabel: "fix-748", workspaceNumber: 2, paneLabel: "sheet drag glitch", status: "working", cwd: "/home/you/projects/fix-748", gitHead: { kind: "branch", name: "fix/748-sheet" } }),
+  switcherRow({ paneId: "w3:p1", host: "lodge", workspaceId: "w3", workspaceLabel: "session-filter", workspaceNumber: 3, paneLabel: "the filter in the switcher", cwd: "/home/you/projects/session-filter", gitHead: { kind: "branch", name: "feat/session-filter" } }),
+  switcherRow({ paneId: "w3:p2", host: "lodge", workspaceId: "w3", workspaceLabel: "session-filter", workspaceNumber: 3, agent: "codex", paneLabel: "review", lastActiveAt: TS - 2 * MIN, cwd: "/home/you/projects/session-filter", gitHead: { kind: "branch", name: "feat/session-filter" } }),
+  switcherRow({ paneId: "w4:p1", host: "lodge", workspaceId: "w4", workspaceLabel: "collie-website", workspaceNumber: 4, agent: "pi", paneLabel: "hero copy", cwd: "/home/you/projects/collie-website", gitHead: { kind: "branch", name: "main" } }),
+  switcherRow({ paneId: "w1:p1", host: "workshop", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, paneLabel: "deputy rebuild", status: "working", cwd: "/home/you/apps/collie-next" }),
+  switcherRow({ paneId: "w1:p2", host: "workshop", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, agent: "omp", paneLabel: "nix flake check", cwd: "/home/you/apps/collie-next" }),
+  switcherRow({ paneId: "w2:p1", host: "workshop", workspaceId: "w2", workspaceLabel: "showreel", workspaceNumber: 2, paneLabel: "render plates", status: "blocked", cwd: "/tmp/showreel" }),
+  switcherRow({ paneId: "w3:p1", host: "workshop", workspaceId: "w3", workspaceLabel: "collie-hc", workspaceNumber: 3, agent: "opencode", paneLabel: "core leg", cwd: "/home/you/apps/collie-next" }),
 ];
 
 const switcherShells: AgentView[] = [
-  switcherRow({ paneId: "w1:p9", host: "bluefin", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, agent: "shell", kind: "shell", status: "unknown", paneLabel: "dev server" }),
-  switcherRow({ paneId: "w4:p9", host: "bluefin", workspaceId: "w4", workspaceLabel: "collie-website", workspaceNumber: 4, agent: "shell", kind: "shell", status: "unknown", cwd: "/home/you/projects/collie-website" }),
-  switcherRow({ paneId: "w1:p9", host: "minibuch", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, agent: "shell", kind: "shell", status: "unknown", paneLabel: "journal", cwd: "/home/you/apps/collie-next" }),
-  switcherRow({ paneId: "w2:p9", host: "minibuch", workspaceId: "w2", workspaceLabel: "showreel", workspaceNumber: 2, agent: "shell", kind: "shell", status: "unknown", cwd: "/tmp/showreel" }),
+  switcherRow({ paneId: "w1:p9", host: "lodge", workspaceId: "w1", workspaceLabel: "collie-workspace", workspaceNumber: 1, agent: "shell", kind: "shell", status: "unknown", paneLabel: "dev server" }),
+  switcherRow({ paneId: "w4:p9", host: "lodge", workspaceId: "w4", workspaceLabel: "collie-website", workspaceNumber: 4, agent: "shell", kind: "shell", status: "unknown", cwd: "/home/you/projects/collie-website" }),
+  switcherRow({ paneId: "w1:p9", host: "workshop", workspaceId: "w1", workspaceLabel: "collie-next", workspaceNumber: 1, agent: "shell", kind: "shell", status: "unknown", paneLabel: "journal", cwd: "/home/you/apps/collie-next" }),
+  switcherRow({ paneId: "w2:p9", host: "workshop", workspaceId: "w2", workspaceLabel: "showreel", workspaceNumber: 2, agent: "shell", kind: "shell", status: "unknown", cwd: "/tmp/showreel" }),
 ];
 
 const switcherServers: ServerSummary[] = [
-  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS },
-  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS },
+  { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS },
 ];
 
 /** The switcher's fourteen rows on two machines, with the snapshot facts the sheet is handed beside them. */
@@ -1449,17 +1449,17 @@ export const switcherCrew = {
   shellPanes: switcherShells,
   servers: switcherServers,
   workspaces: [
-    switcherSpace("bluefin", "w1", 1, "collie-workspace", { repoRoot: SWITCHER_REPO, isWorktree: false }),
-    switcherSpace("bluefin", "w2", 2, "fix-748", { repoRoot: SWITCHER_REPO, isWorktree: true }),
-    switcherSpace("bluefin", "w3", 3, "session-filter", { repoRoot: SWITCHER_REPO, isWorktree: true }),
-    switcherSpace("bluefin", "w4", 4, "collie-website"),
-    switcherSpace("minibuch", "w1", 1, "collie-next"),
-    switcherSpace("minibuch", "w2", 2, "showreel"),
-    switcherSpace("minibuch", "w3", 3, "collie-hc"),
+    switcherSpace("lodge", "w1", 1, "collie-workspace", { repoRoot: SWITCHER_REPO, isWorktree: false }),
+    switcherSpace("lodge", "w2", 2, "fix-748", { repoRoot: SWITCHER_REPO, isWorktree: true }),
+    switcherSpace("lodge", "w3", 3, "session-filter", { repoRoot: SWITCHER_REPO, isWorktree: true }),
+    switcherSpace("lodge", "w4", 4, "collie-website"),
+    switcherSpace("workshop", "w1", 1, "collie-next"),
+    switcherSpace("workshop", "w2", 2, "showreel"),
+    switcherSpace("workshop", "w3", 3, "collie-hc"),
   ] satisfies WorkspaceView[],
   sessions: [
-    { name: "default", isPrimary: true, reachable: true, agents: 6, working: 2, blocked: 1, host: "bluefin" },
-    { name: "default", isPrimary: true, reachable: true, agents: 4, working: 1, blocked: 1, host: "minibuch" },
+    { name: "default", isPrimary: true, reachable: true, agents: 6, working: 2, blocked: 1, host: "lodge" },
+    { name: "default", isPrimary: true, reachable: true, agents: 4, working: 1, blocked: 1, host: "workshop" },
   ] satisfies SessionSummary[],
   /** The pinned row: the lead's blocked triage pane. */
   pinned: switcherAgents[1]!,

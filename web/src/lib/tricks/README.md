@@ -102,8 +102,10 @@ as many as fit, and "and N more files"; it stays under 8 KiB. The counts and dif
 the view refuses becomes `?`. Without git the table lists the files only. Collie recommends "Use the new
 version" only when the rights did not change, the text search finds nothing new, and every changed file
 is shown whole: its whole diff in the view, no line cut at 200 characters, no key masked, git's output
-not cut. Otherwise the summary says how much is shown ("1 of 3 files shown."), and a card with no view at
-all says "The change is too large to show here. Read it on the machine before you say yes." The options are "Use the new version", "Use it and stop asking" (only when no new right
+not cut. A change that does not fit one card shows whole on a group of cards (see "A group of cards"
+under `collie trick propose`): every line, masked lines masked and said so, and no recommendation when
+any is. Past 8 cards, for a file that is not text, or without git, the summary says how much is shown
+("1 of 3 files shown."), and a card with no view at all says "The change is too large to show here. Read it on the machine before you say yes." The options are "Use the new version", "Use it and stop asking" (only when no new right
 is asked) and "Keep the old version". A tap acts on exactly the hash on the card: when the folder moved
 since, the tap is refused with "The trick changed again since this card. A new card replaces this one."
 and the card stays open. A newer change replaces the card; approving elsewhere, the folder going back,
@@ -266,17 +268,25 @@ collie trick remove legs                           # only while it is off
 
 The official repository is `https://github.com/AltanS/collie-tricks` (`OFFICIAL_TRICKS_REPO` in
 `cli/trick-add.ts`). A source is `<https-url>[//<folder>][#<ref>]`, and `#<ref>//<folder>` reads too; a
-ref is a branch, a tag or a full 40-digit commit. A URL with a user name or a password is refused. The
+ref is a branch, a tag or a full 40-digit commit. A `refs/` name must be `refs/heads/...` or
+`refs/tags/...`: `refs/pull/N/head`, which GitHub serves through the repository's own URL, is refused. A
+short name is looked up as exactly a tag or a branch of that name, so `pull/5/head` never reaches a pull
+request through git's own lookup. The official repository takes no commit id at all: a fork's commit is
+reachable there by its id too. The official repository is written one way only,
+`https://github.com/AltanS/collie-tricks`: a spelling GitHub also serves (`.git`, a trailing `/`, another
+case, `www.`) is refused with a sentence that names the URL, and every check of "is this the official
+repository" compares one form (`bridge/tricks/origin.ts` `canonicalRepoUrl`), so a record written another
+way by hand reads as not on the list. A URL with a user name or a password is refused. The
 list with no source names each folder of the official repository that holds a `trick.toml`, with the
 manifest's `name` and its first comment line as the description.
 
 **What a repository may not do.** Nothing from it runs, and git never writes a working tree. The fetch
 goes into a fresh bare repository in a temp folder under the state folder, depth 1, no tags, no
 submodules, https only, no hook, no LFS smudge, no prompt, with a timeout; the header of
-`cli/trick-add.ts` has the git lines. The tree is read from git's own objects, so a symlink or a
+`bridge/tricks/fetch.ts` has the git lines (the CLI and the bridge run the same code). The tree is read from git's own objects, so a symlink or a
 submodule anywhere in the trick's folder refuses it on every platform, and Collie writes each regular
 file itself. Then the strict manifest reader must accept `trick.toml` at this contract, the caps must
-hold (300 files and 5 MB, `ADD_LIMITS`), and the id must be free. Dot files, dot folders and
+hold (300 files and 5 MB, `ADD_LIMITS` in `bridge/tricks/fetch.ts`), and the id must be free. Dot files, dot folders and
 `node_modules/` are not copied: they are outside the code hash, so they would be code nobody approved.
 Every refusal exits 1 with one reason, and the temp folder goes on every path.
 
@@ -303,6 +313,248 @@ them on the row of a trick that is off or changed (`WireTrickInfo.warnings`: one
 kind, at most 8; a waiting version carries the ones new since the approved copy in
 `WireTrickInfo.pending.warnings`), and Settings → Tricks lists them under that trick before the switch. They never
 refuse, and the switch stays one tap.
+
+## Official tricks: the list on the phone
+
+Each Collie release carries a short list of official tricks: `bridge/tricks/official.json`, built into
+the binary, read strictly by `bridge/tricks/official.ts`. An entry is a trick id, its name, one line
+about it, the repository (`https://github.com/AltanS/collie-tricks`, the only one the reader accepts),
+the folder in it, a full commit, the code hash that folder has at that commit, and an extras hash over what
+an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`). Settings, Tricks shows
+the entries that are not added under "Official tricks", each with an Add button. On a fresh install, with no tricks
+folder yet, the card shows too when the list is not empty (the bridge sends `tricksRev` for it), and holds
+only the list and the foot line; the first add makes `<configDir>/tricks/` (0700), and the next scan reads
+it with no restart. A crew member, which runs no tricks, shows no card without a folder, as before. Nothing ships switched on,
+and no trick code ships in the binary.
+
+**What a tap does.** `POST /api/tricks/official/<id>/add` (write, like the switch: a paired phone only,
+never the local credential an agent can hold, and no WalkyTalky op reaches it). The bridge fetches that
+one commit with the fetch of `collie trick add` (`bridge/tricks/fetch.ts`), reads the folder by the same
+rules, and takes its code hash and its extras hash. Only when both are the list's does it write the folder, off, with an
+origin record `{ url, commit, subdir, official: true }` and no approved copy. The person's switch makes
+the approved copy, as for any trick. A hash that differs adds nothing: "The code did not match.
+Nothing was added." The same holds for a `config.toml` or a picture in `media/` other than the list's,
+and for any other file the code hash leaves out (`captures/`, `inputs/`, a `.log`): an official trick
+ships none, so the add refuses it. One add runs at a time, the whole add has a two-minute cap, and the temp folder under
+`<stateDir>/tricks/` goes on every path; one a stopped bridge left behind (`.fetch-official-*`) goes at
+the next bridge start.
+
+**Two caps on the fetch.** Time: every git run ends by two minutes after the tap, and a kill takes git's
+whole process group, so `git-remote-https` goes with it. Size: the temp repository may hold at most 20 MiB
+(`OFFICIAL_FETCH_BYTES_MAX`). It is measured while git runs and once after; past the cap the fetch is
+killed and refused as `too-large`, before anything is read from it, and the phone says the same line as
+for a hash that differs. git offers no size limit of its own on a fetch.
+
+**The one network request.** A tap on Add or Update makes one git fetch over https from
+`github.com/AltanS/collie-tricks`: depth 1, the listed commit only, no redirects, no credential helper,
+no global git config. Nothing else in this feature touches the network: the list comes from the
+binary, `GET /api/tricks/official` reads only the tricks folder, and there is no background check and
+no count. Offline, the tap says "GitHub did not answer. Nothing was added." That line is also true
+when the repository no longer serves the commit.
+
+**The trust root is the binary.** The commit pins what git fetches, and the hash pins what Collie
+writes. A repository that serves other content at that commit fails git's own object check or the hash.
+Changing the list on a machine means changing the binary.
+
+**States.** `GET /api/tricks/official` answers each entry's state on this machine: `absent` (no folder of
+that id), `added` (a folder the list put there: its origin record says `official: true` and names this
+repository and folder at the listed commit), `update` (the same, at a commit an earlier release listed:
+the entry's `previous`, kept by the maintainer script, at most 8), and `taken` (any other folder of that
+id, a link or a file: a proposal, a hand-made trick, another repository). A taken folder is never written
+over, also when one appears during the fetch. A folder from this repository and folder that is not a
+version of the list (`collie trick add` at a branch or tag nobody listed, a record without `official`, or
+`official` written by hand at a commit the list never named) is `taken` with `unlisted: true`: its row says
+"Added from the repository, not from the official list.", and its trick row reads "From AltanS/collie-tricks
+@ 5e1f00d, not on the official list", never as the list. A crew member answers an empty list with `runsOn`.
+
+**Update.** On a new release the list may name another commit; the installed row then offers Update
+(`POST /api/tricks/official/<id>/update`). The bridge fetches and checks the same way, then moves only
+code, by the rule of a proposal's version write: each file the code hash walks is written or removed,
+and every other entry of the folder, at any depth, stays untouched (`config.toml`, `media/`,
+`captures/`, `inputs/`, logs, dot files). The new version's own `config.toml` and pictures are not taken.
+**An update never moves or removes a file of yours.** Before anything changes, the bridge takes the
+folder's code hash: it must be the hash the list names for the commit in the origin record (the current
+entry or one in `previous`), so every code file is still one Collie wrote. A code edit, or a plain file
+you added beside the code (`notes.txt` is code by the hash's rule), makes that hash another: the From
+Collie row then reads "You edited its files. Update it on the machine." (state `taken`, `changed: true`),
+and an update tap answers 409 `changed` with the same line. Nothing is moved or removed; `collie trick
+update` on the machine is the way. A name the new code needs where an entry of yours stands refuses the
+update (409 `blocked`, "Your own files block it. Nothing was changed."), and nothing changes. The check
+runs again in the runner's lane, right before the write. A trick that is on keeps
+running the approved copy, and the new version waits for the yes on its version card, the path every
+changed trick takes. **With `auto` on for that trick, a tap on Update is the yes:** the runner takes the
+new version with no card once the folder settles, unless its powers change (its `env`, `places` or `inputs`)
+or a warning of a new kind appears; then the card waits as without `auto`. Undo on the row restores the
+version before. Remove stays as it is.
+
+**The maintainer script.** `bun scripts/official-tricks.ts --repo-dir <checkout> --commit <sha>` writes
+the commit, each hash (the real hash function, over the folder git holds at that commit), each extras
+hash (the same function the add checks with), the earlier versions in `previous`, and each manifest's
+name into the list. It refuses a commit that is not on `origin/main` of the checkout, and a folder with a
+non-code file other than `config.toml` and `media/`; `--check` writes nothing and fails when the list is stale. `collie trick
+list --official` prints the list and each state here; it fetches nothing.
+
+## Handing a trick to the person: `collie trick propose` and `collie trick guide`
+
+An agent writes a trick; only the person switches it on. Two verbs connect the two (crew slice 8).
+
+```
+collie trick guide [--json]                         # how to write a trick, as plain text; needs no bridge
+collie trick propose <folder> [--request-id <uuid>] [--json]
+```
+
+**The guide** (`cli/trick-guide.ts`) is its own text, not part of the WalkyTalky skill or the Hill
+rules. Its key list and place list are typed against `MANIFEST_KEYS` and `PLACE_KINDS`, so a new key
+or place is a compile error until the guide describes it, and its numbers come from the constants the
+bridge checks with. `--json` prints `{ guide, manifestKeys, places }`.
+
+**Propose** reads the folder as `collie trick check` reads it (a trick it refuses is never sent), then
+reads the files the hardened way (`readTrickFolder`): regular files only, a symbolic link anywhere
+refuses the folder, at most 300 files, 5 MB and 8 folders deep, the caps of `collie trick add`. Dot
+files and dot folders, `node_modules/`, `*.log`, the top `inputs/`, `media/` and `captures/` folders
+and `config.toml` stay behind (a proposal carries code only: the person adds pictures and settings on
+the machine), and the verb says how many. The files go as one line on the walky socket,
+`{"op":"trick.propose",...}`, which may be up to 8 MiB because it opens with that op; a line that does
+not is held to the walky cap. The bridge reads at most two such lines at once, each within 30 seconds;
+a line's slot comes back once the line is read, and the answer closes the connection. Before
+`JSON.parse`, the line's structure outside strings is counted: more than 4096 `{`, `[`, `,` or `:`, or
+nesting deeper than 8, is refused unread ("The proposal has more parts than a trick's files need, so
+it was not read."). A proposal of 300 files needs about 2400.
+
+**Where it goes.** A lead or a solo bridge keeps the proposal (`bridge/tricks/proposals.ts`). A crew
+member reads every file with the same reader and forwards the proposal to its lead over the signed
+`POST /crew/v1/tricks/propose` (`CREW_PROTOCOL.md` §24), and keeps no copy. All three use one reader,
+`readProposal` in `bridge/tricks/propose-wire.ts`: a relative path of at most 256 characters and 8
+steps, no `.` or `..` step, no dot step, no `node_modules` or `inputs` step, no backslash or colon, no
+control, bidi or invisible character, NFC only; no two names that fold to one (case and Unicode
+compatibility forms, `NFKC` then lower case), files and folders alike, and the reserved names compared
+folded too; no name used as a file and a folder; nothing in `media/` or `captures/` and no
+`config.toml` ("A proposal cannot carry a config.toml. Your person sets the trick up on the
+machine."); `trick.toml` at most 64 KiB, read by the
+strict manifest reader; an id Collie does not keep for itself (`collie`, `trick`, `tricks`, `hill`,
+`settings`).
+
+**Inert until the yes.** A proposal for a new trick is stored, never installed:
+`<configDir>/tricks/.collie-proposed/<id>/<hash16>/`, folders 0700 and files 0600 with no executable
+bit (the mark is kept in `<stateDir>/tricks/proposals.json`). The scanner never reads a dot folder, so
+nothing there runs or is listed. Collie posts a card on the Hill as its own sender, through a door no
+agent and no crew member reaches (`HillService.postCollie`):
+
+- title `Switch on the trick <id>?`, no recommendation, options "Switch it on" (asks twice: "Yes,
+  switch on") and "Not now", no text box, priority today, and it closes after 3 days;
+- the summary says who proposes ("An agent session (repo#one) on minibuch proposes it.", "An agent
+  session on minibuch proposes it." or, with no agent pane placed, "Someone on minibuch proposes it.
+  Collie could not confirm which session."), "It replaces an earlier proposal from the same session."
+  when it does, how many files, and the rights the manifest asks for; the view lists every right,
+  every `inputs` glob and every warning of the code search in full (as chips when each fits a chip and
+  one bar holds them all, else as paragraphs), then the author's name, description and About under
+  "Its author's words. Collie did not check them." (at most 3 paragraphs and 400 characters), and the
+  code. The facts are never cut: when they alone do not fit a Decision's view, the proposal is refused
+  (`card_too_large`, "This trick asks for more than a card can show, so it was not proposed. Ask your
+  person to add it on the machine.").
+
+**A group of cards.** A proposal shows all of its code, never a part. Code that fits one card whole
+keeps one card, as before. Otherwise the card is one Decision with a `group` of 2 to 8 cards
+(`bridge/tricks/card-group.ts`, `bridge/hill/group.ts`):
+
+- card 1 is the facts and never code: who proposes, every right and warning in full, "7 files, on cards
+  2 to 4.", a table of the files with their size (a version: the change and its line counts) and the
+  cards each is on, then the author's words when they still fit (they never push a fact off);
+- cards 2 to n hold every line of every file, whole files in a fixed order: `trick.toml`, the file `run`
+  names, then the rest by path in byte order. A file that goes on to the next card ends with "continues
+  on the next card", and the next card starts with "continued from the last card". A line longer than a
+  row (200 characters) goes on in the rows after it, each marked `↪`. No line is dropped;
+- the capacity is a named constant: 7 cards of code (`GROUP_CODE_CARDS`), 6 KiB of code each
+  (`GROUP_CARD_CODE_BYTES`), so 42 KiB (`GROUP_CODE_BYTES`) and 64 files (`GROUP_FILES_MAX`) in all,
+  every card under the one Decision view cap. `collie trick guide` prints it, and `collie trick check`
+  says "This trick shows as N cards.", or an error that it cannot be proposed (the check still
+  passes: the trick runs on the machine);
+- a `trick.ts` whose bytes are a helper this Collie ships (by SHA-256, as the code search already
+  knows it) is Collie's own code: card 1 names it ("trick.ts is the helper Collie ships (v4), byte for
+  byte, so no card shows it.") and it takes no room. A changed helper is the author's code and counts;
+- refused before anything is stored, by the CLI before it sends (counting the whole trick) and again
+  by the lead (counting what it shows): code larger than the group (`too_large`, "This trick is too
+  large to show on the phone, so it was not proposed. Ask your person to add it on the machine."), and a
+  file that is not UTF-8 text or a line the card would mask or show with `?` (`cannot_show`, "This trick
+  holds text that a card cannot show as it is (a key, or a hidden character), so it was not proposed.
+  Ask your person to add it on the machine."). The single card of before showed such a line masked and
+  said "N of M files shown."; a proposal now never shows code other than as it is. A hidden
+  character is any one `web/src/lib/hidden-chars.ts` names: a control but the line feed and the tab, a
+  format or direction character, U+2028 and U+2029 (a JavaScript line end), a zero-width joiner, a
+  variation selector, a blank-looking letter (U+3164, U+115F, U+2800), a space that is not U+0020, a
+  private-use or unassigned code point. The phone's `diff` rule refuses the same characters. A line
+  with a run of more than 40 spaces (a tab counts as two) is refused too (`cannot_show`): on a Decision's
+  card the phone soft-wraps code, each row that goes on marked `↪` in the sign column, and such a run
+  would still push the code after it far down and out of the reader's way. A new version whose diff
+  against the running one failed, or names no file while its code is another, is refused
+  (`cannot_show`, "Collie could not compare this version with the one that runs, so it was not
+  proposed. Try again, or ask your person to add it on the machine."), and the stored copy is read back
+  and hashed once its card is made: a copy that moved meanwhile is not posted;
+- each card is stored with the SHA-256 of its view, and the group with a digest over the Decision's ref
+  and the cards' hashes in order. Only `postCollie` makes a group: a post that carries `group` or
+  `parts` from an agent, a trick, the walky socket or a crew member is refused, and the decisions file
+  drops a group whose hashes do not match;
+- the yes needs the group's digest and every card opened on the phone. A yes without them is a
+  rejected receipt that keeps the card open: "Open all N cards first.", "These cards changed since this
+  phone showed them. Open them again from card 1.", or, from an app before groups, "This app does not
+  show a group of cards yet. Reload Collie on this phone, then open every card and answer again." "Not
+  now" and a dismiss need neither. At the install the stored bytes are hashed again, as before.
+
+The runner's own version card (above) groups its diff by the same rule, with masked lines shown masked,
+a note on that card, and no recommendation. Past 8 cards, for a file that is not text, or with more
+files than a group lists, it keeps the one card and its words.
+
+The session's name on the card is the lead's own word for that session, or none; a member cannot name
+it. A session named "Collie" (folded) is named by its machine only, and on any Decision a session or a
+trick of that name shows as "Collie (a session)" or "Collie (a trick)". The proposer may read the card (`collie hill status`) and is told the answer in WalkyTalky, but it
+can neither answer nor withdraw it: the card is Collie's, and every answer comes from the phone.
+
+**The yes.** "Switch it on" reads the stored bytes back, hashes them, and installs only a hash equal to
+the card's (`PROPOSAL_CHANGED` otherwise). The files become `<configDir>/tricks/<id>/` through a staged
+sibling and one rename, never over a folder that appeared meanwhile; the code written is approved as it
+is and switched on, by `proposal` in the switch file and the audit. A dot file
+`.collie-origin.json` records the proposal (`by`, `host`, `label`, `at`): `collie trick list` shows it as
+`proposed by agent on minibuch`, and the wire's `provenance` carries `proposed: { by, host }`, so the
+Settings row says "Proposed by an agent on minibuch" and the About sheet "Proposed by an agent session
+on minibuch." With no agent pane placed they say "Proposed from minibuch, session not confirmed" and
+"Proposed from minibuch. The session is not confirmed." "Not now", a dismiss, the expiry, or a newer
+proposal from the same session removes the stored copy.
+
+**A trick that exists.** Only a trick a proposal made takes a new version by proposal. Before the
+person's yes, nothing a proposer sends changes a file outside `.collie-proposed/` and
+`proposals.json`: the new version is stored inert like a new trick, and the trick's folder, its approved
+copy and the switch file stay as they are. Its card is minted by the proposals module with the
+`proposal` ref, so there is one answer path: title "Use the new version of <id>?", the proposer named
+first, the changed files against the approved copy fitted as the runner's version card fits them, the
+new rights and new warnings, no "Use it and stop asking", never a recommendation. Options "Use the new
+version" (asks twice: "Yes, use it") and "Keep the old version". On the yes the stored bytes are hashed
+again, the trick must still be the one the card was made against (the same approved hash, its folder
+unchanged), then only its code files change, in place: old code files the new version lacks are
+removed, and each new one is written to a temp file beside it and renamed. Every file the code hash
+does not read (`config.toml`, `media/`, `captures/`, `inputs/`, logs, dot files, `node_modules/`) stays
+byte for byte. A new file whose name the person's own files hold refuses the yes ("The new version needs
+the name <x>, where the trick's folder holds something of your own, so nothing was changed."). Exactly
+the code written is approved. The trick stays on, and "Undo" in Settings goes back to the version
+before. No scan runs between the write and the approval, so the runner never posts a version card of
+its own for it. "Keep the old version", a dismiss and the expiry remove the stored copy and change
+nothing else. When the bridge starts, it cleans up after a write a crash cut short: a staged folder or
+a temp file goes, and a set-aside trick folder whose place is empty comes back.
+
+A proposal is refused, in plain words, for a trick from a repository ("This trick comes from <repo>.
+Change it there."), one added on this machine ("<id> was added on this machine. Change it there.": the
+person owns that folder), one that is off, one with a change waiting, one that runs no approved copy.
+DECISION: a trick on auto takes a proposal. Auto takes the person's own folder edits without asking;
+a proposal comes from an agent, so it still waits for the yes on its card, and auto stays as it was.
+
+**The limits** (`proposals.ts`): one sender (a session, or one machine's terminal) at most 2 open
+proposals and 6 in an hour; one crew machine 4 open and 12 in an hour, its sessions and its terminal
+together; the lead 8 open and 32 MiB stored. One open proposal per trick id: the same session's next
+one replaces it, anybody else's is refused. A proposal with no agent pane placed never replaces one
+("A proposal of <id> from this machine already waits for your person's answer. Collie cannot confirm
+which session sent it, so it is not replaced."): the lead cannot tell who sent it. A request id
+answers what it answered for 24 hours; with other files it is refused. While the person has the card
+open in the answer sheet, a replacement is refused (`answering`). The refresh timer sweeps closed cards
+and copies no proposal names.
 
 ## The run line
 
@@ -711,6 +963,68 @@ written as what a trick, or a person who controls one, can do today.
   `collie trick on` and `collie pair` refuse in an agent's pane, but a program that writes the switch
   file, an approved copy or the device store skips both. The list of what such a program can do is in
   [`docs/security.md`, "What a program running as you can still do"](../../../../docs/security.md#what-a-program-running-as-you-can-still-do).
+
+- **The deputy holds the lead's trick settings, secrets included.** A crew's lead copies each ON
+  trick's `config.toml` to its deputy, so it can start the trick after a takeover. A token or a key in
+  that file then rests on the deputy too, in its state folder at 0600, until the machine stops being
+  the deputy. Keep a secret the deputy must not hold out of `config.toml`, or name a deputy you trust as
+  much as the lead.
+- **What a takeover starts is what the lead sent.** The deputy checks every carried trick against the
+  code hash the lead says the person approved, and the page names each trick before the tap. A
+  compromised lead can still send a trick it switched on itself; it starts only when a person takes
+  over by hand on the deputy.
+- **A lead can put a card on the deputy's Hill.** The lead's open Decisions come along at a takeover,
+  and the deputy cannot tell a real one from one a compromised lead made up. Of Collie's own cards only
+  the notice that a carried trick did not start comes along, with its one OK answer; a new version card
+  and a proposal card are dropped, so no carried card acts on the deputy. Proposals stay on the old
+  lead; ask for them again on the new one.
+- **A proposal's origin record is a dot file in the trick's folder, and an agent on the lead can write
+  it.** `.collie-origin.json` is outside the code hash, like the repository record. An agent with write
+  access to the tricks folder could put a false "proposed by" there. It is a label, never a right.
+- **Any agent can propose a new version of a trick a proposal made.** That includes an agent on a crew
+  member, and a different agent from the one that proposed the trick. Nothing is written before the
+  person's yes, and the card names the proposer, but the person must read who it is.
+- **The session on a proposal card is a claim checked against a live pane, not a proof.** The machine
+  is known: the walky socket is that machine's, and a member's call is signed. The session is placed
+  by the pane markers the caller sends. Any process of the same user can send another live pane's
+  markers, so it can propose, or replace a proposal, as that session. The card says when it replaces
+  one. A call with no markers has no session, says so, and never replaces.
+- **A pane label reaches the card.** The session's name (folder and branch, or the Dashboard's name)
+  is agent-influenced. It is cleaned and cut to 40 characters, and a name that folds to "Collie" is
+  marked, but a look-alike such as "Colli3" is not.
+- **"Every card opened" is the phone's claim, a display check, not proof of reading.** The answer
+  names the cards the phone opened, and the bridge refuses a yes that does not name them all, or names
+  another digest. A phone, or anything that holds the phone's session, can send the list without
+  showing a card. It stops a yes from a tap on card 1 alone in the app; it does not prove a person
+  read the code.
+- **A version proposal is counted twice, differently.** The CLI counts the whole trick against the
+  capacity; the lead counts only the changed files. A version of a trick that was added on the machine
+  past the capacity cannot be proposed from the CLI, even when its change is small.
+- **A proposal costs memory before it is checked.** Each machine's walky socket reads up to 2 lines of
+  8 MiB at once, and the lead's crew route up to 2 bodies of 8 MiB, apart from the other routes. The
+  structure is counted before `JSON.parse`, so the parsed form stays near the text's size. On the crew
+  route a slot is taken after the crew secret is checked but before the signature is, because the
+  signature covers the body: only an enrolled machine can take one, for at most 60 seconds.
+
+- **The official states read the origin record, and check it.** A false `.collie-origin.json` with
+  `official: true` makes a folder from the list only at a commit the list names, and only while the
+  folder's code hash is that commit's listed hash: a hand-made folder under a forged record reads
+  `taken` (`unlisted`, or `changed`), and an update of it is refused. What is left: someone who can write
+  the tricks folder can copy the listed code there with a forged record; that folder then is exactly the
+  list's code.
+- **The changed check and the write are two steps.** The code hash is taken in the runner's lane right
+  before the write; a file edited in the instant between them is replaced as code.
+- **The byte cap measures the disk, not what git inflates.** The 20 MiB cap reads the temp repository's
+  size every 200 ms and once after the fetch. git inflates each object it receives in memory to check its
+  id, and a small pack of few objects is unpacked as loose objects: a highly compressed object can take
+  far more memory than the disk shows before the cap sees anything. The file caps (5 MB, 300 files) are
+  checked from git's own sizes before any file is read out, so such an object is never written into the
+  tricks folder.
+- **A server with a valid github.com certificate can hold the bridge for up to two minutes.** Whoever
+  answers for `github.com` with a certificate the system trusts (a captive proxy with an installed root, a
+  compromised CA) can stream data until the byte cap or the two-minute cap ends the fetch, using memory,
+  disk under `<stateDir>/tricks/` and one git process group meanwhile. What it sends is refused unless the
+  commit, the code hash and the extras hash are the list's; nothing of it is written into the tricks folder.
 
 ## Places in the app
 

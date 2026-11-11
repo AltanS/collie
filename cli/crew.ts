@@ -61,6 +61,9 @@ import {
   type StandbyDevices,
 } from "../bridge/crew/standby-devices.ts";
 import { crewRuntimePath, parseMarker, rosterDrift } from "../bridge/crew/staleness.ts";
+import { StandbyTricksStore } from "../bridge/crew/standby-tricks.ts";
+import { StandbyHillStore } from "../bridge/crew/standby-hill.ts";
+import { writeAdoptMarker } from "../bridge/crew/carry-boot.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { deriveConfigRoot, discoverSessionSockets } from "../bridge/mux/herdr/sessions.ts";
 import { herdTagFor } from "../bridge/sessions.ts";
@@ -79,6 +82,8 @@ import {
   memberRePinLines,
   memberWarrantLines,
   pairingCollisionLines,
+  deputyTricksLines,
+  promoteTricksLines,
   peerWarrantLines,
   standbyDoorLines,
 } from "./crew-status-deputy.ts";
@@ -1400,7 +1405,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   for (const l of deposedLines(marker, deps.ctx.instance)) deps.io.out(l.text);
   const sideLines =
     data.lead === null
-      ? [...leadDeputyLines(data, deps.now()), ...pairingCollisionLines(marker, deps.now())]
+      ? [...leadDeputyLines(data, deps.now()), ...deputyTricksLines(marker, deps.now()), ...pairingCollisionLines(marker, deps.now())]
       : [
           ...leadContactLines(data, marker, deps.ctx.env, deps.now()),
           ...peerWarrantLines(data, marker, deps.now(), deps.ctx.instance),
@@ -2366,6 +2371,8 @@ export async function cmdCrewApprovePromote(deps: CrewDeps, args: readonly strin
   deps.io.out(`  expires ${new Date(approved.expiresAt).toISOString()}`);
   deps.io.out(`  Now run \`collie promote\` on "${approved.memberId}" within 10 minutes. Until it does, nothing`);
   deps.io.out("  has changed here: this is consent, not a handover.");
+  // §25: whether the tricks this lead runs come along, as the running lead last saw its deputy.
+  for (const l of promoteTricksLines(parseMarker(deps.files.read(crewRuntimePath(deps.ctx.stateDir))), approved.memberId)) deps.io.out(l.text);
   deps.io.out("  Nothing was sent to it and no secret is involved — the claim is already signed against a");
   deps.io.out(`  pinned certificate, so consent only has to name who may take over.`);
   deps.io.out("  Changed your mind? `collie crew approve-promote --cancel`.");
@@ -2374,6 +2381,32 @@ export async function cmdCrewApprovePromote(deps: CrewDeps, args: readonly strin
 }
 
 // ── promote (on the peer becoming lead) ──────────────────────────────────────
+
+/**
+ * Leave the copies of `lead`'s tricks and open Decisions this machine holds as its deputy (CREW_PROTOCOL
+ * §25) for the restart below: the bridge adopts them at its next boot, as the lead, before it builds its
+ * Hill and its tricks (bridge/crew/carry-boot.ts). This command writes only the marker that names the
+ * lead, because the bridge that runs now holds its own Hill in memory and would write over a merge.
+ * A machine that was not the deputy holds no copy, and nothing is said. Never fails the promote.
+ */
+async function startCarriedAtPromote(deps: CrewDeps, lead: string): Promise<void> {
+  const tricks = new StandbyTricksStore(deps.ctx.stateDir);
+  const hill = new StandbyHillStore(deps.ctx.stateDir);
+  const trickCount = (await tricks.load())?.from === lead ? (await tricks.ready()).length : 0;
+  const questions = (await hill.load())?.from === lead ? await hill.openCount() : 0;
+  if (trickCount === 0 && questions === 0) return;
+  try {
+    await writeAdoptMarker(deps.ctx.stateDir, { lead, by: "handover", at: deps.now() });
+  } catch (err) {
+    deps.io.err(`warn: could not leave "${lead}"'s tricks and open questions for the restart: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+  const parts = [
+    ...(trickCount === 0 ? [] : [trickCount === 1 ? "1 trick" : `${String(trickCount)} tricks`]),
+    ...(questions === 0 ? [] : [questions === 1 ? "1 open question" : `${String(questions)} open questions`]),
+  ];
+  deps.io.out(`✓ "${lead}"'s ${parts.join(" and ")} come along: this machine takes them up when it restarts as the lead`);
+}
 
 /**
  * `collie promote` — §14, run on the peer that is to become lead.
@@ -2457,6 +2490,9 @@ export async function cmdPromote(deps: CrewDeps, args: readonly string[]): Promi
     current === null ? null : promoteSelf(current, roster, deps.now()),
   );
   if (promoted === null) return EXIT.FAIL;
+  // §25: this command is the person's own yes on this machine, as the takeover tap is. It leaves the
+  // copies of the old lead's tricks and open Decisions for the restart below, which adopts them.
+  await startCarriedAtPromote(deps, data.lead.memberId);
 
   // NOBODY ELSE IS SWEPT — §14.4/§14.5 (2026-08-12). A peer pins its CURRENT lead's certificate as
   // the sole anchor of its listener (`peerListenerTls`, bridge/crew/transport.ts), so a dial from a

@@ -8,7 +8,7 @@ import { hillSessionName } from "../hill/walky.ts";
 import { realAgentPanes, TRICKS_SPACE_LABEL, trickSessionPanes, trickSessionStatus, pastWindow, placeTrickSessions, type TrickSessionSource } from "./panes.ts";
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
-const HOST = "bluefin";
+const HOST = "lodge";
 const VIEW: View = [{ kind: "para", text: "23/34" }];
 
 function info(id: string, extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
@@ -43,15 +43,15 @@ describe("the trick sessions as panes", () => {
     const tracker2 = part("tracker", { at: "session", id: "next", name: "Next task", view: VIEW });
     const belt = part("legs", { at: "belt", id: "belt", mark: { label: "23/34" } });
     const found = trickSessionPanes(source([tracker, belt, LEGS, tracker2]));
-    expect(found?.workspace).toEqual({ workspaceId: "trick:bluefin", label: TRICKS_SPACE_LABEL, focused: false, activeTabId: "trick:bluefin:legs", tabCount: 2, paneCount: 3 });
+    expect(found?.workspace).toEqual({ workspaceId: "trick:lodge", label: TRICKS_SPACE_LABEL, focused: false, activeTabId: "trick:lodge:legs", tabCount: 2, paneCount: 3 });
     expect(found?.tabs.map((t) => [t.tabId, t.label, t.paneCount])).toEqual([
-      ["trick:bluefin:legs", "Browser leg", 1],
-      ["trick:bluefin:tracker", "Tracker", 2],
+      ["trick:lodge:legs", "Browser leg", 1],
+      ["trick:lodge:tracker", "Tracker", 2],
     ]);
     expect(found?.panes.map((p) => [p.paneId, p.tabId, p.tabPosition])).toEqual([
-      ["trick:bluefin:legs:legs", "trick:bluefin:legs", 0],
-      ["trick:bluefin:tracker:due", "trick:bluefin:tracker", 0],
-      ["trick:bluefin:tracker:next", "trick:bluefin:tracker", 1],
+      ["trick:lodge:legs:legs", "trick:lodge:legs", 0],
+      ["trick:lodge:tracker:due", "trick:lodge:tracker", 0],
+      ["trick:lodge:tracker:next", "trick:lodge:tracker", 1],
     ]);
     // The ids are trick session ids, one URL path segment each, and never a real session's key.
     for (const pane of found?.panes ?? []) {
@@ -64,10 +64,10 @@ describe("the trick sessions as panes", () => {
   test("a pane carries the name, the pane marks, the actions, the folder and its part key", () => {
     const pane = trickSessionPanes(source([LEGS]))?.panes[0];
     expect(pane).toEqual({
-      paneId: "trick:bluefin:legs:legs",
-      workspaceId: "trick:bluefin",
+      paneId: "trick:lodge:legs:legs",
+      workspaceId: "trick:lodge",
       workspaceLabel: "Tricks",
-      tabId: "trick:bluefin:legs",
+      tabId: "trick:lodge:legs",
       agent: "legs",
       status: "working",
       cwd: "/home/me/.config/collie/tricks/legs",
@@ -114,7 +114,7 @@ describe("the trick sessions as panes", () => {
 
   test("a trick that is off, another host's part and a trick with no session part make no pane", () => {
     expect(trickSessionPanes(source([LEGS], [info("legs", { on: false })]))).toBeUndefined();
-    expect(trickSessionPanes(source([{ ...LEGS, host: "minibuch" }]))).toBeUndefined();
+    expect(trickSessionPanes(source([{ ...LEGS, host: "workshop" }]))).toBeUndefined();
     expect(trickSessionPanes(source([part("legs", { at: "belt", id: "belt", mark: { label: "x" } })]))).toBeUndefined();
     expect(trickSessionPanes(source([]))).toBeUndefined();
   });
@@ -207,7 +207,7 @@ describe("the service", () => {
         configDir,
         stateDir,
         memberId: HOST,
-        world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
+        world: () => ({ machine: "lodge.lan", sessions: [], spaces: [] }),
         env: { PATH: "/usr/bin:/bin" },
         now: () => clock.t,
         warn: () => {},
@@ -219,7 +219,7 @@ describe("the service", () => {
       await service.refresh(true);
       await service.tick();
       const found = service.sessionPanes();
-      expect(found?.panes.map((p) => [p.paneId, p.status, p.subtitle, p.cwd])).toEqual([["trick:bluefin:legs:legs", "working", "case 24 red", dir]]);
+      expect(found?.panes.map((p) => [p.paneId, p.status, p.subtitle, p.cwd])).toEqual([["trick:lodge:legs:legs", "working", "case 24 red", dir]]);
       await writeSwitches(stateDir, { on: new Map() });
       await service.refresh(true);
       expect(service.sessionPanes()).toBeUndefined();
@@ -231,7 +231,7 @@ describe("the service", () => {
 
 describe("the one filter for real agent panes (review row 30)", () => {
   const real = { paneId: "w6X:3", kind: "agent" as const, agent: "claude", paneLabel: "composer" };
-  const trick = { paneId: "trick:bluefin:legs:legs", kind: "trick" as const, agent: "legs", paneLabel: "Browser leg" };
+  const trick = { paneId: "trick:lodge:legs:legs", kind: "trick" as const, agent: "legs", paneLabel: "Browser leg" };
 
   test("realAgentPanes drops trick sessions and hands back the same array when there is none", () => {
     expect(realAgentPanes([real, trick])).toEqual([real]);

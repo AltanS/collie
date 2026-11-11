@@ -62,7 +62,7 @@ const SHELL = pane({ paneId: "w1:p9", workspaceLabel: "scratch", agent: "shell",
 const MEMBER = pane({ paneId: "w1:p1", host: "workshop", paneLabel: "triage", workspaceLabel: "peerproj", agent: "opencode", cwd: "/home/k/peerproj" });
 
 const SERVERS: ServerSummary[] = [
-  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+  { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
   { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
 ];
 

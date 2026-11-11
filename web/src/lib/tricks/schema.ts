@@ -70,6 +70,7 @@ import {
   type HillPriority,
   type HillTextMode,
 } from "../hill/wire";
+import { codePointName, firstHiddenChar, hasHiddenChar } from "../hidden-chars";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
 import { INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
 
@@ -1381,6 +1382,17 @@ export interface TrickProvenance {
   at?: string;
   repo?: string;
   sha?: string;
+  /**
+   * Set for a trick `collie trick propose` handed in (crew slice 8): who proposed it and the machine, as
+   * the lead named it. Absent for any other trick, and from an older bridge. `by: "terminal"` means no
+   * agent pane was placed: the machine is known, the session is not confirmed.
+   */
+  proposed?: { by: "agent" | "terminal"; host: string };
+  /**
+   * Set when `repo` is an official repository of the official list but this folder is not a version of
+   * the list (official.ts `isUnlistedOfficialOrigin`): the phone says it is not on the official list.
+   */
+  unlisted?: true;
 }
 /**
  * `GET /api/tricks?since=<rev>`. The snapshot carries `tricksRev`; when it moves, the phone asks for the
@@ -1407,6 +1419,45 @@ export interface TricksReply {
 /** Where a bridge that schedules no tricks says they run: the lead's member id, when it knows it. */
 export interface TricksRunsOn {
   lead?: string;
+}
+
+/**
+ * Where one entry of the official list stands on this machine (bridge/tricks/official.ts): `absent`
+ * (no folder of its id), `added` (a folder from the same repository and folder at the list's commit),
+ * `update` (the same, at another commit) or `taken` (a folder of its id from anywhere else, never written over).
+ */
+export const OFFICIAL_STATES = ["absent", "added", "update", "taken"] as const;
+export type OfficialState = (typeof OFFICIAL_STATES)[number];
+
+/** One entry of the official list as the phone reads it (`GET /api/tricks/official`). */
+export interface WireOfficialTrick {
+  id: string;
+  name: string;
+  /** One line, at most `DESCRIPTION_MAX` characters. */
+  description: string;
+  /** The repository's https URL. */
+  repo: string;
+  /** The repository's short name, `owner/repo`. */
+  repoName: string;
+  /** The commit this Collie release expects, 40 hex. */
+  commit: string;
+  state: OfficialState;
+  /**
+   * Set on a `taken` entry whose folder came from this repository and folder, but not from the list: another
+   * ref (a pull request's, a branch nobody listed) or a record without `official`. Absent otherwise.
+   */
+  unlisted?: true;
+  /**
+   * Set on a `taken` entry whose folder is a version of the list by its origin record, but whose code is
+   * not that version's code any more: the person changed its files. Collie never updates it. Absent otherwise.
+   */
+  changed?: true;
+}
+
+/** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */
+export interface OfficialTricksReply {
+  tricks: WireOfficialTrick[];
+  runsOn?: TricksRunsOn;
 }
 
 /** The string key of a stored part. None of the three may hold `/`, so it splits back. */
@@ -1558,7 +1609,7 @@ export const TRICK_SESSION_PREFIX = "trick:";
 /**
  * A real session's scope key, `memberId:paneId`. The pane id follows the mux id rule and may hold colons
  * itself (`w6X:3`). A name (`composer`) has no host and is not one. A trick session's id
- * (`trick:bluefin:legs`) is not one either: it has no reply box and no terminal.
+ * (`trick:lodge:legs`) is not one either: it has no reply box and no terminal.
  */
 export function isScopeKey(text: string): boolean {
   const colon = text.indexOf(":");
@@ -1567,7 +1618,7 @@ export function isScopeKey(text: string): boolean {
   const paneId = text.slice(colon + 1);
   if (!isHostName(host)) return false;
   if (paneId.length === 0 || utf8Bytes(paneId) > MUX_ID_MAX_BYTES) return false;
-  // A pane id that starts with `trick:` is a trick session's (`bluefin:trick:bluefin:legs:legs`): it has no
+  // A pane id that starts with `trick:` is a trick session's (`lodge:trick:lodge:legs:legs`): it has no
   // reply box, so it is never a real session's key. The prefix is reserved on the bridge too: the
   // durable adapter drops a pane, tab or space of that name (WIRE.md, the id rule).
   if (paneId.startsWith(TRICK_SESSION_PREFIX)) return false;
@@ -1631,7 +1682,7 @@ export function isInstant(text: string): boolean {
 
 /**
  * A URL a trick may open: `https://` or `http://`. Plain http is allowed because the operator opens
- * tailnet pages that have no certificate (`http://bluefin:8080`); the tailnet is the transport's
+ * tailnet pages that have no certificate (`http://lodge:8080`); the tailnet is the transport's
  * guard there. Every other scheme (`javascript:`, `file:`, `data:`) is refused.
  */
 export function isTrickUrl(text: string): boolean {
@@ -2679,6 +2730,14 @@ function checkDiff(f: Fields): void {
   }
   const long = lines.findIndex((line) => codePoints(line) > DIFF_LIMITS.lineChars);
   if (long !== -1) f.push("text", "text", `A diff's line ${String(long + 1)} is ${String(codePoints(lines[long] ?? ""))} characters. Each line holds at most ${String(DIFF_LIMITS.lineChars)}.`);
+  // Code shows as it is or not at all (review 7 M1): a line separator, a blank-looking letter or a
+  // zero-width character would let a person read other code than the code that runs.
+  // A control or a direction mark the text rule refused already is said once.
+  const hidden = textProblem(text, NODE_TEXT.diff) === undefined ? lines.findIndex((line) => hasHiddenChar(line)) : -1;
+  if (hidden !== -1) {
+    const ch = firstHiddenChar(lines[hidden] ?? "") ?? "";
+    f.push("text", "text", `A diff's line ${String(hidden + 1)} holds ${codePointName(ch)}, a character that does not show as itself. A diff shows code as it is.`);
+  }
 }
 
 /** A row: at most one `para`, any `chip`, at most one `button`, and the button last (VOCABULARY.md 2.12). */
@@ -3468,7 +3527,7 @@ function readSessionKey(f: Fields, key: string): string | undefined {
   if (value === undefined) return undefined;
   if (isScopeKey(value)) return value;
   const what = isTrickSessionId(value) ? `"${value}" is a trick session. It has no reply box and no Chat` : `"${value}" is not a session's scope key`;
-  f.push("target", key, `${what}. Use the "id" from the facts (memberId:paneId, such as bluefin:w6X:3), never a name.`);
+  f.push("target", key, `${what}. Use the "id" from the facts (memberId:paneId, such as lodge:w6X:3), never a name.`);
   return undefined;
 }
 
@@ -4004,6 +4063,6 @@ function readFromSession(f: Fields): string | undefined {
   const value = f.text("session", { max: 256, required: true });
   if (value === undefined) return undefined;
   if (isPaneTarget(value)) return value;
-  f.push("target", "session", `"${value}" is not a session's scope key. Use the "id" from the facts (memberId:paneId, such as bluefin:w6X:3), never a name.`);
+  f.push("target", "session", `"${value}" is not a session's scope key. Use the "id" from the facts (memberId:paneId, such as lodge:w6X:3), never a name.`);
   return undefined;
 }

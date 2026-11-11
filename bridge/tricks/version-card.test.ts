@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +13,7 @@ import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
+import { GROUP_MASKED_NOTE } from "./card-group.ts";
 import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 
@@ -45,7 +46,7 @@ const gitTest = test.skipIf(!HAS_GIT);
 describe("the diff of two copies", () => {
   gitTest("lists added, changed and removed code files with their line counts and masked hunks", async () => {
     const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "#!/bin/sh\necho 1\necho keep\n", "old.sh": "gone\n" });
-    const next = await folder({ "trick.toml": MANIFEST, "legs.sh": '#!/bin/sh\necho 2\necho keep\nKEY="sk-or-v1-0123456789abcdef0123456789abcdef"\n', "new.sh": "a\nb\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "legs.sh": '#!/bin/sh\necho 2\necho keep\nKEY="sk-or-v1-your-key-here-placeholder00"\n', "new.sh": "a\nb\n" });
     const diff = await versionDiff({ base, next });
     expect(diff.counted).toBe(true);
     expect(diff.files.map((file) => [file.rel, file.change, file.plus, file.minus])).toEqual([
@@ -57,6 +58,25 @@ describe("the diff of two copies", () => {
     expect(hunk[0]).toStartWith("@@");
     expect(hunk.join("\n")).not.toContain("0123456789abcdef");
     expect(hunk.join("\n")).toContain("+echo 2");
+  });
+
+  test("a file whose executable bit alone moved is listed +x, counted, and its row is the whole change (review 7)", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" });
+    const same = { "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" };
+    // A stored proposal is 0600: the bits it marked are passed in. This half runs on every platform.
+    const diff = await versionDiff({ base, next: await folder(same), nextExec: new Set(["legs.sh"]) });
+    expect(diff).toEqual({ files: [{ rel: "legs.sh", change: "changed", plus: 0, minus: 0, hunk: [], mode: "+x" }], counted: true });
+    expect(JSON.stringify(versionView([], [], diff))).toContain('"text":"changed +x"');
+    // A folder by hand: the bits are read off the disk, which only a POSIX file mode holds. Inline, not a
+    // skip: the Windows run's skip budget (scripts/windows-suites.ps1) counts every skipped test.
+    if (process.platform === "win32") return;
+    const next = await folder(same);
+    await chmod(join(next, "legs.sh"), 0o755);
+    await chmod(join(base, "keep.sh"), 0o755);
+    expect((await versionDiff({ base, next })).files.map((file) => [file.rel, file.mode])).toEqual([
+      ["keep.sh", "-x"],
+      ["legs.sh", "+x"],
+    ]);
   });
 
   test("with no git, every file is listed by what happened to it, with no counts and no hunks", async () => {
@@ -96,7 +116,7 @@ describe("the diff of two copies", () => {
     const run = async (argv: readonly string[]): Promise<DiffRun> =>
       argv.at(-1)?.endsWith("a.sh") === true
         ? { code: 1, stdout: "@@ -1 +1 @@\n-1\n+2\n", timedOut: false, truncated: true }
-        : { code: 1, stdout: '@@ -1 +1 @@\n-1\n+KEY="sk-or-v1-0123456789abcdef0123456789abcdef"\n', timedOut: false };
+        : { code: 1, stdout: '@@ -1 +1 @@\n-1\n+KEY="sk-or-v1-your-key-here-placeholder00"\n', timedOut: false };
     const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
     expect(diff.files.map((file) => [file.rel, file.cut])).toEqual([
       ["a.sh", true],
@@ -128,10 +148,12 @@ describe("the diff of two copies", () => {
     expect(diff.files[2]?.hunk).toEqual(["@@ -1 +1 @@", "-1", "+  echo 2"]);
     const pending = subject().pending!;
     const one = (files: VersionDiff["files"]): TrickVersionSubject => ({ ...subject(), pending: { ...pending, info: { ...pending.info, files: { added: 0, changed: files.length, removed: 0 } } } });
+    // A cut line shows as the mask leaves it, on a group whose card says so, and nothing is recommended.
     for (const file of diff.files.slice(0, 2)) {
       const card = versionCard(one([file]), { counted: true, files: [file] });
       expect(card?.recommends).toBeNull();
-      expect(card?.summary).toBe("1 file changed. It asks for no new rights. 0 of 1 file shown.");
+      expect(card?.summary).toBe("1 file changed. It asks for no new rights. It shows on 2 cards.");
+      expect(JSON.stringify(card?.group?.parts[1])).toContain(GROUP_MASKED_NOTE);
     }
     const clean = diff.files.slice(2);
     expect(versionCard(one(clean), { counted: true, files: clean })?.recommends).toMatchObject({ intent: "use" });
@@ -190,6 +212,18 @@ describe("the card's words and view", () => {
     expect(card?.view?.[1]).toMatchObject({ kind: "diff", attrs: { file: "evil?gnp.ts" } });
   });
 
+  test("F1: fourteen new environment names of 64 characters all show in full, none cut, none dropped", () => {
+    const env = Array.from({ length: 14 }, (_, i) => `TOKEN_${String(i).padStart(2, "0")}_${"X".repeat(55)}`);
+    const base = subject();
+    const pending = base.pending;
+    if (pending === null) throw new Error("no pending");
+    const card = versionCard({ ...base, pending: { ...pending, manifest: { id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 1, icon: "plug", places: ["belt"], env } } }, DIFF);
+    const words = JSON.stringify(card?.view);
+    for (const name of env) expect(words).toContain(`${name}`);
+    expect(card?.view?.[0]).toMatchObject({ kind: "para" });
+    expect(card?.recommends).toBeNull();
+  });
+
   test("B2: a card whose view could not be made carries no recommendation and says to read the change on the machine", () => {
     const card = versionCard(subject(), { counted: false, files: [] });
     expect(card?.view).toBeUndefined();
@@ -210,10 +244,16 @@ describe("the card's words and view", () => {
       { rel: "long.ts", change: "added", plus: 60, minus: 0, hunk: ["@@ -0,0 +1,60 @@", ...Array.from({ length: 60 }, (_, i) => `+line ${String(i)}`)] },
       { rel: "key.ts", change: "changed", plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-a", "+b"], cut: true },
     ];
-    for (const second of cases) {
+    // A binary file cannot show on a group: the one card as before, with how much it shows.
+    const binary = versionCard(two(), { counted: true, files: [shown, cases[0]!] });
+    expect(binary?.recommends).toBeNull();
+    expect(binary?.group).toBeUndefined();
+    expect(binary?.summary).toBe("2 files changed. It asks for no new rights. 1 of 2 files shown.");
+    // A long line or a long hunk shows whole on a group of cards; a masked line shows masked, and recommends nothing.
+    for (const second of cases.slice(1)) {
       const card = versionCard(two(), { counted: true, files: [shown, second] });
-      expect(card?.recommends).toBeNull();
-      expect(card?.summary).toBe("2 files changed. It asks for no new rights. 1 of 2 files shown.");
+      expect(card?.summary).toBe("2 files changed. It asks for no new rights. It shows on 2 cards.");
+      expect(card?.recommends === null).toBe(second.cut === true);
     }
     const all = versionCard(two(), { counted: true, files: [shown, { ...shown, rel: "other.sh" }] });
     expect(all?.recommends).toMatchObject({ intent: "use" });
@@ -346,8 +386,8 @@ async function life(): Promise<Life> {
     send: async () => "typed",
     crewMode: () => "solo",
     walkyOn: () => true,
-    memberId: "bluefin",
-    machine: "bluefin",
+    memberId: "lodge",
+    machine: "lodge",
     now: () => clock.t,
     mintId: () => `dc_ver${String((n += 1)).padStart(9, "0")}`,
     onCollieAnswer: (ref, intent) => cards?.answer(ref, intent) ?? Promise.resolve({ ok: false, reason: "no cards" }),
@@ -356,8 +396,8 @@ async function life(): Promise<Life> {
   service = new TricksService({
     configDir,
     stateDir,
-    memberId: "bluefin",
-    world: () => ({ machine: "bluefin", sessions: [], spaces: [] }),
+    memberId: "lodge",
+    world: () => ({ machine: "lodge", sessions: [], spaces: [] }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
     now: () => clock.t,
     warn: () => undefined,
@@ -456,7 +496,7 @@ describe("the card's life", () => {
     expect(row).toMatchObject({ auto: true, autoAt: new Date(T0 + 20_000 + PENDING_SETTLE_MS).toISOString() });
     expect(openCard(l)).toBeUndefined();
     // Undo goes back; the row then has nothing to undo.
-    expect(await l.service.undoRoute("bluefin", "legs")).toMatchObject({ status: 200 });
+    expect(await l.service.undoRoute("lodge", "legs")).toMatchObject({ status: 200 });
     expect((await l.service.reply(undefined)).tricks[0]?.autoAt).toBeUndefined();
   });
 
@@ -488,7 +528,7 @@ describe("the card's life", () => {
     const l = await life();
     await edit(l, T0 + 1000, "#!/bin/sh\necho 2\n");
     expect(openCard(l)).toBeDefined();
-    expect(await l.service.setSwitch("bluefin", "legs", false)).toMatchObject({ status: 200 });
+    expect(await l.service.setSwitch("lodge", "legs", false)).toMatchObject({ status: 200 });
     await l.cards.settled();
     expect(openCard(l)).toBeUndefined();
     expect(cardsOf(l)[0]?.closedReason).toBe(VERSION_CARD_GONE);
@@ -496,11 +536,11 @@ describe("the card's life", () => {
 
   test("the auto route writes the switch, and is refused for a trick that is off", async () => {
     const l = await life();
-    expect(await l.service.autoRoute("bluefin", "legs", true)).toMatchObject({ status: 200, body: { auto: true } });
+    expect(await l.service.autoRoute("lodge", "legs", true)).toMatchObject({ status: 200, body: { auto: true } });
     expect((await switchFile(l)).auto).toBe(true);
     expect(await l.service.autoRoute("elsewhere", "legs", true)).toEqual({ status: 404, body: { error: "unknown-host" } });
-    await l.service.setSwitch("bluefin", "legs", false);
-    expect(await l.service.autoRoute("bluefin", "legs", true)).toMatchObject({ status: 409, body: { error: "off" } });
-    expect(await l.service.undoRoute("bluefin", "nope")).toEqual({ status: 404, body: { error: "unknown-trick" } });
+    await l.service.setSwitch("lodge", "legs", false);
+    expect(await l.service.autoRoute("lodge", "legs", true)).toMatchObject({ status: 409, body: { error: "off" } });
+    expect(await l.service.undoRoute("lodge", "nope")).toEqual({ status: 404, body: { error: "unknown-trick" } });
   });
 });

@@ -78,13 +78,50 @@ export const HILL_IMAGE_PATH_MAX = 4096;
 /** Where the phone reads an image's bytes: `${HILL_MEDIA_ROUTE}<decision id>/<media id>`. */
 export const HILL_MEDIA_ROUTE = "/api/hill/media/";
 
-/** What a Decision of Collie's own is about (crew slice 3): a trick's new version, or (later) a proposal. */
-export type HillCollieRefType = "version" | "proposal";
-export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal"];
+/**
+ * What a Decision of Collie's own is about: a trick's new version (crew slice 3), a proposal (crew slice
+ * 8), or a carried trick that did not start after a takeover (crew slice 10, OK only).
+ */
+export type HillCollieRefType = "version" | "proposal" | "carried";
+export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried"];
 /** The id inside a Collie Decision's `ref`: a trick id for `version`. */
 export const HILL_COLLIE_REF_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** The hash inside a Collie Decision's `ref`: the sha256 of the code the answer is about, in hex. */
 export const HILL_COLLIE_REF_HASH_RE = /^[0-9a-f]{64}$/;
+
+/**
+ * A GROUP OF CARDS (crew slice 8): one Decision of Collie's own whose code does not fit one card shows as
+ * 2 to 8 cards in a fixed order. Card 1 is Collie's facts, never code; cards 2 to n hold the code. The
+ * answer that switches on carries the group's digest the phone was given and which cards the phone
+ * opened. The opened list is the phone's DISPLAY check: it says what this phone showed, it proves
+ * nothing about what the person read.
+ */
+export const HILL_GROUP_PARTS = { min: 2, max: 8 } as const;
+/** A group's digest and a card's hash: SHA-256, hex. */
+export const HILL_GROUP_HASH_RE = /^[0-9a-f]{64}$/;
+
+/** One card of a group: its view, and the SHA-256 of the view's JSON text as the bridge stored it. */
+export interface HillGroupPart {
+  view: View;
+  sha256: string;
+}
+
+/** The cards of a group, on a Decision of Collie's own only. */
+export interface HillGroup {
+  /** SHA-256 over the Decision's `ref` and the cards' hashes in order. An answer that switches on names it. */
+  digest: string;
+  /** The option that declines ("Not now", "Keep the old version"): it needs no card opened, and shows on every card. */
+  decline: string;
+  /** 2 to 8 cards in order. Card 1 is Collie's facts. */
+  parts: HillGroupPart[];
+}
+
+/** What a phone sends with an answer to a group: the digest it was given and the cards it opened (1-based). */
+export interface HillGroupAnswer {
+  digest: string;
+  /** A DISPLAY check, never proof: the cards this phone showed. */
+  opened: number[];
+}
 
 /**
  * What a Collie Decision is about. Only code inside the bridge mints one (bridge/hill/service.ts
@@ -190,6 +227,11 @@ export interface HillDecision {
    * `parseDecisionView` (lib/tricks/schema.ts) at post time and again on the phone. Absent: none.
    */
   view?: View;
+  /**
+   * The cards of a group, instead of `view`: only a Decision of Collie's own carries one (a trick
+   * proposal or a new version whose code does not fit one card). Absent: one card.
+   */
+  group?: HillGroup;
   /** A walky address. Null means the answer goes to the poster's own address. */
   replyTo: string | null;
   /** Where the answer goes, resolved at post time for the card's "goes to" line. */
@@ -280,6 +322,8 @@ export interface HillAnswerRequest {
   /** An option's intent, "answer" (text only) or "dismiss". */
   intent: string;
   value: { text: string | null };
+  /** On a group: the digest and the opened cards. Needed for every option but the group's decline and a dismiss. */
+  group?: HillGroupAnswer;
 }
 
 /** What the bridge answers to an answer request. */
@@ -330,6 +374,8 @@ export interface HillPostInput {
   images?: HillImageInput[];
   /** A display-only view under the summary (`parseDecisionView`). */
   view?: View;
+  /** The cards of a group, instead of `view`: Collie's own Decision only (`HillService.postCollie`). */
+  group?: { decline: string; parts: View[] };
 }
 
 /** Why the bridge refuses a post. */

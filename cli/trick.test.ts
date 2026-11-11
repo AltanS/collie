@@ -1,14 +1,18 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
+import { OFFICIAL_REPOS, shippedOfficialList } from "../bridge/tricks/official.ts";
+import { ORIGIN_FILE, renderOrigin } from "../bridge/tricks/origin.ts";
 import { approvedCopyDir, switchesPath } from "../bridge/tricks/paths.ts";
 import { HILL_WRITING } from "./hill-rules.ts";
+import { OFFICIAL_TRICKS_REPO } from "./trick-add.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
-import { agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { GROUP_CAPACITY_WORDS, GROUP_TOO_LARGE } from "../bridge/tricks/card-group.ts";
+import { TAP_SHOWS_NOTHING, agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { checkWarnings, HELPER_VERSION, helperVersion, isBareImport, isScannedFile, looksBinary, runsLines, shippedHelperVersion, TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { realFiles } from "./sys.ts";
 import { leadStore, member } from "../bridge/crew/fixtures.ts";
@@ -36,7 +40,7 @@ function capture(): Captured {
   return { io: { out: (l) => out.push(l), err: (l) => err.push(l) }, out, err };
 }
 
-const KEY = "sk-or-v1-0123456789abcdef0123456789abcdef";
+const KEY = "sk-or-v1-your-key-here-placeholder00";
 
 /** Deps over a fresh config and state folder. `answer` is what the bridge's `GET /api/tricks` says. */
 function fail(): never {
@@ -200,6 +204,54 @@ describe("collie trick check", () => {
     }
     return dir;
   }
+
+  test("it says how many cards the trick shows on as a proposal, with the capacity; the helper Collie ships is not counted (crew slice 8)", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["hello"]);
+    const dir = join(d.configDir, "tricks", "hello");
+    expect(await cmdTrickCheck(d, [dir])).toBe(EXIT.OK);
+    // trick.ts (about 42 KB, a group's whole capacity) is Collie's own helper: card 1 names it, and only
+    // program.ts, trick.toml and AGENTS.md take cards of code.
+    expect(d.out.join("\n")).toMatch(/ {2}cards: {2}This trick shows as [2-8] cards\. /u);
+    expect(d.out.join("\n")).toContain(GROUP_CAPACITY_WORDS);
+    expect(GROUP_CAPACITY_WORDS).toContain("at most 8 cards");
+    expect(d.out.at(-1)).toBe("ok: no problems.");
+    const small = await folder('id = "tiny"\nname = "tiny"\nrun = "./tiny.sh"\nplaces = ["belt"]\n', { "tiny.sh": "#!/bin/sh\necho '{}'\n" });
+    const e = await deps();
+    expect(await cmdTrickCheck(e, [small])).toBe(EXIT.OK);
+    expect(e.out.join("\n")).toContain("  cards:  This trick shows as 1 card.");
+  });
+
+  test("a trick larger than a group passes the check, with an error that it cannot be proposed", async () => {
+    const big = Array.from({ length: 900 }, (_, i) => `echo "line ${String(i).padStart(4, "0")} of a long program, longer than a group of cards holds"`).join("\n");
+    const dir = await folder('id = "huge"\nname = "huge"\nrun = "./huge.sh"\nplaces = ["belt"]\n', { "huge.sh": `#!/bin/sh\n${big}\n` });
+    const d = await deps();
+    expect(await cmdTrickCheck(d, [dir])).toBe(EXIT.OK);
+    expect(d.err).toContain(`error: propose: ${GROUP_TOO_LARGE}`);
+    expect(d.out.at(-1)).toBe("ok: it runs on this machine, but it cannot be proposed.");
+  });
+
+  test("--run notes a tile a tap leaves as it was; a tap that changes it, or a session page, gets no note", async () => {
+    const still = await folder('id = "still"\nname = "S"\nrun = "./p.sh"\nplaces = ["belt"]\n', { "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"3","intent":"refresh"}}]}'\n` });
+    const d = await deps();
+    expect(await cmdTrickCheck(d, ["--run", still])).toBe(EXIT.OK);
+    expect(d.out).toContain(`  note: ${TAP_SHOWS_NOTHING}`);
+    expect(d.out.at(-1)).toBe("ok: no problems.");
+    // Without --run there is no output to judge: no note.
+    const quiet = await deps();
+    expect(await cmdTrickCheck(quiet, [still])).toBe(EXIT.OK);
+    expect(quiet.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
+    const tapped = await folder('id = "tapped"\nname = "T"\nrun = "./p.sh"\nplaces = ["belt"]\n', {
+      "p.sh": `#!/bin/sh\nread -r facts\ncase "$facts" in *'"kind":"tap"'*) n=4;; *) n=3;; esac\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s","intent":"refresh"}}]}\\n' "$n"\n`,
+    });
+    const e = await deps();
+    expect(await cmdTrickCheck(e, ["--run", tapped])).toBe(EXIT.OK);
+    expect(e.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
+    const paged = await folder('id = "paged"\nname = "P"\nrun = "./p.sh"\nplaces = ["belt", "session"]\n', { "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"3"}}]}'\n` });
+    const f = await deps();
+    expect(await cmdTrickCheck(f, ["--run", paged])).toBe(EXIT.OK);
+    expect(f.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
+  });
 
   test("the checked-in fixture is clean", async () => {
     const d = await deps();
@@ -572,7 +624,7 @@ describe("collie trick on, off and list", () => {
   test("list shows the bridge's state, last run and error when it answers", async () => {
     const d = await deps({
       rev: 5,
-      tricks: [{ host: "bluefin", id: "legs", name: "legs", icon: "plug", on: true, state: "failing", places: ["belt"], error: "The program exited with 1", lastRunAt: "2026-11-08T09:41:00.000Z" }],
+      tricks: [{ host: "lodge", id: "legs", name: "legs", icon: "plug", on: true, state: "failing", places: ["belt"], error: "The program exited with 1", lastRunAt: "2026-11-08T09:41:00.000Z" }],
       parts: [],
       present: [],
       path: "/usr/bin",
@@ -617,6 +669,49 @@ describe("collie trick on, off and list", () => {
     const doc = JSON.parse(d.out.join("\n")) as { bridge: boolean; tricks: { state: string }[] };
     expect(doc.bridge).toBe(false);
     expect(doc.tricks[0]?.state).toBe("off");
+  });
+
+  test("list --official prints the official list and each entry's state here; it fetches nothing", async () => {
+    const list = shippedOfficialList();
+    if (!list.ok) throw new Error(list.reason);
+    const first = list.entries[0];
+    const second = list.entries[1];
+    if (first === undefined || second === undefined) throw new Error("the list holds fewer than two entries");
+    const d = await deps(null);
+    // A record of the list at its commit over code that is not the list's (an edit, or a record by hand),
+    // one by hand under the same id, and one from the repository at a commit the list never named.
+    await mkdir(join(d.configDir, "tricks", first.id), { recursive: true });
+    await writeFile(join(d.configDir, "tricks", first.id, ORIGIN_FILE), renderOrigin({ url: first.repo, ref: first.commit, commit: first.commit, subdir: first.dir, at: "2026-11-11T09:00:00.000Z", official: true }));
+    await mkdir(join(d.configDir, "tricks", second.id), { recursive: true });
+    const third = list.entries[2];
+    if (third === undefined) throw new Error("the list holds fewer than three entries");
+    await mkdir(join(d.configDir, "tricks", third.id), { recursive: true });
+    await writeFile(join(d.configDir, "tricks", third.id, ORIGIN_FILE), renderOrigin({ url: third.repo, ref: "refs/pull/4/head", commit: "4".repeat(40), subdir: third.dir, at: "2026-11-11T09:00:00.000Z" }));
+    expect(await cmdTrickList(d, ["--official"])).toBe(EXIT.OK);
+    expect(d.out[0]).toMatch(/^ID\s+NAME\s+COMMIT\s+STATE\s+WHAT IT DOES$/);
+    expect(d.out[1]).toStartWith(first.id);
+    expect(d.out[1]).toContain("taken: its files were edited, update it with collie trick update");
+    expect(d.out[2]).toContain("taken: another trick has this id");
+    expect(d.out[3]).toContain("taken: from the repository, not from the official list");
+    expect(d.out.at(-1)).toBe("From AltanS/collie-tricks, at the commits this Collie release names. Add one on the phone: Settings, Tricks, Official tricks.");
+    // The only request is the local bridge's own tricks list, for the crew line: nothing reaches GitHub.
+    expect(d.asked).toEqual(["http://127.0.0.1:18999/api/tricks"]);
+    d.out.length = 0;
+    await cmdTrickList(d, ["--official", "--json"]);
+    // SAFETY: `list --official --json` prints one document, checked by value below.
+    const doc = JSON.parse(d.out.join("\n")) as { official: { id: string; state: string }[] };
+    expect(doc.official.map((e) => e.state)).toEqual(list.entries.map((e) => (e.id === first.id || e.id === second.id || e.id === third.id ? "taken" : "absent")));
+    expect(await readdir(join(d.configDir, "tricks"))).toEqual([first.id, second.id, third.id].toSorted());
+  });
+
+  test("list --official on a crew member names the lead", async () => {
+    const d = await deps({ rev: 5, tricks: [], parts: [], present: [], runsOn: { lead: "desk" } });
+    expect(await cmdTrickList(d, ["--official"])).toBe(EXIT.OK);
+    expect(d.out).toContain("Tricks run on the lead of this crew (desk). This machine runs none.");
+  });
+
+  test("the official list names the repository a bare `collie trick add <name>` reads", () => {
+    expect(OFFICIAL_REPOS).toEqual([OFFICIAL_TRICKS_REPO]);
   });
 
   test("a bare or unknown subcommand is usage", async () => {
@@ -769,7 +864,7 @@ describe("the doctor's tricks row", () => {
   test("one row with each trick, its state and error, and the runner's PATH; warn when an on trick fails", async () => {
     const d = await deps({
       rev: 5,
-      tricks: [{ host: "bluefin", id: "legs", name: "legs", icon: "plug", on: true, state: "stopped", places: ["belt"], error: "darius: not found" }],
+      tricks: [{ host: "lodge", id: "legs", name: "legs", icon: "plug", on: true, state: "stopped", places: ["belt"], error: "darius: not found" }],
       parts: [],
       present: [],
       path: "/unit/bin:/usr/bin",

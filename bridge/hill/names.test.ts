@@ -13,8 +13,8 @@ const FOLDER = "collie-workspace#main";
 /** Two live sessions in one folder on one branch: the walky label cannot tell them apart. */
 function places(): HillPlace[] {
   return [
-    { address: "local/%1#aaaa", label: FOLDER, host: "bluefin", unattended: false },
-    { address: "local/%2#bbbb", label: FOLDER, host: "bluefin", unattended: false },
+    { address: "local/%1#aaaa", label: FOLDER, host: "lodge", unattended: false },
+    { address: "local/%2#bbbb", label: FOLDER, host: "lodge", unattended: false },
   ];
 }
 
@@ -26,7 +26,7 @@ function placeIn(live: () => readonly HillPlace[]): (address: string) => HillPla
   };
 }
 
-const sender = (address: string): HillAgentSender => ({ kind: "agent", address, memberId: null, harness: "claude", label: FOLDER, host: "bluefin" });
+const sender = (address: string): HillAgentSender => ({ kind: "agent", address, memberId: null, harness: "claude", label: FOLDER, host: "lodge" });
 
 interface Rig {
   readonly hill: HillService;
@@ -54,7 +54,7 @@ function rig(withNames = true): Rig {
     crewMode: () => "solo",
     walkyOn: () => true,
     memberId: "m_aaaaaaaaaa",
-    machine: "bluefin",
+    machine: "lodge",
     now: () => 1000,
     mintId: () => {
       n += 1;
@@ -99,8 +99,8 @@ describe("the Dashboard's name for a walky address", () => {
     expect(name(views)("local/%9#zzzz")).toBeNull();
     expect(name(views)("local/%1#zzzz")).toBeNull();
     expect(name(views)("local/%1#aaaa")).toBe("lead");
-    const remote = hillSessionName({ place: () => ({ address: "minibuch/%1#aaaa", label: FOLDER, host: "minibuch", unattended: false }), views: () => views, memberId: "bluefin", redact: false });
-    expect(remote("minibuch/%1#aaaa")).toBeNull();
+    const remote = hillSessionName({ place: () => ({ address: "workshop/%1#aaaa", label: FOLDER, host: "workshop", unattended: false }), views: () => views, memberId: "lodge", redact: false });
+    expect(remote("workshop/%1#aaaa")).toBeNull();
     expect(name([...views, { paneId: "%1", agent: "codex" }])("local/%1#aaaa")).toBeNull();
   });
 });
@@ -111,7 +111,7 @@ describe("a Decision names its sessions as the Dashboard does", () => {
     const decision = post(r, "local/%1#aaaa", "local/%2");
     expect(decision.from).toMatchObject({ address: "local/%1#aaaa", label: "lead" });
     expect(decision.replyTo).toBe("local/%2#bbbb");
-    expect(decision.target).toEqual({ label: "collie tricks", host: "bluefin", unattended: false });
+    expect(decision.target).toEqual({ label: "collie tricks", host: "lodge", unattended: false });
   });
 
   test("name absent: the walky label stays", () => {

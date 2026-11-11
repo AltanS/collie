@@ -19,6 +19,7 @@ import {
   type HillCrewMode,
   type HillDelivery,
   type HillPlace,
+  notCollie,
   type HillPostAnswer,
   type HillTrickSender,
   type HillTrickTap,
@@ -398,6 +399,16 @@ describe("posting a decision", () => {
     const decision = posted(r.hill.postDecision(trickSender(), input(1)));
     expect(decision.from).toEqual({ kind: "trick", address: null, trickId: "nightly-leg", trickKey: "ship", memberId: TRICKS_HOST, harness: null, label: "Nightly leg", host: "desk", trickHost: TRICKS_HOST });
     expect(decision.target).toBeNull();
+  });
+
+  test("Q1, Q2: a session or a trick named Collie, in any case or width, says what it is beside the name", () => {
+    const r = rig();
+    const agent = posted(r.hill.post(r.hill.agentSender({ harness: "agent-x", label: "COLLIE" }, "local/%1#aaaa"), input(1)));
+    expect(agent.from.label).toBe("COLLIE (a session)");
+    const trick = posted(r.hill.postDecision({ ...trickSender(), label: " collie " }, input(2)));
+    expect(trick.from.label).toBe("collie (a trick)");
+    expect(posted(r.hill.post(r.hill.agentSender({ harness: "agent-x", label: "Collie docs" }, "local/%1#aaaa"), input(3))).from.label).toBe("Collie docs");
+    expect(notCollie("Collie", "a session")).toBe("Collie (a session)");
   });
 
   test("a trick is one sender: its keys share the 20-open cap, and the runner withdraws with its own reason", () => {

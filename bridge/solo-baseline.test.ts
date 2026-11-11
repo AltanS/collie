@@ -268,8 +268,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
-  // Not a crew dimension: Collie tricks' rev (M94), present only when a `<configDir>/tricks/` folder
-  // exists, so a solo body with no tricks carries no such key and no golden byte moved.
+  // Not a crew dimension: Collie tricks' rev (M94), present when a `<configDir>/tricks/` folder exists or
+  // the official list offers a trick (decided 2026-11-11: the card shows on a fresh install), and absent
+  // from these bodies, which run no tricks service, so no golden byte moved.
   tricksRev: true,
   // Not a crew dimension: the hill's revision (M96), absent until a session posts a decision on this
   // bridge, so a solo body with no decisions carries no such key and no golden byte moved.
@@ -847,6 +848,10 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",
+      // Official tricks (M94): add or update a trick on the list this release carries. A SOLO route that
+      // legitimately extends this list, named here rather than exempted: write-gated like the switch,
+      // this bridge's own tricks folder only, and a crew member answers `runs-on` and fetches nothing.
+      "/^\\/api\\/tricks\\/official\\/([^/]+)\\/(add|update)$/",
       // The operator's Cancel on a held walky talky message it sent (M62 spec 03): a write, solo; a
       // record held on a member answers `elsewhere`, never a route of its own.
       "/^\\/api\\/walky\\/([^/]+)\\/cancel$/",
@@ -1007,6 +1012,9 @@ describe("solo zero-tax — routes", () => {
       // Collie tricks (M94 slice 01): the tricks list and the parts changed since a rev. A read, gated like
       // the snapshot, and its body is empty of tricks on an install with no `<configDir>/tricks/`.
       "/api/tricks",
+      // Official tricks (M94): the list this release carries, each entry's state on this machine. A read, gated
+      // like the tricks list; it reads the list from the binary and the tricks folder, and fetches nothing.
+      "/api/tricks/official",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
@@ -1481,11 +1489,23 @@ const CREW_STATE_DIR_ENTRIES = [
   // state directory that never saw 1.8.x is named rather than adopted in silence. One `exists()` on
   // the boot path, no open, no rename; a solo instance finds nothing and says nothing.
   "pack-trust.json",
+  // The person's takeover tap, waiting for the next boot to adopt the two copies below (CREW_PROTOCOL
+  // §25). Written only by the takeover commit or `collie promote` on a deputy, which a solo instance
+  // never is.
+  "standby-adopt.json",
   "standby-devices.json",
+  // The lead's open Decisions, kept as an inert copy on the DEPUTY beside its tricks (CREW_PROTOCOL
+  // §25). Written only by the Hill half of the §25 routes from this collie's own lead while a warrant
+  // names this machine, which a solo instance cannot reach.
+  "standby-hill",
   // The lead's launcher rows, kept as a read-only copy on the DEPUTY (ADR 0127 point 5). The same
   // structural reason as the registry above: it is written only by a `POST /crew/v1/launchers-copy`
   // from this collie's own lead while a warrant names this machine, which a solo instance cannot reach.
   "standby-launchers.json",
+  // The lead's tricks, kept as an inert copy on the DEPUTY (CREW_PROTOCOL §25). The same structural
+  // reason: written only by the §25 routes from this collie's own lead while a warrant names this
+  // machine, which a solo instance cannot reach.
+  "standby-tricks",
 ];
 
 /** Every `.ts` module under `dir`, recursively, excluding tests. */

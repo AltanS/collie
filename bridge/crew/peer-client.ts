@@ -28,6 +28,7 @@ import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SessionState } from "../types.ts";
 import type { CopiedRow } from "./standby-launchers.ts";
+import type { CarryCall } from "./carry-sync.ts";
 import { parseCollisionReport, parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
@@ -493,6 +494,9 @@ export type PeerOutcome<T> =
     }
   | (PeerFailure & { readonly ok: false; readonly receivedAt: number });
 
+/** How long one §25 call to the deputy may take: a 3 MiB body over a slow relayed link, and room. */
+export const CARRY_CALL_MS = 30_000;
+
 /** How a launcher copy ended (ADR 0127 point 5): landed, a deputy without the route, or anything else. */
 export type LaunchersCopyAnswer = "applied" | "no_route" | "failed";
 
@@ -812,6 +816,35 @@ export class PeerClient {
     await outcome.value.body?.cancel().catch(() => {});
     if (status === 404) return "no_route";
     return status >= 200 && status < 300 ? "applied" : "failed";
+  }
+
+  /**
+   * One §25 call to the DEPUTY (`tricks-copy`, `tricks-copy/code`, `tricks-copy/state`, `hill-copy`,
+   * `hill-copy/media`): the launchers copy's dial, with its status and JSON body handed back. A 404 is a
+   * deputy before the routes. The body is read only up to 64 KiB: every answer is a few ids.
+   */
+  async carryPost(link: CrewLink, route: string, body: JsonObject): Promise<CarryCall> {
+    const outcome = await this.proxy(
+      link,
+      route,
+      undefined,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+      CARRY_CALL_MS,
+      true,
+    );
+    if (!outcome.ok) return { kind: "failed" };
+    const status = outcome.value.status;
+    const text = await outcome.value.text().catch(() => "");
+    let parsed: JsonValue | null = null;
+    if (text.length <= 64 * 1024) {
+      try {
+        // SAFETY: `JSON.parse` output IS a JsonValue by construction; the caller reads it field by field.
+        parsed = JSON.parse(text) as JsonValue;
+      } catch {
+        parsed = null;
+      }
+    }
+    return { kind: "answer", status, body: parsed };
   }
 
   /**

@@ -1,11 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
 import { redactText } from "../bridge/redact.ts";
+import { GROUP_CAPACITY_WORDS } from "../bridge/tricks/card-group.ts";
+import { proposalCardCount, type ProposalCardCount } from "../bridge/tricks/proposal-card.ts";
 import { approvedDirOf, approveFolder, pruneCopies, verifyCopy } from "../bridge/tricks/approved.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
-import { originShort } from "../bridge/tricks/origin.ts";
+import { officialStanding, shippedOfficialList } from "../bridge/tricks/official.ts";
+import { originRepoName, originShort, proposalShort } from "../bridge/tricks/origin.ts";
 import {
   HELPER_FILE,
   HELPER_VERSION,
@@ -45,10 +49,12 @@ import {
   type TrickFacts,
   type TrickDecision,
   type TrickManifest,
+  type OfficialState,
   type TricksRunsOn,
   type Refusal,
 } from "../web/src/lib/tricks/schema.ts";
 import { readEnvMarkers } from "./beacon.ts";
+import { readTrickFolder } from "./trick-folder.ts";
 import type { PaneKind } from "./walky.ts";
 import type { CliContext } from "./context.ts";
 import { hillWordingWarnings, HILL_WRITING } from "./hill-rules.ts";
@@ -59,7 +65,8 @@ import type { Files } from "./sys.ts";
 // `collie trick` (M94 slice 01): the machine's half of Collie tricks. A trick is added on the machine and
 // switched on from here (or, later, the phone); the bridge runs it.
 //
-//   list              every trick folder, its switch, its origin and what the running bridge says of it
+//   list              every trick folder, its switch, its origin and what the running bridge says of it;
+//                     `--official` prints the official list this release carries and each entry's state
 //   add [<source>]    copy a trick from a git repository into the tricks folder, OFF (cli/trick-add.ts);
 //                     with no source, list the tricks of the official repository
 //   update <id>       fetch a trick added with `add` again and replace its code, keeping config.toml
@@ -84,11 +91,14 @@ import type { Files } from "./sys.ts";
 //   helper <id>       rewrite `trick.ts` in a trick folder with the helper this Collie carries
 //   skill [<id>]      what an agent reads: the `SKILL.md` of the approved copy of a trick that is ON (what
 //                     the trick that runs asks of the agent), or with no id the brief for writing a trick
+//   guide             how to write a trick and hand it over, plain text from the real constants (cli/trick-guide.ts)
+//   propose <folder>  hand a trick to the person: a card on the lead's Hill, inert until the yes
+//                     (cli/trick-propose.ts, bridge/tricks/proposals.ts); allowed in an agent's pane
 //
 // `check` exits 0 (clean, or only "later" notes), 1 (a refusal or a failed run) or 2 (usage: no
 // folder, or not a folder), like `config check`. `--json` prints one report document instead.
 
-export const TRICK_SUBCOMMANDS = ["list", "add", "update", "remove", "on", "off", "auto", "check", "dev", "init", "helper", "skill"] as const;
+export const TRICK_SUBCOMMANDS = ["list", "add", "update", "remove", "on", "off", "auto", "check", "dev", "init", "helper", "skill", "guide", "propose"] as const;
 
 export interface TrickDeps {
   ctx: Pick<CliContext, "configDir" | "stateDir" | "env" | "port">;
@@ -220,7 +230,7 @@ export async function trickListRows(deps: Pick<TrickDeps, "ctx" | "files" | "fet
       lastRunAt: said?.lastRunAt ?? null,
       error,
       skill: skills[i] === true,
-      origin: m.origin === undefined ? null : originShort(m.origin),
+      origin: m.origin !== undefined ? originShort(m.origin) : m.proposal !== undefined ? proposalShort(m.proposal) : null,
       auto: entry?.auto === true,
       pending: said?.pending ?? (on && isChanged(entry, m)),
     };
@@ -236,8 +246,62 @@ function table(rows: readonly (readonly string[])[]): string[] {
   return rows.map((r) => r.map((cell, i) => (i === r.length - 1 ? cell : cell.padEnd(widths[i] ?? 0))).join("  ").trimEnd());
 }
 
+/** How `trick list --official` names an entry's state on this machine. */
+const OFFICIAL_STATE_TEXT = {
+  absent: "not added",
+  added: "added",
+  update: "newer version in this Collie",
+  taken: "taken: another trick has this id",
+} as const satisfies Record<OfficialState, string>;
+
+/** The STATE column: a taken folder from the list's repository says which kind it is. */
+function officialStateText(row: { state: OfficialState; changed?: true; unlisted?: true }): string {
+  if (row.changed === true) return "taken: its files were edited, update it with collie trick update";
+  if (row.unlisted === true) return "taken: from the repository, not from the official list";
+  return OFFICIAL_STATE_TEXT[row.state];
+}
+
+/**
+ * `collie trick list --official`: the official list this binary carries (bridge/tricks/official.ts), each
+ * entry's state on this machine. Read-only: it reads the list from the binary and the tricks folder, and
+ * asks the running bridge only whether its crew's lead runs the tricks. It fetches nothing; an add from the
+ * list is a tap on the phone (Settings, Tricks, Official tricks), never a verb here.
+ */
+async function cmdTrickListOfficial(deps: TrickDeps, json: boolean): Promise<number> {
+  const list = shippedOfficialList();
+  if (!list.ok) {
+    deps.io.err(`error: this Collie's official list is refused: ${list.reason}`);
+    return EXIT.FAIL;
+  }
+  const standings = await Promise.all(list.entries.map(async (e) => await officialStanding(deps.ctx.configDir, e)));
+  const rows = list.entries.map((e, i) => {
+    const standing = standings[i];
+    const row = { id: e.id, name: e.name, description: e.description, repo: e.repo, commit: e.commit, state: standing?.state ?? "absent" };
+    // A taken folder from the list's repository: not a version of the list, or one whose files were edited.
+    if (standing?.changed === true) return { ...row, changed: true as const };
+    if (standing?.unlisted === true) return { ...row, unlisted: true as const };
+    return row;
+  });
+  const runsOn = (await bridgeTricks(deps))?.runsOn;
+  if (json) {
+    const doc = { official: rows };
+    deps.io.out(JSON.stringify(runsOn === undefined ? doc : { ...doc, runsOn }, null, 2));
+    return EXIT.OK;
+  }
+  if (rows.length === 0) {
+    deps.io.out("This Collie carries no tricks on its official list.");
+    return EXIT.OK;
+  }
+  const lines = table([["ID", "NAME", "COMMIT", "STATE", "WHAT IT DOES"], ...rows.map((r) => [r.id, r.name, r.commit.slice(0, 7), officialStateText(r), r.description])]);
+  for (const line of lines) deps.io.out(line);
+  if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
+  deps.io.out(`From ${originRepoName(list.entries[0]?.repo ?? "")}, at the commits this Collie release names. Add one on the phone: Settings, Tricks, Official tricks.`);
+  return EXIT.OK;
+}
+
 export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Promise<number> {
   const json = args.includes("--json");
+  if (args.includes("--official")) return await cmdTrickListOfficial(deps, json);
   const { exists, rows, bridge, runsOn } = await trickListRows(deps);
   if (json) {
     const doc = { folder: tricksConfigDir(deps.ctx.configDir), exists, bridge, tricks: rows };
@@ -277,6 +341,7 @@ export const TRICK_WRITE_BRIEF = [
   "     Then run `collie trick check --run <folder>`. It reads the folder, runs the program once and greps it.",
   "  4. Fix what it reports, and run it again until it is clean.",
   "The trick stays off. Never switch it on yourself: `collie trick on <id>` is the person's approval of the code, and it refuses inside an agent's pane.",
+  "To hand it to the person, run `collie trick propose <folder>`: they see your code on the Hill, and nothing runs before their yes. `collie trick guide` says more.",
   "To teach other agents what the trick asks of them, add a SKILL.md to the folder. `collie trick skill <id>` prints it while the trick is on. SKILL.md is part of the trick's code: the trick runs the copy a person approved, so an edit waits for their yes before agents read it.",
 ] as const;
 
@@ -477,6 +542,8 @@ export interface TrickCheckReport {
   reads?: string;
   /** The code hash `collie trick on` would approve. */
   codeHash?: string;
+  /** The cards the trick shows on as a proposal (crew slice 8), or why it cannot be proposed. Never fails the check. */
+  cards?: ProposalCardCount;
   run?: {
     outcome: RunOutcome["kind"];
     ms: number;
@@ -487,6 +554,8 @@ export interface TrickCheckReport {
     notes: Refusal[];
     /** The soft wording warnings of each Decision (`hillWordingWarnings`), by its key. Never fails the check. */
     wording: { key: string; text: string }[];
+    /** The soft note that a tap on the trick's tile shows nothing new ({@link TAP_SHOWS_NOTHING}), or absent. Never fails the check. */
+    tapNote?: string;
     stderr: string;
   };
 }
@@ -641,6 +710,32 @@ export function decisionWording(decisions: readonly TrickDecision[]): { key: str
   return decisions.flatMap((d) => hillWordingWarnings(d).map((text) => ({ key: d.key, text })));
 }
 
+/** The soft note of `check --run` on a trick whose tile a tap leaves as it was. */
+export const TAP_SHOWS_NOTHING = "A tap on this trick's tile shows nothing new. Give it a session page, or make the tap change what the tile says.";
+
+/** The places a person taps a trick on: its tile, its belt mark, its status chip, its tab. */
+const TAPPED_PLACES: ReadonlySet<string> = new Set(["belt", "status", "dashboard", "tabbar"]);
+/** The most belt intents the tap note runs the program for. */
+const TAP_NOTE_RUNS = 3;
+
+/**
+ * Whether a tap on the trick's tile shows nothing new: it draws a part a person taps, it has no session
+ * page for the tap to open, and no tap the run offers (a belt mark's intent) changes what it prints. Each
+ * intent is one more fixture run, at most {@link TAP_NOTE_RUNS}; a run that fails counts as a change, so
+ * the note stays quiet when unsure.
+ */
+async function tapShowsNothing(manifest: TrickManifest, folder: string, env: CliContext["env"], parsed: ParsedTrickDocument): Promise<boolean> {
+  if (manifest.places.includes("session")) return false;
+  if (!parsed.parts.some((p) => TAPPED_PLACES.has(p.place))) return false;
+  const shown = JSON.stringify(parsed.parts);
+  const taps = parsed.parts.flatMap((p) => (p.place === "belt" && p.part.mark.intent !== undefined ? [{ node: p.part.id, intent: p.part.mark.intent }] : [])).slice(0, TAP_NOTE_RUNS);
+  for (const tap of taps) {
+    const after = await runAgainstFixture(manifest, folder, env, { trigger: { kind: "tap", rid: randomUUID(), node: tap.node, intent: tap.intent } });
+    if (after.parsed === null || JSON.stringify(after.parsed.parts) !== shown) return false;
+  }
+  return true;
+}
+
 /** Run the program once against fixture facts and parse its output, as the bridge would. */
 export async function checkRun(report: TrickCheckReport, env: CliContext["env"]): Promise<void> {
   const manifest = report.manifest;
@@ -654,6 +749,7 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"])
     run.refusals = ran.parsed.refusals;
     run.notes = ran.parsed.notes;
     run.wording = decisionWording(ran.parsed.decisions);
+    if (problem === null && run.refusals.length === 0 && (await tapShowsNothing(manifest, report.folder, env, ran.parsed))) run.tapNote = TAP_SHOWS_NOTHING;
   }
   report.run = run;
 }
@@ -664,6 +760,11 @@ export function reportFails(report: TrickCheckReport): boolean {
   if (report.refusals.some((r) => r.code !== "later") || report.problems.length > 0) return true;
   const run = report.run;
   return run !== undefined && (run.problem !== null || run.refusals.length > 0);
+}
+
+/** "This trick shows as 3 cards." */
+export function cardsCheckWords(count: number): string {
+  return count === 1 ? "This trick shows as 1 card." : `This trick shows as ${String(count)} cards.`;
 }
 
 function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): void {
@@ -709,12 +810,27 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     for (const n of run.notes) io.out(`  note: output ${n.path === "" ? "" : `${n.path} `}${n.reason}`);
     // Soft too: how a Decision is worded is the author's call (HILL_WRITING).
     for (const w of run.wording) io.out(`  warn: decision ${w.key}: ${w.text}`);
+    if (run.tapNote !== undefined) io.out(`  note: ${run.tapNote}`);
     if (run.problem !== null && run.stderr.trim() !== "") {
       io.err("  stderr:");
       for (const line of run.stderr.trimEnd().split(/\r?\n/).slice(-10)) io.err(`    ${line}`);
     }
   }
-  io.out(reportFails(report) ? "Refused. Fix the errors above, then check again." : "ok: no problems.");
+  const cards = report.cards;
+  if (cards !== undefined) {
+    if (cards.ok) io.out(`  cards:  ${cardsCheckWords(cards.cards)} ${GROUP_CAPACITY_WORDS}`);
+    else io.err(`error: propose: ${cards.error}`);
+  }
+  if (reportFails(report)) io.out("Refused. Fix the errors above, then check again.");
+  else io.out(cards !== undefined && !cards.ok ? "ok: it runs on this machine, but it cannot be proposed." : "ok: no problems.");
+}
+
+/** The cards of the folder as a proposal, read as `collie trick propose` reads it. A folder it cannot read counts nothing: propose says why. */
+async function countCards(report: TrickCheckReport, crew: boolean): Promise<void> {
+  if (report.manifest === undefined) return;
+  const read = await readTrickFolder(report.folder);
+  if (!read.ok) return;
+  report.cards = proposalCardCount({ manifest: report.manifest, files: read.files, warnings: [...new Set(report.warnings.map((w) => w.kind))], crew });
 }
 
 export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): Promise<number> {
@@ -730,8 +846,10 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
     deps.io.err(`error: ${named} is not a folder.`);
     return EXIT.USAGE;
   }
-  const report = await checkStatic(folder, deps.files, { crew: leadsCrewOnDisk(deps) });
+  const crew = leadsCrewOnDisk(deps);
+  const report = await checkStatic(folder, deps.files, { crew });
   if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env);
+  await countCards(report, crew);
   if (json) deps.io.out(JSON.stringify(report, null, 2));
   else printReport(deps, report);
   return reportFails(report) ? EXIT.FAIL : EXIT.OK;

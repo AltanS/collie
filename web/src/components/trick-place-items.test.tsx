@@ -15,13 +15,13 @@ const FRESH = new Date().toISOString();
 const OLD = new Date(Date.now() - 10 * 60_000).toISOString();
 
 function part(trick: string, at: "dashboard" | "tabbar", item: PlaceItem, asOf = FRESH): WireTrickPart {
-  return { host: "bluefin", trick, part: at, rev: 1, asOf, fresh: "30s", value: { at, id: at, item } };
+  return { host: "lodge", trick, part: at, rev: 1, asOf, fresh: "30s", value: { at, id: at, item } };
 }
 
 /** A part whose `item` throws when it is read: the worst a bad reply can do to the renderer. */
 function bomb(trick: string, at: "dashboard" | "tabbar"): WireTrickPart {
   return {
-    host: "bluefin",
+    host: "lodge",
     trick,
     part: at,
     rev: 1,
@@ -37,11 +37,11 @@ function bomb(trick: string, at: "dashboard" | "tabbar"): WireTrickPart {
 }
 
 const SESSION: AgentView = {
-  paneId: "trick:bluefin:tracker:due",
-  workspaceId: "trick:bluefin",
+  paneId: "trick:lodge:tracker:due",
+  workspaceId: "trick:lodge",
   workspaceLabel: "Tricks",
   workspaceNumber: 2,
-  tabId: "trick:bluefin:tracker",
+  tabId: "trick:lodge:tracker",
   agent: "tracker",
   status: "idle",
   cwd: "/m",
@@ -50,7 +50,7 @@ const SESSION: AgentView = {
 };
 
 async function storeOf(parts: WireTrickPart[]): Promise<TricksStore> {
-  const tricks = parts.map((p): WireTrickInfo => ({ host: "bluefin", id: p.trick, name: `${p.trick} trick`, icon: "flask", on: true, state: "ok", places: ["dashboard", "tabbar"] }));
+  const tricks = parts.map((p): WireTrickInfo => ({ host: "lodge", id: p.trick, name: `${p.trick} trick`, icon: "flask", on: true, state: "ok", places: ["dashboard", "tabbar"] }));
   const reply: TricksReply = { rev: 1, tricks, parts, present: parts.map((p) => `${p.host}/${p.trick}/${p.part}`) };
   const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => ({ rid: "r", code: "ok" as const }), mintRequestId: () => "00000000-0000-4000-8000-000000000001" });
   await store.syncTricks(1);

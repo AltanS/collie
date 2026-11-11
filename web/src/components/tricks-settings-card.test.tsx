@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { originLine } from "@/lib/tricks/row-words";
 import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
@@ -19,7 +20,7 @@ import { server } from "@/test/setup";
 const NOW = Date.parse("2026-11-08T09:41:00Z");
 
 const LEGS: WireTrickInfo = {
-  host: "bluefin",
+  host: "lodge",
   id: "legs",
   name: "Browser leg",
   icon: "flask",
@@ -29,7 +30,7 @@ const LEGS: WireTrickInfo = {
   provenance: { via: "agent", at: "2026-11-08T07:41:00Z" },
 };
 const TRACKER: WireTrickInfo = {
-  host: "bluefin",
+  host: "lodge",
   id: "tracker",
   name: "Tracker",
   icon: "file",
@@ -134,7 +135,13 @@ describe("TricksSettingsCard: the rows", () => {
     expect(provenanceLine({ ...LEGS, provenance: { via: "folder" } }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: undefined }, NOW)).toBe("Added by hand");
     expect(provenanceLine({ ...LEGS, provenance: { via: "repo", repo: "o/r" } }, NOW)).toBe("From o/r");
+    // From the official repository, but not a version of the official list (a pull request's commit).
+    expect(provenanceLine({ ...LEGS, provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa", unlisted: true } }, NOW)).toBe("From AltanS/collie-tricks @ 9c41d07, not on the official list");
+    expect(originLine({ via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa", unlisted: true })).toBe("From AltanS/collie-tricks @ 9c41d07, not on the official list");
+    expect(originLine({ via: "repo", repo: "AltanS/collie-tricks", sha: "9c41d07aa" })).toBe("From AltanS/collie-tricks @ 9c41d07");
     expect(provenanceLine({ ...LEGS, provenance: { via: "repo" } }, NOW)).toBe("Added from a repository");
+    expect(provenanceLine({ ...LEGS, provenance: { via: "agent", proposed: { by: "agent", host: "workshop" } } }, NOW)).toBe("Proposed by an agent on workshop");
+    expect(provenanceLine({ ...LEGS, provenance: { via: "cli", proposed: { by: "terminal", host: "lodge" } } }, NOW)).toBe("Proposed from lodge, session not confirmed");
   });
 
   it("fills the third line with the masked error for a failing or stopped trick, one line, clipped", async () => {
@@ -216,7 +223,7 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
     renderCard(await storeWith([WARNED]), onSwitch);
     await user.click(await screen.findByRole("switch", { name: "Tracker" }));
     expect(onSwitch).toHaveBeenCalledTimes(1);
-    expect(onSwitch).toHaveBeenCalledWith("bluefin", "tracker", true);
+    expect(onSwitch).toHaveBeenCalledWith("lodge", "tracker", true);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeChecked();
     // The one button on the card is the name, which opens the About sheet.
     expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
@@ -230,7 +237,7 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
   });
 
   it("reads a bridge that sends none, and leaves out a malformed entry", () => {
-    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: false, state: "off", places: ["belt"] };
+    const base = { host: "lodge", id: "legs", name: "Legs", icon: "plug", on: false, state: "off", places: ["belt"] };
     expect(readTrick(base)).not.toHaveProperty("warnings");
     expect(readTrick({ ...base, warnings: "loud" })).not.toHaveProperty("warnings");
     expect(readTrick({ ...base, warnings: [{ kind: "network", text: "x" }, 5, { kind: 1, text: "y" }, null] })?.warnings).toEqual([{ kind: "network", text: "x" }]);
@@ -257,7 +264,7 @@ describe("TricksSettingsCard: what a contract 2 trick reads (M99)", () => {
     renderCard(await storeWith([LEGS]));
     await screen.findByRole("switch", { name: "Browser leg" });
     expect(rowOf("legs").querySelector('[data-line="reads"]')).toBeNull();
-    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: false, state: "off", places: ["belt"] };
+    const base = { host: "lodge", id: "legs", name: "Legs", icon: "plug", on: false, state: "off", places: ["belt"] };
     expect(readTrick({ ...base, inputs: { globs: ["TODO.md"], crew: true } })?.inputs).toEqual({ globs: ["TODO.md"], crew: true });
     for (const inputs of ["TODO.md", { globs: [], crew: false }, { globs: ["a"] }, { globs: [5], crew: false }, { globs: Array.from({ length: 9 }, () => "a"), crew: false }, { globs: ["x".repeat(257)], crew: true }]) {
       expect(readTrick({ ...base, inputs }), JSON.stringify(inputs).slice(0, 40)).not.toHaveProperty("inputs");
@@ -273,7 +280,7 @@ describe("TricksSettingsCard: the switch", () => {
     const sw = await screen.findByRole("switch", { name: "Tracker" });
     expect(sw).not.toBeChecked();
     await user.click(sw);
-    expect(onSwitch).toHaveBeenCalledWith("bluefin", "tracker", true);
+    expect(onSwitch).toHaveBeenCalledWith("lodge", "tracker", true);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeChecked();
     // The other trick's switch is untouched.
     expect(screen.getByRole("switch", { name: "Browser leg" })).toBeChecked();
@@ -296,7 +303,7 @@ describe("TricksSettingsCard: the switch", () => {
 
   it("goes back and says so when the bridge refuses", async () => {
     const user = userEvent.setup();
-    const onSwitch = vi.fn(async () => Promise.reject(new Error("/api/tricks/bluefin/legs/switch → 404")));
+    const onSwitch = vi.fn(async () => Promise.reject(new Error("/api/tricks/lodge/legs/switch → 404")));
     renderCard(await storeWith([LEGS]), onSwitch);
     const sw = await screen.findByRole("switch", { name: "Browser leg" });
     await user.click(sw);
@@ -362,9 +369,9 @@ describe("TricksSettingsCard: the switch", () => {
     expect(seen).toEqual({ path: "/api/tricks/blue%20fin/tracker/switch", body: { on: true } });
     expect(info).toMatchObject({ id: "tracker", on: true });
     server.use(http.post(/\/switch$/, () => HttpResponse.json({ nope: 1 })));
-    await expect(switchTrick("bluefin", "tracker", true)).rejects.toThrow(/not a trick/);
+    await expect(switchTrick("lodge", "tracker", true)).rejects.toThrow(/not a trick/);
     server.use(http.post(/\/switch$/, () => HttpResponse.json({ error: "unknown-trick" }, { status: 404 })));
-    await expect(switchTrick("bluefin", "gone", true)).rejects.toThrow();
+    await expect(switchTrick("lodge", "gone", true)).rejects.toThrow();
   });
 });
 
@@ -375,7 +382,7 @@ beforeEach(() => {
 // A ROW THAT FAILS DRAWS ALONE (M94 review).
 describe("a trick entry that is broken", () => {
   it("draws a trick with no places as a manifest that declares none", async () => {
-    const bare: WireTrickInfo = JSON.parse('{"host":"bluefin","id":"bare","name":"Bare","icon":"flask","on":true,"state":"ok"}');
+    const bare: WireTrickInfo = JSON.parse('{"host":"lodge","id":"bare","name":"Bare","icon":"flask","on":true,"state":"ok"}');
     renderCard(await storeWith([bare, TRACKER]));
     expect(within(rowOf("bare")).getByText("No parts")).toBeTruthy();
     expect(placesLine(undefined)).toBe("No parts");
@@ -401,7 +408,7 @@ describe("a trick entry that is broken", () => {
     const toggle = within(row).getByRole("switch", { name: "legs" });
     expect(toggle).toBeChecked();
     await userEvent.click(toggle);
-    expect(onSwitch).toHaveBeenCalledWith("bluefin", "legs", false);
+    expect(onSwitch).toHaveBeenCalledWith("lodge", "legs", false);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeTruthy();
     vi.restoreAllMocks();
   });
@@ -474,7 +481,7 @@ describe("a new version waits", () => {
   });
 
   it("readTrick keeps a well-formed pending and drops a malformed one", () => {
-    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    const base = { host: "lodge", id: "legs", name: "Legs", icon: "plug", on: true, state: "ok", places: ["belt"] };
     expect(readTrick(base)).not.toHaveProperty("pending");
     expect(readTrick({ ...base, pending: PENDING })?.pending).toEqual(PENDING);
     const warned = { ...PENDING, warnings: [{ kind: "network", text: "x" }, 7] };
@@ -510,7 +517,7 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
     const sw = () => within(screen.getByRole("dialog")).getByRole("switch", { name: "Take changes without asking" });
     await user.click(sw());
-    expect(onAuto).toHaveBeenCalledWith("bluefin", "legs", true);
+    expect(onAuto).toHaveBeenCalledWith("lodge", "legs", true);
     expect(sw()).toBeChecked();
     onAuto.mockRejectedValueOnce(new Error("409"));
     await user.click(sw());
@@ -540,7 +547,7 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     expect(onUndo).not.toHaveBeenCalled();
     clock.mockReturnValue(t0 + 600);
     await act(async () => fireEvent.click(undo));
-    expect(onUndo).toHaveBeenCalledWith("bluefin", "legs");
+    expect(onUndo).toHaveBeenCalledWith("lodge", "legs");
     clock.mockRestore();
   });
 
@@ -552,7 +559,7 @@ describe("take changes without asking, and undo an automatic change (crew slice 
   });
 
   it("readTrick keeps a boolean auto and a time autoAt, and drops either of another shape", () => {
-    const base = { host: "bluefin", id: "legs", name: "Legs", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    const base = { host: "lodge", id: "legs", name: "Legs", icon: "plug", on: true, state: "ok", places: ["belt"] };
     expect(readTrick({ ...base, auto: true, autoAt: "2026-11-08T07:41:00Z" })).toMatchObject({ auto: true, autoAt: "2026-11-08T07:41:00Z" });
     expect(readTrick({ ...base, auto: "yes", autoAt: 5 })).not.toHaveProperty("auto");
     expect(readTrick({ ...base, auto: "yes", autoAt: "later" })).not.toHaveProperty("autoAt");
@@ -569,13 +576,13 @@ describe("the auto and undo calls (crew slice 3)", () => {
       }),
     );
     expect(await setTrickAuto("blue fin", "legs", true)).toMatchObject({ id: "legs", auto: true });
-    expect(await undoTrick("bluefin", "legs")).toMatchObject({ id: "legs" });
+    expect(await undoTrick("lodge", "legs")).toMatchObject({ id: "legs" });
     expect(seen).toEqual([
       { path: "/api/tricks/blue%20fin/legs/auto", body: { on: true } },
-      { path: "/api/tricks/bluefin/legs/undo", body: {} },
+      { path: "/api/tricks/lodge/legs/undo", body: {} },
     ]);
     server.use(http.post(/\/undo$/, () => HttpResponse.json({ error: "no-previous", message: "There is no earlier version to go back to." }, { status: 409 })));
-    await expect(undoTrick("bluefin", "legs")).rejects.toThrow();
+    await expect(undoTrick("lodge", "legs")).rejects.toThrow();
   });
 });
 
@@ -661,7 +668,7 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
   });
 
   it("reads description and about off the wire tolerantly", () => {
-    const base = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"] };
+    const base = { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"] };
     expect(readTrick({ ...base, description: "One line.", about: "a\n\nb" })).toMatchObject({ description: "One line.", about: "a\n\nb" });
     expect(readTrick(base)).not.toHaveProperty("about");
     expect(readTrick({ ...base, about: 4, description: ["x"] })).not.toHaveProperty("about");

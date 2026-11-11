@@ -550,7 +550,8 @@ async function oneDecision(deps: HillDeps, verb: "status" | "withdraw", args: re
   if ("error" in parsed) return usage(deps, verb, parsed.error);
   const answer = await request(deps, { op: `hill.${verb}`, id: parsed.id });
   if (!answer.ok) return failed(deps, answer);
-  const decision = readDecision(answer.body.decision);
+  // Printed only: Collie's own card (a trick proposal, read by the proposing session) reads too.
+  const decision = readDecision(answer.body.decision, { collie: true });
   if (decision === null) return failed(deps, { ok: false, error: "the bridge answered without a decision", code: null, exit: EXIT.FAIL });
   if (parsed.json) deps.io.out(JSON.stringify({ decision }));
   else for (const line of statusLines(decision)) deps.io.out(line);

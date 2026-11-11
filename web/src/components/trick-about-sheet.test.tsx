@@ -9,7 +9,7 @@ import { ABOUT_MAX, type WireTrickInfo } from "@/lib/tricks/schema";
 // built only from what the bridge already sends for the row.
 
 const BASE: WireTrickInfo = {
-  host: "bluefin",
+  host: "lodge",
   id: "gates",
   name: "Release Gates",
   icon: "flask",
@@ -114,6 +114,15 @@ describe("TrickAboutSheet", () => {
     unmount();
     open({ ...BASE, provenance: { via: "agent", at: "2026-11-08T09:38:00Z" } });
     expect(screen.getByText("Added on this machine.")).toBeInTheDocument();
+  });
+
+  it("says who proposed a trick that came from collie trick propose, and on which machine", () => {
+    const { unmount } = open({ ...BASE, provenance: { via: "agent", at: "2026-11-08T09:38:00Z", proposed: { by: "agent", host: "workshop" } } });
+    expect(screen.getByText("Proposed by an agent session on workshop.")).toBeInTheDocument();
+    expect(screen.queryByText("Added on this machine.")).toBeNull();
+    unmount();
+    open({ ...BASE, provenance: { via: "cli", proposed: { by: "terminal", host: "lodge" } } });
+    expect(screen.getByText("Proposed from lodge. The session is not confirmed.")).toBeInTheDocument();
   });
 
   it("adds the one line a bridge that runs no tricks says", () => {

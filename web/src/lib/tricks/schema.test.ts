@@ -175,7 +175,9 @@ describe("the module", () => {
   it("imports only the JSON helpers and the contract number, so the bridge and the CLI load it without a DOM", () => {
     const source = readRepo("web/src/lib/tricks/schema.ts");
     const imports = [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]);
-    expect(imports).toEqual(["../json", "./contract"]);
+    expect(imports).toEqual(["../hidden-chars", "../json", "./contract"]);
+    // The hidden-character rule is plain code and imports nothing.
+    expect(readRepo("web/src/lib/hidden-chars.ts")).not.toMatch(/^import /m);
     expect(source).not.toContain(`from "@/`);
     // The contract module is one number and imports nothing.
     expect(readRepo("web/src/lib/tricks/contract.ts")).not.toMatch(/^import /m);
@@ -477,10 +479,10 @@ describe("caps at the boundary", () => {
     expect(parse(row({ kids: [p, c, c, b] }))).toEqual([]);
     expect(parse(row({ kids: [p, p] }))).toEqual(["/parts/0/view/0/kids/0/kids"]);
     expect(parse(row({ kids: [b, c] }))).toEqual(["/parts/0/view/0/kids/0/kids"]);
-    for (const href of ["https://a.example/", "http://bluefin:8080/", "bluefin:w6X:3", "bluefin:%12"]) expect(parse(row({ attrs: { href } })), href).toEqual([]);
+    for (const href of ["https://a.example/", "http://lodge:8080/", "lodge:w6X:3", "lodge:%12"]) expect(parse(row({ attrs: { href } })), href).toEqual([]);
     // Step 3: only an http(s) URL or a scope key in the facts' exact shape opens. A trick session's id,
     // a file path and every other scheme are refused, with a reason that names what may open.
-    const refusedHrefs = ["composer", "javascript:", "javascript:alert(1)", "JAVASCRIPT:alert(1)", "data:text/html,x", "file:///etc/passwd", "/etc/passwd", "~/a.md", "https:/x", "trick:bluefin:legs", "bluefin:trick:bluefin:legs", "bluefin:", ":w6X:3"];
+    const refusedHrefs = ["composer", "javascript:", "javascript:alert(1)", "JAVASCRIPT:alert(1)", "data:text/html,x", "file:///etc/passwd", "/etc/passwd", "~/a.md", "https:/x", "trick:lodge:legs", "lodge:trick:lodge:legs", "lodge:", ":w6X:3"];
     for (const href of refusedHrefs) expect(parse(row({ attrs: { href } })), href).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
     const reason = parseTrickDocument(inView({ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "javascript:alert(1)" } }] })).refusals[0]?.reason ?? "";
     expect(reason).toContain("https://");
@@ -489,14 +491,14 @@ describe("caps at the boundary", () => {
 
   it("a link: its href fits its rel, url by default", () => {
     expect(parse(link({ href: "https://a.example/" }))).toEqual([]);
-    expect(parse(link({ href: "http://bluefin:8080/" }))).toEqual([]);
-    expect(parse(link({ href: "bluefin:w6X:3", rel: "pane" }))).toEqual([]);
+    expect(parse(link({ href: "http://lodge:8080/" }))).toEqual([]);
+    expect(parse(link({ href: "lodge:w6X:3", rel: "pane" }))).toEqual([]);
     // With no rel, a link opens what a row opens: an http(s) URL or a session's scope key.
-    expect(parse(link({ href: "bluefin:w6X:3" }))).toEqual([]);
+    expect(parse(link({ href: "lodge:w6X:3" }))).toEqual([]);
     expect(parse(link({ href: "https://a.example/", rel: "url" }))).toEqual([]);
-    expect(parse(link({ href: "bluefin:w6X:3", rel: "url" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    expect(parse(link({ href: "lodge:w6X:3", rel: "url" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
     expect(parse(link({ href: "https://a.example/", rel: "pane" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
-    expect(parse(link({ href: "trick:bluefin:legs", rel: "pane" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
+    expect(parse(link({ href: "trick:lodge:legs", rel: "pane" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
     // A file link is not in this Collie, whatever its path.
     expect(parse(link({ href: "~/projects/a.md", rel: "file" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
     expect(parse(link({ href: "/etc/hosts", rel: "file" }))).toEqual(["/parts/0/view/0/kids/0/attrs/href"]);
@@ -665,8 +667,8 @@ describe("decisions", () => {
   it("priority now, today or later; about and replyTo a session's scope key; expiresAt epoch ms", () => {
     for (const priority of ["now", "today", "later"]) expect(parse(d({ priority }))).toEqual([]);
     expect(parse(d({ priority: "urgent" }))).toEqual(["/decisions/0/priority"]);
-    expect(parse(d({ about: "bluefin:w6X:3", replyTo: "minibuch:%0" }))).toEqual([]);
-    expect(parse(d({ about: "trick:bluefin:legs" }))).toEqual(["/decisions/0/about"]);
+    expect(parse(d({ about: "lodge:w6X:3", replyTo: "workshop:%0" }))).toEqual([]);
+    expect(parse(d({ about: "trick:lodge:legs" }))).toEqual(["/decisions/0/about"]);
     expect(parse(d({ replyTo: "composer" }))).toEqual(["/decisions/0/replyTo"]);
     expect(parse(d({ expiresAt: 1_794_200_000_000 }))).toEqual([]);
     expect(parse(d({ expiresAt: "2026-11-09T00:00:00Z" }))).toEqual(["/decisions/0/expiresAt"]);
@@ -682,7 +684,7 @@ describe("decisions", () => {
     expect(parse(d({ media: Array.from({ length: 5 }, () => ({ file: "a.png" })) }))).toEqual(["/decisions/0/media"]);
     expect(parse(d({ media: [{ file: "a.png", caption: "x".repeat(80) }] }))).toEqual([]);
     expect(parse(d({ media: [{ file: "a.png", caption: "x".repeat(81) }] }))).toEqual(["/decisions/0/media/0/caption"]);
-    expect(parse(d({ links: [{ label: "the report", href: "http://bluefin:8832/legs/24" }] }))).toEqual([]);
+    expect(parse(d({ links: [{ label: "the report", href: "http://lodge:8832/legs/24" }] }))).toEqual([]);
     expect(parse(d({ links: [{ label: "x", href: "file:///etc/passwd" }] }))).toEqual(["/decisions/0/links/0/href"]);
   });
 
@@ -740,21 +742,21 @@ describe("a Decision's view (M96)", () => {
   it("a row keeps its href when it is a web address; a session key, javascript: and an empty one are refused", () => {
     const rowOf = (attrs: JsonObject) => [{ kind: "list", kids: [{ kind: "row", text: "Where", attrs }] }];
     expect(where(rowOf({ href: "https://example.com/settings/tricks" }))).toEqual([]);
-    expect(where(rowOf({ href: "http://bluefin:8788/settings/tricks", end: "open" }))).toEqual([]);
+    expect(where(rowOf({ href: "http://lodge:8788/settings/tricks", end: "open" }))).toEqual([]);
     const at = ["/view/0/kids/0/attrs/href"];
-    expect(where(rowOf({ href: "bluefin:w6X:3" }))).toEqual(at);
-    expect(reason(rowOf({ href: "bluefin:w6X:3" }))).toContain("web page");
+    expect(where(rowOf({ href: "lodge:w6X:3" }))).toEqual(at);
+    expect(reason(rowOf({ href: "lodge:w6X:3" }))).toContain("web page");
     expect(where(rowOf({ href: "javascript:alert(1)" }))).toEqual(at);
     expect(where(rowOf({ href: "file:///etc/hosts" }))).toEqual(at);
     expect(where(rowOf({ href: "" }))).toEqual(at);
     // The same row outside a Decision's view keeps both targets.
-    expect(parse(inView({ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "bluefin:w6X:3" } }] }))).toEqual([]);
+    expect(parse(inView({ kind: "list", kids: [{ kind: "row", text: "x", attrs: { href: "lodge:w6X:3" } }] }))).toEqual([]);
   });
 
   it("a group holds a link; a link outside a Decision's view keeps its session target", () => {
     const view = [{ kind: "group", attrs: { label: "Proof" }, kids: [{ kind: "link", text: "the run", attrs: { href: "https://ci.example.com/run/1" } }] }];
     expect(parseDecisionView(view)).toEqual({ view, refusals: [] });
-    expect(where([{ kind: "group", kids: [{ kind: "link", text: "x", attrs: { href: "bluefin:w6X:3" } }] }])).toEqual(["/view/0/kids/0/attrs/href"]);
+    expect(where([{ kind: "group", kids: [{ kind: "link", text: "x", attrs: { href: "lodge:w6X:3" } }] }])).toEqual(["/view/0/kids/0/attrs/href"]);
     expect(parse(inView({ kind: "group", kids: [{ kind: "link", text: "x", attrs: { href: "https://a.example/" } }] }))).toEqual([]);
     expect(parse(inView({ kind: "card", kids: [{ kind: "link", text: "x", attrs: { href: "https://a.example/" } }] }))).toEqual(["/parts/0/view/0/kids/0/kind"]);
   });
@@ -1242,29 +1244,29 @@ describe("the dashboard and tabbar places", () => {
 
 describe("ids and keys", () => {
   it("tells a scope key from a name and from a trick session", () => {
-    for (const key of ["bluefin:w6X:3", "minibuch:%0", "bluefin:abc"]) expect(isScopeKey(key), key).toBe(true);
-    for (const key of ["composer", ":w6X", "bluefin:", "bluefin:a b", "bluefin:a/b", "trick:bluefin:legs", `bluefin:${"x".repeat(129)}`]) {
+    for (const key of ["lodge:w6X:3", "workshop:%0", "lodge:abc"]) expect(isScopeKey(key), key).toBe(true);
+    for (const key of ["composer", ":w6X", "lodge:", "lodge:a b", "lodge:a/b", "trick:lodge:legs", `lodge:${"x".repeat(129)}`]) {
       expect(isScopeKey(key), key).toBe(false);
     }
-    expect(isTrickSessionId(trickSessionId("bluefin", "legs"))).toBe(true);
-    expect(isTrickSessionId("trick:bluefin:Legs")).toBe(false);
-    expect(isTrickSessionId("bluefin:w6X:3")).toBe(false);
+    expect(isTrickSessionId(trickSessionId("lodge", "legs"))).toBe(true);
+    expect(isTrickSessionId("trick:lodge:Legs")).toBe(false);
+    expect(isTrickSessionId("lodge:w6X:3")).toBe(false);
   });
 
   it("names one session part of a trick, splits it back, and never reads it as a scope key", () => {
-    expect(trickSessionId("bluefin", "legs", "runs")).toBe("trick:bluefin:legs:runs");
-    expect(trickSpaceId("bluefin")).toBe("trick:bluefin");
-    expect(parseTrickSessionId("trick:bluefin:legs:runs")).toEqual({ host: "bluefin", trick: "legs", part: "runs" });
-    expect(parseTrickSessionId("trick:bluefin:legs")).toEqual({ host: "bluefin", trick: "legs" });
-    for (const bad of ["trick:bluefin:legs/runs", "trick:bluefin:legs:Runs", "trick:bluefin:legs:runs:x", "trick:trick:legs", "trick:bluefin"]) {
+    expect(trickSessionId("lodge", "legs", "runs")).toBe("trick:lodge:legs:runs");
+    expect(trickSpaceId("lodge")).toBe("trick:lodge");
+    expect(parseTrickSessionId("trick:lodge:legs:runs")).toEqual({ host: "lodge", trick: "legs", part: "runs" });
+    expect(parseTrickSessionId("trick:lodge:legs")).toEqual({ host: "lodge", trick: "legs" });
+    for (const bad of ["trick:lodge:legs/runs", "trick:lodge:legs:Runs", "trick:lodge:legs:runs:x", "trick:trick:legs", "trick:lodge"]) {
       expect(parseTrickSessionId(bad), bad).toBeUndefined();
     }
     // The pane id carries no `/`: it is one URL path segment, like every pane id (mux id rule 5).
-    expect(trickSessionId("bluefin", "legs", "runs")).not.toContain("/");
+    expect(trickSessionId("lodge", "legs", "runs")).not.toContain("/");
     // A host's key around a trick session's pane id is not a real session's key, so no reply reaches it.
-    expect(isScopeKey(`bluefin:${trickSessionId("bluefin", "legs", "runs")}`)).toBe(false);
-    expect(isScopeKey("bluefin:trick:x")).toBe(false);
-    expect(isScopeKey("bluefin:modx:3")).toBe(true);
+    expect(isScopeKey(`lodge:${trickSessionId("lodge", "legs", "runs")}`)).toBe(false);
+    expect(isScopeKey("lodge:trick:x")).toBe(false);
+    expect(isScopeKey("lodge:modx:3")).toBe(true);
   });
 
   it("reads a session part's tone, the tree's words, and refuses a status word there", () => {
@@ -1277,17 +1279,17 @@ describe("ids and keys", () => {
   });
 
   it("opens an https or an http address and nothing else", () => {
-    for (const url of ["https://github.com/sprqvntrs/collie", "http://bluefin:8080/", "http://100.64.0.8:8795/x?y=1"]) expect(isTrickUrl(url), url).toBe(true);
-    for (const url of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,x", "ftp://bluefin/", "//bluefin:8080/", "http://a b/", "HTTP://bluefin/"]) {
+    for (const url of ["https://github.com/AltanS/collie", "http://lodge:8080/", "http://100.64.0.8:8795/x?y=1"]) expect(isTrickUrl(url), url).toBe(true);
+    for (const url of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,x", "ftp://lodge/", "//lodge:8080/", "http://a b/", "HTTP://lodge/"]) {
       expect(isTrickUrl(url), url).toBe(false);
     }
   });
 
   it("round-trips a part key", () => {
-    const key = { host: "bluefin", trick: "legs", part: "belt" };
-    expect(partKey(key)).toBe("bluefin/legs/belt");
+    const key = { host: "lodge", trick: "legs", part: "belt" };
+    expect(partKey(key)).toBe("lodge/legs/belt");
     expect(parsePartKey(partKey(key))).toEqual(key);
-    for (const bad of ["bluefin/legs", "bluefin/legs/belt/x", "trick/legs/belt", "bluefin/Legs/belt"]) expect(parsePartKey(bad), bad).toBeUndefined();
+    for (const bad of ["lodge/legs", "lodge/legs/belt/x", "trick/legs/belt", "lodge/Legs/belt"]) expect(parsePartKey(bad), bad).toBeUndefined();
   });
 
   it("names a tap's node: a part id or hill/<key>", () => {
@@ -1556,7 +1558,7 @@ describe("parseFacts", () => {
 
   it("takes contract 1 to this Collie's, a session's reachable flag and its inputs, and sessionsOmitted", () => {
     const [first] = FACTS.timer.sessions;
-    const file = { rel: "notes/a.md", path: "inputs/bluefin/w6X_3/notes/a.md", bytes: 4, sha256: "a".repeat(64), mtime: "2026-11-10T09:00:00.000Z", kind: "text" };
+    const file = { rel: "notes/a.md", path: "inputs/lodge/w6X_3/notes/a.md", bytes: 4, sha256: "a".repeat(64), mtime: "2026-11-10T09:00:00.000Z", kind: "text" };
     const facts = { ...FACTS.timer, contract: 2, sessionsOmitted: 3, sessions: [{ ...first, reachable: false, inputs: { state: "ok", files: [file], skipped: 2 } }] };
     const read = parseFacts(facts);
     expect(read.refusals).toEqual([]);
@@ -1578,7 +1580,7 @@ describe("parseFacts", () => {
 
   it("gives every session its member, its opaque session id, its pane and a host to show", () => {
     const [first] = FACTS.timer.sessions;
-    expect(parseFacts(FACTS.timer).facts?.sessions[0]).toMatchObject({ memberId: "bluefin", sessionId: "bluefin:w6X:3", paneId: "w6X:3", host: "bluefin" });
+    expect(parseFacts(FACTS.timer).facts?.sessions[0]).toMatchObject({ memberId: "lodge", sessionId: "lodge:w6X:3", paneId: "w6X:3", host: "lodge" });
     for (const key of ["memberId", "sessionId", "paneId", "host"]) {
       const without: JsonObject = { ...first };
       delete without[key];
@@ -1587,7 +1589,7 @@ describe("parseFacts", () => {
   });
 
   it("names the bridge by its member id at the top, beside the host to show; both are required", () => {
-    expect(parseFacts(FACTS.timer).facts).toMatchObject({ memberId: "bluefin", host: "bluefin" });
+    expect(parseFacts(FACTS.timer).facts).toMatchObject({ memberId: "lodge", host: "lodge" });
     expect(parseFacts({ ...FACTS.timer, memberId: "m_k3x9q2w7ab" }).facts?.memberId).toBe("m_k3x9q2w7ab");
     for (const key of ["memberId", "host"]) {
       const without: JsonObject = { ...FACTS.timer };
@@ -1604,7 +1606,7 @@ describe("parseFacts", () => {
 });
 
 describe("parseTapRequest", () => {
-  const tap = { rid: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", node: "legs", intent: "open-case", value: "24", from: { session: "bluefin:w6X:3" } };
+  const tap = { rid: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", node: "legs", intent: "open-case", value: "24", from: { session: "lodge:w6X:3" } };
 
   it("reads a tap in the tree's intent shape", () => {
     expect(parseTapRequest(tap)).toEqual({ request: tap, refusals: [] });

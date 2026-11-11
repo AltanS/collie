@@ -482,6 +482,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/crew/v1/hill/media` | any member | Added in 1.29.0 (§22). The caller hands its lead one image of a Decision it is about to post: `{ sha256, b64 }`, at most 2 MB of PNG, JPEG or WebP. Signed per §8.6. Answered only by a collie that leads, and only to a signed member of its roster. The lead holds the image by member and hash for 15 minutes. Changes no roster and advances no floor. |
 | `POST` | `/crew/v1/hill/post` | any member | Added in 1.29.0 (§22). The caller posts one Decision for one of its own sessions on its lead's Hill. Signed per §8.6; the poster's machine is the signer, never a body field. Answered only by a collie that leads. Changes no roster and advances no floor: the post's request id is its replay key. |
 | `POST` | `/crew/v1/hill/op` | any member | Added in 1.29.0 (§22). The caller asks its lead for one Decision's status, withdraws one, or lists its own, for one of its own sessions. Signed per §8.6. Answered only by a collie that leads. Changes no roster and advances no floor. |
+| `POST` | `/crew/v1/tricks/propose` | any member | Added in 1.29.0 (§24). The caller hands its lead a trick's files for the person to switch on, from one of its own sessions or its terminal. Signed per §8.6; the proposer's machine is the signer, never a body field. Answered only by a collie that leads. The lead keeps the files as inert data and installs nothing before the person's tap. Changes no roster and advances no floor. |
 | `POST` | `/crew/v1/walky/outcomes` | the lead | Added 2026-10-18 (§21). The lead hands a member the receipts it learned for messages that member sent to another machine, so the sender sees how they ended. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. The member writes a receipt only for a message its own log holds and that it sent itself. Changes no roster. |
 | `POST` | `/crew/v1/tricks/inputs` | the lead | Added in 1.29.0 (§23). The lead asks a member for the files a trick's `inputs` globs match in that member's agent sessions' folders, read through the member's Files view. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. Refused `403` with `code: "trick_reads_off"` while the member's trick reads are off. A read: changes no roster and writes nothing on the member. |
 | `POST` | `/crew/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
@@ -494,7 +495,7 @@ carries a role check on top: *admitted* and *allowed to do this* are different q
 
 **Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`,
 since 2026-08-20 `warrant` and `takeover`, since 2026-10-17 `walky` (§21), since 1.29.0 `walky/who` (§21), and
-since 1.29.0 `hill/media`, `hill/post` and `hill/op` (§22). It is exactly the routes that travel **peer → lead**, the one
+since 1.29.0 `hill/media`, `hill/post` and `hill/op` (§22) and `tricks/propose` (§24). It is exactly the routes that travel **peer → lead**, the one
 direction where the transport cannot pin (§8.1), and `warrant` joined it for the delivery that
 matters most: a new lead telling the old one that the crown has moved (§18.12). The proxy surface is
 not on the list and must not be — those calls run lead → peer over a pinned handshake, and admitting a
@@ -1254,7 +1255,7 @@ instant nobody has pinned the caller (§8.2).
   whole before the signature is checked, because its digest is signed. So each signable route has
   one most-bytes value (`SIGNED_BODY_CAPS` in `bridge/crew/router.ts`): `leave`, `hello` and
   `walky/who` 64 KiB; `lead`, `warrant` and `takeover` 1 MiB; `walky` 256 KiB; `hill/media` 3 MiB;
-  `hill/post` 64 KiB; `hill/op` 4 KiB. A declared `Content-Length` over the cap is refused before one
+  `hill/post` 64 KiB; `hill/op` 4 KiB; `tricks/propose` 8 MiB. A declared `Content-Length` over the cap is refused before one
   byte is read. A body with no declared length is read only up to the cap. Either way the answer is
   `413` with `{ error, code: "body_too_large" }` and the protocol header, audited as `crew.refused`
   with the factor `body-too-large`. It names no member, because nothing was admitted yet. Each cap is
@@ -1271,7 +1272,9 @@ instant nobody has pinned the caller (§8.2).
 - **At most 4 large signed bodies are read at once, and at most 4 uploads beside them** *(added in
   1.29.0)*: the routes whose cap is over 256 KiB are counted, `hill/media` in its own count
   (`SIGNED_MEDIA_READS_MAX`) and `lead`, `warrant` and `takeover` in another (`SIGNED_READS_MAX`, both
-  in `bridge/crew/router.ts`). A member's uploads, stalled or not, therefore never turn away the crew's
+  in `bridge/crew/router.ts`). `tricks/propose` has a third count of its own, 2 at once
+  (`SIGNED_PROPOSE_READS_MAX`), and its body must arrive within 60 seconds (`PROPOSE_READ_MS`); a body
+  that does not is `400` with `code: "body_unread"`, and its slot is free again. A member's uploads, stalled or not, therefore never turn away the crew's
   own lead, warrant or takeover calls, and at most 16 MiB sits unverified in memory. One more in a full
   count is answered `503` with `Retry-After: 1` and `{ error, code: "signed_reads_busy" }`, its body
   unread, audited as `crew.refused` with the factor `signed-reads-busy`. The routes with a smaller cap
@@ -4296,3 +4299,330 @@ bytes. Never a file name and never a glob.
 Additive inside protocol version 2 (§7.1). A member before 1.29.0 never gets the call, and one that does
 answers 404, read as `older`. A trick written for contract 1 lists no `inputs` and triggers no call. A
 solo install and a lead register no handler for the route (§11). `CREW_PROTOCOL_VERSION` stays `2`.
+
+## 24. A member hands its lead a trick *(added in 1.29.0)*
+
+`collie trick propose <folder>` hands a trick to the person. On a crew member the files go to the lead,
+which holds the one Hill, and the person answers the card there. This route is the first that carries
+trick code, under the rule of ADR 0016's addendum of 2026-11-10: the code crosses as inert data, and
+nothing installs or runs it before a person's tap on the lead.
+
+### The route
+
+| Method | Path | Sent by | Body | Answer | Body cap |
+|---|---|---|---|---|---|
+| `POST` | `/crew/v1/tricks/propose` | a member, to its lead | `{ requestId, files, from }` | `{ ok, kind, id, hash, decision, replaced }`, `kind` is `proposal` or `version` | 8 MiB |
+
+- **Member → lead, signed like §22.** It is a membership-table route (§5), in the signed set (§8.6),
+  and it advances no replay floor: the request id is its replay key. Only a collie that leads answers;
+  a peer answers 404. A lead before 1.29.0 answers the uniform 401, as
+  for §22. The body is read within 60 seconds, at most 2 at once, counted apart from the other large
+  bodies (§8.6).
+- **The member is the signer.** `from` is `{ address }` for a session or `null` when no agent pane was
+  placed (a terminal, or a caller whose session the member could not confirm). An
+  address must be a pane address of the signing member, as in §22; any other address is the uniform
+  401, before a file is read. Any key beside the three is `400`.
+- **The member sends no name.** The lead names the session on its card with its own word for that
+  address (its session list), or with none; it names the machine with the member id. A label from the
+  member is never read.
+- **`files`** is `[{ rel, b64, x? }]`: `rel` the path inside the trick folder with `/`, `b64` the bytes
+  in standard base64, `x: true` for a file that was executable. The lead reads them with the same
+  reader the member and the CLI use (`readProposal`, `bridge/tricks/propose-wire.ts`): at most 300 files
+  and 5 MB, 8 folders deep, 256 characters a path; no `.` or `..` step, no dot step, no
+  `node_modules` or `inputs` step, no absolute path, no backslash or colon, no control, bidi or
+  invisible character, NFC only; no two names, of files or folders, that are one once case and Unicode
+  compatibility forms are set aside; nothing in `media/` or `captures/` and no `config.toml` at the top
+  (a proposal carries code only: the person adds pictures and settings on the machine); the reserved
+  names are compared with case and Unicode compatibility forms set aside; a `trick.toml` of at most
+  64 KiB that the strict reader accepts, with an id Collie does not keep for itself. The base64 length
+  is checked before a byte is decoded.
+- **Counted before it is parsed.** Once the signature is checked, the lead counts the body's JSON
+  structure in one pass before `JSON.parse` builds it: more than 4096 `{`, `[`, `,` or `:` outside
+  strings, or nesting deeper than 8, is `400` with "The proposal has more parts than a trick's files
+  need, so it was not read." A proposal of 300 files needs about 2400.
+- **Content refusals are `200` with `{ ok: false, code, error }`**: `bad_request`, `bad_files`,
+  `bad_manifest`, `reserved_id`, `hill_off`, `exists`, `open_elsewhere`, `answering`, `too_many_open`,
+  `too_many_bytes`, `card_too_large`, `too_large`, `cannot_show`, `rate`, `request_id_reused`, `no_tricks`, `failed`. `400` is a
+  body the lead cannot read, `401` the uniform 401. A member that does not know a code
+  reads it as `failed` and prints the lead's line.
+
+### The lead's side
+
+- **Inert.** A proposal for a new trick is kept under `<configDir>/tricks/.collie-proposed/<id>/<hash>/`,
+  files 0600 with no executable bit, in a dot folder no scanner reads. Collie posts one card on its
+  Hill, as Collie: the title names the trick by its id, the summary names the proposer from the lead's
+  own facts, there is no recommendation, and the options are "Switch it on" (asked twice) and "Not
+  now". No agent and no member can post, answer or withdraw that card. With `from: null` the card
+  says "Someone on <member> proposes it. Collie could not confirm which session."
+- **The card never cuts a fact.** Every right, every `inputs` glob and every warning shows in full: as
+  chips when each fits a chip and one bar holds them all, else as paragraphs. The author's words are
+  cut to 3 paragraphs and 400 characters and go before any code when they would cost code. When the
+  facts alone do not fit a Decision's view, nothing is stored or posted, and the answer is
+  `card_too_large`, "This trick asks for more than a card can show, so it was not proposed. Ask your
+  person to add it on the machine."
+- **A group of cards.** Code that does not fit one card whole shows on one Decision with a `group`
+  of 2 to 8 cards (`{ digest, decline, parts: [{ view, sha256 }] }`). Card 1 is the facts and never
+  code: who proposes, every right and warning in full, the file table with each file's size and the
+  cards it is on, then the author's words when they still fit. Cards 2 to 8 hold every line of every
+  file, `trick.toml` first, then the file `run` names, then by path in byte order; a file that goes on
+  says "continues on the next card" and "continued from the last card", and a line longer than a row
+  goes on in the rows after it, marked `↪`. Each card is under the one Decision view cap; the code cards
+  hold 6 KiB of code each, 42 KiB and 64 files in all. A `trick.ts` whose bytes are a helper Collie
+  ships is named on card 1 and shown on none. `sha256` is the SHA-256 of a card's view as JSON text;
+  `digest` is the SHA-256 of `collie-hill-group`, the ref's type, id and hash, and the cards' hashes in
+  order, joined by NUL. Only Collie's own post makes a group: `group` or `parts` in a post from an
+  agent, a trick, the walky socket or `hill/post` (§22) is `bad_body`, "a group of cards is Collie's
+  own; post one card with a view". A trick that fits one card keeps one card.
+- **Refused at the door.** Code larger than a group is `too_large`, "This trick is too large to show on
+  the phone, so it was not proposed. Ask your person to add it on the machine." A file that is not
+  UTF-8 text, or a line the card would mask (a key) or show with `?` (a control, bidi or invisible
+  character), is `cannot_show`: no card ever shows a proposal other than as it is. The CLI refuses both
+  before it sends, counting the whole trick; the lead counts again on what it shows.
+- **The answer to a group.** The phone's answer (`POST /api/hill/<id>/answer`, on the lead) carries
+  `group: { digest, opened }`: the digest the phone was given, and the cards it opened, each of 1 to 8
+  once. A yes (any option but the group's `decline`) with no `group` is refused with "This app does not
+  show a group of cards yet. Reload Collie on this phone, then open every card and answer again."; with
+  another digest, "These cards changed since this phone showed them. Open them again from card 1.";
+  without every card, "Open all N cards first." Each is a rejected receipt that keeps the card open
+  and keeps nothing, so the same request id may try again. "Not now" and a dismiss need neither field.
+  `opened` is the phone's own claim, a display check that the person paged through the cards, never a
+  proof that they read them. The answer travels on no crew route: a member's own page refuses a Hill
+  answer and points to the lead's (§22), so an old member build answers nothing here; an old phone
+  app on the lead gets the reload words above.
+- **The tap.** "Switch it on" reads the stored bytes again and installs them only when their hash is
+  the card's. The trick folder is written beside the tricks and renamed into place, never over a folder
+  of that name, then the code written is approved and switched on.
+- **A new version** is taken only for a trick a proposal made that is on. It is kept inert in the same
+  store, and its one card ("Use the new version of <id>?") shows it against the approved copy and names
+  the proposer. Before the yes nothing outside the store and the proposals state changes on the lead.
+  On the yes the trick must still be the one the card was made against; its code files are replaced in
+  place, one temp file and rename each, and exactly that code approved. Every file the code hash does
+  not read (`config.toml`, `media/`, `captures/`, `inputs/`, logs, dot files, `node_modules`) stays byte
+  for byte. A new file whose name the person's own files hold refuses the yes, and nothing is written.
+  A write a crash cut short is cleaned up when the lead starts. A trick from a repository, one added on the
+  lead, one that is off, or one with a change waiting refuses the proposal (`exists`). A trick on auto
+  takes it, and the card still asks.
+- **A lead without tricks** answers `200` with `{ ok: false, code: "no_tricks" }`, "Tricks are not set
+  up on the lead, so nothing was proposed.", never 404, so the member does not read it as older.
+- **Limits.** Per session (or per machine's terminal) 2 open and 6 an hour; per member 4 open and 12
+  an hour, its sessions and its terminal together; per lead 8 open and 32 MiB stored. One open proposal
+  per trick id: the same session's next one replaces it, and the new card says "It replaces an earlier
+  proposal from the same session."; one with `from: null` never replaces (`open_elsewhere`), as the lead
+  cannot tell who sent it. A request id answers as it did for 24 hours; with other files it is
+  `request_id_reused`. The card closes after 3 days, and the stored copy goes with it.
+- **Memory.** At most 2 bodies of 8 MiB are read at once on this route. Apart from that, each
+  machine's walky socket reads at most 2 proposal lines of 8 MiB at once.
+
+### The member's side
+
+The member checks the files with the same reader before it sends, keeps no copy and queues nothing. A
+lead that refuses the dial is "The lead is not answering, so nothing was proposed." A timeout after the
+send is "The lead (<lead>) did not confirm the proposal. Propose again with --request-id <rid>: it is
+proposed once." A 404 is an older lead, named as such.
+
+### Audit
+
+On the lead: `trick.proposal` for each proposal taken (`kind` `proposal` or `version`), `trick.proposal.on` and
+`trick.approve` by `proposal` when the person says yes. Never a file's bytes.
+
+### Compatibility
+
+Additive inside protocol version 2 (§7.1). A member before 1.29.0 has no verb that sends it. A lead
+before 1.29.0 answers the uniform 401, and the member says the lead is older and proposes nothing. `CREW_PROTOCOL_VERSION` stays `2`.
+
+## 25. The deputy carries the lead's tricks and open Decisions *(added in 1.29.0)*
+
+A deputy takes over when its lead is gone (§18). Before this section the tricks the lead ran were gone
+with it. Now the lead keeps an inert copy of each trick that is on, at its approved version, on its
+deputy, and the person's takeover tap on the deputy's own standby page starts them there. The rule of
+ADR 0016's addendum holds: the code crosses as inert data, and nothing installs or runs it before a
+person's tap on the machine that runs it.
+
+Beside the tricks, the lead keeps a copy of its Hill's open Decisions on the same deputy, by the same
+rules (see "The Hill copy" below). The tap brings them into the deputy's Hill, so a question the person
+has not answered yet is still there after the takeover.
+
+### The routes
+
+| Method | Path | Sent by | Body | Answer | Body cap |
+|---|---|---|---|---|---|
+| `POST` | `/crew/v1/tricks-copy` | the lead, to its deputy | `{ seq, tricks }` | `{ applied, need: { code, state } }` | 8 MiB |
+| `POST` | `/crew/v1/tricks-copy/code` | the lead, to its deputy | `{ id, hash, part, parts, chunks }` | `{ held }` | 3 MiB |
+| `POST` | `/crew/v1/tricks-copy/state` | the lead, to its deputy | `{ id, digest, files }` | `{ applied }` | 6 MiB |
+| `POST` | `/crew/v1/hill-copy` | the lead, to its deputy | `{ seq, on, decisions, closed, tricks }` | `{ applied, need: { media } }` | 8 MiB |
+| `POST` | `/crew/v1/hill-copy/media` | the lead, to its deputy | `{ decisionId, mediaId, b64 }` or `{ decisionId, mediaId, gone: true }` | `{ held }` | 3 MiB |
+
+- **Lead → deputy, the launchers copy's gate.** Unsigned, on the pinned link the lead dials (§8.1), like
+  `launchers-copy`. Two questions must both answer yes before a byte of the body is read: the caller
+  is this collie's own lead, and this collie holds a verified warrant naming itself (§18). Anything
+  else is the uniform 401: a member, a peer that is not the deputy, a lead, a build that keeps no copy.
+  The body is read within 60 seconds, at most 2 at once, and only to its route's cap; over the cap is
+  `413`, a body that is not JSON is `400`.
+- **`tricks`** is at most 32 tricks, sorted by id on the lead, each `{ id, hash, auto, at, by, powers,
+  config, origin, files, state }`: the approved code hash, the switch's `auto`, when and by whom the
+  version was approved, the powers hash or `null`, `config.toml` as base64 or `null` (at most 64 KiB),
+  the origin record's text or `null` (at most 8 KiB), the code files as `{ rel, size, x }`, and the
+  digest of the state the lead would send or `null`. Every path follows §24's reader rules and must be
+  a code file the code hash reads; no two names fold to one; at most 300 files and 5 MB. A bad trick
+  or a repeated id refuses the whole list (`400`).
+- **`seq` only rises.** The deputy refuses a list whose `seq` is not above the one it holds from the
+  same lead (`409`, `stale`), so a late push never rolls a trick back to an older version. The lead
+  sends its clock or one past the `seq` the deputy reports, whichever is larger.
+- **Code in parts.** A trick's code goes in parts of at most 2 MiB of raw bytes, from part 0 in order.
+  Each chunk `{ rel, at, b64 }` appends to a file the list names, at exactly the bytes held so far and
+  never past its size. A part out of order is `409` (`order`), a chunk that does not continue its file
+  `409` (`bad_part`), and part 0 starts again. The last part checks every file's size and hashes the
+  files with the real code hash; a mismatch is `422` (`mismatch`), and that version is refused for good.
+- **State** is the trick's state folder (`state/…`) and the pictures of its approved copy's `media/` and
+  `captures/`, at most 500 files and 4 MiB a trick, 16 MiB for all tricks. `inputs/` never goes. A
+  picture must be a PNG, JPEG or WebP by its first bytes. The deputy takes one trick's state at most
+  once a minute (`429`, `rate`). A state too large to keep is settled as kept with no bytes, so it is
+  not asked for again until it changes.
+
+### The Hill copy
+
+- **`decisions`** is at most 500 open Decisions, newest first, each the record the lead's Hill stores
+  without its notification slot (`pushTag`). The deputy reads each one again with the Hill's own
+  reader. A record that does not read, is not open, repeats an id, or names an id in `closed` is left
+  out; the rest of the list still applies.
+- **Collie's own cards.** Of the Decisions of Collie's own (`from.kind` `collie`), the deputy holds
+  only the notice that a carried trick did not start (`ref.type` `carried`) with its single answer, OK,
+  which only closes it. Any other Collie card is left out and counted (`dropped`): a new version card
+  or a proposal card acts on files that never cross, and a lead must not place a card that acts on its
+  deputy.
+- **`closed`** is at most 500 ids of the lead's closed and cleared Decisions, newest first. The deputy
+  keeps every closed id the same lead named, newest first, up to 500, and never holds a Decision with
+  one of those ids as open again. A replayed or late list cannot bring an answered Decision back.
+- **`on`** is the lead's Hill switch. **`tricks`** holds the trick map records (the key to Decision id
+  entries) of the tricks whose Decisions are open, so a carried trick Decision keeps its key.
+- **`seq` only rises,** as for the tricks: `409` (`stale`) for a list not above the one held.
+- **Pictures.** The lead and the deputy plan the pictures the same way: newest Decision first, each
+  picture of at most 2 MiB, all together at most 32 MiB. A picture past the plan stays on the lead. The
+  answer to a list names the pictures the deputy lacks (`need.media`, as `<decisionId>/<mediaId>`); the
+  lead sends each in one body. Both ids must match their id patterns before any path is built (`400`).
+  A picture the plan does not carry is `409` (`unknown`). The deputy keeps a picture only when its size
+  is the size its record says and its first bytes say the type its record says; else it is `422`
+  (`mismatch`) and settled as left on the lead, so it is not asked for again. `gone: true` from the
+  lead settles it the same way.
+
+### The report
+
+The deputy reports `tricksDigest` (the digest of the list it holds), `tricksSeq` and `tricksNeed` (how
+many code and state parts it still lacks) on `hello` and `snapshot`, in the seat of `launchersDigest`.
+A deputy that holds no copy reports none of the three. The Hill copy reports `hillDigest`, `hillSeq`
+and `hillNeed` (how many pictures of the plan it still lacks) in the same seat, by the same rule. The
+digest is over the list as it arrived, before a record was left out, so a left-out record does not
+make the lead send the list again. The lead syncs off its sweep, never awaited,
+one sync at a time: a list when the digest differs, and the missing parts again at most once a minute
+while it is the same. A `404` marks an older deputy, said once in the lead's journal: "<deputy>: keeps
+no copy of the tricks (an older Collie), so it cannot resume them after a takeover; not sent again until
+it reconnects".
+
+### The deputy's side
+
+- **Inert.** The copy lives under `<stateDir>/standby-tricks/`: `index.json`, the code under
+  `code/<id>/<hash16>/`, the state under `state/<id>/`. Folders are 0700 and files 0600, and no file
+  carries an executable bit; whether one was executable rides in the index. No tricks loader reads this
+  folder, and no switch names it.
+- **Whose copy it is.** The copy stays only while this machine is the deputy of the lead that sent it,
+  in that crew. A demotion, another lead, another crew, or this machine leading removes it at once,
+  `config.toml` with it.
+- **The Hill copy** lives under `<stateDir>/standby-hill/`: `index.json` and
+  `media/<decisionId>/<mediaId>`, folders 0700 and files 0600. The deputy's own Hill never reads it,
+  before or after a restart. It is removed by the same rule as the tricks copy.
+- **The page.** The armed standby page names the tricks the tap starts, read off this machine's own
+  disk, never off the lead's word: each carried trick whose code is held, then each trick this machine
+  already has on. A name is cleaned of control and invisible characters, cut to 40 characters and drawn
+  in its own box; at most 8 are named, then "and N more". When the Hill copy holds open Decisions, read
+  off this machine's disk too, one more line says "1 open question on the Hill comes along." or "N
+  open questions on the Hill come along."
+- **What the page showed is what the tap takes.** The armed page carries a mark of the lists it read:
+  the tricks copy's digest and how much of it is missing, and the Hill copy's `seq`. The tap sends it
+  back (`x-collie-carried`). When the copies hold another list by then, the tap is refused (`409`,
+  `changed: true`), nothing is asked or written, and the page is drawn again with the line "The list
+  changed. Read it again." From the tap until its answer, both copies are held: a list or a part from
+  the lead is answered `409` (`held`), and the lead sends it again later. Each copy takes one write at
+  a time; the hold waits for the write that runs when the tap comes, and the mark is then read again,
+  so a list that landed between the door's check and the hold refuses the tap the same way. The page
+  reads the names and the mark from one snapshot: the mark before and after the names, and only an
+  unchanged pair goes out.
+- **The tap.** The takeover commit (§18), and `collie promote` (§14) typed on the deputy, are the
+  person's yes. Each holds both copies through its role change and writes one marker,
+  `<stateDir>/standby-adopt.json` (0600): the lead it took over from, `by` (`takeover`, or `handover`
+  for the promote) and the time. Nothing else writes it; no crew route can. The boot after it, as the
+  lead, removes the marker, adopts both copies before it builds its Hill and its tricks, then removes
+  the copies, so no process with an older list in memory can write over the merge. The marker goes
+  first: an adoption that throws half way is never run again at a later boot, so a trick the person
+  switched off since stays off. A copy from another lead than
+  the marker names is not adopted, and a boot that does not lead drops the marker. While the marker is
+  on disk, a role change removes neither copy. The deputy trusts what its lead says was approved; it
+  checks that the lead's word and the carried code agree. For each held trick it compares the powers
+  the list carries with the powers of the held code (`powersOfDir`): when they differ, the trick's
+  folder is written where there is none, with no approved copy and no switch, and its notice carries
+  `kind: "rights"` ("The trick <name> is off after the takeover"). For each other held trick
+  it hashes the code again, writes the trick folder only where this machine has none (a folder of that
+  name is never written over; the carried version then runs from its approved copy, and the folder is
+  the usual new version card), makes the approved copy with the normal path, and writes the switch
+  with `by: "takeover"`, `from: <the old lead>`, the time of the tap and the lead's `auto`. `auto`
+  comes along only when the trick folder here holds the carried version after the tap. A kept folder
+  with other code gets `auto: false`, so that code waits as a new version card for a person's yes; a
+  decline this machine already held for that code stays. The state folder is written only where this
+  machine has none. A trick whose check fails does not start.
+- **A trick that did not start is said on the Hill.** The adoption leaves the failures in `<stateDir>/tricks/carried-notices.json` (0600), and the
+  same boot, as the lead, posts one Decision of Collie's own for each, with `ref.type` `carried`: "The
+  trick <name> did not start after the takeover", "It ran on <old lead>. Collie did not start it on
+  this machine: <reason>. Switch it on again in Settings → Tricks when you want it here.", and one
+  option, OK, which closes it. Its request id is fixed per tap and trick, so a second boot posts it
+  once. A Hill that is off or full keeps the file for a later boot.
+- **The tap brings the open Decisions along,** after the tricks, in the same adoption at boot. Only a copy from the lead the tap takes over from is read. Each Decision keeps
+  its id, and goes into this machine's Hill in one write; an id this Hill already holds or cleared is
+  left as it is here. Nothing is pushed, told or posted: they are not new. Each picture is read again
+  off this machine's disk and its type read again from its bytes; a Decision whose picture is not here
+  keeps the rest and carries the line "A picture stayed on <old lead>." A trick's Decision whose trick
+  did not start here closes at the tap with the reason "Its trick did not start on this machine after
+  the takeover."
+
+  A trick Decision that stays is moved to this machine (its `memberId`, `trickHost` and host), and its
+  trick map record comes along where this machine has none, so the trick does not post it a second
+  time. The Hill switch is written from the copy only when this machine has never set its own. The
+  copy is removed after.
+- **The old lead takes no answer.** A deposed lead (§18.12), a lead whose trust store already names a
+  new lead (after `approve-promote`, before its restart), and any peer refuse an answer to any Decision
+  with the receipt `denied` and the reason "This machine is not the crew's lead any more. Answer on the
+  new lead." Nothing is typed and nothing closes there, so a carried Decision is not answered twice.
+  Posts there are refused as a peer's are.
+
+### What the lead says
+
+The running lead writes what it last saw of its deputy's copy into its runtime marker
+(`deputyTricks`: the deputy, `current`, `behind` or `older`, and how many tricks it runs). `collie crew
+status` on the lead prints one line from it, a warning for an older deputy. `collie crew
+approve-promote <member>` says whether the tricks come along: they do only with the deputy's promote.
+When the deputy holds the whole Hill copy, the fact carries `questions`, the count of open Decisions,
+and both lines add "and N open questions on the Hill" (or name only the questions when the lead runs
+no trick).
+
+### Audit
+
+On the deputy: `tricks.carried` at the adoption, with `by`, with the ids started, the ids that failed and the folders
+kept. Never a file's bytes. `hill.carried` at the adoption, with the counts of Decisions stored open,
+closed with their reason, and Collie cards the copy left out (`dropped`). Never a Decision's text.
+
+### Known limits
+
+- `seq` is a JavaScript number. A lead whose clock reads near `Number.MAX_SAFE_INTEGER` (far past any
+  real time in milliseconds) would send a `seq` that cannot rise by one; the copy then stays at the
+  last list it took. Nothing checks for it.
+- The group digest of a proposal's cards is an unkeyed sha256 that anyone can compute: it proves the
+  cards belong together, not who made them. `docs/security.md` lists the files it protects.
+- A carried Decision keeps the old lead's `from.address` and `replyTo`.
+- A takeover against a lead that is cut off but up is a split brain (§14), and both machines can run
+  the same tricks at the same time.
+- The armed `/standby` GET names the carried tricks and the count of open Decisions without a login.
+
+### Compatibility
+
+Additive inside protocol version 2 (§7.1). A lead before 1.29.0 sends nothing, and a deputy before
+1.29.0 answers `404`, which the lead reads as "keeps no copy"; the Hill copy reads the same, on its
+own. A deputy's absent report reads as "holds
+nothing". `CREW_PROTOCOL_VERSION` stays `2`.

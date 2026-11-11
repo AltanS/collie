@@ -34,14 +34,14 @@ afterAll(() => {
   for (const dir of roots) rmSync(dir, { recursive: true, force: true });
 });
 
-const HOST = "bluefin";
+const HOST = "lodge";
 const LEGS = { id: "legs", name: "Browser leg", memberId: HOST } as const;
 const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 /** Two live agent sessions on this machine, as the hill's probe finds them. */
 const PLACES: HillPlace[] = [
-  { address: "local/w6X:3#aaaa", label: "m96-hill", host: "bluefin", unattended: false },
-  { address: "local/w6X:4#bbbb", label: "composer", host: "bluefin", unattended: false },
+  { address: "local/w6X:3#aaaa", label: "m96-hill", host: "lodge", unattended: false },
+  { address: "local/w6X:4#bbbb", label: "composer", host: "lodge", unattended: false },
 ];
 
 interface Rig {
@@ -106,7 +106,7 @@ function rig(stateDir = join(tempDir(), "state"), hillAt = 1000): Rig {
     crewMode: () => "solo",
     walkyOn: () => true,
     memberId: HOST,
-    machine: "bluefin.lan",
+    machine: "lodge.lan",
     now: () => hillAt,
     mintId: () => `dc_trk${String((n += 1)).padStart(9, "0")}`,
     mintMediaId: () => `im_trk${String((m += 1)).padStart(13, "0")}`,
@@ -151,7 +151,7 @@ describe("the diff by key", () => {
     const r = rig();
     expect(sync(r, [decision("case-8")])).toEqual([]);
     const [posted] = open(r);
-    expect(posted?.from).toEqual({ kind: "trick", address: null, trickId: "legs", trickKey: "case-8", memberId: HOST, harness: null, label: "Browser leg", host: "bluefin.lan", trickHost: HOST });
+    expect(posted?.from).toEqual({ kind: "trick", address: null, trickId: "legs", trickKey: "case-8", memberId: HOST, harness: null, label: "Browser leg", host: "lodge.lan", trickHost: HOST });
     expect(posted?.requestId).toBe(trickRequestId("legs", "case-8", decisionContentHash(decision("case-8")), 0, 0));
     expect(posted?.target).toBeNull();
     expect(sync(r, [decision("case-8")])).toEqual([]);
@@ -195,8 +195,8 @@ describe("the diff by key", () => {
       { text: "required" },
       { links: [{ label: "The log", href: "https://example.com/log" }] },
       { priority: "now" },
-      { replyTo: "bluefin:w6X:3" },
-      { about: "bluefin:w6X:3" },
+      { replyTo: "lodge:w6X:3" },
+      { about: "lodge:w6X:3" },
       { view: [{ kind: "para", text: "unit 7/7" }] },
     ];
     for (const change of changes) expect(decisionContentHash(decision("k", change)), JSON.stringify(change)).not.toBe(base);
@@ -382,13 +382,13 @@ describe("a trick cannot speak as Collie (crew slice 3)", () => {
 describe("the sessions a decision names", () => {
   test("replyTo and about are facts scope keys, mapped to the session's walky address at post time", () => {
     const r = rig();
-    expect(sync(r, [decision("case-8", { replyTo: "bluefin:w6X:3", about: "bluefin:w6X:4" })])).toEqual([]);
-    expect(open(r)[0]).toMatchObject({ replyTo: "local/w6X:3#aaaa", about: "local/w6X:4#bbbb", target: { label: "m96-hill", host: "bluefin" } });
+    expect(sync(r, [decision("case-8", { replyTo: "lodge:w6X:3", about: "lodge:w6X:4" })])).toEqual([]);
+    expect(open(r)[0]).toMatchObject({ replyTo: "local/w6X:3#aaaa", about: "local/w6X:4#bbbb", target: { label: "m96-hill", host: "lodge" } });
   });
 
   test("a name that maps to no live session refuses that one decision; the others post", () => {
     const r = rig();
-    const refusals = sync(r, [decision("case-8", { replyTo: "bluefin:w6X:9" }), decision("case-9"), decision("case-10", { about: "minibuch:%1" })]);
+    const refusals = sync(r, [decision("case-8", { replyTo: "lodge:w6X:9" }), decision("case-9"), decision("case-10", { about: "workshop:%1" })]);
     expect(refusals.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([
       ["target", "/decisions/0/replyTo", "case-8"],
       ["target", "/decisions/2/about", "case-10"],
@@ -398,45 +398,45 @@ describe("the sessions a decision names", () => {
 
   test("scopeKeyAddress: only this bridge's sessions, under its id or the one before a crew join, through the probe", () => {
     const probe = place(() => PLACES);
-    const own = (memberId: string): boolean => memberId === "bluefin" || memberId === "m_aaaaaaaaaa";
-    expect(scopeKeyAddress("bluefin:w6X:3", own, "local", probe)).toBe("local/w6X:3#aaaa");
+    const own = (memberId: string): boolean => memberId === "lodge" || memberId === "m_aaaaaaaaaa";
+    expect(scopeKeyAddress("lodge:w6X:3", own, "local", probe)).toBe("local/w6X:3#aaaa");
     // A key a program kept from before the bridge joined the crew still lands.
     expect(scopeKeyAddress("m_aaaaaaaaaa:w6X:3", own, "local", probe)).toBe("local/w6X:3#aaaa");
-    expect(scopeKeyAddress("minibuch:w6X:3", own, "local", probe)).toBeNull();
-    expect(scopeKeyAddress("bluefin:", own, "local", probe)).toBeNull();
-    expect(scopeKeyAddress("bluefin:w6X:9", own, "local", probe)).toBeNull();
+    expect(scopeKeyAddress("workshop:w6X:3", own, "local", probe)).toBeNull();
+    expect(scopeKeyAddress("lodge:", own, "local", probe)).toBeNull();
+    expect(scopeKeyAddress("lodge:w6X:9", own, "local", probe)).toBeNull();
   });
 
   // M99 slice 5: on a crew's lead the facts list every member's sessions, and a decision may name one.
-  const MEMBER_PANE: HillPlace = { address: "minibuch/%1#cccc", label: "remote", host: "minibuch", unattended: false };
+  const MEMBER_PANE: HillPlace = { address: "workshop/%1#cccc", label: "remote", host: "workshop", unattended: false };
 
   test("scopeKeyAddress: another member's session resolves only when the run's facts listed it, through the lead's pane list", () => {
     const probe = place(() => [...PLACES, MEMBER_PANE]);
-    const own = (memberId: string): boolean => memberId === "bluefin";
+    const own = (memberId: string): boolean => memberId === "lodge";
     // Not listed: refused, even though the lead's pane list holds it.
-    expect(scopeKeyAddress("minibuch:%1", own, "local", probe)).toBeNull();
-    expect(scopeKeyAddress("minibuch:%1", own, "local", probe, new Set(["bluefin:w6X:3"]))).toBeNull();
+    expect(scopeKeyAddress("workshop:%1", own, "local", probe)).toBeNull();
+    expect(scopeKeyAddress("workshop:%1", own, "local", probe, new Set(["lodge:w6X:3"]))).toBeNull();
     // Listed and live: the member's own address, with its instance token.
-    expect(scopeKeyAddress("minibuch:%1", own, "local", probe, new Set(["minibuch:%1"]))).toBe("minibuch/%1#cccc");
+    expect(scopeKeyAddress("workshop:%1", own, "local", probe, new Set(["workshop:%1"]))).toBe("workshop/%1#cccc");
     // Listed, but no member of the crew holds it (a member removed since, or a name a program made up
     // that slipped into a set): the lead's pane list is the second look, and it refuses.
     expect(scopeKeyAddress("stranger:%1", own, "local", probe, new Set(["stranger:%1"]))).toBeNull();
-    expect(scopeKeyAddress("minibuch:%2", own, "local", probe, new Set(["minibuch:%2"]))).toBeNull();
+    expect(scopeKeyAddress("workshop:%2", own, "local", probe, new Set(["workshop:%2"]))).toBeNull();
     // This bridge's own sessions resolve as before, listed or not.
-    expect(scopeKeyAddress("bluefin:w6X:4", own, "local", probe, new Set())).toBe("local/w6X:4#bbbb");
+    expect(scopeKeyAddress("lodge:w6X:4", own, "local", probe, new Set())).toBe("local/w6X:4#bbbb");
   });
 
   test("a decision may reply to another member's session in the run's facts; an address outside the crew is refused", () => {
     const r = rig();
     r.live = [...PLACES, MEMBER_PANE];
-    const listed = new Set(["bluefin:w6X:3", "minibuch:%1", "outsider:%9"]);
-    const refusals = sync(r, [decision("remote", { replyTo: "minibuch:%1" }), decision("outsider", { replyTo: "outsider:%9" }), decision("unlisted", { about: "minibuch:%7" })], [], listed);
+    const listed = new Set(["lodge:w6X:3", "workshop:%1", "outsider:%9"]);
+    const refusals = sync(r, [decision("remote", { replyTo: "workshop:%1" }), decision("outsider", { replyTo: "outsider:%9" }), decision("unlisted", { about: "workshop:%7" })], [], listed);
     expect(refusals.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([
       ["target", "/decisions/1/replyTo", "outsider"],
       ["target", "/decisions/2/about", "unlisted"],
     ]);
     expect(refusals[0]?.reason).toBe(`"outsider:%9" names no live agent session in this run's facts, so the decision "outsider" was not posted.`);
-    expect(open(r).map((held) => [held.from.trickKey, held.replyTo])).toEqual([["remote", "minibuch/%1#cccc"]]);
+    expect(open(r).map((held) => [held.from.trickKey, held.replyTo])).toEqual([["remote", "workshop/%1#cccc"]]);
   });
 });
 
@@ -564,8 +564,8 @@ describe("images", () => {
 
   test("a decision's image may be a file the trick read from a session folder, under inputs/ (M99 slice 6)", () => {
     const r = rig();
-    shot(r, "inputs/minibuch/_25_31/shots/red.png", png(390, 240, 7));
-    expect(sync(r, [decision("case-8", { media: [{ file: "inputs/minibuch/_25_31/shots/red.png" }] })])).toEqual([]);
+    shot(r, "inputs/workshop/_25_31/shots/red.png", png(390, 240, 7));
+    expect(sync(r, [decision("case-8", { media: [{ file: "inputs/workshop/_25_31/shots/red.png" }] })])).toEqual([]);
     const [held] = open(r);
     expect(r.hill.mediaFile(held!.id, held!.media[0]!.id)?.bytes).toEqual(png(390, 240, 7));
   });
@@ -700,7 +700,7 @@ async function serviceRig(): Promise<ServiceRig> {
     configDir,
     stateDir,
     memberId: HOST,
-    world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
+    world: () => ({ machine: "lodge.lan", sessions: [], spaces: [] }),
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
     now: () => clock.t,
     warn: () => {},
@@ -753,7 +753,7 @@ describe("the runner posts", () => {
   test("a refusal from the hill shows in the trick's refusals, the list the Settings row reads", async () => {
     const r = await serviceRig();
     await switches(r.stateDir, true);
-    r.outcome = exited(doc([{ ...RED, replyTo: "bluefin:w6X:9" }]));
+    r.outcome = exited(doc([{ ...RED, replyTo: "lodge:w6X:9" }]));
     await runNow(r);
     const info = (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
     expect(info?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([["target", "/decisions/0/replyTo", "case-8"]]);
@@ -840,7 +840,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
       configDir,
       stateDir,
       memberId: HOST,
-      world: () => ({ machine: "bluefin.lan", sessions: [], spaces: [] }),
+      world: () => ({ machine: "lodge.lan", sessions: [], spaces: [] }),
       env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LEGS_LOG_DIR: join(LEGS_DIR, "fixtures", "red"), LEGS_RUNNING: "0", LEGS_NOW: "1794130860", LEGS_TAP_LOG: tapLog, LEGS_SHOT: "red-case.png" },
       now: () => clock.t,
       warn: () => {},
@@ -858,7 +858,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
       crewMode: () => "solo",
       walkyOn: () => true,
       memberId: HOST,
-      machine: "bluefin.lan",
+      machine: "lodge.lan",
       now: () => clock.t,
       tap: (host, trickId, tap, decisionId) => service.tapFromHill(host, trickId, tap, decisionId),
     });

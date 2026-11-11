@@ -45,10 +45,12 @@ export function runsOnLine(runsOn: TricksRunsOn): string {
 
 /**
  * Where a trick came from, for its About sheet: "From owner/repo @ 3f2a91c" for one `collie trick add` took
- * from a repository, else "Added on this machine." (a folder, the CLI or an agent made it here).
+ * from a repository, "Proposed by an agent session on workshop." for one `collie trick propose` handed in,
+ * else "Added on this machine." (a folder, the CLI or an agent made it here).
  */
 export function originLine(by: WireTrickInfo["provenance"]): string {
+  if (by?.proposed !== undefined) return by.proposed.by === "agent" ? t("settings.tricks.about.proposedAgent", { host: by.proposed.host }) : t("settings.tricks.about.proposedUnconfirmed", { host: by.proposed.host });
   if (by === undefined || by.via !== "repo" || by.repo === undefined) return t("settings.tricks.about.local");
   if (by.sha === undefined) return t("settings.tricks.by.repoBare", { repo: by.repo });
-  return t("settings.tricks.by.repo", { repo: by.repo, sha: by.sha.slice(0, 7) });
+  return t(by.unlisted === true ? "settings.tricks.by.repoUnlisted" : "settings.tricks.by.repo", { repo: by.repo, sha: by.sha.slice(0, 7) });
 }

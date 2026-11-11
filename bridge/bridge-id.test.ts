@@ -24,9 +24,9 @@ describe("the install id", () => {
     for (let i = 0; i < 50; i += 1) expect(mintInstallId()).toMatch(INSTALL_ID_RE);
     // The `_` keeps it apart from every crew member id.
     expect(isBridgeId("m_abcdefghij")).toBe(true);
-    expect(isBridgeId("collie-04rj6a")).toBe(true);
+    expect(isBridgeId("collie-7k2m9q")).toBe(true);
     expect(isBridgeId("trick")).toBe(false);
-    expect(isBridgeId("Bluefin.lan")).toBe(false);
+    expect(isBridgeId("Lodge.lan")).toBe(false);
   });
 
   test("skips the bytes that would skew the draw", () => {
@@ -79,9 +79,9 @@ describe("resolveBridgeId", () => {
 
   test("a crew member serves its member id; the install id is kept for a later leave", () => {
     const dir = stateDir();
-    const id = boot({ stateDir: dir, crewMemberId: "bluefin-hc", mint: () => "m_aaaaaaaaaa", ...quiet });
-    expect(id).toEqual({ id: "bluefin-hc", previous: null });
-    expect(fileOf(dir)).toEqual({ v: 1, install: "m_aaaaaaaaaa", id: "bluefin-hc", previous: null });
+    const id = boot({ stateDir: dir, crewMemberId: "lodge-hc", mint: () => "m_aaaaaaaaaa", ...quiet });
+    expect(id).toEqual({ id: "lodge-hc", previous: null });
+    expect(fileOf(dir)).toEqual({ v: 1, install: "m_aaaaaaaaaa", id: "lodge-hc", previous: null });
   });
 
   test("joining a crew keeps the install id as the alias; the id moves only at the restart", () => {

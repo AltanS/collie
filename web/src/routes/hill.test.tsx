@@ -30,11 +30,11 @@ vi.mock("@/hooks/use-keyboard", async (importOriginal) => ({
 }));
 
 const LEGS_SESSION: AgentView = {
-  paneId: "trick:bluefin:legs:legs",
-  workspaceId: "trick:bluefin",
+  paneId: "trick:lodge:legs:legs",
+  workspaceId: "trick:lodge",
   workspaceLabel: "Tricks",
   workspaceNumber: 2,
-  tabId: "trick:bluefin:legs",
+  tabId: "trick:lodge:legs",
   agent: "legs",
   status: "idle",
   cwd: "",
@@ -93,10 +93,10 @@ function renderHill(entries: InitialEntry[] = ["/", { pathname: "/hill", state: 
 let tricksRev = 500;
 async function seedTabbar(tricks: string[]) {
   tricksRev += 1;
-  const parts: WireTrickPart[] = tricks.map((trick) => ({ host: "bluefin", trick, part: "tabbar", rev: 1, asOf: new Date().toISOString(), value: { at: "tabbar", id: "tabbar", item: { label: trick } } }));
+  const parts: WireTrickPart[] = tricks.map((trick) => ({ host: "lodge", trick, part: "tabbar", rev: 1, asOf: new Date().toISOString(), value: { at: "tabbar", id: "tabbar", item: { label: trick } } }));
   const reply: TricksReply = {
     rev: tricksRev,
-    tricks: tricks.map((id) => ({ host: "bluefin", id, name: id, icon: "flask", on: true, state: "ok", places: ["tabbar"] })),
+    tricks: tricks.map((id) => ({ host: "lodge", id, name: id, icon: "flask", on: true, state: "ok", places: ["tabbar"] })),
     parts,
     present: parts.map(partKey),
   };
@@ -271,7 +271,7 @@ describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {
     expect(items.map((el) => el.dataset.trick)).toEqual(["legs", "tracker", "triage", "spend", "deploy", "notes"]);
     for (const el of items) expect(el).not.toHaveAttribute("aria-current");
     await userEvent.click(items[0]!);
-    await waitFor(() => expect(router.state.location.pathname).toBe("/trick/trick%3Abluefin%3Alegs%3Alegs"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/trick/trick%3Alodge%3Alegs%3Alegs"));
     expect(router.state.historyAction).toBe("REPLACE");
     // The Session took the Hill's entry and its `from`: the entry behind is the Dashboard.
     expect(router.state.location.state).toEqual({ from: "/" });

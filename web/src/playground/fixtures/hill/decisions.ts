@@ -1,12 +1,13 @@
 // The hill's fixtures for the states playground (M96): Decisions shaped by the wire types
 // (`lib/hill/wire.ts`), the closed rows the Answered fold lists, and one receipt per card state.
 // DEV-ONLY, like the rest of `src/playground/`. The sentences are the contract's own examples; the
-// senders are "collie lead", "m96-hill" and "website", the machines "bluefin" and "minibuch". No
+// senders are "collie lead", "m96-hill" and "website", the machines "lodge" and "workshop". No
 // person's name, no private path. The ages are anchored to this module's load, so a card reads
 // "2 min" when the page opens.
 
 import type { HillMediaSource } from "@/components/hill-media";
 import type { HillDecision, HillMedia, HillReceipt } from "@/lib/hill/wire";
+import type { View, ViewNode } from "@/lib/tricks/schema";
 
 // Three flat colour panels with a word on them, made for this page (never a capture of anyone's
 // screen), inlined as data URLs: the page has no bridge, and a data URL needs no token.
@@ -17,9 +18,9 @@ import shotDiff from "./shot-3.png?inline";
 const NOW = Date.now();
 const MIN = 60_000;
 
-const LEAD = { label: "collie lead", host: "bluefin" } as const;
-const HILL = { label: "m96-hill", host: "minibuch" } as const;
-const SITE = { label: "website", host: "bluefin" } as const;
+const LEAD = { label: "collie lead", host: "lodge" } as const;
+const HILL = { label: "m96-hill", host: "workshop" } as const;
+const SITE = { label: "website", host: "lodge" } as const;
 
 let next = 0;
 /** A decision id of the contract's shape, unique per fixture. */
@@ -79,7 +80,7 @@ export const twoOptions = decision({
 /** 2: three options, the last one with a confirm. */
 export const threeWithConfirm = decision({
   title: "Reset the deputy's checkout?",
-  summary: "The checkout on minibuch is two commits ahead of main and the build fails there.",
+  summary: "The checkout on workshop is two commits ahead of main and the build fails there.",
   sender: HILL,
   ago: 6,
   options: [
@@ -147,7 +148,7 @@ export const unattended = decision({
     { intent: "run", label: "Run it now" },
     { intent: "tonight", label: "Tonight" },
   ],
-  target: { label: "m96-hill", host: "minibuch", unattended: true },
+  target: { label: "m96-hill", host: "workshop", unattended: true },
 });
 
 /** 7: a quiet one, for the view's later end. */
@@ -327,13 +328,13 @@ export const closedRows: readonly HillDecision[] = [
   closed({ title: "Pause the nightly leg?", summary: "The poster took it back.", state: "withdrawn", closedReason: "by the poster" }, 90),
   closed({ title: "Which icon for the hill row?", summary: "A newer one replaced it.", state: "superseded", sender: SITE }, 120),
   closed(
-    { title: "Rename the crew member on minibuch?", summary: "Its session ended.", state: "undeliverable", sender: HILL, closedReason: "target session ended" },
+    { title: "Rename the crew member on workshop?", summary: "Its session ended.", state: "undeliverable", sender: HILL, closedReason: "target session ended" },
     150,
   ),
 ];
 
 /** The words a person sent with an answer whose target had ended: the undeliverable row keeps them. */
-export const keptWords = "Call it minibuch-hc, and keep the old name as an alias until 2.0.";
+export const keptWords = "Call it workshop-hc, and keep the old name as an alias until 2.0.";
 
 function receipt(code: HillReceipt["code"], delivery: HillReceipt["delivery"], reason: string | null = null): HillReceipt {
   return { rid: "2c9e7a10-5d4b-4f3a-9b8c-7d6e5f4a3b2c", code, reason, state: code === "ok" ? "answered" : null, delivery, trick: delivery === null ? null : "none", at: NOW };
@@ -423,7 +424,7 @@ export const diffSummary = decision({
 });
 
 /** A collie tricks sender, as the owner's screenshot of 2026-11-10 shows it. */
-const TRICKS = { label: "collie tricks", host: "bluefin" } as const;
+const TRICKS = { label: "collie tricks", host: "lodge" } as const;
 
 /** A step chip that is done, with the words a poster gave it. */
 function doneChip(text: string) {
@@ -702,13 +703,13 @@ export const reviewCard = decision({
 
 /** Collie's own sender on a "new version" card: kind collie, the version's hash, no session. */
 function collieFrom(trickId: string, hash: string): HillDecision["from"] {
-  return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "bluefin", trickHost: null, ref: { type: "version", id: trickId, hash } };
+  return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "version", id: trickId, hash } };
 }
 
 /** 46: a trick's new version that asks for no new rights: three files, two hunks, Collie recommends it. */
 export const versionPlain = decision({
   title: "Use the new version of Browser leg?",
-  summary: "3 files changed. It asks for no new rights.",
+  summary: "4 files changed. It asks for no new rights.",
   ago: 1,
   from: collieFrom("legs", "4c".repeat(32)),
   target: null,
@@ -739,6 +740,11 @@ export const versionPlain = decision({
         { kind: "cell", text: "removed" },
         { kind: "cell", text: "" },
         { kind: "cell", text: "−18" },
+        // Review 7: a file whose executable bit alone changed.
+        { kind: "cell", text: "bin/fetch.sh" },
+        { kind: "cell", text: "changed +x" },
+        { kind: "cell", text: "" },
+        { kind: "cell", text: "" },
       ],
     },
     {
@@ -815,7 +821,166 @@ export const versionRights = decision({
   ],
 });
 
-/** 52: a body with links: a bare address, a named link, a long path, and a label that looks like another address. */
+// ── A GROUP OF CARDS (crew slice 8) ──────────────────────────────────────────────────────────────────
+// The cards as the bridge lays them out (bridge/tricks/card-group.ts): card 1 the facts, the rest every
+// line of the code, a seam where a file goes on. The digest stands in for the bridge's SHA-256.
+
+const seamNote = (text: string): ViewNode => ({ kind: "line", text, attrs: { role: "note" } });
+
+/** The program of the "legs" proposal, numbered so a seam shows where it goes on. */
+function legsRows(from: number, to: number): string {
+  return Array.from({ length: to - from }, (_, i) => {
+    const n = from + i;
+    return n % 9 === 0 ? `+  // Step ${String(n / 9)}: read the next leg and say where it stands.` : `+  const leg${String(n)} = legs.at(${String(n)}) ?? null;`;
+  }).join("\n");
+}
+
+const PROPOSAL_FACTS: View = [
+  { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
+  { kind: "bar", attrs: { label: "It asks for" }, kids: [{ kind: "chip", text: "the belt" }, { kind: "chip", text: "the Dashboard" }] },
+  { kind: "para", text: "This trick reaches the network." },
+  { kind: "line", text: "3 files, on cards 2 to 3.", attrs: { role: "note" } },
+  {
+    kind: "table",
+    kids: [
+      { kind: "col", text: "File" },
+      { kind: "col", text: "Size" },
+      { kind: "col", text: "Card" },
+      { kind: "cell", text: "trick.toml" },
+      { kind: "cell", text: "212 B" },
+      { kind: "cell", text: "2" },
+      { kind: "cell", text: "program.ts" },
+      { kind: "cell", text: "7.4 KB" },
+      { kind: "cell", text: "2 to 3" },
+      { kind: "cell", text: "lib/legs.ts" },
+      { kind: "cell", text: "1.1 KB" },
+      { kind: "cell", text: "3" },
+    ],
+  },
+  {
+    kind: "group",
+    attrs: { label: "Its author's words. Collie did not check them." },
+    kids: [{ kind: "para", text: "Browser legs: shows which browser leg is red, on the belt and the Dashboard." }],
+  },
+];
+
+const PROPOSAL_CODE_2: View = [
+  {
+    kind: "diff",
+    attrs: { file: "trick.toml" },
+    text: ["@@ -0,0 +1,6 @@", '+id = "legs"', '+name = "Browser legs"', '+run = "program.ts"', '+every = "60s"', '+places = ["belt", "dashboard"]', "+contract = 2"].join("\n"),
+  },
+  { kind: "diff", attrs: { file: "program.ts" }, text: `@@ -0,0 +1,96 @@\n${legsRows(0, 48)}` },
+  seamNote("continues on the next card"),
+];
+
+const PROPOSAL_CODE_3: View = [
+  seamNote("continued from the last card"),
+  { kind: "diff", attrs: { file: "program.ts" }, text: legsRows(48, 96) },
+  { kind: "diff", attrs: { file: "lib/legs.ts" }, text: ["@@ -0,0 +1,4 @@", "+export function red(legs) {", "+  return legs.filter((leg) => leg.state === \"red\");", "+}", "+"].join("\n") },
+];
+
+/** 52 to 56: a proposal of three files on three cards. Each call is its own Decision, so each case keeps its own opened cards. */
+export function proposalGroup(): HillDecision {
+  return decision({
+    title: "Switch on the trick legs?",
+    summary: "An agent session (crew-08#propose) on workshop proposes it. It has 3 files. It asks for the belt and the Dashboard, and reaches the network. It shows on 3 cards.",
+    ago: 1,
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "5d".repeat(32) } },
+    target: null,
+    text: "none",
+    options: [
+      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "later", label: "Not now" },
+    ],
+    group: {
+      digest: "a7".repeat(32),
+      decline: "later",
+      parts: [
+        { view: PROPOSAL_FACTS, sha256: "01".repeat(32) },
+        { view: PROPOSAL_CODE_2, sha256: "02".repeat(32) },
+        { view: PROPOSAL_CODE_3, sha256: "03".repeat(32) },
+      ],
+    },
+  });
+}
+
+/** 57: a proposed new version on two cards: the facts and new rights, then the diff by file. */
+export const versionGroup = decision({
+  title: "Use the new version of legs?",
+  summary: "An agent session (crew-08#propose) on workshop proposes it. 3 files changed. It now also reaches the network. It shows on 2 cards.",
+  ago: 2,
+  from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "6e".repeat(32) } },
+  target: null,
+  text: "none",
+  options: [
+    { intent: "on", label: "Use the new version", confirm: "Yes, use it" },
+    { intent: "later", label: "Keep the old version" },
+  ],
+  group: {
+    digest: "b8".repeat(32),
+    decline: "later",
+    parts: [
+      {
+        view: [
+          { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
+          { kind: "para", text: "This trick reaches the network." },
+          { kind: "line", text: "3 files, on card 2.", attrs: { role: "note" } },
+          {
+            kind: "table",
+            kids: [
+              { kind: "col", text: "File" },
+              { kind: "col", text: "Change" },
+              { kind: "col", text: "Lines" },
+              { kind: "col", text: "Card" },
+              { kind: "cell", text: "program.ts" },
+              { kind: "cell", text: "changed" },
+              { kind: "cell", text: "+9 −1" },
+              { kind: "cell", text: "2" },
+              // Review 7: the executable bit alone moved; no line to show, so no card.
+              { kind: "cell", text: "bin/fetch.sh" },
+              { kind: "cell", text: "changed +x" },
+              { kind: "cell", text: "" },
+              { kind: "cell", text: "" },
+              { kind: "cell", text: "trick.ts" },
+              { kind: "cell", text: "changed" },
+              { kind: "cell", text: "" },
+              { kind: "cell", text: "Collie's helper v4" },
+            ],
+          },
+          { kind: "para", text: "trick.ts is the helper Collie ships (v4), byte for byte, so no card shows it." },
+        ],
+        sha256: "11".repeat(32),
+      },
+      {
+        view: [
+          {
+            kind: "diff",
+            attrs: { file: "program.ts" },
+            text: [
+              "@@ -8,3 +8,11 @@ run(async (t) => {",
+              "-  const open = readLocalLegs(t.dir);",
+              '+  const res = await fetch("https://ci.example.com/api/legs", {',
+              // Review 7 R2: a line wider than a phone wraps, each row after the first marked ↪.
+              '+    headers: { accept: "application/json", "user-agent": "collie-trick-legs/2 (+https://ci.example.com/about/legs)" },',
+              "+  });",
+              "+  const open = await res.json();",
+              "+  if (!Array.isArray(open)) {",
+              '+    t.status({ text: "no legs", tone: "muted" });',
+              "+    return;",
+              "+  }",
+              "+  t.status({ text: `${open.length} red` });",
+              "   t.dashboard({ label: \"legs\", badge: open.length });",
+            ].join("\n"),
+          },
+        ],
+        sha256: "12".repeat(32),
+      },
+    ],
+  },
+});
+
+/** 58: a body with links: a bare address, a named link, a long path, and a label that looks like another address. */
 export const linkBody = decision({
   title: "Open the failing run?",
   summary: "The nightly run is red. The links below are in the body.",

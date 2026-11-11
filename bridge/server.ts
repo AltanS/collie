@@ -214,7 +214,8 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
+import type { OfficialTricksSurface } from "./tricks/official-install.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
@@ -600,6 +601,8 @@ const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
 // And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
 // `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
 const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
+// The official list (bridge/tricks/official.ts): add or update one entry. Group 1 the trick id, group 2 the verb.
+const TRICKS_OFFICIAL_ROUTE = /^\/api\/tricks\/official\/([^/]+)\/(add|update)$/;
 
 /**
  * How long a worktree create may hold its connection open, in seconds (ADR 0089). Above Herdr's own
@@ -1533,6 +1536,11 @@ export function startServer(opts: {
    * reads nothing but a missing folder until the operator makes `<configDir>/tricks/`.
    */
   tricks?: TricksSurface;
+  /**
+   * The official list (bridge/tricks/official-install.ts): `GET /api/tricks/official` and the add and
+   * update writes. Absent: both answer 404.
+   */
+  officialTricks?: OfficialTricksSurface;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
@@ -1960,7 +1968,8 @@ export function startServer(opts: {
     // pane. Dropped HERE, on the member, so no lead of any version can merge, push or count one. The lead's
     // own body and a solo body are unchanged.
     if (forCrew) return body;
-    // Only when a tricks folder exists (M94): an install with no tricks sends the bytes it always sent.
+    // Only when a tricks folder exists (M94), or the official list offers a trick on a bridge that runs
+    // tricks (service.ts `rev`): an install with neither sends the bytes it always sent.
     const tricksRev = opts.tricks?.rev();
     if (tricksRev !== undefined) body.tricksRev = tricksRev;
     // The trick sessions (M94 slice 03, bridge/tricks/panes.ts): the Tricks Space after the real Spaces, a
@@ -3149,6 +3158,32 @@ export function startServer(opts: {
         if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
         if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();
         return json(await tricks.reply(parseSince(url.searchParams.get("since"))), req.headers.get("accept-encoding"));
+      }
+      // The official list: the read is gated like the list, the add and the update like the switch,
+      // since they bring code onto the machine. Only a paired phone with the write right gets past the
+      // write gate; the host's own read credential and a request with no token do not.
+      if (pathname === "/api/tricks/official" && req.method === "GET") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.official, pairingGate);
+        if (denied) return denied;
+        const official = opts.officialTricks;
+        if (official === undefined) return jsonError({ error: "not found" }, 404, null);
+        return json(await official.reply(), req.headers.get("accept-encoding"));
+      }
+      const tricksOfficial = TRICKS_OFFICIAL_ROUTE.exec(pathname);
+      if (tricksOfficial !== null && req.method === "POST") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.officialAdd, pairingGate);
+        if (denied) return denied;
+        const official = opts.officialTricks;
+        if (official === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `tricksOfficialRoute` takes `{}` only.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = await tricksOfficialRoute(official, tricksOfficial, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
       const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);
       if (tricksTap !== null && req.method === "POST") {

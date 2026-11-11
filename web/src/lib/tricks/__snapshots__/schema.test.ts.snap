@@ -22,7 +22,7 @@ exports[`valid fixtures > the bar node reads back as written, as its snapshot 1`
       },
       {
         "attrs": {
-          "href": "https://github.com/sprqvntrs/collie/actions/runs/1234",
+          "href": "https://github.com/AltanS/collie/actions/runs/1234",
         },
         "kind": "link",
         "text": "Report",
@@ -346,7 +346,7 @@ exports[`valid fixtures > the link node reads back as written, as its snapshot 1
       },
       {
         "attrs": {
-          "href": "bluefin:w6X:3",
+          "href": "lodge:w6X:3",
           "icon": "terminal",
           "rel": "pane",
         },
@@ -360,7 +360,7 @@ exports[`valid fixtures > the link node reads back as written, as its snapshot 1
       {
         "attrs": {
           "badge": "",
-          "href": "http://bluefin:8832/legs/24.log",
+          "href": "http://lodge:8832/legs/24.log",
           "rel": "url",
         },
         "kind": "link",
@@ -474,7 +474,7 @@ exports[`valid fixtures > the para node reads back as written, as its snapshot 1
       },
       {
         "attrs": {
-          "href": "http://bluefin:8832/legs",
+          "href": "http://lodge:8832/legs",
           "icon": "link",
         },
         "kind": "link",
@@ -496,7 +496,7 @@ exports[`valid fixtures > the row node reads back as written, as its snapshot 1`
           "cut": "end",
           "disabled": "",
           "end": "red",
-          "href": "http://bluefin:8832/legs/24",
+          "href": "http://lodge:8832/legs/24",
           "icon": "flag",
           "tone": "danger",
         },
@@ -560,7 +560,7 @@ exports[`valid fixtures > the run node reads back as written, as its snapshot 1`
       },
       {
         "attrs": {
-          "href": "http://bluefin:8832/legs/log",
+          "href": "http://lodge:8832/legs/log",
         },
         "kind": "run",
         "text": " (log)",

@@ -1120,8 +1120,8 @@ describe("ThreadSidebar: the filter", () => {
   it("filters the Tricks group like any other group: a row that does not match leaves, an empty group leaves", async () => {
     const user = userEvent.setup();
     const trick = (id: string, name: string, tabLabel: string): AgentView =>
-      at(`trick:bluefin:${id}:${id}`, "trick:bluefin", "Tricks", 9, {
-        tabId: `trick:bluefin:${id}`,
+      at(`trick:lodge:${id}:${id}`, "trick:lodge", "Tricks", 9, {
+        tabId: `trick:lodge:${id}`,
         agent: id,
         kind: "trick",
         paneLabel: name,

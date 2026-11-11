@@ -3,6 +3,8 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, readlink } from "node:fs/promises";
 import { join } from "node:path";
 
+import { isHiddenChar } from "../../web/src/lib/hidden-chars.ts";
+
 // THE CODE OF A TRICK, AS ONE HASH (M94): what a person approves when they switch a trick on.
 //
 // The switch stores this hash (switches.ts), and the bridge runs a copy of exactly those bytes
@@ -23,8 +25,8 @@ import { join } from "node:path";
 //     in the approved copy would point somewhere else than it did in the folder (the copy sits deeper),
 //     or at the live folder itself, so code nobody approved could run. `collie trick add` refuses links
 //     for the same reason (cli/trick-add.ts).
-//   * a name with a control character, an invisible direction mark or a tag character
-//     ({@link unsafeText}): the card on the Hill could not show it as it is.
+//   * a name with a character that does not show as itself ({@link unsafeText}: a control, a direction
+//     mark, a line separator, a zero-width joiner, a blank-looking letter): the card could not show it.
 //
 // PICTURES ARE NOT CODE, AND NOTHING ELSE IN `media/` OR `captures/` IS COPIED. The approved copy
 // (approved.ts) brings in from those two folders only a file whose name ends in `.png`, `.jpg`, `.jpeg` or
@@ -65,17 +67,14 @@ export function isPictureName(name: string): boolean {
 }
 
 /**
- * Whether text holds a character a Decision's view refuses (web/src/lib/tricks/schema.ts `hasControl` and
- * `hasInvisible`): a C0 or C1 control, an invisible direction mark or isolate, a zero-width space or
- * joiner word, a byte order mark, or a tag character. A file name with one is refused by the walk.
+ * Whether text holds a character a card could not show as it is: a line break, a tab, or any character
+ * web/src/lib/hidden-chars.ts `isHiddenChar` names (a control, a format or direction character, a line
+ * separator, a zero-width joiner, a blank-looking letter, a space that is not U+0020; review 7 M1). The
+ * phone's `diff` rule runs the same function. A file name with one is refused by the walk, and a code line
+ * on a card has each one as a `?` (version-diff.ts `readViewLine`).
  */
 export function unsafeText(text: string): boolean {
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
-    if (code === 0x200b || code === 0x200e || code === 0x200f || code === 0x061c || code === 0x2060 || code === 0xfeff) return true;
-    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069) || (code >= 0xe0000 && code <= 0xe007f)) return true;
-  }
+  for (const ch of text) if (ch === "\n" || ch === "\t" || isHiddenChar(ch)) return true;
   return false;
 }
 
@@ -88,6 +87,8 @@ export interface FsStat {
   ino: number;
   /** The inode change time: unlike mtime, no caller can set it back. Absent from a test's fake. */
   ctimeMs?: number;
+  /** The permission bits, for a card that says a file became executable. Absent from a test's fake. */
+  mode?: number;
 }
 
 /** A folder listing: its entries, or why it could not be listed (`missing` for ENOENT only). */
@@ -126,7 +127,7 @@ export const diskTrickFs: TrickFs = {
   async lstat(path) {
     try {
       const st = await lstat(path);
-      return { kind: kindOf(st), size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs };
+      return { kind: kindOf(st), size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs, mode: st.mode };
     } catch {
       return null;
     }
@@ -190,6 +191,16 @@ export function skippedName(name: string, kind: EntryKind, depth: number): boole
   if (kind === "dir") return name === "node_modules" || (depth === 0 && SKIPPED_TOP_DIRS.has(name));
   if (depth === 0 && name === CONFIG_FILE) return true;
   return name.endsWith(".log");
+}
+
+/**
+ * Whether a regular file at `rel` (relative to a trick folder, `/`-separated) is code: a file the code hash
+ * walks, by {@link skippedName} at each step. `config.toml`, `media/`, a `.log`, a dot name, `node_modules/`
+ * are not.
+ */
+export function isCodePath(rel: string): boolean {
+  const steps = rel.split("/");
+  return steps.every((step, depth) => !skippedName(step, depth === steps.length - 1 ? "file" : "dir", depth));
 }
 
 /** Byte order, so the same folder sorts the same on every machine and locale. */
@@ -270,6 +281,45 @@ export async function hashCodeEntries(fs: TrickFs, dir: string, entries: readonl
     h.update("\n");
   }
   return h.digest("hex");
+}
+
+/**
+ * The code hash a folder holding exactly `files` (regular files, every one of them code) would have: the
+ * format of {@link hashCodeEntries}, from memory. A proposal's new version is approved only when the folder
+ * written hashes to this (crew slice 8); a test holds the two equal.
+ */
+export function codeHashOfFiles(files: readonly { rel: string; bytes: Uint8Array }[]): string {
+  const h = createHash("sha256");
+  for (const file of [...files].toSorted(byPath)) {
+    h.update(`file\0${file.rel}\0`);
+    h.update(`${String(file.bytes.length)}\0`);
+    h.update(file.bytes);
+    h.update("\n");
+  }
+  return h.digest("hex");
+}
+
+/**
+ * THE EXTRAS OF AN OFFICIAL TRICK (security review N3): the files an add from the official list installs
+ * that the code hash leaves out. Only two kinds may be there: `config.toml` at the top and files under a
+ * top-level `media/`. Their hash is the code hash's format over those files, with its own first line, so the
+ * two can never be equal. The list names it (`extras`, official.ts), the maintainer script takes it with
+ * this function, and the add checks it before anything is written. Any other file the code hash leaves out
+ * (`captures/`, `inputs/`, a `.log`) refuses the folder: an official trick ships none.
+ */
+export function officialExtrasHash(files: readonly { rel: string; bytes: Uint8Array }[]): { ok: true; hash: string } | { ok: false; rel: string } {
+  const extras = files.filter((file) => !isCodePath(file.rel));
+  const other = extras.find((file) => file.rel !== CONFIG_FILE && !file.rel.startsWith("media/"));
+  if (other !== undefined) return { ok: false, rel: other.rel };
+  const h = createHash("sha256");
+  h.update("collie-extras\0v1\n");
+  for (const file of [...extras].toSorted(byPath)) {
+    h.update(`file\0${file.rel}\0`);
+    h.update(`${String(file.bytes.length)}\0`);
+    h.update(file.bytes);
+    h.update("\n");
+  }
+  return { ok: true, hash: h.digest("hex") };
 }
 
 /** The code hash of a trick folder, read fresh: what `collie trick on` and the switch route store. */

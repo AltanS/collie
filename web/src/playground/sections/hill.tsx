@@ -2,7 +2,7 @@
 // the Dashboard's way in. Every card mounts the REAL component (`DecisionCard`, `HillView`,
 // `HillHeader`, `DashboardTabBar`) with fixtures shaped by the wire (`fixtures/hill/decisions.ts`). There
 // is no bridge behind this page: a card's state is fixed, and a tap on a live card answers nothing.
-// The cards wear the machine tints of a two-machine crew (bluefin and minibuch), as `LiveDecisionCard`
+// The cards wear the machine tints of a two-machine crew (lodge and workshop), as `LiveDecisionCard`
 // would hand them on one.
 //
 // Cards are numbered 1 to 52.
@@ -57,6 +57,9 @@ import {
   trickOpen,
   twoOptions,
   unattended,
+  later,
+  proposalGroup,
+  versionGroup,
   versionPlain,
   versionRights,
   withBody,
@@ -76,20 +79,28 @@ const noSend = () => {};
 
 /** The tint slot per machine, as `lib/hosts.ts` would assign it on this two-machine crew. */
 const HOST_SLOT: ReadonlyMap<string, number> = new Map([
-  ["bluefin", 2],
-  ["minibuch", 6],
+  ["lodge", 2],
+  ["workshop", 6],
 ]);
+
+/** One proposal group per case: each is its own Decision, so the cards one case opens never count in another. */
+const GROUP_FIRST = proposalGroup();
+const GROUP_MIDDLE = proposalGroup();
+const GROUP_UNOPENED = proposalGroup();
+const GROUP_OPENED = proposalGroup();
+const GROUP_LISTED = proposalGroup();
 
 /** The trick icon per trick id, as the tricks list would say it. */
 const TRICK_ICON: ReadonlyMap<string, string> = new Map([["look", "eye"]]);
 
 /** The real card with the playground's images, tints and trick icons. */
-function PlaygroundCard({ decision, answer = HILL_IDLE }: { decision: HillDecision; answer?: HillAnswerState }) {
+function PlaygroundCard({ decision, answer = HILL_IDLE, card }: { decision: HillDecision; answer?: HillAnswerState; card?: number }) {
   const { from } = decision;
   return (
     <DecisionCard
       decision={decision}
       answer={answer}
+      playgroundCard={card}
       onSend={noSend}
       mediaSource={playgroundMedia}
       hostSlot={from.host === null ? null : (HOST_SLOT.get(from.host) ?? null)}
@@ -123,13 +134,29 @@ function CardHead({ n, title }: { n: number; title: string }) {
 }
 
 /** One Decision card at phone width, in a fixed state. Its images are the page's own panels. */
-function OneCard({ decision, answer = HILL_IDLE }: { decision: HillDecision; answer?: HillAnswerState }) {
+function OneCard({ decision, answer = HILL_IDLE, card }: { decision: HillDecision; answer?: HillAnswerState; card?: number }) {
   return (
     <Phone>
       <div className="p-4">
-        <PlaygroundCard decision={decision} answer={answer} />
+        <PlaygroundCard decision={decision} answer={answer} card={card} />
       </div>
     </Phone>
+  );
+}
+
+/** A group of cards paged to card `to` by the real Next taps, once mounted: every card on the way is opened. */
+function PagedCard({ decision, to }: { decision: HillDecision; to: number }) {
+  const root = useRef<HTMLDivElement>(null);
+  // One tap a turn, each after the card before it drew, as a person taps.
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (let card = 1; card < to; card++) timers.push(setTimeout(() => root.current?.querySelector<HTMLButtonElement>('[data-slot="decision-group-next"]')?.click(), card * 50));
+    return () => timers.forEach(clearTimeout);
+  }, [to]);
+  return (
+    <div ref={root}>
+      <OneCard decision={decision} />
+    </div>
   );
 }
 
@@ -385,13 +412,13 @@ function MatchView({ c }: { c: HillCase }) {
 /** The case's tricks as `dashboard` parts in a store of their own, so the real strip draws them. */
 function useCaseTricksStore(c: HillCase): TricksStore {
   const store = useMemo(() => {
-    const infos: WireTrickInfo[] = c.tricks.map((trick) => ({ host: "bluefin", id: trick.id, name: trick.name, icon: trick.icon, on: true, state: "ok", places: ["dashboard"] }));
+    const infos: WireTrickInfo[] = c.tricks.map((trick) => ({ host: "lodge", id: trick.id, name: trick.name, icon: trick.icon, on: true, state: "ok", places: ["dashboard"] }));
     const asOf = new Date().toISOString();
     const parts: WireTrickPart[] = c.tricks.map((trick) => {
       const item: PlaceItem = { icon: trick.icon, label: trick.name };
       if (trick.count !== undefined) item.badge = trick.count;
       if (trick.tone !== undefined) item.tone = trick.tone;
-      return { host: "bluefin", trick: trick.id, part: "dashboard", rev: 1, value: { at: "dashboard", id: "dashboard", item }, asOf, fresh: "1h" };
+      return { host: "lodge", trick: trick.id, part: "dashboard", rev: 1, value: { at: "dashboard", id: "dashboard", item }, asOf, fresh: "1h" };
     });
     return createTricksStore({
       fetchTricks: () => Promise.resolve({ rev: 1, tricks: infos, parts, present: parts.map(partKey) }),
@@ -824,9 +851,36 @@ export function HillSection() {
         </Card>
       </Group>
 
+      <Group title="A group of cards">
+        <Card state="hill-group-first" label="52: a proposal on 3 cards, card 1">
+          <CardHead n={52} title="A proposal on 3 cards: card 1, the facts" />
+          <OneCard decision={GROUP_FIRST} />
+        </Card>
+        <Card state="hill-group-middle" label="53: card 2, a file goes on">
+          <CardHead n={53} title="Card 2: a file goes on to the next card" />
+          <PagedCard decision={GROUP_MIDDLE} to={2} />
+        </Card>
+        <Card state="hill-group-last-closed" label="54: the last card, a card not opened">
+          <CardHead n={54} title="The last card, cards 1 and 2 not opened: the yes waits" />
+          <OneCard decision={GROUP_UNOPENED} card={3} />
+        </Card>
+        <Card state="hill-group-last-open" label="55: the last card, every card opened">
+          <CardHead n={55} title="The last card, every card opened: the yes is on" />
+          <PagedCard decision={GROUP_OPENED} to={3} />
+        </Card>
+        <Card state="hill-group-list" label="56: the Hill with a group">
+          <CardHead n={56} title="The Hill: a group is one entry, with 3 cards" />
+          <HillPhone open={[GROUP_LISTED, later]} closed={[]} />
+        </Card>
+        <Card state="hill-group-version" label="57: a new version on 2 cards">
+          <CardHead n={57} title="A proposed new version on 2 cards" />
+          <OneCard decision={versionGroup} />
+        </Card>
+      </Group>
+
       <Group title="Links in the body">
-        <Card state="hill-card-body-links" label="52: a body with links">
-          <CardHead n={52} title="A body with links" />
+        <Card state="hill-card-body-links" label="58: a body with links">
+          <CardHead n={58} title="A body with links" />
           <OpenedCard decision={linkBody} toggle="decision-more" />
         </Card>
       </Group>

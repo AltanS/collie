@@ -285,6 +285,31 @@ sniffs and keeps, as it keeps an image from its own agents. Trick proposals and 
 the tricks, when they are built, are specified in `CREW_PROTOCOL.md` in the commit that builds them,
 under this addendum's rule.
 
+Trick proposals are built (crew slice 8, `CREW_PROTOCOL.md` §24, 2026-11-11): a member forwards a
+trick's files to its lead over a signed route, and the lead keeps them as inert data in a dot folder,
+files 0600 without an executable bit, until the person taps "Switch it on" on the lead's Hill. That tap
+installs only bytes whose hash is the card's. No member and no agent can answer the card.
+
+The deputy's copy of the tricks is built (crew slice 10, `CREW_PROTOCOL.md` §25, 2026-11-11): the lead
+sends its deputy, and only its deputy, the approved code of each trick that is on, with its switch,
+`config.toml` and small state. The deputy keeps it under its state folder, which no tricks loader
+reads, files 0600 without an executable bit. Two taps on the deputy start it, and nothing else does:
+the Take over button on the standby page the deputy serves from its own disk, which names every trick
+it starts (eight in a sentence, all of them behind a "Show all" control), and `collie promote` typed on
+the deputy. The page shows no rights. The deputy trusts what its lead says was approved: it cannot see
+the person's yes on the lead. Each tap starts a trick only after the held code hashes to the version
+the lead names, and only when the rights the lead says were approved are the rights of that code; a
+trick whose rights differ is written but left off, and a card on the Hill says so. It never writes over
+a folder the deputy already has. The copy is removed when the machine stops being that lead's deputy.
+(Corrected 2026-11-11, review 7 R6: the text said the page "first names every trick" while it named
+eight, and that the code hashes "to the version the person approved on the lead", which the deputy
+cannot know.)
+
+The lead's open Decisions come along by the same rules (same date): records and pictures only. Of
+Collie's own cards the deputy takes only the notice that a carried trick did not start, with its one OK
+answer; a trick proposal card and a new version card are dropped, as their files are never carried, so
+no carried card can install or approve code on the deputy.
+
 ### 5. What would justify revisiting
 
 Unchanged from the decision above. A crew that wants a member to run code a lead sends, with no person

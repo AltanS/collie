@@ -24,6 +24,8 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObjec
 import { DECISION_VIEW_LIMITS, parseDecisionView, type View } from "@/lib/tricks/schema";
 
 import {
+  HILL_GROUP_HASH_RE,
+  HILL_GROUP_PARTS,
   HILL_MEDIA_BYTES_MAX,
   HILL_MEDIA_ID_RE,
   HILL_MEDIA_MAX,
@@ -35,6 +37,7 @@ import {
   HILL_TRICK_DELIVERIES,
   hillCollieRef,
   type HillDecision,
+  type HillGroup,
   type HillList,
   type HillMedia,
   type HillOption,
@@ -314,7 +317,36 @@ export function readHillDecision(value: JsonValue): HillDecision | null {
   // question and its options do not. An older bridge sends none.
   const view = o.view === undefined || o.view === null ? undefined : readDecisionView(o.view, placeOf);
   if (view !== undefined) decision.view = view;
+  // A group of cards (crew slice 8) only on Collie's own Decision, whole or not at all: a card left out
+  // would hide code, so a group with any card the reader refuses is dropped, and the yes is then refused.
+  const group = from.kind === "collie" && o.group !== undefined ? readHillGroup(o.group, okOptions) : null;
+  if (group !== null) decision.group = group;
   return decision;
+}
+
+/**
+ * A Decision's group of cards, or null: a digest, the decline among the options, and 2 to 8 cards, each
+ * a view the schema reads whole. The phone keeps the digest it was given and sends it back with the
+ * answer; it does not hash the cards again (the bridge does, and a page over plain HTTP has no
+ * `crypto.subtle`).
+ */
+export function readHillGroup(value: JsonValue, options: readonly HillOption[]): HillGroup | null {
+  const o = asJsonObject(value);
+  const digest = asJsonString(o?.digest);
+  const decline = asJsonString(o?.decline);
+  const rawParts = arrayOf(o?.parts);
+  if (digest === undefined || !HILL_GROUP_HASH_RE.test(digest) || decline === undefined || rawParts === undefined) return null;
+  if (rawParts.length < HILL_GROUP_PARTS.min || rawParts.length > HILL_GROUP_PARTS.max) return null;
+  if (!options.some((option) => option.intent === decline)) return null;
+  const parts: HillGroup["parts"] = [];
+  for (const raw of rawParts) {
+    const part = asJsonObject(raw);
+    const sha256 = asJsonString(part?.sha256);
+    const read = part?.view === undefined ? undefined : parseDecisionView(part.view, "/group").view;
+    if (sha256 === undefined || !HILL_GROUP_HASH_RE.test(sha256) || read === undefined) return null;
+    parts.push({ view: read, sha256 });
+  }
+  return { digest, decline, parts };
 }
 
 /** Every node of a view, kids counted, as `parseDecisionView` counts them against its cap. */

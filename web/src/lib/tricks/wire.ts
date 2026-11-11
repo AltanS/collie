@@ -17,9 +17,14 @@ import {
   INPUTS_MAX,
   INPUT_GLOB_MAX,
   isHostName,
+  isTrickId,
   isTrickText,
+  NAME_MAX,
+  OFFICIAL_STATES,
   TAP_CODES,
   TRICK_WARNINGS_MAX,
+  type OfficialState,
+  type OfficialTricksReply,
   type TrickPart,
   type TrickTapReply,
   type TricksReply,
@@ -29,6 +34,7 @@ import {
   type WireTrickPart,
   type WireTrickPending,
   type WireTrickWarning,
+  type WireOfficialTrick,
 } from "./schema";
 
 function asJsonArray(value: JsonValue | undefined): JsonValue[] | undefined {
@@ -222,6 +228,53 @@ function readRunsOn(raw: JsonValue | undefined): TricksRunsOn | undefined {
   if (body === undefined) return undefined;
   const lead = asJsonString(body.lead);
   return lead !== undefined && isHostName(lead) ? { lead } : {};
+}
+
+function isOfficialState(text: string | undefined): text is OfficialState {
+  return OFFICIAL_STATES.some((state) => state === text);
+}
+
+/** One entry of the official list, or `undefined` when a field is of another shape. */
+function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | undefined {
+  const body = asJsonObject(raw);
+  if (body === undefined) return undefined;
+  const id = asJsonString(body.id);
+  const name = asJsonString(body.name);
+  const description = readTrickText(body.description, "description");
+  const repo = asJsonString(body.repo);
+  const repoName = asJsonString(body.repoName);
+  const commit = asJsonString(body.commit);
+  const state = asJsonString(body.state);
+  if (id === undefined || !isTrickId(id) || name === undefined || !isTrickText(name, { max: NAME_MAX })) return undefined;
+  if (description === undefined || repo === undefined || repoName === undefined || !isTrickText(repoName, { max: NAME_MAX * 2 })) return undefined;
+  if (commit === undefined || !/^[0-9a-f]{40}$/u.test(commit) || !isOfficialState(state)) return undefined;
+  const out: WireOfficialTrick = { id, name, description, repo, repoName, commit, state };
+  if (body.unlisted === true && state === "taken") out.unlisted = true;
+  if (body.changed === true && state === "taken") out.changed = true;
+  return out;
+}
+
+/**
+ * `GET /api/tricks/official` (the official list), or `undefined` for a body of another shape. An entry
+ * of another shape is left out and the rest kept: the list only offers, so one odd entry hides itself.
+ */
+export function readOfficialTricksReply(raw: JsonValue | undefined): OfficialTricksReply | undefined {
+  const body = asJsonObject(raw);
+  const list = asJsonArray(body?.tricks);
+  if (body === undefined || list === undefined) return undefined;
+  const tricks = list.map(readOfficialTrick).filter((entry) => entry !== undefined);
+  const reply: OfficialTricksReply = { tricks };
+  const runsOn = readRunsOn(body.runsOn);
+  if (runsOn !== undefined) reply.runsOn = runsOn;
+  return reply;
+}
+
+/** The answer to an add or an update from the list: `{ id, state }`, or `undefined`. */
+export function readOfficialAddReply(raw: JsonValue | undefined): { id: string; state: OfficialState } | undefined {
+  const body = asJsonObject(raw);
+  const id = asJsonString(body?.id);
+  const state = asJsonString(body?.state);
+  return id === undefined || !isOfficialState(state) ? undefined : { id, state };
 }
 
 function isTapCode(text: string | undefined): text is TapCode {

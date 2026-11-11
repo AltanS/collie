@@ -37,7 +37,7 @@ const CASES: readonly RoundCase[] = [
   { value: "cw", label: "cw" },
   { value: "fix 7", label: "fix 7" },
   { value: "claude", label: "claude" },
-  { value: "minibuch", label: "minibuch" },
+  { value: "workshop", label: "workshop" },
   { value: "zzz", label: "zzz" },
   { value: "none", label: "none" },
 ];

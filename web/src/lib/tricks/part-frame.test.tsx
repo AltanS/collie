@@ -27,10 +27,10 @@ function sessionOf(doc: JsonObject): TrickPart {
 const GREEN: TrickPart = { at: "session", id: "deploy", view: [{ kind: "line", text: "deploy green", attrs: { style: "fg-green" } }] };
 
 function stored(value: TrickPart, extra: Partial<WireTrickPart> = {}): WireTrickPart {
-  return { host: "bluefin", trick: "deploy", part: value.id, rev: 1, value, asOf: AS_OF, fresh: "90s", ...extra };
+  return { host: "lodge", trick: "deploy", part: value.id, rev: 1, value, asOf: AS_OF, fresh: "90s", ...extra };
 }
 
-const TRICK: WireTrickInfo = { host: "bluefin", id: "deploy", name: "Deploy", icon: "machine", on: true, state: "ok", places: ["session"] };
+const TRICK: WireTrickInfo = { host: "lodge", id: "deploy", name: "Deploy", icon: "machine", on: true, state: "ok", places: ["session"] };
 
 function viewOfPart(value: TrickPart): View {
   if (!("view" in value)) throw new Error("no view");
@@ -197,7 +197,7 @@ describe("TrickView", () => {
   it("draws a new version of the same form at once, and holds a new form while a finger is down", async () => {
     const { store, push } = storeWith([stored(list(2, "one"))]);
     await store.syncTricks(1);
-    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    const { container } = render(<TrickView partKey="lodge/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
     const rows = () => container.querySelector('[data-trick-node="list"]')?.childElementCount;
     const root = container.querySelector('[data-slot="trick-part"]')!;
     fireEvent.pointerDown(root);
@@ -217,13 +217,13 @@ describe("TrickView", () => {
     const picture: TrickPart = { at: "session", id: "deploy", view: [{ kind: "image", attrs: { src: "media/shots/a b.png", alt: "the chart", w: "320", h: "200" } }] };
     const { store, push } = storeWith([stored(picture, { rev: 4 })]);
     await store.syncTricks(1);
-    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    const { container } = render(<TrickView partKey="lodge/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
     const img = () => container.querySelector('[data-trick-node="image"] img');
-    await waitFor(() => expect(img()?.getAttribute("src")).toBe("blob:/api/tricks/bluefin/deploy/media/shots/a%20b.png?rev=4"));
-    expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/bluefin/deploy/media/shots/a%20b.png?rev=4");
+    await waitFor(() => expect(img()?.getAttribute("src")).toBe("blob:/api/tricks/lodge/deploy/media/shots/a%20b.png?rev=4"));
+    expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/lodge/deploy/media/shots/a%20b.png?rev=4");
     // A new version of the part asks again: a program may write a new picture under the same name.
     await act(() => push([stored(picture, { rev: 5 })], 2));
-    await waitFor(() => expect(img()?.getAttribute("src")).toBe("blob:/api/tricks/bluefin/deploy/media/shots/a%20b.png?rev=5"));
+    await waitFor(() => expect(img()?.getAttribute("src")).toBe("blob:/api/tricks/lodge/deploy/media/shots/a%20b.png?rev=5"));
   });
 
   it("fetches both sides of a compare with the token, and keeps an image's focus, fit and caption", async () => {
@@ -238,13 +238,13 @@ describe("TrickView", () => {
     };
     const { store } = storeWith([stored(picture)]);
     await store.syncTricks(1);
-    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    const { container } = render(<TrickView partKey="lodge/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
     for (const file of ["chart", "before", "after"]) {
-      await waitFor(() => expect(authedObjectUrl).toHaveBeenCalledWith(`/api/tricks/bluefin/deploy/media/${file}.png?rev=1`));
+      await waitFor(() => expect(authedObjectUrl).toHaveBeenCalledWith(`/api/tricks/lodge/deploy/media/${file}.png?rev=1`));
     }
     await waitFor(() => expect(container.querySelectorAll('[data-trick-node="compare"] img')).toHaveLength(2));
     const chart = container.querySelector<HTMLImageElement>('[data-trick-node="image"] img');
-    expect(chart?.getAttribute("src")).toBe("blob:/api/tricks/bluefin/deploy/media/chart.png?rev=1");
+    expect(chart?.getAttribute("src")).toBe("blob:/api/tricks/lodge/deploy/media/chart.png?rev=1");
     expect(chart?.style.objectFit).toBe("cover");
     expect(chart?.style.objectPosition).toBe("20% 80%");
     expect(chart?.style.transform).toBe("scale(2)");
@@ -257,15 +257,15 @@ describe("TrickView", () => {
     const picture: TrickPart = { at: "session", id: "deploy", view: [{ kind: "image", attrs: { src: "media/gone.png", alt: "the chart", w: "320", h: "200" } }] };
     const { store } = storeWith([stored(picture)]);
     await store.syncTricks(1);
-    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
-    await waitFor(() => expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/bluefin/deploy/media/gone.png?rev=1"));
+    const { container } = render(<TrickView partKey="lodge/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    await waitFor(() => expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/lodge/deploy/media/gone.png?rev=1"));
     expect(container.querySelector('[data-trick-node="image"] img')).toBeNull();
     expect(container.querySelector('[data-trick-node="image"]')?.textContent).toBe("the chart");
   });
 
   it("draws nothing for a part it does not hold", () => {
     const { store } = storeWith([]);
-    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} />);
+    const { container } = render(<TrickView partKey="lodge/deploy/deploy" store={store} onLink={vi.fn()} />);
     expect(container.innerHTML).toBe("");
   });
 });
@@ -274,7 +274,7 @@ describe("TrickView", () => {
 describe("a part that is broken", () => {
   /** A held part whose value is not what the types say: parts the bridge's parser never saw. */
   function broken(json: string, id = "deploy"): WireTrickPart {
-    return { host: "bluefin", trick: "deploy", part: id, rev: 1, asOf: AS_OF, fresh: "90s", value: JSON.parse(json) };
+    return { host: "lodge", trick: "deploy", part: id, rev: 1, asOf: AS_OF, fresh: "90s", value: JSON.parse(json) };
   }
 
   it("draws the placeholder for a view that is no list, and the part beside it stays drawn", async () => {
@@ -296,11 +296,11 @@ describe("a part that is broken", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const body = {
       rev: 1,
-      tricks: [{ host: "bluefin", id: "deploy", name: "Deploy", icon: "machine", on: true, state: "ok", places: ["session"] }],
-      present: ["bluefin/deploy/deploy"],
+      tricks: [{ host: "lodge", id: "deploy", name: "Deploy", icon: "machine", on: true, state: "ok", places: ["session"] }],
+      present: ["lodge/deploy/deploy"],
       parts: [
         {
-          host: "bluefin",
+          host: "lodge",
           trick: "deploy",
           part: "deploy",
           rev: 1,
@@ -314,7 +314,7 @@ describe("a part that is broken", () => {
     if (read === undefined) throw new Error("the store's door refused the reply");
     const store = createTricksStore({ fetchTricks: () => Promise.resolve(read), tapTrick: () => Promise.reject(new Error("no")), mintRequestId: () => "r" });
     await store.syncTricks(1);
-    const { container } = render(<TrickView partKey="bluefin/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    const { container } = render(<TrickView partKey="lodge/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
     expect(container.querySelector('[data-trick-node="card"]')).not.toBeNull();
     expect(container.querySelector('[data-trick-node="list"]')).not.toBeNull();
     // The button draws with no label; the two nodes that are no nodes draw the placeholder, each in its own slot.
@@ -333,7 +333,7 @@ describe("a part that is broken", () => {
         throw new Error("a view that cannot be read");
       },
     };
-    const bomb: WireTrickPart = { host: "bluefin", trick: "deploy", part: "deploy", rev: 1, asOf: AS_OF, fresh: "90s", value };
+    const bomb: WireTrickPart = { host: "lodge", trick: "deploy", part: "deploy", rev: 1, asOf: AS_OF, fresh: "90s", value };
     const good = stored({ at: "session", id: "other", view: [{ kind: "line", text: "still here" }] }, { part: "other" });
     const { store } = storeWith([bomb, good]);
     await store.syncTricks(1);

@@ -341,7 +341,7 @@ export function LiveDecisionCard({ decision }: { decision: HillDecision }) {
     <DecisionCard
       decision={decision}
       answer={state}
-      onSend={(intent, text) => void send(intent, text)}
+      onSend={(intent, text, group) => void send(intent, text, group)}
       hostSlot={hostSlot(servers, from.memberId ?? undefined)}
       trickIcon={trickIcon}
     />

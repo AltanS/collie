@@ -122,8 +122,8 @@ const TABLE: readonly Row[] = [
   { text: "HTTPServer", term: "hs", anchored: null, loose: [[0, 1], [4, 5]] },
   { text: "alpha-beta", term: "aa", anchored: null, loose: [[0, 1], [4, 5]] },
   { text: "src/lib/fuzzy.ts", term: "fz", anchored: null, loose: [[8, 9], [10, 11]] },
-  { text: "bluefin", term: "fn", anchored: null, loose: [[4, 5], [6, 7]] },
-  { text: "minibuch", term: "mb", anchored: null, loose: [[0, 1], [4, 5]] },
+  { text: "lodge", term: "oe", anchored: null, loose: [[1, 2], [4, 5]] },
+  { text: "workshop", term: "wk", anchored: null, loose: [[0, 1], [3, 4]] },
   { text: "会议室", term: "会室", anchored: null, loose: [[0, 1], [2, 3]] },
 ];
 

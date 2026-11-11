@@ -330,6 +330,10 @@ The code of a trick may cross the link only as inert data. It is held, never ins
 until you tap on the screen of the machine that will run it. No machine of the crew can run a command
 on another.
 
+So an agent on a member can hand you a trick with `collie trick propose <folder>`. The files go to the
+lead and wait there, unused, as a card on the Hill. Nothing runs until you tap "Switch it on" on that
+card. `collie trick guide` tells an agent how to write a trick.
+
 ![The deputy's standby door opens only when the lead goes quiet.](images/crew/crew-deputy-standby.svg)
 
 A deputy is one peer the lead named ahead of time. It binds a standby door with three routes, and
@@ -494,6 +498,66 @@ answering shows `offline`.
 > **Note.** Reads from a member need Collie 1.29.0 on the lead and on that member. A session on an
 > older member shows `older` to the trick, and the lead does not ask that member. Run `collie crew
 > update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
+
+## Tricks after a takeover
+
+The crew's lead runs its tricks. When the deputy takes over, the tricks start again there, at the
+version you approved on the lead.
+
+The lead keeps a copy of each trick that is on, on its deputy: the trick's code, its switch and
+timer setting, its `config.toml`, and its small state with its pictures, up to 32 tricks. The deputy
+runs none of it while the lead is alive. Its standby page lists every trick that the Take over button
+starts again: eight in a sentence, and all of them under "Show all". Only that button starts them.
+`collie promote` typed on the deputy starts them too. Either way the deputy starts them as it restarts
+as the lead.
+
+The deputy trusts what its lead says you approved. It cannot see your yes on the lead. Before a trick
+starts, the deputy checks that its code is the version the lead names. A trick that does not match does
+not start, and the Hill says so after the takeover, with an OK button. It also checks that the trick
+asks for the rights the lead says you approved. A trick that asks for other rights stays off, and the
+Hill says "The trick <name> is off after the takeover". Read its rights in Settings → Tricks before you
+switch it on. When the deputy
+already has a trick folder of that name, Collie leaves the folder as it is, runs the approved version,
+and shows the folder's own code as a new version that waits for your yes.
+
+`collie crew status` on the lead says whether its deputy holds the copy. `collie crew approve-promote`
+says whether the tricks come along: only the deputy holds a copy.
+
+The copy holds each trick's `config.toml` and its state folder. A token or key in either also rests on
+the deputy, until it stops being the deputy: a trick may keep a login token in its state folder. When
+the deputy changes, the old one removes its copy.
+
+### Open questions on the Hill come along
+
+The lead also keeps a copy of its Hill's open Decisions on its deputy, with their pictures, up to 32 MB
+of pictures, newest first. The deputy shows none of them while the lead is alive. Its standby page says
+how many come along, and the Take over button or `collie promote` on the deputy puts them on the
+deputy's Hill. Each keeps its place, and no phone gets a second notification for it.
+
+A picture that did not reach the deputy is left out, and the card says "A picture stayed on
+<old lead>." A question from a trick that did not start on the deputy closes, with the reason "Its
+trick did not start on this machine after the takeover."
+
+Collie's own cards about a trick's new version or a proposed trick stay on the old lead, because their
+files do not come along. The deputy shows its own new versions. Ask for a proposal again on the new
+lead.
+
+A question you answered on the lead stays answered. After the takeover the old lead takes no answer:
+"This machine is not the crew's lead any more. Answer on the new lead."
+
+Known limits:
+
+- A carried question keeps the old lead's sender address and reply address. An answer that goes back
+  to an agent goes to that address, which names a pane on the old lead.
+- A takeover against a lead that is up but cut off splits the crew, and both machines can run the
+  same tricks at the same time.
+- While the standby door is armed, its page names the tricks and the number of open questions to a
+  browser that has not signed in. The Take over button needs a paired device.
+
+> **Note.** The copy needs Collie 1.29.0 on the lead and on the deputy. An older deputy keeps no copy;
+> `collie crew status` on the lead says so, and a takeover there starts no trick and brings no
+> question along. An answer you gave on the lead in the last seconds before it went down may not have
+> reached the deputy yet, so that question can be open again there.
 
 ## A machine can run several Collies
 

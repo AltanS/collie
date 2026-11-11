@@ -26,6 +26,7 @@ import { tricksStateDir, switchesPath } from "./paths.ts";
 //   * `powers`: a short hash of the rights the manifest asks for (approved.ts `powersOf`), as approved.
 //   * `previous`: the version before the last one, kept for undo.
 //   * `declined`: a version the person said no to, so it is not offered again.
+//   * `from`: the crew lead the version was carried from by a takeover or a handover (`by` then names it).
 //
 // LAYOUT 3, WRITTEN AS VERSION 2 (security re-review B4). The file says `"v": 2` and marks the approved-copy
 // layout with `"layout": 3`, so the previous build (whose parser reads `v` 1 or 2, `at` and `hash` per entry
@@ -75,6 +76,11 @@ export interface SwitchEntry {
   previous?: PreviousVersion;
   /** A code hash the person declined: not offered again while the folder still hashes to it. */
   declined?: string;
+  /**
+   * The crew lead this version was carried from, when a takeover or a handover started it here
+   * (crew/carry-adopt.ts; `by` is then `takeover` or `handover`). Audit and display only.
+   */
+  from?: string;
 }
 
 export interface Switches {
@@ -130,6 +136,8 @@ function entryOf(value: JsonValue | undefined): SwitchEntry | undefined {
   if (previous !== undefined) entry.previous = previous;
   const declined = hashOf(doc.declined);
   if (declined !== null) entry.declined = declined;
+  const from = asJsonString(doc.from);
+  if (from !== undefined && from !== "" && from.length <= 64) entry.from = from;
   return entry;
 }
 
@@ -157,6 +165,7 @@ function renderEntry(entry: SwitchEntry): JsonObject {
   const out: JsonObject = { at: entry.at, hash: entry.hash, auto: entry.auto, by: entry.by, powers: entry.powers };
   if (entry.previous !== undefined) out.previous = { hash: entry.previous.hash, at: entry.previous.at, by: entry.previous.by, powers: entry.previous.powers };
   if (entry.declined !== undefined) out.declined = entry.declined;
+  if (entry.from !== undefined) out.from = entry.from;
   return out;
 }
 

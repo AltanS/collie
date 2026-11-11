@@ -101,7 +101,7 @@ const NO_KEPT: ReadonlyMap<string, string> = new Map();
 
 /** The legs trick's Session part, for the `trick-route` case: a view and two actions at the foot. */
 const LEGS_SESSION_PART: WireTrickPart = {
-  host: "bluefin",
+  host: "lodge",
   trick: "legs",
   part: "legs",
   rev: 1,
@@ -135,17 +135,17 @@ function part(trick: Fixture, at: "dashboard" | "tabbar"): WireTrickPart {
   const item: PlaceItem = { icon: trick.icon, label: trick.name };
   if (trick.badge !== undefined) item.badge = trick.badge;
   if (trick.tone !== undefined) item.tone = trick.tone;
-  return { host: "bluefin", trick: trick.id, part: at, rev: 1, asOf: AS_OF, fresh: "24h", value: { at, id: at, item } };
+  return { host: "lodge", trick: trick.id, part: at, rev: 1, asOf: AS_OF, fresh: "24h", value: { at, id: at, item } };
 }
 
 /** A trick session for the first two tricks, so their tiles and items are buttons; the rest are inert. */
 function trickSession(trick: Fixture): AgentView {
   return {
-    paneId: `trick:bluefin:${trick.id}:${trick.id}`,
-    workspaceId: "trick:bluefin",
+    paneId: `trick:lodge:${trick.id}:${trick.id}`,
+    workspaceId: "trick:lodge",
     workspaceLabel: "Tricks",
     workspaceNumber: 4,
-    tabId: `trick:bluefin:${trick.id}`,
+    tabId: `trick:lodge:${trick.id}`,
     agent: trick.id,
     status: "idle",
     cwd: "",
@@ -157,7 +157,7 @@ const SESSIONS: readonly AgentView[] = TRICKS.slice(0, 2).map(trickSession);
 /** The legs trick's Session as the snapshot lists it, with its view: the `trick-route` case's pane. */
 const LEGS_PANE: AgentView = { ...SESSIONS[0]!, paneLabel: "Browser leg", sessionName: "Browser leg", subtitle: "case 24 red", status: "working", view: partKey(LEGS_SESSION_PART) };
 /** The bar's current trick on the `trick-route` case. */
-const LEGS_REF = { host: "bluefin", trick: "legs" } as const;
+const LEGS_REF = { host: "lodge", trick: "legs" } as const;
 
 function storeFor(c: PlaceCase): TricksStore {
   const parts = [
@@ -165,7 +165,7 @@ function storeFor(c: PlaceCase): TricksStore {
     ...TRICKS.slice(0, c.bar).map((t) => part(t, "tabbar")),
     ...(c.route === "trick" ? [LEGS_SESSION_PART] : []),
   ];
-  const tricks = TRICKS.map((t): WireTrickInfo => ({ host: "bluefin", id: t.id, name: t.name, icon: t.icon, on: true, state: "ok", places: ["dashboard", "tabbar"] }));
+  const tricks = TRICKS.map((t): WireTrickInfo => ({ host: "lodge", id: t.id, name: t.name, icon: t.icon, on: true, state: "ok", places: ["dashboard", "tabbar"] }));
   return createTricksStore({
     fetchTricks: () => Promise.resolve({ rev: 1, tricks, parts, present: parts.map(partKey) }),
     tapTrick: (_host, _trick, body) => Promise.resolve({ rid: body.rid, code: "ok" }),

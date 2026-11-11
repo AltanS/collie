@@ -99,7 +99,7 @@ export function SwitcherSection() {
           state="switcher-crew-fourteen"
           label="1: Crew, fourteen rows"
           reach="Swipe up on a pane's handle on a crew with more than five sessions, or open a pane on a large screen."
-          note="Type into the field: cw, f7, minibuch, omp. The card has no sheet head, so the field sticks at the box's top."
+          note="Type into the field: cw, f7, workshop, omp. The card has no sheet head, so the field sticks at the box's top."
         >
           <SwitcherCard here={switcherCrew.agents[2]!} />
         </Card>

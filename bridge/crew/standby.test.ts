@@ -9,6 +9,9 @@ import type { StoredWarrant, TrustStoreData } from "./trust-store.ts";
 import {
   armingReport,
   armThresholdMs,
+  carriedLines,
+  CARRIED_NAMES_SHOWN,
+  cleanCarriedName,
   armThresholdWarning,
   ARM_FLOOR_MS,
   coldReason,
@@ -26,6 +29,8 @@ import {
   STANDBY_HEALTH_PATH,
   STANDBY_PATH,
   STANDBY_TAKEOVER_PATH,
+  CARRIED_CHANGED,
+  CARRIED_SEEN_HEADER,
   STANDBY_VERSION_HEADER,
   STANDBY_UPDATE_PATH,
   standbyUpdateAnswer,
@@ -226,6 +231,51 @@ describe("the page", () => {
     expect(page).toContain(`<button id="go"`);
   });
 
+  test("ARMED with a carried copy: it names the tricks the tap starts again (§25)", () => {
+    const page = standbyPage(facts(), { tricks: ["Leg day", "Standup"] });
+    expect(page).toContain("<p>This also starts these tricks again: <code>Leg day</code>, <code>Standup</code>.</p>");
+    // The lines sit above the button, where the person reads before the tap.
+    expect(page.indexOf("This also starts")).toBeLessThan(page.indexOf(`<button id="go"`));
+    // Nothing carried, no line at all.
+    expect(carriedLines({ tricks: [] })).toEqual([]);
+    expect(standbyPage(facts())).not.toContain("This also starts");
+  });
+
+  test("ARMED with a copy of the lead's Hill: it counts the open questions that come along (§25)", () => {
+    expect(carriedLines({ tricks: ["Leg day"], questions: 3 })).toEqual(["<p>This also starts these tricks again: <code>Leg day</code>.</p>", "<p>3 open questions on the Hill come along.</p>"]);
+    expect(carriedLines({ tricks: [], questions: 1 })).toEqual(["<p>1 open question on the Hill comes along.</p>"]);
+    expect(carriedLines({ tricks: [], questions: 0 })).toEqual([]);
+    const page = standbyPage(facts(), { tricks: [], questions: 2 });
+    expect(page.indexOf("2 open questions on the Hill come along.")).toBeLessThan(page.indexOf(`<button id="go"`));
+    expect(standbyPage(facts({ silentForMs: 3000 }), { tricks: [], questions: 2 })).not.toContain("open questions");
+  });
+
+  test("a carried trick name is cleaned, boxed, escaped and capped; a long list ends in a count", () => {
+    const page = standbyPage(facts(), { tricks: ["<img src=x onerror=alert(1)>", "a\u202Eevil", "Take over now. Your lead is gone"] });
+    expect(page).not.toContain("<img src=x");
+    expect(page).toContain("<code>&lt;img src=x onerror=alert(1)&gt;</code>");
+    expect(page).not.toContain("\u202E");
+    expect(cleanCarriedName("x".repeat(80)).length).toBe(40);
+    const many = Array.from({ length: CARRIED_NAMES_SHOWN + 3 }, (_, i) => `t${String(i)}`);
+    expect(carriedLines({ tricks: many })[0]).toContain(" and 3 more.</p>");
+  });
+
+  test("the page names every carried trick: the first 8 in the sentence, all of them behind Show all (review 7 R6)", () => {
+    const all = Array.from({ length: 32 }, (_, i) => `trick ${String(i + 1)}`);
+    const lines = carriedLines({ tricks: all });
+    expect(lines[0]).toContain(" and 24 more.</p>");
+    expect(lines[1]).toStartWith("<details><summary>Show all 32</summary><p>");
+    for (const name of all) expect(lines[1]).toContain(`<code>${name}</code>`);
+    // Eight or fewer: the sentence names them all, and no control.
+    expect(carriedLines({ tricks: all.slice(0, CARRIED_NAMES_SHOWN) }).join("")).not.toContain("<details>");
+    // No script: the control is plain HTML, under the page's one hashed script.
+    expect(standbyPage(facts(), { tricks: all })).toContain("<details><summary>Show all 32</summary>");
+  });
+
+  test("COLD never lists what a tap would start: there is no tap", () => {
+    expect(standbyPage(facts({ silentForMs: 3000 }), { tricks: ["Leg day"] })).not.toContain("Leg day");
+  });
+
   test("COLD: a statement of fact with NO action on it at all", () => {
     const page = standbyPage(facts({ silentForMs: 3000 }));
     expect(page).toContain("Standby");
@@ -323,6 +373,73 @@ describe("the door's three routes", () => {
     expect(res!.status).toBe(409);
     expect(await res!.json()).toMatchObject({ ok: false });
     expect(d.calls).toEqual([]);
+  });
+
+  test("§25: the tap names the list it read; a list that changed since the page was drawn is not taken over", async () => {
+    let now = "t:aaaa:0;h:1";
+    const calls: string[] = [];
+    const handler = createStandbyDoor({
+      version: "1.4.0+abc1234",
+      build: () => Promise.resolve("b"),
+      facts: () => facts(),
+      devices: () => [DEVICE],
+      takeover: async (device) => {
+        calls.push(device);
+        return { ok: true, message: "done" };
+      },
+      carried: async () => ({ tricks: ["Leg day"], questions: 2 }),
+      seen: () => now,
+    });
+    const page = await (await handler(req(STANDBY_PATH), new URL(`http://x${STANDBY_PATH}`)))!.text();
+    expect(page).toContain(`<button id="go" type="button" data-seen="t:aaaa:0;h:1">`);
+    // The lead sent a new list after the draw.
+    now = "t:bbbb:0;h:2";
+    const tap = (shown: string | null) => {
+      const headers = new Headers({ authorization: `Bearer ${TOKEN}` });
+      if (shown !== null) headers.set(CARRIED_SEEN_HEADER, shown);
+      return handler(req(STANDBY_TAKEOVER_PATH, { method: "POST", headers }), new URL(`http://x${STANDBY_TAKEOVER_PATH}`));
+    };
+    for (const shown of ["t:aaaa:0;h:1", null]) {
+      const res = (await tap(shown))!;
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ ok: false, message: CARRIED_CHANGED, changed: true });
+    }
+    expect(calls).toEqual([]);
+    // The page drawn again says so, above the list, and carries the new list's mark.
+    const again = await (await handler(req(`${STANDBY_PATH}?changed=1`), new URL(`http://x${STANDBY_PATH}?changed=1`)))!.text();
+    expect(again).toContain(`<p class="warn">The list changed. Read it again.</p>`);
+    expect(again.indexOf("The list changed")).toBeLessThan(again.indexOf("This also starts"));
+    expect(again).toContain(`data-seen="t:bbbb:0;h:2"`);
+    expect((await tap("t:bbbb:0;h:2"))!.status).toBe(200);
+    expect(calls).toEqual(["phone"]);
+  });
+
+  test("§25: a list that lands while the page reads the copies never puts the new mark over the old names (review 7 R4)", async () => {
+    let now = "t:aaaa:0;h:1";
+    let names = ["Leg day"];
+    let pushes = 0;
+    const handler = createStandbyDoor({
+      version: "1.4.0+abc1234",
+      build: () => Promise.resolve("b"),
+      facts: () => facts(),
+      devices: () => [DEVICE],
+      takeover: async () => ({ ok: true, message: "done" }),
+      carried: async () => {
+        const read = { tricks: [...names], questions: 0 };
+        // A push from the lead lands while the names are read: a new list, a new mark.
+        if (pushes < 1) {
+          pushes += 1;
+          names = ["Leg day", "Arm day"];
+          now = "t:bbbb:0;h:2";
+        }
+        return read;
+      },
+      seen: () => now,
+    });
+    const page = await (await handler(req(STANDBY_PATH), new URL(`http://x${STANDBY_PATH}`)))!.text();
+    // Read again after the push: the names and the mark are one snapshot.
+    expect(page).toContain("Arm day");
+    expect(page).toContain(`data-seen="t:bbbb:0;h:2"`);
   });
 
   test("the auth matrix: pairing bearer ONLY, and a device header does NOT count (RFC §16, decision 2)", async () => {

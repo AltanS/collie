@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { JsonValue } from "../json.ts";
 import { parseManifest, type TrickManifest, type Refusal } from "../../web/src/lib/tricks/schema.ts";
 import { CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, type FsStat, type TrickFs } from "./code-hash.ts";
-import { ORIGIN_FILE, readOrigin, type TrickOrigin } from "./origin.ts";
+import { ORIGIN_FILE, readOrigin, readProposalOrigin, type ProposalOrigin, type TrickOrigin } from "./origin.ts";
 import { MANIFEST_FILE } from "./paths.ts";
 
 // FINDING TRICKS (M94 slice 01): every folder under `<configDir>/tricks/` is a trick, named by the folder.
@@ -45,6 +45,8 @@ export interface FoundTrick {
   configHash: string | null;
   /** Where `collie trick add` took the trick from (origin.ts), when the folder has a record of it. */
   origin?: TrickOrigin;
+  /** Who proposed it (`collie trick propose`, origin.ts), when the folder has that record instead. */
+  proposal?: ProposalOrigin;
 }
 
 /** What a scan saw: whether the tricks folder exists at all, and each trick folder in name order. */
@@ -135,6 +137,8 @@ export async function scanTrickDir(fs: TrickFs, dir: string, id: string, known: 
   if (walk.ok) found.codeHash = await hashCodeEntries(fs, dir, walk.entries);
   const record = origin === null ? null : await readOrigin(dir, fs);
   if (record !== null) found.origin = record;
+  const proposed = origin === null || record !== null ? null : await readProposalOrigin(dir, fs);
+  if (proposed !== null) found.proposal = proposed;
   if (read.manifest !== undefined && walk.ok && configRead.kind !== "refused") found.manifest = read.manifest;
   return found;
 }

@@ -104,12 +104,22 @@ import { cleanBody } from "../walky/clean.ts";
 import type { WalkyPane } from "../walky/deliver.ts";
 import { headerField, WALKY_BODY_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import { digestDiffers, payloadDigest, withDigest } from "../worktree-receipts.ts";
-import { readPostFields } from "./parse.ts";
-import { mintMediaId, type HillImageBytes, type HillMediaStore } from "./media.ts";
+import { HILL_GROUP_NOT_YOURS, readPostFields } from "./parse.ts";
+import { makeGroup } from "./group.ts";
+import { mintMediaId, type HillImageBytes, type HillMediaFile, type HillMediaStore } from "./media.ts";
 import { HILL_PUSH_RATE, hillPushTag, type HillPushPort } from "./push.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
 import type { HillStore, HillTombstone } from "./store.ts";
 import type { HillLeadForward, HillListAnswer } from "./crew.ts";
+
+/**
+ * A session's or a trick's name, never Collie's own (crew slice 8 review Q1, Q2): a name that reads
+ * "Collie" once case, width and compatibility forms are set aside gets `(a session)` or `(a trick)` after
+ * it. The card's mark (the agent's logo or the trick's glyph, never the app's) says the rest.
+ */
+export function notCollie(label: string, what: "a session" | "a trick"): string {
+  return label.normalize("NFKC").trim().toLowerCase() === "collie" ? `${label} (${what})` : label;
+}
 
 /** An agent in a pane this bridge placed: what the socket can name. */
 export interface HillAgentSender {
@@ -199,6 +209,11 @@ export interface HillServiceDeps {
   /** Type `body` into the session at `to` as an operator walky message under the label `by`. */
   send(to: string, body: string, by: string): Promise<HillDelivery>;
   crewMode(): HillCrewMode;
+  /**
+   * True while this bridge is a deposed lead (CREW_PROTOCOL §18.12): another machine took the crown, so
+   * a post here would sit on a Hill nobody leads. Refused like a peer's (§25). Absent: never deposed.
+   */
+  readonly deposed?: () => boolean;
   /** False with COLLIE_WALKY=off: no answer could be typed, so no decision is taken. */
   walkyOn(): boolean;
   /**
@@ -284,6 +299,13 @@ export interface HillPostOptions {
    * whose paths then only name them. Absent: each image is read from its path on this machine.
    */
   readonly images?: readonly HillImageBytes[];
+  /**
+   * Collie's own Decision only (crew slice 8, a trick proposal): the live session told of the answer, as
+   * a courtesy. It is stored as `replyTo`, so that session may read the Decision with `collie hill
+   * status`; the card names no target, so the session ending or its machine going away never closes the
+   * card, never holds the person's answer, and the answer is typed there only while it is live.
+   */
+  readonly tellOf?: string;
 }
 
 /** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
@@ -292,6 +314,37 @@ export type HillPostAnswer = { readonly ok: true; readonly decision: HillDecisio
 /** A status or withdraw answer. `missing`: this bridge holds no such decision from this sender. */
 export type HillOneAnswer = { readonly ok: true; readonly decision: HillDecision } | { readonly ok: false; readonly missing: true; readonly error: string } | { readonly ok: false; readonly missing: false; readonly error: string };
 
+/** What a lead carries of its Hill to its deputy (CREW_PROTOCOL §25, `HillService.carryView`). */
+export interface HillCarryView {
+  readonly on: boolean;
+  readonly open: HillDecision[];
+  readonly closed: string[];
+}
+
+/**
+ * Merge carried Decisions into a Hill store (§25): each under its own id, its pictures first, in one
+ * write; an id the store holds or cleared is left alone. No post, no push. Answers the ids stored. The
+ * bridge's Hill (`HillService.adoptCarried`) and `collie promote` share it.
+ */
+export function adoptCarriedInto(
+  store: HillStore,
+  mediaStore: HillMediaStore | undefined,
+  decisions: readonly HillDecision[],
+  media: ReadonlyMap<string, readonly HillMediaFile[]>,
+): string[] {
+  const kept: HillDecision[] = [];
+  for (const decision of decisions) {
+    if (store.taken(decision.id)) continue;
+    const files = media.get(decision.id) ?? [];
+    // A picture this Hill could not keep leaves the card without it rather than pointing at nothing.
+    kept.push(files.length === 0 || mediaStore?.save(decision.id, files) === true ? decision : { ...decision, media: [] });
+  }
+  if (kept.length === 0 || !store.put(...kept)) return [];
+  return kept.map((decision) => decision.id);
+}
+
+/** What an answer on a deposed lead is refused with (§25): the Decisions moved with the crown. */
+export const HILL_DEPOSED = "This machine is not the crew's lead any more. Answer on the new lead.";
 /** The sentence a crew member answers a post with. */
 export const NOT_ON_LEAD = "the hill is not merged across the crew yet; post from a session on the lead machine";
 /** What a post says when its request id already posted a decision that a person has since cleared. */
@@ -456,8 +509,9 @@ export function hillPostDigest(input: HillPostInput): string {
   const links = (input.links ?? []).map((link) => [link.label, link.href]);
   const images = (input.images ?? []).map((image) => [image.path, image.caption ?? null]);
   const parts = [input.title, input.summary, input.body ?? "", options, input.text ?? "optional", recommends, links, input.priority ?? "today", input.about ?? null, input.replyTo ?? null, images];
-  // The view joins only when there is one, so a post without one keeps the digest it always had.
-  return payloadDigest([JSON.stringify(input.view === undefined ? parts : [...parts, input.view])]);
+  // The view joins only when there is one, so a post without one keeps the digest it always had; a group too.
+  const withView = input.view === undefined ? parts : [...parts, input.view];
+  return payloadDigest([JSON.stringify(input.group === undefined ? withView : [...withView, { group: input.group }])]);
 }
 
 /** A decision as the phone and the socket get it: without `postDigest` and `pushTag`, which only the bridge needs. */
@@ -501,6 +555,15 @@ function keyOf(decision: HillDecision): string {
 export const HILL_NO_ANSWER_HANDLER = "Collie cannot act on this answer here.";
 /** The reason a withdraw is refused while that Collie Decision's answer runs. */
 export const HILL_ANSWER_RUNNING = "the decision is being answered";
+
+/** The refusal of a yes to a group whose cards the phone did not all open (a DISPLAY check, never proof). */
+export function hillGroupOpenAll(count: number): string {
+  return `Open all ${String(count)} cards first.`;
+}
+/** The refusal of a yes to a group from a phone that was given other cards: they changed since. */
+export const HILL_GROUP_CHANGED = "These cards changed since this phone showed them. Open them again from card 1.";
+/** The refusal of a yes to a group from an app that does not send which cards it showed. */
+export const HILL_GROUP_OLD_APP = "This app does not show a group of cards yet. Reload Collie on this phone, then open every card and answer again.";
 
 function refuse(code: HillRefusalCode | null, error: string): HillPostAnswer {
   return { ok: false, code, error };
@@ -664,7 +727,7 @@ export class HillService {
   private nameOf(address: string | null, fallback: string): string {
     const name = address === null ? null : (this.deps.sessionName?.(address) ?? null);
     const label = name === null ? "" : sessionLabel(name);
-    return label === "" ? fallback : label;
+    return notCollie(label === "" ? fallback : label, "a session");
   }
 
   /** An open decision with the names its sessions have now, while they are live. A closed one, as stored. */
@@ -740,10 +803,47 @@ export class HillService {
    * WalkyTalky being off does not stop it; it names no session and carries no image. Its answer runs
    * `onCollieAnswer`. Supersede an older one of the same `ref` type and id with `input.supersedes`.
    */
-  postCollie(from: HillCollieSender, input: HillPostInput): HillPostAnswer {
+  postCollie(from: HillCollieSender, input: HillPostInput, opts: Pick<HillPostOptions, "tellOf"> = {}): HillPostAnswer {
     if ((input.images ?? []).length > 0) return refuse("too_many_images", "a Collie decision carries no image");
     if (input.supersedes !== undefined && input.supersedes !== null && this.answering.has(input.supersedes)) return refuse("bad_supersedes", HILL_ANSWER_RUNNING);
-    return this.postAny(from, { ...input, about: null, replyTo: null, images: [] }, {});
+    return this.postAny(from, { ...input, about: null, replyTo: null, images: [] }, opts.tellOf === undefined ? {} : { tellOf: opts.tellOf });
+  }
+
+  /**
+   * What a lead carries to its deputy (CREW_PROTOCOL §25): the switch, every open Decision newest first
+   * without its notification slot (the deputy's phone was never told by it), and the ids of the closed
+   * and cleared ones, newest first, so the deputy never holds one of them as open again.
+   */
+  carryView(closedMax: number): HillCarryView {
+    const all = this.deps.store.all();
+    const open = all
+      .filter((decision) => decision.state === "open")
+      .toSorted((a, b) => b.at - a.at)
+      .map(({ pushTag: _slot, ...decision }) => decision);
+    const closedHeld = all
+      .filter((decision) => decision.state !== "open")
+      .toSorted((a, b) => (b.closedAt ?? b.at) - (a.closedAt ?? a.at))
+      .map((decision) => decision.id);
+    return { on: this.isOn(), open, closed: [...new Set([...closedHeld, ...this.deps.store.clearedIds()])].slice(0, closedMax) };
+  }
+
+  /** The bytes of one kept picture, for the copy to the deputy (§25), or null. */
+  carryMedia(decisionId: string, media: Pick<HillMedia, "id" | "mime" | "bytes">): Uint8Array | null {
+    return this.deps.media?.bytesOf(decisionId, media) ?? null;
+  }
+
+  /**
+   * The person's takeover tap merges the carried Decisions into this Hill (§25): each under its own id,
+   * with its own pictures, in one write. An id this Hill already holds or cleared is left as it is here.
+   * Nothing is posted: no push, no tell, no request-id check; they are not new. Answers the ids stored.
+   */
+  adoptCarried(decisions: readonly HillDecision[], media: ReadonlyMap<string, readonly HillMediaFile[]>): string[] {
+    return adoptCarriedInto(this.deps.store, this.deps.media, decisions, media);
+  }
+
+  /** Whether the Decision `id` is being answered right now (its claim runs). */
+  isAnswering(id: string): boolean {
+    return this.answering.has(id);
   }
 
   /** Collie takes back one of its open Decisions: it closes `withdrawn` with `reason`. Never while its answer runs. */
@@ -762,7 +862,10 @@ export class HillService {
     if (!this.isOn()) return refuse("hill_off", HILL_OFF);
     // Collie's own answer types nothing, so only a post whose answer is typed needs WalkyTalky.
     if (from.kind !== "collie" && !this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
-    if (this.deps.crewMode() === "peer") return refuse("not_on_lead", NOT_ON_LEAD);
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return refuse("not_on_lead", NOT_ON_LEAD);
+    // A group of cards is Collie's own (crew slice 8): no session, crew member or trick posts one.
+    if (input.group !== undefined && from.kind !== "collie") return refuse("bad_body", HILL_GROUP_NOT_YOURS);
+    if (input.group !== undefined && input.view !== undefined) return refuse("bad_body", "a group of cards carries no view of its own");
     const key = senderKey(from);
     const digest = hillPostDigest(input);
     // A repeated request id from the same sender with the same payload is the same decision: answered as
@@ -790,6 +893,8 @@ export class HillService {
     const own = from.kind === "agent" ? (this.deps.place(from.address) ?? (opts.own?.address === from.address ? opts.own : null)) : null;
     if (from.kind === "agent" && own === null && replyTo === null) return refuse("bad_target", "this session is not a live walky address: run it inside an agent's pane");
     const target = replyTo ?? own;
+    // Collie's own card tells a live session of its answer, without naming it as the card's target.
+    const told = from.kind === "collie" && opts.tellOf !== undefined ? (this.deps.place(opts.tellOf)?.address ?? null) : null;
 
     let superseded: HillDecision | null = null;
     if (input.supersedes !== undefined && input.supersedes !== null) {
@@ -830,7 +935,7 @@ export class HillService {
       priorityAsked: asked,
       ...cleaned.fields,
       media,
-      replyTo: replyTo?.address ?? null,
+      replyTo: replyTo?.address ?? told,
       target: target === null ? null : { label: this.nameOf(target.address, target.label), host: target.host, unattended: target.unattended },
       supersedes: superseded?.id ?? null,
       supersededBy: null,
@@ -845,6 +950,11 @@ export class HillService {
       postDigest: digest,
     };
     if (input.view !== undefined) decision.view = input.view;
+    if (input.group !== undefined && from.kind === "collie") {
+      const made = makeGroup(input.group, from.ref, decision.options);
+      if (!made.ok) return refuse("bad_body", made.error);
+      decision.group = made.group;
+    }
     const push = this.pushPlan(key, crewMember, priority, opts, superseded, id);
     if (push.tag !== undefined) decision.pushTag = push.tag;
     const replaced: HillDecision[] = superseded === null ? [] : [{ ...superseded, state: "superseded", supersededBy: id, closedAt: now, closedReason: `superseded by ${id}` }];
@@ -868,7 +978,7 @@ export class HillService {
       return { kind: "agent", address: from.address, trickId: null, trickKey: null, memberId: from.memberId, harness: from.harness, label: this.nameOf(from.address, from.label), host: from.host, trickHost: null };
     }
     if (from.kind === "trick") {
-      return { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: from.memberId };
+      return { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: notCollie(headerField(from.label, WALKY_LABEL_MAX), "a trick"), host: this.deps.machine, trickHost: from.memberId };
     }
     const ref = { type: from.ref.type, id: from.ref.id, hash: from.ref.hash };
     return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: null, ref };
@@ -1162,6 +1272,12 @@ export class HillService {
   answer(request: HillAnswerRequest, id: string, by: string, deviceId: string | null = null): Promise<HillAnswerOutcome> {
     // With the Hill off nothing is typed and no tap runs; the decision stays open for when it is back.
     if (!this.isOn()) return Promise.resolve({ kind: "off" });
+    // §25: a deposed lead's Decisions went to the machine that took over, and a peer's Hill is not the
+    // crew's; an answer here could be a second one. Refused, nothing typed, nothing closed, nothing stored.
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) {
+      const state = this.deps.store.get(id)?.state ?? null;
+      return Promise.resolve({ kind: "receipt", receipt: { rid: request.rid, code: "denied", reason: HILL_DEPOSED, state, delivery: null, trick: null, at: this.now() } });
+    }
     const digest = hillAnswerDigest(request.node, request.intent, request.value.text);
     // SYNCHRONOUS from here to `track`: two requests with one rid must not both get past the look.
     const stored = this.deps.receipts.get(request.rid);
@@ -1216,6 +1332,17 @@ export class HillService {
     if (now?.answer?.rid === request.rid && (now.answer.delivery !== delivery || now.answer.trick !== trick)) this.save({ ...now, answer: { ...now.answer, delivery, trick } });
     this.auditAnswer(claim.decision, request, by, receipt);
     return { kind: "receipt", receipt };
+  }
+
+  /** Why a yes to a group of cards is refused, or null. */
+  private groupRule(decision: HillDecision, request: HillAnswerRequest): string | null {
+    const group = decision.group;
+    if (group === undefined || request.intent === "dismiss" || request.intent === group.decline) return null;
+    const asked = request.group;
+    if (asked === undefined) return HILL_GROUP_OLD_APP;
+    if (asked.digest !== group.digest) return HILL_GROUP_CHANGED;
+    const opened = new Set(asked.opened);
+    return group.parts.every((_, i) => opened.has(i + 1)) ? null : hillGroupOpenAll(group.parts.length);
   }
 
   /** Run one claim; while it runs, a Collie Decision it answers cannot be withdrawn or superseded. */
@@ -1294,12 +1421,19 @@ export class HillService {
     // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
     if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     if (option === undefined && intent !== "answer" && intent !== "dismiss") return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
+    // A group's yes needs the digest this phone was given and every card opened on it (a DISPLAY check:
+    // the phone's claim of what it showed, never proof of what the person read). Its decline and a dismiss
+    // need neither. Nothing is kept for these refusals, so the same tap may go again once the cards are open.
+    const groupRule = this.groupRule(decision, request);
+    if (groupRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", groupRule, "open", null), false);
     const cleaned = cleanText(request.value.text ?? "", HILL_ANSWER_TEXT_MAX);
     if (cleaned.over) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", `text is longer than ${String(HILL_ANSWER_TEXT_MAX)} characters`, "open", null));
     const text = cleaned.text === "" ? null : cleaned.text;
     const textRule = this.textRule(decision, intent, text);
     if (textRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", textRule, "open", null));
-    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision));
+    // Collie's own card carries Collie's own title and labels (a trick's id, fixed words), so the session
+    // it tells gets them as a poster does.
+    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
     // Where the answer goes: `replyTo`, else the poster. A trick with no `replyTo` has nothing to type into.
@@ -1323,7 +1457,10 @@ export class HillService {
       if (refused !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", refused, "open", null));
     }
     const state: HillState = intent === "dismiss" ? "dismissed" : "answered";
-    const typed = decision.target !== null && to !== null && !untold;
+    // Collie's own card with a session to tell (a trick proposal's proposer): typed only while that session
+    // is live and its machine answers. Never a dismiss, and never a reason to hold the answer.
+    const courtesy = decision.from.kind === "collie" && decision.target === null && decision.replyTo !== null && intent !== "dismiss" && this.deps.walkyOn() && this.deps.place(decision.replyTo)?.address === decision.replyTo && this.away(decision.replyTo) === null;
+    const typed = (decision.target !== null && to !== null && !untold) || courtesy;
     const trick = trickOf(decision);
     // Written first, as not confirmed: a bridge that stops after this line never types the answer twice,
     // and never runs the trick's tap twice (it reads `failed`, the tap that did not run).

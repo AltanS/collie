@@ -299,11 +299,11 @@ function leadRig(): LeadRig {
     answer: () => ({ kind: "failed" }),
     clock: { t: 1_000_000 },
     lines: [],
-    members: new Map([["minibuch", { reachable: true, older: false }]]),
+    members: new Map([["workshop", { reachable: true, older: false }]]),
     local: new Map(),
   };
   const deps: InputsFetchDeps = {
-    isOwn: (id) => id === "bluefin",
+    isOwn: (id) => id === "lodge",
     readLocal: async (pane) => rig.local.get(pane) ?? { state: "no-pane", files: [] },
     member: (id) => rig.members.get(id) ?? null,
     call: async (memberId, body) => {
@@ -327,15 +327,15 @@ describe("the lead's fetch and delivery", () => {
     const r = leadRig();
     r.local.set("w6X:3", { state: "ok", files: [wireFile("TODO.md", "mine")] });
     r.answer = () => ok([wireFile("notes/a.md", "theirs"), wireFile("shots/red.png", png(), "image")]);
-    const got = await r.inputs.fetch(TRICK(r.dir), [session("bluefin", "w6X:3"), session("minibuch", "%1"), session("minibuch", "%2", false)]);
-    expect(got.get("bluefin:w6X:3")).toMatchObject({ state: "ok", files: [{ rel: "TODO.md", path: "inputs/bluefin/w6X_3a3/TODO.md", bytes: 4, sha256: sha("mine"), kind: "text" }] });
-    expect(got.get("minibuch:%1")?.files.map((f) => f.path)).toEqual(["inputs/minibuch/_251/notes/a.md", "inputs/minibuch/_251/shots/red.png"]);
+    const got = await r.inputs.fetch(TRICK(r.dir), [session("lodge", "w6X:3"), session("workshop", "%1"), session("workshop", "%2", false)]);
+    expect(got.get("lodge:w6X:3")).toMatchObject({ state: "ok", files: [{ rel: "TODO.md", path: "inputs/lodge/w6X_3a3/TODO.md", bytes: 4, sha256: sha("mine"), kind: "text" }] });
+    expect(got.get("workshop:%1")?.files.map((f) => f.path)).toEqual(["inputs/workshop/_251/notes/a.md", "inputs/workshop/_251/shots/red.png"]);
     // A shell session is none, and the member was asked only for its agent pane.
-    expect(got.get("minibuch:%2")).toEqual({ state: "none", files: [] });
+    expect(got.get("workshop:%2")).toEqual({ state: "none", files: [] });
     expect(r.calls).toHaveLength(1);
     expect(r.calls[0]?.body).toEqual({ trick: "todo", run: "r1", globs: ["TODO.md", "notes/*.md", "shots/*.png"], panes: ["%1"], have: [] });
-    expect(readFileSync(join(r.dir, "inputs/minibuch/_251/notes/a.md"), "utf8")).toBe("theirs");
-    expect(readFileSync(join(r.dir, "inputs/bluefin/w6X_3a3/TODO.md"), "utf8")).toBe("mine");
+    expect(readFileSync(join(r.dir, "inputs/workshop/_251/notes/a.md"), "utf8")).toBe("theirs");
+    expect(readFileSync(join(r.dir, "inputs/lodge/w6X_3a3/TODO.md"), "utf8")).toBe("mine");
     // One audit line for the run: counts only.
     expect(r.lines).toEqual([{ trick: "todo", files: 3, bytes: 4 + 6 + 128 }]);
   });
@@ -357,9 +357,9 @@ describe("the lead's fetch and delivery", () => {
         { rel: "notes/b.md", bytes: 1, mtime: "x", sha256: sha("b"), kind: "text" },
         wireFile("notes/ok.md", "fine"),
       ]);
-    const got = await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
-    expect(got.get("minibuch:%1")?.files.map((f) => f.rel)).toEqual(["notes/ok.md"]);
-    expect(got.get("minibuch:%1")?.skipped).toBe(10);
+    const got = await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
+    expect(got.get("workshop:%1")?.files.map((f) => f.rel)).toEqual(["notes/ok.md"]);
+    expect(got.get("workshop:%1")?.skipped).toBe(10);
     expect(readdirSync(outside)).toEqual([]);
     expect(existsSync(join(r.dir, "planted.md"))).toBe(false);
     expect(existsSync(join(r.dir, "inputs", "planted.md"))).toBe(false);
@@ -368,9 +368,9 @@ describe("the lead's fetch and delivery", () => {
   test("a hostile member's .env file is refused even when a glob would match it", async () => {
     const r = leadRig();
     r.answer = () => ok([wireFile(".env", "API_KEY=sk-or-v1-your-key-here"), wireFile(".ENV.local", "x"), wireFile(".editorconfig", "root = true")]);
-    const got = await r.inputs.fetch({ ...TRICK(r.dir), globs: [".e*", ".E*"] }, [session("minibuch", "%1")]);
-    expect(got.get("minibuch:%1")?.files.map((f) => f.rel)).toEqual([".editorconfig"]);
-    expect(got.get("minibuch:%1")?.skipped).toBe(2);
+    const got = await r.inputs.fetch({ ...TRICK(r.dir), globs: [".e*", ".E*"] }, [session("workshop", "%1")]);
+    expect(got.get("workshop:%1")?.files.map((f) => f.rel)).toEqual([".editorconfig"]);
+    expect(got.get("workshop:%1")?.skipped).toBe(2);
   });
 
   test("a hostile member's name with a control, bidi or zero-width character is dropped, never written; plain non-ASCII names land", async () => {
@@ -384,10 +384,10 @@ describe("the lead's fetch and delivery", () => {
         wireFile("notes/日本.md", "日"),
         { rel: "notes/skip.md", bytes: 1, mtime: "2026-11-10T09:00:00.000Z", skipped: "name" },
       ]);
-    const got = await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
-    expect(got.get("minibuch:%1")?.files.map((f) => f.rel)).toEqual(["notes/übersicht.md", "notes/日本.md"]);
-    expect(got.get("minibuch:%1")?.skipped).toBe(4);
-    expect(readdirSync(join(r.dir, "inputs/minibuch/_251/notes")).toSorted()).toEqual(["übersicht.md", "日本.md"].toSorted());
+    const got = await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
+    expect(got.get("workshop:%1")?.files.map((f) => f.rel)).toEqual(["notes/übersicht.md", "notes/日本.md"]);
+    expect(got.get("workshop:%1")?.skipped).toBe(4);
+    expect(readdirSync(join(r.dir, "inputs/workshop/_251/notes")).toSorted()).toEqual(["übersicht.md", "日本.md"].toSorted());
   });
 
   test("a request whose have names a file with a hidden character is refused", () => {
@@ -405,10 +405,10 @@ describe("the lead's fetch and delivery", () => {
       status: 200,
       text: JSON.stringify({ panes: [{ pane: "%1", state: "ok", files: [wireFile("TODO.md", new Uint8Array([0x61, 0, 0x62])), ...many] }, { pane: "%7", state: "ok", files: [wireFile("TODO.md", "x")] }] }),
     });
-    const got = await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
-    expect(got.get("minibuch:%1")?.files).toHaveLength(32);
-    expect(got.get("minibuch:%1")?.files.map((f) => f.rel)).not.toContain("TODO.md");
-    expect(existsSync(join(r.dir, "inputs/minibuch/_257"))).toBe(false);
+    const got = await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
+    expect(got.get("workshop:%1")?.files).toHaveLength(32);
+    expect(got.get("workshop:%1")?.files.map((f) => f.rel)).not.toContain("TODO.md");
+    expect(existsSync(join(r.dir, "inputs/workshop/_257"))).toBe(false);
   });
 
   test("a member below the floor, or not answering, gets no call; a 404 is older and a 403 trick_reads_off is refused", async () => {
@@ -432,58 +432,58 @@ describe("the lead's fetch and delivery", () => {
   test("one call per trick per member per 5 s: inside the window the last answer stands and its files are kept", async () => {
     const r = leadRig();
     r.answer = () => ok([wireFile("TODO.md", "v1")]);
-    await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
+    await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
     r.clock.t += INPUT_RATE_MS - 1;
-    const again = await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
+    const again = await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
     expect(r.calls).toHaveLength(1);
-    expect(again.get("minibuch:%1")?.files.map((f) => f.rel)).toEqual(["TODO.md"]);
-    expect(readFileSync(join(r.dir, "inputs/minibuch/_251/TODO.md"), "utf8")).toBe("v1");
+    expect(again.get("workshop:%1")?.files.map((f) => f.rel)).toEqual(["TODO.md"]);
+    expect(readFileSync(join(r.dir, "inputs/workshop/_251/TODO.md"), "utf8")).toBe("v1");
     // Past the window it calls again, and says what it holds, so an unchanged file travels as its hash.
     r.clock.t += 2;
     r.answer = () => ok([{ rel: "TODO.md", bytes: 2, mtime: "2026-11-10T09:00:00.000Z", sha256: sha("v1"), kind: "text" }]);
-    const third = await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
+    const third = await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
     expect(r.calls[1]?.body).toMatchObject({ have: [{ pane: "%1", files: [{ rel: "TODO.md", sha256: sha("v1") }] }] });
-    expect(third.get("minibuch:%1")?.files.map((f) => f.rel)).toEqual(["TODO.md"]);
-    expect(readFileSync(join(r.dir, "inputs/minibuch/_251/TODO.md"), "utf8")).toBe("v1");
+    expect(third.get("workshop:%1")?.files.map((f) => f.rel)).toEqual(["TODO.md"]);
+    expect(readFileSync(join(r.dir, "inputs/workshop/_251/TODO.md"), "utf8")).toBe("v1");
   });
 
   test("a hash-only answer for a file the lead does not hold is refused, not trusted", async () => {
     const r = leadRig();
     r.answer = () => ok([{ rel: "TODO.md", bytes: 2, mtime: "2026-11-10T09:00:00.000Z", sha256: sha("v1"), kind: "text" }]);
-    const got = await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
-    expect(got.get("minibuch:%1")).toEqual({ state: "ok", files: [], skipped: 1 });
+    const got = await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
+    expect(got.get("workshop:%1")).toEqual({ state: "ok", files: [], skipped: 1 });
   });
 
   test("the folder is replaced whole: a file the run no longer holds goes, and so does what the program left there", async () => {
     const r = leadRig();
     r.answer = () => ok([wireFile("TODO.md", "a"), wireFile("notes/x.md", "x")]);
-    await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
+    await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
     writeFileSync(join(r.dir, "inputs", "junk.txt"), "the program wrote this");
     mkdirSync(join(r.dir, "inputs", ".stage-dead"));
     r.clock.t += INPUT_RATE_MS;
     r.answer = () => ok([wireFile("TODO.md", "b")]);
-    await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
-    expect(readdirSync(join(r.dir, "inputs"))).toEqual(["minibuch"]);
-    expect(readdirSync(join(r.dir, "inputs/minibuch/_251"))).toEqual(["TODO.md"]);
-    expect(readFileSync(join(r.dir, "inputs/minibuch/_251/TODO.md"), "utf8")).toBe("b");
+    await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
+    expect(readdirSync(join(r.dir, "inputs"))).toEqual(["workshop"]);
+    expect(readdirSync(join(r.dir, "inputs/workshop/_251"))).toEqual(["TODO.md"]);
+    expect(readFileSync(join(r.dir, "inputs/workshop/_251/TODO.md"), "utf8")).toBe("b");
   });
 
   test.skipIf(process.platform === "win32")("a symlink the program planted is never written through, nor read as a kept file", async () => {
     const r = leadRig();
     const outside = tempDir();
     r.answer = () => ok([wireFile("TODO.md", "v1")]);
-    await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
+    await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
     // The program swaps the member folder for a link out, holding a file with the same bytes.
     mkdirSync(join(outside, "_251"));
     writeFileSync(join(outside, "_251", "TODO.md"), "v1");
-    rmSync(join(r.dir, "inputs", "minibuch"), { recursive: true });
-    symlinkSync(outside, join(r.dir, "inputs", "minibuch"));
+    rmSync(join(r.dir, "inputs", "workshop"), { recursive: true });
+    symlinkSync(outside, join(r.dir, "inputs", "workshop"));
     r.clock.t += INPUT_RATE_MS;
     r.answer = () => ok([{ rel: "TODO.md", bytes: 2, mtime: "2026-11-10T09:00:00.000Z", sha256: sha("v1"), kind: "text" }]);
-    const got = await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
-    expect(got.get("minibuch:%1")).toMatchObject({ files: [], skipped: 1 });
+    const got = await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
+    expect(got.get("workshop:%1")).toMatchObject({ files: [], skipped: 1 });
     expect(lstatSync(join(r.dir, "inputs")).isDirectory()).toBe(true);
-    expect(existsSync(join(r.dir, "inputs", "minibuch"))).toBe(false);
+    expect(existsSync(join(r.dir, "inputs", "workshop"))).toBe(false);
     // The file outside is untouched.
     expect(readFileSync(join(outside, "_251", "TODO.md"), "utf8")).toBe("v1");
     // And an `inputs` that is itself a link is replaced by a real folder, never written through.
@@ -491,7 +491,7 @@ describe("the lead's fetch and delivery", () => {
     symlinkSync(outside, join(r.dir, "inputs"));
     r.clock.t += INPUT_RATE_MS;
     r.answer = () => ok([wireFile("TODO.md", "v2")]);
-    await r.inputs.fetch(TRICK(r.dir), [session("minibuch", "%1")]);
+    await r.inputs.fetch(TRICK(r.dir), [session("workshop", "%1")]);
     expect(lstatSync(join(r.dir, "inputs")).isSymbolicLink()).toBe(false);
     expect(readdirSync(outside)).toEqual(["_251"]);
   });
@@ -502,15 +502,15 @@ describe("the lead's fetch and delivery", () => {
     r.local.set("w6X:3", { state: "ok", files: [wireFile("shots/a.png", big(1), "image")] });
     for (const id of ["m1", "m2", "m3", "m4"]) r.members.set(id, { reachable: true, older: false });
     r.answer = () => ok([1, 2, 3, 4].map((n) => wireFile(`shots/${String(n)}.png`, big(n + 10), "image")));
-    const got = await r.inputs.fetch(TRICK(r.dir), [session("m1", "%1"), session("m2", "%1"), session("m3", "%1"), session("m4", "%1"), session("bluefin", "w6X:3")]);
-    expect(got.get("bluefin:w6X:3")?.files).toHaveLength(1);
+    const got = await r.inputs.fetch(TRICK(r.dir), [session("m1", "%1"), session("m2", "%1"), session("m3", "%1"), session("m4", "%1"), session("lodge", "w6X:3")]);
+    expect(got.get("lodge:w6X:3")?.files).toHaveLength(1);
     const total = [...got.values()].flatMap((i) => i.files).reduce((sum, f) => sum + f.bytes, 0);
     expect(total).toBeLessThanOrEqual(24 * 1024 * 1024);
     expect([...got.values()].reduce((sum, i) => sum + (i.skipped ?? 0), 0)).toBeGreaterThan(0);
   });
 
   test("the folder names are one safe step each, and injective", () => {
-    expect(inputsDirName("minibuch")).toBe("minibuch");
+    expect(inputsDirName("workshop")).toBe("workshop");
     expect(inputsDirName("m_k3x9q2w7ab")).toBe("m__k3x9q2w7ab");
     expect(inputsDirName("%1")).toBe("_251");
     expect(inputsDirName("w6X:3")).toBe("w6X_3a3");

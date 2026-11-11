@@ -120,6 +120,6 @@ describe("a trick's picture", () => {
 
   test("the phone's path encodes each step and carries the rev as a query", () => {
     expect(trickMediaPath("m_abcdefghij", "look", "media/shots/case 24.png", 7)).toBe("/api/tricks/m_abcdefghij/look/media/shots/case%2024.png?rev=7");
-    expect(trickMediaPath("bluefin", "look", "media/a.png")).toBe("/api/tricks/bluefin/look/media/a.png");
+    expect(trickMediaPath("lodge", "look", "media/a.png")).toBe("/api/tricks/lodge/look/media/a.png");
   });
 });

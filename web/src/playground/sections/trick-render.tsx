@@ -56,17 +56,17 @@ function nodeOf(kind: NodeKind): View {
   return viewOf(sessionParts(nodeDocument(kind))[0]);
 }
 
-const TRICK: WireTrickInfo = { host: "bluefin", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] };
+const TRICK: WireTrickInfo = { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"] };
 
 function stored(value: TrickPart | undefined, extra: Partial<WireTrickPart> = {}): WireTrickPart {
   const part = value ?? { at: "session", id: "legs", view: [] };
-  return { host: "bluefin", trick: "legs", part: part.id, rev: 1, value: part, asOf: "2026-11-08T09:41:00Z", fresh: "90s", ...extra };
+  return { host: "lodge", trick: "legs", part: part.id, rev: 1, value: part, asOf: "2026-11-08T09:41:00Z", fresh: "90s", ...extra };
 }
 
 const IGNORE = () => {};
 
 function ctxOf(stale: boolean, tap?: TapState): RenderCtx {
-  return { partKey: "bluefin/legs/legs", stale, tap, onTap: IGNORE, onLink: IGNORE, now: FIXTURE_NOW };
+  return { partKey: "lodge/legs/legs", stale, tap, onTap: IGNORE, onLink: IGNORE, now: FIXTURE_NOW };
 }
 
 /** The glass: 390 px of the page colour with the page gutter, as a phone draws a trick session's body. */
@@ -122,7 +122,7 @@ function TapCard({ n, state, label, code }: { n: number; state: string; label: s
   return (
     <Card state={state} label={`${n} · ${label}`}>
       <Glass>
-        <TrickView partKey="bluefin/legs/legs" store={store} onLink={IGNORE} now={FIXTURE_NOW} />
+        <TrickView partKey="lodge/legs/legs" store={store} onLink={IGNORE} now={FIXTURE_NOW} />
       </Glass>
     </Card>
   );

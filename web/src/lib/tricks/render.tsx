@@ -1007,11 +1007,11 @@ function TableView({ node, ctx }: { node: TableNode; ctx: RenderCtx }) {
   );
 }
 
-/** A hunk of a diff, as the Changes view tints one: mono, scrolling sideways inside its own frame. */
+/** A hunk of a diff, as the Changes view tints one: mono, scrolling sideways inside its own frame, or soft-wrapped with a mark in a view that wraps (a Decision's card). */
 function DiffView({ node, ctx }: { node: DiffNode; ctx: RenderCtx }) {
   return (
     <div {...floorBox(node, ctx)} className="min-w-0">
-      <DiffLines lines={node.text.split("\n")} file={node.attrs?.file} />
+      <DiffLines lines={node.text.split("\n")} file={node.attrs?.file} wrap={ctx.wrap === true} />
     </div>
   );
 }
