@@ -19,6 +19,12 @@
   opened truncated and needed "Load older" at once (four panes measured on 2026-10-19 held 35 assistant
   rows, 3 prompts and 2 notes, in a window of 137 rows). The window bound and the `?after=` delta are
   unchanged. `bridge/journal/turns.ts` holds the rule.
+- **Amended:** 2026-11-11 — `?turns=N` (1 to 6) asks a first answer or a `?before=` page to reach back
+  over fewer prompts than six; absent, or above six, the page is the same as before. A client on a slow
+  link (a relayed phone connection moves about 100 KB/s) asked for the default page and waited minutes
+  for a thread whose last six prompts weighed a megabyte or more, while `limit` could not help: it is only
+  the floor in rows. The client asks for one prompt first and pages back as the reader scrolls. The
+  window, `hasOlder`, the `?after=` delta and the row cap are unchanged.
 - **Changes:** adds `GET /api/pane/:id/chat` and `bridge/journal/live.ts`. It closes off two options
   people will reasonably propose again: a WebSocket, and a `seq`-cursored delta.
   [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md) is untouched — this reads the agent's

@@ -255,6 +255,27 @@ describe("the position tokens", () => {
     // An unreadable token leaves the key OFF rather than arriving as a zero.
     expect(at("?after=nonsense")).toEqual({ limit: DEFAULT_CHAT_LIMIT });
   });
+
+  test("`turns` can only make a page reach back over fewer prompts, and bad values are left off", () => {
+    const at = (q: string) => chatParams(new URL(`http://x/api/pane/p/chat${q}`));
+    expect(at("?turns=1")).toEqual({ limit: DEFAULT_CHAT_LIMIT, turns: 1 });
+    expect(at("?turns=3&limit=5")).toEqual({ limit: 5, turns: 3 });
+    // More than the default is no smaller page, so it is the default: the key stays off at the ceiling's own value too.
+    expect(at(`?turns=${LIVE_TURNS}`)).toEqual({ limit: DEFAULT_CHAT_LIMIT, turns: LIVE_TURNS });
+    expect(at(`?turns=${LIVE_TURNS + 1}`)).toEqual({ limit: DEFAULT_CHAT_LIMIT, turns: LIVE_TURNS });
+    expect(at("?turns=99999")).toEqual({ limit: DEFAULT_CHAT_LIMIT, turns: LIVE_TURNS });
+    // Zero, negative, a float and text are not a number of prompts: the key is OFF, never a zero.
+    expect(at("?turns=0")).toEqual({ limit: DEFAULT_CHAT_LIMIT });
+    expect(at("?turns=-2")).toEqual({ limit: DEFAULT_CHAT_LIMIT });
+    expect(at("?turns=1.5")).toEqual({ limit: DEFAULT_CHAT_LIMIT });
+    expect(at("?turns=abc")).toEqual({ limit: DEFAULT_CHAT_LIMIT });
+    // It rides along with a cursor.
+    expect(at("?before=5:u5&turns=2")).toEqual({
+      limit: DEFAULT_CHAT_LIMIT,
+      before: { seq: 5, uuid: "u5" },
+      turns: 2,
+    });
+  });
 });
 
 // ── A first read ─────────────────────────────────────────────────────────────
@@ -739,6 +760,37 @@ describe("a page is counted in turns, not rows", () => {
     expect(body!.upserts.at(-1)?.seq).toBe(body!.head);
   });
 
+  test("`turns` shortens the live page to that many prompts", async () => {
+    const fx = fakeJournal(rowsWithPrompts(150, at));
+    // The newest prompt is p140, so one turn is rows 140..149.
+    const one = await windows(fx).window(fx.adapter, ref(), { limit: 1, turns: 1 });
+    expect(one!.upserts[0]).toMatchObject({ uuid: "p140", seq: SEQ_BASE + 140 });
+    expect(one!.upserts).toHaveLength(10);
+    // Two turns reach p125.
+    const two = await windows(fx).window(fx.adapter, ref(), { limit: 1, turns: 2 });
+    expect(two!.upserts[0]).toMatchObject({ uuid: "p125" });
+    // The window itself is untouched: what lies before the page is still "older", so the client can ask for it.
+    expect(one!.oldest).toBe(SEQ_BASE);
+    expect(one!.head).toBe(SEQ_BASE + 149);
+  });
+
+  test("the floor still applies to a short turn page", async () => {
+    const fx = fakeJournal(rowsWithPrompts(150, at));
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT, turns: 1 });
+    expect(body!.upserts).toHaveLength(DEFAULT_CHAT_LIMIT);
+    expect(body!.upserts[0]?.seq).toBe(SEQ_BASE + 110);
+  });
+
+  test("a reader that holds this generation still gets everything newer, whatever `turns` says", async () => {
+    const fx = fakeJournal(rowsWithPrompts(150, at));
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 1, turns: 1 });
+    fx.append(ask("p150", "prompt 150"), say("t151"));
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), { limit: 1, turns: 1, after: { gen: first!.gen, rev: first!.rev } });
+    expect(next!.upserts.map((e) => e.uuid)).toEqual(["p150", "t151"]);
+  });
+
   test("a window with fewer than six prompts answers the whole window", async () => {
     const fx = fakeJournal(rowsWithPrompts(150, [5, 70, 120]));
     const body = await windows(fx).window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
@@ -806,6 +858,19 @@ describe("a page is counted in turns, not rows", () => {
     expect(older!.hasOlder).toBe(true);
     const seqs = older!.upserts.map((e) => e.seq);
     expect(seqs).toEqual(Array.from({ length: 55 }, (_, i) => SEQ_BASE + 70 + i));
+  });
+
+  test("an older page reaches back over only `turns` prompts when asked, and stays contiguous", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => 10 + i * 10);
+    const fx = fakeJournal(rowsWithPrompts(150, many));
+    const live = windows(fx);
+    await live.window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    // Before index 125 the prompts are 120, 110, ...: two of them reach back to p110.
+    const older = await live.older(fx.adapter, ref(), { seq: SEQ_BASE + 125, uuid: "t125" }, 1, 2);
+    expect(older!.upserts[0]).toMatchObject({ uuid: "p110", seq: SEQ_BASE + 110 });
+    expect(older!.upserts).toHaveLength(15);
+    expect(older!.hasOlder).toBe(true);
+    expect(older!.upserts.map((e) => e.seq)).toEqual(Array.from({ length: 15 }, (_, i) => SEQ_BASE + 110 + i));
   });
 
   test("the `after` delta is not paged: it sends everything that moved", async () => {

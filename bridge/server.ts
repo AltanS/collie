@@ -5113,7 +5113,7 @@ export async function paneChat(
     const read =
       params.before === undefined
         ? await live.window(adapter, ref, params, queuedOf?.(paneId) ?? [])
-        : await live.older(adapter, ref, params.before, params.limit);
+        : await live.older(adapter, ref, params.before, params.limit, params.turns);
     if (read === null) return unavailable("no-log");
     // Masked before the ETag is hashed, so the tag describes what was actually sent (bridge/redact.ts).
     const body = chatBodyForMux(cfg.redact ? maskChatBody(read) : read, mux.capabilities);
