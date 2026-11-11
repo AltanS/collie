@@ -15,8 +15,11 @@ import {
   rulesTextProblems,
 } from "../../web/src/lib/tricks/schema.ts";
 import { TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
+import { isHiddenChar } from "../../web/src/lib/hidden-chars.ts";
+import { HIDDEN_CHAR_CASES } from "../../web/src/test/hidden-char-cases.ts";
+import { readViewLine } from "./version-diff.ts";
 import { powersOf } from "./approved.ts";
-import { diskTrickFs, trickCodeHash } from "./code-hash.ts";
+import { diskTrickFs, trickCodeHash, unsafeText } from "./code-hash.ts";
 import { readManifestFile, readRulesFile } from "./discover.ts";
 import { RULES_DIFF_CELLS_MAX, rulesChange, rulesDiffRows } from "./rules-diff.ts";
 
@@ -286,5 +289,30 @@ describe("the whole diff of two rules texts", () => {
     expect(rulesChange(base, { rules: "rules.md", rulesText: "a\nb\n" })).toEqual({ rel: "rules.md", change: "changed", plus: 1, minus: 0, hunk: ["@@ -1,1 +1,2 @@", " a", "+b"] });
     expect(rulesChange(undefined, base)?.change).toBe("added");
     expect(rulesChange(base, {})?.change).toBe("removed");
+  });
+});
+
+// The rules' content rule and the shared hidden-character predicate (web/src/lib/hidden-chars.ts) must not
+// disagree: every byte the rule takes is one the predicate shows, and every hidden row of the one table is
+// a byte the rule refuses. So a rules file that passes shows on a card as itself, never as a `?`.
+describe("the rules' content rule and the hidden-character table agree", () => {
+
+  test("every byte a rules file may hold is shown as itself; every hidden character of the table is refused", () => {
+    for (let code = 0x20; code <= 0x7e; code += 1) {
+      const ch = String.fromCharCode(code);
+      expect([ch, isHiddenChar(ch), unsafeText(ch)]).toEqual([ch, false, false]);
+      expect([ch, rulesTextProblems(enc(`a${ch}b\n`))]).toEqual([ch, []]);
+    }
+    for (const { ch, name, hidden } of HIDDEN_CHAR_CASES) {
+      if (!hidden) continue;
+      expect([name, rulesTextProblems(enc(`a${ch}b\n`)).length > 0]).toEqual([name, true]);
+    }
+  });
+
+  test("a file of every printable character passes the rule, and a card shows each line as it is", () => {
+    const all = Array.from({ length: 0x7e - 0x21 + 1 }, (_, i) => String.fromCharCode(0x21 + i)).join("");
+    const text = `${all.slice(0, 47)}\n${all.slice(47)} and a space\n`;
+    expect(rulesTextProblems(enc(text))).toEqual([]);
+    for (const line of text.split("\n")) expect(readViewLine(line)).toMatchObject({ line, masked: false });
   });
 });

@@ -16,7 +16,7 @@ import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
 import { RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
-import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
+import { singleCodeCard, viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): the diff of two copies, the card's words and view, and the
 // card's life on a real Hill beside a real tricks runner.
@@ -703,6 +703,26 @@ describe("review 8 V-S1: no yes without the rules on screen", () => {
     }
     return `${lines.join("\n")}\n`;
   };
+
+  test("every card that shows rules is held to the code card rule: one card with a diff (no fold, yes after its end), else a group", () => {
+    const small = versionCard(held("Draw.\n", "Draw one screen.\n"), { counted: true, files: [{ rel: "rules.md", change: "changed", plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-Draw.", "+Draw one screen."] }] });
+    // One card: no group, and its view holds the rules as a diff node, so the phone's singleCodeCard takes it.
+    expect(small?.group).toBeUndefined();
+    expect(viewHasCode(small?.view ?? [])).toBe(true);
+    expect(JSON.stringify(small?.view)).toContain('"file":"rules.md"');
+    // Too long for one card, line by line or whole: a group, whose yes needs every card opened.
+    const long = (n: number): string => Array.from({ length: n }, (_, i) => `Line ${String(i)} of the rules.\n`).join("");
+    const byLine = versionCard(held(long(300), long(340)), { counted: true, files: [{ rel: "rules.md", change: "changed", plus: 40, minus: 0, hunk: null }] });
+    const whole = versionCard(held("a\n".repeat(4000), "b\n".repeat(4000)), masked);
+    for (const card of [byLine, whole]) {
+      expect(card?.group?.decline).toBe("keep");
+      expect((card?.group?.parts.length ?? 0) > 1).toBe(true);
+      expect(card?.group?.parts.slice(1).every((part) => viewHasCode(part))).toBe(true);
+    }
+    // No room at all: Keep alone, so there is no yes to hold.
+    const none = versionCard(held("a\n".repeat(2000), "b\n".repeat(2000)), masked, false, 0);
+    expect(none?.options?.map((o) => o.intent)).toEqual(["keep"]);
+  });
 
   test("a change of 4000 lines for 4000 shows the new rules whole on cards of their own, and only then offers Use", () => {
     const old = "a\n".repeat(4000);

@@ -8,6 +8,7 @@ import { HILL_ACK_MS } from "@/lib/hill/motion";
 import type { HillDecision, HillGroupAnswer, HillReceipt } from "@/lib/hill/wire";
 import { groupDecision, hillDecision, hillReceipt, trickDecision } from "@/test/hill-fixtures";
 
+import { versionRules } from "@/playground/fixtures/hill/decisions";
 import { DecisionCard } from "./decision-card";
 import { VIEW_CAP_PX, foldCut } from "./decision-view";
 
@@ -1017,6 +1018,18 @@ describe("the Decision card, a single card of Collie's own with code", () => {
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS + 1));
     fireEvent.click(option("on"));
     expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "a".repeat(64), opened: [1] });
+  });
+
+  it("a version card that shows agent instructions is a single code card too: no fold, Use waits for the end, Keep does not", () => {
+    const watched = tallScreen();
+    const { slot, option } = renderCard({ ...versionRules, from: collie("version") });
+    expect(slot("decision-view-more")).toBeNull();
+    expect(slot("decision-view-body")).not.toHaveAttribute("data-clipped");
+    expect(option("use")).toBeDisabled();
+    expect(option("keep")).toBeEnabled();
+    expect(slot("decision-code-unread")).toHaveTextContent("Scroll to the end of the code first.");
+    act(() => watched()[0]!.callback([{ isIntersecting: true }]));
+    expect(option("use")).toBeEnabled();
   });
 
   it("a version's single code card waits the same way: Use and Use it and stop asking wait, Keep does not", () => {
