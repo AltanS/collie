@@ -3,6 +3,8 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, readlink } from "node:fs/promises";
 import { join } from "node:path";
 
+import { isHiddenChar } from "../../web/src/lib/hidden-chars.ts";
+
 // THE CODE OF A TRICK, AS ONE HASH (M94): what a person approves when they switch a trick on.
 //
 // The switch stores this hash (switches.ts), and the bridge runs a copy of exactly those bytes
@@ -23,8 +25,8 @@ import { join } from "node:path";
 //     in the approved copy would point somewhere else than it did in the folder (the copy sits deeper),
 //     or at the live folder itself, so code nobody approved could run. `collie trick add` refuses links
 //     for the same reason (cli/trick-add.ts).
-//   * a name with a control character, an invisible direction mark or a tag character
-//     ({@link unsafeText}): the card on the Hill could not show it as it is.
+//   * a name with a character that does not show as itself ({@link unsafeText}: a control, a direction
+//     mark, a line separator, a zero-width joiner, a blank-looking letter): the card could not show it.
 //
 // PICTURES ARE NOT CODE, AND NOTHING ELSE IN `media/` OR `captures/` IS COPIED. The approved copy
 // (approved.ts) brings in from those two folders only a file whose name ends in `.png`, `.jpg`, `.jpeg` or
@@ -65,17 +67,14 @@ export function isPictureName(name: string): boolean {
 }
 
 /**
- * Whether text holds a character a Decision's view refuses (web/src/lib/tricks/schema.ts `hasControl` and
- * `hasInvisible`): a C0 or C1 control, an invisible direction mark or isolate, a zero-width space or
- * joiner word, a byte order mark, or a tag character. A file name with one is refused by the walk.
+ * Whether text holds a character a card could not show as it is: a line break, a tab, or any character
+ * web/src/lib/hidden-chars.ts `isHiddenChar` names (a control, a format or direction character, a line
+ * separator, a zero-width joiner, a blank-looking letter, a space that is not U+0020; review 7 M1). The
+ * phone's `diff` rule runs the same function. A file name with one is refused by the walk, and a code line
+ * on a card has each one as a `?` (version-diff.ts `readViewLine`).
  */
 export function unsafeText(text: string): boolean {
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
-    if (code === 0x200b || code === 0x200e || code === 0x200f || code === 0x061c || code === 0x2060 || code === 0xfeff) return true;
-    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069) || (code >= 0xe0000 && code <= 0xe007f)) return true;
-  }
+  for (const ch of text) if (ch === "\n" || ch === "\t" || isHiddenChar(ch)) return true;
   return false;
 }
 

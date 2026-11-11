@@ -474,7 +474,11 @@ keeps one card, as before. Otherwise the card is one Decision with a `group` of 
   file that is not UTF-8 text or a line the card would mask or show with `?` (`cannot_show`, "This trick
   holds text that a card cannot show as it is (a key, or a hidden character), so it was not proposed.
   Ask your person to add it on the machine."). The single card of before showed such a line masked and
-  said "N of M files shown."; a proposal now never shows code other than as it is;
+  said "N of M files shown."; a proposal now never shows code other than as it is. A hidden
+  character is any one `web/src/lib/hidden-chars.ts` names: a control but the line feed and the tab, a
+  format or direction character, U+2028 and U+2029 (a JavaScript line end), a zero-width joiner, a
+  variation selector, a blank-looking letter (U+3164, U+115F, U+2800), a space that is not U+0020, a
+  private-use or unassigned code point. The phone's `diff` rule refuses the same characters;
 - each card is stored with the SHA-256 of its view, and the group with a digest over the Decision's ref
   and the cards' hashes in order. Only `postCollie` makes a group: a post that carries `group` or
   `parts` from an agent, a trick, the walky socket or a crew member is refused, and the decisions file

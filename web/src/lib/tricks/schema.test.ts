@@ -175,7 +175,9 @@ describe("the module", () => {
   it("imports only the JSON helpers and the contract number, so the bridge and the CLI load it without a DOM", () => {
     const source = readRepo("web/src/lib/tricks/schema.ts");
     const imports = [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]);
-    expect(imports).toEqual(["../json", "./contract"]);
+    expect(imports).toEqual(["../hidden-chars", "../json", "./contract"]);
+    // The hidden-character rule is plain code and imports nothing.
+    expect(readRepo("web/src/lib/hidden-chars.ts")).not.toMatch(/^import /m);
     expect(source).not.toContain(`from "@/`);
     // The contract module is one number and imports nothing.
     expect(readRepo("web/src/lib/tricks/contract.ts")).not.toMatch(/^import /m);

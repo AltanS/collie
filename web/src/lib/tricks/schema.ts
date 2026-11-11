@@ -70,6 +70,7 @@ import {
   type HillPriority,
   type HillTextMode,
 } from "../hill/wire";
+import { codePointName, firstHiddenChar, hasHiddenChar } from "../hidden-chars";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
 import { INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
 
@@ -2729,6 +2730,14 @@ function checkDiff(f: Fields): void {
   }
   const long = lines.findIndex((line) => codePoints(line) > DIFF_LIMITS.lineChars);
   if (long !== -1) f.push("text", "text", `A diff's line ${String(long + 1)} is ${String(codePoints(lines[long] ?? ""))} characters. Each line holds at most ${String(DIFF_LIMITS.lineChars)}.`);
+  // Code shows as it is or not at all (review 7 M1): a line separator, a blank-looking letter or a
+  // zero-width character would let a person read other code than the code that runs.
+  // A control or a direction mark the text rule refused already is said once.
+  const hidden = textProblem(text, NODE_TEXT.diff) === undefined ? lines.findIndex((line) => hasHiddenChar(line)) : -1;
+  if (hidden !== -1) {
+    const ch = firstHiddenChar(lines[hidden] ?? "") ?? "";
+    f.push("text", "text", `A diff's line ${String(hidden + 1)} holds ${codePointName(ch)}, a character that does not show as itself. A diff shows code as it is.`);
+  }
 }
 
 /** A row: at most one `para`, any `chip`, at most one `button`, and the button last (VOCABULARY.md 2.12). */
