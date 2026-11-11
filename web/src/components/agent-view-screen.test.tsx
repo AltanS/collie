@@ -1064,3 +1064,18 @@ describe("review 10 W14: a held button keeps full contrast", () => {
     expect(ship).not.toHaveAttribute("data-waits");
   });
 });
+
+describe("review 10 W1 follow-up: the buttons of a bar share one height and center their words", () => {
+  it("W1: in a view, a bar stretches its buttons to the tallest, and each button centers its words in the room it reserves", () => {
+    const { container } = draw({ view: screenOf([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship" } }, { kind: "button", attrs: { label: "Drop the tag", intent: "drop", confirm: "Gone." } }] }]) });
+    const bar = container.querySelector("[data-trick-node=bar]");
+    expect(bar?.className).toContain("items-stretch");
+    expect(bar?.className).not.toContain("items-center");
+    for (const button of screen.getAllByRole("button")) {
+      // The cell that stacks the label, the armed words and "unknown": the shown one sits in its middle.
+      expect(button.querySelector(".grid")?.className).toContain("items-center");
+      expect(button.parentElement?.className).toContain("items-stretch");
+      expect(button.className).toContain("h-auto");
+    }
+  });
+});

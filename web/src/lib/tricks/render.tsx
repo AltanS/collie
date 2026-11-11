@@ -393,7 +393,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const words = (
     <OneOf
       active={state === "unknown" ? "unknown" : busy && Icon === null ? "busy" : armed ? "confirm" : "label"}
-      className="min-w-0 justify-items-center"
+      className={cn("min-w-0 justify-items-center", ctx.wrap === true && "items-center")}
       options={[
         { key: "label", node: <span className={fit}>{attrs.label}</span> },
         ...(armedWords === undefined ? [] : [{ key: "confirm", node: <span className={fit}>{armedWords}</span> }]),
@@ -419,7 +419,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const hintId = useId();
   const describes = named !== undefined && attrs.hint !== undefined;
   return (
-    <div {...floorBox(node, ctx)} className={cn("flex min-w-0 items-center", compact && ctx.wrap !== true && "shrink-0")}>
+    <div {...floorBox(node, ctx)} className={cn("flex min-w-0 items-center", compact && ctx.wrap !== true && "shrink-0", ctx.wrap === true && "items-stretch")}>
       <Button
         type="button"
         variant="outline"
@@ -647,7 +647,8 @@ function BarView({ node, ctx, path }: { node: BarNode; ctx: RenderCtx; path: str
       className={cn(
         "flex min-w-0 items-center gap-2",
         scroll && "overflow-x-auto overscroll-x-contain",
-        wrap && "flex-wrap",
+        // A bar that wraps gives its buttons one height, the tallest's (review 10 W1: a long label grows its button).
+        wrap && "flex-wrap items-stretch",
         !scroll && !wrap && "overflow-hidden",
         node.attrs?.role === "strip" && "border-y border-border",
       )}
@@ -656,7 +657,7 @@ function BarView({ node, ctx, path }: { node: BarNode; ctx: RenderCtx; path: str
         const at = `${path}/${i}`;
         if (kid.kind === "button") {
           return (
-            <div key={i} className={cn("min-w-0", scroll ? "shrink-0" : "flex-1")}>
+            <div key={i} className={cn("min-w-0", scroll ? "shrink-0" : "flex-1", wrap && "grid")}>
               <ButtonView node={kid} ctx={ctx} path={at} />
             </div>
           );
