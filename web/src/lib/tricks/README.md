@@ -141,7 +141,11 @@ trick for one stray key. The rule that keeps this true for a later Collie: a key
 draws or what a tap does goes in the part, never at the top of the document. The decisions are read
 strictly as before. The bridge and `collie trick dev` pass the manifest's `contract` to the
 parse (`ParseTrickDocumentOptions.contract`); a view an agent draws (`agent-view/wire.ts`) has its own
-strict reader and does not take this path.
+strict reader and does not take this path. An agent view is contract 2 only and read closed whole: an
+unknown key on a node, a node's `attrs` or the decision block refuses the write (`bad_view`,
+`bad_choice`), and so does an unknown field of the write itself (`show`, `set`, `pending`, `remove`,
+`keep`, `choice`, `start`; bridge/agent-view/blocks.ts `unknownViewField`), with a reason that names the
+key. Nothing changes, and the agent writes again without it.
 
 **What contract 2 means.** Inside contract 1 Collie only adds: an optional manifest key, a facts field,
 a node kind, a place, an attribute. A change a trick must answer is contract 2: a field removed,

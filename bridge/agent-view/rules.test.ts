@@ -977,3 +977,53 @@ describe("rule 12: caps and record", () => {
     ]);
   });
 });
+
+// Fault C: an agent view is contract 2 only, and read CLOSED at the socket a `collie trick view` verb
+// writes to. A key this Collie does not know, on the request, the screen, a node or the decision block,
+// refuses that write with a plain reason, and nothing changes; the agent fixes it and writes again.
+describe("fault C: an agent view write is read closed", () => {
+  test("fault C: an unknown key on a node refuses show and set, in plain words, and the screen stays", async () => {
+    const r = rig();
+    const socket = socketOf(r);
+    try {
+      await on(r);
+      expect((await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN })).ok).toBe(true);
+      const rev = r.service.status(T, ONE).view?.rev;
+      const node = { kind: "para", text: "x", attrs: { confirm: "rm" } };
+      const shown = await socket.ask("%1", { op: "trick.view.show", trick: T, view: [node] });
+      expect(shown).toMatchObject({ ok: false, code: "bad_view", trickView: true });
+      expect(JSON.stringify(shown)).toContain("/view/0/attrs/confirm");
+      const set = await socket.ask("%1", { op: "trick.view.set", trick: T, id: "one", node: { kind: "para", text: "x", hint: "y" } });
+      expect(set).toMatchObject({ ok: false, code: "bad_view" });
+      expect(r.service.status(T, ONE).view?.rev).toBe(rev);
+    } finally {
+      socket.done();
+    }
+  });
+
+  test("fault C: an unknown key on the request or the decision block refuses the write too, and names the key", async () => {
+    const r = rig();
+    const socket = socketOf(r);
+    try {
+      await on(r);
+      const show = await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN, confirm: true });
+      expect(show).toMatchObject({ ok: false, code: "bad_view", trickView: true });
+      expect(JSON.stringify(show)).toContain('not \\"confirm\\"');
+      expect(r.service.status(T, ONE).view).toBeUndefined();
+      const set = await socket.ask("%1", { op: "trick.view.set", trick: T, id: "one", node: { kind: "para", text: "x" }, under: "two" });
+      expect(set).toMatchObject({ ok: false, code: "bad_view" });
+      expect(JSON.stringify(set)).toContain('not \\"under\\"');
+      // The same writes without the stray key go through.
+      expect((await socket.ask("%1", { op: "trick.view.show", trick: T, view: SCREEN })).ok).toBe(true);
+      expect((await socket.ask("%1", { op: "trick.view.set", trick: T, id: "one", node: { kind: "para", text: "x" } })).ok).toBe(true);
+      const rev = r.service.status(T, ONE).view?.rev;
+      // The decision block is read closed too, at its own keys and at the request's.
+      const options = [{ label: "Compact" }, { label: "Tall" }];
+      expect(await socket.ask("%1", { op: "trick.view.choice", trick: T, choice: { question: "Which header?", options, default: 0 } })).toMatchObject({ ok: false, code: "bad_choice" });
+      expect(await socket.ask("%1", { op: "trick.view.choice", trick: T, choice: { options }, pick: 1 })).toMatchObject({ ok: false, code: "bad_choice" });
+      expect(r.service.status(T, ONE).view?.rev).toBe(rev);
+    } finally {
+      socket.done();
+    }
+  });
+});

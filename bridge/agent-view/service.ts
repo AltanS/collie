@@ -91,7 +91,7 @@ import {
 import { isCommand } from "../../web/src/lib/send-protocol.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
 import { keepPictures, VIEW_MINTERS, VIEW_TOO_MANY_IMAGES, readImageFields, type ViewFieldError, type ViewImageInput, type ViewMediaKeep, type ViewMinters, type ViewPictureSet } from "./media.ts";
-import { draftOf, keptBlocks, PENDING_NODE, placed, removed, shownBlocks, type ViewDraft, type ViewPendingFields, type ViewSetFields } from "./blocks.ts";
+import { draftOf, keptBlocks, PENDING_NODE, placed, removed, shownBlocks, unknownViewField, type ViewDraft, type ViewPendingFields, type ViewSetFields } from "./blocks.ts";
 import { markHasConversation } from "./mark.ts";
 import { viewEntry, viewKey, type AgentViewStore, type ViewEntry } from "./store.ts";
 
@@ -1043,6 +1043,8 @@ export interface ViewStartFields {
 
 /** A `trick.view.start` request's fields: the note and the rules id, or the reason the note is not one. */
 export function readStartFields(fields: JsonObject): ViewStartFields | { readonly error: string } {
+  const unknown = unknownViewField(fields, ["note", "rules"], "bad_note");
+  if (unknown !== null) return { error: unknown.error };
   const note = fields.note === undefined || fields.note === null ? null : asJsonString(fields.note);
   if (note === undefined) return { error: "a note is text" };
   // A wrong rules id is never a refusal: the start works, and the session gets the tail.
@@ -1105,6 +1107,8 @@ export function singleNode(raw: JsonValue, id: string): { readonly node: JsonVal
 
 /** A `trick.view.show` request's fields, as the socket carries them: `view` and `choice` (any JSON), an optional `title`, and `images`. */
 export function readShowFields(fields: JsonObject): ViewShowFields | ViewFieldError {
+  const unknown = unknownViewField(fields, ["view", "title", "choice", "images"], "bad_view");
+  if (unknown !== null) return unknown;
   const title = fields.title === undefined || fields.title === null ? null : asJsonString(fields.title);
   if (title === undefined) return { error: "a title is text", code: "bad_title" };
   const images = readImageFields(fields.images);

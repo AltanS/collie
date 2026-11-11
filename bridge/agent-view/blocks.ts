@@ -17,6 +17,7 @@ import {
   type ViewScreen,
 } from "../../web/src/lib/agent-view/wire.ts";
 import { readImageFields, type ViewFieldError, type ViewImageInput } from "./media.ts";
+import type { ViewRefusalCode } from "./service.ts";
 
 /** Where a block goes: at the end (or where it stands, when it exists), first, or after another block. */
 export type ViewPlace = { readonly kind: "end" } | { readonly kind: "first" } | { readonly kind: "after"; readonly id: string };
@@ -107,6 +108,20 @@ export function keptBlocks(draft: ViewDraft, { ids, at }: { ids: readonly string
 
 // ── the socket's fields ──────────────────────────────────────────────────────────────────────────
 
+/** The keys every socket request carries around a view op's own fields (bridge/walky/parse.ts). */
+export const VIEW_REQUEST_KEYS: readonly string[] = ["v", "op", "markers", "trick", "session"];
+
+/**
+ * Fault C: an agent view is contract 2 only, read CLOSED. A field this Collie does not know on a write
+ * refuses the write, in plain words that name the key, and nothing changes: a newer key may carry a
+ * meaning this Collie cannot keep, and the agent can simply write again without it. Null: every key known.
+ */
+export function unknownViewField(fields: JsonObject, own: readonly string[], code: ViewRefusalCode): ViewFieldError | null {
+  const extra = Object.keys(fields).find((key) => !VIEW_REQUEST_KEYS.includes(key) && !own.includes(key));
+  if (extra === undefined) return null;
+  return { error: `this write takes ${own.map((key) => `"${key}"`).join(", ")}, not "${extra}"; an agent view uses only the keys this Collie knows, so nothing was changed`, code };
+}
+
 /** A block id field: the pattern, and never the word that names the decision block. */
 function blockId(raw: JsonValue | undefined, what = "a block id"): { readonly id: string } | ViewFieldError {
   const id = asJsonString(raw);
@@ -132,6 +147,8 @@ export interface ViewSetFields {
 }
 
 export function readSetFields(fields: JsonObject): ViewSetFields | ViewFieldError {
+  const unknown = unknownViewField(fields, ["id", "node", "after", "first", "images"], "bad_view");
+  if (unknown !== null) return unknown;
   const checked = blockId(fields.id);
   if ("error" in checked) return checked;
   const id = checked.id;
@@ -151,6 +168,8 @@ export interface ViewPendingFields {
 }
 
 export function readPendingFields(fields: JsonObject): ViewPendingFields | ViewFieldError {
+  const unknown = unknownViewField(fields, ["id", "label", "after", "first"], "bad_block");
+  if (unknown !== null) return unknown;
   const checked = blockId(fields.id);
   if ("error" in checked) return checked;
   const id = checked.id;
@@ -164,11 +183,13 @@ export function readPendingFields(fields: JsonObject): ViewPendingFields | ViewF
 
 /** `morph.remove`'s field: the block id. */
 export function readRemoveFields(fields: JsonObject): { readonly id: string } | ViewFieldError {
-  return blockId(fields.id);
+  return unknownViewField(fields, ["id"], "bad_block") ?? blockId(fields.id);
 }
 
 /** `morph.choice`'s fields: the decision block, or null to drop it (`clear: true`). */
 export function readChoiceFields(fields: JsonObject): { readonly choice: JsonValue | null } | ViewFieldError {
+  const unknown = unknownViewField(fields, ["choice", "clear"], "bad_choice");
+  if (unknown !== null) return unknown;
   if (asJsonBoolean(fields.clear) === true) {
     return fields.choice === undefined || fields.choice === null ? { choice: null } : { error: "`--clear` takes no choice", code: "bad_choice" };
   }
@@ -178,6 +199,8 @@ export function readChoiceFields(fields: JsonObject): { readonly choice: JsonVal
 
 /** `morph.keep`'s fields: block ids (and `choice`), or every block (`all: true`). */
 export function readKeepFields(fields: JsonObject): { readonly ids: readonly string[] | "all" } | ViewFieldError {
+  const unknown = unknownViewField(fields, ["ids", "all"], "bad_block");
+  if (unknown !== null) return unknown;
   if (asJsonBoolean(fields.all) === true) return Array.isArray(fields.ids) && fields.ids.length > 0 ? { error: "`--all` takes no ids", code: "bad_block" } : { ids: "all" };
   if (!Array.isArray(fields.ids) || fields.ids.length === 0) return { error: "name the blocks to keep, or --all", code: "bad_block" };
   const ids: string[] = [];
