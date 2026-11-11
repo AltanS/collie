@@ -400,17 +400,17 @@ export class TrickProposals {
   }
 
   /** The card for a stored proposal: a new trick, or a new version shown against the approved copy. */
-  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null): Promise<Omit<HillPostInput, "requestId"> | null> {
+  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null, replaces: boolean): Promise<Omit<HillPostInput, "requestId"> | null> {
     const id = proposal.manifest.id;
     const crew = this.deps.crew?.() ?? false;
     const kinds = await this.warningKinds(dir, proposal.manifest);
     if (base === null) {
       const diff = await this.diff(null, dir).catch((): VersionDiff => ({ files: [], counted: false }));
-      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff, warnings: kinds, crew });
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff, warnings: kinds, crew, replaces });
     }
     const diff = await this.diff(base.baseDir, dir).catch((): VersionDiff => ({ files: [], counted: false }));
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
-    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew });
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces });
   }
 
   private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {
@@ -418,7 +418,7 @@ export class TrickProposals {
     const { hash } = proposal;
     const dir = await this.store(id, hash, proposal.files);
     if (dir === null) return refused("failed", "The proposal could not be kept on this machine, so nothing was proposed.");
-    const card = await this.cardOf(dir, proposal, proposer, base);
+    const card = await this.cardOf(dir, proposal, proposer, base, old !== null);
     if (card === null) {
       await rm(dir, { recursive: true, force: true });
       return refused("card_too_large", PROPOSAL_TOO_LARGE);

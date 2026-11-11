@@ -68,6 +68,8 @@ export interface ProposalCardInput {
   warnings: readonly (keyof typeof WARN_PLAIN)[];
   /** Whether this bridge leads a crew: its `inputs` then read on every machine. */
   crew: boolean;
+  /** Whether it replaces the same session's open proposal of this id (review S2). */
+  replaces?: boolean;
 }
 
 /** One line of somebody else's words for a sentence: every character a card could misread as `?`, cut. */
@@ -124,6 +126,16 @@ export function authorWords(manifest: Pick<TrickManifest, "name" | "description"
   return paras.map((text): ViewNode => ({ kind: "para", text, attrs: { role: "quote" } }));
 }
 
+/** The line of a card that replaces the same session's earlier proposal of that id (review S2). */
+export const PROPOSAL_REPLACES = "It replaces an earlier proposal from the same session.";
+
+/** The summary: the full words when they fit the Hill's cap, else the short ones; the replace line when it fits. */
+function summaryOf(who: string, replaces: boolean, full: string, short: string): string {
+  const lead = replaces ? `${who} ${PROPOSAL_REPLACES}` : who;
+  for (const text of [`${lead} ${full}`, `${lead} ${short}`]) if ([...text].length <= HILL_SUMMARY_MAX) return text;
+  return `${who} ${short}`;
+}
+
 /** The refusal of a proposal whose facts do not fit one card (crew slice 8 review F1). */
 export const PROPOSAL_TOO_LARGE = "This trick asks for more than a card can show, so it was not proposed. Ask your person to add it on the machine.";
 
@@ -142,7 +154,7 @@ export function proposalCard(input: ProposalCardInput): Omit<HillPostInput, "req
   ];
   const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
   const fact = also.length > 0 ? `It ${alsoWords}.` : "It asks for no rights.";
-  const head = rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null);
+  const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null)];
   const words = authorWords(manifest);
   const shown = fitView(head, input.diff, words.length > 0 ? [{ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: words }] : []);
   if (!shown.headFits) return null;
@@ -150,10 +162,7 @@ export function proposalCard(input: ProposalCardInput): Omit<HillPostInput, "req
   const whole = shown.view !== null && shown.shown >= total;
   const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
   const files = total === 1 ? "It has 1 file." : `It has ${String(total)} files.`;
-  const who = proposerSentence(input.proposer);
-  const full = `${who} ${files} ${fact}${tail}`;
-  const short = `${who} ${files} It asks for rights, listed below.${tail}`;
-  const summary = [...full].length <= HILL_SUMMARY_MAX ? full : short;
+  const summary = summaryOf(proposerSentence(input.proposer), input.replaces === true, `${files} ${fact}${tail}`, `${files} It asks for rights, listed below.${tail}`);
   const card: Omit<HillPostInput, "requestId"> = {
     title: proposalTitle(input.id),
     summary,
@@ -184,6 +193,8 @@ export interface ProposalVersionCardInput {
   /** The warning kinds the approved copy did not have. */
   warnings: readonly (keyof typeof WARN_PLAIN)[];
   crew: boolean;
+  /** As {@link ProposalCardInput.replaces}. */
+  replaces?: boolean;
 }
 
 /** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended. Null as {@link proposalCard}. */
@@ -197,16 +208,13 @@ export function proposalVersionCard(input: ProposalVersionCardInput): Omit<HillP
   ];
   const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
   const fact = also.length > 0 ? `It now also ${alsoWords}.` : "It asks for no new rights.";
-  const head = rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null);
+  const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null)];
   const shown = fitView(head, input.diff);
   if (!shown.headFits) return null;
   const total = input.diff.files.length;
   const whole = shown.view !== null && shown.shown >= total;
   const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
-  const who = proposerSentence(input.proposer);
-  const full = `${who} ${filesSentence(total)} ${fact}${tail}`;
-  const short = `${who} ${filesSentence(total)} ${rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below."}${tail}`;
-  const summary = [...full].length <= HILL_SUMMARY_MAX ? full : short;
+  const summary = summaryOf(proposerSentence(input.proposer), input.replaces === true, `${filesSentence(total)} ${fact}${tail}`, `${filesSentence(total)} ${rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below."}${tail}`);
   const card: Omit<HillPostInput, "requestId"> = {
     title: versionTitle(input.id),
     summary,

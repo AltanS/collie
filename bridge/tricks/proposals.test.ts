@@ -310,6 +310,11 @@ describe("one open proposal per trick id", () => {
     expect(two).toMatchObject({ ok: true, kind: "proposal", replaced: one.ok ? one.decision : "" });
     expect(proposalCards(l).map((d) => d.state)).toEqual(["superseded", "open"]);
     expect(await stat(l.proposals.storeDir("legs", first.hash)).catch(() => null)).toBeNull();
+    // S2: the new card says it replaces an earlier one; the first did not.
+    const [old, now] = proposalCards(l);
+    expect(old?.summary).not.toContain("It replaces");
+    expect(now?.summary).toStartWith("An agent session (repo#one) on minibuch proposes it. It replaces an earlier proposal from the same session.");
+    expect(now?.view?.[0]).toEqual({ kind: "para", text: "It replaces an earlier proposal from the same session." });
     const again = await l.proposals.propose(proposal("legs", "2\n"), AGENT);
     expect(again).toMatchObject({ ok: true, decision: two.ok ? two.decision : "", replaced: null });
     expect(openCards(l)).toHaveLength(1);
