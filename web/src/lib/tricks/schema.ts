@@ -1383,7 +1383,8 @@ export interface TrickProvenance {
   sha?: string;
   /**
    * Set for a trick `collie trick propose` handed in (crew slice 8): who proposed it and the machine, as
-   * the lead named it. Absent for any other trick, and from an older bridge.
+   * the lead named it. Absent for any other trick, and from an older bridge. `by: "terminal"` means no
+   * agent pane was placed: the machine is known, the session is not confirmed.
    */
   proposed?: { by: "agent" | "terminal"; host: string };
 }

@@ -1089,7 +1089,9 @@ export class TricksService implements TricksSurface {
     // The provenance of what runs: the approved copy keeps the origin record of the version approved.
     const origin = shown.origin;
     if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
-    // A proposed trick (`collie trick propose`, crew slice 8) reads "Added by agent", or "Added by CLI" from a terminal.
+    // A proposed trick (`collie trick propose`, crew slice 8): the web reads `proposed` and says "Proposed …"
+    // ("Proposed from <host>. The session is not confirmed." when no agent pane was placed); `via` is only
+    // for a reader that predates `proposed`.
     const proposal = shown.proposal;
     if (origin === undefined && proposal !== undefined) {
       const host = [...proposal.host].map((ch) => (unsafeText(ch) ? "?" : ch)).slice(0, 40).join("");

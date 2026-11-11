@@ -186,7 +186,7 @@ describe("the card", () => {
 
   test("a label with a control character or a direction mark cannot reshape the sentence", () => {
     expect(proposerSentence({ by: "agent", host: "lap‮top", label: "a\nb" })).toBe("An agent session (a b) on lap?top proposes it.");
-    expect(proposerSentence({ by: "terminal", host: "laptop", label: null })).toBe("A terminal on laptop proposes it.");
+    expect(proposerSentence({ by: "terminal", host: "laptop", label: null })).toBe("Someone on laptop proposes it. Collie could not confirm which session.");
     expect(proposerSentence({ by: "agent", host: "laptop", label: null })).toBe("An agent session on laptop proposes it.");
   });
 

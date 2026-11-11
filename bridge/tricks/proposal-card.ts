@@ -14,7 +14,8 @@ import type { VersionDiff } from "./version-diff.ts";
 // Title "Switch on the trick <id>?": the trick's id, which is 1 to 32 of a-z, 0-9 and -, never its free
 // text name, so a proposal cannot dress its card in words Collie uses. The summary is Collie's own facts,
 // in this order: who proposed it, as the lead knows them (an agent session's name and its machine from
-// the lead's own session list, or "a terminal" and the machine the signed crew call came from), how many
+// the lead's own session list, or "Someone on <machine> … Collie could not confirm which session." when no
+// agent pane was placed, with the machine the socket or the signed crew call came from), how many
 // files it has, what it asks for (its places and environment names, its `inputs` globs, what a text
 // search of its code finds), and how much of the code the card shows. The view: the rights as chips, the
 // inputs sentence, the warnings, then the author's name, description and about in one group headed
@@ -78,7 +79,8 @@ function plain(raw: string, max: number): string {
 /** "An agent session (repo#one) on minibuch proposes it." */
 export function proposerSentence(proposer: ProposerFacts): string {
   const host = plain(proposer.host, 40);
-  if (proposer.by === "terminal") return `A terminal on ${host} proposes it.`;
+  // No agent pane placed: the machine is known, the session is not (proposals.ts "WHAT IS CONFIRMED").
+  if (proposer.by === "terminal") return `Someone on ${host} proposes it. Collie could not confirm which session.`;
   return proposer.label === null || proposer.label.trim() === "" ? `An agent session on ${host} proposes it.` : `An agent session (${plain(proposer.label, 40)}) on ${host} proposes it.`;
 }
 

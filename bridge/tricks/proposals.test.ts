@@ -666,6 +666,6 @@ describe("the card belongs to Collie and to the person", () => {
     await l.proposals.propose(proposal("legs"), TERMINAL);
     const [card] = openCards(l);
     expect(card?.replyTo).toBeNull();
-    expect(card?.summary).toStartWith("A terminal on bluefin proposes it.");
+    expect(card?.summary).toStartWith("Someone on bluefin proposes it. Collie could not confirm which session.");
   });
 });
