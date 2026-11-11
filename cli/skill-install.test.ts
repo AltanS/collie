@@ -81,7 +81,7 @@ describe("the rendered skill", () => {
       expect(hillHelp()).toContain(rule);
       expect(hillPostHelp()).toContain(rule);
     }
-    expect(HILL_RULES.length).toBe(8);
+    expect(HILL_RULES.length).toBe(11);
     // The parts an agent must find, by the words the brief asks for.
     expect(out).toContain("only for what needs the person");
     expect(out).toContain("recommend one option with a why");
@@ -91,6 +91,9 @@ describe("the rendered skill", () => {
     expect(out).toContain("carries only the id and the option word");
     expect(out).toContain("A worker with a lead asks its lead first.");
     expect(out).toContain(`${bin} hill status dc_...`);
+    expect(out).toContain(`take the card back: ${bin} hill withdraw <id>.`);
+    expect(out).toContain(`read the crew state: ${bin} hill state. here: post as usual.`);
+    expect(out).toContain('A receipt or a post result can end with a line such as "Crew state: away."');
   });
 
   test("teaches the wording rules of a Decision from the same list the help prints, right before the rules", () => {

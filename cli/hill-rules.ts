@@ -14,13 +14,19 @@ export const HILL_RULES = [
   "An answer typed into your session for a decision you did not post carries only the id and the option word. Read the rest with collie hill status <id>.",
   "A worker with a lead asks its lead first.",
   "A --view only shows facts. No buttons: the options are the taps.",
+  "When your operator settles the question in your session, take the card back: collie hill withdraw <id>.",
+  "Before you post, read the crew state: collie hill state. here: post as usual. quiet: post, but do not wait for a fast answer. away: post nothing that needs an answer now; do work that needs no answer, then end your turn.",
+  'A receipt or a post result can end with a line such as "Crew state: away." It is the state at that moment.',
 ] as const;
 
 /**
  * How to word a Decision, for a person who opens the card cold. Printed by `collie hill post --help` and
  * `collie hill --help` above the rules, written into the AGENTS.md of `collie trick init`, and filled into the
  * installed WalkyTalky skill as `{{HILL_WRITING}}`, right before the rules. A change here makes every installed
- * skill stale and the browser leg's recordings miss. Kept as its own list, apart from {@link HILL_RULES}, because
+ * skill text, so an installed copy is stale until `collie skill sync` (which `collie update` runs) rewrites it. The rig's
+ * skill hash (`skillHash` in web/e2e/rig/replay/tier.ts) covers only the template cli/skills/walky-talky.md, so the
+ * cases stay on replay. Only a recorded Claude request that carries the rendered skill body (today the crew case
+ * `claude.walky-crew-agents`) no longer matches and must be recorded again. Kept as its own list, apart from {@link HILL_RULES}, because
  * the rules are not wording advice. The helper's `t.decide` comment and web/src/lib/tricks/README.md say the
  * same in fewer words; change them with this list.
  */
