@@ -206,8 +206,8 @@ describe("Tell all sessions now", () => {
     if (!set.ok || set.crewState.at === null) throw new Error("not set");
     expect(await r.hill.tellAll(set.crewState.at, "Pixel 9", "Pixel 9")).toEqual({ ok: true, told: 2 });
     expect(r.sent).toEqual([
-      { to: sender(5).address, body: "[hill] from operator: Crew state: away.", by: "Pixel 9" },
-      { to: sender(1).address, body: "[hill] from operator: Crew state: away.", by: "Pixel 9" },
+      { to: sender(5).address, body: "Crew state: away.", by: "Pixel 9" },
+      { to: sender(1).address, body: "Crew state: away.", by: "Pixel 9" },
     ]);
     expect(r.audit).toContainEqual({ action: "hill.state.told", device: "Pixel 9", detail: { state: "away", count: 2, asked: 2 } });
     expect(r.hill.crewState().told).toBe(2);
@@ -227,7 +227,7 @@ describe("Tell all sessions now", () => {
     expect(await r.hill.tellAll(set.crewState.at, "Pixel 9", "Pixel 9")).toEqual({ ok: true, told: HILL_TELL_MAX });
     expect(r.sent).toHaveLength(20);
     expect(r.sent[0]?.to).toBe(sender(25).address);
-    expect(r.sent.every((sent) => sent.body === "[hill] from operator: Crew state: quiet.")).toBe(true);
+    expect(r.sent.every((sent) => sent.body === "Crew state: quiet.")).toBe(true);
   });
 
   test("refuses for `here`, and for a change the phone did not see", async () => {

@@ -479,9 +479,12 @@ export function crewStateLine(state: HillCrewState): string {
   return `Crew state: ${state}.`;
 }
 
-/** What "Tell all sessions now" types into each session: one line. */
+/**
+ * What "Tell all sessions now" types into each session: the bare line. WalkyTalky puts the one head
+ * (`from operator`) in front of it, so the body carries no second head (C-A3, review 8).
+ */
 export function crewStateTellLine(state: HillCrewState): string {
-  return `[hill] from operator: ${crewStateLine(state)}`;
+  return crewStateLine(state);
 }
 
 /** The most sessions one "Tell all sessions now" reaches. */

@@ -803,7 +803,7 @@ export class HillService {
   }
 
   /**
-   * "Tell all sessions now": one operator line, `[hill] from operator: Crew state: away.`, typed through
+   * "Tell all sessions now": one operator line, `Crew state: away.` under WalkyTalky's own head, typed through
    * the answer's own send (`deps.send`, the operator walky send) into every live agent session of THIS
    * machine that holds an open Decision or posted one in the last hour, newest first, at most
    * {@link HILL_TELL_MAX}. A session that is busy gets it held as an answer is. Once per change of the
