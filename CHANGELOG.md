@@ -25,6 +25,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **`collie crew update` no longer refuses a member whose checkout holds only an untracked `config.toml`.** The check that a member's checkout is clean counted that file, the machine's own config, as a change and stopped the update. Now it looks at tracked files only, and the `config.toml` line is in `.gitignore`. Thanks @OowhitecatoO (#733).
+
 - **The Collie mark rests until you touch the app.** Since 1.28.1 a page you opened drifted the mark for its first 20 seconds with no touch at all, background tabs included. Now the mark rests until your first touch, key press or mouse wheel, and 20 seconds after the last one it slows to a stop as before. A page left open and a page in the background draw nothing for the mark. A scroll the app makes by itself, such as the chat following new output, does not count as a touch. This undoes a slowdown seen in WebKit (Safari's engine) tests since 1.28.1.
 
 ## [1.28.1] - 2026-11-10
