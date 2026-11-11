@@ -7,10 +7,13 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
-import { TrickAboutSheet } from "@/components/trick-about-sheet";
+import { StatusArea } from "@/components/status-area";
+import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
+import { addOfficialTrick } from "@/lib/api";
+import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
-import { ABOUT_MAX, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, type OfficialState, type OfficialTricksReply, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 
 import { RootRouter } from "../harness";
@@ -78,7 +81,16 @@ function ListCard({ n, state, label, tricks, readOnly, hillOff }: { n: number; s
     <Card state={state} label={`${n} · ${label}`}>
       <div className="w-[390px] max-w-full bg-background p-4">
         <RootRouter data={homeSolo}>
-          <TricksSettingsCard store={store} onSwitch={standIn(tricks)} onAuto={autoStandIn(tricks)} onUndo={undoStandIn(tricks)} now={NOW} readOnly={readOnly} hillOff={hillOff} />
+          <TricksSettingsCard
+            store={store}
+            onSwitch={standIn(tricks)}
+            onAuto={autoStandIn(tricks)}
+            onUndo={undoStandIn(tricks)}
+            onOfficialList={NO_OFFICIAL}
+            now={NOW}
+            readOnly={readOnly}
+            hillOff={hillOff}
+          />
         </RootRouter>
       </div>
     </Card>
@@ -125,6 +137,112 @@ function SheetBox({ n, state, label, trick: info, updates = false }: { n: number
           About {info.name}
         </button>
         <TrickAboutSheet trick={info} open={open} onClose={() => setOpen(false)} auto={auto} onAuto={updates ? setAuto : undefined} />
+      </div>
+    </Card>
+  );
+}
+
+// From Collie (M94): the official tricks this release can add, under the installed ones. Each card has a list
+// of its own and a stand-in for the add route; the one that shows a failure goes through the real api.ts call
+// and a stand-in for the bridge's refusal (`useRefusedAdd`), so the status line reads the bridge's own word.
+
+/** The cards above show no From Collie section: an empty list, read without the network. */
+const NO_OFFICIAL = async (): Promise<OfficialTricksReply> => ({ tricks: [] });
+
+const OFFICIAL_COMMIT = "0d8039936aef44961a5641f4bfdc4583ed0c3e60";
+
+function official(id: string, name: string, description: string, state: OfficialState = "absent"): WireOfficialTrick {
+  return { id, name, description, repo: "https://github.com/AltanS/collie-tricks", repoName: "AltanS/collie-tricks", commit: OFFICIAL_COMMIT, state };
+}
+
+const REVIEW = official("design-review", "Design Review", "Turns an agent's UI notes into Decisions you approve by name.");
+const INBOX = official("pr-inbox", "PR Inbox", "Open pull requests and issues that wait for you.");
+const BUILDS = official("running-builds", "Running Builds", "Builds and long commands running in your sessions now.");
+
+/** A trick installed from an entry of the list: off, with the repository as its provenance. */
+function fromList(entry: WireOfficialTrick, extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
+  return trick(entry.id, entry.name, { on: false, state: "off", places: ["belt", "session"], description: entry.description, provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: entry.repoName, sha: "9c41d07e2b6a" }, ...extra });
+}
+
+/** How the card's add stand-in answers: it lands, it never answers, or the bridge refuses it (`mismatch`). */
+type AddAnswer = "lands" | "hangs" | "refused";
+
+/**
+ * While mounted, `POST /api/tricks/official/<id>/add` answers what a bridge says when the code does not match
+ * the list: 422 `mismatch`. Only the card that shows the failure posts through the real call.
+ */
+function useRefusedAdd(on: boolean): void {
+  useEffect(() => {
+    if (!on) return undefined;
+    const real = window.fetch;
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
+      if (!/^\/api\/tricks\/official\/[^/]+\/(add|update)$/u.test(url.pathname)) return real(input, init);
+      const body = JSON.stringify({ error: "mismatch", message: "The trick did not match what this Collie release expects, so nothing was added." });
+      return new Promise((resolve) => setTimeout(() => resolve(new Response(body, { status: 422, headers: { "content-type": "application/json" } })), 500));
+    };
+    return () => {
+      window.fetch = real;
+      clearStatus();
+    };
+  }, [on]);
+}
+
+function OfficialCard({ n, state, label, tricks, entries, answer = "lands" }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; entries: WireOfficialTrick[]; answer?: AddAnswer }) {
+  // The list and the installed tricks move together, as on a bridge: an add that lands puts the trick among
+  // the installed ones, off, and the entry says added.
+  const [held] = useState(() => ({ tricks: [...tricks], entries: [...entries], rev: 1 }));
+  const [store] = useState(() =>
+    createTricksStore({
+      fetchTricks: async (): Promise<TricksReply> => ({ rev: held.rev, tricks: held.tricks, parts: [], present: [] }),
+      tapTrick: () => Promise.reject(new Error("no taps here")),
+      mintRequestId: () => "playground",
+    }),
+  );
+  useEffect(() => {
+    void store.syncTricks(held.rev);
+  }, [store, held]);
+  useRefusedAdd(answer === "refused");
+  const onOfficialAdd = async (id: string, mode: "add" | "update"): Promise<{ id: string; state: OfficialState }> => {
+    if (answer === "refused") return await addOfficialTrick(id, mode);
+    if (answer === "hangs") return await new Promise<never>(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const entry = held.entries.find((e) => e.id === id) ?? REVIEW;
+    held.entries = held.entries.map((e) => (e.id === id ? { ...e, state: "added" } : e));
+    held.tricks = mode === "add" ? [...held.tricks, fromList(entry)] : held.tricks;
+    held.rev += 1;
+    // The phone's list catches up a moment later, on the snapshot's cadence.
+    setTimeout(() => void store.syncTricks(held.rev), 700);
+    return { id, state: "added" };
+  };
+  return (
+    <Card state={state} label={`${n} · ${label}`}>
+      <div className="w-[390px] max-w-full bg-background p-4">
+        <RootRouter data={homeSolo}>
+          <TricksSettingsCard
+            store={store}
+            onSwitch={standIn(held.tricks)}
+            onOfficialList={async () => ({ tricks: held.entries })}
+            onOfficialAdd={onOfficialAdd}
+            now={NOW}
+          />
+        </RootRouter>
+        {answer === "refused" && <StatusArea className="mt-4" />}
+      </div>
+    </Card>
+  );
+}
+
+function OfficialSheetBox({ n, state, label, entry }: { n: number; state: string; label: string; entry: WireOfficialTrick }) {
+  const [open, setOpen] = useState(true);
+  const style: CSSProperties & { "--app-h"?: string } = { width: 390, height: 844, transform: "translate(0)", "--app-h": "844px" };
+  return (
+    <Card state={state} label={`${n} · ${label}`}>
+      <div data-pg-frame="" className="relative isolate overflow-hidden rounded-xl border border-border bg-background" style={style}>
+        <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
+          About {entry.name}
+        </button>
+        <OfficialTrickAboutSheet entry={entry} open={open} onClose={() => setOpen(false)} busy={false} canWrite onAdd={() => setOpen(false)} />
       </div>
     </Card>
   );
@@ -233,6 +351,14 @@ export function TrickSettingsSection(): ReactNode {
             provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
           })}
         />
+      </Group>
+      <Group title="From Collie">
+        <OfficialCard n={17} state="trick-settings-official" label="two not added: tap Add, the trick lands among yours, off" tricks={HEALTHY.slice(0, 2)} entries={[REVIEW, INBOX, { ...BUILDS, state: "added" }]} />
+        <OfficialCard n={18} state="trick-settings-official-adding" label="adding: tap Add, the spinner stays" tricks={HEALTHY.slice(0, 1)} entries={[REVIEW, INBOX]} answer="hangs" />
+        <OfficialCard n={19} state="trick-settings-official-failed" label="a failed add: tap Add, the status line says why" tricks={HEALTHY.slice(0, 1)} entries={[REVIEW]} answer="refused" />
+        <OfficialCard n={20} state="trick-settings-official-update" label="this release names a newer version" tricks={[HEALTHY[0] ?? trick("x", "x"), fromList(BUILDS, { on: true, state: "ok" })]} entries={[{ ...BUILDS, state: "update" }, REVIEW]} />
+        <OfficialCard n={21} state="trick-settings-official-taken" label="an id another trick holds" tricks={[trick("pr-inbox", "My PR list", { places: ["session"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } })]} entries={[REVIEW, { ...INBOX, state: "taken" }]} />
+        <OfficialSheetBox n={22} state="trick-settings-official-about" label="the About sheet before the add" entry={REVIEW} />
       </Group>
       <Group title="Nothing to list">
         <ListCard n={6} state="trick-settings-empty" label="folder, no trick" tricks={[]} />

@@ -3371,6 +3371,23 @@ export const en = {
   "settings.tricks.about.updates": "Updates",
   "settings.tricks.about.auto.label": "Take changes without asking",
   "settings.tricks.about.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
+  // From Collie, the official tricks this release can add (M94): English only until the translation pass,
+  // listed in PENDING_TRANSLATION below. The failure lines are the bridge's own (bridge/tricks/official-install.ts).
+  "settings.tricks.official.label": "From Collie",
+  "settings.tricks.official.add": "Add",
+  "settings.tricks.official.addAria": "Add {name}",
+  "settings.tricks.official.taken": "A trick with this name is already here.",
+  "settings.tricks.official.updateLine": "A newer version comes with this Collie.",
+  "settings.tricks.official.update": "Update",
+  "settings.tricks.official.updateAria": "Update {name}",
+  "settings.tricks.official.checks": "Collie checks that the code matches this release before it adds it.",
+  "settings.tricks.official.unreachable": "Could not reach GitHub, so nothing was added.",
+  "settings.tricks.official.mismatch": "The trick did not match what this Collie release expects, so nothing was added.",
+  "settings.tricks.official.busy": "Collie is adding another trick. Try again in a moment.",
+  "settings.tricks.official.failed": "Could not add {name}. Try again.",
+  "settings.tricks.official.updateUnreachable": "Could not reach GitHub, so nothing was changed.",
+  "settings.tricks.official.updateMismatch": "The new version did not match what this Collie release expects, so nothing was changed.",
+  "settings.tricks.official.updateFailed": "Could not update {name}. Try again.",
 
   // --- hill: the Decisions agents post, and the view that answers them (M96) ---
   // "Hill" is the view's name, a Collie word like a brand: the same in every language, never
@@ -3704,6 +3721,22 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.updates",
   "settings.tricks.about.auto.label",
   "settings.tricks.about.auto.hint",
+  // From Collie (M94).
+  "settings.tricks.official.label",
+  "settings.tricks.official.add",
+  "settings.tricks.official.addAria",
+  "settings.tricks.official.taken",
+  "settings.tricks.official.updateLine",
+  "settings.tricks.official.update",
+  "settings.tricks.official.updateAria",
+  "settings.tricks.official.checks",
+  "settings.tricks.official.unreachable",
+  "settings.tricks.official.mismatch",
+  "settings.tricks.official.busy",
+  "settings.tricks.official.failed",
+  "settings.tricks.official.updateUnreachable",
+  "settings.tricks.official.updateMismatch",
+  "settings.tricks.official.updateFailed",
   "hill.receipt.dismissedOffline",
 ] as const satisfies readonly MessageKey[];
 

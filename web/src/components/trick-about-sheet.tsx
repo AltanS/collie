@@ -1,14 +1,16 @@
 import type { ReactNode } from "react";
 
 import { Icon } from "@/components/icons/icon";
+import { Button } from "@/components/ui/button";
 import { ListGroup } from "@/components/ui/list-group";
+import { OneOf } from "@/components/ui/one-of";
 import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { originLine, placesLine, readsLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
-import type { TricksRunsOn, WireTrickInfo } from "@/lib/tricks/schema";
+import type { TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
 
 // A trick's About sheet: what a person reads before they switch a trick on. Opened by a tap on the trick's
 // name in Settings → Tricks (components/tricks-settings-card.tsx); the switch there is its own tap target.
@@ -30,6 +32,12 @@ import type { TricksRunsOn, WireTrickInfo } from "@/lib/tricks/schema";
 //      same field `collie trick auto` writes. The switch shows only here, not on the card; the card owns the
 //      write state (`flipAuto`): it flips at once, holds its position until the list agrees, and says a failed
 //      write in the status line, as the trick's own switch does.
+//
+// NOT ADDED YET (`OfficialTrickAboutSheet`, From Collie): the same sheet for an entry of the official list
+// that is not on this machine. Only what the list knows: the name, its one line, and "Where it comes from"
+// (the repository and short commit, and that Collie checks the code before it adds it). No "What it does":
+// the manifest is not here yet, so there is nothing true to say. One primary Add at the foot; the card owns
+// the write and closes the sheet once the bridge took it.
 
 /** The paragraphs of an `about` text: split on a blank line, each trimmed, none empty. */
 export function aboutParagraphs(about: string): string[] {
@@ -145,6 +153,49 @@ export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite =
         {does.length > 0 && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={does} />}
         <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
         {trick.on && runsOn === undefined && onAuto !== undefined && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
+      </div>
+    </BottomSheet>
+  );
+}
+
+export interface OfficialTrickAboutSheetProps {
+  entry: WireOfficialTrick;
+  open: boolean;
+  onClose: () => void;
+  /** An add of this entry is in flight. */
+  busy: boolean;
+  /** Whether this device may write. */
+  canWrite: boolean;
+  onAdd: () => void;
+}
+
+/** The About sheet of a From Collie entry that is not added yet. */
+export function OfficialTrickAboutSheet({ entry, open, onClose, busy, canWrite, onAdd }: OfficialTrickAboutSheetProps) {
+  useLocale();
+  const comes: FactRow[] = [
+    { key: "origin", node: t("settings.tricks.by.repo", { repo: entry.repoName, sha: entry.commit.slice(0, 7) }) },
+    { key: "checks", node: t("settings.tricks.official.checks") },
+  ];
+  return (
+    <BottomSheet open={open} onClose={onClose} title={entry.name}>
+      <div data-slot="trick-about-body" data-official={entry.id}>
+        <p data-line="description" className="text-sm font-medium break-words">
+          {entry.description}
+        </p>
+        <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
+        <div className="pt-6">
+          <Button type="button" data-slot="official-add" className="h-11 w-full" disabled={!canWrite || busy} aria-busy={busy || undefined} onClick={onAdd}>
+            {/* The word and the spinner share one slot, so the button keeps its size while it works. */}
+            <OneOf
+              active={busy ? "busy" : "rest"}
+              className="inline-grid place-items-center"
+              options={[
+                { key: "rest", node: t("settings.tricks.official.add") },
+                { key: "busy", node: <Icon name="busy" className="size-4 animate-spin" aria-hidden /> },
+              ]}
+            />
+          </Button>
+        </div>
       </div>
     </BottomSheet>
   );
