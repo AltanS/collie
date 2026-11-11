@@ -520,9 +520,31 @@ says whether the tricks come along: only the deputy holds a copy.
 The copy holds each trick's `config.toml`. A token or key in that file also rests on the deputy, until
 it stops being the deputy. When the deputy changes, the old one removes its copy.
 
+### Open questions on the Hill come along
+
+The lead also keeps a copy of its Hill's open Decisions on its deputy, with their pictures, up to 32 MB
+of pictures, newest first. The deputy shows none of them while the lead is alive. Its standby page says
+how many come along, and the Take over button or `collie promote` on the deputy puts them on the
+deputy's Hill. Each keeps its place, and no phone gets a second notification for it.
+
+Some questions close at the takeover, each with its reason on the card:
+
+- A picture that did not reach the deputy is left out, and the card says "A picture stayed on
+  <old lead>."
+- A new version of a trick: "This new version waited on <old lead>. It was not carried over." The
+  deputy shows its own new versions.
+- A proposal for a new trick: "This proposal stayed on <old lead>. Ask for it again." Its files do not
+  come along.
+- A question from a trick that did not start on the deputy: "Its trick did not start on this machine
+  after the takeover."
+
+A question you answered on the lead stays answered. After the takeover the old lead takes no answer:
+"This machine is not the crew's lead any more. Answer on the new lead."
+
 > **Note.** The copy needs Collie 1.29.0 on the lead and on the deputy. An older deputy keeps no copy;
-> `collie crew status` on the lead says so, and a takeover there starts no trick. Open Decisions on the
-> lead's Hill do not come along yet.
+> `collie crew status` on the lead says so, and a takeover there starts no trick and brings no
+> question along. An answer you gave on the lead in the last seconds before it went down may not have
+> reached the deputy yet, so that question can be open again there.
 
 ## A machine can run several Collies
 
