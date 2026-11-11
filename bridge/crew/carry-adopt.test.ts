@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { trickCodeHash } from "../tricks/code-hash.ts";
 import { createTrickScanner } from "../tricks/discover.ts";
 import { approvedCopyDir, switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../tricks/paths.ts";
-import { parseSwitches } from "../tricks/switches.ts";
+import { parseSwitches, withEntry, writeSwitches } from "../tricks/switches.ts";
 import { adoptCarriedTricks, TAKEOVER_NOTICES_FILE, tricksStartingAtTap, writeCarryNotices } from "./carry-adopt.ts";
 import { carryAll, machine, PNG, putOnTrick, removeCarryDirs, type LeadMachine } from "./carry-fixtures.ts";
 import { StandbyTricksStore } from "./standby-tricks.ts";
@@ -81,6 +81,56 @@ describe("the person's tap starts the carried tricks", () => {
     expect(await trickCodeHash(approvedCopyDir(deputy.configDir, "legs", hash))).toEqual({ ok: true, hash });
     // Its scratch folder went with it.
     expect((await readdir(store.dir)).filter((n) => n.startsWith(".adopt-"))).toEqual([]);
+  });
+
+  test("the lead's auto never reaches a kept folder of other code: no switch lets that folder run without a yes", async () => {
+    // The deputy has its own folder `legs` at code Y, a version its person declined; the lead runs `legs`
+    // at X with auto on. The tap approves X. Were auto carried, the folder's Y would be taken "by auto".
+    const lead = await machine("lead");
+    const hash = await putOnTrick(lead, { id: "legs", auto: true });
+    const { deputy, store } = await deputyWith(lead);
+    const mine = join(tricksConfigDir(deputy.configDir), "legs");
+    await mkdir(mine, { recursive: true });
+    await writeFile(join(mine, "trick.toml"), 'id = "legs"\nname = "My legs"\nrun = "./q.sh"\nplaces = ["belt"]\n');
+    const folder = await trickCodeHash(mine);
+    if (!folder.ok) throw new Error("folder hash");
+    await adoptCarriedTricks({ stateDir: deputy.stateDir, configDir: deputy.configDir, store, lead: "desk", by: "takeover", now: () => TAP });
+    const entry = (await switchesOf(deputy)).on.get("legs");
+    expect(entry).toMatchObject({ hash, auto: false, by: "takeover", from: "desk" });
+    // Nothing declined it here, so the folder's code is the usual new version card, waiting for a yes.
+    expect(entry?.declined).toBeUndefined();
+  });
+
+  test("a decline this machine already holds for the kept folder's code stays", async () => {
+    const lead = await machine("lead");
+    await putOnTrick(lead, { id: "legs", auto: true });
+    const { deputy, store } = await deputyWith(lead);
+    const mine = join(tricksConfigDir(deputy.configDir), "legs");
+    await mkdir(mine, { recursive: true });
+    await writeFile(join(mine, "trick.toml"), 'id = "legs"\nname = "My legs"\nrun = "./q.sh"\nplaces = ["belt"]\n');
+    const folder = await trickCodeHash(mine);
+    if (!folder.ok) throw new Error("folder hash");
+    const old = "a".repeat(64);
+    await writeSwitches(deputy.stateDir, withEntry({ on: new Map(), version: 3 }, "legs", { at: new Date(TAP - 1000).toISOString(), hash: old, auto: true, by: "cli", powers: null, declined: folder.hash }));
+    await adoptCarriedTricks({ stateDir: deputy.stateDir, configDir: deputy.configDir, store, lead: "desk", by: "takeover", now: () => TAP });
+    expect((await switchesOf(deputy)).on.get("legs")).toMatchObject({ auto: false, declined: folder.hash });
+  });
+
+  test("the lead's auto comes along when the folder here is the carried version", async () => {
+    const lead = await machine("lead");
+    const hash = await putOnTrick(lead, { id: "legs", auto: true });
+    const { deputy, store } = await deputyWith(lead);
+    const [ready] = await store.ready();
+    // The same code already sits in the deputy's folder.
+    const mine = join(tricksConfigDir(deputy.configDir), "legs");
+    await mkdir(mine, { recursive: true });
+    for (const file of ready?.trick.files ?? []) {
+      await mkdir(join(mine, file.rel, ".."), { recursive: true });
+      await writeFile(join(mine, file.rel), await readFile(join(ready?.codeDir ?? "", file.rel)), { mode: file.x ? 0o700 : 0o600 });
+    }
+    expect(await trickCodeHash(mine)).toEqual({ ok: true, hash });
+    await adoptCarriedTricks({ stateDir: deputy.stateDir, configDir: deputy.configDir, store, lead: "desk", by: "takeover", now: () => TAP });
+    expect((await switchesOf(deputy)).on.get("legs")).toMatchObject({ hash, auto: true });
   });
 
   test("a state folder this machine already has is kept", async () => {

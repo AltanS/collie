@@ -26,7 +26,7 @@ import type { CarriedReady, StandbyTricksStore } from "./standby-tricks.ts";
 //   3. The approved copy is made by the normal path (`snapshotTrick`, with `expect` set to the carried
 //      hash, so it is checked a third time), and the switch is written by the normal path
 //      (`updateSwitches` + `withApproval`), with `by: "takeover"` (or `handover`), `from: <old lead>`,
-//      the time of the tap and the lead's `auto`.
+//      the time of the tap and the lead's `auto` (only when the folder here is the carried version).
 //   4. The trick's state folder is written only where this machine has none.
 // A trick whose check fails is not started and is answered in `failed`, so the bridge can put a Decision
 // on the Hill that says so (`TAKEOVER_NOTICES_FILE`).
@@ -123,10 +123,19 @@ async function adoptOne(opts: AdoptTricksOptions, ready: CarriedReady, at: strin
     // The folder goes into place only where there was none; a folder that appeared meanwhile is kept.
     if (!keptFolder && !(await exists(target))) await rename(src, target);
     const powers = await powersOfDir(snap.dir, id);
+    // The lead's `auto` is the person's yes to later versions OF THE LEAD'S FOLDER. A kept folder here
+    // holding other code would be such a "later version", taken by auto with no tap on this machine.
+    // So `auto` comes along only when the folder here is the carried version; else it is off, and the
+    // folder's code is the usual new version card. A decline this machine held for that code stays.
+    const folder = keptFolder ? await trickCodeHash(target) : null;
+    const same = folder === null || (folder.ok && folder.hash === hash);
     await updateSwitches(opts.stateDir, (now) => {
+      const declined = now.on.get(id)?.declined;
       const approved = withApproval(now, id, { at, hash, by: opts.by, powers });
       const entry = approved.on.get(id);
-      return entry === undefined ? approved : withEntry(approved, id, { ...entry, auto: ready.trick.auto, from: opts.lead });
+      if (entry === undefined) return approved;
+      const kept = !same && folder?.ok === true && declined === folder.hash ? { declined } : {};
+      return withEntry(approved, id, { ...entry, ...kept, auto: same ? ready.trick.auto : false, from: opts.lead });
     });
     const state = trickStateDir(opts.stateDir, id);
     if (ready.heldState !== null && !(await exists(state)) && (await exists(join(ready.heldState, "state")))) {

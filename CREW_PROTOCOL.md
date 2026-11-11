@@ -4507,8 +4507,11 @@ it reconnects".
   it hashes the code again, writes the trick folder only where this machine has none (a folder of that
   name is never written over; the carried version then runs from its approved copy, and the folder is
   the usual new version card), makes the approved copy with the normal path, and writes the switch
-  with `by: "takeover"`, `from: <the old lead>`, the time of the tap and the lead's `auto`. The state
-  folder is written only where this machine has none. A trick whose check fails does not start.
+  with `by: "takeover"`, `from: <the old lead>`, the time of the tap and the lead's `auto`. `auto`
+  comes along only when the trick folder here holds the carried version after the tap. A kept folder
+  with other code gets `auto: false`, so that code waits as a new version card for a person's yes; a
+  decline this machine already held for that code stays. The state folder is written only where this
+  machine has none. A trick whose check fails does not start.
 - **A trick that did not start is said on the Hill.** The process that commits is still a peer and
   cannot post, so it leaves the failures in `<stateDir>/tricks/carried-notices.json` (0600), and the
   next boot, as the lead, posts one Decision of Collie's own for each, with `ref.type` `carried`: "The
