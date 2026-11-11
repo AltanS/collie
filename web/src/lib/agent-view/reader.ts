@@ -317,18 +317,46 @@ export function picksAfter(held: ViewPicks | null, { key, live, control }: { key
 
 // ── a turn the view sent ────────────────────────────────────────────────────────────────────────
 
-/** The head the bridge puts in front of a view's send: `[view:<trick> <address>] from operator:`, or `[view:<trick>] from operator:`. */
-const SENT_HEAD = /^\[view:[^\]\n]*\] from operator:[ ]?/u;
-/** The tail it puts behind while the session does not hold the rules: ` [rules: <bin> trick view <trick> help...]`. */
-const SENT_TAIL = / \[rules: [^\n]* trick view [^\s\]]+ help(?: --session [^\n]+)?\]$/u;
+/**
+ * The head the bridge puts in front of a view's send: `[view:<trick> <address>] from operator:`, or
+ * `[view:<trick>] from operator:`. It captures the trick and the address, which name the tail.
+ */
+const SENT_HEAD = /^\[view:([^\s\]]+)(?: ([^\]\n]+))?\] from operator:[ ]?/u;
+/** Where the tail the bridge puts behind a send opens: ` [rules: <bin> trick view <trick> help...]`. */
+const TAIL_OPEN = " [rules: ";
+
+/** A text in a pattern, as itself. */
+function literal(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/**
+ * Where the tail the bridge appended starts in `rest` (the words after the head), or -1. Only the exact
+ * forms of `bridge/agent-view/service.ts` `viewHint` count (review 10 W6): the line ENDS with
+ * ` trick view <trick> help]`, or ` help --session <address>]` (the head's address; any one when the head
+ * is bare, as the head falls back to bare when the address is too long), and the tail opens at the LAST
+ * ` [rules: ` before that end. So a label or a typed text that holds ` [rules: ` stays whole.
+ */
+function tailStart(rest: string, trick: string, address: string | undefined): number {
+  const name = literal(` trick view ${trick} help`);
+  const session = address === undefined ? String.raw`[^\n]+` : literal(address);
+  const end = new RegExp(`${name}(?: --session ${session})?\\]$`, "u").exec(rest);
+  if (end === null) return -1;
+  return rest.lastIndexOf(TAIL_OPEN, end.index);
+}
 
 /**
  * A line the bridge sent from a view, without the head and the tail it put on it: the words the person
  * tapped or typed. Only for a line the bridge lists as sent (see {@link viewTurnText}); a text that merely
- * looks like one is never passed here.
+ * looks like one is never passed here. A line with no head is left as it is: the bridge writes no tail
+ * without a head.
  */
 export function sentWords(line: string): string {
-  return line.replace(SENT_HEAD, "").replace(SENT_TAIL, "");
+  const head = SENT_HEAD.exec(line);
+  if (head === null) return line;
+  const rest = line.slice(head[0].length);
+  const at = tailStart(rest, head[1] ?? "", head[2]);
+  return at === -1 ? rest : rest.slice(0, at);
 }
 
 /**

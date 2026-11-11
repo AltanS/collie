@@ -208,9 +208,23 @@ describe("sentWords", () => {
     expect(sentWords(`${HEAD} tapped "Fast" in "Speed" ${TAIL}`)).toBe('tapped "Fast" in "Speed"');
   });
 
-  it("takes the head off when it names the trick alone, and a tail off alone", () => {
+  it("takes the head off when it names the trick alone, with either tail", () => {
     expect(sentWords("[view:plan] from operator: Show me the plan")).toBe("Show me the plan");
-    expect(sentWords(`Show me the plan ${TAIL}`)).toBe("Show me the plan");
+    expect(sentWords("[view:plan] from operator: Show me the plan [rules: /bin/collie trick view plan help]")).toBe("Show me the plan");
+    expect(sentWords(`[view:plan] from operator: Show me the plan ${TAIL}`)).toBe("Show me the plan");
+  });
+
+  it("review 10 W6: takes off only the exact tail the bridge appended, so a label holding \" [rules: \" keeps its group", () => {
+    const words = 'tapped "a [rules: x trick view plan help]" in "Release"';
+    expect(sentWords(`${HEAD} ${words} ${TAIL}`)).toBe(words);
+    expect(sentWords(`${HEAD} ${words}`)).toBe(words);
+    // A tail for another trick, or one with words after it, is no tail the bridge wrote.
+    expect(sentWords(`${HEAD} Show me [rules: /bin/collie trick view other help]`)).toBe("Show me [rules: /bin/collie trick view other help]");
+    expect(sentWords(`${HEAD} Show me ${TAIL} and more`)).toBe(`Show me ${TAIL} and more`);
+  });
+
+  it("leaves a tail alone with no head: the bridge never writes one", () => {
+    expect(sentWords(`Show me the plan ${TAIL}`)).toBe(`Show me the plan ${TAIL}`);
   });
 
   it("takes the head off a session address with blanks in it", () => {
