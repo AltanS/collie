@@ -4555,7 +4555,11 @@ it reconnects".
   first: an adoption that throws half way is never run again at a later boot, so a trick the person
   switched off since stays off. A copy from another lead than
   the marker names is not adopted, and a boot that does not lead drops the marker. While the marker is
-  on disk, a role change removes neither copy. For each held trick
+  on disk, a role change removes neither copy. The deputy trusts what its lead says was approved; it
+  checks that the lead's word and the carried code agree. For each held trick it compares the powers
+  the list carries with the powers of the held code (`powersOfDir`): when they differ, the trick's
+  folder is written where there is none, with no approved copy and no switch, and its notice carries
+  `kind: "rights"` ("The trick <name> is off after the takeover"). For each other held trick
   it hashes the code again, writes the trick folder only where this machine has none (a folder of that
   name is never written over; the carried version then runs from its approved copy, and the folder is
   the usual new version card), makes the approved copy with the normal path, and writes the switch
