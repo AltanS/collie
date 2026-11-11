@@ -1092,6 +1092,67 @@ describe("CrewLead — the crew's launcher rows reach the deputy as a copy", () 
   });
 });
 
+// ── The tricks copy to the deputy (§25) ─────────────────────────────────────
+
+describe("CrewLead — the tricks copy reaches the deputy only (§25)", () => {
+  function carrying(opts: { deputy?: string | null; answer?: () => "done" | "idle" | "no_route" | "failed" }) {
+    const calls: string[] = [];
+    const lines: string[] = [];
+    const members = [member({ memberId: "laptop" }), member({ memberId: "nas" })];
+    const state = { reachable: true };
+    const l = new CrewLead({
+      log: (line) => void lines.push(line),
+      registry: new CrewRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+      snapshot: async () => (state.reachable ? ok(body) : down),
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      now: () => NOW,
+      carry: [
+        {
+          name: "copy of the tricks",
+          deputy: () => (opts.deputy === undefined ? "laptop" : opts.deputy),
+          sync: async (link) => {
+            calls.push(link.memberId);
+            return opts.answer?.() ?? "done";
+          },
+        },
+      ],
+    });
+    const sweep = async () => {
+      await l.sweep();
+      await Bun.sleep(5);
+    };
+    return { sweep, calls, lines, drop: () => void (state.reachable = false), restore: () => void (state.reachable = true) };
+  }
+
+  test("each sweep offers the deputy, and only the deputy, its sync", async () => {
+    const h = carrying({});
+    await h.sweep();
+    await h.sweep();
+    expect(h.calls).toEqual(["laptop", "laptop"]);
+  });
+
+  test("a crew with no deputy offers nobody", async () => {
+    const h = carrying({ deputy: null });
+    await h.sweep();
+    expect(h.calls).toEqual([]);
+  });
+
+  test("an OLD deputy is said once in the journal, and not asked again until it reconnects", async () => {
+    const h = carrying({ answer: () => "no_route" });
+    await h.sweep();
+    await h.sweep();
+    expect(h.calls).toHaveLength(1);
+    expect(h.lines.filter((l) => l.includes("keeps no copy of the tricks (an older Collie)"))).toHaveLength(1);
+    h.drop();
+    await h.sweep();
+    h.restore();
+    await h.sweep();
+    expect(h.calls).toHaveLength(2);
+  });
+});
+
 // ── §19 — the member's own update preflight, banked by the sweep ─────────────
 
 describe("CrewLead — each member's update preflight (§19)", () => {

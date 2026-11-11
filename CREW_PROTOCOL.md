@@ -4400,3 +4400,88 @@ On the lead: `trick.proposal` for each proposal taken (`kind` `proposal` or `ver
 
 Additive inside protocol version 2 (§7.1). A member before 1.29.0 has no verb that sends it. A lead
 before 1.29.0 answers the uniform 401, and the member says the lead is older and proposes nothing. `CREW_PROTOCOL_VERSION` stays `2`.
+
+## 25. The deputy carries the lead's tricks *(added in 1.29.0)*
+
+A deputy takes over when its lead is gone (§18). Before this section the tricks the lead ran were gone
+with it. Now the lead keeps an inert copy of each trick that is on, at its approved version, on its
+deputy, and the person's takeover tap on the deputy's own standby page starts them there. The rule of
+ADR 0016's addendum holds: the code crosses as inert data, and nothing installs or runs it before a
+person's tap on the machine that runs it.
+
+### The routes
+
+| Method | Path | Sent by | Body | Answer | Body cap |
+|---|---|---|---|---|---|
+| `POST` | `/crew/v1/tricks-copy` | the lead, to its deputy | `{ seq, tricks }` | `{ applied, need: { code, state } }` | 8 MiB |
+| `POST` | `/crew/v1/tricks-copy/code` | the lead, to its deputy | `{ id, hash, part, parts, chunks }` | `{ held }` | 3 MiB |
+| `POST` | `/crew/v1/tricks-copy/state` | the lead, to its deputy | `{ id, digest, files }` | `{ applied }` | 6 MiB |
+
+- **Lead → deputy, the launchers copy's gate.** Unsigned, on the pinned link the lead dials (§8.1), like
+  `launchers-copy`. Two questions must both answer yes before a byte of the body is read: the caller
+  is this collie's own lead, and this collie holds a verified warrant naming itself (§18). Anything
+  else is the uniform 401: a member, a peer that is not the deputy, a lead, a build that keeps no copy.
+  The body is read within 60 seconds, at most 2 at once, and only to its route's cap; over the cap is
+  `413`, a body that is not JSON is `400`.
+- **`tricks`** is at most 32 tricks, sorted by id on the lead, each `{ id, hash, auto, at, by, powers,
+  config, origin, files, state }`: the approved code hash, the switch's `auto`, when and by whom the
+  version was approved, the powers hash or `null`, `config.toml` as base64 or `null` (at most 64 KiB),
+  the origin record's text or `null` (at most 8 KiB), the code files as `{ rel, size, x }`, and the
+  digest of the state the lead would send or `null`. Every path follows §24's reader rules and must be
+  a code file the code hash reads; no two names fold to one; at most 300 files and 5 MB. A bad trick
+  or a repeated id refuses the whole list (`400`).
+- **`seq` only rises.** The deputy refuses a list whose `seq` is not above the one it holds from the
+  same lead (`409`, `stale`), so a late push never rolls a trick back to an older version. The lead
+  sends its clock or one past the `seq` the deputy reports, whichever is larger.
+- **Code in parts.** A trick's code goes in parts of at most 2 MiB of raw bytes, from part 0 in order.
+  Each chunk `{ rel, at, b64 }` appends to a file the list names, at exactly the bytes held so far and
+  never past its size. A part out of order is `409` (`order`), a chunk that does not continue its file
+  `409` (`bad_part`), and part 0 starts again. The last part checks every file's size and hashes the
+  files with the real code hash; a mismatch is `422` (`mismatch`), and that version is refused for good.
+- **State** is the trick's state folder (`state/…`) and the pictures of its approved copy's `media/` and
+  `captures/`, at most 500 files and 4 MiB a trick, 16 MiB for all tricks. `inputs/` never goes. A
+  picture must be a PNG, JPEG or WebP by its first bytes. The deputy takes one trick's state at most
+  once a minute (`429`, `rate`). A state too large to keep is settled as kept with no bytes, so it is
+  not asked for again until it changes.
+
+### The report
+
+The deputy reports `tricksDigest` (the digest of the list it holds), `tricksSeq` and `tricksNeed` (how
+many code and state parts it still lacks) on `hello` and `snapshot`, in the seat of `launchersDigest`.
+A deputy that holds no copy reports none of the three. The lead syncs off its sweep, never awaited,
+one sync at a time: a list when the digest differs, and the missing parts again at most once a minute
+while it is the same. A `404` marks an older deputy, said once in the lead's journal: "<deputy>: keeps
+no copy of the tricks (an older Collie), so it cannot resume them after a takeover; not sent again until
+it reconnects".
+
+### The deputy's side
+
+- **Inert.** The copy lives under `<stateDir>/standby-tricks/`: `index.json`, the code under
+  `code/<id>/<hash16>/`, the state under `state/<id>/`. Folders are 0700 and files 0600, and no file
+  carries an executable bit; whether one was executable rides in the index. No tricks loader reads this
+  folder, and no switch names it.
+- **Whose copy it is.** The copy stays only while this machine is the deputy of the lead that sent it,
+  in that crew. A demotion, another lead, another crew, or this machine leading removes it at once,
+  `config.toml` with it.
+- **The page.** The armed standby page names the tricks the tap starts, read off this machine's own
+  disk, never off the lead's word: each carried trick whose code is held, then each trick this machine
+  already has on. A name is cleaned of control and invisible characters, cut to 40 characters and drawn
+  in its own box; at most 8 are named, then "and N more".
+- **The tap.** The takeover commit (§18) adopts the copy, and nothing else does. For each held trick
+  it hashes the code again, writes the trick folder only where this machine has none (a folder of that
+  name is never written over; the carried version then runs from its approved copy, and the folder is
+  the usual new version card), makes the approved copy with the normal path, and writes the switch
+  with `by: "takeover"`, `from: <the old lead>`, the time of the tap and the lead's `auto`. The state
+  folder is written only where this machine has none. A trick whose check fails does not start; the
+  next boot puts a Decision on the Hill that says so.
+
+### Audit
+
+On the deputy: `tricks.carried` at the tap, with the ids started, the ids that failed and the folders
+kept. Never a file's bytes.
+
+### Compatibility
+
+Additive inside protocol version 2 (§7.1). A lead before 1.29.0 sends nothing, and a deputy before
+1.29.0 answers `404`, which the lead reads as "keeps no copy". A deputy's absent report reads as "holds
+nothing". `CREW_PROTOCOL_VERSION` stays `2`.

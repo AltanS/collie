@@ -198,6 +198,37 @@ export const CREW_PAIRING_PATH = "/crew/v1/pairing";
  */
 export const CREW_LAUNCHERS_COPY_PATH = "/crew/v1/launchers-copy";
 /**
+ * `POST` — the lead sends the DEPUTY ONLY an inert copy of the tricks it runs, and of its open Decisions
+ * (CREW_PROTOCOL §25, added in 1.29.0). The launchers copy's gate. What lands goes under
+ * `<stateDir>/standby-tricks/` and `<stateDir>/standby-hill/`, read by no loader and run by nothing: only
+ * the person's tap on the deputy's own standby page adopts it (`carry-adopt.ts`).
+ */
+export const CREW_TRICKS_COPY_PATH = "/crew/v1/tricks-copy";
+/** `POST` — one part of one trick's code, in order (§25). */
+export const CREW_TRICKS_COPY_CODE_PATH = "/crew/v1/tricks-copy/code";
+/** `POST` — one trick's small state folder and pictures (§25). */
+export const CREW_TRICKS_COPY_STATE_PATH = "/crew/v1/tricks-copy/state";
+/** `POST` — the open Decisions of the lead's Hill, and a short list of the closed ones (§25). */
+export const CREW_HILL_COPY_PATH = "/crew/v1/hill-copy";
+/** `POST` — one image of an open Decision (§25). */
+export const CREW_HILL_COPY_MEDIA_PATH = "/crew/v1/hill-copy/media";
+
+/**
+ * The body caps of the §25 routes, read before a byte of the body is (they ride the pinned handshake,
+ * so they are not in {@link SIGNED_BODY_CAPS}, which caps the signed member → lead routes).
+ */
+export const CARRY_BODY_CAPS: ReadonlyMap<string, number> = new Map([
+  [CREW_TRICKS_COPY_PATH, 8 * 1024 * 1024],
+  [CREW_TRICKS_COPY_CODE_PATH, 3 * 1024 * 1024],
+  [CREW_TRICKS_COPY_STATE_PATH, 6 * 1024 * 1024],
+  [CREW_HILL_COPY_PATH, 4 * 1024 * 1024],
+  [CREW_HILL_COPY_MEDIA_PATH, 3 * 1024 * 1024],
+]);
+/** How many §25 bodies a deputy reads at once. The lead sends one at a time; one more is room. */
+export const CARRY_READS_MAX = 2;
+/** How long one §25 body may take to arrive. */
+export const CARRY_READ_MS = 60_000;
+/**
  * `POST` — a member hands its lead one walky talky message to deliver and route (§21). Signed per
  * §8.6, because it travels peer → lead, and answered only by a collie that leads.
  */
@@ -584,6 +615,25 @@ export interface StandbySurface {
   readonly copyDigest?: () => string | null;
   /** Replace `standby-launchers.json` wholesale with what `from`, this collie's lead, sent. */
   readonly applyCopy?: (copy: { from: string; crewId: string; rows: readonly CopiedRow[] }) => Promise<void>;
+  /**
+   * The §25 copy of the lead's tricks and open Decisions. Optional: absent, the routes refuse like any
+   * other non-deputy, and `hello` and `snapshot` carry no `tricksDigest` or `hillDigest`.
+   */
+  readonly carry?: StandbyCarrySurface;
+}
+
+/** One §25 call, answered: a status and a JSON body. */
+export interface CarryAnswer {
+  readonly status: number;
+  readonly body: JsonObject;
+}
+
+/** What the deputy does with the §25 routes (`index.ts` wires the stores). */
+export interface StandbyCarrySurface {
+  /** The fields to put on `hello` and `snapshot`: `tricksDigest`, `tricksSeq`, `tricksNeed`, `hillDigest`, ... */
+  report(): JsonObject;
+  /** Answer one §25 route, by its path, for `from` (this collie's lead) in `crewId`. */
+  handle(path: string, ctx: { readonly from: string; readonly crewId: string }, body: JsonValue): Promise<CarryAnswer>;
 }
 
 export interface CrewRouterDeps {
@@ -1125,7 +1175,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
 
   // The large signed bodies being read now, before their signature is known: `hill/media` uploads
   // (SIGNED_MEDIA_READS_MAX) and the crew's own large routes (SIGNED_READS_MAX), counted apart.
-  const reads = { media: 0, large: 0, propose: 0 };
+  const reads = { media: 0, large: 0, propose: 0, carry: 0 };
 
   const refuse = (path: string, factor: RefusedFactor): Response => {
     // Audited locally with the real cause; the caller is told only "unauthorized" (§8.1). The two
@@ -1328,6 +1378,8 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // ADR 0127 point 5: the launcher copy's digest, read the same absent-means-nothing-held way.
       const copy = deps.standby?.copyDigest?.() ?? null;
       if (copy !== null) hello[LAUNCHERS_DIGEST_FIELD] = copy;
+      // §25: the tricks and Hill copy's report, read the same absent-means-nothing-held way.
+      Object.assign(hello, deps.standby?.carry?.report() ?? {});
       // M22/03: what THIS machine's multiplexer can do, so the lead can answer `/api/config?host=`
       // for this member without forwarding a config read (ADR 0011 keeps the crew link the only
       // cross-machine transport, and `forward.ts` keeps `config` off the forwarded list).
@@ -1369,6 +1421,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     }
     if (pathname === CREW_LAUNCHERS_COPY_PATH && req.method === "POST") {
       return launchersCopy(req, signedBody, verdict.member, verdict.self, data);
+    }
+    if (CARRY_BODY_CAPS.has(pathname) && req.method === "POST") {
+      return carryCopy(req, pathname, verdict.member, verdict.self, data);
     }
     if (pathname === CREW_TAKEOVER_PATH && req.method === "POST") {
       // A takeover arriving at a collie that still believes it LEADS is a deposition, not a witness
@@ -1517,7 +1572,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       const withClash = clash.length === 0 ? withDigest : { ...withDigest, pairingCollision: [...clash] };
       // ADR 0127 point 5: the launcher copy's digest, in the same seat and for the same reason.
       const copy = deps.standby?.copyDigest?.() ?? null;
-      const withReport = copy === null ? withClash : { ...withClash, [LAUNCHERS_DIGEST_FIELD]: copy };
+      const withCopy = copy === null ? withClash : { ...withClash, [LAUNCHERS_DIGEST_FIELD]: copy };
+      // §25: the tricks and Hill copy's report, in the same seat and for the same reason.
+      const withReport = { ...withCopy, ...deps.standby?.carry?.report() };
       // §19: this machine's own update preflight, in the same seat, for the same reason. The lead's
       // `X-Crew-Preflight: fresh` is passed on as a REQUEST — a peer that honours it answers with a
       // freshly-run report, and one that does not answers with an older one and an `asOf` saying so.
@@ -1926,6 +1983,43 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       status: 200,
       headers: crewResponseHeaders(self),
     });
+  }
+
+  /**
+   * The §25 routes: the lead sends the DEPUTY an inert copy of its tricks and open Decisions.
+   *
+   * The launchers copy's two role questions, both of which must answer yes: the caller is this collie's
+   * own lead, and this collie holds a verified warrant naming itself. Only then is the body read, and
+   * only up to its route's cap ({@link CARRY_BODY_CAPS}), at most {@link CARRY_READS_MAX} at once and
+   * within {@link CARRY_READ_MS}. A member, the deputy's second anchor or a stranger never gets as far.
+   */
+  async function carryCopy(req: Request, path: string, from: TrustedMember, self: string, data: TrustStoreData | null): Promise<Response> {
+    const carry = deps.standby?.carry;
+    if (data === null || data.crew === null || data.lead === null || data.lead.memberId !== from.memberId) {
+      return refuse(path, "not-a-crew-member");
+    }
+    if (carry === undefined || deps.standby?.warrantsSelf() !== true) return refuse(path, "not-a-crew-member");
+    const cap = CARRY_BODY_CAPS.get(path) ?? 0;
+    if (reads.carry >= CARRY_READS_MAX) return signedReadsBusyResponse();
+    reads.carry += 1;
+    let text: string | null;
+    try {
+      text = await readSignedBody(req, cap, CARRY_READ_MS);
+    } catch {
+      return bodyUnreadResponse();
+    } finally {
+      reads.carry -= 1;
+    }
+    if (text === null) return bodyTooLargeResponse(cap);
+    let body: JsonValue;
+    try {
+      // SAFETY: `JSON.parse` output IS a JsonValue by construction; every field is a checked read.
+      body = JSON.parse(text) as JsonValue;
+    } catch {
+      return badRequest(self, "the body is not JSON");
+    }
+    const answer = await carry.handle(path, { from: from.memberId, crewId: data.crew.crewId }, body);
+    return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(self) });
   }
 
   /**

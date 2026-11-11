@@ -20,6 +20,11 @@ import {
   SIGNED_READS_MAX,
   SIGNED_MEDIA_READS_MAX,
   CREW_LAUNCHERS_COPY_PATH,
+  CREW_TRICKS_COPY_PATH,
+  CREW_TRICKS_COPY_CODE_PATH,
+  CREW_TRICKS_COPY_STATE_PATH,
+  CARRY_BODY_CAPS,
+  type StandbyCarrySurface,
   CREW_LEAD_PATH,
   CREW_LEAVE_PATH,
   CREW_PAIRING_PATH,
@@ -3656,5 +3661,93 @@ describe("POST /crew/v1/tricks/propose: a member hands its lead a trick (§24, a
     const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
     const older = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
     expect((await call(older, CREW_TRICKS_PROPOSE_PATH, signedPost("laptop", CREW_TRICKS_PROPOSE_PATH, {}, T0)))!.status).toBe(404);
+  });
+});
+
+describe("POST /crew/v1/tricks-copy — the lead's tricks reach the DEPUTY only, as inert bytes (§25)", () => {
+  /** A peer of `desk` holding the warrant that names IT — i.e. this crew's deputy. */
+  function deputy() {
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "laptop" })] }), "laptop", T0)!.result;
+    return peerStore({ warrant: { warrant: w, deputyCertPem: material("laptop").certPem } });
+  }
+
+  function router(h: ReturnType<typeof harness>, over: { warrantsSelf?: boolean; keepsNone?: boolean } = {}) {
+    const seen: { path: string; from: string; crewId: string }[] = [];
+    const carry: StandbyCarrySurface = {
+      report: () => ({ tricksDigest: "d".repeat(64), tricksSeq: 3, tricksNeed: 0 }),
+      handle: async (path, ctx) => {
+        seen.push({ path, from: ctx.from, crewId: ctx.crewId });
+        return { status: 200, body: { applied: true } };
+      },
+    };
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      now: () => T0,
+      snapshot: () => ownSnapshot(),
+      standby: {
+        warrantsSelf: () => over.warrantsSelf ?? true,
+        silentForMs: () => 60_000,
+        armMs: 30_000,
+        collidingLabels: () => [],
+        applySync: async () => {},
+        syncedDigest: () => null,
+        syncedCollision: () => [],
+        carry: over.keepsNone === true ? undefined : carry,
+      },
+    });
+    return { handler, seen };
+  }
+
+  const PATHS = [CREW_TRICKS_COPY_PATH, CREW_TRICKS_COPY_CODE_PATH, CREW_TRICKS_COPY_STATE_PATH];
+
+  test("the deputy's own lead reaches each route, named as the sender with its crew", async () => {
+    const r = router(harness(deputy()));
+    for (const path of PATHS) expect((await call(r.handler, path, post({ seq: 1 })))!.status).toBe(200);
+    expect(r.seen).toEqual(PATHS.map((path) => ({ path, from: "desk", crewId: CREW.crewId })));
+  });
+
+  test("a peer that is NOT the deputy, a build that keeps no copy, and a lead all refuse, and nothing is handled", async () => {
+    const notDeputy = harness(peerStore());
+    const cases = [router(notDeputy, { warrantsSelf: false }), router(harness(deputy()), { keepsNone: true }), router(harness(leadStore({ peers: [member({ memberId: "nas" })] })))];
+    for (const r of cases) {
+      for (const path of PATHS) expect((await call(r.handler, path, post({ seq: 1 })))!.status).toBe(401);
+      expect(r.seen).toEqual([]);
+    }
+    expect(notDeputy.lines.map((l) => l.action)).toContain("crew.refused");
+  });
+
+  test("a caller without the crew secret is refused before anything", async () => {
+    const r = router(harness(deputy()));
+    const res = (await call(r.handler, CREW_TRICKS_COPY_PATH, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }))!;
+    expect(res.status).toBe(401);
+    expect(r.seen).toEqual([]);
+  });
+
+  test("a body over its route's cap is a 413, and is not handled", async () => {
+    const r = router(harness(deputy()));
+    const cap = CARRY_BODY_CAPS.get(CREW_TRICKS_COPY_CODE_PATH) ?? 0;
+    expect(cap).toBe(3 * 1024 * 1024);
+    const res = (await call(r.handler, CREW_TRICKS_COPY_CODE_PATH, post({ pad: "a".repeat(cap) })))!;
+    expect(res.status).toBe(413);
+    expect(r.seen).toEqual([]);
+  });
+
+  test("a body that is not JSON is a 400", async () => {
+    const r = router(harness(deputy()));
+    const res = (await call(r.handler, CREW_TRICKS_COPY_PATH, { method: "POST", headers: { ...authed, "content-type": "application/json" }, body: "{ torn" }))!;
+    expect(res.status).toBe(400);
+    expect(r.seen).toEqual([]);
+  });
+
+  test("the deputy's report rides hello and snapshot, and is absent on a build that keeps none", async () => {
+    const h = harness(deputy());
+    const held = router(h);
+    for (const path of [CREW_HELLO_PATH, CREW_SNAPSHOT_PATH]) {
+      expect(await (await call(held.handler, path, { headers: authed }))!.json()).toMatchObject({ tricksSeq: 3, tricksNeed: 0 });
+    }
+    const none = router(h, { keepsNone: true });
+    for (const path of [CREW_HELLO_PATH, CREW_SNAPSHOT_PATH]) expect(await (await call(none.handler, path, { headers: authed }))!.text()).not.toContain("tricksDigest");
   });
 });

@@ -85,6 +85,20 @@ export interface CrewRuntimeFacts {
    * the `durable-lead` row (bridge/durable/old-lead.ts, M50 spec 14). An observation like the rest.
    */
   readonly leadRelease?: string;
+  /**
+   * §25: what the running LEAD knows of its deputy's copy of the tricks it runs: `current`, `behind`, or
+   * `older` (a build with no route for it, which cannot resume tricks after a takeover). Absent on every
+   * other machine, and on a lead that has not reached its deputy since it started. An observation.
+   */
+  readonly deputyTricks?: DeputyTricksFact;
+}
+
+/** One lead's view of its deputy's copy of the tricks (`crew/carry-sync.ts`). */
+export interface DeputyTricksFact {
+  readonly member: string;
+  readonly state: "current" | "behind" | "older";
+  readonly tricks: number;
+  readonly at: number;
 }
 
 /** One refused sync: when this process was told, and the labels the deputy named. */
@@ -256,7 +270,21 @@ export function parseMarker(raw: string | null): CrewRuntimeMarker | null {
     pairingCollision: parsePairingCollision(v.pairingCollision),
   };
   // Additive (M50 spec 14): a marker from an older build has none, and reads exactly as before.
-  return typeof v.leadRelease === "string" && v.leadRelease !== "" ? { ...marker, leadRelease: v.leadRelease } : marker;
+  const withRelease = typeof v.leadRelease === "string" && v.leadRelease !== "" ? { ...marker, leadRelease: v.leadRelease } : marker;
+  // Additive (§25): absent on a marker from an older build, or from a lead that has not reached its deputy.
+  const tricks = parseDeputyTricks(v.deputyTricks);
+  return tricks === null ? withRelease : { ...withRelease, deputyTricks: tricks };
+}
+
+const DEPUTY_TRICKS_STATES: readonly DeputyTricksFact["state"][] = ["current", "behind", "older"];
+
+/** §25's fact, or `null`. Tolerant like the rest of this file. */
+function parseDeputyTricks(value: JsonValue | undefined): DeputyTricksFact | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) return null;
+  const d: JsonObject = value;
+  const state = DEPUTY_TRICKS_STATES.find((candidate) => candidate === d.state);
+  if (state === undefined || typeof d.member !== "string" || d.member === "" || typeof d.tricks !== "number" || typeof d.at !== "number") return null;
+  return { member: d.member, state, tricks: d.tricks, at: d.at };
 }
 
 export interface RosterDrift {

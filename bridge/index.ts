@@ -184,6 +184,11 @@ import {
   type CopyRole,
   type LauncherCopySeam,
 } from "./crew/standby-launchers.ts";
+import { StandbyTricksStore } from "./crew/standby-tricks.ts";
+import { leadTricks } from "./crew/standby-tricks-lead.ts";
+import { carrySurface, tricksCarryRoutes } from "./crew/carry-surface.ts";
+import { TricksCopySync } from "./crew/carry-sync.ts";
+import { adoptCarriedTricks, tricksStartingAtTap, writeCarryNotices } from "./crew/carry-adopt.ts";
 import {
   adoptLeadership,
   clearRePin,
@@ -2586,6 +2591,53 @@ async function reconcileLauncherCopy(): Promise<void> {
 await reconcileLauncherCopy();
 
 /**
+ * The lead's tricks, kept on the DEPUTY as an inert copy (CREW_PROTOCOL §25, `crew/standby-tricks.ts`):
+ * under `<stateDir>/standby-tricks/`, which no tricks loader reads, named by no switch, run by nothing.
+ * Only the person's takeover tap on this machine's own standby page adopts it (`crew/carry-adopt.ts`).
+ * Constructed for any machine with a trust store; constructing it writes nothing (§11).
+ */
+const tricksCopyStore = bootTrust !== null ? new StandbyTricksStore(cfg.stateDir) : null;
+await tricksCopyStore?.load();
+/** The config folder tricks live under, or null on a bridge with no tricks. */
+const tricksConfigRoot = cfg.tricksDir === undefined ? null : dirname(cfg.tricksDir);
+
+/** Remove the tricks copy once it is not this machine's to hold, by `tricksCopyKept`. Never throws. */
+async function reconcileTricksCopy(): Promise<void> {
+  if (tricksCopyStore === null) return;
+  try {
+    if (await tricksCopyStore.reconcile(copyRole())) {
+      console.log("[crew] this machine is no longer its lead's deputy: removed its copy of the lead's tricks");
+    }
+  } catch (err) {
+    console.warn(`[crew] could not remove the copy of the lead's tricks: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+await reconcileTricksCopy();
+
+/**
+ * The person's tap starts the carried tricks (§25): run only inside the takeover commit on this machine's
+ * own standby page. A trick that does not start is left for the next boot, which puts a Decision on the
+ * Hill for it (the process that commits is still a peer, so it cannot). Never throws; the copy is
+ * removed after, as this machine leads now.
+ */
+async function startCarriedTricks(lead: string, by: "takeover" | "handover"): Promise<void> {
+  if (tricksCopyStore === null || tricksConfigRoot === null) return;
+  try {
+    const result = await adoptCarriedTricks({ stateDir: cfg.stateDir, configDir: tricksConfigRoot, store: tricksCopyStore, lead, by, now: Date.now });
+    await writeCarryNotices(cfg.stateDir, lead, Date.now(), result.failed);
+    audit.record({
+      action: "tricks.carried",
+      detail: { from: lead, by, started: result.started.map((t) => t.id), failed: result.failed.map((t) => t.id), keptFolder: [...result.keptFolder] },
+    });
+    if (result.started.length > 0) console.log(`[crew] ${by}: started ${String(result.started.length)} of the lead's tricks here: ${result.started.map((t) => t.id).join(", ")}`);
+    if (result.failed.length > 0) console.warn(`[crew] ${by}: did not start ${result.failed.map((t) => `${t.id} (${t.reason})`).join(", ")}`);
+    await tricksCopyStore.clear();
+  } catch (err) {
+    console.warn(`[crew] ${by}: could not start the lead's tricks: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * The read of the rows a launch here matches, handed over by the server once it is built
  * (`LauncherCopySeam.source`). The lead's sync to its deputy sends exactly that list; `null` before.
  */
@@ -2635,6 +2687,8 @@ const standbySurface: CrewRouterDeps["standby"] =
           const own = readableRegistry();
           return own === null ? [] : collisionReportOf(own, standbyStore.current());
         },
+        // §25: the tricks copy (and the Hill copy beside it), with its report on `hello` and `snapshot`.
+        carry: tricksCopyStore === null ? undefined : carrySurface([tricksCarryRoutes(tricksCopyStore)]),
         // ADR 0127 point 5: the launcher copy's report and its write, beside the device registry's.
         copyDigest: () => copyReportOf(launcherCopyStore?.current() ?? null),
         applyCopy:
@@ -2691,13 +2745,18 @@ const activatedGeneration =
 
 runtimeFacts = () => {
   const facts = leadContact.facts();
-  const held: CrewRuntimeFacts = {
+  // §25: what this lead knows of its deputy's copy of the tricks, for `crew status` and `approve-promote`.
+  const deputyNow = trustStore.current()?.deputy ?? null;
+  const tricksFact = tricksCopySync?.deputyFact() ?? null;
+  const base: CrewRuntimeFacts = {
     anchoredGeneration: activatedGeneration,
     leadLastDialledAt: facts.lastDialledAt,
     leadRefusedSecretAt: facts.leadRefusedSecretAt,
     deposed: deposed === null ? null : { ...deposed, outcome: outcomeNow(deposed, facts) },
     pairingCollision,
   };
+  const held: CrewRuntimeFacts = tricksFact !== null && tricksFact.member === deputyNow ? { ...base, deputyTricks: tricksFact } : base;
+
   // For `collie doctor`'s `durable-lead` row: only a durable peer that has heard its lead state one.
   const leadRelease = oldLead?.leadRelease() ?? null;
   return leadRelease === null ? held : { ...held, leadRelease };
@@ -2762,6 +2821,12 @@ function hostSource(): { readonly host?: string } {
 function crewSelfOf(data: TrustStoreData) {
   return { id: data.self.memberId, name: leadLabel(hostname(), data.self.memberId) };
 }
+
+/**
+ * §25, the lead's half: keep the deputy's copy of the tricks this lead runs current. Built only on a lead
+ * with tricks; `deputyTricksFact` is what `collie crew status` and `approve-promote` read of it.
+ */
+let tricksCopySync: TricksCopySync | null = null;
 
 const crewLead = (() => {
   if (crew.mode !== "lead") return undefined;
@@ -2931,6 +2996,22 @@ const crewLead = (() => {
         pairingCollision = labels === null || labels.length === 0 ? null : { at: Date.now(), labels };
       },
     },
+    // §25: the tricks this lead runs, to the DEPUTY only, as an inert copy it starts only at the
+    // person's takeover tap. Read off this lead's approved copies, never its live folders.
+    carry: (() => {
+      const configRoot = tricksConfigRoot;
+      if (configRoot === null) return [];
+      const sync = new TricksCopySync({
+        read: () => leadTricks(cfg.stateDir, configRoot),
+        client: {
+          list: (link, body) => client.carryPost(link, "tricks-copy", body),
+          code: (link, body) => client.carryPost(link, "tricks-copy/code", body),
+          state: (link, body) => client.carryPost(link, "tricks-copy/state", body),
+        },
+      });
+      tricksCopySync = sync;
+      return [{ name: "copy of the tricks", deputy: () => trustStore.current()?.deputy ?? null, sync: (link, body) => sync.run(link, body) }];
+    })(),
     // ADR 0127 point 5: the crew's launcher rows to the DEPUTY, beside its device registry. The rows
     // are the ones a launch on this lead matches, its own and any copy it serves after a takeover.
     launchersCopy: {
@@ -3338,18 +3419,26 @@ async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; mess
       if (own === null) return { kind: "refused", reason: "commit-failed" };
       const clash = collidingLabels(own, devices);
       if (clash.length > 0) return { kind: "refused", reason: "pairing-collision", labels: clash };
-      const result = await commitCrewChange(trustStore, audit, (current) =>
-        current === null ? null : adoptLeadership(current, { roster, confirmed, now: Date.now() }),
-      );
-      if (result === null) return { kind: "refused", reason: "commit-failed" };
-      const collisions = await pairing.adopt(devices);
-      if (collisions.length > 0) {
-        // Belt and braces: the read-only check above already passed, so reaching this means the
-        // registry changed underneath. The store is already a lead's, which is the state that matters;
-        // say so rather than pretending the adoption happened.
-        console.warn(`[crew] takeover: could not adopt ${collisions.join(", ")} — rename or revoke, then re-pair.`);
+      // §25: the role change below would otherwise remove the tricks copy before this tap adopts it.
+      const release = tricksCopyStore?.hold() ?? (() => {});
+      try {
+        const formerLead = held.lead.memberId;
+        const result = await commitCrewChange(trustStore, audit, (current) =>
+          current === null ? null : adoptLeadership(current, { roster, confirmed, now: Date.now() }),
+        );
+        if (result === null) return { kind: "refused", reason: "commit-failed" };
+        const collisions = await pairing.adopt(devices);
+        if (collisions.length > 0) {
+          // Belt and braces: the read-only check above already passed, so reaching this means the
+          // registry changed underneath. The store is already a lead's, which is the state that matters;
+          // say so rather than pretending the adoption happened.
+          console.warn(`[crew] takeover: could not adopt ${collisions.join(", ")} — rename or revoke, then re-pair.`);
+        }
+        await startCarriedTricks(formerLead, "takeover");
+        return { kind: "committed", pending: result.pending };
+      } finally {
+        release();
       }
-      return { kind: "committed", pending: result.pending };
     },
     now: Date.now,
   });
@@ -3399,6 +3488,11 @@ const standbyDoor = standbyStore === null ? null : createStandbyDoor({
   },
   devices: syncedDevices,
   takeover: (device) => performTakeover(device),
+  // §25: what the tap starts again, read off this machine's own disk, never off the lead's word.
+  carried: async () => ({
+    tricks: await tricksStartingAtTap(tricksCopyStore, cfg.stateDir, tricksConfigRoot),
+    questions: 0,
+  }),
 });
 
 /**
@@ -3798,6 +3892,8 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
               crewStoreChanged();
               // A warrant naming another deputy, or none, ends this machine's copy (ADR 0127 point 5).
               void reconcileLauncherCopy();
+              // And its copy of the lead's tricks (§25), by the same rule.
+              void reconcileTricksCopy();
             },
             // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.
             onLeadDialled: (at) => leadContact.record(at),

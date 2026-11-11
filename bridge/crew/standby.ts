@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { bearerToken } from "../pairing.ts";
+import { unsafeText } from "../tricks/code-hash.ts";
 import { STANDBY_HEALTH_PATH } from "./deposed.ts";
 import { silentForMs, type LeadContactFacts } from "./lead-contact.ts";
 import { resolveSyncedToken, type SyncedDevice } from "./standby-devices.ts";
@@ -331,7 +332,53 @@ const PAGE_STYLE =
  * shortfall against it, and it is stated rather than hidden because taking over against a lead that
  * is merely unreachable splits the crew.
  */
-export function standbyPage(facts: StandbyFacts): string {
+/**
+ * What the takeover tap also starts, read off THIS machine's own disk when the page is drawn (§25): the
+ * names of the tricks that will run here after it, and how many open Decisions come along. Never a
+ * claim the lead makes at tap time: the lead may be the machine that is gone.
+ */
+export interface CarriedSummary {
+  readonly tricks: readonly string[];
+  readonly questions: number;
+}
+
+/** The most trick names the page lists; the rest read "and N more". */
+export const CARRIED_NAMES_SHOWN = 8;
+/** The longest trick name the page shows. */
+export const CARRIED_NAME_MAX = 40;
+
+/**
+ * A trick name as the page shows it: every character the unsafe-text rule refuses dropped, white space
+ * folded to one space, at most {@link CARRIED_NAME_MAX} characters. Each name is then drawn in its own
+ * `<code>` box, so no name can read as a sentence of the page's own.
+ */
+export function cleanCarriedName(name: string): string {
+  const kept = [...name].filter((ch) => !unsafeText(ch)).join("").replace(/\s+/gu, " ").trim();
+  const chars = [...kept];
+  return chars.length > CARRIED_NAME_MAX ? `${chars.slice(0, CARRIED_NAME_MAX - 1).join("")}…` : kept;
+}
+
+/** The page's lines about what the tap also starts: none, one, or two. Escaped here. */
+export function carriedLines(carried: CarriedSummary | null): string[] {
+  if (carried === null) return [];
+  const out: string[] = [];
+  const names = carried.tricks.map(cleanCarriedName).filter((n) => n !== "");
+  if (names.length > 0) {
+    const shown = names.slice(0, CARRIED_NAMES_SHOWN).map((n) => `<code>${escapeHtml(n)}</code>`);
+    const more = names.length - shown.length;
+    out.push(`<p>This also starts these tricks again: ${shown.join(", ")}${more > 0 ? ` and ${String(more)} more` : ""}.</p>`);
+  }
+  if (carried.questions > 0) {
+    out.push(
+      carried.questions === 1
+        ? "<p>1 open question on the Hill comes along.</p>"
+        : `<p>${String(carried.questions)} open questions on the Hill come along.</p>`,
+    );
+  }
+  return out;
+}
+
+export function standbyPage(facts: StandbyFacts, carried: CarriedSummary | null = null): string {
   const report = armingReport(facts);
   const self = escapeHtml(facts.selfMemberId);
   const lead = facts.leadMemberId === null ? "your lead" : `<code>${escapeHtml(facts.leadMemberId)}</code>`;
@@ -356,6 +403,7 @@ export function standbyPage(facts: StandbyFacts): string {
           `them. Any &ldquo;yes&rdquo; stops the takeover.</p>`,
       );
     }
+    body.push(...carriedLines(carried));
     body.push(`<button id="go" type="button">Take over</button>`, `<p class="out" id="out"></p>`);
   } else {
     body.push(
@@ -415,6 +463,8 @@ export interface StandbyDoorDeps {
   readonly devices: () => readonly SyncedDevice[];
   /** Run RFC §7. Called at most once per admitted confirm; the door does not retry it. */
   readonly takeover: (device: string) => Promise<TakeoverAnswer>;
+  /** What the tap also starts, read off this machine's own disk per page (§25). Absent: nothing listed. */
+  readonly carried?: () => Promise<CarriedSummary | null>;
 }
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" } as const;
@@ -496,7 +546,9 @@ export function createStandbyDoor(deps: StandbyDoorDeps) {
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       // The PAGE is served in both states — while cold it is a statement with no action on it, which
       // is what lets an operator confirm the door exists before the bad day rather than during it.
-      return new Response(standbyPage(facts), {
+      // Read only for the armed page, the one with the button: the cold page lists nothing.
+      const carried = report.armed ? ((await deps.carried?.().catch(() => null)) ?? null) : null;
+      return new Response(standbyPage(facts, carried), {
         status: 200,
         headers: {
           "content-type": "text/html; charset=utf-8",
