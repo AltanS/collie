@@ -360,7 +360,8 @@ The bridge writes `{ contract, trigger, trick, memberId, host, sessions, spaces,
   switched trick reads off) or `none` (a shell, or no folder); `files` lists each copy (`rel`, `path`
   relative to `trick.dir`, `bytes`, `sha256`, `mtime`, `kind` `text` or `image`); `skipped` counts
   what the caps left out (a text file over 256 KiB, a picture over 2 MB, another type, past 32 files,
-  past 8 MiB in one answer or 24 MiB in one run). A Decision's `media` may name a picture by its
+  past 8 MiB in one answer or 24 MiB in one run), and a file whose name holds a control, bidi or
+  zero-width character (`unsafeText`), which is never read. A Decision's `media` may name a picture by its
   `path`.
 
 The parts a trick prints are keyed by (member id, trick, part) on the bridge. The wire names the

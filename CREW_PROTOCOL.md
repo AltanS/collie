@@ -4246,8 +4246,11 @@ data. It never reaches a member any other way: no socket, no token, no command.
   is never followed at any level. A `.env` file (`.env`, `.env.local`, `.envrc`, in any case) is never
   read, whatever the glob says: the Files view shows one to a person who opens it, a trick reads
   unattended. A file over 2 MB, or a text file over 256 KiB, is listed as `skipped: "too-large"`; a
-  file that is neither UTF-8 text without NUL nor a PNG, JPEG or WebP picture is `skipped: "type"`. At
-  most 32 files and 64 folder listings per pane. With `COLLIE_REDACT` on, a text file
+  file that is neither UTF-8 text without NUL nor a PNG, JPEG or WebP picture is `skipped: "type"`. A
+  file whose name holds a control character, a bidi mark or isolate, a zero-width space or word joiner,
+  a byte order mark or a tag character (the characters a Decision's view refuses, `unsafeText`) is
+  never read: it is `skipped: "name"`, and its `rel` carries each such character as `?`. A folder with
+  such a name is never entered. At most 32 files and 64 folder listings per pane. With `COLLIE_REDACT` on, a text file
   leaves masked. A file whose SHA-256 the lead named in `have` travels as its hash only. The bytes of
   one answer stop at 8 MiB; past it a file is `skipped: "cap"`.
 - **A file in the answer** is `{ rel, bytes, mtime, sha256, kind, b64 }`, or `{ rel, bytes, mtime,
@@ -4264,8 +4267,8 @@ data. It never reaches a member any other way: no socket, no token, no command.
   is `offline`; a `404` is `older` (a member built before the route); a `403 trick_reads_off` is
   `refused`. The lead reads at most the answer's cap of the body and drops the rest.
 - **The lead trusts no word of the answer.** For each file it checks: `rel` is a relative path that
-  passes the same rule as a Files path, matches one of the trick's globs step by step, and names no
-  `.env`, `.git`, `.` or `..`; `b64` decodes strictly; the bytes' SHA-256 is `sha256`; the size is
+  passes the same rule as a Files path, holds no character `unsafeText` refuses, matches one of the
+  trick's globs step by step, and names no `.env`, `.git`, `.` or `..`; `b64` decodes strictly; the bytes' SHA-256 is `sha256`; the size is
   `bytes` and within the kind's cap; a picture sniffs as PNG, JPEG or WebP; a text file is UTF-8 with no
   NUL. A hash-only file counts only when the lead holds that file with that hash. A pane not asked is
   ignored. Anything else is skipped and counted.
