@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -127,8 +127,11 @@ async function olderBridge(): Promise<string> {
 function deps(sockets: string[], env: Record<string, string> = inPane("%1"), over: Partial<MorphDeps> = {}): MorphDeps & { readonly io: ReturnType<typeof capture> } {
   const io = capture();
   const cwd = mkdtempSync(join(tmpdir(), "morph-cwd-"));
+  const staging = mkdtempSync(join(tmpdir(), "morph-staging-"));
   cleanups.push(() => rmSync(cwd, { recursive: true, force: true }));
+  cleanups.push(() => rmSync(staging, { recursive: true, force: true }));
   return {
+    stagingRoot: () => staging,
     ctx: context(env, { stateDir: mkdtempSync(join(tmpdir(), "morph-own-")) }),
     files: realFiles,
     uid: process.getuid?.(),
@@ -141,6 +144,13 @@ function deps(sockets: string[], env: Record<string, string> = inPane("%1"), ove
     ...over,
     io,
   };
+}
+
+/** A working folder in the real /tmp, whatever TMPDIR says: the folder a bridge under PrivateTmp cannot see. */
+function tmpCwd(): () => string {
+  const dir = mkdtempSync("/tmp/morph-pic-");
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  return () => dir;
 }
 
 function screenFile(d: MorphDeps, content: string, name = "screen.json"): string {
@@ -161,6 +171,10 @@ describe("help", () => {
     expect(parseMorphView(JSON.parse(example!)).view).toBeDefined();
     const text = lines.join("\n");
     for (const words of ["One screen per answer", '"confirm"', "Never imitate a permission dialog", '"value"']) expect(text).toContain(words);
+  });
+
+  test("the usage says a picture under /tmp is copied for the bridge", () => {
+    expect(morphHelp().join("\n")).toContain("A picture under /tmp is copied for the bridge, so you need not move it.");
   });
 
   test("the first rule is to call start first, then show", () => {
@@ -316,6 +330,45 @@ describe("against a bridge", () => {
     const other = deps([walkySocketPath(b.stateDir)], inPane("%2"));
     expect(await cmdMorphStatus(other, [])).toBe(EXIT.OK);
     expect(other.io.stdout).toEqual(["session: local/%2#bbbb", "morph: off", "screen: none", `sent as: [morph] from operator: <text> [rules: ${BIN} morph help --session local/%2#bbbb]`]);
+  });
+
+  socketTest("a picture under /tmp is staged for the bridge, which gets the staged path, and the stage is gone afterwards", async () => {
+    const b = await bridge();
+    const sent: string[] = [];
+    const d = deps([walkySocketPath(b.stateDir)], inPane("%1"), {
+      cwd: tmpCwd(),
+      ask: (path, line) => {
+        sent.push(line);
+        return askSocket(path, line, 2000);
+      },
+    });
+    const staging = d.stagingRoot!();
+    writeFileSync(join(d.cwd!(), "shot.png"), PNG);
+    const view = JSON.stringify({ view: [{ kind: "image", attrs: { ref: "0" } }] });
+    expect(await cmdMorphShow(d, [screenFile(d, view), "--image", "shot.png=Now"])).toBe(EXIT.OK);
+    const path = /"path":"([^"]+)"/u.exec(sent.at(-1)!)?.[1] ?? "";
+    if (HOST.platform === "linux") expect(path.startsWith(staging)).toBe(true);
+    expect(b.morph.status("local/%1#aaaa").view?.media?.[0]?.caption).toBe("Now");
+    expect(readdirSync(staging)).toEqual([]);
+
+    const set = deps([walkySocketPath(b.stateDir)], inPane("%1"), { stagingRoot: () => staging, cwd: tmpCwd() });
+    writeFileSync(join(set.cwd!(), "more.png"), PNG);
+    expect(await cmdMorphSet(set, ["b2", screenFile(set, JSON.stringify({ kind: "image", attrs: { ref: "1" } }), "b.json"), "--image", "more.png"])).toBe(EXIT.OK);
+    expect(readdirSync(staging)).toEqual([]);
+  });
+
+  socketTest("a refused picture under /tmp exits as a refusal, names the path the agent gave, and leaves no stage", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)], inPane("%1"), { cwd: tmpCwd() });
+    writeFileSync(join(d.cwd!(), "notes.png"), "not an image at all");
+    const view = JSON.stringify({ view: [{ kind: "image", attrs: { ref: "0" } }] });
+    const code = await cmdMorphShow(d, [screenFile(d, view), "--image", "notes.png"]);
+    if (HOST.platform !== "linux") return;
+    expect(code).toBe(EXIT.REFUSED);
+    expect(d.io.stderr[0]).toContain(`morph: ${join(realpathSync(d.cwd!()), "notes.png")}: is not a PNG, JPEG or WebP image`);
+    expect(d.io.stderr[0]).toContain("(bad_image)");
+    expect(readdirSync(d.stagingRoot!())).toEqual([]);
+    expect(b.morph.status("local/%1#aaaa").view).toBeUndefined();
   });
 
   socketTest("start sets the drawing, status prints the session first and the drawing, show ends it", async () => {

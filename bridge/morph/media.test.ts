@@ -135,6 +135,38 @@ describe("a show with pictures", () => {
   });
 });
 
+describe("the media folder is pruned with the write that drops a set", () => {
+  posix("`clear` removes the screen's set folder, and only that session's", () => {
+    const r = rig();
+    const one = file(r.work, "a.png", png());
+    const mine = r.morph.show(SESSION, { view: view(1), title: null, images: [{ path: one, caption: null }] });
+    const other = r.morph.show("local/%2#bbbb", { view: view(1), title: null, images: [{ path: one, caption: null }] });
+    const mineSet = mine.ok ? mine.session.view?.set : undefined;
+    const otherSet = other.ok ? other.session.view?.set : undefined;
+    expect(readdirSync(r.mediaRoot).toSorted()).toEqual([mineSet!, otherSet!].toSorted());
+    expect(r.morph.clear(SESSION).ok).toBe(true);
+    expect(readdirSync(r.mediaRoot)).toEqual([otherSet!]);
+    expect(r.morph.clear("local/%2#bbbb").ok).toBe(true);
+    expect(readdirSync(r.mediaRoot)).toEqual([]);
+  });
+
+  posix("a screen replaced by a show with no picture, or by another picture, loses its old set folder", () => {
+    const r = rig();
+    const one = file(r.work, "a.png", png());
+    const first = r.morph.show(SESSION, { view: view(1), title: null, images: [{ path: one, caption: null }] });
+    const firstSet = first.ok ? first.session.view?.set : undefined;
+    expect(readdirSync(r.mediaRoot)).toEqual([firstSet!]);
+    // A block set with a new picture writes a new set under a new id; the replaced set is no longer named.
+    const added = r.morph.set(SESSION, { id: "b2", node: { kind: "image", attrs: { ref: "1" } }, place: { kind: "end" }, images: [{ path: one, caption: null }] });
+    const addedSet = added.ok ? added.session.view?.set : undefined;
+    expect(addedSet).toBeDefined();
+    expect(addedSet).not.toBe(firstSet);
+    expect(readdirSync(r.mediaRoot)).toEqual([addedSet!]);
+    expect(r.morph.show(SESSION, { view: view(0), title: null }).ok).toBe(true);
+    expect(readdirSync(r.mediaRoot)).toEqual([]);
+  });
+});
+
 describe("Morph's own caps refuse the whole command, and nothing is written", () => {
   posix("more than four pictures", () => {
     const r = rig();

@@ -5,6 +5,7 @@ import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
 import { imagePathOf, parseImageArg } from "./hill.ts";
+import { stageImagesForBridge, type StagedImages } from "./image-stage.ts";
 import { NO_SOCKET_TEXT, shown, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
@@ -87,6 +88,7 @@ const USAGE = {
     `usage: collie morph show ${SESSION_USAGE} <file.json | -> [--title "<one line, at most ${String(MORPH_TITLE_MAX)}>"] [--image <path>[=<caption>]]... [--json]`,
     '  The file holds the view (a list of nodes), or { "title"?, "view": [...], "choice"? }. `-` reads stdin.',
     `  --image adds a picture (PNG, JPEG or WebP, at most ${String(MORPH_MEDIA_BYTES_MAX / (1024 * 1024))} MB, at most ${String(MORPH_MEDIA_MAX)}); the first is ref "0". A caption is at most ${String(MORPH_CAPTION_MAX)} characters.`,
+    "  A picture under /tmp is copied for the bridge, so you need not move it.",
   ],
   set: [
     `usage: collie morph set ${SESSION_USAGE} <id> <file.json | -> [--after <id> | --first] [--image <path>[=<caption>]]... [--json]`,
@@ -330,6 +332,8 @@ export function morphHelp(session: string | null = null): string[] {
 export type MorphDeps = Omit<WalkyDeps, "mintId" | "sleep"> & {
   /** The folder a relative file path is read from. Defaults to the process's own. */
   readonly cwd?: () => string;
+  /** Where a picture under /tmp is copied for the bridge. Defaults to `<XDG_CACHE_HOME or ~/.cache>/collie/image-staging`. */
+  readonly stagingRoot?: () => string;
 };
 
 type Answer = { readonly ok: true; readonly body: JsonObject } | { readonly ok: false; readonly error: string; readonly code: string | null; readonly exit: number; readonly refusals: readonly string[] };
@@ -497,17 +501,28 @@ function readSource(deps: MorphDeps, source: string): Promise<string> | { readon
 
 /**
  * The pictures as the bridge is sent them: absolute paths with every folder on the way resolved, as
- * `collie hill post` sends them (`imagePathOf`). The bridge reads the files; the CLI sends no bytes.
+ * `collie hill post` sends them (`imagePathOf`). The bridge reads the files; the CLI sends no bytes. A
+ * picture under /tmp or /var/tmp is the exception: the bridge's own private /tmp hides it, so
+ * `stageImagesForBridge` copies it (after the bridge's checks) and the staged path goes instead. The
+ * caller runs `cleanup` when the socket op is over. A refusal of a staged picture is an answer as the
+ * bridge's own would be, so it prints and exits the same way.
  */
-function imageFields(deps: MorphDeps, images: readonly HillImageInput[]): { readonly list: JsonValue[] } | { readonly error: string } {
+function imageFields(deps: MorphDeps, images: readonly HillImageInput[]): { readonly list: JsonValue[]; readonly staged: StagedImages } | { readonly error: string } | { readonly refused: Extract<Answer, { ok: false }> } {
   const cwd = (deps.cwd ?? (() => process.cwd()))();
-  const list: JsonValue[] = [];
+  const resolvedImages: HillImageInput[] = [];
   for (const image of images) {
     const resolved = imagePathOf(image.path, cwd);
     if ("error" in resolved) return resolved;
-    list.push(image.caption === undefined ? { path: resolved.path } : { path: resolved.path, caption: image.caption });
+    resolvedImages.push(image.caption === undefined ? { path: resolved.path } : { path: resolved.path, caption: image.caption });
   }
-  return { list };
+  const staged = stageImagesForBridge({ env: deps.ctx.env, home: deps.ctx.home, now: deps.now, stagingRoot: deps.stagingRoot }, resolvedImages);
+  if (!staged.ok) return { refused: { ok: false, error: staged.error, code: staged.code, exit: staged.code === null ? EXIT.FAIL : EXIT.REFUSED, refusals: [] } };
+  return { list: staged.images.map((image) => (image.caption === undefined ? { path: image.path } : { path: image.path, caption: image.caption })), staged };
+}
+
+/** A failed answer printed with any staged path put back to the path the agent gave. */
+function failedUnstaged(deps: MorphDeps, answer: Extract<Answer, { ok: false }>, staged: StagedImages): number {
+  return failed(deps, { ...answer, error: staged.unstage(answer.error), refusals: answer.refusals.map((line) => staged.unstage(line)) });
 }
 
 /** The session the bridge answered with, or a failure when it answered without one. */
@@ -558,12 +573,14 @@ export async function cmdMorphShow(deps: MorphDeps, args: readonly string[]): Pr
   if ("error" in screen) return usage(deps, "show", screen.error);
   const images = imageFields(deps, parsed.images);
   if ("error" in images) return usage(deps, "show", images.error);
+  if ("refused" in images) return failed(deps, images.refused);
   const fields: JsonObject = { view: screen.view };
   if (screen.title !== null) fields.title = screen.title;
   if (screen.choice !== undefined) fields.choice = screen.choice;
   if (images.list.length > 0) fields.images = images.list;
-  const answer = await request(deps, bodyOf({ op: "morph.show", session: parsed.session, fields }));
-  if (!answer.ok) return failed(deps, answer);
+  // The staged copies live only for this request, whatever it comes to.
+  const answer = await request(deps, bodyOf({ op: "morph.show", session: parsed.session, fields })).finally(images.staged.cleanup);
+  if (!answer.ok) return failedUnstaged(deps, answer, images.staged);
   const session = sessionOf(answer);
   if (session?.view === undefined) return failed(deps, NO_SESSION);
   const lead = session.on
@@ -771,9 +788,12 @@ function placeFields(parsed: BlockArgs): JsonObject {
 }
 
 /** Send one block op and print the session after it, with the lead line and the off notice. */
-async function blockOp(deps: MorphDeps, { op, parsed, fields, lead }: { op: string; parsed: BlockArgs; fields: JsonObject; lead: (view: NonNullable<MorphSession["view"]>) => string }): Promise<number> {
+async function blockOp(
+  deps: MorphDeps,
+  { op, parsed, fields, lead, unstage }: { op: string; parsed: BlockArgs; fields: JsonObject; lead: (view: NonNullable<MorphSession["view"]>) => string; unstage?: (text: string) => string },
+): Promise<number> {
   const answer = await request(deps, bodyOf({ op, session: parsed.session, fields }));
-  if (!answer.ok) return failed(deps, answer);
+  if (!answer.ok) return failed(deps, unstage === undefined ? answer : { ...answer, error: unstage(answer.error), refusals: answer.refusals.map(unstage) });
   const session = sessionOf(answer);
   if (session?.view === undefined) return failed(deps, NO_SESSION);
   const line = lead(session.view);
@@ -795,9 +815,14 @@ export async function cmdMorphSet(deps: MorphDeps, args: readonly string[]): Pro
   if ("error" in block) return usage(deps, "set", block.error);
   const images = imageFields(deps, parsed.images);
   if ("error" in images) return usage(deps, "set", images.error);
+  if ("refused" in images) return failed(deps, images.refused);
   const fields: JsonObject = { id, node: block.node, ...placeFields(parsed) };
   if (images.list.length > 0) fields.images = images.list;
-  return blockOp(deps, { op: "morph.set", parsed, fields, lead: (view) => `set: block ${shown(id)}, rev ${String(view.rev)}` });
+  try {
+    return await blockOp(deps, { op: "morph.set", parsed, fields, lead: (view) => `set: block ${shown(id)}, rev ${String(view.rev)}`, unstage: images.staged.unstage });
+  } finally {
+    images.staged.cleanup();
+  }
 }
 
 /** `morph pending <id> "<label>" [--after <id> | --first]`: a placeholder block for one in work. */
