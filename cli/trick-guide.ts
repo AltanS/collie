@@ -1,6 +1,6 @@
 import { EXIT, type Io } from "./io.ts";
 import { PROPOSE_LIMITS } from "../bridge/tricks/propose-wire.ts";
-import { PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../bridge/tricks/proposals.ts";
+import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../bridge/tricks/proposals.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../web/src/lib/tricks/contract.ts";
 import { ABOUT_MAX, DESCRIPTION_MAX, ENV_NAMES_MAX, EVERY_MAX_MS, EVERY_MIN_MS, INPUTS_MAX, MANIFEST_KEYS, PLACE_KINDS, TRICK_MODES, type PlaceKind } from "../web/src/lib/tricks/schema.ts";
@@ -110,8 +110,10 @@ export function trickGuide(): string[] {
     "The person sees a card on the Hill with your code. Nothing runs before their yes.",
     "When they say yes, the trick is added and switched on.",
     `The card closes on its own after ${String(days)} days.`,
-    "Propose the same folder again to replace your open proposal.",
+    "From your agent session, propose the same folder again to replace your open proposal.",
+    "From a terminal, wait for the person's answer first: Collie cannot tell who sent it.",
     `One session may have ${String(PROPOSALS_SENDER_OPEN_MAX)} proposals open, and make ${String(PROPOSALS_SENDER_HOUR_MAX)} in an hour.`,
+    `One machine may make ${String(PROPOSALS_MACHINE_HOUR_MAX)} in an hour.`,
     "A trick that came from a proposal and is on gets a new version card instead.",
     "Its folder changes only after the person's yes. Their config.toml stays.",
     "A trick added on this machine or from a repository is changed there, not by proposal.",
