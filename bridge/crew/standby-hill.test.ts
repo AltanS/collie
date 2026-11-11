@@ -18,7 +18,7 @@ import { TRICKS_MAP_FILE } from "../tricks/hill.ts";
 import { hillCarryRoutes } from "./carry-surface.ts";
 import type { CarryCall } from "./carry-sync.ts";
 import { machine, PNG, removeCarryDirs } from "./carry-fixtures.ts";
-import { adoptCarriedHill, pictureStayed, proposalStayed, TRICK_NOT_STARTED, versionWaited } from "./hill-adopt.ts";
+import { adoptCarriedHill, pictureStayed, TRICK_NOT_STARTED } from "./hill-adopt.ts";
 import { HillCopySync, type HillCopyClient } from "./hill-copy-sync.ts";
 import type { CrewLink } from "./peer-client.ts";
 import { CREW_HILL_COPY_MEDIA_PATH, CREW_HILL_COPY_PATH } from "./router.ts";
@@ -38,10 +38,10 @@ const trickCard = (trickId: string, n: number) =>
     at: T0 + n,
     from: { kind: "trick", address: null, trickId, trickKey: "k", memberId: "desk", harness: null, label: trickId, host: "desk", trickHost: "desk" },
   });
-const collieCard = (type: "version" | "proposal" | "carried", n: number) =>
+const collieCard = (type: "version" | "proposal" | "carried", n: number, options = [{ intent: "ok", label: "OK" }]) =>
   decision(`dc_collie${String(n).padStart(6, "0")}`, {
     at: T0 + n,
-    options: [{ intent: "ok", label: "OK" }],
+    options,
     from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "desk", harness: null, label: "Collie", host: "desk", trickHost: null, ref: { type, id: "legs", hash: HASH } },
   });
 
@@ -213,7 +213,7 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
   test("an agent's Decision keeps its id and its picture, and no push goes out", async () => {
     const { deputy, copy } = await carried([agent(1, { media: [MEDIA] })]);
     const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
-    expect(result).toEqual({ open: 1, closed: 0 });
+    expect(result).toEqual({ open: 1, closed: 0, dropped: 0 });
     const held = deputy.store.get(agent(1).id);
     expect(held?.state).toBe("open");
     expect(deputy.media.bytesOf(agent(1).id, MEDIA)).toEqual(PNG);
@@ -232,14 +232,15 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
     expect(held?.body).toBe(`Look at this.\n\n${pictureStayed("desk")}`);
   });
 
-  test("a new version, a proposal and a trick that did not start close with their reason; a started trick's Decision moves here", async () => {
+  test("a trick that did not start closes with its reason; a started trick's Decision moves here; only the carried notice of Collie's own comes", async () => {
     const tricks: JsonObject = { legs: { gen: 0, keys: { k: { decisionId: trickCard("legs", 3).id, hash: "abc", state: "open", seq: 0 } } } };
     const { deputy, copy } = await carried([collieCard("version", 1), collieCard("proposal", 2), trickCard("legs", 3), trickCard("gone", 4), collieCard("carried", 5)], { tricks });
     const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(["legs"]), stateDir: deputy.m.stateDir, now: () => T0 });
-    expect(result).toEqual({ open: 2, closed: 3 });
+    expect(result).toEqual({ open: 2, closed: 1, dropped: 2 });
     const reason = (id: string) => [deputy.store.get(id)?.state, deputy.store.get(id)?.closedReason];
-    expect(reason(collieCard("version", 1).id)).toEqual(["withdrawn", versionWaited("desk")]);
-    expect(reason(collieCard("proposal", 2).id)).toEqual(["withdrawn", proposalStayed("desk")]);
+    // A new version card and a proposal card never cross: their files stay on the lead.
+    expect(deputy.store.get(collieCard("version", 1).id)).toBeUndefined();
+    expect(deputy.store.get(collieCard("proposal", 2).id)).toBeUndefined();
     expect(reason(trickCard("gone", 4).id)).toEqual(["withdrawn", TRICK_NOT_STARTED]);
     expect(deputy.store.get(trickCard("legs", 3).id)?.from).toMatchObject({ memberId: "laptop", trickHost: "laptop", host: "laptop" });
     expect(deputy.store.get(collieCard("carried", 5).id)?.state).toBe("open");
@@ -257,13 +258,17 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
 
   test("a copy from another lead brings nothing", async () => {
     const { deputy, copy } = await carried([agent(1)]);
-    expect(await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "attic", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 })).toEqual({ open: 0, closed: 0 });
+    expect(await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "attic", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 })).toEqual({ open: 0, closed: 0, dropped: 0 });
   });
 
-  test("a forged Collie card from the lead lands as a card, and installs nothing: its proposal closes", async () => {
-    const { deputy, copy } = await carried([collieCard("proposal", 7)]);
-    await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
-    expect(deputy.store.get(collieCard("proposal", 7).id)?.state).toBe("withdrawn");
+  test("a forged Collie card with an acting answer never lands: only the carried notice with its one OK is a Collie card from the wire", async () => {
+    const approve = [{ intent: "approve", label: "Approve" }];
+    const { deputy, copy } = await carried([collieCard("version", 7, approve), collieCard("carried", 8, approve), collieCard("carried", 9, [...approve, { intent: "ok", label: "OK" }]), collieCard("carried", 10)]);
+    expect((await copy.load())?.dropped).toBe(3);
+    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    expect(result).toEqual({ open: 1, closed: 0, dropped: 3 });
+    for (const n of [7, 8, 9]) expect(deputy.store.get(collieCard("carried", n).id)).toBeUndefined();
+    expect(deputy.store.get(collieCard("carried", 10).id)?.state).toBe("open");
     expect(existsSync(join(deputy.m.configDir, "tricks"))).toBe(false);
   });
 });

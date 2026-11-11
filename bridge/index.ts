@@ -2653,7 +2653,7 @@ async function bringCarriedHill(lead: string, by: "takeover" | "handover", start
   if (hillCopyStore === null) return;
   try {
     const result = await adoptCarriedHill({ store: hillCopyStore, hill, lead, self: bridgeId.id, machine: hostname(), started, stateDir: cfg.stateDir, now: Date.now });
-    audit.record({ action: "hill.carried", detail: { from: lead, by, open: result.open, closed: result.closed } });
+    audit.record({ action: "hill.carried", detail: { from: lead, by, open: result.open, closed: result.closed, dropped: result.dropped } });
     if (result.open + result.closed > 0) console.log(`[crew] ${by}: brought ${String(result.open)} open Decision(s) of the lead's Hill here, ${String(result.closed)} closed with their reason`);
     await hillCopyStore.clear();
   } catch (err) {

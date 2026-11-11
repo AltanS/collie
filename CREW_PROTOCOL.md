@@ -4456,6 +4456,11 @@ has not answered yet is still there after the takeover.
   without its notification slot (`pushTag`). The deputy reads each one again with the Hill's own
   reader. A record that does not read, is not open, repeats an id, or names an id in `closed` is left
   out; the rest of the list still applies.
+- **Collie's own cards.** Of the Decisions of Collie's own (`from.kind` `collie`), the deputy holds
+  only the notice that a carried trick did not start (`ref.type` `carried`) with its single answer, OK,
+  which only closes it. Any other Collie card is left out and counted (`dropped`): a new version card
+  or a proposal card acts on files that never cross, and a lead must not place a card that acts on its
+  deputy.
 - **`closed`** is at most 500 ids of the lead's closed and cleared Decisions, newest first. The deputy
   keeps every closed id the same lead named, newest first, up to 500, and never holds a Decision with
   one of those ids as open again. A replayed or late list cannot bring an answered Decision back.
@@ -4524,14 +4529,9 @@ it reconnects".
   its id, and goes into this machine's Hill in one write; an id this Hill already holds or cleared is
   left as it is here. Nothing is pushed, told or posted: they are not new. Each picture is read again
   off this machine's disk and its type read again from its bytes; a Decision whose picture is not here
-  keeps the rest and carries the line "A picture stayed on <old lead>." Three kinds close at the tap,
-  each with its reason, because what they act on did not come along:
-  - a trick's new version (`ref.type` `version`): "This new version waited on <old lead>. It was not
-    carried over." The trick folder on this machine decides what waits here.
-  - a trick proposal (`ref.type` `proposal`): "This proposal stayed on <old lead>. Ask for it again."
-    A proposal's files are not carried, so a lead cannot place an install card on its deputy.
-  - a trick's Decision whose trick did not start here: "Its trick did not start on this machine after
-    the takeover."
+  keeps the rest and carries the line "A picture stayed on <old lead>." A trick's Decision whose trick
+  did not start here closes at the tap with the reason "Its trick did not start on this machine after
+  the takeover."
 
   A trick Decision that stays is moved to this machine (its `memberId`, `trickHost` and host), and its
   trick map record comes along where this machine has none, so the trick does not post it a second
@@ -4556,8 +4556,8 @@ no trick).
 ### Audit
 
 On the deputy: `tricks.carried` at the tap, with the ids started, the ids that failed and the folders
-kept. Never a file's bytes. `hill.carried` at the tap, with the counts of Decisions stored open and
-closed with their reason. Never a Decision's text.
+kept. Never a file's bytes. `hill.carried` at the tap, with the counts of Decisions stored open,
+closed with their reason, and Collie cards the copy left out (`dropped`). Never a Decision's text.
 
 ### Compatibility
 

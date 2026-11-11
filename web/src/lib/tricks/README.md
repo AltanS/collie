@@ -887,11 +887,11 @@ written as what a trick, or a person who controls one, can do today.
   code hash the lead says the person approved, and the page names each trick before the tap. A
   compromised lead can still send a trick it switched on itself; it starts only when a person takes
   over by hand on the deputy.
-- **A lead can put a card of its own on the deputy's Hill.** The lead's open Decisions come along at a
-  takeover, Collie's own cards included, and the deputy cannot tell a real one from one a compromised
-  lead made up. Such a card installs nothing: a trick proposal and a new version close at the takeover,
-  with their reason, because their files never cross. Proposals stay on the old lead; ask for them
-  again on the new one.
+- **A lead can put a card on the deputy's Hill.** The lead's open Decisions come along at a takeover,
+  and the deputy cannot tell a real one from one a compromised lead made up. Of Collie's own cards only
+  the notice that a carried trick did not start comes along, with its one OK answer; a new version card
+  and a proposal card are dropped, so no carried card acts on the deputy. Proposals stay on the old
+  lead; ask for them again on the new one.
 - **A proposal's origin record is a dot file in the trick's folder, and an agent on the lead can write
   it.** `.collie-origin.json` is outside the code hash, like the repository record. An agent with write
   access to the tricks folder could put a false "proposed by" there. It is a label, never a right.

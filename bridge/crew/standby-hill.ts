@@ -10,6 +10,7 @@ import { readDecision } from "../hill/parse.ts";
 import { strictBase64 } from "../tricks/propose-wire.ts";
 import type { CopyRole } from "./standby-launchers.ts";
 import { tricksCopyKept } from "./standby-tricks.ts";
+import { CARRIED_OK } from "./carry-notices.ts";
 
 // THE LEAD'S OPEN DECISIONS, CARRIED TO ITS DEPUTY AS INERT DATA (CREW_PROTOCOL §25).
 //
@@ -27,6 +28,12 @@ import { tricksCopyKept } from "./standby-tricks.ts";
 // ── THE WIRE (lead → deputy, the tricks copy's gate) ──────────────────────────────────────────────
 //   POST /crew/v1/hill-copy          { seq, on, decisions, closed, tricks }   → { applied, need: { media } }
 //   POST /crew/v1/hill-copy/media    { decisionId, mediaId, b64 | gone }      → { held }
+//
+// ── COLLIE'S OWN CARDS ────────────────────────────────────────────────────────────────────────────
+// A Decision of Collie's own reads only from this machine's own store (hill/parse.ts). From the wire,
+// the one kind taken is the notice that a carried trick did not start (`ref.type` `carried`), with its
+// single OK answer, which only closes it. Any other Collie card is dropped and counted: a new version
+// or a proposal acts on files that never cross, and a lead must not place a card that acts here.
 //
 // ── THE CLOSED IDS ────────────────────────────────────────────────────────────────────────────────
 // The deputy keeps every closed id the same lead named, newest first, up to {@link HILL_CLOSED_IDS_MAX}.
@@ -170,6 +177,8 @@ export interface HillIndex {
   /** Closed ids from this lead, newest first. */
   closed: string[];
   tricks: JsonObject;
+  /** Collie cards of the last list that this copy does not hold (see readCarriedRecord). */
+  dropped: number;
   media: Map<string, MediaHeld>;
 }
 
@@ -187,9 +196,19 @@ function serializeIndex(index: HillIndex): string {
     decisions: index.decisions,
     closed: index.closed,
     tricks: index.tricks,
+    dropped: index.dropped,
     media,
   };
   return `${JSON.stringify(doc, null, 2)}\n`;
+}
+
+/** A record off the wire: an open Decision this copy may hold, `"dropped"` for a Collie card it may not, or null. */
+export function readCarriedRecord(entry: JsonValue): HillDecision | "dropped" | null {
+  const read = readDecision(entry, { collie: true });
+  if (read === null || read.state !== "open") return null;
+  if (read.from.kind !== "collie") return read;
+  const only = read.options.length === 1 ? read.options[0] : undefined;
+  return read.from.ref?.type === "carried" && only?.intent === CARRIED_OK ? read : "dropped";
 }
 
 /** Parse the index. `null` for anything this reader does not understand, which reads as no copy. */
@@ -206,16 +225,30 @@ export function parseHillIndex(raw: string | null): HillIndex | null {
   if (seq === undefined || !Number.isSafeInteger(seq) || digest === undefined || !HASH_RE.test(digest) || on === undefined || tricks === undefined) return null;
   if (!Array.isArray(doc.decisions) || !Array.isArray(doc.closed)) return null;
   const decisions = doc.decisions.flatMap((entry) => {
-    const read = readDecision(entry, { collie: true });
-    return read !== null && read.state === "open" ? [read] : [];
+    const read = readCarriedRecord(entry);
+    return read === null || read === "dropped" ? [] : [read];
   });
+  const dropped = asJsonNumber(doc.dropped);
   const closed = doc.closed.flatMap((entry) => {
     const id = asJsonString(entry);
     return id !== undefined && HILL_ID_RE.test(id) ? [id] : [];
   });
   const media = new Map<string, MediaHeld>();
   for (const [key, value] of Object.entries(asJsonObject(doc.media) ?? {})) if (value === "held" || value === "left") media.set(key, value);
-  return { version: STANDBY_HILL_VERSION, crewId, from, seq, at: asJsonNumber(doc.at) ?? 0, digest, on, decisions, closed, tricks, media };
+  return {
+    version: STANDBY_HILL_VERSION,
+    crewId,
+    from,
+    seq,
+    at: asJsonNumber(doc.at) ?? 0,
+    digest,
+    on,
+    decisions,
+    closed,
+    tricks,
+    dropped: dropped !== undefined && Number.isSafeInteger(dropped) && dropped > 0 ? dropped : 0,
+    media,
+  };
 }
 
 /** How many pictures of the plan the deputy still lacks. */
@@ -292,15 +325,17 @@ export class StandbyHillStore {
     const closed = [...new Set([...input.list.closed, ...(same ? held.closed : [])])].slice(0, HILL_CLOSED_IDS_MAX);
     const shut = new Set(closed);
     const decisions: HillDecision[] = [];
+    let dropped = 0;
     for (const entry of input.list.decisions) {
-      const read = readDecision(entry, { collie: true });
-      if (read === null || read.state !== "open" || shut.has(read.id) || decisions.some((d) => d.id === read.id)) continue;
+      const read = readCarriedRecord(entry);
+      if (read === "dropped") dropped += 1;
+      if (read === null || read === "dropped" || shut.has(read.id) || decisions.some((d) => d.id === read.id)) continue;
       decisions.push(read);
     }
     const plan = new Set(mediaPlan(decisions).map((p) => mediaKey(p.decisionId, p.media.id)));
     const media = new Map<string, MediaHeld>();
     if (same) for (const [key, state] of held.media) if (plan.has(key)) media.set(key, state);
-    const next: HillIndex = { version: STANDBY_HILL_VERSION, crewId: input.crewId, from: input.from, seq: input.list.seq, at: this.now(), digest: input.list.digest, on: input.list.on, decisions, closed, tricks: input.list.tricks, media };
+    const next: HillIndex = { version: STANDBY_HILL_VERSION, crewId: input.crewId, from: input.from, seq: input.list.seq, at: this.now(), digest: input.list.digest, on: input.list.on, decisions, closed, tricks: input.list.tricks, dropped, media };
     await this.saveIndex(next);
     await this.pruneMedia(next);
     return { ok: true, need: hillNeed(next) };

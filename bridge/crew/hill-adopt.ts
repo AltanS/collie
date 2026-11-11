@@ -11,23 +11,15 @@ import type { StandbyHillStore } from "./standby-hill.ts";
 // Decision stays open only when its trick started here.
 //
 // Each carried Decision keeps its id. Pictures are read again off this machine's disk and their type read
-// again from their bytes; one that is not here leaves the Decision with a line that says so. Three kinds
-// close instead of staying open, each with its reason, because what they act on did not come along:
-//   - a trick's new version (`collie` ref `version`): the folder on this machine decides what waits here;
-//   - a trick proposal (`collie` ref `proposal`): its inert files stayed on the old lead;
-//   - a trick's Decision whose trick did not start here.
+// again from their bytes; one that is not here leaves the Decision with a line that says so. A trick's
+// Decision whose trick did not start here closes instead, with its reason. The copy holds no Collie card
+// but the carried notice (standby-hill.ts `readCarriedRecord`); the ones it dropped are counted.
 // A trick Decision that stays is moved to this machine (`memberId`, `trickHost`), and its key's map
 // entry comes along, so the trick does not post it again. Nothing is pushed: they are not new.
 
 /** The line a Decision carries when a picture of it did not come along. */
 export function pictureStayed(lead: string): string {
   return `A picture stayed on ${lead}.`;
-}
-export function proposalStayed(lead: string): string {
-  return `This proposal stayed on ${lead}. Ask for it again.`;
-}
-export function versionWaited(lead: string): string {
-  return `This new version waited on ${lead}. It was not carried over.`;
 }
 export const TRICK_NOT_STARTED = "Its trick did not start on this machine after the takeover.";
 
@@ -55,6 +47,8 @@ export interface AdoptHillResult {
   readonly open: number;
   /** Decisions stored closed, with their reason. */
   readonly closed: number;
+  /** Collie cards of the lead's list the copy did not hold. */
+  readonly dropped: number;
 }
 
 function withNote(decision: HillDecision, note: string): HillDecision {
@@ -70,16 +64,11 @@ function closed(decision: HillDecision, reason: string, at: number): HillDecisio
 /** Bring the carried Decisions into this machine's Hill. Never throws; a copy from another lead brings nothing. */
 export async function adoptCarriedHill(opts: AdoptHillOptions): Promise<AdoptHillResult> {
   const index = await opts.store.load();
-  if (index === null || index.from !== opts.lead) return { open: 0, closed: 0 };
+  if (index === null || index.from !== opts.lead) return { open: 0, closed: 0, dropped: 0 };
   const at = opts.now();
   const out: HillDecision[] = [];
   const media = new Map<string, HillMediaFile[]>();
   for (const carried of index.decisions.toSorted((a, b) => a.at - b.at)) {
-    const ref = carried.from.ref?.type;
-    if (carried.from.kind === "collie" && (ref === "version" || ref === "proposal")) {
-      out.push(closed(carried, ref === "version" ? versionWaited(opts.lead) : proposalStayed(opts.lead), at));
-      continue;
-    }
     const trickId = carried.from.kind === "trick" ? carried.from.trickId : null;
     if (trickId !== null && !opts.started.has(trickId)) {
       out.push(closed(carried, TRICK_NOT_STARTED, at));
@@ -105,5 +94,5 @@ export async function adoptCarriedHill(opts: AdoptHillOptions): Promise<AdoptHil
   // The switch moves with the crown; a machine that already chose for itself keeps its own choice.
   if (!existsSync(hillSwitchPath(opts.stateDir))) writeHillSwitch(opts.stateDir, index.on, at);
   const closedStored = out.filter((d) => d.state !== "open" && stored.has(d.id)).length;
-  return { open: stored.size - closedStored, closed: closedStored };
+  return { open: stored.size - closedStored, closed: closedStored, dropped: index.dropped };
 }

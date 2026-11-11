@@ -527,16 +527,13 @@ of pictures, newest first. The deputy shows none of them while the lead is alive
 how many come along, and the Take over button or `collie promote` on the deputy puts them on the
 deputy's Hill. Each keeps its place, and no phone gets a second notification for it.
 
-Some questions close at the takeover, each with its reason on the card:
+A picture that did not reach the deputy is left out, and the card says "A picture stayed on
+<old lead>." A question from a trick that did not start on the deputy closes, with the reason "Its
+trick did not start on this machine after the takeover."
 
-- A picture that did not reach the deputy is left out, and the card says "A picture stayed on
-  <old lead>."
-- A new version of a trick: "This new version waited on <old lead>. It was not carried over." The
-  deputy shows its own new versions.
-- A proposal for a new trick: "This proposal stayed on <old lead>. Ask for it again." Its files do not
-  come along.
-- A question from a trick that did not start on the deputy: "Its trick did not start on this machine
-  after the takeover."
+Collie's own cards about a trick's new version or a proposed trick stay on the old lead, because their
+files do not come along. The deputy shows its own new versions. Ask for a proposal again on the new
+lead.
 
 A question you answered on the lead stays answered. After the takeover the old lead takes no answer:
 "This machine is not the crew's lead any more. Answer on the new lead."

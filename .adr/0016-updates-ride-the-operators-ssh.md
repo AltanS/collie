@@ -299,9 +299,10 @@ trick it starts, and `collie promote` typed on the deputy. Each starts a trick o
 hashes to the version the person approved on the lead, and never writes over a folder the deputy
 already has. The copy is removed when the machine stops being that lead's deputy.
 
-The lead's open Decisions come along by the same rules (same date): records and pictures only. A trick
-proposal and a trick's new version close at the tap with their reason, as their files are never
-carried, so no carried card can install or approve code on the deputy.
+The lead's open Decisions come along by the same rules (same date): records and pictures only. Of
+Collie's own cards the deputy takes only the notice that a carried trick did not start, with its one OK
+answer; a trick proposal card and a new version card are dropped, as their files are never carried, so
+no carried card can install or approve code on the deputy.
 
 ### 5. What would justify revisiting
 
