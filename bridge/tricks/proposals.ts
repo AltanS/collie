@@ -7,7 +7,7 @@ import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/l
 import type { JsonObject } from "../json.ts";
 import type { TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { HILL_OFF, type HillCollieSender, type HillCollieVerdict, type HillOneAnswer, type HillPostAnswer, type HillPostOptions } from "../hill/service.ts";
-import { unsafeText } from "./code-hash.ts";
+import { codeHashOfFiles, isCodePath, unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { recoverProposalWrites } from "./proposal-install.ts";
@@ -91,6 +91,10 @@ export const PROPOSAL_GONE = "This proposal is no longer kept on this machine. A
 export const PROPOSAL_CHANGED = "The stored proposal does not match this card, so nothing was switched on.";
 export const PROPOSAL_NOT_OPTION = "That is not an option of this card.";
 export const PROPOSAL_NO_TRICKS = "Tricks are not set up on this Collie, so nothing was proposed.";
+/** A new version Collie could not compare with the one that runs (review 7 R9): no card shows "0 files". */
+export const PROPOSAL_NOT_COMPARED = "Collie could not compare this version with the one that runs, so it was not proposed. Try again, or ask your person to add it on the machine.";
+/** The stored copy moved while its card was made (review 7 R9). */
+export const PROPOSAL_STORE_MOVED = "The stored proposal changed while its card was made, so nothing was proposed. Propose it again.";
 
 /** Every warning kind, for a code search that failed. */
 const ALL_WARNINGS = ["spawn", "network", "write", "model", "import"] as const satisfies readonly (keyof typeof WARN_PLAIN)[];
@@ -412,6 +416,10 @@ export class TrickProposals {
       return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff: addedDiff(proposal.files), warnings: kinds, crew, replaces, sizes, helpers: shippedHelpers(proposal.files) });
     }
     const diff = await this.diff(base.baseDir, dir).catch((): VersionDiff => ({ files: [], counted: false }));
+    // A diff that failed, or one that names no file while the code is another, would show "0 files" while
+    // the yes installs the new code (review 7 R9).
+    const code = codeHashOfFiles(proposal.files.filter((file) => isCodePath(file.rel)));
+    if ((!diff.counted && diff.files.length > 0) || (diff.files.length === 0 && code !== base.baseHash)) return { ok: false, code: "cannot_show", error: PROPOSAL_NOT_COMPARED };
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
     return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, helpers: shippedHelpers(proposal.files) });
   }
@@ -425,6 +433,13 @@ export class TrickProposals {
     if (!made.ok) {
       await rm(dir, { recursive: true, force: true });
       return refused(made.code, made.error);
+    }
+    // The card read the stored copy (its warnings, a version's diff): it must still be the proposal's bytes
+    // as the card goes up (review 7 R9). The yes reads it back and hashes it again before it installs.
+    const back = await readStored(dir, new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel)));
+    if (back === null || proposalHash(back) !== hash) {
+      await rm(dir, { recursive: true, force: true });
+      return refused("failed", PROPOSAL_STORE_MOVED);
     }
     const { card } = made;
     const input: HillPostInput = { ...card, requestId: proposalRequestId(id, hash, proposal.requestId), expiresAt: now + PROPOSAL_EXPIRY_MS };

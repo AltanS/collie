@@ -485,7 +485,11 @@ keeps one card, as before. Otherwise the card is one Decision with a `group` of 
   private-use or unassigned code point. The phone's `diff` rule refuses the same characters. A line
   with a run of more than 40 spaces (a tab counts as two) is refused too (`cannot_show`): on a Decision's
   card the phone soft-wraps code, each row that goes on marked `↪` in the sign column, and such a run
-  would still push the code after it far down and out of the reader's way;
+  would still push the code after it far down and out of the reader's way. A new version whose diff
+  against the running one failed, or names no file while its code is another, is refused
+  (`cannot_show`, "Collie could not compare this version with the one that runs, so it was not
+  proposed. Try again, or ask your person to add it on the machine."), and the stored copy is read back
+  and hashed once its card is made: a copy that moved meanwhile is not posted;
 - each card is stored with the SHA-256 of its view, and the group with a digest over the Decision's ref
   and the cards' hashes in order. Only `postCollie` makes a group: a post that carries `group` or
   `parts` from an agent, a trick, the walky socket or a crew member is refused, and the decisions file

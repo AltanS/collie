@@ -12,7 +12,9 @@ import { TRICKS_DIR } from "./paths.ts";
 import { PROPOSAL_AUTHOR_WORDS } from "./proposal-card.ts";
 import {
   PROPOSAL_CHANGED,
+  PROPOSAL_NOT_COMPARED,
   PROPOSAL_ORPHAN_MS,
+  PROPOSAL_STORE_MOVED,
   PROPOSALS_MEMBER_OPEN_MAX,
   PROPOSALS_OPEN_MAX,
   PROPOSALS_MACHINE_HOUR_MAX,
@@ -32,6 +34,7 @@ import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { VersionCards } from "./version-card.ts";
 import { trickCodeHash } from "./code-hash.ts";
+import type { VersionDiff } from "./version-diff.ts";
 
 // TRICK PROPOSALS ON THE LEAD (crew slice 8), on a real Hill beside a real tricks runner: the store stays
 // inert, the card is Collie's own, the yes installs exactly the bytes the card showed, and every limit.
@@ -85,7 +88,7 @@ interface Lead {
   live: Set<string>;
 }
 
-async function lead(opts: { hillOff?: boolean } = {}): Promise<Lead> {
+async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff> } = {}): Promise<Lead> {
   const root = await tempDir();
   const configDir = join(root, "config");
   const stateDir = join(root, "state");
@@ -132,7 +135,10 @@ async function lead(opts: { hillOff?: boolean } = {}): Promise<Lead> {
     run: async () => ({ kind: "exited", code: 0, stdout: JSON.stringify({ v: 1, parts: [] }), stderr: "", ms: 1 }),
     versions: cards,
   });
-  proposals = new TrickProposals({ configDir, stateDir, hill, tricks: () => service, now: () => clock.t, warn: () => undefined, diff: async () => ({ files: [], counted: false }) });
+  // The real diff: a failed one refuses a new version's card (review 7 R9), so the rig no longer fakes one.
+  const deps: ConstructorParameters<typeof TrickProposals>[0] = { configDir, stateDir, hill, tricks: () => service, now: () => clock.t, warn: () => undefined };
+  if (opts.diff !== undefined) deps.diff = opts.diff;
+  proposals = new TrickProposals(deps);
   await proposals.start();
   return { root, configDir, stateDir, clock, hill, store, service, cards, proposals, sent, live };
 }
@@ -514,6 +520,39 @@ describe("a trick id that exists", () => {
     await settle(m);
     expect(await snapshot(m)).toEqual(before);
     expect(openCards(m).map((d) => d.title)).toEqual(["Use the new version of auto?"]);
+  });
+
+  test("a new version whose diff failed, or names no file while the code is another, is refused: no card shows 0 files (review 7 R9)", async () => {
+    for (const diff of [
+      async (): Promise<VersionDiff> => {
+        throw new Error("git died");
+      },
+      async (): Promise<VersionDiff> => ({ files: [], counted: true }),
+    ]) {
+      const l = await lead({ diff });
+      await proposedOn(l, "legs");
+      const v2 = proposal("legs", "new\n");
+      expect(await l.proposals.propose(v2, AGENT)).toEqual({ ok: false, code: "cannot_show", error: PROPOSAL_NOT_COMPARED });
+      expect(openCards(l)).toEqual([]);
+      expect(await stat(l.proposals.storeDir("legs", v2.hash)).catch(() => null)).toBeNull();
+    }
+  });
+
+  test("a stored copy that changes while its card is made is not posted (review 7 R9)", async () => {
+    let swap: string | null = null;
+    const l = await lead({
+      diff: async (_base, next) => {
+        // A process of the same user rewrites the stored program while the card reads it.
+        if (swap !== null) await writeFile(join(next, "program.ts"), swap);
+        return { files: [{ rel: "program.ts", change: "changed", plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-console.log(1)", "+new"] }], counted: true };
+      },
+    });
+    await proposedOn(l, "legs");
+    swap = "evil()\n";
+    const v2 = proposal("legs", "new\n");
+    expect(await l.proposals.propose(v2, AGENT)).toEqual({ ok: false, code: "failed", error: PROPOSAL_STORE_MOVED });
+    expect(openCards(l)).toEqual([]);
+    expect(await stat(l.proposals.storeDir("legs", v2.hash)).catch(() => null)).toBeNull();
   });
 
   test("a proposed trick that is on: the version waits inert on one card, and no file outside the store moves before the yes", async () => {
