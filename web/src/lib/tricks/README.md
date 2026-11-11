@@ -929,6 +929,17 @@ written as what a trick, or a person who controls one, can do today.
   list's code.
 - **The changed check and the write are two steps.** The code hash is taken in the runner's lane right
   before the write; a file edited in the instant between them is replaced as code.
+- **The byte cap measures the disk, not what git inflates.** The 20 MiB cap reads the temp repository's
+  size every 200 ms and once after the fetch. git inflates each object it receives in memory to check its
+  id, and a small pack of few objects is unpacked as loose objects: a highly compressed object can take
+  far more memory than the disk shows before the cap sees anything. The file caps (5 MB, 300 files) are
+  checked from git's own sizes before any file is read out, so such an object is never written into the
+  tricks folder.
+- **A server with a valid github.com certificate can hold the bridge for up to two minutes.** Whoever
+  answers for `github.com` with a certificate the system trusts (a captive proxy with an installed root, a
+  compromised CA) can stream data until the byte cap or the two-minute cap ends the fetch, using memory,
+  disk under `<stateDir>/tricks/` and one git process group meanwhile. What it sends is refused unless the
+  commit, the code hash and the extras hash are the list's; nothing of it is written into the tricks folder.
 
 ## Places in the app
 
