@@ -130,8 +130,16 @@ an action, a node of its view, a node's `attrs`), is no longer ignored: that par
 may carry a meaning this Collie cannot keep, such as a confirm, so the part is not drawn at all, and the
 runner keeps no last good version of it either (it is not in `refusedParts`): that version would be stale
 for good. A node of a kind, or a part in a place, this Collie does not draw is still only left out with
-its `dropped` note, since leaving it out changes no meaning of what does draw. The document's own keys
-and contract 1 stay as above. The bridge and `collie trick dev` pass the manifest's `contract` to the
+its `dropped` note, since leaving it out changes no meaning of what does draw. Contract 1 stays as above.
+
+**The document's own keys stay open at contract 2** (fault C, decided). A key this Collie does not know at
+the top of a document (beside `v`, `parts`, `asOf`, `fresh`, `decisions`) is ignored with an `ignored`
+note, at every contract, and every part still draws. A top-level key cannot change what a part means:
+the parser reads each part from the part alone and acts on no top-level key it does not know, so ignoring
+one leaves no part drawn with a lost meaning. Refusing the document instead would blank every part of a
+trick for one stray key. The rule that keeps this true for a later Collie: a key that changes how a part
+draws or what a tap does goes in the part, never at the top of the document. The decisions are read
+strictly as before. The bridge and `collie trick dev` pass the manifest's `contract` to the
 parse (`ParseTrickDocumentOptions.contract`); a view an agent draws (`agent-view/wire.ts`) has its own
 strict reader and does not take this path.
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
-import { CLOSED_KEY_LINE, parseFacts, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { CLOSED_KEY_LINE, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { legacyPowersOf, powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
@@ -1731,6 +1731,23 @@ describe("fault C: a contract 2 trick's part is read closed", () => {
     expect(reply.present).toEqual(["lodge/legs/belt"]);
     expect(reply.tricks[0]?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.part])).toEqual([["unknown-key", "/parts/1/view/0/attrs/sends", "legs"]]);
     expect(reply.tricks[0]?.refusals?.[0]?.reason).toContain(CLOSED_KEY_LINE);
+  });
+
+  test("fault C: a key this Collie does not know at the top of a contract 2 document is ignored with a note; every part draws", async () => {
+    const stray = JSON.stringify({ v: 1, asOf: "2026-11-08T09:00:00Z", theme: "dark", parts: [{ at: "belt", id: "belt", mark: { label: "1" } }, { at: "session", id: "legs", view: [{ kind: "para", text: "x" }] }] });
+    const r = await rig([exited(stray)]);
+    await makeTrick(r.configDir, "legs", TWO);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const reply = await r.service.reply(undefined);
+    expect(reply.present).toEqual(["lodge/legs/belt", "lodge/legs/legs"]);
+    expect(reply.tricks[0]).toMatchObject({ state: "ok" });
+    expect(reply.tricks[0]?.refusals).toBeUndefined();
+    // The rule, at the parse the bridge runs: a note, never a refusal, and the document stands.
+    const parsed = parseTrickDocumentText(stray, { declared: ["belt", "session"], contract: 2 });
+    expect(parsed.documentRefused).toBe(false);
+    expect(parsed.refusals).toEqual([]);
+    expect(parsed.notes.map((note) => [note.code, note.path])).toEqual([["ignored", "/theme"]]);
   });
 
   test("fault C: the same output from a contract 1 trick draws the part as today, the key ignored", async () => {
