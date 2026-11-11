@@ -453,8 +453,8 @@ version before. Remove stays as it is.
 (`powers`, `powersOf` of the manifest as the approving Collie read it). The bridge runs a trick, draws its
 parts, serves its pictures, posts its Decisions and opens its view only while that stored value equals
 `powersOf` of the approved copy as THIS Collie reads it. A newer Collie can read a right an older one did
-not (a place word it did not know, rules it did not hash), so after an update the two may differ; an entry
-whose powers were never recorded differs too. Then the trick stops: no run, its parts and open Decisions
+not (a place word it did not know, rules it did not hash), so after an update the two may differ. When
+the two differ, the trick stops: no run, its parts and open Decisions
 go, a tap is refused, and the row says "Asks for a new right. Switch it on again." (`rightsMoved: true` on
 the wire, so the phone says it in its own words). The log and the audit (`trick.rights.moved`) say it once
 per approval, and the Hill gets one card of Collie's own for that trick and mismatch, which does not post
@@ -464,6 +464,14 @@ again after a restart. Switching it on again is the normal approval, which store
 when it holds something, so an absent key equals its neutral value (absent, or an empty list; the empty
 string is a value). A trick approved by the first build that stored powers, with no new place word,
 reads the same powers today.
+
+An entry with no stored powers (`powers: null`) comes from the switch file of the build before them
+(version 1 or 2, `{ at, hash }`), which the bridge migrates at boot. The migration writes no powers:
+stored powers are written only when a person approves, and this Collie's reader is not the one the person
+said yes under. The gate reads null as the rights that build could show (`legacyPowersOf`): the
+manifest's `env` and the places `belt`, `session`, `dashboard` and `status`, with no `inputs` and no later
+key. So a trick that asks for nothing more keeps running after the update, and a trick that asks for
+`tabbar`, `agent-view`, `inputs` or `rules` stops until a person switches it on.
 
 **The maintainer script.** `bun scripts/official-tricks.ts --repo-dir <checkout> --commit <sha>` writes
 the commit, each hash (the real hash function, over the folder git holds at that commit), each extras

@@ -31,7 +31,7 @@ import {
 import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
-import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
@@ -892,16 +892,19 @@ export class TricksService implements TricksSurface {
 
   /**
    * Fault B: whether the approved copy asks for other rights than its switch entry stores, as this Collie
-   * reads its manifest. Stored powers that are unknown (`null`, written by a test helper, a rollback or an
-   * undo to an entry from before powers) never hold: the trick stops and says so. A copy whose manifest is
-   * refused is no question of rights; it does not run anyway.
+   * reads its manifest. Stored powers that are unknown (`null`: a switch file from before stored powers,
+   * migrated at boot, or an undo to such an entry) hold only what that build could show the person
+   * (approved.ts `legacyPowersOf`): `env` and the old places. Any other right stops the trick. A copy whose
+   * manifest is refused is no question of rights; it does not run anyway.
    */
   private rightsMovedOf(rt: TrickRuntime, run: ApprovedRun): RightsMoved | null {
     const manifest = run.found.manifest;
     if (manifest === undefined) return null;
     const now = powersOf(manifest);
     const stored = rt.entry?.powers ?? null;
-    return stored === now ? null : { hash: run.hash, stored, now };
+    // Null is an approval from before stored powers (a migrated entry, an undo to one): it holds what that build could show.
+    const held = stored ?? legacyPowersOf(manifest);
+    return held === now ? null : { hash: run.hash, stored, now };
   }
 
   /**

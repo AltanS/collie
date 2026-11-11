@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
 import { CLOSED_KEY_LINE, parseFacts, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
-import { powersOfDir } from "./approved.ts";
+import { legacyPowersOf, powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
@@ -1537,7 +1537,8 @@ describe("migrating switches.json from version 2 at boot", () => {
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect([file.v, file.layout]).toEqual([2, 3]);
     expect(file.on.legs).toMatchObject({ at: "2026-11-01T00:00:00.000Z", hash: code.hash, auto: false, by: "migrated" });
-    expect(file.on.legs.powers).toMatch(/^[0-9a-f]{16}$/);
+    // Fault B: the migration stores no powers of this reader; the gate reads null as the old build's rights.
+    expect(file.on.legs.powers).toBeNull();
     expect(r.warnings.some((line) => line.includes("version 3 now: 1 trick(s) run from an approved copy, 0 wait"))).toBe(true);
   });
 
@@ -1646,9 +1647,39 @@ describe("fault B: a trick runs only while the rights it was approved with are t
     expect((await r.service.reply(undefined)).tricks[0]?.rightsMoved).toBeUndefined();
   });
 
-  test("fault B: an approval whose powers were never recorded is a mismatch too, never a silent run", async () => {
-    const r = await rig([exited(belt("1"))]);
-    const dir = await makeTrick(r.configDir, "legs", VIEW, { "legs.sh": "#!/bin/sh\necho 1\n" });
+  test("fault B: an update from a switch file of the build before stored powers keeps a trick on whose places that build drew", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1")), exited(belt("2"))], { audit: (e) => audits.push(e.action) });
+    const legs = await makeTrick(r.configDir, "legs", VIEW, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    // A place that build did not draw (it knew `tab`, not `tabbar`): the person never saw it, so it waits.
+    const tabs = await makeTrick(r.configDir, "tabs", 'id = "tabs"\nname = "Tabs"\nrun = "./t.sh"\nevery = "30s"\nplaces = ["belt", "tabbar"]\n', { "t.sh": "#!/bin/sh\necho 1\n" });
+    // The file exactly as that build (M94, f480c61d8) wrote it: version 2, `{ at, hash }`, no powers.
+    const at = "2026-11-09T20:00:00.000Z";
+    const on = { legs: { at, hash: await codeHashOf(legs) }, tabs: { at, hash: await codeHashOf(tabs) } };
+    await mkdir(join(r.stateDir, TRICKS_DIR), { recursive: true });
+    await writeFile(join(r.stateDir, TRICKS_DIR, "switches.json"), `${JSON.stringify({ v: 2, on }, null, 2)}\n`);
+    await tickAt(r, T0);
+    await tickAt(r, T0 + 30_000);
+    // The migration copied both and wrote no powers: the current reader is not the one the person said yes under.
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.layout).toBe(3);
+    expect(file.on.legs).toMatchObject({ hash: on.legs.hash, by: "migrated", powers: null });
+    expect(file.on.tabs).toMatchObject({ hash: on.tabs.hash, by: "migrated", powers: null });
+    const reply = await r.service.reply(undefined);
+    const row = (id: string) => reply.tricks.find((t) => t.id === id);
+    expect(row("legs")).toMatchObject({ on: true, state: "ok" });
+    expect(row("legs")?.rightsMoved).toBeUndefined();
+    expect(r.specs.map((spec) => factsOf(spec).trigger.kind)).toEqual(["start", "timer"]);
+    expect(row("tabs")).toMatchObject({ state: "stopped", error: RIGHTS_LINE, rightsMoved: true });
+    expect(r.warnings.filter((line) => line.includes(RIGHTS_LINE))).toEqual([expect.stringContaining("tabs: ")]);
+    expect(audits.filter((a) => a === "trick.rights.moved")).toHaveLength(1);
+  });
+
+  test("fault B: an entry with no stored powers holds only what the build before them could show: no inputs, no agent view", async () => {
+    const r = await rig(null);
+    const toml = 'id = "legs"\nname = "Browser leg"\ncontract = 2\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt"]\ninputs = ["*.md"]\n';
+    const dir = await makeTrick(r.configDir, "legs", toml, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    expect(legacyPowersOf({ places: ["belt"] })).toBe(OLDER_READER);
     await eraSwitch(r, dir, null);
     await tickAt(r, T0);
     expect(r.specs).toHaveLength(0);

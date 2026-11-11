@@ -163,8 +163,8 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     await scan(l, T0 + 60_000);
     expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_GONE]]);
     expect((await l.service.reply(undefined)).tricks[0]?.rightsMoved).toBeUndefined();
-    // Powers never recorded are another mismatch: a card of its own.
-    await setPowers(f, null);
+    // Other stored powers are another mismatch: a card of its own.
+    await setPowers(f, "0000000000000000");
     await scan(l, T0 + 120_000);
     expect(cards(l).map((decision) => decision.state)).toEqual(["withdrawn", "open"]);
   });

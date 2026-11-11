@@ -326,6 +326,26 @@ export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "input
   return powersHash({ env, inputs, places }, later);
 }
 
+/**
+ * The places the build before stored powers drew (switch file version 2, M94 at f480c61d8: `belt`,
+ * `session`, `tab`, `view`, `dashboard`, `status`) that this Collie still draws. `tabbar` and `agent-view`
+ * came later, so that build never showed them to the person.
+ */
+export const LEGACY_PLACES: readonly string[] = ["belt", "dashboard", "session", "status"];
+
+/**
+ * The rights an approval from before stored powers could have covered, as a powers hash: the manifest's
+ * `env` and the places of {@link LEGACY_PLACES} it names, with no `inputs` and no later key. That build
+ * read `env` and `places` and nothing else that reaches beyond the code. The gate compares this with
+ * {@link powersOf} for an entry whose powers are `null`: a trick that asks for nothing more runs on after
+ * an update, and one that asks for a right that build could not show stops until a person says yes.
+ */
+export function legacyPowersOf(manifest: Pick<TrickManifest, "env" | "places">): string {
+  const env = [...new Set(manifest.env ?? [])].toSorted();
+  const places = [...new Set<string>(manifest.places.filter((place) => LEGACY_PLACES.includes(place)))].toSorted();
+  return powersHash({ env, inputs: [], places });
+}
+
 /** The three first power keys: always hashed, each a sorted list. */
 export interface FirstPowers {
   env: readonly string[];
@@ -470,24 +490,30 @@ async function readText(path: string): Promise<string | null> {
  * keeps its place but approves nothing (`hash: null`): its old bytes are gone, so it waits for a person's
  * yes to the current folder. Version 3 is written only after the copies exist, under the lock, against the
  * file as it is then. Null when there was nothing to migrate.
+ *
+ * NO POWERS ARE WRITTEN HERE (fault B). A version 1 or 2 entry holds no powers, and this Collie's reader
+ * is not the one the person said yes under: powers computed now would approve every right it reads that
+ * the old one did not. So a migrated entry stores `powers: null`, and the gate reads null as the rights
+ * the build before stored powers could have shown ({@link legacyPowersOf}). Stored powers are written only
+ * at an approval by a person.
  */
 export async function migrateSwitches(opts: MigrateOptions): Promise<Migration | null> {
   const fs = opts.fs ?? diskTrickFs;
   const read = parseSwitches(await readText(switchesPath(opts.stateDir)));
   const version = read.switches.version ?? 0;
   if (read.problem !== null || version === 0 || version >= 3) return null;
-  const copied = new Map<string, { hash: string; powers: string | null }>();
+  const copied = new Map<string, string>();
   for (const [id, entry] of read.switches.on) {
     if (entry.hash === null || !isTrickId(id)) continue;
     // A file the previous build rewrote after a rollback (B4): the approved copy of that hash may still
     // be on disk, and it holds exactly the bytes approved, whatever the folder holds now.
     const held = approvedCopyDir(opts.configDir, id, entry.hash);
     if ((await verifyCopy(held, entry.hash, fs)).ok) {
-      copied.set(id, { hash: entry.hash, powers: await powersOfDir(held, id, fs) });
+      copied.set(id, entry.hash);
       continue;
     }
     const snap = await snapshotTrick({ src: join(tricksConfigDir(opts.configDir), id), parent: approvedTrickDir(opts.configDir, id), expect: entry.hash, fs, platform: opts.platform });
-    if (snap.ok) copied.set(id, { hash: snap.hash, powers: await powersOfDir(snap.dir, id, fs) });
+    if (snap.ok) copied.set(id, snap.hash);
   }
   const out: Migration = { kept: [], waiting: [] };
   await updateSwitches(opts.stateDir, (now) => {
@@ -496,9 +522,8 @@ export async function migrateSwitches(opts: MigrateOptions): Promise<Migration |
     out.kept = [];
     out.waiting = [];
     for (const [id, entry] of now.on) {
-      const copy = copied.get(id);
-      const kept = copy !== undefined && copy.hash === entry.hash;
-      next.set(id, { at: entry.at, hash: kept ? copy.hash : null, auto: false, by: "migrated", powers: kept ? copy.powers : null });
+      const kept = entry.hash !== null && copied.get(id) === entry.hash;
+      next.set(id, { at: entry.at, hash: kept ? entry.hash : null, auto: false, by: "migrated", powers: null });
       (kept ? out.kept : out.waiting).push(id);
     }
     return { on: next, version: 3 };

@@ -338,7 +338,8 @@ describe("approveFolder and migration", () => {
     expect(done).toEqual({ kept: ["legs"], waiting: ["gone", "../x"] });
     const file = parseSwitches(await readFile(switchesPath(stateDir), "utf8")).switches;
     expect(file.version).toBe(3);
-    expect(file.on.get("legs")).toMatchObject({ hash, by: "migrated" });
+    // Fault B: no powers from this reader; null holds what the build before stored powers could show.
+    expect(file.on.get("legs")).toMatchObject({ hash, by: "migrated", powers: null });
     expect(file.on.get("gone")).toMatchObject({ hash: null, by: "migrated" });
     expect((await verifyCopy(approvedCopyDir(configDir, "legs", hash), hash)).ok).toBe(true);
     // Run again: a version 3 file has nothing to migrate.
