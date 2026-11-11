@@ -707,6 +707,10 @@ written as what a trick, or a person who controls one, can do today.
   code.** A trick can say it only reads and still write. The About sheet says so under the text
   ("Written by the trick's author. Collie did not check it."). The rows under "What it does" and the
   warnings are the bridge's own facts, from the manifest and the code search.
+- **A program that runs as the user can switch a trick on, or pair a device, without a tap.**
+  `collie trick on` and `collie pair` refuse in an agent's pane, but a program that writes the switch
+  file, an approved copy or the device store skips both. The list of what such a program can do is in
+  [`docs/security.md`, "What a program running as you can still do"](../../../../docs/security.md#what-a-program-running-as-you-can-still-do).
 
 ## Places in the app
 
