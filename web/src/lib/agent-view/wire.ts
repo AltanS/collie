@@ -37,7 +37,7 @@
 //
 // A TAP IS SENT BY THE BRIDGE. The phone posts `view: { trick, session, rev, control }` on its send; the
 // bridge builds the line from ITS stored screen ({@link viewTapWords}) behind Collie's head
-// ({@link VIEW_HEAD_RE}), and no other door may type that head (the Send Protocol's `textRefusal` and the doors that neutralise).
+// ({@link isViewHeadLine}), and no other door may type that head (the Send Protocol's `textRefusal` and the doors that neutralise).
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import {
@@ -53,7 +53,7 @@ import {
   HILL_WHY_MAX,
   type HillMedia,
 } from "../hill/wire";
-import { hasHiddenChar } from "../hidden-chars";
+import { hasHiddenChar, isHiddenChar } from "../hidden-chars";
 import { DOCUMENT_VERSION, isTrickId, PART_MAX_BYTES, parseDecisionView, parseTrickDocument, VIEW_LIMITS, type Refusal, type View, type ViewNode } from "../tricks/schema";
 
 /** A screen's title, in characters. */
@@ -115,30 +115,106 @@ export const VIEW_WRITES_PER_MINUTE = 120;
 export const VIEW_SENDS_PER_MINUTE = 20;
 
 /**
- * Whether a line starts with what an agent could read as a view head: `[view:` (blanks inside the bracket
- * allowed), or the head of the native build before agent views, `[morph ` or `[morph]`. Leading blanks
- * and invisible format characters (a zero-width space, a BOM) and the letter case do not matter, so
- * `  [VIEW : x a] From Operator:` counts, and so does a line with no `from operator:` after the bracket:
- * the rule is wide on purpose (one head, one door, agent views SECURITY rule 2).
+ * Line breaks of every kind a door or a terminal may honour: CR LF, CR, LF, VT, FF, NEL, LS and PS. A
+ * head is looked for after each one, wider than `sendLines` (which drops NEL), so no break hides one.
  */
-export const VIEW_HEAD_RE = /^[\s\p{Cf}]*\[[\s\p{Cf}]*view[\s\p{Cf}]*:/iu;
-/** The old native head: `[morph <address>] from operator:` and `[morph] from operator:`. */
-export const OLD_HEAD_RE = /^[\s\p{Cf}]*\[[\s\p{Cf}]*morph[\s\p{Cf}\]]/iu;
+const LINE_BREAK = /\r\n|[\r\n\v\f\u0085\u2028\u2029]/u;
+/**
+ * A terminal control sequence (CSI), the bracketed-paste markers among them. The typing path drops only
+ * its ESC, a terminal may act on the whole: a line is read both ways, since `ESC [v` is itself a CSI.
+ */
+// eslint-disable-next-line no-control-regex -- the point is to find a control sequence
+const CSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/gu;
+/** Combining marks, removed after NFD so `v̲iew` reads `view`. */
+const MARK = /\p{M}/gu;
+/**
+ * Look-alikes NFKC leaves alone, for the characters of `[view:`, `[morph`, `] from operator:` (review 9
+ * M2): Cyrillic and Greek letters, small capitals, and brackets and colons of other scripts.
+ */
+const CONFUSABLE = new Map(Object.entries({
+  "\u0430": "a", "\u0435": "e", "\u0456": "i", "\u043c": "m", "\u043e": "o", "\u0440": "p", "\u0442": "t",
+  "\u04bb": "h", "\u0475": "v", "\u051d": "w", "\u0491": "r",
+  "\u03b1": "a", "\u03b5": "e", "\u03b7": "n", "\u03b9": "i", "\u03bc": "m", "\u03bd": "v", "\u03bf": "o",
+  "\u03c1": "p", "\u03c4": "t", "\u03c9": "w",
+  "\u1d00": "a", "\u1d07": "e", "\u026a": "i", "\u1d0d": "m", "\u0274": "n", "\u1d0f": "o", "\u1d18": "p",
+  "\u0280": "r", "\u1d1b": "t", "\u1d20": "v", "\u1d21": "w", "\u029c": "h", "\ua730": "f",
+  "\u27e6": "[", "\u27e8": "[", "\u3014": "[", "\u3010": "[", "\u3016": "[", "\u3018": "[", "\u301a": "[",
+  "\u2768": "[", "\u276a": "[", "\u2772": "[", "\u2045": "[", "\u298b": "[", "\u298d": "[", "\u298f": "[",
+  "\u27e7": "]", "\u27e9": "]", "\u3015": "]", "\u3011": "]", "\u3017": "]", "\u3019": "]", "\u301b": "]",
+  "\u2769": "]", "\u276b": "]", "\u2773": "]", "\u2046": "]", "\u298c": "]", "\u298e": "]", "\u2990": "]",
+  "\ua789": ":", "\u2236": ":", "\u02f8": ":", "\u0589": ":", "\u05c3": ":", "\u16ec": ":", "\ufe55": ":",
+} satisfies Record<string, string>));
+/** What a head may stand behind and still read as one: blanks, quote and list marks, emphasis, a list number. */
+const LEAD_IN = /^(?:[\s>\-*+#_~`"'|\u201c\u201d\u201e\u2018\u2019\u00ab\u00bb]|\d+[.)])*/u;
+/** The view head, and the head of the native build before agent views, at the start of a folded line. */
+const HEAD_START = /^\[\s*(?:view\s*:|morph(?:[\s\]]|$))/u;
+/** How far into a line a `[` may sit for `] from operator:` after it to count as a head. */
+const OPERATOR_REACH = 80;
+/** `] from operator:` after a `[`: what an agent reads as the operator speaking, wherever the bracket opens. */
+const OPERATOR_MARK = /\]\s*from\s+operator\s*:/u;
 
-/** Whether `text` holds a line that starts with a view head or the old head (every line, not only the first). */
+/**
+ * One line as an agent would read it once typed, folded for comparison: every hidden character (the
+ * shared {@link isHiddenChar}, which holds Cc, so ESC and DEL too) removed as the typing path removes
+ * them, a tab made a space, then NFKC, lower case, combining marks removed and look-alikes folded.
+ */
+export function foldViewLine(line: string): string {
+  let kept = "";
+  for (const ch of line) {
+    if (ch === "\t") kept += " ";
+    else if (!isHiddenChar(ch)) kept += ch;
+  }
+  const folded = kept.normalize("NFKC").toLowerCase().normalize("NFD").replace(MARK, "");
+  let out = "";
+  for (const ch of folded) out += CONFUSABLE.get(ch) ?? ch;
+  return out;
+}
+
+/**
+ * THE head rule (agent views SECURITY rule 7, review 9 M2), one function for every door: whether one line,
+ * once cleaned and folded ({@link foldViewLine}), reads as a view head. It does when, after a lead-in of
+ * blanks, quote marks, list marks, emphasis or a list number, it starts `[view:` or `[morph` (a blank or
+ * `]` or the end after it), blanks inside allowed; or when a `[` within its first 80 characters is
+ * followed later on the line by `] from operator:`. No `from operator:` is needed for the first form.
+ * The line is read as typed (ESC dropped) and with control sequences removed; a head in either counts.
+ */
+export function isViewHeadLine(line: string): boolean {
+  return foldedHead(foldViewLine(line)) || foldedHead(foldViewLine(line.replace(CSI, "")));
+}
+
+/** {@link isViewHeadLine} on a line {@link foldViewLine} already folded. */
+function foldedHead(folded: string): boolean {
+  if (HEAD_START.test(folded.replace(LEAD_IN, ""))) return true;
+  const open = folded.indexOf("[");
+  return open !== -1 && open < OPERATOR_REACH && OPERATOR_MARK.test(folded.slice(open + 1));
+}
+
+/** Whether `text` holds a line, after any kind of line break, that {@link isViewHeadLine} reads as a head. */
 export function hasViewHead(text: string): boolean {
-  return text.split(/\r\n|[\r\n\v\f\u0085\u2028\u2029]/u).some((line) => VIEW_HEAD_RE.test(line) || OLD_HEAD_RE.test(line));
+  return text.split(LINE_BREAK).some(isViewHeadLine);
+}
+
+/** Whether one character folds to `[`: the characters {@link neutraliseViewHeads} turns into `(`. */
+function opensBracket(ch: string): boolean {
+  return foldViewLine(ch) === "[";
 }
 
 /**
  * A text Collie composes from stored words (a Hill receipt, the crew state's tell), with every line that
- * would read as a view head made harmless: its first `[` becomes `(`. Every other character stays.
+ * {@link isViewHeadLine} reads as a head made harmless: each character on it that folds to `[` becomes
+ * `(`, so neither form of the rule can match it. Every other character and every other line stays.
  */
 export function neutraliseViewHeads(text: string): string {
-  return text.replace(/(^|\r\n|[\r\n\v\f\u0085\u2028\u2029])([^\r\n\v\f\u0085\u2028\u2029]*)/gu, (whole: string, brk: string, line: string) => {
-    if (!VIEW_HEAD_RE.test(line) && !OLD_HEAD_RE.test(line)) return whole;
-    return `${brk}${line.replace("[", "(")}`;
-  });
+  // Split with the breaks kept (odd places), so every line, the one after a leading break too, is read.
+  const parts = text.split(/(\r\n|[\r\n\v\f\u0085\u2028\u2029])/u);
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1 || !isViewHeadLine(part)) return part;
+      let out = "";
+      for (const ch of part) out += opensBracket(ch) ? "(" : ch;
+      return out;
+    })
+    .join("");
 }
 
 /**

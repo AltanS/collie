@@ -17,6 +17,7 @@ import type { CounterKey } from "./counters.ts";
 import { contractAsk, PROGRAM_COUNTER_KEY, PROGRAM_LOCK_MS, programRevision, ProgramDriver, type ProgramPort } from "./durable-driver.ts";
 import { SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
+import { HEAD_CASES, NOT_HEAD_CASES } from "../agent-view/testdata/head-cases.ts";
 
 const PANE = "conv-1";
 const TARGET = { session: "desk", paneId: PANE, harness: "durable" } as const;
@@ -724,5 +725,24 @@ describe("the routes on a program session", () => {
     const body = (await res.json()) as { receipt: { outcome: string; channel: string; hash: string } };
     expect(body.receipt).toMatchObject({ outcome: "sent", channel: "program", hash: ask.hash });
     expect(answers).toHaveLength(1);
+  });
+});
+
+// One head, one door (agent views SECURITY rule 7, review 9 M2): the program door refuses every case of the shared table.
+describe("agent view heads at the program door", () => {
+  test.each(HEAD_CASES.map((c, i) => [c.name, c.text, i] as const))("rule 7 (program door, shared case table): a text with a head is refused bad_head, and nothing reaches the program: %s", async (_name, text, i) => {
+    const { port, controls } = fakeProgram();
+    const { driver } = driverOf(port);
+    const answer = await driver.handle({ id: `drv-head-${String(1000 + i)}`, text, mode: "send" }, TARGET);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "bad_head" });
+    expect(controls).toEqual([]);
+  });
+
+  test.each(NOT_HEAD_CASES.map((c, i) => [c.name, c.text, i] as const))("rule 7 (program door, shared case table): a text with no head goes: %s", async (_name, text, i) => {
+    const { port, controls } = fakeProgram();
+    const { driver } = driverOf(port);
+    const answer = await driver.handle({ id: `drv-text-${String(1000 + i)}`, text, mode: "send" }, TARGET);
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(controls).toHaveLength(1);
   });
 });

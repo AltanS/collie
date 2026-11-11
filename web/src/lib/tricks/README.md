@@ -1041,7 +1041,13 @@ harness reported. Another mark makes it stale. A harness that reports no convers
 **One head, one door.** Only the view's own send may type a line that starts with a view head or the old
 `[morph` head. The Send Protocol refuses it `bad_head` for every other request (the composer, a steer, a
 held send, a crew-forwarded send, the bridge's own callers), WalkyTalky refuses it in a message and in a
-crew hop, and a Hill receipt or tell turns its bracket into a parenthesis.
+crew hop, and a Hill receipt or tell turns its bracket into a parenthesis. One function decides, for
+every door (`isViewHeadLine` in `web/src/lib/agent-view/wire.ts`): each line, after any kind of line
+break, is read as the typing path would leave it (every hidden character and control byte removed, read
+once more with control sequences removed), then folded with NFKC, lower case, no combining marks and a
+small map of look-alike letters, brackets and colons. It is a head when, after a lead-in of blanks, quote
+or list marks, emphasis or a list number, it starts `[view:` or `[morph`, or when a `[` in its first 80
+characters is followed later on the line by `] from operator:`.
 
 **The rules.** `collie trick view <trick> help --session <address>` asks the bridge, which answers only
 to a session whose view is on: Collie's core view rules, then the trick's APPROVED `rules.md` between two
