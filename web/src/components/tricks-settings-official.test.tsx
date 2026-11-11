@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -156,6 +156,44 @@ describe("From Collie: the section", () => {
     renderCard(store, true);
     await vi.waitFor(() => expect(section()).not.toBeNull());
     expect(within(officialRow("design-review")).getByRole("button", { name: "Add Design Review" })).toBeDisabled();
+  });
+});
+
+describe("From Collie: a fresh install", () => {
+  it("with no trick yet the card holds only the list; an add lands the trick, off, and its row appears", async () => {
+    const user = userEvent.setup();
+    let state: WireOfficialTrick["state"] = "absent";
+    serveList(() => ({ tricks: [{ ...REVIEW, state }] }));
+    server.use(
+      http.post("/api/tricks/official/:id/:mode", () => {
+        state = "added";
+        return HttpResponse.json({ id: "design-review", state: "added" });
+      }),
+    );
+    // What the bridge sends with no tricks folder and a list: a rev and no trick.
+    const { store, list } = await liveStore([]);
+    renderCard(store);
+    await vi.waitFor(() => expect(section()).not.toBeNull());
+    expect(screen.queryByText("collie trick init <id>")).toBeNull();
+    expect(section()?.className).not.toContain("border-t");
+    expect(screen.getByText("A trick runs as you.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add Design Review" }));
+    await list([installed(REVIEW, { provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: COMMIT } })]);
+    await vi.waitFor(() => expect(document.querySelector('[data-trick="design-review"]')).not.toBeNull());
+    expect(within(document.querySelector<HTMLElement>('[data-trick="design-review"]') ?? document.body).getByRole("switch")).not.toBeChecked();
+    await vi.waitFor(() => expect(section()).toBeNull());
+  });
+
+  it("an empty list and no trick shows the empty card as before; no tricks reply shows no card", async () => {
+    serveList(() => ({ tricks: [] }));
+    const { store } = await liveStore([]);
+    renderCard(store);
+    expect(await screen.findByText("collie trick init <id>")).toBeInTheDocument();
+    expect(section()).toBeNull();
+    cleanup();
+    const bare = createTricksStore({ fetchTricks: async () => Promise.reject(new Error("never asked")), tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+    renderCard(bare);
+    expect(screen.queryByTestId("tricks-settings")).toBeNull();
   });
 });
 

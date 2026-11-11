@@ -544,8 +544,16 @@ export class TricksService implements TricksSurface {
     this.timer = null;
   }
 
+  /**
+   * The tricks rev the snapshot carries, or undefined to send nothing: while the tricks folder exists, and,
+   * on a bridge that runs tricks (no `runsOn`), also while the From Collie list offers something. So a
+   * fresh install with no tricks folder shows Settings, Tricks with only the list, and the first add makes
+   * the folder (proposal-install.ts `writeNewTrick`), which the next scan reads with no restart.
+   */
   rev(): number | undefined {
-    return this.folderExists ? this.store.rev : undefined;
+    if (this.folderExists) return this.store.rev;
+    if ((this.deps.runsOn?.() ?? null) !== null || this.officialEntries().length === 0) return undefined;
+    return this.store.rev;
   }
 
   noteWatched(): void {

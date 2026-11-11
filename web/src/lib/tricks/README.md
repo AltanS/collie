@@ -315,7 +315,10 @@ the binary, read strictly by `bridge/tricks/official.ts`. An entry is a trick id
 about it, the repository (`https://github.com/AltanS/collie-tricks`, the only one the reader accepts),
 the folder in it, a full commit, the code hash that folder has at that commit, and an extras hash over what
 an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`). Settings, Tricks shows
-the entries that are not added under "From Collie", each with an Add button. Nothing ships switched on,
+the entries that are not added under "From Collie", each with an Add button. On a fresh install, with no tricks
+folder yet, the card shows too when the list is not empty (the bridge sends `tricksRev` for it), and holds
+only the list and the foot line; the first add makes `<configDir>/tricks/` (0700), and the next scan reads
+it with no restart. A crew member, which runs no tricks, shows no card without a folder, as before. Nothing ships switched on,
 and no trick code ships in the binary.
 
 **What a tap does.** `POST /api/tricks/official/<id>/add` (write, like the switch: a paired phone only,

@@ -1967,7 +1967,8 @@ export function startServer(opts: {
     // pane. Dropped HERE, on the member, so no lead of any version can merge, push or count one. The lead's
     // own body and a solo body are unchanged.
     if (forCrew) return body;
-    // Only when a tricks folder exists (M94): an install with no tricks sends the bytes it always sent.
+    // Only when a tricks folder exists (M94), or the From Collie list offers a trick on a bridge that runs
+    // tricks (service.ts `rev`): an install with neither sends the bytes it always sent.
     const tricksRev = opts.tricks?.rev();
     if (tricksRev !== undefined) body.tricksRev = tricksRev;
     // The trick sessions (M94 slice 03, bridge/tricks/panes.ts): the Tricks Space after the real Spaces, a

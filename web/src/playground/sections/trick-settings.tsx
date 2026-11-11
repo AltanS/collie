@@ -358,6 +358,7 @@ export function TrickSettingsSection(): ReactNode {
         />
       </Group>
       <Group title="From Collie">
+        <OfficialCard n={25} state="trick-settings-official-fresh" label="a fresh install: no trick yet, the list alone; tap Add, the trick lands, off" tricks={[]} entries={[REVIEW, INBOX, BUILDS]} />
         <OfficialCard n={17} state="trick-settings-official" label="two not added: tap Add, the trick lands among yours, off" tricks={HEALTHY.slice(0, 2)} entries={[REVIEW, INBOX, { ...BUILDS, state: "added" }]} />
         <OfficialCard n={18} state="trick-settings-official-adding" label="adding: tap Add, the spinner stays" tricks={HEALTHY.slice(0, 1)} entries={[REVIEW, INBOX]} answer="hangs" />
         <OfficialCard n={19} state="trick-settings-official-failed" label="a failed add: tap Add, the status line says why" tricks={HEALTHY.slice(0, 1)} entries={[REVIEW]} answer="refused" />

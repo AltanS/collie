@@ -565,6 +565,39 @@ describe.if(posix)("adding from the list", () => {
     expect((await roomy.official.install("legs", "add")).status).toBe(200);
   });
 
+  test("a fresh install with no tricks folder offers the list; the first add makes the folder, and its row appears, off, with no restart", async () => {
+    const repo = await fixtureRepo([V1]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    expect(await stat(join(r.configDir, TRICKS_DIR)).catch(() => null)).toBeNull();
+    await r.service.refresh(true);
+    // The snapshot carries a rev, so Settings shows the Tricks card, with no trick in it yet.
+    const before = r.service.rev();
+    expect(before).toBeDefined();
+    expect((await r.service.reply(undefined)).tricks).toEqual([]);
+    expect((await r.official.reply()).tricks.map((e) => e.state)).toEqual(["absent"]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    expect(((await stat(join(r.configDir, TRICKS_DIR))).mode & 0o777).toString(8)).toBe("700");
+    expect(r.service.rev()).not.toBe(before);
+    expect((await r.service.reply(undefined)).tricks.find((t) => t.id === "legs")).toMatchObject({ on: false });
+    // An empty list and no folder: no rev, so no card, as before.
+    const none = await rig([]);
+    await none.service.refresh(true);
+    expect(none.service.rev()).toBeUndefined();
+    // A crew member runs no tricks: no folder means no card there, list or not.
+    const member = new TricksService({
+      configDir: await tempDir(),
+      stateDir: await tempDir(),
+      memberId: "minibuch",
+      world: () => ({ machine: "desk", sessions: [], spaces: [] }),
+      env: { PATH: process.env.PATH ?? "" },
+      warn: () => {},
+      officialEntries: () => r.entries,
+      runsOn: () => ({ lead: "desk" }),
+    });
+    await member.refresh(true);
+    expect(member.rev()).toBeUndefined();
+  });
+
   test("a fetch folder a stopped bridge left behind goes at the next start; nothing else does", async () => {
     const r = await rig([fixtureEntry("file:///nowhere", "1".repeat(40), H1)]);
     const root = join(r.stateDir, TRICKS_DIR);

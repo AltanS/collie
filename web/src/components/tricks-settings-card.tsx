@@ -610,7 +610,8 @@ function TricksList({
           </p>
         )}
         <div data-slot="list-group">
-          {tricks.length === 0 && (
+          {/* A fresh install (no tricks folder yet) with a From Collie list: the card holds only the list. */}
+          {tricks.length === 0 && officialRows.length === 0 && (
             <div className="px-4 py-3">
               <p className="text-sm text-muted-foreground">{t("settings.tricks.none")}</p>
               {/* The command is a literal, not a sentence: it is typed on the machine, so it is never translated. */}
@@ -645,7 +646,7 @@ function TricksList({
           })}
         </div>
         {officialRows.length > 0 && (
-          <div data-section="official" className="border-t border-border pt-3">
+          <div data-section="official" className={cn("pt-3", (tricks.length > 0 || runsOn !== undefined) && "border-t border-border")}>
             <SectionLabel placement="above" className="px-4">
               {t("settings.tricks.official.label")}
             </SectionLabel>

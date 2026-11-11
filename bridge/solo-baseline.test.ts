@@ -268,8 +268,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
-  // Not a crew dimension: Collie tricks' rev (M94), present only when a `<configDir>/tricks/` folder
-  // exists, so a solo body with no tricks carries no such key and no golden byte moved.
+  // Not a crew dimension: Collie tricks' rev (M94), present when a `<configDir>/tricks/` folder exists or
+  // the From Collie list offers a trick (decided 2026-11-11: the card shows on a fresh install), and absent
+  // from these bodies, which run no tricks service, so no golden byte moved.
   tricksRev: true,
   // Not a crew dimension: the hill's revision (M96), absent until a session posts a decision on this
   // bridge, so a solo body with no decisions carries no such key and no golden byte moved.

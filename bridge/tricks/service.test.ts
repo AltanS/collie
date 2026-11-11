@@ -142,14 +142,24 @@ function factsOf(spec: RunSpec | undefined): TrickFacts {
 }
 
 describe("zero tricks", () => {
-  test("no folder: no rev, an empty reply, no log line, no file", async () => {
-    const r = await rig([exited(belt("x"))]);
+  test("no folder and no From Collie list: no rev, an empty reply, no log line, no file", async () => {
+    const r = await rig([exited(belt("x"))], { officialEntries: () => [] });
     r.service.noteWatched();
     await r.service.refresh(true);
     await r.service.tick();
     expect(r.service.rev()).toBeUndefined();
     expect(await r.service.reply(undefined)).toEqual({ rev: 1000, tricks: [], parts: [], present: [] });
     expect(r.warnings).toEqual([]);
+    expect(await readdir(r.stateDir)).toEqual([]);
+    expect(r.specs).toEqual([]);
+  });
+
+  test("no folder, but the list this release carries offers tricks: a rev, so the card shows the list; still no file", async () => {
+    const r = await rig([exited(belt("x"))]);
+    await r.service.refresh(true);
+    await r.service.tick();
+    expect(r.service.rev()).toBe(1000);
+    expect((await r.service.reply(undefined)).tricks).toEqual([]);
     expect(await readdir(r.stateDir)).toEqual([]);
     expect(r.specs).toEqual([]);
   });
