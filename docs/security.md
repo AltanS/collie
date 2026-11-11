@@ -46,8 +46,9 @@ The two device gates answer different questions, and you can run either, both, o
 Pairing requires no extra infrastructure. It fits a direct `tailscale serve` setup where no proxy
 exists to inject headers.
 
-Pairing gates every `/api` route, reads included. Only two routes stay open: `/api/health`, which
-a monitor or a load balancer asks, and `/api/pair`, which a device needs before it holds a token.
+Pairing gates every `/api` route, reads included. Only three routes stay open: `/api/health`, which
+a monitor or a load balancer asks, `/api/pair`, which a device needs before it holds a token, and
+`/api/pair/request`, which a device uses to [pair with a phone](#pair-with-a-phone).
 `/api/health` answers the build, the crew mode and three counts of the last seven days (how often the
 input box read as free, how often it could not be read, and how often a person sent by hand past a
 screen Collie could not read). The counts name no pane, no text and no person.
@@ -100,6 +101,40 @@ code or the token.
 ```json
 {"ts":"2026-11-11T09:30:00.000Z","action":"pair","device":"pixel","detail":{"label":"pixel","route":"loopback","forwardedFrom":"tailnet","mintSession":"main","mintPane":"w1:p3"}}
 ```
+
+### Pair with a phone
+
+A browser that is not paired can also ask a paired phone to let it in, with no terminal. In the
+browser, tap **Pair with your phone**. It shows a QR code, a 6-character code and a countdown of two
+minutes. Scan the QR code with the paired phone. The phone opens **Pair a device** in Collie, which
+shows the browser and system that ask (for example `Chrome on Linux`) and the network they ask from.
+Then it shows three codes. Tap the one the other screen shows. The phone also names the new device;
+the name follows the rules of `collie pair`, and a name in use gets a number.
+
+There is no plain Yes. A link alone can come from anyone who can reach Collie, so the right code is
+the proof that you see the other screen. A wrong tap ends the request for good, and so does **Not my
+device**. On the right tap, Collie pairs the browser with no expiry, as `collie pair` does without
+`--expires`, and hands the browser its token once. The browser stores it as the code form does and
+reloads.
+
+The rules the bridge keeps:
+
+- Only a paired device with full access can answer: its own token, and when `COLLIE_DEVICE_HEADER`
+  is set, a name on the allowlist too. The CLI's [local read credential](#the-clis-own-reads), a
+  browser that is not paired and a crew forward are refused.
+- With no paired device, the request is refused, and the browser says to run `collie pair`.
+- At most three requests are open at once, and one source address can ask six times in ten minutes.
+  Past that, the answer is `429` with `Retry-After`.
+- The browser polls with a secret that only it holds, sent in a header. A wrong secret reads the
+  same as an unknown request.
+- Requests live in memory. A bridge restart drops them, and the browser shows a new code. A token
+  the browser did not collect in time is revoked.
+- A crew member serves no browser door, so it answers `404`.
+
+Each step writes one line to the audit log: `pair-request` with the route, `pair-approve` with the
+approving device, the new label and both routes, and `pair-request-refused` with the reason
+`wrong-code`, `refused`, `expired` or `rate`. The log never holds a code, a request id, the secret or
+the token.
 
 ### The CLI's own reads
 
