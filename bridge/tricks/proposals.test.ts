@@ -276,6 +276,29 @@ describe("a proposal for a new trick", () => {
   });
 });
 
+describe("a write a crash cut short", () => {
+  test("is cleaned up at start: a stage goes, a temp goes, a set-aside folder comes back, the person's files stay", async () => {
+    const l = await lead();
+    const root = join(l.configDir, TRICKS_DIR);
+    await mkdir(join(root, ".collie-add-legs-0123abcd", "lib"), { recursive: true });
+    await writeFile(join(root, ".collie-add-legs-0123abcd", "program.ts"), "staged\n");
+    await mkdir(join(root, ".collie-old-gone-89abcdef", "media"), { recursive: true });
+    await writeFile(join(root, ".collie-old-gone-89abcdef", "media", "a.png"), "theirs");
+    await mkdir(join(root, ".collie-old-here-89abcdef"), { recursive: true });
+    await writeFile(join(root, ".collie-old-here-89abcdef", "keep.txt"), "theirs");
+    await mkdir(join(root, "here", "lib"), { recursive: true });
+    await writeFile(join(root, "here", "lib", ".collie-new-0123456789ab"), "half");
+    await writeFile(join(root, "here", ".notes"), "mine");
+    const fresh = new TrickProposals({ configDir: l.configDir, stateDir: l.stateDir, hill: l.hill, tricks: () => l.service, warn: () => undefined });
+    await fresh.start();
+    expect(await stat(join(root, ".collie-add-legs-0123abcd")).catch(() => null)).toBeNull();
+    expect(await readFile(join(root, "gone", "media", "a.png"), "utf8")).toBe("theirs");
+    expect(await readFile(join(root, ".collie-old-here-89abcdef", "keep.txt"), "utf8")).toBe("theirs");
+    expect(await stat(join(root, "here", "lib", ".collie-new-0123456789ab")).catch(() => null)).toBeNull();
+    expect(await readFile(join(root, "here", ".notes"), "utf8")).toBe("mine");
+  });
+});
+
 describe("one open proposal per trick id", () => {
   test("the same sender's next one replaces it; the same files again answer as before", async () => {
     const l = await lead();

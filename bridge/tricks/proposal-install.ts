@@ -170,3 +170,67 @@ export async function replaceTrickCode(root: string, id: string, files: readonly
     return { ok: false, reason: `The new version could not be written: ${why(err)}. The trick still runs the version you approved.` };
   }
 }
+
+/** A temp file of the version write: a dot name, so the code hash never reads it. */
+const NEW_TEMP = /^\.collie-new-[0-9a-f]{12}$/u;
+const ADD_STAGE = /^\.collie-add-[a-z0-9][a-z0-9-]{0,31}-[0-9a-f]{8}$/u;
+const OLD_ASIDE = /^\.collie-old-([a-z0-9][a-z0-9-]{0,31})-[0-9a-f]{8}$/u;
+
+/** What {@link recoverProposalWrites} did, for its log line and its test. */
+export interface ProposalRecovery {
+  stagesRemoved: string[];
+  tempsRemoved: string[];
+  restored: string[];
+  /** Set-aside folders left in place, because a trick folder of that name exists: the person decides. */
+  keptAside: string[];
+}
+
+/**
+ * At bridge start, before any proposal is answered: clean up after a write a crash cut short (security
+ * review S1). A `.collie-add-*` stage holds only a proposal's own files and its record, never the person's,
+ * so it goes. A `.collie-new-*` temp file in a trick folder is a version write's, and goes. A
+ * `.collie-old-<id>-*` folder (a set-aside folder of an earlier build of this slice) is put back when
+ * `<id>` is missing, and otherwise left where it is: it is never removed. Never throws.
+ */
+export async function recoverProposalWrites(root: string): Promise<ProposalRecovery> {
+  const done: ProposalRecovery = { stagesRemoved: [], tempsRemoved: [], restored: [], keptAside: [] };
+  const top = await readdir(root, { withFileTypes: true }).catch(() => null);
+  if (top === null) return done;
+  for (const entry of top) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory() && ADD_STAGE.test(entry.name)) {
+      await rm(path, { recursive: true, force: true }).catch(() => {});
+      done.stagesRemoved.push(entry.name);
+      continue;
+    }
+    const aside = entry.isDirectory() ? OLD_ASIDE.exec(entry.name) : null;
+    if (aside !== null) {
+      const target = join(root, aside[1] ?? "");
+      const there = await lstat(target).catch(() => null);
+      if (there === null && (await rename(path, target).then(() => true, () => false))) done.restored.push(entry.name);
+      else done.keptAside.push(entry.name);
+      continue;
+    }
+    if (entry.isDirectory() && !entry.name.startsWith(".")) await removeTemps(path, done.tempsRemoved, entry.name);
+  }
+  return done;
+}
+
+/** Remove the version write's temp files in one trick folder, never through a link, within the walk's caps. */
+async function removeTemps(dir: string, removed: string[], label: string): Promise<void> {
+  const queue = [""];
+  for (let n = 0; queue.length > 0 && n < CODE_DIRS_MAX; n += 1) {
+    const rel = queue.shift() ?? "";
+    const listed = await readdir(rel === "" ? dir : join(dir, rel), { withFileTypes: true }).catch(() => null);
+    if (listed === null) continue;
+    for (const entry of listed) {
+      const sub = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      if (entry.isFile() && NEW_TEMP.test(entry.name)) {
+        await rm(join(dir, sub), { force: true }).catch(() => {});
+        removed.push(`${label}/${sub}`);
+        continue;
+      }
+      if (entry.isDirectory() && !skippedName(entry.name, "dir", rel === "" ? 0 : 1)) queue.push(sub);
+    }
+  }
+}

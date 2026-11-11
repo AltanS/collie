@@ -10,6 +10,7 @@ import { HILL_OFF, type HillCollieSender, type HillCollieVerdict, type HillOneAn
 import { unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
+import { recoverProposalWrites } from "./proposal-install.ts";
 import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposerFacts } from "./proposal-card.ts";
 import { checkProposedFiles, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
@@ -323,8 +324,12 @@ export class TrickProposals {
     await rename(tmp, path);
   }
 
-  /** Read the state once, then sweep. */
+  /** Clean up after a write a crash cut short, read the state once, then sweep. */
   async start(): Promise<void> {
+    const done = await this.turn(() => recoverProposalWrites(tricksConfigDir(this.deps.configDir)));
+    const moved = done.stagesRemoved.length + done.tempsRemoved.length + done.restored.length;
+    if (moved > 0) this.warn(`recovered after an interrupted proposal write: ${String(done.stagesRemoved.length)} stage(s) removed, ${String(done.tempsRemoved.length)} temp file(s) removed, ${String(done.restored.length)} folder(s) put back`);
+    for (const name of done.keptAside) this.warn(`${name} is a set-aside trick folder beside one of the same name; it is left in place for you to look at`);
     await this.turn(() => this.load());
     await this.sweep();
   }
