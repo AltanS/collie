@@ -2,6 +2,7 @@
 // sends back. The bridge and the web app both import this file, so it holds types, constants and
 // small pure helpers only. No I/O, no React, no runtime dependency.
 
+import type { JsonValue } from "../json";
 import type { View } from "../tricks/schema";
 
 /** How soon the poster wants a person to look. */
@@ -311,6 +312,8 @@ export interface HillList {
    * says it will remove. Absent from a bridge before Clear: the phone counts `closed`.
    */
   closedTotal?: number;
+  /** The crew state on this lead (1.29.0). Absent from an older bridge: the phone draws no control. */
+  crewState?: HillCrewStateView;
 }
 
 /** What the phone sends to answer a decision. */
@@ -398,7 +401,11 @@ export type HillRefusalCode =
   | "image_too_large"
   | "request_id_reused"
   /** A crew member's post that did not reach its lead (CREW_PROTOCOL §22, 1.29.0): nothing was posted. */
-  | "lead_unreachable";
+  | "lead_unreachable"
+  /** A person's verb (the crew state, Clear of the cards answered in the session) asked from an agent's pane (1.29.0). */
+  | "person_only"
+  /** The crew state asked of a member whose lead runs a release too old to say it (1.29.0). */
+  | "lead_too_old";
 
 /** The node name of a decision: "hill/<id>". */
 export function hillNode(id: string): string {
@@ -427,3 +434,42 @@ export function sortOpenDecisions(list: HillDecision[]): HillDecision[] {
   const rank = (p: HillPriority): number => HILL_PRIORITIES.indexOf(p);
   return list.toSorted((a, b) => rank(a.priority) - rank(b.priority) || a.at - b.at);
 }
+
+// ── THE CREW STATE (1.29.0) ─────────────────────────────────────────────────────────────────────────
+// One value on the lead, set by the person: `here` (as always), `quiet` (no push; agents post but do not
+// wait for a fast answer) or `away` (no push; agents hold questions that need an answer now). The bridge
+// never refuses a post for it: it is information for agents, read with `collie hill state`, and carried on
+// the typed answer and the post result as one line, `Crew state: away.`, whenever it is not `here`.
+
+export type HillCrewState = "here" | "quiet" | "away";
+export const HILL_CREW_STATES: readonly HillCrewState[] = ["here", "quiet", "away"];
+
+export function isHillCrewState(value: JsonValue | undefined): value is HillCrewState {
+  return HILL_CREW_STATES.some((state) => state === value);
+}
+
+/** The crew state as the bridge serves it on `GET /api/hill`. */
+export interface HillCrewStateView {
+  state: HillCrewState;
+  /** When it was set, epoch milliseconds; null for the default (`here`, never set). */
+  at: number | null;
+  /** Who set it: a device's label or "terminal"; null for the default. */
+  by: string | null;
+  /** How many sessions "Tell all sessions now" told since this state was set; null while not told. */
+  told: number | null;
+}
+
+/** The one line a typed answer and a post result end with while the state is not `here`. */
+export function crewStateLine(state: HillCrewState): string {
+  return `Crew state: ${state}.`;
+}
+
+/** What "Tell all sessions now" types into each session: one line. */
+export function crewStateTellLine(state: HillCrewState): string {
+  return `[hill] from operator: ${crewStateLine(state)}`;
+}
+
+/** The most sessions one "Tell all sessions now" reaches. */
+export const HILL_TELL_MAX = 20;
+/** A session that posted a Decision this long ago or less is told, even when that Decision closed. */
+export const HILL_TELL_RECENT_MS = 60 * 60 * 1000;

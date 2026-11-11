@@ -119,7 +119,7 @@ describe("GET /api/hill", () => {
   test("lists open and closed decisions with the revision; `since` equal to the revision answers unchanged", async () => {
     const r = rig();
     const empty = await hillListRoute(r.hill, null, null).json();
-    expect(empty).toEqual({ rev: 0, open: [], closed: [], closedTotal: 0 });
+    expect(empty).toEqual({ rev: 0, open: [], closed: [], closedTotal: 0, crewState: { state: "here", at: null, by: null, told: null } });
     const id = await posted(r);
     const list = await hillListRoute(r.hill, null, null).json();
     expect(list).toMatchObject({ open: [{ id, state: "open", title: post.title }], closed: [] });

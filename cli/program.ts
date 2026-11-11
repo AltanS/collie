@@ -134,7 +134,7 @@ import {
   WALKY_SUBCOMMANDS,
   type WalkyDeps,
 } from "./walky.ts";
-import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
+import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -314,7 +314,8 @@ function walkyDeps(io: Io): WalkyDeps {
 
 /** `hill` (M96): walky's own deps, since the hill speaks over the walky socket. */
 function hillDeps(io: Io): HillDeps {
-  return walkyDeps(io);
+  // The person's verbs ask what this pane runs, as `collie trick on` does.
+  return { ...walkyDeps(io), paneKind: () => askPaneKind(walkyDeps(io)) };
 }
 
 /** The sub-verbs of `hill` (M96). `post --help` prints the usage and the rules an agent reads first. */
@@ -344,6 +345,12 @@ const HILL_TREE: readonly Subcommand[] = [
     name: "clear",
     summary: "remove every closed decision from the Hill (open ones stay): `hill clear`",
     run: (args, s) => cmdHillClear(hillDeps(s.io), args),
+  },
+  // The crew state (1.29.0): anyone reads it; the person sets it, never from an agent's pane.
+  {
+    name: "state",
+    summary: "the crew state (here, quiet or away) and since when; `hill state away` sets it, from your own terminal",
+    run: (args, s) => cmdHillState(hillDeps(s.io), args),
   },
   // The Hill's switch: a file in this instance's state folder, read again by the running bridge.
   {

@@ -15,6 +15,7 @@ import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HILL_DEPOSED, HillService } from "../hill/service.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
 import { hillSwitchPath } from "../hill/switch.ts";
+import { readHillCrewState, writeHillCrewState } from "../hill/crew-state.ts";
 import { TRICKS_MAP_FILE } from "../tricks/hill.ts";
 import { hillCarryRoutes } from "./carry-surface.ts";
 import type { CarryCall } from "./carry-sync.ts";
@@ -317,5 +318,37 @@ describe("the old lead after the takeover (§25)", () => {
     old.store.put(agent(1));
     expect(await answerOne(old.hill)).toMatchObject({ kind: "receipt", receipt: { code: "denied", reason: HILL_DEPOSED } });
     expect(old.store.get(agent(1).id)?.state).toBe("open");
+  });
+});
+
+describe("the crew state crosses with the Hill copy (1.29.0)", () => {
+  test("a lead that never set one sends the body and digest it always sent; a set one rides and moves the digest", async () => {
+    const lead = await hillOn("desk");
+    lead.store.put(agent(1));
+    const plain = lead.hill.carryView(500);
+    expect(plain.crewState).toBeNull();
+    // SAFETY: a JSON round trip.
+    const decisions = JSON.parse(JSON.stringify(plain.open)) as JsonValue[];
+    expect(hillCopyDigest(true, decisions, plain.closed, {})).toBe(hillCopyDigest(true, decisions, plain.closed, {}, null));
+    const carried = { state: "away" as const, at: T0, by: "Pixel 9" };
+    expect(hillCopyDigest(true, decisions, plain.closed, {}, carried)).not.toBe(hillCopyDigest(true, decisions, plain.closed, {}));
+    const read = parseHillList({ seq: 1, on: true, decisions, closed: [], tricks: {}, crewState: carried });
+    expect(read?.crewState).toEqual(carried);
+    expect(read?.digest).toBe(hillCopyDigest(true, decisions, [], {}, carried));
+    // A value this reader does not know is no crew state, never a guess.
+    expect(parseHillList({ seq: 1, on: true, decisions, closed: [], tricks: {}, crewState: { state: "asleep", at: T0, by: "x" } })?.crewState).toBeNull();
+  });
+
+  test("the takeover writes the lead's crew state on a deputy that holds none, and keeps the deputy's own", async () => {
+    for (const own of [false, true]) {
+      const deputy = await hillOn(own ? "laptop-own" : "laptop");
+      const copy = new StandbyHillStore(deputy.m.stateDir);
+      const routes = hillCarryRoutes(copy);
+      if (own) writeHillCrewState(deputy.m.stateDir, { state: "quiet", by: "terminal" }, T0 - 5);
+      await routes.handle(CREW_HILL_COPY_PATH, { from: "desk", crewId: "crew-1" }, { seq: 1, on: true, decisions: [], closed: [], tricks: {}, crewState: { state: "away", at: T0 - 9, by: "Pixel 9" } });
+      expect((await copy.load())?.crewState).toEqual({ state: "away", at: T0 - 9, by: "Pixel 9" });
+      await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+      expect(readHillCrewState(deputy.m.stateDir).view).toEqual(own ? { state: "quiet", at: T0 - 5, by: "terminal", told: null } : { state: "away", at: T0 - 9, by: "Pixel 9", told: null });
+    }
   });
 });

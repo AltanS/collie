@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { fetchHill } from "@/lib/api";
 
-import { sortOpenDecisions, type HillDecision, type HillList, type HillReceipt } from "./wire";
+import { sortOpenDecisions, type HillCrewStateView, type HillDecision, type HillList, type HillReceipt } from "./wire";
 
 // THE HILL, HELD ON THE PHONE (M96): the open decisions, the newest closed ones, and the receipts of
 // the answers this page sent, in one small store read with `useSyncExternalStore`.
@@ -36,6 +36,12 @@ import { sortOpenDecisions, type HillDecision, type HillList, type HillReceipt }
 // decision as undeliverable and the card leaves the open list, so the person's words are KEPT here,
 // keyed by the decision, for as long as the page lives, and its row under Answered shows them with
 // Copy. Nothing is persisted: a reload reads the bridge's own list.
+//
+// ── THE CREW STATE (1.29.0) ──────────────────────────────────────────────────────────────────────
+// The lead's `here` / `quiet` / `away` rides on the list (`crewState`), and a change of it moves the
+// hill's number, so every phone reads it as it reads a new card. A lead with no decisions file yet sends
+// no number, so the Hill's route also reads `GET /api/hill/state` when it opens (`noteHillCrewState`).
+// Null is "no crew state here": a member, or an older bridge, and the Hill's route then shows no control.
 
 /** What one answer came to, kept beside the decision it answered. */
 export interface HillAnswerHeld {
@@ -57,12 +63,14 @@ interface HillHeld {
   receipts: ReadonlyMap<string, HillAnswerHeld>;
   /** The words of an answer that did not reach its target, per decision. */
   kept: ReadonlyMap<string, string>;
+  /** The lead's crew state, or null when this bridge serves none. */
+  crewState: HillCrewStateView | null;
 }
 
 const NO_DECISIONS: readonly HillDecision[] = [];
 const NO_RECEIPTS: ReadonlyMap<string, HillAnswerHeld> = new Map();
 const NO_KEPT: ReadonlyMap<string, string> = new Map();
-const EMPTY: HillHeld = { rev: null, open: NO_DECISIONS, closed: NO_DECISIONS, closedTotal: 0, receipts: NO_RECEIPTS, kept: NO_KEPT };
+const EMPTY: HillHeld = { rev: null, open: NO_DECISIONS, closed: NO_DECISIONS, closedTotal: 0, receipts: NO_RECEIPTS, kept: NO_KEPT, crewState: null };
 
 let held: HillHeld = EMPTY;
 /** The newest revision a snapshot named, or null when the last one named none. */
@@ -116,6 +124,7 @@ function take(list: HillList): void {
     closedTotal: Math.max(list.closedTotal ?? 0, list.closed.length),
     receipts: receiptsOfClosed(list.closed),
     kept: held.kept,
+    crewState: list.crewState ?? null,
   });
 }
 
@@ -166,8 +175,10 @@ export function syncHill(rev: number | undefined): void {
     lists += 1;
     // The open and closed lists, the number and the receipts go; the words of a gone answer stay, because
     // they are the person's own and the bridge no longer has them.
+    // The crew state stays too: a lead that never had a decision sends no number, and its state is the
+    // one the route read itself (`noteHillCrewState`). A member's route reads none, so it holds none.
     const holdsList = held.rev !== null || held.open.length > 0 || held.closed.length > 0 || held.receipts.size > 0;
-    if (holdsList) publish({ ...EMPTY, kept: held.kept });
+    if (holdsList) publish({ ...EMPTY, kept: held.kept, crewState: held.crewState });
     return;
   }
   wanted = rev;
@@ -185,6 +196,16 @@ export function readHillNow(): void {
   forced = true;
   if (reading) return;
   inFlight = readUntilCurrent();
+}
+
+/**
+ * Hold a crew state the bridge answered outside a list: the route's own read when it opens, or the answer
+ * to this phone's own change. Kept until the next list, which carries the lead's value itself.
+ */
+export function noteHillCrewState(view: HillCrewStateView | null): void {
+  const same = view === held.crewState || (view !== null && held.crewState !== null && view.state === held.crewState.state && view.at === held.crewState.at && view.told === held.crewState.told);
+  if (same) return;
+  publish({ ...held, crewState: view });
 }
 
 /** Keep what one answer came to, until the next list. A `gone` answer's words are kept beyond it. */
@@ -267,6 +288,15 @@ export function useHillKept(): ReadonlyMap<string, string> {
     subscribe,
     () => held.kept,
     () => NO_KEPT,
+  );
+}
+
+/** The lead's crew state, or null when this bridge serves none (a member, or an older bridge). */
+export function useHillCrewState(): HillCrewStateView | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => held.crewState,
+    () => null,
   );
 }
 

@@ -4,8 +4,10 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { HILL_ID_RE, HILL_MEDIA_BYTES_MAX, HILL_MEDIA_ID_RE, type HillDecision, type HillMedia } from "../../web/src/lib/hill/wire.ts";
+import { HILL_ID_RE, HILL_MEDIA_BYTES_MAX, HILL_MEDIA_ID_RE, isHillCrewState, type HillDecision, type HillMedia } from "../../web/src/lib/hill/wire.ts";
 import { hillImageMime } from "../hill/media.ts";
+import type { HillCarriedCrewState } from "../hill/service.ts";
+import { headerField } from "../walky/types.ts";
 import { readDecision } from "../hill/parse.ts";
 import { strictBase64 } from "../tricks/propose-wire.ts";
 import type { CopyRole } from "./standby-launchers.ts";
@@ -62,8 +64,20 @@ export const HILL_MEDIA_BODY_MAX = 3 * 1024 * 1024;
 const HASH_RE = /^[0-9a-f]{64}$/u;
 
 /** The digest of a list as it crosses the wire: the lead's over what it sends, the deputy's over what it took. */
-export function hillCopyDigest(on: boolean, decisions: readonly JsonValue[], closed: readonly string[], tricks: JsonObject): string {
-  return createHash("sha256").update(JSON.stringify({ on, decisions, closed, tricks })).digest("hex");
+export function hillCopyDigest(on: boolean, decisions: readonly JsonValue[], closed: readonly string[], tricks: JsonObject, crewState: HillCarriedCrewState | null = null): string {
+  // The crew state (1.29.0) joins only when there is one, so a list without it keeps the digest it always had.
+  const doc = crewState === null ? { on, decisions, closed, tricks } : { on, decisions, closed, tricks, crewState: { state: crewState.state, at: crewState.at, by: crewState.by } };
+  return createHash("sha256").update(JSON.stringify(doc)).digest("hex");
+}
+
+/** The crew state a lead carried (1.29.0), or null when the list carries none or one this reader cannot read. */
+export function readCarriedCrewState(value: JsonValue | undefined): HillCarriedCrewState | null {
+  const row = asJsonObject(value);
+  const state = row?.state;
+  const at = asJsonNumber(row?.at);
+  const by = asJsonString(row?.by);
+  if (row === undefined || !isHillCrewState(state) || at === undefined || !Number.isSafeInteger(at) || by === undefined) return null;
+  return { state, at, by: headerField(by, 80) };
 }
 
 /** The deputy's report, as it rides `hello` and `snapshot`. */
@@ -94,6 +108,8 @@ export interface HillList {
   decisions: JsonValue[];
   closed: string[];
   tricks: JsonObject;
+  /** The lead's crew state (1.29.0), or null when it carried none. */
+  crewState: HillCarriedCrewState | null;
   /** The digest of the list as it arrived, before anything was left out. */
   digest: string;
 }
@@ -114,7 +130,8 @@ export function parseHillList(value: JsonValue | undefined): HillList | null {
     closed.push(id);
   }
   const decisions = [...body.decisions];
-  return { seq, on, decisions, closed, tricks, digest: hillCopyDigest(on, decisions, closed, tricks) };
+  const crewState = readCarriedCrewState(body.crewState);
+  return { seq, on, decisions, closed, tricks, crewState, digest: hillCopyDigest(on, decisions, closed, tricks, crewState) };
 }
 
 /** One picture: its bytes, or word that the lead no longer has it. */
@@ -173,6 +190,8 @@ export interface HillIndex {
   at: number;
   digest: string;
   on: boolean;
+  /** The lead's crew state (1.29.0), or null when it carried none. */
+  crewState: HillCarriedCrewState | null;
   /** The open Decisions, newest first, each read and checked. */
   decisions: HillDecision[];
   /** Closed ids from this lead, newest first. */
@@ -200,7 +219,9 @@ function serializeIndex(index: HillIndex): string {
     dropped: index.dropped,
     media,
   };
-  return `${JSON.stringify(doc, null, 2)}\n`;
+  // The crew state only when the lead sent one, so a copy of a lead that never set it keeps its bytes.
+  const written = index.crewState === null ? doc : { ...doc, crewState: index.crewState };
+  return `${JSON.stringify(written, null, 2)}\n`;
 }
 
 /** A record off the wire: an open Decision this copy may hold, `"dropped"` for a Collie card it may not, or null. */
@@ -246,6 +267,7 @@ export function parseHillIndex(raw: string | null): HillIndex | null {
     at: asJsonNumber(doc.at) ?? 0,
     digest,
     on,
+    crewState: readCarriedCrewState(doc.crewState),
     decisions,
     closed,
     tricks,
@@ -340,7 +362,7 @@ export class StandbyHillStore {
     const plan = new Set(mediaPlan(decisions).map((p) => mediaKey(p.decisionId, p.media.id)));
     const media = new Map<string, MediaHeld>();
     if (same) for (const [key, state] of held.media) if (plan.has(key)) media.set(key, state);
-    const next: HillIndex = { version: STANDBY_HILL_VERSION, crewId: input.crewId, from: input.from, seq: input.list.seq, at: this.now(), digest: input.list.digest, on: input.list.on, decisions, closed, tricks: input.list.tricks, dropped, media };
+    const next: HillIndex = { version: STANDBY_HILL_VERSION, crewId: input.crewId, from: input.from, seq: input.list.seq, at: this.now(), digest: input.list.digest, on: input.list.on, crewState: input.list.crewState, decisions, closed, tricks: input.list.tricks, dropped, media };
     await this.saveIndex(next);
     await this.pruneMedia(next);
     return { ok: true, need: hillNeed(next) };

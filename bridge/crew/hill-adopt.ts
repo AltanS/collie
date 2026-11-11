@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { HILL_BODY_MAX, type HillDecision } from "../../web/src/lib/hill/wire.ts";
 import type { HillMediaFile } from "../hill/media.ts";
 import { hillSwitchPath, writeHillSwitch } from "../hill/switch.ts";
+import { hillCrewStatePath, writeHillCrewState } from "../hill/crew-state.ts";
 import { mergeCarriedMap } from "../tricks/hill.ts";
 import type { StandbyHillStore } from "./standby-hill.ts";
 
@@ -15,7 +16,8 @@ import type { StandbyHillStore } from "./standby-hill.ts";
 // Decision whose trick did not start here closes instead, with its reason. The copy holds no Collie card
 // but the carried notice (standby-hill.ts `readCarriedRecord`); the ones it dropped are counted.
 // A trick Decision that stays is moved to this machine (`memberId`, `trickHost`), and its key's map
-// entry comes along, so the trick does not post it again. Nothing is pushed: they are not new.
+// entry comes along, so the trick does not post it again. Nothing is pushed: they are not new. The Hill's
+// switch and the crew state come along too, each only when this machine holds none of its own.
 
 /** The line a Decision carries when a picture of it did not come along. */
 export function pictureStayed(lead: string): string {
@@ -93,6 +95,9 @@ export async function adoptCarriedHill(opts: AdoptHillOptions): Promise<AdoptHil
   mergeCarriedMap(opts.stateDir, index.tricks, startedWithDecisions);
   // The switch moves with the crown; a machine that already chose for itself keeps its own choice.
   if (!existsSync(hillSwitchPath(opts.stateDir))) writeHillSwitch(opts.stateDir, index.on, at);
+  // The crew state too (1.29.0), with the lead's time and setter, so "Tell all sessions now" is offered
+  // again here for a quiet or away the sessions of this machine were never told of.
+  if (index.crewState !== null && !existsSync(hillCrewStatePath(opts.stateDir))) writeHillCrewState(opts.stateDir, { state: index.crewState.state, by: index.crewState.by, at: index.crewState.at }, at);
   const closedStored = out.filter((d) => d.state !== "open" && stored.has(d.id)).length;
   return { open: stored.size - closedStored, closed: closedStored, dropped: index.dropped };
 }

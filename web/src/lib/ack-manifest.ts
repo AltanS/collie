@@ -100,6 +100,14 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The Hill's switch in Settings and on the Hill's own off state (M96): the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `hillOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
+  setHillCrewState: {
+    channel: "inline",
+    why: "The crew state's segmented control at the top of the Hill (1.29.0): the control itself is the receipt, it holds the new value while the call runs and the helper line under it says what the value does; a failed call puts the control back and lands as a line under it, because the operator asked for something that did not happen.",
+  },
+  tellHillSessions: {
+    channel: "inline",
+    why: "Tell all sessions now, under the crew state (1.29.0): the button turns to its done words with the count in place, which is the receipt where the person tapped; a refusal (told already, the state moved) and a failed call land as a line under it, because a status line would be gone before the person read it.",
+  },
   clearHillClosed: {
     channel: "silent",
     why: "Clear on the Hill's Answered group (the second tap of its arm): the closed rows leaving the list IS the receipt, and the group goes with them, so a success says nothing more; a failed call puts the rows back and is said on the status channel as `Could not clear. Try again.`",

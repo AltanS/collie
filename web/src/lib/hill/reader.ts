@@ -36,6 +36,8 @@ import {
   HILL_TEXT_MODES,
   HILL_TRICK_DELIVERIES,
   hillCollieRef,
+  isHillCrewState,
+  type HillCrewStateView,
   type HillDecision,
   type HillGroup,
   type HillList,
@@ -442,7 +444,28 @@ export function readHillList(value: JsonValue | undefined): HillList | null {
   const list: HillList = { rev, open: open.list, closed: closed.list };
   // How many closed ones the bridge holds: never fewer than the rows it sent.
   if (total !== undefined && Number.isInteger(total)) list.closedTotal = Math.max(total, closed.list.length);
+  // The crew state (1.29.0): an older bridge sends none, and a value this build does not know is left out.
+  const crewState = readHillCrewStateView(o.crewState);
+  if (crewState !== null) list.crewState = crewState;
   return list;
+}
+
+/** The longest `by` a crew state shows: a device or "terminal". */
+const CREW_STATE_BY_MAX = 80;
+
+/**
+ * The crew state as `GET /api/hill/state` and `GET /api/hill` carry it, or null when it does not fit. A
+ * state this build does not know is null, never a guess.
+ */
+export function readHillCrewStateView(value: JsonValue | undefined): HillCrewStateView | null {
+  const o = asJsonObject(value);
+  const state = o?.state;
+  if (o === undefined || !isHillCrewState(state)) return null;
+  const at = o.at === null ? null : asJsonNumber(o.at);
+  const by = o.by === null ? null : asJsonString(o.by);
+  const told = o.told === null || o.told === undefined ? null : asJsonNumber(o.told);
+  if (at === undefined || by === undefined || told === undefined) return null;
+  return { state, at, by: by === null ? null : by.slice(0, CREW_STATE_BY_MAX), told };
 }
 
 /** A receipt as the contract shapes it, or null when it does not fit. */

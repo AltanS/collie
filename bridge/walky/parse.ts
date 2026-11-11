@@ -7,7 +7,7 @@ import { readMarkers } from "../beacon/parse.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { MEMBER_ID_RE } from "../crew/identity.ts";
-import { HILL_ID_RE } from "../../web/src/lib/hill/wire.ts";
+import { HILL_ID_RE, isHillCrewState, type HillCrewState } from "../../web/src/lib/hill/wire.ts";
 import { HILL_BAD_ID } from "../hill/parse.ts";
 import { LOCAL_MEMBER, parseAddress } from "./address.ts";
 import type { WalkySpace } from "./space.ts";
@@ -158,8 +158,11 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 
 export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp | "trick.propose";
 
+/** What a `hill.state` request with a word that is no crew state is refused with. */
+export const HILL_BAD_CREW_STATE = "bad request: the crew state is here, quiet or away";
+
 /** The hill's operations (M96), beside walky's own. Added, never a change to one of them. */
-export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear";
+export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear" | "hill.state";
 
 export type WalkyRequest =
   | {
@@ -184,12 +187,15 @@ export type WalkyRequest =
   | { readonly op: "hill.list"; readonly markers: readonly BeaconMarker[] }
   // Clear every closed decision, from the person's terminal: it names no pane and no id.
   | { readonly op: "hill.clear"; readonly markers: readonly BeaconMarker[] }
+  // The crew state (1.29.0): a read with no `state`, a person's write with one. A new op, so a bridge
+  // before it answers it as unknown and never takes a write it cannot read.
+  | { readonly op: "hill.state"; readonly markers: readonly BeaconMarker[]; readonly state: HillCrewState | null }
   // A trick handed to the lead (crew slice 8): its fields are read by bridge/tricks/propose-wire.ts.
   | { readonly op: "trick.propose"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject };
 
 /** Whether a request is one of the hill's operations (M96). */
 export function isHillOp(op: string | null): op is HillOp {
-  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear";
+  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear" || op === "hill.state";
 }
 
 /**
@@ -248,6 +254,11 @@ export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): Wa
     return id !== null && HILL_ID_RE.test(id) ? done({ op, markers, id }) : unread(HILL_BAD_ID, markers);
   }
   if (op === "hill.list" || op === "hill.clear") return done({ op, markers });
+  if (op === "hill.state") {
+    const state = row.state ?? null;
+    if (state !== null && !isHillCrewState(state)) return unread(HILL_BAD_CREW_STATE, markers);
+    return done({ op, markers, state });
+  }
   if (op === "trick.propose") return done({ op, markers, fields: row });
   if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);
   const id = text(row, "id");

@@ -4,7 +4,7 @@ import { homedir, hostname, networkInterfaces } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
-import { asJsonBoolean, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
@@ -253,7 +253,7 @@ import { PinKeys } from "./pins/keys.ts";
 import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
 import { readAnswerRequest } from "./hill/parse.ts";
-import { HILL_ID_RE, HILL_MEDIA_ID_RE } from "../web/src/lib/hill/wire.ts";
+import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
 import { hillDeviceId, type HillService } from "./hill/service.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
@@ -3370,6 +3370,38 @@ export function startServer(opts: {
           }
         }
         return hillSwitchRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // The crew state (1.29.0): read by any paired device, set with the write right, as the switch is,
+      // because every agent of the crew reads it. The value also rides on `GET /api/hill` as `crewState`.
+      if (pathname === "/api/hill/state" && (req.method === "GET" || req.method === "POST")) {
+        const denied = browserGate(req.method === "GET" ? "read" : "write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        if (req.method === "POST") {
+          try {
+            // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillStateRoute` checks the one field.
+            body = (await req.json()) as JsonValue;
+          } catch {
+            body = undefined;
+          }
+        }
+        return hillStateRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // "Tell all sessions now": one operator line into the sessions with a Decision, once per change of
+      // the crew state. Typed as an answer is, so the write right of an answer.
+      if (pathname === "/api/hill/state/tell" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillTellRoute` checks the one field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillTellRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       if (pathname === "/api/hill/answer" && req.method === "POST") {
         const denied = browserGate("write");
@@ -9172,7 +9204,48 @@ export function hillListRoute(hill: HillService | undefined, since: string | nul
   if (hill === undefined) return text(HILL_OFF_TEXT, 404);
   const list = hill.list();
   if (since !== null && since === String(list.rev)) return json({ rev: list.rev, unchanged: true }, acceptEncoding);
-  return json(list, acceptEncoding);
+  // The crew state rides along (1.29.0); a change of it moves the revision, so `unchanged` stays true to it.
+  return json({ ...list, crewState: hill.crewState() }, acceptEncoding);
+}
+
+/**
+ * `GET` and `POST /api/hill/state` (1.29.0): the crew state. `GET` (`write` null) answers the state
+ * `{ state, at, by, told }`. `POST` takes `{ "state": "here" | "quiet" | "away" }` and nothing else and
+ * answers the state as it reads now; 400 for another body, 409 on a machine that is not the crew's lead,
+ * 503 when the file could not be written. The audit line `hill.state` names the device and the value.
+ */
+export function hillStateRoute(
+  hill: Pick<HillService, "crewState" | "setCrewState"> | undefined,
+  write: { readonly body: JsonValue | undefined } | null,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  if (write === null) return json(hill.crewState(), context.acceptEncoding);
+  const doc = asJsonObject(write.body);
+  const state = doc?.state;
+  if (doc === undefined || !isHillCrewState(state) || Object.keys(doc).length !== 1) return text('bad request: the body is { "state": "here" }, "quiet" or "away"', 400);
+  const set = hill.setCrewState(state, context.device ?? "phone", context.device);
+  if (!set.ok) return text(set.error, set.notLead ? 409 : 503);
+  return json(set.crewState, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/hill/state/tell` (1.29.0): "Tell all sessions now". The body is `{ "at": <ms> }`, the
+ * change of the crew state the phone showed. 200 `{ told }`, how many sessions get the line; 409 with the
+ * words when the state moved, was told already, is `here`, or the Hill or WalkyTalky is off.
+ */
+export function hillTellRoute(
+  hill: Pick<HillService, "tellAll"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const doc = asJsonObject(body);
+  const at = asJsonNumber(doc?.at);
+  if (doc === undefined || at === undefined || !Number.isSafeInteger(at) || Object.keys(doc).length !== 1) return text('bad request: the body is { "at": <the time the crew state was set> }', 400);
+  const told = hill.tellAll(at, context.device ?? "phone", context.device);
+  if (!told.ok) return text(told.error, 409);
+  return json({ told: told.told }, context.acceptEncoding);
 }
 
 /**

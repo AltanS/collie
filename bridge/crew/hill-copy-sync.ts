@@ -71,8 +71,11 @@ export class HillCopySync {
     // The records as the wire carries them: the deputy digests what it parsed, so the lead digests the same.
     // SAFETY: `JSON.parse` of `JSON.stringify` output is a JsonValue by construction.
     const decisions = JSON.parse(JSON.stringify(view.open)) as JsonValue[];
-    const digest = hillCopyDigest(view.on, decisions, view.closed, tricks);
-    const built: Built = { body: { on: view.on, decisions, closed: view.closed, tricks }, digest, open: view.open };
+    // The crew state rides only once the person set one, so a lead that never did sends the body it always sent.
+    const crewState = view.crewState ?? null;
+    const digest = hillCopyDigest(view.on, decisions, view.closed, tricks, crewState);
+    const base: JsonObject = { on: view.on, decisions, closed: view.closed, tricks };
+    const built: Built = { body: crewState === null ? base : { ...base, crewState: { state: crewState.state, at: crewState.at, by: crewState.by } }, digest, open: view.open };
     this.cache = { at: now, built };
     return built;
   }

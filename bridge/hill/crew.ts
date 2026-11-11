@@ -29,8 +29,8 @@
 import { createHash } from "node:crypto";
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { asJsonBoolean, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
-import { HILL_ID_RE, HILL_MEDIA_BYTES_MAX, HILL_MEDIA_MAX, type HillDecision, type HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
+import { HILL_ID_RE, HILL_MEDIA_BYTES_MAX, HILL_MEDIA_MAX, isHillCrewState, type HillCrewStateView, type HillDecision, type HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
 import { isReservedMemberId } from "../crew/identity.ts";
 import { parseAddress } from "../walky/address.ts";
 import { olderThanFloor, type CrewDialAnswer } from "../walky/crew.ts";
@@ -243,7 +243,7 @@ export class HillHeldMedia {
 // ── On the lead: the three routes ───────────────────────────────────────────────────────────────────
 
 export interface HillCrewLeadDeps {
-  readonly hill: Pick<HillService, "postDecision" | "status" | "withdraw" | "mineList" | "isOn">;
+  readonly hill: Pick<HillService, "postDecision" | "status" | "withdraw" | "mineList" | "isOn" | "withCrewState" | "crewState">;
   readonly held: HillHeldMedia;
   /** False with COLLIE_WALKY=off on the lead: no answer could be typed, so no image is held. Absent: on. */
   readonly walkyOn?: () => boolean;
@@ -330,19 +330,26 @@ export class HillCrewLead {
     const host = this.deps.machineOf?.(memberId) ?? (claimedHost === undefined || claimedHost === "" ? memberId : headerField(claimedHost, 80));
     const sender: HillAgentSender = { kind: "agent", address, memberId, harness, label, host };
     const place: HillPlace = { address, label, host, unattended: false, reachable: true };
-    const answer: HillPostAnswer = this.deps.hill.postDecision(sender, read.input, { own: place, images });
+    const answer: HillPostAnswer = this.deps.hill.withCrewState(this.deps.hill.postDecision(sender, read.input, { own: place, images }));
     if (!answer.ok) return refused(answer.code, answer.error);
     this.deps.held.drop(
       memberId,
       hashes.map(({ sha }) => sha),
     );
-    return { status: 200, body: { ok: true, decision: answer.decision } };
+    // The crew state rides along (1.29.0), so the member's CLI ends its result with it; an older member ignores it.
+    return { status: 200, body: answer.crewState === undefined ? { ok: true, decision: answer.decision } : { ok: true, decision: answer.decision, crewState: answer.crewState } };
   }
 
-  /** `POST /crew/v1/hill/op`: a status, a withdraw or the list, for a session of the signing member. */
+  /**
+   * `POST /crew/v1/hill/op`: a status, a withdraw or the list, for a session of the signing member; or
+   * (1.29.0) `state`, the crew state, a read for the signing member as a machine, which names no session.
+   * A lead before 1.29.0 answers `state` with the 400 of an op it does not know: the member reads that as
+   * a lead too old to say.
+   */
   op(body: JsonValue | undefined, memberId: string): HillCrewAnswer {
     const row = asJsonObject(body);
     const op = asJsonString(row?.op);
+    if (row !== undefined && op === "state") return { status: 200, body: { ok: true, crewState: this.deps.hill.crewState() } };
     const as = asJsonString(row?.as);
     if (row === undefined || as === undefined || (op !== "status" && op !== "withdraw" && op !== "list")) return badRequest("a call is { op: status | withdraw | list, id?, as }");
     if (!resolvesToOwn(as, memberId, this.deps.place)) return UNAUTHORIZED;
@@ -381,6 +388,28 @@ export interface HillLeadForward {
   post(from: HillAgentSender, fields: JsonObject, requestId: string, images: readonly HillForwardImage[]): Promise<HillPostAnswer>;
   one(op: "status" | "withdraw", from: HillAgentSender, id: string): Promise<HillOneAnswer>;
   list(from: HillAgentSender): Promise<HillListAnswer>;
+  /** The lead's crew state (1.29.0). `older`: the lead runs a release that cannot say. */
+  state(): Promise<HillCrewStateAnswer>;
+}
+
+/** The crew state as a member reads it from its lead, or why it could not. */
+export type HillCrewStateAnswer = { readonly ok: true; readonly crewState: HillCrewStateView } | { readonly ok: false; readonly error: string; readonly older?: true };
+
+/** What a member says when its lead runs a release that does not know the crew state. */
+export function hillLeadTooOldForState(lead: string): string {
+  return `the lead (${lead}) runs a Collie too old to say the crew state`;
+}
+
+/** The crew state a lead sent, read leniently: a value it does not know reads as no answer. */
+export function readCrewStateView(value: JsonValue | undefined): HillCrewStateView | null {
+  const row = asJsonObject(value);
+  const state = row?.state;
+  if (row === undefined || !isHillCrewState(state)) return null;
+  const at = row.at === null ? null : asJsonNumber(row.at);
+  const by = row.by === null ? null : asJsonString(row.by);
+  const told = row.told === null || row.told === undefined ? null : asJsonNumber(row.told);
+  if (at === undefined || by === undefined || told === undefined) return null;
+  return { state, at, by: by === null ? null : headerField(by, 80), told };
 }
 
 /** The code a forwarded post is refused with when the lead does not answer. */
@@ -517,7 +546,22 @@ export class HillMemberForward implements HillLeadForward {
     if (asJsonBoolean(posted.body.ok) !== true) return refusalOf(posted.body);
     const decision = readDecision(posted.body.decision);
     if (decision === null) return { ok: false, code: null, error: `the lead (${lead}) answered without a decision; check with: collie hill list` };
-    return { ok: true, decision };
+    const crewState = posted.body.crewState;
+    return isHillCrewState(crewState) ? { ok: true, decision, crewState } : { ok: true, decision };
+  }
+
+  async state(): Promise<HillCrewStateAnswer> {
+    const lead = this.lead();
+    if (this.link.leadOlder()) return { ok: false, error: hillLeadTooOldForState(lead), older: true };
+    const answer = await this.link.call(CREW_HILL_OP_ROUTE, JSON.stringify({ op: "state" }), this.budgets.callMs);
+    // A lead that knows the op route but not `state` answers it as a bad call (400): too old to say.
+    if (answer.kind === "answer" && answer.status === 400) return { ok: false, error: hillLeadTooOldForState(lead), older: true };
+    const read = readDial(answer, this.link.leadAtFloor());
+    if (read.kind === "older") return { ok: false, error: hillLeadTooOldForState(lead), older: true };
+    if (read.kind === "refused" || read.kind === "unknown") return { ok: false, error: hillLeadAway(lead) };
+    if (read.kind === "failed") return { ok: false, error: read.error };
+    const view = asJsonBoolean(read.body.ok) === true ? readCrewStateView(read.body.crewState) : null;
+    return view === null ? { ok: false, error: `the lead (${lead}) answered without a crew state` } : { ok: true, crewState: view };
   }
 
   /** One call of the op route, read as far as the dial goes. */

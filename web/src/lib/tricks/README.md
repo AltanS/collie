@@ -741,6 +741,12 @@ bridge posts, replaces and withdraws none of a trick's Decisions and keeps its m
 as it was. The trick still runs, and its row in Settings → Tricks says its Decisions are not shown.
 The first run after the Hill is back on syncs the list again.
 
+The crew state (`bridge/hill/crew-state.ts`, 1.29.0: `here`, `quiet` or `away`, set at the top of the
+Hill or with `collie hill state` from a terminal) changes nothing for a trick. Its Decisions post,
+replace and withdraw as always; under quiet and away a `now` Decision sends no notification, as an
+agent's does not, and the tap that answers it carries no crew state line. "Tell all sessions now"
+types into agent sessions only, never into a trick.
+
 ### Wording a Decision
 
 The person opens the card cold, between other things. The words are `HILL_WRITING` in

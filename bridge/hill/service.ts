@@ -62,6 +62,12 @@
 // Hill is back on. The sweep still closes an expired one, or one whose target ended. Status, list and
 // withdraw keep working, so an agent can clean up. When the switch is seen to go off, the notification
 // of every open `now` decision is closed once, so the phone does not keep a question it cannot open.
+//
+// THE CREW STATE (crew-state.ts, 1.29.0). `here`, `quiet` or `away`, set by the person. It never refuses
+// a post. With `quiet` or `away` a new Decision pushes nothing (`pushPlan`), and the typed answer ends
+// with `Crew state: away.` (`withCrewLine`), as the post's result does (`postFields`). "Tell all sessions
+// now" (`tellAll`) types one operator line through the same send an answer uses, once per change, into
+// at most 20 sessions of this machine that hold an open Decision or posted one in the last hour.
 
 import { randomBytes } from "node:crypto";
 
@@ -85,11 +91,17 @@ import {
   HILL_SUMMARY_MAX,
   HILL_TITLE_MAX,
   HILL_WHY_MAX,
+  crewStateLine,
+  crewStateTellLine,
+  HILL_TELL_MAX,
+  HILL_TELL_RECENT_MS,
   hillNode,
   isHillOptionIntent,
   sortOpenDecisions,
   type HillAnswerRequest,
   type HillCollieRef,
+  type HillCrewState,
+  type HillCrewStateView,
   type HillDecision,
   type HillImageInput,
   type HillMedia,
@@ -111,6 +123,7 @@ import { HILL_PUSH_RATE, hillPushTag, type HillPushPort } from "./push.ts";
 import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type HillReceiptSurface } from "./receipts.ts";
 import type { HillStore, HillTombstone } from "./store.ts";
 import type { HillLeadForward, HillListAnswer } from "./crew.ts";
+import { HILL_CREW_STATE_DEFAULT, type HillCrewStateFile } from "./crew-state.ts";
 
 /**
  * A session's or a trick's name, never Collie's own (crew slice 8 review Q1, Q2): a name that reads
@@ -256,6 +269,11 @@ export interface HillServiceDeps {
    */
   readonly hillSwitch?: { on(): boolean; set?(on: boolean): boolean };
   /**
+   * The crew state (crew-state.ts `HillCrewStateFile`), read on each use. Absent: always `here`, and it
+   * cannot be set.
+   */
+  readonly crewState?: Partial<Pick<HillCrewStateFile, "set" | "markTold">> & Pick<HillCrewStateFile, "read">;
+  /**
    * On a crew member (CREW_PROTOCOL §22, 1.29.0): the forward to its lead, which holds the one Hill. With
    * it, an agent's post, status, withdraw and list from this machine go to the lead. Absent: a member
    * refuses a post with `not_on_lead`, as before 1.29.0.
@@ -308,8 +326,26 @@ export interface HillPostOptions {
   readonly tellOf?: string;
 }
 
-/** A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. */
-export type HillPostAnswer = { readonly ok: true; readonly decision: HillDecision } | { readonly ok: false; readonly code: HillRefusalCode | null; readonly error: string };
+/**
+ * A post's answer: the stored decision, or a refusal with its code and plain words the CLI prints. A
+ * post taken from a session also carries the crew state at that moment (`crewState`), which the CLI
+ * prints as one line when it is not `here`; absent from a lead before the crew state.
+ */
+export type HillPostAnswer = { readonly ok: true; readonly decision: HillDecision; readonly crewState?: HillCrewState } | { readonly ok: false; readonly code: HillRefusalCode | null; readonly error: string };
+
+/** What "Tell all sessions now" came to: how many sessions it typed the line into, or why it did not. */
+export type HillTellAnswer = { readonly ok: true; readonly told: number } | { readonly ok: false; readonly error: string };
+
+/** The refusal of a tell for a state the phone did not see: it moved since. */
+export const HILL_TELL_MOVED = "the crew state changed since this phone showed it; look again";
+/** The refusal of a second tell for one change of the state. */
+export const HILL_TELL_DONE = "the sessions were told of this crew state already";
+/** The refusal of a crew state set on a machine that is not the crew's lead. */
+export const HILL_STATE_ON_LEAD = "the crew state lives on the crew's lead; set it there, on the phone or with collie hill state";
+/** The refusal of a crew state set whose file could not be written. */
+export const HILL_STATE_UNSAVED = "the crew state could not be saved on this machine; nothing changed";
+/** The refusal of a tell while the state is `here`: there is nothing to tell. */
+export const HILL_TELL_HERE = "the crew state is here; there is nothing to tell";
 
 /** A status or withdraw answer. `missing`: this bridge holds no such decision from this sender. */
 export type HillOneAnswer = { readonly ok: true; readonly decision: HillDecision } | { readonly ok: false; readonly missing: true; readonly error: string } | { readonly ok: false; readonly missing: false; readonly error: string };
@@ -319,6 +355,15 @@ export interface HillCarryView {
   readonly on: boolean;
   readonly open: HillDecision[];
   readonly closed: string[];
+  /** The crew state (1.29.0), when the person ever set one; null for the default, which is not carried. */
+  readonly crewState?: HillCarriedCrewState | null;
+}
+
+/** The crew state as it crosses to the deputy: the value, when and by whom; never whether it was told. */
+export interface HillCarriedCrewState {
+  readonly state: HillCrewState;
+  readonly at: number;
+  readonly by: string;
 }
 
 /**
@@ -490,6 +535,11 @@ export function answerMessage(decision: Pick<HillDecision, "id" | "title">, inte
   return lines.join("\n");
 }
 
+/** A typed answer with the crew state's line at its end while the state is not `here` (1.29.0). */
+export function withCrewLine(body: string, state: HillCrewState): string {
+  return state === "here" ? body : `${body}\n${crewStateLine(state)}`;
+}
+
 /** A session's name as the hill keeps it: one cleaned line, cut with `…` past {@link SESSION_LABEL_MAX}. */
 export function sessionLabel(raw: string): string {
   const { text } = cleanLine(raw, SESSION_LABEL_MAX);
@@ -656,6 +706,9 @@ export class HillService {
   private absent = new Set<string>();
   /** The switch as last seen, so the move to off closes the open notifications once. */
   private wasOn = true;
+  /** The crew state at the last `rev()`, and how often it changed since the start. */
+  private crewSeen: string | null = null;
+  private crewMoved = 0;
   /** The Collie Decisions whose answer runs now: no withdraw or supersede closes one under its answer. */
   private answering = new Set<string>();
 
@@ -665,18 +718,95 @@ export class HillService {
   }
 
   /**
-   * The revision on the snapshot, or undefined while no decisions file exists. It also moves when a
-   * session behind an open decision is renamed, so the phone refetches the list and shows the new name.
+   * The revision on the snapshot, or undefined while no decisions file exists and the crew state was
+   * never set. It also moves when a session behind an open decision is renamed, so the phone refetches the
+   * list and shows the new name, and when the crew state changes (from the phone, the terminal or the file).
    */
   rev(): number | undefined {
+    const crew = this.deps.crewState?.read() ?? HILL_CREW_STATE_DEFAULT;
+    const stamp = `${crew.state}|${String(crew.at)}|${String(crew.told)}`;
+    if (this.crewSeen !== null && stamp !== this.crewSeen) this.crewMoved += 1;
+    this.crewSeen = stamp;
     const stored = this.deps.store.rev();
-    if (stored === undefined) return undefined;
+    // A Hill with no decisions file yet still has a list to serve once the person set a crew state.
+    if (stored === undefined) return crew.at === null ? undefined : this.crewMoved;
     if (this.deps.sessionName !== undefined) {
       const names = this.look(() => JSON.stringify(this.deps.store.list().open.map((decision) => this.named(decision)).map((decision) => [decision.id, decision.from.label, decision.target?.label ?? null])));
       if (this.namesSeen !== null && names !== this.namesSeen) this.namesMoved += 1;
       this.namesSeen = names;
     }
-    return stored + this.namesMoved;
+    return stored + this.namesMoved + this.crewMoved;
+  }
+
+  /** The crew state now (crew-state.ts): `here` when this bridge keeps none. */
+  crewState(): HillCrewStateView {
+    return this.deps.crewState?.read() ?? HILL_CREW_STATE_DEFAULT;
+  }
+
+  /**
+   * Set the crew state, from the phone (`device` its label) or the person's terminal (`device` null,
+   * `by` "terminal"). Answers the state as it reads now, or why nothing changed: a member and a deposed
+   * lead hold no crew state of their own (`notLead`), or the file could not be written. One `hill.state`
+   * audit line for a write.
+   */
+  setCrewState(state: HillCrewState, by: string, device: string | null = null): { readonly ok: true; readonly crewState: HillCrewStateView } | { readonly ok: false; readonly error: string; readonly notLead: boolean } {
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, error: HILL_STATE_ON_LEAD, notLead: true };
+    const set = this.deps.crewState?.set;
+    const now = set === undefined ? null : set.call(this.deps.crewState, state, by);
+    if (now === null) return { ok: false, error: HILL_STATE_UNSAVED, notLead: false };
+    this.deps.audit?.({ action: "hill.state", device, detail: { state } });
+    return { ok: true, crewState: now };
+  }
+
+  /**
+   * "Tell all sessions now": one operator line, `[hill] from operator: Crew state: away.`, typed through
+   * the answer's own send (`deps.send`, the operator walky send) into every live agent session of THIS
+   * machine that holds an open Decision or posted one in the last hour, newest first, at most
+   * {@link HILL_TELL_MAX}. A session that is busy gets it held as an answer is. Once per change of the
+   * state: `at` must be the change the phone showed, and the tell is recorded on the state before any line
+   * goes, so a second tap (or a second phone) is refused. The sends run in the background; the answer is
+   * how many sessions were asked. One `hill.state.told` audit line with the count.
+   */
+  tellAll(at: number, by: string, device: string | null = null): HillTellAnswer {
+    if (!this.isOn()) return { ok: false, error: HILL_OFF };
+    if (!this.deps.walkyOn()) return { ok: false, error: HILL_WALKY_OFF };
+    if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, error: NOT_ON_LEAD };
+    const crew = this.crewState();
+    if (crew.state === "here") return { ok: false, error: HILL_TELL_HERE };
+    if (crew.at !== at) return { ok: false, error: HILL_TELL_MOVED };
+    if (crew.told !== null) return { ok: false, error: HILL_TELL_DONE };
+    const targets = this.tellTargets();
+    // SYNCHRONOUS from the read above to here: the mark is what makes a second tap a refusal.
+    const file = this.deps.crewState;
+    if (file?.markTold === undefined || !file.markTold(at, targets.length)) return { ok: false, error: HILL_TELL_DONE };
+    const line = crewStateTellLine(crew.state);
+    for (const to of targets) {
+      // Never awaited here and never sent again: a send that fails is a session that was not told.
+      void this.deps.send(to, line, by).catch(() => "unknown" as const);
+    }
+    this.deps.audit?.({ action: "hill.state.told", device, detail: { state: crew.state, count: targets.length } });
+    return { ok: true, told: targets.length };
+  }
+
+  /** The sessions a tell reaches: this machine's agents with an open Decision or one posted in the last hour, live now. */
+  private tellTargets(): string[] {
+    const since = this.now() - HILL_TELL_RECENT_MS;
+    const recent = this.deps.store
+      .all()
+      .filter((decision) => decision.from.kind === "agent" && decision.from.memberId === this.deps.memberId && decision.from.address !== null && (decision.state === "open" || decision.at >= since))
+      .toSorted((a, b) => b.at - a.at);
+    const out: string[] = [];
+    this.look(() => {
+      for (const decision of recent) {
+        const address = decision.from.address;
+        if (address === null || out.includes(address)) continue;
+        // The very session that posted: the instance token must still match, as for a typed answer.
+        if (this.deps.place(address)?.address !== address) continue;
+        out.push(address);
+        if (out.length >= HILL_TELL_MAX) break;
+      }
+    });
+    return out;
   }
 
   /**
@@ -754,7 +884,8 @@ export class HillService {
     const read = readPostFields(fields);
     if (!read.ok) return refuse(read.code, read.error);
     const forward = this.forwardOf();
-    if (forward === null) return this.post(from, read.input);
+    // The result carries the crew state at this moment; a member's carries its lead's (crew.ts).
+    if (forward === null) return this.withCrewState(this.post(from, read.input));
     // This machine's own switches still hold: the person who switched its Hill or WalkyTalky off meant it.
     if (!this.isOn()) return refuse("hill_off", HILL_OFF);
     if (!this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
@@ -763,6 +894,25 @@ export class HillService {
     const answer = await forward.post(from, fields, read.input.requestId, images.images);
     this.deps.audit?.({ action: "hill.forward", detail: answer.ok ? { decisionId: answer.decision.id, images: images.images.length } : { refused: answer.code ?? "plain" } });
     return answer;
+  }
+
+  /**
+   * A post's answer with the crew state at this moment, when it posted and the state is not `here`; a
+   * post under `here` answers exactly as before the crew state.
+   */
+  withCrewState(answer: HillPostAnswer): HillPostAnswer {
+    const state = this.crewState().state;
+    return answer.ok && state !== "here" ? { ...answer, crewState: state } : answer;
+  }
+
+  /**
+   * `hill.state` from the socket, a read: this bridge's own state, or on a crew member its lead's (crew.ts
+   * `HillMemberForward.state`). A member whose lead is too old to say answers the error.
+   */
+  async askCrewState(): Promise<{ readonly ok: true; readonly crewState: HillCrewStateView } | { readonly ok: false; readonly error: string; readonly older?: true }> {
+    const forward = this.forwardOf();
+    if (forward === null) return { ok: true, crewState: this.crewState() };
+    return forward.state();
   }
 
   /** The forward to the lead, on a crew member that has one; null everywhere else. */
@@ -810,7 +960,7 @@ export class HillService {
   }
 
   /**
-   * What a lead carries to its deputy (CREW_PROTOCOL §25): the switch, every open Decision newest first
+   * What a lead carries to its deputy (CREW_PROTOCOL §25): the switch, the crew state, every open Decision newest first
    * without its notification slot (the deputy's phone was never told by it), and the ids of the closed
    * and cleared ones, newest first, so the deputy never holds one of them as open again.
    */
@@ -824,7 +974,9 @@ export class HillService {
       .filter((decision) => decision.state !== "open")
       .toSorted((a, b) => (b.closedAt ?? b.at) - (a.closedAt ?? a.at))
       .map((decision) => decision.id);
-    return { on: this.isOn(), open, closed: [...new Set([...closedHeld, ...this.deps.store.clearedIds()])].slice(0, closedMax) };
+    const crew = this.crewState();
+    const crewState = crew.at === null || crew.by === null ? null : { state: crew.state, at: crew.at, by: crew.by };
+    return { on: this.isOn(), open, closed: [...new Set([...closedHeld, ...this.deps.store.clearedIds()])].slice(0, closedMax), crewState };
   }
 
   /** The bytes of one kept picture, for the copy to the deputy (§25), or null. */
@@ -994,6 +1146,9 @@ export class HillService {
     const inherited = superseded?.pushTag;
     if (priority !== "now" || this.deps.push === undefined) return { tag: undefined, send: false, skipped: null };
     if (opts.reask === true) return { tag: inherited, send: false, skipped: null };
+    // The person said quiet or away: nothing rings. The Decision is posted all the same.
+    const crew = this.crewState().state;
+    if (crew !== "here") return { tag: inherited, send: false, skipped: `the crew state is ${crew}` };
     const verdict = this.deps.push.check(key, member);
     if (verdict === "send") return { tag: inherited ?? hillPushTag(id), send: true, skipped: null };
     if (verdict === "off") return { tag: inherited, send: false, skipped: null };
@@ -1433,7 +1588,8 @@ export class HillService {
     if (textRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", textRule, "open", null));
     // Collie's own card carries Collie's own title and labels (a trick's id, fixed words), so the session
     // it tells gets them as a poster does.
-    const body = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
+    // The crew state at this moment rides on the typed answer as one last line, while it is not `here`.
+    const body = withCrewLine(answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie"), this.crewState().state);
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
     // Where the answer goes: `replyTo`, else the poster. A trick with no `replyTo` has nothing to type into.

@@ -20,6 +20,9 @@
 //   hill.withdraw { id }                       → { ok, decision }   (now `withdrawn`, "by the poster")
 //   hill.list     { mine: true }               → { ok, decisions }  (the asker's own, open first)
 //   hill.clear    {}                           → { ok, cleared }    (every closed decision; no pane needed, never an open one)
+//   hill.state    { state? }                   → { ok, crewState }  (1.29.0: a read for anyone, from anywhere; on a
+//                                                                     member the lead's. With `state` a person's write,
+//                                                                     refused from an agent's pane, and on a member)
 // A trick handed to the lead (crew slice 8), answered only by a bridge built with it:
 //   trick.propose { requestId, files }        → { ok, kind, id, hash, decision, replaced } | { ok: false, error, code, propose: true }
 //     From an agent's pane the proposer is that session; from a bare shell or with no markers, a terminal.
@@ -40,7 +43,7 @@ import { dirname, join } from "node:path";
 import type { BeaconMatcher } from "../beacon/decorate.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
-import type { HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
+import type { HillCrewState, HillCrewStateView, HillDecision, HillRefusalCode } from "../../web/src/lib/hill/wire.ts";
 import type { HillService } from "../hill/service.ts";
 import type { LocalProposer } from "../tricks/propose-door.ts";
 import type { ProposeAnswer } from "../tricks/proposals.ts";
@@ -66,7 +69,7 @@ export const HILL_NEEDS_A_PANE = "run this inside an agent's pane: a decision be
  * What the socket needs of the hill (M96). Absent: the bridge answers the four operations as unknown. The
  * `ask` calls answer from this bridge, or on a crew member from its lead (CREW_PROTOCOL §22).
  */
-export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear">;
+export type HillSocket = Pick<HillService, "agentSender" | "postFields" | "askStatus" | "askWithdraw" | "askList" | "clear" | "askCrewState" | "setCrewState">;
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -152,8 +155,9 @@ export type WalkyAnswer =
   | { readonly ok: true; readonly results: readonly TakeBack[] }
   // The hill (M96).
   | { readonly ok: false; readonly error: string; readonly hill: true; readonly code?: HillRefusalCode; readonly missing?: string }
-  | { readonly ok: true; readonly decision: HillDecision }
+  | { readonly ok: true; readonly decision: HillDecision; readonly crewState?: HillCrewState }
   | { readonly ok: true; readonly decisions: readonly HillDecision[] }
+  | { readonly ok: true; readonly crewState: HillCrewStateView }
   | { readonly ok: true; readonly cleared: number }
   // A trick proposal (crew slice 8).
   | { readonly ok: true; readonly kind: "proposal" | "version"; readonly id: string; readonly hash: string; readonly decision: string | null; readonly replaced: string | null }
@@ -174,6 +178,8 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
   if (hill === undefined && isHillOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
   // Clear is the person's verb from a terminal: it names no pane, so the markers are not placed.
   if (request.op === "hill.clear" && hill !== undefined) return answerClear(hill);
+  // The crew state: a read names no pane; a write only looks at the pane to refuse an agent's.
+  if (request.op === "hill.state" && hill !== undefined) return await answerCrewState(service, request, targets, hill);
   const placed = request.markers.length === 0 ? null : await placeMarkers(request.markers, targets);
   const notHere: WalkyAnswer = hill !== undefined && isHillOp(request.op) ? { ok: false, error: "not here", hill: true } : { ok: false, error: "not here" };
   if (request.markers.length > 0 && placed === null) return notHere;
@@ -258,6 +264,8 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "hill.clear":
       // Answered above, before any pane is placed; kept so the switch stays exhaustive.
       return hill === undefined ? { ok: false, error: unknownOp(request.op) } : answerClear(hill);
+    case "hill.state":
+      return hill === undefined ? { ok: false, error: unknownOp(request.op) } : await answerCrewState(service, request, targets, hill);
     case "trick.propose": {
       if (propose === undefined) return { ok: false, error: unknownOp(request.op) };
       // An agent's pane proposes as that session; a bare shell, or no markers at all, as a terminal.
@@ -273,6 +281,39 @@ function answerClear(hill: HillSocket): WalkyAnswer {
   const cleared = hill.clear(null);
   if (cleared === null) return { ok: false, error: "the Hill could not be saved on this machine; nothing was cleared", hill: true };
   return { ok: true, cleared: cleared.cleared.length };
+}
+
+/** What the socket answers a person's verb asked from an agent's pane (1.29.0): the person decides it. */
+export const HILL_PERSON_ONLY = "this is your person's choice, and this runs in a pane where an agent works; ask your operator, who sets it on the phone or in a terminal";
+
+/**
+ * Whether the markers place an agent's pane of this bridge: the speed bump a person's verb keeps (the
+ * rule of `collie trick on`, cli/trick.ts). No markers, or markers this bridge does not place, are not an
+ * agent here; a process that strips its markers gets past it, and the user account is the real boundary.
+ */
+async function fromAgentPane(service: WalkyService, markers: WalkyRequest["markers"], targets: readonly PlaceTarget[]): Promise<boolean> {
+  if (markers.length === 0) return false;
+  const placed = await placeMarkers(markers, targets);
+  return placed !== null && service.paneAt(placed.session, placed.paneId)?.agent === true;
+}
+
+/**
+ * The crew state (1.29.0). A read answers this bridge's state, or on a crew member its lead's, from any
+ * caller. A write is the person's: refused from an agent's pane, and on a member (the state is the lead's).
+ */
+async function answerCrewState(service: WalkyService, request: Extract<WalkyRequest, { op: "hill.state" }>, targets: readonly PlaceTarget[], hill: HillSocket): Promise<WalkyAnswer> {
+  if (request.state === null) {
+    const read = await hill.askCrewState();
+    if (read.ok) return { ok: true, crewState: read.crewState };
+    return read.older === true ? { ok: false, error: read.error, hill: true, code: "lead_too_old" } : { ok: false, error: read.error, hill: true };
+  }
+  if (await fromAgentPane(service, request.markers, targets)) {
+    service.noteRefusal("agent pane");
+    return { ok: false, error: HILL_PERSON_ONLY, hill: true, code: "person_only" };
+  }
+  const set = hill.setCrewState(request.state, "terminal", "terminal");
+  if (!set.ok) return set.notLead ? { ok: false, error: set.error, hill: true, code: "not_on_lead" } : { ok: false, error: set.error, hill: true };
+  return { ok: true, crewState: set.crewState };
 }
 
 /**
