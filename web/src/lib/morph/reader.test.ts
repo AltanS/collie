@@ -214,6 +214,30 @@ describe("latestRequestIn and morphRequestOf", () => {
     expect(latestRequestIn(only, { head: HEAD, hint: HINT })?.text).toBe("kept");
   });
 
+  it("skips a slash command and a shell line typed in the terminal, and keeps an @ turn", () => {
+    expect(latestRequestIn([entry("user", iso(T0), "/model")], {})).toBeNull();
+    expect(latestRequestIn([entry("user", iso(T0), `${HEAD} /compact ${HINT}`)], { head: HEAD, hint: HINT })).toBeNull();
+    expect(latestRequestIn([entry("user", iso(T0), "!ls")], {})).toBeNull();
+    expect(latestRequestIn([entry("user", iso(T0), "@notes.md summarise it")], {})?.text).toBe("@notes.md summarise it");
+    const real = [entry("user", iso(T0 - 1000), "real prompt"), entry("assistant", iso(T0 - 500), "Done."), entry("user", iso(T0), "/model")];
+    expect(latestRequestIn(real, {})).toEqual({ text: "real prompt", at: T0 - 1000 });
+    const shell = [entry("user", iso(T0 - 1000), "real prompt"), entry("user", iso(T0), "!ls")];
+    expect(latestRequestIn(shell, {})?.text).toBe("real prompt");
+  });
+
+  it("a journal with only a slash command holds no request and no status", () => {
+    const only = [entry("user", iso(T0), "/model")];
+    const request = morphRequestOf({ local: undefined, entries: only, wording: {} });
+    expect(request).toBeNull();
+    expect(morphStatusOf({ request, view: undefined, drawing: undefined, working: false, entries: only, now: T0 + 1000 })).toBeNull();
+  });
+
+  it("a request sent from the phone is not replaced by a later slash command or shell line", () => {
+    const sent: MorphRequest = { text: "second one", phase: "sent", reason: null, at: T0 - 100 };
+    const typed = [...entries, entry("user", iso(T0 + 9000), "/model"), entry("user", iso(T0 + 9500), "!ls")];
+    expect(morphRequestOf({ local: sent, entries: typed, wording: { head: HEAD, hint: HINT } })).toBe(sent);
+  });
+
   it("after a reload there is only the chat's turn; the composer's note wins while it is in flight or failed", () => {
     expect(morphRequestOf({ local: undefined, entries, wording: { head: HEAD, hint: HINT } })).toEqual({ text: "second one", at: T0, phase: "sent", reason: null });
     const sending: MorphRequest = { text: "typing now", phase: "sending", reason: null, at: T0 + 5000 };

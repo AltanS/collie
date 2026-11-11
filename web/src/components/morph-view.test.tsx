@@ -247,6 +247,13 @@ describe("the operator's request in the Morph body", () => {
     expect(container.querySelector("[data-slot=morph-request]")?.textContent).not.toContain("rules");
   });
 
+  it("a slash command typed in the terminal is no request: the empty state, no status line", () => {
+    const { container } = draw({ view: undefined, entries: [entry("user", "2026-11-10T10:02:00.000Z", "/model")] });
+    expect(container.querySelector("[data-slot=morph-request]")).toBeNull();
+    expect(statusLine(container)).toBeNull();
+    expect(container.querySelector("[data-slot=morph-view]")?.getAttribute("data-state")).toBe("empty");
+  });
+
   it("with no request anywhere, draws no request block", () => {
     const { container } = draw({ entries: [entry("assistant", "2026-11-10T10:00:02.000Z", "hello")] });
     expect(container.querySelector("[data-slot=morph-request]")).toBeNull();
