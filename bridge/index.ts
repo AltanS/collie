@@ -3496,10 +3496,7 @@ const standbyDoor = standbyStore === null ? null : createStandbyDoor({
   devices: syncedDevices,
   takeover: (device) => performTakeover(device),
   // §25: what the tap starts again, read off this machine's own disk, never off the lead's word.
-  carried: async () => ({
-    tricks: await tricksStartingAtTap(tricksCopyStore, cfg.stateDir, tricksConfigRoot),
-    questions: 0,
-  }),
+  carried: async () => ({ tricks: await tricksStartingAtTap(tricksCopyStore, cfg.stateDir, tricksConfigRoot) }),
 });
 
 /**

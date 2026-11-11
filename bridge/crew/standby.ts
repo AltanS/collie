@@ -334,12 +334,11 @@ const PAGE_STYLE =
  */
 /**
  * What the takeover tap also starts, read off THIS machine's own disk when the page is drawn (§25): the
- * names of the tricks that will run here after it, and how many open Decisions come along. Never a
- * claim the lead makes at tap time: the lead may be the machine that is gone.
+ * names of the tricks that will run here after it. Never a claim the lead makes at tap time: the lead
+ * may be the machine that is gone.
  */
 export interface CarriedSummary {
   readonly tricks: readonly string[];
-  readonly questions: number;
 }
 
 /** The most trick names the page lists; the rest read "and N more". */
@@ -358,7 +357,7 @@ export function cleanCarriedName(name: string): string {
   return chars.length > CARRIED_NAME_MAX ? `${chars.slice(0, CARRIED_NAME_MAX - 1).join("")}…` : kept;
 }
 
-/** The page's lines about what the tap also starts: none, one, or two. Escaped here. */
+/** The page's line about what the tap also starts, or none. Escaped here. */
 export function carriedLines(carried: CarriedSummary | null): string[] {
   if (carried === null) return [];
   const out: string[] = [];
@@ -367,13 +366,6 @@ export function carriedLines(carried: CarriedSummary | null): string[] {
     const shown = names.slice(0, CARRIED_NAMES_SHOWN).map((n) => `<code>${escapeHtml(n)}</code>`);
     const more = names.length - shown.length;
     out.push(`<p>This also starts these tricks again: ${shown.join(", ")}${more > 0 ? ` and ${String(more)} more` : ""}.</p>`);
-  }
-  if (carried.questions > 0) {
-    out.push(
-      carried.questions === 1
-        ? "<p>1 open question on the Hill comes along.</p>"
-        : `<p>${String(carried.questions)} open questions on the Hill come along.</p>`,
-    );
   }
   return out;
 }

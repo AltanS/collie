@@ -198,20 +198,16 @@ export const CREW_PAIRING_PATH = "/crew/v1/pairing";
  */
 export const CREW_LAUNCHERS_COPY_PATH = "/crew/v1/launchers-copy";
 /**
- * `POST` — the lead sends the DEPUTY ONLY an inert copy of the tricks it runs, and of its open Decisions
- * (CREW_PROTOCOL §25, added in 1.29.0). The launchers copy's gate. What lands goes under
- * `<stateDir>/standby-tricks/` and `<stateDir>/standby-hill/`, read by no loader and run by nothing: only
- * the person's tap on the deputy's own standby page adopts it (`carry-adopt.ts`).
+ * `POST` — the lead sends the DEPUTY ONLY an inert copy of the tricks it runs (CREW_PROTOCOL §25, added
+ * in 1.29.0). The launchers copy's gate. What lands goes under `<stateDir>/standby-tricks/`, read by no
+ * loader and run by nothing: only the person's tap on the deputy's own standby page adopts it
+ * (`carry-adopt.ts`).
  */
 export const CREW_TRICKS_COPY_PATH = "/crew/v1/tricks-copy";
 /** `POST` — one part of one trick's code, in order (§25). */
 export const CREW_TRICKS_COPY_CODE_PATH = "/crew/v1/tricks-copy/code";
 /** `POST` — one trick's small state folder and pictures (§25). */
 export const CREW_TRICKS_COPY_STATE_PATH = "/crew/v1/tricks-copy/state";
-/** `POST` — the open Decisions of the lead's Hill, and a short list of the closed ones (§25). */
-export const CREW_HILL_COPY_PATH = "/crew/v1/hill-copy";
-/** `POST` — one image of an open Decision (§25). */
-export const CREW_HILL_COPY_MEDIA_PATH = "/crew/v1/hill-copy/media";
 
 /**
  * The body caps of the §25 routes, read before a byte of the body is (they ride the pinned handshake,
@@ -221,8 +217,6 @@ export const CARRY_BODY_CAPS: ReadonlyMap<string, number> = new Map([
   [CREW_TRICKS_COPY_PATH, 8 * 1024 * 1024],
   [CREW_TRICKS_COPY_CODE_PATH, 3 * 1024 * 1024],
   [CREW_TRICKS_COPY_STATE_PATH, 6 * 1024 * 1024],
-  [CREW_HILL_COPY_PATH, 4 * 1024 * 1024],
-  [CREW_HILL_COPY_MEDIA_PATH, 3 * 1024 * 1024],
 ]);
 /** How many §25 bodies a deputy reads at once. The lead sends one at a time; one more is room. */
 export const CARRY_READS_MAX = 2;
@@ -1378,7 +1372,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // ADR 0127 point 5: the launcher copy's digest, read the same absent-means-nothing-held way.
       const copy = deps.standby?.copyDigest?.() ?? null;
       if (copy !== null) hello[LAUNCHERS_DIGEST_FIELD] = copy;
-      // §25: the tricks and Hill copy's report, read the same absent-means-nothing-held way.
+      // §25: the tricks copy's report, read the same absent-means-nothing-held way.
       Object.assign(hello, deps.standby?.carry?.report() ?? {});
       // M22/03: what THIS machine's multiplexer can do, so the lead can answer `/api/config?host=`
       // for this member without forwarding a config read (ADR 0011 keeps the crew link the only
@@ -1573,7 +1567,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // ADR 0127 point 5: the launcher copy's digest, in the same seat and for the same reason.
       const copy = deps.standby?.copyDigest?.() ?? null;
       const withCopy = copy === null ? withClash : { ...withClash, [LAUNCHERS_DIGEST_FIELD]: copy };
-      // §25: the tricks and Hill copy's report, in the same seat and for the same reason.
+      // §25: the tricks copy's report, in the same seat and for the same reason.
       const withReport = { ...withCopy, ...deps.standby?.carry?.report() };
       // §19: this machine's own update preflight, in the same seat, for the same reason. The lead's
       // `X-Crew-Preflight: fresh` is passed on as a REQUEST — a peer that honours it answers with a
@@ -1986,7 +1980,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   }
 
   /**
-   * The §25 routes: the lead sends the DEPUTY an inert copy of its tricks and open Decisions.
+   * The §25 routes: the lead sends the DEPUTY an inert copy of its tricks.
    *
    * The launchers copy's two role questions, both of which must answer yes: the caller is this collie's
    * own lead, and this collie holds a verified warrant naming itself. Only then is the body read, and

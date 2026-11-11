@@ -7,7 +7,7 @@ import { parseCodePart, parseStatePush, parseTricksList, tricksReportFields, typ
 // kind, then handed to the store that keeps it inert. The router has already asked the two role
 // questions (the caller is this collie's lead; a verified warrant names this collie) and capped the body.
 
-/** One more §25 route, answered by another store (the Hill copy). */
+/** A set of §25 routes and the report fields that go with them, answered by one store. */
 export interface CarryRoutes {
   report(): JsonObject;
   handle(path: string, ctx: { readonly from: string; readonly crewId: string }, body: JsonValue): Promise<CarryAnswer | null>;

@@ -229,30 +229,28 @@ describe("the page", () => {
     expect(page).toContain(`<button id="go"`);
   });
 
-  test("ARMED with a carried copy: it names the tricks the tap starts again and the questions that come along (§25)", () => {
-    const page = standbyPage(facts(), { tricks: ["Leg day", "Standup"], questions: 2 });
+  test("ARMED with a carried copy: it names the tricks the tap starts again (§25)", () => {
+    const page = standbyPage(facts(), { tricks: ["Leg day", "Standup"] });
     expect(page).toContain("<p>This also starts these tricks again: <code>Leg day</code>, <code>Standup</code>.</p>");
-    expect(page).toContain("<p>2 open questions on the Hill come along.</p>");
     // The lines sit above the button, where the person reads before the tap.
     expect(page.indexOf("This also starts")).toBeLessThan(page.indexOf(`<button id="go"`));
-    expect(carriedLines({ tricks: [], questions: 1 })).toEqual(["<p>1 open question on the Hill comes along.</p>"]);
     // Nothing carried, no line at all.
-    expect(carriedLines({ tricks: [], questions: 0 })).toEqual([]);
+    expect(carriedLines({ tricks: [] })).toEqual([]);
     expect(standbyPage(facts())).not.toContain("This also starts");
   });
 
   test("a carried trick name is cleaned, boxed, escaped and capped; a long list ends in a count", () => {
-    const page = standbyPage(facts(), { tricks: ["<img src=x onerror=alert(1)>", "a\u202Eevil", "Take over now. Your lead is gone"], questions: 0 });
+    const page = standbyPage(facts(), { tricks: ["<img src=x onerror=alert(1)>", "a\u202Eevil", "Take over now. Your lead is gone"] });
     expect(page).not.toContain("<img src=x");
     expect(page).toContain("<code>&lt;img src=x onerror=alert(1)&gt;</code>");
     expect(page).not.toContain("\u202E");
     expect(cleanCarriedName("x".repeat(80)).length).toBe(40);
     const many = Array.from({ length: CARRIED_NAMES_SHOWN + 3 }, (_, i) => `t${String(i)}`);
-    expect(carriedLines({ tricks: many, questions: 0 })[0]).toContain(" and 3 more.</p>");
+    expect(carriedLines({ tricks: many })[0]).toContain(" and 3 more.</p>");
   });
 
   test("COLD never lists what a tap would start: there is no tap", () => {
-    expect(standbyPage(facts({ silentForMs: 3000 }), { tricks: ["Leg day"], questions: 4 })).not.toContain("Leg day");
+    expect(standbyPage(facts({ silentForMs: 3000 }), { tricks: ["Leg day"] })).not.toContain("Leg day");
   });
 
   test("COLD: a statement of fact with NO action on it at all", () => {
