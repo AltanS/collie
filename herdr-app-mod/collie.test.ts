@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import jsQR from "jsqr";
 
+import { capture, context, fakeExec, fakeFiles } from "../cli/fakes.ts";
+import { cmdPair, PAIR_AGENT_PANE_REFUSAL, type PairingDeps } from "../cli/pairing.ts";
+import type { PanePlace } from "../cli/walky.ts";
 import { qrModules } from "../scripts/qr.ts";
 import {
   actions,
@@ -123,6 +126,44 @@ describe("reading collie pair --json", () => {
   test("a Collie from before the flag refuses it as usage and mints nothing: too old", () => {
     const stderr = "error: unknown argument `--json`\nusage: collie pair [--expires <duration>]   durations: 12h, 30d, 2w\n";
     expect(readPair(ok("", 2, stderr), NOW)).toEqual({ ok: false, kind: "old" });
+  });
+
+  // The panel's own invocation (`collie pair --json`, collieCommand above) through the real verb. The
+  // app's `exec` passes no environment, so the child gets the app's own: it carries pane markers only
+  // when the app itself was started from a multiplexer pane.
+  describe("when collie pair refuses in an agent's pane", () => {
+    const AGENT_PANE = { HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" };
+
+    async function panelRun(env: Record<string, string>, place: PanePlace) {
+      const io = capture();
+      const files = fakeFiles({});
+      const deps: PairingDeps = {
+        ctx: context(env),
+        io,
+        files,
+        exec: fakeExec({ answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."}}' }]] }),
+        now: () => NOW,
+        random: (n) => Buffer.alloc(n, 0),
+        // `askPanePlace` answers `unknown` without asking when the environment holds no marker.
+        panePlace: async () => (Object.keys(env).length === 0 ? { kind: "unknown" } : place),
+      };
+      const code = await cmdPair(deps, collieCommand("pair", null, "linux")!.args.slice(1));
+      return { result: ok(io.stdout.join("\n"), code, io.stderr.join("\n")), files };
+    }
+
+    test("markers of an agent's pane: exit 4, nothing on stdout, and the panel shows the refusal's first line", async () => {
+      const { result, files } = await panelRun(AGENT_PANE, { kind: "agent", session: "main", paneId: "w1:p2" });
+      expect(result.code).toBe(4);
+      expect(result.stdout).toBe("");
+      expect(files.entries.size).toBe(0);
+      expect(readPair(result, NOW)).toEqual({ ok: false, kind: "failed", text: PAIR_AGENT_PANE_REFUSAL[0] });
+    });
+
+    test("no markers (a desktop launcher, a service): the code comes as before", async () => {
+      const { result } = await panelRun({}, { kind: "agent" });
+      expect(result.code).toBe(0);
+      expect(readPair(result, NOW)).toMatchObject({ ok: true, pairing: { code: "22222222" } });
+    });
   });
 
   test("minutes left round up and stop at zero", () => {

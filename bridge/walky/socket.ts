@@ -12,6 +12,9 @@
 //   cancel  { id }                      → { ok, results }   (M62 spec 03: the sender takes a held message back)
 //   off     {}                          → { ok, off }       (M89: the asker's own pane turns its walky talky off)
 //   on      {}                          → { ok, off }       (M89: and on again)
+//   pane    {}                          → { ok, agent, session, paneId }   (whether the asking pane runs an
+//                                                            agent, and where the bridge placed it; `collie pair`
+//                                                            asks it before it makes a code)
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine; a request this bridge cannot read answers the same when
 // its markers name no pane here, else `bad request: <reason>` (refusals.ts). A send with no markers
@@ -102,6 +105,7 @@ export type WalkyAnswer =
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number }
   | { readonly ok: true; readonly off: boolean }
+  | { readonly ok: true; readonly agent: boolean; readonly session: string; readonly paneId: string }
   | { readonly ok: true; readonly results: readonly TakeBack[] };
 
 /**
@@ -179,6 +183,13 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
         return { ok: false, error: SWITCH_NEEDS_A_PANE };
       }
       return { ok: true, off: service.setOff(pane, request.op === "off", "session") };
+    case "pane":
+      // What the asking pane runs, from the pane its markers place: an agent's session, or a bare shell.
+      // `collie pair` refuses only for an agent (cli/pairing.ts); with no markers there is no pane to say.
+      // `session` and `paneId` are where the bridge placed it: `pair` carries them to the audit line of
+      // the pairing its code makes.
+      if (pane === null) return { ok: false, error: "needs a pane" };
+      return { ok: true, agent: pane.agent, session: pane.session, paneId: pane.paneId };
   }
 }
 

@@ -64,7 +64,30 @@ export type PendingPairing = {
    * The phone never chooses it: the operator's terminal is the only writer of this file.
    */
   tokenLifetimeMs?: number;
+  /**
+   * The multiplexer pane `collie pair` ran in, as the running bridge placed it (its walky `pane` op).
+   * Absent when the CLI ran outside a pane, or no bridge placed it: the file then reads exactly as it
+   * did before the field existed. Audit only: the claim's audit line names it, so a person can see
+   * which pane made the code a device spent. It is NOT proof: any process of the same user can write
+   * this file (docs/security.md, "What a program running as you can still do").
+   */
+  mintedIn?: MintedIn;
 };
+
+/** Where a pairing code was made: a pane's herdr session (or mux scope) and its pane id. */
+export type MintedIn = { session: string; paneId: string };
+
+/** The longest session or pane id {@link coercePending} keeps; longer is not a pane id, and is dropped. */
+const MINTED_IN_MAX = 128;
+
+/** A `mintedIn` value off disk, or undefined when it is not one. */
+function coerceMintedIn(raw: JsonValue | undefined): MintedIn | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const { session, paneId } = raw;
+  const fine = (v: JsonValue | undefined): v is string =>
+    typeof v === "string" && v !== "" && v.length <= MINTED_IN_MAX && !hasHiddenLabelChar(v);
+  return fine(session) && fine(paneId) ? { session, paneId } : undefined;
+}
 
 /** One paired device. The token itself was shown once, at claim time, and is not recoverable. */
 export type PairedDevice = {
@@ -269,6 +292,10 @@ export function coercePending(raw: JsonValue | undefined): PendingPairing | null
   if (typeof lifetime === "number" && Number.isFinite(lifetime) && lifetime > 0) {
     pending.tokenLifetimeMs = lifetime;
   }
+  // A place that is not two short, plain strings is dropped: the code still pairs, the audit line says
+  // "not placed".
+  const mintedIn = coerceMintedIn(o.mintedIn);
+  if (mintedIn !== undefined) pending.mintedIn = mintedIn;
   return pending;
 }
 
@@ -646,6 +673,15 @@ export function filePairingIo(stateDir: string): PairingIo {
 }
 
 /**
+ * What {@link PairingStore.claim} answers. On success the token (shown once), whether an expired device's
+ * entry was replaced, and where the code was made ({@link PendingPairing.mintedIn}, null when the pending
+ * file did not say), for the audit line.
+ */
+export type ClaimResult =
+  | { ok: true; token: string; replacedExpired: boolean; mintedIn: MintedIn | null }
+  | { ok: false; reason: ClaimFailure };
+
+/**
  * The bridge's view of pairing: a synchronous gate for the request path, plus the async enrolment
  * and revocation operations.
  *
@@ -786,7 +822,7 @@ export class PairingStore {
   async claim(
     code: string,
     label: string,
-  ): Promise<{ ok: true; token: string; replacedExpired: boolean } | { ok: false; reason: ClaimFailure }> {
+  ): Promise<ClaimResult> {
     // The WHOLE claim runs in the write queue, the code check included. Two claims racing on one
     // code would otherwise both read the pending pairing before either deleted it, and both enrol:
     // one code, two devices. Two wrong guesses racing would both read the same attempt count and
@@ -799,7 +835,7 @@ export class PairingStore {
   private async claimInQueue(
     code: string,
     label: string,
-  ): Promise<{ ok: true; token: string; replacedExpired: boolean } | { ok: false; reason: ClaimFailure }> {
+  ): Promise<ClaimResult> {
     const pending = coercePending(await this.io.readPending());
     const verdict = checkClaim(pending, code, this.now());
     if (!verdict.ok) {
@@ -823,7 +859,7 @@ export class PairingStore {
     if (!enrolled) return { ok: false, reason: "duplicate-label" };
     await this.io.writeRegistry(enrolled.registry);
     await this.io.deletePending();
-    return { ok: true, token, replacedExpired: enrolled.replaced };
+    return { ok: true, token, replacedExpired: enrolled.replaced, mintedIn: pending?.mintedIn ?? null };
   }
 
   /**
