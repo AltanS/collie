@@ -52,6 +52,8 @@ export interface ChangedFile {
   hunk: string[] | null;
   /** Set when the hunk is not the whole change as it is: git's output was cut at the cap, a line was masked, or a character became a `?`. */
   cut?: true;
+  /** Set when a line holds a run of more than {@link VIEW_GAP_MAX} spaces as the card shows it: a proposal with one is refused (review 7 R2). */
+  gap?: true;
 }
 
 export interface VersionDiff {
@@ -141,7 +143,16 @@ export interface ViewLineRead {
    * review). A tab as two spaces, or the CR of a CRLF line end, hides nothing and does not count.
    */
   masked: boolean;
+  /** True when the line holds a run of more than {@link VIEW_GAP_MAX} spaces, a tab counting as two. */
+  gap: boolean;
 }
+
+/**
+ * The longest run of spaces a proposed line may hold, a tab counting as two (review 7 R2). A longer run
+ * would push the code after it far to the right of a phone's screen, past where a person reads.
+ */
+export const VIEW_GAP_MAX = 40;
+const WIDE_GAP = new RegExp(` {${String(VIEW_GAP_MAX + 1)},}`, "u");
 
 /** A line as a Decision's view takes it, and whether it differs from the file's line beyond its tabs. */
 export function readViewLine(raw: string): ViewLineRead {
@@ -159,7 +170,7 @@ export function readViewLine(raw: string): ViewLineRead {
     if (refused) replaced = true;
     line += refused ? "?" : ch;
   }
-  return { line, masked: redacted !== text || replaced };
+  return { line, masked: redacted !== text || replaced, gap: WIDE_GAP.test(line) };
 }
 
 /** A line as a Decision's view takes it: masked, tabs as two spaces, any character the view refuses a `?`. */
@@ -233,6 +244,7 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
     file.minus = read.minus;
     file.hunk = lines.map((line) => line.line);
     if (answer.truncated === true || lines.some((line) => line.masked)) file.cut = true;
+    if (lines.some((line) => line.gap)) file.gap = true;
     counted = true;
   }
   return { files, counted };

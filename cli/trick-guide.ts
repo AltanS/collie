@@ -112,7 +112,7 @@ export function trickGuide(): string[] {
     `Code that does not fit one card shows on a group of up to ${String(GROUP_CODE_CARDS + 1)} cards, every line of it.`,
     `Card 1 holds the facts. ${String(GROUP_CODE_CARDS)} cards hold the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all).`,
     "The yes waits until the person opened every card. collie trick check says how many.",
-    "A larger trick, a file that is not text, or a line with a key or a hidden character is refused.",
+    "A larger trick, a file that is not text, a line with a key or a hidden character, or a run of more than 40 spaces in a line (a tab counts as two) is refused.",
     "The trick.ts helper Collie ships is named on card 1, not shown, and takes no room.",
     "When they say yes, the trick is added and switched on.",
     `The card closes on its own after ${String(days)} days.`,

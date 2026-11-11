@@ -4,7 +4,7 @@ import { HILL_SUMMARY_MAX, type HillPostInput } from "../../web/src/lib/hill/wir
 import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
-import { addedDiff, codeGroup, changeCells, filesOnCards, groupOrder, helperNote, placesTables, shippedHelpers, sizeWords, type GroupRefusal } from "./card-group.ts";
+import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, placesTables, shippedHelpers, sizeWords, type GroupRefusal } from "./card-group.ts";
 import { bytesOf, checked, filesSentence, fitView, listWords, newInputs, newRights, placeWords, rightsHead, versionTitle, WARN_VERBS } from "./version-card.ts";
 import type { ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
@@ -149,6 +149,8 @@ export const PROPOSAL_TOO_LARGE = "This trick asks for more than a card can show
 export type ProposalCardResult = { ok: true; card: Omit<HillPostInput, "requestId"> } | { ok: false; code: "card_too_large" | GroupRefusal["code"]; error: string };
 
 const TOO_LARGE_FACTS = { ok: false, code: "card_too_large", error: PROPOSAL_TOO_LARGE } as const;
+/** A line with a run of spaces a phone would push out of sight: refused on one card and on a group alike (review 7 R2). */
+const WIDE_GAP = { ok: false, code: "cannot_show", error: GROUP_WIDE_GAP } as const;
 
 /** The sentence of what a trick asks for and does, after "It" or "It now also". */
 function alsoSentence(rights: readonly string[], reads: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], crew: boolean): string {
@@ -190,6 +192,7 @@ function factsCard(head: readonly ViewNode[], count: number, codeCards: number, 
  */
 export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const { manifest } = input;
+  if (input.diff.files.some((file) => file.gap === true)) return WIDE_GAP;
   const rights = proposalRights(manifest);
   const reads = manifest.inputs ?? [];
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
@@ -262,6 +265,7 @@ export interface ProposalVersionCardInput {
 
 /** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended, one card or a group as {@link proposalCard}. */
 export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCardResult {
+  if (input.diff.files.some((file) => file.gap === true)) return WIDE_GAP;
   const rights = newRights(input.baseManifest, input.manifest);
   const reads = newInputs(input.baseManifest, input.manifest);
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);

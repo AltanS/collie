@@ -8,6 +8,7 @@ import { ARM_DWELL_MS, ARM_MS } from "../arm";
 import { hostParts, linkTargetOf, renderView, type RenderCtx, type ViewPicture, type ViewPictureDraw, type ViewPictures } from "./render";
 import { NODE_KINDS, TONE_TEXT_CLASS, parseDecisionView, parseTrickDocument, type View } from "./schema";
 import type { TapState } from "./store";
+import { DIFF_WRAP_MARK, wrapPieces } from "../../components/ui/diff-lines";
 
 const copyText = vi.hoisted(() => vi.fn((_text: string) => Promise.resolve()));
 vi.mock("../clipboard", () => ({ copyText, canCopyText: () => true }));
@@ -842,6 +843,40 @@ describe("the display kinds of 2026-11-10", () => {
     const kinds = [...container.querySelectorAll<HTMLElement>("[data-diff-line]")].map((el) => el.dataset.diffLine);
     expect(kinds).toEqual(["hunk", "context", "del", "add"]);
     expect(container.querySelector('[data-slot="diff-lines-file"]')?.textContent).toBe("web/src/app.tsx");
+  });
+
+  it("soft-wraps a diff in a view that wraps, a mark Collie draws on each row that goes on (review 7 R2)", () => {
+    // A block 16 + 2ch + 20ch wide: 20 columns of text in a 10 px mono character.
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(16 + 22 * 10);
+    const ch = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 20));
+    try {
+      const long = `+${"a".repeat(20)}${"b".repeat(20)}${"c".repeat(5)}`;
+      const view = viewOfNodes({ kind: "diff", attrs: { file: "program.ts" }, text: `@@ -0,0 +1,2 @@\n${long}\n+short` });
+      const wrapped = draw(view, { wrap: true });
+      const lines = [...wrapped.container.querySelectorAll<HTMLElement>("[data-diff-line]")];
+      expect(lines.map((el) => el.dataset.diffLine)).toEqual(["hunk", "add", "add"]);
+      const rows = [...lines[1]!.querySelectorAll<HTMLElement>("[aria-hidden] > span:last-child")].map((el) => el.textContent);
+      expect(rows).toEqual(["a".repeat(20), "b".repeat(20), "c".repeat(5)]);
+      expect([...lines[1]!.querySelectorAll("[data-diff-wrap]")].map((el) => el.firstElementChild?.textContent)).toEqual([DIFF_WRAP_MARK, DIFF_WRAP_MARK]);
+      // Read once, whole, with its sign.
+      expect(lines[1]!.querySelector(".sr-only")?.textContent).toBe(long);
+      expect(wrapped.container.querySelector('[data-slot="diff-lines"] .overflow-x-auto')).toBeNull();
+      wrapped.unmount();
+      // A Session's diff still scrolls sideways, no mark.
+      const fixed = draw(view);
+      expect(fixed.container.querySelector("[data-diff-wrap]")).toBeNull();
+      expect(fixed.container.querySelector('[data-slot="diff-lines"] .overflow-x-auto')).not.toBeNull();
+    } finally {
+      width.mockRestore();
+      ch.mockRestore();
+    }
+  });
+
+  it("cuts a line into pieces of the block's columns, by characters", () => {
+    expect(wrapPieces("abcdef", 4)).toEqual(["abcd", "ef"]);
+    expect(wrapPieces("ab", 4)).toEqual(["ab"]);
+    expect(wrapPieces("😀😀😀", 2)).toEqual(["😀😀", "😀"]);
+    expect(wrapPieces("abcdef", 0)).toEqual(["abcdef"]);
   });
 
   it("draws a spark with its label and last figure, and says the lowest, the highest and the last", () => {

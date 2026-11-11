@@ -482,7 +482,10 @@ keeps one card, as before. Otherwise the card is one Decision with a `group` of 
   character is any one `web/src/lib/hidden-chars.ts` names: a control but the line feed and the tab, a
   format or direction character, U+2028 and U+2029 (a JavaScript line end), a zero-width joiner, a
   variation selector, a blank-looking letter (U+3164, U+115F, U+2800), a space that is not U+0020, a
-  private-use or unassigned code point. The phone's `diff` rule refuses the same characters;
+  private-use or unassigned code point. The phone's `diff` rule refuses the same characters. A line
+  with a run of more than 40 spaces (a tab counts as two) is refused too (`cannot_show`): on a Decision's
+  card the phone soft-wraps code, each row that goes on marked `↪` in the sign column, and such a run
+  would still push the code after it far down and out of the reader's way;
 - each card is stored with the SHA-256 of its view, and the group with a digest over the Decision's ref
   and the cards' hashes in order. Only `postCollie` makes a group: a post that carries `group` or
   `parts` from an agent, a trick, the walky socket or a crew member is refused, and the decisions file

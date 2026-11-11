@@ -5,7 +5,7 @@ import { MANIFEST_FILE } from "./paths.ts";
 import { HELPER_FILE, shippedHelperVersion } from "./scan.ts";
 import type { ProposedFile } from "./propose-wire.ts";
 import { bytesOf, cellPath, checked, countCell } from "./version-card.ts";
-import { readViewLine, type ChangedFile, type VersionDiff } from "./version-diff.ts";
+import { readViewLine, VIEW_GAP_MAX, type ChangedFile, type VersionDiff } from "./version-diff.ts";
 
 // A GROUP OF CARDS (crew slice 8): the code of a trick that does not fit one card, shown whole on up to
 // seven more. Card 1 is Collie's facts (proposal-card.ts, version-card.ts); this module lays out cards 2
@@ -71,12 +71,13 @@ export const GROUP_WRAP = "↪";
 export const GROUP_MASKED_NOTE = "Some text on this card is masked: a key, or a hidden character.";
 
 /** The capacity in words, for `collie trick guide` and `collie trick check`. */
-export const GROUP_CAPACITY_WORDS = `A proposal shows on at most ${String(GROUP_CODE_CARDS + 1)} cards: card 1 holds the facts, and ${String(GROUP_CODE_CARDS)} cards hold every line of the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all, ${String(GROUP_FILES_MAX)} files at most). A larger trick, a file that is not text, or a line with a key or a hidden character cannot be proposed.`;
+export const GROUP_CAPACITY_WORDS = `A proposal shows on at most ${String(GROUP_CODE_CARDS + 1)} cards: card 1 holds the facts, and ${String(GROUP_CODE_CARDS)} cards hold every line of the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all, ${String(GROUP_FILES_MAX)} files at most). A larger trick, a file that is not text, a line with a key or a hidden character, or a run of more than ${String(VIEW_GAP_MAX)} spaces cannot be proposed.`;
 
 /** The refusals of a proposal whose code no group can show as it is. */
 export const GROUP_TOO_LARGE = "This trick is too large to show on the phone, so it was not proposed. Ask your person to add it on the machine.";
 export const GROUP_MASKED = "This trick holds text that a card cannot show as it is (a key, or a hidden character), so it was not proposed. Ask your person to add it on the machine.";
 export const GROUP_NOT_TEXT = "This trick holds a file that a card cannot show as text, so it was not proposed. Ask your person to add it on the machine.";
+export const GROUP_WIDE_GAP = `This trick holds a line with a run of more than ${String(VIEW_GAP_MAX)} spaces, which pushes code out of sight on a phone, so it was not proposed. Shorten the run, or ask your person to add it on the machine.`;
 
 /** One file's rows for the cards: diff lines with their sign, and whether any was masked. */
 export interface GroupFile {
@@ -106,6 +107,7 @@ export function addedFile(file: Pick<ProposedFile, "rel" | "bytes">): ChangedFil
   const hunk = [`@@ -0,0 +1,${String(read.length)} @@`, ...read.map((line) => `+${line.line}`)];
   const changed: ChangedFile = { rel: file.rel, change: "added", plus: read.length, minus: 0, hunk };
   if (read.some((line) => line.masked)) changed.cut = true;
+  if (read.some((line) => line.gap)) changed.gap = true;
   return changed;
 }
 

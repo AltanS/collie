@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { parseJson } from "../../web/src/lib/json.ts";
-import { DECISION_VIEW_LIMITS, DIFF_LIMITS, parseDecisionView, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { DECISION_VIEW_LIMITS, DIFF_LIMITS, parseDecisionView, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import {
   addedDiff,
   codeGroup,
@@ -14,10 +14,13 @@ import {
   GROUP_SEAM_LAST,
   GROUP_SEAM_NEXT,
   GROUP_TOO_LARGE,
+  GROUP_WIDE_GAP,
   GROUP_WRAP,
   groupOrder,
   wrapRow,
 } from "./card-group.ts";
+import { proposalCard, proposalVersionCard, type ProposerFacts } from "./proposal-card.ts";
+import { readViewLine, VIEW_GAP_MAX } from "./version-diff.ts";
 
 // A GROUP OF CARDS (crew slice 8): the code cards show every line, in a fixed order, within the view cap.
 
@@ -98,5 +101,27 @@ describe("what a group cannot show", () => {
   test("a file that is not UTF-8 text cannot show", () => {
     const diff = addedDiff([{ rel: "a.bin", bytes: new Uint8Array([0xff, 0xfe, 0x00]) }]);
     expect(codeGroup(diff.files, null, "refuse")).toEqual({ ok: false, code: "cannot_show", error: GROUP_NOT_TEXT });
+  });
+});
+
+describe("a run of spaces a phone would push out of sight (review 7 R2)", () => {
+  const MANIFEST: TrickManifest = { id: "legs", name: "Legs", run: "program.ts", mode: "once", contract: 1, icon: "plug", places: ["belt"] };
+  const WHO: ProposerFacts = { by: "agent", host: "workshop", label: "repo#one" };
+  const card = (program: string) => proposalCard({ id: "legs", manifest: MANIFEST, proposer: WHO, diff: addedDiff([{ rel: "program.ts", bytes: enc(program) }]), warnings: [], crew: false });
+
+  test(`at most ${String(VIEW_GAP_MAX)} columns of spaces, a tab counting as two`, () => {
+    expect(readViewLine(`a${" ".repeat(VIEW_GAP_MAX)}b`).gap).toBe(false);
+    expect(readViewLine(`a${" ".repeat(VIEW_GAP_MAX + 1)}b`).gap).toBe(true);
+    expect(readViewLine(`a${"\t".repeat(VIEW_GAP_MAX / 2)}b`).gap).toBe(false);
+    expect(readViewLine(`a${"\t".repeat(VIEW_GAP_MAX / 2)} b`).gap).toBe(true);
+  });
+
+  test("a proposal with a longer run is refused, on one card and on a group; a proposed version too", () => {
+    const refused = { ok: false, code: "cannot_show", error: GROUP_WIDE_GAP };
+    expect(card(`const a = 1;${" ".repeat(VIEW_GAP_MAX + 1)}evil();\n`)).toEqual(refused);
+    expect(card(`${lines(300)}const a = 1;${" ".repeat(VIEW_GAP_MAX + 1)}evil();\n`)).toEqual(refused);
+    expect(card(`const a = 1;${" ".repeat(VIEW_GAP_MAX)}ok();\n`).ok).toBe(true);
+    const diff = addedDiff([{ rel: "program.ts", bytes: enc(`x;${" ".repeat(VIEW_GAP_MAX + 1)}evil();\n`) }]);
+    expect(proposalVersionCard({ id: "legs", manifest: MANIFEST, baseManifest: MANIFEST, proposer: WHO, diff, warnings: [], crew: false })).toEqual(refused);
   });
 });
