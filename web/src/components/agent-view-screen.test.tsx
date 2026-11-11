@@ -897,3 +897,20 @@ describe("review 10 W4: a linked run shows where it goes", () => {
     expect(container.querySelector("[data-trick-link-host]")?.textContent).toBe("xn--bcher-kva.example");
   });
 });
+
+describe("review 10 W5: a long trick name never squeezes Collie's words in the band", () => {
+  it("W5: with a 40-character CJK name, Collie's words keep their width whole and the name gives way", () => {
+    const name = "長".repeat(40);
+    const { container } = draw({ name });
+    const band = container.querySelector("[data-slot=view-band]")!;
+    const by = band.querySelector("[data-slot=view-band-by]")!;
+    expect(by.textContent).toBe("Drawn by this session's agent");
+    // Collie's words: no ellipsis, and they never shrink for the name (at worst they wrap).
+    expect(by.className).not.toMatch(/(^|\s)(truncate|line-clamp-\d|whitespace-nowrap)(\s|$)/u);
+    expect(by.className).toMatch(/(^|\s)shrink-0(\s|$)/u);
+    const shown = band.querySelector("[data-slot=view-band-name]")!;
+    expect(shown.textContent).toBe(name);
+    expect(shown.className).toMatch(/(^|\s)truncate(\s|$)/u);
+    expect(shown.className).toMatch(/(^|\s)min-w-0(\s|$)/u);
+  });
+});

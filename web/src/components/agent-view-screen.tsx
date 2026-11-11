@@ -248,7 +248,11 @@ export function ViewBand({ name, line, age }: { name: string; line: BandLine | n
         <span data-slot="view-band-name" className="min-w-0 shrink truncate font-semibold">
           {name}
         </span>
-        <span className="min-w-0 truncate text-muted-foreground">{t("view.band.by")}</span>
+        {/* Collie's words never give way to the agent's trick name (review 10 W5): they keep their width,
+            and wrap only past 70% of the band (a long translation); the name truncates in what is left. */}
+        <span data-slot="view-band-by" className="max-w-[70%] shrink-0 break-words text-muted-foreground">
+          {t("view.band.by")}
+        </span>
       </p>
       <div data-slot="view-band-line" role="status" className="mt-0.5 flex min-h-5 min-w-0 items-start pl-6 text-xs">
         <OneOf
