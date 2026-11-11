@@ -10,9 +10,9 @@ import { checkStatic, leadsCrewOnDisk, reportFails } from "./trick.ts";
 import { AskLate, NO_SOCKET_TEXT, shown } from "./walky.ts";
 import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
-import { isPictureName, PICTURE_DIRS } from "../bridge/tricks/code-hash.ts";
 import { PROPOSE_ASK_MS } from "../bridge/tricks/propose-door.ts";
-import { isConfigPath, PROPOSE_LIMITS, readProposal, wireFiles, type ProposedFile } from "../bridge/tricks/propose-wire.ts";
+import { foldKey, isConfigPath, PROPOSE_LIMITS, readProposal, wireFiles, type ProposedFile } from "../bridge/tricks/propose-wire.ts";
+import { CONFIG_FILE, PICTURE_DIRS } from "../bridge/tricks/code-hash.ts";
 import { MANIFEST_FILE } from "../bridge/tricks/paths.ts";
 import { warningLines } from "../bridge/tricks/scan.ts";
 import { unknownOp } from "../bridge/walky/refusals.ts";
@@ -27,8 +27,8 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 // Hill; nothing runs before their yes.
 //
 // Left behind, never sent: dot files and dot folders (`.env`, `.git`), `node_modules/`, `*.log`, the
-// bridge's own `inputs/`, anything in `media/` or `captures/` that is not a picture, and `config.toml`:
-// the program reads it, so the person writes it on the machine (security review F2).
+// bridge's own `inputs/`, `media/` and `captures/` (a proposal carries code only, security review F3), and
+// `config.toml`: the program reads it, so the person writes it on the machine (security review F2).
 
 /** What the CLI prints when no bridge on this machine takes proposals. */
 export const PROPOSE_UNKNOWN = "No running Collie on this machine takes trick proposals. Update Collie, or start it.";
@@ -46,16 +46,17 @@ export type ProposeDeps = HillDeps;
 /** The folder read for a proposal: the files to send, and how many were left behind. */
 export type FolderRead = { ok: true; files: ProposedFile[]; left: number; config: boolean } | { ok: false; error: string };
 
+/** The top-level names left behind, folded: the bridge's `inputs/`, the person's pictures and settings. */
+const LEFT_TOP: ReadonlySet<string> = new Set(["inputs", ...PICTURE_DIRS, CONFIG_FILE]);
+
 /** Whether a name is left behind: not code, or the bridge's own. */
 function leftBehind(rel: string, isDir: boolean): boolean {
   const steps = rel.split("/");
   const name = steps.at(-1) ?? "";
-  if (steps.some((step) => step.startsWith(".") || step === "node_modules")) return true;
-  if (steps.length === 1 && isDir && name === "inputs") return true;
-  if (steps.length === 1 && isConfigPath(name)) return true;
+  if (steps.some((step) => step.startsWith(".") || foldKey(step) === "node_modules")) return true;
+  // The bridge's own inputs/, the person's pictures and settings: a proposal carries code only.
+  if (steps.length === 1 && LEFT_TOP.has(foldKey(name))) return true;
   if (!isDir && name.endsWith(".log")) return true;
-  // A picture folder carries pictures only: anything else there is not copied by an approval either.
-  if (!isDir && steps.length > 1 && PICTURE_DIRS.some((dir) => dir === steps[0]) && !isPictureName(rel)) return true;
   return false;
 }
 
@@ -224,7 +225,7 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
     deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, decision, replaced, requestId: rid, files: read.files.length, left: read.left, warnings: report.warnings.map((w) => w.kind) }));
     return EXIT.OK;
   }
-  deps.io.out(`Sent ${String(read.files.length)} files. Left behind: ${String(read.left)} (dot files, node_modules, logs, inputs/, config.toml).`);
+  deps.io.out(`Sent ${String(read.files.length)} files. Left behind: ${String(read.left)} (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).`);
   if (read.config) deps.io.out(PROPOSE_CONFIG_LEFT);
   if (kind === "version") deps.io.out(`Proposed a new version of ${id}. Your person sees it on the Hill as ${decision ?? "a card"}. Nothing of it is written or runs before their yes.`);
   else deps.io.out(`Proposed ${id}. Your person sees it on the Hill as ${decision ?? "a card"}. Nothing runs before their yes.`);

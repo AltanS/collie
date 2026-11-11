@@ -67,9 +67,12 @@ describe("the paths a proposal may carry", () => {
     expect(proposedPathProblem(rel)).toContain(words);
   });
 
-  test("a picture folder in another case keeps the picture rule", () => {
-    expect(refusedWith(wire([...base(), file("Media/run.ts", "code")]))).toContain("picture folder");
-    expect(refusedWith(wire([...base(), file("CAPTURES/x.png", "#!/bin/sh")]))).toContain("picture folder");
+  test("media, captures and inputs, as a folder or a file, in any case, are refused", () => {
+    for (const rel of ["media/a.png", "Media/run.ts", "CAPTURES/x.png", "media", "captures", "Inputs"]) {
+      expect(proposedPathProblem(rel)).not.toBeNull();
+    }
+    expect(refusedWith(wire([...base(), { rel: "media/a.png", bytes: PNG, executable: false }]))).toContain("your person adds pictures on the machine");
+    expect(refusedWith(wire([...base(), file("media", "x")]))).toContain("your person adds pictures on the machine");
   });
 
   test("ordinary names and a nested folder are taken", () => {
@@ -98,10 +101,8 @@ describe("the paths a proposal may carry", () => {
     expect(refusedWith(wire([...base(), file("lib"), file("lib/a.ts")]))).toContain("as a file and as a folder");
   });
 
-  test("media/ and captures/ carry pictures only, by name and by their first bytes", () => {
-    expect(readProposal(wire([...base(), { rel: "media/a.png", bytes: PNG, executable: false }])).ok).toBe(true);
-    expect(refusedWith(wire([...base(), file("media/run.ts", "code")]))).toContain("picture folder");
-    expect(refusedWith(wire([...base(), file("captures/fake.png", "#!/bin/sh")]))).toContain("picture folder");
+  test("a folder named media below the top is ordinary code", () => {
+    expect(proposedPathProblem("lib/media/a.ts")).toBeNull();
   });
 });
 

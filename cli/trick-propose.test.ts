@@ -97,14 +97,14 @@ function trickFolder(extra: Record<string, string> = {}): string {
 }
 
 describe("the folder read", () => {
-  posixTest("leaves dot files, node_modules, logs, inputs/ and non-pictures in media/ behind", async () => {
-    const dir = trickFolder({ ".env": "SECRET=placeholder", ".git/config": "x", "node_modules/a/index.js": "x", "run.log": "x", "inputs/a.md": "x", "media/notes.txt": "x", "lib/util.ts": "export {};\n", "config.toml": "a = 1\n" });
+  posixTest("leaves dot files, node_modules, logs, inputs/, media/, captures/ and config.toml behind", async () => {
+    const dir = trickFolder({ ".env": "SECRET=placeholder", ".git/config": "x", "node_modules/a/index.js": "x", "run.log": "x", "inputs/a.md": "x", "media/a.png": "x", "captures/b.png": "x", "lib/util.ts": "export {};\n", "config.toml": "a = 1\n" });
     chmodSync(join(dir, "program.ts"), 0o755);
     const read = await readTrickFolder(dir);
     if (!read.ok) throw new Error(read.error);
     expect(read.files.map((f) => f.rel).toSorted()).toEqual(["lib/util.ts", "program.ts", "trick.toml"]);
     expect(read.files.find((f) => f.rel === "program.ts")?.executable).toBe(true);
-    expect(read.left).toBe(7);
+    expect(read.left).toBe(8);
     expect(read.config).toBe(true);
   });
 
@@ -223,7 +223,7 @@ describe("collie trick propose, over the walky socket", () => {
     const files = b.calls[0]?.fields.files;
     expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
     expect(d.io.stdout).toEqual([
-      "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml).",
+      "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).",
       "Proposed legs. Your person sees it on the Hill as dc_k3m9x2p7q1ab. Nothing runs before their yes.",
       "Read the answer with: collie hill status dc_k3m9x2p7q1ab",
     ]);
@@ -235,7 +235,7 @@ describe("collie trick propose, over the walky socket", () => {
     expect(await cmdTrickPropose(d, [trickFolder({ "config.toml": "rows = 3\n" })])).toBe(EXIT.OK);
     const files = b.calls[0]?.fields.files;
     expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
-    expect(d.io.stdout[0]).toBe("Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml).");
+    expect(d.io.stdout[0]).toBe("Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).");
     expect(d.io.stdout[1]).toBe("config.toml stays behind: your person sets the trick up on the machine.");
   });
 

@@ -511,6 +511,57 @@ describe("a trick id that exists", () => {
     expect((await l.service.reply(undefined)).tricks.find((t) => t.id === "legs")).toMatchObject({ on: true });
   });
 
+  test("the yes replaces only code: every file the code hash does not read stays byte for byte", async () => {
+    const l = await lead();
+    const dir = await proposedOn(l, "legs");
+    const person = {
+      "media/a.png": "png bytes",
+      "captures/b.png": "capture bytes",
+      "run.log": "a log",
+      "node_modules/pkg/index.js": "module",
+      ".notes": "my notes",
+      ".cache/z.bin": "cache",
+      "lib/.keep": "keep",
+      "lib/debug.log": "nested log",
+      "inputs/minibuch/p/a.md": "input",
+    } satisfies Record<string, string>;
+    for (const [rel, text] of Object.entries(person)) {
+      await mkdir(join(dir, rel, ".."), { recursive: true });
+      await writeFile(join(dir, rel), text);
+    }
+    await writeFile(join(dir, "lib", "old.ts"), "old helper\n");
+    // The helper is code: approve the folder as it is, as the person would.
+    const code = await trickCodeHash(dir);
+    if (!code.ok) throw new Error(code.reason);
+    await writeSwitches(l.stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-10T09:00:00Z", code.hash));
+    await l.service.refresh(true);
+    await l.proposals.propose(proposal("legs", "v2\n", { extra: [{ rel: "lib/new.ts", bytes: enc("new helper\n"), executable: false }] }), AGENT);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok", state: "answered" });
+    for (const [rel, text] of Object.entries(person)) expect(await readFile(join(dir, rel), "utf8")).toBe(text);
+    expect(await readFile(join(dir, "config.toml"), "utf8")).toBe("rows = 3\n");
+    expect(await readFile(join(dir, "program.ts"), "utf8")).toBe("v2\n");
+    expect(await readFile(join(dir, "lib", "new.ts"), "utf8")).toBe("new helper\n");
+    // A code file the new version does not have is gone; it stays in the approved copy of the old version.
+    expect(await stat(join(dir, "lib", "old.ts")).catch(() => null)).toBeNull();
+    const after = await trickCodeHash(dir);
+    const switches = JSON.parse(await readFile(join(l.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(after.ok && switches.on.legs.hash === after.hash).toBe(true);
+  });
+
+  test("a new file where the person keeps a folder of their own refuses the yes, and nothing is written", async () => {
+    const l = await lead();
+    const dir = await proposedOn(l, "legs");
+    await mkdir(join(dir, "lib"), { recursive: true });
+    await writeFile(join(dir, "lib", ".keep"), "mine");
+    await l.service.refresh(true);
+    await l.proposals.propose(proposal("legs", "v2\n", { extra: [{ rel: "lib", bytes: enc("a file now\n"), executable: false }] }), AGENT);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "rejected", reason: "The new version needs the name lib, where the trick's folder holds something of your own, so nothing was changed." });
+    expect(await readFile(join(dir, "lib", ".keep"), "utf8")).toBe("mine");
+    expect(await readFile(join(dir, "program.ts"), "utf8")).toBe("old\n");
+  });
+
   test("a folder changed by hand since the card refuses the yes, and the hand edit stays", async () => {
     const l = await lead();
     const dir = await proposedOn(l, "legs");

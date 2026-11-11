@@ -4,9 +4,8 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { isTrickId, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { isRequestId } from "../worktree-receipts.ts";
-import { CONFIG_FILE, isPictureName, PICTURE_DIRS, unsafeText } from "./code-hash.ts";
+import { CONFIG_FILE, PICTURE_DIRS, unsafeText } from "./code-hash.ts";
 import { MANIFEST_BYTES_MAX, readManifestText } from "./discover.ts";
-import { isPictureBytes } from "./approved.ts";
 import { MANIFEST_FILE } from "./paths.ts";
 
 // A TRICK PROPOSAL ON THE WIRE (crew slice 8): the one reader of the files a proposal carries.
@@ -155,15 +154,13 @@ export function proposedPathProblem(rel: string): string | null {
     if (foldKey(step) === "node_modules") return "names node_modules, which a trick does not carry";
     if (Buffer.byteLength(step, "utf8") > PROPOSE_LIMITS.stepBytes) return `has a step longer than ${String(PROPOSE_LIMITS.stepBytes)} bytes`;
   }
-  if (foldKey(steps[0] ?? "") === "inputs") return "is under inputs/, which the bridge fills";
+  const top = foldKey(steps[0] ?? "");
+  if (top === "inputs") return "is under inputs/, which the bridge fills";
+  // A proposal carries code only (security review F3): the person's pictures stay theirs, and a new trick
+  // gets its pictures from the person on the machine. A file of that name is refused too.
+  if (PICTURE_DIRS.some((dir) => dir === top)) return "is in media/ or captures/: a proposal carries code only, and your person adds pictures on the machine";
   if (rel.endsWith(".log")) return "is a .log file, which is not code";
   return null;
-}
-
-/** Whether a path is in one of the picture folders, `media/` or `captures/`. */
-export function inPictureDir(rel: string): boolean {
-  const top = foldKey(rel.split("/")[0] ?? "");
-  return rel.includes("/") && PICTURE_DIRS.some((dir) => dir === top);
 }
 
 /** The key two names collide on: NFKC, then lower case. */
@@ -225,9 +222,6 @@ export function checkProposedFiles(files: readonly ProposedFile[]): { ok: true; 
       const seen = folders.get(folder);
       if (seen !== undefined && seen !== spelling) return refuse("bad_files", `Two folders are named "${shownPath(spelling)}" once case and Unicode form are set aside.`);
       folders.set(folder, spelling);
-    }
-    if (inPictureDir(file.rel) && (!isPictureName(file.rel) || !isPictureBytes(file.bytes))) {
-      return refuse("bad_files", `"${shownPath(file.rel)}" is in a picture folder and is not a PNG, JPEG or WebP picture.`);
     }
     if (file.rel === MANIFEST_FILE && file.bytes.length > MANIFEST_BYTES_MAX) {
       return refuse("bad_files", `${file.rel} is larger than ${String(MANIFEST_BYTES_MAX / 1024)} KiB.`);

@@ -272,6 +272,22 @@ export async function hashCodeEntries(fs: TrickFs, dir: string, entries: readonl
   return h.digest("hex");
 }
 
+/**
+ * The code hash a folder holding exactly `files` (regular files, every one of them code) would have: the
+ * format of {@link hashCodeEntries}, from memory. A proposal's new version is approved only when the folder
+ * written hashes to this (crew slice 8); a test holds the two equal.
+ */
+export function codeHashOfFiles(files: readonly { rel: string; bytes: Uint8Array }[]): string {
+  const h = createHash("sha256");
+  for (const file of [...files].toSorted(byPath)) {
+    h.update(`file\0${file.rel}\0`);
+    h.update(`${String(file.bytes.length)}\0`);
+    h.update(file.bytes);
+    h.update("\n");
+  }
+  return h.digest("hex");
+}
+
 /** The code hash of a trick folder, read fresh: what `collie trick on` and the switch route store. */
 export async function trickCodeHash(dir: string, fs: TrickFs = diskTrickFs): Promise<{ ok: true; hash: string } | { ok: false; reason: string }> {
   const walk = await walkTrickCode(fs, dir);
