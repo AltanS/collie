@@ -3313,6 +3313,8 @@ export const en = {
   // --- Settings → Tricks (M94 slice 04) ---
   "settings.tricks.none": "No tricks yet",
   "settings.tricks.foot": "A trick runs as you.",
+  "settings.tricks.runsOn": "Tricks run on the lead of this crew. This machine runs none.",
+  "settings.tricks.runsOn.lead": "Tricks run on the lead of this crew ({lead}). This machine runs none.",
   "settings.tricks.switchFailed": "Could not switch {name}. Try again.",
   "settings.tricks.places.none": "No parts",
   "settings.tricks.place.belt": "belt",
@@ -3345,7 +3347,7 @@ export const en = {
   // Take changes without asking, and the undo of an automatic change (crew slice 3). English only until
   // the translation pass, listed in PENDING_TRANSLATION below.
   "settings.tricks.auto.label": "Take changes without asking",
-  "settings.tricks.auto.hint": "A change that asks for new rights still asks.",
+  "settings.tricks.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
   "settings.tricks.auto.failed": "Could not change {name}. Try again.",
   "settings.tricks.autoAt": "Updated {ago}, automatically.",
   "settings.tricks.undo": "Undo",
@@ -3513,6 +3515,8 @@ export const PENDING_TRANSLATION = [
   "settings.section.tricks.blurb",
   "settings.tricks.none",
   "settings.tricks.foot",
+  "settings.tricks.runsOn",
+  "settings.tricks.runsOn.lead",
   "settings.tricks.switchFailed",
   "settings.tricks.places.none",
   "settings.tricks.place.belt",

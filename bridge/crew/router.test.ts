@@ -17,6 +17,7 @@ import {
   CREW_HILL_POST_PATH,
   SIGNED_READS_BUSY,
   SIGNED_READS_MAX,
+  SIGNED_MEDIA_READS_MAX,
   CREW_LAUNCHERS_COPY_PATH,
   CREW_LEAD_PATH,
   CREW_LEAVE_PATH,
@@ -3388,6 +3389,69 @@ describe("signed body caps — a body over its route's cap is refused before it 
     for (const res of await Promise.all(inFlight)) expect(res!.status).toBe(200);
     expect((await media(image))!.status).toBe(200);
     expect(seen.filter((entry) => entry.startsWith("media:"))).toHaveLength(SIGNED_READS_MAX + 1);
+  });
+
+  test("A5: uploads that fill every media slot never turn away a signed lead, warrant or takeover body", async () => {
+    const { handler } = capRig();
+    const image = JSON.stringify({ sha256: "a".repeat(64), b64: Buffer.alloc(1024).toString("base64") });
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    // A member's uploads that send one byte, then stall: they hold every media slot.
+    const stalled = (json: string) => {
+      const bytes = new TextEncoder().encode(json);
+      let sent = false;
+      return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue(bytes.subarray(0, 1));
+            return;
+          }
+          await gate;
+          controller.enqueue(bytes.subarray(1));
+          controller.close();
+        },
+      });
+    };
+    const media = (body: BodyInit) => {
+      const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+      return handler(new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_HILL_MEDIA_PATH, image, T0) }, body }), url);
+    };
+    const inFlight = Array.from({ length: SIGNED_MEDIA_READS_MAX }, () => media(stalled(image)));
+    await Bun.sleep(20);
+    expect((await media(image))!.status).toBe(503);
+    // The lead's own crew routes still read their bodies; whatever they answer, it is not "busy".
+    for (const path of [CREW_LEAD_PATH, CREW_WARRANT_PATH, CREW_TAKEOVER_PATH]) {
+      const res = (await call(handler, path, signedPost("laptop", path, { lead: { memberId: "laptop" } }, T0)))!;
+      expect(res.status).not.toBe(503);
+      expect(await res.text()).not.toContain(SIGNED_READS_BUSY);
+    }
+    open();
+    for (const res of await Promise.all(inFlight)) expect(res!.status).toBe(200);
+  });
+
+  test("A5: an upload that breaks off half way gives its slot back and is answered, not thrown", async () => {
+    const { handler, seen } = capRig();
+    const image = JSON.stringify({ sha256: "a".repeat(64), b64: Buffer.alloc(1024).toString("base64") });
+    const broken = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(image.slice(0, 1)));
+          controller.error(new Error("connection reset"));
+        },
+      });
+    const media = (body: BodyInit) => {
+      const url = new URL(`https://peer.example${CREW_HILL_MEDIA_PATH}`);
+      return handler(new Request(url, { method: "POST", headers: { ...authed, "content-type": "application/json", ...signed("laptop", "POST", CREW_HILL_MEDIA_PATH, image, T0) }, body }), url);
+    };
+    for (let i = 0; i < SIGNED_MEDIA_READS_MAX + 2; i += 1) {
+      const res = (await media(broken()))!;
+      expect(res.status).toBe(400);
+    }
+    expect((await media(image))!.status).toBe(200);
+    expect(seen.filter((entry) => entry.startsWith("media:"))).toHaveLength(1);
   });
 
   test("an image at the hill's 2 MB limit, written as base64, passes the media cap", async () => {

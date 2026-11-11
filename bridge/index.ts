@@ -197,7 +197,9 @@ import {
 } from "./crew/takeover.ts";
 import {
   enrollmentOf,
+  isActiveMember,
   legacyStateFileNotice,
+  reservedMembers,
   TrustStore,
   type TrustStoreData,
   type Warrant,
@@ -641,7 +643,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
     const client = crewPeerClient(data);
     const verdict = await runBootGate({
       links: data.peers
-        .filter((p) => p.status === "enrolled")
+        .filter(isActiveMember)
         .map((p) => ({ memberId: p.memberId, address: p.address })),
       hello: (link) => client.hello(link),
       generation: currentWarrant(data)?.warrant.generation ?? 0,
@@ -668,6 +670,11 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
 // The mode is resolved AFTER the gate, from whatever the gate left on disk — a machine that healed
 // boots as a peer, wires a peer's listener and serves no front door, with no second process involved.
 const enrollment = enrollmentOf(trustStore.current());
+// A member enrolled under a word the address grammar keeps (`local`, `all`, `here`) is refused, not
+// dropped: said once here, with what to do (security re-review A1).
+for (const word of reservedMembers(trustStore.current())) {
+  console.warn(`[crew] warn: the member "${word}" has a name Collie's addresses keep for themselves, so this collie refuses it. Remove it with \`collie crew remove ${word}\`, then join that machine again with --label <another name>.`);
+}
 const crew = resolveCrewRuntime(enrollment);
 if (crew.conflict) console.warn(`[crew] ${crew.conflict}`);
 if (crew.mode !== "solo") console.log(`[crew] mode: ${crew.mode}`);
@@ -2381,7 +2388,9 @@ const hill = new HillService({
 hill.pruneMedia();
 versionCards = new VersionCards({ hill, tricks: () => tricks ?? null, warn: (line) => console.warn(`[tricks] ${line}`), crew: () => crew.mode === "lead" });
 // The lead's half of §22: a member's images wait here by hash for the post that names them.
-const hillCrewLead = crew.mode === "lead" ? new HillCrewLead({ hill, held: new HillHeldMedia(), machineOf: (memberId) => memberId, walkyOn: () => cfg.walky }) : null;
+// `place` is the same probe the Hill resolves addresses with: what it returns for a member's address is
+// checked against the signing member too, not only the string (security re-review A1).
+const hillCrewLead = crew.mode === "lead" ? new HillCrewLead({ hill, held: new HillHeldMedia(), machineOf: (memberId) => memberId, walkyOn: () => cfg.walky, place: hillPlace }) : null;
 const walkyServer = new WalkyServer({
   socketPath: walkySocketPath(cfg.stateDir),
   host: HOST,
@@ -2930,10 +2939,10 @@ if (crewLead !== undefined && walkyMemberId !== null) {
       // sweep's pane list and its own log, and sends it the message without the space and outside lines.
       olderThanSpace: (memberId) => olderThanSpace(walkyMemberVersion(memberId), crewVersion, compareSemver),
       border: (message, memberId, paneId) => walky.deliverer.remoteBorder(message, memberId, paneId),
-      members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
+      members: () => (trustStore.current()?.peers ?? []).filter(isActiveMember).map((member) => member.memberId),
       // A message from another member travels with that member's pinned certificate and this lead's
       // voucher, so the receiving member checks the origin itself (§21, added 2026-10-18).
-      senderCert: (memberId) => (trustStore.current()?.peers ?? []).find((member) => member.memberId === memberId && member.status === "enrolled")?.certPem ?? null,
+      senderCert: (memberId) => (trustStore.current()?.peers ?? []).find((member) => member.memberId === memberId && isActiveMember(member))?.certPem ?? null,
       signing: () => {
         const held = trustStore.current();
         return held === null || held.crew === null ? null : { keyPem: held.self.keyPem, crewId: held.crew.crewId };
@@ -3559,6 +3568,12 @@ const tricks =
         // Only a lead or a solo bridge that is not deposed schedules tricks (§18.12): a peer, a deputy and
         // a deposed lead run no timer, so one trick never runs on two machines of a crew.
         active: () => crew.mode !== "peer" && deposed === null,
+        // And says so: Settings → Tricks and `collie trick list` on such a machine name the lead that runs them.
+        runsOn: () => {
+          if (crew.mode !== "peer" && deposed === null) return null;
+          const lead = crew.mode === "peer" ? trustStore.current()?.lead?.memberId : deposed?.leadMemberId;
+          return lead === undefined || lead === null ? {} : { lead };
+        },
         // Every version the bridge approves, declines or undoes, `auto` included, leaves an audit line.
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
         // A new version that waits gets its card on the Hill; the card goes when nothing waits any more.

@@ -5,6 +5,7 @@ import {
   hashToken,
   isMemberId,
   mintIdentity,
+  isReservedMemberId,
   mintMemberId,
   slugifyMemberId,
   normalizeFingerprint,
@@ -312,8 +313,8 @@ export interface EnrollRefusal {
   readonly refused: "label_taken";
   /** The name the joiner asked for, as it typed it. */
   readonly label: string;
-  /** Who holds it: the lead's own display name, or an enrolled member's id. */
-  readonly takenBy: "lead" | "member";
+  /** Who holds it: the lead's own display name, an enrolled member's id, or the address grammar (`local`, `all`, `here`). */
+  readonly takenBy: "lead" | "member" | "reserved";
   /** The sentence the wire carries. It names the taken name and says to pass `--label`. */
   readonly message: string;
 }
@@ -348,6 +349,10 @@ function labelRefusal(data: TrustStoreData, label: string, leadName: string): En
     return refuse("lead", "the lead");
   }
   if (slug === null) return null;
+  // A1: a word the address grammar keeps is no machine's name (identity.ts `RESERVED_MEMBER_IDS`).
+  if (isReservedMemberId(slug)) {
+    return { refused: "label_taken", label: typed, takenBy: "reserved", message: `the name "${typed}" is a word Collie's addresses keep for themselves. Pass --label <another name>.` };
+  }
   if (slug === data.self.memberId) return refuse("lead", "the lead");
   const holder = data.peers.find((p) => p.memberId === slug);
   return holder === undefined ? null : refuse("member", `the member "${holder.memberId}"`);
@@ -386,7 +391,9 @@ export function enrollPeer(
     if (refusal !== null) return refusal;
   }
   const taken = new Set(data.peers.map((p) => p.memberId).concat(data.self.memberId));
-  const memberId = existing?.memberId ?? mintMemberId(req.label, taken, random);
+  // A machine enrolled under a reserved id before the rule (A1) re-joins under a fresh one.
+  const kept = existing !== undefined && !isReservedMemberId(existing.memberId) ? existing.memberId : undefined;
+  const memberId = kept ?? mintMemberId(req.label, taken, random);
   const member: TrustedMember = {
     memberId,
     fingerprint: req.fingerprint,
@@ -406,7 +413,7 @@ export function enrollPeer(
   return {
     next: {
       ...data,
-      peers: [...data.peers.filter((p) => p.memberId !== memberId), member],
+      peers: [...data.peers.filter((p) => p.memberId !== memberId && p.fingerprint !== req.fingerprint), member],
     },
     result: {
       protocol: CREW_PROTOCOL_VERSION,

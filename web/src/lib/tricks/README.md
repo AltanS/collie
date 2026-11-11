@@ -57,19 +57,30 @@ it on, the bridge copies its code into `tricks/.collie-approved/<id>/<hash16>/` 
 folder and the `media/` the phone reads all name the copy. An edit of the trick folder never stops the
 trick. The bridge copies the new code to `.collie-pending/` and the row says "A new version waits for your
 yes."; switching the trick on again approves it, and so does the card on the Hill (see "The new version
-card" below). A new version whose `env` and `places` are unchanged is taken without asking when the
+card" below). A new version whose `env` and `places` are unchanged, and in which the text search finds no warning
+kind the approved copy did not have (network, spawn, write, model, import), is taken without asking when the
 trick has `collie trick auto <id> on`, or the switch "Take changes without asking" in Settings → Tricks. So a program must not write
 into its own code folder: the copy's code files are read-only (not on Windows, where the hash check
 alone catches it), and a change there stops the trick with "The approved copy changed on disk". It keeps its notes in `trick.state`, the
 state folder, which is never copied. `media/` and `captures/` are seeded into the copy once (at most
-500 files and 64 MiB) and stay writable; `inputs/` starts empty. Dot files, dot folders and
-`node_modules/` are not copied, as with `collie trick add`. `collie trick on` and `collie trick auto
+500 files and 64 MiB) with their pictures only: a file named `.png`, `.jpg`, `.jpeg` or `.webp` whose first
+bytes are a PNG, JPEG or WebP picture. Anything else in those two folders stays behind, so a program in the
+copy can never import a file the hash and the card left out; the rule an author reads is "media/ and
+captures/ hold pictures, code goes anywhere else". They stay writable; `inputs/` starts empty. Dot files,
+dot folders and `node_modules/` are not copied, as with `collie trick add`. A symbolic link anywhere the
+code hash looks (a top-level `media/` or `captures/` link included) refuses the trick with a plain reason,
+as `collie trick add` refuses one, and a file name with a control or invisible character does too: the
+card could not show it. A copy made before links were refused stops with "The approved copy holds a
+symbolic link". `collie trick on` and `collie trick auto
 <id> on` refuse in a multiplexer pane where the running bridge sees an agent (the walky socket's `pane`
 op): an agent does not approve its own trick. In a shell pane they work. With no bridge, or a bridge
 that does not know the op or the pane, they do not refuse. It is a speed bump, not a lock: the user
-account is the real boundary, and the person approves from the phone or a terminal. A `switches.json` from an older Collie (version 1 or 2) is moved to version 3 at the
-bridge's first look: a trick whose folder still matches the hash a person approved keeps running from a
-fresh copy, and any other waits, on, for a new yes.
+account is the real boundary, and the person approves from the phone or a terminal. A `switches.json` from an older Collie (version 1 or 2) is moved to the approved-copy layout at the
+bridge's first look: a trick whose approved copy is still on disk, or whose folder still matches the hash
+a person approved, keeps running from that copy, and any other waits, on, for a new yes. The file is
+written as `"v": 2` with `"layout": 3` (`bridge/tricks/switches.ts`), so the previous build still reads
+every switch after a rollback, and a write by it keeps every switch and hash; it drops `auto`,
+`previous` and `declined`, which the next migration reads as off, none and none.
 
 **The new version card.** When the folder of a trick that is on moves past its approved copy, the bridge
 puts one Decision of kind `collie` on the Hill (`bridge/tricks/version-card.ts`): "Use the new version
@@ -78,11 +89,15 @@ crew routes make kind `agent`, the trick runner makes kind `trick`, and a decisi
 read only from the bridge's own store. Its `from.ref` is `{ type: "version", id, hash }`, the pending
 snapshot's code hash. The summary counts the changed files and names any new right (an `env` name or a
 place). The view shows a chip per new right, a line per warning kind that is new since the
-approved copy, a table of the files with their `+` and `-` counts, up to two diffs, and "and N more
-files"; it stays under 8 KiB. The counts and diffs come from `git diff --no-index -U2` run from `/` with
-the Files view's hardening, `--no-ext-diff`, `--no-textconv`, 5 s and 256 KiB per run
-(`bridge/tricks/version-diff.ts`); every line is masked like screen text. Without git the table lists
-the files only. The options are "Use the new version", "Use it and stop asking" (only when no new right
+approved copy, a table of the files with their `+` and `-` counts, the diffs of the largest text changes
+as many as fit, and "and N more files"; it stays under 8 KiB. The counts and diffs come from `git diff
+--no-index -U2` run from `/` with the Files view's hardening, `--no-ext-diff`, `--no-textconv`, 5 s and
+256 KiB per run (`bridge/tricks/version-diff.ts`); every line is masked like screen text, and a character
+the view refuses becomes `?`. Without git the table lists the files only. Collie recommends "Use the new
+version" only when the rights did not change, the text search finds nothing new, and every changed file
+is shown whole: its whole diff in the view, no line cut at 200 characters, no key masked, git's output
+not cut. Otherwise the summary says how much is shown ("1 of 3 files shown."), and a card with no view at
+all says "The change is too large to show here. Read it on the machine before you say yes." The options are "Use the new version", "Use it and stop asking" (only when no new right
 is asked) and "Keep the old version". A tap acts on exactly the hash on the card: when the folder moved
 since, the tap is refused with "The trick changed again since this card. A new card replaces this one."
 and the card stays open. A newer change replaces the card; approving elsewhere, the folder going back,

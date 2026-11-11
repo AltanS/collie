@@ -1037,7 +1037,7 @@ export const COMMANDS: readonly Command[] = [
       },
       {
         name: "auto",
-        summary: "take a trick's new versions without asking while its powers do not change: <id> on|off",
+        summary: "take a trick's new versions without asking while its powers do not change and it does nothing new: <id> on|off",
         run: async (args, s) => await cmdTrickAuto(trickVerbDeps(s.io), args),
       },
       {

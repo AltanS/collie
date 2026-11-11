@@ -10,7 +10,7 @@ import { tricksStateDir, switchesPath } from "./paths.ts";
 // preference, so two phones agree and an "off" trick does not run. One file,
 // `<stateDir>/tricks/switches.json`, mode 0600:
 //
-//   { "v": 3, "on": { "legs": { "at": "2026-11-08T09:41:00.000Z", "hash": "<sha256 of the code>",
+//   { "v": 2, "layout": 3, "on": { "legs": { "at": "2026-11-08T09:41:00.000Z", "hash": "<sha256 of the code>",
 //       "auto": false, "by": "cli", "powers": "<16 hex>",
 //       "previous": { "hash": "…", "at": "…", "by": "phone", "powers": "…" }, "declined": "<sha256>" } } }
 //
@@ -27,9 +27,17 @@ import { tricksStateDir, switchesPath } from "./paths.ts";
 //   * `previous`: the version before the last one, kept for undo.
 //   * `declined`: a version the person said no to, so it is not offered again.
 //
-// A version 1 file (`"legs": "<instant>"`) and a version 2 file (`{at, hash}`) are still read; the bridge
-// migrates them to version 3 at boot (approved.ts `migrateSwitches`). Every write is version 3, so an older
-// Collie reading this file sees "not a version 1 or 2 file" and treats every trick as off: the safe way.
+// LAYOUT 3, WRITTEN AS VERSION 2 (security re-review B4). The file says `"v": 2` and marks the approved-copy
+// layout with `"layout": 3`, so the previous build (whose parser reads `v` 1 or 2, `at` and `hash` per entry
+// and ignores any other field) still reads every switch after a rollback: each trick on, with the hash a
+// person approved, which that build runs only while the folder still hashes so. A write by that build
+// drops `layout` and the new fields (`auto`, `by`, `powers`, `previous`, `declined`) but keeps every switch
+// and hash. This build reads such a file as plain version 2 and migrates it (approved.ts
+// `migrateSwitches`), keeping an approved copy that is still on disk. Losing `auto` asks again, the safe
+// way; losing `previous` loses undo; losing `declined` offers that version once more. A file of `"v": 3`
+// (written by this branch before the change) is read as layout 3 too.
+//
+// A version 1 file (`"legs": "<instant>"`) and a plain version 2 file (`{at, hash}`) are migrated at boot.
 //
 // A new folder is OFF, so adding a trick runs nothing. The bridge rereads the file behind a stat check,
 // so `collie trick on` takes effect on the next tick with no restart. A file that does not parse reads
@@ -39,8 +47,10 @@ import { tricksStateDir, switchesPath } from "./paths.ts";
 // take the lock file (exclusive create, stale after {@link SWITCH_LOCK_STALE_MS}), read the file again,
 // apply the one change, write a temp file and rename it over. Two writers never lose each other's change.
 
-/** The version this Collie writes. */
+/** The layout this Collie writes (approved copies): `"layout": 3` in a file that says `"v": 2`. */
 export const SWITCHES_VERSION = 3;
+/** The `v` the file carries, so the previous build's parser still reads it. */
+const FILE_V = 2;
 
 /** A version kept for undo: its hash, when and by whom it was approved, and its powers. */
 export interface PreviousVersion {
@@ -70,7 +80,7 @@ export interface SwitchEntry {
 export interface Switches {
   /** Trick id to its entry. */
   on: ReadonlyMap<string, SwitchEntry>;
-  /** The version of the file read: 0 for no file, 1 to 3 as read. A write is always 3. */
+  /** The layout of the file read: 0 for no file, 1 or 2 for an older file, 3 for the approved-copy layout. A write is always 3. */
   version?: number;
 }
 
@@ -131,6 +141,7 @@ export function parseSwitches(text: string | null): ParsedSwitches {
   if (doc === undefined || (v !== 1 && v !== 2 && v !== 3)) {
     return { switches: EMPTY, problem: "switches.json is not a version 1, 2 or 3 switch file; every trick reads as off" };
   }
+  const layout = v === 3 || (v === 2 && asJsonNumber(doc.layout) === SWITCHES_VERSION) ? SWITCHES_VERSION : v;
   const on = asJsonObject(doc.on);
   if (on === undefined) return { switches: EMPTY, problem: 'switches.json has no "on" table; every trick reads as off' };
   const map = new Map<string, SwitchEntry>();
@@ -138,7 +149,7 @@ export function parseSwitches(text: string | null): ParsedSwitches {
     const entry = entryOf(value);
     if (entry !== undefined) map.set(id, entry);
   }
-  return { switches: { on: map, version: v }, problem: null };
+  return { switches: { on: map, version: layout }, problem: null };
 }
 
 /** One entry as the file holds it. Absent fields stay absent, so a rewrite of the same set is the same bytes. */
@@ -149,14 +160,14 @@ function renderEntry(entry: SwitchEntry): JsonObject {
   return out;
 }
 
-/** The file's text for a set of switches: always version 3. Keys sorted, so a rewrite of the same set is the same bytes. */
+/** The file's text for a set of switches: always layout 3, as `v` 2. Keys sorted, so a rewrite of the same set is the same bytes. */
 export function renderSwitches(switches: Switches): string {
   const on: JsonObject = {};
   for (const id of [...switches.on.keys()].toSorted()) {
     const entry = switches.on.get(id);
     if (entry !== undefined) on[id] = renderEntry(entry);
   }
-  return `${JSON.stringify({ v: SWITCHES_VERSION, on }, null, 2)}\n`;
+  return `${JSON.stringify({ v: FILE_V, layout: SWITCHES_VERSION, on }, null, 2)}\n`;
 }
 
 /** The same set with one entry put in (or replaced). */

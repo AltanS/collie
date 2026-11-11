@@ -33,6 +33,7 @@ import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/tr
 import { asJsonBoolean, asJsonObject, asJsonString, parseJson, type JsonValue } from "../web/src/lib/json.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 import {
+  isHostName,
   isTrickId,
   parseFacts,
   inputsSentence,
@@ -44,6 +45,7 @@ import {
   type TrickFacts,
   type TrickDecision,
   type TrickManifest,
+  type TricksRunsOn,
   type Refusal,
 } from "../web/src/lib/tricks/schema.ts";
 import { readEnvMarkers } from "./beacon.ts";
@@ -69,8 +71,8 @@ import type { Files } from "./sys.ts";
 //                     version waits for a yes. On prints the check scan's warnings, and still switches
 //                     on. It refuses in a pane where the running bridge sees an agent (a speed bump,
 //                     not a wall: see cmdTrickSwitch)
-//   auto <id> on|off  "take changes without asking": a new version whose powers did not move is
-//                     approved on its own; a change of powers always waits
+//   auto <id> on|off  "take changes without asking": a new version whose powers did not move and
+//                     that does nothing new (no new warning kind) is approved on its own; else it waits
 //   check <folder>    the static check: the manifest, its places, the command lines and the warnings of
 //                     every source file in the folder (a grep, not a proof). `--run` also runs the
 //                     program once against fixture facts, with the bridge's environment rule, and
@@ -110,8 +112,16 @@ interface BridgeTrick {
   lastRunAt?: string;
 }
 
+/** What `trick list` reads of the bridge's `GET /api/tricks`. */
+interface BridgeTricks {
+  tricks: Map<string, BridgeTrick>;
+  path?: string;
+  /** Set when this bridge runs no tricks because its crew's lead does. */
+  runsOn?: TricksRunsOn;
+}
+
 /** The bridge's answer to `GET /api/tricks`, or null when it said nothing usable. */
-async function bridgeTricks(deps: Pick<TrickDeps, "ctx" | "files" | "fetch">): Promise<{ tricks: Map<string, BridgeTrick>; path?: string } | null> {
+async function bridgeTricks(deps: Pick<TrickDeps, "ctx" | "files" | "fetch">): Promise<BridgeTricks | null> {
   const asked = await readOwnSnapshot(
     { ctx: deps.ctx, files: deps.files, fetch: deps.fetch },
     { path: "/api/tricks", extraHeaders: identityHeader(deps) },
@@ -136,8 +146,21 @@ async function bridgeTricks(deps: Pick<TrickDeps, "ctx" | "files" | "fetch">): P
     }
     tricks.set(id, entry);
   }
+  const out: BridgeTricks = { tricks };
   const path = asJsonString(doc.path);
-  return path === undefined ? { tricks } : { tricks, path };
+  if (path !== undefined) out.path = path;
+  const runsOn = asJsonObject(doc.runsOn);
+  if (runsOn !== undefined) {
+    const lead = asJsonString(runsOn.lead);
+    out.runsOn = lead !== undefined && isHostName(lead) ? { lead } : {};
+  }
+  return out;
+}
+
+/** The line `trick list` prints on a machine whose crew's lead runs the tricks (Settings → Tricks says the same). */
+export function runsOnText(runsOn: TricksRunsOn): string {
+  const lead = runsOn.lead === undefined ? "" : ` (${runsOn.lead})`;
+  return `Tricks run on the lead of this crew${lead}. This machine runs none.`;
 }
 
 /** The trick folders on disk, as the bridge would see them. */
@@ -173,6 +196,8 @@ export interface TrickList {
   rows: TrickListRow[];
   bridge: boolean;
   path?: string;
+  /** Set when the bridge runs no tricks because its crew's lead does. */
+  runsOn?: TricksRunsOn;
 }
 
 /** The rows of `trick list`: the folders, the switch file, and the bridge's word where it has one. */
@@ -202,6 +227,7 @@ export async function trickListRows(deps: Pick<TrickDeps, "ctx" | "files" | "fet
   });
   const out: TrickList = { exists: found.exists, rows, bridge: bridge !== null };
   if (bridge?.path !== undefined) out.path = bridge.path;
+  if (bridge?.runsOn !== undefined) out.runsOn = bridge.runsOn;
   return out;
 }
 
@@ -212,9 +238,10 @@ function table(rows: readonly (readonly string[])[]): string[] {
 
 export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Promise<number> {
   const json = args.includes("--json");
-  const { exists, rows, bridge } = await trickListRows(deps);
+  const { exists, rows, bridge, runsOn } = await trickListRows(deps);
   if (json) {
-    deps.io.out(JSON.stringify({ folder: tricksConfigDir(deps.ctx.configDir), exists, bridge, tricks: rows }, null, 2));
+    const doc = { folder: tricksConfigDir(deps.ctx.configDir), exists, bridge, tricks: rows };
+    deps.io.out(JSON.stringify(runsOn === undefined ? doc : { ...doc, runsOn }, null, 2));
     return EXIT.OK;
   }
   if (!exists || rows.length === 0) {
@@ -226,6 +253,7 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
     ...rows.map((r) => [r.id, r.name, r.on ? "on" : "off", r.auto ? "on" : "-", r.skill ? "yes" : "-", r.origin ?? "-", r.pending ? "NEW" : "-", r.state, r.lastRunAt ?? "-", r.error ?? "-"]),
   ]);
   for (const line of lines) deps.io.out(line);
+  if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
   if (rows.some((r) => r.pending)) deps.io.out("NEW: a new version waits for your yes. Approve it on the Hill, or with collie trick on <id>.");
   if (!bridge) deps.io.out("(the bridge did not answer: state and last run are from the files only)");
   if (rows.some((r) => r.skill && r.on)) deps.io.out("An agent reads what a trick asks of it with: collie trick skill <id>");
@@ -407,7 +435,7 @@ export async function cmdTrickAuto(deps: TrickDeps, args: readonly string[]): Pr
   }
   deps.io.out(
     auto
-      ? `${id} takes a new version on its own when its powers (environment names, places) did not change. A change of powers still waits for your yes.`
+      ? `${id} takes a new version on its own when its powers (environment names, places) did not change and it does nothing new. A change of powers, or something new such as reaching the network, still waits for your yes.`
       : `${id} asks again: every new version waits for your yes.`,
   );
   return EXIT.OK;
@@ -851,9 +879,11 @@ and the new version waits for a person's yes. \`collie trick on\` refuses inside
 Not part of the code, so free to change: \`config.toml\` (settings for the program; an edit reaches
 the running copy at once), a top-level \`media/\`, \`captures/\` and \`inputs/\` folder, any \`*.log\`
 file, dot files and dot folders, and \`node_modules/\`. Only the code and \`config.toml\` are copied,
-with what \`media/\` and \`captures/\` held at the moment of the yes; \`node_modules/\` and dot files
-are not, so the program cannot rely on them. Keep state in \`trick.state\` (see below). The program
-must never write a code file into its own folder: in the approved copy that stops the trick.
+with the PNG, JPEG and WebP pictures \`media/\` and \`captures/\` held at the moment of the yes. Any
+other file in those two folders is not copied, so code never goes there. \`node_modules/\` and dot
+files are not copied either, so the program cannot rely on them. A symbolic link anywhere in the
+folder refuses the trick: a trick holds regular files only. Keep state in \`trick.state\` (see below).
+The program must never write a code file into its own folder: in the approved copy that stops the trick.
 
 ## What the program gets
 

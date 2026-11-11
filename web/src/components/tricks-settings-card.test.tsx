@@ -86,6 +86,31 @@ describe("TricksSettingsCard: when it shows", () => {
   });
 });
 
+describe("B7: TricksSettingsCard on a machine that runs no tricks", () => {
+  async function storeRunsOn(runsOn: TricksReply["runsOn"]): Promise<TricksStore> {
+    const reply: TricksReply = { rev: 5, tricks: [LEGS], parts: [], present: [], runsOn };
+    const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+    await store.syncTricks(5);
+    return store;
+  }
+
+  it("says the lead runs them, by name, and that this machine runs none", async () => {
+    renderCard(await storeRunsOn({ lead: "desk" }));
+    expect(await screen.findByText("Tricks run on the lead of this crew (desk). This machine runs none.")).toBeInTheDocument();
+  });
+
+  it("says it without a name when the lead is not known", async () => {
+    renderCard(await storeRunsOn({}));
+    expect(await screen.findByText("Tricks run on the lead of this crew. This machine runs none.")).toBeInTheDocument();
+  });
+
+  it("says nothing of the kind on a lead or a solo machine", async () => {
+    renderCard(await storeWith([LEGS]));
+    await screen.findByTestId("tricks-settings");
+    expect(screen.queryByText(/This machine runs none/)).toBeNull();
+  });
+});
+
 describe("TricksSettingsCard: the rows", () => {
   it("is one row per trick: the name, the places, the provenance and a switch", async () => {
     renderCard(await storeWith([LEGS, TRACKER]));
@@ -471,7 +496,7 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     await screen.findByText("Browser leg");
     const changes = rowOf("legs").querySelector<HTMLElement>('[data-line="changes"]');
     expect(changes).toHaveTextContent("Take changes without asking");
-    expect(changes).toHaveTextContent("A change that asks for new rights still asks.");
+    expect(changes).toHaveTextContent("A change that asks for new rights, or does something new such as reaching the network, still asks.");
     expect(within(changes!).getByRole("switch", { name: "Take changes without asking" })).not.toBeChecked();
     expect(rowOf("tracker").querySelector('[data-line="changes"]')).toBeNull();
     expect(rowOf("legs").querySelector('[data-line="auto-at"]')).toBeNull();

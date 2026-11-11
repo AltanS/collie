@@ -12,7 +12,7 @@ import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { t, type MessageKey } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
-import { TRICK_WARNING_KINDS, TRICK_WARNINGS_MAX, type PlaceKind, type TrickWarningKind, type WireTrickInfo } from "@/lib/tricks/schema";
+import { TRICK_WARNING_KINDS, TRICK_WARNINGS_MAX, type PlaceKind, type TrickWarningKind, type TricksRunsOn, type WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
 import { usePairing } from "@/lib/pairing";
@@ -163,7 +163,7 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   const store = props.store ?? tricksStore;
   const state = useTricksState(store);
   if (state.rev === null) return null;
-  return <TricksList {...props} tricks={state.tricks} />;
+  return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} />;
 }
 
 /** The warnings under a row: one quiet line each, then the line that they are a text search. */
@@ -315,7 +315,21 @@ function SwitchOnlyRow({ id, checked, canWrite, onFlip }: { id: string; checked:
   );
 }
 
-function TricksList({ tricks, onSwitch = switchTrick, onAuto = setTrickAuto, onUndo = undoTrick, now, readOnly, hillOff }: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[] }) {
+/** "Tricks run on the lead of this crew (desk). This machine runs none." for a bridge that runs none. */
+export function runsOnLine(runsOn: TricksRunsOn): string {
+  return runsOn.lead === undefined ? t("settings.tricks.runsOn") : t("settings.tricks.runsOn.lead", { lead: runsOn.lead });
+}
+
+function TricksList({
+  tricks,
+  runsOn,
+  onSwitch = switchTrick,
+  onAuto = setTrickAuto,
+  onUndo = undoTrick,
+  now,
+  readOnly,
+  hillOff,
+}: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[]; runsOn?: TricksRunsOn }) {
   useLocale();
   const clock = useBridgeNow(now);
   const root = useOptionalRootData();
@@ -441,6 +455,12 @@ function TricksList({ tricks, onSwitch = switchTrick, onAuto = setTrickAuto, onU
 
   return (
     <Card className="gap-0 py-0" data-testid="tricks-settings">
+      {/* A crew member, a deputy or a deposed lead schedules no trick: the lead does (bridge/index.ts). */}
+      {runsOn !== undefined && (
+        <p data-line="runs-on" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
+          {runsOnLine(runsOn)}
+        </p>
+      )}
       <div data-slot="list-group">
         {tricks.length === 0 && (
           <div className="px-4 py-3">

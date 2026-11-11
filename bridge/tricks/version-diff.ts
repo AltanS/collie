@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { gitBinary, gitEnv, HARDENING, looksBinary } from "../changes.ts";
 import { redactText } from "../redact.ts";
-import { CODE_BYTES_MAX, diskTrickFs, walkTrickCode, type TrickFs } from "./code-hash.ts";
+import { CODE_BYTES_MAX, diskTrickFs, unsafeText, walkTrickCode, type TrickFs } from "./code-hash.ts";
 
 // WHAT A TRICK'S NEW VERSION CHANGES (crew slice 3), for the "new version" card on the Hill.
 //
@@ -25,8 +25,10 @@ import { CODE_BYTES_MAX, diskTrickFs, walkTrickCode, type TrickFs } from "./code
 //
 // ── WHAT LEAVES ────────────────────────────────────────────────────────────────────────────────────
 // Every diff line goes through `redactText` (bridge/redact.ts), the mask the bridge puts on any screen
-// text it serves, so a key in the code is not on the phone. Tabs become spaces and any other control
-// character a `?`, so the line fits a Decision's view (web/src/lib/tricks/schema.ts).
+// text it serves, so a key in the code is not on the phone. Tabs become spaces and any other character
+// a Decision's view refuses (code-hash.ts `unsafeText`) a `?`, so one line never drops the whole view
+// (web/src/lib/tricks/schema.ts). A file whose hunk is not whole, because git's output hit the cap or
+// a line was masked, is marked `cut`: the card then does not count it as shown, and recommends nothing.
 
 /** One git run's limit. */
 export const DIFF_TIMEOUT_MS = 5000;
@@ -47,6 +49,8 @@ export interface ChangedFile {
   minus: number | null;
   /** The file's hunks, masked, one line each without the patch headers. Null when not read. */
   hunk: string[] | null;
+  /** Set when the hunk is not the whole change: git's output was cut at the cap, or a line was masked. */
+  cut?: true;
 }
 
 export interface VersionDiff {
@@ -61,6 +65,8 @@ export interface DiffRun {
   code: number | null;
   stdout: string;
   timedOut: boolean;
+  /** True when the output was cut at {@link DIFF_OUTPUT_MAX}. */
+  truncated?: boolean;
 }
 
 export interface VersionDiffOptions {
@@ -104,10 +110,12 @@ async function spawnDiff(argv: readonly string[]): Promise<DiffRun> {
   }, DIFF_TIMEOUT_MS);
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let truncated = false;
   try {
     for await (const chunk of proc.stdout) {
       if (size + chunk.byteLength > DIFF_OUTPUT_MAX) {
         chunks.push(chunk.subarray(0, DIFF_OUTPUT_MAX - size));
+        truncated = true;
         proc.kill();
         break;
       }
@@ -115,23 +123,32 @@ async function spawnDiff(argv: readonly string[]): Promise<DiffRun> {
       size += chunk.byteLength;
     }
     const code = await proc.exited;
-    return { code, stdout: Buffer.concat(chunks).toString("utf8"), timedOut };
+    return { code, stdout: Buffer.concat(chunks).toString("utf8"), timedOut, truncated };
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** A line as a Decision's view takes it: masked, tabs as two spaces, any other control character a `?`. */
-export function viewLine(raw: string): string {
-  let out = "";
-  for (const ch of redactText(raw)) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (ch === "\t") out += "  ";
-    else if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) out += "?";
-    else if ((code >= 0x200e && code <= 0x200f) || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) out += "?";
-    else out += ch;
+/** A line as a Decision's view takes it, and whether the mask changed it. */
+export interface ViewLineRead {
+  line: string;
+  masked: boolean;
+}
+
+/** A line as a Decision's view takes it, and whether the mask changed it. */
+export function readViewLine(raw: string): ViewLineRead {
+  const redacted = redactText(raw);
+  let line = "";
+  for (const ch of redacted) {
+    if (ch === "\t") line += "  ";
+    else line += unsafeText(ch) ? "?" : ch;
   }
-  return out;
+  return { line, masked: redacted !== raw };
+}
+
+/** A line as a Decision's view takes it: masked, tabs as two spaces, any character the view refuses a `?`. */
+export function viewLine(raw: string): string {
+  return readViewLine(raw).line;
 }
 
 /** One patch as the card reads it: its `+` and `-` line counts and its hunk lines. */
@@ -195,9 +212,11 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
     // `--no-index` exits 1 when the files differ, 0 when they are the same, and anything else on an error.
     if (answer.timedOut || (answer.code !== 0 && answer.code !== 1)) continue;
     const read = readPatch(answer.stdout);
+    const lines = read.hunk.map(readViewLine);
     file.plus = read.plus;
     file.minus = read.minus;
-    file.hunk = read.hunk.map(viewLine);
+    file.hunk = lines.map((line) => line.line);
+    if (answer.truncated === true || lines.some((line) => line.masked)) file.cut = true;
     counted = true;
   }
   return { files, counted };

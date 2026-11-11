@@ -8,6 +8,7 @@ import type { JsonObject } from "../json.ts";
 import { asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import type { CrewDialAnswer } from "../walky/crew.ts";
 import { compareSemver } from "../update.ts";
+import { isSelf, parseAddress } from "../walky/address.ts";
 import type { HillAnswerRequest } from "../../web/src/lib/hill/wire.ts";
 import {
   CREW_HILL_MEDIA_ROUTE,
@@ -87,7 +88,7 @@ interface Bridge {
 }
 
 /** One bridge's hill, on disk under a fresh folder: a lead, or a member with a forward. */
-function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; push?: HillPush; hillOn?: () => boolean } = { memberId: "m_lead000000" }): Bridge {
+function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; push?: HillPush; hillOn?: () => boolean; place?: (address: string) => HillPlace | null } = { memberId: "m_lead000000" }): Bridge {
   const state = folder("hill-crew-state-");
   const work = folder("hill-crew-work-");
   const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
@@ -98,7 +99,7 @@ function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberI
     store: b.store,
     receipts: memoryHillReceipts(),
     media,
-    place: (address) => b.live.find((place) => place.address === address || place.address.split("#")[0] === address.split("#")[0]) ?? null,
+    place: opts.place ?? ((address) => b.live.find((place) => place.address === address || place.address.split("#")[0] === address.split("#")[0]) ?? null),
     send: async (to, body) => {
       b.sent.push({ to, body });
       return "typed";
@@ -347,6 +348,42 @@ describe("the lead's routes", () => {
     }
     expect(crewLead.post({ from: { address: "laptop/%20#zzzz", label: "repo" }, fields: fields() }, "laptop").body).toMatchObject({ ok: false, code: "too_many_open" });
     expect(crewLead.post({ from: { address: "mini/%1#aaaa", label: "repo" }, fields: fields() }, "mini").body).toMatchObject({ ok: true });
+  });
+});
+
+describe("A1: a member's id never stands for the lead's own sessions", () => {
+  // The lead's place() as walkyPlace builds it: `local/<pane>` and `desk/<pane>` are the lead's own panes.
+  const LEAD_PANE: HillPlace = { address: "desk/%1#aaaa", label: "repo#main", host: "desk", unattended: false };
+  const leadPlace = (raw: string): HillPlace | null => {
+    const at = parseAddress(raw);
+    return at !== null && at.kind === "pane" && isSelf(at.memberId, "desk") && at.paneId === "%1" && (at.instance === null || at.instance === "aaaa") ? LEAD_PANE : null;
+  };
+
+  test("A1: a member enrolled as `local` cannot post as, reply to, be about, or read the lead's own session", () => {
+    const lead = bridge("lead", { memberId: "desk", place: leadPlace });
+    const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock), place: leadPlace });
+    const shipFields = { title: "Ship?", summary: "Ship it.", options: [{ intent: "yes", label: "Yes" }], requestId: "00000000-0000-4000-8000-000000000001" };
+    expect(crewLead.post({ from: { address: "local/%1#aaaa", label: "x" }, fields: shipFields }, "local").status).toBe(401);
+    expect(crewLead.op({ op: "list", as: "local/%1#aaaa" }, "local").status).toBe(401);
+    expect(lead.store.all()).toHaveLength(0);
+  });
+
+  test("A1: what the lead's place() returns is checked, not only the string: a resolved address of another machine is refused", () => {
+    // A place() that resolves a member's own-looking address to the lead's pane (a sweep that went wrong).
+    const crooked = (raw: string): HillPlace | null => (raw.startsWith("laptop/") ? LEAD_PANE : null);
+    const lead = bridge("lead", { memberId: "desk", place: crooked });
+    const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock), place: crooked });
+    const shipFields = (over: JsonObject = {}): JsonObject => ({ title: "Ship?", summary: "Ship it.", options: [{ intent: "yes", label: "Yes" }], requestId: "00000000-0000-4000-8000-000000000002", ...over });
+    expect(crewLead.post({ from: { address: "laptop/%3#cccc", label: "x" }, fields: shipFields() }, "laptop").status).toBe(401);
+    expect(crewLead.op({ op: "list", as: "laptop/%3#cccc" }, "laptop").status).toBe(401);
+    const both = (raw: string): HillPlace | null => (raw === "laptop/%3#cccc" ? { ...LEAD_PANE, address: "laptop/%3#cccc", host: "laptop" } : raw.startsWith("laptop/") ? LEAD_PANE : null);
+    const lead2 = bridge("lead", { memberId: "desk", place: both });
+    const crewLead2 = new HillCrewLead({ hill: lead2.hill, held: new HillHeldMedia(() => lead2.clock), place: both });
+    for (const key of ["replyTo", "about"]) {
+      const answer = crewLead2.post({ from: { address: "laptop/%3#cccc", label: "x" }, fields: shipFields({ [key]: "laptop/%9" }) }, "laptop");
+      expect(asJsonObject(parseJson(JSON.stringify(answer.body)))?.code).toBe("bad_target");
+    }
+    expect(lead2.store.all()).toHaveLength(0);
   });
 });
 

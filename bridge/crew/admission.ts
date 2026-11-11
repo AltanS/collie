@@ -1,4 +1,4 @@
-import { bearerToken, secretEquals } from "./identity.ts";
+import { bearerToken, isReservedMemberId, secretEquals } from "./identity.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import type { TrustStoreData, TrustedMember } from "./trust-store.ts";
 
@@ -197,8 +197,11 @@ export function admitCrewRequest(data: TrustStoreData | null, facts: CrewRequest
   //     exists to avoid.
   // An `unenrolled` member is pinned but refused either way: that is what "dropped by a rotation"
   // means, and it must not read as an unknown machine to the operator's log.
+  // A member whose id is a word the address grammar keeps (`local`, `all`, `here`; identity.ts) is refused
+  // the same way: its addresses would name another target (security re-review A1). Read here, never
+  // written back, so the operator's store stays as it is and `collie crew remove` still finds the row.
   const pinned = resolveCaller(data, facts);
-  const identified = pinned !== undefined && (pinned.kind === "deputy" || pinned.member.status === "enrolled");
+  const identified = pinned !== undefined && (pinned.kind === "deputy" || (pinned.member.status === "enrolled" && !isReservedMemberId(pinned.member.memberId)));
 
   // Factor 2 — the crew-wide bearer secret. Evaluated regardless of factor 1's outcome so the two
   // are not chained into a timing oracle for "is this certificate known?".

@@ -341,18 +341,35 @@ export const SIGNED_BODY_CAPS: ReadonlyMap<string, number> = new Map([
 export const BODY_TOO_LARGE = "body_too_large";
 
 /**
- * How many signed bodies with a large cap (over {@link SIGNED_READS_LARGE_CAP}: `hill/media`, `lead`,
- * `warrant`, `takeover`) are read at once, before their signature is known (§8.6, added in 1.29.0). At
- * most 4 × 3 MiB unverified in memory. One more is answered `503` with `Retry-After` and no byte read;
- * the routes with a small cap (`walky`, `hello`, `hill/post`, ...) are not counted.
+ * How many signed bodies with a large cap (over {@link SIGNED_READS_LARGE_CAP}: `lead`, `warrant`,
+ * `takeover`) are read at once, before their signature is known (§8.6, added in 1.29.0). One more is
+ * answered `503` with `Retry-After` and no byte read; the routes with a small cap (`walky`, `hello`,
+ * `hill/post`, ...) are not counted. `hill/media` has its own count, {@link SIGNED_MEDIA_READS_MAX}, so a
+ * member's uploads, stalled or not, can never turn away the crew's own lead, warrant or takeover calls.
+ * At most 4 × 1 MiB plus 4 × 3 MiB unverified in memory.
  */
 export const SIGNED_READS_MAX = 4;
+/** How many `hill/media` bodies are read at once, counted apart from {@link SIGNED_READS_MAX}. */
+export const SIGNED_MEDIA_READS_MAX = 4;
 /** A cap above this is a large one, counted against {@link SIGNED_READS_MAX}. */
 export const SIGNED_READS_LARGE_CAP = 256 * 1024;
-/** The machine-readable `code` on a signed body not read because {@link SIGNED_READS_MAX} were being read. */
+/** The machine-readable `code` on a signed body not read because its count was full. */
 export const SIGNED_READS_BUSY = "signed_reads_busy";
+/** The machine-readable `code` on a signed body whose stream broke off before its end. */
+export const BODY_UNREAD = "body_unread";
 
-/** The 503 for a large signed body while {@link SIGNED_READS_MAX} are read. Said before the signature is known. */
+/** The 400 for a signed body whose stream broke off. Said before the signature is known. */
+function bodyUnreadResponse(): Response {
+  return new Response(JSON.stringify({ error: "the body broke off before its end; send it again", code: BODY_UNREAD }), {
+    status: 400,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
+    },
+  });
+}
+
+/** The 503 for a large signed body while its count is full. Said before the signature is known. */
 function signedReadsBusyResponse(): Response {
   return new Response(JSON.stringify({ error: "the lead is reading other uploads; try again", code: SIGNED_READS_BUSY }), {
     status: 503,
@@ -1054,8 +1071,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   const now = deps.now ?? Date.now;
   const random = deps.random ?? randomToken;
 
-  // The large signed bodies being read now, before their signature is known (SIGNED_READS_MAX).
-  let largeReads = 0;
+  // The large signed bodies being read now, before their signature is known: `hill/media` uploads
+  // (SIGNED_MEDIA_READS_MAX) and the crew's own large routes (SIGNED_READS_MAX), counted apart.
+  const reads = { media: 0, large: 0 };
 
   const refuse = (path: string, factor: RefusedFactor): Response => {
     // Audited locally with the real cause; the caller is told only "unauthorized" (§8.1). The two
@@ -1109,18 +1127,23 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // reads as the smallest cap rather than none.
       const cap = SIGNED_BODY_CAPS.get(pathname) ?? 0;
       const bodied = req.method !== "GET" && req.method !== "HEAD";
-      // At most SIGNED_READS_MAX large bodies are read at once; one more is turned away unread.
-      const large = bodied && cap > SIGNED_READS_LARGE_CAP;
-      if (large && largeReads >= SIGNED_READS_MAX) {
+      // At most SIGNED_MEDIA_READS_MAX uploads and SIGNED_READS_MAX other large bodies are read at once,
+      // each in its own count; one more is turned away unread. The slot is given back however the read
+      // ends, and a stream that breaks off is a 400, not a throw.
+      const slot: keyof typeof reads | null = !bodied || cap <= SIGNED_READS_LARGE_CAP ? null : pathname === CREW_HILL_MEDIA_PATH ? "media" : "large";
+      if (slot !== null && reads[slot] >= (slot === "media" ? SIGNED_MEDIA_READS_MAX : SIGNED_READS_MAX)) {
         deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "signed-reads-busy" } });
         return signedReadsBusyResponse();
       }
-      if (large) largeReads += 1;
+      if (slot !== null) reads[slot] += 1;
       let read: string | null;
       try {
         read = bodied ? await readSignedBody(req, cap) : "";
+      } catch {
+        deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "body-unread" } });
+        return bodyUnreadResponse();
       } finally {
-        if (large) largeReads -= 1;
+        if (slot !== null) reads[slot] -= 1;
       }
       if (read === null) {
         deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "body-too-large", cap } });

@@ -979,6 +979,14 @@ Run **on the peer**, once.
    > A member that joins again with the same fingerprint keeps its id and is never refused. An older
    > lead keeps the suffix behaviour.
 
+   > **Note, added in 1.29.0. The words an address keeps are no machine's name.** `local` (this machine,
+   > on every bridge), `all` and `here` are words of the walky address grammar, so a member id that is
+   > one of them would name another target: on the lead, `local/<pane>` is the lead's own pane. A label
+   > that becomes one of them is refused with the same `422` and `"takenBy": "reserved"`; no path mints
+   > such an id; a member that joins again under one gets a fresh id; and a member already enrolled under
+   > one is refused at admission with the uniform `401` (the store is not rewritten) and named once in the
+   > bridge's log at boot, with `collie crew remove <id>` as the way out.
+
 **`<lead-address>` is whatever the operator can reach.** Any network: tailnet, LAN, WireGuard,
 someone else's overlay, an SSH tunnel. Collie owns authentication; **the operator owns reachability**.
 There is no discovery, no enumeration, and no overlay-network integration — ever.
@@ -1260,12 +1268,16 @@ instant nobody has pinned the caller (§8.2).
   timestamp is the uniform 401 there too. The skew window is still checked after the signature, as
   above. Telling "read" from "not read" apart only says whether a guessed secret is right, and the
   secret is 256 random bits.
-- **At most 4 large signed bodies are read at once** *(added in 1.29.0)*: those of a route whose cap
-  is over 256 KiB (`hill/media`, `lead`, `warrant`, `takeover`; `SIGNED_READS_MAX` in
-  `bridge/crew/router.ts`), so at most 12 MiB sits unverified in memory. One more is answered `503`
-  with `Retry-After: 1` and `{ error, code: "signed_reads_busy" }`, its body unread, audited as
-  `crew.refused` with the factor `signed-reads-busy`. The routes with a smaller cap are not counted. A
-  member reads the 503 as a dial that did not land.
+- **At most 4 large signed bodies are read at once, and at most 4 uploads beside them** *(added in
+  1.29.0)*: the routes whose cap is over 256 KiB are counted, `hill/media` in its own count
+  (`SIGNED_MEDIA_READS_MAX`) and `lead`, `warrant` and `takeover` in another (`SIGNED_READS_MAX`, both
+  in `bridge/crew/router.ts`). A member's uploads, stalled or not, therefore never turn away the crew's
+  own lead, warrant or takeover calls, and at most 16 MiB sits unverified in memory. One more in a full
+  count is answered `503` with `Retry-After: 1` and `{ error, code: "signed_reads_busy" }`, its body
+  unread, audited as `crew.refused` with the factor `signed-reads-busy`. The routes with a smaller cap
+  are not counted. A member reads the 503 as a dial that did not land. A body whose stream breaks off
+  gives its slot back and is answered `400` with `{ error, code: "body_unread" }`, audited with the
+  factor `body-unread`.
 
 **The warrant is a SECOND signed object under the same key** (§18, added 2026-08-20). It reuses these
 primitives unchanged — base64 ECDSA-P256-SHA256, made with the signer's own key and verified against

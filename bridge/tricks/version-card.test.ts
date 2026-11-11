@@ -6,14 +6,14 @@ import { join } from "node:path";
 import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HillService } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
-import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
+import { HILL_SUMMARY_MAX, type HillDecision, type HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { DECISION_VIEW_LIMITS, parseDecisionView } from "../../web/src/lib/tricks/schema.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
-import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
+import { VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 
 // THE "NEW VERSION" CARD (crew slice 3): the diff of two copies, the card's words and view, and the
@@ -86,6 +86,22 @@ describe("the diff of two copies", () => {
   test("a patch's counts skip its headers; a view line is masked and holds no control character", () => {
     expect(readPatch("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n\\ No newline at end of file\n")).toEqual({ plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-a", "+b"] });
     expect(viewLine("+\tx\u0007‮")).toBe("+  x??");
+    // B2: every character a Decision's view refuses becomes a `?`, so one line never drops the view.
+    expect(viewLine("+a\u200bb\u2060c\ufeffd\u061ce\u{e0041}f")).toBe("+a?b?c?d?e?f");
+  });
+
+  test("B6: a diff cut at the output cap, or a line with a key masked, is marked cut", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "a.sh": "1\n", "b.sh": "1\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "a.sh": "2\n", "b.sh": "2\n" });
+    const run = async (argv: readonly string[]): Promise<DiffRun> =>
+      argv.at(-1)?.endsWith("a.sh") === true
+        ? { code: 1, stdout: "@@ -1 +1 @@\n-1\n+2\n", timedOut: false, truncated: true }
+        : { code: 1, stdout: '@@ -1 +1 @@\n-1\n+KEY="sk-or-v1-0123456789abcdef0123456789abcdef"\n', timedOut: false };
+    const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
+    expect(diff.files.map((file) => [file.rel, file.cut])).toEqual([
+      ["a.sh", true],
+      ["b.sh", true],
+    ]);
   });
 });
 
@@ -119,12 +135,56 @@ describe("the card's words and view", () => {
     });
     expect(card?.options).toEqual([
       { intent: "use", label: "Use the new version" },
-      { intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights." },
+      { intent: "always", label: "Use it and stop asking", detail: "Later changes are taken without asking, unless they ask for new rights or do something new." },
       { intent: "keep", label: "Keep the old version" },
     ]);
     const view = card?.view ?? [];
-    expect(view.map((node) => node.kind)).toEqual(["table", "diff", "diff"]);
+    // Every changed file's whole hunk fits, so all three are shown (B6: no fixed cap of two).
+    expect(view.map((node) => node.kind)).toEqual(["table", "diff", "diff", "diff"]);
     expect(parseDecisionView(parseJson(JSON.stringify(view))).refusals).toEqual([]);
+  });
+
+  test("B2: a file name the view would refuse is cleaned for display, so the view stays", () => {
+    const pending = subject().pending!;
+    const card = versionCard(
+      { ...subject(), pending: { ...pending, info: { ...pending.info, files: { added: 0, changed: 1, removed: 0 } } } },
+      { counted: true, files: [{ rel: "evil\u202egnp.ts", change: "changed", plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-a", "+b"] }] },
+    );
+    expect(card?.view).toBeDefined();
+    const table = card?.view?.[0];
+    expect(table?.kind).toBe("table");
+    expect(table !== undefined && "kids" in table ? table.kids?.[4] : undefined).toEqual({ kind: "cell", text: "evil?gnp.ts" });
+    expect(card?.view?.[1]).toMatchObject({ kind: "diff", attrs: { file: "evil?gnp.ts" } });
+  });
+
+  test("B2: a card whose view could not be made carries no recommendation and says to read the change on the machine", () => {
+    const card = versionCard(subject(), { counted: false, files: [] });
+    expect(card?.view).toBeUndefined();
+    expect(card?.recommends).toBeNull();
+    expect(card?.summary).toBe(`3 files changed. It asks for no new rights. ${VERSION_NOT_SHOWN}`);
+    expect(VERSION_NOT_SHOWN).toBe("The change is too large to show here. Read it on the machine before you say yes.");
+  });
+
+  test("B6: a binary or uncounted file, a cut line, a long hunk or a masked line means no recommendation, and the summary says how much is shown", () => {
+    const two = (): TrickVersionSubject => {
+      const pending = subject().pending!;
+      return { ...subject(), pending: { ...pending, info: { ...pending.info, files: { added: 0, changed: 2, removed: 0 } } } };
+    };
+    const shown = { rel: "legs.sh", change: "changed" as const, plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-echo 1", "+echo 2"] };
+    const cases: VersionDiff["files"][number][] = [
+      { rel: "pic.bin", change: "changed", plus: null, minus: null, hunk: null },
+      { rel: "pad.ts", change: "changed", plus: 1, minus: 0, hunk: ["@@ -1 +1,2 @@", ` ok`, `+const pad = "${" ".repeat(240)}"; run();`] },
+      { rel: "long.ts", change: "added", plus: 60, minus: 0, hunk: ["@@ -0,0 +1,60 @@", ...Array.from({ length: 60 }, (_, i) => `+line ${String(i)}`)] },
+      { rel: "key.ts", change: "changed", plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-a", "+b"], cut: true },
+    ];
+    for (const second of cases) {
+      const card = versionCard(two(), { counted: true, files: [shown, second] });
+      expect(card?.recommends).toBeNull();
+      expect(card?.summary).toBe("2 files changed. It asks for no new rights. 1 of 2 files shown.");
+    }
+    const all = versionCard(two(), { counted: true, files: [shown, { ...shown, rel: "other.sh" }] });
+    expect(all?.recommends).toMatchObject({ intent: "use" });
+    expect(all?.summary).toBe("2 files changed. It asks for no new rights.");
   });
 
   test("a new right and a new warning: no always, no recommendation, a chip per right in a bar, the warning in words", () => {
@@ -159,6 +219,18 @@ describe("the card's words and view", () => {
     expect(newInputs(same.base?.manifest, same.pending?.manifest)).toEqual([]);
   });
 
+  test("a new inputs glob holds the card even when the runner's powers flag says nothing moved, and even with every file shown", () => {
+    const base = subject();
+    const pending = base.pending!;
+    // A pending info from a runner that did not hash inputs yet: the card reads the manifests itself.
+    const next: TrickVersionSubject = { ...base, pending: { ...pending, info: { ...pending.info, powersChanged: false, warnings: [] }, manifest: { ...pending.manifest!, contract: 2, inputs: ["TODO.md"] } } };
+    const card = versionCard(next, DIFF);
+    expect(card?.summary).toBe("3 files changed. It now also reads files in your agent sessions' folders.");
+    expect(card?.options?.map((option) => option.intent)).toEqual(["use", "keep"]);
+    expect(card?.recommends).toBeNull();
+    expect(card?.view?.[0]).toEqual({ kind: "para", text: "Reads TODO.md in your agent sessions' folders." });
+  });
+
   test("a long name is cut so the title stays a short question; a big change fits 8 KiB, with 'and N more files'", () => {
     expect(versionTitle("A very long trick name that goes on and on and on")).toBe("Use the new version of A very long trick name that goes on…?");
     expect([...versionTitle("A very long trick name that goes on and on and on")].length).toBeLessThanOrEqual(60);
@@ -168,6 +240,23 @@ describe("the card's words and view", () => {
     expect(new TextEncoder().encode(JSON.stringify(view)).byteLength).toBeLessThanOrEqual(DECISION_VIEW_LIMITS.bytes);
     expect(view.at(-1)).toEqual({ kind: "line", text: "and 18 more files", attrs: { role: "note" } });
     expect(parseDecisionView(parseJson(JSON.stringify(view))).refusals).toEqual([]);
+    // B6: such a change is never recommended, and the summary says how little of it is shown.
+    const pending = subject().pending!;
+    const card = versionCard({ ...subject(), pending: { ...pending, info: { ...pending.info, files: { added: 0, changed: 30, removed: 0 } } } }, { counted: true, files });
+    expect(card?.recommends).toBeNull();
+    expect(card?.summary).toBe("30 files changed. It asks for no new rights. 0 of 30 files shown.");
+  });
+
+  test("B6: a summary with a long list of new rights stays within the Hill's cap and keeps the shown sentence", () => {
+    const base = subject();
+    const pending = base.pending!;
+    const env = Array.from({ length: 6 }, (_, i) => `A_VERY_LONG_ENVIRONMENT_VARIABLE_NAME_NUMBER_${String(i)}`);
+    const card = versionCard(
+      { ...base, pending: { ...pending, info: { ...pending.info, powersChanged: true, warnings: ["spawn", "network", "write", "model", "import"].map((kind) => ({ kind, text: "x" })) }, manifest: { ...pending.manifest!, env } } },
+      { counted: false, files: [] },
+    );
+    expect([...(card?.summary ?? "")].length).toBeLessThanOrEqual(HILL_SUMMARY_MAX);
+    expect(card?.summary).toBe("3 files changed. It asks for new rights, listed below. 0 of 3 files shown.");
   });
 
   test("a request id is a canonical UUID that moves with the trick, the hash and the count", () => {
@@ -190,6 +279,14 @@ interface Life {
   store: HillStore;
   cards: VersionCards;
   service: TricksService;
+}
+
+/** A stand-in for `git diff --no-index`: the whole old file out, the whole new file in, so every line shows. */
+async function wholeFileDiff(argv: readonly string[]): Promise<DiffRun> {
+  const lines = async (path: string | undefined): Promise<string[]> => (path === undefined || path === "/dev/null" ? [] : (await readFile(path, "utf8")).split("\n").filter((line) => line !== ""));
+  const [left, right] = await Promise.all([lines(argv.at(-2)), lines(argv.at(-1))]);
+  const patch = [`@@ -1,${String(left.length)} +1,${String(right.length)} @@`, ...left.map((line) => `-${line}`), ...right.map((line) => `+${line}`)];
+  return { code: 1, stdout: `${patch.join("\n")}\n`, timedOut: false };
 }
 
 async function life(): Promise<Life> {
@@ -222,7 +319,7 @@ async function life(): Promise<Life> {
     mintId: () => `dc_ver${String((n += 1)).padStart(9, "0")}`,
     onCollieAnswer: (ref, intent) => cards?.answer(ref, intent) ?? Promise.resolve({ ok: false, reason: "no cards" }),
   });
-  cards = new VersionCards({ hill, tricks: () => service, diff: (base, next) => versionDiff({ base, next, git: null }) });
+  cards = new VersionCards({ hill, tricks: () => service, diff: (base, next) => versionDiff({ base, next, git: "/fake/git", run: wholeFileDiff }) });
   service = new TricksService({
     configDir,
     stateDir,

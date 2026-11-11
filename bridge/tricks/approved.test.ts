@@ -1,13 +1,14 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { approveFolder, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, migrateSwitches, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner } from "./discover.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, TRICKS_DIR } from "./paths.ts";
-import { parseSwitches, withSwitch, type Switches } from "./switches.ts";
+import { parseSwitches, updateSwitches, withEntry, withSwitch, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -44,6 +45,11 @@ async function hashOf(dir: string): Promise<string> {
   return code.hash;
 }
 
+/** The first bytes of a real picture of each kind the copy takes (the Hill's sniff reads these). */
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0]);
+const WEBP = new TextEncoder().encode("RIFF\x10\x00\x00\x00WEBPVP8 ");
+
 describe("a snapshot", () => {
   test("copies the code as the walk hashes it, plus config.toml, the origin record and media/; never node_modules or dot files", async () => {
     const { configDir, dir } = await setup({
@@ -52,10 +58,10 @@ describe("a snapshot", () => {
       ".collie-origin.json": '{"v":1}\n',
       ".env": "SECRET=1\n",
       "node_modules/pkg/index.js": "module.exports = 1;\n",
-      "media/logo.png": "png",
       "run.log": "old\n",
     });
-    await symlink("lib/util.ts", join(dir, "link.ts"));
+    await mkdir(join(dir, "media"), { recursive: true });
+    await writeFile(join(dir, "media", "logo.png"), PNG);
     const snap = await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") });
     expect(snap.ok).toBe(true);
     if (!snap.ok) return;
@@ -64,7 +70,7 @@ describe("a snapshot", () => {
     expect(await hashOf(snap.dir)).toBe(snap.hash);
     expect(await readFile(join(snap.dir, "config.toml"), "utf8")).toBe("rows = 3\n");
     expect(await readFile(join(snap.dir, ".collie-origin.json"), "utf8")).toBe('{"v":1}\n');
-    expect(await readFile(join(snap.dir, "media", "logo.png"), "utf8")).toBe("png");
+    expect(new Uint8Array(await readFile(join(snap.dir, "media", "logo.png")))).toEqual(PNG);
     for (const absent of [".env", "node_modules", "run.log"]) expect(await Bun.file(join(snap.dir, absent)).exists()).toBe(false);
     expect((await readdir(join(snap.dir, "inputs"))).length).toBe(0);
     // A file mode is POSIX; on Windows the copy is not made read only, and the hash check alone guards it.
@@ -111,6 +117,115 @@ describe("a snapshot", () => {
     expect(await promoteCopy(snap.dir, target, snap.hash)).toBe(true);
     expect(await Bun.file(join(snap.dir, "trick.toml")).exists()).toBe(false);
     expect((await verifyCopy(target, snap.hash)).ok).toBe(true);
+  });
+});
+
+describe("nothing unseen enters the copy (security re-review)", () => {
+  test("B1: media/ and captures/ carry only real PNG, JPEG and WebP pictures into the copy; code there stays behind", async () => {
+    const { configDir, dir } = await setup({
+      "main.ts": 'import "./media/plugin.ts";\n',
+      "media/plugin.ts": 'console.log("never seen");\n',
+      "media/fake.png": 'console.log("a picture by name only");\n',
+      "captures/run.js": "process.exit(1);\n",
+      "captures/data.json": "{}\n",
+    });
+    await writeFile(join(dir, "media", "real.png"), PNG);
+    await mkdir(join(dir, "media", "sub"), { recursive: true });
+    await writeFile(join(dir, "media", "sub", "deep.JPG"), JPEG);
+    await writeFile(join(dir, "captures", "shot.webp"), WEBP);
+    const snap = await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") });
+    expect(snap.ok).toBe(true);
+    if (!snap.ok) return;
+    for (const kept of ["media/real.png", "media/sub/deep.JPG", "captures/shot.webp"]) expect(await Bun.file(join(snap.dir, kept)).exists()).toBe(true);
+    for (const left of ["media/plugin.ts", "media/fake.png", "captures/run.js", "captures/data.json"]) expect(await Bun.file(join(snap.dir, left)).exists()).toBe(false);
+    // So the approved main.ts cannot import a file that was never hashed nor shown: it is not there.
+    expect(snap.hash).toBe(await hashOf(dir));
+  });
+
+  test("B3: a trick folder with a symbolic link is refused for approval, with a plain reason", async () => {
+    const { configDir, stateDir, dir } = await setup({ "lib/util.ts": "export const x = 1;\n" });
+    await symlink("lib/util.ts", join(dir, "link.ts"));
+    const hashed = await trickCodeHash(dir);
+    expect(hashed).toMatchObject({ ok: false, code: "link" });
+    if (!hashed.ok) expect(hashed.reason).toBe("link.ts is a symbolic link. A trick holds regular files only: put the file itself there.");
+    expect(await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") })).toMatchObject({ ok: false });
+    expect(await approveFolder({ stateDir, configDir, id: "legs", by: "cli", at: "t" })).toMatchObject({ ok: false });
+    expect(await Bun.file(switchesPath(stateDir)).exists()).toBe(false);
+  });
+
+  test("B3: a top-level media/ or captures/ that is a link is refused; a linked node_modules/ is left out", async () => {
+    const outside = await tempDir();
+    await writeFile(join(outside, "x.png"), PNG);
+    for (const name of ["media", "captures"]) {
+      const { configDir, dir } = await setup();
+      await symlink(outside, join(dir, name));
+      expect(await trickCodeHash(dir)).toMatchObject({ ok: false, code: "link" });
+      expect(await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") })).toMatchObject({ ok: false });
+    }
+    const { dir } = await setup();
+    await symlink(outside, join(dir, "node_modules"));
+    expect((await trickCodeHash(dir)).ok).toBe(true);
+  });
+
+  test("B3: an approved copy that holds a link no longer verifies, and says why", async () => {
+    const dir = await tempDir();
+    await writeFile(join(dir, "trick.toml"), MANIFEST);
+    await symlink("trick.toml", join(dir, "again.toml"));
+    const check = await verifyCopy(dir, "0".repeat(64));
+    expect(check).toMatchObject({ ok: false, missing: false });
+    if (!check.ok) expect(check.reason).toContain("symbolic link");
+  });
+
+  test("B8: a code file rewritten in place with its size and mtime put back still moves the copy's listing (ctime)", async () => {
+    const { configDir, dir } = await setup({ "lib/util.ts": "export const x = 1;\n" });
+    const snap = await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") });
+    if (!snap.ok) throw new Error(snap.reason);
+    const file = join(snap.dir, "lib", "util.ts");
+    const when = new Date("2026-01-01T00:00:00Z");
+    await utimes(file, when, when);
+    const before = await copyListing(snap.dir);
+    const st = await stat(file);
+    await Bun.sleep(15);
+    await chmod(file, 0o600);
+    await writeFile(file, "export const x = 2;\n");
+    await chmod(file, 0o400);
+    await utimes(file, when, when);
+    expect((await stat(file)).mtimeMs).toBe(st.mtimeMs);
+    expect((await stat(file)).ino).toBe(st.ino);
+    expect(await copyListing(snap.dir)).not.toBe(before);
+    expect(await verifyCopy(snap.dir, snap.hash)).toMatchObject({ ok: false, reason: "The approved copy changed on disk." });
+  });
+
+  test("files fetched into the copy's inputs/ (contract 2) leave its hash, its listing and its check as they were", async () => {
+    const { configDir, dir } = await setup({ "lib/util.ts": "export const x = 1;\n" });
+    const snap = await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") });
+    if (!snap.ok) throw new Error(snap.reason);
+    const before = await copyListing(snap.dir);
+    // What inputs.ts writes before each run: inputs/<memberId>/<paneId>/<rel>, untrusted data, never code.
+    await mkdir(join(snap.dir, "inputs", "bluefin", "w6X_3a3", "notes"), { recursive: true });
+    await writeFile(join(snap.dir, "inputs", "bluefin", "w6X_3a3", "TODO.md"), "- [ ] one\n");
+    await writeFile(join(snap.dir, "inputs", "bluefin", "w6X_3a3", "notes", "a.ts"), 'console.log("a session file");\n');
+    expect(await copyListing(snap.dir)).toBe(before);
+    if (before === null) throw new Error("the copy does not list");
+    expect(await verifyCopy(snap.dir, snap.hash)).toEqual({ ok: true, listing: before });
+    expect(await hashOf(snap.dir)).toBe(snap.hash);
+    // A fetch again (a new set of files) moves nothing either: the next fetch is not a new version.
+    await rm(join(snap.dir, "inputs", "bluefin"), { recursive: true });
+    await mkdir(join(snap.dir, "inputs", "minibuch", "w6Y_p21"), { recursive: true });
+    await writeFile(join(snap.dir, "inputs", "minibuch", "w6Y_p21", "TODO.md"), "- [x] two\n");
+    expect(await copyListing(snap.dir)).toBe(before);
+    expect((await verifyCopy(snap.dir, snap.hash)).ok).toBe(true);
+  });
+
+  test("B2: a file name with a control or an invisible direction character is refused for approval", async () => {
+    for (const name of ["evil\u202egnp.ts", "two\nlines.ts", "zero\u200bwidth.ts"]) {
+      const { configDir, dir } = await setup();
+      await writeFile(join(dir, name), "x\n");
+      const hashed = await trickCodeHash(dir);
+      expect(hashed).toMatchObject({ ok: false, code: "name" });
+      if (!hashed.ok) expect(hashed.reason).toStartWith("A file name in the trick folder holds a control or an invisible character");
+      expect(await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") })).toMatchObject({ ok: false });
+    }
   });
 });
 
@@ -208,6 +323,35 @@ describe("approveFolder and migration", () => {
     expect(await migrateSwitches({ stateDir, configDir })).toBeNull();
   });
 
+  test("B4: the previous build's parser reads the new file, and a write by it loses nothing it should not", async () => {
+    const { configDir, stateDir, dir } = await setup();
+    const hash = await hashOf(dir);
+    const approved = await approveFolder({ stateDir, configDir, id: "legs", by: "cli", at: "t1" });
+    expect(approved).toMatchObject({ ok: true, hash });
+    await updateSwitches(stateDir, (now) => withEntry(withSwitch(now, "waits", true, "t2", null), "legs", { ...now.on.get("legs")!, auto: true, declined: "e".repeat(64) }));
+    const written = await readFile(switchesPath(stateDir), "utf8");
+    // The previous build (int at b9ac68b28) reads every trick as on, with the hash approved.
+    const old = previousBuildParse(written);
+    expect(old.problem).toBeNull();
+    expect([...old.switches.on]).toEqual([
+      ["legs", { at: "t1", hash }],
+      ["waits", { at: "t2", hash: null }],
+    ]);
+    // Rolled back, it switches one more trick on: it writes its own version 2, and keeps every other trick.
+    await writeFile(switchesPath(stateDir), previousBuildRender(previousBuildWithSwitch(old.switches, "more", true, "t3", "f".repeat(64))));
+    const back = parseSwitches(await readFile(switchesPath(stateDir), "utf8"));
+    expect([...back.switches.on.keys()]).toEqual(["legs", "more", "waits"]);
+    expect(back.switches.version).toBe(2);
+    // Rolled forward, the migration finds the approved copy of `legs` still there and keeps it running,
+    // even though the folder moved in between; what that build could not keep (auto, declined) is gone.
+    await writeFile(join(dir, "p.sh"), "#!/bin/sh\necho changed\n");
+    expect(await migrateSwitches({ stateDir, configDir })).toEqual({ kept: ["legs"], waiting: ["more", "waits"] });
+    const forward = parseSwitches(await readFile(switchesPath(stateDir), "utf8")).switches;
+    expect(forward.version).toBe(3);
+    expect(forward.on.get("legs")).toMatchObject({ hash, auto: false, by: "migrated" });
+    expect(forward.on.get("legs")?.declined).toBeUndefined();
+  });
+
   test("no file and a file that does not parse migrate nothing", async () => {
     const { configDir, stateDir } = await setup();
     expect(await migrateSwitches({ stateDir, configDir })).toBeNull();
@@ -252,3 +396,59 @@ describe("pruning", () => {
     expect(await readdir(join(configDir, TRICKS_DIR, PENDING_DIR))).toEqual([]);
   });
 });
+
+// ── The previous build's switch file, as a fixture (git show b9ac68b28:bridge/tricks/switches.ts) ──────
+// Copied as it was, so a test can prove the file this build writes stays readable after a rollback.
+
+interface PreviousEntry {
+  at: string;
+  hash: string | null;
+}
+
+interface PreviousSwitches {
+  on: ReadonlyMap<string, PreviousEntry>;
+}
+
+interface PreviousParsed {
+  switches: PreviousSwitches;
+  problem: string | null;
+}
+
+function previousBuildParse(text: string | null): PreviousParsed {
+  const empty: PreviousSwitches = { on: new Map<string, PreviousEntry>() };
+  if (text === null) return { switches: empty, problem: null };
+  const doc = asJsonObject(parseJson(text));
+  const v = asJsonNumber(doc?.v);
+  if (doc === undefined || (v !== 1 && v !== 2)) return { switches: empty, problem: "switches.json is not a version 1 or 2 switch file; every trick reads as off" };
+  const on = asJsonObject(doc.on);
+  if (on === undefined) return { switches: empty, problem: 'switches.json has no "on" table; every trick reads as off' };
+  const map = new Map<string, PreviousEntry>();
+  for (const [id, value] of Object.entries(on)) {
+    const plain = asJsonString(value);
+    if (plain !== undefined) {
+      map.set(id, { at: plain, hash: null });
+      continue;
+    }
+    const entry = asJsonObject(value);
+    const at = asJsonString(entry?.at);
+    const hash = asJsonString(entry?.hash);
+    if (at !== undefined) map.set(id, { at, hash: hash !== undefined && /^[0-9a-f]{64}$/.test(hash) ? hash : null });
+  }
+  return { switches: { on: map }, problem: null };
+}
+
+function previousBuildRender(switches: PreviousSwitches): string {
+  const on: Record<string, { at: string; hash: string | null }> = {};
+  for (const id of [...switches.on.keys()].toSorted()) {
+    const entry = switches.on.get(id);
+    if (entry !== undefined) on[id] = { at: entry.at, hash: entry.hash };
+  }
+  return `${JSON.stringify({ v: 2, on }, null, 2)}\n`;
+}
+
+function previousBuildWithSwitch(switches: PreviousSwitches, id: string, on: boolean, at: string, hash: string | null = null): PreviousSwitches {
+  const next = new Map(switches.on);
+  if (on) next.set(id, { at, hash });
+  else next.delete(id);
+  return { on: next };
+}

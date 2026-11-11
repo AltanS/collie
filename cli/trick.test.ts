@@ -509,7 +509,7 @@ describe("collie trick on, off and list", () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     const code = await trickCodeHash(join(d.configDir, "tricks", "legs"));
     const hash = code.ok ? code.hash : "";
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 3, on: { legs: { at: "2026-11-08T09:00:00.000Z", hash, auto: false, by: "cli", powers: expect.stringMatching(/^[0-9a-f]{16}$/) } } });
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 2, layout: 3, on: { legs: { at: "2026-11-08T09:00:00.000Z", hash, auto: false, by: "cli", powers: expect.stringMatching(/^[0-9a-f]{16}$/) } } });
     expect(d.out.at(-1)).toBe(`Approved the code of legs as it is now: sha256 ${hash}. The bridge runs this copy; an edit of the folder waits for your yes.`);
     // The approved copy holds exactly the bytes approved.
     expect(await trickCodeHash(approvedCopyDir(d.configDir, "legs", hash))).toEqual(code);
@@ -521,7 +521,7 @@ describe("collie trick on, off and list", () => {
     expect(JSON.parse(await readFile(path, "utf8")).on.legs).toMatchObject({ previous: { hash } });
     expect(JSON.parse(await readFile(path, "utf8")).on.legs.hash).not.toBe(hash);
     expect(await cmdTrickSwitch(d, ["legs"], false)).toBe(EXIT.OK);
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 3, on: {} });
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 2, layout: 3, on: {} });
     expect(await cmdTrickSwitch(d, ["legs"], false)).toBe(EXIT.OK);
     expect(d.out.at(-1)).toBe("legs is already off.");
     expect(await cmdTrickSwitch(d, ["ghost"], true)).toBe(EXIT.FAIL);
@@ -568,6 +568,25 @@ describe("collie trick on, off and list", () => {
     expect(d.out[0]).toMatch(/^ID\s+NAME\s+SWITCH\s+AUTO\s+SKILL\s+ORIGIN\s+VERSION\s+STATE\s+LAST RUN\s+LAST ERROR$/);
     expect(d.out[1]).toMatch(/^legs\s+legs\s+on\s+-\s+-\s+-\s+-\s+failing\s+2026-11-08T09:41:00.000Z\s+The program exited with 1$/);
     expect(d.asked[0]).toBe("http://127.0.0.1:18999/api/tricks");
+  });
+
+  test("B7: list on a machine whose crew's lead runs the tricks says so, by name, in text and in --json", async () => {
+    const d = await deps({ rev: 5, tricks: [], parts: [], present: [], runsOn: { lead: "desk" } });
+    await cmdTrickInit(d, ["legs"]);
+    await cmdTrickSwitch(d, ["legs"], true);
+    d.out.length = 0;
+    expect(await cmdTrickList(d, [])).toBe(EXIT.OK);
+    expect(d.out).toContain("Tricks run on the lead of this crew (desk). This machine runs none.");
+    d.out.length = 0;
+    await cmdTrickList(d, ["--json"]);
+    // SAFETY: `list --json` prints one document, checked by value below.
+    const doc = JSON.parse(d.out.join("\n")) as { runsOn?: { lead?: string } };
+    expect(doc.runsOn).toEqual({ lead: "desk" });
+    const solo = await deps({ rev: 5, tricks: [], parts: [], present: [] });
+    await cmdTrickInit(solo, ["legs"]);
+    solo.out.length = 0;
+    await cmdTrickList(solo, []);
+    expect(solo.out.join("\n")).not.toContain("This machine runs none");
   });
 
   test("list without a bridge says so, and with no folder points at init", async () => {
@@ -688,13 +707,14 @@ describe("collie trick skill", () => {
     const link = await onTrick(null);
     await writeFile(join(link.configDir, "secret.txt"), "private\n");
     await symlink(join(link.configDir, "secret.txt"), join(link.configDir, "tricks", "legs", "SKILL.md"));
-    // The symlink is part of the code: switch on again so the trick is not "changed", then ask.
-    await cmdTrickSwitch(link, ["legs"], true);
+    // B3: a trick folder with a link is not approved, so the approved copy never holds the link.
+    expect(await cmdTrickSwitch(link, ["legs"], true)).not.toBe(EXIT.OK);
+    expect(link.err.join("\n")).toContain("SKILL.md is a symbolic link");
     link.out.length = 0;
     link.err.length = 0;
     expect(await cmdTrickSkill(link, ["legs"])).toBe(EXIT.FAIL);
     expect(link.out).toEqual([]);
-    expect(link.err[0]).toBe("legs has no SKILL.md (it is not a regular file)");
+    expect(link.err[0]).toBe("legs has no SKILL.md");
 
     const big = await onTrick("x".repeat(SKILL_BYTES_MAX + 1));
     expect(await cmdTrickSkill(big, ["legs"])).toBe(EXIT.FAIL);
@@ -854,7 +874,7 @@ describe("approving from inside an agent's pane, auto, and a version waiting", (
     await writeFile(switchesPath(d.stateDir), JSON.stringify({ v: 2, on: { other: { at: "t", hash } } }));
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     const file = JSON.parse(await readFile(switchesPath(d.stateDir), "utf8"));
-    expect(file.v).toBe(3);
+    expect([file.v, file.layout]).toEqual([2, 3]);
     expect(file.on.other).toMatchObject({ hash, by: "migrated" });
     expect(await trickCodeHash(approvedCopyDir(d.configDir, "other", hash))).toEqual(other);
   });

@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
-import { chmod, lstat, mkdir, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { HOST } from "../host.ts";
 import { isTrickId, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
-import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, WRITABLE_TOP_DIRS, type CodeEntry, type TrickFs } from "./code-hash.ts";
+import { hillImageMime } from "../hill/media.ts";
+import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureName, linkRefusal, PICTURE_DIRS, walkFingerprint, walkTrickCode, WRITABLE_TOP_DIRS, type CodeEntry, type TrickFs } from "./code-hash.ts";
 import { readManifestFile, readSmallFile } from "./discover.ts";
 import { ORIGIN_FILE } from "./origin.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir } from "./paths.ts";
@@ -20,17 +21,20 @@ import { parseSwitches, updateSwitches, withApproval, type SwitchEntry, type Swi
 // Beside the trick folders, not in the state folder: paths.ts says why (the hill's picture guard).
 //
 // WHAT A COPY HOLDS. One definition, the code hash's own (code-hash.ts `walkTrickCode`):
-//   * CODE: every entry the walk hashes, copied byte for byte, a symlink as a symlink with the same target
-//     string, so the copy hashes exactly as the folder did. Read only: a file is 0400 (0500 when it was
-//     executable). A FIFO, a socket or a device refuses the copy.
+//   * CODE: every entry the walk hashes, copied byte for byte, so the copy hashes exactly as the folder
+//     did. Read only: a file is 0400 (0500 when it was executable). A FIFO, a socket or a device refuses
+//     the copy, and the walk refuses a symbolic link before anything is copied (code-hash.ts).
 //   * CONFIG: `config.toml`, copied in at approval and again whenever the folder's one changes, with no
 //     question asked (the service restarts the trick as it always did). Writable, outside the hash.
 //   * METADATA: the origin record `.collie-origin.json` (origin.ts), copied in at approval so the row says
 //     which commit runs. Outside the hash, never copied again.
 //   * WRITABLE: `media/`, `captures/` and `inputs/` (code-hash.ts `WRITABLE_TOP_DIRS`), outside the hash.
-//     `media/` and `captures/` are seeded at approval with the folder's regular files (no links, capped
-//     by {@link SEED_FILES_MAX} and {@link SEED_BYTES_MAX}); `inputs/` starts empty. The program writes
-//     here, and so do its `*.log` files and dot files, which the hash skips too.
+//     `media/` and `captures/` are seeded at approval with the folder's PICTURES only: a regular file
+//     whose name ends in `.png`, `.jpg`, `.jpeg` or `.webp` (code-hash.ts `isPictureName`) and whose
+//     first bytes are a PNG, JPEG or WebP picture (the Hill's own sniff, hill/media.ts). Anything else
+//     there stays behind, so the copy holds no file the hash and the card left out that a program could
+//     import as code. Capped by {@link SEED_FILES_MAX} and {@link SEED_BYTES_MAX}; `inputs/` starts
+//     empty. The program writes here, and so do its `*.log` files and dot files, which the hash skips too.
 //   * NOT COPIED: `node_modules/` and every other dot file or dot folder. They are outside the hash, so
 //     they would be code nobody approved; a program that needs them does not run from the copy.
 //   * STATE stays where it was: `<stateDir>/tricks/<id>/`, the program's own folder (paths.ts).
@@ -49,8 +53,6 @@ import { parseSwitches, updateSwitches, withApproval, type SwitchEntry, type Swi
 export const SEED_FILES_MAX = 500;
 /** The most bytes seeded into `media/` and `captures/` together. */
 export const SEED_BYTES_MAX = 64 * 1024 * 1024;
-/** The folders seeded from the trick folder at approval. */
-const SEEDED_DIRS = ["media", "captures"] as const;
 /** The most bytes of the origin record copied. */
 const ORIGIN_BYTES_MAX = 8 * 1024;
 /** An unreferenced copy or a stage folder younger than this is left alone by a prune: a writer may be about to name it. */
@@ -87,13 +89,9 @@ async function copyEntry(fs: TrickFs, src: string, stage: string, entry: CodeEnt
   const from = join(src, entry.rel);
   const to = join(stage, entry.rel);
   await mkdir(dirname(to), { recursive: true, mode: 0o700 });
-  if (entry.kind === "other") return `${entry.rel} is not a regular file or a link, so the trick cannot be copied.`;
-  if (entry.kind === "symlink") {
-    const target = await fs.readlink(from);
-    if (target === null) return `${entry.rel} cannot be read.`;
-    await symlink(target, to);
-    return null;
-  }
+  if (entry.kind === "other") return `${entry.rel} is not a regular file, so the trick cannot be copied.`;
+  // The walk refuses a link already; one that appeared since is refused here, never copied.
+  if (entry.kind === "symlink") return linkRefusal(entry.rel);
   const bytes = await fs.read(from, CODE_BYTES_MAX);
   if (bytes === null) return `${entry.rel} cannot be read.`;
   await writeFile(to, bytes, { flag: "wx", mode: 0o600 });
@@ -106,13 +104,27 @@ async function executable(path: string): Promise<boolean> {
   return st !== null && (st.mode & 0o111) !== 0;
 }
 
-/** Copy the regular files under `src/<name>/` into `dest/<name>/`, within the shared budget. */
-async function seedDir(src: string, dest: string, name: string, budget: { files: number; bytes: number }, fs: TrickFs): Promise<void> {
+/** Whether bytes are a picture the copy takes from `media/` or `captures/`: PNG, JPEG or WebP by their first bytes. */
+export function isPictureBytes(bytes: Uint8Array): boolean {
+  return hillImageMime(bytes) !== null;
+}
+
+/**
+ * Copy the PICTURES under `src/<name>/` into `dest/<name>/`, within the shared budget: a regular file with
+ * a picture's name whose first bytes are a picture's. A folder that is not a real folder (a link) is not
+ * listed, and a file is read without following a link. Answers why the copy is refused, or null.
+ */
+async function seedDir(src: string, dest: string, name: string, budget: { files: number; bytes: number }, fs: TrickFs): Promise<string | null> {
   const queue: string[] = [name];
   // Bounded by the budget: every pass takes one folder; a folder is queued only while files remain.
   for (let pass = 0; queue.length > 0 && pass < SEED_FILES_MAX; pass += 1) {
     const rel = queue.shift();
     if (rel === undefined) break;
+    const here = await fs.lstat(join(src, rel));
+    if (here === null) continue;
+    // A top-level `media/` that is a link is refused by the walk; one that became a link since is refused here.
+    if (here.kind === "symlink") return linkRefusal(rel);
+    if (here.kind !== "dir") continue;
     const listed = await fs.list(join(src, rel));
     if (!listed.ok) continue;
     await mkdir(join(dest, rel), { recursive: true, mode: 0o700 });
@@ -123,16 +135,17 @@ async function seedDir(src: string, dest: string, name: string, budget: { files:
         queue.push(child);
         continue;
       }
-      if (item.kind !== "file" || budget.files <= 0) continue;
+      if (item.kind !== "file" || budget.files <= 0 || !isPictureName(item.name)) continue;
       const st = await fs.lstat(join(src, child));
       if (st === null || st.kind !== "file" || st.size > budget.bytes) continue;
       const bytes = await fs.read(join(src, child), st.size);
-      if (bytes === null) continue;
+      if (bytes === null || !isPictureBytes(bytes)) continue;
       await writeFile(join(dest, child), bytes, { flag: "wx", mode: 0o600 });
       budget.files -= 1;
       budget.bytes -= bytes.length;
     }
   }
+  return null;
 }
 
 /** The writable and metadata parts of a copy: config.toml, the origin record, the seeded and empty folders. */
@@ -146,7 +159,10 @@ async function copyExtras(fs: TrickFs, src: string, stage: string): Promise<stri
     if (bytes !== null) await writeFile(join(stage, ORIGIN_FILE), bytes, { mode: 0o600 });
   }
   const budget = { files: SEED_FILES_MAX, bytes: SEED_BYTES_MAX };
-  for (const name of SEEDED_DIRS) await seedDir(src, stage, name, budget, fs);
+  for (const name of PICTURE_DIRS) {
+    const problem = await seedDir(src, stage, name, budget, fs);
+    if (problem !== null) return problem;
+  }
   for (const name of WRITABLE_TOP_DIRS) await mkdir(join(stage, name), { recursive: true, mode: 0o700 });
   return null;
 }
@@ -167,7 +183,7 @@ export async function copyListing(dir: string, fs: TrickFs = diskTrickFs): Promi
 }
 
 /** A copy checked against its hash: its listing when it holds, or why not (`missing` when there is no copy). */
-export type CopyCheck = { ok: true; listing: string } | { ok: false; missing: boolean; reason: string };
+export type CopyCheck = { ok: true; listing: string } | { ok: false; missing: boolean; reason: string; link?: true };
 
 /** Hash a copy again and compare it with the hash it is filed under. */
 export async function verifyCopy(dir: string, hash: string, fs: TrickFs = diskTrickFs): Promise<CopyCheck> {
@@ -175,7 +191,8 @@ export async function verifyCopy(dir: string, hash: string, fs: TrickFs = diskTr
   if (st === null) return { ok: false, missing: true, reason: "The approved copy is not there." };
   if (st.kind !== "dir") return { ok: false, missing: false, reason: "The approved copy is not a folder." };
   const walk = await walkTrickCode(fs, dir);
-  if (!walk.ok) return { ok: false, missing: false, reason: walk.reason };
+  // A copy made before links were refused may hold one: it does not run any more, and says why.
+  if (!walk.ok) return walk.code === "link" ? { ok: false, missing: false, reason: walk.reason, link: true } : { ok: false, missing: false, reason: walk.reason };
   const got = await hashCodeEntries(fs, dir, walk.entries);
   if (got !== hash) return { ok: false, missing: false, reason: "The approved copy changed on disk." };
   return { ok: true, listing: walkFingerprint(walk.entries, "") };
@@ -395,8 +412,9 @@ async function readText(path: string): Promise<string | null> {
 }
 
 /**
- * Migrate a version 1 or 2 switch file to version 3. An entry whose folder still hashes to its approved
- * hash is copied into `.collie-approved/` and keeps running. A changed entry, or a version 1 entry with no hash,
+ * Migrate a version 1 or 2 switch file to layout 3. An entry whose approved copy is still on disk and
+ * verifies (a file the previous build rewrote after a rollback), or whose folder still hashes to its
+ * approved hash, is copied into `.collie-approved/` and keeps running. A changed entry, or a version 1 entry with no hash,
  * keeps its place but approves nothing (`hash: null`): its old bytes are gone, so it waits for a person's
  * yes to the current folder. Version 3 is written only after the copies exist, under the lock, against the
  * file as it is then. Null when there was nothing to migrate.
@@ -409,6 +427,13 @@ export async function migrateSwitches(opts: MigrateOptions): Promise<Migration |
   const copied = new Map<string, { hash: string; powers: string | null }>();
   for (const [id, entry] of read.switches.on) {
     if (entry.hash === null || !isTrickId(id)) continue;
+    // A file the previous build rewrote after a rollback (B4): the approved copy of that hash may still
+    // be on disk, and it holds exactly the bytes approved, whatever the folder holds now.
+    const held = approvedCopyDir(opts.configDir, id, entry.hash);
+    if ((await verifyCopy(held, entry.hash, fs)).ok) {
+      copied.set(id, { hash: entry.hash, powers: await powersOfDir(held, id, fs) });
+      continue;
+    }
     const snap = await snapshotTrick({ src: join(tricksConfigDir(opts.configDir), id), parent: approvedTrickDir(opts.configDir, id), expect: entry.hash, fs, platform: opts.platform });
     if (snap.ok) copied.set(id, { hash: snap.hash, powers: await powersOfDir(snap.dir, id, fs) });
   }
