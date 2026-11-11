@@ -9,7 +9,7 @@ import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureNam
 import { readManifestFile, readSmallFile } from "./discover.ts";
 import { ORIGIN_FILE } from "./origin.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir } from "./paths.ts";
-import { parseSwitches, updateSwitches, withApproval, type SwitchEntry, type Switches } from "./switches.ts";
+import { MIGRATED, parseSwitches, updateSwitches, withApproval, type SwitchEntry, type Switches } from "./switches.ts";
 
 // THE APPROVED COPY (M94, crew slice 2): a trick runs from a copy of the code a person said yes to, so an
 // edit of its folder never stops it. The folder is where the trick is written; the copy is what runs.
@@ -523,7 +523,7 @@ export async function migrateSwitches(opts: MigrateOptions): Promise<Migration |
     out.waiting = [];
     for (const [id, entry] of now.on) {
       const kept = entry.hash !== null && copied.get(id) === entry.hash;
-      next.set(id, { at: entry.at, hash: kept ? entry.hash : null, auto: false, by: "migrated", powers: null });
+      next.set(id, { at: entry.at, hash: kept ? entry.hash : null, auto: false, by: MIGRATED, powers: null });
       (kept ? out.kept : out.waiting).push(id);
     }
     return { on: next, version: 3 };

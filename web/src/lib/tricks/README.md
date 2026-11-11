@@ -485,7 +485,9 @@ reads the same powers today.
 An entry with no stored powers (`powers: null`) comes from the switch file of the build before them
 (version 1 or 2, `{ at, hash }`), which the bridge migrates at boot. The migration writes no powers:
 stored powers are written only when a person approves, and this Collie's reader is not the one the person
-said yes under. The gate reads null as the rights that build could show (`legacyPowersOf`): the
+said yes under. The gate reads null on an entry `by: "migrated"` (and only there) as the rights that
+build could show (`legacyPowersOf`). A null on any other entry is a yes given while the manifest did not
+parse: it holds no right (M2), so the trick stops until a person switches it on. The legacy rights are the
 manifest's `env` and the places `belt`, `session`, `dashboard` and `status`, with no `inputs` and no later
 key. So a trick that asks for nothing more keeps running after the update, and a trick that asks for
 `tabbar`, `agent-view`, `inputs` or `rules` stops until a person switches it on.

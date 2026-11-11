@@ -1747,6 +1747,17 @@ describe("fault B: a trick runs only while the rights it was approved with are t
     expect(audits.filter((a) => a === "trick.rights.moved")).toHaveLength(1);
   });
 
+  test("M2: a yes stored with no powers (its manifest did not parse then) holds no right when a later build parses it", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const toml = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt"]\nenv = ["GH_TOKEN"]\n';
+    const dir = await makeTrick(r.configDir, "legs", toml, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    // As approveFolder and the switch write it when the manifest is refused: `by` the person, `powers` null.
+    await eraSwitch(r, dir, null);
+    await tickAt(r, T0);
+    expect(r.specs).toHaveLength(0);
+    expect((await r.service.reply(undefined)).tricks[0]).toMatchObject({ on: false, state: "stopped", error: RIGHTS_LINE, rightsMoved: true });
+  });
+
   test("fault B: an entry with no stored powers holds only what the build before them could show: no inputs, no agent view", async () => {
     const r = await rig(null);
     const toml = 'id = "legs"\nname = "Browser leg"\ncontract = 2\nrun = "./legs.sh"\nevery = "30s"\nplaces = ["belt"]\ninputs = ["*.md"]\n';

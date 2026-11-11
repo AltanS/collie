@@ -50,6 +50,9 @@ import { tricksStateDir, switchesPath } from "./paths.ts";
 
 /** The layout this Collie writes (approved copies): `"layout": 3` in a file that says `"v": 2`. */
 export const SWITCHES_VERSION = 3;
+
+/** The `by` of an entry the boot migration wrote (approved.ts `migrateSwitches`): its null powers hold the old build's rights. */
+export const MIGRATED = "migrated";
 /** The `v` the file carries, so the previous build's parser still reads it. */
 const FILE_V = 2;
 
