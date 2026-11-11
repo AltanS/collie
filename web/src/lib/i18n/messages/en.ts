@@ -288,6 +288,9 @@ export const en = {
   "settings.devices.description.enforced": "Every read and every write needs a paired device.",
   "settings.devices.pairedAs": "This device is paired as {device}.",
   "settings.devices.loadError": "Couldn’t load the paired devices from the bridge.",
+  // The bridge (or a proxy in front of it) refused this read with a 401 or 403. English only until the
+  // translation pass, listed in PENDING_TRANSLATION below.
+  "settings.devices.denied": "This browser has no access, so Collie cannot show the paired devices.",
   "settings.devices.thisDevice": "This device",
   "settings.devices.row.meta": "Paired {paired} · last seen {lastSeen}",
   "settings.devices.row.expires": "Expires {date}",
@@ -349,6 +352,9 @@ export const en = {
   "settings.connection.bridge.notPaired": "Reachable, not paired",
   "settings.connection.device.notPaired": "Enforced, this device is not paired",
   "settings.connection.device.paired": "Enforced, this device is paired",
+  // The snapshot read was refused, so the bridge has not said what this browser may do. English only
+  // until the translation pass, listed in PENDING_TRANSLATION below.
+  "settings.connection.device.denied": "Refused, this browser has no access",
   "settings.connection.device.fullAccessNamed": "Full access · {device}",
   "settings.connection.device.fullAccessLocal": "Full access (local)",
   "settings.connection.device.readOnlyNamed": "Read-only · {device}",
@@ -3942,6 +3948,8 @@ export const PENDING_TRANSLATION = [
   "hill.group.card",
   // A single card of code (review 7 R1).
   "hill.single.readEnd",
+  "settings.devices.denied",
+  "settings.connection.device.denied",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
