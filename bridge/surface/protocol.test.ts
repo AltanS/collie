@@ -19,6 +19,10 @@ import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surfac
 import { KeyGate } from "./key-gate.ts";
 import { BOUNDS, BOX_CHANGED, LATE_PROBE, VIEW_NO_PROFILE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendLedger, type SendRequest } from "./protocol.ts";
 import { HEAD_CASES, NOT_HEAD_CASES } from "../agent-view/testdata/head-cases.ts";
+import { AgentViewService } from "../agent-view/service.ts";
+import { AgentViewStore } from "../agent-view/store.ts";
+import { viewHelpWithRules, viewRulesIdOf } from "../../cli/trick-view-help.ts";
+import type { JsonValue } from "../json.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HOLD_ENDED_KEEP_MS, HoldStore } from "./holds.ts";
@@ -11450,5 +11454,45 @@ describe("review 9 R4: a view send's check right before the write", () => {
     expect(calls).toBe(2);
     expect(pane.keysSeen).toEqual([]);
     expect(pane.box).toBe("");
+  });
+});
+
+// Review 9 R7 (rule 4): a view send whose keys landed but did not end `sent` keeps its line with its outcome.
+describe("review 9 R7: a view send that typed but did not submit", () => {
+  const SESSION = "local/%1#aaaa";
+  const VIEW_SCREEN: JsonValue[] = [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Revert", intent: "reply" } }] }];
+  const viewService = (): AgentViewService =>
+    new AgentViewService({
+      store: new AgentViewStore(null, () => 1),
+      place: (address) => (address === SESSION ? { address } : null),
+      sessionsKnown: () => true,
+      crewMode: () => "solo",
+      binary: "/home/op/apps/collie/bin/collie",
+      gate: { check: () => ({ ok: true, name: "Morph", rules: "Draw.\n" }), fresh: async () => ({ ok: true, name: "Morph", rules: "Draw.\n" }) },
+      rulesIdOf: viewRulesIdOf,
+      helpOf: viewHelpWithRules,
+    });
+
+  test("rule 4: the route answers the outcome with the line, the view keeps the line with that outcome, and the screen takes no second tap", async () => {
+    const pane = new FakePane("claude");
+    // The harness changes what was typed, so S1 cannot prove the box: the keys landed, Enter never went.
+    const original = pane.typeText;
+    pane.typeText = (paneId, text) => original(paneId, `${text}!`);
+    const { protocol } = rig({ pane, paste: false });
+    const service = viewService();
+    expect((await service.switch({ trick: "morph", session: SESSION, on: true }, "Pixel 9")).ok).toBe(true);
+    const shown = await service.show("morph", SESSION, { view: VIEW_SCREEN, title: null });
+    if (!shown.ok) throw new Error(shown.error);
+    const rev = shown.session.view!.rev;
+    const rt: SendRouteRuntime = { send: protocol, name: "main", herdr: {}, engine: { current: () => ({ agents: [{ paneId: "%1", agent: "claude" }], shellPanes: [] }), noteInput: () => undefined, pokeNow: () => undefined } };
+    const context = { audit: new AuditLog(async () => undefined), device: "Pixel 9", redact: false, acceptEncoding: null, view: { service, addressOf: () => SESSION } };
+    const res = await sendRoute(rt, { id: "view-r7-000001", pane: "%1", view: { trick: "morph", session: SESSION, rev, control: "v/0/0" } }, context);
+    const body = await res.json();
+    expect(body.receipt.outcome).toBe("typed_not_submitted");
+    expect(body.view).toEqual({ line: expect.stringContaining('tapped "Revert"'), outcome: "typed_not_submitted" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(service.status("morph", SESSION).sent).toEqual([{ rid: "view-r7-000001", at: expect.any(String), kind: "tap", line: body.view.line, outcome: "typed_not_submitted" }]);
+    const again = await sendRoute(rt, { id: "view-r7-000002", pane: "%1", view: { trick: "morph", session: SESSION, rev, control: "v/0/0" } }, context);
+    expect(again.status).toBe(409);
   });
 });

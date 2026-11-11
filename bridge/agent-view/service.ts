@@ -78,6 +78,7 @@ import {
   type ViewScreen,
   type ViewSendField,
   type ViewSent,
+  type ViewSentOutcome,
 } from "../../web/src/lib/agent-view/wire.ts";
 import { isCommand } from "../../web/src/lib/send-protocol.ts";
 import type { Refusal } from "../../web/src/lib/tricks/schema.ts";
@@ -372,7 +373,11 @@ export interface ViewSendPlan {
   readonly plain: boolean;
   /** Under the pane lock: null while the stored screen still yields this exact line, else the sentence why not. */
   readonly check: () => string | null;
-  readonly done: (end: { readonly rid: string; readonly sent: boolean; readonly reason: string | null }) => void;
+  /**
+   * How the send ended: `sent`, or `landed` when the keys reached the pane but the send ended
+   * `typed_not_submitted` or `unknown` (review 9 R7), else a refusal with its reason.
+   */
+  readonly done: (end: { readonly rid: string; readonly sent: boolean; readonly reason: string | null; readonly landed?: ViewSentOutcome }) => void;
 }
 
 /** A send's refusal before anything was typed. */
@@ -914,14 +919,22 @@ export class AgentViewService {
         if (ended) return;
         ended = true;
         this.sending.delete(session);
-        if (!end.sent) {
+        const landed = end.sent ? undefined : end.landed;
+        if (!end.sent && landed === undefined) {
           this.audit("trick.view.refused", session, device, { trick, reason: end.reason ?? "refused", rid: end.rid });
           return;
         }
-        this.keepSent(trick, session, { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line }, tap ? rev : undefined);
-        if (plain) this.notePersonTurn(session);
-        else this.ownTurns.set(session, this.now() + VIEW_OWN_TURN_MS);
-        this.audit("trick.view.send", session, device, { trick, rid: end.rid, kind: tap ? "tap" : "text", plain });
+        // Keys that landed are kept with how they ended, and their screen takes no second tap: a second
+        // tap would type the line again behind the first (review 9 R7).
+        const kept: ViewSent = { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line };
+        this.keepSent(trick, session, landed === undefined ? kept : { ...kept, outcome: landed }, tap ? rev : undefined);
+        // Text left in the box started no turn; `unknown` may have.
+        if (landed !== "typed_not_submitted") {
+          if (plain) this.notePersonTurn(session);
+          else this.ownTurns.set(session, this.now() + VIEW_OWN_TURN_MS);
+        }
+        const detail: ViewAuditEntry["detail"] = { trick, rid: end.rid, kind: tap ? "tap" : "text", plain };
+        this.audit("trick.view.send", session, device, landed === undefined ? detail : { ...detail, outcome: landed });
       },
     };
   }

@@ -257,7 +257,7 @@ import { readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
 import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
 import type { AgentViewService } from "./agent-view/service.ts";
-import { BAD_HEAD, hasViewHead, VIEW_MEDIA_ID_RE, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField } from "../web/src/lib/agent-view/wire.ts";
+import { BAD_HEAD, hasViewHead, VIEW_MEDIA_ID_RE, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField, type ViewSentOutcome } from "../web/src/lib/agent-view/wire.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -9183,7 +9183,7 @@ async function viewSendRoute(
     answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
     receipt = answer.receipt;
   } finally {
-    plan.done({ rid: id, sent: receipt !== undefined && SPOKE_OUTCOMES.has(receipt.outcome), reason: receipt?.reason ?? (receipt === undefined ? "crash" : null) });
+    plan.done({ rid: id, sent: receipt !== undefined && SPOKE_OUTCOMES.has(receipt.outcome), reason: receipt?.reason ?? (receipt === undefined ? "crash" : null), landed: viewLanded(receipt) });
   }
   if (receipt !== undefined) {
     const detail: AuditDetail = { mode, outcome: receipt.outcome, textLength: receipt.textLength, view: plan.trick };
@@ -9196,7 +9196,15 @@ async function viewSendRoute(
     }
   }
   const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
-  return json({ ...out, view: { line: plan.line } }, context.acceptEncoding);
+  // The receipt says how the keys ended: a line that landed but did not end `sent` carries its outcome (review 9 R7).
+  const landed = viewLanded(receipt);
+  return json({ ...out, view: landed === undefined ? { line: plan.line } : { line: plan.line, outcome: landed } }, context.acceptEncoding);
+}
+
+/** A view send whose keys landed but that did not end `sent`: its outcome, else undefined. */
+function viewLanded(receipt: SendReceipt | undefined): ViewSentOutcome | undefined {
+  if (receipt === undefined) return undefined;
+  return receipt.outcome === "typed_not_submitted" || receipt.outcome === "unknown" ? receipt.outcome : undefined;
 }
 
 /** What `stopRoute` reads of a session runtime: a {@link SessionRuntime} is one. */

@@ -366,6 +366,15 @@ describe("rule 4: the receipt is exact", () => {
     second.done({ rid: "rid-2", sent: false, reason: "not_free" });
     expect(served(r).sent).toHaveLength(1);
   });
+
+  test("rule 4 (review 9 R7): typed text whose keys landed with an `unknown` end is kept with that outcome and audited so", async () => {
+    const r = rig();
+    await drawn(r);
+    const sending = plan(await typed(r, "and the other one"));
+    sending.done({ rid: "rid-9", sent: false, reason: null, landed: "unknown" });
+    expect(served(r).sent).toEqual([{ rid: "rid-9", at: expect.any(String), kind: "text", line: sending.line, outcome: "unknown" }]);
+    expect(r.audits.at(-1)).toMatchObject({ action: "trick.view.send", detail: { rid: "rid-9", outcome: "unknown" } });
+  });
 });
 
 // ── rule 5 and lead additions 2 and 4 ─────────────────────────────────────────────────────────────

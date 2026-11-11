@@ -1033,7 +1033,9 @@ question, a dialog or an answer box (`question`, `not_free`), and any view send 
 (`busy`): nothing queues, nothing steers. Typed text gets the head only while the session is free; with a
 question open, a turn running or a command, it goes plain, as the person's own send. A refusal before
 the protocol is HTTP 409 `{ error, code, view: true }`; a send that reached it answers its receipt and
-`view: { line }`, the exact text typed, which the view also keeps in `sent`.
+`view: { line }`, the exact text typed, which the view also keeps in `sent`. When the keys landed but
+the send ended `typed_not_submitted` or `unknown`, both carry `outcome` with that word, and a tap's
+screen takes no second tap.
 
 **Stale screens.** A screen is bound to the pane mark at its write: the harness and the conversation the
 harness reported. Another mark makes it stale. A harness that reports no conversation cannot show a

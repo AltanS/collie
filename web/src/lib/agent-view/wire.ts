@@ -335,7 +335,15 @@ export interface ViewSent {
   kind: "tap" | "text";
   /** The exact text the bridge handed to the session, every line. */
   line: string;
+  /**
+   * Set when the keys landed but the send did not end `sent` (review 9 R7): `typed_not_submitted` (the
+   * text is in the box, not submitted) or `unknown` (it may have gone). Absent: sent.
+   */
+  outcome?: ViewSentOutcome;
 }
+
+/** How a kept line ended when it did not end `sent`. */
+export type ViewSentOutcome = "typed_not_submitted" | "unknown";
 
 /** Why a view reads off although its switch may be on. Served so the phone can say it in Collie's words. */
 export const VIEW_OFF_REASONS = ["switch", "trick_off"] as const;
@@ -1053,7 +1061,8 @@ function readViewSent(raw: JsonValue | undefined): ViewSent | null {
   const kind = obj?.kind === "tap" || obj?.kind === "text" ? obj.kind : undefined;
   if (rid === undefined || rid === "" || rid.length > 128 || at === undefined || !isIsoTime(at) || kind === undefined) return null;
   if (line === undefined || line === "" || line.length > VIEW_SENT_LINE_MAX) return null;
-  return { rid, at, kind, line };
+  const outcome = obj?.outcome === "typed_not_submitted" || obj?.outcome === "unknown" ? obj.outcome : undefined;
+  return outcome === undefined ? { rid, at, kind, line } : { rid, at, kind, line, outcome };
 }
 
 /** A view's sent lines: the ones that fit, newest last, at most {@link VIEW_SENT_MAX}. */
