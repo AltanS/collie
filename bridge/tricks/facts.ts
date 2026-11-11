@@ -94,7 +94,24 @@ export function factsSessionOf(memberId: string, machine: string, pane: FactsPan
   return out;
 }
 
+/** How many sessions a facts world lists, and how many JSON bytes of them (the crew merge only). */
+export interface FactsCaps {
+  sessions: number;
+  bytes: number;
+}
+
+/** The caps of the facts a program reads (the schema's). */
+export const FACTS_CAPS: FactsCaps = { sessions: FACT_SESSIONS_MAX, bytes: FACT_SESSIONS_MAX_BYTES };
+
+/**
+ * No caps: every session. Only for a check the bridge makes itself, never for a program's facts: the tap
+ * check (fault A) must find a live agent session that the capped facts leave out.
+ */
+export const NO_FACTS_CAPS: FactsCaps = { sessions: Number.POSITIVE_INFINITY, bytes: Number.POSITIVE_INFINITY };
+
 export interface FactsWorldInput {
+  /** The caps. Default {@link FACTS_CAPS}. */
+  caps?: FactsCaps;
   /** This bridge's stable id (bridge/bridge-id.ts): keys the session ids. */
   memberId: string;
   /** The machine's display name, the same value a decision's `from.host` carries. */
@@ -121,9 +138,10 @@ export function factsWorldOf(input: FactsWorldInput): FactsWorld {
     const f = factText(folder);
     spaces.push(f === undefined ? { name: n } : { name: n, folder: f });
   };
+  const max = (input.caps ?? FACTS_CAPS).sessions;
   for (const rt of input.runtimes) {
     for (const pane of [...rt.agents, ...rt.shellPanes]) {
-      if (sessions.length >= FACT_SESSIONS_MAX) break;
+      if (sessions.length >= max) break;
       const s = factsSessionOf(input.memberId, input.machine, pane, input.activeAt?.(rt.name, pane.paneId));
       if (s === null || seen.has(s.id)) continue;
       seen.add(s.id);
@@ -163,7 +181,7 @@ function sessionBytes(session: FactsSession): number {
  * A member's session takes its key from the trust store's member id, never from the member's body, and a
  * member id that is this lead's own (`own`) is skipped: no member can pose as the lead. Pure.
  */
-export function crewFactsWorld(world: FactsWorld, members: readonly CrewFactsMember[], own: (memberId: string) => boolean): FactsWorld {
+export function crewFactsWorld(world: FactsWorld, members: readonly CrewFactsMember[], own: (memberId: string) => boolean, caps: FactsCaps = FACTS_CAPS): FactsWorld {
   const sessions: FactsSession[] = [];
   const seen = new Set<string>();
   let bytes = 0;
@@ -171,7 +189,7 @@ export function crewFactsWorld(world: FactsWorld, members: readonly CrewFactsMem
   const add = (session: FactsSession): void => {
     if (seen.has(session.id)) return;
     const size = sessionBytes(session);
-    if (sessions.length >= FACT_SESSIONS_MAX || bytes + size > FACT_SESSIONS_MAX_BYTES) {
+    if (sessions.length >= caps.sessions || bytes + size > caps.bytes) {
       omitted += 1;
       return;
     }

@@ -325,7 +325,11 @@ export interface TricksServiceDeps {
    * The sessions and spaces, read at run time, with session ids keyed on `memberId`, and the machine's
    * display name (`machine`) the facts' `host` fields say.
    */
-  world: (memberId: string) => Omit<FactsWorld, "memberId">;
+  /**
+   * The facts world of this bridge for a run, capped as the schema caps it. `{ all: true }`: every session,
+   * past the caps, for the bridge's own tap check (fault A), never for a program.
+   */
+  world: (memberId: string, opts?: { readonly all?: boolean }) => Omit<FactsWorld, "memberId">;
   /** Whether this bridge leads a crew, so a trick's inputs come from every machine (the Settings sentence says so). Absent: false. */
   crewWide?: () => boolean;
   /** The fetch of a contract 2 trick's inputs before each run (inputs.ts `TrickInputs`). Absent: no files, no `inputs` on the sessions. */
@@ -1570,9 +1574,10 @@ export class TricksService implements TricksSurface {
     // A part's control sends one fixed string or nothing; a `{ text }` answer belongs to a decision and matches none.
     if (!controls.some((control) => control.value === request.value)) return "value";
     const session = request.from?.session;
-    // A session the tap names must be an agent session the facts list now. No part names sessions yet; a
+    // A session the tap names must be an agent session open here now: every session, not the facts' first
+    // 256 (FACT_SESSIONS_MAX), so a live session past the cap is not refused. No part names sessions yet; a
     // part that does narrows this to the sessions it names.
-    if (session !== undefined && !this.deps.world(host).sessions.some((s) => s.id === session && s.agent !== undefined)) return "session";
+    if (session !== undefined && !this.deps.world(host, { all: true }).sessions.some((s) => s.id === session && s.agent !== undefined)) return "session";
     return null;
   }
 

@@ -303,7 +303,7 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
-import { crewFactsWorld, factsWorldOf, type FactsWorld } from "./tricks/facts.ts";
+import { crewFactsWorld, FACTS_CAPS, factsWorldOf, NO_FACTS_CAPS, type FactsWorld } from "./tricks/facts.ts";
 import { answerInputsRequest, INPUT_ANSWER_BODY_MAX_BYTES, readPaneInputs, TrickInputs, type InputsBudget, type InputsCallResult, type WirePaneInputs } from "./tricks/inputs.ts";
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { carriedMapRecords, scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
@@ -3814,10 +3814,13 @@ const tricks =
         }),
         inputs: tricksInputs,
         crewWide: () => crewLead !== undefined,
-        world: (memberId) => {
+        world: (memberId, opts) => {
           void tricksFolders.refresh();
           void tricksLabels.refresh();
+          // The tap check asks for every session (fault A); a program's facts stay capped.
+          const caps = opts?.all === true ? NO_FACTS_CAPS : FACTS_CAPS;
           const world = factsWorldOf({
+            caps,
             memberId,
             machine: hostname(),
             runtimes: registry.all().map((rt) => {
@@ -3838,6 +3841,7 @@ const tricks =
                   world,
                   lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
                   (id) => isOwnId(bridgeId, id),
+                  caps,
                 );
           const out: Omit<FactsWorld, "memberId"> = { machine: merged.machine, sessions: merged.sessions, spaces: merged.spaces };
           if (merged.sessionsOmitted !== undefined) out.sessionsOmitted = merged.sessionsOmitted;

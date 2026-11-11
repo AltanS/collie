@@ -827,7 +827,9 @@ bridge runs the program only when `node` is a part it holds for that trick, `int
 that part sends (`tapControls`: a belt mark's, a session's actions and the `button`s of its view at any
 depth; not a disabled one, not a `does: copy` one; a status chip, a Dashboard tile and a bottom bar item
 send none), `value` is the one that control sends (absent where it sends none), the part's value has not
-moved since `rev`, and `from.session`, when present, is an agent session the facts list now. A
+moved since `rev`, and `from.session`, when present, is an agent session open here now. That check
+reads every session, past the facts' caps (256 sessions, `FACT_SESSIONS_MAX`; on a crew's lead also 512
+KiB of them, `FACT_SESSIONS_MAX_BYTES`), so a live session the program's facts leave out is not refused. A
 refusal runs nothing, keeps no receipt, writes one `trick.tap.refused` audit line, and answers with
 `refused`: `part`, `intent`, `value` or `session` (code `rejected`), or `changed` (code `changed`, with
 the trick's parts now). The phone draws the new parts, never sends the tap again by itself, and says

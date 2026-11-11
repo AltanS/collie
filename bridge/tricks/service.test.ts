@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
-import { CLOSED_KEY_LINE, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { CLOSED_KEY_LINE, FACT_SESSIONS_MAX, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import type { AgentView } from "../types.ts";
 import { legacyPowersOf, powersOfDir } from "./approved.ts";
+import { factsWorldOf, NO_FACTS_CAPS, type FactsWorldInput } from "./facts.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
@@ -948,6 +950,29 @@ describe("fault A: a tap names what the bridge drew", () => {
     // A live agent session, or none at all, lands.
     expect(await route(r, { rid: rid(4), node: "belt", intent: "open", from: { session: "lodge:w6X:3" }, rev })).toMatchObject({ code: "ok" });
     expect(await route(r, { rid: rid(5), node: "belt", intent: "open", rev: await revOf(r, "belt") })).toMatchObject({ code: "ok" });
+  });
+
+  test("fault A: a tap from a live agent session past the 256 the facts list goes through; the program's facts stay capped", async () => {
+    // 300 live agent panes in one runtime: the facts list the first FACT_SESSIONS_MAX (256), and the check lists all.
+    const panes: AgentView[] = Array.from({ length: 300 }, (_, i) => ({ paneId: `w6X:${String(i + 1)}`, workspaceId: "w6X", workspaceLabel: "collie", workspaceNumber: 1, tabId: "w6X:t1", agent: "claude", status: "idle", cwd: "/work", focused: false }));
+    const world: TricksServiceDeps["world"] = (memberId, opts) => {
+      const input: FactsWorldInput = { memberId, machine: "desk", runtimes: [{ name: "default", agents: panes, shellPanes: [], workspaces: [] }] };
+      if (opts?.all === true) input.caps = NO_FACTS_CAPS;
+      return factsWorldOf(input);
+    };
+    const r = await rig([exited(belt("1")), exited(belt("2"))], { world });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(factsOf(r.specs[0]).sessions).toHaveLength(FACT_SESSIONS_MAX);
+    const late = `${HOST}:w6X:300`;
+    expect(factsOf(r.specs[0]).sessions.some((s) => s.id === late)).toBe(false);
+    const reply = await route(r, { rid: REQ, node: "belt", intent: "x", from: { session: late }, rev: await revOf(r, "belt") });
+    expect(reply).toMatchObject({ code: "ok" });
+    expect(reply.refused).toBeUndefined();
+    // A session that is not open here is still refused, with the line that is true for it.
+    const gone = await route(r, { rid: "00000000-3b4a-4c5d-8e6f-708192a3b4c6", node: "belt", intent: "x", from: { session: `${HOST}:w6X:301` }, rev: await revOf(r, "belt") });
+    expect(gone).toMatchObject({ code: "rejected", refused: "session", message: TAP_REFUSED_LINES.session });
   });
 });
 
