@@ -364,6 +364,7 @@ export function HomeRoute() {
               onPress={paneOpen.press}
               error={data.error}
               notPaired={notPaired}
+              refused={data.authError}
               lastSeenAt={data.lastSeenAt}
               stale={data.stale === true}
               tabs={data.tabs}

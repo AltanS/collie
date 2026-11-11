@@ -75,6 +75,12 @@ describe("the hill path", () => {
   });
 });
 
+describe("the approver's page", () => {
+  it("sits one level under the Dashboard (ADR 0139)", () => {
+    expect(ancestorsOf("/pair/approve")).toEqual(["/"]);
+  });
+});
+
 describe("back from the machines pages", () => {
   it("goes up one level at a time: machine, Machines, Settings", () => {
     expect(resolveUp("/machines/bluefin", "/machines", "/machines")).toEqual({ kind: "back" });
@@ -445,6 +451,8 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     // The hill sits under the Dashboard, its only way in (M96).
     ["/hill", "", ["/"]],
     ["/hill", "?h=badger", ["/?h=badger"]],
+    // The approver's page (ADR 0139) sits under the Dashboard; its request id is not a scope.
+    ["/pair/approve", "?r=abc", ["/"]],
     ["/nowhere", "", []],
   ])("%s%s → %j", (pathname, search, expected) => {
     expect(parentChain(pathname, search)).toEqual(expected);

@@ -2041,7 +2041,16 @@ describe("open routes — every /api route but health and pair asks the pairing 
     expect(blocks.length).toBeGreaterThan(30);
     expect(blocks.map((b) => b.route)).toContain("BLOB_ROUTE");
     expect(blocks.map((b) => b.route)).toContain('"/api/snapshot"');
-    expect(blocks.filter((b) => !b.gated).map((b) => b.route).toSorted()).toEqual(['"/api/health"', '"/api/pair"']);
+    // The pairing request and its poll (ADR 0139) are open like `/api/pair`: the asking browser holds no
+    // token. They still ask `checkAccess`, pinned below.
+    expect(blocks.filter((b) => !b.gated).map((b) => b.route).toSorted()).toEqual([
+      '"/api/health"',
+      '"/api/pair"',
+      '"/api/pair/request"',
+      "PAIR_REQUEST_ROUTE",
+    ]);
+    // The approver's read and answer are gated.
+    expect(blocks.filter((b) => b.gated).map((b) => b.route)).toContain("PAIR_APPROVE_ROUTE");
   });
 
   test("open routes: the snapshot asks guard, not a bare checkAccess", () => {
@@ -2064,6 +2073,15 @@ describe("open routes — every /api route but health and pair asks the pairing 
     const at = src.indexOf('if (pathname === "/api/pair" && req.method === "POST")');
     const handler = src.slice(at, src.indexOf("\n      }\n", at));
     expect(handler).toContain('checkAccess(req, cfg, "write")');
+  });
+
+  test("open routes: the pairing request asks the front door as a write, and its poll as a read", () => {
+    const create = src.indexOf('if (pathname === "/api/pair/request" && req.method === "POST")');
+    expect(src.slice(create, src.indexOf("\n      }\n", create))).toContain('checkAccess(req, cfg, "write")');
+    const poll = src.indexOf("const pairRequestMatch = pathname.match(PAIR_REQUEST_ROUTE);");
+    expect(src.slice(poll, src.indexOf("\n      }\n", poll))).toContain('checkAccess(req, cfg, "read")');
+    const approve = src.indexOf("const pairApproveMatch = pathname.match(PAIR_APPROVE_ROUTE);");
+    expect(src.slice(approve, src.indexOf("\n      }\n", approve))).toContain("guard(req, cfg, pairApproveGateLevel(req.method), pairingGate)");
   });
 
   // The crew path, end to end, in the three pieces `bun test` can reach (ADR 0086 "the crew
@@ -5731,8 +5749,9 @@ describe("pair attempt rate limit", () => {
     for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW; i++) {
       expect(limiter.hit("100.64.0.9", 1_000 + i).allowed).toBe(true);
     }
-    expect(limiter.hit("100.64.0.9", 2_000)).toEqual({ allowed: false, first: true });
-    expect(limiter.hit("100.64.0.9", 2_001)).toEqual({ allowed: false, first: false });
+    // `retryAfterMs` is how long until the oldest attempt (at 1_000) leaves the window.
+    expect(limiter.hit("100.64.0.9", 2_000)).toEqual({ allowed: false, first: true, retryAfterMs: 59_000 });
+    expect(limiter.hit("100.64.0.9", 2_001)).toEqual({ allowed: false, first: false, retryAfterMs: 58_999 });
   });
 
   test("another address is not affected by the first one's burst", () => {
