@@ -15,7 +15,7 @@ import { WalkyLog } from "../bridge/walky/log.ts";
 import { PROPOSE_LINE_PREFIX, WALKY_LINE_MAX } from "../bridge/walky/parse.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
-import { PROPOSE_LINES_MAX, walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
+import { PROPOSE_LINE_MS, PROPOSE_LINES_MAX, walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { MANIFEST_KEYS, PLACE_KINDS } from "../web/src/lib/tricks/schema.ts";
 import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
 import { capture, context } from "./fakes.ts";
@@ -159,12 +159,12 @@ interface ProposeBridge {
 }
 
 /** A bridge on a real socket whose proposals door records each call and answers `answer`. */
-async function bridge(answer: (fields: JsonObject) => Promise<ProposeAnswer> = async () => ({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null }), withPropose = true): Promise<ProposeBridge> {
+async function bridge(answer: (fields: JsonObject) => Promise<ProposeAnswer> = async () => ({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null }), withPropose = true, proposeLineMs?: number): Promise<ProposeBridge> {
   const stateDir = tempDir("propose-bridge-");
   const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
   const walky = new WalkyService({ log: new WalkyLog(join(stateDir, "walky")), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
   const calls: ProposeBridge["calls"] = [];
-  const base = { socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined };
+  const base = { socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined, proposeLineMs: proposeLineMs ?? PROPOSE_LINE_MS };
   const propose = {
     local: async (fields: JsonObject, who: LocalProposer) => {
       calls.push({ fields, who });
@@ -291,5 +291,45 @@ describe("collie trick propose, over the walky socket", () => {
     await Bun.sleep(50);
     const fourth = await rawAsk(path, `${PROPOSE_LINE_PREFIX}"v":1,"markers":{},"requestId":"x","files":[]}\n`);
     expect(fourth?.error).not.toBe("another proposal is being read; try again in a moment");
+  });
+
+  socketTest("a client that keeps its end open after the answer holds no slot", async () => {
+    const b = await bridge();
+    const path = walkySocketPath(b.stateDir);
+    const line = `${PROPOSE_LINE_PREFIX}"v":1,"markers":{},"requestId":"x","files":[]}\n`;
+    // Clients that read their answer and never close: each must give its slot back.
+    const lingering: ReturnType<typeof createConnection>[] = [];
+    for (let i = 0; i < PROPOSE_LINES_MAX + 1; i += 1) {
+      const socket = createConnection({ path, allowHalfOpen: true });
+      lingering.push(socket);
+      const answered = new Promise<void>((resolve) => socket.once("data", () => resolve()));
+      socket.write(line);
+      await answered;
+    }
+    cleanups.push(() => {
+      for (const socket of lingering) socket.destroy();
+    });
+    const next = await rawAsk(path, line);
+    expect(next?.error).not.toBe("another proposal is being read; try again in a moment");
+  });
+
+  socketTest("two stalled proposal lines are cut off after their time, and the next proposal is read", async () => {
+    const b = await bridge(undefined, true, 100);
+    const path = walkySocketPath(b.stateDir);
+    const held = Array.from({ length: PROPOSE_LINES_MAX }, () => {
+      const socket = createConnection(path);
+      socket.on("error", () => undefined);
+      socket.write(`${PROPOSE_LINE_PREFIX}"v":1`);
+      return socket;
+    });
+    cleanups.push(() => {
+      for (const socket of held) socket.destroy();
+    });
+    await Bun.sleep(30);
+    const busy = await rawAsk(path, `${PROPOSE_LINE_PREFIX}"v":1,"markers":{},"requestId":"x","files":[]}\n`);
+    expect(busy?.error).toBe("another proposal is being read; try again in a moment");
+    await Bun.sleep(250);
+    const after = await rawAsk(path, `${PROPOSE_LINE_PREFIX}"v":1,"markers":{},"requestId":"x","files":[]}\n`);
+    expect(after?.error).not.toBe("another proposal is being read; try again in a moment");
   });
 });

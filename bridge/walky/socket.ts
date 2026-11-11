@@ -123,6 +123,8 @@ export interface WalkyServerDeps {
   readonly service: WalkyService;
   targets(): readonly PlaceTarget[];
   readonly log?: (line: string) => void;
+  /** How long a `trick.propose` line may take to arrive. Default {@link PROPOSE_LINE_MS}; a test passes a short one. */
+  readonly proposeLineMs?: number;
   /** The hill (M96). Absent: its operations are answered as an older bridge answers them. */
   readonly hill?: HillSocket;
   /** `collie trick propose` (crew slice 8). Absent: the op is answered as unknown. */
@@ -386,15 +388,18 @@ export class WalkyServer {
     // A `trick.propose` line may be long (crew slice 8): it gets its own cap and time, two at a time.
     let big = false;
     let decided = false;
+    // The slot of a long line is held only while that line is read: given back once the line is taken or
+    // refused, or the connection goes, whichever is first. Never twice.
+    const release = (): void => {
+      if (big) this.bigLines -= 1;
+      big = false;
+    };
     let timer = setTimeout(() => {
       if (!taken) socket.destroy();
     }, REQUEST_LINE_MS);
     timer.unref?.();
     socket.on("error", () => undefined);
-    socket.on("close", () => {
-      if (big) this.bigLines -= 1;
-      big = false;
-    });
+    socket.on("close", release);
     socket.on("data", (chunk: string) => {
       if (taken) return;
       const from = buffer.length;
@@ -411,9 +416,10 @@ export class WalkyServer {
           big = true;
           this.bigLines += 1;
           clearTimeout(timer);
+          // A slot holder that stops sending is cut off: the slot comes back with the close.
           timer = setTimeout(() => {
             if (!taken) socket.destroy();
-          }, PROPOSE_LINE_MS);
+          }, this.deps.proposeLineMs ?? PROPOSE_LINE_MS);
           timer.unref?.();
         }
       }
@@ -422,19 +428,23 @@ export class WalkyServer {
         if (buffer.length > (big ? PROPOSE_LINE_MAX : WALKY_LINE_MAX)) {
           taken = true;
           clearTimeout(timer);
+          release();
           this.reply(socket, { ok: false, error: "too long" });
         }
         return;
       }
       taken = true;
       clearTimeout(timer);
-      void this.route(socket, buffer.slice(0, at), big);
+      const long = big;
+      release();
+      void this.route(socket, buffer.slice(0, at), long);
     });
   }
 
+  /** Write the one answer, then close the connection once it is flushed, whatever the client does. */
   private reply(socket: Socket, answer: WalkyAnswer): void {
     if (socket.destroyed || !socket.writable) return;
-    socket.end(`${JSON.stringify(answer)}\n`);
+    socket.end(`${JSON.stringify(answer)}\n`, () => socket.destroy());
   }
 
   private async route(socket: Socket, line: string, big = false): Promise<void> {
