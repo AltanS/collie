@@ -758,6 +758,16 @@ function LinkView({ node, ctx, block = false }: { node: LinkNode; ctx: RenderCtx
   if (host === "") return link;
   // A link that is a box of its own keeps its host beside it on one line; the link's words give way
   // first, the host keeps at least its tail. Inside a para the host is words and may break anywhere.
+  // In a view that wraps (an agent view, review 10 W9) the host is never cut to its last two names: it
+  // shows whole and takes another line when it must.
+  if (block && ctx.wrap === true) {
+    return (
+      <span className="flex max-w-full min-w-0 flex-wrap items-center gap-x-1">
+        {link}
+        <HostWords host={host} />
+      </span>
+    );
+  }
   if (block) {
     return (
       <span className="flex max-w-full min-w-0 items-center gap-1">

@@ -978,3 +978,14 @@ describe("review 10 W8: a receipt names what the tap answered when it was sent, 
     expect(receiptText(container)).not.toContain("Footers");
   });
 });
+
+describe("review 10 W9: a link's host shows whole in an agent view", () => {
+  it("W9: a link in a bar shows every name of its host, and nothing cuts it", () => {
+    const host = "release-notes.staging.eu.docs.example.com";
+    const { container } = draw({ view: screenOf([{ kind: "bar", kids: [{ kind: "link", text: "Notes", attrs: { href: `https://${host}/x` } }] }]) });
+    const shown = container.querySelector("[data-trick-link-host]");
+    expect(shown?.textContent).toBe(host);
+    expect(shown === null ? true : cutsWords(shown)).toBe(false);
+    for (const part of shown?.querySelectorAll("*") ?? []) expect(part.className).not.toMatch(/(^|\s)(truncate|whitespace-pre)(\s|$)/u);
+  });
+});
