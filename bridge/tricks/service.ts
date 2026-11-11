@@ -1594,7 +1594,8 @@ export class TricksService implements TricksSurface {
     // A session the tap names must be an agent session open here now: every session, not the facts' first
     // 256 (FACT_SESSIONS_MAX), so a live session past the cap is not refused. No part names sessions yet; a
     // part that does narrows this to the sessions it names.
-    if (session !== undefined && !this.deps.world(host, { all: true }).sessions.some((s) => s.id === session && s.agent !== undefined)) return "session";
+    // N2 (review 11): a crew member's session the lead's last sweep did not reach is not open here now.
+    if (session !== undefined && !this.deps.world(host, { all: true }).sessions.some((s) => s.id === session && s.agent !== undefined && s.reachable !== false)) return "session";
     return null;
   }
 

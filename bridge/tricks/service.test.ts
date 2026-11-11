@@ -979,6 +979,21 @@ describe("fault A: a tap names what the bridge drew", () => {
     expect(await route(r, { rid: rid(5), node: "belt", intent: "open", rev: await revOf(r, "belt") })).toMatchObject({ code: "ok" });
   });
 
+  test("N2: a session of a crew member the lead cannot reach is refused; a reachable one lands", async () => {
+    const r = await drawnRig((memberId) => ({
+      machine: "desk",
+      sessions: [
+        { id: `${memberId}:w6X:3`, memberId, sessionId: `${memberId}:w6X:3`, paneId: "w6X:3", host: "desk", name: "composer", agent: "claude", status: "working", reachable: true },
+        { id: "m_workshop:w1:2", memberId: "m_workshop", sessionId: "m_workshop:w1:2", paneId: "w1:2", host: "workshop", name: "fix", agent: "claude", status: "idle", reachable: false },
+        { id: "m_lodge2:w1:5", memberId: "m_lodge2", sessionId: "m_lodge2:w1:5", paneId: "w1:5", host: "lodge2", name: "docs", agent: "pi", status: "idle", reachable: true },
+      ],
+      spaces: [],
+    }));
+    const rev = await revOf(r, "belt");
+    expect(await route(r, { rid: rid(1), node: "belt", intent: "open", from: { session: "m_workshop:w1:2" }, rev })).toMatchObject({ code: "rejected", refused: "session" });
+    expect(await route(r, { rid: rid(2), node: "belt", intent: "open", from: { session: "m_lodge2:w1:5" }, rev })).toMatchObject({ code: "ok" });
+  });
+
   test("fault A: a tap from a live agent session past the 256 the facts list goes through; the program's facts stay capped", async () => {
     // 300 live agent panes in one runtime: the facts list the first FACT_SESSIONS_MAX (256), and the check lists all.
     const panes: AgentView[] = Array.from({ length: 300 }, (_, i) => ({ paneId: `w6X:${String(i + 1)}`, workspaceId: "w6X", workspaceLabel: "collie", workspaceNumber: 1, tabId: "w6X:t1", agent: "claude", status: "idle", cwd: "/work", focused: false }));
