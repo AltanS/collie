@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ViewEarlier, ViewPendingBlock, ViewReceiptCard, ViewSentLine } from "@/components/agent-view-blocks";
 import { ViewChoiceBlock, ViewChoiceDone } from "@/components/agent-view-choice";
@@ -17,6 +17,7 @@ import {
   blockControl,
   choiceControl,
   isUnanswered,
+  markedControls,
   optionControl,
   pickedOption,
   pickReceiptOf,
@@ -36,7 +37,7 @@ import {
   type ViewStatus,
 } from "@/lib/agent-view/reader";
 import { useAgentViewLive } from "@/lib/agent-view/store";
-import { viewMediaPath, viewTapWords, type ViewDrawing, type ViewMedia, type ViewNote, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
+import { choicePick, tapAbout, viewMediaPath, viewTapWords, type ViewDrawing, type ViewMedia, type ViewNote, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
 import { linkHost } from "@/lib/hill/reader";
 import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
@@ -124,6 +125,29 @@ export interface AgentViewScreenProps {
   onLink: (target: LinkTarget) => void;
   /** Pin the clock (epoch ms on the bridge's clock), for a test. */
   now?: number;
+  /** The settle window in ms, for a test. Absent: {@link VIEW_SETTLE_MS}. */
+  settleMs?: number;
+}
+
+/**
+ * How long a control must stand still before a tap on it counts, in ms (review 10 W3). The rev a tap
+ * names is current, so the bridge would send it: the phone alone knows that the button under the finger
+ * mounted, faded in (`ui/keyed-flow.tsx` staggers a first screen in, 350 ms at most) or moved a moment
+ * ago, so the person may have aimed at another one.
+ */
+export const VIEW_SETTLE_MS = 500;
+
+/**
+ * Whether the screen has stood still for `settleMs`: `layout` names everything that places a control (the
+ * screen's rev, the request block and its lines, the text answer), and any change to it starts the window
+ * again. The answer is read at the tap, from the clock, so no timer runs.
+ */
+function useSettled(layout: string, settleMs: number): () => boolean {
+  const since = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    since.current = Date.now();
+  }, [layout]);
+  return useCallback(() => since.current !== null && Date.now() - since.current >= settleMs, [settleMs]);
 }
 
 /** Where a view's picture bytes are: the set id stands where the hill's source takes a decision id. */
@@ -142,11 +166,26 @@ const REQUEST_CLAMP_CHARS = 140;
 const BLOCK_GAP = 8;
 
 /**
- * Collie's words on an armed `confirm` button. A button in a bar is a third of the screen wide, so the
- * words are short; the button's label, which the person just tapped, is what the second tap sends.
+ * Collie's words on an armed `confirm` button (review 10 W2): "Tap again to send" with every word the
+ * second tap sends, the label and the group's label, read from the words the bridge would build for that
+ * control (`viewTapWords`). The button grows to hold them; no word of a send is ever off screen.
  */
-function armedLabel(): string {
-  return t("view.armed.short");
+function armedWordsOf(view: ViewScreen | undefined, block: ScreenBlock, label: string, rendered: string): string {
+  const words = view === undefined ? null : viewTapWords(view, screenControl(block, rendered));
+  const tap = words === null ? null : pickReceiptOf(words, null, undefined);
+  if (tap === null) return t("view.armed", { label: label.trim() });
+  return tap.context === null ? t("view.armed", { label: tap.label }) : t("view.armed.in", { label: tap.label, group: tap.context });
+}
+
+/**
+ * A button's accessible name (review 10 W12): the words its tap sends, the label and the group's label,
+ * read from the words the bridge builds for that control. Its hint is its description, never its name.
+ */
+function tapNameOf(view: ViewScreen | undefined, block: ScreenBlock, label: string, rendered: string): string {
+  const words = view === undefined ? null : viewTapWords(view, screenControl(block, rendered));
+  const tap = words === null ? null : pickReceiptOf(words, null, undefined);
+  if (tap === null) return label.trim();
+  return tap.context === null ? tap.label : t("view.tap.name", { label: tap.label, group: tap.context });
 }
 
 /**
@@ -161,6 +200,9 @@ export const VIEW_SCREEN_CLASS = cn(
   "[&_[data-trick-node=line]_span]:whitespace-pre-wrap [&_[data-trick-node=line]_span]:break-words",
   "[&_button[aria-pressed=true]]:border-primary [&_button[aria-pressed=true]]:bg-primary [&_button[aria-pressed=true]]:text-primary-foreground",
   "[&_button[data-armed]]:border-status-blocked",
+  // NO GREY WASH (the header): a button that waits for the turn or a send keeps full contrast; the band
+  // says why it waits (review 10 W14). A button the agent drew disabled keeps its own look.
+  "[&_button[data-waits]]:opacity-100",
 );
 
 function statusWords(status: ViewStatus, clock: number): string {
@@ -221,7 +263,11 @@ export function ViewBand({ name, line, age }: { name: string; line: BandLine | n
         <span data-slot="view-band-name" className="min-w-0 shrink truncate font-semibold">
           {name}
         </span>
-        <span className="min-w-0 truncate text-muted-foreground">{t("view.band.by")}</span>
+        {/* Collie's words never give way to the agent's trick name (review 10 W5): they keep their width,
+            and wrap only past 70% of the band (a long translation); the name truncates in what is left. */}
+        <span data-slot="view-band-by" className="max-w-[70%] shrink-0 break-words text-muted-foreground">
+          {t("view.band.by")}
+        </span>
       </p>
       <div data-slot="view-band-line" role="status" className="mt-0.5 flex min-h-5 min-w-0 items-start pl-6 text-xs">
         <OneOf
@@ -300,13 +346,14 @@ function ViewRequestBubble({ text }: { text: string }) {
   );
 }
 
-/** The decision block as it stands: settled when the agent sent `picked` or the operator picked it, live otherwise. */
+/** The decision block as it stands: settled when Collie marked its pick (review 10 W7) or the operator picked it, live otherwise. */
 function ChoicePart({
   view,
   pictures,
   pressed,
   busy,
   canAct,
+  canTap,
   onPick,
 }: {
   view: ViewScreen;
@@ -315,11 +362,12 @@ function ChoicePart({
   busy: number | null;
   /** A pick may send. Stale (in the Earlier fold): never. */
   canAct: boolean | "stale";
+  canTap: () => boolean;
   onPick: (index: number) => void;
 }) {
   const choice = view.choice;
   if (choice === undefined) return null;
-  const picked = choice.picked ?? (canAct === "stale" ? pickedOption(pressed) : null);
+  const picked = choicePick(view) ?? (canAct === "stale" ? pickedOption(pressed) : null);
   if (picked !== null) return <ViewChoiceDone choice={choice} picked={picked} pictures={pictures} />;
   return (
     <ViewChoiceBlock
@@ -329,6 +377,7 @@ function ChoicePart({
       picked={pickedOption(pressed)}
       busy={busy}
       canAct={canAct === true}
+      canTap={canTap}
       onPick={canAct === "stale" ? () => undefined : onPick}
     />
   );
@@ -349,7 +398,7 @@ export function AgentViewScreen({
   request: told,
   sent = NO_SENT,
   drawing,
-  pressed = NO_CONTROLS,
+  pressed: confirmed = NO_CONTROLS,
   onPressed,
   working,
   question = false,
@@ -361,9 +410,12 @@ export function AgentViewScreen({
   onStale,
   onLink,
   now,
+  settleMs = VIEW_SETTLE_MS,
 }: AgentViewScreenProps) {
   useLocale();
   const clock = useBridgeNow(now);
+  // The picks Collie marked (the bridge's record), and the taps this phone saw confirmed since.
+  const pressed = useMemo(() => markedControls(view, confirmed), [view, confirmed]);
   const [busyControl, setBusyControl] = useState<string | null>(null);
   const request = useMemo(() => viewRequestOf({ local: told, entries, sent }), [told, entries, sent]);
   const status = useMemo(() => viewStatusOf({ request, view, drawing, working, entries, now: clock }), [request, view, drawing, working, entries, clock]);
@@ -379,7 +431,7 @@ export function AgentViewScreen({
     return textAnswerAfter(entries, new Date(request.at - 1).toISOString());
   }, [state, hasFresh, request, entries]);
   const notes = useMemo(() => (request === null ? [] : requestNotes(drawing, request.at)), [drawing, request]);
-  const receipt = useMemo(() => (request === null ? null : pickReceiptOf(request.text, view)), [request, view]);
+  const receipt = useMemo(() => (request === null ? null : pickReceiptOf(request.text, request.about ?? null, view)), [request, view]);
   const partKey = `agent-view:${session}`;
   const pictures = useMemo(() => (view?.set === undefined || view.media === undefined ? undefined : viewPictures(view.set, view.media, viewMediaSource)), [view?.set, view?.media]);
   const stripMedia = useMemo(() => stripMediaOf(view), [view]);
@@ -387,8 +439,16 @@ export function AgentViewScreen({
   const linkText = useViewLinkText();
   // Every button waits: nothing may act here, a turn runs, a question waits, or the screen is old.
   const held = !canAct || working || question || stale;
+  // A tap counts only on a screen that stood still (review 10 W3): a new rev, a request block, its sent
+  // line, the agent's notes or a text answer may each move a control under the finger.
+  const layout = JSON.stringify([view?.rev ?? null, request?.at ?? null, request?.phase ?? null, request?.line ?? null, status?.kind ?? null, notes.length, answer?.ts ?? null]);
+  const canTap = useSettled(layout, settleMs);
 
-  /** Send one tap, mark the control once the bridge confirmed it, read again on a stale refusal. */
+  /**
+   * Send one tap, mark the control once the bridge confirmed it, read again on a stale refusal. A send
+   * that throws (the link dropped) has told the view "Not sent" through the composer already: the throw
+   * ends here, so no rejection escapes (review 10 W13), and the buttons are free again.
+   */
   const send = useCallback(
     (control: string, tap: ViewTap) => {
       setBusyControl(control);
@@ -398,6 +458,7 @@ export function AgentViewScreen({
           if (result.code === "stale_view") onStale?.();
           return result;
         })
+        .catch(() => null)
         .finally(() => setBusyControl(null));
     },
     [onTap, onPressed, onStale],
@@ -411,7 +472,7 @@ export function AgentViewScreen({
       // bridge builds the line from its own stored screen and answers it.
       const words = viewTapWords(view, control);
       if (words === null) return;
-      send(blockControl(block.prefix, rendered), { rev: view.rev, control, words });
+      send(blockControl(block.prefix, rendered), { rev: view.rev, control, words, about: tapAbout(view, control) });
     },
     [view, busyControl, held, send],
   );
@@ -423,7 +484,7 @@ export function AgentViewScreen({
       const control = optionControl(index);
       const words = viewTapWords(view, control);
       if (words === null) return;
-      send(choiceControl(choice, index), { rev: view.rev, control, words });
+      send(choiceControl(choice, index), { rev: view.rev, control, words, about: tapAbout(view, control) });
     },
     [view, busyControl, held, send],
   );
@@ -443,7 +504,9 @@ export function AgentViewScreen({
         hostOf: linkHost,
         wrap: true,
         linkText,
-        armedLabel,
+        armedLabel: (label, rendered) => armedWordsOf(view, block, label, rendered),
+        tapName: (label, rendered) => tapNameOf(view, block, label, rendered),
+        canTap,
       };
       const busyHere = busyControl === null ? null : renderedControl(block.prefix, busyControl);
       if (isLive && busyHere !== null) ctx.tap = { phase: "busy", rid: "agent-view", control: busyHere, intent: "" };
@@ -458,7 +521,7 @@ export function AgentViewScreen({
         </div>
       );
     },
-    [partKey, onBlockTap, onLink, busyControl, held, now, pictures, pressed, linkText],
+    [partKey, view, onBlockTap, onLink, busyControl, held, now, pictures, pressed, linkText, canTap],
   );
 
   const freshItems = useMemo(
@@ -504,7 +567,7 @@ export function AgentViewScreen({
         {view !== undefined && (
           <div data-slot="view-screen" className={cn("mt-2 min-w-0", VIEW_SCREEN_CLASS)}>
             <KeyedFlow items={freshItems} gap={BLOCK_GAP} data-slot="view-blocks" />
-            {split.isChoiceFresh && <ChoicePart key={view.rev} view={view} pictures={pictures} pressed={pressed} busy={busyOption} canAct={!held} onPick={onPick} />}
+            {split.isChoiceFresh && <ChoicePart key={view.rev} view={view} pictures={pictures} pressed={pressed} busy={busyOption} canAct={!held} canTap={canTap} onPick={onPick} />}
           </div>
         )}
         {answer !== null && (
@@ -523,7 +586,7 @@ export function AgentViewScreen({
                 </div>
               ))}
             </div>
-            {split.isChoiceStale && <ChoicePart view={view} pictures={pictures} pressed={pressed} busy={null} canAct="stale" onPick={onPick} />}
+            {split.isChoiceStale && <ChoicePart view={view} pictures={pictures} pressed={pressed} busy={null} canAct="stale" canTap={canTap} onPick={onPick} />}
           </ViewEarlier>
         )}
       </div>

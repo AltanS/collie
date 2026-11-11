@@ -94,3 +94,39 @@ export const VIEW_SCREEN: ViewScreen = {
   },
   choiceAt: "2026-11-11T10:01:00.000Z",
 };
+
+/** A trick name of 40 CJK characters: the band's own words must stay whole beside it (review 10 W5). */
+export const VIEW_LONG_NAME = "リリースボード".repeat(5) + "の確認画面です";
+
+/**
+ * A screen of long words (review 10): button labels at the schema's cap of 24 CJK characters in a bar of
+ * three (W1), a confirm (W2), a linked run to a host in another script (W4), a link in a bar to a deep host
+ * (W9), and a bare address with a user part (W10).
+ */
+export const VIEW_LONG_SCREEN: ViewScreen = {
+  rev: 5,
+  at: "2026-11-11T10:01:00.000Z",
+  title: "リリース 1.29.0 の確認",
+  view: screen([
+    { kind: "para", text: "Sign in first: https://bank.example@evil.example/login" },
+    { kind: "para", kids: [{ kind: "run", text: "The German notes", attrs: { href: "https://b\u00fccher.example/notes" } }] },
+    { kind: "bar", kids: [{ kind: "link", text: "Staging notes", attrs: { href: "https://release-notes.staging.eu.docs.example.com/1.29" } }] },
+    {
+      kind: "group",
+      attrs: { label: "本番リリース" },
+      kids: [
+        {
+          kind: "bar",
+          kids: [
+            { kind: "button", attrs: { label: "本番環境へ配信して全員にお知らせを送ってから終了", intent: "ship" } },
+            { kind: "button", attrs: { label: "待つ", intent: "wait" } },
+            { kind: "button", attrs: { label: "タグを消して最初からやり直す", intent: "drop", confirm: "Gone for good." } },
+          ],
+        },
+      ],
+    },
+  ]),
+};
+
+/** The release screen with Collie's own marks of the picks (review 10 W7): Wait in the bar, Edge in the choice. */
+export const VIEW_PICKED_SCREEN: ViewScreen = { ...VIEW_SCREEN, rev: 4, picks: [{ block: "b4", path: "1" }, { block: "choice", path: "0" }] };

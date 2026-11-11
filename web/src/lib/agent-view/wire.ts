@@ -54,7 +54,7 @@ import {
   type HillMedia,
 } from "../hill/wire";
 import { hasHiddenChar, isHiddenChar } from "../hidden-chars";
-import { DOCUMENT_VERSION, isTrickId, PART_MAX_BYTES, parseDecisionView, parseTrickDocument, VIEW_LIMITS, type Refusal, type View, type ViewNode } from "../tricks/schema";
+import { DOCUMENT_VERSION, isTrickId, isTrickUrl, PART_MAX_BYTES, parseDecisionView, parseTrickDocument, VIEW_LIMITS, type Refusal, type View, type ViewNode } from "../tricks/schema";
 
 /** A screen's title, in characters. */
 export const VIEW_TITLE_MAX = 80;
@@ -138,6 +138,9 @@ const CONFUSABLE = new Map(Object.entries({
   "\u03c1": "p", "\u03c4": "t", "\u03c9": "w",
   "\u1d00": "a", "\u1d07": "e", "\u026a": "i", "\u1d0d": "m", "\u0274": "n", "\u1d0f": "o", "\u1d18": "p",
   "\u0280": "r", "\u1d1b": "t", "\u1d20": "v", "\u1d21": "w", "\u029c": "h", "\ua730": "f",
+  // The letters of Collie's own words (review 10): Cyrillic c, s, d, y, x, k, the palochka, and small capitals.
+  "\u0441": "c", "\u0455": "s", "\u0501": "d", "\u0443": "y", "\u0445": "x", "\u043a": "k", "\u04cf": "l",
+  "\u1d04": "c", "\u029f": "l",
   "\u27e6": "[", "\u27e8": "[", "\u3014": "[", "\u3010": "[", "\u3016": "[", "\u3018": "[", "\u301a": "[",
   "\u2768": "[", "\u276a": "[", "\u2772": "[", "\u2045": "[", "\u298b": "[", "\u298d": "[", "\u298f": "[",
   "\u27e7": "]", "\u27e9": "]", "\u3015": "]", "\u3011": "]", "\u3017": "]", "\u3019": "]", "\u301b": "]",
@@ -251,9 +254,28 @@ export interface ViewChoice {
   options: ViewOption[];
   /** The option the agent suggests (an index into `options`), and why. Never pre-selected. */
   recommends?: { option: number; why?: string };
-  /** A settled decision: the option that was picked. The block then draws as done and takes no tap. */
-  picked?: number;
 }
+
+/**
+ * A pick COLLIE marks (review 10 W7): the bridge writes one when a tap or a pick from the view went (its
+ * keys landed), from its own record of the send. Never the agent's: a button's `pressed` and a choice's
+ * `picked` are refused at the write. `block` is the block's id ({@link VIEW_CHOICE_BLOCK} for the decision
+ * block); `path` is the button's steps under that block's node (`0`, `1/0`), or the option's index.
+ */
+export interface ViewPick {
+  block: string;
+  path: string;
+}
+
+/** The most picks one screen carries: one per bar, and the decision block. */
+export const VIEW_PICKS_MAX = 32;
+/** A pick's path: one to eight steps of up to three digits. */
+const PICK_PATH_RE = /^\d{1,3}(?:\/\d{1,3}){0,7}$/u;
+
+/** Why a button's `pressed` is refused in an agent view (review 10 W7). */
+export const VIEW_NO_PRESSED = 'A button in an agent view takes no "pressed": Collie marks the pick when the operator taps. Keep the question\'s block when you draw the next step.';
+/** Why a choice's `picked` is refused (review 10 W7). */
+export const VIEW_NO_PICKED = 'A choice takes no "picked": Collie marks the pick when the operator picks. Keep the question\'s block when you draw the next step.';
 
 /** A block id: 1 to 32 of a-z, 0-9 and `-`. `choice` names the decision block in `keep`, never a block. */
 export const VIEW_BLOCK_ID_RE = /^[a-z0-9-]{1,32}$/u;
@@ -294,6 +316,8 @@ export interface ViewScreen {
   choiceAt?: string;
   /** One per top-level node of `view`, same order. Absent on a screen stored before blocks: {@link viewBlocksOf} derives them. */
   blocks?: ViewBlock[];
+  /** The picks Collie marked on this screen, oldest first (review 10 W7). Absent: none. */
+  picks?: ViewPick[];
 }
 
 /** One `start` note, with the time it came. */
@@ -340,6 +364,12 @@ export interface ViewSent {
    * text is in the box, not submitted) or `unknown` (it may have gone). Absent: sent.
    */
   outcome?: ViewSentOutcome;
+  /**
+   * For a tap: what it answered, read by the bridge from the screen it went from (review 10 W8): the
+   * decision block's question for a pick (else the title), the screen's title for a button. The receipt
+   * names it, never the screen shown now. Absent: the screen had none, or the line is typed text.
+   */
+  about?: string;
 }
 
 /** How a kept line ended when it did not end `sent`. */
@@ -596,10 +626,95 @@ export const VIEW_NO_DOES = 'A button in an agent view has no "does": a tap only
 /** The sentence a link whose text reads as an address other than its own is refused with (SECURITY N1). */
 export const VIEW_LINK_TEXT = "A link whose text reads as a web address must show its own address: write the address as the text, or words that are no address.";
 
-/** Whether a link text reads as a web address: a scheme, `www.`, or a host with a dot and no blank. */
-function readsAsAddress(text: string): boolean {
-  const t = text.trim();
-  return /^[a-z][a-z0-9+.-]*:\/\//iu.test(t) || /^www\./iu.test(t) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/iu.test(t);
+/** The dots a browser reads in a host: the full stop, and the ideographic one (U+3002), which NFKC leaves. */
+const HOST_DOT = String.raw`[.\u3002]`;
+/** One name of a host in any script: letters, digits, marks and the hyphen. */
+const HOST_NAME = String.raw`[\p{L}\p{N}\p{M}-]+`;
+const ADDRESS_SCHEME = /^[\p{L}][\p{L}\p{N}+.-]*:\/\//u;
+const ADDRESS_WWW = new RegExp(`^www${HOST_DOT}`, "u");
+const ADDRESS_HOST = new RegExp(`^${HOST_NAME}(?:${HOST_DOT}${HOST_NAME})+(?:[/:?#]\\S*)?$`, "u");
+
+/**
+ * Whether a link's text reads as a web address to a person: a scheme, `www.`, or a host with a dot and
+ * no blank. Read on the FOLDED text ({@link foldViewLine}: hidden characters out, NFKC, look-alikes
+ * folded), so a Cyrillic letter, a fullwidth or an ideographic dot, a zero-width space or a host in
+ * another script reads as the address it shows (review 10 W4). The bridge's write and the phone share it.
+ */
+export function readsAsAddress(text: string): boolean {
+  const folded = foldViewLine(text).trim();
+  return ADDRESS_SCHEME.test(folded) || ADDRESS_WWW.test(folded) || ADDRESS_HOST.test(folded);
+}
+
+/** Why a link, a row or a run whose `href` names a session is refused in an agent view (review 10 W11). */
+export const VIEW_WEB_LINKS_ONLY = "A link in an agent view goes to a web address (https) only: it cannot open another session.";
+
+// ── Collie's own words (review 10, the reviewer's accept) ──────────────────────────────────────────
+
+/**
+ * The words Collie draws around an agent view, which no text of the agent's may say, so a screen cannot
+ * pass for Collie's frame: "From Collie", the band's words, the line over a sent message, the band's lines
+ * for a held button, the armed words, and the fold. ONE LIST for the bridge's write and the phone's read
+ * (both run {@link parseAgentView} and {@link parseViewChoice}); the web's tests pin that the phone's own
+ * strings stay in it. English: the phone draws the frame in the person's language, and a screen in
+ * another one is the agent's to write.
+ */
+export const VIEW_COLLIE_PHRASES = [
+  "From Collie",
+  "Drawn by this session's agent",
+  "Drawn in an earlier conversation",
+  "Sent to this session",
+  "A question waits in this session",
+  "Your typing answers the question",
+  "The screen changed",
+  "The buttons wait",
+  "The agent is working",
+  "Tap again to send",
+  "Earlier screen",
+  "The agent answered in text",
+] as const;
+
+/** A text's words, folded as the head rule folds ({@link foldViewLine}), every run of other characters one space, padded. */
+function foldedWords(text: string): string {
+  return ` ${foldViewLine(text).replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+}
+
+const COLLIE_PHRASES_FOLDED = VIEW_COLLIE_PHRASES.map((phrase) => ({ phrase, words: foldedWords(phrase) }));
+
+/**
+ * The first of Collie's own phrases a text says, or null. Both sides are folded as the head rule folds
+ * (hidden characters out, NFKC, lower case, marks out, look-alikes folded), then every run of characters
+ * that are not letters or digits becomes one space; a phrase counts as whole words only, so "The screens
+ * changed" passes. Collie's bare name is not a phrase: an agent that works on Collie names it. A text with a hidden character is read a second time with each one a
+ * blank.
+ */
+export function collieWordsIn(text: string): string | null {
+  // A hidden character is read both ways: dropped (`Col\u200blie` is "Collie") and as a blank (a wide
+  // blank, which the shared predicate counts as hidden, still parts two words).
+  let blanked = "";
+  for (const ch of text) blanked += isHiddenChar(ch) ? " " : ch;
+  const reads = [foldedWords(text), foldedWords(blanked)];
+  return COLLIE_PHRASES_FOLDED.find((folded) => reads.some((words) => words.includes(folded.words)))?.phrase ?? null;
+}
+
+/** Why a text that says Collie's own words is refused. */
+export function collieWordsReason(phrase: string): string {
+  return `"${phrase}" is Collie's own words: a screen an agent draws cannot say them. Write it another way.`;
+}
+
+/** The attributes that hold no words a person reads as a sentence: an address, a picture, a command word. */
+const NOT_WORDS = new Set(["href", "src", "ref", "intent"]);
+
+/** Every text of one node a person reads: its `text` and its attributes' words, each with its pointer. */
+function wordsOfNode(node: ViewNode, here: string): { readonly text: string; readonly path: string }[] {
+  const out: { text: string; path: string }[] = [];
+  const text = "text" in node ? asJsonString(node.text) : undefined;
+  if (text !== undefined) out.push({ text, path: `${here}/text` });
+  const attrs = "attrs" in node && node.attrs !== undefined ? Object.entries(node.attrs) : [];
+  for (const [key, value] of attrs) {
+    const words = NOT_WORDS.has(key) ? undefined : asJsonString(value);
+    if (words !== undefined) out.push({ text: words, path: `${here}/attrs/${key}` });
+  }
+  return out;
 }
 
 /** Whether a tap word (a label, a group's label) is one line of shown characters. */
@@ -619,6 +734,7 @@ function agentViewRefusals(view: View, path: string): Refusal[] {
     nodes.forEach((node, i) => {
       const here = `${at}/${String(i)}`;
       if (node.kind === "button") {
+        if (node.attrs.pressed !== undefined) out.push({ code: "unknown-key", path: `${here}/attrs/pressed`, reason: VIEW_NO_PRESSED });
         if (node.attrs.value !== undefined) out.push({ code: "unknown-key", path: `${here}/attrs/value`, reason: VIEW_NO_VALUE });
         if (node.attrs.does !== undefined) out.push({ code: "unknown-key", path: `${here}/attrs/does`, reason: VIEW_NO_DOES });
         if (!shownLine(node.attrs.label) || node.attrs.label.trim().length > VIEW_TAP_LABEL_MAX) out.push({ code: "text", path: `${here}/attrs/label`, reason: `A button's label is one line of shown characters, at most ${String(VIEW_TAP_LABEL_MAX)}.` });
@@ -626,6 +742,12 @@ function agentViewRefusals(view: View, path: string): Refusal[] {
       if (node.kind === "group" && node.attrs?.label !== undefined && (!shownLine(node.attrs.label) || node.attrs.label.trim().length > VIEW_TAP_GROUP_MAX)) {
         out.push({ code: "text", path: `${here}/attrs/label`, reason: `A group's label in an agent view is one line of shown characters, at most ${String(VIEW_TAP_GROUP_MAX)}: a tap inside it sends it.` });
       }
+      for (const words of wordsOfNode(node, here)) {
+        const phrase = collieWordsIn(words.text);
+        if (phrase !== null) out.push({ code: "text", path: words.path, reason: collieWordsReason(phrase) });
+      }
+      const href = node.kind === "link" ? node.attrs.href : node.kind === "row" || node.kind === "run" ? node.attrs?.href : undefined;
+      if (href !== undefined && !isTrickUrl(href)) out.push({ code: "text", path: `${here}/attrs/href`, reason: VIEW_WEB_LINKS_ONLY });
       if (node.kind === "link" && readsAsAddress(node.text) && node.text.trim() !== node.attrs.href) out.push({ code: "text", path: `${here}/text`, reason: VIEW_LINK_TEXT });
       if (node.kind === "run" && node.attrs?.href !== undefined && readsAsAddress(node.text) && node.text.trim() !== node.attrs.href) out.push({ code: "text", path: `${here}/text`, reason: VIEW_LINK_TEXT });
       if ("kids" in node && Array.isArray(node.kids)) walk(node.kids, `${here}/kids`);
@@ -682,13 +804,13 @@ export const VIEW_CONTROL_MAX = 64;
  * by {@link quoteTapWord} and capped. Null when the control names no button or option a tap could reach:
  * a disabled button, a settled choice, a pending block, a label that is no line of shown characters.
  */
-export function viewTapWords(screen: Pick<ViewScreen, "view" | "choice">, control: string): string | null {
+export function viewTapWords(screen: Pick<ViewScreen, "view" | "choice" | "picks">, control: string): string | null {
   if (control.length > VIEW_CONTROL_MAX) return null;
   const pick = /^choice\/(\d{1,2})$/u.exec(control);
   if (pick !== null) {
     const choice = screen.choice;
     const option = choice?.options[Number(pick[1])];
-    if (choice === undefined || option === undefined || choice.picked !== undefined) return null;
+    if (choice === undefined || option === undefined || choicePick(screen) !== null) return null;
     const label = option.label.trim();
     if (label === "" || !shownLine(label) || label.length > VIEW_TAP_LABEL_MAX) return null;
     return `picked ${quoteTapWord(label)}`;
@@ -764,7 +886,7 @@ export interface ParsedViewChoice {
   refusals: Refusal[];
 }
 
-const CHOICE_KEYS = ["question", "options", "recommends", "picked"] as const;
+const CHOICE_KEYS = ["question", "options", "recommends"] as const;
 const OPTION_KEYS = ["label", "detail", "confirm", "preview"] as const;
 const RECOMMENDS_KEYS = ["option", "why"] as const;
 
@@ -812,6 +934,10 @@ function readOption(raw: JsonValue | undefined, path: string, images: number): O
   const detail = lineField(obj, "detail", HILL_OPTION_DETAIL_MAX, path, "An option's detail");
   const confirm = lineField(obj, "confirm", HILL_OPTION_CONFIRM_MAX, path, "An option's confirm word");
   for (const field of [label, detail, confirm]) if (field.refusal !== undefined) refusals.push(field.refusal);
+  for (const [key, field] of [["label", label], ["detail", detail], ["confirm", confirm]] as const) {
+    const phrase = field.value === undefined ? null : collieWordsIn(field.value);
+    if (phrase !== null) refusals.push({ code: "text", path: `${path}/${key}`, reason: collieWordsReason(phrase) });
+  }
   if (label.value !== undefined && !shownLine(label.value)) refusals.push({ code: "text", path: `${path}/label`, reason: "An option's label is one line of shown characters: a pick sends it." });
   const preview = obj.preview === undefined ? undefined : indexBelow(obj.preview, images);
   if (preview === null) {
@@ -834,9 +960,13 @@ function readOption(raw: JsonValue | undefined, path: string, images: number): O
 export function parseViewChoice(raw: JsonValue | undefined, path = "/choice", { images }: { images: number }): ParsedViewChoice {
   const obj = asJsonObject(raw);
   if (obj === undefined) return { refusals: [{ code: "type", path, reason: 'A choice is an object: { "question"?, "options": [...], "recommends"? }.' }] };
-  const refusals = unknownKeys(obj, CHOICE_KEYS, path, "A choice");
+  // `picked` is Collie's to mark (review 10 W7): refused in its own words, not as an unknown key.
+  const refusals = unknownKeys(obj, [...CHOICE_KEYS, "picked"], path, "A choice");
+  if (obj.picked !== undefined) refusals.push({ code: "unknown-key", path: `${path}/picked`, reason: VIEW_NO_PICKED });
   const question = lineField(obj, "question", VIEW_QUESTION_MAX, path, "A choice's question");
   if (question.refusal !== undefined) refusals.push(question.refusal);
+  const asked = question.value === undefined ? null : collieWordsIn(question.value);
+  if (asked !== null) refusals.push({ code: "text", path: `${path}/question`, reason: collieWordsReason(asked) });
   const list = Array.isArray(obj.options) ? obj.options : null;
   if (list === null || list.length < 1 || list.length > VIEW_OPTIONS_MAX) {
     refusals.push({ code: "count", path: `${path}/options`, reason: `A choice has 1 to ${String(VIEW_OPTIONS_MAX)} options.` });
@@ -853,13 +983,10 @@ export function parseViewChoice(raw: JsonValue | undefined, path = "/choice", { 
     options.push(read.option);
   });
   const recommends = obj.recommends === undefined ? undefined : readRecommends({ raw: obj.recommends, path: `${path}/recommends`, options: list.length, refusals });
-  const picked = obj.picked === undefined ? undefined : indexBelow(obj.picked, list.length);
-  if (picked === null) refusals.push({ code: "range", path: `${path}/picked`, reason: `"picked" is the picked option's index, 0 to ${String(list.length - 1)}.` });
   if (refusals.length > 0) return { refusals };
   const choice: ViewChoice = { options };
   if (question.value !== undefined) choice.question = question.value;
   if (recommends !== undefined) choice.recommends = recommends;
-  if (picked !== undefined && picked !== null) choice.picked = picked;
   return { choice, refusals: [] };
 }
 
@@ -875,6 +1002,8 @@ function readRecommends({ raw, path, options, refusals }: { raw: JsonValue; path
   if (option === null) refusals.push({ code: "range", path: `${path}/option`, reason: `"option" is an option's index, 0 to ${String(options - 1)}.` });
   const why = lineField(rec, "why", HILL_WHY_MAX, path, "The why");
   if (why.refusal !== undefined) refusals.push(why.refusal);
+  const said = why.value === undefined ? null : collieWordsIn(why.value);
+  if (said !== null) refusals.push({ code: "text", path: `${path}/why`, reason: collieWordsReason(said) });
   if (option === null) return undefined;
   return why.value === undefined ? { option } : { option, why: why.value };
 }
@@ -1003,6 +1132,13 @@ export function readViewScreen(raw: JsonValue | undefined): ViewScreen | null {
     if (blocks === null) return null;
     out.blocks = blocks;
   }
+  if (obj.picks !== undefined) {
+    const picks = readViewPicks(obj.picks);
+    if (picks === null) return null;
+    // A pick that names no button or option of this screen is no mark: dropped, never drawn.
+    const kept = picks.filter((pick) => pickFits(out, pick));
+    if (kept.length > 0) out.picks = kept;
+  }
   if (obj.title === undefined) return out;
   const title = asJsonString(obj.title);
   if (title === undefined || cleanViewLine(title, VIEW_TITLE_MAX) !== title) return null;
@@ -1062,7 +1198,17 @@ function readViewSent(raw: JsonValue | undefined): ViewSent | null {
   if (rid === undefined || rid === "" || rid.length > 128 || at === undefined || !isIsoTime(at) || kind === undefined) return null;
   if (line === undefined || line === "" || line.length > VIEW_SENT_LINE_MAX) return null;
   const outcome = obj?.outcome === "typed_not_submitted" || obj?.outcome === "unknown" ? obj.outcome : undefined;
-  return outcome === undefined ? { rid, at, kind, line } : { rid, at, kind, line, outcome };
+  const sent: ViewSent = outcome === undefined ? { rid, at, kind, line } : { rid, at, kind, line, outcome };
+  if (obj?.about === undefined) return sent;
+  const about = asJsonString(obj.about);
+  if (about === undefined || cleanViewLine(about, VIEW_QUESTION_MAX) !== about) return null;
+  return { ...sent, about };
+}
+
+/** What a tap at `control` answered on `screen` (review 10 W8): a pick's question, else the screen's title; null for none. */
+export function tapAbout(screen: Pick<ViewScreen, "choice" | "title">, control: string): string | null {
+  if (control.startsWith("choice/")) return screen.choice?.question ?? screen.title ?? null;
+  return screen.title ?? null;
 }
 
 /** A view's sent lines: the ones that fit, newest last, at most {@link VIEW_SENT_MAX}. */
@@ -1161,4 +1307,84 @@ export function readViewSendField(raw: JsonValue | undefined): ViewSendField | n
   const control = asJsonString(obj.control);
   if (!isRev(rev) || control === undefined || control === "" || control.length > VIEW_CONTROL_MAX) return null;
   return { trick, session, rev, control };
+}
+
+// ── picks Collie marks (review 10 W7) ───────────────────────────────────────────────────────────────
+
+/** One stored or served pick, or null when a field does not fit. */
+function readViewPick(raw: JsonValue): ViewPick | null {
+  const obj = asJsonObject(raw);
+  const block = asJsonString(obj?.block);
+  const path = asJsonString(obj?.path);
+  if (block === undefined || path === undefined || !VIEW_BLOCK_ID_RE.test(block) || !PICK_PATH_RE.test(path)) return null;
+  return { block, path };
+}
+
+/** A screen's picks, or null when the list does not fit. */
+function readViewPicks(raw: JsonValue): ViewPick[] | null {
+  if (!Array.isArray(raw) || raw.length > VIEW_PICKS_MAX) return null;
+  const picks = raw.map(readViewPick);
+  return picks.some((pick) => pick === null) ? null : picks.filter((pick): pick is ViewPick => pick !== null);
+}
+
+/** The node at `path`'s steps under `node`, or undefined. */
+function nodeUnder(node: ViewNode, path: string): ViewNode | undefined {
+  let at: ViewNode | undefined = node;
+  for (const step of path.split("/")) {
+    const kids: readonly ViewNode[] = at !== undefined && "kids" in at && Array.isArray(at.kids) ? at.kids : [];
+    at = kids[Number(step)];
+  }
+  return at;
+}
+
+/** Whether a pick names a button of the screen (its block by id) or an option of its decision block. */
+export function pickFits(screen: Pick<ViewScreen, "view" | "choice" | "blocks" | "at">, pick: ViewPick): boolean {
+  if (pick.block === VIEW_CHOICE_BLOCK) return screen.choice?.options[Number(pick.path)] !== undefined && /^\d{1,2}$/u.test(pick.path);
+  const index = viewBlocksOf({ ...screen, rev: 0 }).findIndex((block) => block.id === pick.block);
+  const node = index < 0 ? undefined : screen.view[index];
+  return node !== undefined && nodeUnder(node, pick.path)?.kind === "button";
+}
+
+/** The decision block's marked option, or null. */
+export function choicePick(screen: Pick<ViewScreen, "picks">): number | null {
+  const pick = screen.picks?.find((held) => held.block === VIEW_CHOICE_BLOCK);
+  return pick === undefined ? null : Number(pick.path);
+}
+
+/** The pick a tap at a control names on a screen (`v/2/0` → the third block, `0`; `choice/1`), or null. */
+export function pickOfControl(screen: Pick<ViewScreen, "view" | "blocks" | "at">, control: string): ViewPick | null {
+  const option = /^choice\/(\d{1,2})$/u.exec(control);
+  if (option !== null) return { block: VIEW_CHOICE_BLOCK, path: option[1] ?? "" };
+  const steps = /^v\/(\d{1,3})\/(\d{1,3}(?:\/\d{1,3}){0,7})$/u.exec(control);
+  if (steps === null) return null;
+  const block = viewBlocksOf({ ...screen, rev: 0 })[Number(steps[1])];
+  return block === undefined ? null : { block: block.id, path: steps[2] ?? "" };
+}
+
+/** The bar a pick sits in: its block and its parent's steps. Two picks in one bar: the newer stays. */
+function barOf(pick: ViewPick): string {
+  const slash = pick.path.lastIndexOf("/");
+  return pick.block === VIEW_CHOICE_BLOCK ? VIEW_CHOICE_BLOCK : `${pick.block}#${slash < 0 ? "" : pick.path.slice(0, slash)}`;
+}
+
+/** The picks after one more: the others of its bar (or the decision block's) go, the cap holds, the newest last. */
+export function picksWith(held: readonly ViewPick[] | undefined, pick: ViewPick): ViewPick[] {
+  const bar = barOf(pick);
+  return [...(held ?? []).filter((other) => barOf(other) !== bar), pick].slice(-VIEW_PICKS_MAX);
+}
+
+/** Whether two decision blocks ask the same: the same question and the same option labels in order. */
+function sameDecision(a: ViewChoice | undefined, b: ViewChoice | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  return a.question === b.question && a.options.length === b.options.length && a.options.every((option, i) => option.label === b.options[i]?.label);
+}
+
+/**
+ * The picks a new screen keeps from the one it replaces (review 10 W7): a button's while a block of the
+ * same id still holds a button at the same steps (the agent redrew that block, or another one); the
+ * decision block's while it asks the same question with the same options. A block removed, or drawn
+ * under a new id, or a new decision, shows no mark.
+ */
+export function carriedPicks(held: Pick<ViewScreen, "picks" | "choice"> | undefined, next: Pick<ViewScreen, "view" | "choice" | "blocks" | "at">): ViewPick[] {
+  return (held?.picks ?? []).filter((pick) => pickFits(next, pick) && (pick.block !== VIEW_CHOICE_BLOCK || sameDecision(held?.choice, next.choice)));
 }

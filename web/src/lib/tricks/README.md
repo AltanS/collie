@@ -1074,6 +1074,31 @@ with the current id drops the `[rules: ...]` tail until the pane's mark changes.
 (trick, session). Each switch, send and refusal writes one audit line (`trick.view.switch`,
 `trick.view.send`, `trick.view.refused`) with the device, trick, session and reason.
 
+**Collie marks the pick (review 10).** An agent cannot set a button's `pressed` or a choice's
+`picked`: the write refuses both ("Collie marks the pick"). When the keys of a tap or a pick landed,
+the bridge writes `picks` on the screen it went from, `{ block, path }`: the block id and the button's
+steps under it, or `choice` and the option's index. A redraw keeps a mark while a block of the same id
+holds a button at the same steps, and the decision block's while it asks the same question with the same
+options; a removed block, a new block id or a new decision shows none. A settled choice takes no pick.
+
+**Collie's own words (review 10).** No text an agent draws may say one of `VIEW_COLLIE_PHRASES`
+(`web/src/lib/agent-view/wire.ts`): "From Collie", the band's words, "Sent to this session", the band's
+lines for a held button, "Tap again to send", "Earlier screen". `collieWordsIn` folds both sides as the
+head rule does, turns every run of other characters into one blank and matches whole words. Collie's
+bare name is not on the list: "Restart Collie" passes. It reads a node's text and every attribute's words (not `href`, `src`, `ref`,
+`intent`), the choice, the title, a pending label and a start note.
+
+**Links (review 10).** A link, a row or a run goes to a web address only; a session `href` is refused.
+Whether a link's words read as an address is decided on the folded text, in any script. The phone shows
+the host after every link, linked run and bare address, whole, as the URL reads it (punycode for a host
+in another script, the real host after a user part).
+
+**The phone (review 10).** A button's label and an armed button's words wrap whole; the armed words say
+what the second tap sends, label and group, and are announced. A control is inert until the screen has
+stood still for 500 ms (a new rev, the request block, its sent line, the agent's notes, a text answer).
+A button is named by the words its tap sends; its hint describes it. The receipt of a tap names what it
+answered when it went (`about` on the sent line), never the screen shown now.
+
 **The lead only.** Views exist on the lead (or a solo Collie). A crew member answers every op, the
 switch and every send `not_on_lead`, and a deputy carries no views: its state folder holds no
 `trick-views/`, and a promoted deputy starts with every view off.
@@ -1082,6 +1107,15 @@ switch and every send `not_on_lead`, and a deputy carries no views: its state fo
 
 These gaps are known and still open. The next security review starts from this list. Each one is
 written as what a trick, or a person who controls one, can do today.
+
+- **Agent views, accepted in review 10.** The picture sheet covers Collie's band while it is open;
+  nothing in it sends. A screen the phone holds stays on screen after a 401 or 403 until the next read.
+  `?session=` on the views route narrows the answer; it is no boundary. The view switch row cuts a
+  trick's name to 12 characters. A pick reaches the agent as `picked "<label>"` with no question; the
+  agent knows which question it drew. Collie's own words are matched in English, as whole words after
+  the fold: the same words in another language, or spelled with blanks between the letters, pass. The
+  settle window reads what places a control from the screen's facts, not from the layout: a picture
+  that loads late and grows its box is not counted.
 
 - **A relative import can reach outside the approved copy.** The approved copy holds only code a
   person saw, but a program in it can still import `../../somewhere/else.ts`. That file is not in the

@@ -160,6 +160,8 @@ export interface ViewTap {
   readonly control: string;
   /** What the tap names on the screen the phone holds (`tapped "<label>"`), for the view's receipt while it is in flight. Never sent. */
   readonly words: string;
+  /** What the tap answered on that screen (`tapAbout`: the question or the title), for the receipt. Never sent. */
+  readonly about: string | null;
 }
 
 /** How a send from an agent view ended. */
@@ -1729,7 +1731,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (tap !== undefined && view === undefined) return false;
     viewAnswerRef.current = { line: null, code: null };
     const tell = (phase: ViewRequestNote["phase"], reason: string | null = null): void => {
-      if (view !== undefined) onViewRequest?.({ text: t, phase, reason, line: phase === "sent" ? viewAnswerRef.current.line : null });
+      if (view !== undefined) onViewRequest?.({ text: t, phase, reason, line: phase === "sent" ? viewAnswerRef.current.line : null, about: tap?.about ?? null });
     };
     if (offlineRef.current) {
       const refusal = phoneRefusal(translate("composer.send.reconnect"));

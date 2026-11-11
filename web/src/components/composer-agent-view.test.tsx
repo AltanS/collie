@@ -97,6 +97,8 @@ function renderScreen(overrides: Partial<ComponentProps<typeof Composer>> = {}) 
         canAct
         onTap={(tap) => ref.current?.sendViewTap(tap) ?? Promise.resolve({ sent: false, line: null, code: null })}
         onLink={vi.fn()}
+        // The screen has stood still: the settle window is the screen's own test (review 10 W3).
+        settleMs={0}
       />
       <Composer ref={ref} {...props} />
     </>
@@ -115,7 +117,7 @@ async function typeAndSend(words: string) {
 async function tapThrough(ref: React.RefObject<ComposerHandle | null>): Promise<ViewSendResult | undefined> {
   let result: ViewSendResult | undefined;
   await act(async () => {
-    result = await ref.current?.sendViewTap({ rev: 1, control: "v/0/0", words: 'tapped "Ship"' });
+    result = await ref.current?.sendViewTap({ rev: 1, control: "v/0/0", words: 'tapped "Ship"', about: null });
   });
   return result;
 }
@@ -156,8 +158,8 @@ describe("an agent view sends through the composer", () => {
     await typeAndSend("show the plan");
     await waitFor(() => expect(notes).toHaveLength(2));
     expect(notes).toEqual([
-      { text: "show the plan", phase: "sending", reason: null, line: null },
-      { text: "show the plan", phase: "sent", reason: null, line: TYPED_LINE },
+      { text: "show the plan", phase: "sending", reason: null, line: null, about: null },
+      { text: "show the plan", phase: "sent", reason: null, line: TYPED_LINE, about: null },
     ]);
   });
 

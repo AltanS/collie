@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
 import { Switch } from "@/components/ui/switch";
+import { HillAboutSheetControl, HillEntryRow } from "@/components/hill-entry";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useArm } from "@/hooks/use-arm";
@@ -79,6 +80,10 @@ import { cn } from "@/lib/utils";
 // line, as the switch does. An empty list, a crew member's (`runsOn`), or a list the phone could not read
 // draws no section. The list is read when the card mounts and again when the installed tricks change; it
 // costs the bridge a read of its own folder, never a fetch.
+//
+// THE HILL, FIRST (2026-11-11). One built-in row sits above the person's tricks and opens its own About sheet
+// with the Hill's one switch (components/hill-entry.tsx). It is the Hill's own switch, not a trick's: no row
+// switch, no Remove, no version line. A crew member draws no such row, as it runs no tricks (`runsOn`).
 //
 // NO PROSE but the one muted line at the foot. What a trick may do is the docs' to say.
 
@@ -449,6 +454,8 @@ function TricksList({
   const [adding, setAdding] = useState<ReadonlyMap<string, "add" | "update">>(new Map());
   // The official entry whose About sheet is open, by id.
   const [officialAboutId, setOfficialAboutId] = useState<string | null>(null);
+  // The Hill's About sheet (components/hill-entry.tsx): open or not. The Hill is no trick, so it has no key.
+  const [hillAbout, setHillAbout] = useState(false);
 
   useEffect(() => {
     const open = timers.current;
@@ -618,6 +625,8 @@ function TricksList({
           </p>
         )}
         <div data-slot="list-group">
+          {/* The Hill, shown as the first, built-in entry. A crew member draws none: the Hill lives on the lead. */}
+          {runsOn === undefined && <HillEntryRow onAbout={() => setHillAbout(true)} />}
           {/* A fresh install (no tricks folder yet) with an official list: the card holds only the list. */}
           {tricks.length === 0 && officialRows.length === 0 && (
             <div className="px-4 py-3">
@@ -688,6 +697,8 @@ function TricksList({
           />
         </TrickBoundary>
       )}
+      {/* Collie's own sheet, not a trick's: no boundary. It reads the Hill's switch and the list the phone holds. */}
+      {hillAbout && runsOn === undefined && <HillAboutSheetControl onClose={() => setHillAbout(false)} />}
       {officialAbout !== undefined && (
         <TrickBoundary fallback="none" resetKey={officialAbout}>
           <OfficialTrickAboutSheet

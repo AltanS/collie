@@ -212,17 +212,18 @@ describe("the block verbs", () => {
     expect(await r.service.keep(T, S, ["choice"])).toMatchObject({ ok: false, code: "bad_block" });
   });
 
-  test("choice sets the decision block alone, with picked; --clear drops it; a bad one leaves the screen", async () => {
+  test("choice sets the decision block alone (never with picked: Collie marks the pick, review 10 W7); --clear drops it; a bad one leaves the screen", async () => {
     const r = await rig();
     expect(await r.service.setChoice(T, S, { options: [{ label: "Yes" }] })).toMatchObject({ ok: false, code: "no_screen" });
     await r.service.show(T, S, { view: [para("x")], title: null });
     r.advance(1000);
-    expect(await r.service.setChoice(T, S, { question: "Go on?", options: [{ label: "Yes" }, { label: "No" }], picked: 1 })).toMatchObject({ ok: true });
+    expect(await r.service.setChoice(T, S, { question: "Go on?", options: [{ label: "Yes" }, { label: "No" }], picked: 1 })).toMatchObject({ ok: false, code: "bad_choice" });
+    expect(await r.service.setChoice(T, S, { question: "Go on?", options: [{ label: "Yes" }, { label: "No" }] })).toMatchObject({ ok: true });
     const view = r.service.status(T, S).view;
-    expect(view?.choice?.picked).toBe(1);
+    expect(view?.choice?.question).toBe("Go on?");
     expect(view?.choiceAt).toBe(view?.at);
     expect(await r.service.setChoice(T, S, { options: [] })).toMatchObject({ ok: false, code: "bad_choice" });
-    expect(r.service.status(T, S).view?.choice?.picked).toBe(1);
+    expect(r.service.status(T, S).view?.choice?.question).toBe("Go on?");
     await r.service.setChoice(T, S, null);
     expect(r.service.status(T, S).view?.choice).toBeUndefined();
     expect(r.service.status(T, S).view?.choiceAt).toBeUndefined();

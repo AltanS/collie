@@ -33,10 +33,10 @@
 
 import { reservedLead } from "@/lib/surface/send";
 import { kidsOf } from "@/lib/tricks/layout";
-import type { View, ViewNode } from "@/lib/tricks/schema";
+import { isTrickUrl, type View, type ViewNode } from "@/lib/tricks/schema";
 import type { TranscriptEntry } from "@/lib/types";
 
-import { isViewHeadLine, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
+import { isViewHeadLine, readsAsAddress, tapAbout, VIEW_CHOICE_BLOCK, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
 
 /** The longest trick name the switch row and the View choice show, in characters, the cut included. */
 export const VIEW_NAME_SHOWN = 12;
@@ -120,12 +120,6 @@ export function withPressed(view: View, controls: readonly string[]): View {
   return walk(view, "v");
 }
 
-/** Whether a link text reads as a web address: a scheme, `www.`, or a host with a dot and no blank. The wire's rule. */
-function readsAsAddress(text: string): boolean {
-  const trimmed = text.trim();
-  return /^[a-z][a-z0-9+.-]*:\/\//iu.test(trimmed) || /^www\./iu.test(trimmed) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/iu.test(trimmed);
-}
-
 /**
  * A link's words as the view draws them (SECURITY N1): words that read as a web address must be the
  * link's own target, else the target is drawn in their place. The wire refuses such a screen already;
@@ -135,17 +129,29 @@ export function shownLinkText(text: string, href: string): string {
   return readsAsAddress(text) && text.trim() !== href ? href : text;
 }
 
-/** The view with every link's and linked run's words held to {@link shownLinkText}. The view given is not changed. */
+/**
+ * The view with every link's and linked run's words held to {@link shownLinkText}, and every `href` that
+ * is no web address (a session's, review 10 W11) blanked, so the renderer draws its words with nothing to
+ * open. The wire refuses both already; this holds on the phone for a screen that slipped past. The view
+ * given is not changed.
+ */
 export function withTrueLinks(view: View): View {
   const walk = (nodes: readonly ViewNode[]): ViewNode[] =>
     nodes.map((node) => {
       if (node.kind === "link") {
-        const text = shownLinkText(node.text, node.attrs.href);
-        return text === node.text ? node : { ...node, text };
+        const href = isTrickUrl(node.attrs.href) ? node.attrs.href : "";
+        const text = href === "" ? node.text : shownLinkText(node.text, href);
+        return text === node.text && href === node.attrs.href ? node : { ...node, text, attrs: { ...node.attrs, href } };
       }
       if (node.kind === "run" && node.attrs?.href !== undefined) {
-        const text = shownLinkText(node.text, node.attrs.href);
-        return text === node.text ? node : { ...node, text };
+        const href = isTrickUrl(node.attrs.href) ? node.attrs.href : "";
+        const text = href === "" ? node.text : shownLinkText(node.text, href);
+        return text === node.text && href === node.attrs.href ? node : { ...node, text, attrs: { ...node.attrs, href } };
+      }
+      if (node.kind === "row" && node.attrs?.href !== undefined && !isTrickUrl(node.attrs.href)) {
+        const kids = kidsOf(node);
+        const row = { ...node, attrs: { ...node.attrs, href: "" } };
+        return kids.length === 0 ? row : Object.assign(row, { kids: walk(kids) });
       }
       const kids = kidsOf(node);
       return kids.length === 0 ? node : Object.assign({}, node, { kids: walk(kids) });
@@ -249,6 +255,24 @@ function prefixOf(control: string): string {
   return slash < 0 ? control : control.slice(0, slash);
 }
 
+/**
+ * The picks Collie marked on the screen (review 10 W7, the bridge's own record of a tap), as the controls
+ * the view files picks under, followed by `local` (the taps the phone saw confirmed since). A local pick
+ * in a bar, or on the decision block, outranks a mark the bridge holds there: it is the newer.
+ */
+export function markedControls(view: ViewScreen | undefined, local: readonly string[]): readonly string[] {
+  if (view?.picks === undefined) return local;
+  const blocks = screenBlocks(view);
+  const marked = view.picks.flatMap((pick) => {
+    if (pick.block === VIEW_CHOICE_BLOCK) return view.choice === undefined ? [] : [choiceControl(view.choice, Number(pick.path))];
+    const block = blocks.find((held) => held.id === pick.block);
+    return block === undefined ? [] : [`${block.prefix}/${pick.path}`];
+  });
+  const bars = new Set(local.map((control) => (control.startsWith("choice#") ? "choice" : parentControl(control))));
+  const kept = marked.filter((control) => !bars.has(control.startsWith("choice#") ? "choice" : parentControl(control)));
+  return [...kept, ...local];
+}
+
 /** A block's node with the picks filed under it marked pressed. */
 export function pressedNode(block: ScreenBlock, controls: readonly string[]): View {
   const rendered = controls.flatMap((control) => renderedControl(block.prefix, control) ?? []);
@@ -323,18 +347,46 @@ export function picksAfter(held: ViewPicks | null, { key, live, control }: { key
 
 // ── a turn the view sent ────────────────────────────────────────────────────────────────────────
 
-/** The head the bridge puts in front of a view's send: `[view:<trick> <address>] from operator:`, or `[view:<trick>] from operator:`. */
-const SENT_HEAD = /^\[view:[^\]\n]*\] from operator:[ ]?/u;
-/** The tail it puts behind while the session does not hold the rules: ` [rules: <bin> trick view <trick> help...]`. */
-const SENT_TAIL = / \[rules: [^\n]* trick view [^\s\]]+ help(?: --session [^\n]+)?\]$/u;
+/**
+ * The head the bridge puts in front of a view's send: `[view:<trick> <address>] from operator:`, or
+ * `[view:<trick>] from operator:`. It captures the trick and the address, which name the tail.
+ */
+const SENT_HEAD = /^\[view:([^\s\]]+)(?: ([^\]\n]+))?\] from operator:[ ]?/u;
+/** Where the tail the bridge puts behind a send opens: ` [rules: <bin> trick view <trick> help...]`. */
+const TAIL_OPEN = " [rules: ";
+
+/** A text in a pattern, as itself. */
+function literal(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/**
+ * Where the tail the bridge appended starts in `rest` (the words after the head), or -1. Only the exact
+ * forms of `bridge/agent-view/service.ts` `viewHint` count (review 10 W6): the line ENDS with
+ * ` trick view <trick> help]`, or ` help --session <address>]` (the head's address; any one when the head
+ * is bare, as the head falls back to bare when the address is too long), and the tail opens at the LAST
+ * ` [rules: ` before that end. So a label or a typed text that holds ` [rules: ` stays whole.
+ */
+function tailStart(rest: string, trick: string, address: string | undefined): number {
+  const name = literal(` trick view ${trick} help`);
+  const session = address === undefined ? String.raw`[^\n]+` : literal(address);
+  const end = new RegExp(`${name}(?: --session ${session})?\\]$`, "u").exec(rest);
+  if (end === null) return -1;
+  return rest.lastIndexOf(TAIL_OPEN, end.index);
+}
 
 /**
  * A line the bridge sent from a view, without the head and the tail it put on it: the words the person
  * tapped or typed. Only for a line the bridge lists as sent (see {@link viewTurnText}); a text that merely
- * looks like one is never passed here.
+ * looks like one is never passed here. A line with no head is left as it is: the bridge writes no tail
+ * without a head.
  */
 export function sentWords(line: string): string {
-  return line.replace(SENT_HEAD, "").replace(SENT_TAIL, "");
+  const head = SENT_HEAD.exec(line);
+  if (head === null) return line;
+  const rest = line.slice(head[0].length);
+  const at = tailStart(rest, head[1] ?? "", head[2]);
+  return at === -1 ? rest : rest.slice(0, at);
 }
 
 /**
@@ -419,6 +471,8 @@ export interface ViewRequestNote {
   reason: string | null;
   /** The exact line the bridge typed (its answer's `view.line`), once it answered; null before and on a failure. */
   line?: string | null;
+  /** What a tap answered on the screen it went from (review 10 W8); null for typed text or none known. */
+  about?: string | null;
 }
 
 /** The latest request of one view. `at` is when the send began, on the bridge's clock, in ms. */
@@ -477,20 +531,22 @@ export function viewRequestOf({
   const lines = new Set(sent.map((item) => item.line));
   const journal = latestRequestIn(entries, lines);
   const last = sent.at(-1);
-  const fromSent: ViewRequest | null = last === undefined ? null : { text: sentWords(last.line).trim(), at: timeOf(last.at), phase: "sent", reason: null, line: last.line };
-  const fromJournal: ViewRequest | null = journal === null ? null : { text: journal.text, at: journal.at, phase: "sent", reason: null, line: journal.line };
+  // What a tap answered comes with the bridge's own line (review 10 W8), never from the screen shown now.
+  const aboutOf = (line: string | null): string | null => (line === null ? null : (sent.findLast((item) => item.line === line)?.about ?? null));
+  const fromSent: ViewRequest | null = last === undefined ? null : { text: sentWords(last.line).trim(), at: timeOf(last.at), phase: "sent", reason: null, line: last.line, about: last.about ?? null };
+  const fromJournal: ViewRequest | null = journal === null ? null : { text: journal.text, at: journal.at, phase: "sent", reason: null, line: journal.line, about: aboutOf(journal.line) };
   const server = newerRequest(fromJournal, fromSent);
   if (local === undefined) return server;
   if (local.phase !== "sent") return local;
   if (server !== null && server.at > local.at && server.text !== local.text) return server;
-  if (local.line === null && server !== null && server.text === local.text && server.line !== null) return { ...local, line: server.line };
+  if (local.line === null && server !== null && server.text === local.text && server.line !== null) return { ...local, line: server.line, about: local.about ?? server.about ?? null };
   return local;
 }
 
 /** The newer of the two, the one with the bridge's line when both say the same words. */
 function newerRequest(a: ViewRequest | null, b: ViewRequest | null): ViewRequest | null {
   if (a === null || b === null) return a ?? b;
-  if (a.text === b.text) return a.line !== null ? a : { ...a, line: b.line };
+  if (a.text === b.text) return a.line !== null ? { ...a, about: a.about ?? b.about ?? null } : { ...a, line: b.line, about: a.about ?? b.about ?? null };
   return (Number.isNaN(a.at) ? -Infinity : a.at) >= (Number.isNaN(b.at) ? -Infinity : b.at) ? a : b;
 }
 
@@ -559,7 +615,10 @@ export interface ViewReceipt {
   readonly kind: "pick" | "tap";
   /** The label picked or tapped. */
   readonly label: string;
-  /** What it answered: the choice's question, the button's group, or the screen's title; null for none. */
+  /**
+   * What it answered: the button's group (in the words), else what the tap answered on the screen it went
+   * from (the choice's question or the title, review 10 W8); null for none known.
+   */
   readonly context: string | null;
   /** The picture ref of the option's preview, or null. */
   readonly preview: number | null;
@@ -576,18 +635,21 @@ function unquote(text: string): string {
 }
 
 /**
- * The receipt of a request whose words are a pick (`picked "<label>"`) or a tap (`tapped "<label>"`), with
- * what it answered read from the screen; null for a typed request, which keeps the chat bubble.
+ * The receipt of a request whose words are a pick (`picked "<label>"`) or a tap (`tapped "<label>"`); null
+ * for a typed request, which keeps the chat bubble. `about` is what the tap answered when it was sent (the
+ * request's own, review 10 W8): the screen shown now never names it. A pick's preview is drawn only while
+ * the screen still asks that same question.
  */
-export function pickReceiptOf(text: string, view: ViewScreen | undefined): ViewReceipt | null {
+export function pickReceiptOf(text: string, about: string | null, view: ViewScreen | undefined): ViewReceipt | null {
   const picked = PICKED_RE.exec(text);
   if (picked !== null) {
     const label = unquote(picked[1] ?? "");
-    const option = view?.choice?.options.find((candidate) => candidate.label.trim() === label);
-    return { kind: "pick", label, context: view?.choice?.question ?? view?.title ?? null, preview: option?.preview ?? null };
+    const asked = view?.choice === undefined ? null : tapAbout(view, "choice/0");
+    const option = about !== null && asked === about ? view?.choice?.options.find((candidate) => candidate.label.trim() === label) : undefined;
+    return { kind: "pick", label, context: about, preview: option?.preview ?? null };
   }
   const tapped = TAPPED_RE.exec(text);
   if (tapped === null) return null;
   const group = tapped[2] === undefined ? null : unquote(tapped[2]);
-  return { kind: "tap", label: unquote(tapped[1] ?? ""), context: group ?? view?.title ?? null, preview: null };
+  return { kind: "tap", label: unquote(tapped[1] ?? ""), context: group ?? about, preview: null };
 }

@@ -3,12 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ARM_DWELL_MS } from "@/lib/arm";
 import type { JsonValue } from "@/lib/json";
-import { parseAgentView, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
+import { parseAgentView, readViewScreen, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
 import type { TranscriptEntry } from "@/lib/types";
 
 import { choiceControl, screenBlocks, type ViewRequest } from "@/lib/agent-view/reader";
 import type { ViewSendResult, ViewTap } from "./composer";
-import { AgentViewScreen, VIEW_SCREEN_CLASS, type AgentViewScreenProps } from "./agent-view-screen";
+import { AgentViewScreen, VIEW_SCREEN_CLASS, VIEW_SETTLE_MS, type AgentViewScreenProps } from "./agent-view-screen";
 import { PRESENCE_MS } from "./ui/presence";
 
 // An agent view: Collie's band over it, its states (no screen, a screen alone, a request in work,
@@ -48,8 +48,8 @@ function entry(role: TranscriptEntry["role"], ts: string, text: string): Transcr
 
 /** A tap the bridge sent. */
 const tapped = (): Promise<ViewSendResult> => Promise.resolve({ sent: true, line: null, code: null });
-/** A tap as the screen hands it to the composer. */
-const tapOf = (rev: number, control: string, words: string): ViewTap => ({ rev, control, words });
+/** A tap as the screen hands it to the composer, with what it answered there (review 10 W8: BUTTONS' title). */
+const tapOf = (rev: number, control: string, words: string, about: string | null = "Release"): ViewTap => ({ rev, control, words, about });
 
 function draw(overrides: Partial<AgentViewScreenProps> = {}) {
   const props: AgentViewScreenProps = {
@@ -62,6 +62,8 @@ function draw(overrides: Partial<AgentViewScreenProps> = {}) {
     onTap: vi.fn(tapped),
     onLink: vi.fn(),
     now: NOW,
+    // Taps in these tests land on a screen that has stood still: the settle window has its own tests (W3).
+    settleMs: 0,
     ...overrides,
   };
   const result = render(<AgentViewScreen {...props} />);
@@ -91,7 +93,7 @@ describe("the agent view's states", () => {
   it("while the turn runs with no request, keeps the screen at full contrast with the working mark in the band", () => {
     const { container } = draw({ working: true });
     expect(container.querySelector("[data-slot=agent-view]")?.getAttribute("data-state")).toBe("view");
-    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toContain("opacity");
+    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toMatch(/opacity-(?!100\b)/u); // only the held buttons' opacity-100 (review 10 W14)
     expect(screen.getByText("Ready to ship?")).toBeInTheDocument();
     expect(container.querySelector("[data-slot=view-band]")?.getAttribute("data-line")).toBe("working");
   });
@@ -139,12 +141,13 @@ describe("a tap on an agent view", () => {
     expect(props.onTap).toHaveBeenNthCalledWith(2, tapOf(1, "v/1/1", 'tapped "Wait"'));
   });
 
-  it("lead 6: with confirm, arms on the first tap in Collie's words and sends on the second", () => {
+  it("lead 6, review 10 W2: with confirm, arms on the first tap with the words the second sends, and sends on the second", () => {
     vi.useFakeTimers();
     const { props } = draw();
     fireEvent.click(screen.getByRole("button", { name: "Drop" }));
     expect(props.onTap).not.toHaveBeenCalled();
-    const armed = screen.getByRole("button", { name: "Tap again" });
+    // Not "Tap again" alone: the armed button says what the second tap sends, every word.
+    const armed = screen.getByRole("button", { name: 'Tap again to send "Drop"' });
     expect(armed).toHaveAttribute("data-armed");
     expect(screen.queryByRole("button", { name: "Really drop?" })).toBeNull();
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
@@ -246,7 +249,10 @@ describe("rule 8: Collie's band", () => {
   });
 
   it("no node an agent draws takes the band's look: the same words drawn by the agent stay inside its area", () => {
-    const { container } = draw({ view: screenOf([{ kind: "card", kids: [{ kind: "line", text: "Morph Drawn by this session's agent" }] }]) });
+    // The write refuses the band's words (review 10, Collie's own words); a screen that slipped past
+    // still draws them inside the agent's area, never in the band.
+    expect(parseAgentView([{ kind: "card", kids: [{ kind: "line", text: "Morph Drawn by this session's agent" }] }]).view).toBeUndefined();
+    const { container } = draw({ view: { rev: 1, at: AT, view: [{ kind: "card", kids: [{ kind: "line", text: "Morph Drawn by this session's agent" }] }] } });
     expect(container.querySelectorAll("[data-slot=view-band]")).toHaveLength(1);
     const copy = screen.getByText("Morph Drawn by this session's agent");
     expect(copy.closest("[data-slot=view-screen]")).not.toBeNull();
@@ -302,7 +308,7 @@ describe("the operator's request in an agent view", () => {
   it("says Not sent with the composer's own words, and does not dim the old screen", () => {
     const { container } = draw({ request: mine("failed", { reason: "The link is down" }) });
     expect(statusLine(container)).toBe("Not sent: The link is down");
-    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toContain("opacity");
+    expect(container.querySelector("[data-slot=view-screen]")?.className).not.toMatch(/opacity-(?!100\b)/u);
     // A send that failed folds nothing: the screen is live again.
     expect(screen.getByRole("button", { name: "Ship" })).not.toBeDisabled();
     expect(screen.queryByRole("button", { name: /Earlier screen/ })).toBeNull();
@@ -499,7 +505,7 @@ describe("pictures and the decision block", () => {
     const onPressed = vi.fn();
     draw({ view: pictured(CHOICE), onTap, onPressed });
     fireEvent.click(screen.getByRole("button", { name: /^Compact/ }));
-    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/0", 'picked "Compact"'));
+    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/0", 'picked "Compact"', "Which header?"));
     expect(screen.getByRole("button", { name: /^Tall/ })).toBeDisabled();
     await act(async () => finish({ sent: true, line: null, code: null }));
     expect(onPressed).toHaveBeenCalledWith(choiceControl(CHOICE, 0));
@@ -516,7 +522,7 @@ describe("pictures and the decision block", () => {
     expect(armed).toHaveTextContent("Sure?");
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
     fireEvent.click(armed);
-    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/1", 'picked "Tall"'));
+    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/1", 'picked "Tall"', "Which header?"));
   });
 
   it("the picked option stays selected until the next screen", () => {
@@ -660,7 +666,7 @@ describe("the receipt of a pick, and a settled choice", () => {
     { id: "im_bbbbbbbbbbbbbbbb", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 390, height: 844, caption: "Tall" },
   ];
   const CHOICE = { question: "Which header?", options: [{ label: "Compact", preview: 0 }, { label: "Tall", preview: 1 }] };
-  const picked = (phase: ViewRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact"', reason });
+  const picked = (phase: ViewRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact"', reason, about: "Which header?" });
   const asked: ViewScreen = { ...screenOf([{ kind: "para", text: "Two headers" }]), set: "dc_aaaaaaaaaaaa", media: MEDIA, choice: CHOICE, choiceAt: AT };
 
   it("stands in for the request bubble: the question, the label, the preview, and Sending… then the Answered badge", () => {
@@ -691,8 +697,8 @@ describe("the receipt of a pick, and a settled choice", () => {
     expect(container.querySelector("[data-slot=view-request]")).toHaveTextContent("Compare the two plans");
   });
 
-  it("a choice the agent sent with picked is settled: the pick marked with the badge, the others quiet rows, nothing to tap", () => {
-    const { container } = draw({ view: { ...asked, choice: { ...CHOICE, picked: 1 } } });
+  it("review 10 W7: a choice Collie marked picked is settled: the pick marked with the badge, the others quiet rows, nothing to tap", () => {
+    const { container } = draw({ view: { ...asked, choice: CHOICE, picks: [{ block: "choice", path: "1" }] } });
     const done = container.querySelector("[data-slot=view-choice][data-done]");
     expect(done).not.toBeNull();
     expect(done?.querySelector("[data-slot=view-answered-badge]")).toHaveTextContent("Answered");
@@ -711,5 +717,365 @@ describe("the receipt of a pick, and a settled choice", () => {
     const done = container.querySelector("[data-slot=view-earlier-panel] [data-slot=view-choice][data-done]");
     expect(done).not.toBeNull();
     expect(done?.querySelector("[data-picked]")).toHaveTextContent("Compact");
+  });
+});
+
+// ── review 10 (the web half's security read) ─────────────────────────────────────────────────────
+
+/** Every element between `from` and the view's screen, `from` included: what decides whether its words show. */
+function boxesUp(from: Element): Element[] {
+  const out: Element[] = [];
+  for (let at: Element | null = from; at !== null && at.getAttribute("data-slot") !== "view-screen"; at = at.parentElement) out.push(at);
+  return out;
+}
+
+/**
+ * Whether any box from `from` up cuts its words: to one line (an ellipsis, a clamp, no wrap) or to a fixed
+ * height (`h-11`, an inline height). A box that clips (`overflow-hidden`) but grows with its words cuts nothing.
+ */
+function cutsWords(from: Element): boolean {
+  return boxesUp(from).some((box) => /(^|\s)(truncate|line-clamp-\d|whitespace-nowrap|h-11)(\s|$)/u.test(box.className) || (box instanceof HTMLElement && box.style.height !== ""));
+}
+
+describe("review 10 W1: a button's label is shown whole", () => {
+  // 24 CJK characters, the schema's cap for a label (the wire's 60 never binds), three buttons in a bar: at
+  // 360 px each is a third wide (about seven CJK characters), so the label must
+  // wrap and the button grow. A tap sends every word, so no word may sit past an ellipsis (rule 3).
+  const long = "発".repeat(24);
+  const view = screenOf([
+    {
+      kind: "bar",
+      kids: [
+        { kind: "button", attrs: { label: long, intent: "a" } },
+        { kind: "button", attrs: { label: "Wait", intent: "b" } },
+        { kind: "button", attrs: { label: "Drop", intent: "c" } },
+      ],
+    },
+  ]);
+
+  it("W1: a 24-character CJK label in a bar of three wraps, and its button grows", () => {
+    draw({ view });
+    // The label's cell and the busy cell (one grid, ui/one-of.tsx) both hold it: neither may cut it.
+    const shown = screen.getAllByText(long);
+    expect(shown.length).toBeGreaterThan(0);
+    for (const words of shown) {
+      expect(words.textContent).toBe(long);
+      expect(words.className).toContain("whitespace-normal");
+      expect(cutsWords(words)).toBe(false);
+    }
+    const button = screen.getByRole("button", { name: long });
+    expect(button.className).toContain("min-h-11");
+  });
+
+  it("W1: a long label on a row's own button wraps too", () => {
+    draw({ view: screenOf([{ kind: "list", kids: [{ kind: "row", text: "Deploy", kids: [{ kind: "button", attrs: { label: long, intent: "a" } }] }] }]) });
+    for (const words of screen.getAllByText(long)) expect(cutsWords(words)).toBe(false);
+  });
+});
+
+describe("review 10 W2: an armed button shows and announces the words its second tap sends", () => {
+  const grouped = screenOf([
+    {
+      kind: "group",
+      attrs: { label: "Release candidate" },
+      kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Drop", intent: "drop", confirm: "Sure?" } }] }],
+    },
+  ]);
+
+  it("W2: the armed words name the label and the group, on the button and in a live region", () => {
+    vi.useFakeTimers();
+    const { container } = draw({ view: grouped });
+    const words = 'Tap again to send "Drop" in "Release candidate"';
+    const live = container.querySelector("[data-slot=view-armed-live]");
+    expect(live).not.toBeNull();
+    expect(live).toHaveAttribute("aria-live", "polite");
+    expect(live?.textContent).toBe("");
+    // Named by the words it sends (review 10 W12).
+    fireEvent.click(screen.getByRole("button", { name: "Drop, in Release candidate" }));
+    const armed = screen.getByRole("button", { name: words });
+    expect(armed).toHaveAttribute("data-armed");
+    expect(armed).toHaveTextContent(words);
+    expect(live?.textContent).toBe(words);
+    // The button holds the whole sentence: nothing cuts it.
+    for (const shown of screen.getAllByText(words)) expect(cutsWords(shown)).toBe(false);
+  });
+});
+
+describe("review 10 W3: a control is inert until it has stood still for 500 ms", () => {
+  /** The screen with its production settle window: the prop left out. */
+  function drawSettling(overrides: Partial<AgentViewScreenProps> = {}) {
+    const drawn = draw(overrides);
+    const props: AgentViewScreenProps = { ...drawn.props };
+    delete props.settleMs;
+    drawn.rerender(<AgentViewScreen {...props} />);
+    return { ...drawn, props };
+  }
+
+  it("W3: the window is 500 ms", () => {
+    expect(VIEW_SETTLE_MS).toBe(500);
+  });
+
+  it("W3: a tap on a button that just mounted sends nothing; the same tap 500 ms later sends", () => {
+    vi.useFakeTimers();
+    const { props } = drawSettling();
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS - 1));
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(1, "v/1/0", 'tapped "Ship"'));
+  });
+
+  it("W3: a confirm that just mounted does not arm", () => {
+    vi.useFakeTimers();
+    drawSettling();
+    fireEvent.click(screen.getByRole("button", { name: "Drop" }));
+    expect(screen.getByRole("button", { name: "Drop" })).not.toHaveAttribute("data-armed");
+  });
+
+  it("W3: a redraw that moves another button into the tapped spot makes it inert for 500 ms", () => {
+    vi.useFakeTimers();
+    const { props, rerender } = drawSettling();
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
+    // The agent redraws the bar with Drop first: the finger that went for Ship now lands on Drop.
+    const moved = screenOf([
+      { kind: "para", text: "Ready to ship?" },
+      {
+        kind: "bar",
+        kids: [
+          { kind: "button", attrs: { label: "Drop", intent: "drop" } },
+          { kind: "button", attrs: { label: "Ship", intent: "ship" } },
+        ],
+      },
+    ]);
+    rerender(<AgentViewScreen {...props} view={{ ...moved, rev: 2 }} />);
+    const first = screen.getAllByRole("button")[0];
+    expect(first).toHaveAccessibleName("Drop");
+    if (first === undefined) throw new Error("no button");
+    fireEvent.click(first);
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS - 1));
+    fireEvent.click(first);
+    expect(props.onTap).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    fireEvent.click(first);
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(2, "v/1/0", 'tapped "Drop"', null));
+  });
+
+  it("W3: a line arriving above the screen (the sent line) makes the buttons inert for 500 ms", () => {
+    vi.useFakeTimers();
+    const request: ViewRequest = { text: "go on", at: Date.parse(AT) - 60_000, phase: "sending", reason: null, line: null };
+    const { props, rerender } = drawSettling({ request });
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
+    rerender(<AgentViewScreen {...props} request={{ ...request, phase: "sent", line: "[view:morph local/w1:p1#ab12] from operator: go on" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
+    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    expect(props.onTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("W3: an option of the decision block that just mounted takes no pick", () => {
+    vi.useFakeTimers();
+    const view: ViewScreen = { ...BUTTONS, choice: { question: "Which?", options: [{ label: "Lean" }, { label: "Full" }] } };
+    const { props } = drawSettling({ view });
+    fireEvent.click(screen.getByRole("button", { name: "Lean" }));
+    expect(props.onTap).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
+    fireEvent.click(screen.getByRole("button", { name: "Lean" }));
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(1, "choice/0", 'picked "Lean"', "Which?"));
+  });
+});
+
+describe("review 10 W4: a linked run shows where it goes", () => {
+  it("W4: a run with an href is followed by its host, as a link is", () => {
+    const { container } = draw({ view: screenOf([{ kind: "para", kids: [{ kind: "run", text: "Read the notes", attrs: { href: "https://notes.example/x" } }] }]) });
+    const anchor = screen.getByRole("link", { name: "Read the notes" });
+    expect(anchor).toHaveAttribute("href", "https://notes.example/x");
+    const host = container.querySelector("[data-trick-link-host]");
+    expect(host?.textContent).toBe("notes.example");
+  });
+
+  it("W4: a host in another script shows as the browser reads it (punycode), whole", () => {
+    const { container } = draw({ view: screenOf([{ kind: "para", kids: [{ kind: "run", text: "Notes", attrs: { href: "https://b\u00fccher.example/x" } }] }]) });
+    expect(container.querySelector("[data-trick-link-host]")?.textContent).toBe("xn--bcher-kva.example");
+  });
+});
+
+describe("review 10 W5: a long trick name never squeezes Collie's words in the band", () => {
+  it("W5: with a 40-character CJK name, Collie's words keep their width whole and the name gives way", () => {
+    const name = "長".repeat(40);
+    const { container } = draw({ name });
+    const band = container.querySelector("[data-slot=view-band]")!;
+    const by = band.querySelector("[data-slot=view-band-by]")!;
+    expect(by.textContent).toBe("Drawn by this session's agent");
+    // Collie's words: no ellipsis, and they never shrink for the name (at worst they wrap).
+    expect(by.className).not.toMatch(/(^|\s)(truncate|line-clamp-\d|whitespace-nowrap)(\s|$)/u);
+    expect(by.className).toMatch(/(^|\s)shrink-0(\s|$)/u);
+    const shown = band.querySelector("[data-slot=view-band-name]")!;
+    expect(shown.textContent).toBe(name);
+    expect(shown.className).toMatch(/(^|\s)truncate(\s|$)/u);
+    expect(shown.className).toMatch(/(^|\s)min-w-0(\s|$)/u);
+  });
+});
+
+describe("review 10 W7: the phone draws the picks Collie marked, and none of the agent's", () => {
+  it("W7: a button Collie marked is pressed, its sibling is not", () => {
+    // BUTTONS has no block ids: its bar is b2, and Wait is its second kid.
+    draw({ view: { ...BUTTONS, picks: [{ block: "b2", path: "1" }] } });
+    expect(screen.getByRole("button", { name: "Wait" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Ship" })).not.toHaveAttribute("aria-pressed");
+  });
+
+  it("W7: a tap the phone saw confirmed outranks an older mark in the same bar", () => {
+    const bar = screenBlocks(BUTTONS)[1]!;
+    draw({ view: { ...BUTTONS, picks: [{ block: "b2", path: "1" }] }, pressed: [`${bar.prefix}/0`] });
+    expect(screen.getByRole("button", { name: "Ship" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Wait" })).not.toHaveAttribute("aria-pressed");
+  });
+
+  it("W7: a screen whose button says pressed, or whose choice says picked, is not read at all", () => {
+    const pressed = { rev: 1, at: AT, view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Yes", intent: "reply", pressed: "true" } }] }] };
+    expect(readViewScreen(pressed)).toBeNull();
+    const picked = { rev: 1, at: AT, view: [{ kind: "para", text: "x" }], choice: { question: "Which?", options: [{ label: "A" }, { label: "B" }], picked: 0 } };
+    expect(readViewScreen(picked)).toBeNull();
+    // A pick that names no button of the screen is dropped, never drawn.
+    const stray = readViewScreen({ rev: 1, at: AT, view: [{ kind: "para", text: "x" }], picks: [{ block: "b1", path: "0" }, { block: "choice", path: "0" }] });
+    expect(stray?.picks).toBeUndefined();
+  });
+});
+
+describe("review 10 W8: a receipt names what the tap answered when it was sent, not the screen now", () => {
+  const CHOICE = { question: "Which header?", options: [{ label: "Compact" }, { label: "Tall" }] };
+  const asked: ViewScreen = { ...screenOf([{ kind: "para", text: "Two headers" }], "Headers"), choice: CHOICE, choiceAt: AT };
+  /** The agent's next screen: another question under the same option labels. */
+  const next: ViewScreen = { ...screenOf([{ kind: "para", text: "Two footers" }], "Footers"), rev: 2, at: "2026-11-10T10:02:30.000Z", choice: { question: "Which footer?", options: [{ label: "Compact" }, { label: "Tall" }] }, choiceAt: "2026-11-10T10:02:30.000Z" };
+  const receiptText = (container: HTMLElement) => container.querySelector("[data-slot=view-receipt]")?.textContent ?? "";
+
+  it("W8: a tap hands its context to the composer with the words", async () => {
+    const { props } = draw({ view: asked });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Tall" }));
+    });
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith({ rev: 1, control: "choice/1", words: 'picked "Tall"', about: "Which header?" });
+  });
+
+  it("W8: the request's own context stands, though the screen now asks another question", () => {
+    const request = mine("sent", { text: 'picked "Compact"', about: "Which header?" });
+    const { container } = draw({ view: next, request });
+    expect(receiptText(container)).toContain("Which header?");
+    expect(receiptText(container)).not.toContain("Which footer?");
+  });
+
+  it("W8: after a reload the bridge's sent line carries the context", () => {
+    const line = `${HEAD} picked "Compact"`;
+    const { container } = draw({ view: next, sent: [{ ...sentOf(line, "2026-11-10T10:02:00.000Z", "tap"), about: "Which header?" }] });
+    expect(receiptText(container)).toContain("Which header?");
+    expect(receiptText(container)).not.toContain("Which footer?");
+  });
+
+  it("W8: with no context known, the receipt names none, never the screen's", () => {
+    const line = `${HEAD} picked "Compact"`;
+    const { container } = draw({ view: next, sent: [sentOf(line, "2026-11-10T10:02:00.000Z", "tap")] });
+    expect(container.querySelector("[data-slot=view-receipt-label]")).toHaveTextContent("Compact");
+    expect(receiptText(container)).not.toContain("Which footer?");
+    expect(receiptText(container)).not.toContain("Footers");
+  });
+});
+
+describe("review 10 W9: a link's host shows whole in an agent view", () => {
+  it("W9: a link in a bar shows every name of its host, and nothing cuts it", () => {
+    const host = "release-notes.staging.eu.docs.example.com";
+    const { container } = draw({ view: screenOf([{ kind: "bar", kids: [{ kind: "link", text: "Notes", attrs: { href: `https://${host}/x` } }] }]) });
+    const shown = container.querySelector("[data-trick-link-host]");
+    expect(shown?.textContent).toBe(host);
+    expect(shown === null ? true : cutsWords(shown)).toBe(false);
+    for (const part of shown?.querySelectorAll("*") ?? []) expect(part.className).not.toMatch(/(^|\s)(truncate|whitespace-pre)(\s|$)/u);
+  });
+});
+
+describe("review 10 W12: a control's name is the words its tap sends; hint and detail describe it", () => {
+  it("W12: a button in a labelled group is named by its label and the group's, and its hint describes it", () => {
+    draw({
+      view: screenOf([
+        {
+          kind: "group",
+          attrs: { label: "Release" },
+          kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship", hint: "Pushes the tag" } }] }],
+        },
+      ]),
+    });
+    const button = screen.getByRole("button", { name: "Ship, in Release" });
+    expect(button).toHaveAccessibleName("Ship, in Release");
+    expect(button).toHaveAccessibleDescription("Pushes the tag");
+  });
+
+  it("W12: a button with no group is named by its label alone, its hint apart", () => {
+    draw({ view: screenOf([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship", hint: "Pushes the tag" } }] }]) });
+    const button = screen.getByRole("button", { name: "Ship" });
+    expect(button).toHaveAccessibleDescription("Pushes the tag");
+  });
+
+  it("W12: an option is named by its label alone, its detail describes it", () => {
+    draw({ view: { ...BUTTONS, choice: { question: "Which?", options: [{ label: "Lean", detail: "One line" }, { label: "Full" }] } } });
+    const lean = screen.getByRole("button", { name: "Lean" });
+    expect(lean).toHaveAccessibleName("Lean");
+    expect(lean).toHaveAccessibleDescription("One line");
+  });
+});
+
+describe("review 10 W13: a tap whose send throws leaves no unhandled rejection", () => {
+  it("W13: the throw is caught, the buttons are free again, and no rejection escapes", async () => {
+    let escaped = 0;
+    const listen = (): void => {
+      escaped += 1;
+    };
+    process.on("unhandledRejection", listen);
+    try {
+      const onTap = vi.fn(() => Promise.reject(new Error("the link dropped")));
+      draw({ onTap });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+      });
+      // Let a rejection that nothing handled reach the process.
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+      expect(onTap).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button", { name: "Wait" })).not.toBeDisabled();
+      expect(escaped).toBe(0);
+    } finally {
+      process.off("unhandledRejection", listen);
+    }
+  });
+});
+
+describe("review 10 W14: a held button keeps full contrast", () => {
+  it("W14: a button that waits (a turn runs) is marked as waiting, and the screen undoes the disabled wash for it", () => {
+    draw({ working: true });
+    const ship = screen.getByRole("button", { name: "Ship" });
+    expect(ship).toBeDisabled();
+    expect(ship).toHaveAttribute("data-waits");
+    expect(VIEW_SCREEN_CLASS).toContain("[&_button[data-waits]]:opacity-100");
+  });
+
+  it("W14: a button the agent drew disabled is not waiting: it keeps its own look", () => {
+    draw({ view: screenOf([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship", disabled: "CI is red" } }] }]) });
+    const ship = screen.getByRole("button", { name: "Ship" });
+    expect(ship).toBeDisabled();
+    expect(ship).not.toHaveAttribute("data-waits");
+  });
+});
+
+describe("review 10 W1 follow-up: the buttons of a bar share one height and center their words", () => {
+  it("W1: in a view, a bar stretches its buttons to the tallest, and each button centers its words in the room it reserves", () => {
+    const { container } = draw({ view: screenOf([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Ship", intent: "ship" } }, { kind: "button", attrs: { label: "Drop the tag", intent: "drop", confirm: "Gone." } }] }]) });
+    const bar = container.querySelector("[data-trick-node=bar]");
+    expect(bar?.className).toContain("items-stretch");
+    expect(bar?.className).not.toContain("items-center");
+    for (const button of screen.getAllByRole("button")) {
+      // The cell that stacks the label, the armed words and "unknown": the shown one sits in its middle.
+      expect(button.querySelector(".grid")?.className).toContain("items-center");
+      expect(button.parentElement?.className).toContain("items-stretch");
+      expect(button.className).toContain("h-auto");
+    }
   });
 });

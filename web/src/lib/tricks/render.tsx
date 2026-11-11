@@ -32,7 +32,7 @@
 // tap opens them at full size). The renderer owns the layout (the frame's shape, the crop, the labels),
 // the place owns the bytes and the sheet. Without `ctx.pictures` such an image draws the placeholder.
 
-import { useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { Icon as KeyIcon } from "../../components/icons/icon";
 import type { IconKey } from "../../components/icons/keys";
@@ -179,12 +179,26 @@ export interface RenderCtx {
    */
   linkText?: (text: string) => ReactNode;
   /**
-   * The words an armed `confirm` button shows, in the place's own voice: given the button's label, the
-   * sentence that says what the second tap does (an agent view: Collie's "Tap again", so the armed state
-   * is never the agent's `confirm` word alone). NO DEFAULT: absent, an
+   * The words an armed `confirm` button shows, in the place's own voice: given the button's label and its
+   * control path, the sentence that says what the second tap sends (an agent view: Collie's "Tap again to
+   * send" with every word the tap sends, so the armed state is never the agent's `confirm` word alone).
+   * Given, the button also announces those words in a live region of its own. NO DEFAULT: absent, an
    * armed button shows its `confirm` word, as it always did.
    */
-  armedLabel?: (label: string) => string;
+  armedLabel?: (label: string, path: string) => string;
+  /**
+   * Whether a tap counts now, asked at the tap before anything else: false, the tap does nothing at all
+   * (no send, no arm). An agent view answers false while a control has stood still under the finger for
+   * less than its settle window (review 10 W3). Absent: every tap counts.
+   */
+  canTap?: () => boolean;
+  /**
+   * A button's accessible name, given its label and its control path: the words its tap sends (an agent
+   * view: the label, and the group's label when it sits in one, review 10 W12). Given, the button's `hint`
+   * becomes its description (`aria-describedby`), never a part of its name. Absent: the button is named by
+   * what it shows, as it always was.
+   */
+  tapName?: (label: string, path: string) => string;
 }
 
 /** The words of a free text as the place draws them: through `ctx.linkText` when it has one, else as they are. */
@@ -349,11 +363,17 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const arm = useArm<"confirm">();
   const armed = arm.armed === "confirm";
   const Icon = attrs.icon === undefined ? null : trickIconOf(attrs.icon);
-  const armedWords = attrs.confirm === undefined ? undefined : (ctx.armedLabel?.(attrs.label) ?? attrs.confirm);
+  const armedWords = attrs.confirm === undefined ? undefined : (ctx.armedLabel?.(attrs.label, path) ?? attrs.confirm);
+  // The place speaks the armed words aloud too (a live region on the button itself is unreliable).
+  const announces = attrs.confirm !== undefined && ctx.armedLabel !== undefined;
   const label = armed && armedWords !== undefined ? armedWords : attrs.label;
   const ink = armed ? inkOf("danger", false) : inkOf(attrs.tone, ctx.stale);
   const disabled = attrs.disabled !== undefined;
+  // The button waits for its part (a send in flight, a turn), not for its own `disabled`: a place that
+  // shows no grey wash (an agent view) keeps such a button at full contrast by this mark (review 10 W14).
+  const waits = !disabled && partBusy(ctx) && attrs.does === undefined;
   const onClick = () => {
+    if (ctx.canTap?.() === false) return;
     if (attrs.does === "copy") {
       if (attrs.value !== undefined) copyValue(attrs.value);
       return;
@@ -366,14 +386,18 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   // glyph turns into the spinner in its own box. Without one, the busy cell is the spinner AND the
   // label in one grid cell with the label alone (ui/one-of.tsx), so the button never moves. "Unknown"
   // and the armed `confirm` label take the same cell.
+  // A VIEW THAT WRAPS SHOWS A LABEL WHOLE (review 10 W1): a tap sends every word of its label, so no word
+  // of it may sit past an ellipsis. The words wrap and the button grows; a fixed band keeps its one
+  // line and cuts, with the whole label in the button's name.
+  const fit = ctx.wrap === true ? "min-w-0 whitespace-normal break-words text-center" : "truncate";
   const words = (
     <OneOf
       active={state === "unknown" ? "unknown" : busy && Icon === null ? "busy" : armed ? "confirm" : "label"}
-      className="min-w-0 justify-items-center"
+      className={cn("min-w-0 justify-items-center", ctx.wrap === true && "items-center")}
       options={[
-        { key: "label", node: <span className="truncate">{attrs.label}</span> },
-        ...(armedWords === undefined ? [] : [{ key: "confirm", node: <span className="truncate">{armedWords}</span> }]),
-        { key: "unknown", node: <span className="truncate">{t("tricks.tap.unknown")}</span> },
+        { key: "label", node: <span className={fit}>{attrs.label}</span> },
+        ...(armedWords === undefined ? [] : [{ key: "confirm", node: <span className={fit}>{armedWords}</span> }]),
+        { key: "unknown", node: <span className={fit}>{t("tricks.tap.unknown")}</span> },
         ...(Icon === null
           ? [
               {
@@ -381,7 +405,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
                 node: (
                   <span className="inline-flex min-w-0 items-center gap-2">
                     <Spinner />
-                    <span className="truncate">{attrs.label}</span>
+                    <span className={fit}>{attrs.label}</span>
                   </span>
                 ),
               },
@@ -390,28 +414,48 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
       ]}
     />
   );
-  const name = state === "unknown" ? `${label}, ${t("tricks.tap.unknown")}` : armed ? label : undefined;
+  const named = ctx.tapName?.(attrs.label, path);
+  const name = state === "unknown" ? `${named ?? label}, ${t("tricks.tap.unknown")}` : armed ? label : named;
+  const hintId = useId();
+  const describes = named !== undefined && attrs.hint !== undefined;
   return (
-    <div {...leafBox(node)} className={cn("flex min-w-0 items-center", compact && "shrink-0")}>
+    <div {...floorBox(node, ctx)} className={cn("flex min-w-0 items-center", compact && ctx.wrap !== true && "shrink-0", ctx.wrap === true && "items-stretch")}>
       <Button
         type="button"
         variant="outline"
         aria-busy={busy}
         aria-label={name}
+        aria-describedby={describes ? hintId : undefined}
         aria-pressed={attrs.pressed === undefined ? undefined : attrs.pressed}
         title={disabled && attrs.disabled !== "" ? attrs.disabled : attrs.hint}
         data-armed={armed ? "" : undefined}
+        data-waits={waits ? "" : undefined}
         disabled={disabled || (partBusy(ctx) && attrs.does === undefined)}
         onClick={onClick}
-        className={cn("h-11 min-w-0 transition-colors", compact ? "px-3" : "w-full px-4", attrs.hint !== undefined && "h-full flex-col gap-0 py-1.5", ink)}
+        className={cn(
+          "h-11 min-w-0 transition-colors",
+          compact ? "px-3" : "w-full px-4",
+          attrs.hint !== undefined && "h-full flex-col gap-0 py-1.5",
+          ctx.wrap === true && "h-auto min-h-11 whitespace-normal py-2",
+          ink,
+        )}
       >
         <span className="inline-flex min-w-0 max-w-full items-center gap-2">
           {Icon !== null && (busy ? <Spinner /> : <Icon aria-hidden />)}
           {words}
           <BadgeMark badge={attrs.badge} />
         </span>
-        {attrs.hint !== undefined && <span className="max-w-full truncate text-xs font-normal text-muted-foreground">{attrs.hint}</span>}
+        {attrs.hint !== undefined && (
+          <span id={describes ? hintId : undefined} className="max-w-full truncate text-xs font-normal text-muted-foreground">
+            {attrs.hint}
+          </span>
+        )}
       </Button>
+      {announces && (
+        <span data-slot="view-armed-live" className="sr-only" aria-live="polite">
+          {armed ? armedWords : ""}
+        </span>
+      )}
     </div>
   );
 }
@@ -603,7 +647,8 @@ function BarView({ node, ctx, path }: { node: BarNode; ctx: RenderCtx; path: str
       className={cn(
         "flex min-w-0 items-center gap-2",
         scroll && "overflow-x-auto overscroll-x-contain",
-        wrap && "flex-wrap",
+        // A bar that wraps gives its buttons one height, the tallest's (review 10 W1: a long label grows its button).
+        wrap && "flex-wrap items-stretch",
         !scroll && !wrap && "overflow-hidden",
         node.attrs?.role === "strip" && "border-y border-border",
       )}
@@ -612,7 +657,7 @@ function BarView({ node, ctx, path }: { node: BarNode; ctx: RenderCtx; path: str
         const at = `${path}/${i}`;
         if (kid.kind === "button") {
           return (
-            <div key={i} className={cn("min-w-0", scroll ? "shrink-0" : "flex-1")}>
+            <div key={i} className={cn("min-w-0", scroll ? "shrink-0" : "flex-1", wrap && "grid")}>
               <ButtonView node={kid} ctx={ctx} path={at} />
             </div>
           );
@@ -692,7 +737,7 @@ function HostText({ host, className }: { host: string; className?: string }) {
  * A host as words: it may break after each dot, and anywhere only when a name is longer than the line.
  * Inline after a link's words in a para, or `line`: a line of its own under a row's title.
  */
-function HostWords({ host, line = false }: { host: string; line?: boolean }) {
+export function HostWords({ host, line = false }: { host: string; line?: boolean }) {
   const names = host.split(".");
   return (
     <span data-trick-link-host="" title={host} className={cn("font-mono text-[11px] break-words text-muted-foreground", line ? "block leading-4" : "ml-1.5")}>
@@ -733,6 +778,16 @@ function LinkView({ node, ctx, block = false }: { node: LinkNode; ctx: RenderCtx
   if (host === "") return link;
   // A link that is a box of its own keeps its host beside it on one line; the link's words give way
   // first, the host keeps at least its tail. Inside a para the host is words and may break anywhere.
+  // In a view that wraps (an agent view, review 10 W9) the host is never cut to its last two names: it
+  // shows whole and takes another line when it must.
+  if (block && ctx.wrap === true) {
+    return (
+      <span className="flex max-w-full min-w-0 flex-wrap items-center gap-x-1">
+        {link}
+        <HostWords host={host} />
+      </span>
+    );
+  }
   if (block) {
     return (
       <span className="flex max-w-full min-w-0 items-center gap-1">
@@ -754,10 +809,19 @@ function RunView({ node, ctx }: { node: RunNode; ctx: RenderCtx }) {
   const className = cn(styleClass(attrs?.style, ctx.stale), attrs?.code !== undefined && "rounded-sm bg-muted px-1 font-mono text-[0.9em]");
   const words = attrs?.at !== undefined && attrs.clock !== undefined ? <TrickClock at={attrs.at} clock={attrs.clock} now={ctx.now} /> : node.text;
   if (attrs?.href !== undefined) {
-    return (
+    const target = (
       <Target href={attrs.href} ctx={ctx} className={cn(className, LINK_INK)}>
         {words}
       </Target>
+    );
+    // A linked run says where it goes as a link does, where the place shows hosts (review 10 W4).
+    const host = ctx.hostOf?.(attrs.href) ?? "";
+    if (host === "") return target;
+    return (
+      <>
+        {target}
+        <HostWords host={host} />
+      </>
     );
   }
   return (
@@ -1254,7 +1318,7 @@ function RowView({ node, ctx, path, iconLane = false }: { node: RowNode; ctx: Re
     <div {...floorBox(node, ctx)} data-slot="trick-row" className={cn("flex min-w-0 items-stretch", ENTER)}>
       {head}
       {button?.kind === "button" && (
-        <div className="flex shrink-0 items-center pr-1.5">
+        <div className={cn("flex", ctx.wrap === true ? "max-w-1/2 min-w-0" : "shrink-0", "items-center pr-1.5")}>
           <ButtonView node={button} ctx={ctx} path={`${path}/${buttonAt}`} compact />
         </div>
       )}

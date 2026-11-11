@@ -64,8 +64,15 @@ import {
   VIEW_SET_RE,
   VIEW_TITLE_MAX,
   VIEW_WRITES_PER_MINUTE,
+  carriedPicks,
+  collieWordsIn,
+  collieWordsReason,
   parseAgentView,
   parseViewChoice,
+  pickFits,
+  pickOfControl,
+  picksWith,
+  tapAbout,
   viewShellWord,
   viewTapWords,
   type TrickViewKey,
@@ -75,6 +82,7 @@ import {
   type ViewBlock,
   type ViewChoice,
   type ViewDrawing,
+  type ViewPick,
   type ViewScreen,
   type ViewSendField,
   type ViewSent,
@@ -609,6 +617,8 @@ export class AgentViewService {
     if ("ok" in admitted) return admitted;
     const note = fields.note === null ? null : cleanViewLine(fields.note, VIEW_NOTE_MAX);
     if (fields.note !== null && note === null) return { ok: false, error: `a note is one line of 1 to ${String(VIEW_NOTE_MAX)} characters`, code: "bad_note" };
+    const noted = note === null ? null : collieWordsIn(note);
+    if (noted !== null) return { ok: false, error: collieWordsReason(noted), code: "bad_note" };
     const at = new Date(this.now()).toISOString();
     const base = admitted.entry;
     const key = viewKey(trick, session);
@@ -649,6 +659,8 @@ export class AgentViewService {
     if ("ok" in admitted) return admitted;
     const title = fields.title === null ? null : cleanViewLine(fields.title, VIEW_TITLE_MAX);
     if (fields.title !== null && title === null) return { ok: false, error: `a title is one line of 1 to ${String(VIEW_TITLE_MAX)} characters`, code: "bad_title" };
+    const titled = title === null ? null : collieWordsIn(title);
+    if (titled !== null) return { ok: false, error: collieWordsReason(titled), code: "bad_title" };
     const named = fields.images ?? [];
     const images = named.length;
     if (images > VIEW_MEDIA_MAX) return { ok: false, error: VIEW_TOO_MANY_IMAGES, code: "too_many_images" };
@@ -664,7 +676,8 @@ export class AgentViewService {
     const at = new Date(this.now()).toISOString();
     // A show stamps every block fresh and drops everything older.
     const blocks = shownBlocks(parsed.ids ?? parsed.view.map(() => null), at);
-    const view = screenOf({ rev: shows, at, title, view: parsed.view, pictures, choice: choice.choice, choiceAt: at, blocks });
+    const drawn = screenOf({ rev: shows, at, title, view: parsed.view, pictures, choice: choice.choice, choiceAt: at, blocks });
+    const view = withPicks(drawn, carriedPicks(this.liveScreen(base), drawn));
     const answer = this.commit(viewEntry({ trick, session, on: base.on, shows, view, mark: this.markNow(session), changedAt: this.now(), sent: base.sent }));
     if (!answer.ok && pictures !== null) this.deps.media?.remove(pictures.set);
     return answer;
@@ -700,6 +713,8 @@ export class AgentViewService {
     const admitted = await this.admit(trick, session);
     if ("ok" in admitted) return admitted;
     const held = this.liveScreen(admitted.entry);
+    const labelled = collieWordsIn(fields.label);
+    if (labelled !== null) return { ok: false, error: collieWordsReason(labelled), code: "bad_block" };
     const block: ViewBlock = { id: fields.id, at: new Date(this.now()).toISOString(), pending: fields.label };
     const draft = placed(draftOf(held), { node: PENDING_NODE, block, place: fields.place });
     if ("error" in draft) return { ok: false, error: draft.error, code: "bad_block" };
@@ -776,7 +791,8 @@ export class AgentViewService {
     const at = new Date(this.now()).toISOString();
     const choice = edit.choice === undefined ? edit.held?.choice : (edit.choice ?? undefined);
     const choiceAt = choice === undefined ? undefined : (edit.choiceAt ?? edit.held?.choiceAt ?? at);
-    const view = screenOf({ rev: shows, at, title: edit.held?.title ?? null, view: parsed.view, pictures: edit.pictures, choice, choiceAt, blocks: [...edit.draft.blocks] });
+    const drawn = screenOf({ rev: shows, at, title: edit.held?.title ?? null, view: parsed.view, pictures: edit.pictures, choice, choiceAt, blocks: [...edit.draft.blocks] });
+    const view = withPicks(drawn, carriedPicks(edit.held, drawn));
     const answer = this.commit(viewEntry({ trick: base.trick, session: base.session, on: base.on, shows, changedAt: this.now(), view, drawing: base.drawing, mark: this.markNow(base.session), sent: base.sent }));
     if (!answer.ok) drop();
     return answer;
@@ -900,6 +916,10 @@ export class AgentViewService {
     const trick = field.trick;
     const rev = field.rev;
     const control = field.control ?? "";
+    // The pick this tap names on the screen it went from, for Collie to mark once its keys land (review 10 W7),
+    // and what it answered there, for the receipt (W8): read now, not from a later screen.
+    const pick = tap && entry.view !== undefined ? pickOfControl(entry.view, control) : null;
+    const about = tap && entry.view !== undefined ? tapAbout(entry.view, control) : null;
     let ended = false;
     return {
       ok: true,
@@ -930,8 +950,9 @@ export class AgentViewService {
         }
         // Keys that landed are kept with how they ended, and their screen takes no second tap: a second
         // tap would type the line again behind the first (review 9 R7).
-        const kept: ViewSent = { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line };
-        this.keepSent(trick, session, landed === undefined ? kept : { ...kept, outcome: landed }, tap ? rev : undefined);
+        const line0: ViewSent = { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line };
+        const kept: ViewSent = about === null ? line0 : { ...line0, about };
+        this.keepSent(trick, session, landed === undefined ? kept : { ...kept, outcome: landed }, tap && rev !== undefined ? { rev, pick } : undefined);
         // Text left in the box started no turn; `unknown` may have.
         if (landed !== "typed_not_submitted") {
           if (plain) this.notePersonTurn(session);
@@ -950,12 +971,17 @@ export class AgentViewService {
     return `${head} ${words}${tail}`;
   }
 
-  /** Keep one sent line on its view, newest last. A write that fails keeps the send: it went out. */
-  /** Keeps a typed line; `picked` is the rev of the screen a tap went from, which then takes no second tap. */
-  private keepSent(trick: string, session: string, sent: ViewSent, picked: number | undefined): void {
+  /**
+   * Keep one sent line on its view, newest last. A write that fails keeps the send: it went out. For a
+   * tap, `rev` is the screen it went from, which then takes no second tap, and `pick` is what Collie marks
+   * on it (review 10 W7): only while the screen held now is that same rev and the pick still fits it.
+   */
+  private keepSent(trick: string, session: string, sent: ViewSent, tap: { readonly rev: number; readonly pick: ViewPick | null } | undefined): void {
     const entry = this.deps.store.get(trick, session);
     if (entry === undefined) return;
-    this.deps.store.put(viewEntry({ ...entry, picked: picked ?? entry.picked, sent: [...(entry.sent ?? []), sent].slice(-VIEW_SENT_MAX), changedAt: this.now() }));
+    const marks = tap?.pick !== null && tap !== undefined && entry.view?.rev === tap.rev && pickFits(entry.view, tap.pick);
+    const view = marks && entry.view !== undefined && tap.pick !== null ? withPicks(entry.view, picksWith(entry.view.picks, tap.pick)) : entry.view;
+    this.deps.store.put(viewEntry({ ...entry, view, picked: tap?.rev ?? entry.picked, sent: [...(entry.sent ?? []), sent].slice(-VIEW_SENT_MAX), changedAt: this.now() }));
   }
 
   private audit(action: ViewAuditEntry["action"], session: string, device: string | null, detail: ViewAuditEntry["detail"]): void {
@@ -1022,6 +1048,12 @@ export function readStartFields(fields: JsonObject): ViewStartFields | { readonl
   // A wrong rules id is never a refusal: the start works, and the session gets the tail.
   const rules = asJsonString(fields.rules) ?? null;
   return { note, rules };
+}
+
+/** A screen with these picks Collie marked, or with none (the field then absent). */
+function withPicks(screen: ViewScreen, picks: readonly ViewPick[]): ViewScreen {
+  const { picks: _held, ...rest } = screen;
+  return picks.length === 0 ? rest : { ...rest, picks: [...picks] };
 }
 
 /** One screen built from its parts: the pictures, the choice and the blocks are on it only when given. */

@@ -128,3 +128,40 @@ describe("rule 8: a link in an agent view shows where it goes", () => {
     expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "https://other.example", attrs: { href: "https://other.example" } }] }]).view).toBeDefined();
   });
 });
+
+describe("review 10 W10: a bare web address in an agent view's text shows where it goes", () => {
+  it("W10: a bare address is followed by its host", () => {
+    const { container } = draw(null, screenOf([{ kind: "line", text: "The notes are at https://docs.example/notes/today now." }]));
+    const link = screen.getByRole("link", { name: "https://docs.example/notes/today" });
+    const host = link.nextElementSibling;
+    expect(host?.hasAttribute("data-trick-link-host")).toBe(true);
+    expect(host?.textContent).toBe("docs.example");
+    expect(container.querySelector("[data-slot=view-screen]")?.textContent).toContain("now.");
+  });
+
+  it("W10: an address with a user part (https://bank@evil) shows the host it really goes to", () => {
+    draw(null, screenOf([{ kind: "line", text: "Log in at https://bank.example@evil.example/login please." }]));
+    const link = screen.getByRole("link", { name: /bank\.example@evil\.example/ });
+    expect(link.getAttribute("href")).toContain("evil.example");
+    expect(link.nextElementSibling?.textContent).toBe("evil.example");
+  });
+});
+
+describe("review 10 W11: a session link in an agent view goes nowhere", () => {
+  it("W11: a screen that names a session in a link is not read at all", () => {
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the other one", attrs: { href: "lodge:w6X:3" } }] }]).view).toBeUndefined();
+  });
+
+  it("W11: a session link that slipped past the parse does not open the session", () => {
+    const view: View = [{ kind: "para", kids: [{ kind: "link", text: "the other one", attrs: { href: "lodge:w6X:3" } }] }];
+    const onLink = vi.fn();
+    render(
+      <FileLinksProvider value={null}>
+        <AgentViewScreen name="Morph" session="local/w1:p1#ab12" view={{ rev: 1, at: AT, view }} working={false} entries={[]} canAct onTap={onTap} onLink={onLink} now={NOW} />
+      </FileLinksProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "the other one" })).toBeNull();
+    fireEvent.click(screen.getByText("the other one"));
+    expect(onLink).not.toHaveBeenCalled();
+  });
+});

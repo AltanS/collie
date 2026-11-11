@@ -21,8 +21,13 @@ import {
   VIEW_SENDS_PER_MINUTE,
   VIEW_TAP_GROUP_MAX,
   VIEW_TAP_LABEL_MAX,
+  VIEW_NO_PICKED,
+  VIEW_NO_PRESSED,
   VIEW_NO_PROFILE,
+  VIEW_WEB_LINKS_ONLY,
+  VIEW_COLLIE_PHRASES,
   VIEW_WRITES_PER_MINUTE,
+  collieWordsIn,
   viewTapWords,
   type TrickViewSession,
 } from "../../web/src/lib/agent-view/wire.ts";
@@ -620,6 +625,187 @@ describe("rule 7: one head, one door", () => {
 
 });
 
+// ── review 10 W7: Collie marks the pick ───────────────────────────────────────────────────────────
+
+describe("review 10 W7: only the bridge's record of a tap marks a pick", () => {
+  /** The picks the served screen carries. */
+  const picksOf = (r: Rig) => served(r).view?.picks ?? [];
+
+  test("W7: a tap that went marks its button, and a pick marks its option, from the bridge's own record", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    expect(picksOf(r)).toEqual([]);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    // PLAIN is v/2/0: the third block (b3), its first kid.
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }]);
+    const next = await r.service.keep(T, ONE, "all");
+    if (!next.ok) throw new Error(next.error);
+    plan(await tap(r, next.session.view!.rev, "choice/1")).done({ rid: "rid-2", sent: true, reason: null });
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }, { block: "choice", path: "1" }]);
+    // A settled choice takes no second pick, on the next screen too.
+    const kept = await r.service.keep(T, ONE, "all");
+    if (!kept.ok) throw new Error(kept.error);
+    expect(kept.session.view?.picks).toEqual([{ block: "b3", path: "0" }, { block: "choice", path: "1" }]);
+    expect(await tap(r, kept.session.view!.rev, "choice/0")).toMatchObject({ ok: false, code: "bad_control" });
+  });
+
+  test("W7: a send that did not go marks nothing; keys that landed in the box mark, as they took the screen", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: false, reason: "busy" });
+    expect(picksOf(r)).toEqual([]);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-2", sent: false, reason: "typed", landed: "typed_not_submitted" });
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }]);
+  });
+
+  test("W7: a redraw of the same block keeps the mark; a new block id, or a removed block, shows none", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    // The agent redraws b3 with new words: the same block id, a button at the same place.
+    const redrawn = await r.service.set(T, ONE, { id: "b3", node: { kind: "bar", kids: [{ kind: "button", attrs: { label: "Revert all", intent: "reply" } }] }, place: { kind: "end" }, images: [] });
+    if (!redrawn.ok) throw new Error(redrawn.error);
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }]);
+    // An edit of another block keeps it too.
+    const other = await r.service.set(T, ONE, { id: "b1", node: { kind: "para", text: "One test fails" }, place: { kind: "end" }, images: [] });
+    if (!other.ok) throw new Error(other.error);
+    expect(picksOf(r)).toEqual([{ block: "b3", path: "0" }]);
+    // The block redrawn with no button where the mark was: the mark goes.
+    const moved = await r.service.set(T, ONE, { id: "b3", node: { kind: "para", text: "Reverted" }, place: { kind: "end" }, images: [] });
+    if (!moved.ok) throw new Error(moved.error);
+    expect(picksOf(r)).toEqual([]);
+  });
+
+  test("W7: a new screen under new block ids shows no mark", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    plan(await tap(r, rev, PLAIN)).done({ rid: "rid-1", sent: true, reason: null });
+    const fresh = await r.service.show(T, ONE, { view: [{ id: "next", kind: "bar", kids: [{ kind: "button", attrs: { label: "Revert", intent: "reply" } }] }], title: null });
+    if (!fresh.ok) throw new Error(fresh.error);
+    expect(picksOf(r)).toEqual([]);
+  });
+
+  test("W7: the decision block keeps its pick while the agent keeps the same question; a new question shows none", async () => {
+    const r = rig();
+    const rev = await drawn(r);
+    plan(await tap(r, rev, "choice/1")).done({ rid: "rid-1", sent: true, reason: null });
+    const same = await r.service.setChoice(T, ONE, CHOICE);
+    if (!same.ok) throw new Error(same.error);
+    expect(picksOf(r)).toEqual([{ block: "choice", path: "1" }]);
+    const next = await r.service.setChoice(T, ONE, { question: "Which footer?", options: [{ label: "Compact" }, { label: "Tall" }] });
+    if (!next.ok) throw new Error(next.error);
+    expect(picksOf(r)).toEqual([]);
+  });
+
+  test("W7: the agent cannot mark a pick: a button's pressed and a choice's picked are refused at the write, in plain words", async () => {
+    const r = rig();
+    await on(r);
+    const pressed = await r.service.show(T, ONE, { view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Yes", intent: "reply", pressed: "true" } }] }], title: null });
+    expect(pressed).toMatchObject({ ok: false, code: "bad_view" });
+    expect(pressed.ok ? "" : pressed.error).toContain(VIEW_NO_PRESSED);
+    const picked = await r.service.show(T, ONE, { view: SCREEN, title: null, choice: { question: "Which?", options: [{ label: "A" }, { label: "B" }], picked: 0 } });
+    expect(picked).toMatchObject({ ok: false, code: "bad_choice" });
+    expect(picked.ok ? "" : picked.error).toContain(VIEW_NO_PICKED);
+    expect(VIEW_NO_PICKED).toContain("Collie marks the pick");
+    expect(VIEW_NO_PRESSED).toContain("Collie marks the pick");
+    expect(r.store.get(T, ONE)?.view).toBeUndefined();
+  });
+});
+
+describe("review 10 W8: a tap's sent line keeps what it answered, from the screen it went from", () => {
+  test("W8: a pick keeps the choice's question, a tap the screen's title; a later screen does not change them", async () => {
+    const r = rig();
+    await on(r);
+    const shown = await r.service.show(T, ONE, { view: SCREEN, title: "Failing tests", choice: CHOICE });
+    if (!shown.ok) throw new Error(shown.error);
+    const rev = shown.session.view!.rev;
+    plan(await tap(r, rev, "choice/1")).done({ rid: "rid-1", sent: true, reason: null });
+    const next = await r.service.show(T, ONE, { view: SCREEN, title: "Next step", choice: { question: "Which footer?", options: [{ label: "Compact" }, { label: "Tall" }] } });
+    if (!next.ok) throw new Error(next.error);
+    plan(await tap(r, next.session.view!.rev, PLAIN)).done({ rid: "rid-2", sent: true, reason: null });
+    plan(await typed(r, "and the docs")).done({ rid: "rid-3", sent: true, reason: null });
+    const sent = served(r).sent ?? [];
+    expect(sent.map((item) => item.about)).toEqual(["Which header?", "Next step", undefined]);
+  });
+});
+
+describe("review 10 W11: an agent view links to web addresses only", () => {
+  test("W11: a link, a row and a run whose href names a session are refused at the write", async () => {
+    const session = "lodge:w6X:3";
+    const nodes: JsonValue[] = [
+      { kind: "para", kids: [{ kind: "link", text: "the other session", attrs: { href: session } }] },
+      { kind: "list", kids: [{ kind: "row", text: "Other session", attrs: { href: session } }] },
+    ];
+    for (const node of nodes) {
+      const parsed = parseAgentView([node]);
+      expect(parsed.view, JSON.stringify(node)).toBeUndefined();
+      expect(parsed.refusals.map((x) => x.reason)).toContain(VIEW_WEB_LINKS_ONLY);
+    }
+    // A run takes a web address only in every trick: the schema refuses a session there already.
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "run", text: "go there", attrs: { href: session } }] }]).view).toBeUndefined();
+    const r = rig();
+    await on(r);
+    expect(await r.service.show(T, ONE, { view: [nodes[0]!], title: null })).toMatchObject({ ok: false, code: "bad_view" });
+    // A web address still passes.
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the docs", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
+  });
+});
+
+describe("review 10 accept: an agent's text cannot say Collie's own words", () => {
+  // The list is the wire's (VIEW_COLLIE_PHRASES); the web's tests pin that the phone's own frame words are in it.
+  const forms = (phrase: string): string[] => [
+    phrase,
+    phrase.toUpperCase(),
+    `See: ${phrase}!`,
+    phrase.replace(/o/gu, "\u043e").replace(/c/gu, "\u0441"),
+    phrase.replace(/ /gu, "\u3000"),
+    [...phrase].join("\u00ad"),
+    phrase.replace(/ /gu, " - "),
+  ];
+
+  test("review 10 accept: every phrase, folded, is refused in a para, a button, a group label, a choice, a title, a pending label and a note", async () => {
+    for (const phrase of VIEW_COLLIE_PHRASES) {
+      for (const text of forms(phrase)) {
+        const where = JSON.stringify(text);
+        expect(collieWordsIn(text), where).not.toBeNull();
+        const para = parseAgentView([{ kind: "para", text }]);
+        expect(para.view, where).toBeUndefined();
+        expect(para.refusals.map((x) => x.reason).join(" ")).toContain("Collie's own words");
+      }
+    }
+    const r = rig();
+    await on(r);
+    const said = "Sent to this session";
+    expect(await r.service.show(T, ONE, { view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "From Collie", intent: "reply" } }] }], title: null })).toMatchObject({ ok: false, code: "bad_view" });
+    expect(await r.service.show(T, ONE, { view: [{ kind: "group", attrs: { label: said }, kids: [{ kind: "para", text: "x" }] }], title: null })).toMatchObject({ ok: false, code: "bad_view" });
+    expect(await r.service.show(T, ONE, { view: SCREEN, title: said })).toMatchObject({ ok: false, code: "bad_title" });
+    expect(await r.service.show(T, ONE, { view: SCREEN, title: null, choice: { question: said, options: [{ label: "A" }] } })).toMatchObject({ ok: false, code: "bad_choice" });
+    expect(await r.service.show(T, ONE, { view: SCREEN, title: null, choice: { options: [{ label: "A", detail: "The agent is working" }] } })).toMatchObject({ ok: false, code: "bad_choice" });
+    expect(await r.service.start(T, ONE, { note: "Tap again to send", rules: null })).toMatchObject({ ok: false, code: "bad_note" });
+    const shown = await r.service.show(T, ONE, { view: SCREEN, title: null });
+    if (!shown.ok) throw new Error(shown.error);
+    expect(await r.service.pending(T, ONE, { id: "wait", label: "The buttons wait", place: { kind: "end" } })).toMatchObject({ ok: false, code: "bad_block" });
+  });
+
+  test("review 10 follow-up: the product's bare name passes, \"From Collie\" is still refused", async () => {
+    expect(VIEW_COLLIE_PHRASES).not.toContain("Collie");
+    expect(parseAgentView([{ kind: "para", text: "Collie 1.29.0 is tagged" }]).view).toBeDefined();
+    expect(parseAgentView([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Restart Collie", intent: "restart" } }] }]).view).toBeDefined();
+    expect(parseAgentView([{ kind: "para", text: "From Collie" }]).view).toBeUndefined();
+    const r = rig();
+    await on(r);
+    expect(await r.service.show(T, ONE, { view: [{ kind: "para", text: "Collie 1.29.0 is tagged" }, { kind: "bar", kids: [{ kind: "button", attrs: { label: "Restart Collie", intent: "restart" } }] }], title: "Collie" })).toMatchObject({ ok: true });
+    expect(await r.service.show(T, ONE, { view: [{ kind: "para", text: "From Collie" }], title: null })).toMatchObject({ ok: false, code: "bad_view" });
+  });
+
+  test("review 10 accept: words that only hold the letters pass: colliepwa.dev, a link's address, a word inside another", () => {
+    expect(collieWordsIn("Read colliepwa.dev for more")).toBeNull();
+    expect(collieWordsIn("The screens changed")).toBeNull();
+    expect(collieWordsIn("Sent to the session list")).toBeNull();
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the docs", attrs: { href: "https://docs.example/collie/x" } }] }]).view).toBeDefined();
+  });
+});
+
 // ── rule 8 ────────────────────────────────────────────────────────────────────────────────────────
 
 describe("rule 8: Collie's frame", () => {
@@ -629,6 +815,22 @@ describe("rule 8: Collie's frame", () => {
     expect(fake.refusals.map((x) => x.reason)).toContain(VIEW_LINK_TEXT);
     expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "the docs", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
     expect(parseAgentView([{ kind: "para", kids: [{ kind: "link", text: "https://docs.example/x", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
+  });
+
+  test("review 10 W4: the address check reads the folded text, not ASCII alone", () => {
+    // A Cyrillic a, a fullwidth dot, an ideographic full stop, a host in another script, fullwidth
+    // letters, on a link and on a linked run: each reads as an address to a person, so each must be its
+    // own href. (A zero-width space the schema refuses before this rule, as a hidden character.)
+    const forged = ["p\u0430ypal.com", "paypal\uff0ecom", "paypal\u3002com", "\u4f8b\u3048.jp", "\uff57\uff57\uff57.paypal.com", "HTTPS://paypal.com"];
+    for (const text of forged) {
+      for (const node of [{ kind: "link", text, attrs: { href: "https://evil.example/x" } }, { kind: "run", text, attrs: { href: "https://evil.example/x" } }]) {
+        const parsed = parseAgentView([{ kind: "para", kids: [node] }]);
+        expect(parsed.view, `${node.kind} ${JSON.stringify(text)}`).toBeUndefined();
+        expect(parsed.refusals.map((x) => x.reason)).toContain(VIEW_LINK_TEXT);
+      }
+    }
+    // Words that are no address still pass.
+    expect(parseAgentView([{ kind: "para", kids: [{ kind: "run", text: "\u8cc7\u6599", attrs: { href: "https://docs.example/x" } }] }]).view).toBeDefined();
   });
 });
 

@@ -9,6 +9,7 @@ import { parseWalkyRequest } from "../walky/parse.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
+import { DESCRIPTION_MAX } from "../../web/src/lib/tricks/schema.ts";
 import { isListedOrigin, isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { canonicalRepoUrl, ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin, sameRepo } from "./origin.ts";
 import { caseClash } from "./proposal-install.ts";
@@ -47,11 +48,13 @@ const listOf = (...tricks: JsonValue[]): JsonValue => ({ v: 1, tricks });
 // ── the list ─────────────────────────────────────────────────────────────────
 
 describe("the list this release carries", () => {
-  test("it parses, lists the three tricks and not release-gates, and names only the official repository", () => {
+  test("it parses, lists the four tricks and not release-gates, and names only the official repository", () => {
     const list = shippedOfficialList();
     if (!list.ok) throw new Error(list.reason);
-    expect(list.entries.map((e) => e.id)).toEqual(["design-review", "pr-inbox", "running-builds"]);
-    expect(list.entries.map((e) => e.name)).toEqual(["Design Review", "PR Inbox", "Running Builds"]);
+    expect(list.entries.map((e) => e.id)).toEqual(["design-review", "pr-inbox", "running-builds", "morph"]);
+    expect(list.entries.map((e) => e.name)).toEqual(["Design Review", "PR Inbox", "Running Builds", "Morph"]);
+    // One commit of the tricks repository's main pins them all (collie-tricks 0c1e5d8, the helper at v4).
+    expect(new Set(list.entries.map((e) => e.commit))).toEqual(new Set(["0c1e5d82346486815073fedcdb994bc4c2041b55"]));
     expect(list.entries.some((e) => e.id === "release-gates")).toBe(false);
     for (const e of list.entries) {
       expect(OFFICIAL_REPOS).toContain(e.repo);
@@ -59,7 +62,17 @@ describe("the list this release carries", () => {
       expect(e.commit).toMatch(/^[0-9a-f]{40}$/);
       expect(e.hash).toMatch(/^[0-9a-f]{64}$/);
       expect(e.description).not.toContain("—");
+      expect(e.description.length).toBeLessThanOrEqual(DESCRIPTION_MAX);
+      expect(e.extras).toMatch(/^[0-9a-f]{64}$/);
     }
+  });
+
+  test("morph is an agent view with no program: contract 2, its rules pinned by sha256, nothing before it to update from", () => {
+    const list = shippedOfficialList();
+    if (!list.ok) throw new Error(list.reason);
+    const morph = list.entries.find((e) => e.id === "morph");
+    expect(morph).toMatchObject({ repo: REPO, dir: "morph", contract: 2, rules: "9ee603082182156a4dd0160b7b8eafbf6e83ceba02b8be6cda2f80f6b71d050f", previous: [] });
+    expect(morph?.description).toBe("Your agent answers with one screen you can tap, not a wall of text.");
   });
 
   test("the file is written in the maintainer script's own shape", async () => {
@@ -1020,7 +1033,7 @@ describe("the list pins the rules of a trick that gives agents instructions", ()
   test("every entry names its rules: the sha256 of the file, or null; a contract 1 trick names none", () => {
     const list = shippedOfficialList();
     if (!list.ok) throw new Error(list.reason);
-    for (const e of list.entries) expect(e.rules).toBeNull();
+    for (const e of list.entries) expect(e.rules).toBe(e.id === "morph" ? "9ee603082182156a4dd0160b7b8eafbf6e83ceba02b8be6cda2f80f6b71d050f" : null);
     expect(parseOfficialList(listOf(entry({ rules: null })))).toMatchObject({ ok: true });
     expect(parseOfficialList(listOf(entry({ rules: SHA, contract: 2 })))).toMatchObject({ ok: true, entries: [{ rules: SHA }] });
     const { rules: _gone, ...without } = entryFields();
@@ -1029,6 +1042,17 @@ describe("the list pins the rules of a trick that gives agents instructions", ()
     expect(parseOfficialList(listOf(entry({ rules: SHA })))).toEqual({ ok: false, reason: "legs: a trick of contract 1 gives agents no instructions" });
     const round = parseOfficialList(parseJson(renderOfficialList([{ ...fixtureEntry(REPO, C1, H1), rules: SHA, contract: 2 }])));
     expect(round).toMatchObject({ ok: true, entries: [{ rules: SHA }] });
+  });
+
+  test("an entry without a program (no run line, a README beside its rules) adds, holds no program, and its code hash is the listed one", async () => {
+    const files = { "morph/trick.toml": { text: VIEW("morph") }, "morph/rules.md": { text: RULES }, "morph/README.md": { text: "# Morph\n" } };
+    const repo = await fixtureRepo([files]);
+    const code = await hashOf({ "trick.toml": files["morph/trick.toml"], "rules.md": files["morph/rules.md"], "README.md": files["morph/README.md"] });
+    const listed: OfficialEntry = { ...fixtureEntry(repo.url, repo.shas[0] ?? "", code, "morph", extrasOf({})), rules: SHA, contract: 2 };
+    const r = await rig([listed]);
+    expect((await r.official.install("morph", "add")).status).toBe(200);
+    expect((await readdir(trickDir(r, "morph"))).filter((name) => !name.startsWith(".")).toSorted()).toEqual(["README.md", "rules.md", "trick.toml"]);
+    expect(await trickCodeHash(trickDir(r, "morph"))).toEqual({ ok: true, hash: code });
   });
 
   test("the phone learns that the trick gives instructions, without their text: nothing is fetched before Add", async () => {
