@@ -1,5 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { carryAll, machine, putOnTrick, removeCarryDirs } from "../bridge/crew/carry-fixtures.ts";
+import { crewRuntimePath, formatMarker, NO_RUNTIME_FACTS } from "../bridge/crew/staleness.ts";
+import { StandbyTricksStore } from "../bridge/crew/standby-tricks.ts";
+import { switchesPath } from "../bridge/tricks/paths.ts";
+import { parseSwitches } from "../bridge/tricks/switches.ts";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import {
@@ -17,7 +23,7 @@ import {
   type TrustStoreData,
   type TrustStoreIo,
 } from "../bridge/crew/trust-store.ts";
-import { capture, CONFIG, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
+import { capture, CONFIG, context, fakeExec, fakeFiles, fakeOps, ROOT, STATE } from "./fakes.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
   cmdJoin,
@@ -2901,5 +2907,67 @@ describe("collie crew status — the machine list delta", () => {
     const h = harness(lead(), [], { exec: fakeExec({ absent: ["hc", "herdr", "ssh"] }), ops: nasFrom("herdr-core") });
     await cmdCrewStatus(h.deps, ["--no-probe"]);
     expect(h.io.stdout.some((l) => l.includes("no longer lists") || l.includes("not in this crew:"))).toBe(false);
+  });
+});
+
+describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
+  afterAll(removeCarryDirs);
+  const leadWithTwo = () => leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] });
+
+  function markerFiles(fact: { member: string; state: "current" | "behind" | "older"; tricks: number } | null) {
+    const marker = { ...NO_RUNTIME_FACTS, bootedAt: T0, pid: 1, mode: "lead" as const, roster: [], build: null, checkpointedAt: T0 };
+    const written = formatMarker(fact === null ? marker : { ...marker, deputyTricks: { ...fact, at: T0 } });
+    return fakeFiles({ [HERDR_SOCKET]: "", [crewRuntimePath(STATE)]: written });
+  }
+
+  test("approve-promote on the deputy says the tricks come along with its promote", async () => {
+    const h = harness(leadWithTwo(), [], { files: markerFiles({ member: "nas", state: "current", tricks: 3 }) });
+    expect(await cmdCrewApprovePromote(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain('"nas" holds a copy of the 3 tricks this lead runs; `collie promote` there starts them again.');
+  });
+
+  test("approve-promote on another member warns that the tricks stay behind", async () => {
+    const h = harness(leadWithTwo(), [], { files: markerFiles({ member: "nas", state: "current", tricks: 1 }) });
+    expect(await cmdCrewApprovePromote(h.deps, ["laptop"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain(`"laptop" is not this crew's deputy, so it holds no copy of the 1 trick this lead runs.`);
+  });
+
+  test("approve-promote on an older or a behind deputy says what does not start", async () => {
+    const older = harness(leadWithTwo(), [], { files: markerFiles({ member: "nas", state: "older", tricks: 2 }) });
+    await cmdCrewApprovePromote(older.deps, ["nas"]);
+    expect(text(older.io)).toContain(`"nas" runs an older Collie and keeps no copy of the 2 tricks this lead runs; they do not start there.`);
+    const behind = harness(leadWithTwo(), [], { files: markerFiles({ member: "nas", state: "behind", tricks: 2 }) });
+    await cmdCrewApprovePromote(behind.deps, ["nas"]);
+    expect(text(behind.io)).toContain(`"nas" is still taking its copy of the 2 tricks this lead runs; a trick it lacks does not start there.`);
+  });
+
+  test("no fact and no tricks: approve-promote says nothing about tricks", async () => {
+    for (const files of [markerFiles(null), markerFiles({ member: "nas", state: "current", tricks: 0 })]) {
+      const h = harness(leadWithTwo(), [], { files });
+      await cmdCrewApprovePromote(h.deps, ["nas"]);
+      expect(text(h.io)).not.toContain("trick");
+    }
+  });
+
+  test("promote on the deputy starts the carried tricks by handover, before the restart", async () => {
+    const lead = await machine("lead");
+    await putOnTrick(lead, { id: "legs", name: "Leg day", auto: true });
+    const deputy = await machine("deputy");
+    await carryAll(lead, new StandbyTricksStore(deputy.stateDir));
+    const h = harness(peerStore(), [jsonReply({ demoted: "desk", roster: [] }, 200, "desk")], {
+      ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }, { socket: HERDR_SOCKET, stateDir: deputy.stateDir, configDir: deputy.configDir }),
+    });
+    expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain(`✓ started 1 of "desk"'s tricks here: Leg day`);
+    const switches = parseSwitches(await readFile(switchesPath(deputy.stateDir), "utf8")).switches;
+    expect(switches.on.get("legs")).toMatchObject({ by: "handover", from: "desk", auto: true });
+    // The copy is gone: this machine leads now.
+    expect(await new StandbyTricksStore(deputy.stateDir).load()).toBeNull();
+  });
+
+  test("promote on a machine with no copy says nothing about tricks", async () => {
+    const h = harness(peerStore(), [jsonReply({ demoted: "desk", roster: [] }, 200, "desk")]);
+    expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
+    expect(text(h.io)).not.toContain("tricks here");
   });
 });

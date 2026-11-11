@@ -4467,7 +4467,8 @@ it reconnects".
   disk, never off the lead's word: each carried trick whose code is held, then each trick this machine
   already has on. A name is cleaned of control and invisible characters, cut to 40 characters and drawn
   in its own box; at most 8 are named, then "and N more".
-- **The tap.** The takeover commit (§18) adopts the copy, and nothing else does. For each held trick
+- **The tap.** The takeover commit (§18) adopts the copy, and so does `collie promote` (§14) typed on
+  the deputy, before its restart, with `by: "handover"`. Nothing else does. For each held trick
   it hashes the code again, writes the trick folder only where this machine has none (a folder of that
   name is never written over; the carried version then runs from its approved copy, and the folder is
   the usual new version card), makes the approved copy with the normal path, and writes the switch
@@ -4480,6 +4481,13 @@ it reconnects".
   this machine: <reason>. Switch it on again in Settings → Tricks when you want it here.", and one
   option, OK, which closes it. Its request id is fixed per tap and trick, so a second boot posts it
   once. A Hill that is off or full keeps the file for a later boot.
+
+### What the lead says
+
+The running lead writes what it last saw of its deputy's copy into its runtime marker
+(`deputyTricks`: the deputy, `current`, `behind` or `older`, and how many tricks it runs). `collie crew
+status` on the lead prints one line from it, a warning for an older deputy. `collie crew
+approve-promote <member>` says whether the tricks come along: they do only with the deputy's promote.
 
 ### Audit
 

@@ -561,6 +561,55 @@ export function pairingCollisionLines(marker: CrewRuntimeMarker | null, now: num
   ];
 }
 
+// ── The deputy's copy of the tricks (CREW_PROTOCOL §25) ─────────────────────
+
+/** "1 trick" or "3 tricks". */
+function tricksWord(n: number): string {
+  return n === 1 ? "1 trick" : `${String(n)} tricks`;
+}
+
+/**
+ * On the lead: whether its deputy holds a copy of the tricks this lead runs, so a takeover there starts
+ * them again. Read off the runtime marker: what the running lead last saw of its deputy. Nothing when
+ * it has not reached the deputy since it started, or runs no trick and the deputy holds none.
+ */
+export function deputyTricksLines(marker: CrewRuntimeMarker | null, now: number): TonedLine[] {
+  const fact = marker?.deputyTricks;
+  if (fact === undefined) return [];
+  const deputy = escapeLabelForTerminal(fact.member);
+  const seen = `(seen ${humanAge(now - fact.at)} ago)`;
+  if (fact.state === "older") {
+    return [
+      line(`⚠ deputy "${deputy}" runs an older Collie: it keeps no copy of the tricks ${seen}`, "warn"),
+      line(`  A takeover there starts none of the ${tricksWord(fact.tricks)} this lead runs. Update it to carry them.`, "dim"),
+    ];
+  }
+  if (fact.tricks === 0) return [];
+  if (fact.state === "behind") return [line(`  deputy "${deputy}" is still taking its copy of the ${tricksWord(fact.tricks)} this lead runs ${seen}`, "dim")];
+  return [line(`  deputy "${deputy}" holds a copy of the ${tricksWord(fact.tricks)} this lead runs; a takeover there starts them again`, "dim")];
+}
+
+/**
+ * On the lead, after `approve-promote <member>`: whether the tricks this lead runs come along. Only the
+ * deputy holds a copy; `collie promote` on it starts them. Nothing when the lead has not reached its
+ * deputy since it started, or runs no trick.
+ */
+export function promoteTricksLines(marker: CrewRuntimeMarker | null, memberId: string): TonedLine[] {
+  const fact = marker?.deputyTricks;
+  if (fact === undefined || fact.tricks === 0) return [];
+  const who = escapeLabelForTerminal(memberId);
+  const count = tricksWord(fact.tricks);
+  if (fact.member !== memberId) {
+    return [
+      line(`  "${who}" is not this crew's deputy, so it holds no copy of the ${count} this lead runs.`, "warn"),
+      line("  They do not start there after the handover. Switch them on there again, or approve the deputy.", "dim"),
+    ];
+  }
+  if (fact.state === "older") return [line(`  "${who}" runs an older Collie and keeps no copy of the ${count} this lead runs; they do not start there.`, "warn")];
+  if (fact.state === "behind") return [line(`  "${who}" is still taking its copy of the ${count} this lead runs; a trick it lacks does not start there.`, "warn")];
+  return [line(`  "${who}" holds a copy of the ${count} this lead runs; \`collie promote\` there starts them again.`, "dim")];
+}
+
 // ── The new lead's unfinished business (RFC §7.1, §9) ────────────────────────
 
 /**

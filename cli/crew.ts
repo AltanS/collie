@@ -61,6 +61,8 @@ import {
   type StandbyDevices,
 } from "../bridge/crew/standby-devices.ts";
 import { crewRuntimePath, parseMarker, rosterDrift } from "../bridge/crew/staleness.ts";
+import { adoptCarriedTricks, writeCarryNotices } from "../bridge/crew/carry-adopt.ts";
+import { StandbyTricksStore } from "../bridge/crew/standby-tricks.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { deriveConfigRoot, discoverSessionSockets } from "../bridge/mux/herdr/sessions.ts";
 import { herdTagFor } from "../bridge/sessions.ts";
@@ -79,6 +81,8 @@ import {
   memberRePinLines,
   memberWarrantLines,
   pairingCollisionLines,
+  deputyTricksLines,
+  promoteTricksLines,
   peerWarrantLines,
   standbyDoorLines,
 } from "./crew-status-deputy.ts";
@@ -1400,7 +1404,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   for (const l of deposedLines(marker, deps.ctx.instance)) deps.io.out(l.text);
   const sideLines =
     data.lead === null
-      ? [...leadDeputyLines(data, deps.now()), ...pairingCollisionLines(marker, deps.now())]
+      ? [...leadDeputyLines(data, deps.now()), ...deputyTricksLines(marker, deps.now()), ...pairingCollisionLines(marker, deps.now())]
       : [
           ...leadContactLines(data, marker, deps.ctx.env, deps.now()),
           ...peerWarrantLines(data, marker, deps.now(), deps.ctx.instance),
@@ -2366,6 +2370,8 @@ export async function cmdCrewApprovePromote(deps: CrewDeps, args: readonly strin
   deps.io.out(`  expires ${new Date(approved.expiresAt).toISOString()}`);
   deps.io.out(`  Now run \`collie promote\` on "${approved.memberId}" within 10 minutes. Until it does, nothing`);
   deps.io.out("  has changed here: this is consent, not a handover.");
+  // §25: whether the tricks this lead runs come along, as the running lead last saw its deputy.
+  for (const l of promoteTricksLines(parseMarker(deps.files.read(crewRuntimePath(deps.ctx.stateDir))), approved.memberId)) deps.io.out(l.text);
   deps.io.out("  Nothing was sent to it and no secret is involved — the claim is already signed against a");
   deps.io.out(`  pinned certificate, so consent only has to name who may take over.`);
   deps.io.out("  Changed your mind? `collie crew approve-promote --cancel`.");
@@ -2374,6 +2380,24 @@ export async function cmdCrewApprovePromote(deps: CrewDeps, args: readonly strin
 }
 
 // ── promote (on the peer becoming lead) ──────────────────────────────────────
+
+/**
+ * Start the copy of `lead`'s tricks this machine holds as its deputy (CREW_PROTOCOL §25), and say what
+ * started. A machine that was not the deputy holds none, and nothing is said. Never fails the promote.
+ */
+async function startCarriedAtPromote(deps: CrewDeps, lead: string): Promise<void> {
+  const store = new StandbyTricksStore(deps.ctx.stateDir);
+  if ((await store.load()) === null) return;
+  try {
+    const result = await adoptCarriedTricks({ stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir, store, lead, by: "handover", now: deps.now });
+    await writeCarryNotices(deps.ctx.stateDir, lead, deps.now(), result.failed);
+    if (result.started.length > 0) deps.io.out(`✓ started ${String(result.started.length)} of "${lead}"'s tricks here: ${result.started.map((t) => t.name).join(", ")}`);
+    for (const failed of result.failed) deps.io.err(`warn: did not start the trick ${failed.name}: ${failed.reason}. The Hill says so too.`);
+    await store.clear();
+  } catch (err) {
+    deps.io.err(`warn: could not start "${lead}"'s tricks here: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 /**
  * `collie promote` — §14, run on the peer that is to become lead.
@@ -2457,6 +2481,9 @@ export async function cmdPromote(deps: CrewDeps, args: readonly string[]): Promi
     current === null ? null : promoteSelf(current, roster, deps.now()),
   );
   if (promoted === null) return EXIT.FAIL;
+  // §25: this command is the person's own yes on this machine, as the takeover tap is. The copy of the
+  // old lead's tricks starts here before the restart below, which as a lead would remove it.
+  await startCarriedAtPromote(deps, data.lead.memberId);
 
   // NOBODY ELSE IS SWEPT — §14.4/§14.5 (2026-08-12). A peer pins its CURRENT lead's certificate as
   // the sole anchor of its listener (`peerListenerTls`, bridge/crew/transport.ts), so a dial from a

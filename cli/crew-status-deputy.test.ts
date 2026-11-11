@@ -7,6 +7,7 @@ import type { StoredWarrant, TrustStoreData } from "../bridge/crew/trust-store.t
 import { mintWarrant } from "../bridge/crew/warrant.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import {
+  deputyTricksLines,
   deputyUnreachableLines,
   leadDeputyLines,
   memberWarrantLines,
@@ -272,5 +273,24 @@ describe("the LEAD prefers the member's own activation report over its ops recor
     const rendered = text(memberWarrantLines(leadAtTwo(), 1, null, "nas", 1));
     expect(rendered).toContain("BEHIND this lead's 2");
     expect(rendered).not.toContain("ACTIVE");
+  });
+});
+
+describe("the lead's line about its deputy's copy of the tricks (CREW_PROTOCOL §25)", () => {
+  const at = (state: "current" | "behind" | "older", tricks: number) => marker({ mode: "lead", deputyTricks: { member: "nas", state, tricks, at: T0 } });
+
+  test("an older deputy is a warning that names what a takeover would not start", () => {
+    const lines = deputyTricksLines(at("older", 3), T0 + 60_000);
+    expect(lines.map((l) => l.tone)).toEqual(["warn", "dim"]);
+    expect(lines[0]?.text).toContain('deputy "nas" runs an older Collie: it keeps no copy of the tricks');
+    expect(lines[1]?.text).toBe("  A takeover there starts none of the 3 tricks this lead runs. Update it to carry them.");
+  });
+
+  test("a current or a behind deputy is one quiet line, and no trick is no line", () => {
+    expect(deputyTricksLines(at("current", 1), T0)[0]?.text).toBe('  deputy "nas" holds a copy of the 1 trick this lead runs; a takeover there starts them again');
+    expect(deputyTricksLines(at("behind", 2), T0)[0]?.text).toContain('deputy "nas" is still taking its copy of the 2 tricks this lead runs');
+    expect(deputyTricksLines(at("current", 0), T0)).toEqual([]);
+    expect(deputyTricksLines(marker(), T0)).toEqual([]);
+    expect(deputyTricksLines(null, T0)).toEqual([]);
   });
 });
