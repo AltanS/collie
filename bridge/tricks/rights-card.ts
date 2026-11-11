@@ -11,14 +11,20 @@ import type { RightsMoved } from "./service.ts";
 // it. The card is about one trick and one mismatch (the approved hash, the powers stored, the powers read
 // now): its request id and its `ref.hash` derive from those, so a scan, a restart or a second sync posts
 // it once, a card the person closed or cleared does not come back, and only a new mismatch posts a new
-// one. A card still open goes once the rights hold again or the trick is off or gone.
+// one. A card still open closes itself when its stop ends, with the reason as its receipt: the person
+// switched the trick on again (or the stored rights hold again), the trick is off or removed, or it asks
+// for other rights now, which gets a card of its own.
 
 /** The sender's name on the card, as on Collie's other cards. */
 export const RIGHTS_CARD_SENDER = "Collie";
 /** The card's one option. */
 export const RIGHTS_OK = "ok";
-/** Why an open card goes when its trick's rights hold again, or the trick is off or gone. */
-export const RIGHTS_CARD_GONE = "The trick's rights hold again, or it is off.";
+/** Why an open card closes when its trick runs again: a switch on approved the rights it asks for. */
+export const RIGHTS_CARD_APPROVED = "Switched on again with the rights it asks for now.";
+/** Why an open card closes when its trick is off or its folder is gone. */
+export const RIGHTS_CARD_OFF = "The trick is off or removed.";
+/** Why an open card closes when its trick asks for other rights again: a new card says so. */
+export const RIGHTS_CARD_MOVED = "It asks for other rights now; a new card says so.";
 
 /** One trick that is on and stopped for its rights, as the runner sees it now. */
 export interface TrickRightsSubject {
@@ -28,9 +34,12 @@ export interface TrickRightsSubject {
   moved: RightsMoved;
 }
 
-/** What the runner tells the card: every trick stopped for its rights now. A trick not listed is fine, off or gone. */
+/**
+ * What the runner tells the card: every trick stopped for its rights now, and the ids of the tricks that
+ * run now (on, approved, rights holding). A trick in neither list is off or gone.
+ */
 export interface TrickRightsPort {
-  sync(subjects: readonly TrickRightsSubject[]): void;
+  sync(subjects: readonly TrickRightsSubject[], running: ReadonlySet<string>): void;
 }
 
 /** What the card needs of the Hill: the door no agent, crew member or trick reaches (hill/service.ts). */
@@ -73,6 +82,12 @@ export function answerRights(intent: string): HillCollieVerdict {
   return intent === RIGHTS_OK ? { ok: true } : { ok: false, reason: "That is not an option of this card." };
 }
 
+/** The receipt of a card whose stop ended: why it closed. */
+function closeReason(id: string, stopped: ReadonlyMap<string, string>, running: ReadonlySet<string>): string {
+  if (running.has(id)) return RIGHTS_CARD_APPROVED;
+  return stopped.has(id) ? RIGHTS_CARD_MOVED : RIGHTS_CARD_OFF;
+}
+
 export class RightsCards implements TrickRightsPort {
   private readonly hill: RightsCardHill;
   private readonly warn: (line: string) => void;
@@ -84,14 +99,14 @@ export class RightsCards implements TrickRightsPort {
     this.warn = deps.warn ?? (() => undefined);
   }
 
-  sync(subjects: readonly TrickRightsSubject[]): void {
+  sync(subjects: readonly TrickRightsSubject[], running: ReadonlySet<string>): void {
     const now = new Map(subjects.map((subject) => [subject.id, rightsHash(subject.moved)]));
     const mine = this.hill.collieDecisions("rights");
     for (const decision of mine) {
       const ref = decision.from.ref;
       if (decision.state !== "open" || ref === undefined || now.get(ref.id) === ref.hash) continue;
       // While its answer runs the Hill refuses; the answer closes it, so nothing is left to do.
-      this.hill.withdrawCollie(rightsSender(ref.id, ref.hash), decision.id, RIGHTS_CARD_GONE);
+      this.hill.withdrawCollie(rightsSender(ref.id, ref.hash), decision.id, closeReason(ref.id, now, running));
     }
     for (const subject of subjects) {
       const hash = rightsHash(subject.moved);

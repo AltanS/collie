@@ -1017,12 +1017,14 @@ export class TricksService implements TricksSurface {
     const port = this.deps.rights;
     if (port === undefined) return;
     const subjects: TrickRightsSubject[] = [];
+    const running = new Set<string>();
     for (const rt of this.runtimes.values()) {
+      if (this.runnable(rt)) running.add(rt.found.id);
       if (!rt.on || rt.rightsMoved === null) continue;
       subjects.push({ id: rt.found.id, name: this.shownOf(rt).manifest?.name ?? rt.found.id, moved: rt.rightsMoved });
     }
     try {
-      port.sync(subjects);
+      port.sync(subjects, running);
     } catch (err) {
       this.warn(`the rights card could not be updated: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -1206,7 +1208,7 @@ export class TricksService implements TricksSurface {
 
   /** Whether a trick's row shows the folder's warnings: a manifest that parsed, and off or with a new version. */
   private wantsWarnings(rt: TrickRuntime): boolean {
-    return rt.found.manifest !== undefined && rt.found.codeHash !== undefined && (!rt.on || rt.changed);
+    return rt.found.manifest !== undefined && rt.found.codeHash !== undefined && (!rt.on || rt.changed || rt.rightsMoved !== null);
   }
 
   /**
@@ -1269,12 +1271,16 @@ export class TricksService implements TricksSurface {
     const shown = this.shownOf(rt);
     const m = shown.manifest;
     const blocked = rt.on && !this.runnable(rt);
+    // Fault B: a trick stopped for its rights is not on for the person. Its switch shows off, and one switch
+    // on is the normal approval of the rights the row shows (`approves`, `setSwitch`). The entry stays, so
+    // the Hill card and the log keep their one mismatch; the trick runs nothing meanwhile.
+    const rightsStop = rt.on && rt.rightsMoved !== null;
     const info: WireTrickInfo = {
       host: this.deps.memberId,
       id,
       name: m?.name ?? id,
       icon: m?.icon ?? "plug",
-      on: rt.on,
+      on: rt.on && !rightsStop,
       state: trickStateOf({ on: rt.on, found: shown, stopped: rt.stopped, failures: rt.failures, blocked: blocked && m !== undefined }),
       places: m?.places ?? [],
       provenance: { via: "folder" },
@@ -1302,7 +1308,7 @@ export class TricksService implements TricksSurface {
     if (rt.pending !== null) info.pending = rt.pending.info;
     if (rt.decides === true) info.decides = true;
     // Fault B: the phone says RIGHTS_LINE in its own words, from this flag.
-    if (rt.on && rt.rightsMoved !== null) info.rightsMoved = true;
+    if (rightsStop) info.rightsMoved = true;
     if (m?.env !== undefined) info.env = m.env;
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;
@@ -1313,9 +1319,9 @@ export class TricksService implements TricksSurface {
     if (m?.agentView === true) info.agentView = true;
     if (m?.rules !== undefined && m.rulesText !== undefined) info.rules = { file: m.rules, text: m.rulesText };
     // A trick with rules never takes a change without asking, whatever an older switch file says.
-    if (rt.on && rt.entry !== undefined) info.auto = rt.entry.auto && !hasRules(rt);
+    if (info.on && rt.entry !== undefined) info.auto = rt.entry.auto && !hasRules(rt);
     // Undo is offered only for a version taken without asking, while the one before it is there.
-    if (rt.on && rt.entry?.by === "auto" && rt.entry.previous !== undefined) info.autoAt = rt.entry.at;
+    if (info.on && rt.entry?.by === "auto" && rt.entry.previous !== undefined) info.autoAt = rt.entry.at;
     const taken = this.warningsOf.get(id);
     if (this.wantsWarnings(rt) && taken !== undefined && taken.codeHash === rt.found.codeHash && taken.warnings.length > 0) info.warnings = taken.warnings;
     this.store.setInfo(info);

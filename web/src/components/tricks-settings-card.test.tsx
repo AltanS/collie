@@ -447,6 +447,24 @@ describe("the Hill switched off", () => {
     expect(slotLine(older, NOW, true)).toEqual({ text: "the bridge's English line", trouble: true });
   });
 
+  it("fault B: a stopped trick's switch shows off with the line, and ONE tap on approves the version the row shows", async () => {
+    const user = userEvent.setup();
+    const approves = "b".repeat(64);
+    const stopped: WireTrickInfo = { ...ASKS, on: false, state: "stopped", error: "the bridge's English line", rightsMoved: true, approves, warnings: [{ kind: "network", text: "x" }] };
+    const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean, _hash?: string) => ({ ...LEGS, on, state: "ok" as const }));
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={await storeWith([stopped])} onSwitch={onSwitch} now={NOW} /> }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    const sw = await screen.findByRole("switch", { name: "Browser leg" });
+    expect(sw).not.toBeChecked();
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("Asks for a new right. Switch it on again.");
+    // The rights a yes approves are on the row before the tap, as for a first switch on.
+    expect(await within(rowOf("legs")).findByText("This trick reaches the network.")).toBeInTheDocument();
+    await user.click(sw);
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(onSwitch).toHaveBeenCalledWith("lodge", "legs", true, approves);
+    expect(screen.getByRole("switch", { name: "Browser leg" })).toBeChecked();
+  });
+
   it("the row reads the snapshot's hillOff from the root data", async () => {
     const store = await storeWith([ASKS, TRACKER]);
     const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });

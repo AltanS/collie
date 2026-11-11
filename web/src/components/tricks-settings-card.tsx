@@ -136,7 +136,8 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): Sl
     return { text: reason === undefined ? t("settings.tricks.refusedBare") : t("settings.tricks.refused", { reason }), trouble: true };
   }
   // Fault B: the bridge's flag, in the phone's words; its `error` is the same line in the bridge's English.
-  if (trick.on && trick.rightsMoved === true) return { text: t("settings.tricks.rightsMoved"), trouble: true };
+  // Such a trick comes as off (stopped is not on): its switch shows off, and one tap on is the approval.
+  if (trick.rightsMoved === true) return { text: t("settings.tricks.rightsMoved"), trouble: true };
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
   if (trick.on && trick.pending !== undefined) return { text: t("settings.tricks.pending"), trouble: false };

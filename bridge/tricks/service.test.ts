@@ -1628,7 +1628,7 @@ describe("fault B: a trick runs only while the rights it was approved with are t
     await tickAt(r, T0 + 60_000);
     expect(r.specs).toHaveLength(1);
     const reply = await r.service.reply(undefined);
-    expect(reply.tricks[0]).toMatchObject({ on: true, state: "stopped", error: RIGHTS_LINE, rightsMoved: true });
+    expect(reply.tricks[0]).toMatchObject({ on: false, state: "stopped", error: RIGHTS_LINE, rightsMoved: true });
     expect(reply.parts).toEqual([]);
     expect(reply.present).toEqual([]);
     expect(ok200(await r.service.tap(HOST, "legs", { rid: REQ, node: "belt", intent: "x", rev: drawn }))).toMatchObject({ code: "rejected", message: RIGHTS_LINE });

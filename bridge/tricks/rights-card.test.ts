@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,7 +10,7 @@ import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { TRICKS_DIR } from "./paths.ts";
-import { answerRights, RIGHTS_CARD_GONE, RightsCards } from "./rights-card.ts";
+import { answerRights, RIGHTS_CARD_APPROVED, RIGHTS_CARD_MOVED, RIGHTS_CARD_OFF, RightsCards } from "./rights-card.ts";
 import { RIGHTS_LINE, TricksService } from "./service.ts";
 
 // THE CARD THAT SAYS A TRICK ASKS FOR A NEW RIGHT (fault B): a real tricks runner beside a real Hill whose
@@ -161,12 +161,51 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     // The person switches it on again: the approval now stores the rights read now.
     await setPowers(f, await powersOfDir(f.dir, "legs"));
     await scan(l, T0 + 60_000);
-    expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_GONE]]);
+    expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_APPROVED]]);
     expect((await l.service.reply(undefined)).tricks[0]?.rightsMoved).toBeUndefined();
     // Other stored powers are another mismatch: a card of its own.
     await setPowers(f, "0000000000000000");
     await scan(l, T0 + 120_000);
     expect(cards(l).map((decision) => decision.state)).toEqual(["withdrawn", "open"]);
+    // And one more: the open card closes with that reason, and the new one opens.
+    await setPowers(f, "1111111111111111");
+    await scan(l, T0 + 180_000);
+    expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([
+      ["withdrawn", RIGHTS_CARD_APPROVED],
+      ["withdrawn", RIGHTS_CARD_MOVED],
+      ["open", null],
+    ]);
+  });
+
+  test("fault B: a stopped trick shows its switch off; one switch on approves the rights it shows, and the card closes with its receipt", async () => {
+    const f = await folders(OLDER_READER);
+    const l = life(f);
+    await scan(l, T0);
+    const row = (await l.service.reply(undefined)).tricks[0];
+    // Stopped is not on: the switch shows off, with the line, and the row shows the rights a yes approves.
+    expect(row).toMatchObject({ on: false, rightsMoved: true, error: RIGHTS_LINE, places: ["belt", "session"] });
+    expect(row?.approves).toMatch(/^[0-9a-f]{64}$/);
+    expect(row?.auto).toBeUndefined();
+    expect(cards(l).map((decision) => decision.state)).toEqual(["open"]);
+    // ONE tap on: the phone's switch call, naming the version the row showed. No off first.
+    const answer = await l.service.setSwitch("lodge", "legs", true, row?.approves);
+    expect(answer).toMatchObject({ status: 200, body: { on: true, state: "ok" } });
+    const file = JSON.parse(await readFile(join(f.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.powers).toBe(await powersOfDir(f.dir, "legs"));
+    await scan(l, T0 + 60_000);
+    expect((await l.service.reply(undefined)).tricks[0]).toMatchObject({ on: true, state: "ok" });
+    expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_APPROVED]]);
+  });
+
+  test("fault B: a stopped trick whose folder is removed closes its card with that receipt", async () => {
+    const f = await folders(OLDER_READER);
+    const l = life(f);
+    await scan(l, T0);
+    expect(cards(l).map((decision) => decision.state)).toEqual(["open"]);
+    await rm(f.dir, { recursive: true, force: true });
+    await scan(l, T0 + 60_000);
+    expect(cards(l).map((decision) => [decision.state, decision.closedReason ?? null])).toEqual([["withdrawn", RIGHTS_CARD_OFF]]);
+    expect(l.runs).toEqual([]);
   });
 
   test("fault B: with the Hill off nothing is posted and the row still says it; switched on, the card comes once", async () => {

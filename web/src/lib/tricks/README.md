@@ -456,9 +456,14 @@ parts, serves its pictures, posts its Decisions and opens its view only while th
 not (a place word it did not know, rules it did not hash), so after an update the two may differ. When
 the two differ, the trick stops: no run, its parts and open Decisions
 go, a tap is refused, and the row says "Asks for a new right. Switch it on again." (`rightsMoved: true` on
-the wire, so the phone says it in its own words). The log and the audit (`trick.rights.moved`) say it once
-per approval, and the Hill gets one card of Collie's own for that trick and mismatch, which does not post
-again after a restart. Switching it on again is the normal approval, which stores the rights read now;
+the wire, so the phone says it in its own words). Stopped is not on: the wire says `on: false` for such a
+trick while its switch entry stays, so the switch shows off, the row shows the rights a yes approves (its
+places, reads and warnings, as for a first switch on), and ONE tap on is the normal approval of the
+version the row names (`approves`), which stores the rights read now. No "off, then on". The log and the
+audit (`trick.rights.moved`) say it once per approval, and the Hill gets one card of Collie's own for that
+trick and mismatch, which does not post again after a restart. The card closes itself when the stop ends,
+withdrawn with the reason as its receipt: switched on again with the rights it asks for, off or removed,
+or other rights again (a new card says so);
 `auto` takes no version while the rights do not hold. The hash's form keeps every stored value: `env`,
 `inputs` and `places` are always hashed, and a key added after them (`rules`, `LATER_POWER_KEYS`) only
 when it holds something, so an absent key equals its neutral value (absent, or an empty list; the empty
