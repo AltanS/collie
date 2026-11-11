@@ -330,6 +330,10 @@ The code of a trick may cross the link only as inert data. It is held, never ins
 until you tap on the screen of the machine that will run it. No machine of the crew can run a command
 on another.
 
+So an agent on a member can hand you a trick with `collie trick propose <folder>`. The files go to the
+lead and wait there, unused, as a card on the Hill. Nothing runs until you tap "Switch it on" on that
+card. `collie trick guide` tells an agent how to write a trick.
+
 ![The deputy's standby door opens only when the lead goes quiet.](images/crew/crew-deputy-standby.svg)
 
 A deputy is one peer the lead named ahead of time. It binds a standby door with three routes, and

@@ -304,6 +304,81 @@ kind, at most 8; a waiting version carries the ones new since the approved copy 
 `WireTrickInfo.pending.warnings`), and Settings → Tricks lists them under that trick before the switch. They never
 refuse, and the switch stays one tap.
 
+## Handing a trick to the person: `collie trick propose` and `collie trick guide`
+
+An agent writes a trick; only the person switches it on. Two verbs connect the two (crew slice 8).
+
+```
+collie trick guide [--json]                         # how to write a trick, as plain text; needs no bridge
+collie trick propose <folder> [--request-id <uuid>] [--json]
+```
+
+**The guide** (`cli/trick-guide.ts`) is its own text, not part of the WalkyTalky skill or the Hill
+rules. Its key list and place list are typed against `MANIFEST_KEYS` and `PLACE_KINDS`, so a new key
+or place is a compile error until the guide describes it, and its numbers come from the constants the
+bridge checks with. `--json` prints `{ guide, manifestKeys, places }`.
+
+**Propose** reads the folder as `collie trick check` reads it (a trick it refuses is never sent), then
+reads the files the hardened way (`readTrickFolder`): regular files only, a symbolic link anywhere
+refuses the folder, at most 300 files, 5 MB and 8 folders deep, the caps of `collie trick add`. Dot
+files and dot folders, `node_modules/`, `*.log`, the top `inputs/` folder and anything in `media/` or
+`captures/` that is not a picture stay behind, and the verb says how many. The files go as one line on
+the walky socket, `{"op":"trick.propose",...}`, which may be up to 8 MiB because it opens with that
+op; a line that does not is held to the walky cap. The bridge reads at most two such lines at once,
+each within 30 seconds.
+
+**Where it goes.** A lead or a solo bridge keeps the proposal (`bridge/tricks/proposals.ts`). A crew
+member reads every file with the same reader and forwards the proposal to its lead over the signed
+`POST /crew/v1/tricks/propose` (`CREW_PROTOCOL.md` §24), and keeps no copy. All three use one reader,
+`readProposal` in `bridge/tricks/propose-wire.ts`: a relative path of at most 256 characters and 8
+steps, no `.` or `..` step, no dot step, no `node_modules`, no backslash or colon, no control, bidi or
+invisible character, NFC only; no two names that fold to one (case and Unicode compatibility forms,
+`NFKC` then lower case), files and folders alike; no name used as a file and a folder; pictures only in
+`media/` and `captures/`, by name and by their first bytes; `trick.toml` at most 64 KiB, read by the
+strict manifest reader; an id Collie does not keep for itself (`collie`, `trick`, `tricks`, `hill`,
+`settings`).
+
+**Inert until the yes.** A proposal for a new trick is stored, never installed:
+`<configDir>/tricks/.collie-proposed/<id>/<hash16>/`, folders 0700 and files 0600 with no executable
+bit (the mark is kept in `<stateDir>/tricks/proposals.json`). The scanner never reads a dot folder, so
+nothing there runs or is listed. Collie posts a card on the Hill as its own sender, through a door no
+agent and no crew member reaches (`HillService.postCollie`):
+
+- title `Switch on the trick <id>?`, no recommendation, options "Switch it on" (asks twice: "Yes,
+  switch on") and "Not now", no text box, priority today, and it closes after 3 days;
+- the summary says who proposes ("An agent session (repo#one) on minibuch proposes it.", "An agent
+  session on minibuch proposes it." or "A terminal on minibuch proposes it."), how many files, and the
+  rights the manifest asks for; the view lists the rights and the warnings of the code search, the
+  author's name, description and About under "Its author's words. Collie did not check them.", a note
+  when it brings a `config.toml` ("It brings its own config.toml, which is not shown."), and the code,
+  cut to fit as the new version card cuts it.
+
+The session's name on the card is the lead's own word for that session, or none; a member cannot name
+it. The proposer may read the card (`collie hill status`) and is told the answer in WalkyTalky, but it
+can neither answer nor withdraw it: the card is Collie's, and every answer comes from the phone.
+
+**The yes.** "Switch it on" reads the stored bytes back, hashes them, and installs only a hash equal to
+the card's (`PROPOSAL_CHANGED` otherwise). The files become `<configDir>/tricks/<id>/` through a staged
+sibling and one rename, never over a folder that appeared meanwhile; the code written is approved as it
+is and switched on, by `proposal` in the switch file and the audit. A dot file
+`.collie-origin.json` records the proposal (`by`, `host`, `label`, `at`): `collie trick list` shows it as
+`proposed by agent on minibuch`, and the wire's `provenance` says `agent` or `cli`. "Not now", a dismiss, the expiry, or a newer proposal
+from the same sender removes the stored copy.
+
+**A trick that exists.** A proposal for a trick that is on, came from no repository, takes no version
+without asking, and has nothing waiting replaces its code at once and keeps its `config.toml`,
+pictures, `inputs/` and dot files: the runner's own "new version" card then asks, and that card says
+who proposed it. Every other trick of that id refuses the proposal in plain words: one from a
+repository ("This trick comes from <repo>. Change it there."), one that is off, one on auto, one with a
+version waiting.
+
+**The limits** (`proposals.ts`): one sender (a session, or one machine's terminal) at most 2 open
+proposals and 6 in an hour; one crew machine 4 open; the lead 8 open and 32 MiB stored. One open
+proposal per trick id: the same sender's next one replaces it, anybody else's is refused. A request id
+answers what it answered for 24 hours; with other files it is refused. While the person has the card
+open in the answer sheet, a replacement is refused (`answering`). The refresh timer sweeps closed cards
+and copies no proposal names.
+
 ## The run line
 
 `run` in `trick.toml` takes two forms (`bridge/tricks/run.ts`, `launchOf`, the one rule the bridge's
@@ -707,6 +782,16 @@ written as what a trick, or a person who controls one, can do today.
   code.** A trick can say it only reads and still write. The About sheet says so under the text
   ("Written by the trick's author. Collie did not check it."). The rows under "What it does" and the
   warnings are the bridge's own facts, from the manifest and the code search.
+
+- **A proposal's origin record is a dot file in the trick's folder, and an agent on the lead can write
+  it.** `.collie-origin.json` is outside the code hash, like the repository record. An agent with write
+  access to the tricks folder could put a false "proposed by" there. It is a label, never a right.
+- **A crew member's agent can propose a new version of a trick that is on.** The runner's own version
+  card asks the person, and it names the proposer, but the code in the folder changes at once, as an
+  edit on disk would. The running copy stays the approved one until the yes.
+- **The About sheet on the phone does not say a trick was proposed.** `collie trick list` shows the
+  proposal record; the About sheet still says "Added on this machine." for a proposed trick, also for
+  one a crew member proposed.
 
 ## Places in the app
 

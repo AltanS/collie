@@ -285,6 +285,11 @@ sniffs and keeps, as it keeps an image from its own agents. Trick proposals and 
 the tricks, when they are built, are specified in `CREW_PROTOCOL.md` in the commit that builds them,
 under this addendum's rule.
 
+Trick proposals are built (crew slice 8, `CREW_PROTOCOL.md` §24, 2026-11-11): a member forwards a
+trick's files to its lead over a signed route, and the lead keeps them as inert data in a dot folder,
+files 0600 without an executable bit, until the person taps "Switch it on" on the lead's Hill. That tap
+installs only bytes whose hash is the card's. No member and no agent can answer the card.
+
 ### 5. What would justify revisiting
 
 Unchanged from the decision above. A crew that wants a member to run code a lead sends, with no person
