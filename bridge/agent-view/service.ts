@@ -70,6 +70,7 @@ import {
   pickFits,
   pickOfControl,
   picksWith,
+  tapAbout,
   viewShellWord,
   viewTapWords,
   type TrickViewKey,
@@ -907,8 +908,10 @@ export class AgentViewService {
     const trick = field.trick;
     const rev = field.rev;
     const control = field.control ?? "";
-    // The pick this tap names on the screen it went from, for Collie to mark once its keys land (review 10 W7).
+    // The pick this tap names on the screen it went from, for Collie to mark once its keys land (review 10 W7),
+    // and what it answered there, for the receipt (W8): read now, not from a later screen.
     const pick = tap && entry.view !== undefined ? pickOfControl(entry.view, control) : null;
+    const about = tap && entry.view !== undefined ? tapAbout(entry.view, control) : null;
     let ended = false;
     return {
       ok: true,
@@ -939,7 +942,8 @@ export class AgentViewService {
         }
         // Keys that landed are kept with how they ended, and their screen takes no second tap: a second
         // tap would type the line again behind the first (review 9 R7).
-        const kept: ViewSent = { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line };
+        const line0: ViewSent = { rid: end.rid, at: new Date(this.now()).toISOString(), kind: tap ? "tap" : "text", line };
+        const kept: ViewSent = about === null ? line0 : { ...line0, about };
         this.keepSent(trick, session, landed === undefined ? kept : { ...kept, outcome: landed }, tap && rev !== undefined ? { rev, pick } : undefined);
         // Text left in the box started no turn; `unknown` may have.
         if (landed !== "typed_not_submitted") {

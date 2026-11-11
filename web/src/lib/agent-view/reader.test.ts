@@ -314,7 +314,7 @@ describe("latestRequestIn and viewRequestOf", () => {
   });
 
   it("after a reload the chat's turn and the bridge's line make the request; the composer's note wins while in flight or failed", () => {
-    expect(viewRequestOf({ local: undefined, entries, sent })).toEqual({ text: "second one", at: T0, phase: "sent", reason: null, line: second });
+    expect(viewRequestOf({ local: undefined, entries, sent })).toEqual({ text: "second one", at: T0, phase: "sent", reason: null, line: second, about: null });
     const sending: ViewRequest = { text: "typing now", phase: "sending", reason: null, at: T0 + 5000, line: null };
     expect(viewRequestOf({ local: sending, entries, sent })).toBe(sending);
     const failed: ViewRequest = { ...sending, phase: "failed", reason: "No link" };
@@ -322,13 +322,13 @@ describe("latestRequestIn and viewRequestOf", () => {
   });
 
   it("takes the last sent line when the chat has not shown it yet", () => {
-    expect(viewRequestOf({ local: undefined, entries: [], sent })).toEqual({ text: "second one", at: T0 + 200, phase: "sent", reason: null, line: second });
+    expect(viewRequestOf({ local: undefined, entries: [], sent })).toEqual({ text: "second one", at: T0 + 200, phase: "sent", reason: null, line: second, about: null });
     expect(viewRequestOf({ local: undefined, entries: [], sent: [] })).toBeNull();
   });
 
   it("a typed turn that looks like a view line but was not sent keeps its head in the request", () => {
     const request = viewRequestOf({ local: undefined, entries, sent: [] });
-    expect(request).toEqual({ text: second, at: T0, phase: "sent", reason: null, line: null });
+    expect(request).toEqual({ text: second, at: T0, phase: "sent", reason: null, line: null, about: null });
   });
 
   it("once sent, a newer person turn that says something else (typed in the terminal) takes over", () => {
@@ -340,8 +340,8 @@ describe("latestRequestIn and viewRequestOf", () => {
 
   it("a held request with no line takes the bridge's line once the chat or the list names it", () => {
     const held: ViewRequest = { text: "second one", phase: "sent", reason: null, at: T0 - 100, line: null };
-    expect(viewRequestOf({ local: held, entries, sent })).toEqual({ ...held, line: second });
-    expect(viewRequestOf({ local: held, entries: [], sent })).toEqual({ ...held, line: second });
+    expect(viewRequestOf({ local: held, entries, sent })).toEqual({ ...held, line: second, about: null });
+    expect(viewRequestOf({ local: held, entries: [], sent })).toEqual({ ...held, line: second, about: null });
     expect(viewRequestOf({ local: held, entries: [], sent: [] })).toBe(held);
   });
 });
@@ -599,23 +599,28 @@ describe("the receipt of a pick or a tap", () => {
     choice: { question: "Which header?", options: [{ label: "Compact", preview: 1 }, { label: "Tall" }] },
   };
 
-  it("a pick names the question and the option's preview", () => {
-    expect(pickReceiptOf('picked "Compact"', view)).toEqual({ kind: "pick", label: "Compact", context: "Which header?", preview: 1 });
-    expect(pickReceiptOf('picked "Tall"', view)).toEqual({ kind: "pick", label: "Tall", context: "Which header?", preview: null });
+  it("review 10 W8: a pick names the question it answered when it went, and the preview while the screen asks it still", () => {
+    expect(pickReceiptOf('picked "Compact"', "Which header?", view)).toEqual({ kind: "pick", label: "Compact", context: "Which header?", preview: 1 });
+    expect(pickReceiptOf('picked "Tall"', "Which header?", view)).toEqual({ kind: "pick", label: "Tall", context: "Which header?", preview: null });
+    // The screen asks another question now: the request's own stands, and no preview of the new one.
+    expect(pickReceiptOf('picked "Compact"', "Which footer?", view)).toEqual({ kind: "pick", label: "Compact", context: "Which footer?", preview: null });
+    // Nothing known: no context, never the screen's.
+    expect(pickReceiptOf('picked "Compact"', null, view)).toEqual({ kind: "pick", label: "Compact", context: null, preview: null });
   });
 
-  it("a tap names its group, or the screen's title", () => {
-    expect(pickReceiptOf('tapped "Ship" in "Release"', view)).toEqual({ kind: "tap", label: "Ship", context: "Release", preview: null });
-    expect(pickReceiptOf('tapped "Wait"', view)).toEqual({ kind: "tap", label: "Wait", context: "Header", preview: null });
+  it("review 10 W8: a tap names its group, else what it answered when it went, never the screen's title", () => {
+    expect(pickReceiptOf('tapped "Ship" in "Release"', null, view)).toEqual({ kind: "tap", label: "Ship", context: "Release", preview: null });
+    expect(pickReceiptOf('tapped "Wait"', "Old title", view)).toEqual({ kind: "tap", label: "Wait", context: "Old title", preview: null });
+    expect(pickReceiptOf('tapped "Wait"', null, view)).toEqual({ kind: "tap", label: "Wait", context: null, preview: null });
   });
 
   it("reads back a label with an escaped quote", () => {
-    expect(pickReceiptOf(String.raw`tapped "Say \"hi\""`, view)).toMatchObject({ kind: "tap", label: 'Say "hi"' });
+    expect(pickReceiptOf(String.raw`tapped "Say \"hi\""`, null, view)).toMatchObject({ kind: "tap", label: 'Say "hi"' });
   });
 
   it("a typed request has none", () => {
-    expect(pickReceiptOf("Compare the two plans", view)).toBeNull();
-    expect(pickReceiptOf('picked "x" and more', view)).toBeNull();
+    expect(pickReceiptOf("Compare the two plans", null, view)).toBeNull();
+    expect(pickReceiptOf('picked "x" and more', null, view)).toBeNull();
   });
 });
 

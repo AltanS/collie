@@ -709,6 +709,23 @@ describe("review 10 W7: only the bridge's record of a tap marks a pick", () => {
   });
 });
 
+describe("review 10 W8: a tap's sent line keeps what it answered, from the screen it went from", () => {
+  test("W8: a pick keeps the choice's question, a tap the screen's title; a later screen does not change them", async () => {
+    const r = rig();
+    await on(r);
+    const shown = await r.service.show(T, ONE, { view: SCREEN, title: "Failing tests", choice: CHOICE });
+    if (!shown.ok) throw new Error(shown.error);
+    const rev = shown.session.view!.rev;
+    plan(await tap(r, rev, "choice/1")).done({ rid: "rid-1", sent: true, reason: null });
+    const next = await r.service.show(T, ONE, { view: SCREEN, title: "Next step", choice: { question: "Which footer?", options: [{ label: "Compact" }, { label: "Tall" }] } });
+    if (!next.ok) throw new Error(next.error);
+    plan(await tap(r, next.session.view!.rev, PLAIN)).done({ rid: "rid-2", sent: true, reason: null });
+    plan(await typed(r, "and the docs")).done({ rid: "rid-3", sent: true, reason: null });
+    const sent = served(r).sent ?? [];
+    expect(sent.map((item) => item.about)).toEqual(["Which header?", "Next step", undefined]);
+  });
+});
+
 // ── rule 8 ────────────────────────────────────────────────────────────────────────────────────────
 
 describe("rule 8: Collie's frame", () => {

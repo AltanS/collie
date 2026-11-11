@@ -361,6 +361,12 @@ export interface ViewSent {
    * text is in the box, not submitted) or `unknown` (it may have gone). Absent: sent.
    */
   outcome?: ViewSentOutcome;
+  /**
+   * For a tap: what it answered, read by the bridge from the screen it went from (review 10 W8): the
+   * decision block's question for a pick (else the title), the screen's title for a button. The receipt
+   * names it, never the screen shown now. Absent: the screen had none, or the line is typed text.
+   */
+  about?: string;
 }
 
 /** How a kept line ended when it did not end `sent`. */
@@ -1103,7 +1109,17 @@ function readViewSent(raw: JsonValue | undefined): ViewSent | null {
   if (rid === undefined || rid === "" || rid.length > 128 || at === undefined || !isIsoTime(at) || kind === undefined) return null;
   if (line === undefined || line === "" || line.length > VIEW_SENT_LINE_MAX) return null;
   const outcome = obj?.outcome === "typed_not_submitted" || obj?.outcome === "unknown" ? obj.outcome : undefined;
-  return outcome === undefined ? { rid, at, kind, line } : { rid, at, kind, line, outcome };
+  const sent: ViewSent = outcome === undefined ? { rid, at, kind, line } : { rid, at, kind, line, outcome };
+  if (obj?.about === undefined) return sent;
+  const about = asJsonString(obj.about);
+  if (about === undefined || cleanViewLine(about, VIEW_QUESTION_MAX) !== about) return null;
+  return { ...sent, about };
+}
+
+/** What a tap at `control` answered on `screen` (review 10 W8): a pick's question, else the screen's title; null for none. */
+export function tapAbout(screen: Pick<ViewScreen, "choice" | "title">, control: string): string | null {
+  if (control.startsWith("choice/")) return screen.choice?.question ?? screen.title ?? null;
+  return screen.title ?? null;
 }
 
 /** A view's sent lines: the ones that fit, newest last, at most {@link VIEW_SENT_MAX}. */

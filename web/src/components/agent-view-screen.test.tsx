@@ -48,8 +48,8 @@ function entry(role: TranscriptEntry["role"], ts: string, text: string): Transcr
 
 /** A tap the bridge sent. */
 const tapped = (): Promise<ViewSendResult> => Promise.resolve({ sent: true, line: null, code: null });
-/** A tap as the screen hands it to the composer. */
-const tapOf = (rev: number, control: string, words: string): ViewTap => ({ rev, control, words });
+/** A tap as the screen hands it to the composer, with what it answered there (review 10 W8: BUTTONS' title). */
+const tapOf = (rev: number, control: string, words: string, about: string | null = "Release"): ViewTap => ({ rev, control, words, about });
 
 function draw(overrides: Partial<AgentViewScreenProps> = {}) {
   const props: AgentViewScreenProps = {
@@ -502,7 +502,7 @@ describe("pictures and the decision block", () => {
     const onPressed = vi.fn();
     draw({ view: pictured(CHOICE), onTap, onPressed });
     fireEvent.click(screen.getByRole("button", { name: /^Compact/ }));
-    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/0", 'picked "Compact"'));
+    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/0", 'picked "Compact"', "Which header?"));
     expect(screen.getByRole("button", { name: /^Tall/ })).toBeDisabled();
     await act(async () => finish({ sent: true, line: null, code: null }));
     expect(onPressed).toHaveBeenCalledWith(choiceControl(CHOICE, 0));
@@ -519,7 +519,7 @@ describe("pictures and the decision block", () => {
     expect(armed).toHaveTextContent("Sure?");
     act(() => vi.advanceTimersByTime(ARM_DWELL_MS));
     fireEvent.click(armed);
-    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/1", 'picked "Tall"'));
+    expect(onTap).toHaveBeenCalledWith(tapOf(4, "choice/1", 'picked "Tall"', "Which header?"));
   });
 
   it("the picked option stays selected until the next screen", () => {
@@ -663,7 +663,7 @@ describe("the receipt of a pick, and a settled choice", () => {
     { id: "im_bbbbbbbbbbbbbbbb", kind: "image" as const, mime: "image/png" as const, bytes: 100, width: 390, height: 844, caption: "Tall" },
   ];
   const CHOICE = { question: "Which header?", options: [{ label: "Compact", preview: 0 }, { label: "Tall", preview: 1 }] };
-  const picked = (phase: ViewRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact"', reason });
+  const picked = (phase: ViewRequest["phase"], reason: string | null = null) => mine(phase, { text: 'picked "Compact"', reason, about: "Which header?" });
   const asked: ViewScreen = { ...screenOf([{ kind: "para", text: "Two headers" }]), set: "dc_aaaaaaaaaaaa", media: MEDIA, choice: CHOICE, choiceAt: AT };
 
   it("stands in for the request bubble: the question, the label, the preview, and Sending… then the Answered badge", () => {
@@ -855,7 +855,7 @@ describe("review 10 W3: a control is inert until it has stood still for 500 ms",
     expect(props.onTap).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
     fireEvent.click(first);
-    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(2, "v/1/0", 'tapped "Drop"'));
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(2, "v/1/0", 'tapped "Drop"', null));
   });
 
   it("W3: a line arriving above the screen (the sent line) makes the buttons inert for 500 ms", () => {
@@ -879,7 +879,7 @@ describe("review 10 W3: a control is inert until it has stood still for 500 ms",
     expect(props.onTap).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(VIEW_SETTLE_MS));
     fireEvent.click(screen.getByRole("button", { name: "Lean" }));
-    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(1, "choice/0", 'picked "Lean"'));
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith(tapOf(1, "choice/0", 'picked "Lean"', "Which?"));
   });
 });
 
@@ -938,5 +938,43 @@ describe("review 10 W7: the phone draws the picks Collie marked, and none of the
     // A pick that names no button of the screen is dropped, never drawn.
     const stray = readViewScreen({ rev: 1, at: AT, view: [{ kind: "para", text: "x" }], picks: [{ block: "b1", path: "0" }, { block: "choice", path: "0" }] });
     expect(stray?.picks).toBeUndefined();
+  });
+});
+
+describe("review 10 W8: a receipt names what the tap answered when it was sent, not the screen now", () => {
+  const CHOICE = { question: "Which header?", options: [{ label: "Compact" }, { label: "Tall" }] };
+  const asked: ViewScreen = { ...screenOf([{ kind: "para", text: "Two headers" }], "Headers"), choice: CHOICE, choiceAt: AT };
+  /** The agent's next screen: another question under the same option labels. */
+  const next: ViewScreen = { ...screenOf([{ kind: "para", text: "Two footers" }], "Footers"), rev: 2, at: "2026-11-10T10:02:30.000Z", choice: { question: "Which footer?", options: [{ label: "Compact" }, { label: "Tall" }] }, choiceAt: "2026-11-10T10:02:30.000Z" };
+  const receiptText = (container: HTMLElement) => container.querySelector("[data-slot=view-receipt]")?.textContent ?? "";
+
+  it("W8: a tap hands its context to the composer with the words", async () => {
+    const { props } = draw({ view: asked });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Tall" }));
+    });
+    expect(props.onTap).toHaveBeenCalledExactlyOnceWith({ rev: 1, control: "choice/1", words: 'picked "Tall"', about: "Which header?" });
+  });
+
+  it("W8: the request's own context stands, though the screen now asks another question", () => {
+    const request = mine("sent", { text: 'picked "Compact"', about: "Which header?" });
+    const { container } = draw({ view: next, request });
+    expect(receiptText(container)).toContain("Which header?");
+    expect(receiptText(container)).not.toContain("Which footer?");
+  });
+
+  it("W8: after a reload the bridge's sent line carries the context", () => {
+    const line = `${HEAD} picked "Compact"`;
+    const { container } = draw({ view: next, sent: [{ ...sentOf(line, "2026-11-10T10:02:00.000Z", "tap"), about: "Which header?" }] });
+    expect(receiptText(container)).toContain("Which header?");
+    expect(receiptText(container)).not.toContain("Which footer?");
+  });
+
+  it("W8: with no context known, the receipt names none, never the screen's", () => {
+    const line = `${HEAD} picked "Compact"`;
+    const { container } = draw({ view: next, sent: [sentOf(line, "2026-11-10T10:02:00.000Z", "tap")] });
+    expect(container.querySelector("[data-slot=view-receipt-label]")).toHaveTextContent("Compact");
+    expect(receiptText(container)).not.toContain("Which footer?");
+    expect(receiptText(container)).not.toContain("Footers");
   });
 });

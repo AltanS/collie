@@ -37,7 +37,7 @@ import {
   type ViewStatus,
 } from "@/lib/agent-view/reader";
 import { useAgentViewLive } from "@/lib/agent-view/store";
-import { choicePick, viewMediaPath, viewTapWords, type ViewDrawing, type ViewMedia, type ViewNote, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
+import { choicePick, tapAbout, viewMediaPath, viewTapWords, type ViewDrawing, type ViewMedia, type ViewNote, type ViewScreen, type ViewSent } from "@/lib/agent-view/wire";
 import { linkHost } from "@/lib/hill/reader";
 import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
@@ -172,7 +172,7 @@ const BLOCK_GAP = 8;
  */
 function armedWordsOf(view: ViewScreen | undefined, block: ScreenBlock, label: string, rendered: string): string {
   const words = view === undefined ? null : viewTapWords(view, screenControl(block, rendered));
-  const tap = words === null ? null : pickReceiptOf(words, undefined);
+  const tap = words === null ? null : pickReceiptOf(words, null, undefined);
   if (tap === null) return t("view.armed", { label: label.trim() });
   return tap.context === null ? t("view.armed", { label: tap.label }) : t("view.armed.in", { label: tap.label, group: tap.context });
 }
@@ -417,7 +417,7 @@ export function AgentViewScreen({
     return textAnswerAfter(entries, new Date(request.at - 1).toISOString());
   }, [state, hasFresh, request, entries]);
   const notes = useMemo(() => (request === null ? [] : requestNotes(drawing, request.at)), [drawing, request]);
-  const receipt = useMemo(() => (request === null ? null : pickReceiptOf(request.text, view)), [request, view]);
+  const receipt = useMemo(() => (request === null ? null : pickReceiptOf(request.text, request.about ?? null, view)), [request, view]);
   const partKey = `agent-view:${session}`;
   const pictures = useMemo(() => (view?.set === undefined || view.media === undefined ? undefined : viewPictures(view.set, view.media, viewMediaSource)), [view?.set, view?.media]);
   const stripMedia = useMemo(() => stripMediaOf(view), [view]);
@@ -453,7 +453,7 @@ export function AgentViewScreen({
       // bridge builds the line from its own stored screen and answers it.
       const words = viewTapWords(view, control);
       if (words === null) return;
-      send(blockControl(block.prefix, rendered), { rev: view.rev, control, words });
+      send(blockControl(block.prefix, rendered), { rev: view.rev, control, words, about: tapAbout(view, control) });
     },
     [view, busyControl, held, send],
   );
@@ -465,7 +465,7 @@ export function AgentViewScreen({
       const control = optionControl(index);
       const words = viewTapWords(view, control);
       if (words === null) return;
-      send(choiceControl(choice, index), { rev: view.rev, control, words });
+      send(choiceControl(choice, index), { rev: view.rev, control, words, about: tapAbout(view, control) });
     },
     [view, busyControl, held, send],
   );

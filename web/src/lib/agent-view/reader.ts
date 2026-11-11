@@ -36,7 +36,7 @@ import { kidsOf } from "@/lib/tricks/layout";
 import type { View, ViewNode } from "@/lib/tricks/schema";
 import type { TranscriptEntry } from "@/lib/types";
 
-import { isViewHeadLine, readsAsAddress, VIEW_CHOICE_BLOCK, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
+import { isViewHeadLine, readsAsAddress, tapAbout, VIEW_CHOICE_BLOCK, VIEW_DRAWING_MAX_MS, VIEW_NO_PROFILE, viewBlocksOf, type ViewChoice, type ViewDrawing, type ViewNote, type ViewScreen, type ViewSent } from "./wire";
 
 /** The longest trick name the switch row and the View choice show, in characters, the cut included. */
 export const VIEW_NAME_SHOWN = 12;
@@ -459,6 +459,8 @@ export interface ViewRequestNote {
   reason: string | null;
   /** The exact line the bridge typed (its answer's `view.line`), once it answered; null before and on a failure. */
   line?: string | null;
+  /** What a tap answered on the screen it went from (review 10 W8); null for typed text or none known. */
+  about?: string | null;
 }
 
 /** The latest request of one view. `at` is when the send began, on the bridge's clock, in ms. */
@@ -517,20 +519,22 @@ export function viewRequestOf({
   const lines = new Set(sent.map((item) => item.line));
   const journal = latestRequestIn(entries, lines);
   const last = sent.at(-1);
-  const fromSent: ViewRequest | null = last === undefined ? null : { text: sentWords(last.line).trim(), at: timeOf(last.at), phase: "sent", reason: null, line: last.line };
-  const fromJournal: ViewRequest | null = journal === null ? null : { text: journal.text, at: journal.at, phase: "sent", reason: null, line: journal.line };
+  // What a tap answered comes with the bridge's own line (review 10 W8), never from the screen shown now.
+  const aboutOf = (line: string | null): string | null => (line === null ? null : (sent.findLast((item) => item.line === line)?.about ?? null));
+  const fromSent: ViewRequest | null = last === undefined ? null : { text: sentWords(last.line).trim(), at: timeOf(last.at), phase: "sent", reason: null, line: last.line, about: last.about ?? null };
+  const fromJournal: ViewRequest | null = journal === null ? null : { text: journal.text, at: journal.at, phase: "sent", reason: null, line: journal.line, about: aboutOf(journal.line) };
   const server = newerRequest(fromJournal, fromSent);
   if (local === undefined) return server;
   if (local.phase !== "sent") return local;
   if (server !== null && server.at > local.at && server.text !== local.text) return server;
-  if (local.line === null && server !== null && server.text === local.text && server.line !== null) return { ...local, line: server.line };
+  if (local.line === null && server !== null && server.text === local.text && server.line !== null) return { ...local, line: server.line, about: local.about ?? server.about ?? null };
   return local;
 }
 
 /** The newer of the two, the one with the bridge's line when both say the same words. */
 function newerRequest(a: ViewRequest | null, b: ViewRequest | null): ViewRequest | null {
   if (a === null || b === null) return a ?? b;
-  if (a.text === b.text) return a.line !== null ? a : { ...a, line: b.line };
+  if (a.text === b.text) return a.line !== null ? { ...a, about: a.about ?? b.about ?? null } : { ...a, line: b.line, about: a.about ?? b.about ?? null };
   return (Number.isNaN(a.at) ? -Infinity : a.at) >= (Number.isNaN(b.at) ? -Infinity : b.at) ? a : b;
 }
 
@@ -599,7 +603,10 @@ export interface ViewReceipt {
   readonly kind: "pick" | "tap";
   /** The label picked or tapped. */
   readonly label: string;
-  /** What it answered: the choice's question, the button's group, or the screen's title; null for none. */
+  /**
+   * What it answered: the button's group (in the words), else what the tap answered on the screen it went
+   * from (the choice's question or the title, review 10 W8); null for none known.
+   */
   readonly context: string | null;
   /** The picture ref of the option's preview, or null. */
   readonly preview: number | null;
@@ -616,18 +623,21 @@ function unquote(text: string): string {
 }
 
 /**
- * The receipt of a request whose words are a pick (`picked "<label>"`) or a tap (`tapped "<label>"`), with
- * what it answered read from the screen; null for a typed request, which keeps the chat bubble.
+ * The receipt of a request whose words are a pick (`picked "<label>"`) or a tap (`tapped "<label>"`); null
+ * for a typed request, which keeps the chat bubble. `about` is what the tap answered when it was sent (the
+ * request's own, review 10 W8): the screen shown now never names it. A pick's preview is drawn only while
+ * the screen still asks that same question.
  */
-export function pickReceiptOf(text: string, view: ViewScreen | undefined): ViewReceipt | null {
+export function pickReceiptOf(text: string, about: string | null, view: ViewScreen | undefined): ViewReceipt | null {
   const picked = PICKED_RE.exec(text);
   if (picked !== null) {
     const label = unquote(picked[1] ?? "");
-    const option = view?.choice?.options.find((candidate) => candidate.label.trim() === label);
-    return { kind: "pick", label, context: view?.choice?.question ?? view?.title ?? null, preview: option?.preview ?? null };
+    const asked = view?.choice === undefined ? null : tapAbout(view, "choice/0");
+    const option = about !== null && asked === about ? view?.choice?.options.find((candidate) => candidate.label.trim() === label) : undefined;
+    return { kind: "pick", label, context: about, preview: option?.preview ?? null };
   }
   const tapped = TAPPED_RE.exec(text);
   if (tapped === null) return null;
   const group = tapped[2] === undefined ? null : unquote(tapped[2]);
-  return { kind: "tap", label: unquote(tapped[1] ?? ""), context: group ?? view?.title ?? null, preview: null };
+  return { kind: "tap", label: unquote(tapped[1] ?? ""), context: group ?? about, preview: null };
 }
