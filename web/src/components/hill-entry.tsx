@@ -7,8 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { useArm } from "@/hooks/use-arm";
 import { useHillSwitch } from "@/hooks/use-hill-switch";
 import { useLocale } from "@/hooks/use-locale";
-import { hillWaiting, type HillWaiting } from "@/lib/hill/entry";
-import { useHillOpen } from "@/lib/hill/store";
+import { useHillCount } from "@/lib/hill/store";
 import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -23,16 +22,15 @@ import { cn } from "@/lib/utils";
 // name with the app's "this row opens another screen" chevron, one description line, and the quiet "Built in"
 // badge where a trick shows where it came from. The whole row is the button, a 44px floor.
 //
-// THE ARMED SECOND TAP. Off hides the Hill, and the Decisions that wait stay open and cannot be answered
-// meanwhile. Collie's own ones (a proposal, a new version) are what a person least wants to lose sight of, so
-// a first tap on the switch while one of them waits ARMS it (`useArm`, the shared window and dwell): the switch
-// stays on, and a note says how many questions wait (all of them, not only Collie's own). A second tap inside
-// the window switches off. With none of Collie's own waiting, or with none at all, a tap switches at once.
-// Turning on never asks. The note has a RESERVED SLOT under the switch (DESIGN.md §2): the sheet is anchored to
-// the bottom, so a note that grew in would lift the switch away from the thumb between the two taps. An
-// invisible copy of the words holds the height from the moment the sheet knows a question of Collie's own
-// waits, and the slot stays until the sheet closes (switching off empties the list the phone holds, and a
-// sheet that shrank then would drop the switch the same way).
+// THE ARMED SECOND TAP. Off blocks every answer: the Decisions that wait (an agent's, a trick's or Collie's own)
+// stay open and cannot be answered meanwhile. So a first tap on the switch while ANY Decision is open ARMS it
+// (`useArm`, the shared window and dwell): the switch stays on, and a note says how many questions wait. A
+// second tap inside the window switches off. With no Decision open, a tap switches at once. Turning on never
+// asks. The note has a RESERVED SLOT under the switch (DESIGN.md §2): the sheet is anchored to the bottom, so a
+// note that grew in would lift the switch away from the thumb between the two taps. An invisible copy of the
+// words holds the height from the moment the sheet knows a question waits, and the slot stays until the sheet
+// closes (switching off empties the list the phone holds, and a sheet that shrank then would drop the switch
+// the same way).
 //
 // A CREW MEMBER draws no entry: the Hill lives on the lead (the member's own route answers 400, and its
 // snapshot carries no hill), as the card already says that tricks run on the lead (`runsOn`).
@@ -80,8 +78,8 @@ export interface HillAboutSheetProps {
   on: boolean;
   /** This device may write, and no write is in flight. */
   canSet: boolean;
-  /** The open Decisions, from the list the phone holds. */
-  waiting: HillWaiting;
+  /** How many Decisions are open, from the list the phone holds. Any of them arms the switch. */
+  waiting: number;
   /** The write. The sheet never writes anything else. */
   onSet: (on: boolean) => void;
 }
@@ -93,19 +91,19 @@ export function HillAboutSheet({ open, onClose, on, canSet, waiting, onSet }: Hi
   // A position the switch reached by itself, or a sheet that closed, leaves no arm behind.
   useEffect(() => disarm(), [on, open, disarm]);
   const asks = armed === "off";
-  // The slot of the armed note: reserved once a question of Collie's own waits, and kept while the sheet is open.
-  const [reserved, setReserved] = useState(on && waiting.own > 0);
+  // The slot of the armed note: reserved once a question waits, and kept while the sheet is open.
+  const [reserved, setReserved] = useState(on && waiting > 0);
   useEffect(() => {
-    if (on && waiting.own > 0) setReserved(true);
-  }, [on, waiting.own]);
+    if (on && waiting > 0) setReserved(true);
+  }, [on, waiting]);
 
   function flip(next: boolean): void {
     if (next) {
       onSet(true);
       return;
     }
-    // Only Collie's own Decisions arm it; with none of them waiting the switch goes at once.
-    if (waiting.own === 0) {
+    // Off blocks every answer, so any open Decision arms it; with none waiting the switch goes at once.
+    if (waiting === 0) {
       onSet(false);
       return;
     }
@@ -137,11 +135,11 @@ export function HillAboutSheet({ open, onClose, on, canSet, waiting, onSet }: Hi
             <div data-slot="armed-slot" className="relative mt-3">
               {/* The ghost sets the slot's height with the words themselves; the real note sits over it. */}
               <p aria-hidden className={noteClass("invisible")}>
-                {tn("settings.tricks.hill.waits", waiting.count)}
+                {tn("settings.tricks.hill.waits", waiting)}
               </p>
               {asks && (
                 <p data-line="armed" role="status" className={noteClass("absolute inset-0")}>
-                  {tn("settings.tricks.hill.waits", waiting.count)}
+                  {tn("settings.tricks.hill.waits", waiting)}
                 </p>
               )}
             </div>
@@ -155,6 +153,6 @@ export function HillAboutSheet({ open, onClose, on, canSet, waiting, onSet }: Hi
 /** The sheet over the Hill's real switch and the real list. Mounted only while it is open. */
 export function HillAboutSheetControl({ onClose }: { onClose: () => void }) {
   const sw = useHillSwitch();
-  const waiting = hillWaiting(useHillOpen());
+  const waiting = useHillCount();
   return <HillAboutSheet open onClose={onClose} on={sw.on} canSet={sw.canWrite && !sw.busy} waiting={waiting} onSet={(next) => void sw.set(next)} />;
 }

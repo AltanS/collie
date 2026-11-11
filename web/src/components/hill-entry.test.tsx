@@ -15,7 +15,7 @@ import { groupDecision, hillDecision, trickDecision } from "@/test/hill-fixtures
 import { server } from "@/test/setup";
 
 // The Hill as a built-in entry of Settings → Tricks: a row, an About sheet and the Hill's one switch, with
-// an armed second tap when Collie's own questions wait. The entry writes the switch and nothing else.
+// an armed second tap when questions wait. The entry writes the switch and nothing else.
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
 const LEGS: WireTrickInfo = { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt", "session"], provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } };
@@ -28,7 +28,7 @@ async function storeWith(tricks: WireTrickInfo[], runsOn?: { lead?: string }): P
   return store;
 }
 
-const sheetProps = { open: true, onClose: () => {}, on: true, canSet: true, waiting: { count: 0, own: 0 }, onSet: () => {} };
+const sheetProps = { open: true, onClose: () => {}, on: true, canSet: true, waiting: 0, onSet: () => {} };
 
 beforeEach(() => __resetHill());
 afterEach(() => {
@@ -86,16 +86,23 @@ describe("the Hill's About sheet", () => {
     expect(document.querySelector('[data-line="armed"]')).toBeNull();
   });
 
-  it("with only an agent's or a trick's questions waiting, one tap switches off at once", () => {
+  it("with only an agent's or a trick's questions waiting, the first tap arms too and the second switches off", () => {
     const onSet = vi.fn();
-    render(<HillAboutSheet {...sheetProps} waiting={{ count: 2, own: 0 }} onSet={onSet} />);
-    fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
+    render(<HillAboutSheet {...sheetProps} waiting={2} onSet={onSet} />);
+    const sw = screen.getByRole("switch", { name: "The Hill" });
+    const t0 = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
+    fireEvent.click(sw);
+    expect(onSet).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("2 questions wait on the Hill. You cannot answer them while it is off.");
+    clock.mockReturnValue(t0 + ARM_DWELL_MS + 200);
+    fireEvent.click(sw);
     expect(onSet).toHaveBeenCalledExactlyOnceWith(false);
   });
 
-  it("with Collie's own question waiting, the first tap arms with the count of all of them, the second switches off", () => {
+  it("with questions waiting, the first tap arms with the count of all of them, the second switches off", () => {
     const onSet = vi.fn();
-    render(<HillAboutSheet {...sheetProps} waiting={{ count: 3, own: 1 }} onSet={onSet} />);
+    render(<HillAboutSheet {...sheetProps} waiting={3} onSet={onSet} />);
     const sw = screen.getByRole("switch", { name: "The Hill" });
     const t0 = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
@@ -112,8 +119,8 @@ describe("the Hill's About sheet", () => {
     expect(onSet).toHaveBeenCalledExactlyOnceWith(false);
   });
 
-  it("reserves the note's slot before the tap, so arming moves nothing, and draws none when nothing of Collie's own waits", () => {
-    const { rerender } = render(<HillAboutSheet {...sheetProps} waiting={{ count: 3, own: 1 }} />);
+  it("reserves the note's slot before the tap, so arming moves nothing", () => {
+    const { rerender } = render(<HillAboutSheet {...sheetProps} waiting={3} />);
     const slot = document.querySelector('[data-slot="armed-slot"]');
     expect(slot).not.toBeNull();
     // Before the tap the slot holds only the invisible copy that sets its height.
@@ -121,18 +128,18 @@ describe("the Hill's About sheet", () => {
     expect(slot!.querySelector("[aria-hidden]")).toHaveClass("invisible");
     fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
     expect(document.querySelector('[data-slot="armed-slot"]')).toBe(slot);
-    rerender(<HillAboutSheet {...sheetProps} waiting={{ count: 0, own: 0 }} />);
+    rerender(<HillAboutSheet {...sheetProps} waiting={0} />);
     // The list empties when the Hill goes off; the sheet keeps the slot until it closes.
     expect(document.querySelector('[data-slot="armed-slot"]')).toBe(slot);
   });
 
-  it("draws no slot when none of Collie's own questions waits", () => {
-    render(<HillAboutSheet {...sheetProps} waiting={{ count: 2, own: 0 }} />);
+  it("draws no slot when no question waits", () => {
+    render(<HillAboutSheet {...sheetProps} waiting={0} />);
     expect(document.querySelector('[data-slot="armed-slot"]')).toBeNull();
   });
 
   it("says one question in the singular", () => {
-    render(<HillAboutSheet {...sheetProps} waiting={{ count: 1, own: 1 }} />);
+    render(<HillAboutSheet {...sheetProps} waiting={1} />);
     fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
     expect(screen.getByRole("status")).toHaveTextContent("1 question waits on the Hill. You cannot answer it while it is off.");
   });
@@ -141,7 +148,7 @@ describe("the Hill's About sheet", () => {
     vi.useFakeTimers();
     try {
       const onSet = vi.fn();
-      render(<HillAboutSheet {...sheetProps} waiting={{ count: 2, own: 2 }} onSet={onSet} />);
+      render(<HillAboutSheet {...sheetProps} waiting={2} onSet={onSet} />);
       const sw = screen.getByRole("switch", { name: "The Hill" });
       fireEvent.click(sw);
       expect(document.querySelector('[data-line="armed"]')).not.toBeNull();
@@ -156,7 +163,7 @@ describe("the Hill's About sheet", () => {
 
   it("turning on never asks", () => {
     const onSet = vi.fn();
-    render(<HillAboutSheet {...sheetProps} on={false} waiting={{ count: 3, own: 3 }} onSet={onSet} />);
+    render(<HillAboutSheet {...sheetProps} on={false} waiting={3} onSet={onSet} />);
     fireEvent.click(screen.getByRole("switch", { name: "The Hill" }));
     expect(onSet).toHaveBeenCalledExactlyOnceWith(true);
   });

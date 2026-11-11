@@ -148,7 +148,7 @@ function SheetBox({ n, state, label, trick: info, updates = false }: { n: number
 // switch's value itself and writes after a moment, as the bridge would; the first tap on a switch with Collie's own
 // question waiting arms it (tap the switch once), the second goes off.
 
-function HillSheetBox({ n, state, label, on: initial, count, own }: { n: number; state: string; label: string; on: boolean; count: number; own: number }) {
+function HillSheetBox({ n, state, label, on: initial, count }: { n: number; state: string; label: string; on: boolean; count: number }) {
   const [open, setOpen] = useState(true);
   const [on, setOn] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -166,7 +166,7 @@ function HillSheetBox({ n, state, label, on: initial, count, own }: { n: number;
         <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
           About Hill
         </button>
-        <HillAboutSheet open={open} onClose={() => setOpen(false)} on={on} canSet={!busy} waiting={{ count, own }} onSet={set} />
+        <HillAboutSheet open={open} onClose={() => setOpen(false)} on={on} canSet={!busy} waiting={count} onSet={set} />
       </div>
     </Card>
   );
@@ -389,9 +389,9 @@ export function TrickSettingsSection(): ReactNode {
       </Group>
       <Group title="The Hill, built in">
         <ListCard n={31} state="trick-settings-hill-entry-row" label="the Hill is the first row, with no switch: tap it" tricks={HEALTHY.slice(0, 2)} />
-        <HillSheetBox n={32} state="trick-settings-hill-entry-on" label="the sheet with the switch on, nothing waiting" on count={0} own={0} />
-        <HillSheetBox n={33} state="trick-settings-hill-entry-armed" label="3 waiting, one of them Collie's own: tap the switch once, it arms; tap again inside four seconds, it goes off" on count={3} own={1} />
-        <HillSheetBox n={34} state="trick-settings-hill-entry-off" label="the switch off" on={false} count={3} own={1} />
+        <HillSheetBox n={32} state="trick-settings-hill-entry-on" label="the sheet with the switch on, nothing waiting" on count={0} />
+        <HillSheetBox n={33} state="trick-settings-hill-entry-armed" label="3 waiting: tap the switch once, it arms; tap again inside four seconds, it goes off" on count={3} />
+        <HillSheetBox n={34} state="trick-settings-hill-entry-off" label="the switch off" on={false} count={3} />
       </Group>
       <Group title="An agent view (contract 2)">
         <ListCard n={26} state="trick-settings-agent-view" label="a view-only trick: agent view as its place, a switch" tricks={[VIEW_TRICK, HEALTHY[2] ?? trick("x", "x")]} />
