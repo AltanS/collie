@@ -216,3 +216,27 @@ export interface EdgeRecord {
    */
   readonly model?: string;
 }
+
+// ── THE AGENT'S INBOX (ADR 0141) ──────────────────────────────────────────────────────────────────
+//
+// pi's inbox extension (`pi-extension/collie-inbox.ts`) answers `GET /hello` with who is in the pane:
+// the same raw markers a beacon carries, which name its socket, and the session file pi writes. Like a
+// beacon it is a hint (.adr/0024): the door binds on it only where the multiplexer or a beacon names
+// the same session (`bridge/door/pi.ts`).
+
+/** The inbox wire version this build reads. A different value is skipped. */
+export const INBOX_VERSION = 1;
+
+/** A `/hello` answer, as `parseInboxHello` reads it. */
+export interface InboxHello {
+  readonly agent: string;
+  /** The session file pi writes, exactly as pi named it, or null for a session with no file. */
+  readonly sessionFile: string | null;
+  readonly markers: readonly BeaconMarker[];
+}
+
+/** What a `/send` the inbox accepted says: the state pi put the message in, and whether it was a repeat. */
+export interface InboxTook {
+  readonly state: "taken" | "queued" | "steered";
+  readonly replayed: boolean;
+}

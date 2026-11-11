@@ -293,7 +293,7 @@ import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { ClearService } from "./surface/clear.ts";
 import { StopService, type StopDeps } from "./surface/stop.ts";
 import { gateFor } from "./surface/key-gate.ts";
-import { DOORS } from "./door/registry.ts";
+import { doorsFor } from "./door/registry.ts";
 import { RowRing, SendProtocol, SessionLocks, type PaneProfileMatch } from "./surface/protocol.ts";
 import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
@@ -301,7 +301,7 @@ import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
-import { holdSocketPath } from "./beacon/paths.ts";
+import { holdSocketPath, inboxDir } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
 import { crewFactsWorld, FACTS_CAPS, factsWorldOf, NO_FACTS_CAPS, type FactsWorld } from "./tricks/facts.ts";
@@ -1986,6 +1986,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const ring = new RowRing();
   const foregroundHarness = foregroundHarnessOf(foregroundRead, harnessBinaries);
   const paneProfile = (harness: string, paneId?: string): Promise<PaneProfileMatch | null> => sendProfile(harness, paneId, foregroundRead);
+  // How a raw multiplexer marker names one of this session's panes: the beacon join, the hook edges and
+  // the agents' doors all use it.
+  const paneMatcher = factoryFor(muxRegistry, built.adapter.mux)?.beaconMatcher?.(target);
   const send =
     sends && sendStore !== null && askBook !== undefined
       ? new SendProtocol({
@@ -2010,8 +2013,17 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
           // The multiplexer's `blocked` on the pane's agent refuses a send Collie cannot prove on the screen.
           muxStatus: (paneId) => engine.current().agents.find((agent) => agent.paneId === paneId)?.status,
-          // The agents' own doors, tried before the screen (ADR 0141).
-          doors: DOORS,
+          // The agents' own doors, tried before the screen (ADR 0141). pi's binds a pane by its markers.
+          doors: doorsFor({
+            pi:
+              paneMatcher === undefined
+                ? undefined
+                : {
+                    dir: inboxDir(process.env, homedir()),
+                    matcher: paneMatcher,
+                    sessionOf: (paneId) => engine.current().agents.find((agent) => agent.paneId === paneId)?.agentSession,
+                  },
+          }),
         })
       : undefined;
   // Each poll tells the launch window which panes the multiplexer names an agent on now: a newly named
@@ -2054,7 +2066,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
 
   // This session's hook edges (M56 spec 11): a terminal session with a Surface and a beacon matcher.
   // Herdr has a matcher for this alone; tmux and zellij use the one that lifts their agents.
-  const edgeMatcher = surface === undefined || edgeRouter === null ? undefined : factoryFor(muxRegistry, built.adapter.mux)?.beaconMatcher?.(target);
+  const edgeMatcher = surface === undefined || edgeRouter === null ? undefined : paneMatcher;
   if (surface !== undefined && edgeRouter !== null && edgeMatcher !== undefined) {
     const foreground = herdr.foregroundProcesses?.bind(herdr);
     const edgeTarget: EdgeTarget = {

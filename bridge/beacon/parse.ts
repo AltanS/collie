@@ -7,6 +7,9 @@
 // beacon here", which is a case the reader already handles honestly. A directory of garbage yields
 // zero beacons and never an error page.
 //
+// pi's inbox answers (`/hello`, `/send`, ADR 0141) are read here too: the same markers, written by a
+// process Collie does not control, so the same boundary.
+//
 // This is a parse boundary in the ADR 0019 sense, which is why `anti-slop/no-runtime-typeof` is off
 // for this ONE file in `.oxlintrc.json`: the `typeof` checks below ARE the parse, not a dodge of one.
 // Keeping them all here is what keeps that override narrow — nothing else under bridge/beacon/ reads
@@ -18,7 +21,17 @@
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import type { AgentSessionRef } from "../journal/types.ts";
-import { BEACON_SCHEMA_VERSION, EDGE_SCHEMA_VERSION, type BeaconMarker, type BeaconRecord, type BeaconStatus, type EdgeRecord } from "./types.ts";
+import {
+  BEACON_SCHEMA_VERSION,
+  EDGE_SCHEMA_VERSION,
+  INBOX_VERSION,
+  type BeaconMarker,
+  type BeaconRecord,
+  type BeaconStatus,
+  type EdgeRecord,
+  type InboxHello,
+  type InboxTook,
+} from "./types.ts";
 
 /** The three words a beacon may use, as a runtime list — the type alone cannot check a file. */
 const BEACON_STATUSES: readonly BeaconStatus[] = ["working", "waiting", "idle"];
@@ -216,4 +229,41 @@ export function parseEdge(text: string): EdgeRecord | null {
   const model = edgeModelOf(row.model);
   if (model !== null) record = { ...record, model };
   return record;
+}
+
+/** A JSON text's top-level object, or null. */
+function objectOf(text: string): JsonObject | null {
+  try {
+    return readObject(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * An inbox's `/hello` text, or null when it is not one this build reads: another wire version, no
+ * agent, no readable marker. `sessionFile` is read RAW, never trimmed: the binding compares it whole.
+ */
+export function parseInboxHello(text: string): InboxHello | null {
+  const row = objectOf(text);
+  if (row === null || readInteger(row, "inbox") !== INBOX_VERSION) return null;
+  const agent = readText(row, "agent");
+  const markers = readMarkers(row.markers);
+  const raw = row.sessionFile;
+  if (agent === null || markers.length === 0) return null;
+  if (raw === null || raw === undefined) return { agent, sessionFile: null, markers };
+  if (typeof raw !== "string" || raw === "" || raw.length > MAX_FIELD_CHARS) return null;
+  return { agent, sessionFile: raw, markers };
+}
+
+const INBOX_STATES: readonly InboxTook["state"][] = ["taken", "queued", "steered"];
+
+/** A `202` answer from an inbox's `/send`, or null when it names no state this build knows. */
+export function parseInboxTook(text: string): InboxTook | null {
+  const row = objectOf(text);
+  if (row === null) return null;
+  const word = readText(row, "state");
+  const state = INBOX_STATES.find((candidate) => candidate === word);
+  if (state === undefined) return null;
+  return { state, replayed: row.replayed === true };
 }

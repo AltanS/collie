@@ -3,12 +3,14 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } fr
 import { join } from "node:path";
 
 import { beaconKey, INBOX_SUBDIR as BRIDGE_INBOX_SUBDIR, inboxSocketPath } from "../bridge/beacon/paths.ts";
+import { INBOX_VERSION as BRIDGE_INBOX_VERSION } from "../bridge/beacon/types.ts";
 import { readEnvMarkers } from "../cli/beacon.ts";
 import { parseJsonObject, type JsonObject } from "../web/src/lib/json.ts";
 import { REQUEST_ID as PHONE_REQUEST_ID } from "../web/src/lib/surface/send.ts";
 import {
   activate,
   INBOX_SUBDIR,
+  INBOX_VERSION,
   KEEP_REQUEST_IDS,
   MAX_BODY_BYTES,
   markersOf,
@@ -97,8 +99,9 @@ describe("the socket's name is the bridge's", () => {
     });
   }
 
-  test("the folder and the request-id rule are Collie's", () => {
+  test("the folder, the wire version and the request-id rule are Collie's", () => {
     expect(INBOX_SUBDIR).toBe(BRIDGE_INBOX_SUBDIR);
+    expect(INBOX_VERSION).toBe(BRIDGE_INBOX_VERSION);
     expect(REQUEST_ID.source).toBe(PHONE_REQUEST_ID.source);
   });
 
