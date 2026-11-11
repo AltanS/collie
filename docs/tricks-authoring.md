@@ -208,6 +208,12 @@ A tap on "Fix both" types `[view:triage <address>] from operator: tapped "Fix bo
 A button sends its label and nothing else. Every verb of `collie trick view` is in the
 [reference](tricks-reference.md#collie-trick-view).
 
+Collie marks the pick, never the agent. A button takes no `pressed` and a decision block takes no
+`picked`: the write is refused. When the next step needs the same question, keep its block, and Collie
+keeps the mark on it. A link goes to a web address only, and the phone shows its host after it. No text
+of the agent's may say Collie's own words, such as "From Collie" or "Tap again to send". The
+[agent view place](tricks-reference.md#agent-view) lists them all.
+
 ## Propose a trick to the person
 
 An agent that wrote a program trick hands it to the person. It never switches it on itself.

@@ -287,8 +287,11 @@ collie hill on
 ```
 
 In Settings → Alerts, the first card is the switch **The Hill**: "Agents and tricks ask you here.
-Off: they cannot post, and the Hill leaves the bar." The commands move the same switch, for every
-phone of this Collie, and the bridge reads it with no restart.
+Off: they cannot post, and the Hill leaves the bar." Settings → Tricks shows the Hill too, as its
+first row, tagged "Built in". The row opens an About sheet with the same switch, and it has no Remove.
+If a question waits, the first tap on the switch asks you to tap again before it switches off. The
+commands move the same switch, for every phone of this Collie, and the bridge reads it with no
+restart.
 
 With the Hill off:
 

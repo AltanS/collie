@@ -347,7 +347,8 @@ folder, and `#` and a branch, a tag or a full 40-digit commit. An address with a
 password is refused, and so is any address that is not https.
 
 On the phone, Settings → Tricks lists the official tricks with an Add button. A tap makes one git
-fetch, then checks the hash of what arrived.
+fetch, then checks the hash of what arrived. The Hill is the first row of that card, tagged "Built
+in": it comes with Collie, it is not a trick, and it cannot be removed.
 
 `add` copies the trick into `tricks/` in Collie's config folder. That folder is `~/.config/collie` on
 a binary install, and Herdr's plugin config folder on a Herdr-managed install

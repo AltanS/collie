@@ -46,6 +46,7 @@ import {
 } from "../hill/wire";
 import {
   VIEW_CAPTION_MAX,
+  VIEW_COLLIE_PHRASES,
   VIEW_MEDIA_BYTES_MAX,
   VIEW_MEDIA_MAX,
   VIEW_NOTE_MAX,
@@ -378,7 +379,7 @@ export const PLACES = {
     name: "Agent view",
     where: "A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session.",
     shows: "One screen: a list of nodes in the Parts table's kinds (held tighter, see Parts), up to four pictures, and one decision block with a question and up to five options.",
-    tap: "A tap on a button, or a pick in the decision block, sends a message in the person's name to that one session. It carries the label only: a button holds no hidden value.",
+    tap: "A tap on a button, or a pick in the decision block, sends a message in the person's name to that one session. It carries the label only: a button holds no hidden value. Collie marks the pick on the screen afterwards. The agent cannot: a button's `pressed` and a choice's `picked` are refused.",
     limits: [
       { what: "Contract", value: `${String(AGENT_VIEW_CONTRACT)}, and the manifest needs \`rules\`` },
       { what: "Screen title", value: `at most ${String(VIEW_TITLE_MAX)} characters` },
@@ -391,6 +392,9 @@ export const PLACES = {
       { what: "A pending block's label", value: `at most ${String(VIEW_PENDING_MAX)} characters` },
       { what: "Writes by the agent", value: `${String(VIEW_WRITES_PER_MINUTE)} a minute for one trick and session` },
       { what: "Sends from the view", value: `${String(VIEW_SENDS_PER_MINUTE)} a minute for one session, one in flight at a time` },
+      { what: "Marks of a pick", value: "Collie's, never the agent's. A redraw keeps a mark while a block of the same id holds a button at the same steps, and the decision block's while it asks the same question with the same options" },
+      { what: "Links", value: "a web address only. A session `href` is refused. The phone shows the host after each link, whole" },
+      { what: "Collie's own words", value: `no text of the agent's may say ${VIEW_COLLIE_PHRASES.map((phrase) => `"${phrase}"`).join(", ")}. A text is read as whole words, in any case, with look-alike letters and hidden characters folded. Collie's bare name passes` },
       { what: "The rules file", value: `see Limits: the rules file` },
     ],
     who: "agent",
@@ -505,7 +509,7 @@ const ATTR_WORDS = {
     label: "The words on the button.",
     tone: "The tone of the button.",
     disabled: "The reason the button cannot be used. An empty text means no reason is given.",
-    pressed: "Draws the button as a toggle: on, off or mixed.",
+    pressed: "Draws the button as a toggle: on, off or mixed. An agent view refuses it: Collie marks the pick.",
     confirm: "A second label. The first tap arms the button and the second sends the intent.",
     badge: "A count, or a dot, on the button.",
     icon: "An icon on the button.",
@@ -562,10 +566,11 @@ const TEXT_NOTES = {
 
 /** What an agent view does differently for a kind. Every other kind reads the same as in a program's part. */
 const AGENT_VIEW_NOTES = {
-  button: `A tap sends the label (and the label of the group it sits in). \`value\` and \`does\` are refused. The label is one line of at most ${String(VIEW_TAP_LABEL_MAX)} characters.`,
+  button: `A tap sends the label (and the label of the group it sits in). \`value\`, \`does\` and \`pressed\` are refused: Collie marks the pick, the agent does not. The label is one line of at most ${String(VIEW_TAP_LABEL_MAX)} characters, and says none of Collie's own words.`,
   group: `A \`label\` is one line of at most ${String(VIEW_TAP_GROUP_MAX)} characters, because a tap inside the group sends it.`,
-  link: "Text that reads as a web address must be that address.",
-  run: "Text with an `href` that reads as a web address must be that address.",
+  link: "Text that reads as a web address must be that address, in any script. The `href` is a web address only: a session is refused. The phone shows the host after the link.",
+  run: "Text with an `href` that reads as a web address must be that address. The `href` is a web address only, and the phone shows its host after the run.",
+  row: "An `href` is a web address only: a session is refused.",
   image: `The agent adds pictures with \`--image\` (at most ${String(VIEW_MEDIA_MAX)}) and names each by \`ref\`.`,
   compare: "Two images named by `ref`.",
 } as const satisfies { readonly [K in NodeKind]?: string };
@@ -781,7 +786,7 @@ export interface HillEntry {
 /** The Hill: the place a program or an agent asks the person one question. It is not a `place` word. */
 export const HILL: HillEntry = {
   name: "The Hill",
-  what: "A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It is built in. A trick does not list it in `places`.",
+  what: "A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It is built in. A trick does not list it in `places`. Settings → Tricks shows it as the first row, tagged \"Built in\", with its one switch.",
   program: `A program lists Decisions in the \`decisions\` key of its output (the helper's \`t.decide\`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most ${String(DECISIONS_MAX)}.`,
   agent: "An agent posts one with `collie hill post` and reads the answer with `collie hill status <id>`. The answer also reaches the agent as a WalkyTalky message.",
   keys: DECISION_KEYS.map((key) => Object.assign({ key }, DECISION_KEY_WORDS[key])),
@@ -1333,7 +1338,7 @@ export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick view", verb: "set", usage: "trick view <trick> set [--session <address>] <id> <file.json | -> [--after <id> | --first] [--image <path>[=<caption>]]... [--json]", what: "Puts one block on the screen. A block with that id is replaced where it stands.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--after", what: "Put a new block after this one." }, { flag: "--first", what: "Put a new block first." }, { flag: "--image", what: "Add a picture to the screen's set." }, JSON_FLAG] },
   { group: "trick view", verb: "pending", usage: 'trick view <trick> pending [--session <address>] <id> "<label>" [--after <id> | --first] [--json]', what: "Puts a placeholder block for one still in work.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--after", what: "Put the block after this one." }, { flag: "--first", what: "Put the block first." }, JSON_FLAG] },
   { group: "trick view", verb: "remove", usage: "trick view <trick> remove [--session <address>] <id> [--json]", what: "Removes one block.", flags: [{ flag: "--session", what: "The session's address." }, JSON_FLAG] },
-  { group: "trick view", verb: "choice", usage: "trick view <trick> choice [--session <address>] <file.json | -> | --clear [--json]", what: "Sets or drops the decision block alone.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--clear", what: "Drop the decision block." }, JSON_FLAG] },
+  { group: "trick view", verb: "choice", usage: "trick view <trick> choice [--session <address>] <file.json | -> | --clear [--json]", what: "Sets or drops the decision block alone. It takes no `picked`: Collie marks the pick.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--clear", what: "Drop the decision block." }, JSON_FLAG] },
   { group: "trick view", verb: "keep", usage: "trick view <trick> keep [--session <address>] <id>... | --all [--json]", what: "Says these blocks still hold for the new request.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--all", what: "Keep every block." }, JSON_FLAG] },
   { group: "trick view", verb: "clear", usage: "trick view <trick> clear [--session <address>] [--json]", what: "Takes the whole screen away. The switch stays.", flags: [{ flag: "--session", what: "The session's address." }, JSON_FLAG] },
   { group: "trick view", verb: "status", usage: "trick view <trick> status [--session <address>] [--json]", what: "Shows the session, the switch, the screen and the tail line.", flags: [{ flag: "--session", what: "The session's address." }, JSON_FLAG] },

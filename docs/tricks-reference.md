@@ -227,7 +227,7 @@ A program prints:
 
 **Shows.** One screen: a list of nodes in the Parts table's kinds (held tighter, see Parts), up to four pictures, and one decision block with a question and up to five options.
 
-**A tap.** A tap on a button, or a pick in the decision block, sends a message in the person's name to that one session. It carries the label only: a button holds no hidden value.
+**A tap.** A tap on a button, or a pick in the decision block, sends a message in the person's name to that one session. It carries the label only: a button holds no hidden value. Collie marks the pick on the screen afterwards. The agent cannot: a button's `pressed` and a choice's `picked` are refused.
 
 | Limit | Value |
 | --- | --- |
@@ -242,6 +242,9 @@ A program prints:
 | A pending block's label | at most 40 characters |
 | Writes by the agent | 120 a minute for one trick and session |
 | Sends from the view | 20 a minute for one session, one in flight at a time |
+| Marks of a pick | Collie's, never the agent's. A redraw keeps a mark while a block of the same id holds a button at the same steps, and the decision block's while it asks the same question with the same options |
+| Links | a web address only. A session `href` is refused. The phone shows the host after each link, whole |
+| Collie's own words | no text of the agent's may say "From Collie", "Drawn by this session's agent", "Drawn in an earlier conversation", "Sent to this session", "A question waits in this session", "Your typing answers the question", "The screen changed", "The buttons wait", "The agent is working", "Tap again to send", "Earlier screen", "The agent answered in text". A text is read as whole words, in any case, with look-alike letters and hidden characters folded. Collie's bare name passes |
 | The rules file | see Limits: the rules file |
 
 In `trick.toml`:
@@ -282,7 +285,7 @@ The agent passes `show` this file:
 
 ## The Hill
 
-A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It is built in. A trick does not list it in `places`.
+A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It is built in. A trick does not list it in `places`. Settings → Tricks shows it as the first row, tagged "Built in", with its one switch.
 
 **From a program.** A program lists Decisions in the `decisions` key of its output (the helper's `t.decide`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most 20.
 
@@ -534,6 +537,8 @@ One line: a title, an optional end word, and optionally a second line, chips and
 | `icon` | icon | no | one of the icon words in Shared values | An icon at the start of the row. |
 | `disabled` | text | no | at most 120 characters, may be empty | The reason the row cannot be used. An empty text means no reason is given. |
 
+**In an agent view.** An `href` is a web address only: a session is refused.
+
 **In a Decision's view.** A row opens a web page at most. It takes no button.
 
 ```json
@@ -641,7 +646,7 @@ Sends one intent to the trick on a tap, or copies a text with `does` set to `cop
 | `label` | text | yes | at most 24 characters | The words on the button. |
 | `tone` | tone | no | one of `plain`, `accent`, `warn`, `danger`, `ok`, `muted` | The tone of the button. |
 | `disabled` | text | no | at most 120 characters, may be empty | The reason the button cannot be used. An empty text means no reason is given. |
-| `pressed` | word | no | one of `true`, `false`, `mixed` | Draws the button as a toggle: on, off or mixed. |
+| `pressed` | word | no | one of `true`, `false`, `mixed` | Draws the button as a toggle: on, off or mixed. An agent view refuses it: Collie marks the pick. |
 | `confirm` | text | no | at most 24 characters | A second label. The first tap arms the button and the second sends the intent. |
 | `badge` | count or dot | no | a count from 0 to 9999 as text, or "" for a dot | A count, or a dot, on the button. |
 | `icon` | icon | no | one of the icon words in Shared values | An icon on the button. |
@@ -649,7 +654,7 @@ Sends one intent to the trick on a tap, or copies a text with `does` set to `cop
 | `does` | word | no | one of `copy` | `copy` copies `value` to the phone's clipboard instead of sending an intent. |
 | `value` | text | yes, when `does` is `copy` | 1 to 1024 bytes, no control or invisible character | The one fixed text a tap sends with the intent, or the text `copy` copies. |
 
-**In an agent view.** A tap sends the label (and the label of the group it sits in). `value` and `does` are refused. The label is one line of at most 60 characters.
+**In an agent view.** A tap sends the label (and the label of the group it sits in). `value`, `does` and `pressed` are refused: Collie marks the pick, the agent does not. The label is one line of at most 60 characters, and says none of Collie's own words.
 
 ```json
 {
@@ -731,7 +736,7 @@ A piece of text inside a `para` or a `line`, with its own style, link or live ti
 | `at` | instant | no | epoch milliseconds as digits, such as `"1794130692000"` | An instant that the text shows as a live time. It goes with `clock`. |
 | `clock` | word | no | one of `ago`, `elapsed`, `left`, `time` | How the instant is told. It goes with `at`. |
 
-**In an agent view.** Text with an `href` that reads as a web address must be that address.
+**In an agent view.** Text with an `href` that reads as a web address must be that address. The `href` is a web address only, and the phone shows its host after the run.
 
 ```json
 {
@@ -795,7 +800,7 @@ A link that opens a web page, or one agent session of the crew.
 | `badge` | count or dot | no | a count from 0 to 9999 as text, or "" for a dot | A count, or a dot, on the link. |
 | `icon` | icon | no | one of the icon words in Shared values | An icon before the link text. |
 
-**In an agent view.** Text that reads as a web address must be that address.
+**In an agent view.** Text that reads as a web address must be that address, in any script. The `href` is a web address only: a session is refused. The phone shows the host after the link.
 
 **In a Decision's view.** A link opens a web page only.
 
@@ -1450,7 +1455,7 @@ The verbs an agent runs to draw an agent view, as `collie trick view <trick> <ve
 | `set` | `collie trick view <trick> set [--session <address>] <id> <file.json \| -> [--after <id> \| --first] [--image <path>[=<caption>]]... [--json]` | Puts one block on the screen. A block with that id is replaced where it stands. |
 | `pending` | `collie trick view <trick> pending [--session <address>] <id> "<label>" [--after <id> \| --first] [--json]` | Puts a placeholder block for one still in work. |
 | `remove` | `collie trick view <trick> remove [--session <address>] <id> [--json]` | Removes one block. |
-| `choice` | `collie trick view <trick> choice [--session <address>] <file.json \| -> \| --clear [--json]` | Sets or drops the decision block alone. |
+| `choice` | `collie trick view <trick> choice [--session <address>] <file.json \| -> \| --clear [--json]` | Sets or drops the decision block alone. It takes no `picked`: Collie marks the pick. |
 | `keep` | `collie trick view <trick> keep [--session <address>] <id>... \| --all [--json]` | Says these blocks still hold for the new request. |
 | `clear` | `collie trick view <trick> clear [--session <address>] [--json]` | Takes the whole screen away. The switch stays. |
 | `status` | `collie trick view <trick> status [--session <address>] [--json]` | Shows the session, the switch, the screen and the tail line. |
