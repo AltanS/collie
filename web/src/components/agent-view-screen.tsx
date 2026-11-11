@@ -441,7 +441,11 @@ export function AgentViewScreen({
   const layout = JSON.stringify([view?.rev ?? null, request?.at ?? null, request?.phase ?? null, request?.line ?? null, status?.kind ?? null, notes.length, answer?.ts ?? null]);
   const canTap = useSettled(layout, settleMs);
 
-  /** Send one tap, mark the control once the bridge confirmed it, read again on a stale refusal. */
+  /**
+   * Send one tap, mark the control once the bridge confirmed it, read again on a stale refusal. A send
+   * that throws (the link dropped) has told the view "Not sent" through the composer already: the throw
+   * ends here, so no rejection escapes (review 10 W13), and the buttons are free again.
+   */
   const send = useCallback(
     (control: string, tap: ViewTap) => {
       setBusyControl(control);
@@ -451,6 +455,7 @@ export function AgentViewScreen({
           if (result.code === "stale_view") onStale?.();
           return result;
         })
+        .catch(() => null)
         .finally(() => setBusyControl(null));
     },
     [onTap, onPressed, onStale],

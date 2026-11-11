@@ -1020,3 +1020,27 @@ describe("review 10 W12: a control's name is the words its tap sends; hint and d
     expect(lean).toHaveAccessibleDescription("One line");
   });
 });
+
+describe("review 10 W13: a tap whose send throws leaves no unhandled rejection", () => {
+  it("W13: the throw is caught, the buttons are free again, and no rejection escapes", async () => {
+    let escaped = 0;
+    const listen = (): void => {
+      escaped += 1;
+    };
+    process.on("unhandledRejection", listen);
+    try {
+      const onTap = vi.fn(() => Promise.reject(new Error("the link dropped")));
+      draw({ onTap });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+      });
+      // Let a rejection that nothing handled reach the process.
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+      expect(onTap).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button", { name: "Wait" })).not.toBeDisabled();
+      expect(escaped).toBe(0);
+    } finally {
+      process.off("unhandledRejection", listen);
+    }
+  });
+});
