@@ -866,12 +866,24 @@ describe.if(posix)("a git run killed at its time cap", () => {
     // writes the helper's pid, and waits. The run is killed at 300 ms; the helper must be gone too.
     const bin = await tempDir();
     const pidFile = join(bin, "helper.pid");
-    await writeFile(join(bin, "git"), `#!/bin/sh\nsleep 30 &\necho $! > "${pidFile}"\nwait\n`);
+    const groupFile = join(bin, "groups");
+    // It also writes its own pid, its process group, and the helper's group: `detached: true` in Bun's spawn
+    // makes git the leader of a new group (its group id is its pid), and a helper git starts without a
+    // setpgid of its own (as git starts `git-remote-https`) stays in that group, so the group kill reaches it.
+    await writeFile(
+      join(bin, "git"),
+      `#!/bin/sh\nsleep 30 &\nhelper=$!\necho $helper > "${pidFile}"\necho "$$ $(ps -o pgid= -p $$) $(ps -o pgid= -p $helper)" > "${groupFile}"\nwait\n`,
+    );
     await chmod(join(bin, "git"), 0o755);
-    const run = await spawnGit(["fetch"], { cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` }, timeoutMs: 300 });
+    const run = await spawnGit(["fetch"], { cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` }, timeoutMs: 1_000 });
     expect(run.timedOut).toBe(true);
     const pid = Number((await readFile(pidFile, "utf8")).trim());
     expect(pid).toBeGreaterThan(0);
+    const [gitPid, gitGroup, helperGroup] = (await readFile(groupFile, "utf8")).trim().split(/\s+/u).map(Number);
+    expect(gitGroup).toBe(gitPid);
+    expect(helperGroup).toBe(gitPid);
+    // Not the test runner's own group: a kill of git's group never reaches the bridge.
+    expect(gitGroup).not.toBe(Number(Bun.spawnSync(["ps", "-o", "pgid=", "-p", String(process.pid)]).stdout.toString().trim()));
     // Give the kernel a moment to reap; then the helper's pid answers no signal.
     let alive = true;
     for (let i = 0; i < 20 && alive; i += 1) {
