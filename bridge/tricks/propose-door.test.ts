@@ -4,11 +4,13 @@ import type { JsonObject } from "../json.ts";
 import { parseJsonObject } from "../../web/src/lib/json.ts";
 import type { HillPlace } from "../hill/service.ts";
 import type { CrewDialAnswer } from "../walky/crew.ts";
-import { PROPOSAL_AUTHOR_WORDS, proposalCard, proposalTitle, proposerSentence, PROPOSAL_LATER, PROPOSAL_ON } from "./proposal-card.ts";
+import { AUTHOR_PARAS_MAX, PROPOSAL_AUTHOR_WORDS, PROPOSAL_TOO_LARGE, proposalCard, proposalTitle, proposerSentence, PROPOSAL_LATER, PROPOSAL_ON } from "./proposal-card.ts";
 import type { ProposeAnswer, Proposer, TrickProposals } from "./proposals.ts";
 import { CREW_TRICKS_PROPOSE_ROUTE, PROPOSE_LEAD_AWAY, PROPOSE_LEAD_NO_TRICKS, ProposeDoor, proposeLeadOlder, proposeNotConfirmed, type ProposeDoorDeps } from "./propose-door.ts";
 import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
+import { WARN_PLAIN } from "./scan.ts";
+import type { ViewNode } from "../../web/src/lib/tricks/schema.ts";
 
 // The doors of `collie trick propose` (crew slice 8) and the card the lead posts. The member forwards and
 // keeps nothing; the lead names the proposer from its own knowledge only.
@@ -172,6 +174,7 @@ describe("the card", () => {
 
   test("names the trick by id, recommends nothing, and offers on or not now", () => {
     const card = proposalCard(input);
+    if (card === null) throw new Error("no card");
     expect(card.title).toBe(proposalTitle("legs"));
     expect(card.title).toBe("Switch on the trick legs?");
     expect(card.recommends).toBeNull();
@@ -185,5 +188,40 @@ describe("the card", () => {
     expect(proposerSentence({ by: "agent", host: "lap‮top", label: "a\nb" })).toBe("An agent session (a b) on lap?top proposes it.");
     expect(proposerSentence({ by: "terminal", host: "laptop", label: null })).toBe("A terminal on laptop proposes it.");
     expect(proposerSentence({ by: "agent", host: "laptop", label: null })).toBe("An agent session on laptop proposes it.");
+  });
+
+  // Review F1: the facts the person decides on are never dropped for the author's words or for code.
+  const texts = (view: readonly ViewNode[] | undefined): string => JSON.stringify(view ?? []);
+  const ENVS = Array.from({ length: 32 }, (_, i) => `TOKEN_${String(i).padStart(2, "0")}_${"X".repeat(55)}`);
+  const GLOBS = Array.from({ length: 8 }, (_, i) => `src${String(i)}/${"d".repeat(240)}/**/*.ts`);
+
+  test("an about text of 30 paragraphs leaves the rights, the warnings and the code on the card, and is cut to 3 paragraphs", () => {
+    const about = Array.from({ length: 30 }, (_, i) => `Paragraph ${String(i)} of the author's own story.`).join("\n\n");
+    const card = proposalCard({ ...input, manifest: { ...input.manifest, env: ["GITHUB_TOKEN"], about }, warnings: ["network"] });
+    if (card === null) throw new Error("no card");
+    const words = texts(card.view);
+    expect(words).toContain('"GITHUB_TOKEN"');
+    expect(words).toContain(JSON.stringify(WARN_PLAIN.network));
+    expect(card.view?.some((node) => node.kind === "diff")).toBe(true);
+    const group = card.view?.find((node) => node.kind === "group");
+    const kids = group !== undefined && "kids" in group ? (group.kids ?? []) : [];
+    expect(kids.length).toBe(AUTHOR_PARAS_MAX);
+    expect(JSON.stringify(kids.at(-1))).toContain('…"');
+  });
+
+  test("32 environment names of 64 characters and 8 long globs: every name and every glob shows in full", () => {
+    const card = proposalCard({ ...input, manifest: { ...input.manifest, contract: 2, env: ENVS, inputs: GLOBS }, warnings: ["network", "spawn", "write", "model", "import"] });
+    if (card === null) throw new Error("no card");
+    const words = texts(card.view);
+    for (const name of ENVS) expect(words).toContain(name);
+    for (const glob of GLOBS) expect(words).toContain(glob);
+    for (const text of Object.values(WARN_PLAIN)) expect(words).toContain(text);
+    expect(words).toContain("It asks for: TOKEN_00_");
+  });
+
+  test("a card whose facts alone do not fit is no card: the proposal is refused in plain words", () => {
+    const env = Array.from({ length: 200 }, (_, i) => `TOKEN_${String(i).padStart(3, "0")}_${"X".repeat(54)}`);
+    expect(proposalCard({ ...input, manifest: { ...input.manifest, env } })).toBeNull();
+    expect(PROPOSAL_TOO_LARGE).toBe("This trick asks for more than a card can show, so it was not proposed. Ask your person to add it on the machine.");
   });
 });

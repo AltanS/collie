@@ -11,7 +11,7 @@ import { unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { recoverProposalWrites } from "./proposal-install.ts";
-import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposerFacts } from "./proposal-card.ts";
+import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, PROPOSAL_TOO_LARGE, type ProposerFacts } from "./proposal-card.ts";
 import { checkProposedFiles, proposalHash, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
@@ -385,7 +385,7 @@ export class TrickProposals {
   }
 
   /** The card for a stored proposal: a new trick, or a new version shown against the approved copy. */
-  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null): Promise<Omit<HillPostInput, "requestId">> {
+  private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null): Promise<Omit<HillPostInput, "requestId"> | null> {
     const id = proposal.manifest.id;
     const crew = this.deps.crew?.() ?? false;
     const kinds = await this.warningKinds(dir, proposal.manifest);
@@ -404,6 +404,10 @@ export class TrickProposals {
     const dir = await this.store(id, hash, proposal.files);
     if (dir === null) return refused("failed", "The proposal could not be kept on this machine, so nothing was proposed.");
     const card = await this.cardOf(dir, proposal, proposer, base);
+    if (card === null) {
+      await rm(dir, { recursive: true, force: true });
+      return refused("card_too_large", PROPOSAL_TOO_LARGE);
+    }
     const input: HillPostInput = { ...card, requestId: proposalRequestId(id, hash, proposal.requestId), expiresAt: now + PROPOSAL_EXPIRY_MS };
     if (old !== null) input.supersedes = old.decision;
     const posted = this.deps.hill.postCollie(senderOf(id, hash), input, proposer.address === null ? {} : { tellOf: proposer.address });

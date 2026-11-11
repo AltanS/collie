@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { parseJson } from "../../web/src/lib/json.ts";
 import { HILL_SUMMARY_MAX, type HillCollieRef, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { DECISION_VIEW_LIMITS, DIFF_LIMITS, inputsSentence, LINE_MAX, parseDecisionView, PLACE_KINDS, TABLE_LIMITS, TEXT_MAX, type PlaceKind, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { CHIP_TEXT_MAX, DECISION_VIEW_LIMITS, DIFF_LIMITS, inputsSentence, LINE_MAX, parseDecisionView, PLACE_KINDS, TABLE_LIMITS, TEXT_MAX, VIEW_LIMITS, type PlaceKind, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import type { HillCollieSender, HillCollieVerdict, HillOneAnswer, HillPostAnswer } from "../hill/service.ts";
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
@@ -22,7 +22,7 @@ import { versionDiff, type ChangedFile, type VersionDiff } from "./version-diff.
 // ── WHAT THE PERSON SEES ───────────────────────────────────────────────────────────────────────────
 // Title "Use the new version of <name>?". The summary says what changed and the deciding fact: "3
 // files changed. It asks for no new rights." or "It now also asks for GITHUB_TOKEN." Options: use,
-// always (only when the rights did not change), keep. The view, at most 8 KiB: a chip per new right,
+// always (only when the rights did not change), keep. The view, at most 8 KiB: every new right in full,
 // the new warnings, the table of changed files with their line counts, the hunks of the largest text
 // changes as many as fit, "and N more files".
 //
@@ -174,7 +174,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const total = Math.max(fileCount, diff.files.length);
   const whole = shown.view !== null && shown.shown >= total;
   const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
-  // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the chips say it all.
+  // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the view lists every one.
   const short = rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below.";
   const full = `${filesSentence(fileCount)} ${fact}${tail}`;
   const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${filesSentence(fileCount)} ${short}${tail}`;
@@ -235,7 +235,7 @@ function checked(view: View): View | undefined {
 }
 
 /**
- * The card's view: a chip per new right, the new warnings, the changed files, the hunks of the largest
+ * The card's view: every new right in full, the new warnings, the changed files, the hunks of the largest
  * text changes as many as fit, and "and N more files". Cut until it fits {@link DECISION_VIEW_LIMITS} and
  * the schema takes it: the smallest hunk first, then the last hunk's lines, then the table's rows. Null
  * when there is nothing to show or nothing fits.
@@ -248,6 +248,8 @@ export function versionView(rights: readonly string[], warnings: readonly (keyof
 export interface VersionViewShown {
   view: View | null;
   shown: number;
+  /** False when the facts alone (rights, inputs, warnings) do not fit a view: then nothing is shown. */
+  headFits: boolean;
 }
 
 /** The view, and how many changed files it shows whole: a row in the table and its whole hunk. */
@@ -255,26 +257,66 @@ export function versionViewShown(rights: readonly string[], warnings: readonly (
   return fitView(rightsHead("New rights", rights, warnings, reads), diff);
 }
 
-/** The head of a card's view: a bar of right chips under `label`, the inputs sentence, the warnings. */
+/**
+ * Text in paragraphs of at most {@link TEXT_MAX} characters, split only after ", ": every part shows, none
+ * is cut (crew slice 8 review F1). A part is a right or a glob, which the manifest keeps far shorter.
+ */
+export function factParas(text: string): string[] {
+  const paras: string[] = [];
+  let line = "";
+  for (const part of text.split(/(?<=, )/u)) {
+    if (line !== "" && [...line].length + [...part].length > TEXT_MAX) {
+      paras.push(line.trimEnd());
+      line = "";
+    }
+    line += part;
+  }
+  if (line.trim() !== "") paras.push(line.trimEnd());
+  return paras;
+}
+
+/**
+ * The head of a card's view: the rights under `label`, the inputs sentence, the warnings. The facts
+ * the person decides on, so every one shows in full (crew slice 8 review F1): the rights as a bar of
+ * chips when each fits a chip and the bar holds them all, else as paragraphs "<label>: A, B, C".
+ */
 export function rightsHead(label: string, rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], reads: string | null): ViewNode[] {
   const head: ViewNode[] = [];
-  if (rights.length > 0) head.push({ kind: "bar", attrs: { label }, kids: rights.slice(0, 8).map((right): ViewNode => ({ kind: "chip", text: [...right].slice(0, 60).join(""), attrs: { tone: "warn" } })) });
+  const chips = rights.length <= VIEW_LIMITS.barKids.max && rights.every((right) => [...right].length <= CHIP_TEXT_MAX);
+  if (rights.length > 0 && chips) head.push({ kind: "bar", attrs: { label }, kids: rights.map((right): ViewNode => ({ kind: "chip", text: right, attrs: { tone: "warn" } })) });
+  if (rights.length > 0 && !chips) for (const text of factParas(`${label}: ${rights.join(", ")}`)) head.push({ kind: "para", text });
   // Contract 2: the new globs in the one sentence Settings and `collie trick check` say too.
-  if (reads !== null) head.push({ kind: "para", text: [...reads].slice(0, TEXT_MAX).join("") });
+  if (reads !== null) for (const text of factParas(reads)) head.push({ kind: "para", text });
   for (const kind of warnings) head.push({ kind: "para", text: WARN_PLAIN[kind] });
   return head;
 }
 
 /**
- * A view of `head` and the files of `diff`, cut until it fits (the rule of {@link versionViewShown}), and
- * how many files it shows whole. The one fitting both the "new version" card and the proposal card use.
+ * A view of `head`, then `extra`, then the files of `diff`, cut until it fits (the rule of
+ * {@link versionViewShown}), and how many files it shows whole. The one fitting both the "new version"
+ * card and the proposal card use. The head is never cut: when it does not fit on its own, the view is
+ * null and `headFits` is false (crew slice 8 review F1). `extra` (the author's words) is kept only when it
+ * costs no code: when it does, the view is fitted without it.
  */
-export function fitView(head: readonly ViewNode[], diff: VersionDiff): VersionViewShown {
+export function fitView(head: readonly ViewNode[], diff: VersionDiff, extra: readonly ViewNode[] = []): VersionViewShown {
+  if (head.length > 0 && (bytesOf([...head]) > DECISION_VIEW_LIMITS.bytes || checked([...head]) === undefined)) return { view: null, shown: 0, headFits: false };
+  const bare = fitCode(head, diff);
+  if (extra.length === 0) return bare;
+  const worded = fitCode([...head, ...extra], diff);
+  return worded.view !== null && worded.shown >= bare.shown && worded.rows >= bare.rows ? worded : bare;
+}
+
+/** {@link fitView} for one fixed head: the code is cut, the head never. */
+function fitCode(head: readonly ViewNode[], diff: VersionDiff): VersionViewShown & { rows: number } {
   const files = diff.files;
   const largest = files.filter((file) => (file.hunk ?? []).length > 0).toSorted((a, b) => (b.plus ?? 0) + (b.minus ?? 0) - ((a.plus ?? 0) + (a.minus ?? 0)));
   let rows = Math.min(files.length, TABLE_LIMITS.rows.max);
   let hunks = largest.length;
   let lines: number = DIFF_LIMITS.lines;
+  const headOnly = (): VersionViewShown & { rows: number } => {
+    const view = head.length > 0 && bytesOf([...head]) <= DECISION_VIEW_LIMITS.bytes ? (checked([...head]) ?? null) : null;
+    return { view, shown: 0, headFits: view !== null || head.length === 0, rows: 0 };
+  };
   // Bounded: every miss takes one hunk, halves the last hunk's lines, or takes one row.
   for (let tries = 0; tries < 256; tries += 1) {
     const view: View = [...head];
@@ -289,18 +331,18 @@ export function fitView(head: readonly ViewNode[], diff: VersionDiff): VersionVi
     }
     const more = files.length - rows;
     if (more > 0) view.push({ kind: "line", text: more === 1 ? "and 1 more file" : `and ${String(more)} more files`, attrs: { role: "note" } });
-    if (view.length === 0) return { view: null, shown: 0 };
+    if (view.length === 0) return { view: null, shown: 0, headFits: true, rows: 0 };
     const read = bytesOf(view) <= DECISION_VIEW_LIMITS.bytes ? checked(view) : undefined;
-    if (read !== undefined) return { view: read, shown };
+    if (read !== undefined) return { view: read, shown, headFits: true, rows };
     if (hunks > 1 && lines >= DIFF_LIMITS.lines) hunks -= 1;
     else if (hunks >= 1 && lines > 8) lines = Math.floor(lines / 2);
     else if (hunks >= 1) {
       hunks -= 1;
       lines = DIFF_LIMITS.lines;
     } else if (rows > 1) rows -= 1;
-    else return { view: head.length > 0 ? (checked([...head]) ?? null) : null, shown: 0 };
+    else return headOnly();
   }
-  return { view: null, shown: 0 };
+  return headOnly();
 }
 
 /** A canonical UUID for one card: the trick, the hash and how many cards of this trick came before. */

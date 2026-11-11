@@ -18,8 +18,10 @@ import type { VersionDiff } from "./version-diff.ts";
 // files it has, what it asks for (its places and environment names, its `inputs` globs, what a text
 // search of its code finds), and how much of the code the card shows. The view: the rights as chips, the
 // inputs sentence, the warnings, then the author's name, description and about in one group headed
-// "Its author's words. Collie did not check them.", then the files and their code, fitted like the "new
-// version" card's (version-card.ts `fitView`): a file counts as shown only when its whole text is.
+// "Its author's words. Collie did not check them." (at most 3 paragraphs and 400 characters), then the
+// files and their code, fitted like the "new version" card's (version-card.ts `fitView`): a file counts as
+// shown only when its whole text is. The facts are never cut (review F1): the author's words go first
+// when they would cost code, then code; when the facts alone do not fit, the proposal is refused.
 //
 // ── NO RECOMMENDATION ──────────────────────────────────────────────────────────────────────────────
 // DECISION: the card never recommends "Switch it on". A proposal is code from an agent; the person's own
@@ -90,14 +92,44 @@ export function proposalRights(manifest: Pick<TrickManifest, "env" | "places">):
   return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place))];
 }
 
-/** The author's words as paragraphs: the name, the description, and each paragraph of `about`. */
-function authorWords(manifest: Pick<TrickManifest, "name" | "description" | "about">): ViewNode[] {
-  const paras = [manifest.name, manifest.description ?? "", ...(manifest.about ?? "").split(/\n\s*\n/u)].map((text) => plain(text, TEXT_MAX)).filter((text) => text !== "");
+/** The author's words on a card: at most this many paragraphs ... */
+export const AUTHOR_PARAS_MAX = 3;
+/** ... of at most this many characters together. A cut ends in "…". */
+export const AUTHOR_CHARS_MAX = 400;
+
+/**
+ * The author's words as paragraphs: the name, the description, and the paragraphs of `about`, at most
+ * {@link AUTHOR_PARAS_MAX} of them and {@link AUTHOR_CHARS_MAX} characters, so they never crowd out the facts.
+ */
+export function authorWords(manifest: Pick<TrickManifest, "name" | "description" | "about">): ViewNode[] {
+  const all = [manifest.name, manifest.description ?? "", ...(manifest.about ?? "").split(/\n\s*\n/u)].map((text) => plain(text, TEXT_MAX)).filter((text) => text !== "");
+  const paras: string[] = [];
+  let left = AUTHOR_CHARS_MAX;
+  let cut = all.length > AUTHOR_PARAS_MAX;
+  for (const text of all.slice(0, AUTHOR_PARAS_MAX)) {
+    const chars = [...text];
+    if (chars.length <= left) {
+      paras.push(text);
+      left -= chars.length;
+      continue;
+    }
+    if (left > 1) paras.push(chars.slice(0, left - 1).join(""));
+    cut = true;
+    break;
+  }
+  const last = paras.length - 1;
+  if (cut && last >= 0) paras[last] = `${paras[last] ?? ""}…`;
   return paras.map((text): ViewNode => ({ kind: "para", text, attrs: { role: "quote" } }));
 }
 
-/** The card for one proposal: title, summary, options, no recommendation, and the view. */
-export function proposalCard(input: ProposalCardInput): Omit<HillPostInput, "requestId"> {
+/** The refusal of a proposal whose facts do not fit one card (crew slice 8 review F1). */
+export const PROPOSAL_TOO_LARGE = "This trick asks for more than a card can show, so it was not proposed. Ask your person to add it on the machine.";
+
+/**
+ * The card for one proposal: title, summary, options, no recommendation, and the view. Null when its
+ * facts (rights, inputs, warnings) do not fit a view: the proposal is then refused ({@link PROPOSAL_TOO_LARGE}).
+ */
+export function proposalCard(input: ProposalCardInput): Omit<HillPostInput, "requestId"> | null {
   const { manifest } = input;
   const rights = proposalRights(manifest);
   const reads = manifest.inputs ?? [];
@@ -109,8 +141,9 @@ export function proposalCard(input: ProposalCardInput): Omit<HillPostInput, "req
   const alsoWords = also.length <= 1 ? also.join("") : `${also.slice(0, -1).join(", ")}, and ${also.at(-1) ?? ""}`;
   const fact = also.length > 0 ? `It ${alsoWords}.` : "It asks for no rights.";
   const head = rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null);
-  head.push({ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: authorWords(manifest) });
-  const shown = fitView(head, input.diff);
+  const words = authorWords(manifest);
+  const shown = fitView(head, input.diff, words.length > 0 ? [{ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: words }] : []);
+  if (!shown.headFits) return null;
   const total = input.diff.files.length;
   const whole = shown.view !== null && shown.shown >= total;
   const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
@@ -151,8 +184,8 @@ export interface ProposalVersionCardInput {
   crew: boolean;
 }
 
-/** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended. */
-export function proposalVersionCard(input: ProposalVersionCardInput): Omit<HillPostInput, "requestId"> {
+/** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended. Null as {@link proposalCard}. */
+export function proposalVersionCard(input: ProposalVersionCardInput): Omit<HillPostInput, "requestId"> | null {
   const rights = newRights(input.baseManifest, input.manifest);
   const reads = newInputs(input.baseManifest, input.manifest);
   const also = [
@@ -164,6 +197,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): Omit<HillP
   const fact = also.length > 0 ? `It now also ${alsoWords}.` : "It asks for no new rights.";
   const head = rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null);
   const shown = fitView(head, input.diff);
+  if (!shown.headFits) return null;
   const total = input.diff.files.length;
   const whole = shown.view !== null && shown.shown >= total;
   const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shown.shown, total)}`;
