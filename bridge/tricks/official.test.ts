@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 
 import { parseJson, type JsonValue } from "../../web/src/lib/json.ts";
 import { parseWalkyRequest } from "../walky/parse.ts";
-import { isCodePath, trickCodeHash } from "./code-hash.ts";
+import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
 import { isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
@@ -38,7 +38,7 @@ const C1 = "1".repeat(40);
 const H1 = "a".repeat(64);
 
 function entryFields(over: Partial<Record<keyof OfficialEntry, JsonValue>> = {}) {
-  return { id: "legs", name: "Legs", description: "Counts legs.", repo: REPO, dir: "legs", commit: C1, hash: H1, contract: 1, previous: [], ...over };
+  return { id: "legs", name: "Legs", description: "Counts legs.", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, contract: 1, previous: [], ...over };
 }
 const entry = (over: Partial<Record<keyof OfficialEntry, JsonValue>> = {}): JsonValue => entryFields(over);
 const listOf = (...tricks: JsonValue[]): JsonValue => ({ v: 1, tricks });
@@ -255,9 +255,20 @@ async function expectNoLeftovers(r: Rig): Promise<void> {
   expect(tricks.filter((n) => n.startsWith(".collie-add-") || n.startsWith(".collie-old-"))).toEqual([]);
 }
 
-/** A list entry for the fixture: its file URL, a commit, and the hash the tree's folder has. */
-function fixtureEntry(url: string, commit: string, hash: string, id = "legs"): OfficialEntry {
-  return { id, name: `Trick ${id}`, description: "Counts legs.", repo: url, dir: id, commit, hash, contract: 1, previous: [] };
+/** The extras hash a folder holding `files` has (code-hash.ts `officialExtrasHash`): its config.toml and media/. */
+function extrasOf(files: Record<string, FixtureFile>): string {
+  const held = Object.entries(files).flatMap(([rel, file]) => ("text" in file ? [{ rel, bytes: new TextEncoder().encode(file.text) }] : []));
+  const extras = officialExtrasHash(held);
+  if (!extras.ok) throw new Error(`${extras.rel} is not an extra`);
+  return extras.hash;
+}
+
+/** The extras of V1 and V2 below: their config.toml. */
+const EXTRAS = extrasOf({ "config.toml": { text: "rows = 8\n" } });
+
+/** A list entry for the fixture: its file URL, a commit, and the hashes the tree's folder has. */
+function fixtureEntry(url: string, commit: string, hash: string, id = "legs", extras = EXTRAS): OfficialEntry {
+  return { id, name: `Trick ${id}`, description: "Counts legs.", repo: url, dir: id, commit, hash, extras, contract: 1, previous: [] };
 }
 
 /** The list's entry moved to another commit, as the maintainer script moves it: the old version goes first into `previous`. */
@@ -276,7 +287,7 @@ const V2_LEGS = { "trick.toml": V2["legs/trick.toml"], "program.sh": V2["legs/pr
 
 describe("an entry's state on this machine", () => {
   const C0 = "0".repeat(40);
-  const e = { id: "legs", repo: REPO, dir: "legs", commit: C1, hash: H1, previous: [{ commit: C0, hash: "b".repeat(64) }] };
+  const e = { id: "legs", repo: REPO, dir: "legs", commit: C1, hash: H1, extras: H1, previous: [{ commit: C0, hash: "b".repeat(64) }] };
   test("absent, added, update and taken", async () => {
     const configDir = await tempDir();
     const dir = join(configDir, TRICKS_DIR, "legs");
@@ -413,6 +424,24 @@ describe.if(posix)("adding from the list", () => {
     expect(await stat(trickDir(r, "legs")).catch(() => null)).toBeNull();
     expect(r.audit).toEqual([]);
     await expectNoLeftovers(r);
+  });
+
+  test("config.toml or media/ other than the list's extras hash installs nothing; a log or a captures/ file in the folder is refused", async () => {
+    const repo = await fixtureRepo([{ ...V1, "legs/media/icon.png": { text: "png" } }]);
+    const code = await hashOf(V1_LEGS);
+    // The code hash is the list's, but the extras are not: config.toml alone, without the picture.
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", code)]);
+    expect(await r.official.install("legs", "add")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
+    expect(await readdir(join(r.configDir, TRICKS_DIR)).catch(() => [])).not.toContain("legs");
+    await expectNoLeftovers(r);
+    const right = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", code, "legs", extrasOf({ "config.toml": { text: "rows = 8\n" }, "media/icon.png": { text: "png" } }))]);
+    expect((await right.official.install("legs", "add")).status).toBe(200);
+    for (const stray of ["legs/run.log", "legs/captures/shot.png", "legs/inputs/a.md"]) {
+      const bad = await fixtureRepo([{ ...V1, [stray]: { text: "x" } }]);
+      const refused = await rig([fixtureEntry(bad.url, bad.shas[0] ?? "", code)]);
+      expect(await refused.official.install("legs", "add")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
+      expect(await readdir(join(refused.configDir, TRICKS_DIR)).catch(() => [])).not.toContain("legs");
+    }
   });
 
   test("a commit the repository does not serve, or an unreachable repository, is the plain network line, and nothing stays", async () => {

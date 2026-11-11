@@ -313,17 +313,20 @@ refuse, and the switch stays one tap.
 Each Collie release carries a short list of official tricks: `bridge/tricks/official.json`, built into
 the binary, read strictly by `bridge/tricks/official.ts`. An entry is a trick id, its name, one line
 about it, the repository (`https://github.com/AltanS/collie-tricks`, the only one the reader accepts),
-the folder in it, a full commit and the code hash that folder has at that commit. Settings, Tricks shows
+the folder in it, a full commit, the code hash that folder has at that commit, and an extras hash over what
+an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`). Settings, Tricks shows
 the entries that are not added under "From Collie", each with an Add button. Nothing ships switched on,
 and no trick code ships in the binary.
 
 **What a tap does.** `POST /api/tricks/official/<id>/add` (write, like the switch: a paired phone only,
 never the local credential an agent can hold, and no WalkyTalky op reaches it). The bridge fetches that
 one commit with the fetch of `collie trick add` (`bridge/tricks/fetch.ts`), reads the folder by the same
-rules, and takes its code hash. Only when the hash is the list's does it write the folder, off, with an
+rules, and takes its code hash and its extras hash. Only when both are the list's does it write the folder, off, with an
 origin record `{ url, commit, subdir, official: true }` and no approved copy. The person's switch makes
 the approved copy, as for any trick. A hash that differs adds nothing: "The code did not match.
-Nothing was added." One add runs at a time, the whole add has a two-minute cap, and the temp folder under
+Nothing was added." The same holds for a `config.toml` or a picture in `media/` other than the list's,
+and for any other file the code hash leaves out (`captures/`, `inputs/`, a `.log`): an official trick
+ships none, so the add refuses it. One add runs at a time, the whole add has a two-minute cap, and the temp folder under
 `<stateDir>/tricks/` goes on every path.
 
 **Two caps on the fetch.** Time: every git run ends by two minutes after the tap, and a kill takes git's
@@ -372,8 +375,10 @@ running the approved copy, and the new version waits for the yes on its version 
 changed trick takes. Remove stays as it is.
 
 **The maintainer script.** `bun scripts/official-tricks.ts --repo-dir <checkout> --commit <sha>` writes
-the commit, each hash (the real hash function, over the folder git holds at that commit) and each
-manifest's name into the list; `--check` writes nothing and fails when the list is stale. `collie trick
+the commit, each hash (the real hash function, over the folder git holds at that commit), each extras
+hash (the same function the add checks with), the earlier versions in `previous`, and each manifest's
+name into the list. It refuses a commit that is not on `origin/main` of the checkout, and a folder with a
+non-code file other than `config.toml` and `media/`; `--check` writes nothing and fails when the list is stale. `collie trick
 list --official` prints the list and each state here; it fetches nothing.
 
 ## Handing a trick to the person: `collie trick propose` and `collie trick guide`

@@ -298,6 +298,29 @@ export function codeHashOfFiles(files: readonly { rel: string; bytes: Uint8Array
   return h.digest("hex");
 }
 
+/**
+ * THE EXTRAS OF AN OFFICIAL TRICK (security review N3): the files an add from the From Collie list installs
+ * that the code hash leaves out. Only two kinds may be there: `config.toml` at the top and files under a
+ * top-level `media/`. Their hash is the code hash's format over those files, with its own first line, so the
+ * two can never be equal. The list names it (`extras`, official.ts), the maintainer script takes it with
+ * this function, and the add checks it before anything is written. Any other file the code hash leaves out
+ * (`captures/`, `inputs/`, a `.log`) refuses the folder: an official trick ships none.
+ */
+export function officialExtrasHash(files: readonly { rel: string; bytes: Uint8Array }[]): { ok: true; hash: string } | { ok: false; rel: string } {
+  const extras = files.filter((file) => !isCodePath(file.rel));
+  const other = extras.find((file) => file.rel !== CONFIG_FILE && !file.rel.startsWith("media/"));
+  if (other !== undefined) return { ok: false, rel: other.rel };
+  const h = createHash("sha256");
+  h.update("collie-extras\0v1\n");
+  for (const file of [...extras].toSorted(byPath)) {
+    h.update(`file\0${file.rel}\0`);
+    h.update(`${String(file.bytes.length)}\0`);
+    h.update(file.bytes);
+    h.update("\n");
+  }
+  return { ok: true, hash: h.digest("hex") };
+}
+
 /** The code hash of a trick folder, read fresh: what `collie trick on` and the switch route store. */
 export async function trickCodeHash(dir: string, fs: TrickFs = diskTrickFs): Promise<{ ok: true; hash: string } | { ok: false; reason: string }> {
   const walk = await walkTrickCode(fs, dir);

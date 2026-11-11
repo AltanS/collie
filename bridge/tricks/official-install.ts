@@ -3,7 +3,7 @@ import { devNull } from "node:os";
 import { join } from "node:path";
 
 import type { OfficialState, OfficialTricksReply, TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
-import { isCodePath, trickCodeHash } from "./code-hash.ts";
+import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStanding, officialStateOf, officialWire, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
 import { renderOrigin } from "./origin.ts";
@@ -26,6 +26,8 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 //      is read from it. The commit git resolved must be the listed one.
 //   2. READ the one folder by fetch.ts `readCandidate`: no link, no submodule, regular files only, 300 files,
 //      5 MB, 8 levels, safe names, a manifest the strict reader takes, and its id must be the entry's.
+//      The files beside the code that an add installs (`config.toml`, `media/`) must hash to the entry's
+//      `extras` (code-hash.ts `officialExtrasHash`); any other file the code hash leaves out refuses it.
 //   3. HASH what would land: the files are written into a staged sibling in the tricks folder and hashed by
 //      code-hash.ts `trickCodeHash`, the hash a switch approves. Another hash than the list's removes the
 //      stage and answers "The code did not match. Nothing was added."
@@ -217,8 +219,9 @@ export class OfficialTricks implements OfficialTricksSurface {
 
   /** Steps 1 and 2: the fetch and the folder, each refusal as its answer. */
   private async fetch(entry: OfficialEntry, fetchDir: string, mode: "add" | "update", deadline: number): Promise<Candidate> {
+    let candidate: Candidate;
     try {
-      return await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline));
+      candidate = await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline));
     } catch (err) {
       if (!(err instanceof FetchRefused)) throw err;
       this.deps.warn?.(`${entry.id}: the From Collie fetch was refused (${err.step}): ${err.message}`);
@@ -228,6 +231,16 @@ export class OfficialTricks implements OfficialTricksSurface {
       if (err.step === "size") throw new Stop({ status: 422, body: { error: "too-large", message: mode === "add" ? OFFICIAL_LINES.mismatch : OFFICIAL_LINES.updateMismatch } });
       throw new Stop(mismatch(mode));
     }
+    // An add writes config.toml and media/ too, which the code hash leaves out: the extras hash pins them.
+    // An update takes only code, so it has nothing of them to check.
+    if (mode === "add") {
+      const extras = officialExtrasHash(candidate.files);
+      if (!extras.ok || extras.hash !== entry.extras) {
+        this.deps.warn?.(`${entry.id}: the From Collie add was refused: ${extras.ok ? "the extras hash differs from the list's" : `${extras.rel} is neither code, config.toml nor under media/`}`);
+        throw new Stop(mismatch(mode));
+      }
+    }
+    return candidate;
   }
 
   /** Steps 3 and 4, in the runner's lane: the state again, then the staged write held to the list's hash. */
