@@ -5314,6 +5314,10 @@ export class SendProtocol {
    */
   private async write(state: RunState, lines: readonly string[]): Promise<void> {
     state.phase = "write";
+    // A send from an agent view (review 9 R4): the screen, the switch and the gate, read once more right
+    // before the first key, since S0's reads and settles may have waited while the agent redrew.
+    const moved = state.request.view?.check() ?? null;
+    if (moved !== null) throw new Ended("refused", "stale_view", { detail: moved });
     const { mux } = this.deps;
     if (state.whole !== null && mux.pasteBlock !== undefined) {
       this.guard(state);

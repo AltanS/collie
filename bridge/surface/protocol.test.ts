@@ -11436,3 +11436,19 @@ describe("review 9 M1: a view send to a pane with no profile", () => {
     expect(answer.receipt?.outcome).toBe("sent");
   });
 });
+
+// Review 9 R4: the view's check runs under the lock AND again right before the first key, after S0's reads.
+describe("review 9 R4: a view send's check right before the write", () => {
+  const HEAD = "[view:morph local/%1#aaaa] from operator:";
+  test("rule 6: a screen redrawn while S0 read the pane is caught right before the first key: refused stale_view, nothing typed", async () => {
+    const { pane, send } = rig();
+    let calls = 0;
+    const check = (): string | null => (++calls === 1 ? null : "this screen changed");
+    const answer = await send(`${HEAD} tapped "Yes"`, { view: { head: true, check } });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "stale_view" });
+    expect(answer.detail).toBe("this screen changed");
+    expect(calls).toBe(2);
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.box).toBe("");
+  });
+});
