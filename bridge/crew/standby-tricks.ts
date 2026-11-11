@@ -512,8 +512,11 @@ export class StandbyTricksStore {
   readonly dir: string;
   private cached: TricksIndex | null = null;
   private loaded = false;
-  /** The next part each incoming code expects, by `<id>:<hash>`. In memory: a restart starts again at 0. */
-  private readonly incoming = new Map<string, { next: number; stage: string }>();
+  /**
+   * The next part each incoming code expects, by `<id>:<hash>`, its stage and the bytes in it. In memory:
+   * a restart starts again at 0. Only a code the index still owes may have one (review 7 R3).
+   */
+  private readonly incoming = new Map<string, { next: number; stage: string; bytes: number }>();
   /** When each trick's state last landed, for the once-a-minute rule. */
   private readonly stateAt = new Map<string, number>();
   /** Set while the person's tap adopts the copy, so a role change on the way does not remove it. */
@@ -604,6 +607,13 @@ export class StandbyTricksStore {
     if (same) for (const [id, kept] of held.state) if (input.tricks.some((t) => t.id === id && t.state !== null)) state.set(id, kept);
     const next: TricksIndex = { version: STANDBY_TRICKS_VERSION, crewId: input.crewId, from: input.from, seq: input.seq, at: this.now(), tricks: [...input.tricks], code, state };
     await this.saveIndex(next);
+    // A part on its way in for code the new list no longer owes (another hash, refused, gone) is dropped,
+    // and its stage goes with the prune: a lead that keeps changing a trick cannot pile stages up (review 7 R3).
+    for (const key of this.incoming.keys()) {
+      const cut = key.lastIndexOf(":");
+      const owed = next.code.get(key.slice(0, cut));
+      if (owed?.state !== "need" || owed.hash !== key.slice(cut + 1)) this.incoming.delete(key);
+    }
     await this.pruneFolders(next);
     return { ok: true, need: needLists(next) };
   }
@@ -644,18 +654,22 @@ export class StandbyTricksStore {
       await this.ensureDir();
       const stage = join(this.dir, `.stage-${randomBytes(6).toString("hex")}`);
       await mkdir(stage, { mode: 0o700 });
-      progress = { next: 0, stage };
+      progress = { next: 0, stage, bytes: 0 };
       this.incoming.set(key, progress);
     }
     if (progress === undefined || progress.next !== part.part) return { ok: false, code: "order", reason: "parts come in order from 0; start again" };
     for (const chunk of part.chunks) {
       const file = trick.files.find((f) => f.rel === chunk.rel);
       if (file === undefined) return await this.dropIncoming(key, "bad_part", "a part names a file the list does not");
+      // Every stage together stays within what the carried code may hold at all.
+      const staged = [...this.incoming.values()].reduce((sum, one) => sum + one.bytes, 0);
+      if (staged + chunk.bytes.length > CARRY_CODE_TOTAL_MAX) return await this.dropIncoming(key, "bad_part", "the parts on their way in hold too much; start again");
       const path = join(progress.stage, chunk.rel);
       const have = (await lstat(path).catch(() => null))?.size ?? 0;
       if (chunk.at !== have || have + chunk.bytes.length > file.size) return await this.dropIncoming(key, "bad_part", "a part does not continue its file");
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
       await appendFile(path, chunk.bytes, { mode: 0o600 });
+      progress.bytes += chunk.bytes.length;
     }
     progress.next += 1;
     if (progress.next < part.parts) return { ok: true, held: false };

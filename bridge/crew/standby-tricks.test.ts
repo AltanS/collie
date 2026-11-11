@@ -205,6 +205,22 @@ describe("the deputy's store", () => {
     expect(await store.applyCodePart({ id: "legs", hash: lt.trick.hash, part: 0, parts: 1, chunks })).toEqual({ ok: true, held: true });
   });
 
+  test("a list that changes a trick's hash drops the stage of the old one: no stage piles up (review 7 R3)", async () => {
+    const store = new StandbyTricksStore((await machine("deputy")).stateDir);
+    const stages = async () => (await readdir(store.dir)).filter((name) => name.startsWith(".stage-"));
+    const big = 3 * 1024 * 1024;
+    for (let cycle = 1; cycle <= 5; cycle += 1) {
+      const hash = String(cycle).repeat(64);
+      const t = trick({ hash, files: [{ rel: "data.ts", size: big, x: false }] });
+      expect((await store.applyList({ from: "desk", crewId: "crew-1", seq: cycle, tricks: [t] })).ok).toBe(true);
+      // Part 0 of 2 lands, then the next list names a new hash before part 1.
+      expect(await store.applyCodePart({ id: "legs", hash, part: 0, parts: 2, chunks: [{ rel: "data.ts", at: 0, bytes: new Uint8Array(CARRY_PART_BYTES) }] })).toEqual({ ok: true, held: false });
+      expect((await stages()).length).toBe(1);
+    }
+    await store.applyList({ from: "desk", crewId: "crew-1", seq: 6, tricks: [] });
+    expect(await stages()).toEqual([]);
+  });
+
   test("a big trick goes in parts under the body cap, and lands whole", async () => {
     const lead = await machine("lead");
     const blob = new Uint8Array(CARRY_PART_BYTES + 1000).fill(65);
