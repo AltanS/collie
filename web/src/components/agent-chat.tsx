@@ -632,6 +632,7 @@ export function AgentChat({
     if (beltParts.length === 0) return undefined;
     return beltMarksOf({
       parts: beltParts,
+      pane: agent,
       handlersFor: (host) => beltTapHandlers(agent, host),
       sessions: trickSessions ?? [],
       onOpenSession: openTrickSession,

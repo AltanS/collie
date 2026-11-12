@@ -5,6 +5,7 @@ import { useBridgeNow } from "@/lib/tricks/clock";
 import { isPastWindow } from "@/lib/tricks/frame";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { TrickMark } from "@/lib/tricks/mark";
+import { partsInSession, type MenuPane } from "@/lib/tricks/menu";
 import { parseTrickSessionId, partKey, type WireTrickPart } from "@/lib/tricks/schema";
 import { setStatus } from "@/lib/status";
 import { tapRefusalLine, useTrickPart, type TricksStore, tricksStore, type TapHandlers } from "@/lib/tricks/store";
@@ -81,9 +82,15 @@ function BeltTrickMark({
   return <TrickMark mark={mark} trickName={trickName} stale={stale} actionLabel={t("tricks.mark.open", { trick: trickName })} onTap={() => onOpenSession(session)} />;
 }
 
-/** The belt's marks, ready for `ActionsRow` `marks`. */
+/**
+ * The belt's marks, ready for `ActionsRow` `marks`, for the session `pane` (contract 2): a mark bound to
+ * sessions shows only in a session it is bound to, at the same instance, and replaces its trick's unbound
+ * mark there (lib/tricks/menu.ts `partsInSession`). No pane, or a shell: no bound mark at all.
+ */
 export function beltMarksOf(opts: {
   parts: readonly WireTrickPart[];
+  /** The session the belt belongs to. */
+  pane?: MenuPane;
   /** What travels beside a tap on a part (the session open on the phone), by the host its trick runs on. */
   handlersFor: (host: string) => TapHandlers;
   sessions: readonly AgentView[];
@@ -91,7 +98,7 @@ export function beltMarksOf(opts: {
   store?: TricksStore;
 }): BeltMark[] {
   const store = opts.store ?? tricksStore;
-  return opts.parts.map((part) => {
+  return partsInSession(opts.parts, opts.pane).map((part) => {
     const key = partKey(part);
     return {
       id: key,

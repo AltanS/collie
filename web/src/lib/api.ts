@@ -3243,7 +3243,9 @@ export async function fetchSttModel(sha256: string, signal?: AbortSignal): Promi
  * throws, so the store keeps what it holds rather than merging half a reply.
  */
 export async function fetchTricks(since: number, signal?: AbortSignal): Promise<TricksReply> {
-  const body = await req<JsonValue>(`/api/tricks?since=${Math.max(0, Math.floor(since))}`, { signal, timeoutMs: POLL_TIMEOUT_MS });
+  // `bound=1`: this phone draws a part bound to sessions only where it is bound (lib/tricks/menu.ts), so
+  // it may have them. A phone that does not ask gets none (bridge/tricks/bound.ts).
+  const body = await req<JsonValue>(`/api/tricks?since=${Math.max(0, Math.floor(since))}&bound=1`, { signal, timeoutMs: POLL_TIMEOUT_MS });
   const reply = readTricksReplyTolerant(body);
   if (reply === undefined) throw new Error("/api/tricks answered with a body that is not a tricks reply");
   return reply;
@@ -3263,7 +3265,8 @@ function recoverTapReceipt(_status: number, detail: string): JsonValue | null {
  */
 export async function tapTrick(host: string, trick: string, body: TapBody): Promise<TrickTapReply> {
   const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/tap`;
-  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) }, recoverTapReceipt);
+  // `bound=1`, as `fetchTricks` asks: the receipt may carry the trick's bound parts too.
+  const raw = await req<JsonValue>(`${path}?bound=1`, { method: "POST", body: JSON.stringify(body) }, recoverTapReceipt);
   const reply = readTapReplyTolerant(raw);
   if (reply === undefined) throw new Error(`${path} answered with a body that is not a tap receipt`);
   return reply;

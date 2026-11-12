@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { ViewEarlier, ViewPendingBlock, ViewReceiptCard, ViewSentLine } from "@/components/agent-view-blocks";
 import { ViewChoiceBlock, ViewChoiceDone } from "@/components/agent-view-choice";
@@ -13,6 +13,7 @@ import { KeyedFlow, type FlowItem } from "@/components/ui/keyed-flow";
 import { OneOf } from "@/components/ui/one-of";
 import { PresenceList } from "@/components/ui/presence";
 import { useLocale } from "@/hooks/use-locale";
+import { SETTLE_MS, useSettled } from "@/hooks/use-settled";
 import {
   blockControl,
   choiceControl,
@@ -130,25 +131,13 @@ export interface AgentViewScreenProps {
 }
 
 /**
- * How long a control must stand still before a tap on it counts, in ms (review 10 W3). The rev a tap
- * names is current, so the bridge would send it: the phone alone knows that the button under the finger
+ * How long a control must stand still before a tap on it counts, in ms (review 10 W3): the shared settle
+ * window (hooks/use-settled.ts), the same for a trick's rows in a session's settings. The rev a tap names
+ * is current, so the bridge would send it: the phone alone knows that the button under the finger
  * mounted, faded in (`ui/keyed-flow.tsx` staggers a first screen in, 350 ms at most) or moved a moment
  * ago, so the person may have aimed at another one.
  */
-export const VIEW_SETTLE_MS = 500;
-
-/**
- * Whether the screen has stood still for `settleMs`: `layout` names everything that places a control (the
- * screen's rev, the request block and its lines, the text answer), and any change to it starts the window
- * again. The answer is read at the tap, from the clock, so no timer runs.
- */
-function useSettled(layout: string, settleMs: number): () => boolean {
-  const since = useRef<number | null>(null);
-  useLayoutEffect(() => {
-    since.current = Date.now();
-  }, [layout]);
-  return useCallback(() => since.current !== null && Date.now() - since.current >= settleMs, [settleMs]);
-}
+export const VIEW_SETTLE_MS = SETTLE_MS;
 
 /** Where a view's picture bytes are: the set id stands where the hill's source takes a decision id. */
 export const viewMediaSource: HillMediaSource = (set, media) => viewMediaPath(set, media.id);

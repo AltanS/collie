@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs } from "@/components/trick-about-sheet";
 import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
-import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, MENU_TAP_WORDS, MENU_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
 // A trick's About sheet: the name as the title, the description and the about paragraphs, then two groups
 // built only from what the bridge already sends for the row.
@@ -290,5 +290,20 @@ describe("review 8 V-N5: rules the phone cannot show, and no auto switch on any 
   it("an agent view never shows the Updates switch, even when its rules did not arrive", () => {
     render(<TrickAboutSheet trick={VIEW} open onClose={vi.fn()} onAuto={vi.fn()} />);
     expect(screen.queryByText("Updates")).toBeNull();
+  });
+});
+
+describe("the menu place's two lines (contract 2)", () => {
+  it("an installed trick with session settings rows and an Official entry that adds them say the same two lines, the schema's", () => {
+    const trick: WireTrickInfo = { host: "lodge", id: "ci", name: "CI", icon: "flask", on: true, state: "ok", places: ["menu"], provenance: { via: "folder" } };
+    render(<TrickAboutSheet trick={trick} open onClose={vi.fn()} />);
+    const does = screen.getByRole("list", { name: "What it does" });
+    expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Draws in: session settings.", MENU_WORDS, MENU_TAP_WORDS]);
+    cleanup();
+    const entry: WireOfficialTrick = { id: "ci", name: "CI", description: "Reruns CI.", repo: "https://example.com/tricks.git", repoName: "owner/tricks", commit: "a".repeat(40), state: "absent", addsMenu: true };
+    render(<OfficialTrickAboutSheet entry={entry} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    const official = screen.getByRole("list", { name: "What it does" });
+    expect([...official.querySelectorAll("li")].map((li) => li.textContent)).toEqual([MENU_WORDS, MENU_TAP_WORDS]);
+    expect(readOfficialTricksReply(JSON.parse(JSON.stringify({ tricks: [entry] })))?.tricks[0]?.addsMenu).toBe(true);
   });
 });

@@ -60,6 +60,14 @@ interface FactRow {
   node: ReactNode;
 }
 
+/** The two rows of the `menu` place: what it adds, and what a tap on one of its rows does. */
+function menuRows(): FactRow[] {
+  return [
+    { key: "menu", node: t("settings.tricks.about.menu") },
+    { key: "menu-tap", node: t("settings.tricks.about.menuTap") },
+  ];
+}
+
 /** The rows of "What it does", from the wire's facts alone. Empty when the wire carries none. */
 function doesRows(trick: WireTrickInfo): FactRow[] {
   const rows: FactRow[] = [];
@@ -70,6 +78,8 @@ function doesRows(trick: WireTrickInfo): FactRow[] {
     rows.push({ key: "agent-view", node: t("settings.tricks.about.agentView") });
     rows.push({ key: "agent-view-tap", node: t("settings.tricks.about.agentViewTap") });
   }
+  // Contract 2: rows in a session's settings. What a tap there does is said beside it (MENU_WORDS, MENU_TAP_WORDS).
+  if (places.includes("menu")) rows.push(...menuRows());
   if (trick.rules !== undefined) rows.push({ key: "rules", node: t("settings.tricks.about.rules") });
   if (trick.inputs !== undefined) rows.push({ key: "reads", node: readsLine(trick.inputs) });
   if (trick.env !== undefined && trick.env.length > 0) rows.push({ key: "env", node: t("settings.tricks.about.env", { names: trick.env.join(", ") }) });
@@ -231,7 +241,13 @@ export function OfficialTrickAboutSheet({ entry, open, onClose, busy, canWrite, 
         <p data-line="description" className="text-sm font-medium break-words">
           {entry.description}
         </p>
-        {entry.givesRules === true && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={[{ key: "rules", node: t("settings.tricks.about.rules") }]} />}
+        {(entry.givesRules === true || entry.addsMenu === true) && (
+          <FactGroup
+            slot="does"
+            label={t("settings.tricks.about.does")}
+            rows={[...(entry.addsMenu === true ? menuRows() : []), ...(entry.givesRules === true ? [{ key: "rules", node: t("settings.tricks.about.rules") }] : [])]}
+          />
+        )}
         {/* The list pins the rules but does not carry them, and nothing is fetched before Add (review 8 V-N3). */}
         {entry.givesRules === true && (
           <p data-line="rules-after-add" className="pt-3 text-sm break-words text-muted-foreground">

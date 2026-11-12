@@ -16,7 +16,12 @@ import {
   DESCRIPTION_MAX,
   INPUTS_MAX,
   INPUT_GLOB_MAX,
+  BOUND_SESSIONS_MAX,
   isHostName,
+  isScopeKey,
+  menuLabelProblem,
+  MENU_ROW_KINDS,
+  TRICK_ICONS,
   isTrickId,
   isTrickText,
   NAME_MAX,
@@ -28,6 +33,9 @@ import {
   TRICK_WARNINGS_MAX,
   type OfficialState,
   type OfficialTricksReply,
+  type MenuPart,
+  type MenuRow,
+  type WireBound,
   type TrickPart,
   type TrickTapReply,
   type TricksReply,
@@ -67,7 +75,7 @@ function readPart(raw: JsonValue | undefined): WireTrickPart | undefined {
   const value = asJsonObject(part.value);
   if (host === undefined || trick === undefined || id === undefined || rev === undefined || value === undefined) return undefined;
   if (!isPartValue(value)) return undefined;
-  const out: WireTrickPart = { host, trick, part: id, rev, value };
+  const out: WireTrickPart = { host, trick, part: id, rev, value: value.at === "menu" ? readMenuPart(value) : value };
   const asOf = asJsonString(part.asOf);
   if (asOf !== undefined) out.asOf = asOf;
   const fresh = asJsonString(part.fresh);
@@ -75,6 +83,65 @@ function readPart(raw: JsonValue | undefined): WireTrickPart | undefined {
   if (part.stale === true) out.stale = true;
   const problem = asJsonString(part.problem);
   if (problem !== undefined) out.problem = problem;
+  // Contract 2: a bound part's sessions and instances. One that does not read is no part at all: drawn
+  // without its binding it would show in every session.
+  if (part.bound !== undefined) {
+    const bound = readBound(part.bound);
+    if (bound === undefined) return undefined;
+    out.bound = bound;
+  }
+  return out;
+}
+
+/**
+ * A menu part's rows as this phone draws them (contract 2): each read again (a kind, an id, an intent, a
+ * label the label rule takes, an icon of the set, a switch's state). The bridge refused the rest
+ * already; a row that does not read here (an older or a newer bridge) is left out, never drawn half.
+ */
+function readMenuPart(value: JsonObject): MenuPart {
+  const rows: MenuRow[] = [];
+  for (const raw of Array.isArray(value.rows) ? value.rows : []) {
+    const row = readMenuRow(asJsonObject(raw));
+    if (row !== undefined) rows.push(row);
+  }
+  return { at: "menu", id: asJsonString(value.id) ?? "", rows };
+}
+
+function readMenuRow(obj: JsonObject | undefined): MenuRow | undefined {
+  if (obj === undefined) return undefined;
+  const id = asJsonString(obj.id);
+  const kindWord = asJsonString(obj.kind);
+  const label = asJsonString(obj.label);
+  const intent = asJsonString(obj.intent);
+  const iconWord = asJsonString(obj.icon);
+  const on = asJsonBoolean(obj.on);
+  const kind = MENU_ROW_KINDS.find((word) => word === kindWord);
+  const icon = TRICK_ICONS.find((word) => word === iconWord);
+  if (id === undefined || kind === undefined || label === undefined || intent === undefined) return undefined;
+  if (menuLabelProblem(label) !== undefined || (iconWord !== undefined && icon === undefined)) return undefined;
+  if (kind === "switch" && on === undefined) return undefined;
+  const row: MenuRow = { id, kind, label, intent };
+  if (icon !== undefined) row.icon = icon;
+  if (kind === "switch" && on !== undefined) row.on = on;
+  if (obj.disabled === true) row.disabled = true;
+  if (kind === "button" && obj.confirm === true) row.confirm = true;
+  return row;
+}
+
+/** A walky instance token: four characters of [a-z0-9] (bridge/walky/address.ts `INSTANCE_TOKEN`). */
+const INSTANCE_TOKEN = /^[a-z0-9]{4}$/u;
+
+/** A bound part's `bound`: 1 to {@link BOUND_SESSIONS_MAX} of a scope key and an instance token, or undefined. */
+function readBound(raw: JsonValue): WireBound[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > BOUND_SESSIONS_MAX) return undefined;
+  const out: WireBound[] = [];
+  for (const entry of raw) {
+    const obj = asJsonObject(entry);
+    const session = asJsonString(obj?.session);
+    const instance = asJsonString(obj?.instance);
+    if (session === undefined || !isScopeKey(session) || instance === undefined || !INSTANCE_TOKEN.test(instance)) return undefined;
+    out.push({ session, instance });
+  }
   return out;
 }
 
@@ -285,6 +352,7 @@ function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | unde
   if (body.unlisted === true && state === "taken") out.unlisted = true;
   if (body.changed === true && state === "taken") out.changed = true;
   if (body.givesRules === true) out.givesRules = true;
+  if (body.addsMenu === true) out.addsMenu = true;
   return out;
 }
 
