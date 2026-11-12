@@ -7859,14 +7859,6 @@ export async function serveFolderRoute(
   return null;
 }
 
-// ── Machines (ADR 0084) ──────────────────────────────────────────────────────────
-//
-// Three routes, none forwardable: the lead (or a solo collie) holds every machine's last sample, its
-// day of minutes and its alert rules, so a `?host=` addresses nothing here. A peer has no watch and
-// refuses all three with the `/api/crew` refusal, for that route's reason. Pulled out of the inline
-// dispatch so `bun test` can drive the gate, the refusals and the audit line with a fake caller.
-
-/** What the machine routes need of their caller: the gate, who is asking, and the audit trail. */
 /** Who is asking `POST /api/notifications/clear`: the read gate, and the paired device it names. */
 export interface NotificationsClearCaller {
   gate(): Response | null;
@@ -7924,6 +7916,14 @@ export function serveNotificationsClear(
   return json(body, acceptEncoding);
 }
 
+// ── Machines (ADR 0084) ──────────────────────────────────────────────────────────
+//
+// Three routes, none forwardable: the lead (or a solo collie) holds every machine's last sample, its
+// day of minutes and its alert rules, so a `?host=` addresses nothing here. A peer has no watch and
+// refuses all three with the `/api/crew` refusal, for that route's reason. Pulled out of the inline
+// dispatch so `bun test` can drive the gate, the refusals and the audit line with a fake caller.
+
+/** What the machine routes need of their caller: the gate, who is asking, and the audit trail. */
 export interface MachineRouteCaller {
   gate(level: "read" | "write"): Response | null;
   /** The requesting device's name across both gates, or `null` when neither names one. */
