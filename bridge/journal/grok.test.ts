@@ -1,8 +1,8 @@
 import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import * as cp from "node:child_process";
+import { afterEach, describe, expect, test } from "bun:test";
+import { createOpenFiles, type LsofRunner } from "./open-files.ts";
 
 import {
   extractUserQuery,
@@ -446,46 +446,72 @@ describe("GrokTranscriptSource.discoverSession", () => {
     expect(await src.resolve(ref!)).not.toBeNull();
   });
 
-  test("finds a session through lsof's open-file list when active_sessions.json is absent", async () => {
+  test("finds a session through the pid's open files when active_sessions.json is absent", async () => {
     const root = await grokHome(null);
     const { log } = await sessionDir(root, SID);
-    const lsof = spyOn(cp, "execFile").mockImplementation(
-      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
-      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
-        cb(null, { stdout: ["p10", "f3", `n${log}`, "n/some/other/file"].join("\n") });
-        // SAFETY: test mock casting
-        return undefined as never;
-      }) as never,
-    );
-    try {
-      const src = new GrokTranscriptSource(root, alive);
-      const ref = await src.discoverSession(CWD, { processes: [{ argv: ["/usr/local/bin/grok"], pid: 10 }] });
-      expect(ref).toEqual({ kind: "id", value: SID });
-      expect(lsof).toHaveBeenCalledWith("lsof", ["-nP", "-p", "10", "-g", "10", "-Fn"], expect.objectContaining({ timeout: 1000, maxBuffer: 1024 * 1024 }), expect.any(Function));
-    } finally {
-      lsof.mockRestore();
-    }
+    const asked: string[][] = [];
+    const run: LsofRunner = async (args) => {
+      asked.push([...args]);
+      return ["p10", "f3", `n${log}`, "n/some/other/file"].join("\n");
+    };
+    const src = new GrokTranscriptSource(root, alive, createOpenFiles(run));
+    const ref = await src.discoverSession(CWD, { processes: [{ argv: ["/usr/local/bin/grok"], pid: 10 }] });
+    expect(ref).toEqual({ kind: "id", value: SID });
+    // The union of the pid's files and its group's, on purpose: no `-a` (see open-files.ts).
+    expect(asked).toEqual([["-nP", "-p", "10", "-g", "10", "-Fn"]]);
   });
 
   test("answers null with no grok process, no match, and a non-uuid path id", async () => {
     // No hints at all, and lsof spuriously called: without a grok pid nothing runs.
-    const lsof = spyOn(cp, "execFile").mockImplementation(
-      // SAFETY: test mock casting
-      (() => {
-        throw new Error("lsof must not run");
-      }) as never,
-    );
-    try {
-      const root = await grokHome(null);
-      await sessionDir(root, SID);
-      const src = new GrokTranscriptSource(root, alive);
-      expect(await src.discoverSession(CWD)).toBeNull();
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["node"], pid: 4242 }] })).toBeNull();
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 4242 }] })).toBeNull();
-      expect(await src.discoverSession(CWD, { processes: [{ argv: [] }] })).toBeNull();
-    } finally {
-      lsof.mockRestore();
-    }
+    const run: LsofRunner = async () => {
+      throw new Error("lsof must not run");
+    };
+    const root = await grokHome(null);
+    await sessionDir(root, SID);
+    const src = new GrokTranscriptSource(root, alive, createOpenFiles(run));
+    expect(await src.discoverSession(CWD)).toBeNull();
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["node"], pid: 4242 }] })).toBeNull();
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 4242 }] })).toBeNull();
+    expect(await src.discoverSession(CWD, { processes: [{ argv: [] }] })).toBeNull();
+  });
+
+  describe("the one live session in the pane's folder", () => {
+    // Pane A runs grok in CWD and is listed. Pane B starts grok in the same folder and has not
+    // written its row yet, so the list holds only A's.
+    const A = SID;
+    const none: LsofRunner = async () => "";
+
+    test("answers a pane with no process hints when no other pane shares the folder", async () => {
+      const root = await grokHome(JSON.stringify([row(A, CWD, 4242)]));
+      await sessionDir(root, A);
+      const src = new GrokTranscriptSource(root, alive, createOpenFiles(none));
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 9999 }] })).toEqual({ kind: "id", value: A });
+    });
+
+    test("never hands a pane the neighbour's session when another pane shares the folder (#508)", async () => {
+      const root = await grokHome(JSON.stringify([row(A, CWD, 4242)]));
+      await sessionDir(root, A);
+      const src = new GrokTranscriptSource(root, alive, createOpenFiles(none));
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 9999 }], shared: true })).toBeNull();
+      expect(await src.discoverSession(CWD, { shared: true })).toBeNull();
+    });
+
+    test("a shared pane is still answered by its own pid's row", async () => {
+      const root = await grokHome(JSON.stringify([row(A, CWD, 4242)]));
+      await sessionDir(root, A);
+      const src = new GrokTranscriptSource(root, alive, createOpenFiles(none));
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 4242 }], shared: true })).toEqual({ kind: "id", value: A });
+    });
+
+    test("a shared pane is still answered by its own open files", async () => {
+      const root = await grokHome(JSON.stringify([row(A, CWD, 4242)]));
+      await sessionDir(root, A);
+      const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+      const { log } = await sessionDir(root, B);
+      const run: LsofRunner = async () => `p9999\nn${log}`;
+      const src = new GrokTranscriptSource(root, alive, createOpenFiles(run));
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 9999 }], shared: true })).toEqual({ kind: "id", value: B });
+    });
   });
 });
 

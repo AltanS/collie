@@ -33,11 +33,8 @@
 // The reconcile step is a workaround for herdrdev/herdr#2683 and is to be removed once the Herdr
 // version Collie requires takes a grok session start with source `load`.
 
-import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
-
-import type { DiscoverHints } from "./types.ts";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
@@ -54,10 +51,12 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { MAX_OPEN_FILES_PIDS, openFiles as defaultOpenFiles, type OpenFiles } from "./open-files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
+  DiscoverHints,
   JournalAdapter,
   TranscriptEntry,
   TranscriptPart,
@@ -65,35 +64,6 @@ import type {
 } from "./types.ts";
 
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * execFile as a promise, typed for the one call this file makes (no overloads) so tests can spy on
- * node:child_process.
- */
-const runLsof = (
-  file: string,
-  args: readonly string[],
-  options?: { timeout?: number; maxBuffer?: number; windowsHide?: boolean },
-): Promise<{ stdout: string; stderr: string }> =>
-  new Promise((resolve, reject) => {
-    execFile(
-      file,
-      // SAFETY: runLsof takes readonly so callers can pass frozen arrays; execFile's type wants string[].
-      args as string[],
-      options ?? {},
-      (err, stdout, stderr) => {
-        if (err) reject(err);
-        else {
-          // SAFETY: the mock in tests passes { stdout } objects; a real lsof passes a Buffer.
-          const out =
-            typeof stdout === "object" && stdout !== null && "stdout" in stdout
-              ? String((stdout as { stdout: unknown }).stdout ?? "")
-              : String(stdout ?? "");
-          resolve({ stdout: out, stderr: String(stderr ?? "") });
-        }
-      },
-    );
-  });
 
 export function isGrokSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
@@ -482,6 +452,7 @@ export class GrokTranscriptSource implements TranscriptSource {
   constructor(
     roots: string | readonly string[],
     private readonly isAlive: (pid: number) => boolean = processAlive,
+    private readonly openFiles: OpenFiles = defaultOpenFiles,
   ) {
     this.roots = rootList(roots);
   }
@@ -588,30 +559,23 @@ export class GrokTranscriptSource implements TranscriptSource {
       const pick =
         byPid.length > 0
           ? latestOpened(byPid)?.sessionId
-          : live.filter((s) => s.cwd === cwd).length === 1
+          : hints?.shared !== true && live.filter((s) => s.cwd === cwd).length === 1
             ? live.find((s) => s.cwd === cwd)?.sessionId
             : undefined;
       const fromList = pick === undefined ? null : ref(pick);
       if (fromList !== null && (await this.resolve(fromList)) !== null) return fromList;
     }
-    for (const pid of pids) {
-      const { stdout } = await runLsof("lsof", ["-nP", "-p", String(pid), "-g", String(pid), "-Fn"], {
-        timeout: 1000,
-        maxBuffer: 1024 * 1024,
-        windowsHide: true,
-      }).catch(() => ({ stdout: "" }));
+    for (const pid of pids.slice(0, MAX_OPEN_FILES_PIDS)) {
       const seen = new Set<string>();
-      for (const line of stdout.split("\n")) {
-        if (!line.startsWith("n")) continue;
-        const path = line.slice(1);
+      for (const path of await this.openFiles(pid)) {
         // Both separators: how the bridge reads any path a command or a fixture printed
         // (agy.ts's lock and database names do the same).
         const m = /(?:^|[/\\])([0-9a-f-]{36})[/\\]chat_history\.jsonl$/.exec(path);
         const id = m?.[1];
         if (id === undefined || !isGrokSessionId(id) || seen.has(id)) continue;
         seen.add(id);
-        const fromLsof = ref(id);
-        if (fromLsof !== null && (await this.resolve(fromLsof)) !== null) return fromLsof;
+        const fromOpenFiles = ref(id);
+        if (fromOpenFiles !== null && (await this.resolve(fromOpenFiles)) !== null) return fromOpenFiles;
       }
     }
     return null;

@@ -1,12 +1,12 @@
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
-import * as cp from "node:child_process";
 import * as fsPromises from "node:fs/promises";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zstdCompressSync } from "node:zlib";
 import { NO_CURSOR } from "./cursor.ts";
-import { createDshDiscovery, DARWIN_PROC, fileKey, flocksOf, LINUX_PROC, type ProcReader } from "./dsh-discovery.ts";
+import { createDarwinProc, createDshDiscovery, fileKey, flocksOf, LINUX_PROC, type ProcReader } from "./dsh-discovery.ts";
+import { createOpenFiles, type LsofRunner } from "./open-files.ts";
 import { DshTranscriptSource, frameRows, scanFrames } from "./dsh-sessions.ts";
 import { MAX_FRAME_OUTPUT_BYTES } from "./files.ts";
 import { dshJournal, parseDshTranscript } from "./dsh.ts";
@@ -352,44 +352,44 @@ describe("dsh discovery", () => {
     expect(await ok("/", { processes: [{ argv: ["dsh"], pid: 10 }] })).toEqual({ kind: "id", value: ID });
   });
 
-  test("DARWIN_PROC reads a session.lock from lsof's open-file list", async () => {
+  test("the macOS lock table reads a session.lock from the pid's open files", async () => {
     const { root, source, lock } = setup();
     writeSession(root, ID, batches());
-    const lsof = spyOn(cp, "execFile").mockImplementation(
-      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
-      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
-        const out = ["p10", "f5", `n${lock(ID)}`, `n${join(root, "other.jsonl")}`, "n/some/dir/"];
-        cb(null, { stdout: out.join("\n") });
-        // SAFETY: test mock casting
-        return undefined as never;
-      }) as never,
-    );
-    try {
-      const discover = createDshDiscovery([root], source, DARWIN_PROC);
-      expect(await discover("/home/operator/project", { processes: [{ argv: ["node", "dsh"], pid: 10 }] })).toEqual({ kind: "id", value: ID });
-      expect(lsof).toHaveBeenCalledWith("lsof", ["-nP", "-p", "10", "-g", "10", "-Fn"], expect.objectContaining({ timeout: 1000, maxBuffer: 1024 * 1024 }), expect.any(Function));
-    } finally {
-      lsof.mockRestore();
-    }
+    const asked: string[][] = [];
+    const run: LsofRunner = async (args) => {
+      asked.push([...args]);
+      return ["p10", "f5", `n${lock(ID)}`, `n${join(root, "other.jsonl")}`, "n/some/dir/"].join("\n");
+    };
+    const discover = createDshDiscovery([root], source, createDarwinProc(createOpenFiles(run)));
+    expect(await discover("/home/operator/project", { processes: [{ argv: ["node", "dsh"], pid: 10 }] })).toEqual({ kind: "id", value: ID });
+    // The union of the pid's files and its group's, on purpose: no `-a` (see open-files.ts).
+    expect(asked).toEqual([["-nP", "-p", "10", "-g", "10", "-Fn"]]);
   });
 
-  test("DARWIN_PROC answers null when lsof fails and still finds nothing for a foreign lock", async () => {
+  test("the macOS lock table forks lsof once for a burst of discovery calls", async () => {
+    const { root, source, lock } = setup();
+    writeSession(root, ID, batches());
+    let forks = 0;
+    const run: LsofRunner = async () => {
+      forks += 1;
+      return `p10\nn${lock(ID)}`;
+    };
+    const discover = createDshDiscovery([root], source, createDarwinProc(createOpenFiles(run)));
+    for (let i = 0; i < 20; i++) {
+      expect(await discover("/", { processes: [{ argv: ["node", "dsh"], pid: 10 }] })).toEqual({ kind: "id", value: ID });
+    }
+    expect(forks).toBe(1);
+  });
+
+  test("the macOS lock table answers an empty set when lsof fails, and finds nothing for a foreign lock", async () => {
     const { root, source } = setup();
     writeSession(root, ID, batches());
-    const lsof = spyOn(cp, "execFile").mockImplementation(
-      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
-      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error, r: { stdout: string }) => void) => {
-        cb(Object.assign(new Error("spawn lsof ENOENT"), { code: "ENOENT" }), { stdout: "" });
-        // SAFETY: test mock casting
-        return undefined as never;
-      }) as never,
-    );
-    try {
-      expect(await DARWIN_PROC.flocks(10)).toEqual(new Set());
-      expect(await createDshDiscovery([root], source, DARWIN_PROC)("/", { processes: [{ argv: ["dsh"], pid: 10 }] })).toBeNull();
-    } finally {
-      lsof.mockRestore();
-    }
+    const run: LsofRunner = async () => {
+      throw Object.assign(new Error("spawn lsof ENOENT"), { code: "ENOENT" });
+    };
+    const darwin = createDarwinProc(createOpenFiles(run));
+    expect(await darwin.flocks(10)).toEqual(new Set());
+    expect(await createDshDiscovery([root], source, darwin)("/", { processes: [{ argv: ["dsh"], pid: 10 }] })).toBeNull();
   });
 
   test("answers null when /proc cannot be read", async () => {
