@@ -38,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **You can pick the character in the header, on this device.** Settings > Appearance > Character lists every character in rows, each drawn still, loading and idle, with "From the theme" first; a tap sets it at once. The choice wins over the theme's `character` on this device only, is stored in the device's design store and is never sent to the bridge. The list adds two Collie coats, `collie-collar` and `collie-blaze`, which a theme file may name too. The favicon, the app icon and the splash stay the Collie mark.
 - **The Character page shows the chosen character at three sizes.** Above the rows it draws the choice at 28, 56 and 112 px, and the rows draw each character at 40 px, so the three Collie coats can be told apart.
 - **A Clear all button in Settings, Alerts closes this machine's alerts at once.** The card closes every Collie notification on this device and marks every finished agent of this machine, the Collie your phone talks to, as seen; an agent waiting on you stays on the dashboard, and in a crew the alerts of members stay. Thanks @l3ocifer (#766).
+- **A Pinch to zoom switch stops a stray pinch from zooming the app.** Settings > Appearance has the switch, on by default and set per device; off, a two-finger pinch no longer zooms the page, also when the second finger joins a scroll already running on Android. The Screen view keeps its own zoom. Thanks @vidurratna (#750).
 
 ### Changed
 

@@ -6,6 +6,7 @@ import { coerceDashView, isLegacyDashView, wasFocusView, type DashView } from "@
 import { coercePaneOrder, type PaneOrder } from "@/lib/pane-order";
 import { coercePaneView, type PaneView } from "@/lib/pane-view";
 import { coerceZoomPill, type ZoomPill } from "@/lib/zoom-pill";
+import { setPageZoomAllowed } from "@/lib/page-zoom";
 import type { RecentDir } from "@/lib/triage";
 
 // Dashboard layout preferences, persisted in localStorage. Deliberately separate from
@@ -249,7 +250,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
   };
 }
 
-export function loadPrefs(): DashPrefs {
+function loadPrefs(): DashPrefs {
   try {
     const raw = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
     if (!raw) return { ...DEFAULTS };
@@ -263,6 +264,11 @@ export function loadPrefs(): DashPrefs {
   } catch {
     return { ...DEFAULTS };
   }
+}
+
+/** The stored Pinch to zoom choice, for the page's start (lib/page-zoom.ts keeps it from there). */
+export function loadPageZoomPref(): boolean {
+  return loadPrefs().pageZoom;
 }
 
 function savePrefs(prefs: DashPrefs): void {
@@ -329,7 +335,13 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
   const setZoomPill = useCallback((zoomPill: ZoomPill) => update({ zoomPill }), [update]);
-  const setPageZoom = useCallback((pageZoom: boolean) => update({ pageZoom }), [update]);
+  const setPageZoom = useCallback(
+    (pageZoom: boolean) => {
+      setPageZoomAllowed(pageZoom);
+      update({ pageZoom });
+    },
+    [update],
+  );
 
   const setBeltScale = useCallback(
     (scale: number) => update({ beltScale: coerceBeltScale(scale) }),

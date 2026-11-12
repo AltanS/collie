@@ -56,6 +56,14 @@ describe("Settings → Appearance", () => {
     expect(screen.queryByRole("radiogroup", { name: "Character" })).toBeNull();
   });
 
+  it("has the Pinch to zoom switch under the Zoom pill card, on until it is turned off", async () => {
+    renderPage();
+    const pill = await screen.findByText("Zoom pill");
+    const pinch = screen.getByRole("switch", { name: "Pinch to zoom" });
+    expect(pinch).toHaveAttribute("aria-checked", "true");
+    expect(precedes(pill, pinch)).toBe(true);
+  });
+
   it("has a Character row that says From the theme, and then the name of the device's choice", async () => {
     renderPage();
     const row = await screen.findByRole("button", { name: /Character/ });
