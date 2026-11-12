@@ -101,6 +101,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "pair-by-phone", title: "Pair by phone" }, load: () => import("./sections/pair-by-phone").then((m) => ({ default: m.PairByPhoneSection })) },
   { def: { id: "trick-render", title: "Trick render" }, load: () => import("./sections/trick-render").then((m) => ({ default: m.TrickRenderSection })) },
   { def: { id: "trick-places", title: "Trick places" }, load: () => import("./sections/trick-places").then((m) => ({ default: m.TrickPlacesSection })) },
+  { def: { id: "trick-menu", title: "Trick menu" }, load: () => import("./sections/trick-menu").then((m) => ({ default: m.TrickMenuSection })) },
   { def: { id: "trick-settings", title: "Trick settings" }, load: () => import("./sections/trick-settings").then((m) => ({ default: m.TrickSettingsSection })) },
   { def: { id: "hill", title: "Hill" }, load: () => import("./sections/hill").then((m) => ({ default: m.HillSection })) },
   { def: { id: "hill-look", title: "Hill look" }, load: () => import("./sections/hill-look").then((m) => ({ default: m.HillLookSection })) },

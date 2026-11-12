@@ -5,6 +5,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { WalkyIcon, WalkyOffIcon } from "@/components/walky-icon";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { TrickMenuGroups } from "@/components/trick-menu-group";
+import type { TricksStore } from "@/lib/tricks/store";
 import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock, useCrew } from "@/components/crew-provider";
 import { useActionEcho } from "@/hooks/use-action-echo";
@@ -172,6 +173,8 @@ interface PaneActionsSheetProps {
     onShow: () => void;
     onSwitch?: (trick: string, on: boolean) => Promise<string | null>;
   };
+  /** The tricks store the trick groups read, for a test or the playground. Absent: the app's own. */
+  tricksStore?: TricksStore;
 }
 
 const NO_HERD: readonly AgentView[] = [];
@@ -226,6 +229,7 @@ export function PaneActionsSheet({
   onBranchOff,
   conversation = false,
   agentViews,
+  tricksStore: trickStore,
 }: PaneActionsSheetProps) {
   useLocale();
   // Whether this pane is pinned on this device, read live from the store so the row's word is right
@@ -679,6 +683,7 @@ export function PaneActionsSheet({
           open={open}
           pane={pane}
           canWrite={!readOnly && !savedCopy}
+          {...(trickStore === undefined ? {} : { store: trickStore })}
           {...(agentViews === undefined ? {} : { views: agentViews.onSwitch === undefined ? { rows: agentViews.rows } : { rows: agentViews.rows, onSwitch: agentViews.onSwitch } })}
         />
       )}
