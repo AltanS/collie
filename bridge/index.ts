@@ -3849,7 +3849,7 @@ const tricks =
         },
         env: process.env,
         // The shell of a run line, and the Windows gate (service.ts `gated`): on Windows no trick runs yet.
-        platform: process.platform,
+        platform: HOST.platform,
         // Only a lead or a solo bridge that is not deposed schedules tricks (§18.12): a peer, a deputy and
         // a deposed lead run no timer, so one trick never runs on two machines of a crew.
         active: () => crew.mode !== "peer" && deposed === null,

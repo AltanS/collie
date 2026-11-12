@@ -446,7 +446,7 @@ function configVerbDeps(io: Io): ConfigDeps {
 
 /** `trick`: the context, the filesystem, and the one read `list` makes of this instance's own bridge. */
 function trickVerbDeps(io: Io): TrickDeps {
-  return { ctx: loadContext(io.err), io, files: realFiles, fetch: (url, init) => fetch(url, init), now: Date.now, paneKind: () => askPaneKind(walkyDeps(io)), platform: process.platform };
+  return { ctx: loadContext(io.err), io, files: realFiles, fetch: (url, init) => fetch(url, init), now: Date.now, paneKind: () => askPaneKind(walkyDeps(io)), platform: HOST.platform };
 }
 
 /**
