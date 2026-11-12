@@ -124,6 +124,12 @@ export const NAME_MAX = 40;
 export const DESCRIPTION_MAX = 140;
 /** The manifest's `about`: the full plain text of a trick's About sheet, paragraphs split by a blank line. */
 export const ABOUT_MAX = 1200;
+/** The manifest's `version`: the author's own version word, shown in the About sheet. */
+export const VERSION_MAX = 24;
+/** The characters a manifest `version` may hold: `1.2.0`, `2026.11.12`, `0.3.0-beta+7`. */
+export const VERSION_RE = /^[0-9A-Za-z.+-]{1,24}$/u;
+/** The refusal of a `version` with another character in it. */
+export const VERSION_REFUSAL = '"version" holds letters, digits, ".", "+" and "-" only, such as "1.2.0".';
 /** A `group`'s `label`. */
 export const TITLE_MAX = 60;
 /** A `para`'s text, and a `run`'s. One paragraph: no line break (the tree strips control characters). */
@@ -1297,6 +1303,12 @@ export interface TrickManifest {
    * blank line. No markdown, no HTML, no link is drawn. Text, not a right, like `description`.
    */
   about?: string;
+  /**
+   * The author's own version word, at most `VERSION_MAX` characters of `[0-9A-Za-z.+-]`, shown in the About
+   * sheet. Text, not a right, like `description`: not in the powers, part of the code hash. Collie reads no tag
+   * and compares no versions; a trick without it shows none.
+   */
+  version?: string;
   /**
    * Contract 2: the manifest lists the place word `agent-view`, a view of a session that the session's own
    * agent draws ({@link AGENT_VIEW_PLACE}). Kept apart from `places`, which are the places a document's
@@ -4060,7 +4072,7 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "rules"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules"] as const;
 
 // ── Agent views: the place word `agent-view` and the key `rules` (contract 2) ───────────────────────
 
@@ -4398,6 +4410,9 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   // without them reads as before. Over the cap is a refusal, like the name's.
   const description = f.text("description", { max: DESCRIPTION_MAX });
   const about = f.text("about", { max: ABOUT_MAX, multiline: true });
+  // The author's version word: text for a person, shown in the About sheet, never compared or fetched.
+  const version = f.text("version", { max: VERSION_MAX });
+  if (version !== undefined && !VERSION_RE.test(version)) f.push("text", "version", VERSION_REFUSAL);
 
   // Room for the places of a newer Collie at the same contract: the words this one does not know are left out.
   const placeList = f.array("places", { min: 1, max: PLACES_LISTED_MAX, required: true, what: "places" });
@@ -4480,6 +4495,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (inputs !== undefined && inputs.length > 0) manifest.inputs = [...new Set(inputs)];
   if (description !== undefined) manifest.description = description;
   if (about !== undefined) manifest.about = about;
+  if (version !== undefined && VERSION_RE.test(version)) manifest.version = version;
   return { manifest, refusals: capRefusals(refusals) };
 }
 

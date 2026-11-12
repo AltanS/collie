@@ -68,6 +68,8 @@ import {
   inputGlobProblem,
   inputsSentence,
   ABOUT_MAX,
+  VERSION_MAX,
+  VERSION_REFUSAL,
   DESCRIPTION_MAX,
   isEnvName,
   TRICK_ICON_LUCIDE,
@@ -1567,6 +1569,35 @@ describe("the manifest's description and about", () => {
     expect(parseManifest({ ...base, about: "one\n\ntwo" }).manifest?.about).toBe("one\n\ntwo");
     expect(parseManifest({ ...base, description: 3 }).refusals[0]?.reason).toBe('"description" must be text.');
     expect(parseManifest({ ...base, about: "" }).manifest).toBeUndefined();
+  });
+});
+
+describe("the manifest's version", () => {
+  const base = { id: "gates", name: "Release Gates", run: "./gates.sh", places: ["belt"] };
+
+  it("is optional text of 1 to 24 letters, digits, dots, plus and minus, in contract 1 and 2", () => {
+    expect(VERSION_MAX).toBe(24);
+    expect(parseManifest(base).manifest?.version).toBeUndefined();
+    for (const contract of [1, 2]) {
+      for (const version of ["1.2.0", "2026.11.12", "0.3.0-beta+7", "v2", "v".repeat(VERSION_MAX)]) {
+        const read = parseManifest({ ...base, contract, version });
+        expect(read.refusals).toEqual([]);
+        expect(read.manifest?.version).toBe(version);
+      }
+    }
+  });
+
+  it("refuses a value past the cap, an empty one, another character, and a value that is not text", () => {
+    const long = parseManifest({ ...base, version: "1".repeat(VERSION_MAX + 1) });
+    expect(long.manifest).toBeUndefined();
+    expect(long.refusals.map((r) => [r.code, r.path])).toEqual([["text", "/version"]]);
+    for (const version of ["", "1.2 beta", "1/2", "1_2", "v1\u00e9", "1.2\n", "1.2\u202E"]) {
+      const read = parseManifest({ ...base, version });
+      expect(read.manifest, version).toBeUndefined();
+      expect(read.refusals[0]?.path).toBe("/version");
+    }
+    expect(parseManifest({ ...base, version: "1 2" }).refusals.map((r) => r.reason)).toEqual([VERSION_REFUSAL]);
+    expect(parseManifest({ ...base, version: 2 }).refusals[0]?.reason).toBe('"version" must be text.');
   });
 });
 

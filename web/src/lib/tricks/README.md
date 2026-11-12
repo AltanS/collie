@@ -24,7 +24,9 @@ contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `con
 `inputs` (contract 2), the later `watch`, `on` and `mode`, and two texts for a person, `description` (one
 line, at most 140 characters, shown under the name in Settings → Tricks) and `about` (at most 1200
 characters, paragraphs split by a blank line, shown in the trick's About sheet). Both are plain text, with
-no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. They are text, not rights: they
+no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. An optional `version` (1 to 24
+characters of letters, digits, `.`, `+` and `-`, `VERSION_MAX`) is the author's own word for the version;
+the About sheet shows it, and Collie never compares it or reads a tag for it. They are text, not rights: they
 stay out of `powersOf` and are part of the code hash like any manifest change. A value past its cap, or
 with a control or direction character, refuses the manifest like a long `name`; `collie trick check` gives
 a soft note when `about` is missing. `contract` is the number the trick is

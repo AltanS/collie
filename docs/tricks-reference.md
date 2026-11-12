@@ -1257,6 +1257,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `inputs` | list of globs | no | at most 8 globs of at most 256 characters and 6 steps, relative to a session's folder | 2 | Files the program reads from each agent session's folder. They are untrusted data: show them, never run them. |
 | `description` | text | no | at most 140 characters, plain text | 1 | One plain line that says what the trick does. Settings shows it under the name. |
 | `about` | text | no | at most 1200 characters, plain text, a blank line splits paragraphs | 1 | The text of the About sheet. |
+| `version` | text | no | 1 to 24 characters: letters, digits, `.`, `+` and `-`, such as `1.2.0` | 1 | The trick's own version. The About sheet shows it. Collie never compares it and reads no tag. |
 | `rules` | file name | yes, with `agent-view`; refused without it | a file in the trick's folder of at most 64 characters ending in `.md`, such as `rules.md` | 2 | The instructions the agent of a session reads. The person reads them whole before they switch the trick on. |
 
 In `trick.toml`:

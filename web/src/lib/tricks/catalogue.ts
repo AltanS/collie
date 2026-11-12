@@ -157,6 +157,7 @@ import {
   TRIGGER_KINDS,
   URL_MAX,
   VALUE_MAX_BYTES,
+  VERSION_MAX,
   VIEW_LIMITS,
   VIEW_ROOT_KINDS,
   WATCH_MAX,
@@ -1249,6 +1250,7 @@ const MANIFEST_WORDS = {
   inputs: { type: "list of globs", required: "no", limit: `at most ${String(INPUTS_MAX)} globs of at most ${String(INPUT_GLOB_MAX)} characters and ${String(INPUT_DEPTH_MAX)} steps, relative to a session's folder`, contract: INPUTS_CONTRACT, what: "Files the program reads from each agent session's folder. They are untrusted data: show them, never run them." },
   description: { type: "text", required: "no", limit: `at most ${String(DESCRIPTION_MAX)} characters, plain text`, contract: TRICK_CONTRACT_DEFAULT, what: "One plain line that says what the trick does. Settings shows it under the name." },
   about: { type: "text", required: "no", limit: `at most ${String(ABOUT_MAX)} characters, plain text, a blank line splits paragraphs`, contract: TRICK_CONTRACT_DEFAULT, what: "The text of the About sheet." },
+  version: { type: "text", required: "no", limit: `1 to ${String(VERSION_MAX)} characters: letters, digits, \`.\`, \`+\` and \`-\`, such as \`1.2.0\``, contract: TRICK_CONTRACT_DEFAULT, what: "The trick's own version. The About sheet shows it. Collie never compares it and reads no tag." },
   rules: { type: "file name", required: `yes, with \`${AGENT_VIEW_PLACE}\`; refused without it`, limit: `a file in the trick's folder of at most ${String(RULES_NAME_MAX)} characters ending in \`.md\`, such as \`rules.md\``, contract: AGENT_VIEW_CONTRACT, what: "The instructions the agent of a session reads. The person reads them whole before they switch the trick on." },
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: Omit<ManifestEntry, "key"> };
 
