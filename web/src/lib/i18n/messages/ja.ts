@@ -248,6 +248,18 @@ export const ja: Dictionary = {
   "settings.snooze.preset.min30": "30分",
   "settings.snooze.preset.hour1": "1時間",
   "settings.snooze.preset.hour4": "4時間",
+  "settings.clearNotifications.title": "通知を消去",
+  "settings.clearNotifications.description":
+    "この端末の Collie の通知をすべて閉じ、完了したエージェントを既読にします。ほかの端末は次の同期時か Collie を開いたときに反映されます。あなたの対応を待っているエージェントはダッシュボードに残ります。",
+  "settings.clearNotifications.action": "すべて消去",
+  "settings.clearNotifications.done": "通知を消去しました。",
+  "settings.clearNotifications.clearing": "消去中…",
+  "settings.clearNotifications.failed.notifications":
+    "消去しましたが、この端末の通知を閉じられませんでした。もう一度タップしてください。",
+  "settings.clearNotifications.failed.badge":
+    "消去しましたが、この端末のアイコンの数字を更新できませんでした。もう一度タップしてください。",
+  "settings.clearNotifications.failed.both":
+    "消去しましたが、この端末の通知を閉じることも、アイコンの数字を更新することもできませんでした。もう一度タップしてください。",
 
   // --- settings.devices ---
   "settings.devices.title": "ペアリング済みデバイス",

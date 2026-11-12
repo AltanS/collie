@@ -236,6 +236,18 @@ export const ru: Dictionary = {
   "settings.snooze.preset.min30": "30 мин",
   "settings.snooze.preset.hour1": "1 ч",
   "settings.snooze.preset.hour4": "4 ч",
+  "settings.clearNotifications.title": "Очистить уведомления",
+  "settings.clearNotifications.description":
+    "Закрыть все уведомления Collie на этом устройстве и отметить всех завершивших агентов как просмотренных. Другие устройства догонят при следующей синхронизации или когда вы откроете Collie. Агенты, ожидающие вас, остаются на дашборде.",
+  "settings.clearNotifications.action": "Очистить всё",
+  "settings.clearNotifications.done": "Уведомления очищены.",
+  "settings.clearNotifications.clearing": "Очистка…",
+  "settings.clearNotifications.failed.notifications":
+    "Очищено, но это устройство не смогло закрыть свои уведомления. Нажмите ещё раз.",
+  "settings.clearNotifications.failed.badge":
+    "Очищено, но это устройство не смогло обновить число на значке. Нажмите ещё раз.",
+  "settings.clearNotifications.failed.both":
+    "Очищено, но это устройство не смогло ни закрыть уведомления, ни обновить число на значке. Нажмите ещё раз.",
   "settings.devices.title": "Сопряженные устройства",
   "settings.devices.description.enforced": "Для каждого чтения и записи требуется сопряженное устройство.",
   "settings.devices.pairedAs": "Это устройство сопряжено как {device}.",

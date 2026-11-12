@@ -238,6 +238,18 @@ export const it: Dictionary = {
   "settings.snooze.preset.min30": "30m",
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
+  "settings.clearNotifications.title": "Cancella notifiche",
+  "settings.clearNotifications.description":
+    "Chiudi tutte le notifiche di Collie su questo dispositivo e segna come visti tutti gli agenti terminati. Gli altri dispositivi si allineano alla prossima sincronizzazione o quando apri Collie. Gli agenti che ti aspettano restano nella dashboard.",
+  "settings.clearNotifications.action": "Cancella tutto",
+  "settings.clearNotifications.done": "Notifiche cancellate.",
+  "settings.clearNotifications.clearing": "Cancellazione…",
+  "settings.clearNotifications.failed.notifications":
+    "Cancellato, ma questo dispositivo non è riuscito a chiudere le sue notifiche. Tocca di nuovo.",
+  "settings.clearNotifications.failed.badge":
+    "Cancellato, ma questo dispositivo non è riuscito ad aggiornare il numero sull’icona. Tocca di nuovo.",
+  "settings.clearNotifications.failed.both":
+    "Cancellato, ma questo dispositivo non è riuscito né a chiudere le sue notifiche né ad aggiornare il numero sull’icona. Tocca di nuovo.",
   "settings.devices.title": "Dispositivi associati",
   "settings.devices.description.enforced": "Ogni lettura e scrittura richiede un dispositivo associato.",
   "settings.devices.pairedAs": "Questo dispositivo è associato come {device}.",

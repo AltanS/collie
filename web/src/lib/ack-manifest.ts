@@ -256,6 +256,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The spinner in the card is the acceptance and the revalidated description line under the title is the outcome, both inside the control the thumb is still on.",
   },
+  clearNotifications: {
+    channel: "inline",
+    why: "Settings mounts no floating status, and what it clears is not on the page (banners in the system tray, finished dots on the dashboard), so the card's own line says Clearing, Cleared, which half of this device's clear was refused, or why the bridge refused, and keeps saying it until the next tap (components/clear-notifications-control.tsx).",
+  },
   setNotifyPrefs: {
     channel: "echo",
     why: "The switch flips optimistically under the thumb; the server's merged view then reconciles it, and a REVERT is paired with an error status because a switch that moves back in silence misinforms anyone who has stopped looking (hooks/use-notify-prefs.ts).",

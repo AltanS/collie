@@ -251,6 +251,18 @@ export const ko: Dictionary = {
   "settings.snooze.preset.min30": "30분",
   "settings.snooze.preset.hour1": "1시간",
   "settings.snooze.preset.hour4": "4시간",
+  "settings.clearNotifications.title": "알림 지우기",
+  "settings.clearNotifications.description":
+    "이 기기의 Collie 알림을 모두 닫고 완료된 에이전트를 확인한 것으로 표시합니다. 다른 기기는 다음 동기화 때나 Collie를 열 때 반영됩니다. 응답을 기다리는 에이전트는 대시보드에 남습니다.",
+  "settings.clearNotifications.action": "모두 지우기",
+  "settings.clearNotifications.done": "알림을 지웠습니다.",
+  "settings.clearNotifications.clearing": "지우는 중…",
+  "settings.clearNotifications.failed.notifications":
+    "지웠지만 이 기기의 알림을 닫지 못했습니다. 다시 탭하세요.",
+  "settings.clearNotifications.failed.badge":
+    "지웠지만 이 기기의 아이콘 숫자를 업데이트하지 못했습니다. 다시 탭하세요.",
+  "settings.clearNotifications.failed.both":
+    "지웠지만 이 기기의 알림을 닫지도, 아이콘 숫자를 업데이트하지도 못했습니다. 다시 탭하세요.",
 
   // --- settings.devices ---
   "settings.devices.title": "페어링된 기기",

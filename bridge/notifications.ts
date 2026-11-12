@@ -394,6 +394,32 @@ export class NotificationCoordinator<H = unknown> {
     this.sink.clear();
   }
 
+  /**
+   * The operator cleared their notifications (`POST /api/notifications/clear`), which stamps every
+   * pane seen: drop every finished alert, still debouncing or shown, as {@link retractSeen} does on
+   * the next poll after a pane is opened, only now. A blocked alert stays, because a question still
+   * waiting is state, not news, and only an answer clears it. The retraction goes out the way any
+   * other does: a shrunk summary, or each pane's own clear.
+   */
+  retractFinished(): void {
+    // A pane's LATEST status decides, so it is read before any timer is cancelled: a pane whose
+    // alert went out as blocked and which has since finished (its done alert still debouncing) is
+    // finished now, and its blocked alert goes with the pending one. One still debouncing as blocked
+    // keeps its timer, whatever was shown before.
+    const finished = new Set<string>();
+    for (const [id, a] of this.outstanding) if (a.status === "done") finished.add(id);
+    for (const [id, p] of this.pending) {
+      if (p.status === "done") finished.add(id);
+      else finished.delete(id);
+    }
+    const removed: string[] = [];
+    for (const id of finished) {
+      if (this.pending.get(id)?.status === "done") this.cancelPending(id);
+      if (this.outstanding.delete(id)) removed.push(id);
+    }
+    this.retract(removed);
+  }
+
   /** The panes with an alert on screen, for the snooze route's clear of what is shown. */
   outstandingPaneIds(): string[] {
     return [...this.outstanding.keys()];
