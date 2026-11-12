@@ -22,9 +22,11 @@
 // service, so the bridge is refused (EACCES). /proc/locks is readable by everyone and names the pid,
 // the device and the inode of every lock, which is enough once the lock files are known.
 //
-// LINUX ONLY: the lock table is read from /proc. Elsewhere the reader answers null and discovery
-// finds nothing, which is the safe answer: the pane keeps its terminal view.
+// THE LOCK TABLE, PER PLATFORM: Linux reads /proc/locks; macOS asks lsof for the pid's open files,
+// where only the session writer ever opens `session.lock`. Elsewhere the reader answers null and
+// discovery finds nothing, which is the safe answer: the pane keeps its terminal view.
 
+import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
@@ -48,12 +50,78 @@ export interface ProcReader {
   flocks(pid: number): Promise<Set<string> | null>;
 }
 
+/**
+ * execFile as a promise, typed for the one call this file makes (no overloads) so tests can spy on
+ * node:child_process.
+ */
+const runLsof = (
+  file: string,
+  args: readonly string[],
+  options?: { timeout?: number; maxBuffer?: number; windowsHide?: boolean },
+): Promise<{ stdout: string; stderr: string }> =>
+  new Promise((resolve, reject) => {
+    execFile(
+      file,
+      // SAFETY: runLsof takes readonly so callers can pass frozen arrays; execFile's type wants string[].
+      args as string[],
+      options ?? {},
+      (err, stdout, stderr) => {
+        if (err) reject(err);
+        else {
+          // SAFETY: the mock in tests passes { stdout } objects; a real lsof passes a Buffer.
+          const out =
+            typeof stdout === "object" && stdout !== null && "stdout" in stdout
+              ? String((stdout as { stdout: unknown }).stdout ?? "")
+              : String(stdout ?? "");
+          resolve({ stdout: out, stderr: String(stderr ?? "") });
+        }
+      },
+    );
+  });
+
 /** The real /proc. Off Linux every answer is null. */
 export const LINUX_PROC: ProcReader = {
   async flocks(pid) {
     if (HOST.platform !== "linux") return null;
     const table = await readFile("/proc/locks", "utf8").catch(() => null);
     return table === null ? null : flocksOf(table, pid);
+  },
+};
+
+/**
+ * The real macOS lock table: `lsof` lists the pid's open files, and a `session.lock` among them is
+ * one dsh's session writer holds FLOCK on ("readers never touch the lock"). The lock file is only
+ * ever opened by the holder, so the open file names the same fact /proc/locks names on Linux.
+ *
+ * {@link DEFAULT_PROC} is what keeps this to darwin. Called on its own — as the tests do, with
+ * `lsof` stubbed — it asks `lsof` wherever it runs, and an `lsof` that will not run leaves the set
+ * empty: "nothing found", which is the same answer discovery already fails closed on.
+ */
+export const DARWIN_PROC: ProcReader = {
+  async flocks(pid) {
+    const { stdout } = await runLsof("lsof", ["-nP", "-p", String(pid), "-g", String(pid), "-Fn"], {
+      timeout: 1000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    }).catch(() => ({ stdout: "" }));
+    const held = new Set<string>();
+    for (const line of stdout.split("\n")) {
+      if (!line.startsWith("n") || !line.endsWith(`/${DSH_LOCK_NAME}`)) continue;
+      const path = line.slice(1);
+      const st = await stat(path, { bigint: true }).catch(() => null);
+      if (st === null || !st.isFile()) continue;
+      held.add(fileKey(st.dev, st.ino));
+    }
+    return held;
+  },
+};
+
+/** The real lock table, per platform. Elsewhere every answer is null. */
+export const DEFAULT_PROC: ProcReader = {
+  async flocks(pid) {
+    if (HOST.platform === "linux") return LINUX_PROC.flocks(pid);
+    if (HOST.platform === "darwin") return DARWIN_PROC.flocks(pid);
+    return null;
   },
 };
 
@@ -152,7 +220,7 @@ async function lockedSessions(roots: readonly string[], locked: ReadonlySet<stri
 export function createDshDiscovery(
   roots: readonly string[],
   source: TranscriptSource,
-  proc: ProcReader = LINUX_PROC,
+  proc: ProcReader = DEFAULT_PROC,
 ): (cwd: string, hints?: DiscoverHints) => Promise<AgentSessionRef | null> {
   return async (_cwd, hints): Promise<AgentSessionRef | null> => {
     const listed = hints?.processes;
