@@ -134,7 +134,7 @@ describe("the herdr-core snapshot mapping", () => {
     const snapshot = toSnapshot(
       [
         terminal({ address: "t1", name: "review", title: "✳ Reviewing the diff" }),
-        terminal({ address: "t2", title: "altan@bluefin:~/projects/x" }),
+        terminal({ address: "t2", title: "altan@lodge:~/projects/x" }),
       ],
       null,
       "/home/dev",

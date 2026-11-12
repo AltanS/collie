@@ -223,13 +223,13 @@ describe("herdrCoreMachineCandidates", () => {
   test("a sandbox is dropped and a via row is blocked, end to end", () => {
     const { probe, warnings } = probeFor({
       stdout: listOf([
-        { target: "altan@minibuch", name: "minibuch" },
+        { target: "altan@workshop", name: "workshop" },
         { target: "sbx", temporary: true },
         { target: "altan@vps", name: "vps", via: true },
       ]),
     });
     expect(herdrCoreMachineCandidates(probe)).toEqual([
-      { target: "altan@minibuch", label: "minibuch", id: null, blocked: null },
+      { target: "altan@workshop", label: "workshop", id: null, blocked: null },
       { target: "altan@vps", label: "vps", id: null, blocked: viaBlockedReason("altan@vps") },
     ]);
     expect(warnings).toEqual([]);

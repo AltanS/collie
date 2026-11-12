@@ -1248,19 +1248,19 @@ describe("a turn nobody can be handed says why, once", () => {
 
 
 describe("the 1.12.0 run: a member is sent to the run's target and nowhere else", () => {
-  // 2026-09-23, the release lane. The phone confirmed 1.11.1 -> 1.12.0 on the lead; minibuch was
+  // 2026-09-23, the release lane. The phone confirmed 1.11.1 -> 1.12.0 on the lead; workshop was
   // still on 1.11.0. Lead journal, then member journal:
-  //   07:54:22  update e20123ce: minibuch new -> waiting (1.11.0+e4846880)
+  //   07:54:22  update e20123ce: workshop new -> waiting (1.11.0+e4846880)
   //   07:54:23  [member] follow: self-levelling to v1.11.1 (run e20123ce)
   //   07:54:40  update e20123ce: levelling peers to 1.12.0
   //   07:54:41  [member] follow: not self-levelling (rate-limited) ... it tries again in 60
-  //   08:14:40  update e20123ce: minibuch waiting -> unreachable (no change for 20 minutes)
+  //   08:14:40  update e20123ce: workshop waiting -> unreachable (no change for 20 minutes)
   // The queue opened on the confirm and granted the turn while the lead still stated 1.11.1, the
   // member took that, and its hourly limit then refused the real target for the rest of the run.
   const RUN = "e20123ce-7d1a";
   const T0 = NOW;
   const member = (over: Partial<TurnMember> = {}): TurnMember => ({
-    memberId: "minibuch",
+    memberId: "workshop",
     enrolledAt: 1,
     version: "1.11.0",
     verdict: "green",
@@ -1274,22 +1274,22 @@ describe("the 1.12.0 run: a member is sent to the run's target and nowhere else"
     const turns = new UpdateTurns((line) => journal.push(line));
     turns.begin(RUN, "1.12.0");
     turns.observe([member()], T0, { release: "1.11.1" });
-    expect(turns.turnFor("minibuch")).toBeNull();
+    expect(turns.turnFor("workshop")).toBeNull();
     // Mid-run the lead states nothing at all, which grants nothing either.
     turns.observe([member()], T0 + 5_000, { release: null });
-    expect(turns.turnFor("minibuch")).toBeNull();
+    expect(turns.turnFor("workshop")).toBeNull();
     expect(journal).toContain(
-      "[crew] update e20123ce: minibuch is not being handed the turn — this lead states 1.11.1, not 1.12.0 yet",
+      "[crew] update e20123ce: workshop is not being handed the turn — this lead states 1.11.1, not 1.12.0 yet",
     );
     // The lead is back, on the target: now, and only now, the turn goes out.
     turns.observe([member()], T0 + 18_000, { release: "1.12.0" });
-    expect(turns.turnFor("minibuch")).toBe(`minibuch;${RUN}`);
+    expect(turns.turnFor("workshop")).toBe(`workshop;${RUN}`);
   });
 
   test("a real CrewLead sends no turn header until it states the target", async () => {
-    const roster = [fixtureMember({ memberId: "minibuch", enrolledAt: 1 })];
+    const roster = [fixtureMember({ memberId: "workshop", enrolledAt: 1 })];
     const turns = new UpdateTurns(() => {});
-    const registry = new CrewRegistry({ sessions: { get: () => undefined }, self: "bluefin", members: () => roster });
+    const registry = new CrewRegistry({ sessions: { get: () => undefined }, self: "lodge", members: () => roster });
     let stated = "1.11.1";
     const sent: (string | null)[] = [];
     const lead = new CrewLead({
@@ -1313,7 +1313,7 @@ describe("the 1.12.0 run: a member is sent to the run's target and nowhere else"
         };
       },
       proxy: neverProxy,
-      self: { id: "bluefin", name: "the herd" },
+      self: { id: "lodge", name: "the herd" },
       maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       now: () => T0,
       follow: { leadRelease: () => stated, turns, enrolledAt: () => 1 },
@@ -1325,23 +1325,23 @@ describe("the 1.12.0 run: a member is sent to the run's target and nowhere else"
     stated = "1.12.0";
     await lead.sweep();
     await lead.sweep();
-    expect(sent.at(-1)).toBe(`minibuch;${RUN}`);
+    expect(sent.at(-1)).toBe(`workshop;${RUN}`);
   });
 
   test("a member one step up in THIS run is not held back by its hourly limit", () => {
     // What an older lead still does: the first step, to the lead's old release, under the run's id.
-    const first = followGuards(facts({ own: "1.11.0", self: "minibuch", leadRelease: "1.11.1", turn: formatTurn("minibuch", RUN) }));
+    const first = followGuards(facts({ own: "1.11.0", self: "workshop", leadRelease: "1.11.1", turn: formatTurn("workshop", RUN) }));
     expect(first).toEqual({ kind: "follow", tag: "v1.11.1", runId: RUN });
     // Eighteen seconds later the lead is on 1.12.0 and asks again, in the same run.
     const stepped = run({ state: "done", from: "v1.11.0", to: "v1.11.1", runId: RUN, startedAt: T0, updatedAt: T0 + 12_000 });
     const second = followGuards(
-      facts({ own: "1.11.1", self: "minibuch", leadRelease: "1.12.0", turn: formatTurn("minibuch", RUN), run: stepped, now: T0 + 18_000 }),
+      facts({ own: "1.11.1", self: "workshop", leadRelease: "1.12.0", turn: formatTurn("workshop", RUN), run: stepped, now: T0 + 18_000 }),
     );
     expect(second).toEqual({ kind: "follow", tag: "v1.12.0", runId: RUN });
   });
 
   test("the limit still holds for every other recent attempt", () => {
-    const at = { now: T0 + 18_000, own: "1.11.1", self: "minibuch", leadRelease: "1.12.0", turn: formatTurn("minibuch", RUN) };
+    const at = { now: T0 + 18_000, own: "1.11.1", self: "workshop", leadRelease: "1.12.0", turn: formatTurn("workshop", RUN) };
     // A different run.
     const other = run({ state: "done", to: "v1.11.1", runId: "r-earlier", startedAt: T0 });
     expect(followGuards(facts({ ...at, run: other })).kind === "refuse" && followGuards(facts({ ...at, run: other }))).toMatchObject({
@@ -1357,7 +1357,7 @@ describe("the 1.12.0 run: a member is sent to the run's target and nowhere else"
 
   test("the exemption cannot loop: the version must rise every time", () => {
     const took = run({ state: "done", to: "v1.12.0", runId: RUN, startedAt: T0 + 20_000 });
-    const again = facts({ own: "1.12.0", self: "minibuch", leadRelease: "1.12.0", turn: formatTurn("minibuch", RUN), run: took, now: T0 + 60_000 });
+    const again = facts({ own: "1.12.0", self: "workshop", leadRelease: "1.12.0", turn: formatTurn("workshop", RUN), run: took, now: T0 + 60_000 });
     expect(followGuards(again)).toMatchObject({ reason: "not-higher" });
   });
 
@@ -1365,20 +1365,20 @@ describe("the 1.12.0 run: a member is sent to the run's target and nowhere else"
     const journal: string[] = [];
     const turns = new UpdateTurns((line) => journal.push(line));
     turns.begin(RUN, "1.12.0");
-    // minibuch updated in an EARLIER run a minute ago, so its own limit refuses anything before T0 + 59m.
+    // workshop updated in an EARLIER run a minute ago, so its own limit refuses anything before T0 + 59m.
     const limited = member({
       version: "1.11.1",
       run: { state: "done", to: "v1.11.1", runId: "r-earlier", reason: null, updatedAt: T0 - 60_000 },
     });
     const retryBy = T0 - 60_000 + FOLLOW_ATTEMPT_INTERVAL_MS;
     turns.observe([limited], T0, { release: "1.12.0" });
-    expect(turns.turnFor("minibuch")).toBeNull();
+    expect(turns.turnFor("workshop")).toBeNull();
     const leg = turns.peerLegs()[0]!;
     expect(leg.state).toBe("waiting");
     // The phone reads a span, never the lead's clock time; the journal keeps the lead's clock and says so.
     expect(leg.reason).toBe("rate-limited, retries in about 59 min");
     expect(journal).toContain(
-      `[crew] update e20123ce: minibuch waits on its own once-an-hour limit, it retries by ${clockTime(retryBy)} (this lead's clock)`,
+      `[crew] update e20123ce: workshop waits on its own once-an-hour limit, it retries by ${clockTime(retryBy)} (this lead's clock)`,
     );
     // Twenty-five minutes on, the old queue would have written `unreachable (no change for 20 minutes)`.
     turns.observe([limited], T0 + 25 * 60_000, { release: "1.12.0" });
@@ -1386,7 +1386,7 @@ describe("the 1.12.0 run: a member is sent to the run's target and nowhere else"
     expect(journal.filter((l) => l.includes("unreachable"))).toEqual([]);
     // The limit lifts, and the turn goes out.
     turns.observe([limited], retryBy + 1_000, { release: "1.12.0" });
-    expect(turns.turnFor("minibuch")).toBe(`minibuch;${RUN}`);
+    expect(turns.turnFor("workshop")).toBe(`workshop;${RUN}`);
     expect(turns.peerLegs()[0]?.reason).toBeUndefined();
     // A member that then does nothing at all is still failed by the wall clock, from the grant.
     turns.observe([limited], retryBy + 1_000 + LEG_WALL_CLOCK_MS, { release: "1.12.0" });
@@ -1406,7 +1406,7 @@ describe("the 1.12.0 run: a member is sent to the run's target and nowhere else"
     });
     const retryBy = T0 + FOLLOW_ATTEMPT_INTERVAL_MS;
     turns.observe([stepped], T0 + 18_000, { release: "1.12.0" });
-    expect(turns.turnFor("minibuch")).toBe(`minibuch;${RUN}`);
+    expect(turns.turnFor("workshop")).toBe(`workshop;${RUN}`);
     expect(turns.peerLegs()[0]?.reason).toBeUndefined();
     turns.observe([stepped], T0 + 30_000, { release: "1.12.0" });
     expect(turns.peerLegs()[0]?.reason).toBeUndefined();
@@ -1428,7 +1428,7 @@ describe("counsel on the 1.12.0 fix: every crew run ends, and says why", () => {
   const T0 = NOW;
   const MIN = 60_000;
   const member = (over: Partial<TurnMember> = {}): TurnMember => ({
-    memberId: "minibuch",
+    memberId: "workshop",
     enrolledAt: 1,
     version: "1.11.1",
     verdict: "green",
@@ -1447,7 +1447,7 @@ describe("counsel on the 1.12.0 fix: every crew run ends, and says why", () => {
     const turns = new UpdateTurns((line) => journal.push(line));
     turns.begin(RUN, "1.12.0", T0);
     turns.observe([member()], T0, { release: null, run: leadRun("staging") });
-    expect(turns.turnFor("minibuch")).toBeNull();
+    expect(turns.turnFor("workshop")).toBeNull();
     turns.observe([member()], T0 + 3 * MIN, { release: "1.11.1", run: leadRun("rolled-back") });
     expect(turns.peerLegs()[0]).toMatchObject({
       state: "unreachable",
@@ -1505,7 +1505,7 @@ describe("counsel on the 1.12.0 fix: every crew run ends, and says why", () => {
     expect(journal.some((l) => l.includes("unreachable"))).toBe(false);
     // The lead arrives: the turn goes out on that sweep, and the member gets a full wall clock from it.
     turns.observe([member()], T0 + 31 * MIN, { release: "1.12.0", run: leadRun("done") });
-    expect(turns.turnFor("minibuch")).toBe(`minibuch;${RUN}`);
+    expect(turns.turnFor("workshop")).toBe(`workshop;${RUN}`);
     turns.observe([member()], T0 + 31 * MIN + LEG_WALL_CLOCK_MS - 1, { release: "1.12.0", run: leadRun("done") });
     expect(turns.peerLegs()[0]?.state).toBe("waiting");
   });
@@ -1516,13 +1516,13 @@ describe("counsel on the 1.12.0 fix: every crew run ends, and says why", () => {
     const skewed = member({ run: { state: "done", to: "v1.11.1", runId: "r-earlier", reason: null, updatedAt: T0 + 10 * 60 * MIN } });
     const on = { release: "1.12.0", run: leadRun("done") };
     turns.observe([skewed], T0, on);
-    expect(turns.turnFor("minibuch")).toBeNull();
+    expect(turns.turnFor("workshop")).toBeNull();
     expect(turns.peerLegs()[0]?.reason).toBe(`rate-limited, retries in about ${LIMIT_CAP_MS / MIN} min`);
     // The cap is taken from the FIRST reading, so it does not creep forward with every sweep.
     for (let t = 1; t < LIMIT_CAP_MS / MIN; t += 1) turns.observe([skewed], T0 + t * MIN, on);
-    expect(turns.turnFor("minibuch")).toBeNull();
+    expect(turns.turnFor("workshop")).toBeNull();
     turns.observe([skewed], T0 + LIMIT_CAP_MS, on);
-    expect(turns.turnFor("minibuch")).toBe(`minibuch;${RUN}`);
+    expect(turns.turnFor("workshop")).toBe(`workshop;${RUN}`);
     // A member that still refuses is failed by the wall clock, measured from the capped end.
     turns.observe([skewed], T0 + LIMIT_CAP_MS + LEG_WALL_CLOCK_MS, on);
     expect(turns.peerLegs()[0]).toMatchObject({ state: "unreachable", reason: LEG_WALL_CLOCK_REASON });
@@ -1538,7 +1538,7 @@ describe("counsel on the 1.12.0 fix: every crew run ends, and says why", () => {
     const behind = member({ run: { state: "done", to: "v1.11.1", runId: "r-earlier", reason: null, updatedAt: T0 - 3 * 60 * MIN } });
     const on = { release: "1.12.0", run: leadRun("done") };
     turns.observe([behind], T0, on);
-    expect(turns.turnFor("minibuch")).toBe(`minibuch;${RUN}`);
+    expect(turns.turnFor("workshop")).toBe(`workshop;${RUN}`);
     turns.observe([behind], T0 + LEG_WALL_CLOCK_MS - 1, on);
     expect(turns.peerLegs()[0]?.state).toBe("waiting");
     turns.observe([behind], T0 + LEG_WALL_CLOCK_MS, on);
@@ -1547,7 +1547,7 @@ describe("counsel on the 1.12.0 fix: every crew run ends, and says why", () => {
 
   test("A3: a prerelease or dev build never qualifies for the in-run step, on either side", () => {
     const stepped = run({ state: "done", to: "v1.11.1", runId: RUN, startedAt: T0, updatedAt: T0 + 12_000 });
-    const base = { own: "1.11.1", self: "minibuch", turn: formatTurn("minibuch", RUN), run: stepped, now: T0 + 18_000 };
+    const base = { own: "1.11.1", self: "workshop", turn: formatTurn("workshop", RUN), run: stepped, now: T0 + 18_000 };
     expect(followGuards(facts({ ...base, leadRelease: "1.12.0-rc.1" }))).toMatchObject({ reason: "lead-states-nothing" });
     expect(followGuards(facts({ ...base, leadRelease: "1.12.0-dev+ab12cd3" }))).toMatchObject({ reason: "lead-states-nothing" });
     expect(followGuards(facts({ ...base, own: "1.11.1-dev+ab12cd3", leadRelease: "1.12.0" }))).toMatchObject({

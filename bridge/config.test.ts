@@ -475,11 +475,11 @@ describe("loadConfig", () => {
   });
 
   test("parses discovered Tailscale hosts and the two fail-closed opt-outs", () => {
-    process.env.COLLIE_TAILSCALE_HOSTS = "host.tailnet.ts.net,100.64.0.1";
+    process.env.COLLIE_TAILSCALE_HOSTS = "host.tailnet.ts.net,100.64.10.1";
     process.env.COLLIE_ALLOW_ANY_HOST = "1";
     process.env.COLLIE_TRUSTED_USER_OPTIONAL = "1";
     const cfg = loadConfig();
-    expect(cfg.tailscaleHosts).toEqual(["host.tailnet.ts.net", "100.64.0.1"]);
+    expect(cfg.tailscaleHosts).toEqual(["host.tailnet.ts.net", "100.64.10.1"]);
     expect(cfg.allowAnyHost).toBe(true);
     expect(cfg.trustedUserOptional).toBe(true);
   });
@@ -520,13 +520,13 @@ describe("listenFailureLine", () => {
   });
 
   test("a tailnet host that no interface holds gets the hint", () => {
-    const line = listenFailureLine({ ...base, host: "100.64.0.8", door: "standby door" });
-    expect(line).toContain("standby door cannot listen on 100.64.0.8:8787");
+    const line = listenFailureLine({ ...base, host: "100.64.10.8", door: "standby door" });
+    expect(line).toContain("standby door cannot listen on 100.64.10.8:8787");
     expect(line).toContain("address not on any interface yet (is Tailscale up?)");
   });
 
   test("a tailnet host that an interface holds gets no hint", () => {
-    expect(listenFailureLine({ ...base, host: "100.64.0.8", interfaces: ["127.0.0.1", "100.64.0.8"] })).not.toContain("Tailscale");
+    expect(listenFailureLine({ ...base, host: "100.64.10.8", interfaces: ["127.0.0.1", "100.64.10.8"] })).not.toContain("Tailscale");
   });
 
   test("a missing code is said in words", () => {
@@ -615,7 +615,7 @@ describe("resolveBridgeHost", () => {
   });
 
   test("an explicit COLLIE_HOST is used verbatim — a peer's tailnet address, say", () => {
-    expect(resolveBridgeHost({ COLLIE_HOST: "100.64.0.8" })).toBe("100.64.0.8");
+    expect(resolveBridgeHost({ COLLIE_HOST: "100.64.10.8" })).toBe("100.64.10.8");
   });
 
   test("explicitly empty is passed through, not defaulted — the wildcard-bind case", () => {

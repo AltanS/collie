@@ -347,18 +347,18 @@ describe("AccessGate", () => {
     const g = gateWith({ current: { keys: [A.jwk] } });
     await g.gate.refresh();
     const r = new Request("http://127.0.0.1:8787/api/snapshot", {
-      headers: { host: "127.0.0.1:8787", "x-forwarded-for": "100.64.0.7" },
+      headers: { host: "127.0.0.1:8787", "x-forwarded-for": "100.64.10.7" },
     });
     expect((await g.gate.admit(r, "/api/snapshot"))?.status).toBe(401);
   });
 
   // `tailscale serve` on a host that also runs the tunnel: tailnet Host, X-Forwarded-For, no cf-*.
   // With Access configured that door needs a token too, and a browser on the tailnet has none.
-  test("a tailnet request (bluefin:8788, X-Forwarded-For, no token) is refused with 401", async () => {
+  test("a tailnet request (lodge:8788, X-Forwarded-For, no token) is refused with 401", async () => {
     const g = gateWith({ current: { keys: [A.jwk] } });
     await g.gate.refresh();
     const r = new Request("http://127.0.0.1:8788/api/snapshot", {
-      headers: { host: "bluefin:8788", "x-forwarded-for": "100.64.0.7" },
+      headers: { host: "lodge:8788", "x-forwarded-for": "100.64.10.7" },
     });
     expect(accessExempt(r, "/api/snapshot")).toBe(false);
     expect((await g.gate.admit(r, "/api/snapshot"))?.status).toBe(401);
