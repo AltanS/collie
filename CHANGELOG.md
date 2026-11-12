@@ -40,6 +40,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **Design Review and PR Inbox send their Decisions to a session.** The official list now pins both at a version that says `decides = "reply"`, so a Decision of theirs with `replyTo` types your answer into that session as your own WalkyTalky message. A copy added from an earlier version is asked to update, and its approval asks again.
 - **A switch that is on takes the theme's on colour.** The track of every switch in the app, in Settings, the sheets and the launcher, is now the ink the theme names for a control that is on, not the main button colour, and the switch is the only thing that shows a feature is on. Nightwatch's on colour is amber now, to match the theme. The flip animation stops under reduced motion.
 - **Settings, Tricks is one list.** Each trick shows once, with a small "Official" or "Community" label, instead of the official tricks a second time under their own heading. The official tricks come first, Morph first, then the others by name. Adding a trick, switching it on or off, or a change of its rights changes its row, never its place.
 - **The runner's PATH goes to the host's own CLI only.** `GET /api/tricks` carried the PATH a trick program runs with to every reader, and only `collie doctor` and `collie trick list` read it. The bridge now adds it only to a request from the local CLI (the host's own read credential, from this host, through no proxy), and a paired phone's reply no longer has the field.
