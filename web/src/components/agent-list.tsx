@@ -45,6 +45,7 @@ import { PinHint } from "./pin-hint";
 import { WorkspaceNewTab } from "./workspace-new-tab";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useStillWhileTouched } from "@/hooks/use-still-list";
 import { SUMMARY_LINE_TAP_TARGET } from "@/components/ui/tap-target";
 import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
@@ -368,6 +369,14 @@ export function AgentList({
   // never on a poll. Above the early return, because a hook cannot sit behind one. It ranks the whole
   // herd, not what the filters leave, so a filter changing never needs a new reading.
   const { ranks, reread } = useFrozenRanks(order, [...agents, ...shellPanes], { rereadOnVisible: true });
+  // THE LIST, HELD STILL UNDER A FINGER (hooks/use-still-list.ts). While a finger is down on this list, and 300ms
+  // after, a pane that arrived or left waits to be drawn, so no row slides out from under a thumb. Every pane
+  // that is drawn is the LIVE copy, so a status or an attention mark still changes in place; the summary
+  // line and the counts below read the live herd and are never held. Untouched, these ARE `agents` and
+  // `shellPanes`, the same arrays.
+  const listRoot = useRef<HTMLDivElement | null>(null);
+  const listAgents = useStillWhileTouched(agents, paneRowKey, listRoot);
+  const listShells = useStillWhileTouched(shellPanes, paneRowKey, listRoot);
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
   // sit behind the early return below, and the answer is only consulted in the empty branch.
   const agentDetection = useMuxCapability("agentDetection", viewScope);
@@ -472,7 +481,7 @@ export function AgentList({
   const all = triage(agents);
   const attention = all.filter((s) => ATTENTION.has(s.key) && s.agents.length > 0);
   const groupScope = { order: "fixed" as const, tabs, servers, workspaces, scope: viewScope, sessions: newTab?.sessions };
-  const groups = groupPanesByWorkspace(agents, shellPanes, groupScope);
+  const groups = groupPanesByWorkspace(listAgents, listShells, groupScope);
   if (groups.length === 0) return null;
   // A stale key (a workspace since closed) filters nothing: an isolation nobody can see is dropped,
   // and when every key is stale the list shows everything. An isolated orphan worktree whose root
@@ -706,7 +715,7 @@ export function AgentList({
   );
 
   return (
-    <div className="flex flex-col gap-5 px-4 pb-4 pt-1">
+    <div ref={listRoot} className="flex flex-col gap-5 px-4 pb-4 pt-1">
       {/* THE TOP OF THE DASHBOARD, one control block (2026-10-07, Altan's pick of "One control bar"):
           ONE line of state words with the needs-you switch at its right end, then ONE row of two
           selects, the workspace filter on the left and the pane order on the right. It replaced a chip

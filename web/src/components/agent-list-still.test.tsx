@@ -1,0 +1,89 @@
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { AgentList } from "./agent-list";
+import { STILL_QUIET_MS } from "@/hooks/use-still-list";
+import { __resetDashFilter } from "@/lib/dash-filter";
+import type { AgentStatus, AgentView } from "@/lib/types";
+
+// THE DASHBOARD'S LIST, HELD STILL UNDER A FINGER (hitbox proposal 2), through the real AgentList: a pane that
+// arrives or leaves waits while a finger is down, a status changes in place, and the summary line is never held.
+
+function agent(paneId: string, status: AgentStatus, name: string): AgentView {
+  return {
+    paneId,
+    workspaceId: "w0",
+    workspaceLabel: "work",
+    workspaceNumber: 1,
+    tabId: "w0:t1",
+    agent: "claude",
+    status,
+    cwd: "/home/k/proj",
+    focused: false,
+    sessionName: name,
+  };
+}
+
+const rows = () => screen.getAllByRole("button").filter((b) => b.closest("section") !== null).map((b) => b.textContent ?? "");
+const summary = () => document.getElementById("dash-summary-line")?.textContent ?? "";
+
+function touch(type: "touchstart" | "touchend", el: Element, id: number): void {
+  const e = new Event(type, { bubbles: true });
+  Object.defineProperty(e, "changedTouches", { value: [{ identifier: id, target: el }] });
+  act(() => {
+    el.dispatchEvent(e);
+  });
+}
+
+describe("AgentList held still under a finger", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetDashFilter();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("an arriving pane waits, a status changes in place, and the summary counts the live herd", () => {
+    const a = agent("w0:p1", "idle", "alpha");
+    const b = agent("w0:p2", "working", "beta");
+    const { rerender, container } = render(<AgentList agents={[a, b]} onOpen={vi.fn()} />);
+    const first = rows();
+    expect(first).toHaveLength(2);
+
+    touch("touchstart", container.querySelector("section")!, 1);
+    // A poll: a new blocked pane arrives above, and beta changes to blocked.
+    const arrived = agent("w0:p0", "blocked", "newcomer");
+    rerender(<AgentList agents={[arrived, a, { ...b, status: "blocked" }]} onOpen={vi.fn()} />);
+
+    const held = rows();
+    expect(held).toHaveLength(2);
+    expect(held.join("|")).not.toContain("newcomer");
+    // The summary line reads the LIVE herd: two panes need you, though only one is drawn.
+    expect(summary()).toMatch(/2/u);
+    expect(held.some((r) => /needs you|blocked/iu.test(r))).toBe(true);
+
+    touch("touchend", container.querySelector("section")!, 1);
+    act(() => vi.advanceTimersByTime(STILL_QUIET_MS));
+    expect(rows().join("|")).toContain("newcomer");
+    expect(rows()).toHaveLength(3);
+  });
+
+  it("a pane that leaves stays under the finger and goes after it", () => {
+    const a = agent("w0:p1", "idle", "alpha");
+    const b = agent("w0:p2", "working", "beta");
+    const c = agent("w0:p3", "idle", "gamma");
+    const { rerender, container } = render(<AgentList agents={[a, b, c]} onOpen={vi.fn()} />);
+    touch("touchstart", container.querySelector("section")!, 1);
+    rerender(<AgentList agents={[a, c]} onOpen={vi.fn()} />);
+    expect(rows()).toHaveLength(3);
+    touch("touchend", container.querySelector("section")!, 1);
+    act(() => vi.advanceTimersByTime(STILL_QUIET_MS));
+    expect(rows()).toHaveLength(2);
+  });
+
+  it("a list nobody touches changes at once", () => {
+    const a = agent("w0:p1", "idle", "alpha");
+    const { rerender } = render(<AgentList agents={[a]} onOpen={vi.fn()} />);
+    rerender(<AgentList agents={[agent("w0:p0", "idle", "newcomer"), a]} onOpen={vi.fn()} />);
+    expect(rows()).toHaveLength(2);
+  });
+});

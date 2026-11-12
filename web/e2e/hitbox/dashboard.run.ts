@@ -286,6 +286,126 @@ test("a row arriving or leaving, and a press that outlasts it", async ({ browser
   part1.set("glide", rows);
 });
 
+// The same poll, read as the APP answers it and not as the DOM does: the click is NOT swallowed, and the answer
+// is the pane the router opens. A tap that lands on a neighbour but is sent to the pressed row (lib/press-memory.ts)
+// is a wrong click to the page and the right pane to the person, and a list held still under the finger
+// (hooks/use-still-list.ts) never moves at all; this is the number that says which of them is true.
+// `HITBOX_OPEN_TRIES` tries per direction (default 40); the page is reloaded between tries, so it is slow.
+test("which pane a tap opens when a row arrives or leaves", async ({ browser }) => {
+  const tries = Number(process.env.HITBOX_OPEN_TRIES ?? "40");
+  const { page, control, f, close } = await fresh(browser, { delay: 60 });
+  const unswallow = () =>
+    page.evaluate(() => {
+      window.__hbSwallow = false;
+    });
+  await unswallow();
+  const def = TARGETS.find((t) => t.id === "row-mid")!;
+  // The herd stays as it was until the poll under test: `live` names what that poll brings.
+  let live: "base" | "arrival" | "departure" = "base";
+  const arrives = variantBody({ id: "x", target: "row-mid", variant: "insert" }, "w1:p2");
+  const leaves = variantBody({ id: "x", target: "row-mid", variant: "remove" }, "w1:p2");
+  control.body = () => {
+    if (live === "base") return richSnapshot(control.asked);
+    return live === "arrival" ? arrives(1) : leaves(1);
+  };
+  const tally = { arrival: { right: 0, wrong: 0, none: 0, of: 0 }, departure: { right: 0, wrong: 0, none: 0, of: 0 } };
+  for (let i = 0; i < tries * 2; i += 1) {
+    const loc = def.find(page);
+    const box = await watch(page, loc);
+    const intended = await loc.first().getAttribute("data-glide-key");
+    const arrival = i % 2 === 0;
+    await f.cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x + box.w / 2, y: box.y + box.h / 2, radiusX: 8, radiusY: 8, force: 1 }] });
+    await sleep(30);
+    live = arrival ? "arrival" : "departure";
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await sleep(120);
+    await f.cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    let opened: string | null = null;
+    for (let k = 0; k < 30 && opened === null; k += 1) {
+      await sleep(50);
+      const path = await page.evaluate(() => window.location.pathname);
+      if (path.startsWith("/pane/")) opened = path;
+    }
+    const side = arrival ? tally.arrival : tally.departure;
+    side.of += 1;
+    if (opened === null) side.none += 1;
+    else if (opened === intended) side.right += 1;
+    else side.wrong += 1;
+    // Back to a fresh Dashboard for the next try.
+    live = "base";
+    await page.goto("/");
+    await page.waitForSelector('[data-glide-origin="pane"]');
+    await unswallow();
+    await sleep(900);
+  }
+  part1.set("opens", { tries, ...tally });
+  await close();
+});
+
+// A LIST HELD STILL (hooks/use-still-list.ts), read in a real engine. A finger is put down on a row and kept there;
+// 300ms in, a poll brings a new needs-you pane AND flips another row to blocked. Recorded: when the summary line
+// counts the new pane (the live herd: it must not wait), when the flipped row shows blocked (in place: it must not
+// wait), and when the new row appears (it waits for the finger and 300ms). The same poll on a list nobody touches is
+// the control: it is not delayed at all. On the old build the new row appears at once in both, which is the fault.
+test("a list held still: what waits and what does not", async ({ browser }) => {
+  const { page, control, f, close } = await fresh(browser, { delay: 0 });
+  const rowCount = () => page.locator('[data-glide-origin="pane"]').count();
+  const summaryText = () => page.locator("#dash-summary-line").innerText();
+  const flipped = () => page.locator('[data-glide-origin="pane"]').nth(1).innerText();
+  const base = await rowCount();
+  const baseSummary = await summaryText();
+  const baseFlip = await flipped();
+  const body = (n: number) =>
+    richSnapshot(n, (a) => [NEW_AGENT, ...a.map((x) => (x.paneId === "w1:p2" ? { ...x, status: "blocked" as const } : x))]);
+
+  // CONTROL: nobody touches the list. Time from the poll to the new row on screen.
+  control.body = () => body(control.asked);
+  const t0 = Date.now();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  let untouchedMs: number | null = null;
+  for (let k = 0; k < 80 && untouchedMs === null; k += 1) {
+    await sleep(25);
+    if ((await rowCount()) > base) untouchedMs = Date.now() - t0;
+  }
+
+  // HELD: back to the old herd, then a finger down on a row while the new poll lands.
+  control.body = () => richSnapshot(control.asked);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  for (let k = 0; k < 80 && (await rowCount()) !== base; k += 1) await sleep(50);
+  await sleep(600);
+  const box = await watch(page, page.locator('[data-glide-origin="pane"]').nth(3));
+  control.body = () => body(control.asked);
+  await f.cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x + box.w / 2, y: box.y + box.h / 2, radiusX: 8, radiusY: 8, force: 1 }] });
+  const down = Date.now();
+  await sleep(300);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  let summaryMs: number | null = null;
+  let flipMs: number | null = null;
+  let rowMs: number | null = null;
+  let rowsWhileDown = base;
+  while (Date.now() - down < 2300) {
+    await sleep(25);
+    if (summaryMs === null && (await summaryText()) !== baseSummary) summaryMs = Date.now() - down - 300;
+    if (flipMs === null && (await flipped()) !== baseFlip) flipMs = Date.now() - down - 300;
+    rowsWhileDown = await rowCount();
+    if (rowMs === null && rowsWhileDown > base) rowMs = Date.now() - down - 300;
+  }
+  const rowsBeforeLift = await rowCount();
+  await f.cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+  const lift = Date.now();
+  let afterLiftMs: number | null = null;
+  for (let k = 0; k < 60 && afterLiftMs === null; k += 1) {
+    await sleep(25);
+    if ((await rowCount()) > base) afterLiftMs = Date.now() - lift;
+  }
+  part1.set("held", {
+    untouchedRowMs: untouchedMs,
+    whileFingerDown: { summaryMs, flippedRowMs: flipMs, newRowMsAfterPoll: rowMs, rowsBeforeLift, rowsAtStart: base },
+    newRowMsAfterLift: afterLiftMs,
+  });
+  await close();
+});
+
 // ── 3. A GESTURE EATS THE TAP: drift, press length, a fling ─────────────────────────────────────
 test("drift, press length and fling", async ({ browser }) => {
   const { page, f, close } = await fresh(browser);
