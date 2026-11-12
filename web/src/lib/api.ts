@@ -851,8 +851,8 @@ export function reopenDurableConversation(id: string, scope?: Scope): Promise<Re
  * the one caller a type cannot reach.
  */
 export type ChatRequest =
-  | { limit?: number; after?: ChatAfter; before?: never }
-  | { limit?: number; after?: never; before: ChatBefore };
+  | { limit?: number; turns?: number; after?: ChatAfter; before?: never }
+  | { limit?: number; turns?: number; after?: never; before: ChatBefore };
 
 // The last ETag per (host, session, pane), for the LIVE page only. Same key as the pane cache, and
 // for the same reason: a pane id is unique only inside one session on one machine.
@@ -898,6 +898,9 @@ export async function fetchChat(
 ): Promise<ChatAnswer> {
   const q = new URLSearchParams();
   if (opts.limit) q.set("limit", String(opts.limit));
+  // A page that reaches back over fewer prompts than the default (six): a first paint over a slow
+  // link asks for one and loads more as the reader scrolls. Zero is left off, as `limit` is.
+  if (opts.turns) q.set("turns", String(opts.turns));
   // The bridge's own precedence, restated rather than assumed: `before` wins and `after` is not read.
   if (opts.before) q.set("before", `${opts.before.seq}:${opts.before.uuid}`);
   else if (opts.after) q.set("after", `${opts.after.gen}:${opts.after.rev}`);

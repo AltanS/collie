@@ -320,6 +320,12 @@ export interface ChatParams {
   limit: number;
   after?: ChatAfter;
   before?: ChatBefore;
+  /**
+   * How many prompts a first paint or an older page reaches back over, when fewer than
+   * {@link LIVE_TURNS}. Absent means the default. A client on a slow link asks for one and pages back
+   * as the reader scrolls; `?after=` is not paged and ignores it.
+   */
+  turns?: number;
 }
 
 /** Digits only, both fields of both tokens: a position is never negative and never a float. */
@@ -370,6 +376,13 @@ export function chatParams(url: URL): ChatParams {
   const limit =
     Number.isFinite(raw) && raw > 0 ? Math.min(raw, MAX_CHAT_LIMIT) : DEFAULT_CHAT_LIMIT;
   const params: ChatParams = { limit };
+  // `turns` is digits only and at least one; above the default it is the default (a bigger number is
+  // no smaller page). Left off when unreadable, so the page keeps its normal size.
+  const turnsText = url.searchParams.get("turns") ?? "";
+  if (DIGITS.test(turnsText)) {
+    const turns = Number.parseInt(turnsText, 10);
+    if (turns >= 1) params.turns = Math.min(turns, LIVE_TURNS);
+  }
   // Assigned, never conditionally spread, so an unreadable token leaves the key OFF — which the
   // window reads as "this client holds nothing", the only safe reading of a token it cannot trust.
   const before = parseChatBefore(url.searchParams.get("before"));
@@ -704,14 +717,20 @@ class LiveWindow {
    * left for a second cap to protect.
    *
    * A reader holding nothing, or another generation, gets the last {@link LIVE_TURNS} prompts and
-   * everything after each instead, held to `limit` rows at least and {@link MAX_PAGE_ROWS} at most
-   * (`journal/turns.ts`). That is a first paint.
+   * everything after each instead (or the last `turns` prompts, when the reader asked for fewer),
+   * held to `limit` rows at least and {@link MAX_PAGE_ROWS} at most (`journal/turns.ts`). That is a
+   * first paint.
    */
-  body(after: ChatAfter | null, limit: number, receipts: readonly ReceiptQueued[] = []): ChatWindowBody {
+  body(
+    after: ChatAfter | null,
+    limit: number,
+    receipts: readonly ReceiptQueued[] = [],
+    turns?: number,
+  ): ChatWindowBody {
     const rows =
       after !== null && after.gen === this.gen
         ? this.rows.filter((row) => row.rev > after.rev)
-        : this.rows.slice(pageStart(this.rows.length, limit, (i) => this.rows[i]!.entry));
+        : this.rows.slice(pageStart(this.rows.length, limit, (i) => this.rows[i]!.entry, turns));
     const body: ChatWindowBody = {
       page: "live",
       gen: this.gen,
@@ -855,7 +874,7 @@ export class LiveWindows {
         () => window.settleLookup(gen, null),
       );
     }
-    return window.body(params.after ?? null, params.limit, receipts);
+    return window.body(params.after ?? null, params.limit, receipts, params.turns);
   }
 
   /**
@@ -875,6 +894,7 @@ export class LiveWindows {
     ref: AgentSessionRef,
     before: ChatBefore,
     limit: number,
+    turns?: number,
   ): Promise<ChatOlderBody | null> {
     const key = await adapter.source.resolve(ref);
     if (key === null) return null;
@@ -882,7 +902,7 @@ export class LiveWindows {
     // Tick first, so the page carries the generation the next poll will answer with. A log rewritten
     // since the last poll would otherwise stamp this page with a numbering that poll replaces (#642).
     await window.tick(key);
-    const page = await this.store.page(adapter, ref, { limit, before: before.uuid, turns: true });
+    const page = await this.store.page(adapter, ref, { limit, before: before.uuid, turns: turns ?? true });
     if (page === null) return null;
     // Numbered from the END of the page backwards, so the newest turn in it sits immediately before
     // the one the client named. A short page (the log's own start) therefore begins higher, which is
