@@ -1,4 +1,4 @@
-import { dateOnly, initials, shortCwd, timeAgo, timeAgoShort, timeLeft } from "./format";
+import { dateOnly, initials, wholeNumber, shortCwd, timeAgo, timeAgoShort, timeLeft } from "./format";
 
 describe("shortCwd", () => {
   it("collapses /home/<user> to ~", () => {
@@ -142,5 +142,11 @@ describe("dateOnly", () => {
 
   it("is empty for an instant that does not parse", () => {
     expect(dateOnly(Number.NaN, "UTC")).toBe("");
+  });
+});
+
+describe("wholeNumber", () => {
+  it("groups a count in the app locale's way, never compact", () => {
+    expect([1, 999, 1234, 12500].map(wholeNumber)).toEqual(["1", "999", "1,234", "12,500"]);
   });
 });

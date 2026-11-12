@@ -5,7 +5,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs } from "@/components/trick-about-sheet";
+import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs, repoFactsLine } from "@/components/trick-about-sheet";
 import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
 import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, MENU_TAP_WORDS, MENU_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
@@ -332,11 +332,19 @@ describe("where it comes from: the repository's link, its facts and the version 
 
   it("puts the stars and the last commit's date inside the link row, in a pinned zone", () => {
     const view = render(<TrickAboutSheet trick={{ ...FROM_REPO, repoFacts: FACTS }} open onClose={vi.fn()} timeZone="UTC" />);
-    expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1234 stars, last commit Nov 10, 2026");
+    expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1,234 stars, last commit Nov 10, 2026");
     expect(from().querySelector('[data-slot="trick-repo-link"] [data-line="repo-facts"]')).not.toBeNull();
     view.unmount();
     render(<TrickAboutSheet trick={{ ...FROM_REPO, repoFacts: { stars: 1, pushedAt: FACTS.pushedAt } }} open onClose={vi.fn()} timeZone="Pacific/Auckland" />);
     expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1 star, last commit Nov 11, 2026");
+  });
+
+  it("writes the star count in the app's number format, one or many, never compact", () => {
+    const line = (stars: number) => repoFactsLine({ stars, pushedAt: "2026-11-10T12:00:00Z" }, "UTC");
+    expect(line(1)).toBe("1 star, last commit Nov 10, 2026");
+    expect(line(999)).toBe("999 stars, last commit Nov 10, 2026");
+    expect(line(1234)).toBe("1,234 stars, last commit Nov 10, 2026");
+    expect(line(12500)).toBe("12,500 stars, last commit Nov 10, 2026");
   });
 
   it("shows no facts for a host other than github.com, and no link for a trick not from a repository or a bad URL", () => {
@@ -376,6 +384,6 @@ describe("where it comes from: the repository's link, its facts and the version 
     const rows = [...from().querySelectorAll("li")].map((li) => li.textContent);
     expect(rows[0]).toBe("From AltanS/collie-tricks @ 0d80399");
     expect(within(from()).getByRole("link").getAttribute("href")).toBe("https://github.com/AltanS/collie-tricks");
-    expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1234 stars, last commit Nov 10, 2026");
+    expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1,234 stars, last commit Nov 10, 2026");
   });
 });

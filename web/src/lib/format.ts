@@ -147,6 +147,14 @@ export function dateTime(ts: number): string {
 }
 
 /**
+ * A whole count in the active APP locale's digits and grouping, never compact: 1234 reads "1,234" in
+ * English and "1.234" in German, 12500 "12,500", never "12.5K".
+ */
+export function wholeNumber(n: number): string {
+  return new Intl.NumberFormat(getLocaleSnapshot().locale, { maximumFractionDigits: 0 }).format(n);
+}
+
+/**
  * A calendar date alone, medium, in the active APP locale: "10 Nov 2026". For a day that may be months
  * back, like a repository's last commit, where the clock time says nothing. `timeZone` pins the zone for a
  * test; the app leaves it out and reads the device's own. "" for an instant that does not parse.

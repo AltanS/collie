@@ -10,7 +10,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
-import { dateOnly } from "@/lib/format";
+import { dateOnly, wholeNumber } from "@/lib/format";
 import { isWebLink, linkHost } from "@/lib/hill/reader";
 import { t, tn } from "@/lib/i18n";
 import { HostWords } from "@/lib/tricks/render";
@@ -71,10 +71,10 @@ interface FactRow {
   bare?: true;
 }
 
-/** The stars and the last commit of a repository, one line: "12 stars, last commit 10 Nov 2026". */
+/** The stars and the last commit of a repository, one line: "1,234 stars, last commit Nov 10, 2026". */
 export function repoFactsLine(facts: WireRepoFacts, timeZone?: string): string {
   return t("settings.tricks.about.repoFacts", {
-    stars: tn("settings.tricks.about.stars", facts.stars),
+    stars: tn("settings.tricks.about.stars", facts.stars, { stars: wholeNumber(facts.stars) }),
     commit: t("settings.tricks.about.lastCommit", { date: dateOnly(Date.parse(facts.pushedAt), timeZone) }),
   });
 }

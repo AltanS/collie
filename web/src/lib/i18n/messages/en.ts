@@ -3469,9 +3469,10 @@ export const en = {
   // Official tricks, the ones this release can add (M94): English only until the translation pass,
   // listed in PENDING_TRANSLATION below. The failure lines are the bridge's own (bridge/tricks/official-install.ts).
   // The About sheet's facts of a trick's repository (2026-11-12): the bridge reads them, the phone never does.
+  // `{stars}` is the count in the app's number format ("1,234"), the plural form picks by the count itself.
   // `{date}` is a date in the app's language; `{version}` is the author's own word from trick.toml.
-  "settings.tricks.about.stars.one": "{count} star",
-  "settings.tricks.about.stars.other": "{count} stars",
+  "settings.tricks.about.stars.one": "{stars} star",
+  "settings.tricks.about.stars.other": "{stars} stars",
   "settings.tricks.about.lastCommit": "last commit {date}",
   "settings.tricks.about.repoFacts": "{stars}, {commit}",
   "settings.tricks.about.version": "Version {version}",
