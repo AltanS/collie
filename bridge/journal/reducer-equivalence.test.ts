@@ -14,6 +14,7 @@ import { createOpencodeReducer, parseOpencodeTranscript } from "./opencode.ts";
 import { createPiReducer, parsePiTranscript } from "./pi.ts";
 import { createKiroReducer, parseKiroTranscript } from "./kiro.ts";
 import { createDshReducer, parseDshTranscript } from "./dsh.ts";
+import { createMcodeReducer, parseMcodeTranscript } from "./mcode.ts";
 import { agyJournal, createAgyReducer } from "./agy.ts";
 import type { TranscriptEntry } from "./types.ts";
 
@@ -111,6 +112,7 @@ const COVERED = [
   "muse",
   "openclaw",
   "dsh-tui",
+  "mcode",
 ] as const;
 
 test("every harness the registry knows has an equivalence section here", () => {
@@ -441,5 +443,61 @@ describe("dsh-tui: a reducer reads a torn stream the way the parser reads a whol
 
   test("whole history, complete rows and arbitrary chunks agree", () => {
     expectEquivalent(createDshReducer, parseDshTranscript, text);
+  });
+});
+
+describe("mcode: a reducer reads a torn stream the way the parser reads a whole file", () => {
+  const row = (message: Record<string, JsonValue>, messageId: string) =>
+    JSON.stringify({ message_id: messageId, turn_id: "turn-1", message });
+  // mcode wraps the operator's words in injected plumbing and marks the spoken part with
+  // `canonicalTextRange`, so the corpus carries a range that really lands inside the text.
+  const spoken = "why is this not chat?";
+  const plumbing = `<system-reminder>\nskills\n</system-reminder>\n\n${spoken}`;
+  const start = plumbing.indexOf(spoken);
+  const text = [
+    row(
+      {
+        role: "user",
+        content: [{ type: "text", text: plumbing }],
+        canonicalTextRange: { startOffset: start, endOffset: start + spoken.length },
+      },
+      "msg-user-1",
+    ),
+    row(
+      {
+        role: "assistant",
+        timestamp: 1793749975159,
+        content: [
+          { type: "thinking", thinking: "Run ls." },
+          // The escaped newline is the only way a row carries one: the splitter must never take the
+          // two characters `\` `n` for the byte 0x0A.
+          { type: "text", text: "First line.\nSecond line: café 日本語." },
+          { type: "toolCall", id: "call_1", name: "shell_command", arguments: { command: "ls" } },
+        ],
+      },
+      "msg-asst-1",
+    ),
+    row(
+      {
+        role: "toolResult",
+        toolCallId: "call_1",
+        toolName: "shell_command",
+        content: [{ type: "text", text: "file.ts\nREADME.md" }],
+        isError: false,
+        timestamp: 1793750003315,
+      },
+      "msg-tool-1",
+    ),
+    // A result whose call is not in this stream stands alone, which is the one branch that adds an
+    // entry instead of folding one.
+    row(
+      { role: "toolResult", toolCallId: "gone", toolName: "shell_command", content: [{ type: "text", text: "orphan" }] },
+      "msg-tool-2",
+    ),
+    ...RUBBISH,
+  ].join("\n");
+
+  test("whole history, complete rows and arbitrary chunks agree", () => {
+    expectEquivalent(createMcodeReducer, parseMcodeTranscript, text);
   });
 });
