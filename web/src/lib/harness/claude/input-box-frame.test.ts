@@ -195,6 +195,8 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2310-auth-refresh-before-output-spinner--w52.txt",
     "claude--v2310-auth-refresh-output-spinner--w52.txt",
     "claude--v2310-auth-refresh-output-spinner-timer--w52.txt",
+    // Remote Control on, 2.1.319: the lone `/rc` row is the last statusline row, and the box stands.
+    "claude--v2319-rc-footer-idle--w100.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
   ]);

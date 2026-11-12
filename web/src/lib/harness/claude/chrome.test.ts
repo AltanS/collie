@@ -1140,6 +1140,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2317-next-steps-suggestions-dismissed--w100", statusRows: 1, draft: null, stripped: 5 },
     { fixture: "v2304-select-preview-cjk", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2304-select-preview-cjk-moved", statusRows: 0, draft: null, stripped: 0 },
+    // Remote Control on (2.1.319): `/rc` is the fourth statusline row, stripped with the rest.
+    { fixture: "v2319-rc-footer-idle--w100", statusRows: 4, draft: null, stripped: 9 },
     { fixture: "wizard-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-final", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-pointer-next", statusRows: 0, draft: null, stripped: 0 },

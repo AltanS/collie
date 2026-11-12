@@ -3331,6 +3331,26 @@ Claude dialog captures do, so the echo rule never reads them. Pinned by `cues.te
 | `claude--v2-1-310-resume-two-sessions--w119.txt` | `/resume` with two past sessions: `  ❯ Fruit taste descriptions list` over `    1 minute ago · master · 196KB`, the second session, the two-row key footer. No box. Lifts an ask; the cues alone read strong |
 | `claude--v2-1-310-rewind--w119.txt` | Escape Escape on an empty box: `Rewind`, one earlier prompt, `  ❯ (current)`, `Enter to continue · Esc to cancel`. No box. Lifts an ask; the cues alone read strong |
 
+## The Remote Control row under the box (built 2026-11-11, Claude Code 2.1.319, 100 columns)
+
+**Built, not captured.** A phone screenshot of a pane on Claude Code 2.1.319 with Remote Control on
+showed four rows under an empty box: a custom statusline, the mode row, `✔ Update installed · Restart
+to update`, and a lone `/rc`. A send to that pane was held "Something is open at the box" while Claude
+sat idle. The file rebuilds that footer in the corpus's colours over a neutral transcript; no row of
+the screenshot's transcript or titles is in it. The statusline is a stand-in of the same shape.
+
+`/rc` is Claude Code's Remote Control status row. The 2.1.319 bundle labels it `/rc connecting…`,
+`/rc active`, `/rc reconnecting` and `/rc failed`, and shortens `/rc active` to `/rc` once the badge
+has been seen five times. It is drawn only at 60 columns or more. Focused from the keyboard it reads
+`/rc · enter to view`, and Enter then opens the Remote Control view. The screen reads free with the
+row there; the bridge's own count of rows under the box (`idle.volatile.below.hints`) leaves the
+unfocused labels out, so the row coming or going while Collie types fails no probe. Pinned by
+`bridge/surface/protocol.claude-rc-footer.test.ts` and `fold.corpus.test.ts`.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2319-rc-footer-idle--w100.txt` | An empty box under a finished turn; under it the statusline, `⏵⏵ bypass permissions on (shift+tab to cycle)`, the update notice and `/rc`. Reads `idle`, `none`, `empty`. Labelled `idle` |
+
 ## omp fuzzy command list under the box (captured 2026-10-25, omp 18.6.1 and 18.12.6, omp-gang testers 01 and 02)
 
 Real pane reads from the testers' rig: a scratch Herdr with its own bridge, `omp` on `openrouter/anthropic/claude-haiku-4.5`,

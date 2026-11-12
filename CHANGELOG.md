@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude's Remote Control row coming or going no longer fails a send.** Claude Code draws its Remote Control status (`/rc`, `/rc active`, `/rc connecting…`, `/rc reconnecting`, `/rc failed`) as a row under the box. Had that row come or gone while Collie typed, the send's probe failed, the send was held as "Something is open at the box", and each retry could fail the same way. The Claude profile now names the row as a hint, so it no longer counts as the screen moving; its focused form, which takes Enter, still counts. Thanks @hubrix (#767).
+
 ## [1.28.2] - 2026-11-11
 
 ### Fixed

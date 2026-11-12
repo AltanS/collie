@@ -2279,6 +2279,22 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2319-rc-footer-idle--w100.txt",
+  "frame": {
+   "top": 4,
+   "prompt": 5,
+   "bottom": 6,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 7,
+    "last": 10
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },
