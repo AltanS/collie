@@ -488,7 +488,7 @@ describe("the counter itself", () => {
 // reducer, and one that answered nothing would be an agent whose drift nobody is watching.
 test("every registered journal adapter's reducer answers a tally", () => {
   const registry = buildJournalRegistry({ agy: [], claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [], mcode: [] });
-  expect(journalAgents(registry)).toHaveLength(11);
+  expect(journalAgents(registry)).toHaveLength(12);
   for (const [agent, adapter] of Object.entries(registry)) {
     const tally = adapter.reducer().unknowns();
     expect(tally.rows.size, agent).toBe(0);

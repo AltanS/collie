@@ -453,6 +453,7 @@ describe("collie doctor — the contract", () => {
       "integration-grok",
       "integration-hermes",
       "integration-kiro",
+      "integration-mcode",
       "integration-muse",
       "integration-openclaw",
       "integration-opencode",
@@ -2991,7 +2992,8 @@ describe("plain output parity (M43 spec 04, wrapped at 80 by M71 spec 03)", () =
   // secret the mode rule could not tighten). M71 spec 03 moved it once more: rows wrap at 80 columns, so a
   // long detail continues under the value column. M79 spec 02 turned integration-omp ok: pi's adapter
   // finds its own session now, so an omp pane needs no Herdr hook. M99 spec 09 added the four
-  // `link-*` rows, none linked in this fixture. The
+  // `link-*` rows, none linked in this fixture. MiniMax Code (mcode) added its `integration-mcode`
+  // row and a twelfth `sends-*` row, and its root is one more in the journal-roots count. The
   // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all.
   test("the plain doctor output on a POSIX host matches the golden, wrapped at 80 columns", async () => {
     const out = `${await render()}---\n${await render(blocked())}`;
