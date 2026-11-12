@@ -136,3 +136,67 @@ describe("the instance registry", () => {
     expect(statSync(join(folder, "instances.json")).mode & 0o777).toBe(0o600);
   });
 });
+
+// Review 12 M1: a pane id the multiplexer gives to a new session within the grace must not keep the old
+// token, or the new session inherits the old one's bound trick rows, taps, inbox and off flag. The
+// registry looks at the pane (`look`): its generation (`<agent>:<agent session or ->`, as the Send
+// Protocol's) and whether its session's last snapshot was read. The grace is for a missed snapshot only.
+describe("M1: a reused pane id gets a new token", () => {
+  function rig() {
+    const at = { now: T0 };
+    const panes = new Map<string, string>();
+    const read = new Set<string>(["main"]);
+    const reg = new WalkyInstances(null, () => at.now, undefined, {
+      generation: (session, paneId) => panes.get(`${session}/${paneId}`) ?? null,
+      read: (session) => read.has(session),
+    });
+    const dropped: string[] = [];
+    reg.onDrop((session, paneId, token) => dropped.push(`${session}/${paneId}#${token}`));
+    return { at, panes, read, reg, dropped };
+  }
+
+  test("M1-closed: a pane missing from a session whose snapshot was read is closed at once, and a new pane with its id gets a new token", () => {
+    const { at, panes, reg, dropped } = rig();
+    panes.set("main/w1:p1", "claude:aaaa");
+    const first = reg.tokenOf("main", "w1:p1");
+    at.now += 2_000;
+    panes.delete("main/w1:p1");
+    reg.observe([]);
+    expect(reg.peek("main", "w1:p1")).toBeNull();
+    expect(dropped).toEqual([`main/w1:p1#${first}`]);
+    at.now += 2_000;
+    panes.set("main/w1:p1", "claude:bbbb");
+    expect(reg.tokenOf("main", "w1:p1")).not.toBe(first);
+  });
+
+  test("M1-generation: a pane whose agent or agent session changed between two looks gets a new token, and the old one's listeners hear it", () => {
+    const { at, panes, reg, dropped } = rig();
+    panes.set("main/w1:p1", "claude:aaaa");
+    const first = reg.tokenOf("main", "w1:p1");
+    at.now += 1_000;
+    panes.set("main/w1:p1", "claude:bbbb");
+    const second = reg.tokenOf("main", "w1:p1");
+    expect(second).not.toBe(first);
+    expect(dropped).toEqual([`main/w1:p1#${first}`]);
+    panes.set("main/w1:p1", "codex:-");
+    const [third] = reg.stamp([p("w1:p1")]);
+    expect(third!.instance).not.toBe(second);
+    expect(reg.all()).toHaveLength(1);
+  });
+
+  test("M1-same-run: an agent that names its session keeps its token, and a missed snapshot keeps it through the grace", () => {
+    const { at, panes, read, reg, dropped } = rig();
+    panes.set("main/w1:p1", "claude:-");
+    const first = reg.tokenOf("main", "w1:p1");
+    panes.set("main/w1:p1", "claude:aaaa");
+    expect(reg.tokenOf("main", "w1:p1")).toBe(first);
+    // The session's snapshot was not read: the pane is out of sight, not closed.
+    read.delete("main");
+    at.now += INSTANCE_GRACE_MS;
+    reg.observe([]);
+    expect(reg.peek("main", "w1:p1")).toBe(first);
+    read.add("main");
+    expect(reg.stamp([p("w1:p1")])[0]!.instance).toBe(first);
+    expect(dropped).toEqual([]);
+  });
+});

@@ -35,6 +35,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The runner's PATH goes to the host's own CLI only.** `GET /api/tricks` carried the PATH a trick program runs with to every reader, and only `collie doctor` and `collie trick list` read it. The bridge now adds it only to a request from the local CLI (the host's own read credential, from this host, through no proxy), and a paired phone's reply no longer has the field.
 
+### Fixed
+
+- **A pane id the multiplexer gives to a new session gets a new instance token at once.** The walky instance token used to survive a pane id reused within 30 seconds, so a new session there kept the old one's address, inbox and off flag, and would have kept a trick's rows bound to the old session. A pane missing from a snapshot the bridge read is now closed at once, and a pane whose agent or agent session changed gets a new token; the 30 seconds only ride out a snapshot the bridge could not read.
+
 ### Docs
 
 - **Session settings rows have a section in each tricks page.** The reference lists the `menu` place with a bound example, the `sessions` key on a belt mark and a menu part, and a "Bound parts" group of limits; `docs/tricks.md`, `docs/tricks-authoring.md` and `collie trick guide` each say in a few lines what the rows do, how a switch waits for the trick, and how a part binds to sessions.
