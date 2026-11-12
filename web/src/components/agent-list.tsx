@@ -218,6 +218,11 @@ export interface HeadingNewTab {
 
 /** A module-level empty list: a fresh `[]` default per render is a new reference for nothing. */
 const NO_PANES: AgentView[] = [];
+const NO_TABS: readonly TabView[] = [];
+const NO_WORKSPACES: readonly WorkspaceView[] = [];
+/** A tab's identity across machines: the tab id alone repeats from one machine to the next. */
+const tabRowKey = (tab: TabView): string => `${tab.host ?? ""}\u0000${tab.tabId}`;
+const workspaceRowKey = (w: WorkspaceView): string => `${w.host ?? ""}\u0000${w.workspaceId}`;
 const NO_KEYS: readonly string[] = [];
 const NO_PINS: readonly Pin[] = [];
 const NO_MACHINES: readonly string[] = [];
@@ -377,6 +382,11 @@ export function AgentList({
   const listRoot = useRef<HTMLDivElement | null>(null);
   const listAgents = useStillWhileTouched(agents, paneRowKey, listRoot);
   const listShells = useStillWhileTouched(shellPanes, paneRowKey, listRoot);
+  // A row's PLACE is read from the tab and the workspace it sits in (tabs by number, workspaces by number), so
+  // those two lists are held with the panes: a pane held through its tab's removal must keep the place it was
+  // drawn at, not fall to the fallback sort of a tab the live list no longer has.
+  const heldTabs = useStillWhileTouched(tabs ?? NO_TABS, tabRowKey, listRoot);
+  const heldWorkspaces = useStillWhileTouched(workspaces ?? NO_WORKSPACES, workspaceRowKey, listRoot);
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
   // sit behind the early return below, and the answer is only consulted in the empty branch.
   const agentDetection = useMuxCapability("agentDetection", viewScope);
@@ -480,7 +490,14 @@ export function AgentList({
   // the one summary line. Push and the badge carry the alarm; this screen answers "where".
   const all = triage(agents);
   const attention = all.filter((s) => ATTENTION.has(s.key) && s.agents.length > 0);
-  const groupScope = { order: "fixed" as const, tabs, servers, workspaces, scope: viewScope, sessions: newTab?.sessions };
+  const groupScope = {
+    order: "fixed" as const,
+    tabs: tabs === undefined ? undefined : heldTabs,
+    servers,
+    workspaces: workspaces === undefined ? undefined : heldWorkspaces,
+    scope: viewScope,
+    sessions: newTab?.sessions,
+  };
   const groups = groupPanesByWorkspace(listAgents, listShells, groupScope);
   if (groups.length === 0) return null;
   // A stale key (a workspace since closed) filters nothing: an isolation nobody can see is dropped,

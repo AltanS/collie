@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentList } from "./agent-list";
 import { STILL_QUIET_MS } from "@/hooks/use-still-list";
 import { __resetDashFilter } from "@/lib/dash-filter";
-import type { AgentStatus, AgentView } from "@/lib/types";
+import type { AgentStatus, AgentView, TabView } from "@/lib/types";
 
 // THE DASHBOARD'S LIST, HELD STILL UNDER A FINGER (hitbox proposal 2), through the real AgentList: a pane that
 // arrives or leaves waits while a finger is down, a status changes in place, and the summary line is never held.
@@ -75,6 +75,23 @@ describe("AgentList held still under a finger", () => {
     touch("touchstart", container.querySelector("section")!, 1);
     rerender(<AgentList agents={[a, c]} onOpen={vi.fn()} />);
     expect(rows()).toHaveLength(3);
+    touch("touchend", container.querySelector("section")!, 1);
+    act(() => vi.advanceTimersByTime(STILL_QUIET_MS));
+    expect(rows()).toHaveLength(2);
+  });
+
+  it("a pane whose tab closes with it keeps its place while held: the tab list is held too", () => {
+    const tab = (n: number): TabView => ({ tabId: `w0:t${String(n)}`, workspaceId: "w0", number: n, label: `tab ${String(n)}`, focused: false, paneCount: 1 });
+    const inTab = (id: string, n: number, name: string): AgentView => ({ ...agent(id, "idle", name), tabId: `w0:t${String(n)}` });
+    const a = inTab("w0:p1", 1, "alpha");
+    const b = inTab("w0:p2", 2, "beta");
+    const c = inTab("w0:p3", 3, "gamma");
+    const { rerender, container } = render(<AgentList agents={[a, b, c]} tabs={[tab(1), tab(2), tab(3)]} onOpen={vi.fn()} />);
+    const before = rows();
+    touch("touchstart", container.querySelector("section")!, 1);
+    // A poll that closes the middle tab with its pane.
+    rerender(<AgentList agents={[a, c]} tabs={[tab(1), tab(3)]} onOpen={vi.fn()} />);
+    expect(rows()).toEqual(before);
     touch("touchend", container.querySelector("section")!, 1);
     act(() => vi.advanceTimersByTime(STILL_QUIET_MS));
     expect(rows()).toHaveLength(2);

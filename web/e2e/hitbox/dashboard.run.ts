@@ -234,7 +234,10 @@ async function runPollCell(browser: Browser, cell: PollCell): Promise<Record<str
     else elsewhere[got[0]!.at] = (elsewhere[got[0]!.at] ?? 0) + 1;
     // Settle: let the answer finish and the next try start from a stable page.
     for (let k = 0; k < 20 && control.asked === before; k += 1) await sleep(25);
-    await sleep(220);
+    // `HITBOX_SETTLE` (default 220) is how long the page rests before the next try. A list held still lets go
+    // 300ms after a lift and glides its arrival in, so a try that starts inside that glide measures the previous
+    // try's tail, not this one: the held-list numbers are taken with 700.
+    await sleep(Number(process.env.HITBOX_SETTLE ?? "220"));
   }
   await close();
   return { ...cell, tries: TRIES, delivered, lost, elsewhere, nodeReplaced };
@@ -278,7 +281,7 @@ test("a row arriving or leaving, and a press that outlasts it", async ({ browser
       side.of += 1;
       if (got.some((c) => c.inside)) side.delivered += 1;
       for (let k = 0; k < 20 && control.asked === before; k += 1) await sleep(25);
-      await sleep(500);
+      await sleep(Number(process.env.HITBOX_SETTLE ?? "500"));
     }
     rows[String(lift)] = tally;
     await close();
@@ -348,7 +351,7 @@ test("which pane a tap opens when a row arrives or leaves", async ({ browser }) 
 // wait), and when the new row appears (it waits for the finger and 300ms). The same poll on a list nobody touches is
 // the control: it is not delayed at all. On the old build the new row appears at once in both, which is the fault.
 test("a list held still: what waits and what does not", async ({ browser }) => {
-  const { page, control, f, close } = await fresh(browser, { delay: 0 });
+  const { page, control, f, close } = await fresh(browser, { delay: Number(process.env.HITBOX_HELD_DELAY ?? "0") });
   const rowCount = () => page.locator('[data-glide-origin="pane"]').count();
   const summaryText = () => page.locator("#dash-summary-line").innerText();
   const flipped = () => page.locator('[data-glide-origin="pane"]').nth(1).innerText();
@@ -373,11 +376,15 @@ test("a list held still: what waits and what does not", async ({ browser }) => {
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   for (let k = 0; k < 80 && (await rowCount()) !== base; k += 1) await sleep(50);
   await sleep(600);
-  const box = await watch(page, page.locator('[data-glide-origin="pane"]').nth(3));
+  const pressed = page.locator('[data-glide-origin="pane"]').nth(Number(process.env.HITBOX_HELD_ROW ?? "3"));
+  const pressedKey = await pressed.getAttribute("data-glide-key");
+  const box = await watch(page, pressed);
+  const keyed = () => page.locator(`[data-glide-key="${String(pressedKey)}"]`).first().boundingBox();
   control.body = () => body(control.asked);
   await f.cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x + box.w / 2, y: box.y + box.h / 2, radiusX: 8, radiusY: 8, force: 1 }] });
   const down = Date.now();
-  await sleep(300);
+  const pollAt = Number(process.env.HITBOX_HELD_POLL_AT ?? "300");
+  await sleep(pollAt);
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   let summaryMs: number | null = null;
   let flipMs: number | null = null;
@@ -385,12 +392,14 @@ test("a list held still: what waits and what does not", async ({ browser }) => {
   let rowsWhileDown = base;
   while (Date.now() - down < 2300) {
     await sleep(25);
-    if (summaryMs === null && (await summaryText()) !== baseSummary) summaryMs = Date.now() - down - 300;
-    if (flipMs === null && (await flipped()) !== baseFlip) flipMs = Date.now() - down - 300;
+    if (summaryMs === null && (await summaryText()) !== baseSummary) summaryMs = Date.now() - down - pollAt;
+    if (flipMs === null && (await flipped()) !== baseFlip) flipMs = Date.now() - down - pollAt;
     rowsWhileDown = await rowCount();
-    if (rowMs === null && rowsWhileDown > base) rowMs = Date.now() - down - 300;
+    if (rowMs === null && rowsWhileDown > base) rowMs = Date.now() - down - pollAt;
   }
   const rowsBeforeLift = await rowCount();
+  const moved = await keyed();
+  const rowMovedPx = moved === null ? null : Math.round(moved.y - box.y);
   await f.cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
   const lift = Date.now();
   let afterLiftMs: number | null = null;
@@ -400,7 +409,7 @@ test("a list held still: what waits and what does not", async ({ browser }) => {
   }
   part1.set("held", {
     untouchedRowMs: untouchedMs,
-    whileFingerDown: { summaryMs, flippedRowMs: flipMs, newRowMsAfterPoll: rowMs, rowsBeforeLift, rowsAtStart: base },
+    whileFingerDown: { summaryMs, flippedRowMs: flipMs, newRowMsAfterPoll: rowMs, rowsBeforeLift, rowsAtStart: base, pressedRowMovedPx: rowMovedPx },
     newRowMsAfterLift: afterLiftMs,
   });
   await close();
