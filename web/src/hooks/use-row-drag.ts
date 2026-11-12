@@ -19,7 +19,7 @@ import { HOLD_FEEDBACK_DELAY_MS } from "@/hooks/use-long-press";
 // pixels. A hold that never moves reaches the long-press mark and opens the menu instead.
 
 /** Same mark as hooks/use-long-press.ts. */
-const LONG_PRESS_MS = 450;
+const LONG_PRESS_MS = 500;
 /** A touch row is armed for a drag after this hold, before the long-press mark. */
 const TOUCH_ARM_MS = 220;
 const MOUSE_DRAG_PX = 6;

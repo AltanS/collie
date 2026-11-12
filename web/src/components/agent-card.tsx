@@ -38,7 +38,7 @@ interface AgentCardProps {
   /** The finger landed on the row: the moment to start the pane's read (lib/pane-prefetch.ts). */
   onPress?: () => void;
   /**
-   * A hold on the row (450ms, or `contextmenu`: a right-click, the Menu key, Android's own long
+   * A hold on the row (500ms, or `contextmenu`: a right-click, the Menu key, Android's own long
    * press) opens the pane's actions sheet instead of the pane (ADR 0070). The click that ends the hold
    * is swallowed, so a hold never also opens the pane. Omit and the row has no hold at all.
    */

@@ -78,7 +78,7 @@ function find(touches: TouchList | readonly TouchLike[] | undefined, id: number)
   return list(touches).find((t) => t.identifier === id);
 }
 
-/** The hold look starts this long after the finger lands, as hooks/use-long-press.ts does. */
+/** The hold look starts this long after the finger lands. Its own mark: hooks/use-long-press.ts moved to 250ms and this gesture did not. */
 const HOLD_SHOWN_MS = 150;
 
 const at = (t: TouchLike): Point => ({ x: t.clientX, y: t.clientY });

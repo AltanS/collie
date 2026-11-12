@@ -4,8 +4,10 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent }
 import { buzz } from "@/lib/haptics";
 
 // Hold a pill this long before the press counts as a long-press. Long enough that a tap or a scroll
-// fling never trips it, short enough to feel intentional rather than sluggish.
-const LONG_PRESS_MS = 450;
+// fling never trips it, short enough to feel intentional rather than sluggish. 500, since the hitbox
+// investigation: a press of 440ms or more used to open the sheet and no pane, and a slow tap is a
+// tap. The hold now has to be meant, and the look below says it is coming from 250ms.
+const LONG_PRESS_MS = 500;
 // Movement past this (px, from the press origin) cancels the pending long-press — that's a scroll or
 // a drag, not a hold. Keeps the strip's horizontal scroll working: a sideways pan cancels the timer.
 // Sized for a thumb: finger jitter during a deliberate hold is easily 10–15px, so a stricter bound
@@ -14,7 +16,9 @@ const MOVE_CANCEL_PX = 16;
 // The press starts to SHOW only after this. A plain tap lifts well before it, so a tap never
 // flashes the hold's look; a finger still down past it is a hold in the making, and from here to the
 // hold's own mark the element eases toward "pressed" (`data-holding`, index.css `THE HOLD, SHOWN`).
-export const HOLD_FEEDBACK_DELAY_MS = 150;
+// 250, since the hitbox investigation: a slow tap (measured up to 300ms) is no hold, and the look is
+// what tells a person that holding on will open the sheet, so it comes after the slowest tap.
+export const HOLD_FEEDBACK_DELAY_MS = 250;
 // A press that moved further than this is no tap. Stricter than the hold's bound: a tap is short, so a thumb has no
 // time to wander, and a scroll that starts on the element has passed 8px before the finger lifts.
 const TAP_MOVE_PX = 8;

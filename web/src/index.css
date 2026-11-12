@@ -1627,9 +1627,9 @@
 }
 
 /* THE HOLD, SHOWN (hooks/use-long-press.ts, M38/02). Every element that spreads `useLongPress`'s props
-   carries `data-holding` from 150ms after the finger lands until the hold fires or is cancelled: the
+   carries `data-holding` from 250ms after the finger lands until the hold fires or is cancelled: the
    dashboard rows, the pane pills, the workspace and tab chips. While it does, the element eases toward
-   "pressed" over the time left to the hold's 450ms mark (the hook sets `animation-duration` inline to
+   "pressed" over the time left to the hold's 500ms mark (the hook sets `animation-duration` inline to
    exactly that), so the press visibly fills toward the moment the sheet opens. Linear, because the fill
    is a clock the thumb reads, not a flourish.
    - A TRANSFORM AND A TINT, NOTHING ELSE. `transform` composes with the element's own `active:scale-*`

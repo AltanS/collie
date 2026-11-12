@@ -194,8 +194,8 @@ Outside `ring-*` for state is retired.
 
 ### A hold shows itself in paint, from one place
 
-A press held toward the 450ms long-press mark carries `data-holding`, set by
-`hooks/use-long-press.ts` 150ms after the finger lands, so a plain tap never flashes. While it is
+A press held toward the 500ms long-press mark carries `data-holding`, set by
+`hooks/use-long-press.ts` 250ms after the finger lands, so a plain tap never flashes. While it is
 set, `index.css` ("THE HOLD, SHOWN") eases the element to a 97% scale and a 12% tint of its own ink,
 over exactly the time left to the mark, and drops both the moment the hold fires or is cancelled.
 Scale is a `transform` and the tint an inset shadow, so nothing around it moves; under reduced
