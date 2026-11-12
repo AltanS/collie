@@ -5,7 +5,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs } from "@/components/trick-about-sheet";
+import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs, repoFactsLine } from "@/components/trick-about-sheet";
 import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
 import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, MENU_TAP_WORDS, MENU_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
@@ -305,5 +305,85 @@ describe("the menu place's two lines (contract 2)", () => {
     const official = screen.getByRole("list", { name: "What it does" });
     expect([...official.querySelectorAll("li")].map((li) => li.textContent)).toEqual([MENU_WORDS, MENU_TAP_WORDS]);
     expect(readOfficialTricksReply(JSON.parse(JSON.stringify({ tricks: [entry] })))?.tricks[0]?.addsMenu).toBe(true);
+  });
+});
+
+describe("where it comes from: the repository's link, its facts and the version (2026-11-12)", () => {
+  const URL = "https://github.com/owner/gates-trick";
+  const FROM_REPO: WireTrickInfo = { ...FULL, provenance: { ...FULL.provenance, via: "repo", url: URL } };
+  const FACTS = { stars: 1234, pushedAt: "2026-11-10T23:30:00Z" };
+  const from = () => {
+    const group = document.querySelector<HTMLElement>('[data-section="from"]');
+    if (group === null) throw new Error("no from group");
+    return group;
+  };
+
+  it("links the repository in the Hill Decision link's shape, the host whole, in a new tab with no opener", () => {
+    render(<TrickAboutSheet trick={FROM_REPO} open onClose={vi.fn()} timeZone="UTC" />);
+    const link = within(from()).getByRole("link", { name: /Open the repository/ });
+    expect(link.getAttribute("href")).toBe(URL);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.className).toContain("min-h-11");
+    expect(link.querySelector("[data-trick-link-host]")?.getAttribute("title")).toBe("github.com");
+    // No facts yet: nothing, and no space held for them beyond the row's own 44 px.
+    expect(link.querySelector('[data-line="repo-facts"]')).toBeNull();
+  });
+
+  it("puts the stars and the last commit's date inside the link row, in a pinned zone", () => {
+    const view = render(<TrickAboutSheet trick={{ ...FROM_REPO, repoFacts: FACTS }} open onClose={vi.fn()} timeZone="UTC" />);
+    expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1,234 stars, last commit Nov 10, 2026");
+    expect(from().querySelector('[data-slot="trick-repo-link"] [data-line="repo-facts"]')).not.toBeNull();
+    view.unmount();
+    render(<TrickAboutSheet trick={{ ...FROM_REPO, repoFacts: { stars: 1, pushedAt: FACTS.pushedAt } }} open onClose={vi.fn()} timeZone="Pacific/Auckland" />);
+    expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1 star, last commit Nov 11, 2026");
+  });
+
+  it("writes the star count in the app's number format, one or many, never compact", () => {
+    const line = (stars: number) => repoFactsLine({ stars, pushedAt: "2026-11-10T12:00:00Z" }, "UTC");
+    expect(line(1)).toBe("1 star, last commit Nov 10, 2026");
+    expect(line(999)).toBe("999 stars, last commit Nov 10, 2026");
+    expect(line(1234)).toBe("1,234 stars, last commit Nov 10, 2026");
+    expect(line(12500)).toBe("12,500 stars, last commit Nov 10, 2026");
+  });
+
+  it("shows no facts for a host other than github.com, and no link for a trick not from a repository or a bad URL", () => {
+    const other = "https://codeberg.org/owner/gates-trick";
+    const view = render(<TrickAboutSheet trick={{ ...FROM_REPO, provenance: { ...FROM_REPO.provenance, via: "repo", url: other }, repoFacts: FACTS }} open onClose={vi.fn()} />);
+    expect(within(from()).getByRole("link").getAttribute("href")).toBe(other);
+    expect(from().querySelector("[data-trick-link-host]")?.getAttribute("title")).toBe("codeberg.org");
+    expect(from().querySelector('[data-line="repo-facts"]')).toBeNull();
+    view.unmount();
+    for (const provenance of [{ via: "folder" as const, url: URL }, { via: "repo" as const, repo: "owner/x", url: "http://github.com/owner/x" }, { via: "repo" as const, repo: "owner/x" }]) {
+      const again = render(<TrickAboutSheet trick={{ ...FULL, provenance, repoFacts: FACTS }} open onClose={vi.fn()} />);
+      expect(within(from()).queryByRole("link")).toBeNull();
+      again.unmount();
+    }
+  });
+
+  it("shows the version when the manifest names one, and no row when it does not", () => {
+    const view = render(<TrickAboutSheet trick={{ ...FROM_REPO, version: "1.2.0" }} open onClose={vi.fn()} />);
+    expect(from().querySelector('[data-line="version"]')).toHaveTextContent("Version 1.2.0");
+    view.unmount();
+    render(<TrickAboutSheet trick={FROM_REPO} open onClose={vi.fn()} />);
+    expect(from().querySelector('[data-line="version"]')).toBeNull();
+  });
+
+  it("the wire keeps a version, facts and a source URL that hold, and drops ones that do not", () => {
+    const raw = { ...FROM_REPO, version: "1.2.0", repoFacts: FACTS };
+    expect(readTrick(JSON.parse(JSON.stringify(raw)))).toMatchObject({ version: "1.2.0", repoFacts: FACTS, provenance: { url: URL } });
+    const bad = readTrick(JSON.parse(JSON.stringify({ ...FROM_REPO, version: "1 2", repoFacts: { stars: -1, pushedAt: "yesterday" }, provenance: { via: "repo", repo: "owner/x", url: "https://user:pw@github.com/owner/x" } })));
+    expect(bad?.version).toBeUndefined();
+    expect(bad?.repoFacts).toBeUndefined();
+    expect(bad?.provenance?.url).toBeUndefined();
+  });
+
+  it("the not-added sheet links the list's repository with its facts", () => {
+    const entry: WireOfficialTrick = { id: "morph", name: "Morph", description: "One screen.", repo: "https://github.com/AltanS/collie-tricks", repoName: "AltanS/collie-tricks", commit: "0d80399aa", state: "absent", repoFacts: FACTS };
+    render(<OfficialTrickAboutSheet entry={entry} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} timeZone="UTC" />);
+    const rows = [...from().querySelectorAll("li")].map((li) => li.textContent);
+    expect(rows[0]).toBe("From AltanS/collie-tricks @ 0d80399");
+    expect(within(from()).getByRole("link").getAttribute("href")).toBe("https://github.com/AltanS/collie-tricks");
+    expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1,234 stars, last commit Nov 10, 2026");
   });
 });

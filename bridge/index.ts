@@ -308,6 +308,7 @@ import { answerInputsRequest, INPUT_ANSWER_BODY_MAX_BYTES, readPaneInputs, Trick
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { carriedMapRecords, scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { OfficialTricks } from "./tricks/official-install.ts";
+import { RepoFacts } from "./tricks/repo-facts.ts";
 import type { TricksRunsOn } from "../web/src/lib/tricks/schema.ts";
 import { TricksService } from "./tricks/service.ts";
 import { VersionCards } from "./tricks/version-card.ts";
@@ -3794,6 +3795,20 @@ const tricksRunsOn = (): TricksRunsOn | null => {
   return lead === undefined || lead === null ? {} : { lead };
 };
 const tricksLabels = createSessionLabels(cfg.spacesFile ?? null);
+// A trick's repository facts for its About sheet (bridge/tricks/repo-facts.ts): stars and the last commit of a
+// github.com repository, read lazily when a phone lists tricks, cached 6 h (1 h after a failed read) in memory
+// and in the state folder, one read per repository at a time, at most 20 reads an hour for the whole bridge.
+// No timer reads; a read that lands moves the tricks rev once, so the next list carries it.
+let onRepoFacts = (): void => {};
+const repoFacts =
+  cfg.tricksDir === undefined
+    ? undefined
+    : new RepoFacts({
+        stateDir: cfg.stateDir,
+        fetch: (url, init) => fetch(url, init),
+        onChange: () => onRepoFacts(),
+        warn: (line) => console.warn(`[tricks] ${line}`),
+      });
 const tricks =
   cfg.tricksDir === undefined
     ? undefined
@@ -3890,7 +3905,9 @@ const tricks =
         versions: versionCards,
         // Fault B: a trick stopped for its rights says so on the Hill too, once per trick and mismatch.
         rights: new RightsCards({ hill, warn: (line) => console.warn(`[tricks] ${line}`) }),
+        repoFacts,
       });
+onRepoFacts = () => tricks?.repoFactsMoved();
 tricks?.start();
 
 // The official list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
@@ -3907,6 +3924,7 @@ const officialTricks =
         gate: () => tricks.gateLine(),
         lane: (work) => tricks.officialLane(work),
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+        repoFacts,
       });
 // A fetch a stopped bridge left behind under <stateDir>/tricks/ goes now, before anyone can tap Add.
 void officialTricks?.sweep();

@@ -23,15 +23,21 @@ import {
   MENU_ROW_KINDS,
   TRICK_ICONS,
   isTrickId,
+  isSourceUrl,
   isTrickText,
   NAME_MAX,
   OFFICIAL_STATES,
+  PLACE_KINDS,
   rulesNameProblem,
   rulesTextProblems,
   TAP_CODES,
   TAP_REFUSALS,
   TRICK_WARNINGS_MAX,
+  VERSION_RE,
   type OfficialState,
+  type PlaceKind,
+  type TrickProvenance,
+  type WireRepoFacts,
   type OfficialTricksReply,
   type MenuPart,
   type MenuRow,
@@ -249,6 +255,30 @@ export function readTrickRules(raw: JsonValue | undefined): WireTrickRules | und
   return rulesTextProblems(new TextEncoder().encode(text)).length === 0 ? { file, text } : undefined;
 }
 
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u;
+
+/**
+ * A repository's facts (bridge/tricks/repo-facts.ts), read as the bridge checked them: a whole number of stars,
+ * 0 or more, and an ISO instant in UTC. Only those two fields are kept; anything else leaves the facts out.
+ */
+export function readRepoFacts(raw: JsonValue | undefined): WireRepoFacts | undefined {
+  const body = asJsonObject(raw);
+  const stars = asJsonNumber(body?.stars);
+  const pushedAt = asJsonString(body?.pushedAt);
+  if (stars === undefined || !Number.isSafeInteger(stars) || stars < 0) return undefined;
+  if (pushedAt === undefined || !ISO_UTC.test(pushedAt) || !Number.isFinite(Date.parse(pushedAt))) return undefined;
+  return { stars, pushedAt };
+}
+
+/** A provenance with its `url` kept only when it is a link the sheet may draw. */
+function readProvenance(raw: TrickProvenance): TrickProvenance {
+  if (raw.url === undefined) return raw;
+  const url = asJsonString(raw.url);
+  if (url !== undefined && isSourceUrl(url)) return raw;
+  const { url: _dropped, ...rest } = raw;
+  return rest;
+}
+
 /** One trick entry as the list and the switch route give it, or `undefined` for a body of another shape. */
 export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
@@ -266,8 +296,11 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const viewed = body.agentView;
   const approving = body.approves;
   const ruled = body.rules;
+  const versioned = body.version;
+  const known = body.repoFacts;
   if (!isTrickValue(body)) return undefined;
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined) return body;
+  if (body.provenance !== undefined) body.provenance = readProvenance(body.provenance);
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -276,7 +309,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -288,6 +321,10 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const approves = asJsonString(approving);
   if (approves !== undefined && /^[0-9a-f]{64}$/u.test(approves)) out.approves = approves;
   if (rules !== undefined) out.rules = rules;
+  const version = asJsonString(versioned);
+  if (version !== undefined && VERSION_RE.test(version)) out.version = version;
+  const facts = readRepoFacts(known);
+  if (facts !== undefined) out.repoFacts = facts;
   // Review 8 V-N5: rules that were sent but do not read, or an agent view that came without them, are kept
   // as a state of their own, never dropped: the trick cannot be switched on from this phone.
   if (rules === undefined && (ruled !== undefined || viewed === true)) out.rulesUnshown = true;
@@ -334,6 +371,18 @@ function isOfficialState(text: string | undefined): text is OfficialState {
   return OFFICIAL_STATES.some((state) => state === text);
 }
 
+/** The places of an official entry this phone draws, each once, in the list's order; any other word is left out. */
+function readOfficialPlaces(raw: JsonValue | undefined): PlaceKind[] {
+  const list = asJsonArray(raw) ?? [];
+  const out: PlaceKind[] = [];
+  for (const value of list.slice(0, PLACE_KINDS.length)) {
+    const word = asJsonString(value);
+    const kind = PLACE_KINDS.find((place) => place === word);
+    if (kind !== undefined && !out.includes(kind)) out.push(kind);
+  }
+  return out;
+}
+
 /** One entry of the official list, or `undefined` when a field is of another shape. */
 function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | undefined {
   const body = asJsonObject(raw);
@@ -353,6 +402,11 @@ function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | unde
   if (body.changed === true && state === "taken") out.changed = true;
   if (body.givesRules === true) out.givesRules = true;
   if (body.addsMenu === true) out.addsMenu = true;
+  const facts = readRepoFacts(body.repoFacts);
+  if (facts !== undefined) out.repoFacts = facts;
+  const places = readOfficialPlaces(body.places);
+  if (places.length > 0) out.places = places;
+  if (body.agentView === true) out.agentView = true;
   return out;
 }
 

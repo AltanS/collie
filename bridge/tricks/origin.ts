@@ -183,10 +183,27 @@ export function sameRepo(a: string, b: string): boolean {
   return canonicalRepoUrl(a) === canonicalRepoUrl(b);
 }
 
-/** A short name for the repository: `owner/repo` on GitHub, else the host and path, no `.git`. */
+/**
+ * A short name for the repository: `owner/repo` on GitHub, else the host and path, no `.git`. It reaches the
+ * phone and a crew lead (`provenance.repo`) and refusal lines, so it never carries what a hand-written origin
+ * record may hold beside the place: a user name, a password, a query or a fragment.
+ */
 export function originRepoName(url: string): string {
-  const bare = url.replace(/^https:\/\//u, "").replace(/\.git$/u, "").replace(/\/+$/u, "");
+  const bare = withoutCredential(url).replace(/^https:\/\//u, "").replace(/\.git$/u, "").replace(/\/+$/u, "");
   return bare.startsWith("github.com/") ? bare.slice("github.com/".length) : bare;
+}
+
+/** The URL without a user name, a password, a query or a fragment; for text that is no URL, everything up to its last `@` dropped. */
+function withoutCredential(url: string): string {
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(url);
+  } catch {
+    parsed = null;
+  }
+  if (parsed !== null && parsed.host !== "") return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+  const at = url.lastIndexOf("@");
+  return at === -1 ? url : url.slice(at + 1);
 }
 
 /** One short word for `collie trick list`: `owner/repo@abc1234`, with `/subdir` when there is one. */

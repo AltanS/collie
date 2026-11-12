@@ -124,6 +124,12 @@ export const NAME_MAX = 40;
 export const DESCRIPTION_MAX = 140;
 /** The manifest's `about`: the full plain text of a trick's About sheet, paragraphs split by a blank line. */
 export const ABOUT_MAX = 1200;
+/** The manifest's `version`: the author's own version word, shown in the About sheet. */
+export const VERSION_MAX = 24;
+/** The characters a manifest `version` may hold: `1.2.0`, `2026.11.12`, `0.3.0-beta+7`. */
+export const VERSION_RE = /^[0-9A-Za-z.+-]{1,24}$/u;
+/** The refusal of a `version` with another character in it. */
+export const VERSION_REFUSAL = '"version" holds letters, digits, ".", "+" and "-" only, such as "1.2.0".';
 /** A `group`'s `label`. */
 export const TITLE_MAX = 60;
 /** A `para`'s text, and a `run`'s. One paragraph: no line break (the tree strips control characters). */
@@ -1298,6 +1304,12 @@ export interface TrickManifest {
    */
   about?: string;
   /**
+   * The author's own version word, at most `VERSION_MAX` characters of `[0-9A-Za-z.+-]`, shown in the About
+   * sheet. Text, not a right, like `description`: not in the powers, part of the code hash. Collie reads no tag
+   * and compares no versions; a trick without it shows none.
+   */
+  version?: string;
+  /**
    * Contract 2: the manifest lists the place word `agent-view`, a view of a session that the session's own
    * agent draws ({@link AGENT_VIEW_PLACE}). Kept apart from `places`, which are the places a document's
    * parts draw in. A right: it is in the powers. The bridge draws the view (bridge/agent-view/service.ts).
@@ -1638,7 +1650,23 @@ export interface WireTrickInfo {
    * go back to. Settings then offers Undo. Absent otherwise, and from an older bridge.
    */
   autoAt?: string;
+  /** The manifest's `version`, the author's own word ({@link VERSION_RE}). Absent: none, or an older bridge. */
+  version?: string;
+  /**
+   * Stars and the last commit of the trick's repository on GitHub, as the bridge last read them
+   * (bridge/tricks/repo-facts.ts). Absent: not a `github.com` repository, not read yet, a failed read, or an
+   * older bridge. The phone never reads GitHub itself.
+   */
+  repoFacts?: WireRepoFacts;
 }
+/**
+ * A GitHub repository's facts for the About sheet: its stars and when it was last pushed to, an ISO instant.
+ * Exactly these two fields: the bridge keeps nothing else of GitHub's answer.
+ */
+export type WireRepoFacts = {
+  stars: number;
+  pushedAt: string;
+};
 /** A trick's rules on the wire: the file's name and its bytes as text, whole. */
 export type WireTrickRules = {
   file: string;
@@ -1675,6 +1703,8 @@ export interface TrickProvenance {
   at?: string;
   repo?: string;
   sha?: string;
+  /** The repository's https URL as the origin record names it, for the About sheet's link. Absent: not from a repository, or an older bridge. */
+  url?: string;
   /**
    * Set for a trick `collie trick propose` handed in (crew slice 8): who proposed it and the machine, as
    * the lead named it. Absent for any other trick, and from an older bridge. `by: "terminal"` means no
@@ -1779,6 +1809,15 @@ export interface WireOfficialTrick {
    * card says so before Add without a fetch. Absent: it adds none, or an older bridge.
    */
   addsMenu?: true;
+  /** Stars and the last commit of the entry's repository, as for an added trick ({@link WireTrickInfo.repoFacts}). */
+  repoFacts?: WireRepoFacts;
+  /**
+   * The places the list pins for the entry (official.ts `places`), the ones this Collie draws, so the row says
+   * where it draws before Add, in the line an added trick's row has. Absent: none it draws, or an older bridge.
+   */
+  places?: PlaceKind[];
+  /** The list pins the place `agent-view` for the entry. Absent: it does not, or an older bridge. */
+  agentView?: true;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */
@@ -2364,6 +2403,26 @@ function textProblem(value: string, rule: TextRule): string | undefined {
  */
 export function isTrickText(value: string, rule: { max: number; multiline?: boolean }): boolean {
   return textProblem(value, rule) === undefined;
+}
+
+/** The longest repository URL a trick's About sheet links to. */
+export const SOURCE_URL_MAX = 512;
+
+/**
+ * A repository URL that may leave the bridge and that the About sheet may link to: https, a host, no user
+ * name, no password, no query, no fragment, at most {@link SOURCE_URL_MAX} characters, no control or
+ * invisible character. ONE rule for both sides: the bridge sends `provenance.url` only when it holds
+ * (bridge/tricks/service.ts), so a credential, an ssh or `git@` form or a local path in a hand-written
+ * origin record never reaches a paired phone or a crew lead; the phone checks it again (wire.ts).
+ */
+export function isSourceUrl(text: string): boolean {
+  if (text.length > SOURCE_URL_MAX || !isTrickText(text, { max: SOURCE_URL_MAX })) return false;
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" && url.hostname !== "" && url.username === "" && url.password === "" && url.search === "" && url.hash === "" && !text.includes("@");
+  } catch {
+    return false;
+  }
 }
 
 function valueProblem(value: string): { code: RefusalCode; reason: string } | undefined {
@@ -4060,7 +4119,7 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "rules"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules"] as const;
 
 // ── Agent views: the place word `agent-view` and the key `rules` (contract 2) ───────────────────────
 
@@ -4398,6 +4457,9 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   // without them reads as before. Over the cap is a refusal, like the name's.
   const description = f.text("description", { max: DESCRIPTION_MAX });
   const about = f.text("about", { max: ABOUT_MAX, multiline: true });
+  // The author's version word: text for a person, shown in the About sheet, never compared or fetched.
+  const version = f.text("version", { max: VERSION_MAX });
+  if (version !== undefined && !VERSION_RE.test(version)) f.push("text", "version", VERSION_REFUSAL);
 
   // Room for the places of a newer Collie at the same contract: the words this one does not know are left out.
   const placeList = f.array("places", { min: 1, max: PLACES_LISTED_MAX, required: true, what: "places" });
@@ -4480,6 +4542,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (inputs !== undefined && inputs.length > 0) manifest.inputs = [...new Set(inputs)];
   if (description !== undefined) manifest.description = description;
   if (about !== undefined) manifest.about = about;
+  if (version !== undefined && VERSION_RE.test(version)) manifest.version = version;
   return { manifest, refusals: capRefusals(refusals) };
 }
 

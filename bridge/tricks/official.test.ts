@@ -51,8 +51,8 @@ describe("the list this release carries", () => {
   test("it parses, lists the four tricks and not release-gates, and names only the official repository", () => {
     const list = shippedOfficialList();
     if (!list.ok) throw new Error(list.reason);
-    expect(list.entries.map((e) => e.id)).toEqual(["design-review", "pr-inbox", "running-builds", "morph"]);
-    expect(list.entries.map((e) => e.name)).toEqual(["Design Review", "PR Inbox", "Running Builds", "Morph"]);
+    expect(list.entries.map((e) => e.id)).toEqual(["morph", "design-review", "pr-inbox", "running-builds"]);
+    expect(list.entries.map((e) => e.name)).toEqual(["Morph", "Design Review", "PR Inbox", "Running Builds"]);
     // One commit of the tricks repository's main pins them all (collie-tricks 0c1e5d8, the helper at v4).
     expect(new Set(list.entries.map((e) => e.commit))).toEqual(new Set(["0c1e5d82346486815073fedcdb994bc4c2041b55"]));
     expect(list.entries.some((e) => e.id === "release-gates")).toBe(false);
@@ -1120,7 +1120,13 @@ describe("the list pins the places of each trick (contract 2, the menu place)", 
     const configDir = await tempDir();
     const wire = await officialWire(configDir, [{ ...fixtureEntry(REPO, C1, H1), contract: 2, places: ["belt", "menu"] }, fixtureEntry(REPO, C1, H1, "other")]);
     expect(wire.map((w) => w.addsMenu)).toEqual([true, undefined]);
-    expect(wire.some((w) => "places" in w)).toBe(false);
+    // The pinned places this Collie draws ride along (2026-11-12), so the row before Add has the places line an
+    // added trick's row has, and Add moves nothing. The add still holds the folder to the pin.
+    expect(wire.map((w) => w.places)).toEqual([["belt", "menu"], ["belt"]]);
+    expect(wire.some((w) => "agentView" in w)).toBe(false);
+    const view = await officialWire(configDir, [{ ...fixtureEntry(REPO, C1, H1, "morph"), contract: 2, places: ["agent-view"] }]);
+    expect(view[0]?.agentView).toBe(true);
+    expect(view[0] !== undefined && "places" in view[0]).toBe(false);
   });
 
   test.if(posix)("an add takes only the places the list pins: a folder whose manifest lists other places installs nothing", async () => {
@@ -1136,5 +1142,23 @@ describe("the list pins the places of each trick (contract 2, the menu place)", 
     }
     const right = await rig([pinned(["belt", "menu"])]);
     expect((await right.official.install("ci", "add")).status).toBe(200);
+  });
+});
+
+describe("the list's repository facts", () => {
+  test("a read of the list asks for each repository once and carries what the cache holds, stars and a date only", async () => {
+    const url = "https://github.com/AltanS/collie-tricks";
+    const asked: string[][] = [];
+    let held: { stars: number; pushedAt: string } | undefined;
+    const repoFacts = { facts: (u: string) => (u === url ? held : undefined), want: (urls: Iterable<string>) => void asked.push([...urls]) };
+    const commit = "3f2a91c0d4e5f60718293a4b5c6d7e8f90a1b2c3";
+    const r = await rig([fixtureEntry(url, commit, "a".repeat(64)), fixtureEntry(url, commit, "b".repeat(64), "pals")], { repoFacts });
+    const first = (await r.official.reply()).tricks;
+    expect(asked).toEqual([[url]]);
+    expect(first.map((t) => t.repoFacts)).toEqual([undefined, undefined]);
+    held = { stars: 12, pushedAt: "2026-11-10T08:30:00Z" };
+    const second = (await r.official.reply()).tricks;
+    expect(second.map((t) => t.repoFacts)).toEqual([held, held]);
+    expect(Object.keys(second[0]?.repoFacts ?? {}).toSorted()).toEqual(["pushedAt", "stars"]);
   });
 });

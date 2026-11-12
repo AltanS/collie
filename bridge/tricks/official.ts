@@ -309,6 +309,10 @@ export async function officialWire(configDir: string, entries: readonly Official
       if (e.rules !== null) wire.givesRules = true;
       // That it adds rows to a session's settings, from the list's pin alone; the add holds the folder to it.
       if (e.places.includes("menu")) wire.addsMenu = true;
+      // Where it draws, from the pin, so the row before Add has the places line an added trick's row has.
+      const places = PLACE_KINDS.filter((kind) => e.places.includes(kind));
+      if (places.length > 0) wire.places = places;
+      if (e.places.includes(AGENT_VIEW_PLACE)) wire.agentView = true;
       return wire;
     }),
   );

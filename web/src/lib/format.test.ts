@@ -1,4 +1,4 @@
-import { initials, shortCwd, timeAgo, timeAgoShort, timeLeft } from "./format";
+import { dateOnly, initials, wholeNumber, shortCwd, timeAgo, timeAgoShort, timeLeft } from "./format";
 
 describe("shortCwd", () => {
   it("collapses /home/<user> to ~", () => {
@@ -130,5 +130,23 @@ describe("timeLeft", () => {
   it("is null for a value that is not a time", () => {
     expect(timeLeft("soon", now)).toBeNull();
     expect(timeLeft("", now)).toBeNull();
+  });
+});
+
+describe("dateOnly", () => {
+  it("writes the day alone, medium, in the zone it is given", () => {
+    const late = Date.parse("2026-11-10T23:30:00Z");
+    expect(dateOnly(late, "UTC")).toBe("Nov 10, 2026");
+    expect(dateOnly(late, "Pacific/Auckland")).toBe("Nov 11, 2026");
+  });
+
+  it("is empty for an instant that does not parse", () => {
+    expect(dateOnly(Number.NaN, "UTC")).toBe("");
+  });
+});
+
+describe("wholeNumber", () => {
+  it("groups a count in the app locale's way, never compact", () => {
+    expect([1, 999, 1234, 12500].map(wholeNumber)).toEqual(["1", "999", "1,234", "12,500"]);
   });
 });

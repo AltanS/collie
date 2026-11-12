@@ -173,7 +173,8 @@ function HillSheetBox({ n, state, label, on: initial, count }: { n: number; stat
   );
 }
 
-// Official tricks (M94): the official tricks this release can add, under the installed ones. Each card has a list
+// Official tricks (M94; one list since 2026-11-12): the official tricks this release can add and the installed ones
+// as one list, official first in the list's order, then the community's by name. Each card has a list
 // of its own and a stand-in for the add route; the one that shows a failure goes through the real api.ts call
 // and a stand-in for the bridge's refusal (`useRefusedAdd`), so the status line reads the bridge's own word.
 
@@ -186,13 +187,17 @@ function official(id: string, name: string, description: string, state: Official
   return { id, name, description, repo: "https://github.com/AltanS/collie-tricks", repoName: "AltanS/collie-tricks", commit: OFFICIAL_COMMIT, state };
 }
 
-const REVIEW = official("design-review", "Design Review", "Turns an agent's UI notes into Decisions you approve by name.");
-const INBOX = official("pr-inbox", "PR Inbox", "Open pull requests and issues that wait for you.");
-const BUILDS = official("running-builds", "Running Builds", "Builds and long commands running in your sessions now.");
+const REVIEW: WireOfficialTrick = { ...official("design-review", "Design Review", "Turns an agent's UI notes into Decisions you approve by name."), places: ["belt", "session"] };
+const INBOX: WireOfficialTrick = { ...official("pr-inbox", "PR Inbox", "Open pull requests and issues that wait for you."), places: ["session"] };
+const BUILDS: WireOfficialTrick = { ...official("running-builds", "Running Builds", "Builds and long commands running in your sessions now."), places: ["belt", "session"] };
+
+/** What the bridge read of the official repository (bridge/tricks/repo-facts.ts): the phone never reads GitHub. */
+const FACTS = { stars: 128, pushedAt: "2026-11-10T16:20:00Z" };
+const MORPH: WireOfficialTrick = { ...official("morph", "Morph", "Your agent answers with one screen you can tap, not a wall of text."), givesRules: true, agentView: true, repoFacts: FACTS };
 
 /** A trick installed from an entry of the list: off, with the repository as its provenance. */
 function fromList(entry: WireOfficialTrick, extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
-  return trick(entry.id, entry.name, { on: false, state: "off", places: ["belt", "session"], description: entry.description, provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: entry.repoName, sha: "9c41d07e2b6a" }, ...extra });
+  return trick(entry.id, entry.name, { on: false, state: "off", places: ["belt", "session"], description: entry.description, provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: entry.repoName, sha: "9c41d07e2b6a", url: entry.repo }, ...extra });
 }
 
 /** How the card's add stand-in answers: it lands, it never answers, or the bridge refuses it (`mismatch`, or `changed` for an update). */
@@ -424,6 +429,41 @@ export function TrickSettingsSection(): ReactNode {
           entries={[{ ...BUILDS, state: "update" }, { ...INBOX, state: "taken", changed: true }]}
           answer="changed"
         />
+      </Group>
+      <Group title="One list (2026-11-12)">
+        <OfficialCard
+          n={37}
+          state="trick-settings-one-list"
+          label="each trick once with its label: official first, Morph first, then the community's by name; tap Add or a switch, no row moves"
+          tricks={[...HEALTHY, fromList(REVIEW, { on: true, state: "ok" })]}
+          entries={[MORPH, { ...REVIEW, state: "added" }, INBOX, BUILDS]}
+        />
+        <OfficialCard
+          n={38}
+          state="trick-settings-one-list-taken"
+          label="an official id another trick holds: that trick is the community's, and says why"
+          tricks={[trick("pr-inbox", "My PR list", { places: ["session"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } }), HEALTHY[2] ?? trick("x", "x")]}
+          entries={[MORPH, REVIEW, { ...INBOX, state: "taken" }]}
+        />
+        <SheetBox
+          n={39}
+          state="trick-settings-about-facts"
+          label="the About sheet with the facts: the link, stars and last commit in its row, the version"
+          trick={{ ...GATES, version: "1.2.0", repoFacts: FACTS, provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a", url: "https://github.com/AltanS/collie-tricks" } }}
+        />
+        <SheetBox
+          n={40}
+          state="trick-settings-about-no-facts"
+          label="no facts yet, or a failed read: the link alone, the row the same height"
+          trick={{ ...GATES, provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a", url: "https://github.com/AltanS/collie-tricks" } }}
+        />
+        <SheetBox
+          n={41}
+          state="trick-settings-about-other-host"
+          label="another host: the link with the host whole, no facts"
+          trick={{ ...GATES, provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "owner/gates-trick", sha: "9c41d07e2b6a", url: "https://git.workshop.example/owner/gates-trick" } }}
+        />
+        <OfficialSheetBox n={42} state="trick-settings-official-about-facts" label="before the add, with the facts" entry={MORPH} />
       </Group>
       <Group title="Nothing to list">
         <ListCard n={6} state="trick-settings-empty" label="folder, no trick" tricks={[]} />

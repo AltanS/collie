@@ -68,6 +68,8 @@ import {
   inputGlobProblem,
   inputsSentence,
   ABOUT_MAX,
+  VERSION_MAX,
+  VERSION_REFUSAL,
   DESCRIPTION_MAX,
   isEnvName,
   TRICK_ICON_LUCIDE,
@@ -104,6 +106,7 @@ import {
   type TrickAction,
   type View,
   type ViewNode,
+  isSourceUrl,
 } from "./schema";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
@@ -1570,6 +1573,35 @@ describe("the manifest's description and about", () => {
   });
 });
 
+describe("the manifest's version", () => {
+  const base = { id: "gates", name: "Release Gates", run: "./gates.sh", places: ["belt"] };
+
+  it("is optional text of 1 to 24 letters, digits, dots, plus and minus, in contract 1 and 2", () => {
+    expect(VERSION_MAX).toBe(24);
+    expect(parseManifest(base).manifest?.version).toBeUndefined();
+    for (const contract of [1, 2]) {
+      for (const version of ["1.2.0", "2026.11.12", "0.3.0-beta+7", "v2", "v".repeat(VERSION_MAX)]) {
+        const read = parseManifest({ ...base, contract, version });
+        expect(read.refusals).toEqual([]);
+        expect(read.manifest?.version).toBe(version);
+      }
+    }
+  });
+
+  it("refuses a value past the cap, an empty one, another character, and a value that is not text", () => {
+    const long = parseManifest({ ...base, version: "1".repeat(VERSION_MAX + 1) });
+    expect(long.manifest).toBeUndefined();
+    expect(long.refusals.map((r) => [r.code, r.path])).toEqual([["text", "/version"]]);
+    for (const version of ["", "1.2 beta", "1/2", "1_2", "v1\u00e9", "1.2\n", "1.2\u202E"]) {
+      const read = parseManifest({ ...base, version });
+      expect(read.manifest, version).toBeUndefined();
+      expect(read.refusals[0]?.path).toBe("/version");
+    }
+    expect(parseManifest({ ...base, version: "1 2" }).refusals.map((r) => r.reason)).toEqual([VERSION_REFUSAL]);
+    expect(parseManifest({ ...base, version: 2 }).refusals[0]?.reason).toBe('"version" must be text.');
+  });
+});
+
 describe("contract 2: inputs", () => {
   const base = { id: "todo", name: "Todo", run: "./todo.sh", places: ["belt"] };
 
@@ -1957,5 +1989,28 @@ describe("the menu place and bound parts", () => {
     expect(menuLabelProblem("x".repeat(MENU_LABEL_MAX))).toBeUndefined();
     expect(menuLabelProblem("x".repeat(MENU_LABEL_MAX + 1))).toBe(`is ${String(MENU_LABEL_MAX + 1)} characters. At most ${String(MENU_LABEL_MAX)}.`);
     expect(menuLabelProblem("")).toBe("is empty.");
+  });
+});
+
+describe("isSourceUrl: the one rule for a repository URL that leaves the bridge", () => {
+  it("takes a plain https URL with a host", () => {
+    for (const url of ["https://github.com/a/b", "https://git.workshop.example/owner/legs.git"]) expect(isSourceUrl(url), url).toBe(true);
+  });
+
+  it("refuses a credential, another protocol, a query, a fragment, a local path, a control character and a long one", () => {
+    for (const url of [
+      "https://user:tok@github.com/a/b",
+      "https://tok@github.com/a/b",
+      "http://github.com/a/b",
+      "ssh://git@github.com/a/b.git",
+      "git@github.com:a/b.git",
+      "https://github.com/a/b?access_token=tok",
+      "https://github.com/a/b#readme",
+      "/srv/tricks/legs",
+      "https://github.com/a/b\u0007",
+      `https://github.com/a/${"b".repeat(600)}`,
+    ]) {
+      expect(isSourceUrl(url), url).toBe(false);
+    }
   });
 });

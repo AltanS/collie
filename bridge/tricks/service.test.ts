@@ -1444,7 +1444,77 @@ describe("warnings at the switch (review 15)", () => {
     const row = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
     expect(row && "warnings" in row).toBe(false);
     // The official repository at a commit the official list never named: the row must not read as the list.
-    expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit, unlisted: true });
+    expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit, url: "https://github.com/AltanS/collie-tricks", unlisted: true });
+  });
+
+  test("a phone's list asks for the repository facts, carries what the cache holds, and the manifest's version", async () => {
+    const asked: string[][] = [];
+    const held = new Map<string, { stars: number; pushedAt: string }>();
+    const repoFacts = {
+      facts: (url: string) => held.get(url),
+      want: (urls: Iterable<string>) => void asked.push([...urls]),
+    };
+    const r = await rig([exited(belt("1"))], { repoFacts });
+    const dir = await makeTrick(r.configDir, "legs", `${MANIFEST}version = "1.4.0"\n`, { "legs.sh": "#!/bin/sh\nprintf '{}'\n" });
+    const commit = "3f2a91c0d4e5f60718293a4b5c6d7e8f90a1b2c3";
+    const url = "https://github.com/someone/legs-trick";
+    await writeFile(join(dir, ".collie-origin.json"), JSON.stringify({ v: 1, url, ref: null, commit, subdir: null, at: "2026-11-10T09:41:00.000Z" }));
+    await makeTrick(r.configDir, "clock", 'id = "clock"\nname = "Clock"\nrun = "./clock.sh"\nplaces = ["belt"]\n', { "clock.sh": "#!/bin/sh\nprintf '{}'\n" });
+
+    // The first read finds nothing cached: no facts, and the one repository is asked for.
+    const first = (await r.service.reply(undefined)).tricks;
+    expect(asked).toEqual([[url]]);
+    expect(first.find((t) => t.id === "legs")?.repoFacts).toBeUndefined();
+    expect(first.find((t) => t.id === "legs")?.version).toBe("1.4.0");
+    expect(first.find((t) => t.id === "clock")?.version).toBeUndefined();
+
+    // A read landed: the rows take it at once and the rev moves.
+    const rev = r.service.rev();
+    held.set(url, { stars: 7, pushedAt: "2026-11-09T12:00:00Z" });
+    r.service.repoFactsMoved();
+    expect(r.service.rev()).toBeGreaterThan(rev ?? 0);
+    const legs = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    expect(legs?.repoFacts).toEqual({ stars: 7, pushedAt: "2026-11-09T12:00:00Z" });
+    expect(Object.keys(legs?.repoFacts ?? {}).toSorted()).toEqual(["pushedAt", "stars"]);
+    expect((await r.service.reply(undefined)).tricks.find((t) => t.id === "clock")?.repoFacts).toBeUndefined();
+
+    // The host's own CLI reads the list without asking for anything.
+    const before = asked.length;
+    await r.service.reply(undefined, { forCli: true });
+    expect(asked).toHaveLength(before);
+  });
+
+  test("an origin URL with a credential, an ssh or git@ form, a query or a local path never leaves the bridge, and is never read for", async () => {
+    const commit = "3f2a91c0d4e5f60718293a4b5c6d7e8f90a1b2c3";
+    const cases: { url: string; repo: string }[] = [
+      { url: "https://user:tok@github.com/a/b", repo: "a/b" },
+      { url: "https://tok@github.com/a/b.git", repo: "a/b" },
+      { url: "ssh://git@github.com/a/b.git", repo: "ssh://github.com/a/b" },
+      { url: "git@github.com:a/b.git", repo: "github.com:a/b" },
+      { url: "user:tok@github.com:a/b", repo: "github.com:a/b" },
+      { url: "https://github.com/a/b?access_token=tok", repo: "a/b" },
+      { url: "/srv/tricks/legs-repo", repo: "/srv/tricks/legs-repo" },
+    ];
+    for (const { url, repo } of cases) {
+      const asked: string[][] = [];
+      const facts: string[] = [];
+      const repoFacts = {
+        facts: (u: string) => void facts.push(u),
+        want: (urls: Iterable<string>) => void asked.push([...urls]),
+      };
+      const r = await rig([exited(belt("1"))], { repoFacts });
+      const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\nprintf '{}'\n" });
+      await writeFile(join(dir, ".collie-origin.json"), JSON.stringify({ v: 1, url, ref: null, commit, subdir: null, at: "2026-11-10T09:41:00.000Z" }));
+      const reply = await r.service.reply(undefined);
+      const row = reply.tricks.find((t) => t.id === "legs");
+      expect(row?.provenance?.via, url).toBe("repo");
+      expect(row?.provenance?.url, url).toBeUndefined();
+      expect(row?.provenance?.repo, url).toBe(repo);
+      // Nothing secret anywhere in what a phone or a crew lead receives.
+      expect(JSON.stringify(reply), url).not.toContain("tok");
+      expect(asked.flat(), url).toEqual([]);
+      expect(facts, url).toEqual([]);
+    }
   });
 });
 

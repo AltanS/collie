@@ -24,7 +24,9 @@ contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `con
 `inputs` (contract 2), the later `watch`, `on` and `mode`, and two texts for a person, `description` (one
 line, at most 140 characters, shown under the name in Settings → Tricks) and `about` (at most 1200
 characters, paragraphs split by a blank line, shown in the trick's About sheet). Both are plain text, with
-no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. They are text, not rights: they
+no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. An optional `version` (1 to 24
+characters of letters, digits, `.`, `+` and `-`, `VERSION_MAX`) is the author's own word for the version;
+the About sheet shows it, and Collie never compares it or reads a tag for it. They are text, not rights: they
 stay out of `powersOf` and are part of the code hash like any manifest change. A value past its cap, or
 with a control or direction character, refuses the manifest like a long `name`; `collie trick check` gives
 a soft note when `about` is missing. `contract` is the number the trick is
@@ -397,7 +399,9 @@ already covers that file; the pin lets the phone say "Gives your agents instruct
 author." before Add without a fetch, and the add (and an update) refuses a folder whose rules differ. The
 list carries no rules text, so the not-added About sheet says "Read the instructions after you add it. It
 stays off until you switch it on." The added trick's own About sheet shows them before the switch. Settings, Tricks shows
-the entries that are not added under "Official tricks", each with an Add button. On a fresh install, with no tricks
+one list (`lib/tricks/list-order.ts`): the official entries first in this list's order, Morph first, each
+not added one with an Add button in its place, then every other trick by name; a row says "Official" or
+"Community", and a state change never moves a row. On a fresh install, with no tricks
 folder yet, the card shows too when the list is not empty (the bridge sends `tricksRev` for it), and holds
 only the list and the foot line; the first add makes `<configDir>/tricks/` (0700), and the next scan reads
 it with no restart. A crew member, which runs no tricks, shows no card without a folder, as before. Nothing ships switched on,
@@ -423,10 +427,29 @@ for a hash that differs. git offers no size limit of its own on a fetch.
 
 **The one network request.** A tap on Add or Update makes one git fetch over https from
 `github.com/AltanS/collie-tricks`: depth 1, the listed commit only, no redirects, no credential helper,
-no global git config. Nothing else in this feature touches the network: the list comes from the
-binary, `GET /api/tricks/official` reads only the tricks folder, and there is no background check and
-no count. Offline, the tap says "GitHub did not answer. Nothing was added." That line is also true
+no global git config. Besides it, the list touches the network only for the repository facts below:
+the list comes from the binary, `GET /api/tricks/official` reads the tricks folder, and there is no count.
+Offline, the tap says "GitHub did not answer. Nothing was added." That line is also true
 when the repository no longer serves the commit.
+
+**Repository facts.** A trick's About sheet shows its repository's stars and the date of its last commit
+when the source is a `github.com` repository (`bridge/tricks/repo-facts.ts`). The bridge reads them, never
+the phone: exactly one `GET https://api.github.com/repos/<owner>/<repo>` per repository, the owner and the
+name taken from the stored source URL only when its host is exactly `github.com` and both pass GitHub's
+character rules, with no token, no cookie and the fixed user agent `collie-trick-facts`. No redirect is
+followed, the read gives up after 5 s and past 64 KiB, and only `stargazers_count` and `pushed_at` are kept
+(`WireRepoFacts`, on `WireTrickInfo.repoFacts` and `WireOfficialTrick.repoFacts`). It reads lazily, when a
+phone asks for `GET /api/tricks` or `GET /api/tricks/official` and an entry is stale, never on a timer, and
+the answer never waits: it carries the cache, and the next one carries a read that landed. The cache lives
+in memory and in `<stateDir>/tricks/repo-facts.json`: a good answer 6 h, a failed read 1 h, one read per
+repository at a time, and at most 20 reads in a rolling hour for the whole bridge. GitHub allows 60
+unauthenticated requests an hour per IP address; one read costs one of them. A failed or missing read
+shows nothing. There is no switch for it; the install ping's off switches do not gate it. On the phone
+(`components/trick-about-sheet.tsx`) the facts are a second small line inside the repository's link row in
+"Where it comes from". The row is 44 px with or without them, so their arrival moves nothing in a sheet
+anchored at the bottom. The link row follows the Hill Decision link (`isWebLink`, `linkHost`), with the host
+in full (`HostWords`), and shows only for an https source URL. Settings, Tricks reads the official list once
+more 3 s after a first answer that lacked a GitHub repository's facts, and never again.
 
 **The trust root is the binary.** The commit pins what git fetches, and the hash pins what Collie
 writes. A repository that serves other content at that commit fails git's own object check or the hash.

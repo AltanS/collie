@@ -364,8 +364,11 @@ official repository. Any other https git repository takes an address, then optio
 folder, and `#` and a branch, a tag or a full 40-digit commit. An address with a user name or a
 password is refused, and so is any address that is not https.
 
-On the phone, Settings → Tricks lists the official tricks with an Add button. A tap makes one git
-fetch, then checks the hash of what arrived. The Hill is the first row of that card, tagged "Built
+On the phone, Settings → Tricks is one list. The official tricks come first, in the order of the
+release's list, then your other tricks by name. Each row says Official or Community. An official trick
+you have not added shows an Add button in its place. A tap makes one git fetch, then checks the hash of
+what arrived. The added trick stays in the same place, with its switch. Adding a trick or switching it
+changes its row, never its place. The Hill is the first row of that card, tagged "Built
 in": it comes with Collie, it is not a trick, and it cannot be removed.
 
 `add` copies the trick into `tricks/` in Collie's config folder. That folder is `~/.config/collie` on
@@ -465,7 +468,9 @@ Tricks to open it.
 - **What it does** holds only facts Collie knows: "Draws in: ...", the files it reads, the
   environment names it asks for, the warnings of the text search, and a view's rules, shown whole.
 - **Where it comes from** says "From owner/repo @ 3f2a91c" for a trick added from a repository, or
-  "Added on this machine."
+  "Added on this machine." A trick from a repository has a link to it, with the host shown in full.
+  For a repository on `github.com`, the link also shows its stars and the date of its last commit,
+  once Collie has read them. The version shows when the trick's author wrote one in `trick.toml`.
 - **Updates** holds the "Take changes without asking" switch, for a trick that is on.
 
 The description and the longer text are the author's own words, and nothing checks them against the
