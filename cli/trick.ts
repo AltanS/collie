@@ -57,6 +57,8 @@ import {
   type OfficialState,
   type TricksRunsOn,
   type Refusal,
+  TRICKS_WINDOWS_LINE,
+  tricksGated,
 } from "../web/src/lib/tricks/schema.ts";
 import { readEnvMarkers } from "./beacon.ts";
 import { readTrickFolder } from "./trick-folder.ts";
@@ -114,6 +116,19 @@ export interface TrickDeps {
   now: () => number;
   /** What the local bridge says of the pane this runs in (`askPaneKind`, cli/walky.ts). None: not asked, so allowed. */
   paneKind?: () => Promise<PaneKind>;
+  /** This machine's platform, for the Windows gate (`refuseTricksOnWindows`). Absent: no gate. */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * The Windows gate of the verbs that switch on, add or open a trick (bridge/tricks/service.ts `gated` is the
+ * bridge's side): before any argument is read, a Windows machine says TRICKS_WINDOWS_LINE. True when it
+ * refused; the caller returns `EXIT.FAIL`, as the crew verbs do for their own Windows refusal.
+ */
+export function refuseTricksOnWindows(deps: { readonly platform?: NodeJS.Platform | undefined; readonly io: Io }): boolean {
+  if (!tricksGated(deps.platform)) return false;
+  deps.io.err(`error: ${TRICKS_WINDOWS_LINE}`);
+  return true;
 }
 
 // ── list ─────────────────────────────────────────────────────────────────────
@@ -423,6 +438,8 @@ async function inAgentPane(deps: TrickDeps): Promise<boolean> {
 }
 
 export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], on: boolean): Promise<number> {
+  // Off still writes on Windows: a person can always turn a trick off.
+  if (on && refuseTricksOnWindows(deps)) return EXIT.FAIL;
   const verb = on ? "on" : "off";
   const id = args.find((a) => !a.startsWith("-"));
   if (id === undefined || !isTrickId(id)) {

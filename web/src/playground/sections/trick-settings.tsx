@@ -15,7 +15,7 @@ import { addOfficialTrick } from "@/lib/api";
 import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
 import { VIEW_TRICK } from "../fixtures/agent-view";
-import { ABOUT_MAX, type OfficialState, type OfficialTricksReply, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, type OfficialState, type OfficialTricksReply, type TricksGate, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 
 import { RootRouter } from "../harness";
@@ -40,9 +40,10 @@ const HEALTHY: WireTrickInfo[] = [
 ];
 
 /** A store that takes one reply listing `tricks`, as the phone does when the snapshot carries `tricksRev`. */
-function useListStore(tricks: WireTrickInfo[]): TricksStore {
+function useListStore(tricks: WireTrickInfo[], gate?: TricksGate): TricksStore {
   const [store] = useState(() => {
     const reply: TricksReply = { rev: 1, tricks, parts: [], present: [] };
+    if (gate !== undefined) reply.gate = gate;
     return createTricksStore({ fetchTricks: async () => reply, tapTrick: () => Promise.reject(new Error("no taps here")), mintRequestId: () => "playground" });
   });
   useEffect(() => {
@@ -77,8 +78,8 @@ function undoStandIn(tricks: WireTrickInfo[]) {
   };
 }
 
-function ListCard({ n, state, label, tricks, readOnly, hillOff }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean }) {
-  const store = useListStore(tricks);
+function ListCard({ n, state, label, tricks, readOnly, hillOff, gate }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean; gate?: TricksGate }) {
+  const store = useListStore(tricks, gate);
   return (
     <Card state={state} label={`${n} · ${label}`}>
       <div className="w-[390px] max-w-full bg-background p-4">
@@ -450,6 +451,10 @@ export function TrickSettingsSection(): ReactNode {
           ]}
           hillOff
         />
+      </Group>
+      {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line and the Hill, no rows, no switches. */}
+      <Group title="A Windows bridge">
+        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: tricks are gated, one line" tricks={[]} gate="windows" />
       </Group>
       {/* Fault B: a trick whose approval did not hold a right its copy asks for stops; its switch shows off and its row says so. */}
       <Group title="A trick stopped because its rights changed">

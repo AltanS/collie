@@ -27,7 +27,7 @@ import { switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "..
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
 import { isTrickId } from "../web/src/lib/tricks/schema.ts";
-import { checkStatic, leadsCrewOnDisk, type TrickDeps } from "./trick.ts";
+import { checkStatic, leadsCrewOnDisk, refuseTricksOnWindows, type TrickDeps } from "./trick.ts";
 import { EXIT } from "./io.ts";
 
 // `collie trick add`, `update` and `remove` (M94 review 15): a trick from a git repository, copied into
@@ -245,6 +245,7 @@ export const ADD_USAGE = "usage: collie trick add [<name> | <https-url>[//<folde
 
 /** `collie trick add [<source>]`. With no source, the official repository's list; it installs nothing. */
 export async function cmdTrickAdd(deps: TrickAddDeps, args: readonly string[]): Promise<number> {
+  if (refuseTricksOnWindows(deps)) return EXIT.FAIL;
   const flags = args.filter((a) => a.startsWith("-"));
   const words = args.filter((a) => !a.startsWith("-"));
   if (flags.length > 0 || words.length > 1) {

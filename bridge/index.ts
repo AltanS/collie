@@ -3848,6 +3848,8 @@ const tricks =
           return out;
         },
         env: process.env,
+        // The shell of a run line, and the Windows gate (service.ts `gated`): on Windows no trick runs yet.
+        platform: process.platform,
         // Only a lead or a solo bridge that is not deposed schedules tricks (§18.12): a peer, a deputy and
         // a deposed lead run no timer, so one trick never runs on two machines of a crew.
         active: () => crew.mode !== "peer" && deposed === null,
@@ -3872,6 +3874,8 @@ const officialTricks =
         stateDir: cfg.stateDir,
         env: process.env,
         runsOn: tricksRunsOn,
+        // The Windows gate lives in the tricks service; the list asks it before anything is fetched.
+        gate: () => tricks.gateLine(),
         lane: (work) => tricks.officialLane(work),
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
       });
@@ -3993,7 +3997,8 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
                         home: homedir(),
                         privateFolders: filesPrivateFolders(cfg),
                         redact: cfg.redact,
-                        allowed: () => crew.trickReads,
+                        // The Windows gate (tricks/service.ts `gated`): a Windows member reads no file for a trick.
+                        allowed: () => crew.trickReads && tricks?.gated() !== true,
                         audit: (detail) => audit.record({ action: "tricks.inputs", detail: { trick: detail.trick, files: detail.files, bytes: detail.bytes } }),
                       }),
                   }

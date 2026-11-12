@@ -10,7 +10,7 @@ import { OFFICIAL_REPOS, shippedOfficialList } from "../bridge/tricks/official.t
 import { ORIGIN_FILE, renderOrigin } from "../bridge/tricks/origin.ts";
 import { approvedCopyDir, switchesPath } from "../bridge/tricks/paths.ts";
 import { HILL_WRITING } from "./hill-rules.ts";
-import { OFFICIAL_TRICKS_REPO } from "./trick-add.ts";
+import { cmdTrickAdd, OFFICIAL_TRICKS_REPO } from "./trick-add.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
 import { GROUP_CAPACITY_WORDS, GROUP_TOO_LARGE } from "../bridge/tricks/card-group.ts";
@@ -20,6 +20,7 @@ import { realFiles } from "./sys.ts";
 import { leadStore, member } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { inputsSentence, parseTrickDocument, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
+import { TRICKS_WINDOWS_LINE } from "../web/src/lib/tricks/schema.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -579,6 +580,31 @@ describe("collie trick check, a script Collie's runtime runs", () => {
     // SAFETY: `--json` prints exactly one TrickCheckReport, and the fields read below are checked by value.
     const report = JSON.parse(d.out.join("\n")) as TrickCheckReport;
     expect(report.run?.wording.map((w) => w.key)).toEqual(["kinds", "kinds"]);
+  });
+});
+
+describe("windows gate", () => {
+  test("windows gate: collie trick on and collie trick add answer the line, write nothing and exit 1; off still writes", async () => {
+    const d = { ...(await deps()), platform: "win32" as const };
+    await mkdir(join(d.configDir, "tricks", "legs"), { recursive: true });
+    await writeFile(join(d.configDir, "tricks", "legs", "trick.toml"), 'id = "legs"\nname = "L"\nrun = "program.ts"\nplaces = ["belt"]\n');
+    expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.FAIL);
+    expect(await cmdTrickAdd(d, ["https://example.com/o/r"])).toBe(EXIT.FAIL);
+    expect(await cmdTrickAdd(d, [])).toBe(EXIT.FAIL);
+    expect(d.err).toEqual([`error: ${TRICKS_WINDOWS_LINE}`, `error: ${TRICKS_WINDOWS_LINE}`, `error: ${TRICKS_WINDOWS_LINE}`]);
+    expect(d.out).toEqual([]);
+    expect(d.asked).toEqual([]);
+    expect(await readdir(d.stateDir)).toEqual([]);
+    expect(await readdir(join(d.configDir, "tricks"))).toEqual(["legs"]);
+    // A person can always turn a trick off, gate or not.
+    expect(await cmdTrickSwitch(d, ["legs"], false)).toBe(EXIT.OK);
+    expect(d.out).toEqual(["legs is already off."]);
+  });
+
+  test("windows gate: the same verbs on Linux do not say the line", async () => {
+    const d = { ...(await deps()), platform: "linux" as const };
+    expect(await cmdTrickSwitch(d, ["legs"], true)).not.toBe(EXIT.OK);
+    expect(d.err.join("\n")).not.toContain(TRICKS_WINDOWS_LINE);
   });
 });
 

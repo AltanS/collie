@@ -31,6 +31,7 @@ import {
   type TrickPartKey,
   type TrickTapReply,
   type TricksReply,
+  type TricksGate,
   type TricksRunsOn,
   type PlaceKind,
   type TapBody,
@@ -59,6 +60,8 @@ export interface TricksState {
   taps: ReadonlyMap<string, TapState>;
   /** Set while the last reply said this bridge runs no tricks, because its crew's lead does. */
   runsOn?: TricksRunsOn;
+  /** Set while the last reply said tricks are gated on this bridge (`"windows"`). */
+  gate?: TricksGate;
 }
 
 /** The two routes and the id source, so a test or the playground can stand in for the bridge. */
@@ -186,6 +189,7 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
     dropAbsent(parts, taps, new Set(reply.present));
     const next: TricksState = { rev: reply.rev, tricks: reply.tricks, parts, taps };
     if (reply.runsOn !== undefined) next.runsOn = reply.runsOn;
+    if (reply.gate !== undefined) next.gate = reply.gate;
     commit(next);
   }
 

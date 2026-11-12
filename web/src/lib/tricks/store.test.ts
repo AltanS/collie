@@ -8,7 +8,7 @@ import type { JsonObject, JsonValue } from "../json";
 import { LEGS_DOCUMENT, TRACKER_DOCUMENT } from "./fixtures";
 import { isRequestId, parseTrickDocument, partKey, type TapRefusal, type TrickPart, type TricksReply, type WireTrickInfo, type WireTrickPart } from "./schema";
 import { createTricksStore, SYNC_RETRY_MS, tapRefusalLine, useTrickParts, type TricksStore, type TapInput } from "./store";
-import { readTricksReply, readTapReply } from "./wire";
+import { readOfficialTricksReply, readTricksReply, readTapReply } from "./wire";
 
 /** The parts of a fixture document, as the bridge's parser accepted them. */
 function partsOf(doc: JsonObject): TrickPart[] {
@@ -452,6 +452,14 @@ describe("B7: a bridge that runs no tricks", () => {
     expect(readTricksReply({ ...base, runsOn: {} })?.runsOn).toEqual({});
     expect(readTricksReply({ ...base, runsOn: { lead: 7 } })?.runsOn).toEqual({});
     expect(readTricksReply({ ...base, runsOn: "desk" })).toEqual(base);
+  });
+
+  it("reads the Windows gate from both replies and leaves any other word out", () => {
+    const base = { rev: 1, parts: [], present: [], tricks: [] };
+    expect(readTricksReply({ ...base, gate: "windows" })?.gate).toBe("windows");
+    expect(readTricksReply({ ...base, gate: "linux" })).toEqual(base);
+    expect(readOfficialTricksReply({ tricks: [], gate: "windows" })?.gate).toBe("windows");
+    expect(readOfficialTricksReply({ tricks: [], gate: "linux" })).toEqual({ tricks: [] });
   });
 });
 

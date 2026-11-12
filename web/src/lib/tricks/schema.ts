@@ -1544,7 +1544,30 @@ export interface TricksReply {
    * a deputy or a deposed lead (bridge/index.ts). Absent on a lead and a solo bridge.
    */
   runsOn?: TricksRunsOn;
+  /**
+   * Set on a bridge where tricks are gated: `"windows"` on a Windows machine (limits.ts
+   * `TRICKS_WINDOWS_LINE`). The list, the parts and the keys are empty then. Absent everywhere else.
+   */
+  gate?: TricksGate;
 }
+
+// ── The Windows gate (bridge/tricks/service.ts `gated`) ──────────────────────────────────────
+
+/**
+ * What a Windows machine says of tricks: no trick runs there, nothing is added or switched on, and no
+ * agent view opens. The CLI prints it, the bridge answers it, and Settings, Tricks shows it (the phone's
+ * copy is `settings.tricks.windows`, the same words). It lives here, not in limits.ts, which holds numbers only. The Windows review of 1.29 lists why: the env scrub,
+ * the helper's output, the timeout kill and the shell line are not ready there yet.
+ */
+export const TRICKS_WINDOWS_LINE = "Tricks do not run on a Windows machine yet.";
+
+/** Whether tricks are gated on a machine of this platform (`process.platform`, injected as a fact). */
+export function tricksGated(platform: string | undefined): boolean {
+  return platform === "win32";
+}
+
+/** Why a bridge runs no tricks at all: only `"windows"` today. */
+export type TricksGate = "windows";
 
 /** Where a bridge that schedules no tricks says they run: the lead's member id, when it knows it. */
 export interface TricksRunsOn {
@@ -1595,6 +1618,8 @@ export interface WireOfficialTrick {
 export interface OfficialTricksReply {
   tricks: WireOfficialTrick[];
   runsOn?: TricksRunsOn;
+  /** Set, with an empty list, on a bridge where tricks are gated (`TricksReply.gate`). */
+  gate?: TricksGate;
 }
 
 /** The string key of a stored part. None of the three may hold `/`, so it splits back. */

@@ -56,6 +56,8 @@ import {
   VIEW_LIMITS,
   VIEW_ROOT_KINDS,
   type NodeKind,
+  TRICKS_WINDOWS_LINE,
+  tricksGated,
 } from "../web/src/lib/tricks/schema.ts";
 
 // `collie trick view <id>`: an agent view from an agent's terminal. An agent view is a view of a session
@@ -1031,6 +1033,11 @@ export async function cmdTrickView(deps: ViewDeps & ViewHelpDeps, args: readonly
     const ok = verb === "--help" || verb === "-h";
     for (const line of viewTopLines()) (ok ? deps.io.out : deps.io.err)(line);
     return ok ? EXIT.OK : EXIT.USAGE;
+  }
+  // The Windows gate (bridge/tricks/service.ts `gated`): no agent view opens on a Windows machine yet.
+  if (tricksGated(deps.platform)) {
+    deps.io.err(`error: ${TRICKS_WINDOWS_LINE}`);
+    return EXIT.FAIL;
   }
   return await run({ ...deps, trick }, rest);
 }

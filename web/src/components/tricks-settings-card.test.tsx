@@ -8,7 +8,7 @@ import { originLine } from "@/lib/tricks/row-words";
 import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
-import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, TRICKS_WINDOWS_LINE, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import { readTrick, readTrickText } from "@/lib/tricks/wire";
 import type { JsonObject } from "@/lib/json";
@@ -110,6 +110,27 @@ describe("B7: TricksSettingsCard on a machine that runs no tricks", () => {
     renderCard(await storeWith([LEGS]));
     await screen.findByTestId("tricks-settings");
     expect(screen.queryByText(/This machine runs none/)).toBeNull();
+  });
+});
+
+describe("TricksSettingsCard: a gated bridge", () => {
+  it("windows gate: the card shows the one line, the Hill row, and no switch", async () => {
+    const reply: TricksReply = { rev: 5, tricks: [], parts: [], present: [], gate: "windows" };
+    const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+    await store.syncTricks(5);
+    const official = vi.fn(async () => ({ tricks: [] }));
+    const router = createMemoryRouter(
+      [{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={official} /> }],
+      { initialEntries: ["/"] },
+    );
+    render(<RouterProvider router={router} />);
+    const card = await screen.findByTestId("tricks-settings");
+    expect(card.querySelector('[data-line="windows-gate"]')?.textContent).toBe(TRICKS_WINDOWS_LINE);
+    expect(card.querySelector('[data-slot="hill-entry"]')).not.toBeNull();
+    expect(within(card).queryByRole("switch")).toBeNull();
+    expect(card.querySelector('[data-section="official"]')).toBeNull();
+    expect(within(card).queryByText("No tricks yet")).toBeNull();
+    expect(official).not.toHaveBeenCalled();
   });
 });
 

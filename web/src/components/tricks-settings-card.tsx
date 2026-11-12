@@ -173,7 +173,28 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   const store = props.store ?? tricksStore;
   const state = useTricksState(store);
   if (state.rev === null) return null;
+  // A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line and the Hill, no rows, no list read.
+  if (state.gate === "windows") return <TricksGatedCard />;
   return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} />;
+}
+
+/** The card of a gated bridge: the one line, then the Hill's own row and its sheet. */
+function TricksGatedCard() {
+  useLocale();
+  const [hillAbout, setHillAbout] = useState(false);
+  return (
+    <>
+      <Card className="gap-0 py-0" data-testid="tricks-settings">
+        <p data-line="windows-gate" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
+          {t("settings.tricks.windows")}
+        </p>
+        <div data-slot="list-group">
+          <HillEntryRow onAbout={() => setHillAbout(true)} />
+        </div>
+      </Card>
+      {hillAbout && <HillAboutSheetControl onClose={() => setHillAbout(false)} />}
+    </>
+  );
 }
 
 /** The warnings under a row: one quiet line each, then the line that they are a text search. */

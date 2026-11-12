@@ -21,6 +21,7 @@ import { VIEW_NOTE_MAX, parseViewChoice, parseAgentView } from "../web/src/lib/a
 import { NODE_ATTRS, NODE_KINDS, TONES } from "../web/src/lib/tricks/schema.ts";
 import { capture, context } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import { TRICKS_WINDOWS_LINE } from "../web/src/lib/tricks/schema.ts";
 import { viewHelpWithRules, viewRulesIdOf } from "./trick-view-help.ts";
 import {
   attrsOf,
@@ -306,6 +307,20 @@ describe("help", () => {
 });
 
 describe("the dispatcher", () => {
+  test("windows gate: every verb answers the line on a Windows machine, asks no bridge, and exits 1; help still prints", async () => {
+    for (const verb of ["start", "show", "set", "status", "help"]) {
+      const sent: string[] = [];
+      const d = deps([], inPane("%1"), { platform: "win32", ask: async (_path, line) => (sent.push(line), null) });
+      expect(await cmdTrickView(d, [T, verb, "--session", "anything"])).toBe(EXIT.FAIL);
+      expect(d.io.stderr).toEqual([`error: ${TRICKS_WINDOWS_LINE}`]);
+      expect(d.io.stdout).toEqual([]);
+      expect(sent).toEqual([]);
+    }
+    const help = deps([], inPane("%1"), { platform: "win32" });
+    expect(await cmdTrickView(help, ["--help"])).toBe(EXIT.OK);
+    expect(help.io.stdout).toEqual(viewTopLines());
+  });
+
   test("a bare call prints the top lines on stderr and exits 2; --help prints them on stdout and exits 0", async () => {
     const bare = deps([]);
     expect(await cmdTrickView(bare, [])).toBe(EXIT.USAGE);

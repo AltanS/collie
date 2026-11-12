@@ -247,6 +247,8 @@ export function readTricksReply(raw: JsonValue | undefined): TricksReply | undef
   const reply: TricksReply = { rev, tricks, parts, present };
   const runsOn = readRunsOn(body.runsOn);
   if (runsOn !== undefined) reply.runsOn = runsOn;
+  // The Windows gate: a word of another shape is left out, so an older or newer bridge reads as ungated.
+  if (body.gate === "windows") reply.gate = "windows";
   return reply;
 }
 
@@ -298,6 +300,7 @@ export function readOfficialTricksReply(raw: JsonValue | undefined): OfficialTri
   const reply: OfficialTricksReply = { tricks };
   const runsOn = readRunsOn(body.runsOn);
   if (runsOn !== undefined) reply.runsOn = runsOn;
+  if (body.gate === "windows") reply.gate = "windows";
   return reply;
 }
 

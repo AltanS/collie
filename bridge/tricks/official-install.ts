@@ -89,7 +89,7 @@ export type OfficialAnswer =
   | { status: 200; body: { id: string; state: OfficialState } }
   | { status: 400; body: { error: "official-invalid" } }
   | { status: 404; body: { error: "unknown-official" } }
-  | { status: 409; body: { error: "runs-on" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked" | "changed"; message: string } }
+  | { status: 409; body: { error: "runs-on" | "windows" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked" | "changed"; message: string } }
   | { status: 422; body: { error: "mismatch" | "too-large"; message: string } }
   | { status: 502; body: { error: "unreachable"; message: string } }
   | { status: 500; body: { error: "failed"; message: string } };
@@ -111,6 +111,8 @@ export interface OfficialTricksDeps {
   entries?: () => readonly OfficialEntry[];
   /** Where tricks run when this bridge runs none (service.ts `runsOn`): then the list is empty and nothing is added. */
   runsOn?: () => TricksRunsOn | null;
+  /** The Windows gate's line (service.ts `gateLine`), or null where tricks run: then the list is empty and nothing is fetched. */
+  gate?: () => string | null;
   /** Run a write in the tricks runner's serial lane and wait for its next scan (service.ts `officialLane`). Absent: run it as it is. */
   lane?: <T>(work: () => Promise<T>) => Promise<T>;
   /** One audit line per add and update. */
@@ -212,12 +214,15 @@ export class OfficialTricks implements OfficialTricksSurface {
   }
 
   async reply(): Promise<OfficialTricksReply> {
+    if ((this.deps.gate?.() ?? null) !== null) return { tricks: [], gate: "windows" };
     const runsOn = this.deps.runsOn?.() ?? null;
     if (runsOn !== null) return { tricks: [], runsOn };
     return { tricks: await officialWire(this.deps.configDir, this.entries()) };
   }
 
   async install(id: string, mode: "add" | "update"): Promise<OfficialAnswer> {
+    const gate = this.deps.gate?.() ?? null;
+    if (gate !== null) return { status: 409, body: { error: "windows", message: gate } };
     const runsOn = this.deps.runsOn?.() ?? null;
     if (runsOn !== null) return { status: 409, body: { error: "runs-on", message: "This machine runs no tricks: the lead of its crew does." } };
     const entry = this.entries().find((e) => e.id === id);

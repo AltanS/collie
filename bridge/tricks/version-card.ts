@@ -620,6 +620,7 @@ function verdictOf(answer: VersionAnswer): HillCollieVerdict {
     case "no-previous":
     case "copy-failed":
     case "has-rules":
+    case "windows":
       return { ok: false, reason: answer.message };
     default:
       return answer.code satisfies never;

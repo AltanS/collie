@@ -28,6 +28,8 @@ import {
   type WireTrickInfo,
   type WireTrickPending,
   type WireTrickWarning,
+  TRICKS_WINDOWS_LINE,
+  tricksGated,
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
@@ -272,7 +274,7 @@ export type VersionRouteAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "auto-invalid" | "undo-invalid" } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
-  | { status: 409; body: { error: "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules"; message: string } };
+  | { status: 409; body: { error: "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules" | "windows"; message: string } };
 
 /** A version change as a route's answer. */
 function routeAnswer(answer: VersionAnswer): VersionRouteAnswer {
@@ -298,7 +300,7 @@ export type ProposalPlaced = { ok: true; codeHash: string } | { ok: false; messa
 export type SwitchAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "switch-invalid" } }
-  | { status: 409; body: { error: "moved"; message: string } }
+  | { status: 409; body: { error: "moved" | "windows"; message: string } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } };
 
 export interface TricksServiceDeps {
@@ -342,7 +344,11 @@ export interface TricksServiceDeps {
   warn?: (line: string) => void;
   /** The first rev. Default the start time in ms (store.ts says why). */
   revBase?: number;
-  /** The platform, for the shell. */
+  /**
+   * The platform: the shell a run line runs in, and the Windows gate (`gated`). bridge/index.ts passes
+   * `process.platform`; a test passes `"win32"` to see the gate on any host. Absent: the shell of this
+   * host, and no gate.
+   */
   platform?: NodeJS.Platform;
   /** The trick's decisions on the hill. Absent: decisions are parsed and posted nowhere. */
   decisions?: TricksHillPort;
@@ -395,7 +401,7 @@ interface PendingVersion {
 /** What a version change answers: the trick as the list now shows it, or why not. */
 export type VersionAnswer =
   | { ok: true; info: WireTrickInfo }
-  | { ok: false; code: "unknown-trick" | "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules"; message: string };
+  | { ok: false; code: "unknown-trick" | "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules" | "windows"; message: string };
 
 /** The rights an approval holds against the rights its copy asks for now (fault B). */
 export interface RightsMoved {
@@ -614,6 +620,25 @@ export class TricksService implements TricksSurface {
     this.receiptFile = deps.receipts ?? new TrickReceiptStore(deps.stateDir, this.warn);
   }
 
+  // ── The Windows gate ────────────────────────────────────────────────────────────────────────
+  // THE ONE PLACE. On a Windows bridge no trick runs (start, timer, tap, a Decision's answer), nothing is
+  // switched on, approved, taken without asking, added from the list or placed by a proposal, no part
+  // draws, and no agent view opens or takes a write. The folder is not even read, so no copy is made.
+  // Each entry below asks `gated()` first and answers TRICKS_WINDOWS_LINE. Why: the env scrub, the
+  // helper's output, the timeout kill and the shell line are not ready on Windows yet (docs/windows.md).
+  // `collie trick off` still writes the switch file, so a person can turn a trick off for the day the gate
+  // lifts. The Hill's own cards and the person's answers do not pass here and stay as they are.
+
+  /** Whether tricks are gated on this bridge: a Windows machine (`deps.platform`). */
+  gated(): boolean {
+    return tricksGated(this.deps.platform);
+  }
+
+  /** The line a gated bridge answers, or null where tricks run. For the official list's add (official-install.ts). */
+  gateLine(): string | null {
+    return this.gated() ? TRICKS_WINDOWS_LINE : null;
+  }
+
   /** Start the scheduler. Silent and nearly free while no phone watches: a tick then does nothing. */
   start(): void {
     if (this.timer !== null) return;
@@ -633,7 +658,8 @@ export class TricksService implements TricksSurface {
    * the folder (proposal-install.ts `writeNewTrick`), which the next scan reads with no restart.
    */
   rev(): number | undefined {
-    if (this.folderExists) return this.store.rev;
+    // A gated bridge always sends a rev, so Settings, Tricks shows the one line.
+    if (this.folderExists || this.gated()) return this.store.rev;
     if ((this.deps.runsOn?.() ?? null) !== null || this.officialEntries().length === 0) return undefined;
     return this.store.rev;
   }
@@ -659,12 +685,13 @@ export class TricksService implements TricksSurface {
   }
 
   async reply(since: number | undefined): Promise<TricksReply> {
+    if (this.gated()) return { rev: this.store.rev, tricks: [], parts: [], present: [], gate: "windows" };
     await this.refresh();
     return this.store.reply(since, this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.());
   }
 
   sessionPanes(): TrickSessionPanes | undefined {
-    if (!this.folderExists) return undefined;
+    if (!this.folderExists || this.gated()) return undefined;
     const all = this.store.reply(undefined);
     return trickSessionPanes({
       host: this.deps.memberId,
@@ -684,6 +711,7 @@ export class TricksService implements TricksSurface {
    * waiting, `not_a_view` for one whose approved manifest lists no agent view. A read: it never scans.
    */
   viewGate(id: string): ViewGate {
+    if (this.gated()) return { ok: false, code: "trick_off", error: TRICKS_WINDOWS_LINE };
     const rt = this.runtimes.get(id);
     if (rt === undefined) return { ok: false, code: "no_trick", error: `no trick "${id}" on this machine` };
     const entry = rt.entry;
@@ -709,6 +737,7 @@ export class TricksService implements TricksSurface {
    * a scan in flight. Never throws.
    */
   refresh(force = false): Promise<void> {
+    if (this.gated()) return Promise.resolve();
     if (this.scanning !== null) return this.scanning;
     if (!force && this.now() - this.scannedAt < SCAN_EVERY_MS) return Promise.resolve();
     this.scansStarted += 1;
@@ -1127,6 +1156,7 @@ export class TricksService implements TricksSurface {
    * folder moved again after the snapshot.
    */
   async approvePending(id: string, hash: string, by = "phone"): Promise<VersionAnswer> {
+    if (this.gated()) return { ok: false, code: "windows", message: TRICKS_WINDOWS_LINE };
     return await this.serial(async () => {
       const rt = this.onRuntime(id);
       if (!("found" in rt)) return rt;
@@ -1161,6 +1191,7 @@ export class TricksService implements TricksSurface {
    * version undone is recorded as declined, so `auto` does not take it again at once.
    */
   async undo(id: string): Promise<VersionAnswer> {
+    if (this.gated()) return { ok: false, code: "windows", message: TRICKS_WINDOWS_LINE };
     return await this.serial(async () => {
       const rt = this.onRuntime(id);
       if (!("found" in rt)) return rt;
@@ -1186,6 +1217,7 @@ export class TricksService implements TricksSurface {
    * Only for a trick that is on. A version already waiting is not taken by this: the next one is.
    */
   async setAuto(id: string, on: boolean): Promise<VersionAnswer> {
+    if (this.gated()) return { ok: false, code: "windows", message: TRICKS_WINDOWS_LINE };
     return await this.serial(async () => {
       const rt = this.onRuntime(id);
       if (!("found" in rt)) return rt;
@@ -1364,7 +1396,7 @@ export class TricksService implements TricksSurface {
    */
   async tick(): Promise<void> {
     // A peer, a deputy and a deposed lead schedule nothing (`deps.active`), so no trick runs twice in a crew.
-    if (!this.watched() || this.deps.active?.() === false) return;
+    if (!this.watched() || this.deps.active?.() === false || this.gated()) return;
     await this.refresh();
     const now = this.now();
     const started: Promise<void>[] = [];
@@ -1653,6 +1685,7 @@ export class TricksService implements TricksSurface {
   /** `phone`: set for a tap from the phone's route, whose part, control, value, rev and session are checked first (fault A). */
   private async runTap(host: string, id: string, request: TapRequest, seen: string | undefined, phone?: { rev: number | undefined }): Promise<TapAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    if (this.gated()) return { status: 200, body: { rid: request.rid, code: "rejected", message: TRICKS_WINDOWS_LINE } };
     const digest = payloadDigest([id, request.node, request.intent, JSON.stringify(request.value ?? null), request.from?.session ?? ""]);
     // A replay answers the same receipt again, from the receipt log, unchanged (the tree's intent rule).
     const kept = this.receipts.get(request.rid);
@@ -1720,7 +1753,7 @@ export class TricksService implements TricksSurface {
   }
 
   async media(host: string, id: string, rel: string): Promise<TrickMediaFile | null> {
-    if (!this.isOwn(host)) return null;
+    if (!this.isOwn(host) || this.gated()) return null;
     await this.refresh();
     const rt = this.runtimes.get(id);
     // A trick the person never switched on gets nothing served, whatever its folder holds. The pictures
@@ -1738,6 +1771,7 @@ export class TricksService implements TricksSurface {
    */
   async setSwitch(host: string, id: string, on: boolean, hash?: string | null): Promise<SwitchAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    if (this.gated()) return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } };
     const turn = this.switching.then(() => this.writeSwitch(id, on, hash));
     this.switching = turn.catch(() => {});
     return await turn;
@@ -1760,6 +1794,8 @@ export class TricksService implements TricksSurface {
    * new version the runner's own path takes (a pending copy and its card).
    */
   async officialLane<T>(work: () => Promise<T>): Promise<T> {
+    // OfficialTricks.install asks `gateLine` before it fetches; this is the second lock on the write.
+    if (this.gated()) throw new Error(TRICKS_WINDOWS_LINE);
     return await this.lane(async () => {
       await this.refresh(true);
       const out = await work();
@@ -1776,6 +1812,7 @@ export class TricksService implements TricksSurface {
    * person's yes on its own card, since it comes from an agent and not from the folder.
    */
   async proposalTarget(id: string): Promise<ProposalTarget> {
+    if (this.gated()) return { kind: "refused", reason: TRICKS_WINDOWS_LINE };
     await this.refresh(true);
     return this.targetOf(id);
   }
@@ -1802,6 +1839,7 @@ export class TricksService implements TricksSurface {
    * that name appeared since the card. By `proposal` in the switch file and the audit line.
    */
   async installProposed(id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalPlaced> {
+    if (this.gated()) return { ok: false, message: TRICKS_WINDOWS_LINE };
     return await this.lane(async () => {
       await this.refresh(true);
       if (this.runtimes.has(id)) return { ok: false, message: `A trick named ${id} is here now. Nothing was switched on.` };
@@ -1821,6 +1859,7 @@ export class TricksService implements TricksSurface {
    * so the runner never sees the written code as a version waiting.
    */
   async installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string): Promise<ProposalPlaced> {
+    if (this.gated()) return { ok: false, message: TRICKS_WINDOWS_LINE };
     return await this.lane(async () => {
       await this.refresh(true);
       const target = this.targetOf(id);
