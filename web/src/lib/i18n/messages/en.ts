@@ -3322,6 +3322,7 @@ export const en = {
   "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
   "settings.zoomPill.option.screen": "Screen view",
   "settings.zoomPill.option.off": "Off",
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "settings.pageZoom.title": "Pinch to zoom",
   "settings.pageZoom.description": "Pinch the page to make it bigger. Off stops a stray pinch from zooming the app. The Screen view's own zoom works either way.",
 
@@ -4183,6 +4184,8 @@ export const PENDING_TRANSLATION = [
   "settings.clearNotifications.failed.notifications",
   "settings.clearNotifications.failed.badge",
   "settings.clearNotifications.failed.both",
+  "settings.pageZoom.title",
+  "settings.pageZoom.description",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
