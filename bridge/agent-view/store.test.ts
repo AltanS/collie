@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { AgentViewStore, trickViewsDir, viewEntry, viewFileName, viewKey, VIEWS_FOLDER, VIEWS_KEPT, type ViewEntry } from "./store.ts";
 import type { JsonObject } from "../json.ts";
 
@@ -53,14 +55,18 @@ describe("AgentViewStore", () => {
 
   test("writes one file per view, 0600 in a 0700 folder, and a new store reads them back", () => {
     const dir = stateDir();
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and what
+    // the store writes inherits it. NTFS has no 0600 or 0700, so the check reads that list instead.
+    if (process.platform === "win32") ensureOwnerOnlyDir(dir, HOST, { root: privateRoot("state"), repair: true });
     const store = new AgentViewStore(trickViewsDir(dir), () => 5000);
     const held = entry(T, ONE, 5000, { view, shows: 2, mark: "claude\u0000id:conv-1" });
     expect(store.put(held)).toBe(true);
     expect(store.put(entry(OTHER, ONE, 5000))).toBe(true);
     expect(store.rev()).toBe(5001);
-    expect(statSync(trickViewsDir(dir)).mode & 0o777).toBe(0o700);
-    expect(statSync(viewsOf(dir)).mode & 0o777).toBe(0o700);
-    expect(statSync(fileOf(dir, T, ONE)).mode & 0o777).toBe(0o600);
+    for (const [path, mode] of [[trickViewsDir(dir), 0o700], [viewsOf(dir), 0o700], [fileOf(dir, T, ONE), 0o600]] as const) {
+      if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(mode);
+      else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
+    }
     expect(readdirSync(viewsOf(dir)).toSorted()).toEqual([viewFileName(T, ONE), viewFileName(OTHER, ONE)].toSorted());
     const again = new AgentViewStore(trickViewsDir(dir), () => 9000);
     expect(again.rev()).toBe(9000);

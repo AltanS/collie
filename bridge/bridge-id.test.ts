@@ -3,6 +3,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "./host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 import { parseJsonObject, type JsonObject } from "../web/src/lib/json.ts";
 import { BRIDGE_ID_FILE, type BridgeIdentity, INSTALL_ID_RE, isBridgeId, isOwnId, mintInstallId, resolveBridgeId } from "./bridge-id.ts";
 
@@ -58,6 +60,9 @@ describe("resolveBridgeId", () => {
 
   test("a solo bridge mints once, writes 0600, and serves the same id on every boot after", () => {
     const dir = stateDir();
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and the
+    // id file inherits it. NTFS has no 0600, so the check reads that list instead.
+    if (process.platform === "win32") ensureOwnerOnlyDir(dir, HOST, { root: privateRoot("state"), repair: true });
     let mints = 0;
     const mint = () => {
       mints += 1;
@@ -65,7 +70,8 @@ describe("resolveBridgeId", () => {
     };
     const first = boot({ stateDir: dir, crewMemberId: null, mint, ...quiet });
     expect(first).toEqual({ id: "m_0000000001", previous: null });
-    expect(statSync(join(dir, BRIDGE_ID_FILE)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(join(dir, BRIDGE_ID_FILE)).mode & 0o777).toBe(0o600);
+    else expect(isOwnerOnly(join(dir, BRIDGE_ID_FILE), HOST)).toEqual({ state: "private" });
     expect(fileOf(dir)).toEqual({ v: 1, install: "m_0000000001", id: "m_0000000001", previous: null });
     const before = statSync(join(dir, BRIDGE_ID_FILE)).mtimeMs;
     const second = boot({ stateDir: dir, crewMemberId: null, mint, ...quiet });

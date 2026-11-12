@@ -132,9 +132,9 @@ describe("the deputy's store", () => {
     expect(ready.map((r) => [r.trick.id, r.name, r.trick.auto])).toEqual([["legs", "Leg day", true]]);
     expect(await readFile(join(ready[0]?.codeDir ?? "", "lib", "a.ts"), "utf8")).toBe("export const a = 1;\n");
     expect(await readFile(join(ready[0]?.heldState ?? "", "state", "notes.json"), "utf8")).toBe("{}\n");
-    // The x bit rides the index, never the disk.
-    expect(ready[0]?.trick.files.find((f) => f.rel === "p.sh")?.x).toBe(true);
+    // The x bit rides the index, never the disk. Windows has no x bit, so there the lead marks none.
     if (process.platform !== "win32") {
+      expect(ready[0]?.trick.files.find((f) => f.rel === "p.sh")?.x).toBe(true);
       expect((await stat(join(ready[0]?.codeDir ?? "", "p.sh"))).mode & 0o777).toBe(0o600);
       expect((await stat(store.dir)).mode & 0o777).toBe(0o700);
       expect((await stat(join(store.dir, "index.json"))).mode & 0o777).toBe(0o600);

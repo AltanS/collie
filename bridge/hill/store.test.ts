@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { decision } from "./fixtures.ts";
 import { DECISIONS_FILE, HILL_CLOSED_KEPT, hillDir, HillStore, pruned } from "./store.ts";
 
@@ -27,12 +28,18 @@ describe("the decisions file", () => {
     expect(existsSync(dir)).toBe(false);
   });
 
-  test.skipIf(HOST.platform === "win32")("a write is atomic and owner-only: a 0700 folder, a 0600 file, no temp file left", () => {
-    const dir = hillDir(stateDir());
+  test("a write is atomic and owner-only: a 0700 folder, a 0600 file, no temp file left", () => {
+    const state = stateDir();
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and the
+    // hill's folder inherits it. NTFS has no 0600 or 0700, so the check reads that list instead.
+    if (HOST.platform === "win32") ensureOwnerOnlyDir(state, HOST, { root: privateRoot("state"), repair: true });
+    const dir = hillDir(state);
     const store = new HillStore(dir, () => 5000);
     expect(store.put(decision("dc_aaaaaaaaaaa1"))).toBe(true);
-    expect(statSync(dir).mode & 0o777).toBe(0o700);
-    expect(statSync(join(dir, DECISIONS_FILE)).mode & 0o777).toBe(0o600);
+    for (const [path, mode] of [[dir, 0o700], [join(dir, DECISIONS_FILE), 0o600]] as const) {
+      if (HOST.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(mode);
+      else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
+    }
     expect(readdirSync(dir)).toEqual([DECISIONS_FILE]);
     const file = JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8"));
     expect(file.v).toBe(1);

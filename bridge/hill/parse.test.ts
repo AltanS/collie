@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { parseJson, parseJsonObject, type JsonObject, type JsonValue } from "../../web/src/lib/json.ts";
 import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import type { View } from "../../web/src/lib/tricks/schema.ts";
@@ -238,15 +239,19 @@ describe("a stored decision", () => {
 });
 
 describe("the receipt file", () => {
-  test.skipIf(HOST.platform === "win32")("a record reaches <stateDir>/hill/receipts.json, owner-only, and a new store reads it back", async () => {
+  test("a record reaches <stateDir>/hill/receipts.json, owner-only, and a new store reads it back", async () => {
     const stateDir = mkdtempSync(join(tmpdir(), "hill-receipts-"));
     roots.push(stateDir);
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and the
+    // hill's folder inherits it. NTFS has no 0600 or 0700, so the check reads that list instead.
+    if (HOST.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
     const store = new HillReceiptStore(stateDir);
     await store.load();
     const record = { requestId: RID, payloadDigest: hillAnswerDigest("hill/dc_aaaaaaaaaaa1", "yes", null), receipt: { rid: RID, code: "ok" as const, reason: null, state: "answered" as const, delivery: "typed" as const, trick: "none" as const, at: 5 } };
     expect(await store.recordFirst(record)).toBe(true);
     const path = join(hillDir(stateDir), HILL_RECEIPTS_FILE);
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    if (HOST.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
+    else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
     expect(readFileSync(path, "utf8")).not.toContain("typed words");
     const again = new HillReceiptStore(stateDir);
     await again.load();

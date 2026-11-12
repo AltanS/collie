@@ -4,6 +4,8 @@ import { mkdir, mkdtemp, rm, stat, symlink, utimes, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import type { AgentView, WorkspaceView } from "../types.ts";
 import { FACT_SESSIONS_MAX, FACT_SESSIONS_MAX_BYTES, parseFacts, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../../web/src/lib/tricks/schema.ts";
 import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
@@ -30,12 +32,17 @@ afterAll(async () => {
 describe("the switch file", () => {
   test("written at 0600 in a 0700 folder, read back, off by default", async () => {
     const stateDir = await tempDir();
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and what
+    // the store writes inherits it. NTFS has no 0600 or 0700, so the check reads that list instead.
+    if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
     const warnings: string[] = [];
     const read = createSwitchReader(stateDir, (l) => warnings.push(l));
     expect((await read()).on.size).toBe(0);
     await writeSwitches(stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-08T09:00:00.000Z", HASH));
-    expect((await stat(switchesPath(stateDir))).mode & 0o777).toBe(0o600);
-    expect((await stat(join(stateDir, "tricks"))).mode & 0o777).toBe(0o700);
+    for (const [path, mode] of [[switchesPath(stateDir), 0o600], [join(stateDir, "tricks"), 0o700]] as const) {
+      if (process.platform !== "win32") expect((await stat(path)).mode & 0o777).toBe(mode);
+      else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
+    }
     expect([...(await read()).on.entries()]).toEqual([["legs", { at: "2026-11-08T09:00:00.000Z", hash: HASH, auto: false, by: "cli", powers: null }]]);
     expect(warnings).toEqual([]);
   });

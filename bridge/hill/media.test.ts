@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { AuditEntry } from "../audit.ts";
 import type { BeaconMatcher } from "../beacon/decorate.ts";
 import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { HILL_MEDIA_HEADERS, HILL_MEDIA_MISSING, HILL_OFF_TEXT, hillMediaRoute } from "../server.ts";
 import type { WalkyHost, WalkyPane } from "../walky/deliver.ts";
 import { WalkyLog } from "../walky/log.ts";
@@ -178,15 +179,19 @@ describe("reading a posted image", () => {
 });
 
 describe("the media folder", () => {
-  posix("keeps each file 0600 in a 0700 folder named by the decision id, and reads it back by the recorded size and type", () => {
+  test("keeps each file 0600 in a 0700 folder named by the decision id, and reads it back by the recorded size and type", () => {
     const state = folder("hill-state-");
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and the
+    // hill's folder inherits it. NTFS has no 0600 or 0700, so the check reads that list instead.
+    if (HOST.platform === "win32") ensureOwnerOnlyDir(state, HOST, { root: privateRoot("state"), repair: true });
     const media = new HillMediaStore(hillDir(state), []);
     const id = "im_aaaaaaaaaaaaaaaa";
     expect(media.save("dc_abcdefabcdef", [{ id, bytes: png() }])).toBe(true);
     const root = join(hillDir(state), MEDIA_DIR);
-    expect(statSync(root).mode & 0o777).toBe(0o700);
-    expect(statSync(join(root, "dc_abcdefabcdef")).mode & 0o777).toBe(0o700);
-    expect(statSync(join(root, "dc_abcdefabcdef", id)).mode & 0o777).toBe(0o600);
+    for (const [path, mode] of [[root, 0o700], [join(root, "dc_abcdefabcdef"), 0o700], [join(root, "dc_abcdefabcdef", id), 0o600]] as const) {
+      if (HOST.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(mode);
+      else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
+    }
     expect(media.bytesOf("dc_abcdefabcdef", { id, mime: "image/png", bytes: png().length })).toEqual(png());
     // A recorded size or type that does not match the file serves nothing.
     expect(media.bytesOf("dc_abcdefabcdef", { id, mime: "image/png", bytes: 3 })).toBeNull();

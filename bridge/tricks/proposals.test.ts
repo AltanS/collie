@@ -3,6 +3,8 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, stat,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_OFF, HillService, type HillPlace } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
@@ -179,12 +181,18 @@ async function walkModes(dir: string): Promise<{ rel: string; mode: number; dir:
 describe("a proposal for a new trick", () => {
   test("is stored inert, never listed (also after a restart), and posts Collie's own card", async () => {
     const l = await lead();
+    // Windows: the bridge gives the config dir an owner-only access list at start (M43 spec 04).
+    if (process.platform === "win32") ensureOwnerOnlyDir(l.configDir, HOST, { root: privateRoot("config"), repair: true });
     const p = proposal("legs", "console.log(1)\n", { extra: [{ rel: "lib/util.ts", bytes: enc("export {}\n"), executable: false }] });
     const answer = await l.proposals.propose(p, AGENT);
     expect(answer).toMatchObject({ ok: true, kind: "proposal", id: "legs", hash: p.hash, replaced: null });
     const store = l.proposals.storeDir("legs", p.hash);
-    // Folders 0700, files 0600: no executable bit, even for a file marked executable.
-    for (const entry of await walkModes(store)) expect(entry.mode).toBe(entry.dir ? 0o700 : 0o600);
+    // Folders 0700, files 0600: no executable bit, even for a file marked executable. Windows has no
+    // mode bits and no executable bit: there the store inherits the config folder's owner-only list.
+    for (const entry of await walkModes(store)) {
+      if (process.platform !== "win32") expect(entry.mode).toBe(entry.dir ? 0o700 : 0o600);
+      else expect(isOwnerOnly(join(store, entry.rel), HOST)).toEqual({ state: "private" });
+    }
     expect(await listed(l)).toEqual([]);
     // A fresh runner on the same folders (a bridge restart) does not see it either.
     const again = new TricksService({ configDir: l.configDir, stateDir: l.stateDir, memberId: "lodge", world: () => ({ machine: "lodge", sessions: [], spaces: [] }), env: {}, warn: () => undefined, revBase: 1 });
@@ -214,7 +222,8 @@ describe("a proposal for a new trick", () => {
     expect(await tap(l, card!, "on")).toMatchObject({ code: "ok", state: "answered", delivery: "typed" });
     const dir = join(l.configDir, TRICKS_DIR, "legs");
     expect(await readFile(join(dir, "program.ts"), "utf8")).toBe("console.log(1)\n");
-    expect((await stat(join(dir, "program.ts"))).mode & 0o111).not.toBe(0);
+    // The bit the proposal marked, on a host that has one.
+    if (process.platform !== "win32") expect((await stat(join(dir, "program.ts"))).mode & 0o111).not.toBe(0);
     expect(JSON.parse(await readFile(join(dir, ORIGIN_FILE), "utf8"))).toMatchObject({ v: 1, via: "proposal", by: "agent", host: "workshop", label: "repo#one" });
     const switches = JSON.parse(await readFile(join(l.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(switches.on.legs).toMatchObject({ by: "proposal" });
