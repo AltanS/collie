@@ -23,7 +23,7 @@ import { readSendReceipts, readSurface } from "../../src/lib/send-protocol";
 import { askOf, isFree, type Surface } from "../../src/lib/surface/surface";
 import { TOUR_STORAGE_KEY, TOUR_VERSION } from "../../src/lib/tour";
 import { BIN } from "./bins";
-import { SETUPS, harnessDirs, prepareHarness, type HarnessId } from "./harnesses";
+import { SETUPS, harnessDirs, prepareHarness, type HarnessId, type HarnessOptions } from "./harnesses";
 import type { ScenarioId } from "./scenarios";
 import { MEMBER_ID, P, STATE_ROOT, memGuard, readRun, readToken, sleep, startInPane, type Machine } from "./rig-lib";
 import { STUB_HARNESSES, tiersFromEnv } from "./replay/tier";
@@ -258,11 +258,11 @@ export const askOn = (pane: RigPane | null) => (pane?.surface === null || pane?.
  * reads its box free (a member's pane through the lead's merged snapshot). Throws NotReached when it
  * never comes up.
  */
-export async function startHarness(rig: Rig, id: HarnessId, machine: Machine = "lead"): Promise<{ paneId: string; notes: readonly string[] }> {
+export async function startHarness(rig: Rig, id: HarnessId, machine: Machine = "lead", options: HarnessOptions = {}): Promise<{ paneId: string; notes: readonly string[] }> {
   memGuard(`harness ${id}`);
   // A binary that is not there would only show as the 90 s timeout below: say what is missing instead.
   if (!existsSync(BIN[id])) throw new NotReached(`${id} binary not found at ${BIN[id]}; set COLLIE_RIG_${id.toUpperCase()}_BIN`);
-  const { line, notes } = prepareHarness(id, machine);
+  const { line, notes } = prepareHarness(id, machine, options);
   const host = hostOf(machine);
   const paneId = await startInPane(harnessDirs(id, machine).project, `leg-${id}`, line, machine);
   const up = await rig.until(() => rig.pane(paneId, host), (pane) => pane !== null && pane.agent === SETUPS[id].agent && (freeSurface(pane) || (pane.surface === null && pane.status === "idle")), 90_000, 700);

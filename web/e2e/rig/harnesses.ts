@@ -41,7 +41,7 @@ import { seedClaude, seedClaudeReplay } from "../../../scripts/harness-canary/la
 import type { JsonObject } from "../../src/lib/json";
 import { BIN, piExtensions } from "./bins";
 import { tiersFromEnv, modelFor, SKILL_TEMPLATE, type StubHarness } from "./replay/tier";
-import { machineDirs, muxOf, readRun, type Machine } from "./rig-lib";
+import { inboxStateHome, machineDirs, muxOf, readRun, type Machine } from "./rig-lib";
 import { BEACON_EVENTS, beaconHookCommand } from "./rig-mux";
 import { HARNESS_IDS, type HarnessId } from "./scenarios";
 
@@ -184,12 +184,24 @@ export interface PreparedHarness {
   readonly notes: readonly string[];
 }
 
+/** What one start of a harness adds to the usual setup. */
+export interface HarnessOptions {
+  /**
+   * pi only: load this checkout's inbox extension (`pi-extension/collie-inbox.ts`, ADR 0141) with `-e`,
+   * so the bridge's pi door can bind the pane. Off by default: every other pi case is a screen send.
+   */
+  readonly inbox?: boolean;
+}
+
+/** The inbox extension in this checkout, the file `collie inbox install pi` writes. */
+export const PI_INBOX_EXTENSION = join(WORKTREE, "pi-extension", "collie-inbox.ts");
+
 /**
  * Write the harness's scratch config and start script, and return the line to type into a fresh
  * shell pane of `machine`'s Herdr. Each call starts a NEW session: the project folder stays, the
  * agent's history of it is the agent's own business.
  */
-export function prepareHarness(id: HarnessId, machine: Machine = "lead"): PreparedHarness {
+export function prepareHarness(id: HarnessId, machine: Machine = "lead", options: HarnessOptions = {}): PreparedHarness {
   const d = harnessDirs(id, machine);
   const stateDir = machineDirs(machine).state;
   for (const dir of [d.root, d.project]) mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -292,7 +304,7 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
       if (base !== null) writeFileSync(stubExt, `// Written by the Collie browser leg (M67): pi's model calls go to the rig's stub.\nexport default function (pi: { registerProvider(name: string, config: { baseUrl: string }): void }): void {\n  pi.registerProvider("openrouter", { baseUrl: ${JSON.stringify(base)} });\n}\n`);
       else rmSync(stubExt, { force: true });
       // `--approve` trusts the scratch project for this run, so no trust question comes first.
-      argv = [BIN.pi, "--provider", provider, "--model", rest.join("/"), "--thinking", "off", "--offline", "--approve", ...found.paths.flatMap((path) => ["-e", path]), ...(base === null ? [] : ["-e", stubExt])];
+      argv = [BIN.pi, "--provider", provider, "--model", rest.join("/"), "--thinking", "off", "--offline", "--approve", ...found.paths.flatMap((path) => ["-e", path]), ...(base === null ? [] : ["-e", stubExt]), ...(options.inbox === true ? ["-e", PI_INBOX_EXTENSION] : [])];
     } else {
       // With the stub the key comes from the environment (live) or is not needed (replay), so omp gets
       // no copy of the operator's agent.db: a fresh one each start, with no credential in it.
@@ -312,7 +324,8 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
       `PI_CODING_AGENT_DIR=${sq(d.agent)}`,
       `XDG_CONFIG_HOME=${sq(join(d.home, ".config"))}`,
       `XDG_DATA_HOME=${sq(join(d.home, ".local", "share"))}`,
-      `XDG_STATE_HOME=${sq(join(d.home, ".local", "state"))}`,
+      // pi's state home is the one its machine's bridge reads (rig-lib.ts inboxStateHome): its inbox socket goes there.
+      `XDG_STATE_HOME=${sq(id === "pi" ? inboxStateHome(machine) : join(d.home, ".local", "state"))}`,
       `XDG_CACHE_HOME=${sq(join(d.home, ".cache"))}`,
     );
   }

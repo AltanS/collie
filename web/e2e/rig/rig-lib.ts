@@ -22,7 +22,7 @@
 // has its own default state root (`browser-leg-crew-state`), so the solo leg and the crew leg never
 // share a rig folder, a Herdr home or a port. `COLLIE_RIG_CREW=1` selects it (crew-env.ts sets it).
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { once } from "node:events";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
@@ -116,6 +116,19 @@ const DIRS = {
 
 export function machineDirs(machine: Machine): MachineDirs {
   return DIRS[machine];
+}
+
+/**
+ * XDG_STATE_HOME for a machine's bridge and its pi, the one place both must agree on: pi's inbox
+ * (ADR 0141) binds its socket under `<XDG_STATE_HOME>/collie/inbox`, and the bridge's pi door looks for
+ * it there. It sits inside the machine's short Herdr home so the socket fits sun_path (the harness
+ * homes under the state root are too long on macOS), and it is the real path, because the door
+ * refuses a socket path with a link in it and macOS's `/tmp` is one.
+ */
+export function inboxStateHome(machine: Machine): string {
+  const dir = join(DIRS[machine].xdg, "state");
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return realpathSync(dir);
 }
 
 /** The multiplexer each machine runs (COLLIE_RIG_MUX, rig-mux.ts): Herdr unless it says herdr-core. */

@@ -48,6 +48,8 @@ export const SCENARIOS = [
   { id: "walky-space-refused", title: "31 walky talky: a message to another space is refused, nothing typed", only: ["claude"] },
   { id: "walky-space-reply", title: "32 walky talky: a reply crosses the border, in both directions", only: ["claude"] },
   { id: "walky-space-outside", title: "33 walky talky: --outside crosses, and the header says outside", only: ["claude"] },
+  // A desk draft, then a phone send through pi's own inbox (ADR 0141), case 36: taken, the draft stays.
+  { id: "door-draft", title: "36 a desk draft, then a phone send through pi's inbox", only: ["pi"] },
   // The crew leg (crew.config.ts, walky-crew.spec.ts): a lead and a member. Each case is one row,
   // under the harness that starts it (Claude on the lead); pi on the member is its other end.
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },

@@ -14,15 +14,17 @@ function cells(leg: Leg): string[] {
 }
 
 describe("the browser leg's cases per leg", () => {
-  test("the solo leg prints thirty-eight cells: the twenty-two it printed before the crew leg, cases 16 to 18, case 22, the two take-backs, case 25, case 26, case 28, case 29, and the four space cases 30 to 33", () => {
-    expect(cells("solo")).toHaveLength(38);
+  test("the solo leg prints thirty-nine cells: the twenty-two it printed before the crew leg, cases 16 to 18, case 22, the two take-backs, case 25, case 26, case 28, case 29, the four space cases 30 to 33, and case 36", () => {
+    expect(cells("solo")).toHaveLength(39);
     expect(cells("solo").filter((cell) => / walky-space-/.test(cell))).toEqual(["claude walky-space-in", "claude walky-space-refused", "claude walky-space-reply", "claude walky-space-outside"]);
+    expect(cells("solo").filter((cell) => cell.endsWith(" door-draft"))).toEqual(["pi door-draft"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" queued-omp"))).toEqual(["omp queued-omp"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" stop-pi"))).toEqual(["pi stop-pi"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" belt-model-draft"))).toEqual(["claude belt-model-draft"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" walky-busy"))).toEqual(["claude walky-busy", "pi walky-busy", "omp walky-busy"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" steer"))).toEqual(["pi steer"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" clear-pi"))).toEqual(["pi clear-pi"]);
+    expect(cells("solo").filter((cell) => cell.endsWith(" door-draft"))).toEqual(["pi door-draft"]);
     expect(cells("solo").every((cell) => !cell.includes("walky-crew"))).toBe(true);
   });
 

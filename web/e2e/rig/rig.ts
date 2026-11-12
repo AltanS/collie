@@ -92,6 +92,7 @@ import {
   herdrEnv,
   hc,
   killPid,
+  inboxStateHome,
   machineDirs,
   memGuard,
   muxOf,
@@ -458,6 +459,8 @@ function bridgeEnv(machine: Machine, port: number, socket: string) {
     COLLIE_HOST: "127.0.0.1",
     COLLIE_PORT: String(port),
     COLLIE_STATE_DIR: d.state,
+    // Where the pi door looks for pi's inbox socket: the folder this machine's pi binds it in (harnesses.ts).
+    XDG_STATE_HOME: inboxStateHome(machine),
     // The anonymous install ping (M86): a lab bridge never pings, even on a build the dev-build rule misses.
     COLLIE_TELEMETRY: "0",
     HERDR_PLUGIN_CONFIG_DIR: d.config,

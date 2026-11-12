@@ -13,8 +13,8 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in these places:
 
-- **Before every release tag**, on the release head. All forty-seven cases pass on the first tap:
-  thirty-eight on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, case 29, and the four space cases 30 to 33) and
+- **Before every release tag**, on the release head. All forty-eight cases pass on the first tap:
+  thirty-nine on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, case 29, the four space cases 30 to 33, and case 36) and
   nine on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before every release tag**, patch tags included, also on herdr-core (M79, "On herdr-core" below):
   the solo leg with `make browser-leg DIR=... MUX=herdr-core` (replay, about 30 minutes), and the crew
@@ -85,7 +85,7 @@ The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
   rig.
 - A run that cannot finish writes `failed`. A run in which a case failed, in either leg, writes `fail`. A
   case that was not reached, or is not applicable, in either leg proves nothing, so it makes the row
-  `failed`. The row is `pass` only when both legs passed every case (34 solo cases and 7 crew cases). A
+  `failed`. The row is `pass` only when both legs passed every case (35 solo cases and 7 crew cases). A
   `fail` outranks a `failed` between the two legs.
 
 **Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
@@ -111,7 +111,7 @@ a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
 ## The cases
 
-Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 24), the space cases (30 to 33), the stop case (25), the steer case (26) and the queued case (29) run on the harnesses the
+Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 24), the space cases (30 to 33), the stop case (25), the steer case (26), the queued case (29) and the inbox case (36) run on the harnesses the
 last column names. Cases 12 to 15, 19 to 21, 34 and 35 run on the crew leg only (below).
 
 | # | Case | Harnesses | Spec |
@@ -151,6 +151,7 @@ last column names. Cases 12 to 15, 19 to 21, 34 and 35 run on the crew leg only 
 | 33 | The space border, `--outside`. A throwaway Claude in another space sends to the idle session pane with `--outside`. The receipt says `delivered` and `outside`. The nudge on the pane has the word `outside` after the sender's parenthesis and no body; the pane reads the body with `collie walky inbox <id>` and answers `OUTSIDE-OK`. One Claude turn | claude | `walky.spec.ts` |
 | 34 | Crew leg. The border across the crew. A throwaway Claude on the lead sends `here`. A named space is one space on every machine, so the receipts name Claude's pane on the lead and pi's pane on the member (the member's pane is in the space of the same name), not the sender. The member's own receipt for pi says `in`. A draft in each box holds the message, the lead's hold is taken back, and pi's draft is left alone. No model turn | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 35 | Crew leg. An unnamed space on the member. A second pi on the member is in a space with no name of its own, so it never joins a space elsewhere. `here` from the same sender does not name it, a message to its address is refused `outside your space` by the member (which owns the pane and counts the refusal), and nothing is typed into it. No model turn | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 36 | A desk draft, then a phone send through pi's inbox (ADR 0141). The case starts a pi pane of its own with this checkout's `pi-extension/collie-inbox.ts` loaded (`-e`, harnesses.ts `inbox`), so every other pi case stays a screen send. A word is typed into pi's box outside the phone and never sent, then the composer sends a short text, one tap. On Herdr the receipt is `sent` through `via: "pi"`, `door: "taken"`; no key reaches the pane, so the draft is still in the box after pi answers, and pi's log holds the text as exactly one user turn and the draft as none. On herdr-core the pane names no pi session file, so the inbox refuses: the receipt says `doorRefused`, the draft stays, and the log holds no turn with the text. The rig's bridge and its pi share one `XDG_STATE_HOME` (rig-lib.ts `inboxStateHome`), the folder the socket is bound in, short enough for sun_path | pi | `door.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case
