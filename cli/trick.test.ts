@@ -747,7 +747,7 @@ describe("collie trick on, off and list", () => {
     // SAFETY: `list --official --json` prints one document, checked by value below.
     const doc = JSON.parse(d.out.join("\n")) as { official: { id: string; state: string }[] };
     expect(doc.official.map((e) => e.state)).toEqual(list.entries.map((e) => (e.id === first.id || e.id === second.id || e.id === third.id ? "taken" : "absent")));
-    expect(await readdir(join(d.configDir, "tricks"))).toEqual([first.id, second.id, third.id].toSorted());
+    expect((await readdir(join(d.configDir, "tricks"))).toSorted()).toEqual([first.id, second.id, third.id].toSorted());
   });
 
   test("list --official on a crew member names the lead", async () => {
