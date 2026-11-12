@@ -50,6 +50,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Docs
 
 - **Session settings rows have a section in each tricks page.** The reference lists the `menu` place with a bound example, the `sessions` key on a belt mark and a menu part, and a "Bound parts" group of limits; `docs/tricks.md`, `docs/tricks-authoring.md` and `collie trick guide` each say in a few lines what the rows do, how a switch waits for the trick, and how a part binds to sessions.
+- **The tricks guide says what asks you again for session rows.** The `menu` place is a power like any other place, so a version that adds it asks again; a Belt mark that names `sessions` only shows in fewer sessions and needs no new yes.
 
 ## [1.29.0] - 2026-11-12
 

@@ -433,8 +433,9 @@ that, it can do what you can do.
 
 **Powers.** A power is something a trick may reach beyond its own code: the environment names it asks
 for (`env`), the places it draws in (`places`), and the files it reads from your agent sessions
-(`inputs`). The About sheet lists them. A new version that changes one always asks you again. Collie's
-own text also calls a power a right.
+(`inputs`). The About sheet lists them. A new version that changes one always asks you again. The
+`menu` place is a power like any other place, and a Belt mark that names `sessions` only shows in fewer
+sessions, so it needs no new yes. Collie's own text also calls a power a right.
 
 **The environment.** A program gets only the variables a shell tool needs, such as `PATH` and `HOME`.
 A trick lists any more by name, and the About sheet shows each name. Collie never passes a `COLLIE_`
