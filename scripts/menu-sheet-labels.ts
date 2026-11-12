@@ -10,6 +10,9 @@
 //
 // `scripts/menu-sheet-labels.test.ts` holds the file to this script, so a new or changed label of the
 // sheet in any language fails until the file is written again.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { skeletonWords } from "../web/src/lib/fold.ts";
 import type { MessageKey } from "../web/src/lib/i18n/messages/en.ts";
 import { en } from "../web/src/lib/i18n/messages/en.ts";
@@ -29,43 +32,41 @@ import { runReferenceCli } from "./reference-kit.ts";
 /** The file this script writes. */
 export const SHEET_LABELS_FILE = "web/src/lib/tricks/sheet-labels.ts";
 
+/** The files that draw the session actions sheet and a trick's group in it. */
+export const SHEET_SOURCES = ["web/src/components/pane-actions-sheet.tsx", "web/src/components/trick-menu-group.tsx"] as const;
+
+/** A string literal shaped like a message key. */
+const KEY_LITERAL = /"([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+)"/gu;
+/** The plural forms a `tn()` key base takes. */
+const PLURAL_FORM = /\.(?:zero|one|two|few|many|other)$/u;
+
+/**
+ * Every English message key the given source texts name, once each, in the order first named: a key
+ * itself, or a `tn()` base with each of its plural forms. Any other string is left out.
+ */
+export function labelKeysIn(sources: readonly string[]): MessageKey[] {
+  const english: Readonly<Record<string, string>> = en;
+  // SAFETY: `en` is the catalogue MessageKey is drawn from, so every key it has is a MessageKey.
+  const keys = Object.keys(en) as MessageKey[];
+  const found = new Set<MessageKey>();
+  for (const source of sources) {
+    for (const [, literal = ""] of source.matchAll(KEY_LITERAL)) {
+      for (const key of keys) {
+        if (key === literal || (key.startsWith(`${literal}.`) && PLURAL_FORM.test(key) && english[literal] === undefined)) found.add(key);
+      }
+    }
+  }
+  return [...found];
+}
+
 /**
  * Every label of the session actions sheet (components/pane-actions-sheet.tsx) and of a trick's group in
- * it (components/trick-menu-group.tsx): the rows Collie draws, the armed and busy words of Close, the
- * group's heading and its footer lines. A row a trick draws may not fold to one of them.
+ * it (components/trick-menu-group.tsx): every message key those files name, so the rows Collie draws, the
+ * armed and busy words of Close, the status lines, the group's heading and its footer lines. Read from the
+ * files (review 12 N8): a row the sheet gains is in the list without a hand edit, and the generated file
+ * is stale until it is written again. A row a trick draws may not fold to one of them.
  */
-export const SHEET_LABEL_KEYS = [
-  "chat.find.label",
-  "chat.history.label",
-  "chat.copyOutput.label",
-  "walky.sheet.row",
-  "walky.off.row",
-  "chat.mode.terminal",
-  "chat.mode.chat",
-  "view.back",
-  "paneActions.settings.label",
-  "chat.zen.label",
-  "paneActions.pin.label",
-  "paneActions.unpin.label",
-  "paneActions.report.label",
-  "paneActions.rename.label",
-  "paneActions.focus.labelWithMux",
-  "paneActions.focus.labelFallback",
-  "paneActions.branchOff.label",
-  "paneActions.close.label",
-  "paneActions.close.conversation",
-  "paneActions.close.confirm",
-  "paneActions.close.closing",
-  "paneActions.title.fallback",
-  "tricks.menu.heading",
-  "tricks.menu.waiting",
-  "tricks.menu.noAnswer",
-  "tricks.menu.asOf",
-  "tricks.menu.off",
-  "tricks.menu.armed",
-  "tricks.menu.more.one",
-  "tricks.menu.more.other",
-] as const satisfies readonly MessageKey[];
+export const SHEET_LABEL_KEYS: readonly MessageKey[] = labelKeysIn(SHEET_SOURCES.map((file) => readFileSync(resolve(import.meta.dir, "..", file), "utf8")));
 
 /**
  * The words of the permission card's buttons (components/ask-card.tsx): a row label or a footer line may

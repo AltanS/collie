@@ -45,6 +45,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A trick's armed row disarms when it changes.** When a row waiting for its second tap changed its words or its action, the second tap ran what the row said now. The row now disarms, and the second tap tells the bridge what the first one saw, so the bridge refuses it when the trick redrew its rows in between.
 - **A trick with an agent view no longer takes the whole row budget of a session's settings.** Its view switch is always there, but its rows now count like any other trick's: when they do not fit, the group shows the switch alone and the trick counts in "more tricks have rows".
 - **A trick's part for one session binds to the session its program saw.** The bridge read the sessions' instance tokens when it stored a run's parts, so a pane reused while the program ran could take a part meant for the session before. It now reads them with the facts the program gets.
+- **Every line Collie writes in a session's settings is reserved from a trick's rows.** The list of the sheet's own words was kept by hand and missed its status lines ("Renamed", "Pinned to the top", "Close failed") and its notes. It is now read from the sheet's own code, so a row Collie adds there is reserved without a hand edit.
 
 ### Docs
 
