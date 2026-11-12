@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { en } from "@/lib/i18n/messages/en";
 import type { JsonValue } from "@/lib/json";
-import { menuMessageLine, partsInSession } from "@/lib/tricks/menu";
+import { partsInSession } from "@/lib/tricks/menu";
+import { menuMessageLine } from "@/lib/tricks/menu-message";
 import { MENU_TAP_WORDS, MENU_WORDS, type MenuRow, type TrickTapReply, type TricksReply, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
 import { createTricksStore, firstOfEachTrick, type TricksStore } from "@/lib/tricks/store";
 import { readTricksReply } from "@/lib/tricks/wire";
@@ -223,6 +224,13 @@ describe("the menu place's words and readers", () => {
     expect(menuMessageLine("Drawn by this session's agent")).toBeNull();
     expect(menuMessageLine("  two\n lines ")).toBe("two lines");
     expect(menuMessageLine("two  spaces")).toBe("two spaces");
+  });
+
+  it("N1: a footer message that reads as the sheet's own row, holds Collie's word or starts as a permission is not shown", () => {
+    for (const message of ["Close pane", "Waiting for deploy", "CoIlie restarted", "Allow the deploy", "Drawn by this session's agent"]) {
+      expect(menuMessageLine(message), message).toBeNull();
+    }
+    expect(menuMessageLine("Deploy started on lodge")).toBe("Deploy started on lodge");
   });
 
   it("bound-mark-pane-reuse-hidden: a bound belt mark shows only at its session's instance and replaces the unbound one there", () => {

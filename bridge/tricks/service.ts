@@ -56,6 +56,7 @@ import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
+import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
 
 // The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
 export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
@@ -1473,7 +1474,11 @@ export class TricksService implements TricksSurface {
             return;
           }
         }
+        // Review 12 N1: a tap on a row in a session's settings answers under Collie's heading there, so its
+        // message passes the rule a row's label passes, or is not sent (the phone says its own line).
+        const fromMenu = tap !== null && this.store.held({ host: this.deps.memberId, trick: rt.found.id, part: tap.request.node })?.part.value.at === "menu";
         const reply = await this.runOnce(rt, trigger);
+        if (fromMenu && reply.message !== undefined && menuMessageLine(reply.message) === null) delete reply.message;
         tap?.resolve(reply);
       } catch (err) {
         const line = problemLine(`The run could not start: ${err instanceof Error ? err.message : String(err)}`);

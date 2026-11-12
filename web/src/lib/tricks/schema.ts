@@ -611,9 +611,16 @@ export function menuLabelProblem(label: string): string | undefined {
   if (text !== undefined) return text;
   const hidden = firstHiddenChar(label);
   if (hidden !== null) return `holds a hidden character (${codePointName(hidden)}). Remove it.`;
-  // Compared by skeleton (review 12 M3): look-alikes of every script and of Latin itself read alike. The
-  // label is drawn and stored as written.
-  const words = skeletonWords(label).trim();
+  return menuWordsProblem(label);
+}
+
+/**
+ * Why a text a trick shows in a session's settings reads as Collie's own, or undefined (a row's label, and
+ * the message under a trick's group, review 12 N1). Compared by skeleton (review 12 M3): look-alikes of
+ * every script and of Latin itself read alike. The text is drawn and stored as written.
+ */
+export function menuWordsProblem(text: string): string | undefined {
+  const words = skeletonWords(text).trim();
   if (readsAsSheetLabel(words)) return "reads as one of Collie's own rows in this sheet. Name it another way.";
   const padded = ` ${words} `;
   const word = MENU_RESERVED_WORDS.find((reserved) => padded.includes(` ${skeletonWords(reserved).trim()} `));

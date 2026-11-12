@@ -2244,6 +2244,20 @@ describe("the menu place and bound parts (contract 2)", () => {
     expect(r.specs).toHaveLength(2);
   });
 
+  test("N1: a menu tap's receipt carries no message that reads as Collie's own; a belt tap's keeps it", async () => {
+    const failed: RunOutcome = { kind: "exited", code: 1, stdout: "", stderr: "Collie restarted the build", ms: 3 };
+    const r = await rig([exited(doc(menu(), mark())), failed, failed], { world, instanceOf: (session) => own.get(session) ?? null, audit: () => undefined });
+    await makeTrick(r.configDir, "ci", CI, { "ci.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "ci");
+    await tickAt(r, T0);
+    const fromMenu = await route(r, { rid: rid(1), node: "ci", intent: "rerun", from: { session: OWN }, rev: (await held(r, "ci")).rev });
+    expect(fromMenu.code).toBe("rejected");
+    expect(fromMenu.message).toBeUndefined();
+    const fromBelt = await route(r, { rid: rid(2), node: "mark", intent: "open", from: { session: OWN }, rev: (await held(r, "mark")).rev });
+    expect(fromBelt).toMatchObject({ code: "rejected" });
+    expect(fromBelt.message).toContain("Collie restarted the build");
+  });
+
   test("bound-mark-member-no-instance: a crew member's session with no instance token is dropped with a note, never drawn everywhere", async () => {
     const r = await menuRig([doc(mark({ sessions: [MEMBER] }), menu({ sessions: [MEMBER, SHELL, `${HOST}:w6X:9`] })), doc(mark({ sessions: [MEMBER] }))], own);
     const reply = await r.service.reply(undefined, { bound: true });

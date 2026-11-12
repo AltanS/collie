@@ -9,10 +9,8 @@
 // as before. An UNBOUND menu part shows only in a session of the machine the trick runs on: rows never
 // show on a crew member's session unless the instance binds them (the reviewer's rule).
 
-import { collieWordsIn } from "../agent-view/wire";
-import { firstHiddenChar } from "../hidden-chars";
 import type { AgentView } from "../types";
-import { MENU_MESSAGE_MAX, type MenuPart, type MenuRow, type WireTrickPart } from "./schema";
+import { type MenuPart, type MenuRow, type WireTrickPart } from "./schema";
 
 /** What a session is to the menu place: its pane on the phone. */
 export type MenuPane = Pick<AgentView, "host" | "paneId" | "kind" | "instance">;
@@ -100,17 +98,4 @@ export function capGroups<T extends MenuGroupSize>(groups: readonly T[], max: nu
     kept.add(group.key);
   }
   return { shown: ordered.filter((group) => kept.has(group.key)), leftOut };
-}
-
-/**
- * A tap's message as a group's footer says it after the trick's name: one line, cut to
- * {@link MENU_MESSAGE_MAX} characters with the cut shown. Null when it holds a hidden character or reads
- * as Collie's own words: then the footer says Collie's own line instead.
- */
-export function menuMessageLine(message: string): string | null {
-  if (firstHiddenChar(message) !== null || collieWordsIn(message) !== null) return null;
-  const line = message.replace(/\s+/gu, " ").trim();
-  if (line === "") return null;
-  const chars = [...line];
-  return chars.length <= MENU_MESSAGE_MAX ? line : `${chars.slice(0, MENU_MESSAGE_MAX - 1).join("")}…`;
 }
