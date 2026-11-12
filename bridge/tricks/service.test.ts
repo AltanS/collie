@@ -2205,6 +2205,45 @@ describe("the menu place and bound parts (contract 2)", () => {
     expect(r.specs).toHaveLength(1);
   });
 
+  test("M2: a refused part is not kept stale where an accepted part took its slot, in every one-part place, bound or not", async () => {
+    const ALL = 'id = "ci"\nname = "CI"\nrun = "./ci.sh"\nevery = "30s"\ncontract = 2\nplaces = ["belt", "menu", "status", "dashboard", "tabbar"]\n';
+    const first = doc(
+      mark(),
+      mark({ id: "here", sessions: [OWN] }),
+      menu(),
+      { at: "status", id: "s1", chip: { text: "one" } },
+      { at: "dashboard", id: "d1", item: { label: "One" } },
+      { at: "tabbar", id: "t1", item: { label: "One" } },
+    );
+    // The next run puts a new part in each slot first, then sends the old one again, refused as a second.
+    const second = doc(
+      mark({ id: "b" }),
+      mark({ id: "there", sessions: [OWN] }),
+      menu({ id: "ci2" }),
+      { at: "status", id: "s2", chip: { text: "two" } },
+      { at: "dashboard", id: "d2", item: { label: "Two" } },
+      { at: "tabbar", id: "t2", item: { label: "Two" } },
+      mark(),
+      mark({ id: "here", sessions: [OWN] }),
+      menu(),
+      { at: "status", id: "s1", chip: { text: "one" } },
+      { at: "dashboard", id: "d1", item: { label: "One" } },
+      { at: "tabbar", id: "t1", item: { label: "One" } },
+    );
+    const r = await rig([exited(first), exited(second)], { world, instanceOf: (session) => own.get(session) ?? null, audit: () => undefined });
+    await makeTrick(r.configDir, "ci", ALL, { "ci.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "ci");
+    await tickAt(r, T0);
+    const markRev = (await held(r, "mark")).rev;
+    await tickAt(r, T0 + 30_000);
+    const reply = await r.service.reply(undefined, { bound: true });
+    expect(reply.parts.map((part) => part.part).toSorted()).toEqual(["b", "ci2", "d2", "s2", "t2", "there"]);
+    expect(reply.parts.some((part) => part.stale === true)).toBe(false);
+    // The hidden mark takes no tap: it is gone.
+    expect(await route(r, { rid: rid(1), node: "mark", intent: "open", from: { session: OWN }, rev: markRev })).toMatchObject({ code: "rejected" });
+    expect(r.specs).toHaveLength(2);
+  });
+
   test("bound-mark-member-no-instance: a crew member's session with no instance token is dropped with a note, never drawn everywhere", async () => {
     const r = await menuRig([doc(mark({ sessions: [MEMBER] }), menu({ sessions: [MEMBER, SHELL, `${HOST}:w6X:9`] })), doc(mark({ sessions: [MEMBER] }))], own);
     const reply = await r.service.reply(undefined, { bound: true });

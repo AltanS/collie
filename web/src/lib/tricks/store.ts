@@ -333,8 +333,26 @@ export function useTrickParts(place: PlaceKind, filter?: (part: WireTrickPart) =
       const trick = `${part.host}/${part.trick}`;
       return !off.has(trick) && placeOfAt(part.value.at) === place && (filter === undefined || filter(part));
     });
-    return found.toSorted((a, b) => (order.get(`${a.host}/${a.trick}`) ?? order.size) - (order.get(`${b.host}/${b.trick}`) ?? order.size));
+    const sorted = found.toSorted((a, b) => (order.get(`${a.host}/${a.trick}`) ?? order.size) - (order.get(`${b.host}/${b.trick}`) ?? order.size));
+    return ONE_PER_TRICK_PLACES.has(place) ? firstOfEachTrick(sorted) : sorted;
   }, [state.parts, state.tricks, place, filter]);
+}
+
+/** The places that take no bound part and one part per trick: the status line, the Dashboard, the bottom bar. */
+const ONE_PER_TRICK_PLACES: ReadonlySet<PlaceKind> = new Set(["status", "dashboard", "tabbar"]);
+
+/**
+ * The first part of each trick, in the order given, and no bound one (review 12 M2): two parts of one
+ * trick in a one-part place, a stale one the bridge kept or an older bridge's, never both draw.
+ */
+export function firstOfEachTrick(parts: readonly WireTrickPart[]): WireTrickPart[] {
+  const seen = new Set<string>();
+  return parts.filter((part) => {
+    const trick = `${part.host}/${part.trick}`;
+    if (part.bound !== undefined || seen.has(trick)) return false;
+    seen.add(trick);
+    return true;
+  });
 }
 
 /** One held part and its trick's entry and tap, for a frame. */

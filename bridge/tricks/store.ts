@@ -61,6 +61,19 @@ function sameJson(a: WireTrickPart | WireTrickInfo | undefined, b: WireTrickPart
   return a !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** The places where a trick shows one part (per session, for a bound one): every place but its pages. */
+const ONE_PART_PLACES: ReadonlySet<string> = new Set(["belt", "menu", "status", "dashboard", "tabbar"]);
+
+/**
+ * The slots a part fills (review 12 M2): an unbound part of a one-part place fills the place, a bound one
+ * fills the place in each session it is bound to, and a page fills none. Two parts of a trick in one slot
+ * would both draw, so a refused part kept stale never shares a slot with one drawn now.
+ */
+function slotsOf(at: string, bound: readonly WireBound[] | undefined): string[] {
+  if (!ONE_PART_PLACES.has(at)) return [];
+  return bound === undefined ? [at] : bound.map((entry) => `${at}@${entry.session}`);
+}
+
 /** One trick's parts changed since a rev, and every key it has now. */
 export interface TrickPartsSince {
   parts: WireTrickPart[];
@@ -122,14 +135,17 @@ export class TricksStore {
 
   /**
    * Store the result of a document that parsed (`documentRefused` false). Accepted parts replace their
-   * old value, refused parts keep theirs stale, and a part the document no longer has goes away.
+   * old value, refused parts keep theirs stale, and a part the document no longer has goes away. A refused
+   * part whose slot an accepted part (or a stale one before it) took goes away too (review 12 M2).
    */
   applyDocument(memberId: string, trick: string, parsed: ParsedTrickDocument, stamp: DocumentStamp, bound?: ReadonlyMap<string, WireBound[]>): void {
     const keep = new Set<string>();
+    const taken = new Set<string>();
     for (const accepted of parsed.parts) {
       const part = accepted.part.id;
       keep.add(partKey({ host: memberId, trick, part }));
       const sessions = bound?.get(part);
+      for (const slot of slotsOf(accepted.part.at, sessions)) taken.add(slot);
       const wire: Omit<WireTrickPart, "rev"> = { host: memberId, trick, part, value: accepted.part, asOf: stamp.asOf, fresh: stamp.fresh };
       if (sessions !== undefined) wire.bound = sessions;
       this.put(wire);
@@ -138,6 +154,9 @@ export class TricksStore {
       const key = partKey({ host: memberId, trick, part });
       const old = this.parts.get(key);
       if (old === undefined) continue;
+      const slots = slotsOf(old.value.at, old.bound);
+      if (slots.some((slot) => taken.has(slot))) continue;
+      for (const slot of slots) taken.add(slot);
       keep.add(key);
       const why = parsed.refusals.find((r) => r.part === part)?.reason ?? "This part was refused.";
       const { rev: _rev, ...rest } = old;

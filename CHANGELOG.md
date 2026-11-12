@@ -38,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A pane id the multiplexer gives to a new session gets a new instance token at once.** The walky instance token used to survive a pane id reused within 30 seconds, so a new session there kept the old one's address, inbox and off flag, and would have kept a trick's rows bound to the old session. A pane missing from a snapshot the bridge read is now closed at once, and a pane whose agent or agent session changed gets a new token; the 30 seconds only ride out a snapshot the bridge could not read.
+- **A trick never shows two parts in one place.** A part the bridge refused kept its last good version, stale, even where an accepted part of the same trick now stood, so a trick could keep up to 24 status chips, Dashboard tiles, bar items or Belt marks, and a tap on a hidden one still ran. The bridge now drops a refused part whose place, or whose bound session, an accepted part took, and the phone draws the first part of each trick in each place.
 
 ### Docs
 

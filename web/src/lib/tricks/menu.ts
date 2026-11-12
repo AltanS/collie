@@ -34,19 +34,26 @@ function boundHere(part: WireTrickPart, pane: MenuPane): boolean {
 }
 
 /**
- * The parts of one place a session shows, in the order given: a trick's bound part where it is bound
- * there, else its unbound one. A pane that is undefined or no agent session shows no bound part.
- * `ownOnly`: an unbound part shows only in a session of the trick's own machine (the menu place).
+ * The parts of one place a session shows, in the order given: ONE per trick (review 12 M2), its first
+ * bound part where it is bound there, else its first unbound one. A pane that is undefined or no agent
+ * session shows no bound part. `ownOnly`: an unbound part shows only in a session of the trick's own
+ * machine (the menu place).
  */
 export function partsInSession(parts: readonly WireTrickPart[], pane: MenuPane | undefined, opts: { readonly ownOnly?: boolean } = {}): WireTrickPart[] {
   const agent = pane !== undefined && isAgentPane(pane);
-  const boundTricks = new Set(parts.filter((part) => agent && part.bound !== undefined && boundHere(part, pane)).map((part) => `${part.host}/${part.trick}`));
-  return parts.filter((part) => {
-    if (part.bound !== undefined) return agent && boundHere(part, pane);
-    if (boundTricks.has(`${part.host}/${part.trick}`)) return false;
-    if (opts.ownOnly !== true) return true;
-    return agent && (pane.host === undefined || pane.host === part.host);
-  });
+  const chosen = new Map<string, WireTrickPart>();
+  for (const part of parts) {
+    const trick = `${part.host}/${part.trick}`;
+    const held = chosen.get(trick);
+    if (part.bound !== undefined) {
+      if (!agent || !boundHere(part, pane)) continue;
+      if (held === undefined || held.bound === undefined) chosen.set(trick, part);
+      continue;
+    }
+    if (opts.ownOnly === true && !(agent && (pane.host === undefined || pane.host === part.host))) continue;
+    if (held === undefined) chosen.set(trick, part);
+  }
+  return parts.filter((part) => chosen.get(`${part.host}/${part.trick}`) === part);
 }
 
 /** A menu part's rows: the wire read each one again (lib/tricks/wire.ts `readMenuPart`). */

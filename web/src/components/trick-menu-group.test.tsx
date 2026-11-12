@@ -5,7 +5,7 @@ import { en } from "@/lib/i18n/messages/en";
 import type { JsonValue } from "@/lib/json";
 import { menuMessageLine, partsInSession } from "@/lib/tricks/menu";
 import { MENU_TAP_WORDS, MENU_WORDS, type MenuRow, type TrickTapReply, type TricksReply, type WireTrickInfo, type WireTrickPart } from "@/lib/tricks/schema";
-import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
+import { createTricksStore, firstOfEachTrick, type TricksStore } from "@/lib/tricks/store";
 import { readTricksReply } from "@/lib/tricks/wire";
 import type { AgentView } from "@/lib/types";
 import { SETTLE_MS } from "@/hooks/use-settled";
@@ -247,6 +247,18 @@ describe("the menu place's words and readers", () => {
     const wired = readTricksReply({ rev: 1, tricks: [], present: [], parts: [{ host: "lodge", trick: "ci", part: "ci", rev: 1, value: { at: "menu", id: "ci", rows } }] });
     const value = wired?.parts[0]?.value;
     expect(value?.at === "menu" ? value.rows : undefined).toEqual([{ id: "ok", kind: "button", label: "Rerun CI", intent: "rerun", confirm: true }]);
+  });
+
+  it("M2-phone: a session shows one part per trick and place, whatever the bridge sends", () => {
+    const belt = (part: string, trick = "ci"): WireTrickPart => ({ host: "lodge", trick, part, rev: 1, value: { at: "belt", id: part, mark: { label: part } } });
+    const here = (part: string): WireTrickPart => Object.assign(belt(part), { bound: [{ session: "lodge:w6X:3", instance: "ab12" }] });
+    // Two unbound marks of one trick (a stale one kept by an older bridge): the first only.
+    expect(partsInSession([belt("a"), belt("b"), belt("x", "notes")], PANE).map((p) => p.part)).toEqual(["a", "x"]);
+    // Two bound marks for one session: the first only, and no unbound one beside it.
+    expect(partsInSession([belt("a"), here("h1"), here("h2")], PANE).map((p) => p.part)).toEqual(["h1"]);
+    // The status line, the Dashboard and the bottom bar: the first part of each trick, and no bound one.
+    const chip = (part: string, trick = "ci"): WireTrickPart => ({ host: "lodge", trick, part, rev: 1, value: { at: "status", id: part, chip: { text: part } } });
+    expect(firstOfEachTrick([chip("s1"), chip("s2"), chip("n1", "notes"), Object.assign(chip("s3", "bound"), { bound: [{ session: "lodge:w6X:3", instance: "ab12" }] })]).map((p) => p.part)).toEqual(["s1", "n1"]);
   });
 
   it("a part whose binding does not read is no part: drawn without it, it would show in every session", () => {
