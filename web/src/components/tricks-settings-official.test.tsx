@@ -10,11 +10,13 @@ import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import type { OfficialTricksReply, TricksReply, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import { readOfficialAddReply, readOfficialTricksReply } from "@/lib/tricks/wire";
+import type { JsonObject, JsonValue } from "@/lib/json";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 
-// Official tricks in Settings → Tricks (M94): the official tricks this release can add, under the installed
-// ones. The routes are the real api.ts calls against msw, so the paths and bodies are checked too.
+// Official tricks in Settings → Tricks (M94; one list since 2026-11-12): the official tricks this release can
+// add and the installed ones as one list, each once, official first in the list's order, then the community's
+// by name. The routes are the real api.ts calls against msw, so the paths and bodies are checked too.
 
 const NOW = Date.parse("2026-11-11T09:41:00Z");
 const COMMIT = "0d8039936aef44961a5641f4bfdc4583ed0c3e60";
@@ -28,6 +30,8 @@ const INBOX = entry("pr-inbox", "PR Inbox", "Open pull requests and issues that 
 const BUILDS = entry("running-builds", "Running Builds", "Builds and long commands running in your sessions now.");
 
 const LEGS: WireTrickInfo = { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["belt"], provenance: { via: "agent" } };
+/** A community trick that sorts after "Browser leg". */
+const TRACKER_LIKE = entry("tracker-like", "Tracker", "Not on the list.");
 
 function installed(from: WireOfficialTrick, extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
   return { host: "lodge", id: from.id, name: from.name, icon: "plug", on: false, state: "off", places: ["belt"], provenance: { via: "repo", repo: from.repoName, sha: "1111111aaaa" }, ...extra };
@@ -78,7 +82,20 @@ function renderCard(store: TricksStore, readOnly = false) {
   return render(<RouterProvider router={router} />);
 }
 
-const section = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-section="official"]');
+/** The rows of the one list, in order: `add:<id>` for an entry not added, `<label>:<id>` for an installed trick. */
+function order(): string[] {
+  const card = screen.getByTestId("tricks-settings");
+  return [...card.querySelectorAll<HTMLElement>("[data-trick], [data-official]")].map((row) => {
+    if (row.dataset.official !== undefined) return `add:${row.dataset.official}`;
+    const label = row.querySelector<HTMLElement>('[data-slot="trick-origin"]')?.dataset.origin ?? "none";
+    return `${label}:${row.dataset.trick ?? ""}`;
+  });
+}
+const trickRow = (id: string) => {
+  const row = document.querySelector(`[data-trick="${id}"]`);
+  if (!(row instanceof HTMLElement)) throw new Error(`no trick row for ${id}`);
+  return row;
+};
 const officialRow = (id: string) => {
   const row = document.querySelector(`[data-official="${id}"]`);
   if (!(row instanceof HTMLElement)) throw new Error(`no official row for ${id}`);
@@ -91,47 +108,95 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("Official tricks: the section", () => {
-  it("lists each entry not added under the installed tricks: name, its line and Add; a taken one is muted and says so", async () => {
+describe("Official tricks: one list", () => {
+  it("draws each trick once: official first in the list's order with a label, then the community's by name", async () => {
     serveList(() => ({ tricks: [REVIEW, { ...INBOX, state: "taken" }, { ...BUILDS, state: "added" }] }));
-    const { store } = await liveStore([LEGS, installed(BUILDS)]);
+    const mine = installed(INBOX, { name: "My PR list", provenance: { via: "cli" } });
+    const { store } = await liveStore([LEGS, installed(BUILDS), mine]);
     renderCard(store);
-    await vi.waitFor(() => expect(section()).not.toBeNull());
-    const listed = section();
-    if (listed === null) throw new Error("no official section");
-    expect(within(listed).getByText("Official tricks")).toBeInTheDocument();
-    // After the installed rows, before the foot.
-    const card = screen.getByTestId("tricks-settings");
-    const order = [...card.querySelectorAll("[data-trick], [data-section='official']")].map((el) => el.getAttribute("data-trick") ?? "official");
-    expect(order).toEqual(["legs", "running-builds", "official"]);
+    await vi.waitFor(() => expect(document.querySelector('[data-official="design-review"]')).not.toBeNull());
+    expect(order()).toEqual(["add:design-review", "official:running-builds", "community:legs", "community:pr-inbox"]);
+    // No section and no second copy of an id: the list is one.
+    expect(document.querySelector('[data-section="official"]')).toBeNull();
+    expect(screen.queryByText("Official tricks")).toBeNull();
     const review = officialRow("design-review");
-    expect(within(review).getByRole("button", { name: "About Design Review" })).toBeInTheDocument();
+    expect(within(review).getByRole("button", { name: "About Design Review" })).toHaveTextContent("Design ReviewOfficial");
     expect(within(review).getByText("Turns an agent's UI notes into Decisions you approve by name.").className).toContain("text-muted-foreground");
+    expect(review.querySelector('[data-line="slot"]')).toHaveTextContent("From AltanS/collie-tricks @ 0d80399");
     const add = within(review).getByRole("button", { name: "Add Design Review" });
     expect(add).toHaveTextContent("Add");
     expect(add).toBeEnabled();
-    const inbox = officialRow("pr-inbox");
-    expect(within(inbox).getByText("A trick with this name is already here.")).toBeInTheDocument();
-    expect(within(inbox).queryByRole("button")).toBeNull();
-    // An added entry is a trick row above, not a row here.
-    expect(document.querySelector('[data-official="running-builds"]')).toBeNull();
+    // A taken entry is no row: its trick is the community's, and says why the entry is not added.
+    expect(document.querySelector('[data-official="pr-inbox"]')).toBeNull();
+    expect(within(trickRow("pr-inbox")).getByText("A trick with this name is already here.")).toBeInTheDocument();
+    expect(within(trickRow("pr-inbox")).getByRole("switch")).toBeInTheDocument();
+    expect(trickRow("running-builds").querySelector('[data-slot="trick-origin"]')).toHaveTextContent("Official");
+    expect(trickRow("legs").querySelector('[data-slot="trick-origin"]')).toHaveTextContent("Community");
   });
 
-  it("a taken entry whose folder came from the repository but not from the list says so, and never reads as the list", async () => {
-    serveList(() => ({ tricks: [REVIEW, { ...INBOX, state: "taken", unlisted: true }] }));
+  it("puts Morph first, as the release list does, and draws where a not-added entry draws", async () => {
+    const MORPH: WireOfficialTrick = { ...entry("morph", "Morph", "Your agent answers with one screen you can tap, not a wall of text."), givesRules: true, agentView: true };
+    serveList(() => ({ tricks: [MORPH, { ...REVIEW, places: ["belt", "session"] }] }));
     const { store } = await liveStore([LEGS]);
     renderCard(store);
-    await vi.waitFor(() => expect(section()).not.toBeNull());
-    const inbox = officialRow("pr-inbox");
+    await vi.waitFor(() => expect(document.querySelector('[data-official="morph"]')).not.toBeNull());
+    expect(order()).toEqual(["add:morph", "add:design-review", "community:legs"]);
+    expect(officialRow("design-review").querySelector('[data-line="places"]')).toHaveTextContent("belt, session");
+    expect(officialRow("morph").querySelector('[data-line="places"]')).not.toBeNull();
+  });
+
+  it("adds a trick and switches it on, and its row keeps its place; no id appears twice", async () => {
+    const user = userEvent.setup();
+    let state: WireOfficialTrick["state"] = "absent";
+    serveList(() => ({ tricks: [REVIEW, { ...INBOX, state }, BUILDS] }));
+    server.use(
+      http.post("/api/tricks/official/:id/:mode", () => {
+        state = "added";
+        return HttpResponse.json({ id: "pr-inbox", state: "added" });
+      }),
+    );
+    const { store, list } = await liveStore([LEGS, installed(TRACKER_LIKE)]);
+    const onSwitch = vi.fn(async (_host: string, id: string, on: boolean) => ({ ...installed(INBOX), id, on, state: on ? ("ok" as const) : ("off" as const) }));
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onSwitch={onSwitch} /> }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    await vi.waitFor(() => expect(document.querySelector('[data-official="pr-inbox"]')).not.toBeNull());
+    const before = order();
+    expect(before).toEqual(["add:design-review", "add:pr-inbox", "add:running-builds", "community:legs", "community:tracker-like"]);
+    const at = before.indexOf("add:pr-inbox");
+    await user.click(screen.getByRole("button", { name: "Add PR Inbox" }));
+    await list([LEGS, installed(TRACKER_LIKE), installed(INBOX, { provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: COMMIT } })]);
+    await vi.waitFor(() => expect(document.querySelector('[data-trick="pr-inbox"]')).not.toBeNull());
+    const added = order();
+    expect(added.indexOf("official:pr-inbox")).toBe(at);
+    expect(added).toHaveLength(before.length);
+    // Switch it on: the row changes its switch, never its place.
+    await user.click(within(trickRow("pr-inbox")).getByRole("switch"));
+    await list([LEGS, installed(TRACKER_LIKE), installed(INBOX, { on: true, state: "ok", provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: COMMIT } })]);
+    await vi.waitFor(() => expect(within(trickRow("pr-inbox")).getByRole("switch")).toBeChecked());
+    const on = order();
+    expect(on.indexOf("official:pr-inbox")).toBe(at);
+    // Each id once, all the way through.
+    for (const rows of [before, added, on]) {
+      const ids = rows.map((row) => row.split(":")[1]);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it("a taken entry whose folder came from the repository but not from the list says so on its trick's row, and never reads as the list", async () => {
+    serveList(() => ({ tricks: [REVIEW, { ...INBOX, state: "taken", unlisted: true }] }));
+    const { store } = await liveStore([LEGS, installed(INBOX, { provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: "5e1f00d3a9b2", unlisted: true } })]);
+    renderCard(store);
+    await vi.waitFor(() => expect(document.querySelector('[data-trick="pr-inbox"] [data-line="taken"]')).not.toBeNull());
+    const inbox = trickRow("pr-inbox");
     expect(within(inbox).getByText("Added from the repository, not from the official list.")).toBeInTheDocument();
     expect(within(inbox).queryByText("A trick with this name is already here.")).toBeNull();
-    expect(within(inbox).queryByRole("button")).toBeNull();
+    expect(inbox.querySelector('[data-slot="trick-origin"]')).toHaveTextContent("Community");
     // The wire keeps the mark only on a taken entry.
     expect(readOfficialTricksReply({ tricks: [{ ...INBOX, state: "taken", unlisted: true }] })?.tricks[0]?.unlisted).toBe(true);
     expect(readOfficialTricksReply({ tricks: [{ ...INBOX, state: "update", unlisted: true }] })?.tricks[0]?.unlisted).toBeUndefined();
   });
 
-  it("draws no section for an empty list, a crew member's, or a list the phone could not read", async () => {
+  it("draws no official row for an empty list, a crew member's, or a list the phone could not read", async () => {
     const replies: (() => OfficialTricksReply | Response)[] = [
       () => ({ tricks: [] }),
       () => ({ tricks: [], runsOn: { lead: "desk" } }),
@@ -145,7 +210,8 @@ describe("Official tricks: the section", () => {
       const view = renderCard(store);
       await screen.findByTestId("tricks-settings");
       await vi.waitFor(() => expect(listed.reads()).toBeGreaterThan(0));
-      expect(section()).toBeNull();
+      await vi.waitFor(() => expect(document.querySelector('[data-trick="legs"]')).not.toBeNull());
+      expect(document.querySelector("[data-official]")).toBeNull();
       view.unmount();
     }
   });
@@ -154,7 +220,7 @@ describe("Official tricks: the section", () => {
     serveList(() => ({ tricks: [REVIEW] }));
     const { store } = await liveStore([LEGS]);
     renderCard(store, true);
-    await vi.waitFor(() => expect(section()).not.toBeNull());
+    await vi.waitFor(() => expect(document.querySelector('[data-official="design-review"]')).not.toBeNull());
     expect(within(officialRow("design-review")).getByRole("button", { name: "Add Design Review" })).toBeDisabled();
   });
 });
@@ -173,15 +239,14 @@ describe("Official tricks: a fresh install", () => {
     // What the bridge sends with no tricks folder and a list: a rev and no trick.
     const { store, list } = await liveStore([]);
     renderCard(store);
-    await vi.waitFor(() => expect(section()).not.toBeNull());
+    await vi.waitFor(() => expect(document.querySelector('[data-official="design-review"]')).not.toBeNull());
     expect(screen.queryByText("collie trick init <id>")).toBeNull();
-    expect(section()?.className).not.toContain("border-t");
     expect(screen.getByText("A trick runs as you.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add Design Review" }));
     await list([installed(REVIEW, { provenance: { via: "repo", repo: "AltanS/collie-tricks", sha: COMMIT } })]);
     await vi.waitFor(() => expect(document.querySelector('[data-trick="design-review"]')).not.toBeNull());
     expect(within(document.querySelector<HTMLElement>('[data-trick="design-review"]') ?? document.body).getByRole("switch")).not.toBeChecked();
-    await vi.waitFor(() => expect(section()).toBeNull());
+    await vi.waitFor(() => expect(document.querySelector('[data-official="design-review"]')).toBeNull());
   });
 
   it("an empty list and no trick shows the empty card as before; no tricks reply shows no card", async () => {
@@ -189,7 +254,7 @@ describe("Official tricks: a fresh install", () => {
     const { store } = await liveStore([]);
     renderCard(store);
     expect(await screen.findByText("collie trick init <id>")).toBeInTheDocument();
-    expect(section()).toBeNull();
+    expect(document.querySelector("[data-official]")).toBeNull();
     cleanup();
     const bare = createTricksStore({ fetchTricks: async () => Promise.reject(new Error("never asked")), tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
     renderCard(bare);
@@ -198,7 +263,7 @@ describe("Official tricks: a fresh install", () => {
 });
 
 describe("Official tricks: Add", () => {
-  it("posts {} to the entry's add route, spins in place, takes no second tap, and leaves the section once the trick is installed", async () => {
+  it("posts {} to the entry's add route, spins in place, takes no second tap, and becomes the trick's row once it is installed", async () => {
     const user = userEvent.setup();
     let state: WireOfficialTrick["state"] = "absent";
     serveList(() => ({ tricks: [{ ...REVIEW, state }, INBOX] }));
@@ -324,7 +389,7 @@ describe("Official tricks: Update", () => {
     await vi.waitFor(() => expect(row().querySelector('[data-line="official-update"]')).not.toBeNull());
     expect(within(row()).getByText("A newer version comes with this Collie.")).toBeInTheDocument();
     expect(document.querySelector('[data-trick="legs"] [data-line="official-update"]')).toBeNull();
-    expect(section()).toBeNull();
+    expect(document.querySelector("[data-official]")).toBeNull();
     await user.click(within(row()).getByRole("button", { name: "Update Running Builds" }));
     await vi.waitFor(() => expect(row().querySelector('[data-line="official-update"]')).toBeNull());
     expect(posts).toEqual(["/api/tricks/official/running-builds/update"]);
@@ -354,14 +419,15 @@ describe("Official tricks: Update", () => {
     await vi.waitFor(() => expect(currentStatus()).toMatchObject({ text: "You edited its files. Update it on the machine.", tone: "error" }));
   });
 
-  it("a taken entry whose files the person changed says so, and offers nothing", async () => {
+  it("a taken entry whose files the person changed says so on its trick's row, and offers no Add and no Update", async () => {
     serveList(() => ({ tricks: [{ ...BUILDS, state: "taken", changed: true }] }));
     const { store } = await liveStore([installed(BUILDS)]);
     renderCard(store);
-    await vi.waitFor(() => expect(section()).not.toBeNull());
-    const builds = officialRow("running-builds");
+    await vi.waitFor(() => expect(document.querySelector('[data-trick="running-builds"] [data-line="taken"]')).not.toBeNull());
+    const builds = trickRow("running-builds");
     expect(within(builds).getByText("You edited its files. Update it on the machine.")).toBeInTheDocument();
-    expect(within(builds).queryByRole("button")).toBeNull();
+    expect(within(builds).queryByRole("button", { name: /^(Add|Update) / })).toBeNull();
+    expect(document.querySelector("[data-official]")).toBeNull();
     expect(readOfficialTricksReply({ tricks: [{ ...BUILDS, state: "taken", changed: true }] })?.tricks[0]?.changed).toBe(true);
   });
 });
@@ -374,6 +440,21 @@ describe("Official tricks: the wire", () => {
     await expect(fetchOfficialTricks()).rejects.toThrow(/not the official list/);
     expect(readOfficialTricksReply({ tricks: [{ ...REVIEW, name: "Le‮gs" }] })).toEqual({ tricks: [] });
     expect(readOfficialTricksReply({ tricks: [{ ...REVIEW, id: "../x" }] })).toEqual({ tricks: [] });
+  });
+
+  it("reads an entry's pinned places this phone draws, once each, and the agent view mark; anything else is left out", () => {
+    const read = (places: JsonValue | undefined, agentView?: JsonValue) => {
+      const raw: JsonObject = { id: REVIEW.id, name: REVIEW.name, description: REVIEW.description, repo: REVIEW.repo, repoName: REVIEW.repoName, commit: REVIEW.commit, state: REVIEW.state };
+      if (places !== undefined) raw.places = places;
+      if (agentView !== undefined) raw.agentView = agentView;
+      return readOfficialTricksReply({ tricks: [raw] })?.tricks[0];
+    };
+    expect(read(["belt", "session"])?.places).toEqual(["belt", "session"]);
+    expect(read(["belt", "belt", "sidebar", 3, "menu"])?.places).toEqual(["belt", "menu"]);
+    expect(read("belt")?.places).toBeUndefined();
+    expect(read([])?.places).toBeUndefined();
+    expect(read(undefined, true)?.agentView).toBe(true);
+    expect(read(undefined, "yes")?.agentView).toBeUndefined();
   });
 
   it("addOfficialTrick posts {} and reads { id, state } back; anything else throws", async () => {

@@ -49,10 +49,13 @@ async function storeWith(tricks: WireTrickInfo[]): Promise<TricksStore> {
   return store;
 }
 
+/** The official list these cards read: none, so every trick is a community row. */
+const NO_OFFICIAL = async () => ({ tricks: [] });
+
 function renderCard(store: TricksStore, onSwitch?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>, readOnly = false) {
   const loader = readOnly ? () => ({ device: { enforced: true, authorized: false } }) : undefined;
   const router = createMemoryRouter(
-    [{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} onSwitch={onSwitch} now={NOW} />, loader }],
+    [{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} onSwitch={onSwitch} now={NOW} onOfficialList={NO_OFFICIAL} />, loader }],
     { initialEntries: ["/"] },
   );
   return render(<RouterProvider router={router} />);
@@ -63,6 +66,12 @@ const rowOf = (id: string) => {
   if (!(row instanceof HTMLElement)) throw new Error(`no row for ${id}`);
   return row;
 };
+
+/** A row once the card drew its rows: they wait for the official list's first answer. */
+async function findRow(id: string): Promise<HTMLElement> {
+  await vi.waitFor(() => rowOf(id));
+  return rowOf(id);
+}
 
 afterEach(() => {
   clearStatus();
@@ -170,7 +179,7 @@ describe("TricksSettingsCard: the rows", () => {
     const failing: WireTrickInfo = { ...LEGS, state: "failing", error: "legs.sh: exit 2: no such file ~/.cache/collie-lab/browser-leg/last.json and a great deal more besides" };
     const stopped: WireTrickInfo = { ...TRACKER, on: true, id: "stopped", name: "Stopped one", state: "stopped", error: "exit 1, five times" };
     renderCard(await storeWith([failing, stopped]));
-    const line = within(rowOf("legs")).getByText(/^legs\.sh: exit 2/);
+    const line = within(await findRow("legs")).getByText(/^legs\.sh: exit 2/);
     expect(line.dataset.line).toBe("slot");
     expect(line.dataset.trouble).toBe("true");
     expect(line.className).toContain("truncate");
@@ -190,7 +199,7 @@ describe("TricksSettingsCard: the rows", () => {
       ],
     };
     renderCard(await storeWith([skipped]));
-    expect(within(rowOf("legs")).getByText('Manifest refused: unknown place "nowhere"')).toBeInTheDocument();
+    expect(within(await findRow("legs")).getByText('Manifest refused: unknown place "nowhere"')).toBeInTheDocument();
     expect(slotLine({ ...skipped, refusals: undefined, error: undefined }, NOW).text).toBe("Manifest refused");
   });
 
@@ -231,7 +240,7 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
 
   it("lists a trick's warnings in the phone's words under an off trick, with the honesty line", async () => {
     renderCard(await storeWith([LEGS, WARNED]));
-    const row = within(rowOf("tracker"));
+    const row = within(await findRow("tracker"));
     const list = await row.findByRole("list", { name: "What a text search of its code found" });
     expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual([MODEL_LINE, "This trick reaches the network."]);
     expect(row.getByText(HONESTY)).toBeInTheDocument();
@@ -254,7 +263,7 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
   it("shows them for a changed trick that is on, and the bridge's own words for a kind it does not know", async () => {
     const changed: WireTrickInfo = { ...LEGS, state: "stopped", changed: true, error: "This trick changed.", warnings: [{ kind: "teleport", text: "This trick moves the moon." }] };
     renderCard(await storeWith([changed]));
-    expect(await within(rowOf("legs")).findByText("This trick moves the moon.")).toBeInTheDocument();
+    expect(await within(await findRow("legs")).findByText("This trick moves the moon.")).toBeInTheDocument();
     expect(warningLines({ warnings: undefined })).toEqual([]);
   });
 
@@ -271,7 +280,7 @@ describe("TricksSettingsCard: what a contract 2 trick reads (M99)", () => {
     const solo: WireTrickInfo = { ...TRACKER, inputs: { globs: ["TODO.md", "shots/*.png"], crew: false } };
     const crew: WireTrickInfo = { ...LEGS, inputs: { globs: ["TODO.md"], crew: true } };
     renderCard(await storeWith([crew, solo]));
-    expect((await within(rowOf("tracker")).findByText(/^Reads /u)).textContent).toBe("Reads TODO.md, shots/*.png in your agent sessions' folders.");
+    expect((await within(await findRow("tracker")).findByText(/^Reads /u)).textContent).toBe("Reads TODO.md, shots/*.png in your agent sessions' folders.");
     expect(rowOf("legs").querySelector('[data-line="reads"]')?.textContent).toBe("Reads TODO.md in your agent sessions' folders on every machine of the crew.");
   });
 
@@ -406,7 +415,7 @@ describe("a trick entry that is broken", () => {
   it("draws a trick with no places as a manifest that declares none", async () => {
     const bare: WireTrickInfo = JSON.parse('{"host":"lodge","id":"bare","name":"Bare","icon":"flask","on":true,"state":"ok"}');
     renderCard(await storeWith([bare, TRACKER]));
-    expect(within(rowOf("bare")).getByText("No parts")).toBeTruthy();
+    expect(within(await findRow("bare")).getByText("No parts")).toBeTruthy();
     expect(placesLine(undefined)).toBe("No parts");
     expect(rowOf("tracker")).toBeTruthy();
   });
@@ -425,7 +434,7 @@ describe("a trick entry that is broken", () => {
     };
     const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...LEGS, on }));
     renderCard(await storeWith([bomb, TRACKER]), onSwitch);
-    const row = rowOf("legs");
+    const row = await findRow("legs");
     expect(row.textContent).toBe("legs");
     const toggle = within(row).getByRole("switch", { name: "legs" });
     expect(toggle).toBeChecked();
@@ -440,7 +449,7 @@ describe("a trick entry that is broken", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const bomb: WireTrickInfo = { ...LEGS, id: "bomb", name: "Bomb", get state(): WireTrickInfo["state"] { throw new Error("a row that cannot be read"); } };
     renderCard(await storeWith([bomb, TRACKER]));
-    expect(rowOf("bomb").hasAttribute("data-fallback")).toBe(true);
+    expect((await findRow("bomb")).hasAttribute("data-fallback")).toBe(true);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeTruthy();
     vi.restoreAllMocks();
   });
@@ -473,7 +482,7 @@ describe("the Hill switched off", () => {
     const approves = "b".repeat(64);
     const stopped: WireTrickInfo = { ...ASKS, on: false, state: "stopped", error: "the bridge's English line", rightsMoved: true, approves, warnings: [{ kind: "network", text: "x" }] };
     const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean, _hash?: string) => ({ ...LEGS, on, state: "ok" as const }));
-    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={await storeWith([stopped])} onSwitch={onSwitch} now={NOW} /> }], { initialEntries: ["/"] });
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={await storeWith([stopped])} onSwitch={onSwitch} now={NOW} onOfficialList={NO_OFFICIAL} /> }], { initialEntries: ["/"] });
     render(<RouterProvider router={router} />);
     const sw = await screen.findByRole("switch", { name: "Browser leg" });
     expect(sw).not.toBeChecked();
@@ -488,7 +497,7 @@ describe("the Hill switched off", () => {
 
   it("the row reads the snapshot's hillOff from the root data", async () => {
     const store = await storeWith([ASKS, TRACKER]);
-    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });
     render(<RouterProvider router={router} />);
     await screen.findByText("Browser leg");
     expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("The Hill is off: this trick's Decisions are not shown.");
@@ -498,7 +507,7 @@ describe("the Hill switched off", () => {
   it("a row can carry the warnings list and the Hill-off note together", async () => {
     const both: WireTrickInfo = { ...ASKS, changed: true, warnings: [{ kind: "network", text: "x" }] };
     const store = await storeWith([both]);
-    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} />, loader: () => ({ hillOff: true }) }], { initialEntries: ["/"] });
     render(<RouterProvider router={router} />);
     await screen.findByText("Browser leg");
     expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("The Hill is off: this trick's Decisions are not shown.");
@@ -543,7 +552,7 @@ describe("a new version waits", () => {
 
 describe("take changes without asking, and undo an automatic change (crew slice 3)", () => {
   function renderWith(store: TricksStore, calls: { onAuto?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>; onUndo?: (host: string, id: string) => Promise<WireTrickInfo> }) {
-    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onAuto={calls.onAuto} onUndo={calls.onUndo} /> }], { initialEntries: ["/"] });
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onAuto={calls.onAuto} onUndo={calls.onUndo} onOfficialList={NO_OFFICIAL} /> }], { initialEntries: ["/"] });
     return render(<RouterProvider router={router} />);
   }
 
@@ -651,8 +660,10 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     expect(glyph).not.toBeNull();
     expect(glyph?.getAttribute("aria-hidden")).toBe("true");
     expect(glyph?.getAttribute("class")).toContain("text-muted-foreground");
-    expect(button.textContent).toBe("Browser leg");
-    const description = rowOf("legs").querySelector('[data-line="description"]');
+    // The name, then the label of where it comes from, both inside the one button.
+    expect(button.textContent).toBe("Browser legCommunity");
+    expect(button.querySelector('[data-slot="trick-origin"]')?.getAttribute("data-origin")).toBe("community");
+    const description = (await findRow("legs")).querySelector('[data-line="description"]');
     expect(description?.className).toContain("text-muted-foreground");
     expect(description?.className).toContain("line-clamp-2");
     expect(rowOf("legs").querySelector('[data-line="places"]')?.className).toContain("text-muted-foreground");
@@ -748,7 +759,7 @@ describe("an agent view (contract 2)", () => {
     const user = userEvent.setup();
     const onSwitch = vi.fn(async () => ({ ...VIEW_TRICK, on: true, state: "ok" as const }));
     renderCard(await storeWith([VIEW_TRICK]), onSwitch);
-    const row = rowOf("morph");
+    const row = await findRow("morph");
     expect(row.querySelector('[data-line="places"]')).toHaveTextContent(/^agent view$/u);
     expect(row.querySelector('[data-line="later"]')).toBeNull();
     expect(row.querySelector('[data-line="slot"]')?.getAttribute("data-trouble")).toBeNull();
@@ -797,7 +808,7 @@ describe("review 8 V-N5: rules the phone cannot show", () => {
   it("the row says so and its switch cannot switch the trick on; one that is on can still be switched off", async () => {
     const store = await storeWith([{ ...BAD, rulesUnshown: true }, { ...BAD, id: "view-on", name: "View on", on: true, state: "ok", rulesUnshown: true }]);
     renderCard(store);
-    const row = rowOf("morph");
+    const row = await findRow("morph");
     expect(row.querySelector('[data-line="rules-unshown"]')).toHaveTextContent(UNSHOWN);
     expect(within(row).getByRole("switch", { name: "Morph" })).toBeDisabled();
     expect(within(rowOf("view-on")).getByRole("switch", { name: "View on" })).toBeEnabled();

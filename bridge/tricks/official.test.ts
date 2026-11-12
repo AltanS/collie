@@ -51,8 +51,8 @@ describe("the list this release carries", () => {
   test("it parses, lists the four tricks and not release-gates, and names only the official repository", () => {
     const list = shippedOfficialList();
     if (!list.ok) throw new Error(list.reason);
-    expect(list.entries.map((e) => e.id)).toEqual(["design-review", "pr-inbox", "running-builds", "morph"]);
-    expect(list.entries.map((e) => e.name)).toEqual(["Design Review", "PR Inbox", "Running Builds", "Morph"]);
+    expect(list.entries.map((e) => e.id)).toEqual(["morph", "design-review", "pr-inbox", "running-builds"]);
+    expect(list.entries.map((e) => e.name)).toEqual(["Morph", "Design Review", "PR Inbox", "Running Builds"]);
     // One commit of the tricks repository's main pins them all (collie-tricks 0c1e5d8, the helper at v4).
     expect(new Set(list.entries.map((e) => e.commit))).toEqual(new Set(["0c1e5d82346486815073fedcdb994bc4c2041b55"]));
     expect(list.entries.some((e) => e.id === "release-gates")).toBe(false);
@@ -1120,7 +1120,13 @@ describe("the list pins the places of each trick (contract 2, the menu place)", 
     const configDir = await tempDir();
     const wire = await officialWire(configDir, [{ ...fixtureEntry(REPO, C1, H1), contract: 2, places: ["belt", "menu"] }, fixtureEntry(REPO, C1, H1, "other")]);
     expect(wire.map((w) => w.addsMenu)).toEqual([true, undefined]);
-    expect(wire.some((w) => "places" in w)).toBe(false);
+    // The pinned places this Collie draws ride along (2026-11-12), so the row before Add has the places line an
+    // added trick's row has, and Add moves nothing. The add still holds the folder to the pin.
+    expect(wire.map((w) => w.places)).toEqual([["belt", "menu"], ["belt"]]);
+    expect(wire.some((w) => "agentView" in w)).toBe(false);
+    const view = await officialWire(configDir, [{ ...fixtureEntry(REPO, C1, H1, "morph"), contract: 2, places: ["agent-view"] }]);
+    expect(view[0]?.agentView).toBe(true);
+    expect(view[0] !== undefined && "places" in view[0]).toBe(false);
   });
 
   test.if(posix)("an add takes only the places the list pins: a folder whose manifest lists other places installs nothing", async () => {

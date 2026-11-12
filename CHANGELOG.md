@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **Settings, Tricks is one list.** Each trick shows once, with a small "Official" or "Community" label, instead of the official tricks a second time under their own heading. The official tricks come first, Morph first, then the others by name. Adding a trick, switching it on or off, or a change of its rights changes its row, never its place.
 - **The runner's PATH goes to the host's own CLI only.** `GET /api/tricks` carried the PATH a trick program runs with to every reader, and only `collie doctor` and `collie trick list` read it. The bridge now adds it only to a request from the local CLI (the host's own read credential, from this host, through no proxy), and a paired phone's reply no longer has the field.
 
 ### Fixed

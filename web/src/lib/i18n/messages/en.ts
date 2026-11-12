@@ -3468,7 +3468,9 @@ export const en = {
   "settings.tricks.switchMoved": "The trick changed after you read it. Read it again, then switch it on.",
   // Official tricks, the ones this release can add (M94): English only until the translation pass,
   // listed in PENDING_TRANSLATION below. The failure lines are the bridge's own (bridge/tricks/official-install.ts).
-  "settings.tricks.official.label": "Official tricks",
+  // The label after a trick's name in the one list of Settings, Tricks: where it comes from.
+  "settings.tricks.origin.official": "Official",
+  "settings.tricks.origin.community": "Community",
   "settings.tricks.official.add": "Add",
   "settings.tricks.official.addAria": "Add {name}",
   "settings.tricks.official.taken": "A trick with this name is already here.",
@@ -4004,7 +4006,8 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.rulesAfterAdd",
   "settings.tricks.switchMoved",
   // Official tricks (M94).
-  "settings.tricks.official.label",
+  "settings.tricks.origin.official",
+  "settings.tricks.origin.community",
   "settings.tricks.official.add",
   "settings.tricks.official.addAria",
   "settings.tricks.official.taken",

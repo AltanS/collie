@@ -399,7 +399,9 @@ already covers that file; the pin lets the phone say "Gives your agents instruct
 author." before Add without a fetch, and the add (and an update) refuses a folder whose rules differ. The
 list carries no rules text, so the not-added About sheet says "Read the instructions after you add it. It
 stays off until you switch it on." The added trick's own About sheet shows them before the switch. Settings, Tricks shows
-the entries that are not added under "Official tricks", each with an Add button. On a fresh install, with no tricks
+one list (`lib/tricks/list-order.ts`): the official entries first in this list's order, Morph first, each
+not added one with an Add button in its place, then every other trick by name; a row says "Official" or
+"Community", and a state change never moves a row. On a fresh install, with no tricks
 folder yet, the card shows too when the list is not empty (the bridge sends `tricksRev` for it), and holds
 only the list and the foot line; the first add makes `<configDir>/tricks/` (0700), and the next scan reads
 it with no restart. A crew member, which runs no tricks, shows no card without a folder, as before. Nothing ships switched on,

@@ -1663,10 +1663,10 @@ export interface WireTrickInfo {
  * A GitHub repository's facts for the About sheet: its stars and when it was last pushed to, an ISO instant.
  * Exactly these two fields: the bridge keeps nothing else of GitHub's answer.
  */
-export interface WireRepoFacts {
+export type WireRepoFacts = {
   stars: number;
   pushedAt: string;
-}
+};
 /** A trick's rules on the wire: the file's name and its bytes as text, whole. */
 export type WireTrickRules = {
   file: string;
@@ -1811,6 +1811,13 @@ export interface WireOfficialTrick {
   addsMenu?: true;
   /** Stars and the last commit of the entry's repository, as for an added trick ({@link WireTrickInfo.repoFacts}). */
   repoFacts?: WireRepoFacts;
+  /**
+   * The places the list pins for the entry (official.ts `places`), the ones this Collie draws, so the row says
+   * where it draws before Add, in the line an added trick's row has. Absent: none it draws, or an older bridge.
+   */
+  places?: PlaceKind[];
+  /** The list pins the place `agent-view` for the entry. Absent: it does not, or an older bridge. */
+  agentView?: true;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */
