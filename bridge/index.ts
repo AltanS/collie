@@ -312,7 +312,7 @@ import type { TricksRunsOn } from "../web/src/lib/tricks/schema.ts";
 import { TricksService } from "./tricks/service.ts";
 import { VersionCards } from "./tricks/version-card.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
-import { labelOf, LOCAL_MEMBER, parseAddress } from "./walky/address.ts";
+import { INSTANCE_TOKEN, labelOf, LOCAL_MEMBER, parseAddress } from "./walky/address.ts";
 import {
   crewSkipped,
   crewTargets,
@@ -3846,6 +3846,22 @@ const tricks =
           const out: Omit<FactsWorld, "memberId"> = { machine: merged.machine, sessions: merged.sessions, spaces: merged.spaces };
           if (merged.sessionsOmitted !== undefined) out.sessionsOmitted = merged.sessionsOmitted;
           return out;
+        },
+        // Contract 2, bound parts (bound.ts): the walky instance token of a facts session's pane, the one the
+        // phone's snapshot shows for it. This machine's own pane from the instance registry; a crew member's
+        // from the lead's last sweep of it, kept only as the four characters the merge keeps; none fails closed.
+        instanceOf: (sessionId) => {
+          const colon = sessionId.indexOf(":");
+          if (colon <= 0) return null;
+          const memberId = sessionId.slice(0, colon);
+          const paneId = sessionId.slice(colon + 1);
+          if (isOwnId(bridgeId, memberId)) {
+            const rt = registry.all().find((candidate) => candidate.engine.current().agents.some((view) => view.paneId === paneId));
+            return rt === undefined ? null : walkyInstances.tokenOf(rt.name, paneId);
+          }
+          const body = crewLead?.contributions().find((c) => c.state.memberId === memberId)?.body ?? null;
+          const instance = body?.agents.find((pane) => pane.paneId === paneId)?.instance;
+          return instance !== undefined && INSTANCE_TOKEN.test(instance) ? instance : null;
         },
         env: process.env,
         // The shell of a run line, and the Windows gate (service.ts `gated`): on Windows no trick runs yet.

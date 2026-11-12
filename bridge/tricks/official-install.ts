@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { rulesTextProblems, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
-import { officialStanding, officialStateOf, officialWire, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
+import { officialStanding, officialStateOf, officialWire, pinnedPlaces, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
 import { renderOrigin } from "./origin.ts";
 import { tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { replaceCode, writeNewTrick, type ProposalWrite } from "./proposal-install.ts";
@@ -272,6 +272,13 @@ export class OfficialTricks implements OfficialTricksSurface {
     const rules = candidateRules(candidate);
     if (!rules.ok || rules.sha256 !== entry.rules) {
       this.deps.warn?.(`${entry.id}: the official ${mode} was refused: ${rules.ok ? "the rules differ from the list's" : rules.reason}`);
+      throw new Stop(mismatch(mode));
+    }
+    // The places too (contract 2, the menu place): the phone said "Adds rows to a session's settings." or
+    // not from the list alone, so a folder whose manifest lists other places installs nothing.
+    const places = pinnedPlaces(candidate.manifest);
+    if (JSON.stringify(places) !== JSON.stringify(entry.places)) {
+      this.deps.warn?.(`${entry.id}: the official ${mode} was refused: the places differ from the list's`);
       throw new Stop(mismatch(mode));
     }
     // An add writes config.toml and media/ too, which the code hash leaves out: the extras hash pins them.

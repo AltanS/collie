@@ -58,12 +58,20 @@ function segment(raw: string): string | null {
 }
 
 /** Run a tap whose path matched server.ts's `TRICKS_TAP_ROUTE`: group 1 the host, group 2 the trick id. */
-export async function tricksTapRoute(tricks: TricksSurface, match: RegExpExecArray, body: JsonValue | undefined): Promise<TapAnswer> {
+export async function tricksTapRoute(tricks: TricksSurface, match: RegExpExecArray, body: JsonValue | undefined, query?: URLSearchParams): Promise<TapAnswer> {
   const host = segment(match[1] ?? "");
   const id = segment(match[2] ?? "");
   if (host === null) return { status: 404, body: { error: "unknown-host" } };
   if (id === null) return { status: 404, body: { error: "unknown-trick" } };
-  return await tricks.tap(host, id, body);
+  return await tricks.tap(host, id, body, { bound: asksBound(query) });
+}
+
+/**
+ * Whether a phone asks for bound parts (contract 2, bound.ts): `bound=1` on `GET /api/tricks` and on a tap.
+ * A phone that does not ask draws no part bound to sessions, so it never draws one in every session.
+ */
+export function asksBound(query: URLSearchParams | undefined): boolean {
+  return query?.get("bound") === "1";
 }
 
 /** Run a switch whose path matched server.ts's `TRICKS_SWITCH_ROUTE`; the body is `{ "on": boolean }`, with `"hash"` the code read. */

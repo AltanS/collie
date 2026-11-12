@@ -227,7 +227,7 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
+import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
 import type { OfficialTricksSurface } from "./tricks/official-install.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
@@ -3222,7 +3222,7 @@ export function startServer(opts: {
         const tricks = opts.tricks;
         if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
         if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();
-        return json(await tricks.reply(parseSince(url.searchParams.get("since"))), req.headers.get("accept-encoding"));
+        return json(await tricks.reply(parseSince(url.searchParams.get("since")), { bound: asksBound(url.searchParams) }), req.headers.get("accept-encoding"));
       }
       // The official list: the read is gated like the list, the add and the update like the switch,
       // since they bring code onto the machine. Only a paired phone with the write right gets past the
@@ -3263,7 +3263,7 @@ export function startServer(opts: {
         } catch {
           body = undefined;
         }
-        const answer = await tricksTapRoute(tricks, tricksTap, body);
+        const answer = await tricksTapRoute(tricks, tricksTap, body, url.searchParams);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
       const tricksSwitch = TRICKS_SWITCH_ROUTE.exec(pathname);

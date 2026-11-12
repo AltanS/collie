@@ -1,8 +1,8 @@
 import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
-import { AGENT_VIEW_CONTRACT, TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
-import { DESCRIPTION_MAX, isTrickId, isTrickText, NAME_MAX, type OfficialState, type WireOfficialTrick } from "../../web/src/lib/tricks/schema.ts";
+import { AGENT_VIEW_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
+import { AGENT_VIEW_PLACE, DESCRIPTION_MAX, isTrickId, isTrickText, NAME_MAX, PLACE_KINDS, PLACES_LISTED_MAX, type OfficialState, type TrickManifest, type WireOfficialTrick } from "../../web/src/lib/tricks/schema.ts";
 import { diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import shipped from "./official.json";
 import { originRepoName, readOrigin, sameRepo, type TrickOrigin } from "./origin.ts";
@@ -25,7 +25,8 @@ import { tricksConfigDir } from "./paths.ts";
 // {@link OFFICIAL_REPOS} (an allowlist of one), a folder that is one step by the trick id rule, a commit of
 // 40 hex digits, a hash of 64, a name and a description by the manifest's own text rules, a contract this
 // Collie speaks, at most {@link OFFICIAL_PREVIOUS_MAX} earlier versions (`previous`, each a commit and its
-// hash, none the current commit, none twice), `rules` null or 64 hex (null below contract 2), no id twice,
+// hash, none the current commit, none twice), `rules` null or 64 hex (null below contract 2), `places` the
+// trick's place words sorted, each one this Collie draws, `menu` and `agent-view` only at contract 2, no id twice,
 // at most {@link OFFICIAL_ENTRIES_MAX} entries. A list it refuses is no list:
 // the bridge offers nothing and says why once. The maintainer script (scripts/official-tricks.ts) rewrites
 // commits and hashes from a checkout of the repository, and `--check` fails when the list is stale.
@@ -49,7 +50,7 @@ export const OFFICIAL_ENTRIES_MAX = 32;
 /** The most earlier versions an entry keeps. */
 export const OFFICIAL_PREVIOUS_MAX = 8;
 /** The keys of an entry, all required, no other. */
-const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "previous"] as const;
+const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "places", "previous"] as const;
 
 /** One version of an entry: a commit and the code hash its folder has there. */
 export interface OfficialVersion {
@@ -82,6 +83,12 @@ export interface OfficialEntry {
   rules: string | null;
   /** The trick contract its manifest names. */
   contract: number;
+  /**
+   * The places its manifest lists at `commit`, as this Collie reads them, `agent-view` among them, sorted
+   * ({@link pinnedPlaces}). The phone says "Adds rows to a session's settings." before Add from this alone,
+   * and the add refuses a folder whose places differ.
+   */
+  places: string[];
   /** Versions earlier releases listed, newest first: a folder at one of them is still from the list. */
   previous: OfficialVersion[];
 }
@@ -108,6 +115,27 @@ export function officialRepoProblem(repo: string): string | null {
 
 type EntryRead = { ok: true; entry: OfficialEntry } | { ok: false; reason: string };
 const refuse = (reason: string): EntryRead => ({ ok: false, reason });
+
+/** The place words an entry pins for a manifest: its places and, for an agent view, `agent-view`, once each, sorted. Shared with the maintainer script and the add. */
+export function pinnedPlaces(manifest: Pick<TrickManifest, "places" | "agentView">): string[] {
+  return [...new Set<string>([...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])])].toSorted();
+}
+
+/** Whether a word is a place this Collie draws, the agent view among them. */
+function isPinnedPlace(word: string | undefined): word is string {
+  return word === AGENT_VIEW_PLACE || PLACE_KINDS.some((place) => place === word);
+}
+
+/** Why an entry's `places` are not a pin this Collie reads, or null. */
+function placesProblem(raw: JsonValue | undefined, contract: number): string | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > PLACES_LISTED_MAX) return `the places are not a list of 1 to ${String(PLACES_LISTED_MAX)} place words`;
+  const words = raw.map((value) => asJsonString(value));
+  if (!words.every(isPinnedPlace)) return "the places hold a word that is not a place this Collie draws";
+  if (words.some((word, i) => i > 0 && (words[i - 1] ?? "") >= word)) return "the places are not sorted, once each";
+  if (contract < MENU_CONTRACT && words.includes("menu")) return `a trick of contract ${String(contract)} adds no rows to a session's settings`;
+  if (contract < AGENT_VIEW_CONTRACT && words.includes(AGENT_VIEW_PLACE)) return `a trick of contract ${String(contract)} adds no agent view`;
+  return null;
+}
 
 /** One entry read strictly, or why not. */
 function readEntry(raw: JsonValue, at: number): EntryRead {
@@ -140,9 +168,12 @@ function readEntry(raw: JsonValue, at: number): EntryRead {
   if (rules === undefined || (rules !== null && !HASH.test(rules))) return refuse(`${id}: the rules are not null or a sha256 of 64 hex digits`);
   if (contract === undefined || !Number.isInteger(contract) || contract < 1 || contract > TRICK_CONTRACT) return refuse(`${id}: the contract is not one this Collie speaks (1 to ${String(TRICK_CONTRACT)})`);
   if (rules !== null && contract < AGENT_VIEW_CONTRACT) return refuse(`${id}: a trick of contract ${String(contract)} gives agents no instructions`);
+  const placesWrong = placesProblem(doc.places, contract);
+  if (placesWrong !== null) return refuse(`${id}: ${placesWrong}`);
+  const places = Array.isArray(doc.places) ? doc.places.map((value) => asJsonString(value) ?? "") : [];
   const previous = readPrevious(doc.previous, commit);
   if (!previous.ok) return refuse(`${id}: ${previous.reason}`);
-  return { ok: true, entry: { id, name, description, repo, dir, commit, hash, extras, rules, contract, previous: previous.versions } };
+  return { ok: true, entry: { id, name, description, repo, dir, commit, hash, extras, rules, contract, places, previous: previous.versions } };
 }
 
 /** An entry's earlier versions read strictly, or why not. */
@@ -209,7 +240,7 @@ export function parseOfficialList(raw: JsonValue | undefined): OfficialList {
 
 /** The list's text as the maintainer script writes it: two spaces, the keys in their order, one newline at the end. */
 export function renderOfficialList(entries: readonly OfficialEntry[]): string {
-  const tricks = entries.map((e) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, rules: e.rules, contract: e.contract, previous: e.previous.map((v) => ({ commit: v.commit, hash: v.hash })) }));
+  const tricks = entries.map((e) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, rules: e.rules, contract: e.contract, places: [...e.places], previous: e.previous.map((v) => ({ commit: v.commit, hash: v.hash })) }));
   return `${JSON.stringify({ v: 1, tricks }, null, 2)}\n`;
 }
 
@@ -276,6 +307,8 @@ export async function officialWire(configDir: string, entries: readonly Official
       if (standing.changed) wire.changed = true;
       // That it gives agents instructions, never their text: the text arrives with the add (review 8 V-N3).
       if (e.rules !== null) wire.givesRules = true;
+      // That it adds rows to a session's settings, from the list's pin alone; the add holds the folder to it.
+      if (e.places.includes("menu")) wire.addsMenu = true;
       return wire;
     }),
   );

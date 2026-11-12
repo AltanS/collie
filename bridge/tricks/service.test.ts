@@ -8,7 +8,7 @@ import type { JsonObject } from "../json.ts";
 import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { CLOSED_KEY_LINE, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import type { AgentView } from "../types.ts";
-import { legacyPowersOf, powersOfDir } from "./approved.ts";
+import { legacyPowersOf, powersOf, powersOfDir } from "./approved.ts";
 import { factsWorldOf, NO_FACTS_CAPS, type FactsWorldInput } from "./facts.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
@@ -2066,5 +2066,175 @@ describe("review 8 V-N1: a switch on approves the code the person read", () => {
     expect(await r.service.setSwitch(HOST, "legs", true, now)).toMatchObject({ status: 200, body: { on: true } });
     const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs.hash).toBe(now);
+  });
+});
+
+// ── Contract 2: the menu place and bound parts, tests named by rule ─────────────────────────────
+
+describe("the menu place and bound parts (contract 2)", () => {
+  const ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
+  const rid = (n: number): string => `${String(n).padStart(8, "0")}-3b4a-4c5d-8e6f-708192a3b4c5`;
+  const CI = 'id = "ci"\nname = "CI"\nrun = "./ci.sh"\nevery = "30s"\ncontract = 2\nplaces = ["belt", "menu"]\n';
+  const OWN = `${HOST}:w6X:3`;
+  const OWN2 = `${HOST}:w6X:5`;
+  const SHELL = `${HOST}:w6X:4`;
+  const MEMBER = "m_workshop:w1:2";
+  const rows = (on = true): JsonObject[] => [
+    { id: "rerun", kind: "button", label: "Rerun CI", icon: "refresh", intent: "rerun", confirm: true },
+    { id: "watch", kind: "switch", label: "Watch branch", icon: "flag", intent: "watch", on },
+  ];
+  /** A document: the parts given, each as a contract 2 trick prints it. */
+  const doc = (...parts: JsonObject[]): string => JSON.stringify({ v: 2, asOf: "2026-11-08T09:00:00Z", parts });
+  const menu = (extra: JsonObject = {}): JsonObject => ({ at: "menu", id: "ci", rows: rows(), ...extra });
+  const mark = (extra: JsonObject = {}): JsonObject => ({ at: "belt", id: "mark", mark: { label: "2 red", intent: "open" }, ...extra });
+  const world: TricksServiceDeps["world"] = (memberId) => ({
+    machine: "desk",
+    sessions: [
+      { id: `${memberId}:w6X:3`, memberId, sessionId: `${memberId}:w6X:3`, paneId: "w6X:3", host: "desk", name: "composer", agent: "claude", status: "working", reachable: true },
+      { id: `${memberId}:w6X:5`, memberId, sessionId: `${memberId}:w6X:5`, paneId: "w6X:5", host: "desk", name: "docs", agent: "pi", status: "idle", reachable: true },
+      { id: `${memberId}:w6X:4`, memberId, sessionId: `${memberId}:w6X:4`, paneId: "w6X:4", host: "desk", name: "zsh", status: "idle", reachable: true },
+      { id: MEMBER, memberId: "m_workshop", sessionId: MEMBER, paneId: "w1:2", host: "workshop", name: "fix", agent: "claude", status: "idle", reachable: true },
+    ],
+    spaces: [],
+  });
+
+  async function menuRig(outputs: string[], instances: Map<string, string>): Promise<Rig & { audits: string[] }> {
+    const audits: string[] = [];
+    const r = await rig(outputs.map((out) => exited(out)), { world, instanceOf: (session) => instances.get(session) ?? null, audit: (entry) => audits.push(String(entry.detail.reason)) });
+    await makeTrick(r.configDir, "ci", CI, { "ci.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "ci");
+    await tickAt(r, T0);
+    return Object.assign(r, { audits });
+  }
+  async function route(r: Rig, body: JsonObject, bound = true): Promise<TrickTapReply> {
+    const match = ROUTE.exec(`/api/tricks/${HOST}/ci/tap`);
+    if (match === null) throw new Error("the tap path did not match");
+    return ok200(await tricksTapRoute(r.service, match, body, new URLSearchParams(bound ? "bound=1" : "")));
+  }
+  async function held(r: Rig, part: string) {
+    const found = (await r.service.reply(undefined, { bound: true })).parts.find((p) => p.trick === "ci" && p.part === part);
+    if (found === undefined) throw new Error(`the trick holds no part ${part}`);
+    return found;
+  }
+  const own = new Map([
+    [OWN, "ab12"],
+    [OWN2, "ef56"],
+  ]);
+
+  test("menu-tap-names-stored-row: a tap runs only a stored row's intent, and a switch only the state it asks for", async () => {
+    const r = await menuRig([doc(menu())], own);
+    const rev = (await held(r, "ci")).rev;
+    const from = { session: OWN };
+    expect(await route(r, { rid: rid(1), node: "ci", intent: "rerun", from, rev })).toMatchObject({ code: "ok" });
+    expect(await route(r, { rid: rid(2), node: "ci", intent: "delete", from, rev })).toMatchObject({ code: "rejected", refused: "intent" });
+    // The switch shows on: the only tap it sends asks for off.
+    expect(await route(r, { rid: rid(3), node: "ci", intent: "watch", value: "on", from, rev })).toMatchObject({ code: "rejected", refused: "value" });
+    expect(await route(r, { rid: rid(4), node: "ci", intent: "watch", from, rev })).toMatchObject({ code: "rejected", refused: "value" });
+    expect(await route(r, { rid: rid(5), node: "ci", intent: "watch", value: "off", from, rev: (await held(r, "ci")).rev })).toMatchObject({ code: "ok" });
+    // The run gets the tap and the session's identity only: no instance, no rev, nothing to type with.
+    const triggers = r.specs.slice(1).map((spec) => factsOf(spec).trigger);
+    expect(triggers).toEqual([
+      { kind: "tap", rid: rid(1), node: "ci", intent: "rerun", from },
+      { kind: "tap", rid: rid(5), node: "ci", intent: "watch", value: "off", from },
+    ]);
+    expect(r.audits).toEqual(["intent", "value"]);
+  });
+
+  test("menu-tap-rev-moved-changed: a row tapped from a rev before the rows changed answers changed and runs nothing", async () => {
+    const r = await menuRig([doc(menu()), doc(menu({ rows: rows(false) }))], own);
+    const drawn = (await held(r, "ci")).rev;
+    await tickAt(r, T0 + 30_000);
+    expect(r.specs).toHaveLength(2);
+    const reply = await route(r, { rid: rid(1), node: "ci", intent: "watch", value: "off", from: { session: OWN }, rev: drawn });
+    expect(reply).toMatchObject({ code: "changed", refused: "changed" });
+    expect(reply.parts?.find((p) => p.part === "ci")?.value).toMatchObject({ rows: [{}, { on: false }] });
+    expect(r.specs).toHaveLength(2);
+  });
+
+  test("menu-tap-session-not-listed: a menu tap names its session; a bound part only one it lists; an unbound one never a crew member's", async () => {
+    const r = await menuRig([doc(menu(), mark({ sessions: [OWN] }))], own);
+    const menuRev = (await held(r, "ci")).rev;
+    const markRev = (await held(r, "mark")).rev;
+    expect(await route(r, { rid: rid(1), node: "ci", intent: "rerun", rev: menuRev })).toMatchObject({ refused: "session" });
+    expect(await route(r, { rid: rid(2), node: "ci", intent: "rerun", from: { session: MEMBER }, rev: menuRev })).toMatchObject({ refused: "session" });
+    expect(await route(r, { rid: rid(3), node: "ci", intent: "rerun", from: { session: SHELL }, rev: menuRev })).toMatchObject({ refused: "session" });
+    expect(await route(r, { rid: rid(4), node: "mark", intent: "open", from: { session: OWN2 }, rev: markRev })).toMatchObject({ refused: "session" });
+    expect(await route(r, { rid: rid(5), node: "mark", intent: "open", rev: markRev })).toMatchObject({ refused: "session" });
+    expect(r.specs).toHaveLength(1);
+    expect(await route(r, { rid: rid(6), node: "mark", intent: "open", from: { session: OWN }, rev: markRev })).toMatchObject({ code: "ok" });
+    expect(await route(r, { rid: rid(7), node: "ci", intent: "rerun", from: { session: OWN2 }, rev: (await held(r, "ci")).rev })).toMatchObject({ code: "ok" });
+  });
+
+  test("bound-mark-pane-reuse-hidden: a pane id handed to a new session taps nothing until the program binds it again", async () => {
+    const instances = new Map(own);
+    const r = await menuRig([doc(mark({ sessions: [OWN] }))], instances);
+    const first = await held(r, "mark");
+    expect(first.bound).toEqual([{ session: OWN, instance: "ab12" }]);
+    // The pane closed and the multiplexer gave its id to a new session: the registry minted a new token.
+    instances.set(OWN, "zz99");
+    expect(await route(r, { rid: rid(1), node: "mark", intent: "open", from: { session: OWN }, rev: first.rev })).toMatchObject({ refused: "session" });
+    expect(r.specs).toHaveLength(1);
+    // The next run names the id again: it is stamped with the new token, and what the phone drew moved.
+    await tickAt(r, T0 + 30_000);
+    const again = await held(r, "mark");
+    expect(again.bound).toEqual([{ session: OWN, instance: "zz99" }]);
+    expect(await route(r, { rid: rid(2), node: "mark", intent: "open", from: { session: OWN }, rev: first.rev })).toMatchObject({ refused: "changed" });
+    expect(await route(r, { rid: rid(3), node: "mark", intent: "open", from: { session: OWN }, rev: again.rev })).toMatchObject({ code: "ok" });
+  });
+
+  test("bound-mark-member-no-instance: a crew member's session with no instance token is dropped with a note, never drawn everywhere", async () => {
+    const r = await menuRig([doc(mark({ sessions: [MEMBER] }), menu({ sessions: [MEMBER, SHELL, `${HOST}:w6X:9`] })), doc(mark({ sessions: [MEMBER] }))], own);
+    const reply = await r.service.reply(undefined, { bound: true });
+    // Neither part is stored: with no session left, a bound part goes, it does not fall back to every session.
+    expect(reply.parts).toEqual([]);
+    expect(reply.present).toEqual([]);
+    const notes = (reply.tricks[0]?.refusals ?? []).map((note) => [note.code, note.part, note.reason]);
+    expect(notes).toEqual([
+      ["dropped", "mark", `"${MEMBER}" has no instance Collie can bind to, so the part does not show there.`],
+      ["dropped", "mark", "None of the part's sessions is open, so the part is left out."],
+      ["dropped", "ci", `"${MEMBER}" has no instance Collie can bind to, so the part does not show there.`],
+      ["dropped", "ci", `"${SHELL}" is not an agent session in this run's facts, so the part does not show there.`],
+      ["dropped", "ci", `"${HOST}:w6X:9" is not an agent session in this run's facts, so the part does not show there.`],
+      ["dropped", "ci", "None of the part's sessions is open, so the part is left out."],
+    ]);
+    // A member that sent its token binds, and the tap holds it to that token.
+    const withMember = await menuRig([doc(mark({ sessions: [MEMBER] }))], new Map([[MEMBER, "kk77"]]));
+    const part = await held(withMember, "mark");
+    expect(part.bound).toEqual([{ session: MEMBER, instance: "kk77" }]);
+    expect(await route(withMember, { rid: rid(1), node: "mark", intent: "open", from: { session: MEMBER }, rev: part.rev })).toMatchObject({ code: "ok" });
+  });
+
+  test("bound=1: a phone that does not ask gets no bound part and no bound key, in the list and in a tap's receipt", async () => {
+    const r = await menuRig([doc(menu(), mark({ sessions: [OWN] }))], own);
+    const old = await r.service.reply(undefined);
+    expect(old.parts.map((p) => p.part)).toEqual(["ci"]);
+    expect(old.present).toEqual(["lodge/ci/ci"]);
+    const asked = await r.service.reply(undefined, { bound: true });
+    expect(asked.parts.map((p) => p.part).toSorted()).toEqual(["ci", "mark"]);
+    const rev = (await held(r, "ci")).rev;
+    const receipt = await route(r, { rid: rid(1), node: "ci", intent: "rerun", from: { session: OWN }, rev }, false);
+    expect(receipt.code).toBe("ok");
+    expect(receipt.present).toEqual(["lodge/ci/ci"]);
+    expect((receipt.parts ?? []).some((p) => p.bound !== undefined)).toBe(false);
+  });
+
+  test("menu-powers-gate-after-upgrade: a trick approved where menu was a later place stops for its rights here, and asks again", async () => {
+    const r = await rig([exited(doc(menu()))], { world, instanceOf: (session) => own.get(session) ?? null });
+    const dir = await makeTrick(r.configDir, "ci", CI, { "ci.sh": "#!/bin/sh\necho 1\n" });
+    // v1.29.0-edge.1 read `menu` as a later place and left it out of the places it stored the approval with.
+    const edge1 = powersOf({ places: ["belt"] });
+    expect(await powersOfDir(dir, "ci")).not.toBe(edge1);
+    const hash = await codeHashOf(dir);
+    await writeSwitches(r.stateDir, withSwitch({ on: new Map() }, "ci", true, "2026-11-12T08:00:00Z", hash, edge1));
+    await tickAt(r, T0);
+    expect(r.specs).toHaveLength(0);
+    const reply = await r.service.reply(undefined, { bound: true });
+    expect(reply.tricks[0]).toMatchObject({ on: false, state: "stopped", error: RIGHTS_LINE, rightsMoved: true });
+    expect(reply.parts).toEqual([]);
+    // Switching it on again approves the rights read now, the menu among them; then it draws its rows.
+    expect(await r.service.setSwitch(HOST, "ci", true)).toMatchObject({ status: 200, body: { state: "ok" } });
+    await tickAt(r, T0 + 1_000);
+    expect(r.specs).toHaveLength(1);
+    expect((await r.service.reply(undefined)).parts.map((p) => p.part)).toEqual(["ci"]);
   });
 });

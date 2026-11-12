@@ -10,7 +10,8 @@
 // person's bridge computes before it installs the trick, and the one its switch then approves.
 //
 // It takes the extras hash too (code-hash.ts `officialExtrasHash`, config.toml and media/), the sha256 of the
-// rules file a contract 2 trick names (`rules`, null for none), and stops on
+// rules file a contract 2 trick names (`rules`, null for none), the places its manifest lists (`places`,
+// official.ts `pinnedPlaces`), and stops on
 // any other file an add would install outside the code hash. Then it writes the list back with that commit and those hashes, and with each manifest's `name` and
 // `contract`. An entry's `description` is the manifest's when it has one, else the list's own line stays.
 // The entries, their ids, repositories and folders are the list's: the script adds and removes none.
@@ -40,7 +41,7 @@ import { join, resolve } from "node:path";
 import { gitRunEnv, spawnGit } from "../bridge/tricks/fetch.ts";
 import { officialExtrasHash } from "../bridge/tricks/code-hash.ts";
 import { candidateHash, candidateRules, fetchOfficial, OFFICIAL_FETCH_BYTES_MAX } from "../bridge/tricks/official-install.ts";
-import { OFFICIAL_PREVIOUS_MAX, parseOfficialList, renderOfficialList, type OfficialEntry, type OfficialVersion } from "../bridge/tricks/official.ts";
+import { OFFICIAL_PREVIOUS_MAX, parseOfficialList, pinnedPlaces, renderOfficialList, type OfficialEntry, type OfficialVersion } from "../bridge/tricks/official.ts";
 import { parseJson } from "../web/src/lib/json.ts";
 
 /** The list in this repository. */
@@ -74,7 +75,7 @@ async function refreshed(entry: OfficialEntry, opts: OfficialRunOptions): Promis
     const rules = candidateRules(candidate);
     if (!rules.ok) throw new Error(rules.reason);
     const description = candidate.manifest.description ?? entry.description;
-    return { ...entry, name: candidate.manifest.name, description, commit: opts.commit, hash, extras: extras.hash, rules: rules.sha256, contract: candidate.manifest.contract, previous: rolled(entry, opts.commit) };
+    return { ...entry, name: candidate.manifest.name, description, commit: opts.commit, hash, extras: extras.hash, rules: rules.sha256, contract: candidate.manifest.contract, places: pinnedPlaces(candidate.manifest), previous: rolled(entry, opts.commit) };
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
@@ -90,6 +91,7 @@ export function rolled(entry: Pick<OfficialEntry, "commit" | "hash" | "previous"
 function differences(was: OfficialEntry, now: OfficialEntry): string[] {
   const keys = ["name", "description", "commit", "hash", "extras", "rules", "contract"] as const;
   const lines = keys.filter((key) => was[key] !== now[key]).map((key) => `${was.id}: ${key} is ${JSON.stringify(was[key])}, the checkout says ${JSON.stringify(now[key])}`);
+  if (JSON.stringify(was.places) !== JSON.stringify(now.places)) lines.push(`${was.id}: places are ${JSON.stringify(was.places)}, the checkout says ${JSON.stringify(now.places)}`);
   if (JSON.stringify(was.previous) !== JSON.stringify(now.previous)) lines.push(`${was.id}: previous would be ${String(now.previous.length)} versions, newest ${now.previous[0]?.commit.slice(0, 12) ?? "none"}`);
   return lines;
 }

@@ -1755,6 +1755,12 @@ export interface WireOfficialTrick {
    * stays off until switched on. Absent: it gives none, or an older bridge.
    */
   givesRules?: true;
+  /**
+   * Contract 2: the entry's trick adds rows to a session's settings (the `menu` place). The list pins every
+   * place the trick lists (official.ts `places`) and the add refuses a folder whose places differ, so the
+   * card says so before Add without a fetch. Absent: it adds none, or an older bridge.
+   */
+  addsMenu?: true;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */

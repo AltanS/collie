@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 386 in all, each one named, with its reason:
-#              bridge 172. 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
+#              Today, 388 in all, each one named, with its reason:
+#              bridge 173. 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below). 42 are the Hill and the tricks (see
@@ -125,8 +125,8 @@
 #                - "a symlink is never followed: not to a file outside, not through a folder outside" (tricks/inputs.test.ts)
 #                - "a symlink the program planted is never written through, nor read as a kept file" (tricks/inputs.test.ts)
 #                - "a FIFO as trick.toml or config.toml is refused and never hangs the scan" (tricks/units.test.ts, mkfifo)
-#                32 are bridge/tricks/official.test.ts, the add from the official list: every test of "adding from the list",
-#                "updating an added trick to the list's commit" and "a git run killed at its time cap", and its 3 `test.if(posix)`
+#                33 are bridge/tricks/official.test.ts, the add from the official list: every test of "adding from the list",
+#                "updating an added trick to the list's commit" and "a git run killed at its time cap", and its 4 `test.if(posix)`
 #                cases. The fixture repository is reached as `file://` plus a temp path, which is no file URL on Windows; its
 #                programs are `#!/bin/sh` with an executable bit; the time cap kills a POSIX process group.
 #              cli 180 in all: 21 in the next paragraph, then 3 of the statusLine wrapper, 50 of walky talky, 21 of the agent view,
@@ -177,20 +177,20 @@
 #                such a program is `helperTest`, a `test.skipIf` on win32: 1 in cli/trick.test.ts ("the folder init writes
 #                passes check --run with no refusal, in both forms"), 9 in cli/trick-kit/trick.test.ts and 6 in
 #                cli/trick-dev.test.ts. Remove them with the fix of the helper's output.
-#              scripts 34: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
+#              scripts 35: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
 #                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
 #                The other 2 are in the harness lab (scripts/harness-canary/lab/):
 #                - "POSIX only: the login copy has mode 600" in seed.test.ts (Windows has no file modes)
 #                - "a real throwaway server starts, shows its pane, stops, and leaves no socket" in tmux.test.ts
 #                  (it needs a tmux binary, and Windows has none)
-#                The last 9 are every test of scripts/official-tricks.test.ts, the maintainer script that keeps the official
+#                The last 10 are every test of scripts/official-tricks.test.ts, the maintainer script that keeps the official
 #                list in step with the tricks repository: it builds a temp repository of `#!/bin/sh` programs with an
-#                executable bit and reads it through `file://`, as the add from the list does (bridge 32 above).
+#                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 172,
+  [int]$MaxSkipsBridge = 173,
   [int]$MaxSkipsCli = 180,
-  [int]$MaxSkipsScripts = 34
+  [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }
 $ErrorActionPreference = "Continue"

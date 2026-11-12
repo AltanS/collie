@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 386 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 388 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([172, 180, 34]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([173, 180, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -221,7 +221,7 @@ describe("the Windows check runs the flake's Bun", () => {
     // The add from the official list: its POSIX-only describes and its `test.if(posix)` cases.
     const official = readFileSync(join(ROOT, "bridge", "tricks", "official.test.ts"), "utf8");
     const officialSkips = testsInBlocks(official, "describe.if(posix)(") + (official.match(/^ {2}test\.if\(posix\)\(/gm) ?? []).length;
-    expect(officialSkips).toBe(32);
+    expect(officialSkips).toBe(33);
     expect(script).toContain("bridge/tricks/official.test.ts");
     expect(budget("Bridge")).toBe(
       viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
@@ -280,7 +280,7 @@ describe("the Windows check runs the flake's Bun", () => {
     // The scripts allowance is the 23 install.sh tests, the two harness lab skips the script names, and every test of
     // the official list's maintainer script (POSIX-only describes).
     const officialScript = testsInBlocks(readFileSync(join(ROOT, "scripts", "official-tricks.test.ts"), "utf8"), "describe.if(posix)(");
-    expect(officialScript).toBe(9);
+    expect(officialScript).toBe(10);
     expect(script).toContain("scripts/official-tricks.test.ts");
     expect(budget("Scripts")).toBe(23 + 2 + officialScript);
     expect(script).toContain("POSIX only: the login copy has mode 600");

@@ -96,6 +96,7 @@ const START: OfficialEntry = {
   extras: "0".repeat(64),
   rules: null,
   contract: 1,
+  places: ["belt"],
   previous: [],
 };
 
@@ -253,9 +254,25 @@ describe.if(posix)("scripts/official-tricks.ts pins the rules (review 8 V-N3)", 
     const [entry] = await entriesOf(file);
     expect(entry?.rules).toBe(new Bun.CryptoHasher("sha256").update(rules).digest("hex"));
     expect(entry?.contract).toBe(2);
-    const stale = await listFile([{ ...START, commit: sha, contract: 2, rules: "c".repeat(64) }]);
+    const stale = await listFile([{ ...START, commit: sha, contract: 2, places: ["agent-view"], rules: "c".repeat(64) }]);
     const run = await runOfficial({ repoDir: r.dir, commit: sha, check: true, file: stale });
     expect(run.code).toBe(1);
     expect(run.lines.some((line) => line.startsWith("legs: rules is "))).toBe(true);
+  });
+});
+
+describe.if(posix)("scripts/official-tricks.ts pins the places (contract 2, the menu place)", () => {
+  test("writes the places the manifest lists, sorted, and --check names a stale pin", async () => {
+    const r = await repo();
+    const manifest = 'id = "legs"\nname = "Legs"\nrun = "./program.sh"\ncontract = 2\nplaces = ["menu", "belt"]\n';
+    const sha = await r.commit({ "legs/trick.toml": manifest, "legs/program.sh": PROGRAM("one") });
+    const file = await listFile([START]);
+    expect((await runOfficial({ repoDir: r.dir, commit: sha, check: false, file })).code).toBe(0);
+    const [entry] = await entriesOf(file);
+    expect(entry?.places).toEqual(["belt", "menu"]);
+    const stale = await listFile([{ ...START, commit: sha, contract: 2, places: ["belt"] }]);
+    const run = await runOfficial({ repoDir: r.dir, commit: sha, check: true, file: stale });
+    expect(run.code).toBe(1);
+    expect(run.lines).toContain('legs: places are ["belt"], the checkout says ["belt","menu"]');
   });
 });

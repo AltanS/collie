@@ -136,7 +136,7 @@ describe("windows gate", () => {
 
   test("windows gate: the official list is empty with the gate, and an add fetches nothing and writes nothing", async () => {
     const win = await rig("win32");
-    const entry: OfficialEntry = { id: "dash", name: "Dash", description: "A dash.", repo: "https://example.com/o/r", dir: "dash", commit: "a".repeat(40), hash: "b".repeat(64), extras: "c".repeat(64), rules: null, contract: 1, previous: [] };
+    const entry: OfficialEntry = { id: "dash", name: "Dash", description: "A dash.", repo: "https://example.com/o/r", dir: "dash", commit: "a".repeat(40), hash: "b".repeat(64), extras: "c".repeat(64), rules: null, contract: 1, places: ["belt"], previous: [] };
     const list = new OfficialTricks({ configDir: win.configDir, stateDir: win.stateDir, env: {}, entries: () => [entry], gate: () => win.service.gateLine(), lane: (work) => win.service.officialLane(work) });
     expect(await list.reply()).toEqual({ tricks: [], gate: "windows" });
     expect(await list.install("dash", "add")).toEqual({ status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } });

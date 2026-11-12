@@ -26,6 +26,7 @@ import {
   type TapRequest,
   type TrickManifest,
   type WireTrickInfo,
+  type WireTrickPart,
   type WireTrickPending,
   type WireTrickWarning,
   TRICKS_WINDOWS_LINE,
@@ -34,6 +35,7 @@ import {
 import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
+import { bindParts, type InstanceOf } from "./bound.ts";
 import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
@@ -185,16 +187,21 @@ export const PRUNE_EVERY_MS = 60_000;
 /** The message of a retried tap whose run started before the bridge restarted. */
 export const TAP_LOST_LINE = "The bridge restarted while this tap ran. It may have done its work; nothing ran again.";
 
+/** Whether the phone asked for bound parts (`?bound=1`): one that does not draws none, never one in every session. */
+export interface BoundAsk {
+  readonly bound?: boolean;
+}
+
 /** What the server needs: the snapshot's rev, the watch stamp, the two routes. */
 export interface TricksSurface {
   /** `tricksRev` for the snapshot, or undefined when there is no tricks folder (no field at all). */
   rev(): number | undefined;
   /** A paired phone looked (`/api/snapshot`, `/api/tricks`). */
   noteWatched(): void;
-  /** `GET /api/tricks?since=`. */
-  reply(since: number | undefined): Promise<TricksReply>;
-  /** `POST /api/tricks/<host>/<id>/tap`. */
-  tap(host: string, id: string, body: JsonValue | undefined): Promise<TapAnswer>;
+  /** `GET /api/tricks?since=`, with bound parts only for a phone that asks `bound=1` (bound.ts). */
+  reply(since: number | undefined, opts?: BoundAsk): Promise<TricksReply>;
+  /** `POST /api/tricks/<host>/<id>/tap`, its receipt's parts with bound ones only for `bound=1`. */
+  tap(host: string, id: string, body: JsonValue | undefined, opts?: BoundAsk): Promise<TapAnswer>;
   /**
    * The Tricks Space of this host (slice 03, panes.ts): one pane per `session` part of a trick that is on,
    * read from memory, never a run. Undefined when there is none, so a body with no trick session is the
@@ -330,6 +337,12 @@ export interface TricksServiceDeps {
    * past the caps, for the bridge's own tap check (fault A), never for a program.
    */
   world: (memberId: string, opts?: { readonly all?: boolean }) => Omit<FactsWorld, "memberId">;
+  /**
+   * Contract 2, bound parts (bound.ts): the walky instance token a facts session's pane holds now, or null
+   * when there is none (a crew member that sent none, a pane not seen). Read when a run's parts are stored
+   * and again at each tap on a bound or a menu part. Absent: every bound part is dropped, fail closed.
+   */
+  instanceOf?: InstanceOf;
   /** Whether this bridge leads a crew, so a trick's inputs come from every machine (the Settings sentence says so). Absent: false. */
   crewWide?: () => boolean;
   /** The fetch of a contract 2 trick's inputs before each run (inputs.ts `TrickInputs`). Absent: no files, no `inputs` on the sessions. */
@@ -684,10 +697,10 @@ export class TricksService implements TricksSurface {
     return this.slots.held;
   }
 
-  async reply(since: number | undefined): Promise<TricksReply> {
+  async reply(since: number | undefined, opts?: BoundAsk): Promise<TricksReply> {
     if (this.gated()) return { rev: this.store.rev, tricks: [], parts: [], present: [], gate: "windows" };
     await this.refresh();
-    return this.store.reply(since, this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.());
+    return this.store.reply(since, this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.(), { bound: opts?.bound === true });
   }
 
   sessionPanes(): TrickSessionPanes | undefined {
@@ -1553,7 +1566,10 @@ export class TricksService implements TricksSurface {
     }
     const freshMs = freshWindowMs(parsed.freshMs, manifest.everyMs);
     const asOf = parsed.asOf ?? new Date(startedAt).toISOString();
-    this.store.applyDocument(host, id, parsed, { asOf, fresh: parsed.fresh ?? freshString(freshMs) });
+    // Contract 2: a part that names sessions is stamped with each one's instance, against this run's own
+    // facts; an id that is gone, or has no instance, is dropped with a note (bound.ts).
+    const binding = bindParts(parsed, facts.sessions, this.deps.instanceOf);
+    this.store.applyDocument(host, id, binding.parsed, { asOf, fresh: parsed.fresh ?? freshString(freshMs) }, binding.bound);
     // The decisions reach the hill only from a run that succeeded and listed them. A list refused as a
     // whole (over the cap) changes nothing there either: the last good decisions stay, as the last good
     // parts do.
@@ -1563,7 +1579,7 @@ export class TricksService implements TricksSurface {
     if (!listRefused && decisionsListed) rt.decides = parsed.decisions.length > 0;
     // What the tolerant read left out (a node kind or a place this Collie does not draw) is one note on
     // the trick's row; an ignored key is for `collie trick check` and `dev` only.
-    const dropped = parsed.notes.filter((note) => note.code === "dropped");
+    const dropped = [...parsed.notes.filter((note) => note.code === "dropped"), ...binding.notes];
     this.succeeded(rt, startedAt, [...parsed.refusals, ...dropped, ...posted]);
     this.publish(id);
     const mine = this.store.trickParts(host, id, revBefore);
@@ -1596,14 +1612,24 @@ export class TricksService implements TricksSurface {
     rt.nextAt = every === undefined ? Infinity : startedAt + every;
   }
 
-  async tap(host: string, id: string, body: JsonValue | undefined): Promise<TapAnswer> {
+  async tap(host: string, id: string, body: JsonValue | undefined, opts?: BoundAsk): Promise<TapAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     const parsed = parseTapRequest(body);
     if (parsed.request === undefined) return { status: 400, body: { error: "tap-invalid", refusals: parsed.refusals } };
     // A decision's answer comes from the hill only (`tapFromHill`), so it is closed and receipted there.
     if (parsed.request.node.startsWith(HILL_NODE_PREFIX)) return { status: 200, body: { rid: parsed.request.rid, code: "rejected", message: HILL_NODE_TAP_REFUSED } };
     // The rev is the phone's claim of what it drew. It is checked here and never reaches the program.
-    return this.runTap(host, id, parsed.request, undefined, { rev: parsed.rev });
+    const answer = await this.runTap(host, id, parsed.request, undefined, { rev: parsed.rev });
+    return opts?.bound === true ? answer : this.withoutBound(answer);
+  }
+
+  /** A tap's receipt for a phone that did not ask for bound parts: no bound part and no bound key in it. */
+  private withoutBound(answer: TapAnswer): TapAnswer {
+    if (answer.status !== 200) return answer;
+    const body: TrickTapReply = { ...answer.body };
+    if (body.parts !== undefined) body.parts = body.parts.filter((part) => part.bound === undefined);
+    if (body.present !== undefined) body.present = body.present.filter((key) => !this.store.isBound(key));
+    return { status: 200, body };
   }
 
   /**
@@ -1626,11 +1652,26 @@ export class TricksService implements TricksSurface {
     if (!controls.some((control) => control.value === request.value)) return "value";
     const session = request.from?.session;
     // A session the tap names must be an agent session open here now: every session, not the facts' first
-    // 256 (FACT_SESSIONS_MAX), so a live session past the cap is not refused. No part names sessions yet; a
-    // part that does narrows this to the sessions it names.
+    // 256 (FACT_SESSIONS_MAX), so a live session past the cap is not refused.
     // N2 (review 11): a crew member's session the lead's last sweep did not reach is not open here now.
     if (session !== undefined && !this.deps.world(host, { all: true }).sessions.some((s) => s.id === session && s.agent !== undefined && s.reachable !== false)) return "session";
-    return null;
+    return this.boundRefusal(held.part, session);
+  }
+
+  /**
+   * Contract 2: the session check of a menu part and of a bound part (bound.ts). A tap on either names its
+   * session. A bound part must name that session, and the session's pane must hold the instance it was
+   * stamped with, so a pane id the multiplexer handed to a new session taps nothing. An unbound menu part
+   * shows only in this machine's own sessions: on a crew member's session a row needs a binding.
+   */
+  private boundRefusal(part: WireTrickPart, session: string | undefined): TapRefusal | null {
+    const menu = part.value.at === "menu";
+    if (!menu && part.bound === undefined) return null;
+    if (session === undefined) return "session";
+    if (part.bound === undefined) return session.startsWith(`${this.deps.memberId}:`) ? null : "session";
+    const stamped = part.bound.find((entry) => entry.session === session);
+    if (stamped === undefined) return "session";
+    return this.deps.instanceOf?.(session) === stamped.instance ? null : "session";
   }
 
   /** Answer a refused phone tap: one audit line, nothing run, nothing kept. `changed` carries the trick's parts now. */

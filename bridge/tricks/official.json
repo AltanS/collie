@@ -12,6 +12,13 @@
       "extras": "b1039966e31072a10ef6a45aeb299d8e94626d4fa244b145ed8281d1c80a6653",
       "rules": null,
       "contract": 1,
+      "places": [
+        "belt",
+        "dashboard",
+        "session",
+        "status",
+        "tabbar"
+      ],
       "previous": [
         {
           "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
@@ -30,6 +37,13 @@
       "extras": "a4ba4db96bd317b5f4c7223417f9fc8098682460256817b060f05b670967b63d",
       "rules": null,
       "contract": 1,
+      "places": [
+        "belt",
+        "dashboard",
+        "session",
+        "status",
+        "tabbar"
+      ],
       "previous": [
         {
           "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
@@ -48,6 +62,11 @@
       "extras": "0abbef9a24224b0853c24cf3a1ef80f1c66a2616d6795e08c012857c5466ebe3",
       "rules": null,
       "contract": 1,
+      "places": [
+        "dashboard",
+        "session",
+        "status"
+      ],
       "previous": [
         {
           "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
@@ -66,6 +85,9 @@
       "extras": "b668b25a9d9a1a068fbc513544d6333f8d98e3e14b79e8887386a837efa7a0d2",
       "rules": "9ee603082182156a4dd0160b7b8eafbf6e83ceba02b8be6cda2f80f6b71d050f",
       "contract": 2,
+      "places": [
+        "agent-view"
+      ],
       "previous": []
     }
   ]

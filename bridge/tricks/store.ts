@@ -6,6 +6,7 @@ import {
   type TricksReply,
   type TricksRunsOn,
   type ParsedTrickDocument,
+  type WireBound,
   type WireTrickInfo,
   type WireTrickPart,
 } from "../../web/src/lib/tricks/schema.ts";
@@ -30,6 +31,10 @@ import {
 //
 // Last good per part: a part the new document refused, or every part of a run that failed, keeps its
 // last accepted value and is marked `stale` with one masked line of why.
+//
+// A bound part (contract 2, bound.ts) carries `bound`, the sessions and instance tokens it is drawn in.
+// It is sent only to a phone that asks for bound parts (`?bound=1`): an older phone reads no `bound` and
+// would draw the part in every session. A change of `bound` moves the part's drawn rev like its value.
 
 /** A line masked (again: the mask is idempotent) and cut to the wire's problem cap. */
 export function problemLine(text: string): string {
@@ -84,7 +89,7 @@ export class TricksStore {
     const old = this.parts.get(key);
     if (old !== undefined && sameJson({ ...old, rev: 0 }, { ...wire, rev: 0 })) return false;
     const rev = this.next();
-    if (old === undefined || JSON.stringify(old.value) !== JSON.stringify(wire.value)) this.drawnAt.set(key, rev);
+    if (old === undefined || JSON.stringify(old.value) !== JSON.stringify(wire.value) || JSON.stringify(old.bound) !== JSON.stringify(wire.bound)) this.drawnAt.set(key, rev);
     this.parts.set(key, { ...wire, rev });
     return true;
   }
@@ -110,12 +115,15 @@ export class TricksStore {
    * Store the result of a document that parsed (`documentRefused` false). Accepted parts replace their
    * old value, refused parts keep theirs stale, and a part the document no longer has goes away.
    */
-  applyDocument(memberId: string, trick: string, parsed: ParsedTrickDocument, stamp: DocumentStamp): void {
+  applyDocument(memberId: string, trick: string, parsed: ParsedTrickDocument, stamp: DocumentStamp, bound?: ReadonlyMap<string, WireBound[]>): void {
     const keep = new Set<string>();
     for (const accepted of parsed.parts) {
       const part = accepted.part.id;
       keep.add(partKey({ host: memberId, trick, part }));
-      this.put({ host: memberId, trick, part, value: accepted.part, asOf: stamp.asOf, fresh: stamp.fresh });
+      const sessions = bound?.get(part);
+      const wire: Omit<WireTrickPart, "rev"> = { host: memberId, trick, part, value: accepted.part, asOf: stamp.asOf, fresh: stamp.fresh };
+      if (sessions !== undefined) wire.bound = sessions;
+      this.put(wire);
     }
     for (const part of parsed.refusedParts) {
       const key = partKey({ host: memberId, trick, part });
@@ -172,16 +180,24 @@ export class TricksStore {
     return [...this.infos.keys()];
   }
 
+  /** Whether the part under a key is bound (carries `bound`), so a phone that did not ask for bound parts never hears of it. */
+  isBound(key: string): boolean {
+    return this.parts.get(key)?.bound !== undefined;
+  }
+
   /** One trick's parts with a rev above `since`, and every key it has now. */
   trickParts(memberId: string, trick: string, since: number): TrickPartsSince {
     const mine = [...this.parts.values()].filter((p) => p.host === memberId && p.trick === trick);
     return { parts: mine.filter((p) => p.rev > since), present: mine.map((p) => partKey(p)) };
   }
 
-  /** `GET /api/tricks?since=`: the changed parts, the keys present, the list. Absent or a future `since` is everything. */
-  reply(since: number | undefined, path?: string, runsOn?: TricksRunsOn | null): TricksReply {
+  /**
+   * `GET /api/tricks?since=`: the changed parts, the keys present, the list. Absent or a future `since` is
+   * everything. A bound part and its key only with `bound` (the phone asked `?bound=1`).
+   */
+  reply(since: number | undefined, path?: string, runsOn?: TricksRunsOn | null, opts?: { readonly bound?: boolean }): TricksReply {
     const from = since === undefined || since > this.counter ? -Infinity : since;
-    const all = [...this.parts.values()];
+    const all = [...this.parts.values()].filter((p) => opts?.bound === true || p.bound === undefined);
     const out: TricksReply = {
       rev: this.counter,
       tricks: [...this.infos.values()].toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
