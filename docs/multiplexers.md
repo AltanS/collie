@@ -920,6 +920,9 @@ Collie checks that the character lands in the box, then removes it.
   Hermes may show the rest of an earlier message in grey after your text.
   That send stops before Enter too, and Submit sends only what you typed.
   The model picker and the command palette open over the transcript, and the pane never reads free under one.
+  All of that is the screen path. When Hermes's gateway runs and Collie can tell which session the
+  pane shows, a plain message goes through the gateway instead: nothing is read or typed, no confirm
+  tap, and the session's own log confirms the send.
 
 - **Hermes during a turn** starts its row with `☤`, and Collie reads the turn from that mark.
   What Enter does then is Hermes's own setting, so Collie never presses it during a turn.
@@ -958,7 +961,7 @@ OpenCode and OMP passed live sends on a version above the checked one.
 Collie probes every send on them until a send passes inside the checked range.
 Hermes (the classic CLI) passed live sends on 0.22.2, inside its range, on Herdr only.
 Hermes 0.22.3 to 0.22.5 is provisional until a live probed send passes there.
-The Ink TUI (`hermes --tui`) is read from plain-text captures and has passed no live send yet.
+The Ink TUI (`hermes --tui`) is read from plain-text captures and has passed no live send by the screen yet.
 The probe has not been tried in each Hermes dialog, so Collie probes every send there too.
 
 A version above the checked one still works, and the receipt says `provisional`.
