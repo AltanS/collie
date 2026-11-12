@@ -786,7 +786,12 @@ only), fetched on a write device's tap only, never forwarded, refused past 1 MB 
 passes it, and stored under `<stateDir>/themes` (M59 spec 06; the page itself keeps
 `connect-src 'self'`, ADR 0106). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a fifth, to the program's URL the
 operator set, with the bearer token from `COLLIE_DURABLE_TOKEN`, and it is declined by setting
-nothing ([ADR 0103](./.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). Speech-to-text (`bridge/stt/`, CLI
+nothing ([ADR 0103](./.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). A phone send to a pane whose door is
+Hermes's makes another, a WebSocket to the Hermes gateway the person's own Hermes runs: loopback
+only, one connection per send, opened with a ticket from Hermes's control socket after the bridge
+checks that socket's path in its own process with no child, calling only resume, submit, receipt
+and detach, and declined by running no gateway
+([ADR 0142](./.adr/0142-the-bridge-dials-the-hermes-gateway-on-loopback-with-a-ticket-from-its-control-socket.md)). Speech-to-text (`bridge/stt/`, CLI
 `cli/stt.ts`) is a registered provider seam, absent until `stt.json` names a provider. Then it may
 hold a provider credential at 0600, open an operator-configured outbound path carrying microphone
 audio, on `codex` spawn a `codex app-server` child, and on `local-cli` spawn the operator's named
