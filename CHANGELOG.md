@@ -43,6 +43,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A tap anywhere on a trick's row in Settings, Tricks opens its About sheet.** Before, only the name opened it. The description, the places, the source line and the empty space of the row now open it too, for a trick, an official trick before Add and the Hill. The switch, Add, Update and Undo keep their own taps and never open the sheet.
 - **The view switch in a session's settings stays where the bridge's answer puts it.** After a tap the switch fell back to the state it had when the sheet opened, so a person tapped again. Its words stay fixed at the open; its state follows the bridge.
 - **A trick's source address never leaves the bridge with a password in it.** An origin record written by hand could hold a user name, a password, a query or an ssh form. The bridge now sends the address to a phone or a crew lead only when it is a plain https address, reads no facts for any other, and drops the user name, the password and the query from the repository name it shows.
 - **A trick never shows two parts in one place.** A part the bridge refused kept its last good version, stale, even where an accepted part of the same trick now stood, so a trick could keep up to 24 status chips, Dashboard tiles, bar items or Belt marks, and a tap on a hidden one still ran. The bridge now drops a refused part whose place, or whose bound session, an accepted part took, and the phone draws the first part of each trick in each place.

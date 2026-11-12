@@ -383,6 +383,30 @@ describe("Official tricks: the About sheet before the add", () => {
     expect(posts).toEqual(["/api/tricks/official/design-review/add"]);
   });
 
+  it("adds on a tap on the row's Add and opens no sheet: Add is a sibling of the About button, above its layer", async () => {
+    const user = userEvent.setup();
+    serveList(() => ({ tricks: [REVIEW] }));
+    const posts: string[] = [];
+    server.use(
+      http.post("/api/tricks/official/:id/:mode", ({ request }) => {
+        posts.push(new URL(request.url).pathname);
+        return HttpResponse.json({ id: "design-review", state: "added" });
+      }),
+    );
+    const { store } = await liveStore([LEGS]);
+    renderCard(store);
+    await vi.waitFor(() => officialRow("design-review"));
+    const row = officialRow("design-review");
+    const about = within(row).getByRole("button", { name: "About Design Review" });
+    const add = within(row).getByRole("button", { name: "Add Design Review" });
+    expect(about.contains(add)).toBe(false);
+    expect(about.className).toContain("after:inset-0");
+    expect(add.className).toContain("z-10");
+    await user.click(add);
+    await vi.waitFor(() => expect(posts).toEqual(["/api/tricks/official/design-review/add"]));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("stays open and says why when the add fails", async () => {
     const user = userEvent.setup();
     serveList(() => ({ tricks: [REVIEW] }));
