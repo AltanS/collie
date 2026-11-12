@@ -124,13 +124,14 @@ function trickFolder(extra: Record<string, string> = {}): string {
 }
 
 describe("the folder read", () => {
-  posixTest("leaves dot files, node_modules, logs, inputs/, media/, captures/ and config.toml behind", async () => {
+  test("leaves dot files, node_modules, logs, inputs/, media/, captures/ and config.toml behind", async () => {
     const dir = trickFolder({ ".env": "SECRET=placeholder", ".git/config": "x", "node_modules/a/index.js": "x", "run.log": "x", "inputs/a.md": "x", "media/a.png": "x", "captures/b.png": "x", "lib/util.ts": "export {};\n", "config.toml": "a = 1\n" });
     chmodSync(join(dir, "program.ts"), 0o755);
     const read = await readTrickFolder(dir);
     if (!read.ok) throw new Error(read.error);
     expect(read.files.map((f) => f.rel).toSorted()).toEqual(["lib/util.ts", "program.ts", "trick.toml"]);
-    expect(read.files.find((f) => f.rel === "program.ts")?.executable).toBe(true);
+    // The executable bit is read off the disk, which only a POSIX file mode holds.
+    if (process.platform !== "win32") expect(read.files.find((f) => f.rel === "program.ts")?.executable).toBe(true);
     expect(read.left).toBe(8);
     expect(read.config).toBe(true);
   });

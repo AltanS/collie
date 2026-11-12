@@ -3,7 +3,9 @@ import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { HOST as THIS_HOST } from "../host.ts";
 import type { JsonObject } from "../json.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { CLOSED_KEY_LINE, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import type { AgentView } from "../types.ts";
 import { legacyPowersOf, powersOfDir } from "./approved.ts";
@@ -245,6 +247,9 @@ describe("discovery and the switch", () => {
 
   test("switched on: a start run from the approved copy with scrubbed env, the facts on stdin, and a 0700 state folder", async () => {
     const r = await rig([exited(belt("23/34"))]);
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and the
+    // trick's state folder inherits it. NTFS has no 0700, so the check reads that list instead.
+    if (process.platform === "win32") ensureOwnerOnlyDir(r.stateDir, THIS_HOST, { root: privateRoot("state"), repair: true });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
@@ -264,7 +269,8 @@ describe("discovery and the switch", () => {
     expect(facts.host).toBe("desk");
     expect(facts.sessions[0]).toMatchObject({ memberId: "lodge", sessionId: "lodge:w6X:3", host: "desk" });
     expect(JSON.stringify(facts)).not.toContain(r.configDir.replace(/\/config$/, "/config/.env"));
-    expect((await Bun.file(facts.trick.state).stat()).mode & 0o777).toBe(0o700);
+    if (process.platform !== "win32") expect((await Bun.file(facts.trick.state).stat()).mode & 0o777).toBe(0o700);
+    else expect(isOwnerOnly(facts.trick.state, THIS_HOST)).toEqual({ state: "private" });
     const reply = await r.service.reply(undefined);
     expect(reply.tricks[0]?.state).toBe("ok");
     expect(reply.parts.map((p) => partKey(p))).toEqual(["lodge/legs/belt"]);
@@ -1382,7 +1388,9 @@ describe("taps, answers and slots", () => {
 describe("real programs", () => {
   test("an sh program and a bun program run through the real runner", async () => {
     const r = await rig(null);
-    await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./program.sh"\nplaces = ["belt"]\n', {
+    // A shell line runs under `cmd.exe` on Windows (run.ts `shellArgv`), so a `#!/bin/sh` program is a POSIX one: there the bun program runs alone.
+    const posix = process.platform !== "win32";
+    if (posix) await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./program.sh"\nplaces = ["belt"]\n', {
       "program.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}' "$n"\n`,
     });
     await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "bun program.ts"\nplaces = ["belt"]\n', {
@@ -1394,11 +1402,11 @@ describe("real programs", () => {
         'console.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: leaked.length === 0 ? "clean" : "leak" } }] }));',
       ].join("\n"),
     });
-    await switchOn(r.stateDir, "hello", "bunny");
+    await switchOn(r.stateDir, ...(posix ? ["hello", "bunny"] : ["bunny"]));
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
     const faces = Object.fromEntries(reply.parts.map((p) => [p.trick, p.value.at === "belt" ? p.value.mark.label : undefined]));
-    expect(faces).toEqual({ hello: "1", bunny: "clean" });
+    expect(faces).toEqual(posix ? { hello: "1", bunny: "clean" } : { bunny: "clean" });
     expect(await readFile(join(r.stateDir, TRICKS_DIR, "bunny", "runs.log"), "utf8")).toBe("start\n");
   });
 });

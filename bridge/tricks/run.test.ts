@@ -18,9 +18,18 @@ afterAll(async () => {
 
 const KEY = "sk-or-v1-0123456789abcdef0123456789abcdef";
 
+/** The shell line that prints the environment: `env` under `sh`, the `set` built-in under `cmd.exe` (run.ts `shellArgv`). */
+const PRINT_ENV = process.platform === "win32" ? "set" : "env";
+
 async function run(command: string, extra: Partial<RunSpec> = {}) {
   const cwd = await tempDir();
   return await runProgram({ command, cwd, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, stdin: "{}", ...extra });
+}
+
+/** Run `program` as the trick's `program.ts` in `cwd`, with the Bun that runs the tests. */
+async function script(cwd: string, program: string, extra: Partial<RunSpec> = {}) {
+  await writeFile(join(cwd, "program.ts"), program);
+  return await runProgram({ command: "program.ts", cwd, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, stdin: "{}", runtime: { execPath: process.execPath, compiled: false }, ...extra });
 }
 
 function alive(pid: number): boolean {
@@ -89,21 +98,27 @@ describe("the env scrub", () => {
   });
 
   test("a COLLIE_TOKEN and an OPENROUTER_API_KEY never reach the child", async () => {
-    const outcome = await run("env", { env: scrubEnv({ ...process.env, COLLIE_TOKEN: "tok-must-not-leak", OPENROUTER_API_KEY: KEY }) });
-    expect(outcome.kind).toBe("exited");
+    const outcome = await run(PRINT_ENV, { env: scrubEnv({ ...process.env, COLLIE_TOKEN: "tok-must-not-leak", OPENROUTER_API_KEY: KEY }) });
+    expect(outcome).toMatchObject({ kind: "exited", code: 0 });
     if (outcome.kind !== "exited") return;
     expect(outcome.stdout).not.toContain("COLLIE_TOKEN");
     expect(outcome.stdout).not.toContain("tok-must-not-leak");
     expect(outcome.stdout).not.toContain("OPENROUTER_API_KEY");
     expect(outcome.stdout).not.toContain(KEY.slice(4));
-    expect(outcome.stdout).toContain("PATH=");
+    // Windows spells it `Path`, and a name there is one in any case.
+    expect(outcome.stdout.toUpperCase()).toContain("PATH=");
   });
 });
 
 describe("one run", () => {
+  // Each program here is a script Collie's own runtime runs (`run = "program.ts"`), not a shell line: the
+  // caps, the mask and the kill are the runner's, the same for both forms, and a script runs on every
+  // host, where a shell line is `sh` on POSIX and `cmd.exe` on Windows. A program ends by `exitCode`, not
+  // `process.exit`, so what it wrote reaches the pipe first.
+
   test("stdin carries the facts, stdout comes back, cwd is the folder", async () => {
     const cwd = await tempDir();
-    const outcome = await runProgram({ command: 'cat; printf " %s" "$(pwd)"', cwd, env: { PATH: process.env.PATH ?? "" }, stdin: '{"v":1}' });
+    const outcome = await script(cwd, 'process.stdout.write(`${await Bun.stdin.text()} ${process.cwd()}`);\n', { stdin: '{"v":1}' });
     expect(outcome).toMatchObject({ kind: "exited", code: 0 });
     if (outcome.kind === "exited") expect(outcome.stdout).toBe(`{"v":1} ${cwd}`);
   });
@@ -111,30 +126,33 @@ describe("one run", () => {
   test("the timeout kills the whole process group", async () => {
     const cwd = await tempDir();
     const pidFile = join(cwd, "child.pid");
-    const outcome = await runProgram({
-      command: `sleep 30 & echo $! > "${pidFile}"; sleep 30`,
-      cwd,
-      env: { PATH: process.env.PATH ?? "" },
-      stdin: "",
-      timeoutMs: 300,
-    });
+    // A child of the program's own, as `sh -c` starting `curl` would have: the kill must reach it too.
+    const program = [
+      'import { writeFileSync } from "node:fs";',
+      'const child = Bun.spawn([process.execPath, "-e", "await Bun.sleep(30000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });',
+      `writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));`,
+      "await Bun.sleep(30000);",
+      "",
+    ].join("\n");
+    // Long enough for the program and its child to start on a slow host before the kill.
+    const outcome = await script(cwd, program, { stdin: "", timeoutMs: 2000 });
     expect(outcome.kind).toBe("timeout");
     const child = Number((await readFile(pidFile, "utf8")).trim());
-    await Bun.sleep(100);
+    for (let i = 0; i < 40 && alive(child); i += 1) await Bun.sleep(50);
     expect(alive(child)).toBe(false);
-    expect(outcomeProblem(outcome, 200)).toBe("The program ran past 0 s and was stopped");
+    expect(outcomeProblem(outcome, 200)).toBe("The program ran past 2 s and was stopped");
   });
 
   test("stdout past 64 KiB fails the run and stops the program", async () => {
     const started = performance.now();
-    const outcome = await run("yes aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const outcome = await script(await tempDir(), 'const line = "a".repeat(1023) + "\\n";\nfor (;;) await new Promise((done) => process.stdout.write(line, done));\n');
     expect(outcome.kind).toBe("overflow");
     expect(performance.now() - started).toBeLessThan(5000);
     expect(outcomeProblem(outcome, 200)).toBe("The program printed more than 64 KiB and was stopped");
   });
 
   test("stderr is kept to 8 KiB and drained, so a chatty program does not block", async () => {
-    const outcome = await run("head -c 200000 /dev/zero | tr '\\0' e >&2; echo done");
+    const outcome = await script(await tempDir(), 'process.stderr.write("e".repeat(200000));\nprocess.stdout.write("done\\n");\n');
     expect(outcome.kind).toBe("exited");
     if (outcome.kind !== "exited") return;
     expect(outcome.stdout).toBe("done\n");
@@ -142,7 +160,8 @@ describe("one run", () => {
   });
 
   test("stdout and stderr go through the secret mask", async () => {
-    const outcome = await run(`echo '{"face":"${KEY}"}'; echo "curl failed for https://x/?key=${KEY}" >&2; exit 3`);
+    const program = `process.stdout.write('{"face":"${KEY}"}\\n');\nprocess.stderr.write("curl failed for https://x/?key=${KEY}\\n");\nprocess.exitCode = 3;\n`;
+    const outcome = await script(await tempDir(), program);
     expect(outcome.kind).toBe("exited");
     if (outcome.kind !== "exited") return;
     expect(outcome.stdout).not.toContain(KEY);
@@ -155,7 +174,9 @@ describe("one run", () => {
 
   test("a background job that keeps stdout open does not hold the run", async () => {
     const started = performance.now();
-    const outcome = await run("sleep 5 & echo '{}'");
+    // The child inherits the program's stdout and outlives it by five seconds.
+    const program = 'Bun.spawn([process.execPath, "-e", "await Bun.sleep(5000)"], { stdin: "ignore", stdout: "inherit", stderr: "inherit" }).unref();\nprocess.stdout.write("{}\\n");\n';
+    const outcome = await script(await tempDir(), program);
     expect(outcome).toMatchObject({ kind: "exited", code: 0, stdout: "{}\n" });
     expect(performance.now() - started).toBeLessThan(2000);
   });
@@ -185,10 +206,11 @@ describe("the two forms of a run line", () => {
 
   test("the script form runs Collie's own executable on the script, with BUN_BE_BUN only when it is compiled", () => {
     const compiled = launchOf("program.ts", ENV, { cwd: "/t/look", platform: "linux", runtime: COMPILED });
-    expect(compiled.argv).toEqual(["/opt/collie/bin/collie", "--no-install", "/t/look/program.ts"]);
+    // The script's path is joined by the host's own rule, with backslashes on Windows.
+    expect(compiled.argv).toEqual(["/opt/collie/bin/collie", "--no-install", join("/t/look", "program.ts")]);
     expect(compiled.env).toEqual({ ...ENV, [BUN_BE_BUN]: "1" });
     const plain = launchOf("./program.ts", ENV, { cwd: "/t/look", platform: "linux", runtime: PLAIN });
-    expect(plain.argv).toEqual(["/usr/local/bin/bun", "--no-install", "/t/look/program.ts"]);
+    expect(plain.argv).toEqual(["/usr/local/bin/bun", "--no-install", join("/t/look", "program.ts")]);
     expect(plain.env).toEqual(ENV);
     expect(ENV).not.toHaveProperty(BUN_BE_BUN);
   });
@@ -221,8 +243,8 @@ describe("the two forms of a run line", () => {
   });
 
   test("a shell run under a compiled bridge sees no BUN_BE_BUN", async () => {
-    const outcome = await run("env", { env: scrubEnv({ ...process.env, BUN_BE_BUN: "1" }), runtime: COMPILED });
-    expect(outcome.kind).toBe("exited");
+    const outcome = await run(PRINT_ENV, { env: scrubEnv({ ...process.env, BUN_BE_BUN: "1" }), runtime: COMPILED });
+    expect(outcome).toMatchObject({ kind: "exited", code: 0 });
     if (outcome.kind === "exited") expect(outcome.stdout).not.toContain("BUN_BE_BUN");
   });
 });

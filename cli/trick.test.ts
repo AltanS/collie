@@ -3,6 +3,8 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { HOST } from "../bridge/host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../bridge/owner-only.ts";
 import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { OFFICIAL_REPOS, shippedOfficialList } from "../bridge/tricks/official.ts";
 import { ORIGIN_FILE, renderOrigin } from "../bridge/tricks/origin.ts";
@@ -115,6 +117,9 @@ describe("collie trick init", () => {
 
   test("writes a TypeScript trick by default: trick.toml, program.ts, the helper, config.toml and AGENTS.md", async () => {
     const d = await deps();
+    // Windows: the bridge gives the config dir an owner-only access list at start (M43 spec 04), and the
+    // tricks folder inherits it. NTFS has no 0700, so the check reads that list instead.
+    if (process.platform === "win32") ensureOwnerOnlyDir(d.configDir, HOST, { root: privateRoot("config"), repair: true });
     expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.OK);
     const dir = join(d.configDir, "tricks", "legs");
     expect(await readFile(join(dir, "trick.toml"), "utf8")).toContain('run = "program.ts"');
@@ -124,7 +129,8 @@ describe("collie trick init", () => {
     expect(helperVersion(helper)).toBe(HELPER_VERSION);
     expect(await readFile(join(dir, "config.toml"), "utf8")).toContain("rows = 8");
     expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toContain("collie trick helper legs");
-    expect((await stat(join(d.configDir, "tricks"))).mode & 0o777).toBe(0o700);
+    if (process.platform !== "win32") expect((await stat(join(d.configDir, "tricks"))).mode & 0o777).toBe(0o700);
+    else expect(isOwnerOnly(join(d.configDir, "tricks"), HOST)).toEqual({ state: "private" });
     expect(d.out.join("\n")).toContain("The trick is off.");
     expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.FAIL);
     expect(d.err.join("\n")).toContain("exists already");
@@ -136,7 +142,8 @@ describe("collie trick init", () => {
     expect(await cmdTrickInit(d, ["--sh", "legs"])).toBe(EXIT.OK);
     const dir = join(d.configDir, "tricks", "legs");
     expect(await readFile(join(dir, "trick.toml"), "utf8")).toContain('places = ["belt"]');
-    expect((await stat(join(dir, "program.sh"))).mode & 0o111).not.toBe(0);
+    // Windows has no executable bit.
+    if (process.platform !== "win32") expect((await stat(join(dir, "program.sh"))).mode & 0o111).not.toBe(0);
     expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toContain("collie trick check --run .");
     expect(await Bun.file(join(dir, "trick.ts")).exists()).toBe(false);
   });
@@ -159,6 +166,9 @@ describe("collie trick init", () => {
     expect(report.run?.problem).toBeNull();
     expect(report.run?.refusals).toEqual([]);
     expect(report.run?.parts).toEqual(["status status", "dashboard dashboard", "session main"]);
+    // The shell form runs `./program.sh` as a shell line, which is `cmd.exe` on Windows (bridge/tricks/run.ts):
+    // a POSIX sh program, so there the TypeScript form above is the one that runs.
+    if (process.platform === "win32") return;
     const e = await deps();
     await cmdTrickInit(e, ["--sh", "plain"]);
     expect(await cmdTrickCheck(e, ["--run", join(e.configDir, "tricks", "plain")])).toBe(EXIT.OK);
@@ -192,6 +202,10 @@ describe("collie trick helper", () => {
 });
 
 describe("collie trick check", () => {
+  // The programs that --run runs are scripts Collie's runtime runs (`run = "program.ts"`), so each case runs
+  // on every host: a shell line is `sh` on POSIX but `cmd.exe` on Windows (bridge/tricks/run.ts).
+  /** A program.ts that prints `json`, one output document, as its one line of output. */
+  const prints = (json: string): string => `console.log(${JSON.stringify(json)});\n`;
   async function folder(manifest: string, files: Record<string, string> = {}): Promise<string> {
     const root = await tempDir();
     const id = /id = "([^"]+)"/.exec(manifest)?.[1] ?? "x";
@@ -232,7 +246,7 @@ describe("collie trick check", () => {
   });
 
   test("--run notes a tile a tap leaves as it was; a tap that changes it, or a session page, gets no note", async () => {
-    const still = await folder('id = "still"\nname = "S"\nrun = "./p.sh"\nplaces = ["belt"]\n', { "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"3","intent":"refresh"}}]}'\n` });
+    const still = await folder('id = "still"\nname = "S"\nrun = "program.ts"\nplaces = ["belt"]\n', { "program.ts": prints(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "3", intent: "refresh" } }] })) });
     const d = await deps();
     expect(await cmdTrickCheck(d, ["--run", still])).toBe(EXIT.OK);
     expect(d.out).toContain(`  note: ${TAP_SHOWS_NOTHING}`);
@@ -241,13 +255,13 @@ describe("collie trick check", () => {
     const quiet = await deps();
     expect(await cmdTrickCheck(quiet, [still])).toBe(EXIT.OK);
     expect(quiet.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
-    const tapped = await folder('id = "tapped"\nname = "T"\nrun = "./p.sh"\nplaces = ["belt"]\n', {
-      "p.sh": `#!/bin/sh\nread -r facts\ncase "$facts" in *'"kind":"tap"'*) n=4;; *) n=3;; esac\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s","intent":"refresh"}}]}\\n' "$n"\n`,
+    const tapped = await folder('id = "tapped"\nname = "T"\nrun = "program.ts"\nplaces = ["belt"]\n', {
+      "program.ts": 'const n = JSON.parse(await Bun.stdin.text()).trigger.kind === "tap" ? 4 : 3;\nconsole.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: String(n), intent: "refresh" } }] }));\n',
     });
     const e = await deps();
     expect(await cmdTrickCheck(e, ["--run", tapped])).toBe(EXIT.OK);
     expect(e.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
-    const paged = await folder('id = "paged"\nname = "P"\nrun = "./p.sh"\nplaces = ["belt", "session"]\n', { "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"3"}}]}'\n` });
+    const paged = await folder('id = "paged"\nname = "P"\nrun = "program.ts"\nplaces = ["belt", "session"]\n', { "program.ts": prints(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "3" } }] })) });
     const f = await deps();
     expect(await cmdTrickCheck(f, ["--run", paged])).toBe(EXIT.OK);
     expect(f.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
@@ -353,8 +367,8 @@ describe("collie trick check", () => {
   });
 
   test("a contract 2 trick's inputs: check prints the reads sentence, with every machine on a crew's lead; the run's facts carry contract 2", async () => {
-    const manifest = 'id = "todo"\nname = "Todo"\nrun = "./p.sh"\nplaces = ["belt"]\ncontract = 2\ninputs = ["TODO.md", "shots/*.png"]\n';
-    const dir = await folder(manifest, { "p.sh": '#!/bin/sh\nread -r facts\ncase "$facts" in *\'"contract":2\'*) n=2;; *) n=1;; esac\nprintf \'{"v":%s,"parts":[{"at":"belt","id":"belt","mark":{"label":"c%s"}}]}\\n\' "$n" "$n"\n' });
+    const manifest = 'id = "todo"\nname = "Todo"\nrun = "program.ts"\nplaces = ["belt"]\ncontract = 2\ninputs = ["TODO.md", "shots/*.png"]\n';
+    const dir = await folder(manifest, { "program.ts": 'const n = JSON.parse(await Bun.stdin.text()).contract === 2 ? 2 : 1;\nconsole.log(JSON.stringify({ v: n, parts: [{ at: "belt", id: "belt", mark: { label: `c${n}` } }] }));\n' });
     const report = await checkStatic(dir, realFiles);
     expect(report.reads).toBe(inputsSentence(["TODO.md", "shots/*.png"], false));
     expect((await checkStatic(dir, realFiles, { crew: true })).reads).toBe("Reads TODO.md, shots/*.png in your agent sessions' folders on every machine of the crew.");
@@ -478,14 +492,14 @@ describe("collie trick check", () => {
 
   test("--run prints the refusals of the output, masked stderr of a failure, and exits 1", async () => {
     const d = await deps();
-    const refused = await folder('id = "r"\nname = "R"\nrun = "./p.sh"\nplaces = ["belt"]\n', {
-      "p.sh": `#!/bin/sh\necho '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"far too long a label"}}]}'\n`,
+    const refused = await folder('id = "r"\nname = "R"\nrun = "program.ts"\nplaces = ["belt"]\n', {
+      "program.ts": prints(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "far too long a label" } }] })),
     });
     expect(await cmdTrickCheck(d, ["--run", refused])).toBe(EXIT.FAIL);
     expect(d.err.join("\n")).toContain("error: output /parts/0/mark/label");
     const e = await deps();
-    const failing = await folder('id = "f"\nname = "F"\nrun = "./p.sh"\nplaces = ["belt"]\n', {
-      "p.sh": `#!/bin/sh\necho "darius: not found ${KEY}" >&2\nexit 127\n`,
+    const failing = await folder('id = "f"\nname = "F"\nrun = "program.ts"\nplaces = ["belt"]\n', {
+      "program.ts": `console.error("darius: not found ${KEY}");\nprocess.exitCode = 127;\n`,
     });
     expect(await cmdTrickCheck(e, ["--run", failing])).toBe(EXIT.FAIL);
     const printed = e.err.join("\n");
@@ -496,7 +510,7 @@ describe("collie trick check", () => {
   test("--run prints a note for what the output holds that this Collie does not know, and stays 0", async () => {
     const d = await deps();
     const doc = { v: 1, glow: true, parts: [{ at: "sidebar", id: "x" }, { at: "belt", id: "belt", mark: { label: "1" } }, { at: "session", id: "s", view: [{ kind: "line", text: "a" }, { kind: "chart" }] }] };
-    const newer = await folder('id = "n"\nname = "N"\nrun = "./p.sh"\nplaces = ["belt", "session"]\n', { "p.sh": `#!/bin/sh\necho '${JSON.stringify(doc)}'\n` });
+    const newer = await folder('id = "n"\nname = "N"\nrun = "program.ts"\nplaces = ["belt", "session"]\n', { "program.ts": prints(JSON.stringify(doc)) });
     expect(await cmdTrickCheck(d, ["--run", newer])).toBe(EXIT.OK);
     const out = d.out.join("\n");
     expect(out).toContain("note: output /glow");
@@ -571,10 +585,14 @@ describe("collie trick check, a script Collie's runtime runs", () => {
 describe("collie trick on, off and list", () => {
   test("on writes the switch file at 0600, off removes the id; unknown or refused tricks stay off", async () => {
     const d = await deps();
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and the
+    // switch file inherits it. NTFS has no 0600, so the check reads that list instead.
+    if (process.platform === "win32") ensureOwnerOnlyDir(d.stateDir, HOST, { root: privateRoot("state"), repair: true });
     await cmdTrickInit(d, ["legs"]);
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     const path = switchesPath(d.stateDir);
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(path)).mode & 0o777).toBe(0o600);
+    else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
     const code = await trickCodeHash(join(d.configDir, "tricks", "legs"));
     const hash = code.ok ? code.hash : "";
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 2, layout: 3, on: { legs: { at: "2026-11-08T09:00:00.000Z", hash, auto: false, by: "cli", powers: expect.stringMatching(/^[0-9a-f]{16}$/) } } });
