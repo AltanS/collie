@@ -28,8 +28,10 @@ where Nightwatch picks its own values and what it measured. Numbers come from `c
   and on the card alike. Rule 1.98 on black against border 1.28: the cut is clearly stronger.
 - `ring` is amber `oklch(0.68 0.09 70)`: 7.15 on black, 6.6 on the card, 6.0 on chrome. The ring is
   drawn with `outline-offset-2` almost everywhere, so it sits on the ground, not on a primary fill.
-- `control-on` stays a cool, low-chroma sky (L 0.27, chroma 0.035). A warm tint would look like the
-  amber `working` chip. Ink on it 9.56.
+- `control-on` is a dim amber `oklch(0.27 0.04 68)` and `control-on-foreground` the bright amber
+  `oklch(0.8 0.1 72)`. A switch that is on draws its track in the second, so the on switch matches
+  the amber accent (it was a cold blue). Ink on the tint 7.97; the thumb (`background`) on the track
+  11.06.
 
 ## Light half
 
