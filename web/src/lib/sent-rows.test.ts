@@ -39,11 +39,11 @@ describe("folderLabel", () => {
 
 describe("scopeOfHost", () => {
   it("addresses the lead, and a solo bridge, by no host", () => {
-    expect(scopeOfHost("bluefin", "bluefin")).toBeUndefined();
-    expect(scopeOfHost("bluefin", undefined)).toBeUndefined();
+    expect(scopeOfHost("lodge", "lodge")).toBeUndefined();
+    expect(scopeOfHost("lodge", undefined)).toBeUndefined();
   });
 
   it("addresses a member by its id", () => {
-    expect(scopeOfHost("workshop", "bluefin")).toEqual({ host: "workshop" });
+    expect(scopeOfHost("workshop", "lodge")).toEqual({ host: "workshop" });
   });
 });

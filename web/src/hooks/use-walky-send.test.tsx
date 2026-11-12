@@ -14,12 +14,12 @@ describe("useWalkySend", () => {
     const { result } = renderHook(() => useWalkySend());
     let answer;
     await act(async () => {
-      answer = await result.current.send("bluefin/w1:p1", "hello", "wt_aaaaaaaaaaaa");
+      answer = await result.current.send("lodge/w1:p1", "hello", "wt_aaaaaaaaaaaa");
     });
     expect(answer).toMatchObject({ ok: true });
     const [posted] = recordedWalkyPosts();
     expect(posted?.id).toMatch(/^wt_[a-z0-9]{12}$/);
-    expect(posted).toMatchObject({ to: "bluefin/w1:p1", body: "hello", replyTo: "wt_aaaaaaaaaaaa" });
+    expect(posted).toMatchObject({ to: "lodge/w1:p1", body: "hello", replyTo: "wt_aaaaaaaaaaaa" });
   });
 
   it("posts wake: true only when asked, and the same text with another wake is a new attempt (M85)", async () => {

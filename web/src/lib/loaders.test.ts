@@ -1128,7 +1128,7 @@ describe("crewLoader", () => {
     const { crewLoader } = await import("./loaders");
     const data = await crewLoader();
     expect(data.error).toBe(false);
-    expect(data.status?.members.map((m) => m.id)).toEqual(["bluefin", "workshop", "attic"]);
+    expect(data.status?.members.map((m) => m.id)).toEqual(["lodge", "workshop", "attic"]);
   });
 
   // The default handler already refuses with 404, which is what a solo collie and a peer both do.
@@ -1158,8 +1158,8 @@ describe("rootLoader — spaces and tabs follow the host the url names", () => {
     crewSnapshot();
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader();
-    expect(data.workspaces.map((w) => w.host)).toEqual(["bluefin", "bluefin"]);
-    expect(data.tabs.every((t) => t.host === "bluefin")).toBe(true);
+    expect(data.workspaces.map((w) => w.host)).toEqual(["lodge", "lodge"]);
+    expect(data.tabs.every((t) => t.host === "lodge")).toBe(true);
   });
 
   it("gives the peer's when the url names it — including its own `w1`", async () => {

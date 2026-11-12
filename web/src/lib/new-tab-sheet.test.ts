@@ -24,7 +24,7 @@ describe("sheetRows", () => {
 
   it("lists nothing before the answer for that machine is in", () => {
     expect(sheetRows(state({ loadedFor: null }), undefined)).toEqual({ agents: [], commands: [] });
-    expect(sheetRows(state(), { host: "minibuch" })).toEqual({ agents: [], commands: [] });
+    expect(sheetRows(state(), { host: "workshop" })).toEqual({ agents: [], commands: [] });
   });
 
   it("marks a lead's row", () => {

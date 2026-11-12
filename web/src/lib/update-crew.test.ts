@@ -51,8 +51,8 @@ describe("peerRows", () => {
 
   it("a leg outranks the census row for the same machine", () => {
     const rows = peerRows(
-      [member({ name: "minibuch", version: "1.3.0" })],
-      [{ name: "minibuch", state: "restarting", updatedAt: 42 }],
+      [member({ name: "workshop", version: "1.3.0" })],
+      [{ name: "workshop", state: "restarting", updatedAt: 42 }],
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.word).toBe("restarting");
@@ -218,7 +218,7 @@ describe("crewAction", () => {
     );
     expect(crewActionLabel("retry-crew", "1.5.0")).toBe("Retry crew update");
     // One member: the button names it (ADR 0064).
-    expect(crewActionLabel("retry-crew", "1.5.0", ["minibuch"])).toBe("Try minibuch again");
+    expect(crewActionLabel("retry-crew", "1.5.0", ["workshop"])).toBe("Try workshop again");
   });
 
   it("offers nothing when the whole crew is level", () => {

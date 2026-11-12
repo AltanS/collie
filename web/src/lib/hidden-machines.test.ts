@@ -26,7 +26,7 @@ const member = (id: string, isLead = false): ServerSummary => ({
   protocol: "ok",
   lastSeenAt: 1_000,
 });
-const crew = [member("bluefin", true), member("workshop"), member("attic")];
+const crew = [member("lodge", true), member("workshop"), member("attic")];
 
 const stored = () => JSON.parse(localStorage.getItem(KEY) ?? "null");
 
@@ -113,16 +113,16 @@ describe("hidden machines — the store", () => {
 
 describe("hidden machines — what the dashboard leaves out", () => {
   it("never leaves out the machine the dashboard addresses, the lead when ?h= is absent", () => {
-    const hidden = ["bluefin", "workshop"];
+    const hidden = ["lodge", "workshop"];
     // On the lead: the lead shows whatever is stored.
     expect([...machinesHiddenFrom(hidden, crew, undefined)]).toEqual(["workshop"]);
     // On workshop: workshop shows, and the stored lead comes back into force.
-    expect([...machinesHiddenFrom(hidden, crew, "workshop")]).toEqual(["bluefin"]);
+    expect([...machinesHiddenFrom(hidden, crew, "workshop")]).toEqual(["lodge"]);
   });
 
   it("is empty on a solo roster, and on a lead with no peer yet", () => {
     expect(machinesHiddenFrom(["workshop"], undefined, undefined).size).toBe(0);
-    expect(machinesHiddenFrom(["workshop"], [member("bluefin", true)], undefined).size).toBe(0);
+    expect(machinesHiddenFrom(["workshop"], [member("lodge", true)], undefined).size).toBe(0);
   });
 
   it("filters nothing with an id the roster does not list", () => {
@@ -131,28 +131,28 @@ describe("hidden machines — what the dashboard leaves out", () => {
 });
 
 describe("hidden machines: one physical machine, several member ids (M77)", () => {
-  const twoPerHost = [member("bluefin", true), member("bluefin-hc"), member("minibuch"), member("minibuch-hc")];
+  const twoPerHost = [member("lodge", true), member("lodge-hc"), member("workshop"), member("workshop-hc")];
 
   it("hides every instance of a machine in one write and shows them again", () => {
-    setMachinesHidden(["minibuch", "minibuch-hc"], true, twoPerHost);
-    expect(currentHiddenMachines()).toEqual(["minibuch", "minibuch-hc"]);
-    expect(stored()).toEqual(["minibuch", "minibuch-hc"]);
-    setMachinesHidden(["minibuch", "minibuch-hc"], false, twoPerHost);
+    setMachinesHidden(["workshop", "workshop-hc"], true, twoPerHost);
+    expect(currentHiddenMachines()).toEqual(["workshop", "workshop-hc"]);
+    expect(stored()).toEqual(["workshop", "workshop-hc"]);
+    setMachinesHidden(["workshop", "workshop-hc"], false, twoPerHost);
     expect(currentHiddenMachines()).toEqual([]);
   });
 
   it("keeps the ids per member, so the dashboard filter still reads them one by one", () => {
-    setMachinesHidden(["minibuch", "minibuch-hc"], true, twoPerHost);
+    setMachinesHidden(["workshop", "workshop-hc"], true, twoPerHost);
     expect([...machinesHiddenFrom(currentHiddenMachines(), twoPerHost, undefined)]).toEqual([
-      "minibuch",
-      "minibuch-hc",
+      "workshop",
+      "workshop-hc",
     ]);
   });
 
   it("leaves another machine's stored ids alone and never stores an id twice", () => {
-    setMachineHidden("bluefin-hc", true, twoPerHost);
-    setMachinesHidden(["minibuch", "minibuch-hc"], true, twoPerHost);
-    setMachinesHidden(["minibuch", "minibuch-hc"], true, twoPerHost);
-    expect(currentHiddenMachines()).toEqual(["bluefin-hc", "minibuch", "minibuch-hc"]);
+    setMachineHidden("lodge-hc", true, twoPerHost);
+    setMachinesHidden(["workshop", "workshop-hc"], true, twoPerHost);
+    setMachinesHidden(["workshop", "workshop-hc"], true, twoPerHost);
+    expect(currentHiddenMachines()).toEqual(["lodge-hc", "workshop", "workshop-hc"]);
   });
 });

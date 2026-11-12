@@ -144,10 +144,10 @@ describe("offerFor", () => {
   });
 
   it("a machine that takes no writes offers nothing, and its sentence blocks the worktree", () => {
-    const offer = offerFor({ ...base, refusal: "minibuch is not reachable" });
+    const offer = offerFor({ ...base, refusal: "workshop is not reachable" });
     expect(offer.agents).toEqual([]);
     expect(offer.commands.map((c) => c.key)).toEqual(["shell"]);
-    expect(offer.branchBlocked).toEqual({ kind: "machine", sentence: "minibuch is not reachable" });
+    expect(offer.branchBlocked).toEqual({ kind: "machine", sentence: "workshop is not reachable" });
   });
 });
 
@@ -325,7 +325,7 @@ describe("the Command select's list in each switch state", () => {
   });
 
   it("a machine that takes no writes offers neither", () => {
-    const offer = offerFor({ ...input, run: true, recentRuns: RECENT, refusal: "minibuch is not reachable" });
+    const offer = offerFor({ ...input, run: true, recentRuns: RECENT, refusal: "workshop is not reachable" });
     expect(offer.recent).toEqual([]);
     expect(offer.canRun).toBe(false);
   });
@@ -409,7 +409,7 @@ describe("unavailableText", () => {
 describe("machineWord", () => {
   const server = (over: Partial<ServerSummary>): ServerSummary => ({
     id: "mini",
-    name: "minibuch",
+    name: "workshop",
     isLead: false,
     reachable: true,
     protocol: "ok",
@@ -718,6 +718,6 @@ describe("offerFor: starter rows", () => {
 
   it("the summary names no folder for a starter, with or without a machine", () => {
     expect(summaryKey({ what: "Code review", folder: "", noFolder: true })).toBe("starter");
-    expect(summaryKey({ what: "Code review", folder: "", noFolder: true, machine: "minibuch" })).toBe("starterMachine");
+    expect(summaryKey({ what: "Code review", folder: "", noFolder: true, machine: "workshop" })).toBe("starterMachine");
   });
 });

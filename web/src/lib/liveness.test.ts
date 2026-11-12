@@ -86,10 +86,10 @@ describe("isLive", () => {
 
   it("the offline event takes every pane down at once", () => {
     markLive("w1:p1");
-    markLive("w1:p2", Date.now(), { host: "minibuch" });
+    markLive("w1:p2", Date.now(), { host: "workshop" });
     window.dispatchEvent(new Event("offline"));
     expect(isLive("w1:p1")).toBe(false);
-    expect(isLive("w1:p2", { host: "minibuch" })).toBe(false);
+    expect(isLive("w1:p2", { host: "workshop" })).toBe(false);
   });
 
   it("markAllDead cancels a pending take-down and clears every pane", () => {
@@ -120,12 +120,12 @@ describe("isLive", () => {
   it("is per pane and per scope", () => {
     markLive("w1:p1");
     expect(isLive("w1:p2")).toBe(false);
-    expect(isLive("w1:p1", { host: "minibuch" })).toBe(false);
-    markLive("w1:p1", Date.now(), { host: "minibuch" });
-    expect(isLive("w1:p1", { host: "minibuch" })).toBe(true);
-    markDead("w1:p1", { host: "minibuch" });
+    expect(isLive("w1:p1", { host: "workshop" })).toBe(false);
+    markLive("w1:p1", Date.now(), { host: "workshop" });
+    expect(isLive("w1:p1", { host: "workshop" })).toBe(true);
+    markDead("w1:p1", { host: "workshop" });
     vi.advanceTimersByTime(DEAD_DEBOUNCE_MS);
-    expect(isLive("w1:p1", { host: "minibuch" })).toBe(false);
+    expect(isLive("w1:p1", { host: "workshop" })).toBe(false);
     expect(isLive("w1:p1")).toBe(true);
   });
 

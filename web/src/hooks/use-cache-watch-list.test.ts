@@ -11,7 +11,7 @@ import type { CacheWatchListEntry } from "@/lib/types";
 
 const ENTRIES: CacheWatchListEntry[] = [
   { id: "e1", label: "web-worker" },
-  { id: "e2", label: "backend", host: "minibuch" },
+  { id: "e2", label: "backend", host: "workshop" },
 ];
 
 describe("useCacheWatchList", () => {
@@ -51,7 +51,7 @@ describe("useCacheWatchList", () => {
     });
 
     await waitFor(() =>
-      expect(result.current.entries).toEqual([{ id: "e2", host: "minibuch", label: "renamed-by-server" }]),
+      expect(result.current.entries).toEqual([{ id: "e2", host: "workshop", label: "renamed-by-server" }]),
     );
     expect(result.current.busy).toBe(false);
   });

@@ -20,8 +20,8 @@ export const FIXTURE_MACHINES_TS = 5_000_000_000;
  */
 export const fixtureMachineRows: MachineRow[] = [
   {
-    id: "bluefin",
-    name: "bluefin",
+    id: "lodge",
+    name: "lodge",
     isLead: true,
     health: "reachable",
     sample: {
