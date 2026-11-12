@@ -10,6 +10,7 @@ import { ROW_OPEN_BUTTON, ROW_OPEN_CONTROL, ROW_OPEN_ROW, ROW_OPEN_SWITCH } from
 import { Switch } from "@/components/ui/switch";
 import { HillAboutSheetControl, HillEntryRow } from "@/components/hill-entry";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
+import { TOKEN_USE_NAME, TokenUseChip } from "@/components/token-use-label";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
 import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
@@ -21,6 +22,7 @@ import { placesLine, readsLine, runsOnLine, warningLines, type WarningLine } fro
 import type { OfficialState, OfficialTricksReply, TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
+import { trickTokenUse } from "@/lib/tricks/token-use";
 import { usePairing } from "@/lib/pairing";
 import { useOptionalRootData } from "@/lib/route-data";
 import { setStatus } from "@/lib/status";
@@ -352,9 +354,10 @@ function OfficialRow({ entry, busy, canWrite, onAdd, onAbout }: { entry: WireOff
             onClick={onAbout}
             className={cn(ROW_OPEN_BUTTON, "flex w-full items-center gap-1 text-left font-medium")}
           >
-            <span className="min-w-0 truncate">{entry.name}</span>
+            <span className={TOKEN_USE_NAME}>{entry.name}</span>
             <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             <OriginLabel origin="official" />
+            {trickTokenUse(entry) !== null && <TokenUseChip />}
           </button>
           <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">
             {entry.description}
@@ -429,10 +432,11 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
             onClick={onAbout}
             className={cn(ROW_OPEN_BUTTON, "flex w-full items-center gap-1 text-left font-medium")}
           >
-            <span className="min-w-0 truncate">{trick.name}</span>
+            <span className={TOKEN_USE_NAME}>{trick.name}</span>
             {/* The cue that the name opens something: the app's own "this row opens another screen" glyph. */}
             <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             {origin !== undefined && <OriginLabel origin={origin} />}
+            {trickTokenUse(trick) !== null && <TokenUseChip />}
           </button>
           {trick.description !== undefined && (
             <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">

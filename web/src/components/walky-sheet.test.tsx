@@ -404,6 +404,8 @@ describe("the walky talky switch at the head of the sheet (M89 spec 04)", () => 
     expect(switchOf()).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("Off: other agents cannot message this session. You still can.")).toBeInTheDocument();
     expect(document.querySelector('[data-slot="walky-off"] svg.lucide-walky-talky')).not.toBeNull();
+    // Other agents' messages are typed into this session: the chip after the label, the switch keeps its name.
+    expect(document.querySelector('[data-slot="walky-off"] [data-slot="token-use"]')?.textContent).toBe("Uses agent tokens");
     cleanup();
     sheet([fixtureWalkyAgent], { walkyOff: true, onWalkyOff: vi.fn(async () => null) });
     expect(switchOf()).toHaveAttribute("aria-checked", "false");

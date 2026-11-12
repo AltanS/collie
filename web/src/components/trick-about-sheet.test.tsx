@@ -217,7 +217,13 @@ describe("an agent view and its rules (contract 2)", () => {
   it("lists the two rights lines and the rules line under What it does, with no later note, in the schema's words", () => {
     render(<TrickAboutSheet trick={VIEW_TRICK} open onClose={vi.fn()} />);
     const does = screen.getByRole("list", { name: "What it does" });
-    expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Draws in: agent view.", AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS]);
+    expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "Your agent reads this trick's instructions and draws its answers. That uses tokens.",
+      "Draws in: agent view.",
+      AGENT_VIEW_WORDS,
+      AGENT_VIEW_TAP_WORDS,
+      RULES_WORDS,
+    ]);
     expect(AGENT_VIEW_WORDS).toBe("Adds a view of a session that the session's own agent draws. You switch it on per session.");
     expect(AGENT_VIEW_TAP_WORDS).toBe("A tap in that view sends a message in your name to that session only.");
     expect(RULES_WORDS).toBe("Gives your agents instructions written by its author.");
@@ -385,5 +391,52 @@ describe("where it comes from: the repository's link, its facts and the version 
     expect(rows[0]).toBe("From AltanS/collie-tricks @ 0d80399");
     expect(within(from()).getByRole("link").getAttribute("href")).toBe("https://github.com/AltanS/collie-tricks");
     expect(from().querySelector('[data-line="repo-facts"]')).toHaveTextContent("1,234 stars, last commit Nov 10, 2026");
+  });
+});
+
+describe("why a trick uses agent tokens: the first row of What it does (2026-11-12)", () => {
+  const PROGRAM: WireTrickInfo = { host: "lodge", id: "inbox", name: "PR Inbox", icon: "plug", on: true, state: "ok", places: ["belt"], description: "Open pull requests." };
+  const ENTRY: WireOfficialTrick = {
+    id: "pr-inbox",
+    name: "PR Inbox",
+    description: "Open pull requests and issues that wait for you.",
+    repo: "https://github.com/AltanS/collie-tricks",
+    repoName: "AltanS/collie-tricks",
+    commit: "0c1e5d82346486815073fedcdb994bc4c2041b55",
+    state: "absent",
+  };
+  const firstRow = (): string | null | undefined => screen.getByRole("list", { name: "What it does" }).querySelector("li")?.textContent;
+
+  it("says the sentence of its reason first, and draws no chip in the sheet", () => {
+    const rows: [WireTrickInfo, string][] = [
+      [{ ...PROGRAM, rules: { file: "rules.md", text: "Draw one screen.\n" } }, "Your agent reads this trick's instructions. That uses tokens."],
+      [{ ...PROGRAM, decidesReply: true }, "Your answers to its Decisions go to an agent as messages. That uses tokens."],
+    ];
+    for (const [trick, sentence] of rows) {
+      render(<TrickAboutSheet trick={trick} open onClose={vi.fn()} />);
+      expect(firstRow()).toBe(sentence);
+      expect(screen.getByRole("dialog").querySelector('[data-slot="token-use"]')).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("says nothing of tokens for a program trick, even one whose last run listed Decisions", () => {
+    render(<TrickAboutSheet trick={{ ...PROGRAM, decides: true }} open onClose={vi.fn()} />);
+    expect(firstRow()).toBe("Draws in: belt.");
+    expect(screen.getByRole("dialog").textContent).not.toContain("tokens");
+  });
+
+  it("an official entry says it before Add, from the pin alone", () => {
+    render(<OfficialTrickAboutSheet entry={{ ...ENTRY, decidesReply: true }} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    expect(firstRow()).toBe("Your answers to its Decisions go to an agent as messages. That uses tokens.");
+    cleanup();
+    render(<OfficialTrickAboutSheet entry={{ ...ENTRY, givesRules: true, agentView: true }} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    expect([...screen.getByRole("list", { name: "What it does" }).querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "Your agent reads this trick's instructions and draws its answers. That uses tokens.",
+      RULES_WORDS,
+    ]);
+    cleanup();
+    render(<OfficialTrickAboutSheet entry={ENTRY} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
+    expect(screen.queryByRole("list", { name: "What it does" })).toBeNull();
   });
 });

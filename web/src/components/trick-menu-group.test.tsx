@@ -242,6 +242,9 @@ describe("the menu place on the phone", () => {
     expect(group?.textContent).toContain("From the trick Morph");
     expect(group?.querySelector('[role="switch"]')).not.toBeNull();
     expect(baseElement.querySelectorAll('[role="switch"]')).toHaveLength(1);
+    // No "Uses agent tokens" here (2026-11-12): at 360 px the chip does not fit the hint's second line and
+    // would add a third. The trick's own row in Settings, Tricks carries it.
+    expect(group?.querySelector('[data-slot="token-use"]')).toBeNull();
     void store;
   });
 });

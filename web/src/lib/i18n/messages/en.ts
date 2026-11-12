@@ -3480,6 +3480,13 @@ export const en = {
   // The label after a trick's name in the one list of Settings, Tricks: where it comes from.
   "settings.tricks.origin.official": "Official",
   "settings.tricks.origin.community": "Community",
+  // A trick or a Collie feature that makes an agent read or write more (2026-11-12): the chip after its name,
+  // and in a trick's About sheet the first row of "What it does", one sentence on why
+  // (lib/tricks/token-use.ts, lib/token-use-features.ts). English only until the translation pass.
+  "tokens.uses": "Uses agent tokens",
+  "settings.tricks.about.tokens.agentView": "Your agent reads this trick's instructions and draws its answers. That uses tokens.",
+  "settings.tricks.about.tokens.rules": "Your agent reads this trick's instructions. That uses tokens.",
+  "settings.tricks.about.tokens.answer": "Your answers to its Decisions go to an agent as messages. That uses tokens.",
   "settings.tricks.official.add": "Add",
   "settings.tricks.official.addAria": "Add {name}",
   "settings.tricks.official.taken": "A trick with this name is already here.",
@@ -4023,6 +4030,10 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.version",
   "settings.tricks.about.repoOpen",
   "settings.tricks.origin.community",
+  "tokens.uses",
+  "settings.tricks.about.tokens.agentView",
+  "settings.tricks.about.tokens.rules",
+  "settings.tricks.about.tokens.answer",
   "settings.tricks.official.add",
   "settings.tricks.official.addAria",
   "settings.tricks.official.taken",

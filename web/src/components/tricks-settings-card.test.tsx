@@ -227,6 +227,28 @@ describe("TricksSettingsCard: the rows", () => {
   });
 });
 
+describe("TricksSettingsCard: Uses agent tokens (2026-11-12)", () => {
+  it("draws the chip on the name line of a trick that makes an agent read or write more, and none on the others", async () => {
+    const ANSWERS: WireTrickInfo = { ...TRACKER, id: "inbox", name: "PR Inbox", decidesReply: true };
+    const RULES: WireTrickInfo = { ...TRACKER, id: "notes", name: "Notes", rules: { file: "rules.md", text: "Write short.\n" } };
+    renderCard(await storeWith([LEGS, ANSWERS, RULES, { ...TRACKER, decides: true }]));
+    await findRow("inbox");
+    const chip = (id: string) => rowOf(id).querySelector('[data-slot="trick-about"] [data-slot="token-use"]');
+    expect(chip("inbox")?.textContent).toBe("Uses agent tokens");
+    expect(chip("notes")?.textContent).toBe("Uses agent tokens");
+    // A program trick whose last run listed Decisions but declares no reply, and a plain one: no chip.
+    expect(chip("tracker")).toBeNull();
+    expect(chip("legs")).toBeNull();
+    // The chip comes after the name, which truncates first; the open button keeps the name it always had.
+    const button = rowOf("inbox").querySelector('[data-slot="trick-about"]');
+    expect(button?.lastElementChild?.getAttribute("data-slot")).toBe("token-use");
+    expect(button?.firstElementChild?.className).toContain("truncate");
+    // It gives up width only after the name is gone (components/token-use-label.tsx).
+    expect(button?.firstElementChild?.className).toContain("shrink-[1000]");
+    expect(within(rowOf("inbox")).getByRole("button", { name: "About PR Inbox" })).toBe(button);
+  });
+});
+
 describe("TricksSettingsCard: the warnings before the switch (review 15)", () => {
   const WARNED: WireTrickInfo = {
     ...TRACKER,

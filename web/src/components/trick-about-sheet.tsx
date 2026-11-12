@@ -9,6 +9,7 @@ import { OneOf } from "@/components/ui/one-of";
 import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { tokenUseWhy, useTokenUseShown } from "@/components/token-use-label";
 import { useLocale } from "@/hooks/use-locale";
 import { dateOnly, wholeNumber } from "@/lib/format";
 import { isWebLink, linkHost } from "@/lib/hill/reader";
@@ -16,6 +17,7 @@ import { t, tn } from "@/lib/i18n";
 import { HostWords } from "@/lib/tricks/render";
 import { originLine, placesLine, readsLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
 import { isSourceUrl, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
+import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 
 // A trick's About sheet: what a person reads before they switch a trick on. Opened by a tap on the trick's
 // name in Settings → Tricks (components/tricks-settings-card.tsx); the switch there is its own tap target.
@@ -136,8 +138,15 @@ function menuRows(): FactRow[] {
 }
 
 /** The rows of "What it does", from the wire's facts alone. Empty when the wire carries none. */
-function doesRows(trick: WireTrickInfo): FactRow[] {
-  const rows: FactRow[] = [];
+/** The first row of "What it does" when the trick makes an agent read or write more: why, in one sentence. */
+function tokenRows(subject: TrickTokenFacts): FactRow[] {
+  const reason = trickTokenUse(subject);
+  if (reason === null) return [];
+  return [{ key: "tokens", node: <span data-line="tokens">{tokenUseWhy(reason)}</span> }];
+}
+
+function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
+  const rows: FactRow[] = tokens ? tokenRows(trick) : [];
   const places = Array.isArray(trick.places) ? trick.places : [];
   const view = trick.agentView === true;
   if (places.length > 0 || view) rows.push({ key: "draws", node: t("settings.tricks.about.draws", { places: placesLine(places, view) }) });
@@ -243,7 +252,8 @@ export interface TrickAboutSheetProps {
 export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite = true, onAuto, timeZone }: TrickAboutSheetProps) {
   useLocale();
   const paragraphs = trick.about === undefined ? [] : aboutParagraphs(trick.about);
-  const does = doesRows(trick);
+  const tokens = useTokenUseShown();
+  const does = doesRows(trick, tokens);
   const fromRepo = trick.provenance?.via === "repo" ? trick.provenance.url : undefined;
   const comes = present([
     { key: "origin", node: originLine(trick.provenance) },
@@ -307,6 +317,9 @@ export interface OfficialTrickAboutSheetProps {
 /** The About sheet of an official entry that is not added yet. */
 export function OfficialTrickAboutSheet({ entry, open, onClose, busy, canWrite, onAdd, timeZone }: OfficialTrickAboutSheetProps) {
   useLocale();
+  const tokens = useTokenUseShown();
+  const does = [...(tokens ? tokenRows(entry) : []), ...(entry.addsMenu === true ? menuRows() : [])];
+  if (entry.givesRules === true) does.push({ key: "rules", node: t("settings.tricks.about.rules") });
   const comes = present([
     { key: "origin", node: t("settings.tricks.by.repo", { repo: entry.repoName, sha: entry.commit.slice(0, 7) }) },
     repoLinkRow(entry.repo, entry.repoFacts, timeZone),
@@ -318,13 +331,7 @@ export function OfficialTrickAboutSheet({ entry, open, onClose, busy, canWrite, 
         <p data-line="description" className="text-sm font-medium break-words">
           {entry.description}
         </p>
-        {(entry.givesRules === true || entry.addsMenu === true) && (
-          <FactGroup
-            slot="does"
-            label={t("settings.tricks.about.does")}
-            rows={[...(entry.addsMenu === true ? menuRows() : []), ...(entry.givesRules === true ? [{ key: "rules", node: t("settings.tricks.about.rules") }] : [])]}
-          />
-        )}
+        {does.length > 0 && <FactGroup slot="does" label={t("settings.tricks.about.does")} rows={does} />}
         {/* The list pins the rules but does not carry them, and nothing is fetched before Add (review 8 V-N3). */}
         {entry.givesRules === true && (
           <p data-line="rules-after-add" className="pt-3 text-sm break-words text-muted-foreground">

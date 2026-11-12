@@ -4,6 +4,7 @@ import { Icon } from "@/components/icons/icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
+import { FeatureTokenChip, TOKEN_USE_NAME } from "@/components/token-use-label";
 import { WalkyIdChip } from "@/components/walky-id-chip";
 import { useWalkyLive, useWalkyLog } from "@/components/walky-log";
 import { WalkyBodyText, sentTargetWords } from "@/components/walky-name-chip";
@@ -149,7 +150,7 @@ const ASKED_HOLD_MS = 15_000;
  * a sweep late, and another hand (the session's own `collie walky on`) can change the flag meanwhile.
  * A failed call puts it back with a line.
  */
-function WalkyOffSwitch({ off, onChange }: { off: boolean; onChange: (off: boolean) => Promise<string | null> }) {
+export function WalkyOffSwitch({ off, onChange }: { off: boolean; onChange: (off: boolean) => Promise<string | null> }) {
   // The value asked for, and the row's value when it was asked: any move of the row ends the wait.
   const [asked, setAsked] = useState<{ value: boolean; from: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -180,7 +181,10 @@ function WalkyOffSwitch({ off, onChange }: { off: boolean; onChange: (off: boole
         <span className="flex min-w-0 items-start gap-2">
           <Mark className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="min-w-0">
-            <span className="block text-sm font-medium">{t("walky.off.label")}</span>
+            <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+              <span className={TOKEN_USE_NAME}>{t("walky.off.label")}</span>
+              <FeatureTokenChip feature="walky-talky" />
+            </span>
             <span id={hintId} className="block text-xs leading-snug text-muted-foreground">
               {t("walky.off.hint")}
             </span>

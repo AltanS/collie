@@ -1,4 +1,5 @@
 import { Icon } from "@/components/icons/icon";
+import { FeatureTokenChip, TOKEN_USE_NAME } from "@/components/token-use-label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useHillSwitch } from "@/hooks/use-hill-switch";
@@ -27,7 +28,11 @@ export function HillSwitchCard({ on, disabled, onToggle }: { on: boolean; disabl
         <div className="flex min-w-0 items-start gap-3">
           <Icon name="hill" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">{t("settings.hill.label")}</div>
+            {/* The label truncates before the chip: the chip keeps its words (components/token-use-label.tsx). */}
+            <div className="flex min-w-0 items-center gap-1.5 font-medium">
+              <span className={TOKEN_USE_NAME}>{t("settings.hill.label")}</span>
+              <FeatureTokenChip feature="hill" />
+            </div>
             <p className="text-sm text-muted-foreground">{t("settings.hill.hint")}</p>
           </div>
         </div>

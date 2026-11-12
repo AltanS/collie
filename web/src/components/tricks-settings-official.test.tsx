@@ -145,6 +145,23 @@ describe("Official tricks: one list", () => {
     expect(officialRow("morph").querySelector('[data-line="places"]')).not.toBeNull();
   });
 
+  it("draws Uses agent tokens on an entry before Add, from the pin alone, and keeps it on the row Add makes", async () => {
+    const MORPH: WireOfficialTrick = { ...entry("morph", "Morph", "Your agent answers with one screen you can tap, not a wall of text."), givesRules: true, agentView: true };
+    serveList(() => ({ tricks: [MORPH, { ...REVIEW, decidesReply: true }, BUILDS, { ...INBOX, state: "added", decidesReply: true }] }));
+    const { store } = await liveStore([installed(INBOX, { decidesReply: true }), LEGS]);
+    renderCard(store);
+    await vi.waitFor(() => expect(document.querySelector('[data-official="morph"]')).not.toBeNull());
+    const chip = (row: HTMLElement) => row.querySelector('[data-slot="token-use"]')?.textContent ?? null;
+    expect(chip(officialRow("morph"))).toBe("Uses agent tokens");
+    expect(chip(officialRow("design-review"))).toBe("Uses agent tokens");
+    expect(chip(officialRow("running-builds"))).toBeNull();
+    expect(chip(trickRow("pr-inbox"))).toBe("Uses agent tokens");
+    expect(chip(trickRow("legs"))).toBeNull();
+    // After the origin label, inside the one open button.
+    const button = officialRow("design-review").querySelector('[data-slot="official-about"]');
+    expect([...(button?.children ?? [])].slice(-2).map((el) => el.getAttribute("data-slot"))).toEqual(["trick-origin", "token-use"]);
+  });
+
   it("adds a trick and switches it on, and its row keeps its place; no id appears twice", async () => {
     const user = userEvent.setup();
     let state: WireOfficialTrick["state"] = "absent";
