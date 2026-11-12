@@ -1055,6 +1055,12 @@ each id against the run's facts and stamps the pane's walky instance token; the 
 `bound` only to a phone that asks with `bound=1`. The phone (`lib/tricks/menu.ts`) draws a bound part
 only where the scope key and the instance match, in place of the trick's unbound part there; an
 unbound menu part shows only on the trick's own machine. The tap check asks the same (service.ts).
+The walky token is WalkyTalky's address and outlives a `/clear`, so each binding also keeps, on the
+bridge only, the pane's generation (`<agent>:<agent session>`) read with the run's facts. Before each
+list and tap the store holds every binding to the pane's generation now (store.ts `rebind`): another
+agent or another named session drops the binding with a rev, so the phone loses the row; a pane that
+names no session yet refuses the tap and keeps the row. The store is in memory: after a bridge restart
+the first run binds again, from facts and tokens read in one pass.
 
 The sheet (`components/trick-menu-group.tsx`) freezes the groups and rows at the open, restarts the
 settle window (`hooks/use-settled.ts`, 500 ms, shared with agent views) on any change to a row,
@@ -1217,6 +1223,13 @@ written as what a trick, or a person who controls one, can do today.
   settle window reads what places a control from the screen's facts, not from the layout: a picture
   that loads late and grows its box is not counted.
 
+- **A bound row follows its pane id, one run at a time.** A program names a session by
+  `<member>:<pane>`, and a `/clear` keeps that id: the binding generation drops the row when the
+  conversation changes, and the next run binds the new conversation if the program names the id
+  again. A same agent that closes and reopens shows the old row, inert, until it names its session.
+  A crew member's session has no agent session on the wire, so its binding is checked by the walky
+  token alone: a member's pane id taken by a new session inside 30 seconds keeps a bound row until
+  the trick runs again, and its taps run in the new session. This remains after review 12.
 - **A relative import can reach outside the approved copy.** The approved copy holds only code a
   person saw, but a program in it can still import `../../somewhere/else.ts`. That file is not in the
   hash and is not on the version card.

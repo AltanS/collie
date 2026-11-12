@@ -172,8 +172,9 @@ switch itself, so print the new `on` in the answer. A label that reads like one 
 is refused, never cut.
 
 Add `sessions` to a `menu` part or a `belt` mark to show it only in those sessions, by the facts'
-session ids. Collie binds each id to the pane that is open now, and a pane id that goes to a new
-session shows nothing. A part without `sessions` shows in every agent session of this machine; to
+session ids. Collie binds each id to the pane and the conversation that are open now. A pane id that
+goes to a new session, or a session that starts a new conversation (`/clear`), shows nothing until
+your next run names it again. A part without `sessions` shows in every agent session of this machine; to
 reach a crew member's session, name it. The [menu place](tricks-reference.md#menu) lists every
 limit.
 

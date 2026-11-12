@@ -1,3 +1,4 @@
+import { bindingAgainst, type GenerationOf } from "./bound.ts";
 import { redactText } from "../redact.ts";
 import {
   partKey,
@@ -90,6 +91,11 @@ export class TricksStore {
    * rev from here up to the part's rev was sent from what the part draws now.
    */
   private readonly drawnAt = new Map<string, number>();
+  /**
+   * Bridge only, never on the wire: each bound part's sessions with the pane's generation when the run's
+   * facts were read (bound.ts, the binding generation). A session's generation null: checked by its token.
+   */
+  private readonly generations = new Map<string, Map<string, string | null>>();
 
   constructor(base: number) {
     this.counter = base;
@@ -138,7 +144,7 @@ export class TricksStore {
    * old value, refused parts keep theirs stale, and a part the document no longer has goes away. A refused
    * part whose slot an accepted part (or a stale one before it) took goes away too (review 12 M2).
    */
-  applyDocument(memberId: string, trick: string, parsed: ParsedTrickDocument, stamp: DocumentStamp, bound?: ReadonlyMap<string, WireBound[]>): void {
+  applyDocument(memberId: string, trick: string, parsed: ParsedTrickDocument, stamp: DocumentStamp, bound?: ReadonlyMap<string, WireBound[]>, generations?: ReadonlyMap<string, string | null>): void {
     const keep = new Set<string>();
     const taken = new Set<string>();
     for (const accepted of parsed.parts) {
@@ -149,6 +155,9 @@ export class TricksStore {
       const wire: Omit<WireTrickPart, "rev"> = { host: memberId, trick, part, value: accepted.part, asOf: stamp.asOf, fresh: stamp.fresh };
       if (sessions !== undefined) wire.bound = sessions;
       this.put(wire);
+      const key = partKey(wire);
+      if (sessions === undefined) this.generations.delete(key);
+      else this.generations.set(key, new Map(sessions.map((entry) => [entry.session, generations?.get(entry.session) ?? null])));
     }
     for (const part of parsed.refusedParts) {
       const key = partKey({ host: memberId, trick, part });
@@ -164,9 +173,48 @@ export class TricksStore {
     }
     for (const key of this.keysOf(memberId, trick)) {
       if (keep.has(key)) continue;
-      this.parts.delete(key);
-      this.drawnAt.delete(key);
+      this.forget(key);
       this.next();
+    }
+  }
+
+  private forget(key: string): void {
+    this.parts.delete(key);
+    this.drawnAt.delete(key);
+    this.generations.delete(key);
+  }
+
+  /** The generation a bound part's session was bound at, or null (no generation, or not bound there). */
+  generationAt(key: string, session: string): string | null {
+    return this.generations.get(key)?.get(session) ?? null;
+  }
+
+  /**
+   * Hold every binding to its pane's generation now (bound.ts `bindingAgainst`): a session whose pane holds
+   * another conversation for sure leaves the part, and a part with no session left goes, each with a rev,
+   * so the phone loses the row. A session named since by the same agent is learned. Unsure changes nothing.
+   */
+  rebind(generationOf: GenerationOf): void {
+    for (const [key, sessions] of this.generations) {
+      const part = this.parts.get(key);
+      if (part?.bound === undefined) continue;
+      const gone = new Set<string>();
+      for (const [session, held] of sessions) {
+        const now = generationOf(session);
+        const verdict = bindingAgainst(held, now);
+        if (verdict === "changed") gone.add(session);
+        else if (verdict === "same" && held !== null && now !== null && bindingAgainst(now, held) === "unsure") sessions.set(session, now);
+      }
+      if (gone.size === 0) continue;
+      for (const session of gone) sessions.delete(session);
+      const left = part.bound.filter((entry) => !gone.has(entry.session));
+      if (left.length === 0) {
+        this.forget(key);
+        this.next();
+        continue;
+      }
+      const { rev: _rev, ...rest } = part;
+      this.put({ ...rest, bound: left });
     }
   }
 
@@ -183,10 +231,7 @@ export class TricksStore {
   /** Drop every part of a trick (switched off, folder gone). */
   dropParts(memberId: string, trick: string): void {
     const keys = this.keysOf(memberId, trick);
-    for (const key of keys) {
-      this.parts.delete(key);
-      this.drawnAt.delete(key);
-    }
+    for (const key of keys) this.forget(key);
     if (keys.length > 0) this.next();
   }
 

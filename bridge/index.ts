@@ -3863,6 +3863,19 @@ const tricks =
           const instance = body?.agents.find((pane) => pane.paneId === paneId)?.instance;
           return instance !== undefined && INSTANCE_TOKEN.test(instance) ? instance : null;
         },
+        // The binding generation (bound.ts): this machine's own pane's agent and the agent session it names,
+        // the Send Protocol's generation. A crew member's pane has none on the wire: its binding is checked by
+        // its token alone. A pane not among the agents now (gone, or a shell between two agents) reads null.
+        generationOf: (sessionId) => {
+          const colon = sessionId.indexOf(":");
+          if (colon <= 0 || !isOwnId(bridgeId, sessionId.slice(0, colon))) return null;
+          const paneId = sessionId.slice(colon + 1);
+          for (const rt of registry.all()) {
+            const view = rt.engine.current().agents.find((candidate) => candidate.paneId === paneId);
+            if (view !== undefined) return `${view.agent}:${view.agentSession?.value ?? "-"}`;
+          }
+          return null;
+        },
         env: process.env,
         // The shell of a run line, and the Windows gate (service.ts `gated`): on Windows no trick runs yet.
         platform: HOST.platform,

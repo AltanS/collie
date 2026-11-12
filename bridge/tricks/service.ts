@@ -20,6 +20,7 @@ import {
   type TricksReply,
   type TricksRunsOn,
   type FactsSession,
+  partKey,
   type ParsedTrickDocument,
   type Refusal,
   TAP_REFUSED_LINES,
@@ -36,7 +37,7 @@ import {
 import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
-import { bindParts, type InstanceOf } from "./bound.ts";
+import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from "./bound.ts";
 import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
@@ -186,6 +187,14 @@ export const LINK_LINE = "The approved copy holds a symbolic link, so the trick 
 export const PENDING_SETTLE_MS = 5000;
 /** How often the unreferenced copies are pruned. */
 export const PRUNE_EVERY_MS = 60_000;
+/** What a run's bound parts are stamped with, read with its facts (service.ts `tokensOf`). */
+interface RunBindings {
+  /** Each agent session's walky instance token. */
+  readonly tokens: ReadonlyMap<string, string>;
+  /** Each agent session's binding generation (bound.ts), null where it cannot be read. */
+  readonly generations: ReadonlyMap<string, string | null>;
+}
+
 /** The message of a retried tap whose run started before the bridge restarted. */
 export const TAP_LOST_LINE = "The bridge restarted while this tap ran. It may have done its work; nothing ran again.";
 
@@ -349,6 +358,12 @@ export interface TricksServiceDeps {
    * starts (review 12 N6), and again at each tap on a bound or a menu part. Absent: every bound part is dropped, fail closed.
    */
   instanceOf?: InstanceOf;
+  /**
+   * The binding generation (bound.ts) of a facts session's pane now, `<agent>:<agent session or ->`, or null
+   * when it cannot be read (a crew member's session: the wire carries no agent session). Read with a run's
+   * facts and before each list and tap. Absent: bindings are checked by their instance token alone.
+   */
+  generationOf?: GenerationOf;
   /** Whether this bridge leads a crew, so a trick's inputs come from every machine (the Settings sentence says so). Absent: false. */
   crewWide?: () => boolean;
   /** The fetch of a contract 2 trick's inputs before each run (inputs.ts `TrickInputs`). Absent: no files, no `inputs` on the sessions. */
@@ -706,11 +721,13 @@ export class TricksService implements TricksSurface {
   async reply(since: number | undefined, opts?: BoundAsk & { readonly forCli?: boolean }): Promise<TricksReply & CliTricksExtra> {
     if (this.gated()) return { rev: this.store.rev, tricks: [], parts: [], present: [], gate: "windows" };
     await this.refresh();
+    this.rebind();
     return this.store.reply(since, opts?.forCli === true && this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.(), { bound: opts?.bound === true });
   }
 
   sessionPanes(): TrickSessionPanes | undefined {
     if (!this.folderExists || this.gated()) return undefined;
+    this.rebind();
     const all = this.store.reply(undefined);
     return trickSessionPanes({
       host: this.deps.memberId,
@@ -1505,17 +1522,27 @@ export class TricksService implements TricksSurface {
     void this.begin(rt, tapTrigger(next), next);
   }
 
-  /** The instance token of each agent session of a run's facts, read once, or none without a registry. */
-  private tokensOf(sessions: readonly FactsSession[]): ReadonlyMap<string, string> {
+  /**
+   * The instance token and the pane's generation (bound.ts, the binding generation) of each agent session
+   * of a run's facts, read once, in the same turn as the facts. No token without a registry; a generation
+   * null without `generationOf` or for a pane it cannot read.
+   */
+  private tokensOf(sessions: readonly FactsSession[]): RunBindings {
     const tokens = new Map<string, string>();
-    const instanceOf = this.deps.instanceOf;
-    if (instanceOf === undefined) return tokens;
+    const generations = new Map<string, string | null>();
     for (const session of sessions) {
       if (session.agent === undefined) continue;
-      const token = instanceOf(session.id);
+      const token = this.deps.instanceOf?.(session.id) ?? null;
       if (token !== null) tokens.set(session.id, token);
+      generations.set(session.id, this.deps.generationOf?.(session.id) ?? null);
     }
-    return tokens;
+    return { tokens, generations };
+  }
+
+  /** Hold every stored binding to its pane's generation now (store.ts `rebind`), before a list or a tap reads them. */
+  private rebind(): void {
+    const generationOf = this.deps.generationOf;
+    if (generationOf !== undefined) this.store.rebind(generationOf);
   }
 
   /** Run the program once and store what it left. The reply is the tap's, when the trigger is a tap. */
@@ -1541,7 +1568,7 @@ export class TricksService implements TricksSurface {
     // Review 12 N6: each agent session's instance token, read in the same turn as the facts, so a bound
     // part binds to the session the program saw. A pane reused while the program ran has a new token by
     // then (walky/instances.ts), and the part never shows there.
-    const tokens = this.tokensOf(world.sessions);
+    const { tokens, generations } = this.tokensOf(world.sessions);
     // Contract 2: the files the trick's globs match in its agent sessions' folders, fetched into the
     // copy's `inputs/` before the run, listed on each session (inputs.ts). Never for a contract 1 trick.
     const globs = manifest.contract >= INPUTS_CONTRACT ? (manifest.inputs ?? []) : [];
@@ -1596,7 +1623,7 @@ export class TricksService implements TricksSurface {
     // Contract 2: a part that names sessions is stamped with each one's instance, against this run's own
     // facts; an id that is gone, or has no instance, is dropped with a note (bound.ts).
     const binding = bindParts(parsed, facts.sessions, (session) => tokens.get(session) ?? null);
-    this.store.applyDocument(host, id, binding.parsed, { asOf, fresh: parsed.fresh ?? freshString(freshMs) }, binding.bound);
+    this.store.applyDocument(host, id, binding.parsed, { asOf, fresh: parsed.fresh ?? freshString(freshMs) }, binding.bound, generations);
     // The decisions reach the hill only from a run that succeeded and listed them. A list refused as a
     // whole (over the cap) changes nothing there either: the last good decisions stay, as the last good
     // parts do.
@@ -1667,6 +1694,7 @@ export class TricksService implements TricksSurface {
    */
   private tapRefusal(id: string, request: TapRequest, rev: number | undefined): TapRefusal | null {
     const host = this.deps.memberId;
+    this.rebind();
     const held = this.store.held({ host, trick: id, part: request.node });
     // N8 (review 11): a trick that holds no part at all has not drawn since this bridge started (a restart
     // empties the store), so the phone's copy is older than this bridge: `changed`, not the forgery line.
@@ -1698,7 +1726,10 @@ export class TricksService implements TricksSurface {
     if (part.bound === undefined) return session.startsWith(`${this.deps.memberId}:`) ? null : "session";
     const stamped = part.bound.find((entry) => entry.session === session);
     if (stamped === undefined) return "session";
-    return this.deps.instanceOf?.(session) === stamped.instance ? null : "session";
+    if (this.deps.instanceOf?.(session) !== stamped.instance) return "session";
+    // The binding generation: another conversation in the pane, or one not known yet, taps nothing bound to the old one.
+    const held = this.store.generationAt(partKey(part), session);
+    return bindingAgainst(held, held === null ? null : (this.deps.generationOf?.(session) ?? null)) === "same" ? null : "session";
   }
 
   /** Answer a refused phone tap: one audit line, nothing run, nothing kept. `changed` carries the trick's parts now. */

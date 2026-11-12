@@ -11,12 +11,47 @@ import type { FactsSession, ParsedPart, ParsedTrickDocument, Refusal, WireBound 
 // phone draws a bound part only where the session's scope key AND its instance match, and the tap check
 // asks the same (service.ts `tapRefusal`).
 //
+// THE BINDING GENERATION (review 12, after M1). The instance token is WalkyTalky's: it changes only when
+// a pane is out of sight past the grace, so a `/clear`, a resume or an agent restart in the same pane
+// keeps its address. A trick's row is for the conversation its program saw, so each binding also keeps
+// the pane's generation as the run's facts were read, `<agent>:<agent session or ->` (the Send
+// Protocol's), on the bridge only. A pane whose generation changed for sure (another agent, or another
+// session it named) loses the binding: the store drops it and takes a rev, so the phone loses the row,
+// and a tap is refused. A pane whose generation is not known now (no session named yet, out of sight)
+// refuses the tap and keeps the row until it is sure. A binding with no generation (a crew member's
+// session: the wire carries no agent session) is checked by its instance token alone.
+//
 // Fail closed: a session with no instance token (a crew member that sent none, a pane the registry has
 // not seen) is dropped with a note, never stamped with a guess. A part with no session left is not
 // stored, so its last version goes away with it: it never falls back to every session.
 
 /** The current walky instance token of a facts session id, or null when there is none to bind to. */
 export type InstanceOf = (sessionId: string) => string | null;
+
+/** The generation of a facts session's pane now, `<agent>:<agent session or ->`, or null when there is none to read. */
+export type GenerationOf = (sessionId: string) => string | null;
+
+/** A generation's agent and session. An agent name holds no colon; a session id may. */
+function cut(generation: string): readonly [string, string] {
+  const colon = generation.indexOf(":");
+  return colon < 0 ? [generation, "-"] : [generation.slice(0, colon), generation.slice(colon + 1)];
+}
+
+/**
+ * A binding's generation against the pane's now: `same` (or learned: a session named since, by the same
+ * agent), `changed` for sure (another agent, or two different sessions named), or `unsure` (the pane is
+ * not seen now, or names no session yet while the binding did). A binding with no generation is `same`.
+ */
+export function bindingAgainst(held: string | null, now: string | null): "same" | "changed" | "unsure" {
+  if (held === null) return "same";
+  if (now === null) return "unsure";
+  const [agentHeld, sessionHeld] = cut(held);
+  const [agentNow, sessionNow] = cut(now);
+  if (agentHeld !== agentNow) return "changed";
+  if (sessionHeld === "-") return "same";
+  if (sessionNow === "-") return "unsure";
+  return sessionHeld === sessionNow ? "same" : "changed";
+}
 
 /** A document with each bound part resolved: what the store keeps, the bindings, and a note per id dropped. */
 export interface BoundDocument {

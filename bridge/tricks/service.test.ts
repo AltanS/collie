@@ -14,6 +14,7 @@ import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
+import { WalkyInstances } from "../walky/instances.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
 import { tricksTapRoute } from "./routes.ts";
 import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, RIGHTS_LINE, TAP_LOST_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
@@ -2183,6 +2184,146 @@ describe("the menu place and bound parts (contract 2)", () => {
     expect(again.bound).toEqual([{ session: OWN, instance: "zz99" }]);
     expect(await route(r, { rid: rid(2), node: "mark", intent: "open", from: { session: OWN }, rev: first.rev })).toMatchObject({ refused: "changed" });
     expect(await route(r, { rid: rid(3), node: "mark", intent: "open", from: { session: OWN }, rev: again.rev })).toMatchObject({ code: "ok" });
+  });
+
+  /** A rig whose panes' binding generations the test sets, the instance tokens fixed (`own`). */
+  async function generationRig(generations: Map<string, string>, extra: Partial<TricksServiceDeps> = {}): Promise<Rig> {
+    const r = await rig([exited(doc(menu({ sessions: [OWN] }), mark({ sessions: [OWN, OWN2] })))], {
+      world,
+      instanceOf: (session) => own.get(session) ?? null,
+      generationOf: (session) => generations.get(session) ?? null,
+      audit: () => undefined,
+      ...extra,
+    });
+    await makeTrick(r.configDir, "ci", CI, { "ci.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "ci");
+    await tickAt(r, T0);
+    return r;
+  }
+  const listed = async (r: Rig, since?: number) => {
+    const reply = await r.service.reply(since, { bound: true });
+    const parts = reply.parts.toSorted((a, b) => (a.part < b.part ? -1 : a.part > b.part ? 1 : 0));
+    return { rev: reply.rev, parts: parts.map((p) => [p.part, (p.bound ?? []).map((b) => b.session)]), present: reply.present.toSorted() };
+  };
+
+  test("binding generation: after a /clear a tap on a bound part is refused, and the part leaves the phone's list with a new rev", async () => {
+    const generations = new Map([
+      [OWN, "claude:s1"],
+      [OWN2, "pi:t1"],
+    ]);
+    const r = await generationRig(generations);
+    const ci = await held(r, "ci");
+    const before = await listed(r);
+    expect(before.parts).toEqual([
+      ["ci", [OWN]],
+      ["mark", [OWN, OWN2]],
+    ]);
+    const drawn = await held(r, "mark");
+    // A /clear in OWN's pane: the same pane and walky token, another agent session.
+    generations.set(OWN, "claude:s2");
+    // The menu part was bound to OWN alone, so it went with that binding; the mark no longer lists OWN.
+    expect(await route(r, { rid: rid(1), node: "ci", intent: "rerun", from: { session: OWN }, rev: ci.rev })).toMatchObject({ code: "rejected", refused: "part" });
+    // A phone that still drew the old mark is told it changed; one that drew the new one is refused for OWN.
+    expect(await route(r, { rid: rid(3), node: "mark", intent: "open", from: { session: OWN }, rev: drawn.rev })).toMatchObject({ code: "changed", refused: "changed" });
+    expect(await route(r, { rid: rid(4), node: "mark", intent: "open", from: { session: OWN }, rev: (await held(r, "mark")).rev })).toMatchObject({ code: "rejected", refused: "session" });
+    const after = await listed(r, before.rev);
+    expect(after.rev).toBeGreaterThan(before.rev);
+    expect(after.parts).toEqual([["mark", [OWN2]]]);
+    expect(after.present).toEqual([`${HOST}/ci/mark`]);
+    // The other session's binding stands, and its tap runs.
+    expect(await route(r, { rid: rid(2), node: "mark", intent: "open", from: { session: OWN2 }, rev: (await held(r, "mark")).rev })).toMatchObject({ code: "ok" });
+  });
+
+  test("binding generation, M1 with the REAL registry: a pane id reused inside 30 s by another agent, or the same agent's new session, inherits no bound row or mark", async () => {
+    const clock = { now: T0 };
+    const registry = new WalkyInstances(null, () => clock.now);
+    const panes = new Map([
+      ["w6X:3", "claude:s1"],
+      ["w6X:5", "pi:t1"],
+    ]);
+    const paneOf = (session: string): string => session.slice(session.indexOf(":") + 1);
+    const r = await generationRig(new Map(), {
+      instanceOf: (session) => registry.tokenOf("main", paneOf(session)),
+      generationOf: (session) => panes.get(paneOf(session)) ?? null,
+    });
+    const token = (await held(r, "ci")).bound?.[0]?.instance ?? "";
+    expect(token).toMatch(/^[a-z0-9]{4}$/u);
+    for (const [n, next] of [[1, "codex:x1"], [2, "claude:s9"]] as const) {
+      // Five seconds later another session took the pane id: well inside the grace, so the walky token stays.
+      clock.now += 5_000;
+      panes.set("w6X:3", next);
+      expect(registry.tokenOf("main", "w6X:3")).toBe(token);
+      const rev = (await held(r, "mark")).rev;
+      expect(await route(r, { rid: rid(n * 10), node: "mark", intent: "open", from: { session: OWN }, rev })).toMatchObject({ refused: "session" });
+      expect((await listed(r)).parts).toEqual([["mark", [OWN2]]]);
+      // The next run sees the new session and binds to it, by the program's own choice.
+      await tickAt(r, T0 + n * 60_000);
+      expect((await listed(r)).parts).toEqual([
+        ["ci", [OWN]],
+        ["mark", [OWN, OWN2]],
+      ]);
+    }
+  });
+
+  test("binding generation: the same agent closing and reopening inside one observe tick taps nothing until it names its session, then the row goes", async () => {
+    const generations = new Map([
+      [OWN, "claude:s1"],
+      [OWN2, "pi:t1"],
+    ]);
+    const r = await generationRig(generations);
+    // The new agent has not named its session yet: unsure, so the tap is refused and the row waits.
+    generations.set(OWN, "claude:-");
+    expect(await route(r, { rid: rid(1), node: "ci", intent: "rerun", from: { session: OWN }, rev: (await held(r, "ci")).rev })).toMatchObject({ refused: "session" });
+    expect((await listed(r)).present).toContain(`${HOST}/ci/ci`);
+    generations.set(OWN, "claude:s2");
+    expect((await listed(r)).present).toEqual([`${HOST}/ci/mark`]);
+    // A binding taken before the agent named its session learns the name, and a later change still drops it.
+    const early = new Map([
+      [OWN, "claude:-"],
+      [OWN2, "pi:t1"],
+    ]);
+    const e = await generationRig(early);
+    early.set(OWN, "claude:s1");
+    expect(await route(e, { rid: rid(2), node: "ci", intent: "rerun", from: { session: OWN }, rev: (await held(e, "ci")).rev })).toMatchObject({ code: "ok" });
+    early.set(OWN, "claude:s2");
+    expect((await listed(e)).present).toEqual([`${HOST}/ci/mark`]);
+  });
+
+  test("binding generation, bridge restart: nothing bound survives it; the first run binds the sessions as they are, unchanged or not", async () => {
+    const generations = new Map([
+      [OWN, "claude:s1"],
+      [OWN2, "pi:t1"],
+    ]);
+    const first = await generationRig(generations);
+    expect((await listed(first)).present).toEqual([`${HOST}/ci/ci`, `${HOST}/ci/mark`]);
+    const restart = async (): Promise<Rig> => {
+      const again = await rig([exited(doc(menu({ sessions: [OWN] }), mark({ sessions: [OWN, OWN2] })))], {
+        configDir: first.configDir,
+        stateDir: first.stateDir,
+        world,
+        instanceOf: (session) => own.get(session) ?? null,
+        generationOf: (session) => generations.get(session) ?? null,
+        audit: () => undefined,
+        revBase: 9000,
+      });
+      // The store is in memory: before the first run the new bridge holds no part, bound or not.
+      expect((await listed(again)).present).toEqual([]);
+      await tickAt(again, T0 + 60_000);
+      return again;
+    };
+    // Unchanged sessions: the first run binds them again, and a tap from OWN runs.
+    const same = await restart();
+    expect((await listed(same)).parts).toEqual([
+      ["ci", [OWN]],
+      ["mark", [OWN, OWN2]],
+    ]);
+    expect(await route(same, { rid: rid(1), node: "ci", intent: "rerun", from: { session: OWN }, rev: (await held(same, "ci")).rev })).toMatchObject({ code: "ok" });
+    // OWN changed while the bridge was down: the first run binds the conversation it saw, never the old one.
+    generations.set(OWN, "claude:s2");
+    const changed = await restart();
+    expect(await route(changed, { rid: rid(2), node: "ci", intent: "rerun", from: { session: OWN }, rev: (await held(changed, "ci")).rev })).toMatchObject({ code: "ok" });
+    generations.set(OWN, "claude:s1");
+    expect((await listed(changed)).present).toEqual([`${HOST}/ci/mark`]);
   });
 
   test("M2: a refused part is not kept stale where an accepted part took its slot, in every one-part place, bound or not", async () => {
