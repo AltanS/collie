@@ -5,7 +5,7 @@
 // is absent, a failure before the submit frame refuses, a loss after it is uncertain.
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -204,6 +204,20 @@ describe("preflight: absent or refused (SPEC V25, ADR 0142 points 1 and 6)", () 
   test("a socket nobody listens on is no gateway: absent", async () => {
     const fake = fakeGateway({}, false);
     expect(await doorOn(fake).preflight(TARGET, never)).toEqual({ ok: false, why: "no Hermes gateway is running", absent: true });
+  });
+
+  test("a socket file a killed gateway left behind is no gateway: absent", async () => {
+    const home = mkdtempSync(join(tmpdir(), "hd-"));
+    const path = join(home, "gateway.sock");
+    // A process killed while it listens never unlinks its socket: the file stays and nobody accepts.
+    const gateway = Bun.spawn([process.execPath, "-e", `Bun.listen({ unix: ${JSON.stringify(path)}, socket: { data() {} } }); console.log("up");`], { stdout: "pipe" });
+    await gateway.stdout.getReader().read();
+    gateway.kill(9);
+    await gateway.exited;
+    expect(existsSync(path)).toBe(true);
+    const door = hermesDoor({ home, bind: bindTo(), io: ioWith() });
+    expect(await door.preflight(TARGET, never)).toEqual({ ok: false, why: "no Hermes gateway is running", absent: true });
+    rmSync(home, { recursive: true, force: true });
   });
 
   test("a link or an open folder on the socket's path refuses, and nothing is written to it", async () => {
