@@ -27,6 +27,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Claude's Remote Control row coming or going no longer fails a send.** Claude Code draws its Remote Control status (`/rc`, `/rc active`, `/rc connecting…`, `/rc reconnecting`, `/rc failed`) as a row under the box. Had that row come or gone while Collie typed, the send's probe failed, the send was held as "Something is open at the box", and each retry could fail the same way. The Claude profile now names the row as a hint, so it no longer counts as the screen moving; its focused form, which takes Enter, still counts. Thanks @hubrix (#767).
 
+- **A long `/rewind` list reads as a menu again.** Claude Code opens the list under a plain `─` border, and once it held ten turns or more that border sat more than 30 rows above its footer. Collie found no top, and the phone showed the unread-dialog card instead of Continue and Cancel. A border now counts out to 60 rows.
+
 ## [1.28.2] - 2026-11-11
 
 ### Fixed

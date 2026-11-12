@@ -4,7 +4,8 @@
 // Claude marks the top of a full-screen modal in one of two ways.
 //
 //   * A `─` RULE or box border. The scan has always taken the nearest one within REGION_SCAN_WINDOW
-//     rows of the footer (any rule-glyph row, isHorizontalRule, or a U+2500 border, isBoxBorder).
+//     rows of the footer (any rule-glyph row, isHorizontalRule, or a U+2500 border, isBoxBorder). A U+2500
+//     border alone counts out to BORDER_SCAN_WINDOW (a tall `/rewind` list opens under one).
 //   * The MODAL EDGE. Claude Code 2.1.27x and later open every slash-command modal with a row of
 //     U+2594 (`▔`) across the pane, often with a label spliced in near its right end:
 //       `▔▔▔…▔ ● high · /effort ▔`, `▔▔▔ You've used 89% of your weekly limit · … ▔`.
@@ -16,9 +17,9 @@
 //     sit inside the window (`claude-lab--menu-rewind--w82.txt`).
 //
 // So the region's top is the NEAREST of: a rule within REGION_SCAN_WINDOW, or a modal edge within
-// MODAL_EDGE_WINDOW. A U+2500 box border beyond the rule window ends the search: it belongs to
+// MODAL_EDGE_WINDOW. A U+2500 box border beyond BORDER_SCAN_WINDOW ends the search: it belongs to
 // something drawn before the modal (a box, a transcript separator), so a `▔` above it is not this
-// modal's edge.
+// modal's edge. Between the two windows a rounded box or a plain rule-glyph row is stepped over.
 // A row of `╌` alone, a dashed frame drawn inside the modal, is neither: the scan steps over it.
 //
 // Pure functions over row texts.
@@ -29,6 +30,14 @@ import { isBoxBorder, isHorizontalRule } from "./markers";
 /** How far above the footer a `─` rule / box border may open the region. Generous enough for a tall
  *  picker, bounded so a borderless buffer can't be claimed unboundedly. */
 export const REGION_SCAN_WINDOW = 30;
+
+/** How far above the footer a `─` BORDER (a bare or labelled run of U+2500, `isBoxBorder`) may open the region:
+ *  60 rows, the bound of the `/resume` title scan (resume.ts) and of the modal edge (MODAL_EDGE_WINDOW). Past
+ *  REGION_SCAN_WINDOW only that border counts, not every rule-glyph row, because a tall modal draws rounded
+ *  boxes inside (the `/config` search box `╭──╮`) that must not be taken for its top. A `/rewind` list holds
+ *  three rows per turn under a plain `─` border, and ten turns put the border 48 rows over the footer, past 30:
+ *  the menu grammar found no top and the phone showed the unread-dialog card. */
+export const BORDER_SCAN_WINDOW = 60;
 
 /** How far above the footer a MODAL EDGE may open the region: the 60-row tail bound the input-box
  *  locator also uses (MAX_TAIL_LINES in chrome.ts). The `/hooks` list puts its edge 37 rows up. */
@@ -81,8 +90,10 @@ export type RegionTopKind = "edge" | "rule" | "stop";
 /**
  * Classify row `i`, `seen` rows above the footer at `footerLine`, for the upward region scan:
  *  - `edge`: a modal edge (isModalEdge), anywhere inside MODAL_EDGE_WINDOW;
- *  - `rule`: a rule or box border inside REGION_SCAN_WINDOW (the rule the scan always took);
- *  - `stop`: a U+2500 box border past REGION_SCAN_WINDOW, which ends the search with no top;
+ *  - `rule`: a rule or box border inside REGION_SCAN_WINDOW (the rule the scan always took), or a U+2500 box
+ *    border (`isBoxBorder`) inside BORDER_SCAN_WINDOW;
+ *  - `stop`: a U+2500 box border past BORDER_SCAN_WINDOW, which ends the search with no top (a caller that
+ *    bounds its loop by MODAL_EDGE_WINDOW, the same 60, never reaches it);
  *  - null: keep scanning, a dashed frame row (DASHED_FRAME_ROW) included.
  * The caller bounds its loop by MODAL_EDGE_WINDOW. Callers with rows of their own to step over (the
  * Effort slider's marker and track rows) test those first, then ask this.
@@ -92,6 +103,7 @@ export function regionTopAt(texts: string[], i: number, seen: number, footerLine
   if (DASHED_FRAME_ROW.test(t)) return null;
   if (isModalEdge(texts, i, footerLine)) return "edge";
   if (seen < REGION_SCAN_WINDOW) return isBoxBorder(t) || isHorizontalRule(t) ? "rule" : null;
+  if (seen < BORDER_SCAN_WINDOW) return isBoxBorder(t) ? "rule" : null;
   return isBoxBorder(t) ? "stop" : null;
 }
 

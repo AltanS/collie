@@ -79,3 +79,48 @@ describe(`${NOTICE_FIXTURE}`, () => {
     expect(menu.menu.title).toBe("Select model");
   });
 });
+
+// A tall /rewind list. Claude Code opens the dialog with a `─` rule, a heading and one entry per turn
+// (three rows each, a prompt, `No code changes` and a blank row), and the rule sat past the 30-row
+// window above the footer once the list held ten turns: the menu grammar found no top, and the phone
+// showed the unread-dialog card with no Continue and Cancel. CONSTRUCTED: the lab's 2.1.323 session only
+// listed three turns on a 100 x 40 pane (the rest sits under `↑ 11 more`), so the extra entries are copies
+// of the capture's own, spliced in above its first entry.
+describe("a tall /rewind list", () => {
+  const FIXTURE = "claude--v2323-rc-on-rewind--w100.txt";
+  const raw = readFileSync(join(PANES_DIR, FIXTURE), "utf8").split("\n");
+  const first = raw.findIndex((row) => row.includes("Write 400 words"));
+  const rule = raw.findIndex((row) => row.startsWith("\x1b[38;5;153m────"));
+  const footer = raw.findIndex((row) => lineText(splitLines(parseAnsi(row))[0] ?? { segments: [] }).includes("Enter to continue"));
+  const withEntries = (extra: number) => {
+    const entries = Array.from({ length: extra }, (_, k) => [`    Turn ${k + 1}: reply with only the word ok.`, "    \x1b[38;5;246mNo code changes\x1b[39m", ""]).flat();
+    return splitLines(parseAnsi([...raw.slice(0, first), ...entries, ...raw.slice(first)].join("\n")));
+  };
+  const titleOf = (extra: number): string | null => {
+    const menu = claudeBuildBlocks(withEntries(extra)).find((block) => block.kind === "menu");
+    return menu?.kind === "menu" ? menu.menu.title : null;
+  };
+
+  it("the capture's own list has its rule 18 rows over the footer", () => {
+    expect(footer - rule).toBe(18);
+    expect(titleOf(0)).toBe("Rewind");
+  });
+
+  it.each([3, 6, 10, 14])("%d more turns: the dialog still lifts as a menu", (extra) => {
+    expect(titleOf(extra)).toBe("Rewind");
+  });
+
+  it("the search stays bounded: a rule 78 rows over the footer is no top", () => {
+    expect(footer - rule + 3 * 20).toBe(78);
+    expect(titleOf(20)).toBeNull();
+  });
+
+  it("the rule is found 48 rows up, past 30 and inside 60", () => {
+    const texts = withEntries(10).map(lineText);
+    const footerAt = texts.findLastIndex((row) => row.includes("Enter to continue"));
+    const top = findRegionTop(texts, footerAt);
+    expect(top).not.toBeNull();
+    expect(footerAt - top!.line).toBe(48);
+    expect(top!.edge).toBe(false);
+  });
+});
