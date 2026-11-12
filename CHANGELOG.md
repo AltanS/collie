@@ -54,6 +54,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A trick's part for one session binds to the session its program saw.** The bridge read the sessions' instance tokens when it stored a run's parts, so a pane reused while the program ran could take a part meant for the session before. It now reads them with the facts the program gets.
 - **Every line Collie writes in a session's settings is reserved from a trick's rows.** The list of the sheet's own words was kept by hand and missed its status lines ("Renamed", "Pinned to the top", "Close failed") and its notes. It is now read from the sheet's own code, so a row Collie adds there is reserved without a hand edit.
 - **A new conversation in the same pane keeps its WalkyTalky address.** A `/clear`, a resume or a restart of the agent in the same pane keeps the session's address, its unread messages, its WalkyTalky off switch, the messages held for it and the replies to what it sent.
+- **A tap opens the row you pressed, even when the list moved.** When a pane arrived or left above the pressed row between the finger landing and lifting, the tap landed on a neighbour and opened another pane (179 of 200 touches in a measured run). A row now remembers the press and a click that lands on another row opens the pressed one; a keyboard or screen-reader click is untouched, and a press that became a hold opens nothing.
 
 ### Docs
 

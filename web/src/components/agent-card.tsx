@@ -1,3 +1,4 @@
+import { useState } from "react";
 
 import { shownStatus } from "@/lib/triage";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,7 @@ import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
+import { cancelPress, markPressHeld, redirectClick, releasePress, rememberPress } from "@/lib/press-memory";
 import { Icon } from "@/components/icons/icon";
 
 interface AgentCardProps {
@@ -150,7 +152,17 @@ export function AgentCard({
   useLocale();
   // Inert when `onHold` is undefined: every handler returns at once, the native context menu stays,
   // and no click is swallowed, so a row with no hold behaves exactly as it did.
-  const hold = useLongPress(onHold);
+  // THE PRESS, REMEMBERED (lib/press-memory.ts). One symbol per mounted row: the click that ends a press
+  // is aimed at whatever stands under the finger when it lifts, and a list that moved in between aims it
+  // at a neighbour. The neighbour finds this row's press in memory and opens THIS row instead.
+  const [me] = useState(() => Symbol("agent-row"));
+  const hold = useLongPress(
+    onHold &&
+      (() => {
+        markPressHeld(me);
+        onHold();
+      }),
+  );
   const isShell = agent.kind === "shell";
   const blocked = agent.status === "blocked";
   const inTab = scope === "tab";
@@ -251,13 +263,27 @@ export function AgentCard({
     <button
       id={id}
       type="button"
-      onClick={(e) => onClick(e.currentTarget)}
+      onClick={(e) => {
+        const route = redirectClick(me, e.detail > 0);
+        if (route === "own") onClick(e.currentTarget);
+        else if (route !== "swallow") route();
+      }}
       {...hold}
       // Both halves of a press: the pane's read starts on the finger landing, and the hold's timer
-      // arms on the same event.
+      // arms on the same event. The same event remembers the row, for the click that may land elsewhere.
       onPointerDown={(e) => {
+        const row = e.currentTarget;
+        if (e.button === 0) rememberPress(me, () => onClick(row));
         onPress?.();
         hold.onPointerDown(e);
+      }}
+      onPointerUp={(e) => {
+        hold.onPointerUp(e);
+        releasePress(me);
+      }}
+      onPointerCancel={(e) => {
+        hold.onPointerCancel(e);
+        cancelPress(me);
       }}
       data-glide-origin={glideKey === undefined ? undefined : "pane"}
       data-glide-key={glideKey}
