@@ -19,7 +19,7 @@ export const OUTAGE = 30;
  * ── WHY IT IS BELOW `OUTAGE` AND NOT ABOVE IT ───────────────────────────────
  * There is a real argument for above. A machine being rebuilt stops answering, so during a crew
  * update the red bar and this line are often the SAME event seen twice, and of the two sentences
- * "updating minibuch, restarting" is the one that explains the other.
+ * "updating workshop, restarting" is the one that explains the other.
  *
  * It is below anyway, because that argument only holds while the two ARE the same event. An outage
  * on a machine this run is not touching, or one that outlives a stalled run, is a different fact —

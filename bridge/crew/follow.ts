@@ -245,7 +245,7 @@ export function followGuards(f: FollowFacts): FollowDecision {
 
   // ── 1. RELEASE BUILDS ONLY ─────────────────────────────────────────────────
   // A `1.4.1-dev+ab12cd3` build never self-levels, full stop. **This is what keeps the dev lane
-  // still**: the dev crew's peer is the `~/apps/collie-next` checkout on minibuch, built from a
+  // still**: the dev crew's peer is the `~/apps/collie-next` checkout on workshop, built from a
   // working copy that its operator is editing, and a machine that levelled itself to a published
   // release would silently discard the very build it exists to test.
   // An EDGE build is a release on the Edge line (ADR 0110): a member on one follows an Edge lead.
@@ -330,7 +330,7 @@ export function followGuards(f: FollowFacts): FollowDecision {
   // fix in {@link UpdateTurns.observe} handed out the turn while it was still on its OLD release,
   // so a member one release further behind levelled to that intermediate version under the run's
   // id, and then refused the lead's real target an hour long: the 1.12.0 release run left
-  // minibuch on 1.11.1 that way. A member whose last attempt is a `done` in this very run, to a
+  // workshop on 1.11.1 that way. A member whose last attempt is a `done` in this very run, to a
   // version below the one the lead now states, is finishing an attempt the limit already counted.
   // The loop protection holds: each such step needs a strictly higher version than the last one
   // that succeeded, a rolled-back step never qualifies, and there is no downgrade path, so a lead
@@ -959,7 +959,7 @@ export class UpdateTurns {
    * carries no version, so a member levels to whatever the release header says — and a full run
    * opens its queue the instant the operator confirms, before the detached updater has written a
    * record, while the header still states the lead's OLD release. On the 1.12.0 run that sent
-   * minibuch from 1.11.0 to 1.11.1 under the run's id, and its hourly limit then refused 1.12.0.
+   * workshop from 1.11.0 to 1.11.1 under the run's id, and its hourly limit then refused 1.12.0.
    * Waiting until the lead states the target is the whole fix on this side: the run's target is
    * the only version a member can be sent to. The production caller always passes it; a caller
    * that passes nothing is a test about the queue alone.

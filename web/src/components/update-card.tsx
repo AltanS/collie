@@ -213,7 +213,7 @@ export function UpdateCard() {
   // short-circuit answered `update-crew`, the card disabled it, and a packaged lead with a peer a
   // version behind was left with a disabled button and an explanation about its own install.
   const action = crewAction({ releaseAvailable, hasPeers, behind, rolledBack, leadCanTake: !packageManaged });
-  // WHO A RETRY IS FOR, by name, so the button can say "Try minibuch again" (ADR 0064).
+  // WHO A RETRY IS FOR, by name, so the button can say "Try workshop again" (ADR 0064).
   const retryNames = retryTargets(census, legs, current);
   const retryAsk: UpdateAsk = { kind: "retry", version: current, major: false, peersOnly: true, current, names: retryNames };
 

@@ -240,7 +240,7 @@ export function crewAction(a: {
 /**
  * The label for that button. `none` never renders, so it has no label to give.
  *
- * A retry for ONE member names it ("Try minibuch again", ADR 0064): the operator is being asked about
+ * A retry for ONE member names it ("Try workshop again", ADR 0064): the operator is being asked about
  * a machine, and "Retry crew update" made them look up which one. `names` is who the retry is for.
  */
 export function crewActionLabel(

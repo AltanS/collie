@@ -2708,7 +2708,7 @@ export function AgentChat({
                     for. On the baseline the place text's own font baseline sets the line, and
                     `PaneMeta` reports the baseline of its own first baseline-bearing descendant — the
                     same chain `pane-meta.tsx`'s header already measured ink for. Measured in real
-                    Chromium at device-pixel resolution (3x, on the playground's minibuch mock), the
+                    Chromium at device-pixel resolution (3x, on the playground's workshop mock), the
                     place text's ink foot lands flush with the host name, the digits, the hourglass
                     and the server glyph — `items-baseline` alone closes it, no nudge of its own. */}
                 <div className="flex h-3 min-w-0 items-baseline gap-2">

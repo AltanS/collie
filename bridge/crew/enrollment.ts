@@ -332,8 +332,8 @@ export function isEnrollRefusal(value: CrewChange<EnrollResponse> | EnrollRefusa
 
 /**
  * Does `label` collide with the lead's display name or an enrolled member's id? Compared as typed
- * (case-insensitive) and as the member id it would become, so `Bluefin` and `bluefin!` are both the
- * lead's `bluefin`. An unusable label (no letters or digits) mints a random id and collides with nothing.
+ * (case-insensitive) and as the member id it would become, so `Lodge` and `lodge!` are both the
+ * lead's `lodge`. An unusable label (no letters or digits) mints a random id and collides with nothing.
  */
 function labelRefusal(data: TrustStoreData, label: string, leadName: string): EnrollRefusal | null {
   const typed = label.trim();
@@ -371,7 +371,7 @@ function labelRefusal(data: TrustStoreData, label: string, leadName: string): En
  * invite the operator minted by hand.
  *
  * **A new member whose label is the lead's display name, or an enrolled member's id, is refused**
- * (1.25.0) rather than suffixed: before, `bluefin` twice became `bluefin` and `bluefin-x7k2`, and the
+ * (1.25.0) rather than suffixed: before, `lodge` twice became `lodge` and `lodge-x7k2`, and the
  * operator could not tell which row was which machine. The invite is spent either way.
  */
 export function enrollPeer(
@@ -384,7 +384,7 @@ export function enrollPeer(
 ): CrewChange<EnrollResponse> | EnrollRefusal | null {
   if (data.crew === null) return null;
   const existing = data.peers.find((p) => p.fingerprint === req.fingerprint);
-  // A name is never made unique by a silent suffix: two machines both called `bluefin` is the
+  // A name is never made unique by a silent suffix: two machines both called `lodge` is the
   // confusion this refuses (1.25.0). A re-join (same fingerprint) keeps its own id and is not asked.
   if (existing === undefined && req.label !== null) {
     const refusal = labelRefusal(data, req.label, leadName);

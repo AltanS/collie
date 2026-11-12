@@ -87,7 +87,7 @@ function plainHttpHost(host: string): boolean {
 /**
  * The address the host fetches the registry from: {@link THEME_REGISTRY_URL}, or the operator's
  * override when it is one Collie accepts. `https://` to any host; `http://` only to a loopback
- * host, a 100.64.0.0/10 address, a `.ts.net` name or a single-label name such as `bluefin`. Pure;
+ * host, a 100.64.0.0/10 address, a `.ts.net` name or a single-label name such as `lodge`. Pure;
  * the caller prints `refused` once.
  */
 export function resolveRegistryAddress(raw: string | undefined): RegistryAddress {
