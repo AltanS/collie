@@ -31,7 +31,7 @@
     "crew": {
       "model": "haiku",
       "skill": "1172055e12caa07c",
-      "recordedAt": "2026-11-10T14:51:41.933Z",
+      "recordedAt": "2026-11-12T00:29:47.638Z",
       "cases": [
         "claude.walky-crew-agents",
         "claude.walky-crew-broadcast",
