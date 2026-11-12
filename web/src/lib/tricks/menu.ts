@@ -63,39 +63,42 @@ export function menuRowsOf(part: MenuPart): readonly MenuRow[] {
 export interface MenuGroupSize {
   readonly key: string;
   readonly trick: string;
-  /** The rows it draws, its view switch among them. */
+  /** The trick's own rows it draws, its view switch not among them. */
   readonly size: number;
-  /** It holds the trick's agent view switch, Collie's own row: never left out. */
+  /** It holds the trick's agent view switch, Collie's own row: one row, never left out. */
   readonly keeps?: boolean;
 }
 
 /**
  * The groups a sheet shows under the cap of `max` trick rows, in the order of the trick ids, and how many
- * tricks with rows it leaves out. A group is shown whole or left out whole. A group that holds an agent
- * view switch is always shown, and its rows count first.
+ * tricks with rows it leaves out. A trick's rows are shown whole or left out whole. An agent view switch
+ * is always shown and counts first, one row each; the rows of its trick count like any other trick's, and
+ * when they do not fit the group shows its switch alone and the trick counts as left out (review 12 N5).
  */
 export interface CappedGroups<T> {
   readonly shown: T[];
   /** How many tricks with rows it leaves out. */
   readonly leftOut: number;
+  /** The keys of the shown groups that show their view switch alone. */
+  readonly switchOnly: ReadonlySet<string>;
 }
 
 export function capGroups<T extends MenuGroupSize>(groups: readonly T[], max: number): CappedGroups<T> {
   const ordered = groups.toSorted((a, b) => (a.trick < b.trick ? -1 : a.trick > b.trick ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  let used = ordered.filter((group) => group.keeps === true).reduce((sum, group) => sum + group.size, 0);
+  let used = ordered.filter((group) => group.keeps === true).length;
   const kept = new Set<string>();
+  const switchOnly = new Set<string>();
   let leftOut = 0;
   for (const group of ordered) {
-    if (group.keeps === true) {
-      kept.add(group.key);
-      continue;
-    }
+    if (group.keeps === true) kept.add(group.key);
+    if (group.size === 0) continue;
     if (used + group.size > max) {
       leftOut += 1;
+      if (group.keeps === true) switchOnly.add(group.key);
       continue;
     }
     used += group.size;
     kept.add(group.key);
   }
-  return { shown: ordered.filter((group) => kept.has(group.key)), leftOut };
+  return { shown: ordered.filter((group) => kept.has(group.key)), leftOut, switchOnly };
 }

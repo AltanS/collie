@@ -75,7 +75,7 @@ interface FrozenGroup {
   readonly rows: readonly MenuRow[];
   readonly view?: TrickMenuViewRow;
   readonly keeps?: boolean;
-  /** The rows it draws, its view switch among them, for the cap. */
+  /** The trick's own rows it draws, its view switch not among them, for the cap. */
   readonly size: number;
 }
 
@@ -110,12 +110,12 @@ function freeze(state: TricksState, pane: TrickMenuGroupsProps["pane"], canWrite
     for (const row of views.rows) {
       const found = [...groups.values()].find((group) => group.trick === row.trick);
       if (found !== undefined) {
-        groups.set(found.key, { ...found, view: row, keeps: true, size: found.size + 1 });
+        groups.set(found.key, { ...found, view: row, keeps: true });
         continue;
       }
       const info = state.tricks.find((trick) => trick.id === row.trick);
       const key = `${info?.host ?? ""}/${row.trick}`;
-      groups.set(key, { key, host: info?.host ?? "", trick: row.trick, name: info?.name ?? row.label, rows: [], view: row, keeps: true, size: 1 });
+      groups.set(key, { key, host: info?.host ?? "", trick: row.trick, name: info?.name ?? row.label, rows: [], view: row, keeps: true, size: 0 });
     }
   }
   return [...groups.values()];
@@ -128,7 +128,9 @@ function useFrozen(props: TrickMenuGroupsProps, state: TricksState): Frozen {
   if (frozen.at !== at) {
     const all = at === "" ? [] : freeze(state, props.pane, props.canWrite, props.views);
     const capped = capGroups(all, MENU_SHEET_ROWS_MAX);
-    const next: Frozen = { at, groups: capped.shown, leftOut: capped.leftOut };
+    // A group over the cap with a view switch shows the switch alone: no rows, so no footer either.
+    const shown = capped.shown.map((group): FrozenGroup => (capped.switchOnly.has(group.key) ? { key: group.key, host: group.host, trick: group.trick, name: group.name, rows: [], view: group.view, keeps: true, size: 0 } : group));
+    const next: Frozen = { at, groups: shown, leftOut: capped.leftOut };
     setFrozen(next);
     return next;
   }

@@ -199,6 +199,21 @@ describe("the menu place on the phone", () => {
     expect(container.querySelector('[data-slot="trick-menu-more"]')?.textContent).toBe("1 more trick has rows. See Settings, Tricks.");
   });
 
+  it("N5: over the cap an agent view group shows its switch alone, its rows count like any other, and the trick counts as left out", async () => {
+    const rows = (n: number, p: string): MenuRow[] => Array.from({ length: n }, (_, i) => ({ id: `${p}${String(i)}`, kind: "button", label: `Row ${p}${String(i)}`, intent: `${p}${String(i)}` }));
+    const { store } = rig([menuPart("alpha", rows(6, "a")), menuPart("zeta", rows(8, "z"))]);
+    await store.syncTricks(1);
+    const onSwitch = vi.fn(async () => null);
+    const { container } = mount(store, { views: { rows: [{ trick: "zeta", label: "Zeta view", on: false }], onSwitch } });
+    // The switch counts first (1), alpha's 6 fit (7), zeta's 8 do not: zeta shows its switch alone.
+    expect(groups(container).map((el) => el.dataset.trick)).toEqual(["alpha", "zeta"]);
+    const zeta = groups(container)[1]!;
+    expect(zeta.querySelectorAll('[role="switch"]')).toHaveLength(1);
+    expect(zeta.querySelectorAll('[data-slot="trick-menu-row"]')).toHaveLength(0);
+    expect(zeta.querySelector('[data-slot="trick-menu-footer"]')).toBeNull();
+    expect(container.querySelector('[data-slot="trick-menu-more"]')?.textContent).toBe("1 more trick has rows. See Settings, Tricks.");
+  });
+
   it("agent sessions only, and on a crew member's session only where the instance binds", async () => {
     const bound = menuPart("bound", [RERUN], { bound: [{ session: "m_workshop:w1:2", instance: "kk77" }] });
     const { store } = rig([menuPart("ci", [WATCH]), bound]);
