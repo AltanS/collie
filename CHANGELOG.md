@@ -23,6 +23,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-11-12
+
 ### Added
 
 - **The Hill shows as the first entry of Settings, Tricks.** A built-in row, "Hill" with the Built in badge, sits above your tricks and opens an About sheet with the Hill's one switch, the same value as Settings, Alerts. While any Decision waits, the first tap off arms and says how many wait; the second tap switches it off. The entry moves no Decision and no trick. A crew member shows no such row.
@@ -119,6 +121,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **"Take changes without asking" moved into a trick's About sheet.** The switch is no longer a row of the Tricks card in Settings; a tap on the trick's name, which now shows a chevron, opens the sheet and its Updates group holds the switch. The Undo line for a version taken without asking stays on the card, and a trick's one-line description is drawn in the same muted style as its places. (M94)
 - **The About sheet says the author wrote its text.** Under a trick's `description` and `about`, a small muted line reads "Written by the trick's author. Collie did not check it.", and the rows under "What it does" stay the bridge's own facts. (M94)
 - **The About sheet says "This trick has no description." only when a trick has neither text.** A trick with a `description` and no `about` shows its description line and the author note, and nothing that says it has no description. (M94)
+- **Going back to 1.28.2 turns "Decisions that need you now" on again.** 1.28.2 does not know that notification setting, so it reads as on there, whatever you chose in this build. Your tricks, your Decisions and your paired devices stay as they were.
+- **The tricks format and the Official tricks list can still change between Edge builds.** `contract = 2` and the list under Settings, Tricks, Official tricks are new, and a later Edge build may change either, so a trick written for them may need an edit.
 
 ### Fixed
 
