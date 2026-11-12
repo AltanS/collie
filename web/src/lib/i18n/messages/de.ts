@@ -3025,6 +3025,8 @@ export const de: Dictionary = {
   "settings.zoomPill.description": "Die Lupen-Schaltfläche in der Aktionsleiste, die den Bildschirm in voller Größe öffnet. Im Chat erscheint sie nie.",
   "settings.zoomPill.option.screen": "Bildschirmansicht",
   "settings.zoomPill.option.off": "Aus",
+  "settings.pageZoom.title": "Zoomen mit zwei Fingern",
+  "settings.pageZoom.description": "Mit zwei Fingern die Seite vergrößern. Aus verhindert, dass ein versehentliches Zusammenziehen die App zoomt. Der Zoom der Bildschirmansicht funktioniert in beiden Fällen.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Anheften",

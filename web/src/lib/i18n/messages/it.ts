@@ -2840,6 +2840,8 @@ export const it: Dictionary = {
   "settings.zoomPill.description": "Il pulsante a forma di lente nella barra azioni che apre lo schermo a dimensione piena. Non compare mai nella chat.",
   "settings.zoomPill.option.screen": "Vista schermo",
   "settings.zoomPill.option.off": "Disattivato",
+  "settings.pageZoom.title": "Pizzica per ingrandire",
+  "settings.pageZoom.description": "Pizzica la pagina per ingrandirla. Se disattivato, un pizzico involontario non ingrandisce l’app. Lo zoom della vista Schermo funziona comunque.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Fissa",

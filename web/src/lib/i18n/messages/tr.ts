@@ -2834,6 +2834,8 @@ export const tr: Dictionary = {
   "settings.zoomPill.description": "Eylem çubuğundaki, ekranı tam boyutta açan büyüteç düğmesi. Sohbette hiç görünmez.",
   "settings.zoomPill.option.screen": "Ekran görünümü",
   "settings.zoomPill.option.off": "Kapalı",
+  "settings.pageZoom.title": "Kıstırarak yakınlaştır",
+  "settings.pageZoom.description": "Sayfayı büyütmek için kıstırın. Kapalıyken yanlışlıkla yapılan bir kıstırma uygulamayı yakınlaştırmaz. Ekran görünümünün kendi yakınlaştırması her iki durumda da çalışır.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Sabitle",

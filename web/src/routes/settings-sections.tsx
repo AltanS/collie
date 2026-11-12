@@ -8,6 +8,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { BeltSizeControl } from "@/components/belt-size-control";
 import { ZoomPillControl } from "@/components/zoom-pill-control";
+import { PageZoomControl } from "@/components/page-zoom-control";
 import { ChangesControl } from "@/components/changes-control";
 import { ConnectionInfo } from "@/components/connection-info";
 import { CrewSettingsCard } from "@/components/crew-settings-card";
@@ -113,6 +114,9 @@ export function SettingsAppearanceRoute() {
       {/* The belt's Zoom pill: in the Screen view or never (lib/zoom-pill.ts). Under the belt's size
           because both decide what that one belt carries. */}
       <ZoomPillControl />
+      {/* Whether a pinch zooms the whole page (lib/page-zoom.ts). Under the Zoom pill because both
+          decide what a zoom does on this phone. On by default, for anyone who needs bigger text. */}
+      <PageZoomControl />
       {/* Which thumb the belt and the reply box are laid out for. Under the belt's size because both
           decide how that one belt is drawn. */}
       <HandControl />
