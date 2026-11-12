@@ -79,7 +79,10 @@ with a ticket from a control socket it has checked in its own process.**
   refused with no write, the method list is closed, and every connection ends after one send.
 - Binding a pane to a Hermes session stays ADR 0141's business. The gateway's session list is not a
   binding: with two Ink panes on one gateway, the session must be the one whose latest turn is on
-  this pane's screen and on no other.
+  this pane's screen and on no other. The journal proves the send from the session the multiplexer
+  names for the pane, so a binding that names another session, or a pane the multiplexer names none
+  for, refuses too. Two Ink panes on one gateway keep the screen path until Herdr names each pane's
+  own session.
 - Reading the listener's uid through Bun FFI stays open. It is the exact check Hermes makes, and it
   could replace the path walk later without changing this decision.
 - If Hermes moves the gateway off loopback, or drops the control socket's ticket, the door refuses

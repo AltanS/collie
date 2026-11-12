@@ -33,17 +33,12 @@
 // as off-screen, which is the safe direction.
 
 import { parseAnsi } from "./ansi";
+import { fold, PROBE_CHARS } from "./probe-fold";
 import { BOX_CROSS_GLYPH_CLASS, BOX_VERTICAL_GLYPH_CLASS } from "./rule-glyphs";
 import type { TranscriptEntry } from "./types";
 import { fullSpelling, parseStretches, skimSpelling, stretches } from "@/lib/stretch";
 
-/**
- * How much of the reply each probe compares, in folded characters.
- *
- * Long enough that a coincidental match is not a real risk (48 letters of prose is a sentence), short
- * enough to sit inside the first and last rendered lines of a message.
- */
-export const PROBE_CHARS = 48;
+export { fold, PROBE_CHARS };
 
 /** Where the newest reply sits relative to what the mirror is showing. */
 export type ReplyFit =
@@ -53,12 +48,6 @@ export type ReplyFit =
   | "whole"
   /** Not the message the mirror is showing at all — see the note on {@link locateReply}. */
   | "off-screen";
-
-/** Keep letters and digits, lose everything else. Unicode-aware, so a non-Latin reply still folds to
- *  its own content rather than to nothing. */
-export function fold(text: string): string {
-  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-}
 
 /** Plain text of a mirror read: the ANSI parse, reassembled. Newlines live inside the segments, so
  *  joining with "" reproduces the screen exactly — and the fold then removes them anyway. */

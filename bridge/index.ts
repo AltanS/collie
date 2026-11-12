@@ -33,7 +33,7 @@ import { repoFactsOf } from "./repo-facts.ts";
 import { withRepoFacts } from "./repo-facts-mux.ts";
 import { gitBinary } from "./changes.ts";
 import { withWorktreeCapability } from "./worktree-capability.ts";
-import { holdPrivateFile, interfaceAddresses, listenFailureLine, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
+import { hermesHome, holdPrivateFile, interfaceAddresses, listenFailureLine, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import { applyConfigLayer } from "./config-source.ts";
 import {
   aclRepairAllowed,
@@ -293,8 +293,10 @@ import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { ClearService } from "./surface/clear.ts";
 import { StopService, type StopDeps } from "./surface/stop.ts";
 import { gateFor } from "./surface/key-gate.ts";
+import { hermesBinder } from "./door/hermes-bind.ts";
+import { HERMES_DOOR } from "./door/hermes.ts";
 import { doorsFor } from "./door/registry.ts";
-import { RowRing, SendProtocol, SessionLocks, type PaneProfileMatch } from "./surface/protocol.ts";
+import { RowRing, SEND_READ_LINES, SendProtocol, SessionLocks, type PaneProfileMatch } from "./surface/protocol.ts";
 import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
 import { HoldStore } from "./surface/holds.ts";
@@ -888,6 +890,8 @@ const journals = cfg.transcript
 // transcripts off no engine is handed a reader, and muse panes keep their fallbacks exactly as
 // before. One reader for the whole bridge — its per-session scans are keyed by session id, so
 // two collie sessions watching one herd share the fold instead of re-walking the log.
+// The Hermes home whose gateway Hermes's door dials (ADR 0142): `$HERMES_HOME` read the way Hermes reads it.
+const hermesDoorHome = hermesHome(process.env.HERMES_HOME, homedir());
 const museNames = cfg.transcript ? museSessionNameReader(cfg.journalRoots.muse) : undefined;
 const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
 const paneCache =
@@ -2025,6 +2029,22 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
                     matcher: paneMatcher,
                     sessionOf: (paneId) => engine.current().agents.find((agent) => agent.paneId === paneId)?.agentSession,
                   },
+            // Hermes's binds a pane by the latest turn on its screen, and only where the multiplexer names that same session (SPEC V16, V28).
+            hermes: {
+              home: hermesDoorHome,
+              bind: hermesBinder({
+                dbPath: join(hermesDoorHome, "state.db"),
+                panes: () =>
+                  engine
+                    .current()
+                    .agents.filter((agent) => agent.kind !== "shell" && agent.agent === HERMES_DOOR)
+                    .map((agent) => ({ paneId: agent.paneId, session: agent.agentSession?.value })),
+                read: async (paneId) => {
+                  const grid = await herdr.readGrid(paneId, { scope: "viewport", lines: SEND_READ_LINES, styling: "preserve" });
+                  return grid.ok && grid.value.partial !== true ? grid.value.text : null;
+                },
+              }),
+            },
           }),
         })
       : undefined;
