@@ -110,13 +110,15 @@ describe("hermesBinder (SPEC V16, V28, V29)", () => {
   });
 });
 
-describe("hermesLatestTurns (SPEC V29)", () => {
+describe("hermesLatestTurns (SPEC V29, V30)", () => {
   const SESSIONS =
-    "create table sessions (id text primary key, source text, started_at real, parent_session_id text, ended_at real, archived integer default 0, hidden integer default 0, last_activity_at real)";
+    "create table sessions (id text primary key, source text, created_source text, started_at real, parent_session_id text, ended_at real, archived integer default 0, hidden integer default 0, last_activity_at real)";
   const MESSAGES =
     "create table messages (id integer primary key, session_id text, role text, content text, tool_call_id text, tool_calls text, tool_name text, timestamp real, reasoning text, reasoning_content text, active integer default 1, compacted integer default 0, display_kind text)";
 
-  test("live tui sessions only, newest prose over the lineage, tool rows skipped", async () => {
+  // Rows as Hermes writes them: an owner surface is stored as `local`, its surface in `created_source`
+  // (gateway/session_policy.py, STORED_AS_LOCAL); a legacy Ink row says `tui` with no `created_source`.
+  test("live Ink sessions only, newest prose over the lineage, tool rows skipped", async () => {
     const dir = await mkdtemp(join(tmpdir(), "collie-hermes-bind-"));
     const dbPath = join(dir, "state.db");
     const db = new Database(dbPath);
@@ -125,16 +127,20 @@ describe("hermesLatestTurns (SPEC V29)", () => {
     const D = sid(4);
     const E = sid(5);
     const F = sid(6);
-    const sessions: [string, string, number | null, number, number, string | null][] = [
-      [A, "tui", null, 0, 0, null], // live
-      [B, "tui", 5, 0, 0, null], // ended
-      [C, "cron", null, 0, 0, null], // headless
-      [D, "tui", null, 1, 0, null], // archived
-      [E, "tui", null, 0, 0, A], // a fork of A with no turn of its own
-      [F, "tui", null, 0, 0, null], // live, no turn yet
+    const G = sid(7);
+    const K = sid(8);
+    const sessions: [string, string, string | null, number | null, number, number, string | null][] = [
+      [A, "local", "tui", null, 0, 0, null], // live Ink, as the gateway stores it today
+      [B, "tui", "tui", 5, 0, 0, null], // ended
+      [C, "cron", null, null, 0, 0, null], // headless
+      [D, "local", "tui", null, 1, 0, null], // archived
+      [E, "local", "tui", null, 0, 0, A], // a fork of A with no turn of its own
+      [F, "local", "tui", null, 0, 0, null], // live, no turn yet
+      [G, "tui", null, null, 0, 0, null], // live Ink, a legacy row
+      [K, "local", "cli", null, 0, 0, null], // live, but the classic CLI's, not Ink's
     ];
-    for (const [id, source, ended, archived, hidden, parent] of sessions) {
-      db.run("insert into sessions (id, source, started_at, ended_at, archived, hidden, parent_session_id) values (?, ?, 1, ?, ?, ?, ?)", [id, source, ended, archived, hidden, parent]);
+    for (const [id, source, created, ended, archived, hidden, parent] of sessions) {
+      db.run("insert into sessions (id, source, created_source, started_at, ended_at, archived, hidden, parent_session_id) values (?, ?, ?, 1, ?, ?, ?, ?)", [id, source, created, ended, archived, hidden, parent]);
     }
     let row = 0;
     const msg = (session: string, role: string, content: string | null, extra: { active?: number; display_kind?: string } = {}) =>
@@ -145,14 +151,16 @@ describe("hermesLatestTurns (SPEC V29)", () => {
     msg(A, "tool", "tool output");
     msg(A, "assistant", "rewound", { active: 0 });
     msg(A, "assistant", "hidden note", { display_kind: "hidden" });
-    for (const id of [B, C, D]) msg(id, "assistant", REPLY_B);
+    for (const id of [B, C, D, K]) msg(id, "assistant", REPLY_B);
+    msg(G, "assistant", REPLY_B);
     db.close();
 
     const turns = hermesLatestTurns(dbPath);
     expect(turns?.map((turn) => [turn.sessionId, turn.text]).toSorted()).toEqual([
       [A, REPLY_A],
       [E, REPLY_A],
-    ]);
+      [G, REPLY_B],
+    ].toSorted());
     await rm(dir, { recursive: true, force: true });
   });
 

@@ -481,9 +481,11 @@ export class HermesTranscriptSource implements TranscriptSource {
 // ── The live sessions' latest turns (SPEC V16, V29) ──────────────────────────
 //
 // Hermes's door binds a pane to the live session whose latest turn is on its screen. The gateway's live
-// list is a call the door may not make (ADR 0142 point 4), so the store answers instead: a `tui` session
+// list is a call the door may not make (ADR 0142 point 4), so the store answers instead: an Ink session
 // with no `ended_at` (Ink's shutdown and the gateway's orphan reap both write one), not archived or
-// hidden. "Latest turn" is the newest row this adapter composes as user or assistant prose, over the
+// hidden. Hermes stores every owner surface as `source = 'local'` and keeps the surface in
+// `created_source` (gateway/session_policy.py, STORED_AS_LOCAL), so Ink is `created_source = 'tui'`, or
+// a legacy row's `source = 'tui'` with no `created_source`; `local` alone is also the classic CLI's. "Latest turn" is the newest row this adapter composes as user or assistant prose, over the
 // session's lineage, so the binding and the proof agree on what a turn is.
 
 /** The most open sessions read: a pane's live session is a recent one, and a miss refuses. */
@@ -500,14 +502,14 @@ export interface HermesLatestTurn {
 }
 
 /**
- * Every live `tui` session in `dbPath` that has a turn, with its latest turn's prose, newest activity
+ * Every live Ink session in `dbPath` that has a turn, with its latest turn's prose, newest activity
  * first. Null when the database cannot be read: the caller cannot tell a live session from none.
  */
 export function hermesLatestTurns(dbPath: string): HermesLatestTurn[] | null {
   return withDb(dbPath, (db) => {
     const sessions = db
       .query<{ id: string }, [number]>(
-        "select id from sessions where source = 'tui' and ended_at is null and archived = 0 and hidden = 0 order by coalesce(last_activity_at, started_at) desc limit ?",
+        "select id from sessions where (created_source = 'tui' or (created_source is null and source = 'tui')) and ended_at is null and archived = 0 and hidden = 0 order by coalesce(last_activity_at, started_at) desc limit ?",
       )
       .all(LIVE_SESSIONS_MAX);
     const latest = db.query<MessageRow, [string, number]>(
