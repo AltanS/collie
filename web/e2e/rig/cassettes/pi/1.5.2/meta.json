@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "harness": "pi",
+  "version": "1.5.2",
+  "legs": {
+    "solo": {
+      "model": "openrouter/anthropic/claude-haiku-4.5",
+      "skill": "33651c67cc3c3f16",
+      "recordedAt": "2026-11-12T04:22:38.712Z",
+      "cases": [
+        "pi.door-draft",
+        "pi.load-older",
+        "pi.permission",
+        "pi.pick-many",
+        "pi.steer",
+        "pi.stop-pi",
+        "pi.stream-send",
+        "pi.walky-busy",
+        "pi.walky-operator"
+      ]
+    }
+  }
+}
