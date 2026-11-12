@@ -3,6 +3,8 @@ import { render, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
+import { CrewProvider } from "@/components/crew-provider";
+import { fixtureServers } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { ClearNotificationsControl } from "@/components/clear-notifications-control";
 import type { DeviceCleanup } from "@/lib/clear-notifications";
@@ -33,8 +35,16 @@ beforeEach(() => {
   server.use(http.post("/api/notifications/clear", () => HttpResponse.json({ clearedSlots: ["collie:herd:w1:p2"] })));
 });
 
-function mount() {
-  const { container } = render(<ClearNotificationsControl />);
+function mount(servers?: typeof fixtureServers) {
+  const { container } = render(
+    servers === undefined ? (
+      <ClearNotificationsControl />
+    ) : (
+      <CrewProvider servers={servers}>
+        <ClearNotificationsControl />
+      </CrewProvider>
+    ),
+  );
   const card = within(container);
   return { card, button: card.getByRole("button", { name: "Clear all" }), live: card.getByRole("status") };
 }
@@ -42,6 +52,22 @@ function mount() {
 const BOTH = "Cleared, but this device could not close its notifications or update its icon count. Tap again.";
 
 describe("ClearNotificationsControl", () => {
+  test("says what it clears: this machine and this device", () => {
+    const { card } = mount();
+    expect(card.getByText(/alerts of this machine, the Collie your phone talks to, and of this device/i)).toBeInTheDocument();
+  });
+
+  test("a solo install says nothing of crew members", () => {
+    const { card } = mount([fixtureServers[0]!]);
+    expect(card.queryByText("Alerts of crew members stay.")).not.toBeInTheDocument();
+  });
+
+  test("a crew lead says that the alerts of members stay", () => {
+    expect(fixtureServers.length).toBeGreaterThan(1);
+    const { card } = mount(fixtureServers);
+    expect(card.getByText("Alerts of crew members stay.")).toBeInTheDocument();
+  });
+
   test("clears on the bridge, then on this device with what it cleared, and says so in the card", async () => {
     const user = userEvent.setup();
     const { card, button, live } = mount();

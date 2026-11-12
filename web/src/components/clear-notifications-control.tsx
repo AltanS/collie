@@ -5,6 +5,7 @@ import { useRevalidator } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
+import { useCrew } from "@/components/crew-provider";
 import { Notice, type NoticeTone } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -57,6 +58,7 @@ const TONE = { cleared: "success", partial: "caution", failed: "danger" } as con
 export function ClearNotificationsControl() {
   useLocale();
   const revalidator = useRevalidator();
+  const { multi } = useCrew();
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -95,6 +97,9 @@ export function ClearNotificationsControl() {
         <div className="min-w-0">
           <div className="font-medium">{t("settings.clearNotifications.title")}</div>
           <p className="text-sm text-muted-foreground">{t("settings.clearNotifications.description")}</p>
+          {/* A lead's clear reaches its own sessions only; a member keeps its own alerts (CREW_PROTOCOL.md §5),
+              so a crew says so, and a solo install has nothing to add. */}
+          {multi && <p className="mt-1 text-sm text-muted-foreground">{t("settings.clearNotifications.crewNote")}</p>}
         </div>
       </div>
 

@@ -283,9 +283,11 @@ export const en = {
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
   // --- settings.clearNotifications ---
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "settings.clearNotifications.title": "Clear notifications",
   "settings.clearNotifications.description":
-    "Close every Collie notification on this device and mark every finished agent as seen. Other devices follow when they next sync or open Collie. Agents waiting on you stay on the dashboard.",
+    "Clears the alerts of this machine, the Collie your phone talks to, and of this device. Finished agents count as seen. Other devices follow when they next open Collie. Agents waiting on you stay on the dashboard.",
+  "settings.clearNotifications.crewNote": "Alerts of crew members stay.",
   "settings.clearNotifications.action": "Clear all",
   "settings.clearNotifications.done": "Notifications cleared.",
   "settings.clearNotifications.clearing": "Clearing…",
@@ -4170,6 +4172,15 @@ export const PENDING_TRANSLATION = [
   "pairApprove.retry",
   "pairApprove.done",
   "prompt.subjectCut",
+  "settings.clearNotifications.title",
+  "settings.clearNotifications.description",
+  "settings.clearNotifications.crewNote",
+  "settings.clearNotifications.action",
+  "settings.clearNotifications.done",
+  "settings.clearNotifications.clearing",
+  "settings.clearNotifications.failed.notifications",
+  "settings.clearNotifications.failed.badge",
+  "settings.clearNotifications.failed.both",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
