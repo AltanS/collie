@@ -70,7 +70,7 @@ import {
   type HillPriority,
   type HillTextMode,
 } from "../hill/wire";
-import { foldedWords } from "../fold";
+import { skeletonWords } from "../fold";
 import { codePointName, firstHiddenChar, hasHiddenChar } from "../hidden-chars";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
 import { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
@@ -611,12 +611,17 @@ export function menuLabelProblem(label: string): string | undefined {
   if (text !== undefined) return text;
   const hidden = firstHiddenChar(label);
   if (hidden !== null) return `holds a hidden character (${codePointName(hidden)}). Remove it.`;
-  const words = foldedWords(label).trim();
+  // Compared by skeleton (review 12 M3): look-alikes of every script and of Latin itself read alike. The
+  // label is drawn and stored as written.
+  const words = skeletonWords(label).trim();
   if (readsAsSheetLabel(words)) return "reads as one of Collie's own rows in this sheet. Name it another way.";
   const padded = ` ${words} `;
-  const word = MENU_RESERVED_WORDS.find((reserved) => padded.includes(` ${reserved} `));
+  const word = MENU_RESERVED_WORDS.find((reserved) => padded.includes(` ${skeletonWords(reserved).trim()} `));
   if (word !== undefined) return `holds "${word}", a word of Collie's own. Name it another way.`;
-  const lead = MENU_RESERVED_LEADS.find((reserved) => words === reserved || words.startsWith(`${reserved} `));
+  const lead = MENU_RESERVED_LEADS.find((reserved) => {
+    const skeleton = skeletonWords(reserved).trim();
+    return words === skeleton || words.startsWith(`${skeleton} `);
+  });
   if (lead !== undefined) return `starts with "${lead}", which reads as a permission Collie asks for. Name it another way.`;
   return undefined;
 }

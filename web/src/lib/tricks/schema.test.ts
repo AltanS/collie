@@ -1911,6 +1911,31 @@ describe("the menu place and bound parts", () => {
     }
   });
 
+  it("M3: a label written in look-alikes is compared by its skeleton, refused, and drawn as written when it passes", () => {
+    // Each row: the label, and what it passes for. The comparison folds; the label is never rewritten.
+    const cases: [string, string][] = [
+      ["CoIlie logs", "Collie, a capital I for l"],
+      ["CIose pane", "Close pane, a capital I for l"],
+      ["C0llie", "Collie, a zero for o"],
+      ["Co11ie", "Collie, two ones for l"],
+      ["C\u0585llie", "Collie, Armenian o"],
+      ["\u0251llow push", "Allow, Latin alpha"],
+      ["\u2c6dllow push", "Allow, Latin capital alpha"],
+      ["\u13dfollie", "Collie, Cherokee C"],
+      ["\u13b3alky Talky", "WalkyTalky, Cherokee W"],
+      ["VVaIkyTaIky", "WalkyTalky, two Vs and capital Is"],
+      ["HiII", "Hill, capital Is"],
+      ["Claude vievv", "view, two Vs"],
+    ];
+    for (const [label, what] of cases) expect(menuLabelProblem(label), `${label}: ${what}`).toBeDefined();
+    for (const label of ["Rerun CI", "Run 10 tests", "Hillside deploy", "Overview", "Watch branch", "Close the PR", "Approved list"]) {
+      expect(menuLabelProblem(label), label).toBeUndefined();
+    }
+    // A label that passes is stored as written, its look-alikes and all.
+    const parsed = parseTrickDocument({ v: 2, parts: [menu({ rows: [btn({ label: "Run 10 tests" })] })] }, { contract: 2 });
+    expect(parsed.parts[0]?.place === "menu" ? parsed.parts[0].part.rows[0]?.label : undefined).toBe("Run 10 tests");
+  });
+
   it("menu-label-hidden-char: a label with a hidden or control character, or past 24 characters, is refused and never cut", () => {
     for (const label of ["Rerun​CI", "Re‮run", "Rerunㅤ", "Rerun CI", "Rerun CI", "Rerun\u0007", "Rerun"]) {
       expect(menuLabelProblem(label), JSON.stringify(label)).toBeDefined();
