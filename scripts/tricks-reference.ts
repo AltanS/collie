@@ -26,6 +26,7 @@ import {
   PARTS,
   PLACE_ORDER,
   PLACES,
+  PLATFORM_LIMIT,
   SHARED_VALUES,
   VIEW_KINDS_OF,
   decisionViewNote,
@@ -341,7 +342,7 @@ function manifestSection(): string[] {
 }
 
 function limitsSection(): string[] {
-  const lines: string[] = ["## Limits", "", "The limits that no place, part or key owns. Every number is read from the code that checks it."];
+  const lines: string[] = ["## Limits", "", "The limits that no place, part or key owns. Every number is read from the code that checks it.", "", PLATFORM_LIMIT];
   for (const group of LIMITS) lines.push("", `### ${group.group}`, "", ...limitTable(group.limits));
   return lines;
 }

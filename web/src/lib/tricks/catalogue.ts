@@ -160,6 +160,7 @@ import {
   TAP_REFUSED_LINES,
   type TapCode,
   type TapRefusal,
+  TRICKS_WINDOWS_LINE,
 } from "./schema";
 import {
   BACKOFF_MS,
@@ -1189,6 +1190,9 @@ export interface LimitGroup {
   readonly group: string;
   readonly limits: readonly Limit[];
 }
+
+/** The one limit of a platform: the Windows gate (bridge/tricks/service.ts `gated`), in the words the CLI and the phone say. */
+export const PLATFORM_LIMIT = `${TRICKS_WINDOWS_LINE} [Collie on Windows](windows.md) says what works there.`;
 
 /** The limits that are not a place's or a part's own, each read from the constant that holds it. */
 export const LIMITS: readonly LimitGroup[] = [

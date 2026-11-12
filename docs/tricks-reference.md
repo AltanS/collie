@@ -1326,6 +1326,8 @@ A contract 1 trick that lists `inputs` is refused with: "inputs" needs contract 
 
 The limits that no place, part or key owns. Every number is read from the code that checks it.
 
+Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says what works there.
+
 ### A run
 
 | Limit | Value |
