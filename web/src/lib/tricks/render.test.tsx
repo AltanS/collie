@@ -1,5 +1,5 @@
 import { act, fireEvent, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonObject, JsonValue } from "../json";
 import { LEGS_DOCUMENT, TRACKER_DOCUMENT, nodeDocument } from "./fixtures";
@@ -67,6 +67,20 @@ const cell = (text: string, attrs?: JsonObject): JsonObject => (attrs === undefi
 const table = (heads: string[], rows: string[][], cellAttrs?: JsonObject): JsonObject => ({
   kind: "table",
   kids: [...heads.map((text) => ({ kind: "col", text })), ...rows.flat().map((text) => cell(text, cellAttrs))],
+});
+
+// A `time` clock draws the time of day in the device's own zone (lib/format.ts `clockTime`), which is
+// right on the phone and makes a snapshot depend on the machine that runs it: the `run` snapshot was
+// written at UTC+1 and read "09:38 AM" on the CI runner, which runs in UTC. The file pins one fixed
+// zone, UTC+1 with no daylight saving (POSIX names it with the sign turned round), so the snapshots read
+// the same on every machine and in every season. Node applies a new TZ to every clock read after it.
+const ZONE_BEFORE = process.env.TZ;
+beforeAll(() => {
+  process.env.TZ = "Etc/GMT-1";
+});
+afterAll(() => {
+  if (ZONE_BEFORE === undefined) delete process.env.TZ;
+  else process.env.TZ = ZONE_BEFORE;
 });
 
 beforeEach(() => copyText.mockClear());
