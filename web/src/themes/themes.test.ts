@@ -180,6 +180,22 @@ describe("the shipped themes", () => {
   });
 });
 
+// The switch's ON track is `control-on-foreground` and its thumb is `background` (ui/switch.tsx), so the
+// thumb has to clear 3:1 (WCAG 1.4.11) on the track, and the track on the card it sits on, in every
+// shipped theme and both halves. The switch alone shows that a feature is on.
+describe("the switch reads in every shipped theme", () => {
+  const all = readdirSync(resolve(web, "src/themes"))
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => name.slice(0, -".json".length))
+    .toSorted();
+  const halves = ["light", "dark"] as const;
+  it.each(all.flatMap((id) => halves.map((half) => [id, half] as const)))("%s %s: thumb on the on track and track on the card hold 3:1", (id, half) => {
+    const v = shipped(id)[half] ?? {};
+    expect(contrast(v.background ?? "", v["control-on-foreground"] ?? "")).toBeGreaterThanOrEqual(3);
+    expect(contrast(v["control-on-foreground"] ?? "", v.card ?? "")).toBeGreaterThanOrEqual(3);
+  });
+});
+
 // Daylight is for direct sun and low vision, so it holds floors above the shared gate. Each number
 // is argued in daylight.notes.md, beside the measured table.
 describe("daylight holds its own floors", () => {
