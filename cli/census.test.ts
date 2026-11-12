@@ -111,25 +111,25 @@ const lead = (...peers: string[]): string =>
 describe("members", () => {
   test("one row per member, from the same hello and snapshot dials crew status makes", async () => {
     const r = rig(
-      { [TRUST]: lead("minibuch", "minibuch-hc") },
+      { [TRUST]: lead("workshop", "workshop-hc") },
       {
         // The snapshot answer is listed before the hello, since a fragment matches the first key that fits.
-        "minibuch.example:8787/crew/v1/snapshot": crewSnapshot("minibuch", { bridge: "connected", agents: [], mux: "herdr", panes: 4, host: "minibuch-box" }),
-        "minibuch.example": hello("minibuch", "1.25.0"),
-        "minibuch-hc.example": new Error("timed out"),
+        "workshop.example:8787/crew/v1/snapshot": crewSnapshot("workshop", { bridge: "connected", agents: [], mux: "herdr", panes: 4, host: "workshop-box" }),
+        "workshop.example": hello("workshop", "1.25.0"),
+        "workshop-hc.example": new Error("timed out"),
         "/api/snapshot": snapshot(),
       },
     );
     const census = await gatherCensus(r.deps, RUNNING_LEAD);
     expect(census.members).toEqual([
-      { name: "minibuch", role: "peer", link: "reachable", version: "1.25.0", mux: "herdr", panes: 4, host: "minibuch-box" },
-      { name: "minibuch-hc", role: "peer", link: "unreachable", version: null, mux: null, panes: null, host: null },
+      { name: "workshop", role: "peer", link: "reachable", version: "1.25.0", mux: "herdr", panes: 4, host: "workshop-box" },
+      { name: "workshop-hc", role: "peer", link: "unreachable", version: null, mux: null, panes: null, host: null },
     ]);
     // Both questions of `crew status` for a member that answered, and only `hello` for one that did not.
     expect(r.seen.filter((s) => s.url.includes("/crew/v1/")).map((s) => s.url)).toEqual([
-      "https://minibuch.example:8787/crew/v1/hello",
-      "https://minibuch-hc.example:8787/crew/v1/hello",
-      "https://minibuch.example:8787/crew/v1/snapshot",
+      "https://workshop.example:8787/crew/v1/hello",
+      "https://workshop-hc.example:8787/crew/v1/hello",
+      "https://workshop.example:8787/crew/v1/snapshot",
     ]);
   });
 
@@ -267,9 +267,9 @@ describe("sessions", () => {
 
   test("a bridge bound to its tailnet address is dialled there, not on loopback", async () => {
     const r = rig({}, { "/api/snapshot": snapshot() });
-    const bound = { ...r.deps, ctx: context({ COLLIE_HOST: "100.64.0.8" }, { stateDir: STATE, port: 8795 }) };
+    const bound = { ...r.deps, ctx: context({ COLLIE_HOST: "100.64.10.8" }, { stateDir: STATE, port: 8795 }) };
     await gatherCensus(bound, { running: true, crew: "solo" });
-    expect(r.seen[0]!.url).toBe("http://100.64.0.8:8795/api/snapshot");
+    expect(r.seen[0]!.url).toBe("http://100.64.10.8:8795/api/snapshot");
   });
 
   test("countSessions refuses a body with no agents list", () => {
@@ -304,23 +304,23 @@ describe("members, grouped by host (M77)", () => {
   test("a host that runs two instances gets one host line with both instances under it", () => {
     const lines = censusLines(
       census([
-        row("bluefin", { role: "lead", host: "bluefin" }),
-        row("minibuch", { host: "minibuch" }),
-        row("bluefin-hc", { host: "bluefin", mux: "herdr-core" }),
-        row("minibuch-hc", { host: "minibuch", mux: "herdr-core", link: "unreachable", version: null, panes: null }),
+        row("lodge", { role: "lead", host: "lodge" }),
+        row("workshop", { host: "workshop" }),
+        row("lodge-hc", { host: "lodge", mux: "herdr-core" }),
+        row("workshop-hc", { host: "workshop", mux: "herdr-core", link: "unreachable", version: null, panes: null }),
       ]),
       "lead",
     );
     expect(lines.slice(0, 7)).toEqual([
       "  members",
-      "    bluefin",
-      "      bluefin      lead  reachable    1.25.0  mux herdr  panes 2",
-      "      bluefin-hc   peer  reachable    1.25.0  mux herdr-core  panes 2",
-      "    minibuch",
-      "      minibuch     peer  reachable    1.25.0  mux herdr  panes 2",
-      "      minibuch-hc  peer  unreachable  -       mux herdr-core  panes -",
+      "    lodge",
+      "      lodge        lead  reachable    1.25.0  mux herdr  panes 2",
+      "      lodge-hc     peer  reachable    1.25.0  mux herdr-core  panes 2",
+      "    workshop",
+      "      workshop     peer  reachable    1.25.0  mux herdr  panes 2",
+      "      workshop-hc  peer  unreachable  -       mux herdr-core  panes -",
     ]);
-    expect(lines.filter((l) => /^\s+(bluefin|minibuch)\s*$/.test(l))).toHaveLength(2);
+    expect(lines.filter((l) => /^\s+(lodge|workshop)\s*$/.test(l))).toHaveLength(2);
   });
 
   test("a member without a host is its own group, under its id", () => {
@@ -329,11 +329,11 @@ describe("members, grouped by host (M77)", () => {
   });
 
   test("when no host carries two instances the list stays flat, as before", () => {
-    const lines = censusLines(census([row("bluefin", { host: "bluefin" }), row("minibuch", { host: "minibuch" })]), "lead");
+    const lines = censusLines(census([row("lodge", { host: "lodge" }), row("workshop", { host: "workshop" })]), "lead");
     expect(lines.slice(0, 3)).toEqual([
       "  members",
-      "    bluefin   reachable  1.25.0  mux herdr  panes 2",
-      "    minibuch  reachable  1.25.0  mux herdr  panes 2",
+      "    lodge     reachable  1.25.0  mux herdr  panes 2",
+      "    workshop  reachable  1.25.0  mux herdr  panes 2",
     ]);
   });
 });

@@ -52,11 +52,11 @@ describe("probe target", () => {
   });
 
   test("a wide bind is asked on the address it actually bound, not on loopback", () => {
-    // COLLIE_HOST=100.64.0.8 with COLLIE_ALLOW_NON_LOOPBACK_BIND=1 — a listener that is not on
+    // COLLIE_HOST=100.64.10.8 with COLLIE_ALLOW_NON_LOOPBACK_BIND=1 — a listener that is not on
     // loopback at all, so the loopback URL connects to nothing.
-    expect(probeTarget(config({ host: "100.64.0.8" }))).toEqual({
+    expect(probeTarget(config({ host: "100.64.10.8" }))).toEqual({
       kind: "front-door",
-      url: "http://100.64.0.8:8787/api/health",
+      url: "http://100.64.10.8:8787/api/health",
     });
   });
 
@@ -90,13 +90,13 @@ describe("probe target", () => {
   test("the config is read off this instance's env and its trust store", () => {
     const files = fakeFiles({ [`${STATE}/crew-trust.json`]: serializeTrustStore(peerStore()) });
     const cfg = probeConfigOf(
-      { COLLIE_HOST: "100.64.0.8", COLLIE_STANDBY_PORT: "8799" },
+      { COLLIE_HOST: "100.64.10.8", COLLIE_STANDBY_PORT: "8799" },
       files,
       STATE,
       8787,
     );
     expect(cfg).toEqual({
-      host: "100.64.0.8",
+      host: "100.64.10.8",
       port: 8787,
       standbyPort: 8799,
       pinsALead: true,
@@ -131,7 +131,7 @@ describe("update health target", () => {
       port: 8787,
       fingerprint: OWN_FINGERPRINT,
     });
-    expect(updateHealthTarget(peerConfig({ host: "100.64.0.8" }))).toMatchObject({ host: "100.64.0.8" });
+    expect(updateHealthTarget(peerConfig({ host: "100.64.10.8" }))).toMatchObject({ host: "100.64.10.8" });
     expect(updateHealthTarget(peerConfig({ host: "0.0.0.0" }))).toMatchObject({ host: "127.0.0.1" });
   });
 
@@ -149,7 +149,7 @@ describe("update health target", () => {
 
   test("a lead and a solo install keep their front door, wide binds included", () => {
     expect(updateHealthTarget(config())).toEqual(probeTarget(config()));
-    expect(updateHealthTarget(config({ host: "100.64.0.8" }))).toEqual(probeTarget(config({ host: "100.64.0.8" })));
+    expect(updateHealthTarget(config({ host: "100.64.10.8" }))).toEqual(probeTarget(config({ host: "100.64.10.8" })));
     expect(updateHealthTarget(config({ standbyPort: 8799 })).kind).toBe("front-door");
   });
 
@@ -184,7 +184,7 @@ const evidence = (over: Partial<BootEvidence> = {}): BootEvidence => ({
 });
 
 describe("update health target: the peer listener's answer", () => {
-  const target = updateHealthTarget(peerConfig({ host: "100.64.0.8" }));
+  const target = updateHealthTarget(peerConfig({ host: "100.64.10.8" }));
   // `X509Certificate.fingerprint256` is what node hands back: uppercase, colon separated.
   const nodeSpelling = new X509Certificate(OWN_PEM).fingerprint256;
   const ownCert = netShowingCertificate({ ok: true, fingerprint256: nodeSpelling });
@@ -194,7 +194,7 @@ describe("update health target: the peer listener's answer", () => {
     const asked: string[] = [];
     const got = await answer(netShowingCertificate({ ok: true, fingerprint256: nodeSpelling }, asked));
     expect(got).toEqual({ ok: true, version: null, deposed: false });
-    expect(asked).toEqual(["100.64.0.8:8787"]);
+    expect(asked).toEqual(["100.64.10.8:8787"]);
   });
 
   test("a bridge that records its build answers with it, so the build check applies again", async () => {
@@ -215,7 +215,7 @@ describe("update health target: the peer listener's answer", () => {
     const other = new X509Certificate(material("desk").certPem).fingerprint256;
     expect(await answer(netShowingCertificate({ ok: true, fingerprint256: other }))).toEqual({
       ok: false,
-      reason: "100.64.0.8:8787 answers with a certificate that is not this machine's",
+      reason: "100.64.10.8:8787 answers with a certificate that is not this machine's",
     });
   });
 

@@ -1475,15 +1475,15 @@ describe("collie doctor — the crew checks", () => {
   });
 
   test("member-reach: a silent peer with a portless address gets the exact set-address command", async () => {
-    const portless = leadStore({ peers: [member({ memberId: "laptop", address: "100.64.0.9" })] });
+    const portless = leadStore({ peers: [member({ memberId: "laptop", address: "192.0.2.9" })] });
     const { byCheck } = await findings(
       harness(portless, [new Error("connection refused")], { files: { ...healthyFiles(), ...markerFile(portless) } }),
     );
     const f = byCheck.get("member-reach");
     expect(f?.detail).toContain(
-      "laptop at 100.64.0.9 — ",
+      "laptop at 192.0.2.9 — ",
     );
-    expect(f?.detail).toContain("→ `collie crew set-address laptop 100.64.0.9:8787` (8787 unless that machine set COLLIE_PORT)");
+    expect(f?.detail).toContain("→ `collie crew set-address laptop 192.0.2.9:8787` (8787 unless that machine set COLLIE_PORT)");
     // The generic remedy is still there for the rest.
     expect(f?.remedy).toContain("collie crew set-address <member> <host:port>");
   });

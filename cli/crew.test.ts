@@ -436,7 +436,7 @@ describe("enrollUrl", () => {
     expect(enrollUrl("http://desk:8787")).toBe("http://desk:8787/crew/v1/enroll");
   });
 
-  // The port default is what makes `collie crew join bluefin` a whole command. It applies ONLY to an
+  // The port default is what makes `collie crew join lodge` a whole command. It applies ONLY to an
   // address that named neither a scheme nor a port — anything the operator spelled is taken as spelt,
   // so a script written against 1.0.0 keeps dialling exactly where it always did.
   test("a typed port and a typed scheme both win over the defaults", () => {
@@ -751,8 +751,8 @@ describe("collie join", () => {
 
   test("a portless --address is refused with this machine's own port, before anything is read or stored", async () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
-    expect(await cmdJoin(h.deps, [...joinArgs, "--address", "100.64.0.9"])).toBe(EXIT.USAGE);
-    expect(text(h.io)).toContain('--address "100.64.0.9"');
+    expect(await cmdJoin(h.deps, [...joinArgs, "--address", "192.0.2.9"])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain('--address "192.0.2.9"');
     expect(text(h.io)).toContain("there is no port");
     expect(text(h.io)).toContain("try --address <host>:8787");
     // Nothing happened: no dial, no store, no token read.
@@ -769,20 +769,20 @@ describe("collie join", () => {
   test("`--address https://host:8787` still works, and the lead receives `host:8787`", async () => {
     // It worked in 1.15.2, so a patch must not break it: the prefix (and one trailing slash) is
     // stripped, and the scheme form is never stored or sent.
-    for (const given of ["https://100.64.0.9:8787", "https://100.64.0.9:8787/", "HTTPS://100.64.0.9:8787"]) {
+    for (const given of ["https://192.0.2.9:8787", "https://192.0.2.9:8787/", "HTTPS://192.0.2.9:8787"]) {
       const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
       expect(await cmdJoin(h.deps, [...joinArgs, "--address", given])).toBe(EXIT.OK);
-      expect(JSON.parse(h.requests[0]!.body).address).toBe("100.64.0.9:8787");
+      expect(JSON.parse(h.requests[0]!.body).address).toBe("192.0.2.9:8787");
     }
   });
 
   test("an https:// address with no port, a path, or an http:// scheme is refused", async () => {
     for (const [given, why] of [
-      ["https://100.64.0.9", "there is no port"],
-      ["https://100.64.0.9/", "there is no port"],
-      ["https://100.64.0.9:8787/x", "never a path"],
-      ["http://100.64.0.9:8787", "a scheme"],
-      ["http://100.64.0.9", "a scheme"],
+      ["https://192.0.2.9", "there is no port"],
+      ["https://192.0.2.9/", "there is no port"],
+      ["https://192.0.2.9:8787/x", "never a path"],
+      ["http://192.0.2.9:8787", "a scheme"],
+      ["http://192.0.2.9", "a scheme"],
     ] as const) {
       const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
       expect(await cmdJoin(h.deps, [...joinArgs, "--address", given])).toBe(EXIT.USAGE);
@@ -795,8 +795,8 @@ describe("collie join", () => {
 
   test("a host:port --address is accepted and handed to the lead as typed", async () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
-    expect(await cmdJoin(h.deps, [...joinArgs, "--address", "100.64.0.9:8787"])).toBe(EXIT.OK);
-    expect(JSON.parse(h.requests[0]!.body).address).toBe("100.64.0.9:8787");
+    expect(await cmdJoin(h.deps, [...joinArgs, "--address", "192.0.2.9:8787"])).toBe(EXIT.OK);
+    expect(JSON.parse(h.requests[0]!.body).address).toBe("192.0.2.9:8787");
   });
 
   test("no --address at all is the derived host:port, unchecked and unchanged", async () => {
@@ -1500,14 +1500,14 @@ describe("collie crew status — what an unreachable LEAD is told to do", () => 
   });
 
   test("a PEER row with no port gets the same remedy, in the refusal's own words (issue 334)", async () => {
-    const h = harness(leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9" })] }), [
+    const h = harness(leadStore({ peers: [member({ memberId: "nas", address: "192.0.2.9" })] }), [
       new Error("no route to host"),
     ]);
     expect(await cmdCrewStatus(h.deps, [])).toBe(EXIT.OK);
     expect(text(h.io)).toContain("there is no port");
     expect(text(h.io)).toContain("a portless address dials :443");
     // The port is filled in, not left as a placeholder.
-    expect(text(h.io)).toContain("collie crew set-address nas 100.64.0.9:8787");
+    expect(text(h.io)).toContain("collie crew set-address nas 192.0.2.9:8787");
     expect(text(h.io)).toContain("(8787 unless that machine set COLLIE_PORT)");
     expect(text(h.io)).not.toContain("<host:port>");
   });

@@ -75,7 +75,7 @@ const PROBE_DEFAULTS = {
   dirty: "no",
   dirtyfiles: "",
   version: OLD_VERSION,
-  address: "100.64.0.9",
+  address: "192.0.2.9",
   port: "busy",
   curl: "/usr/bin/curl",
   tar: "/usr/bin/tar",
@@ -128,7 +128,7 @@ function opsRecord(sshHost: string): OpsRecord {
 function harness(opts: HarnessOptions = {}) {
   const initial =
     opts.store === undefined
-      ? leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] })
+      ? leadStore({ peers: [member({ memberId: "nas", address: "192.0.2.9:8787" })] })
       : opts.store;
   let contents = initial === null ? null : serializeTrustStore(initial);
   const storeIo: TrustStoreIo = {
@@ -350,8 +350,8 @@ const RELEASE_LEAD: HarnessOptions = { installKind: { kind: "binary" }, leadVers
 const twoPeers = () =>
   leadStore({
     peers: [
-      member({ memberId: "nas", address: "100.64.0.9:8787" }),
-      member({ memberId: "pi", address: "100.64.0.10:8787" }),
+      member({ memberId: "nas", address: "192.0.2.9:8787" }),
+      member({ memberId: "pi", address: "192.0.2.10:8787" }),
     ],
   });
 
@@ -809,7 +809,7 @@ describe("a member's turn: push, restart, verify", () => {
     expect(rendered).toContain(`crew update — ${VERSION} (${COMMIT.slice(0, 12)})`);
     expect(rendered).toContain(`✓ push`);
     expect(rendered).toContain("its bridge came back");
-    expect(rendered).toContain(`answers at 100.64.0.9:8787 · ${VERSION}`);
+    expect(rendered).toContain(`answers at 192.0.2.9:8787 · ${VERSION}`);
     expect(rendered).toContain(`nas         updated  ${OLD_VERSION} → ${VERSION}`);
     expect(rendered).toContain(`✓ 1 updated, 0 already current, 0 skipped, 0 failed — every member named runs ${VERSION}`);
   });
@@ -868,7 +868,7 @@ describe("a member's turn: push, restart, verify", () => {
   test("a member the lead cannot reach afterwards is a FAILURE, not a green run", async () => {
     const h = harness({ hello: { nas: false } });
     expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.FAIL);
-    expect(text(h.io)).toContain("cannot reach it at 100.64.0.9:8787");
+    expect(text(h.io)).toContain("cannot reach it at 192.0.2.9:8787");
     expect(text(h.io)).toContain("nas         FAILED");
   });
 
@@ -882,7 +882,7 @@ describe("a member's turn: push, restart, verify", () => {
     expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
     const rendered = text(h.io);
     expect(rendered).not.toContain("warn: nas answers as");
-    expect(rendered).toContain(`answers at 100.64.0.9:8787 · ${VERSION}+${SHORT}`);
+    expect(rendered).toContain(`answers at 192.0.2.9:8787 · ${VERSION}+${SHORT}`);
     expect(rendered).not.toContain("(expected");
   });
 
@@ -1111,7 +1111,7 @@ describe("the plain transcript", () => {
       "  pushing abc123def456 (0 KiB base64) to /home/pat/.collie…",
       "  ✓ push        1.2.3 at /home/pat/.collie",
       "  ✓ restart     its bridge came back",
-      "  ✓ verify      answers at 100.64.0.9:8787 · 1.2.3",
+      "  ✓ verify      answers at 192.0.2.9:8787 · 1.2.3",
       "",
       "summary:",
       "  nas         updated  1.2.2 → 1.2.3",
@@ -1230,7 +1230,7 @@ describe("the release route", () => {
         hello: { nas: reported },
       });
       expect(await cmdCrewUpdate(ok.deps, ["nas"])).toBe(EXIT.OK);
-      expect(text(ok.io)).toContain(`✓ verify      answers at 100.64.0.9:8787 · ${reported}`);
+      expect(text(ok.io)).toContain(`✓ verify      answers at 192.0.2.9:8787 · ${reported}`);
     }
 
     const bad = harness({
