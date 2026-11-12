@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PLACE_KINDS, type WireOfficialTrick, type WireTrickInfo } from "./schema";
-import { PLACE_REACH, TOKEN_USE_REASONS, trickTokenUse, type DecisionTokenFacts, type TokenUseReason } from "./token-use";
+import { PLACE_REACH, TOKEN_USE_REASONS, trickTokenUse, type TokenUseReason } from "./token-use";
 
 function trick(extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
   return { host: "lodge", id: "inbox", name: "PR Inbox", icon: "plug", on: true, state: "ok", places: ["belt"], ...extra };
@@ -17,13 +17,6 @@ function entry(extra: Partial<WireOfficialTrick> = {}): WireOfficialTrick {
     commit: "0d8039936aef44961a5641f4bfdc4583ed0c3e60",
     state: "absent",
     ...extra,
-  };
-}
-
-function decision(extra: { kind?: string; trickId?: string | null; trickHost?: string | null; replyTo?: string | null } = {}): DecisionTokenFacts {
-  return {
-    from: { kind: extra.kind ?? "trick", trickId: extra.trickId === undefined ? "inbox" : extra.trickId, trickHost: extra.trickHost === undefined ? "lodge" : extra.trickHost },
-    replyTo: extra.replyTo === undefined ? "lodge/w1:p1#ab12" : extra.replyTo,
   };
 }
 
@@ -117,37 +110,24 @@ describe("trickTokenUse: an official entry that is not added", () => {
   });
 });
 
-describe("trickTokenUse: Decisions", () => {
-  it("labels a program trick once one of its Decisions types the answer into a session", () => {
-    expect(trickTokenUse(trick(), [decision()])).toBe("answer");
+describe("trickTokenUse: Decisions that answer into a session", () => {
+  // Declared in the manifest and enforced by the bridge (schema.ts DECIDES_REPLY_LINE), so the label comes
+  // with the switch, before any Decision is posted.
+  it("labels an installed trick that declares decides = reply, before any Decision", () => {
+    expect(trickTokenUse(trick({ decidesReply: true }))).toBe("answer");
   });
 
-  it("finds it among other Decisions", () => {
-    expect(trickTokenUse(trick(), [decision({ kind: "agent", trickId: null }), decision({ replyTo: null }), decision()])).toBe("answer");
+  it("labels an official entry the list pins with decides = reply, before Add", () => {
+    expect(trickTokenUse(entry({ decidesReply: true }))).toBe("answer");
   });
 
-  const none: [string, DecisionTokenFacts][] = [
-    ["its Decision without replyTo", decision({ replyTo: null })],
-    ["another trick's Decision", decision({ trickId: "gates" })],
-    ["the same id on another machine", decision({ trickHost: "workshop" })],
-    ["an agent's Decision with replyTo", decision({ kind: "agent", trickId: null })],
-    ["a Collie Decision", decision({ kind: "collie", trickId: null })],
-  ];
-
-  it.each(none)("gives none for %s", (_name, d) => {
-    expect(trickTokenUse(trick(), [d])).toBeNull();
+  it("gives none for a trick whose last run listed Decisions but which declares no reply", () => {
+    expect(trickTokenUse(trick({ decides: true }))).toBeNull();
   });
 
-  it("matches by id alone when the Decision names no host", () => {
-    expect(trickTokenUse(trick(), [decision({ trickHost: null })])).toBe("answer");
-  });
-
-  it("never reads Decisions for a trick it cannot name", () => {
-    expect(trickTokenUse({ places: ["belt"] }, [decision()])).toBeNull();
-  });
-
-  it("names the agent view before the answer", () => {
-    expect(trickTokenUse(trick({ agentView: true }), [decision()])).toBe("agent-view");
+  it("names the agent view and the rules before the answer", () => {
+    expect(trickTokenUse(trick({ agentView: true, decidesReply: true }))).toBe("agent-view");
+    expect(trickTokenUse(trick({ rules: { file: "rules.md", text: "Draw one screen.\n" }, decidesReply: true }))).toBe("rules");
   });
 });
 

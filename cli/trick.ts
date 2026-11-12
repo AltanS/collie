@@ -40,6 +40,7 @@ import {
   AGENT_VIEW_PLACE,
   AGENT_VIEW_TAP_WORDS,
   AGENT_VIEW_WORDS,
+  DECIDES_REPLY_WORDS,
   isHostName,
   isTrickId,
   parseFacts,
@@ -766,7 +767,7 @@ export async function runAgainstFixture(manifest: TrickManifest, folder: string,
     });
     const problem = outcomeProblem(outcome, 400);
     if (problem !== null || outcome.kind !== "exited") return { outcome, problem, stdoutBytes: 0, parsed: null, decisionsListed: false };
-    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, contract: manifest.contract });
+    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply" });
     const decisionsListed = asJsonObject(parseJson(outcome.stdout))?.decisions !== undefined;
     return { outcome, problem, stdoutBytes: new TextEncoder().encode(outcome.stdout).length, parsed, decisionsListed };
   } finally {
@@ -851,6 +852,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
       io.out(`          ${AGENT_VIEW_TAP_WORDS}`);
     }
     if (m.rules !== undefined) io.out(`  rules:  ${m.rules}. ${RULES_WORDS}`);
+    if (m.decides === "reply") io.out(`  decides: reply. ${DECIDES_REPLY_WORDS}`);
   }
   if (report.env.length > 0) {
     const names = report.env.map((e) => (e.reason === undefined ? e.name : `${e.name} (${e.reason})`));
@@ -1043,7 +1045,8 @@ look on PATH alone. \`collie trick dev\` passes every \`TRICK_*\` variable you s
 
 A Decision may carry a \`view\`: display nodes under its summary (a bar of chips, rows with their
 proof, a code hunk), at most 8 KiB, 100 nodes and 4 deep, with no button, card or image. The options
-are the taps. When neither \`t.decide\` nor \`t.keepDecisions\` is called, the run wants no Decisions and the open ones
+are the taps. A Decision with \`replyTo\` types the person's answer into that session: write
+\`decides = "reply"\` in \`trick.toml\`, or Collie refuses it. When neither \`t.decide\` nor \`t.keepDecisions\` is called, the run wants no Decisions and the open ones
 are withdrawn. A thrown error shows one warn card in the trick's session, or fails the run when the
 trick has no session.
 `;

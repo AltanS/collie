@@ -1418,6 +1418,8 @@ export class TricksService implements TricksSurface {
     const approves = approvesOf(rt);
     if (approves !== undefined) info.approves = approves;
     if (m?.agentView === true) info.agentView = true;
+    // Declared in the manifest of what runs, so the phone knows it before any Decision (the token label).
+    if (m?.decides === "reply") info.decidesReply = true;
     if (m?.rules !== undefined && m.rulesText !== undefined) info.rules = { file: m.rules, text: m.rulesText };
     // A trick with rules never takes a change without asking, whatever an older switch file says.
     if (info.on && rt.entry !== undefined) info.auto = rt.entry.auto && !hasRules(rt);
@@ -1636,7 +1638,8 @@ export class TricksService implements TricksSurface {
     if (problem === null && outcome.kind === "exited") {
       // Masked in run.ts already; again here, so no runner behind the seam can hand the parser a key.
       const text = redactText(outcome.stdout);
-      parsed = parseTrickDocumentText(text, { declared: manifest.places, contract: manifest.contract });
+      // `manifest` is the approved copy's: a Decision with `replyTo` needs `decides = "reply"` there, never in the folder.
+      parsed = parseTrickDocumentText(text, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply" });
       if (parsed.documentRefused) problem = `The output was refused: ${parsed.refusals[0]?.reason ?? "not a document"}`;
       // An absent `decisions` key means "unchanged"; an empty list withdraws them all.
       decisionsListed = asJsonObject(parseJson(text))?.decisions !== undefined;

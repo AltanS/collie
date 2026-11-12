@@ -47,10 +47,12 @@ icon = "clock"
 places = ["status", "dashboard", "session"]
 contract = 1
 description = "Lists agents idle for 20 minutes or more, and asks before you wake one."
+decides = "reply"
 ```
 
 It draws in three places: a chip in the status line, a tile on the Dashboard, and a Page of its
-own. Every key is in [Manifest keys](tricks-reference.md#manifest-keys).
+own. `decides = "reply"` says that its Decisions name a session with `replyTo`: without it, Collie
+refuses such a Decision. Every key is in [Manifest keys](tricks-reference.md#manifest-keys).
 
 `program.ts`:
 
@@ -120,6 +122,7 @@ trick idle-watch (Idle watch) in /tmp/tricks-doc-lab/idle-watch
   places: status, dashboard, session
   every:  1m
   run:    program.ts
+  decides: reply. Your answers to its Decisions go to a session as your own message.
   code:   sha256 63bc959b… (what `collie trick on` approves)
   helper: trick.ts is collie trick helper v4, Collie's own code, not checked line by
           line

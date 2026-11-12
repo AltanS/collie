@@ -308,6 +308,9 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
  * auto, no "Use it and stop asking", the card shows it whole. A manifest read from its text alone, whose
  * rules file was not read, hashes `rules` as the empty string: never equal to a read one.
  *
+ * `decides = "reply"` (2026-11-12) is a right too, hashed only when the manifest has it: a Decision with
+ * `replyTo` types the person's answer into a session, so a version that adds it asks again, even with auto.
+ *
  * THE CANONICAL FORM (fault B). The three first keys, `env`, `inputs` and `places`, are always hashed, as
  * sorted lists. Every key added after them is hashed only when it holds something: an absent key equals
  * its neutral value (`undefined`, `null`, `false`, an empty list, an empty object), so a right a later
@@ -316,12 +319,14 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
  * text above. The keys go in sorted order (`env`, `inputs`, `places`, then {@link LATER_POWER_KEYS}), which is
  * the order every stored hash was written in.
  */
-export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256">): string {
+export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256" | "decides">): string {
   const env = [...new Set(manifest.env ?? [])].toSorted();
   const places = [...new Set<string>([...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])])].toSorted();
   const inputs = [...new Set(manifest.inputs ?? [])].toSorted();
   const later: LaterPowers = {};
   if (manifest.rules !== undefined) later.rules = manifest.rulesSha256 ?? "";
+  // `decides = "reply"`: its Decisions may type the person's answer into a session. Absent hashes as before.
+  if (manifest.decides !== undefined) later.replies = manifest.decides;
   return powersHash({ env, inputs, places }, later);
 }
 
@@ -354,12 +359,14 @@ export interface FirstPowers {
 
 /** The power keys added after the first three. A new right gets its key here, and in {@link LATER_POWER_KEYS}. */
 export interface LaterPowers {
+  /** The manifest's `decides`: `reply` when the trick's Decisions may answer into a session (2026-11-12). Named so it sorts after `places`. */
+  replies?: string;
   /** The rules file's SHA-256, or the empty string for rules named but not read. */
   rules?: string;
 }
 
 /** The later keys, in sorted order. */
-export const LATER_POWER_KEYS = ["rules"] as const satisfies readonly (keyof LaterPowers)[];
+export const LATER_POWER_KEYS = ["replies", "rules"] as const satisfies readonly (keyof LaterPowers)[];
 
 /** Whether a later power key holds nothing, so it hashes as if absent: absent, or an empty list. The empty string holds something. */
 export function neutralPower(value: string | readonly string[] | undefined): boolean {

@@ -1,7 +1,7 @@
 import type { PlaceKind } from "./schema";
 
-// WHETHER A TRICK MAKES AN AGENT READ OR WRITE MORE (2026-11-12, a design round, nothing draws it yet). The
-// answer comes from facts the phone already holds, never from a flag a trick or a person sets by hand.
+// WHETHER A TRICK MAKES AN AGENT READ OR WRITE MORE (2026-11-12). The answer comes from facts the phone already
+// holds, never from a flag a person sets by hand.
 //
 // What spends an agent's tokens is text the agent reads or writes. A trick reaches an agent in three ways:
 //
@@ -13,15 +13,15 @@ import type { PlaceKind } from "./schema";
 //      bridge, or the official list (`givesRules`), says alone.
 //   3. a Decision with `replyTo`: the person's answer on the Hill is typed into that session as their own
 //      WalkyTalky message (bridge/hill/service.ts, "WHERE THE ANSWER GOES"): one more turn per answer. A
-//      trick's Decision without `replyTo` types nothing; its answer reaches only the trick's program.
+//      trick's Decision without `replyTo` types nothing; its answer reaches only the trick's program. Only a
+//      trick whose manifest says `decides = "reply"` may name one: the bridge refuses it from any other
+//      (schema.ts `DECIDES_REPLY_LINE`). The wire carries that declared fact (`decidesReply` on an installed
+//      trick and on an official entry), so the label shows before the first Decision, and no live Decision
+//      can disagree with it: the enforcement makes a Decision with `replyTo` a subset of the declared fact.
 //
 // Every other control a trick draws runs the trick's own program on the bridge and types nothing into a
 // session (README "Rights": a trick never sends, presses a key or writes a reply box). That is
 // {@link PLACE_REACH}: a new place in the schema fails to compile here until someone says which it is.
-//
-// WHAT THE WIRE DOES NOT CARRY. Whether a program trick's Decisions name `replyTo` is known only once one is
-// posted (the phone reads it from the Hill's list). Neither the manifest, `WireTrickInfo` nor the official
-// list says it before. A label read from it comes with the first such Decision, not with the switch.
 //
 // Pure, no DOM and no `@/` alias: the bridge may load it by relative path, as it loads `schema.ts`.
 
@@ -64,12 +64,8 @@ export interface TrickTokenFacts {
   readonly rulesUnshown?: boolean | undefined;
   /** `WireOfficialTrick.givesRules`: the list pins instructions for the entry. */
   readonly givesRules?: boolean | undefined;
-}
-
-/** What the rule reads of a Hill Decision (`HillDecision` in lib/hill/wire.ts fits as it is). */
-export interface DecisionTokenFacts {
-  readonly from: { readonly kind: string; readonly trickId: string | null; readonly trickHost?: string | null };
-  readonly replyTo: string | null;
+  /** `WireTrickInfo.decidesReply` and `WireOfficialTrick.decidesReply`: the manifest says `decides = "reply"`. */
+  readonly decidesReply?: boolean | undefined;
 }
 
 /** The places whose controls type into a session. */
@@ -80,22 +76,11 @@ function placeTypesIntoSession(place: string): boolean {
   return SESSION_PLACES.has(place);
 }
 
-/** Whether a Decision is this trick's and types the person's answer into a session. */
-function answerTypes(trick: TrickTokenFacts, decision: DecisionTokenFacts): boolean {
-  if (decision.from.kind !== "trick" || decision.replyTo === null) return false;
-  if (trick.id === undefined || decision.from.trickId !== trick.id) return false;
-  const host = decision.from.trickHost;
-  return trick.host === undefined || host === undefined || host === null || host === trick.host;
-}
-
-/**
- * Why `trick` makes an agent read or write more, or null when it does not. `decisions` is the Hill's list as
- * the phone holds it; leave it out where the phone holds none (an official entry that is not added).
- */
-export function trickTokenUse(trick: TrickTokenFacts, decisions: readonly DecisionTokenFacts[] = []): TokenUseReason | null {
+/** Why `trick` makes an agent read or write more, or null when it does not. */
+export function trickTokenUse(trick: TrickTokenFacts): TokenUseReason | null {
   const places = Array.isArray(trick.places) ? trick.places : [];
   if (trick.agentView === true || places.some(placeTypesIntoSession)) return "agent-view";
   if (trick.rules !== undefined || trick.rulesUnshown === true || trick.givesRules === true) return "rules";
-  if (decisions.some((decision) => answerTypes(trick, decision))) return "answer";
+  if (trick.decidesReply === true) return "answer";
   return null;
 }

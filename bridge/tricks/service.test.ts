@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { HOST as THIS_HOST } from "../host.ts";
 import type { JsonObject } from "../json.ts";
 import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
-import { CLOSED_KEY_LINE, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { CLOSED_KEY_LINE, DECIDES_REPLY_LINE, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import type { AgentView } from "../types.ts";
 import { legacyPowersOf, powersOf, powersOfDir } from "./approved.ts";
 import { factsWorldOf, NO_FACTS_CAPS, type FactsWorldInput } from "./facts.ts";
@@ -1668,6 +1668,37 @@ describe("the approved copy (crew slice 2)", () => {
     file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs.hash).toBe(v2);
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3, powersChanged: true });
+  });
+
+  test("decides = reply is a right: a version that adds it waits, auto or not; the approved copy refuses replyTo meanwhile, then takes it after the yes", async () => {
+    const audits: string[] = [];
+    const ask = { key: "ship", title: "Ship it?", summary: "One change.", options: [{ intent: "ship", label: "Ship it" }], replyTo: `${HOST}:w6X:3` };
+    const r = await rig([exited(belt("1", { decisions: [ask] }))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const legs = async () => (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
+    // An old version without the key: its Decision with replyTo is refused with the plain line, the rest draws.
+    expect((await legs())?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.reason])).toEqual([["undeclared", "/decisions/0/replyTo", DECIDES_REPLY_LINE]]);
+    expect((await legs())?.decidesReply).toBeUndefined();
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = await codeHashOf(dir);
+    // The folder adds the key: a new code hash and new powers, so it waits for a person, auto or not.
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}decides = "reply"\n`);
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 1\n");
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v1);
+    expect(audits).toEqual([]);
+    expect((await legs())?.pending).toMatchObject({ hash: v2, powersChanged: true });
+    // The approved copy runs, and its manifest is the one read: the folder's key does not count yet.
+    await tickAt(r, T0 + 40_000);
+    expect((await legs())?.refusals?.map((refusal) => refusal.reason)).toEqual([DECIDES_REPLY_LINE]);
+    expect((await legs())?.decidesReply).toBeUndefined();
+    // The yes: the new copy runs, the Decision passes, and the row says it before anything else.
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await tickAt(r, T0 + 80_000);
+    expect((await legs())?.refusals).toBeUndefined();
+    expect((await legs())?.decidesReply).toBe(true);
   });
 
   test("a copy that changed on disk stops the trick with a plain line; switching on again approves the folder anew", async () => {

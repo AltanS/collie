@@ -298,9 +298,10 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const ruled = body.rules;
   const versioned = body.version;
   const known = body.repoFacts;
+  const replying = body.decidesReply;
   if (!isTrickValue(body)) return undefined;
   if (body.provenance !== undefined) body.provenance = readProvenance(body.provenance);
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -309,7 +310,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -318,6 +319,8 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (auto !== undefined) out.auto = auto;
   if (autoAt !== undefined && Number.isFinite(Date.parse(autoAt))) out.autoAt = autoAt;
   if (viewed === true) out.agentView = true;
+  // Declared in the manifest of what runs: its Decisions may answer into a session (the token label reads it).
+  if (replying === true) out.decidesReply = true;
   const approves = asJsonString(approving);
   if (approves !== undefined && /^[0-9a-f]{64}$/u.test(approves)) out.approves = approves;
   if (rules !== undefined) out.rules = rules;
@@ -407,6 +410,7 @@ function readOfficialTrick(raw: JsonValue | undefined): WireOfficialTrick | unde
   const places = readOfficialPlaces(body.places);
   if (places.length > 0) out.places = places;
   if (body.agentView === true) out.agentView = true;
+  if (body.decidesReply === true) out.decidesReply = true;
   return out;
 }
 

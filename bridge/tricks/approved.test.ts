@@ -298,6 +298,10 @@ describe("powers", () => {
     // A key that holds something is hashed after the first three, keys sorted, as every stored hash was.
     const sha = "a".repeat(64);
     expect(powersHash(first, { rules: sha })).toBe(new Bun.CryptoHasher("sha256").update(`{"env":[],"inputs":[],"places":["belt","session"],"rules":"${sha}"}`).digest("hex").slice(0, 16));
+    // decides = "reply" (2026-11-12): hashed as `replies`, only when the manifest has it, before `rules`.
+    expect(powersOf({ places: ["belt", "session"], decides: "reply" })).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":[],"places":["belt","session"],"replies":"reply"}').digest("hex").slice(0, 16));
+    expect(powersOf({ places: ["belt", "session"], decides: "reply" })).not.toBe(era);
+    expect(powersOf({ places: ["belt", "session"], decides: "reply", rules: "rules.md", rulesSha256: sha })).toBe(new Bun.CryptoHasher("sha256").update(`{"env":[],"inputs":[],"places":["belt","session"],"replies":"reply","rules":"${sha}"}`).digest("hex").slice(0, 16));
     expect([...LATER_POWER_KEYS]).toEqual([...LATER_POWER_KEYS].toSorted());
     expect(LATER_POWER_KEYS.every((key) => key > "places")).toBe(true);
   });

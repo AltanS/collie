@@ -294,6 +294,12 @@ export class OfficialTricks implements OfficialTricksSurface {
       this.deps.warn?.(`${entry.id}: the official ${mode} was refused: the places differ from the list's`);
       throw new Stop(mismatch(mode));
     }
+    // And `decides`: the phone said "Uses agent tokens" or not from the list alone (a pin always follows the
+    // code hash, so this only stops a list written by hand).
+    if (candidate.manifest.decides !== entry.decides) {
+      this.deps.warn?.(`${entry.id}: the official ${mode} was refused: decides differs from the list's`);
+      throw new Stop(mismatch(mode));
+    }
     // An add writes config.toml and media/ too, which the code hash leaves out: the extras hash pins them.
     // An update takes only code, so it has nothing of them to check.
     if (mode === "add") {

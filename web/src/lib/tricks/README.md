@@ -21,7 +21,7 @@ helper (`cli/trick-kit/trick.ts`, a file a trick folder copies) carries the same
 contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `contract = 1`.
 
 **The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`,
-`inputs` (contract 2), the later `watch`, `on` and `mode`, and two texts for a person, `description` (one
+`inputs` (contract 2), `decides` (see "Decisions"), the later `watch`, `on` and `mode`, and two texts for a person, `description` (one
 line, at most 140 characters, shown under the name in Settings → Tricks) and `about` (at most 1200
 characters, paragraphs split by a blank line, shown in the trick's About sheet). Both are plain text, with
 no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. An optional `version` (1 to 24
@@ -190,7 +190,7 @@ shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` h
   2 spaces, no more than 2 blank lines in a row, not empty, and a line break at the end; each break is its own refusal that names
   the line. `rules` without `agent-view` is refused, and so is either one at contract 1.
 - A trick whose `places` is exactly `["agent-view"]` has no program: `run`, `every`, `inputs` and
-  `env` are refused (`VIEW_ONLY_REFUSED`). It never starts anything: no timer, no tap, no program. A
+  `env` are refused, and so is `decides` (`VIEW_ONLY_REFUSED`). It never starts anything: no timer, no tap, no program. A
   place this Collie does not know beside it counts as another place, so a newer trick keeps its `run`.
 - The rules file is in the code hash, so an edit is a new version. Its SHA-256 is in the powers
   (`powersOf` adds `rules` only when the manifest names it, so every other trick's powers hash is the
@@ -393,8 +393,9 @@ Each Collie release carries a short list of official tricks: `bridge/tricks/offi
 the binary, read strictly by `bridge/tricks/official.ts`. An entry is a trick id, its name, one line
 about it, the repository (`https://github.com/AltanS/collie-tricks`, the only one the reader accepts),
 the folder in it, a full commit, the code hash that folder has at that commit, an extras hash over what
-an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`), and
-`rules`: the SHA-256 of the instructions a contract 2 trick gives its agents, or null. The code hash
+an add installs beside the code (`config.toml` and `media/`, code-hash.ts `officialExtrasHash`), the
+manifest's `decides` when it has one (the phone's "Uses agent tokens" before Add; the add refuses a folder
+whose manifest says otherwise), and `rules`: the SHA-256 of the instructions a contract 2 trick gives its agents, or null. The code hash
 already covers that file; the pin lets the phone say "Gives your agents instructions written by its
 author." before Add without a fetch, and the add (and an update) refuses a folder whose rules differ. The
 list carries no rules text, so the not-added About sheet says "Read the instructions after you add it. It
@@ -883,7 +884,20 @@ pre-selected. `confirm` is the second label of the tree's button, so the phone a
 first tap and sends the intent on the second, and the bridge sees one intent. `text` is `optional`
 (the default), `required` or `none`; `none` needs at least one option. `about` is a session's scope
 key (the facts' `id`, `memberId:paneId`) whose Chat the card opens. `replyTo` is a session's scope key:
-the person's answer reaches it as the person's own walky message. `media` is up to 4 images, each `{
+the person's answer reaches it as the person's own walky message.
+
+**`decides = "reply"`, declared and enforced** (2026-11-12). Only a trick whose manifest says `decides =
+"reply"` may give a Decision `replyTo`. The word is closed (`DECIDES_WORDS`), every contract takes it, a
+trick that is only an agent view is refused it, and it is a right: `powersOf` hashes it (a later key, only
+when present), the version card shows the chip "answers go to a session", and a version that adds it never
+goes in without asking. The bridge passes the APPROVED copy's manifest to the parse
+(`ParseTrickDocumentOptions.decidesReply`), never the folder's, and a Decision with `replyTo` from any other
+trick is refused alone, code `undeclared`, with `DECIDES_REPLY_LINE`: "This trick did not say that its
+Decisions reply to a session." Its key is not kept as refused, so an open post of that key (from a build
+before the check) is withdrawn by the trick, and no answer reaches a session. The refusal is on the trick's
+row and in `collie trick check --run` and `collie trick dev`, as any refused Decision is. The wire carries
+the declared fact (`WireTrickInfo.decidesReply`, `WireOfficialTrick.decidesReply` from the official pin), so
+the phone labels the trick "Uses agent tokens" before its first Decision (`token-use.ts`). `media` is up to 4 images, each `{
 file, caption? }`: `file` names an image in the trick's own folder by a relative path with no `..`
 (`shots/red.png`), and `caption` is up to 80 characters.
 
