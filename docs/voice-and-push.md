@@ -463,7 +463,7 @@ message in the body. Selecting the notification navigates directly to that agent
 
 ### Which alerts Collie sends
 
-Five kinds, each with its own switch under **Settings → Alerts → Notify when**.
+Six kinds, each with its own switch under **Settings → Alerts → Notify when**.
 
 | Alert | Fires when | Default |
 | --- | --- | --- |
@@ -472,6 +472,7 @@ Five kinds, each with its own switch under **Settings → Alerts → Notify when
 | App updates | a newer Collie release is available | on |
 | Machine load stays high | a machine's CPU, memory or fullest disk stays above a rule you set for it | on |
 | Cache about to go cold | a pane's prompt cache expires in about five minutes | off |
+| Decisions that need you now | an agent or a trick posts a Decision marked `now` on the Hill | on |
 
 Finished fires when an agent goes from working to idle, so an agent you interrupt also counts as finished.
 
@@ -485,8 +486,21 @@ Machine load sends nothing until you set a rule on a machine's page. The switch 
 once. One alert is sent each time a value climbs and stays high, and a tap opens that machine's Status view. See
 [Machines](crew.md#machines).
 
+A Decision marked `now` sends one notification, with the Decision's title and summary and nothing
+else. A tap opens the Hill at that card. A newer version of the Decision replaces the notification,
+and the notification closes when the Decision is answered, withdrawn or expires. One session sends at
+most three an hour, and all of them together at most ten. In a crew, the agents of one member send at
+most six an hour together ([Decisions from any machine](crew.md#decisions-from-any-machine)). Past
+that the Decision still shows on the Hill, without a notification.
+
+The Hill has its own switch, first on Settings → Alerts, and it is on by default. Off, agents and
+tricks cannot post Decisions, nothing about a Decision is sent, and the Hill leaves the bar. Switching
+it off closes the notifications of the open Decisions. Those Decisions stay on the bridge and show
+again when you switch the Hill on. `collie hill off` and `collie hill on` move the same switch.
+
 Each device shows an alert's title in its own [language](configure.md#language), and English on a
-device that has not opened Collie since it was updated. The body stays as the bridge wrote it.
+device that has not opened Collie since it was updated. The body stays as the bridge wrote it, and a
+Decision's title stays in the words its poster wrote.
 
 Every switch is bridge-wide. A push fans out to every subscribed device, so there is nothing
 per-device to set.

@@ -146,6 +146,10 @@ const KNOWN_FOLDERS: ReadonlyMap<string, RegExp> = new Map([
   ["fonts", /^[^\\/]+\.woff2$/i],
   ["acl-backups", /^acl-backup-.+\.sddl$/i],
   ["whistle", /^whistle\.(?:cact|json|lock)$|^whistle\.cact\.\d+\.\d+\.part$|^whistle\.json\.\d+\.\d+\.tmp$/],
+  // Collie tricks (M94, bridge/tricks/paths.ts): the switch file and its temporary. A `tricks/` that also
+  // holds a trick's own state folder, or the config folder's `tricks/` with the operator's trick folders,
+  // has subfolders and so is not Collie's by this one-level rule: checked, never changed.
+  ["tricks", /^switches\.json(?:\.tmp)?$/],
 ]);
 
 /**

@@ -17,18 +17,20 @@ import {
   normalizePeerAddress,
   guard,
   isOpenApiRoute,
+  OPEN_API_PATTERNS,
   OPEN_API_ROUTES,
   paneGateLevel,
   type PairingGate,
   requestDevice,
 } from "./server.ts";
+import { TRICKS_ROUTE_RIGHTS } from "./tricks/routes.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH } from "./types.ts";
 
 // ── DENY BY DEFAULT, PINNED (ADR 0086) ────────────────────────────────────────────────────────
 // `apiFrontGate` is the one pairing check in front of the whole `/api/` dispatcher. These tests hold
 // it to three promises: every `/api/` path `bridge/server.ts` names is refused without a token, the
-// allowlist is exactly `GET|HEAD /api/health` and `POST /api/pair`, and no spelling of a path reaches
-// a route without passing the same check the route would. `Bun.serve` is not stood up for the real
+// allowlist is exactly `GET|HEAD /api/health`, `POST /api/pair` and the pairing request with its poll
+// (ADR 0139), and no spelling of a path reaches a route without passing the same check the route would. `Bun.serve` is not stood up for the real
 // dispatcher (CLAUDE.md), so its wiring is pinned by source below, as access-jwt.test.ts pins its own.
 
 const SERVER_SRC = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
@@ -163,14 +165,30 @@ describe("the route table read off server.ts", () => {
 });
 
 describe("apiFrontGate: every /api/ path but the allowlist is refused without a token", () => {
-  test("the allowlist is GET|HEAD /api/health and POST /api/pair, and nothing else", () => {
+  test("the allowlist is GET|HEAD /api/health, POST /api/pair, the pairing request, its poll and its cancel, and nothing else", () => {
     expect(OPEN_API_ROUTES).toEqual([
       { path: "/api/health", methods: ["GET", "HEAD"] },
       { path: "/api/pair", methods: ["POST"] },
+      { path: "/api/pair/request", methods: ["POST"] },
+    ]);
+    expect(OPEN_API_PATTERNS.map((p) => ({ pattern: p.pattern.source, methods: p.methods }))).toEqual([
+      { pattern: "^\\/api\\/pair\\/request\\/([^/]+)$", methods: ["GET", "DELETE"] },
     ]);
     expect(isOpenApiRoute("/api/pair", "GET")).toBe(false);
     expect(isOpenApiRoute("/api/health", "POST")).toBe(false);
     expect(isOpenApiRoute("/api/health/", "GET")).toBe(false);
+    // The poll (GET) and the cancel (DELETE) are open on one segment, and nothing else is.
+    expect(isOpenApiRoute("/api/pair/request/abc", "GET")).toBe(true);
+    expect(isOpenApiRoute("/api/pair/request/abc", "DELETE")).toBe(true);
+    expect(isOpenApiRoute("/api/pair/request/abc", "POST")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request/abc", "PUT")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request", "DELETE")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request/", "GET")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request/a/b", "GET")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/request", "GET")).toBe(false);
+    // The approver's routes are never open.
+    expect(isOpenApiRoute("/api/pair/approve/abc", "GET")).toBe(false);
+    expect(isOpenApiRoute("/api/pair/approve/abc", "POST")).toBe(false);
   });
 
   for (const paired of [true, false]) {
@@ -556,6 +574,26 @@ describe("the local credential: reads only, from this host through nothing", () 
       expect({ bind, status: cleared?.status }).toEqual({ bind, status: 403 });
       const steer = guard(request("POST", "/api/send", headers), config(), "write", gate);
       expect({ bind, status: steer?.status }).toEqual({ bind, status: 403 });
+    }
+  });
+
+  // Official tricks (M94): an add or an update from the list fetches code onto this machine, so it is a
+  // person's tap only, like the trick switch. The local credential (an agent beside the bridge can hold it)
+  // is refused at the level server.ts asks for the route (pinned in bridge/tricks/units.test.ts).
+  test("an add or an update from the official list with the local credential is 403", async () => {
+    expect(TRICKS_ROUTE_RIGHTS.officialAdd).toBe("write");
+    for (const [bind, peer] of [
+      [LOOPBACK_BIND, "127.0.0.1"],
+      [CONCRETE_BIND, "100.64.0.8"],
+    ] as const) {
+      const { gate } = await gateFrom(() => peer, bind);
+      const headers = { ...bearer, origin: "http://127.0.0.1:8787", "content-type": "application/json" };
+      for (const path of ["/api/tricks/official/design-review/add", "/api/tricks/official/design-review/update"]) {
+        const denied = guard(request("POST", path, headers), config(), TRICKS_ROUTE_RIGHTS.officialAdd, gate);
+        expect({ bind, path, status: denied?.status }).toEqual({ bind, path, status: 403 });
+      }
+      // The list itself is a read, as the tricks list is.
+      expect(guard(request("GET", "/api/tricks/official", bearer), config(), TRICKS_ROUTE_RIGHTS.official, gate)).toBeNull();
     }
   });
 

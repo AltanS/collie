@@ -8,6 +8,8 @@ import {
   PEER_BROWSER_ENV,
   resolveCrewRuntime,
   SOLO_RUNTIME,
+  TRICK_READS_ENV,
+  trickReadsAllowed,
   warnsOnWildcardBind,
   type CrewRuntime,
 } from "./config.ts";
@@ -77,11 +79,32 @@ describe("resolveCrewRuntime — a peer's own browser front door is an explicit 
   });
 });
 
+describe("trick reads on a member (M99, §23)", () => {
+  test("off refuses and on allows; unset follows the device gate; any other word refuses", () => {
+    expect(trickReadsAllowed({ [TRICK_READS_ENV]: "off" })).toBe(false);
+    expect(trickReadsAllowed({ [TRICK_READS_ENV]: "on" })).toBe(true);
+    expect(trickReadsAllowed({ [TRICK_READS_ENV]: " ON " })).toBe(true);
+    expect(trickReadsAllowed({})).toBe(true);
+    expect(trickReadsAllowed({ COLLIE_DEVICE_HEADER: "Tailscale-User-Login" })).toBe(false);
+    expect(trickReadsAllowed({ COLLIE_DEVICE_HEADER: "Tailscale-User-Login", [TRICK_READS_ENV]: "on" })).toBe(true);
+    expect(trickReadsAllowed({ [TRICK_READS_ENV]: "off", COLLIE_DEVICE_HEADER: "" })).toBe(false);
+    expect(trickReadsAllowed({ [TRICK_READS_ENV]: "yes" })).toBe(false);
+  });
+
+  test("only a peer reads for its lead: a lead and a solo collie never do", () => {
+    expect(resolveCrewRuntime(led("desk"), {}).trickReads).toBe(true);
+    expect(resolveCrewRuntime(led("desk"), { [TRICK_READS_ENV]: "off" }).trickReads).toBe(false);
+    expect(resolveCrewRuntime(leading("nas"), { [TRICK_READS_ENV]: "on" }).trickReads).toBe(false);
+    expect(resolveCrewRuntime(null, { [TRICK_READS_ENV]: "on" }).trickReads).toBe(false);
+  });
+});
+
 describe("crew config pays no solo tax at the config layer", () => {
   const RUNTIME_KEYS = {
     mode: true,
     peerServesBrowser: true,
     conflict: true,
+    trickReads: true,
   } satisfies Record<keyof CrewRuntime, true>;
 
   test("nothing crew-shaped leaked onto Config", () => {
@@ -96,8 +119,9 @@ describe("crew config pays no solo tax at the config layer", () => {
     expect(src).not.toContain(PEER_BROWSER_ENV);
   });
 
-  test("the runtime carries exactly these three facts", () => {
-    expect(Object.keys(RUNTIME_KEYS).toSorted()).toEqual(["conflict", "mode", "peerServesBrowser"]);
+  test("the runtime carries exactly these four facts", () => {
+    // `trickReads` (M99, §23) is a peer's answer to its lead, so it lives here and never on Config.
+    expect(Object.keys(RUNTIME_KEYS).toSorted()).toEqual(["conflict", "mode", "peerServesBrowser", "trickReads"]);
   });
 });
 

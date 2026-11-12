@@ -9,6 +9,7 @@ import {
   decodedPath,
   isAncestor,
   machinePath,
+  hillPath,
   machinesPath,
   machineTabOf,
   newAddPath,
@@ -63,6 +64,20 @@ describe("the machines paths", () => {
   it("keeps both views one level: their parents are the same, so a switch is a side move", () => {
     expect(ancestorsOf("/machines/bluefin")).toContain("/");
     expect(isAncestor("/machines/bluefin?tab=alerts", "/machines/bluefin")).toBe(false);
+  });
+});
+
+describe("the hill path", () => {
+  it("names the hill and carries the scope, one level under the Dashboard", () => {
+    expect(hillPath()).toBe("/hill");
+    expect(hillPath({ host: "badger", session: undefined })).toBe("/hill?h=badger");
+    expect(ancestorsOf("/hill")).toEqual(["/"]);
+  });
+});
+
+describe("the approver's page", () => {
+  it("sits one level under the Dashboard (ADR 0139)", () => {
+    expect(ancestorsOf("/pair/approve")).toEqual(["/"]);
   });
 });
 
@@ -433,6 +448,11 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/new", "?machine=mini", ["/?h=mini"]],
     ["/new", "?pane=w1%3Ap1", ["/", "/pane/w1%3Ap1"]],
     ["/new", "?machine=mini&pane=w1%3Ap1&s=demo", ["/?h=mini&s=demo", "/pane/w1%3Ap1?h=mini&s=demo"]],
+    // The hill sits under the Dashboard, its only way in (M96).
+    ["/hill", "", ["/"]],
+    ["/hill", "?h=badger", ["/?h=badger"]],
+    // The approver's page (ADR 0139) sits under the Dashboard; its request id is not a scope.
+    ["/pair/approve", "?r=abc", ["/"]],
     ["/nowhere", "", []],
   ])("%s%s → %j", (pathname, search, expected) => {
     expect(parentChain(pathname, search)).toEqual(expected);

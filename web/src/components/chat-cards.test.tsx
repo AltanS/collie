@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import userEvent from "@testing-library/user-event";
 
 import { registeredAgents } from "@/lib/harness/registry";
@@ -16,7 +17,10 @@ import {
   type CardWaiting,
 } from "./chat-cards";
 import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
+import { CHAT_LOOK_BEFORE, ChatLookContext } from "@/lib/chat-look";
 import { testFileOpener } from "@/test/file-links";
+import { server } from "@/test/setup";
+import { __resetAgentViews, __settleAgentViews, showAgentViews } from "@/lib/agent-view/store";
 import { FileLinksProvider } from "./file-links";
 
 // The blocks of a session stream. The load-bearing behaviours: a finished run folds to one line and
@@ -485,10 +489,27 @@ describe("ToolGroup", () => {
 });
 
 describe("ItemView", () => {
-  it("draws the reader's own turn with a You caption", () => {
+  it("draws the reader's own turn as a well that hugs its text, named for the screen reader alone", () => {
     render(<ItemView item={{ id: "u", kind: "user", text: "please continue" }} />);
-    expect(screen.getByText("You")).toBeInTheDocument();
-    expect(screen.getByText("please continue")).toBeInTheDocument();
+    const well = screen.getByText("please continue").parentElement!;
+    expect(well).toHaveClass("w-fit", "ml-auto", "max-w-[85%]", "bg-status-working/8");
+    // The caption row is gone: the one "You" is the visually hidden first child of the well.
+    const you = screen.getAllByText("You");
+    expect(you).toHaveLength(1);
+    expect(you[0]).toHaveClass("sr-only");
+    expect(well.firstElementChild).toBe(you[0]);
+  });
+
+  it("draws the caption row of the look before 1.29.0 under that look's provider", () => {
+    render(
+      <ChatLookContext.Provider value={CHAT_LOOK_BEFORE}>
+        <ItemView item={{ id: "u", kind: "user", text: "please continue" }} />
+      </ChatLookContext.Provider>,
+    );
+    const you = screen.getByText("You");
+    expect(you).not.toHaveClass("sr-only");
+    expect(you.closest(".sr-only")).toBeNull();
+    expect(screen.getByText("please continue").parentElement).not.toHaveClass("w-fit");
   });
 
   it("keeps thinking behind a fold", async () => {
@@ -670,5 +691,41 @@ describe("a quiet other tool", () => {
     rerender(<ToolCard callId="call-1" tool={{ kind: "other", name: "mem_save", summary: "saved a note" }} status="done" />);
     expect(container.querySelector("[data-quiet]")).toBeNull();
     expect(screen.getByText("mem_save")).not.toHaveClass("opacity-60");
+  });
+});
+
+describe("a user turn the bridge typed for an agent view", () => {
+  const ADDRESS = "lodge/w1:p1#ab12";
+  const LINE = '[view:morph lodge/w1:p1#ab12] from operator: tapped "Fast" in "Speed" [rules: /bin/collie trick view morph help --session lodge/w1:p1#ab12]';
+
+  /** The bridge lists LINE as sent through the view of ADDRESS, and the screen shows that session. */
+  async function seed(): Promise<() => void> {
+    server.use(http.get("/api/trick-views", () => HttpResponse.json({ rev: 2, views: [{ trick: "morph", session: ADDRESS, on: true, sent: [{ rid: "r1", at: "2026-11-10T10:00:00.000Z", kind: "tap", line: LINE }] }] })));
+    const stop = showAgentViews(ADDRESS);
+    await act(async () => {
+      await __settleAgentViews();
+    });
+    return stop;
+  }
+
+  afterEach(() => __resetAgentViews());
+
+  it("is drawn without the head and the tail when the bridge lists the line as sent through the view", async () => {
+    const stop = await seed();
+    const { container } = render(<ItemView item={{ id: "u", kind: "user", text: LINE }} />);
+    expect(container.textContent).toContain('tapped "Fast" in "Speed"');
+    expect(container.textContent).not.toContain("[view:");
+    expect(container.textContent).not.toContain("rules");
+    stop();
+  });
+
+  it("is drawn whole when the bridge did not send it through the view, even with the same head", async () => {
+    const stop = await seed();
+    const lookAlike = "[view:morph lodge/w1:p1#ab12] from operator: show the plan";
+    const { container, rerender } = render(<ItemView item={{ id: "u", kind: "user", text: lookAlike }} />);
+    expect(container.textContent).toContain("[view:morph");
+    rerender(<ItemView item={{ id: "u", kind: "user", text: "please continue" }} />);
+    expect(container.textContent).toContain("please continue");
+    stop();
   });
 });

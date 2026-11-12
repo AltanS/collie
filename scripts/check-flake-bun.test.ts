@@ -115,6 +115,23 @@ describe("the floor job runs MIN_BUN", () => {
   });
 });
 
+/** The tests a POSIX-only describe holds: each `test(` line from a line that starts with `opener` to its `});` at column 0. */
+function testsInBlocks(text: string, opener: string): number {
+  let inside = false;
+  let count = 0;
+  for (const line of text.split("\n")) {
+    if (line.startsWith(opener)) inside = true;
+    else if (inside && line.startsWith("});")) inside = false;
+    else if (inside && /^\s+test\(/u.test(line)) count += 1;
+  }
+  return count;
+}
+
+/** The names of the tests `file` (from the repository root) opens with `pattern`, its first group being the name. */
+function namesIn(file: string, pattern: RegExp): string[] {
+  return [...readFileSync(join(ROOT, file), "utf8").matchAll(pattern)].map((m) => m[1]!);
+}
+
 describe("the Windows check runs the flake's Bun", () => {
   test("windows.yml pins setup-bun to flake.nix's bunVersion", () => {
     const workflow = readFileSync(join(ROOT, ".github", "workflows", "windows.yml"), "utf8");
@@ -126,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 206 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 386 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([115, 66, 25]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([172, 180, 34]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -182,11 +199,38 @@ describe("the Windows check runs the flake's Bun", () => {
     const rawEnterSkips = readFileSync(join(ROOT, "bridge", "surface", "protocol.unstyled.test.ts"), "utf8").includes('test.if(harness.id === "claude" || harness.id === "omp")(') ? 1 : 0;
     expect(rawEnterSkips).toBe(1);
     expect(script).toContain("protocol.unstyled.test.ts");
-    expect(budget("Bridge")).toBe(posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips);
+    // The agent view's pictures (bridge/agent-view/media.test.ts): each test keeps files under a 0700 folder and
+    // reads them through the hill's POSIX checks, so each is `posix(...)`, a `test.skipIf` on win32.
+    const viewMediaSkips = [...readFileSync(join(ROOT, "bridge", "agent-view", "media.test.ts"), "utf8").matchAll(/^ {2}posix\("([^"]+)"/gm)].map((m) => m[1]!);
+    expect(viewMediaSkips).toHaveLength(15);
+    expect(script).toContain("bridge/agent-view/media.test.ts");
+    // The Hill and the tricks: a symlink, a FIFO, a device, the walky socket or a `#!/bin/sh` program, each named.
+    const WIN = /test\.skipIf\((?:HOST|process)\.platform === "win32"\)\("([^"]+)"/g;
+    const hillSkips = [
+      ...namesIn("bridge/hill/media.test.ts", /^ {2}posix\("([^"]+)"/gm),
+      ...namesIn("bridge/hill/routes.test.ts", WIN),
+      ...namesIn("bridge/tricks/hill.test.ts", WIN),
+      ...namesIn("bridge/tricks/inputs.test.ts", WIN),
+      ...namesIn("bridge/tricks/units.test.ts", WIN),
+    ];
+    expect(hillSkips).toHaveLength(9);
+    for (const name of hillSkips) expect(script).toContain(name);
+    expect(readFileSync(join(ROOT, "bridge", "tricks", "hill.test.ts"), "utf8")).toContain('describe.skipIf(process.platform === "win32")("end to end with the legs trick"');
+    expect(script).toContain('"end to end with the legs trick"');
+    const legsEndToEnd = 1;
+    // The add from the official list: its POSIX-only describes and its `test.if(posix)` cases.
+    const official = readFileSync(join(ROOT, "bridge", "tricks", "official.test.ts"), "utf8");
+    const officialSkips = testsInBlocks(official, "describe.if(posix)(") + (official.match(/^ {2}test\.if\(posix\)\(/gm) ?? []).length;
+    expect(officialSkips).toBe(32);
+    expect(script).toContain("bridge/tricks/official.test.ts");
+    expect(budget("Bridge")).toBe(
+      viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
+        hillSkips.length + legsEndToEnd + officialSkips,
+    );
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
-    // 42 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
+    // 50 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
     const walkySocketTests = readFileSync(join(ROOT, "cli", "walky.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
-    expect(walkySocketTests).toHaveLength(42);
+    expect(walkySocketTests).toHaveLength(50);
     // The statusLine wrapper's "runShell stops the whole command" block (3 tests) is skipped off Linux.
     expect(readFileSync(join(ROOT, "cli", "statusline.test.ts"), "utf8")).toContain('describe.skipIf(process.platform !== "linux")("runShell stops the whole command"');
     expect(script).toContain("runShell stops the whole command");
@@ -202,13 +246,43 @@ describe("the Windows check runs the flake's Bun", () => {
     const dirtyProbe = "the probe's dirty check, run for real";
     expect(readFileSync(join(ROOT, "cli", "remote.test.ts"), "utf8")).toContain(`("${dirtyProbe}"`);
     expect(script).toContain(dirtyProbe);
-    expect(budget("Cli")).toBe(sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + 3 + 1 + 2);
+    // The agent view verbs (cli/trick-view.test.ts) talk to a real walky socket, as cli/walky.test.ts does (`socketTest`).
+    const viewSocketTests = readFileSync(join(ROOT, "cli", "trick-view.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
+    expect(viewSocketTests).toHaveLength(21);
+    expect(script).toContain("cli/trick-view.test.ts");
+    // The Hill verbs, the picture staging, the trick verbs and the helper's POSIX tools.
+    const hillSocketTests = readFileSync(join(ROOT, "cli", "hill.test.ts"), "utf8").match(/^ +socketTest\(/gm) ?? [];
+    expect(hillSocketTests).toHaveLength(28);
+    expect(script).toContain("cli/hill.test.ts");
+    const stagingSkips = readFileSync(join(ROOT, "cli", "image-stage.test.ts"), "utf8").match(/^ {2}linux\(/gm) ?? [];
+    expect(stagingSkips).toHaveLength(7);
+    expect(script).toContain("cli/image-stage.test.ts");
+    const addSkips = testsInBlocks(readFileSync(join(ROOT, "cli", "trick-add.test.ts"), "utf8"), "describe.if(posix)(");
+    expect(addSkips).toBe(17);
+    expect(script).toContain("cli/trick-add.test.ts");
+    const proposeSkips = readFileSync(join(ROOT, "cli", "trick-propose.test.ts"), "utf8").match(/^ +(?:socketTest|posixTest)\(/gm) ?? [];
+    expect(proposeSkips).toHaveLength(15);
+    expect(script).toContain("refuses a symbolic link, even to a file inside the folder");
+    const helperSkips = namesIn("cli/trick-kit/trick.test.ts", /test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g);
+    expect(helperSkips).toHaveLength(2);
+    for (const name of helperSkips) expect(script).toContain(name);
+    // Gated on Windows (b): the tests that run a program using the trick helper, `helperTest` in three files.
+    const helperOutputSkips = ["cli/trick.test.ts", "cli/trick-kit/trick.test.ts", "cli/trick-dev.test.ts"].flatMap((file) => readFileSync(join(ROOT, file), "utf8").match(/^ {2}helperTest\(/gm) ?? []);
+    expect(helperOutputSkips).toHaveLength(16);
+    expect(script).toContain("gated on Windows (b)");
+    expect(budget("Cli")).toBe(
+      sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + viewSocketTests.length + 3 + 1 + 2 + hillSocketTests.length + stagingSkips.length + addSkips + proposeSkips.length + helperSkips.length + helperOutputSkips.length,
+    );
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");
     expect(script).toContain("a child of this checkout's CLI turns 10.4 s of speech into text");
     expect(script).toContain("installScript from a shallow lead, run for real");
-    // The scripts allowance is the 23 install.sh tests plus the two harness lab skips the script names.
-    expect(budget("Scripts")).toBe(23 + 2);
+    // The scripts allowance is the 23 install.sh tests, the two harness lab skips the script names, and every test of
+    // the official list's maintainer script (POSIX-only describes).
+    const officialScript = testsInBlocks(readFileSync(join(ROOT, "scripts", "official-tricks.test.ts"), "utf8"), "describe.if(posix)(");
+    expect(officialScript).toBe(9);
+    expect(script).toContain("scripts/official-tricks.test.ts");
+    expect(budget("Scripts")).toBe(23 + 2 + officialScript);
     expect(script).toContain("POSIX only: the login copy has mode 600");
     expect(script).toContain("a real throwaway server starts, shows its pane, stops, and leaves no socket");
     expect(script).not.toContain("[int]$MaxSkips = ");

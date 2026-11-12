@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 const MARKER = "herdr-plugin.toml";
 
 /** Bun's embedded filesystem root: `/$bunfs/…` on POSIX, `B:\~BUN\…` on Windows. */
-function isEmbedded(p: string): boolean {
+export function isEmbedded(p: string): boolean {
   return p.startsWith("/$bunfs/") || /^[A-Za-z]:[\\/]~BUN[\\/]/i.test(p);
 }
 

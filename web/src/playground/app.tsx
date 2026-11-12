@@ -93,8 +93,21 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "backdrop", title: "Backdrop" }, load: () => import("./sections/backdrop").then((m) => ({ default: m.BackdropSection })) },
   { def: { id: "grounds", title: "Grounds" }, load: () => import("./sections/grounds").then((m) => ({ default: m.GroundsSection })) },
   { def: { id: "pins", title: "Pinned messages" }, load: () => import("./sections/pins").then((m) => ({ default: m.PinsSection })) },
+  { def: { id: "switcher", title: "Session switcher" }, load: () => import("./sections/switcher").then((m) => ({ default: m.SwitcherSection })) },
+  { def: { id: "filter", title: "Session filter" }, load: () => import("./sections/filter").then((m) => ({ default: m.FilterRoundSection })) },
   { def: { id: "new-tab", title: "New tab sheet" }, load: () => import("./sections/new-tab").then((m) => ({ default: m.NewTabSection })) },
+  { def: { id: "primitives", title: "Primitives" }, load: () => import("./sections/primitives").then((m) => ({ default: m.PrimitivesSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },
+  { def: { id: "pair-by-phone", title: "Pair by phone" }, load: () => import("./sections/pair-by-phone").then((m) => ({ default: m.PairByPhoneSection })) },
+  { def: { id: "trick-render", title: "Trick render" }, load: () => import("./sections/trick-render").then((m) => ({ default: m.TrickRenderSection })) },
+  { def: { id: "trick-places", title: "Trick places" }, load: () => import("./sections/trick-places").then((m) => ({ default: m.TrickPlacesSection })) },
+  { def: { id: "trick-settings", title: "Trick settings" }, load: () => import("./sections/trick-settings").then((m) => ({ default: m.TrickSettingsSection })) },
+  { def: { id: "hill", title: "Hill" }, load: () => import("./sections/hill").then((m) => ({ default: m.HillSection })) },
+  { def: { id: "hill-look", title: "Hill look" }, load: () => import("./sections/hill-look").then((m) => ({ default: m.HillLookSection })) },
+  { def: { id: "agent-view", title: "Agent view" }, load: () => import("./sections/agent-view").then((m) => ({ default: m.AgentViewSection })) },
+  { def: { id: "dashboard-places", title: "Dashboard places" }, load: () => import("./sections/dashboard-places").then((m) => ({ default: m.DashboardPlacesSection })) },
+  { def: { id: "chat-look", title: "Chat look" }, load: () => import("./sections/chat-look").then((m) => ({ default: m.ChatLookSection })) },
+  { def: { id: "tricks-explainer", title: "Tricks explained" }, load: () => import("./sections/tricks-explainer").then((m) => ({ default: m.TricksExplainerSection })) },
 ];
 
 /** One `lazy` per section, made once: a fresh `lazy()` per render would suspend on every render. */

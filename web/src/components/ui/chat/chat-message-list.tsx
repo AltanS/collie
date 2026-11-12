@@ -40,6 +40,10 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
    * ignores the pointer; a control inside opts back in with `pointer-events-auto`.
    */
   overlay?: React.ReactNode;
+  /** Merged over the overlay wrapper's classes, so a caller can give it the scroller's own side gutter (`px-4` for a 16px gutter). */
+  overlayClassName?: string;
+  /** Style of the overlay wrapper. The overlay sits beside the scrollport, not in it, so custom properties set on the scrollport (the chat font size tokens) do not reach it unless they are passed here. */
+  overlayStyle?: React.CSSProperties;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -47,7 +51,7 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, clearBand, overlay, style, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, clearBand, overlay, overlayClassName, overlayStyle, style, ...props },
     ref,
   ) {
     useLocale();
@@ -89,8 +93,8 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
 
         {overlay !== undefined && overlay !== null && (
           <div
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 px-3 pt-1"
-            style={clearBand !== undefined ? { top: bandStyle?.paddingTop } : undefined}
+            className={cn("pointer-events-none absolute inset-x-0 top-0 z-10 px-3 pt-1", overlayClassName)}
+            style={clearBand !== undefined ? { ...overlayStyle, top: bandStyle?.paddingTop } : overlayStyle}
           >
             {overlay}
           </div>

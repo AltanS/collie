@@ -9,6 +9,11 @@ import { WalkySeen } from "./seen.ts";
 import { WalkyService } from "./service.ts";
 import type { WalkyReceipt } from "./types.ts";
 
+import { spaceOf } from "./space.ts";
+
+/** One unnamed space on one machine: every fixture pane shares it, and no rule reads it yet. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "w1" });
+
 // At most one typing per (id, target), across a restart (M62 hardening G). A fake Send Protocol
 // whose store outlives the bridge, and a bridge that dies at one of three points: right after the
 // log took the message, right after the `accepted` receipt with the send id, and right after the
@@ -134,7 +139,7 @@ class FakeProtocol implements WalkyHost {
 }
 
 function pane(paneId: string): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "working", activeAt: null, instance: "aaaa", terminal: true, off: false };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "working", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE };
 }
 
 function bridge(dir: string, world: World, panes: WalkyPane[], random: () => number): WalkyService {

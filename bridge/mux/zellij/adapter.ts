@@ -697,6 +697,8 @@ function toMuxPane(
     paneId: raw.paneId,
     spaceId: ZELLIJ_SPACE_ID,
     spaceLabel: sessionLabel,
+    // The session name is always the operator's own or zellij's generated one, never a fallback.
+    spaceNamed: true,
     spaceNumber: 1,
     tabId: tabId(raw.tabNumber),
     // `pane_cwd`, read live by zellij 0.44 and later; empty when it reports none (protocol.ts).

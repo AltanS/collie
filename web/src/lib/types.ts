@@ -27,14 +27,21 @@ export interface AgentView {
   pins?: number;
   workspaceId: string;
   workspaceLabel: string;
+  /** Whether `workspaceLabel` is a name of the space's own (M98). Present only when it differs from `workspaceLabel !== workspaceId`. Nothing in the app reads it. */
+  workspaceNamed?: boolean;
   workspaceNumber: number;
   tabId: string;
   agent: string;
   status: AgentStatus;
   cwd: string;
   focused: boolean;
-  /** "agent" for an agent-bearing pane, "shell" for a bare shell. Absent = "agent". */
-  kind?: "agent" | "shell";
+  /**
+   * "agent" for an agent-bearing pane, "shell" for a bare shell. Absent = "agent". "trick" for a trick's
+   * own session (M94): no terminal, a view for a body, in the host's Tricks Space. The root loader takes
+   * those out of `agents` into `HomeData.trickSessions` (lib/tricks/places.ts), so no list, count, triage
+   * or push path that reads `agents` ever meets one.
+   */
+  kind?: "agent" | "shell" | "trick";
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
@@ -285,6 +292,11 @@ export interface AgentView {
    * queued row per entry, with the text and Cancel (Resend on an ended one).
    */
   held?: HeldRow[];
+  /**
+   * A trick session's part, as its `partKey` (`host/trick/part`): the part whose view is the body. Mirrors
+   * `PaneWire.view` in bridge/types.ts. Present only on a pane of `kind: "trick"`.
+   */
+  view?: string;
 }
 
 /** The icon names a program may give a belt action. Mirrors `PANE_ACTION_ICONS` in bridge/types.ts. */
@@ -652,8 +664,8 @@ export interface SessionSummary {
   notice?: string;
 }
 
-/** {@link SessionSummary.kind}. */
-export type SessionKind = "terminal" | "program";
+/** {@link SessionSummary.kind}. `trick` is reserved for Collie tricks (M94); no bridge sends a card of it yet. */
+export type SessionKind = "terminal" | "program" | "trick";
 /** {@link SessionSummary.where}. */
 export type SessionWhere = "local" | "remote";
 /** {@link SessionSummary.state}. */
@@ -1409,6 +1421,30 @@ export interface SnapshotResponse {
   servers?: ServerSummary[];
   /** Version / upgrade status. Absent on an older bridge that doesn't report it. */
   update?: UpdateInfo;
+  /**
+   * The bridge's tricks revision (M94). It rises when any trick part or the trick list changes; the phone
+   * then asks `GET /api/tricks?since=<the rev it holds>` for the changes (lib/tricks/store.ts `syncTricks`).
+   * Absent on a bridge with no tricks runner.
+   */
+  tricksRev?: number;
+  /**
+   * The hill's revision (M96): it moves on every change to the hill's decisions, and the phone reads
+   * `GET /api/hill` when it does (lib/hill/store.ts). Absent on a bridge older than the hill, which
+   * reads as no hill at all.
+   */
+  hillRev?: number;
+  /**
+   * The agent views' revision: it moves on every switch and every screen an agent draws, and the phone
+   * reads `GET /api/trick-views` when it does (lib/agent-view/store.ts). Absent on a
+   * bridge without agent views, which reads as none at all.
+   */
+  trickViewsRev?: number;
+  /**
+   * The Hill is switched off on this bridge (bridge/hill/switch.ts): then the snapshot carries no
+   * `hillRev`, the phone shows no Hill item, and the Hill's route and Settings say it is off. Absent
+   * while the Hill is on, so an install that never switched it keeps its bytes.
+   */
+  hillOff?: true;
   ts: number;
 }
 
@@ -2658,6 +2694,9 @@ export interface NotifyPrefs {
   /** Push when a machine's CPU or memory stays above one of its alert rules (ADR 0084). Default on:
    *  a rule is something the operator set on purpose, so this switch only silences them all at once. */
   machines: boolean;
+  /** Push when a Decision of priority `now` opens on the Hill (bridge/hill/push.ts). Default on: the
+   *  poster's `now` is the opt-in, and the bridge caps how often it may ring. */
+  decisions: boolean;
 }
 
 /**

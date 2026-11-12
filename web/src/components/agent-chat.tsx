@@ -41,7 +41,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { StretchTextContext } from "@/components/markdown-text";
-import { BottomSheet } from "@/components/ui/sheet";
+import { BottomSheet, SHEET_BODY_STICKY } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { AuthedImageCard } from "@/components/authed-image-card";
@@ -72,7 +72,10 @@ import { focusQuestionCard } from "@/lib/dialog-focus";
 import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
-import { Composer, type ComposerHandle } from "@/components/composer";
+import { Composer, type ComposerHandle, type ViewTap } from "@/components/composer";
+import { AgentViewScreen } from "@/components/agent-view-screen";
+import { useAgentViewPane } from "@/hooks/use-agent-view-pane";
+import { useTrickHandlers } from "@/hooks/use-trick-handlers";
 import { DurableComposer } from "@/components/durable-composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
@@ -146,7 +149,10 @@ import { answerRouteFor, holdAnswerRouteFor, textRouteFor } from "@/lib/send-pat
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
-import { changesPath, filesPath, historyPath, newPath, panePath, spacePath } from "@/lib/nav";
+import { changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
+import { beltMarksOf, beltTapHandlers } from "@/components/belt-trick-mark";
+import { statusItemsOf } from "@/components/trick-status-item";
+import { useTrickParts } from "@/lib/tricks/store";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, PinRow, ServerSummary, TabView } from "@/lib/types";
@@ -615,6 +621,29 @@ export function AgentChat({
   }, [landscape, zen, autoZenActive]);
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
+  // A trick's own session, one level down: the one way a belt mark, a status item and the switcher open it.
+  const openTrickSession = useCallback((pane: AgentView) => nav.down(trickSessionPath(pane.paneId)), [nav]);
+  // THE TRICKS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, at the end of the belt's
+  // scrolling strip after Collie's own pills, never in its pinned block. A tap goes to the trick with this
+  // pane as `from`; it never touches this pane's reply box.
+  const beltParts = useTrickParts("belt");
+  const trickSessions = rootData?.trickSessions;
+  const beltMarks = useMemo(() => {
+    if (beltParts.length === 0) return undefined;
+    return beltMarksOf({
+      parts: beltParts,
+      handlersFor: (host) => beltTapHandlers(agent, host),
+      sessions: trickSessions ?? [],
+      onOpenSession: openTrickSession,
+    });
+  }, [beltParts, trickSessions, agent, openTrickSession]);
+  // THE TRICKS' STATUS ITEMS (M94 re-cut, the `status` place): one per `status` part, in manifest order,
+  // in the usage row above the belt, after Collie's own items. A tap opens the trick's session, if it has one.
+  const statusParts = useTrickParts("status");
+  const statusItems = useMemo(() => {
+    if (statusParts.length === 0) return undefined;
+    return statusItemsOf({ parts: statusParts, sessions: trickSessions ?? [], onOpenSession: openTrickSession });
+  }, [statusParts, trickSessions, openTrickSession]);
   // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
@@ -792,6 +821,19 @@ export function AgentChat({
   const experimental = wearsExperimental(useSessionCard(scope));
   const gridless = !paneGrid.capable;
   const paneLive = useLive(paneId, scope);
+  // AGENT VIEWS, the session's third body (components/agent-view-screen.tsx, hooks/use-agent-view-pane.ts):
+  // a real agent session with a screen, on the lead (views live on the lead only; a crew member's routes
+  // answer 400). `agentView.aside` is the body the operator looks at instead, the view staying on.
+  const agentView = useAgentViewPane({
+    address: walkySelf,
+    eligible: !gridless && !isShell && agent !== undefined && isLead(scope),
+    onChanged: () => revalidator.revalidate(),
+  });
+  const { linkFor } = useTrickHandlers();
+  const viewLink = useMemo(() => linkFor(scope?.host ?? crewLead ?? ""), [linkFor, scope?.host, crewLead]);
+  // A tap in the view goes through the composer's own send path (the request id, the refusal notice) with
+  // the screen's rev and the control: the bridge builds the line from its own stored screen.
+  const tapInView = useCallback((tap: ViewTap) => composerRef.current?.sendViewTap(tap) ?? Promise.resolve({ sent: false, line: null, code: null }), []);
   // A launch this phone started: Send waits for the bridge to read the agent's first screen, the read
   // that also ends the bridge's launch window, so the button never offers a send the bridge refuses.
   const startup = useStartupReadiness({
@@ -1128,7 +1170,10 @@ export function AgentChat({
   // closed", the controls locked, and a step back to the list once connected). No ghost row, no
   // history kept on the phone, no recovery verb. A dropped conversation that comes back in a later
   // snapshot is simply a pane again.
-  const chatChosen = gridless || (dash.prefs.paneView === "chat" && !screenForced);
+  const chatChosen = gridless || ((agentView.aside ?? dash.prefs.paneView) === "chat" && !screenForced);
+  // Where a pick of Terminal or Chat goes: the device's standing choice, or, with a view on, a look for
+  // this session that leaves the view on (hooks/use-agent-view-pane.ts).
+  const paneViewChange = agentView.on ? agentView.setAside : dash.setPaneView;
   // The chat route is asked only where a session exists to read: a pane with none has nothing for
   // it to answer. The poll that already exists moves it (ADR 0073); disabled is free.
   const chatFetch = chatChosen && historyAvailable;
@@ -1145,7 +1190,8 @@ export function AgentChat({
     paneId,
     scope,
     instance: agent?.instance,
-    enabled: chatFetch || warming,
+    // The agent view reads the same window for the agent's text answer (no fetch of its own).
+    enabled: chatFetch || warming || (agentView.showing && historyAvailable),
     savedCopy: stale,
   });
   const chatStatus = chatFeed.window.status;
@@ -2027,6 +2073,11 @@ export function AgentChat({
   // WITHIN THE CURRENT scope's host; handed a peer's row that would silently reopen this host's own
   // identically-numbered pane instead. This resolves the pane's OWN scope via `paneScope` first, the
   // same call home.tsx's dashboard `open` makes to open a crew-wide row correctly.
+  function openTrickSessionFromDrawer(pane: AgentView) {
+    closeDrawer();
+    openTrickSession(pane);
+  }
+
   function switchToPane(pane: AgentView) {
     closeDrawer();
     if (paneRowKey(pane) === hereKey) return;
@@ -2829,7 +2880,29 @@ export function AgentChat({
                 and the notice floats over both bodies alike (ADR 0061). Both bodies draw agent
                 replies, so whether this device draws their stretches is read once, here. */}
             <StretchTextContext.Provider value={prefs.stretchText}>
-            {chatShown ? (
+            {/* THE THIRD BODY, an agent view: it stands in for both while it shows. */}
+            {agentView.showing && (
+              <AgentViewScreen
+                name={agentView.name ?? ""}
+                session={walkySelf}
+                view={agentView.view}
+                request={agentView.request}
+                sent={agentView.sent}
+                drawing={agentView.drawing}
+                pressed={agentView.pressed}
+                onPressed={agentView.notePressed}
+                working={agent?.status === "working" && !connecting}
+                question={agentView.question}
+                stale={agentView.stale}
+                changed={agentView.changed}
+                entries={chatEntries}
+                canAct={!(readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || !paneLive || gone)}
+                onTap={tapInView}
+                onStale={agentView.noteChanged}
+                onLink={viewLink}
+              />
+            )}
+            {!agentView.showing && (chatShown ? (
               <WalkyPanesProvider value={walkyPanes}>
               <WalkyOpenProvider open={messagesSheet ? openWalkyMessage : null} self={walkySelf}>
               <CardWaitingCtx.Provider value={questionNotes}>
@@ -3058,7 +3131,7 @@ export function AgentChat({
                 </>
               )}
             </ChatMessageList>
-            )}
+            ))}
             </StretchTextContext.Provider>
             {/* THE TERMINAL-DRAFT NOTICE FLOATS HERE (ADR 0061). The composer portals the notice
                 into this box, pinned to the mirror's bottom edge: above the card dock when a card
@@ -3080,6 +3153,7 @@ export function AgentChat({
               model={modelOnScreen && !hasFigure(agent?.usage) ? undefined : agent?.model}
               effort={agent?.effort}
               usage={agent?.usage}
+              trailing={statusItems}
             />
           </div>
 
@@ -3356,6 +3430,11 @@ export function AgentChat({
                   // The Chat window's turns: the composer reads them only to settle a send that
                   // ended `unknown` once its text lands as a user turn (#511).
                   chatEntries={chatEntries}
+                  // The agent view on screen: its sends go as typed with the `view` field, and the bridge
+                  // writes the line. With a question waiting, none: the text answers the question, plain.
+                  agentView={agentView.target}
+                  // And it tells the view the text when the send starts, how it ended, and the line typed.
+                  onViewRequest={agentView.noteRequest}
                   // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a
                   // word on a 14px band above its controls row; Altan asked for that band's status
                   // half to go, so the prop went with it. The state is stated up here instead — the
@@ -3378,6 +3457,7 @@ export function AgentChat({
                   layout={composerLayout(activeTheme.theme.surface?.composer)}
                   // Settings → Pane navigation → Joystick: the handle band, just above the belt (ADR 0121).
                   aboveBelt={paneNav.handle}
+                  beltMarks={beltMarks}
                   todos={agent?.todos}
                   subagents={agent?.subagents}
                   jobs={agent?.jobs}
@@ -3474,6 +3554,9 @@ export function AgentChat({
             // and a peer's row can share this pane's own id.
             currentPaneKey={hereKey ?? ""}
             onSelect={switchToPane}
+            // The Tricks Space's sessions (M94 slice 03), one level down from here, so back comes back.
+            trickSessions={rootData?.trickSessions}
+            onSelectTrick={openTrickSessionFromDrawer}
             tabs={tabs}
             servers={servers}
             // The snapshot's spaces fold a worktree under its open root and head an unfolded one
@@ -3526,6 +3609,8 @@ export function AgentChat({
             order={dash.prefs.paneOrder}
             onOrderChange={dash.setPaneOrder}
             className="px-0 py-1"
+            // The filter field sticks under the sheet's own sticky head, across the panel's width.
+            filterClassName={SHEET_BODY_STICKY}
           />
         </BottomSheet>
 
@@ -3557,9 +3642,11 @@ export function AgentChat({
             // and `showing` are both passed because they differ on a pane with no journal, and the
             // sheet draws rows for what is on screen, not for what was picked.
             paneView={{
-              chosen: dash.prefs.paneView,
+              chosen: agentView.aside ?? dash.prefs.paneView,
               showing: chatShown ? "chat" : "terminal",
-              onChange: dash.setPaneView,
+              // With a view on, Terminal and Chat are a look for this session, never a device preference.
+              onChange: paneViewChange,
+              agentView: agentView.on && agentView.label !== undefined ? { label: agentView.label, selected: agentView.showing, onPick: () => agentView.setAside(null) } : undefined,
               note: chatNote,
               terminalOffered: !gridless,
               showToolCalls: dash.prefs.showToolCalls,
@@ -3609,7 +3696,7 @@ export function AgentChat({
           // Find searches the MIRROR, and highlights its hits there. In chat mode the mirror is
           // not on screen, so the row would open a bar over a surface with nothing to show —
           // withheld, the way the sheet withholds every row it was given nothing for.
-          onFind={display && !chatShown ? openFind : undefined}
+          onFind={display && !chatShown && !agentView.showing ? openFind : undefined}
           // No History row on a pane with no screen (M53 spec 12): the conversation list on the dashboard is
           // the program's history, a tap away on the back arrow. `/pane/:id/history` stays reachable by URL.
           onHistory={!gridless && historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined}
@@ -3653,9 +3740,23 @@ export function AgentChat({
           // THE BODY SWITCH. `chatNote` is why this pane keeps the terminal when it does. One
           // standing per-device value, written here and nowhere else.
           // No Terminal row on a pane with no screen: Chat is its only view.
-          paneView={gridless ? undefined : dash.prefs.paneView}
-          onPaneViewChange={gridless ? undefined : dash.setPaneView}
+          paneView={gridless ? undefined : (agentView.aside ?? dash.prefs.paneView)}
+          onPaneViewChange={gridless ? undefined : paneViewChange}
           paneViewNote={chatNote}
+          // Agent views: the way back to the one on, and a switch per trick, a write behind the gates the
+          // WalkyTalky switch rides.
+          agentViews={
+            agentView.available
+              ? {
+                  rows: agentView.rows,
+                  label: agentView.label,
+                  on: agentView.on,
+                  showing: agentView.showing,
+                  onShow: () => agentView.setAside(null),
+                  onSwitch: !readOnly && !savedCopyWrites && hostBlock === undefined && !gone ? agentView.setOn : undefined,
+                }
+              : undefined
+          }
           // Pin to top / Unpin, the last read row (ADR 0070). No `onPinChange`: the Pinned group is
           // on the dashboard and in the switcher, not on this screen, so the sheet says it in a toast.
           herd={herd}

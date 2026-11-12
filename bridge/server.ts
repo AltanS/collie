@@ -4,6 +4,7 @@ import { homedir, hostname, networkInterfaces } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
@@ -176,7 +177,8 @@ import type { StopService } from "./surface/stop.ts";
 import type { ReceiptQueued } from "./surface/queued.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, RETURNED_CARD_DROPPED, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, RETURNED_CARD_DROPPED, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceipt, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { isCommand } from "../web/src/lib/send-protocol.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -208,11 +210,27 @@ import {
 } from "./pairing.ts";
 import { pairAuditEntry, pairRoute } from "./pair-audit.ts";
 import { createPairLimiter, pairSourceKey } from "./pair-limit.ts";
+import {
+  pairApproveAnswerRoute,
+  pairApproveGateLevel,
+  pairApproveReadRoute,
+  pairRequestCancelRoute,
+  pairRequestCreateRoute,
+  pairRequestPollRoute,
+  PairRequestBook,
+  POLL_HEADER,
+  settlePairRequests,
+  type PairRequestDeps,
+} from "./pair-request.ts";
 import { LOCAL_LABEL, type LocalCredential } from "./local-secret.ts";
 import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
+import type { OfficialTricksSurface } from "./tricks/official-install.ts";
+import { placeTrickSessions } from "./tricks/panes.ts";
+import type { TricksSurface } from "./tricks/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
 import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
 import { crewHerdTagFor } from "./crew/tags.ts";
@@ -247,6 +265,11 @@ import { pinSessionKey } from "./pins/key.ts";
 import { PinKeys } from "./pins/keys.ts";
 import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
+import { readAnswerRequest } from "./hill/parse.ts";
+import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
+import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
+import type { AgentViewService } from "./agent-view/service.ts";
+import { BAD_HEAD, hasViewHead, VIEW_MEDIA_ID_RE, VIEW_SESSION_MAX, VIEW_SET_RE, readTrickViewSwitchBody, readViewSendField, type ViewSendField, type ViewSentOutcome } from "../web/src/lib/agent-view/wire.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
@@ -547,6 +570,16 @@ const STT_MODEL_ROUTE = /^\/api\/stt\/model\/([^/]+)$/;
 const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
 
 /**
+ * `GET /api/hill/media/<decision id>/<media id>` (M96): one image of a decision, as its bytes. Both
+ * segments are matched as opaque values here and checked against their patterns in the handler
+ * (`hillMediaRoute`) before anything else, and only a pair the store holds names a file. Lead-local,
+ * like the rest of the hill: not forwarded across a crew link.
+ */
+const HILL_IMAGE_ROUTE = /^\/api\/hill\/media\/([^/]+)\/([^/]+)$/;
+/** `GET /api/trick-views/media/<set id>/<media id>`: one picture of an agent view's screen. Both ids are checked before any path is built. */
+const VIEW_IMAGE_ROUTE = /^\/api\/trick-views\/media\/([^/]+)\/([^/]+)$/;
+
+/**
  * Walky talky's list for one pane (M62): the messages that reached it, newest first, each with its
  * newest receipt. Read-gated like the pane read. A route of its own beside `PANE_ROUTE`: a `?host=`
  * read is forwarded to the member that owns the pane and answered from that member's own log
@@ -574,6 +607,25 @@ const ASK_ROUTE = /^\/api\/ask\/([^/]+)$/;
 // The id's shape is the handler's check (`isWalkyId`), so the route table keeps one shape of segment.
 const WALKY_CANCEL_ROUTE = /^\/api\/walky\/([^/]+)\/cancel$/;
 const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
+// Collie tricks (M94 slice 01): a tap on a trick's control, on this bridge's own host. The list and the
+// parts are `GET /api/tricks`, an exact path below.
+const TRICKS_TAP_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
+// And the off switch (M94 slice 04): write-gated like the tap, the same file `collie trick on|off` writes.
+const TRICKS_SWITCH_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
+// Pairing by a request a paired phone approves (ADR 0139, bridge/pair-request.ts). The asking browser's
+// poll is OPEN (its poll secret, in a header, is its credential; `OPEN_API_PATTERNS`), and the approver's
+// read and answer of one request need a paired device's token (`pairApproveGateLevel`). Each id's shape
+// is the handler's check, so the route table keeps one shape of segment.
+const PAIR_REQUEST_ROUTE = /^\/api\/pair\/request\/([^/]+)$/;
+const PAIR_APPROVE_ROUTE = /^\/api\/pair\/approve\/([^/]+)$/;
+// Take changes without asking, and go back one version (crew slice 3): write-gated like the switch.
+const TRICKS_AUTO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/;
+const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
+// And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
+// `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
+const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
+// The official list (bridge/tricks/official.ts): add or update one entry. Group 1 the trick id, group 2 the verb.
+const TRICKS_OFFICIAL_ROUTE = /^\/api\/tricks\/official\/([^/]+)\/(add|update)$/;
 
 /**
  * How long a worktree create may hold its connection open, in seconds (ADR 0089). Above Herdr's own
@@ -1228,6 +1280,18 @@ export function startServer(opts: {
    */
   walky?: WalkyService;
   /**
+   * The hill (M96): the decisions agents posted over the walky socket, and the phone's answers. Absent,
+   * `GET /api/hill` and `POST /api/hill/answer` answer 404 and the snapshot carries no `hillRev`.
+   */
+  hill?: HillService;
+  /**
+   * Agent views: the screen an agent drew per (trick, session) (`collie trick view <trick> show`), the
+   * person's per-session switch, and the `view` field of a send. Absent, `GET /api/trick-views` and
+   * `POST /api/trick-views/switch` answer 404, a send with `view` is refused, and the snapshot carries no
+   * `trickViewsRev`.
+   */
+  views?: AgentViewService;
+  /**
    * Walky talky's crew half (CREW_PROTOCOL.md §21): on a member, the handler of the lead's
    * `POST /crew/v1/pane/<pane | all>/walky`, reached through the crew dispatch only. Absent (solo, a
    * test) ⇒ that POST answers 404, which the lead reads as an older member.
@@ -1495,6 +1559,18 @@ export function startServer(opts: {
    * front door (ADR 0013), and its own load already reaches the lead beside its snapshot.
    */
   machines?: MachineSurface;
+  /**
+   * Collie tricks (M94 slice 01, `bridge/tricks/service.ts`): the runner's rev for the snapshot, the watch
+   * stamp, and the two tricks routes. Absent means no `tricksRev` on any snapshot and both routes answer
+   * 404, which is every test that builds this server by hand. `bridge/index.ts` always passes one; it
+   * reads nothing but a missing folder until the operator makes `<configDir>/tricks/`.
+   */
+  tricks?: TricksSurface;
+  /**
+   * The official list (bridge/tricks/official-install.ts): `GET /api/tricks/official` and the add and
+   * update writes. Absent: both answer 404.
+   */
+  officialTricks?: OfficialTricksSurface;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
@@ -1525,6 +1601,8 @@ export function startServer(opts: {
     return key === null ? 0 : pins.count(key);
   };
   const walky = opts.walky;
+  const hill = opts.hill;
+  const views = opts.views;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
   /**
@@ -1667,6 +1745,16 @@ export function startServer(opts: {
     await forgetDeviceRows(addedLaunchers, label, "local", audit, reason);
     if (crewLead !== undefined) void forgetOnMembers(label);
   };
+  /**
+   * What follows a revoke, whoever made it: one `device.revoke` audit line, the rows the device added go
+   * (here and on the crew), and the watch learns the label is gone, so it does not report it again. The
+   * device list's revoke and a pairing request's never-collected device both come through here.
+   */
+  const deviceRevoked = async (label: string, by: string | null | undefined, reason?: string): Promise<void> => {
+    audit.record({ action: "device.revoke", device: by, detail: reason === undefined ? { label } : { label, reason } });
+    await forgetDevice(label, "device-revoked");
+    revokeWatch(pairedLabels());
+  };
   const noticeRevokes = async (): Promise<void> => {
     for (const label of revokeWatch(pairedLabels())) await forgetDevice(label, "device-revoked");
   };
@@ -1765,6 +1853,8 @@ export function startServer(opts: {
     sessionName: string | undefined,
     device: DeviceAuth | null,
     widen = false,
+    // The body a LEAD reads of this member (`/crew/v1/snapshot`): no tricks at all. See below.
+    forCrew = false,
   ): SnapshotResponse | undefined => {
     const rt = registry.get(sessionName);
     if (!rt) return undefined;
@@ -1913,6 +2003,30 @@ export function startServer(opts: {
     if (device !== null) body.device = device;
     // Only while the mux is down for a cause the phone words (a refused token), like `device`.
     if (muxFault !== undefined) body.muxFault = muxFault;
+    // CREW HONESTY (M94 review row 12): tricks are not merged across the crew yet. The lead's phone could
+    // not tap a member's trick (its routes are this bridge's own, and a foreign host is 404), so a member
+    // tells its lead nothing about its tricks: no `tricksRev`, no Tricks Space, no trick tab, no trick
+    // pane. Dropped HERE, on the member, so no lead of any version can merge, push or count one. The lead's
+    // own body and a solo body are unchanged.
+    if (forCrew) return body;
+    // Only when a tricks folder exists (M94), or the official list offers a trick on a bridge that runs
+    // tricks (service.ts `rev`): an install with neither sends the bytes it always sent.
+    const tricksRev = opts.tricks?.rev();
+    if (tricksRev !== undefined) body.tricksRev = tricksRev;
+    // The trick sessions (M94 slice 03, bridge/tricks/panes.ts): the Tricks Space after the real Spaces, a
+    // tab per trick, a pane per session part. Added AFTER `sessions` took its counts and outside every
+    // state engine, so no count, triage or push ever sees one. None without a trick session.
+    const trickSessions = opts.tricks?.sessionPanes();
+    if (trickSessions !== undefined) {
+      const placed = placeTrickSessions(trickSessions, {
+        numbers: body.workspaces.map((w) => w.number),
+        // A widened body tags every pane with its session (types.ts says why); a trick pane takes the primary's.
+        session: widen ? registry.primary : undefined,
+      });
+      body.workspaces = [...body.workspaces, placed.workspace];
+      body.tabs = [...body.tabs, ...placed.tabs];
+      body.agents = [...body.agents, ...placed.panes];
+    }
     return body;
   };
 
@@ -2044,7 +2158,11 @@ export function startServer(opts: {
       } catch {
         body = undefined;
       }
-      return askRoute(rt, askMatch[1]!, body, { audit: caller.audit, device: caller.device(), redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+      const personTurn = (paneId: string): void => {
+        const pane = walky?.paneAt(rt.name, paneId) ?? null;
+        if (walky !== undefined && pane !== null && pane.agent) views?.notePersonTurn(walky.addressOf(pane.paneId, pane.instance));
+      };
+      return askRoute(rt, askMatch[1]!, body, { audit: caller.audit, device: caller.device(), redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding"), personTurn });
     }
 
     // ── Walky talky off for one session (M89 spec 04) ─────────────────────
@@ -2600,7 +2718,7 @@ export function startServer(opts: {
     // not move, and a lead that does not send it still gets the primary session. A crew request may
     // still not name a host — widening is a second dimension of ONE machine, and a peer has no
     // peers (§4).
-    snapshot: (view) => localSnapshot(view.session, null, view.widen),
+    snapshot: (view) => localSnapshot(view.session, null, view.widen, true),
     // M22/03: this collie's own capability declaration, for `hello`. The SAME expression the
     // `/api/config` route below publishes to a browser — the primary session's adapter — so a peer
     // cannot report capabilities that differ from the ones it serves its own operator.
@@ -2791,6 +2909,25 @@ export function startServer(opts: {
 
   // Ten attempts per source address per minute on POST /api/pair, in memory (bridge/pair-limit.ts).
   const pairLimiter = createPairLimiter();
+
+  // Requests a paired phone approves (ADR 0139), in memory: a restart drops them all. A crew member
+  // serves no browser door, so it makes none. The sweep runs before every route and on a timer, so a
+  // token nobody collected is revoked within its window plus one tick.
+  const pairRequestDeps: PairRequestDeps = {
+    book: new PairRequestBook(),
+    pairing,
+    // By the token's hash, never by label, and through the device list's own revoke effects.
+    revoke: async (tokenHash) => {
+      const label = pairing === undefined ? null : await pairing.revokeByTokenHash(tokenHash);
+      if (label !== null) await deviceRevoked(label, undefined, "never-collected");
+    },
+    audit: (entry) => audit.record(entry),
+    isPeer: crew.mode === "peer",
+  };
+  setInterval(() => void settlePairRequests(pairRequestDeps), 15_000).unref();
+  // The kernel's peer address for a pairing request. Typed here, outside `fetch`, so the handlers that
+  // read it do not make `server`'s type depend on itself.
+  const peerAddress = (req: Request): string | undefined => server.requestIP(req)?.address;
 
   const server = Bun.serve({
     hostname: cfg.host,
@@ -3025,6 +3162,8 @@ export function startServer(opts: {
         // rule 1). By pairing label only, so the host's CLI and an unpaired caller stamp nothing.
         const poller = pairedLabel(req, pairingGate);
         if (poller !== null) push.notePoll(poller);
+        // And for the tricks runner (M94): timers run only while a paired phone has looked lately.
+        if (poller !== null) opts.tricks?.noteWatched();
         // `?sessions=all` WIDENS the pane lists to every session on ONE machine (see localSnapshot).
         // One exact spelling and nothing else is accepted: the parameter is a switch, not a list, and
         // a typo must read as "no" rather than as some third behaviour. It does NOT replace
@@ -3050,9 +3189,12 @@ export function startServer(opts: {
         // A member's panes arrive as the member sent them, and one release behind it sent each
         // program-set title in clear, so the lead masks the merged titles by its own switch. Its own
         // titles are already masked, and the mask leaves a masked title as it is.
+        // The merge does not carry a member's `hillRev` yet: the hill is not merged across the crew (M96),
+        // and a member refuses posts (`not_on_lead`). The revision below is this bridge's own store.
         const merged = crewLead ? crewLead.merge(body, plan) : body;
         const out = crewLead && cfg.redact ? maskSnapshotTitles(merged) : merged;
-        return withBuildHeader(json(out, req.headers.get("accept-encoding")), await buildId());
+        // The agent views' revision rides beside the hill's (or its off switch), this bridge's own, lead-local as the hill.
+        return withBuildHeader(json(withTrickViewsRev(withHill(out, hill), views?.rev()), req.headers.get("accept-encoding")), await buildId());
       }
 
       // ── Surface shadow mode's debug route (M56 spec 04) ──────────────────
@@ -3067,6 +3209,106 @@ export function startServer(opts: {
         const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
         if (rt instanceof Response) return rt;
         return surfaceRoute(rt.surface, url.searchParams.get("pane"), cfg.redact, req.headers.get("accept-encoding"));
+      }
+
+      // ── Collie tricks (M94 slice 01) ───────────────────────────────────────
+      // The parts and the list since a rev, and a tap. Both are this bridge's own, gated like the
+      // snapshot (a tap as a write, since it runs the program), and both answer 404 without a runner.
+      // `?host=` plays no part: the trick's host is in the tap's path, and a foreign one is 404 until
+      // the crew merge (a later slice).
+      if (pathname === "/api/tricks" && req.method === "GET") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();
+        return json(await tricks.reply(parseSince(url.searchParams.get("since"))), req.headers.get("accept-encoding"));
+      }
+      // The official list: the read is gated like the list, the add and the update like the switch,
+      // since they bring code onto the machine. Only a paired phone with the write right gets past the
+      // write gate; the host's own read credential and a request with no token do not.
+      if (pathname === "/api/tricks/official" && req.method === "GET") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.official, pairingGate);
+        if (denied) return denied;
+        const official = opts.officialTricks;
+        if (official === undefined) return jsonError({ error: "not found" }, 404, null);
+        return json(await official.reply(), req.headers.get("accept-encoding"));
+      }
+      const tricksOfficial = TRICKS_OFFICIAL_ROUTE.exec(pathname);
+      if (tricksOfficial !== null && req.method === "POST") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.officialAdd, pairingGate);
+        if (denied) return denied;
+        const official = opts.officialTricks;
+        if (official === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `tricksOfficialRoute` takes `{}` only.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = await tricksOfficialRoute(official, tricksOfficial, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);
+      if (tricksTap !== null && req.method === "POST") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.tap, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseTapRequest` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = await tricksTapRoute(tricks, tricksTap, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      const tricksSwitch = TRICKS_SWITCH_ROUTE.exec(pathname);
+      if (tricksSwitch !== null && req.method === "POST") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.switch, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `tricksSwitchRoute` checks the shape.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = await tricksSwitchRoute(tricks, tricksSwitch, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      const tricksVersion = TRICKS_AUTO_ROUTE.exec(pathname) ?? TRICKS_UNDO_ROUTE.exec(pathname);
+      if (tricksVersion !== null && req.method === "POST") {
+        const auto = pathname.endsWith("/auto");
+        const denied = guard(req, cfg, auto ? TRICKS_ROUTE_RIGHTS.auto : TRICKS_ROUTE_RIGHTS.undo, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; the route reads every field it takes.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = auto ? await tricksAutoRoute(tricks, tricksVersion, body) : await tricksUndoRoute(tricks, tricksVersion, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      const tricksMedia = TRICKS_MEDIA_ROUTE.exec(pathname);
+      if (tricksMedia !== null && req.method === "GET") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.media, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return text(HILL_MEDIA_MISSING, 404);
+        const file = await tricksMediaRoute(tricks, tricksMedia);
+        if (file === null) return text(HILL_MEDIA_MISSING, 404);
+        // The hill image's headers: no-store, a sandboxed CSP and inline, beside `secure`'s nosniff.
+        return secure(new Response(file.bytes, { headers: { "content-type": file.mime, ...HILL_MEDIA_HEADERS } }));
       }
 
       // ── Session-scoped routes: the pane family, tabs, workspaces ─────────
@@ -3105,7 +3347,24 @@ export function startServer(opts: {
         } catch {
           body = undefined;
         }
-        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+        const addressOf = (paneId: string): string | null => {
+          const pane = walky?.paneAt(rt.name, paneId) ?? null;
+          return walky !== undefined && pane !== null && pane.agent ? walky.addressOf(pane.paneId, pane.instance) : null;
+        };
+        // The Hill's quiet mark (1.29.0): a send that reached an agent's pane marks the open Decisions it
+        // posted. The same person turn ends a view's screen on a harness that reports no conversation.
+        const spoke = (paneId: string) => {
+          const address = addressOf(paneId);
+          if (address === null) return;
+          hill?.noteSpoke(address);
+          views?.notePersonTurn(address);
+        };
+        // A send from an agent view (SECURITY rule 3): only a paired device's own token with write access.
+        const viewAsked = readViewSendField(asJsonRecord(body)?.view ?? undefined) !== undefined;
+        const viewDenied = viewAsked ? viewWriteGate(req, pairingGate) : null;
+        if (viewDenied) return viewDenied;
+        const view = viewAsked && views !== undefined ? { service: views, addressOf } : undefined;
+        return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding"), spoke, view });
       }
       // `DELETE /api/send/<id>?session=<name>&pane=<id>` (M56 spec 15): the Cancel on a queued row. A held
       // request ends `cancelled`, an ended row is dismissed, one going out now is refused `busy`.
@@ -3165,6 +3424,147 @@ export function startServer(opts: {
           body = undefined;
         }
         return walkyPostRoute(walky, body, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // ── The hill (M96) ───────────────────────────────────────────────────
+      // The decisions agents posted on this bridge (a read), and the phone's answer to one: a write under
+      // the same gate and the same device label as `POST /api/walky`, because the answer is typed as an
+      // operator walky message. This machine only: the hill is not merged across the crew yet.
+      if (pathname === "/api/hill" && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        return hillListRoute(hill, url.searchParams.get("since"), req.headers.get("accept-encoding"));
+      }
+      // The Hill's switch: read by any paired device, moved with the write right, as a trick's switch is,
+      // because off refuses every agent's post on this machine. The value also rides on the snapshot as
+      // `hillOff`, which is what the phone draws from; this route is the write and a plain read.
+      if (pathname === "/api/hill/switch" && (req.method === "GET" || req.method === "POST")) {
+        const denied = browserGate(req.method === "GET" ? "read" : "write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        if (req.method === "POST") {
+          try {
+            // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillSwitchRoute` checks the one field.
+            body = (await req.json()) as JsonValue;
+          } catch {
+            body = undefined;
+          }
+        }
+        return hillSwitchRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // The crew state (1.29.0): read by any paired device, set with the write right, as the switch is,
+      // because every agent of the crew reads it. The value also rides on `GET /api/hill` as `crewState`.
+      if (pathname === "/api/hill/state" && (req.method === "GET" || req.method === "POST")) {
+        const denied = browserGate(req.method === "GET" ? "read" : "write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        if (req.method === "POST") {
+          try {
+            // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillStateRoute` checks the one field.
+            body = (await req.json()) as JsonValue;
+          } catch {
+            body = undefined;
+          }
+        }
+        return hillStateRoute(hill, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // "Tell all sessions now": one operator line into the sessions with a Decision, once per change of
+      // the crew state. Typed as an answer is, so the write right of an answer.
+      if (pathname === "/api/hill/state/tell" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillTellRoute` checks the one field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillTellRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      if (pathname === "/api/hill/answer" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `readAnswerRequest` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillAnswerRoute(hill, body, { device: whois(req).device, deviceId: pairedDeviceId(req, pairingGate), acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // ── Agent views ───────────────────────────────────────────────────────
+      // The screens agents drew on this bridge (a read), and the phone's per-session switch: a write that
+      // needs a paired device's own token with write access (agent views SECURITY rule 3), beyond the
+      // gate. This machine only, as the hill.
+      if (pathname === "/api/trick-views" && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(VIEW_LOCAL_TEXT, 400);
+        return await trickViewsListRoute(views, url.searchParams.get("since"), req.headers.get("accept-encoding"), url.searchParams.getAll("session"));
+      }
+      if (pathname === "/api/trick-views/switch" && req.method === "POST") {
+        const denied = browserGate("write") ?? viewWriteGate(req, pairingGate);
+        if (denied) return denied;
+        if (host.kind === "member") return text(VIEW_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `readTrickViewSwitchBody` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return await trickViewsSwitchRoute(views, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // A picture of an agent view's screen: the read gate, this machine only, as the hill's images.
+      const viewImage = pathname.match(VIEW_IMAGE_ROUTE);
+      if (viewImage && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(VIEW_LOCAL_TEXT, 400);
+        return trickViewsMediaRoute(views, viewImage[1]!, viewImage[2]!);
+      }
+      // Clear: remove closed decisions from the Hill, all of them or the ids named. The write right of an
+      // answer, and it works with the Hill off (it types nothing and rings nothing). Never an open one.
+      if (pathname === "/api/hill/clear" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillClearRoute` checks the one field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillClearRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // The second Clear (1.29.0): withdraw and clear the OPEN cards the person answered in the session.
+      // Its own path, so an older bridge answers 404 and never reads it as the first Clear. Types nothing.
+      if (pathname === "/api/hill/clear/spoken" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `hillSpokenClearRoute` takes only `{}`.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return hillSpokenClearRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      const hillImage = pathname.match(HILL_IMAGE_ROUTE);
+      if (hillImage && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
+        return hillMediaRoute(hill, hillImage[1]!, hillImage[2]!);
       }
       if (pathname === "/api/walky/who" && req.method === "GET") {
         const denied = browserGate("read");
@@ -4234,6 +4634,67 @@ export function startServer(opts: {
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
         return json({ token: claimed.token, label: parsed.label }, req.headers.get("accept-encoding"));
       }
+      // ── Pairing by a request a paired phone approves (ADR 0139, bridge/pair-request.ts) ──
+      // Making a request is OPEN, as `POST /api/pair` is and under the same front-door rule: a
+      // same-origin `Origin` for a write. It grants nothing alone. A token is minted only on a paired
+      // device's tap on the right code, and the creator caps are in the book (3 open, 6 per source in
+      // 10 minutes, keyed like the `/api/pair` limiter).
+      if (pathname === "/api/pair/request" && req.method === "POST") {
+        const gate = checkAccess(req, cfg, "write");
+        if (!gate.ok) return text(gate.reason, 403);
+        const peer = peerAddress(req);
+        const forwardedFor = req.headers.get("x-forwarded-for");
+        return secure(
+          await pairRequestCreateRoute(pairRequestDeps, {
+            source: pairSourceKey(peer, isLoopbackPeer(peer), forwardedFor),
+            route: pairRoute(peer, isLoopbackPeer(peer), forwardedFor),
+            userAgent: req.headers.get("user-agent"),
+          }),
+        );
+      }
+      // The asking browser's poll: open, its credential is the poll secret in a header (never the URL).
+      // An unknown id and a wrong secret are the same 404.
+      const pairRequestMatch = pathname.match(PAIR_REQUEST_ROUTE);
+      if (pairRequestMatch && req.method === "GET") {
+        const gate = checkAccess(req, cfg, "read");
+        if (!gate.ok) return text(gate.reason, 403);
+        return secure(await pairRequestPollRoute(pairRequestDeps, pairRequestMatch[1]!, req.headers.get(POLL_HEADER)));
+      }
+      // Its cancel: the same secret, the same 404, and the write's `Origin` rule.
+      if (pairRequestMatch && req.method === "DELETE") {
+        const gate = checkAccess(req, cfg, "write");
+        if (!gate.ok) return text(gate.reason, 403);
+        return secure(await pairRequestCancelRoute(pairRequestDeps, pairRequestMatch[1]!, req.headers.get(POLL_HEADER)));
+      }
+      // The approver: a paired device's token with the write right, the trick switch's gate (a read is
+      // `device-read`, the same device factors without the write's Origin rule). The host's local
+      // credential, an unpaired browser, a header-allowlisted device with no token and a crew forward
+      // are all refused here, before the book is asked anything.
+      const pairApproveMatch = pathname.match(PAIR_APPROVE_ROUTE);
+      if (pairApproveMatch && (req.method === "GET" || req.method === "POST")) {
+        const denied = guard(req, cfg, pairApproveGateLevel(req.method), pairingGate);
+        if (denied) return denied;
+        // The approver's own device: its label for the audit line, and its expiry, which the new device
+        // inherits (never longer than the approver's access).
+        const approverDevice = pairing?.resolve(bearerToken(req.headers)) ?? null;
+        const approverExpiresAt = approverDevice?.expiresAt;
+        if (req.method === "GET") return secure(await pairApproveReadRoute(pairRequestDeps, pairApproveMatch[1]!, { approverExpiresAt }));
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseApproveBody` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const peer = peerAddress(req);
+        return secure(
+          await pairApproveAnswerRoute(pairRequestDeps, pairApproveMatch[1]!, body, {
+            approver: approverDevice?.label ?? pairedLabel(req, pairingGate) ?? "unknown",
+            approverRoute: pairRoute(peer, isLoopbackPeer(peer), req.headers.get("x-forwarded-for")),
+            approverExpiresAt,
+          }),
+        );
+      }
       if (pathname === "/api/crew" && req.method === "GET") {
         // Read-level, exactly like `/api/devices` and `/api/config`: this is a report about machines
         // the operator already owns, and it drives nothing. Every field is a fact this process was
@@ -4322,11 +4783,9 @@ export function startServer(opts: {
         if (!revoked) {
           return jsonError(apiError("device.unknown"), 404, req.headers.get("accept-encoding"));
         }
-        audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
-        // The rows that device added from its phone go with it, here and on every crew member (ADR 0094).
-        await forgetDevice(label, "device-revoked");
-        // Seen now, so the watch does not report the same label a second time.
-        revokeWatch(pairedLabels());
+        // The audit line, the rows that device added from its phone (here and on every crew member,
+        // ADR 0094), and the watch told, so it does not report the same label a second time.
+        await deviceRevoked(label, whois(req).device);
         let after: DevicesResponseBody;
         try {
           const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
@@ -5413,6 +5872,19 @@ export async function filesExist(
 }
 
 /**
+ * The Files root of one of this machine's AGENT panes, the one the Files view reads for it (a trick's
+ * inputs, M99): `{ root }`, `{ root: null }` when the pane has no folder narrow enough to read, or null
+ * when the id names no agent pane in any runtime here, or more than one: a shell pane, a trick's pane, a
+ * pane of another machine and an unknown id alike.
+ */
+export async function agentPaneFilesRoot(snaps: readonly RootSnapshot[], paneId: string, home: string): Promise<{ root: string | null } | null> {
+  const hits = snaps.flatMap((snap) => snap.agents.filter((a) => a.paneId === paneId && (a.kind ?? "agent") === "agent").map((pane) => ({ snap, pane })));
+  if (hits.length !== 1) return null;
+  const { snap, pane } = hits[0]!;
+  return { root: paneFilesRootOf(await paneWorkspaceRoot(rootOfWorkspace(snap, pane.workspaceId, home), pane.cwd), pane.cwd, home) };
+}
+
+/**
  * The Files root of a pane or a workspace, the one the Files read picks for the same subject: a
  * pane's workspace root as that pane sees it ({@link paneWorkspaceRoot}, #509), else its own cwd
  * when that is bounded; a workspace's root. `null` when there is none, or no such pane or workspace.
@@ -5841,6 +6313,14 @@ export async function replyPane(
     return replyThroughProtocol(send, paneId, session, fields, { audit, device, redact: cfg.redact, acceptEncoding: ae });
   }
   if (submit && binding === null) return text("a submit with no text needs expected_prompt", 400);
+  // One head, one door (agent views SECURITY rule 7, review 9 R2): the raw text this route types with
+  // `submit: false` never passes the Send Protocol, so it is read for a view head here, before any key.
+  // A crew member answers its lead's forwarded reply through this same function.
+  if (txt !== "" && hasViewHead(txt)) {
+    audit.record({ action: "reply", paneId, session, device, detail: { submit, submitted: false, textDelivered: false, reason: "bad_head" } });
+    const refusal: ActionResponse = { ok: false, textDelivered: false, ...apiError("reply.send_failed", { reason: BAD_HEAD }) };
+    return json(refusal, ae);
+  }
   const outcome = await sendReplySteps(herdr, paneId, txt, submit, cfg.submitKeys);
   const replyDetail: AuditDetail = {
     text: txt,
@@ -8341,18 +8821,33 @@ interface DevicesResponseBody {
 
 /**
  * The `/api/*` routes that answer without the pairing credential, and nothing else (ADR 0086):
- * `GET`/`HEAD /api/health`, which the updater and monitors ask before anyone has a token, and
- * `POST /api/pair`, which is how a device gets one. Every other `/api/` path, known or not, any
- * method, any spelling, is gated by {@link apiFrontGate} before the dispatcher routes it.
+ * `GET`/`HEAD /api/health`, which the updater and monitors ask before anyone has a token,
+ * `POST /api/pair`, which is how a device gets one, and `POST /api/pair/request`, which is how an
+ * unpaired browser asks a paired phone for one (ADR 0139). Every other `/api/` path, known or not, any
+ * method, any spelling, is gated by {@link apiFrontGate} before the dispatcher routes it, except the
+ * one shape in {@link OPEN_API_PATTERNS}.
  */
 export const OPEN_API_ROUTES: readonly { readonly path: string; readonly methods: readonly string[] }[] = [
   { path: "/api/health", methods: ["GET", "HEAD"] },
   { path: "/api/pair", methods: ["POST"] },
+  { path: "/api/pair/request", methods: ["POST"] },
 ];
 
-/** Whether this method and path are one of {@link OPEN_API_ROUTES}. Exact path, exact method. */
+/**
+ * The open routes with an id in the path: `GET /api/pair/request/<id>`, the asking browser's poll, and
+ * `DELETE` of the same path, its cancel (ADR 0139). Their credential is the poll secret in a header,
+ * which only the request's creator holds; an unknown id and a wrong secret are the same 404.
+ */
+export const OPEN_API_PATTERNS: readonly { readonly pattern: RegExp; readonly methods: readonly string[] }[] = [
+  { pattern: PAIR_REQUEST_ROUTE, methods: ["GET", "DELETE"] },
+];
+
+/** Whether this method and path are one of {@link OPEN_API_ROUTES} (exact path, exact method) or {@link OPEN_API_PATTERNS}. */
 export function isOpenApiRoute(pathname: string, method: string): boolean {
-  return OPEN_API_ROUTES.some((r) => r.path === pathname && r.methods.includes(method));
+  return (
+    OPEN_API_ROUTES.some((r) => r.path === pathname && r.methods.includes(method)) ||
+    OPEN_API_PATTERNS.some((r) => r.pattern.test(pathname) && r.methods.includes(method))
+  );
 }
 
 /**
@@ -8393,7 +8888,7 @@ export interface PairingGate {
    * The device this token belongs to, or null. An expired token resolves to null. THROWS when the
    * registry cannot be read ({@link PairingStore.resolve}); the gate answers 503, never "not paired".
    */
-  resolve(token: string | null): { label: string } | null;
+  resolve(token: string | null): { label: string; tokenHash?: string } | null;
   /**
    * Whether this token belongs to a device whose expiry passed. Optional so a test may still pass a
    * two-line gate; {@link PairingStore} always answers it.
@@ -8453,6 +8948,23 @@ export function pairedLabel(req: Request, pairing?: PairingGate): string | null 
   if (pairing.local?.(token, req) === true) return null;
   try {
     return pairing.resolve(token)?.label ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The id of the paired device's record that sent `req`, for the hill's answer (M96): `hillDeviceId` of
+ * its token hash, or null where {@link pairedLabel} is null or the gate names no record. Beside the label,
+ * so an answer still says which pairing gave it after a rename. Attribution, never a signature.
+ */
+export function pairedDeviceId(req: Request, pairing?: PairingGate): string | null {
+  if (pairing === undefined) return null;
+  const token = bearerToken(req.headers);
+  if (pairing.local?.(token, req) === true) return null;
+  try {
+    const tokenHash = pairing.resolve(token)?.tokenHash;
+    return tokenHash === undefined ? null : hillDeviceId(tokenHash);
   } catch {
     return null;
   }
@@ -8649,11 +9161,42 @@ export interface SendRouteRuntime {
   };
 }
 
+/**
+ * The send modes that put the person's own words into the session. Not a `command` (a `/compact` answers
+ * no question), and not a staged `append`/`replace`/`prepare` or a discard (C-N1, review 8).
+ */
+const SPOKE_MODES: ReadonlySet<SendRequest["mode"]> = new Set(["send", "submit"]);
+/** The outcomes of a send whose words reached the session now. Not `held`: it may still be cancelled or expire. */
+const SPOKE_OUTCOMES: ReadonlySet<string> = new Set(["effective", "sent", "steered"]);
+
+/** Whether one phone send counts as the person writing to the session (1.29.0, the Hill's quiet mark). */
+export function sendSpoke(mode: SendRequest["mode"], outcome: string): boolean {
+  return SPOKE_MODES.has(mode) && SPOKE_OUTCOMES.has(outcome);
+}
+
 export async function sendRoute(
   rt: SendRouteRuntime,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: {
+    readonly audit: AuditLog;
+    readonly device: string | null;
+    readonly redact: boolean;
+    readonly acceptEncoding: string | null;
+    /** Told once per send whose words reached a pane (`sendSpoke`): the Hill marks that session's open cards. */
+    readonly spoke?: (paneId: string) => void;
+    /**
+     * The agent views, for a send with a `view` field: given only by `POST /api/send` once the request
+     * passed the paired-device gate. Absent (any other caller, a crew route, a test), a `view` is refused 403.
+     */
+    readonly view?: { readonly service: AgentViewService; readonly addressOf: (paneId: string) => string | null };
+  },
 ): Promise<Response> {
+  const viewField = readViewSendField(asJsonRecord(body)?.view ?? undefined);
+  if (viewField !== undefined) {
+    if (context.view === undefined) return text(VIEW_PAIRED_ONLY, 403);
+    if (viewField === null) return text("bad send request", 400);
+    return await viewSendRoute(rt, body, { ...context, view: context.view, field: viewField });
+  }
   if (rt.driver !== undefined) return programSendRoute(rt, rt.driver, body, context);
   if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
   const request = parseSendRequest(body);
@@ -8700,6 +9243,7 @@ export async function sendRoute(
     if (resendOf !== undefined) detail.resend = true;
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
+    if (sendSpoke(sendRequest.mode, receipt.outcome)) context.spoke?.(paneId);
     if (receipt.keys.length > 0) {
       rt.engine.noteInput();
       rt.engine.pokeNow();
@@ -8707,6 +9251,81 @@ export async function sendRoute(
   }
   const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   return json(out, context.acceptEncoding);
+}
+
+/** A view send's refusal before the Send Protocol: HTTP 409 with the code, so the phone shows it and never retries. */
+function viewRefused(code: string, error: string, acceptEncoding: string | null): Response {
+  return json({ error, code, view: true }, acceptEncoding, 409);
+}
+
+/**
+ * A send from an agent view (SECURITY rules 2 to 6, 8): `{ id, pane, view: { trick, session, rev, control } }`
+ * for a tap, `{ id, pane, text, view: { trick, session } }` for typed text. The bridge builds the line from
+ * its own stored screen (`prepareSend`); the phone's `text` of a tap is never read. A refusal before the
+ * protocol answers 409 `{ error, code, view: true }`; a send that reached the protocol answers its receipt,
+ * as any send, with `view: { line }`, the exact text handed to the session. One audit line either way.
+ */
+async function viewSendRoute(
+  rt: SendRouteRuntime,
+  body: JsonValue | undefined,
+  context: {
+    readonly audit: AuditLog;
+    readonly device: string | null;
+    readonly redact: boolean;
+    readonly acceptEncoding: string | null;
+    readonly spoke?: (paneId: string) => void;
+    readonly view: { readonly service: AgentViewService; readonly addressOf: (paneId: string) => string | null };
+    readonly field: ViewSendField;
+  },
+): Promise<Response> {
+  const fields = asJsonRecord(body);
+  const id = fields?.id;
+  const paneId = fields?.pane;
+  const typed = asJsonString(fields?.text);
+  if (typeof id !== "string" || !REQUEST_ID.test(id) || typeof paneId !== "string" || paneId.length === 0 || paneId.length > 256) return text("bad send request", 400);
+  const tap = context.field.rev !== undefined;
+  if (!tap && (typed === undefined || typed.trim() === "" || typed.length > SEND_MAX_TEXT)) return text("bad send request", 400);
+  if (rt.driver !== undefined || rt.send === undefined) return viewRefused("wrong_session", "an agent view sends to a session with a screen only", context.acceptEncoding);
+  const refusal = rawInputRefusal(rt.herdr);
+  if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
+  const harness = replySendOf(rt).harnessOf(paneId);
+  const own = context.view.addressOf(paneId);
+  if (harness === null || own === null) return text("no such terminal pane", 404);
+  const plan = await context.view.service.prepareSend({ field: context.field, own, typed: tap ? null : (typed ?? null), device: context.device });
+  if (!plan.ok) {
+    context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail: { mode: "send", outcome: "refused", reason: plan.code, view: context.field.trick } });
+    return viewRefused(plan.code, plan.error, context.acceptEncoding);
+  }
+  const mode: SendRequest["mode"] = plan.plain && isCommand(plan.line) ? "command" : "send";
+  const sendRequest: SendRequest = { id, text: plan.line, mode, fromPhone: plan.plain, view: { head: !plan.plain, check: plan.check } };
+  let receipt: SendReceipt | undefined;
+  let answer: Awaited<ReturnType<SendProtocol["handle"]>>;
+  try {
+    answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
+    receipt = answer.receipt;
+  } finally {
+    plan.done({ rid: id, sent: receipt !== undefined && SPOKE_OUTCOMES.has(receipt.outcome), reason: receipt?.reason ?? (receipt === undefined ? "crash" : null), landed: viewLanded(receipt) });
+  }
+  if (receipt !== undefined) {
+    const detail: AuditDetail = { mode, outcome: receipt.outcome, textLength: receipt.textLength, view: plan.trick };
+    if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
+    if (plan.plain && sendSpoke(mode, receipt.outcome)) context.spoke?.(paneId);
+    if (receipt.keys.length > 0) {
+      rt.engine.noteInput();
+      rt.engine.pokeNow();
+    }
+  }
+  const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  // The receipt says how the keys ended: a line that landed but did not end `sent` carries its outcome (review 9 R7).
+  const landed = viewLanded(receipt);
+  return json({ ...out, view: landed === undefined ? { line: plan.line } : { line: plan.line, outcome: landed } }, context.acceptEncoding);
+}
+
+/** A view send whose keys landed but that did not end `sent`: its outcome, else undefined. */
+function viewLanded(receipt: SendReceipt | undefined): ViewSentOutcome | undefined {
+  if (receipt === undefined) return undefined;
+  return receipt.outcome === "typed_not_submitted" || receipt.outcome === "unknown" ? receipt.outcome : undefined;
 }
 
 /** What `stopRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
@@ -8843,6 +9462,304 @@ export const WALKY_OLDER_MEMBER_TEXT = "that machine runs a Collie older than wa
  */
 export function walkyOlderMemberAnswer(memberVersion: string | null, ownVersion: string): Response | null {
   return olderThanWalky(memberVersion, ownVersion, compareSemver) ? text(WALKY_OLDER_MEMBER_TEXT, 404) : null;
+}
+
+/** What a hill route answers on a bridge built without it (M96). */
+export const HILL_OFF_TEXT = "the hill is not running on this bridge";
+/** What a hill route answers with `?host=`: the hill is not merged across the crew yet. */
+export const HILL_LOCAL_TEXT = "the hill reads this machine only for now; ask the machine itself";
+/** What the answer route says of a `rid` already used for another answer. */
+export const HILL_RID_REUSED = "request-id-reused: this rid already answered with another choice";
+/** What the answer route says when the first receipt could not be written: nothing closed, nothing typed. */
+export const HILL_UNSAVED_TEXT = "the answer could not be recorded on this machine, so nothing was sent";
+
+/** The snapshot with the hill's revision (M96) when there is one. Absent, the body is unchanged, byte for byte. */
+export function withHillRev(body: SnapshotResponse, rev: number | undefined): SnapshotResponse {
+  return rev === undefined ? body : { ...body, hillRev: rev };
+}
+
+/** What an agent view route answers on a bridge built without them. */
+export const VIEW_OFF_TEXT = "agent views are not running on this bridge";
+/** What an agent view route answers with `?host=`: views are not merged across the crew. */
+export const VIEW_LOCAL_TEXT = "agent views read this machine only; ask the machine itself";
+/** What the switch answers for a body of another shape. */
+export const VIEW_BAD_SWITCH = 'the body is { "trick": "<trick id>", "session": "<walky address>", "on": true | false }';
+/** What a view's switch or send answers a caller that is not a paired device with its own token. */
+export const VIEW_PAIRED_ONLY = "an agent view is switched and sent from a paired device only";
+
+/**
+ * The second gate of an agent view's switch and send (SECURITY rule 3): beyond the write gate, the
+ * request must carry a paired device's own token. The host's local credential, a device known only by a
+ * proxy header, and a bridge with no pairing at all are refused 403. Null when the request may go on.
+ */
+export function viewWriteGate(req: Request, pairing: PairingGate | undefined): Response | null {
+  return pairedLabel(req, pairing) === null ? text(VIEW_PAIRED_ONLY, 403) : null;
+}
+
+/** The snapshot with the agent views' revision when there is one. Absent, the body is unchanged, byte for byte. */
+export function withTrickViewsRev(body: SnapshotResponse, rev: number | undefined): SnapshotResponse {
+  return rev === undefined ? body : { ...body, trickViewsRev: rev };
+}
+
+/**
+ * `GET /api/trick-views?since=<rev>`: every view this bridge holds, keyed by (trick, session), with its
+ * switch, head, tail and screen. With `since` equal to the revision, `{ rev, unchanged: true, views: [] }`;
+ * with an older one, only the views that moved after it and the keys of every view held. The tricks are
+ * scanned first (inside their usual cadence), so a trick switched off reads off here at once.
+ * `session=<address>`, given once per session (at most {@link VIEW_LIST_SESSIONS_MAX}), narrows the answer
+ * and its keys to the sessions the phone shows; none given is every session, as before.
+ */
+export async function trickViewsListRoute(views: AgentViewService | undefined, since: string | null, acceptEncoding: string | null, sessions: readonly string[] = []): Promise<Response> {
+  if (views === undefined) return text(VIEW_OFF_TEXT, 404);
+  if (sessions.length > VIEW_LIST_SESSIONS_MAX || sessions.some((session) => session === "" || session.length > VIEW_SESSION_MAX)) return text(VIEW_BAD_SESSIONS, 400);
+  await views.settle();
+  const at = since === null || !/^\d{1,16}$/u.test(since) ? null : Number(since);
+  return json(views.answer(at, sessions.length === 0 ? null : sessions), acceptEncoding);
+}
+
+/** The most `session` names one read of the views may carry. */
+export const VIEW_LIST_SESSIONS_MAX = 16;
+/** What the read answers for a session list it does not take. */
+export const VIEW_BAD_SESSIONS = `give at most ${String(VIEW_LIST_SESSIONS_MAX)} session addresses, each 1 to ${String(VIEW_SESSION_MAX)} characters`;
+
+/**
+ * `POST /api/trick-views/switch`: the person turns one session's view of one trick on or off. 200 with the
+ * view as served, 400 for a body of another shape or on a crew member, 404 for an address that names no
+ * live agent session here, 409 when the trick does not pass the gate, 503 when the state could not be
+ * written. The gates' own 401 and 403 come before this. One audit line.
+ */
+export async function trickViewsSwitchRoute(views: AgentViewService | undefined, body: JsonValue | undefined, context: { readonly device: string | null; readonly acceptEncoding: string | null }): Promise<Response> {
+  if (views === undefined) return text(VIEW_OFF_TEXT, 404);
+  const read = readTrickViewSwitchBody(body);
+  if (read === null) return text(VIEW_BAD_SWITCH, 400);
+  const answer = await views.switch(read, context.device);
+  if (!answer.ok) return json({ error: answer.error, code: answer.code, view: true }, context.acceptEncoding, answer.status);
+  return json(answer.session, context.acceptEncoding);
+}
+
+/**
+ * `GET /api/trick-views/media/<set id>/<media id>`: the bytes of one picture of a view's screen, with the
+ * type the bridge read off them when it kept the file and the hill's image headers (`no-store`, a
+ * sandboxed CSP, `nosniff`). Each id is checked against its pattern before the service is asked, and the
+ * service builds a path only for a pair a held screen names, of a view that is on, passes its gate and is
+ * not stale. Every miss is the same 404.
+ */
+export function trickViewsMediaRoute(views: AgentViewService | undefined, set: string, mediaId: string): Response {
+  if (views === undefined) return text(VIEW_OFF_TEXT, 404);
+  if (!VIEW_SET_RE.test(set) || !VIEW_MEDIA_ID_RE.test(mediaId)) return text(HILL_MEDIA_MISSING, 404);
+  const file = views.mediaFile(set, mediaId);
+  if (file === null) return text(HILL_MEDIA_MISSING, 404);
+  return secure(new Response(file.bytes, { headers: { "content-type": file.mime, ...HILL_MEDIA_HEADERS } }));
+}
+
+/**
+ * The snapshot with what the phone needs of the hill. On: its revision, as {@link withHillRev}. Off (the
+ * Hill's switch): no revision, so the phone empties its list and the bar loses the Hill item, and
+ * `hillOff: true`, so the Hill's route and Settings say it is off. With the Hill on the body carries no
+ * `hillOff` key at all, so an install that never switched it keeps its bytes.
+ */
+export function withHill(body: SnapshotResponse, hill: Pick<HillService, "isOn" | "rev"> | undefined): SnapshotResponse {
+  if (hill === undefined) return body;
+  if (!hill.isOn()) return { ...body, hillOff: true };
+  return withHillRev(body, hill.rev());
+}
+
+/** What the answer route says while the Hill is switched off: nothing was typed, and the decision stays open. */
+export const HILL_SWITCHED_OFF_TEXT = "the Hill is off on this Collie, so nothing was sent";
+
+/**
+ * `GET` and `POST /api/hill/switch`: the Hill's switch. `GET` (`write` null) answers `{ on }`. `POST`
+ * takes `{ "on": boolean }` and nothing else, and answers `{ on }` as the switch now reads; 400 for
+ * another body, 503 when the switch file could not be written.
+ */
+export function hillSwitchRoute(
+  hill: Pick<HillService, "isOn" | "switchTo"> | undefined,
+  write: { readonly body: JsonValue | undefined } | null,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  if (write === null) return json({ on: hill.isOn() }, context.acceptEncoding);
+  const doc = asJsonObject(write.body);
+  const on = asJsonBoolean(doc?.on);
+  if (doc === undefined || on === undefined || Object.keys(doc).length !== 1) return text("bad request: the body is { \"on\": true } or { \"on\": false }", 400);
+  const now = hill.switchTo(on, context.device);
+  if (now === null) return text("the Hill's switch could not be saved on this machine; nothing changed", 503);
+  return json({ on: now }, context.acceptEncoding);
+}
+
+/**
+ * `GET /api/hill?since=<rev>` (M96): every open decision and the newest closed ones. With `since` equal
+ * to the revision, only `{ rev, unchanged: true }`.
+ */
+export function hillListRoute(hill: HillService | undefined, since: string | null, acceptEncoding: string | null): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const list = hill.list();
+  if (since !== null && since === String(list.rev)) return json({ rev: list.rev, unchanged: true }, acceptEncoding);
+  // The crew state rides along (1.29.0); a change of it moves the revision, so `unchanged` stays true to it.
+  // Not from a member or a deposed lead: its own file is not the crew's state (C-N4).
+  const crewState = hill.servedCrewState();
+  return json(crewState === null ? list : { ...list, crewState }, acceptEncoding);
+}
+
+/**
+ * `GET` and `POST /api/hill/state` (1.29.0): the crew state. `GET` (`write` null) answers the state
+ * `{ state, at, by, told }`. `POST` takes `{ "state": "here" | "quiet" | "away" }` and nothing else and
+ * answers the state as it reads now; 400 for another body, 409 on a machine that is not the crew's lead,
+ * 503 when the file could not be written. The audit line `hill.state` names the device and the value.
+ */
+export function hillStateRoute(
+  hill: Pick<HillService, "servedCrewState" | "setCrewState"> | undefined,
+  write: { readonly body: JsonValue | undefined } | null,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  if (write === null) {
+    // A member or a deposed lead answers as its POST does (C-N4): the state lives on the lead.
+    const served = hill.servedCrewState();
+    return served === null ? text(HILL_STATE_ON_LEAD, 409) : json(served, context.acceptEncoding);
+  }
+  const doc = asJsonObject(write.body);
+  const state = doc?.state;
+  if (doc === undefined || !isHillCrewState(state) || Object.keys(doc).length !== 1) return text('bad request: the body is { "state": "here" }, "quiet" or "away"', 400);
+  const set = hill.setCrewState(state, context.device ?? "phone", context.device);
+  if (!set.ok) return text(set.error, set.notLead ? 409 : 503);
+  return json(set.crewState, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/hill/state/tell` (1.29.0): "Tell all sessions now". The body is `{ "at": <ms> }`, the
+ * change of the crew state the phone showed. 200 `{ told }`, how many sessions walky typed the line into,
+ * once the sends settled (up to HILL_SEND_WAIT_MS); 409 with the
+ * words when the state moved, was told already, is `here`, or the Hill or WalkyTalky is off.
+ */
+export async function hillTellRoute(
+  hill: Pick<HillService, "tellAll"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const doc = asJsonObject(body);
+  const at = asJsonNumber(doc?.at);
+  if (doc === undefined || at === undefined || !Number.isSafeInteger(at) || Object.keys(doc).length !== 1) return text('bad request: the body is { "at": <the time the crew state was set> }', 400);
+  const told = await hill.tellAll(at, context.device ?? "phone", context.device);
+  if (!told.ok) return text(told.error, 409);
+  return json({ told: told.told }, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/hill/answer` (M96): one answer from the phone, by the receipt rules of the hill. 200 for
+ * every receipt the bridge wrote, 400 for a body of another shape, 409 for a `rid` used for another
+ * answer, 503 when the first receipt could not be written. The gates' own 401 and 403 come before this.
+ */
+export async function hillAnswerRoute(
+  hill: HillService | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly deviceId?: string | null; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const read = readAnswerRequest(body);
+  if (!read.ok) return text(read.error, 400);
+  const outcome = await hill.answer(read.request, read.id, context.device ?? "phone", context.deviceId ?? null);
+  switch (outcome.kind) {
+    case "receipt":
+      return json(outcome.receipt, context.acceptEncoding);
+    case "reused":
+      return text(HILL_RID_REUSED, 409);
+    case "unsaved":
+      return text(HILL_UNSAVED_TEXT, 503);
+    case "off":
+      return text(HILL_SWITCHED_OFF_TEXT, 409);
+  }
+}
+
+/** What the clear route says when the write failed: nothing was removed. */
+export const HILL_CLEAR_UNSAVED_TEXT = "the Hill could not be saved on this machine; nothing was cleared";
+/** The most ids one clear names. */
+export const HILL_CLEAR_IDS_MAX = 200;
+
+/**
+ * `POST /api/hill/clear/spoken` (1.29.0): `{}` or `{ "ids": [...] }` in (the cards the phone showed, C-N5),
+ * `{ cleared }` out. Withdraws and clears every open
+ * Decision the person answered in its session (`spokeAfter`); nothing is typed into any session. 409 on a
+ * member or a deposed lead, 503 when the Hill could not be saved.
+ */
+export function hillSpokenClearRoute(
+  hill: Pick<HillService, "clearSpoken"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const ids = readClearIds(body);
+  if (ids === undefined) return text(HILL_CLEAR_BAD_BODY, 400);
+  const answer = hill.clearSpoken(context.device, ids);
+  if (!answer.ok) return text(answer.error, answer.notLead ? 409 : 503);
+  return json({ cleared: answer.cleared }, context.acceptEncoding);
+}
+
+const HILL_CLEAR_BAD_BODY = 'bad request: the body is {} or { "ids": ["dc_..."] }';
+
+/** A Clear's body: `{}` (null, every one) or `{ "ids": [...] }`; undefined for any other shape. */
+function readClearIds(body: JsonValue | undefined): string[] | null | undefined {
+  const doc = asJsonObject(body);
+  if (doc === undefined || Object.keys(doc).some((key) => key !== "ids")) return undefined;
+  if (doc.ids === undefined) return null;
+  const raw = doc.ids;
+  if (!Array.isArray(raw) || raw.length > HILL_CLEAR_IDS_MAX) return undefined;
+  const ids: string[] = [];
+  for (const entry of raw) {
+    const id = asJsonString(entry);
+    if (id === undefined || !HILL_ID_RE.test(id)) return undefined;
+    ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * `POST /api/hill/clear`: remove closed decisions. The body is `{}` (every closed decision) or
+ * `{ "ids": ["dc_..."] }` (those, when closed). 200 `{ cleared, skipped }`: `cleared` is how many went,
+ * `skipped` the ids left alone, `open` for an open decision and `missing` for one this bridge does not
+ * hold. 400 for another body, 503 when the write failed. Works with the Hill off.
+ */
+export function hillClearRoute(
+  hill: Pick<HillService, "clear"> | undefined,
+  body: JsonValue | undefined,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  const ids = readClearIds(body);
+  if (ids === undefined) return text(HILL_CLEAR_BAD_BODY, 400);
+  const answer = hill.clear(ids, context.device);
+  if (answer === null) return text(HILL_CLEAR_UNSAVED_TEXT, 503);
+  return json({ cleared: answer.cleared.length, skipped: answer.skipped }, context.acceptEncoding);
+}
+
+/**
+ * The headers an image of the hill carries beside {@link secure}'s `nosniff` (M96). The Files view's
+ * picture headers, for the same reasons: `no-store` because the browser's cache outlives a pairing
+ * (`blobRoute`), a CSP that drops the answer into an opaque origin with nothing allowed in case the
+ * bytes are ever opened as a page, and `inline`.
+ */
+export const HILL_MEDIA_HEADERS = {
+  "cache-control": "no-store",
+  "content-security-policy": "default-src 'none'; sandbox",
+  "content-disposition": "inline",
+} as const;
+
+/** What the image route answers for any id it does not hold, well formed or not. */
+export const HILL_MEDIA_MISSING = "no such image";
+
+/**
+ * `GET /api/hill/media/<decision id>/<media id>` (M96): the bytes of one image of a decision, with
+ * the type the bridge read off them when it kept the file. Each id is checked against its pattern
+ * before the service is asked, and the service builds a path only for a pair its store holds. Every
+ * miss is the same 404.
+ */
+export function hillMediaRoute(hill: HillService | undefined, decisionId: string, mediaId: string): Response {
+  if (hill === undefined) return text(HILL_OFF_TEXT, 404);
+  if (!HILL_ID_RE.test(decisionId) || !HILL_MEDIA_ID_RE.test(mediaId)) return text(HILL_MEDIA_MISSING, 404);
+  const file = hill.mediaFile(decisionId, mediaId);
+  if (file === null) return text(HILL_MEDIA_MISSING, 404);
+  return secure(new Response(file.bytes, { headers: { "content-type": file.mime, ...HILL_MEDIA_HEADERS } }));
 }
 
 /** `POST /api/walky`: one message from the phone, as an operator, under the device's label. */
@@ -9099,6 +10016,19 @@ function maskAskReply(reply: AskReply): AskReply {
   return masked;
 }
 
+/** What `POST /api/ask/<id>` writes beside its answer. */
+export interface AskRouteContext {
+  readonly audit: AuditLog;
+  readonly device: string | null;
+  readonly redact: boolean;
+  readonly acceptEncoding: string | null;
+  /**
+   * An answer that reached the pane is a person turn in its session (agent views rule 6, review 9 R3):
+   * a view's screen there, on a harness that reports no conversation, goes stale. A replay is no turn.
+   */
+  readonly personTurn?: (paneId: string) => void;
+}
+
 /**
  * `POST /api/ask/<id>` once the write gate passed and the session resolved (M56 spec 08). With the
  * Send Protocol off (no answerer on the runtime) the route is not there. Every outcome is a 200 with
@@ -9109,7 +10039,7 @@ export async function askRoute(
   rt: AskRouteRuntime,
   askId: string,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: AskRouteContext,
 ): Promise<Response> {
   if (rt.driver !== undefined) return programAskRoute(rt, rt.driver, askId, body, context);
   if (rt.asks === undefined) return text(ASK_OFF_TEXT, 404);
@@ -9131,6 +10061,7 @@ export async function askRoute(
     if (receipt.keys.length > 0 && reply.replayed !== true) {
       rt.engine.noteInput();
       rt.engine.pokeNow();
+      context.personTurn?.(paneId);
     }
   }
   return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
@@ -9146,7 +10077,7 @@ async function programAskRoute(
   driver: ProgramDriver,
   askId: string,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+  context: AskRouteContext,
 ): Promise<Response> {
   const parsed = parseAnswerBody(askId, body);
   if (parsed === null) return text("bad ask answer", 400);
@@ -9160,7 +10091,10 @@ async function programAskRoute(
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     if (reply.replayed === true) detail.replayed = true;
     context.audit.record({ action: "ask", paneId, session: rt.name, device: context.device, detail });
-    if (receipt.outcome === "sent" && reply.replayed !== true) rt.engine.pokeNow();
+    if (receipt.outcome === "sent" && reply.replayed !== true) {
+      rt.engine.pokeNow();
+      context.personTurn?.(paneId);
+    }
   }
   return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
 }

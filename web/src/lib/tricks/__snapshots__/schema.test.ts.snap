@@ -1,0 +1,648 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`valid fixtures > the bar node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "label": "Legs",
+      "role": "strip",
+      "scroll": "x",
+    },
+    "kids": [
+      {
+        "kind": "chip",
+        "text": "core",
+      },
+      {
+        "attrs": {
+          "intent": "rerun",
+          "label": "Rerun",
+        },
+        "kind": "button",
+      },
+      {
+        "attrs": {
+          "href": "https://github.com/AltanS/collie/actions/runs/1234",
+        },
+        "kind": "link",
+        "text": "Report",
+      },
+    ],
+    "kind": "bar",
+  },
+]
+`;
+
+exports[`valid fixtures > the button node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "badge": "1",
+          "confirm": "Rerun now?",
+          "hint": "Runs the red cases again",
+          "icon": "refresh",
+          "intent": "rerun",
+          "label": "Rerun red",
+          "pressed": "false",
+          "tone": "accent",
+          "value": "red",
+        },
+        "kind": "button",
+      },
+      {
+        "attrs": {
+          "disabled": "No log yet",
+          "does": "copy",
+          "label": "Copy the log path",
+          "value": "~/.cache/collie-lab/leg-logs/24.log",
+        },
+        "kind": "button",
+      },
+    ],
+    "kind": "card",
+  },
+]
+`;
+
+exports[`valid fixtures > the card node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "tone": "ok",
+    },
+    "kids": [
+      {
+        "attrs": {
+          "role": "heading",
+        },
+        "kind": "para",
+        "text": "Deploy",
+      },
+      {
+        "kind": "para",
+        "text": "green at 72f69369",
+      },
+      {
+        "kind": "spacer",
+      },
+      {
+        "attrs": {
+          "label": "containers",
+        },
+        "kind": "number",
+        "text": "3",
+      },
+    ],
+    "kind": "card",
+  },
+]
+`;
+
+exports[`valid fixtures > the cell node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Gate",
+      },
+      {
+        "kind": "col",
+        "text": "Runs",
+      },
+      {
+        "attrs": {
+          "tone": "danger",
+        },
+        "kind": "cell",
+        "text": "e2e",
+      },
+      {
+        "kind": "cell",
+        "text": "18",
+      },
+    ],
+    "kind": "table",
+  },
+]
+`;
+
+exports[`valid fixtures > the chip node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "icon": "check",
+          "short": "herdr",
+          "state": "done",
+          "tone": "ok",
+        },
+        "kind": "chip",
+        "text": "Solo leg, herdr",
+      },
+      {
+        "attrs": {
+          "current": "",
+          "state": "working",
+        },
+        "kind": "chip",
+        "text": "Crew leg",
+      },
+      {
+        "attrs": {
+          "at": "1794130692000",
+          "clock": "ago",
+        },
+        "kind": "chip",
+      },
+    ],
+    "kind": "bar",
+  },
+]
+`;
+
+exports[`valid fixtures > the code node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "lang": "sh",
+      "max": "4",
+    },
+    "kids": [
+      {
+        "kind": "line",
+        "text": "case 22 green",
+      },
+      {
+        "kind": "line",
+        "text": "case 23 green",
+      },
+      {
+        "kind": "line",
+      },
+      {
+        "kids": [
+          {
+            "attrs": {
+              "style": "fg-red",
+            },
+            "kind": "run",
+            "text": "case 24 red",
+          },
+          {
+            "kind": "run",
+            "text": ": draft left in the box",
+          },
+        ],
+        "kind": "line",
+      },
+    ],
+    "kind": "code",
+  },
+]
+`;
+
+exports[`valid fixtures > the col node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "align": "start",
+        },
+        "kind": "col",
+        "text": "Gate",
+      },
+      {
+        "kind": "cell",
+        "text": "e2e",
+      },
+    ],
+    "kind": "table",
+  },
+]
+`;
+
+exports[`valid fixtures > the compare node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "alt": "The reply box before the fix",
+          "caption": "Before",
+          "h": "844",
+          "src": "media/before.png",
+          "w": "390",
+        },
+        "kind": "image",
+      },
+      {
+        "attrs": {
+          "alt": "The reply box after the fix",
+          "focus": "50 80 2",
+          "h": "844",
+          "src": "media/after.png",
+          "w": "390",
+        },
+        "kind": "image",
+      },
+    ],
+    "kind": "compare",
+  },
+]
+`;
+
+exports[`valid fixtures > the diff node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "file": "web/e2e/pane-glide.spec.ts",
+    },
+    "kind": "diff",
+    "text": "@@ -12,3 +12,3 @@
+ const budget = 400;
+-const wait = 612;
++const wait = 380;",
+  },
+]
+`;
+
+exports[`valid fixtures > the group node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "badge": "1",
+      "fold": "open",
+      "label": "Red cases",
+    },
+    "kids": [
+      {
+        "attrs": {
+          "end": "red",
+          "tone": "danger",
+        },
+        "kind": "row",
+        "text": "case 24",
+      },
+      {
+        "attrs": {
+          "label": "Older",
+        },
+        "kids": [
+          {
+            "attrs": {
+              "end": "green",
+            },
+            "kind": "row",
+            "text": "case 19",
+          },
+        ],
+        "kind": "group",
+      },
+    ],
+    "kind": "group",
+  },
+]
+`;
+
+exports[`valid fixtures > the image node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "alt": "The reply box with the draft still in it",
+      "h": "720",
+      "src": "media/case-24.png",
+      "w": "1280",
+    },
+    "kind": "image",
+  },
+]
+`;
+
+exports[`valid fixtures > the line node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "role": "status",
+      "style": "fg-green bold",
+    },
+    "kind": "line",
+    "text": "make	ok",
+  },
+]
+`;
+
+exports[`valid fixtures > the link node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "kind": "run",
+        "text": "Open ",
+      },
+      {
+        "attrs": {
+          "href": "lodge:w6X:3",
+          "icon": "terminal",
+          "rel": "pane",
+        },
+        "kind": "link",
+        "text": "the composer session",
+      },
+      {
+        "kind": "run",
+        "text": " or ",
+      },
+      {
+        "attrs": {
+          "badge": "",
+          "href": "http://lodge:8832/legs/24.log",
+          "rel": "url",
+        },
+        "kind": "link",
+        "text": "the log",
+      },
+    ],
+    "kind": "para",
+  },
+]
+`;
+
+exports[`valid fixtures > the list node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "end": "green",
+        },
+        "kind": "row",
+        "text": "case 25",
+      },
+      {
+        "attrs": {
+          "label": "core",
+        },
+        "kids": [
+          {
+            "kind": "row",
+            "text": "case 26",
+          },
+        ],
+        "kind": "group",
+      },
+    ],
+    "kind": "list",
+  },
+]
+`;
+
+exports[`valid fixtures > the meter node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "label": "cases green",
+          "max": "34",
+          "role": "meter",
+          "tone": "ok",
+          "value": "23",
+        },
+        "kind": "meter",
+      },
+      {
+        "attrs": {
+          "label": "update",
+          "max": "7",
+          "role": "progress",
+          "value": "3.5",
+        },
+        "kind": "meter",
+      },
+      {
+        "attrs": {
+          "role": "progress",
+        },
+        "kind": "meter",
+      },
+    ],
+    "kind": "card",
+  },
+]
+`;
+
+exports[`valid fixtures > the number node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "label": "cases green",
+      "tone": "accent",
+      "unit": "cases",
+    },
+    "kind": "number",
+    "text": "23/34",
+  },
+]
+`;
+
+exports[`valid fixtures > the para node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "bullet": "-",
+    },
+    "kids": [
+      {
+        "kind": "run",
+        "text": "The core leg replays ",
+      },
+      {
+        "attrs": {
+          "style": "bold",
+        },
+        "kind": "run",
+        "text": "recorded",
+      },
+      {
+        "kind": "run",
+        "text": " turns. ",
+      },
+      {
+        "attrs": {
+          "href": "http://lodge:8832/legs",
+          "icon": "link",
+        },
+        "kind": "link",
+        "text": "The report",
+      },
+    ],
+    "kind": "para",
+  },
+]
+`;
+
+exports[`valid fixtures > the row node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "attrs": {
+          "badge": "2",
+          "cut": "end",
+          "disabled": "",
+          "end": "red",
+          "href": "http://lodge:8832/legs/24",
+          "icon": "flag",
+          "tone": "danger",
+        },
+        "kids": [
+          {
+            "kind": "para",
+            "text": "solo leg, herdr",
+          },
+          {
+            "kind": "chip",
+            "text": "core",
+          },
+          {
+            "attrs": {
+              "intent": "rerun",
+              "label": "Rerun",
+              "value": "24",
+            },
+            "kind": "button",
+          },
+        ],
+        "kind": "row",
+        "text": "case 24, send after restart",
+      },
+    ],
+    "kind": "list",
+  },
+]
+`;
+
+exports[`valid fixtures > the run node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "term": "Started",
+    },
+    "kids": [
+      {
+        "kind": "run",
+        "text": "at ",
+      },
+      {
+        "attrs": {
+          "at": "1794130692000",
+          "clock": "time",
+        },
+        "kind": "run",
+        "text": "09:38",
+      },
+      {
+        "kind": "run",
+        "text": " in ",
+      },
+      {
+        "attrs": {
+          "code": "",
+          "style": "dim",
+        },
+        "kind": "run",
+        "text": "web/",
+      },
+      {
+        "attrs": {
+          "href": "http://lodge:8832/legs/log",
+        },
+        "kind": "run",
+        "text": " (log)",
+      },
+    ],
+    "kind": "para",
+  },
+]
+`;
+
+exports[`valid fixtures > the spacer node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "label": "Yesterday",
+    },
+    "kind": "spacer",
+  },
+]
+`;
+
+exports[`valid fixtures > the spark node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "attrs": {
+      "label": "pane glide, ms",
+      "tone": "ok",
+      "values": "612 580 540 455 380",
+    },
+    "kind": "spark",
+  },
+]
+`;
+
+exports[`valid fixtures > the table node reads back as written, as its snapshot 1`] = `
+[
+  {
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Case",
+      },
+      {
+        "kind": "col",
+        "text": "Before",
+      },
+      {
+        "attrs": {
+          "align": "end",
+        },
+        "kind": "col",
+        "text": "After",
+      },
+      {
+        "kind": "cell",
+        "text": "pane glide",
+      },
+      {
+        "kind": "cell",
+        "text": "612 ms",
+      },
+      {
+        "attrs": {
+          "tone": "ok",
+        },
+        "kind": "cell",
+        "text": "380 ms",
+      },
+      {
+        "kind": "cell",
+        "text": "first paint",
+      },
+      {
+        "kind": "cell",
+        "text": "1.2 s",
+      },
+      {
+        "kind": "cell",
+        "text": "",
+      },
+    ],
+    "kind": "table",
+  },
+]
+`;

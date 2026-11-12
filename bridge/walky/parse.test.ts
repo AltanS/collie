@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { JsonValue } from "../json.ts";
-import { parsePhoneSend, parseWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
+import { parsePhoneSend, parseWalkyRequest, readWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWhoAnswer, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
 // The crew readers added on 2026-10-18 (CREW_PROTOCOL §21): the report's ack cursor, the delivery's
@@ -75,6 +75,23 @@ describe("the outcomes push", () => {
   });
 });
 
+describe("the lead's pane list for a member's `who` (M98 spec 04)", () => {
+  const row = { address: "other/w1:p1#k3f9", memberId: "other", machine: "other", harness: "claude", label: "repo#main", state: "idle", space: { key: "api", named: true, label: "api" } };
+
+  test("reads each pane row, with the off flag, and drops a row that is not one", () => {
+    const off = { ...row, address: "other/w1:p2", harness: null, walky: "off", space: { key: "other\u0000w1", named: false, label: "w1" } };
+    expect(readWhoAnswer(wire({ targets: [row, off] }))).toEqual([row, { ...off, walky: "off" }]);
+    const bad = [{ ...row, address: "all" }, { ...row, address: "other/all" }, { ...row, space: null }, { ...row, space: { key: "api" } }, { ...row, state: 3 }, { ...row, harness: 3 }, 7, null];
+    expect(readWhoAnswer(wire({ targets: [...bad, row] }))).toEqual([row]);
+    expect(readWhoAnswer(wire({ targets: [{ ...row, walky: "yes" }] }))).toEqual([row]);
+  });
+
+  test("a body that is no list is null, never a throw", () => {
+    for (const body of [{}, { targets: "x" }, [row], null, "x"]) expect(readWhoAnswer(wire(body))).toBeNull();
+    expect(readWhoAnswer(undefined)).toBeNull();
+  });
+});
+
 describe("a receipt's text fields (§21, added 2026-10-18)", () => {
   const base = { id: "wt_aaaaaaaaaaa1", target: "other/w1:p9", state: "refused", verified: "lead", at: 1, by: "other" };
 
@@ -129,5 +146,90 @@ describe("wake on the wire (M85)", () => {
     expect(readMessage({ ...plain, wake: true })).toMatchObject({ wake: true });
     expect(readMessage(plain)).not.toHaveProperty("wake");
     expect(readMessage({ ...plain, wake: "yes" })).not.toHaveProperty("wake");
+  });
+});
+
+describe("the space and the outside flag on the wire (M98 spec 02)", () => {
+  const base = { v: 1, op: "send", markers: [], id: "wt_aaaaaaaaaaa1", to: "laptop/w1:p9", body: "hi", replyTo: null };
+  const agent = { v: 1, id: "wt_aaaaaaaaaaa1", kind: "agent", from: { memberId: "desk", address: "desk/w1:p1", harness: "agent-x", label: "repo#a" }, to: "laptop/w1:p9", replyTo: null, at: 1, body: "hi", signer: null, signature: null };
+  const withSpace = (space: JsonValue) => ({ ...agent, from: { ...agent.from, space } });
+
+  test("a send line carries `outside: true` through, and anything else reads as false", () => {
+    expect(parseWalkyRequest(JSON.stringify({ ...base, outside: true }))).toMatchObject({ op: "send", outside: true });
+    for (const outside of [false, "true", 1, null]) expect(parseWalkyRequest(JSON.stringify({ ...base, outside }))).toMatchObject({ outside: false });
+    expect(parseWalkyRequest(JSON.stringify(base))).toMatchObject({ outside: false });
+  });
+
+  test("a message keeps `outside: true` and no other value", () => {
+    expect(readMessage({ ...agent, outside: true })).toMatchObject({ outside: true });
+    expect(readMessage(agent)).not.toHaveProperty("outside");
+    expect(readMessage({ ...agent, outside: "yes" })).not.toHaveProperty("outside");
+  });
+
+  test("a named and an unnamed space read back whole; null is an operator's; absent stays absent", () => {
+    expect(readMessage(withSpace({ key: "api", named: true, label: "api" }))?.from.space).toEqual({ key: "api", named: true, label: "api" });
+    expect(readMessage(withSpace({ key: "desk\u0000w1", named: false, label: "w1" }))?.from.space).toEqual({ key: "desk\u0000w1", named: false, label: "w1" });
+    expect(readMessage(withSpace({ key: "local\u0000", named: false, label: "" }))?.from.space).toEqual({ key: "local\u0000", named: false, label: "" });
+    expect(readMessage(withSpace(null))?.from.space).toBeNull();
+    expect(readMessage(agent)?.from).not.toHaveProperty("space");
+  });
+
+  test("a space that is there and not one fails the message", () => {
+    for (const space of [
+      "api",
+      { key: "api", named: true },
+      { key: "", named: true, label: "" },
+      { key: "api", named: "yes", label: "api" },
+      // `named` must be the key's form.
+      { key: "desk\u0000w1", named: true, label: "w1" },
+      { key: "api", named: false, label: "api" },
+      // An unnamed key is one member id, one NUL, one space id.
+      { key: "desk\u0000w1\u0000w2", named: false, label: "w1" },
+      { key: "Not A Member\u0000w1", named: false, label: "w1" },
+      { key: "x".repeat(1025), named: true, label: "x" },
+      { key: "api", named: true, label: "x".repeat(1025) },
+    ]) {
+      expect(readMessage(withSpace(space))).toBeNull();
+    }
+  });
+
+  test("unknown fields of a space and of a sender are dropped", () => {
+    const spaced = withSpace({ key: "api", named: true, label: "api", colour: "red" });
+    const read = readMessage({ ...spaced, from: { ...spaced.from, extra: 1 } });
+    expect(read?.from).toEqual({ memberId: "desk", address: "desk/w1:p1", harness: "agent-x", label: "repo#a", space: { key: "api", named: true, label: "api" } });
+  });
+});
+
+describe("the agent view requests on the socket", () => {
+  const line = (row: JsonObject): string => JSON.stringify({ v: 1, markers: [], ...row });
+
+  test("start, show and the plain ops carry the trick and the session they name, or null", () => {
+    expect(readWalkyRequest(line({ op: "trick.view.start", trick: "morph", note: "Drawing", session: "local/%1#aaaa" }))).toMatchObject({ ok: true, request: { op: "trick.view.start", trick: "morph", session: "local/%1#aaaa" } });
+    expect(readWalkyRequest(line({ op: "trick.view.start", trick: "morph" }))).toMatchObject({ ok: true, request: { op: "trick.view.start", session: null } });
+    expect(readWalkyRequest(line({ op: "trick.view.show", trick: "morph", view: [], session: null }))).toMatchObject({ ok: true, request: { op: "trick.view.show", session: null } });
+    expect(readWalkyRequest(line({ op: "trick.view.clear", trick: "morph", session: "local/%1" }))).toMatchObject({ ok: true, request: { op: "trick.view.clear", session: "local/%1" } });
+    expect(readWalkyRequest(line({ op: "trick.view.status", trick: "morph" }))).toMatchObject({ ok: true, request: { op: "trick.view.status", session: null } });
+    expect(readWalkyRequest(line({ op: "trick.view.help", trick: "morph" }))).toMatchObject({ ok: true, request: { op: "trick.view.help", trick: "morph" } });
+    // The block verbs carry their row as fields, for the view service's own readers.
+    for (const op of ["trick.view.set", "trick.view.pending", "trick.view.remove", "trick.view.keep", "trick.view.choice"]) {
+      expect(readWalkyRequest(line({ op, trick: "morph", id: "b1", session: "local/%1" }))).toMatchObject({ ok: true, request: { op, session: "local/%1", fields: { id: "b1" } } });
+    }
+  });
+
+  test("rule 9 addition: no op turns a view on or off, and the old morph ops are unknown", () => {
+    for (const op of ["trick.view.on", "trick.view.off", "morph.on", "morph.off", "morph.show"]) {
+      expect(readWalkyRequest(line({ op, trick: "morph" }))).toMatchObject({ ok: false });
+    }
+  });
+
+  test("a view op names its trick: no trick, or one that is not a trick id, is not read", () => {
+    expect(readWalkyRequest(line({ op: "trick.view.show", view: [] }))).toMatchObject({ ok: false });
+    expect(readWalkyRequest(line({ op: "trick.view.show", trick: "../etc", view: [] }))).toMatchObject({ ok: false });
+    expect(readWalkyRequest(line({ op: "trick.view.show", trick: 7, view: [] }))).toMatchObject({ ok: false });
+  });
+
+  test("a session that is not text is a request this bridge cannot read", () => {
+    expect(readWalkyRequest(line({ op: "trick.view.start", trick: "morph", session: 7 }))).toMatchObject({ ok: false });
+    expect(readWalkyRequest(line({ op: "trick.view.clear", trick: "morph", session: ["x"] }))).toMatchObject({ ok: false });
   });
 });

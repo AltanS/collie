@@ -1,0 +1,72 @@
+{
+  "v": 1,
+  "tricks": [
+    {
+      "id": "design-review",
+      "name": "Design Review",
+      "description": "Turns an agent's UI notes into Decisions you approve by name.",
+      "repo": "https://github.com/AltanS/collie-tricks",
+      "dir": "design-review",
+      "commit": "0c1e5d82346486815073fedcdb994bc4c2041b55",
+      "hash": "c75a92358f03323de67c4077128a934dda973f330740f079163f34e678979ff9",
+      "extras": "b1039966e31072a10ef6a45aeb299d8e94626d4fa244b145ed8281d1c80a6653",
+      "rules": null,
+      "contract": 1,
+      "previous": [
+        {
+          "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
+          "hash": "705e3e44ae3e22942842dff079f70450d8e9d7f362856ad5c7dcb79efc65631a"
+        }
+      ]
+    },
+    {
+      "id": "pr-inbox",
+      "name": "PR Inbox",
+      "description": "Open pull requests and issues that wait for you.",
+      "repo": "https://github.com/AltanS/collie-tricks",
+      "dir": "pr-inbox",
+      "commit": "0c1e5d82346486815073fedcdb994bc4c2041b55",
+      "hash": "b8b57135b34a5484c37695121b1e55dd0c2624db6525d2863b01976a3ab62162",
+      "extras": "a4ba4db96bd317b5f4c7223417f9fc8098682460256817b060f05b670967b63d",
+      "rules": null,
+      "contract": 1,
+      "previous": [
+        {
+          "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
+          "hash": "154877527ed1684a723bed5829fb8f7352970f3268432fd855ddcd175996cf9d"
+        }
+      ]
+    },
+    {
+      "id": "running-builds",
+      "name": "Running Builds",
+      "description": "Builds and long commands running in your sessions now.",
+      "repo": "https://github.com/AltanS/collie-tricks",
+      "dir": "running-builds",
+      "commit": "0c1e5d82346486815073fedcdb994bc4c2041b55",
+      "hash": "04bcda776a0d9baff8e8982c0661c253138c04ba32f78ee773c1f032127737ac",
+      "extras": "0abbef9a24224b0853c24cf3a1ef80f1c66a2616d6795e08c012857c5466ebe3",
+      "rules": null,
+      "contract": 1,
+      "previous": [
+        {
+          "commit": "581abd3cc8c999655268ac8d4f5619d94b3c2ab1",
+          "hash": "ad74b18f54faebe21c6092a8524314a6bbc678cce94914d41db9786ada56992e"
+        }
+      ]
+    },
+    {
+      "id": "morph",
+      "name": "Morph",
+      "description": "Your agent answers with one screen you can tap, not a wall of text.",
+      "repo": "https://github.com/AltanS/collie-tricks",
+      "dir": "morph",
+      "commit": "0c1e5d82346486815073fedcdb994bc4c2041b55",
+      "hash": "e4b55781355df893481b9c2b27619d07c2d68dcd296615067a2b8e8947922055",
+      "extras": "b668b25a9d9a1a068fbc513544d6333f8d98e3e14b79e8887386a837efa7a0d2",
+      "rules": "9ee603082182156a4dd0160b7b8eafbf6e83ceba02b8be6cda2f80f6b71d050f",
+      "contract": 2,
+      "previous": []
+    }
+  ]
+}

@@ -73,6 +73,38 @@ describe("parseEnvelopeHeader", () => {
     });
   });
 
+  describe("the outside word (M98)", () => {
+    const NUDGE = ": a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 \"<text>\"";
+    const plain = `[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3#k3f9 (claude, repo#branch) outside${NUDGE}`;
+    const reply = `[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3#k3f9 (claude, repo#branch) outside reply to wt_8ab2k1m4q7zx${NUDGE}`;
+
+    /** The 1.28 reader, frozen as it shipped: what a phone before M98 runs on this line. */
+    function readerBefore(line: string): { id: string; kind: string; replyTo: string | null } | null {
+      const m = /^\[walky-talky (wt_[a-z0-9]{12})\] from (agent|operator) (.*)$/.exec(line);
+      if (m === null) return null;
+      const sender = m[3] ?? "";
+      const nudge = sender.indexOf(NUDGE_MARK);
+      const replied = / reply to (wt_[a-z0-9]{12})$/.exec(nudge === -1 ? sender : sender.slice(0, nudge));
+      return { id: m[1] ?? "", kind: m[2] ?? "", replyTo: replied?.[1] ?? null };
+    }
+
+    it("reads the word after the sender's parenthesis, before a reply suffix or the nudge", () => {
+      expect(parseEnvelopeHeader(plain)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", replyTo: null, outside: true });
+      expect(parseEnvelopeHeader(reply)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", replyTo: "wt_8ab2k1m4q7zx", outside: true });
+    });
+
+    it("an older reader reads the same id, kind and reply from the line, and the mirror finds the id", () => {
+      expect(readerBefore(plain)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", replyTo: null });
+      expect(readerBefore(reply)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", replyTo: "wt_8ab2k1m4q7zx" });
+      expect(mirrorHeaderId(`❯ ${reply}`)).toBe("wt_k3f9x2m8q1a0");
+    });
+
+    it("is not the word inside the parenthesis, nor in the nudge", () => {
+      expect(parseEnvelopeHeader(`[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, repo outside)${NUDGE}`)).not.toHaveProperty("outside");
+      expect(parseEnvelopeHeader(`[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, repo#branch)${NUDGE} outside`)).not.toHaveProperty("outside");
+    });
+  });
+
   it.each([
     "hello [walky-talky wt_k3f9x2m8q1a0] from agent x (y)",
     "[walky-talky wt_SHORT] from agent x (y)",
@@ -240,6 +272,11 @@ describe("the words", () => {
     expect(stateWord({ ...receipt, state: "refused", reason: "your walky talky is off" })).toBe("not sent: the sending session has its WalkyTalky off");
     // The machine-wide switch keeps the bridge's word.
     expect(stateWord({ ...receipt, state: "refused", reason: "off" })).toBe("not sent: off");
+  });
+
+  it("words the space border's refusal for a person (M98 spec 04)", () => {
+    expect(reasonWord("outside your space")).toBe("Outside its space");
+    expect(stateWord({ ...receipt, state: "refused", reason: "outside your space" })).toBe("not sent: Outside its space");
   });
 
   it("gives a refusal its reason", () => {

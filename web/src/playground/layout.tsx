@@ -186,8 +186,8 @@ export function Card({
   reach?: string;
   /** An honesty note — what is approximated here, or which control drives it. Hidden unless Notes are on. */
   note?: string;
-  /** Two columns for anything route-sized. Collapses to one under the phone-width toggle. */
-  span?: 1 | 2;
+  /** Two columns for anything route-sized, or "all" for a page that takes the whole row. Collapses to one under the phone-width toggle. */
+  span?: 1 | 2 | "all";
   children: ReactNode;
 }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -198,7 +198,7 @@ export function Card({
   // text or the controls above it. Each part is placed on its row by hand, because an empty controls
   // row is `display: none` and would otherwise let the component slide up into it.
   return (
-    <div data-state={state} className={cn("pg-card min-w-0", span === 2 && "pg-span-2")}>
+    <div data-state={state} className={cn("pg-card min-w-0", span === 2 && "pg-span-2", span === "all" && "col-span-full")}>
       <div style={{ gridRow: 1 }}>
         <p className="font-mono text-[11px] uppercase tracking-wide text-foreground">{label}</p>
         {notes && reach !== undefined && (

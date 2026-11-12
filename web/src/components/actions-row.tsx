@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
@@ -582,9 +582,36 @@ export interface ActionsRowProps {
     /** The Pins sheet is open: `aria-expanded`. */
     expanded: boolean;
   };
+  /**
+   * The tricks' marks ({@link BeltMark}), in manifest order, as the LAST section of the scrolling strip:
+   * after Collie's own pills, before the trailing spacer. They scroll with the strip and never take room
+   * in the pinned block, which holds Collie's own marks only. Absent or empty: the belt is unchanged, to
+   * the pixel.
+   */
+  marks?: readonly BeltMark[];
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled, durable, stop, hand = "right", handle, changes, zoom, clear, agents, jobs, pins }: ActionsRowProps) {
+/**
+ * A TRICK'S MARK AT THE END OF THE SCROLLING STRIP (M94 slice 03, moved out of the pinned block): after
+ * every pill Collie itself draws in the strip, in manifest order, so it scrolls and takes no fixed room.
+ * `face` is the whole control, drawn in its own frame (lib/tricks/mark.tsx): it is never a status
+ * mark and never a belt pill, so the row draws no button around it. Each mark comes and goes through
+ * `Collapse` on its x axis, like the agents mark; a trick that has no belt part leaves no gap.
+ */
+export interface BeltMark {
+  /** Stable, for React's key: the part key. Never shown. */
+  id: string;
+  face: ReactNode;
+  /** `false` lets the mark leave through its `Collapse`. Default `true`. */
+  open?: boolean;
+  /** The trick that added the mark, as `data-trick`. */
+  trick?: string;
+}
+
+/** One stable empty, so an omitted prop is one reference. */
+const NO_MARKS: readonly BeltMark[] = [];
+
+export function ActionsRow({ general, agent, mine, onRun, disabled, durable, stop, hand = "right", handle, changes, zoom, clear, agents, jobs, pins, marks = NO_MARKS }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
@@ -592,6 +619,8 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
   // Anything pinned at the pinned end (right, or left under `hand="left"`): the composer's X, the agents mark, the jobs
   // mark, the pins mark, the Changes pill, the Zoom pill, the Switch mark, in any mix. The drag surface (`handle.ref`, `touch-pan-x`) stays
   // tied to `handle` alone.
+  // The tricks' marks are not here: they scroll in the strip (see the marks prop), so they neither count
+  // as pinned nor widen the block.
   const pinnedCount = (agents ? 1 : 0) + (jobs ? 1 : 0) + (pins ? 1 : 0) + (clear ? 1 : 0) + (changes ? 1 : 0) + (zoom ? 1 : 0) + (handle ? 1 : 0);
   const pinned = pinnedCount > 0;
   const switchBlock = useSwitchBlockWidth(pinned);
@@ -760,6 +789,36 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
             )}
             <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} hand={hand} />
             {durable !== undefined && <DurableBar items={durable.items} state={durable.state} disabled={disabled} hand={hand} />}
+            {/* THE TRICKS' MARKS (the `marks` prop, M94), THE LAST SECTION OF THE STRIP: after every pill
+                Collie itself puts here (Stop, the general run, the harness items, the durable items) and
+                directly before the trailing spacer. A trick never gets fixed room in the belt. The marks
+                were first drawn in the pinned block, and two word marks ("look 15", "triage 3") made that
+                block about 337px wide at 390px and left 43px of strip, most of it under the fade, so Stop
+                and the keys were out of reach. In the strip a mark scrolls like a pill, and the pinned block
+                stays Collie's own.
+                SPACING IS THE STRIP'S OWN GAP, and nothing else: no divider and no tint, the same `gap-1.5`
+                (6px) that stands between the general run and the harness section. Each mark keeps its own
+                frame and its 44px reach (lib/tricks/mark.tsx), and comes and goes through `Collapse` on its
+                x axis, so a trick that has no belt part leaves nothing behind. With no marks nothing is
+                rendered here at all, and the strip is the one it always was. The Collapse cancels one gap
+                with `-mr-1.5` and the slot pays it back as `pr-1.5`, the way the agents mark does in the
+                block. Under `hand="left"` the scroller is `[direction:rtl]`, so the same DOM order puts the
+                marks beside the block, and the box mirrors: the cancelled gap and the padding swap sides,
+                and the slot runs `ltr` again so a mark reads icon then word, as a pill does.
+                `shrink-0` on both boxes: a mark that could shrink would be squeezed to nothing. A sideways
+                drag that starts on a mark scrolls the strip, because the frame sets no `touch-action` of
+                its own and the belt's `touch-pan-x` (with a handle) leaves the horizontal pan to the scroller. */}
+            {marks.map((mark) => (
+              <Collapse key={mark.id} axis="x" appear open={mark.open ?? true} className={cn("shrink-0", left ? "-ml-1.5" : "-mr-1.5")}>
+                <span
+                  data-slot="belt-trick-mark"
+                  data-trick={mark.trick}
+                  className={cn("flex shrink-0 items-center", left ? "pl-1.5 [direction:ltr]" : "pr-1.5")}
+                >
+                  {mark.face}
+                </span>
+              </Collapse>
+            ))}
             {/* THE TRAILING SPACER — a real flex child, not padding. `paddingRight` on this
                 scroller was tried first and measured wrong in Chrome: the scroller is a `flex`
                 row and the harness section is itself a nested `flex` row (`BELT_SECTION`), so the

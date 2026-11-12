@@ -268,6 +268,19 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
+  // Not a crew dimension: Collie tricks' rev (M94), present when a `<configDir>/tricks/` folder exists or
+  // the official list offers a trick (decided 2026-11-11: the card shows on a fresh install), and absent
+  // from these bodies, which run no tricks service, so no golden byte moved.
+  tricksRev: true,
+  // Not a crew dimension: the hill's revision (M96), absent until a session posts a decision on this
+  // bridge, so a solo body with no decisions carries no such key and no golden byte moved.
+  hillRev: true,
+  // Not a crew dimension: Morph's revision, absent until a session's Morph is switched on or a screen
+  // is shown on this bridge, so a solo body that never used Morph carries no such key.
+  trickViewsRev: true,
+  // Not a crew dimension: the Hill's switch, present only while it is off, so a solo body that never
+  // switched it carries no such key and no golden byte moved.
+  hillOff: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -341,6 +354,10 @@ const PANE_WIRE_KEYS = {
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
   tabPosition: true,
+  // Not a crew dimension: whether the space's label is a name of its own (MuxPane.spaceNamed, M98). Present
+  // only when the adapter's word differs from `workspaceLabel !== workspaceId`, and the fake mux here
+  // says nothing, so no golden byte moved. An older peer omits it.
+  workspaceNamed: true,
   // Not a crew dimension: what the checkout holding the pane's folder is on, read off that machine's
   // own disk. Attached at serialise time like `cache`, and absent here: this baseline builds its body
   // with no reader, so no golden byte moved.
@@ -396,6 +413,9 @@ const PANE_WIRE_KEYS = {
   // time from the statusLine wrapper's file, and this harness builds its body with no reader, so no
   // golden byte moved.
   usage: true,
+  // Not a crew dimension: a trick session's part key (M94 slice 03). Present only on a pane of
+  // `kind: "trick"`, and this harness has no tricks folder, so no golden byte moved.
+  view: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -492,12 +512,21 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "agents",
       "bridge",
       "device",
+      // The hill's revision (M96): present only on a bridge built with the hill, a number and nothing
+      // of the crew; the phone refetches `GET /api/hill` when it moves.
+      // The Hill's switch: present only while it is off, `true` and nothing of the crew.
+      "hillOff",
+      "hillRev",
       "muxFault",
       "notifications",
       "servers",
       "sessions",
       "shellPanes",
       "tabs",
+      // The agent views' revision: present only once a view was used on this bridge, a number and
+      // nothing of the crew; the phone refetches `GET /api/trick-views` when it moves.
+      "trickViewsRev",
+      "tricksRev",
       "ts",
       "update",
       "workspaces",
@@ -570,9 +599,11 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "todos",
       "turnId",
       "usage",
+      "view",
       "walkyOff",
       "workspaceId",
       "workspaceLabel",
+      "workspaceNamed",
       "workspaceNumber",
     ]);
   });
@@ -767,10 +798,19 @@ describe("solo zero-tax — routes", () => {
       // call forwards to the member the program runs on.
       "/^\\/api\\/durable\\/conversation\\/([^/]+)\\/(items|reopen)$/",
       "/^\\/api\\/durable\\/conversations$/",
+      // One image of a decision on the hill (M96): a read, both ids checked against their patterns before
+      // any path is built, lead-local like the rest of the hill.
+      "/^\\/api\\/hill\\/media\\/([^/]+)\\/([^/]+)$/",
       // Machines (ADR 0084): one machine's day of minutes, and its alert rules. A lead and a solo
       // collie answer for every machine they keep watch over; a peer 404s (`crew.not_lead`), and none
       // is forwardable — `bridge/crew/router.test.ts` pins all three as 404 across a link.
       "/^\\/api\\/machines\\/([^/]+)\\/(history|alerts)$/",
+      // Pairing by a request a paired phone approves (ADR 0139): the approver's read and answer of one
+      // request, a paired device's write, and the asking browser's poll, open on its poll secret. SOLO
+      // routes that legitimately extend this list, named here rather than exempted; a crew member answers
+      // 404, because it serves no browser door, and no crew route is added.
+      "/^\\/api\\/pair\\/approve\\/([^/]+)$/",
+      "/^\\/api\\/pair\\/request\\/([^/]+)$/",
       // `changes` is the Changes view (ADR 0065): read-only git over the pane's folder, read-gated
       // like `history` beside it and forwarded to the member that owns the pane. `chat` is the live
       // half of `history` (journal/live.ts): the same log, asked "anything after this?" — a read, on
@@ -808,6 +848,25 @@ describe("solo zero-tax — routes", () => {
       // with the held file's and never made into a path. Lead-local, not forwardable.
       "/^\\/api\\/stt\\/model\\/([^/]+)$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
+      // One picture of an agent view's screen: a read, both ids checked against their patterns before any
+      // path is built, lead-local like the hill's image route. A bridge that never kept a picture answers 404.
+      "/^\\/api\\/trick-views\\/media\\/([^/]+)\\/([^/]+)$/",
+      // Collie tricks (M94 slice 01): a tap on a trick's control. A SOLO route that legitimately extends
+      // this list, named here rather than exempted: this bridge's own host only (another host is 404
+      // until the crew merge), write-gated because it runs the program, and 404 with no runner.
+      // And its off switch (slice 04): the same file `collie trick on|off` writes, write-gated, this
+      // bridge's own host only, 404 with no runner.
+      // And a picture of the trick's own `media/` folder (M94 review 11): a read, gated like the list,
+      // the hill image's checks and headers, this bridge's own host and a trick that is on only.
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/(media\\/.+)$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/auto$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",
+      // Official tricks (M94): add or update a trick on the list this release carries. A SOLO route that
+      // legitimately extends this list, named here rather than exempted: write-gated like the switch,
+      // this bridge's own tricks folder only, and a crew member answers `runs-on` and fetches nothing.
+      "/^\\/api\\/tricks\\/official\\/([^/]+)\\/(add|update)$/",
       // The operator's Cancel on a held walky talky message it sent (M62 spec 03): a write, solo; a
       // record held on a member answers `elsewhere`, never a route of its own.
       "/^\\/api\\/walky\\/([^/]+)\\/cancel$/",
@@ -854,6 +913,20 @@ describe("solo zero-tax — routes", () => {
       // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local
       // updater holding no credential, and what it answers is `{ ok, version, deposed, mode }`.
       "/api/health",
+      // The hill (M96): the decisions an agent posted (a read) and the phone's answer to one (a write
+      // under the device gate, like `POST /api/walky`). Two SOLO routes, named here rather than
+      // exempted. A bridge that never took a post answers an empty list and writes nothing.
+      "/api/hill",
+      "/api/hill/answer",
+      // Clear (the Answered group's button): a SOLO write under the same device gate, named here.
+      "/api/hill/clear",
+      // The second Clear (1.29.0): the open cards answered in the session, a SOLO write under the same gate.
+      "/api/hill/clear/spoken",
+      // The crew state (1.29.0): a SOLO read and write under the same gates as the switch, and the
+      // "Tell all sessions now" tap, a write that types one operator line per waiting session.
+      "/api/hill/state",
+      "/api/hill/state/tell",
+      "/api/hill/switch",
       // The operator's own launcher rows (`launchers.toml`) — a SOLO route that legitimately
       // extends this list, named here rather than exempted. It is session-scoped and write-gated
       // through the same closure `/api/workspace` rides, and the configured rows are its allowlist:
@@ -906,6 +979,8 @@ describe("solo zero-tax — routes", () => {
       // browser answering its own operator. A solo instance registers it and 404s
       // (`crew.not_lead`) — the same shape `/api/stt` has when no provider is configured.
       "/api/pair",
+      // And the request itself (ADR 0139): open like `/api/pair`, under the same Origin rule, capped.
+      "/api/pair/request",
       // "Look now" (ADR 0031) — a SOLO route that legitimately extends this list, named here rather
       // than exempted. It is session-scoped and read-gated, and it registers no crew route of its
       // own: a lead reaches a peer's through the peer's existing `/crew/v1/*` dispatch.
@@ -957,6 +1032,17 @@ describe("solo zero-tax — routes", () => {
       // named here rather than exempted. Lead-local like the math pack, and not forwardable. A bridge
       // whose operator never taps Refresh in the Theme card fetches nothing and writes nothing.
       "/api/themes/registry",
+      // Collie tricks (M94 slice 01): the tricks list and the parts changed since a rev. A read, gated like
+      // the snapshot, and its body is empty of tricks on an install with no `<configDir>/tricks/`.
+      // Agent views: the screens agents drew per (trick, session) (a read) and the person's per-session
+      // switch (a write that needs a paired device's own token). Two SOLO routes, named here rather than
+      // exempted, lead-local like the hill. A bridge that never used a view answers an empty list.
+      "/api/trick-views",
+      "/api/trick-views/switch",
+      "/api/tricks",
+      // Official tricks (M94): the list this release carries, each entry's state on this machine. A read, gated
+      // like the tricks list; it reads the list from the binary and the tricks folder, and fetches nothing.
+      "/api/tricks/official",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
@@ -1041,6 +1127,8 @@ const CONFIG_KEYS = {
   launchersFile: true,
   cacheRulesFile: true,
   spacesFile: true,
+  // Collie tricks (M94): the `tricks/` folder beside the operator files. A path, read only by the runner.
+  tricksDir: true,
   maxUploadBytes: true,
   port: true,
   host: true,
@@ -1130,6 +1218,7 @@ describe("solo zero-tax — config", () => {
       "themeFile",
       "tmuxBin",
       "transcript",
+      "tricksDir",
       "trustedUser",
       "trustedUserOptional",
       "uploadExtraTypes",
@@ -1254,6 +1343,10 @@ const STATE_DIR_ENTRIES = [
   // READS it, and the emitter that fills it is a CLI verb the operator installs a hook for. An
   // instance whose operator never ran `collie hooks install` never has this directory at all.
   "beacons",
+  // This bridge's stable id (bridge/bridge-id.ts, M94 review row 11): the install id, minted once, and
+  // the id kept before a crew join. Written by use and by nothing else: boot only reads it, and the
+  // first trick run or hill post writes it, so a bridge that is merely started never has it.
+  "bridge-id.json",
   // The prompt-cache watch list (M28/03). Absent until the first watch toggle or the first warning sent
   // under the global switch — both are events, so a bridge that is merely started still writes the four
   // entries asserted below.
@@ -1285,6 +1378,10 @@ const STATE_DIR_ENTRIES = [
   // The hold queue (M56 spec 15): one file per send the harness could not take during its turn, kept
   // until the pane reads free, so a restart replays it. Created with the Send Protocol, like `sends`.
   "held",
+  // The hill (M96): the decisions agents posted and the receipts of the phone's answers, a folder with
+  // `decisions.json` and `receipts.json`. Written by use and by nothing else: absent until the first
+  // decision an agent posts, or the first answer from a phone.
+  "hill",
   // One receipt per launch the phone tagged with a request id (ADR 0091), so a retried Start never
   // opens a second pane. Written by use and by nothing else: absent until the first launch that
   // carries an id succeeds.
@@ -1348,6 +1445,12 @@ const STATE_DIR_ENTRIES = [
   // The community theme registry (M59 spec 06): `<stateDir>/themes/registry.json`, the copy a tap on
   // Refresh in the Theme card fetched. Written by that tap and by nothing else.
   "themes",
+  // Agent views: `<stateDir>/trick-views/views/<key>.json`, one file per (trick, session), and
+  // `media/`. Written by use and by nothing else: absent until the first switch from a phone.
+  "trick-views",
+  // Collie tricks (M94, bridge/tricks/paths.ts): `switches.json` and one state folder per trick that ran.
+  // Written only by `collie trick on`/`off` and by a trick's run, so an install with no tricks has none.
+  "tricks",
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.
@@ -1417,11 +1520,23 @@ const CREW_STATE_DIR_ENTRIES = [
   // state directory that never saw 1.8.x is named rather than adopted in silence. One `exists()` on
   // the boot path, no open, no rename; a solo instance finds nothing and says nothing.
   "pack-trust.json",
+  // The person's takeover tap, waiting for the next boot to adopt the two copies below (CREW_PROTOCOL
+  // §25). Written only by the takeover commit or `collie promote` on a deputy, which a solo instance
+  // never is.
+  "standby-adopt.json",
   "standby-devices.json",
+  // The lead's open Decisions, kept as an inert copy on the DEPUTY beside its tricks (CREW_PROTOCOL
+  // §25). Written only by the Hill half of the §25 routes from this collie's own lead while a warrant
+  // names this machine, which a solo instance cannot reach.
+  "standby-hill",
   // The lead's launcher rows, kept as a read-only copy on the DEPUTY (ADR 0127 point 5). The same
   // structural reason as the registry above: it is written only by a `POST /crew/v1/launchers-copy`
   // from this collie's own lead while a warrant names this machine, which a solo instance cannot reach.
   "standby-launchers.json",
+  // The lead's tricks, kept as an inert copy on the DEPUTY (CREW_PROTOCOL §25). The same structural
+  // reason: written only by the §25 routes from this collie's own lead while a warrant names this
+  // machine, which a solo instance cannot reach.
+  "standby-tricks",
 ];
 
 /** Every `.ts` module under `dir`, recursively, excluding tests. */

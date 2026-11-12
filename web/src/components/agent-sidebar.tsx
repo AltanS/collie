@@ -1,15 +1,33 @@
 
+import { useEffect, useMemo, useState } from "react";
+
 import { cn } from "@/lib/utils";
 import { CacheChip } from "@/components/cache-chip";
 import { HostChip } from "@/components/host-chip";
 import { PaneOrderToggle } from "@/components/pane-order-toggle";
+import { TRICK_ROW_DRAWN, TrickSessionRow } from "@/components/trick-session";
+import { SessionFilterEmpty, SessionFilterField } from "@/components/session-filter-field";
+import { MatchText } from "@/components/ui/match-text";
 import { SectionHeader } from "@/components/section-header";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { pinnedRows, shownGroups } from "@/lib/dash-view";
 import { paneRowKey } from "@/lib/hosts";
 import { groupPanesByWorkspace } from "@/lib/pane-groups";
 import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import {
+  byScore,
+  filterOffered,
+  matchPanes,
+  PANE_FILTER,
+  type PaneField,
+  type PaneFilterHidden,
+  type PaneFilterLevel,
+  type PaneFilterOrder,
+  type PaneMatch,
+  viaLabelKey,
+} from "@/lib/pane-filter";
 import { pinMatcher, type Pin } from "@/lib/pins";
+import { isTrickPane } from "@/lib/tricks/places";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { paneSubtitle } from "@/lib/pane-marks";
 import { PaneBadge } from "@/components/pane-badge";
@@ -41,6 +59,14 @@ interface ThreadSidebarProps {
    * pane id is unique only within one machine, so an id alone cannot say which row was tapped.
    */
   onSelect: (pane: AgentView) => void;
+  /**
+   * The trick sessions (M94 slice 03, `HomeData.trickSessions`), listed in a trailing Tricks section in the
+   * Dashboard's own row, with no status mark. Absent or empty: no section. They never enter the
+   * pane lists above, their counts or their order.
+   */
+  trickSessions?: readonly AgentView[];
+  /** Open a trick session. Absent: the Tricks section is not drawn. */
+  onSelectTrick?: (pane: AgentView) => void;
   /** The raw tab list, for the multiplexer's own tab order inside a workspace (lib/pane-groups.ts). */
   tabs?: readonly TabView[];
   /** The snapshot's machine list, for the order machines run in: the lead first. */
@@ -100,6 +126,22 @@ interface ThreadSidebarProps {
    * muted ink, so the pane's name is the one thing in full ink.
    */
   roomy?: boolean;
+  /**
+   * The filter's three switches (`PANE_FILTER` in lib/pane-filter.ts): how a term matches, whether a
+   * query keeps the list's order or ranks it, and whether a field the row does not draw is searched.
+   * Props so the playground round can draw the variants side by side; the app passes none.
+   */
+  filterLevel?: PaneFilterLevel;
+  filterOrder?: PaneFilterOrder;
+  filterHidden?: PaneFilterHidden;
+  /**
+   * Where the filter block sticks and how far it bleeds, which only the scroller's owner knows: the
+   * sheet passes `SHEET_BODY_STICKY` (under its own sticky head), the large screen's sidebar its
+   * gutter. Default `top-0`, the top of the scroller.
+   */
+  filterClassName?: string;
+  /** The query the field starts with. The app passes none: the query starts empty and is never stored. */
+  initialQuery?: string;
 }
 
 // The pane switcher behind the swipe-up "Switch pane" sheet: every agent pane under the WORKSPACE it
@@ -128,6 +170,22 @@ interface ThreadSidebarProps {
 //
 // This device's pinned panes lead the sheet in a Pinned section (ADR 0070), in the dashboard's place
 // order, each listed once. The sheet stays switch-only: pinning lives in the pane menu.
+//
+// THE FILTER (M97). Above five session rows a filter field leads the list, sticky at the top of its
+// scroller (lib/pane-filter.ts holds the model, session-filter-field.tsx the field). A query keeps
+// Pinned, the space sections, Shells and Tricks in their order and takes out the rows that do not match
+// and the sections left empty. The Tricks group is one more group of session rows (M97 decision 11):
+// its rows count toward the five, match by the fields a trick row draws, and leave like any other. A
+// folded Shells opens while a query is set, without writing the stored fold; the Launch rows, which
+// are not sessions, hide. The matched letters are marked in place (`MatchText`), and a row that
+// matched only in a field it does not draw (its branch, its folder, its agent, its machine) says that
+// field on its second line instead of its place, in the same line box.
+// Rows leave and come back with no animation: that is a shift the operator causes by typing and is
+// watching, the first case DESIGN.md §2 allows ("a shift the operator caused directly and is
+// watching"), as the Spaces and Files filters already do; §11's `Collapse` rule is about a state
+// arriving, not about a list under the operator's own filter. The block itself is always mounted
+// while the list is long enough, so the field never pops in under a thumb. With the field empty the
+// list below the block is exactly what it was before the filter existed.
 // A module-level empty list, not a `= []` default in the parameter list: a fresh array literal on
 // every render is a new reference, which defeats memoisation downstream for no benefit here.
 const NO_PANES: AgentView[] = [];
@@ -142,11 +200,23 @@ function rowDomId(pane: AgentView): string {
   return `switch-row-${paneRowKey(pane).replace(/[^A-Za-z0-9_-]/gu, "_")}`;
 }
 
+/** Scroll a row into view and give it the focus, for the summary line's jump. */
+function jumpTo(pane: AgentView): void {
+  const row = document.getElementById(rowDomId(pane));
+  row?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  row?.focus({ preventScroll: true });
+}
+
+/** The switcher row draws the name, the space and the tab as text; the machine is a glyph only. */
+const SWITCHER_DRAWN: ReadonlySet<PaneField> = new Set<PaneField>(["name", "space", "tab"]);
+
 export function ThreadSidebar({
   agents,
   shellPanes = NO_PANES,
   currentPaneKey,
   onSelect,
+  trickSessions = NO_PANES,
+  onSelectTrick,
   tabs,
   servers,
   workspaces,
@@ -166,6 +236,11 @@ export function ThreadSidebar({
   onOrderChange,
   className,
   roomy = false,
+  filterLevel = PANE_FILTER.level,
+  filterOrder = PANE_FILTER.order,
+  filterHidden = PANE_FILTER.hidden,
+  filterClassName = "top-0",
+  initialQuery = "",
 }: ThreadSidebarProps) {
   useLocale();
   // THE ORDER, AND WHY IT IS READ ONCE: see `useFrozenRanks` and the long note below. Called here, above
@@ -173,10 +248,39 @@ export function ThreadSidebar({
   const { ranks, reread } = useFrozenRanks(order, [...agents, ...shellPanes]);
   const showLaunch = launchers.length > 0 && onLaunch !== undefined;
   const noPanes = agents.length === 0 && shellPanes.length === 0;
+  const showTricks = trickSessions.length > 0 && onSelectTrick !== undefined;
+  // The trick rows the list draws: none while the Tricks group is not drawn, so a list that cannot
+  // open a trick session neither counts nor searches one.
+  const trickRows = showTricks ? trickSessions : NO_PANES;
+
+  // THE FILTER'S QUERY is this component's state, so it lives exactly as long as the list: the sheet
+  // unmounts on close (ui/sheet.tsx returns null), and the large screen's sidebar unmounts this list
+  // when it closes to the rail. Nothing is stored on the device. A list too short to be offered the
+  // field filters nothing, whatever was typed before it shrank.
+  const [query, setQuery] = useState(initialQuery);
+  const total = agents.length + shellPanes.length + trickRows.length;
+  const offered = filterOffered(total);
+  const activeQuery = offered ? query : "";
+  const hits = useMemo(() => {
+    const options = { level: filterLevel, hidden: filterHidden, ctx: { servers } };
+    const paneHits = matchPanes([...agents, ...shellPanes], activeQuery, { ...options, drawn: SWITCHER_DRAWN });
+    if (paneHits === null || trickRows.length === 0) return paneHits;
+    // A trick row draws only its name, so a match in its space, tab or trick id is said on line 2.
+    const trickHits = matchPanes(trickRows, activeQuery, { ...options, drawn: TRICK_ROW_DRAWN });
+    return new Map([...paneHits, ...(trickHits ?? [])]);
+  }, [agents, shellPanes, trickRows, activeQuery, filterLevel, filterHidden, servers]);
+  // The summary line's jump to a row the query hides: the query is cleared first, and the jump runs
+  // once the row is back in the list.
+  const [pendingJump, setPendingJump] = useState<AgentView | null>(null);
+  useEffect(() => {
+    if (pendingJump === null) return;
+    jumpTo(pendingJump);
+    setPendingJump(null);
+  }, [pendingJump]);
 
   // An operator with no panes but a launchers.toml still has something to reach in here, so the
   // empty-panes text and the Launch section coexist rather than the text winning outright.
-  if (noPanes && !showLaunch) {
+  if (noPanes && !showLaunch && !showTricks) {
     return (
       <div className="px-4 py-12 text-center text-sm text-muted-foreground">
         {t("home.empty.noAgents")}
@@ -213,7 +317,7 @@ export function ThreadSidebar({
   // The reading itself lives in `hooks/use-frozen-ranks.ts`, shared with the dashboard, so the two
   // surfaces keep the one promise the one way. A tap on the toggle, the segment already selected
   // included, asks for a new reading; nothing else does.
-  const pinnedShown = inRankOrder(pinned, ranks);
+  const pinnedAll = inRankOrder(pinned, ranks);
   // ONE LIST IN ACTIVITY ORDER: every workspace section and the Shells fold together, because "when
   // did anything last happen here" is not a question a workspace heading can answer, and a shell you
   // used a minute ago has to be able to outrank an agent you have not opened all day. The fold goes
@@ -222,25 +326,107 @@ export function ThreadSidebar({
   // Place keeps its workspace sections; BOTH ranked orders collapse to one list, for the same reason:
   // a rank crosses every workspace, and a heading cannot answer a question asked across all of them.
   const ranked = order !== "place";
-  const rankedRows = ranked
+  const rankedAll = ranked
     ? inRankOrder([...sections.flatMap((g) => g.rows), ...shellRows], ranks)
     : NO_PANES;
 
   const urgent = agents.filter((a) => URGENT.has(bucketOf(a)));
+  const isUrgent = (a: AgentView) => URGENT.has(bucketOf(a));
   // The first urgent row in DISPLAY order, not in the order the list arrived in: in Pinned when a
   // pinned pane needs you, and in whichever order the rows below it are running in.
   const firstUrgent = [
-    ...pinnedShown,
-    ...(ranked ? rankedRows : sections.flatMap((g) => g.rows)),
-  ].find((a) => URGENT.has(bucketOf(a)));
-  const jumpTo = (pane: AgentView) => {
-    const row = document.getElementById(rowDomId(pane));
-    row?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    row?.focus({ preventScroll: true });
+    ...pinnedAll,
+    ...(ranked ? rankedAll : sections.flatMap((g) => g.rows)),
+  ].find(isUrgent);
+
+  // ── WHAT A QUERY LEAVES ─────────────────────────────────────────────────────
+  // With no query (`hits` null) every list below is the very array it was before the filter, so the
+  // rows render exactly as they did. With one, each list keeps its order and loses the rows that do
+  // not match; a section left with no row goes with its heading. In a ranked order the one list is
+  // filtered in place. `best` instead draws one flat list, best match first, ties in place order.
+  const keep = (p: AgentView) => hits === null || hits.has(paneRowKey(p));
+  const pinnedShown = hits === null ? pinnedAll : pinnedAll.filter(keep);
+  const rankedRows = hits === null ? rankedAll : rankedAll.filter(keep);
+  const sectionsShown =
+    hits === null
+      ? sections
+      : sections.map((g) => ({ ...g, rows: g.rows.filter(keep) })).filter((g) => g.rows.length > 0);
+  const shellsShown = hits === null ? shellRows : shellRows.filter(keep);
+  const bestRows =
+    hits !== null && filterOrder === "best"
+      ? byScore([...pinned, ...sections.flatMap((g) => g.rows), ...shellRows, ...trickRows], hits)
+      : null;
+  // The Tricks group trails every order; in best-first its rows are in the one flat list instead.
+  const trickShown = bestRows !== null ? NO_PANES : hits === null ? trickRows : trickRows.filter(keep);
+  const shownRows =
+    bestRows ?? [
+      ...pinnedShown,
+      ...(ranked ? rankedRows : [...sectionsShown.flatMap((g) => g.rows), ...shellsShown]),
+      ...trickShown,
+    ];
+  const hitOf = (p: AgentView): PaneMatch | undefined => hits?.get(paneRowKey(p));
+
+  // The jump goes to the first urgent row the list SHOWS; when the query hides every urgent row, it
+  // clears the query and jumps once the rows are back. The line's count stays the whole list's.
+  const firstUrgentShown = hits === null ? firstUrgent : shownRows.find(isUrgent);
+  const onJump =
+    firstUrgent === undefined
+      ? undefined
+      : firstUrgentShown !== undefined
+        ? () => jumpTo(firstUrgentShown)
+        : () => {
+            setQuery("");
+            setPendingJump(firstUrgent);
+          };
+  // Enter, or the Go key: switch to the first row shown. Only with a query, so a Go on an empty field
+  // never switches panes by accident.
+  const openTrick = (pane: AgentView) => onSelectTrick?.(pane);
+  const goFirst = () => {
+    const first = hits === null ? undefined : shownRows[0];
+    if (first === undefined) return;
+    if (isTrickPane(first)) openTrick(first);
+    else onSelect(first);
   };
+  const trickRow = (pane: AgentView) => (
+    <TrickSessionRow
+      key={pane.paneId}
+      pane={pane}
+      variant="switch"
+      active={pane.paneId === currentPaneKey}
+      onOpen={openTrick}
+      match={hitOf(pane)}
+    />
+  );
+  // A trick row reaches here only in best-first order, where every matched row shares one flat list.
+  const row = (a: AgentView) =>
+    isTrickPane(a) ? (
+      trickRow(a)
+    ) : (
+      <PaneRow
+        key={paneRowKey(a)}
+        id={rowDomId(a)}
+        pane={a}
+        active={paneRowKey(a) === currentPaneKey}
+        onSelect={onSelect}
+        roomy={roomy}
+        match={hitOf(a)}
+      />
+    );
 
   return (
     <div className={cn("flex flex-col px-2 py-3", roomy ? "gap-6" : "gap-4", className)}>
+      {/* The filter block: sticky at the top of the scroller, on the panel's own fill with the rule
+          that closes it, above every row, and always mounted while the list is long enough. */}
+      {offered && (
+        <SessionFilterField
+          query={query}
+          onQuery={setQuery}
+          shown={shownRows.length}
+          total={total}
+          onGo={goFirst}
+          className={cn("sticky z-10 border-b border-rule bg-card py-2", filterClassName)}
+        />
+      )}
       {noPanes && (
         <p className="px-2 py-2 text-sm text-muted-foreground">{t("home.empty.noAgents")}</p>
       )}
@@ -260,7 +446,7 @@ export function ThreadSidebar({
             <StatusSummaryLine
               panes={urgent}
               allClear={firstUrgent === undefined}
-              onJump={firstUrgent === undefined ? undefined : () => jumpTo(firstUrgent)}
+              onJump={onJump}
               className="min-w-0 flex-1"
             />
           ) : (
@@ -281,100 +467,92 @@ export function ThreadSidebar({
         </div>
       )}
 
-      {/* The Pinned section, in the section voice Shells and Launch wear, with no dot and no count,
-          and it does not fold: a pin is the one thing this sheet was opened to reach. */}
-      {pinned.length > 0 && (
-        <Section id="switch-pinned" roomy={roomy} headingId="switch-pinned-heading" label={t("home.pinned.title")}>
-          {pinnedShown.map((a) => (
-            <PaneRow
-              key={paneRowKey(a)}
-              id={rowDomId(a)}
-              pane={a}
-              active={paneRowKey(a) === currentPaneKey}
-              onSelect={onSelect}
-              roomy={roomy}
-            />
-          ))}
-        </Section>
-      )}
-
-      {ranked ? (
-        // The one flat list. It keeps the workspace sections' own row ink and marks — a row still
-        // wears its alarm edge and the place under its name — so only the ORDER differs from place
-        // order, never what a row says about itself. No dot on the heading: the summary line above
-        // already counts what needs you, and a heading over every pane would always carry one.
-        //
-        // The heading NAMES THE ORDER, which is what pays for the compact glyphs in the row above.
-        rankedRows.length > 0 && (
-          <Section
-            roomy={roomy}
-            id="switch-activity"
-            label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
-            count={rankedRows.length}
-            tone={roomy ? "quiet" : "strong"}
-          >
-            {rankedRows.map((a) => (
-              <PaneRow
-                key={paneRowKey(a)}
-                id={rowDomId(a)}
-                pane={a}
-                active={paneRowKey(a) === currentPaneKey}
-                onSelect={onSelect}
-                roomy={roomy}
-              />
-            ))}
-          </Section>
+      {bestRows !== null ? (
+        // BEST MATCH FIRST (the playground's alternative order): one flat list with no heading, the
+        // count line above already saying how many it holds.
+        bestRows.length > 0 && (
+          <div data-slot="switch-best" className={roomy ? ROW_RULES : undefined}>
+            {bestRows.map(row)}
+          </div>
         )
       ) : (
         <>
-          {sections.map(({ group: g, rows }) => (
-            <Section
-              roomy={roomy}
-              key={g.key}
-              id={`switch-ws-${g.key.replace(/[^A-Za-z0-9_-]/gu, "_")}`}
-              label={g.heading ?? g.label}
-              tone={roomy ? "quiet" : "strong"}
-              mark={worstTriage(g.panes) === "needs" ? "blocked" : undefined}
-              trailing={<StatusCounts panes={g.panes} className="shrink-0 text-[11px] text-muted-foreground" />}
-            >
-              {rows.map((a) => (
-                <PaneRow
-                  key={paneRowKey(a)}
-                  id={rowDomId(a)}
-                  pane={a}
-                  active={paneRowKey(a) === currentPaneKey}
-                  onSelect={onSelect}
-                  roomy={roomy}
-                />
-              ))}
+          {/* The Pinned section, in the section voice Shells and Launch wear, with no dot and no count,
+              and it does not fold: a pin is the one thing this sheet was opened to reach. */}
+          {pinnedShown.length > 0 && (
+            <Section id="switch-pinned" roomy={roomy} headingId="switch-pinned-heading" label={t("home.pinned.title")}>
+              {pinnedShown.map(row)}
             </Section>
-          ))}
+          )}
 
-          {shellRows.length > 0 && (
-            <Section
-              roomy={roomy}
-              id="switch-shells"
-              label={t("home.sidebar.shells")}
-              count={shellRows.length}
-              dot="bg-status-unknown"
-              {...(onShellsOpenChange ? { open: shellsOpen, onToggle: onShellsOpenChange } : {})}
-            >
-              {shellRows.map((p) => (
-                <PaneRow
-                  key={paneRowKey(p)}
-                  id={rowDomId(p)}
-                  pane={p}
-                  active={paneRowKey(p) === currentPaneKey}
-                  onSelect={onSelect}
+          {ranked ? (
+            // The one flat list. It keeps the workspace sections' own row ink and marks — a row still
+            // wears its alarm edge and the place under its name — so only the ORDER differs from place
+            // order, never what a row says about itself. No dot on the heading: the summary line above
+            // already counts what needs you, and a heading over every pane would always carry one.
+            //
+            // The heading NAMES THE ORDER, which is what pays for the compact glyphs in the row above.
+            rankedRows.length > 0 && (
+              <Section
+                roomy={roomy}
+                id="switch-activity"
+                label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
+                count={rankedRows.length}
+                tone={roomy ? "quiet" : "strong"}
+              >
+                {rankedRows.map(row)}
+              </Section>
+            )
+          ) : (
+            <>
+              {sectionsShown.map(({ group: g, rows }) => (
+                <Section
                   roomy={roomy}
-                />
+                  key={g.key}
+                  id={`switch-ws-${g.key.replace(/[^A-Za-z0-9_-]/gu, "_")}`}
+                  label={g.heading ?? g.label}
+                  tone={roomy ? "quiet" : "strong"}
+                  mark={worstTriage(g.panes) === "needs" ? "blocked" : undefined}
+                  trailing={<StatusCounts panes={g.panes} className="shrink-0 text-[11px] text-muted-foreground" />}
+                >
+                  {rows.map(row)}
+                </Section>
               ))}
-            </Section>
+
+              {/* Under a query Shells is open and does not fold, so a match folded away is still
+                  listed and the stored fold is never written by a filter. */}
+              {shellsShown.length > 0 && (
+                <Section
+                  roomy={roomy}
+                  id="switch-shells"
+                  label={t("home.sidebar.shells")}
+                  count={shellsShown.length}
+                  dot="bg-status-unknown"
+                  {...(onShellsOpenChange && hits === null ? { open: shellsOpen, onToggle: onShellsOpenChange } : {})}
+                >
+                  {shellsShown.map(row)}
+                </Section>
+              )}
+            </>
           )}
         </>
       )}
 
-      {launchers.length > 0 && onLaunch && (
+      {/* The Tricks group (M94) after the sessions, outside their counts and order. Under a query its
+          rows filter like any other group's, and an empty group leaves with its heading. */}
+      {trickShown.length > 0 && (
+        <Section roomy={roomy} id="switch-tricks" label={t("tricks.space.title")} count={trickShown.length} tone={roomy ? "quiet" : "strong"}>
+          {trickShown.map(trickRow)}
+        </Section>
+      )}
+
+      {/* Nothing matches: one line and the way out, in the list's place. */}
+      {hits !== null && shownRows.length === 0 && (
+        <SessionFilterEmpty query={activeQuery.trim()} onClear={() => setQuery("")} />
+      )}
+
+      {/* The Launch rows are not sessions: they hide while a query is set. */}
+      {hits === null && launchers.length > 0 && onLaunch && (
         <Section
           roomy={roomy}
           id="switch-launch"
@@ -470,6 +648,7 @@ function PaneRow({
   active,
   onSelect,
   roomy,
+  match,
 }: {
   /** The row's DOM id, for the summary line's jump. Every row has one, shells too. */
   id?: string;
@@ -478,6 +657,8 @@ function PaneRow({
   onSelect: (pane: AgentView) => void;
   /** The large screen's sidebar ({@link ThreadSidebarProps.roomy}). */
   roomy: boolean;
+  /** How the filter's query matched this row (lib/pane-filter.ts). Absent with no query: the row is drawn as before. */
+  match?: PaneMatch | undefined;
 }) {
   const isShell = pane.kind === "shell";
   // ONE NAME, ONE PLACE (lib/pane-name.ts), the same way round as every other row in the app: the
@@ -489,6 +670,11 @@ function PaneRow({
   const name = paneName(pane);
   const { space, tab } = panePlaceParts(pane);
   const subtitle = paneSubtitle(pane);
+  const marks = match?.hit.marks;
+  // THE FIELD THAT MATCHED, when the row does not draw it: it takes line 2's place words, in the same
+  // line box and the same ink, so the row keeps its height and the reason it is listed is on it.
+  const via = match?.hit.via ?? null;
+  const viaLabel = via === null ? null : viaLabelKey(via);
   return (
     <button
       id={id}
@@ -533,7 +719,9 @@ function PaneRow({
       )}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-1">
-          <span className={cn("min-w-0 truncate text-sm font-medium", roomy && "leading-5", roomy && !active && "text-foreground")}>{name}</span>
+          <span className={cn("min-w-0 truncate text-sm font-medium", roomy && "leading-5", roomy && !active && "text-foreground")}>
+            <MatchText text={name} ranges={marks?.name} />
+          </span>
           <PaneBadge pane={pane} className={cn("shrink-0 self-center", roomy && "text-muted-foreground")} />
           {/* A finished pane nobody opened: the dashboard's square, after the name, so a row agrees with
               the heading's `■` count. The slot is kept on every agent row, so a name truncates at one
@@ -548,23 +736,36 @@ function PaneRow({
         {/* `leading-4` on the large screen: a stated line box, so the second line always fits inside
             the row and its descenders are never clipped by the truncation. */}
         <div className={cn("flex min-w-0 items-baseline gap-1 text-[11px] text-muted-foreground", roomy && "leading-4")}>
-          <span className="max-w-[45%] shrink truncate">{space}</span>
-          {tab && (
+          {via !== null && match !== undefined ? (
             <>
-              {/* The place's own separator (PLACE_SEP), because a space CONTAINS a tab. */}
-              <span className="shrink-0 text-muted-foreground/60" aria-hidden>
-                ›
+              {viaLabel !== null && <span className="shrink-0 text-muted-foreground/70">{t(viaLabel)}</span>}
+              <span data-slot="pane-row-via" className="min-w-0 flex-1 truncate">
+                <MatchText text={match.fields[via]} ranges={marks?.[via]} />
               </span>
-              {/* A positional tab (`tabTitle`'s `tab 2`) reads a shade lighter, the same ink every
-                  other surface gives it — it is the tab's position, never a name someone chose. */}
-              <span
-                className={cn(
-                  "min-w-0 flex-1 truncate",
-                  tab.positional && "text-muted-foreground/70",
-                )}
-              >
-                {tab.text}
+            </>
+          ) : (
+            <>
+              <span className="max-w-[45%] shrink truncate">
+                <MatchText text={space} ranges={marks?.space} />
               </span>
+              {tab && (
+                <>
+                  {/* The place's own separator (PLACE_SEP), because a space CONTAINS a tab. */}
+                  <span className="shrink-0 text-muted-foreground/60" aria-hidden>
+                    ›
+                  </span>
+                  {/* A positional tab (`tabTitle`'s `tab 2`) reads a shade lighter, the same ink every
+                      other surface gives it — it is the tab's position, never a name someone chose. */}
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate",
+                      tab.positional && "text-muted-foreground/70",
+                    )}
+                  >
+                    <MatchText text={tab.text} ranges={marks?.tab} />
+                  </span>
+                </>
+              )}
             </>
           )}
           {/* WHICH MACHINE, as its tint and its glyph alone (Altan, 2026-10-21): on a crew this sheet

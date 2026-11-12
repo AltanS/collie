@@ -138,6 +138,11 @@ receipts in its state folder
 A [WalkyTalky](#walkytalky) message has a receipt too. It says whether the message is queued, typed
 into the pane, waiting in the inbox or refused, and why ([Receipts](walky-talky.md#receipts)).
 
+Your answer to a [Decision](#decision) has a receipt as well. The card says whether the answer was
+typed into the session, is waiting for its turn, was refused, or was taken by the trick that asked
+([Receipts](hill.md#receipts)). A tap on a [trick](#trick)'s button keeps a receipt too, so a tap
+that is sent again runs once.
+
 ## Conversation
 
 How the phone's Durable agents pages name a durable [session](#session). The conversation list
@@ -187,3 +192,92 @@ four characters too. A [WalkyTalky](#walkytalky) address carries it after a `#`,
 `local/w6:p3#k3f9`, and reaches that pane only. A new pane that takes the same pane id is a new
 pane instance, with a new token and an empty [inbox](#inbox) ([Addresses](walky-talky.md#addresses)).
 It is not a Collie instance: that word means one running bridge ([Collie (an instance)](#collie-an-instance)).
+
+## Trick
+
+A folder that adds its own parts to Collie: a small program, rules for an agent, or both. Collie draws
+what it shows, in Collie's own look. A trick is off until you switch it on, and its program runs as
+you ([Tricks](tricks.md)). There are two kinds, a [program trick](#program-trick) and an
+[agent view](#agent-view). The old word for a trick was "mod". The mods folder of herdr-app is a
+different thing, a panel of that app
+([The Collie panel for herdr-app](multiplexers.md#the-collie-panel-for-herdr-app)).
+
+## Program trick
+
+A trick with a program on your machine. The bridge runs it on a timer or on your tap, reads the one
+JSON document it prints, and the phone draws the parts in it. It can also ask you on the Hill
+([Example 1: a program trick](tricks.md#example-1-a-program-trick)).
+
+## Agent view
+
+A trick that one agent session's own agent draws: one screen, in a view beside Terminal and Chat. It
+has no program, only a [rules file](#rules-file). You switch it on per session, and a tap sends the
+agent the words you saw on the screen
+([Example 3: Morph, an agent view](tricks.md#example-3-morph-an-agent-view)).
+
+## Rules file
+
+The plain text file, named by `rules` in an agent view's manifest, that tells the agent how to draw.
+The agent reads it with the command at the end of the first message a view sends. The About sheet
+shows it whole, and a change to it always asks you again
+([How an agent learns the rules](tricks.md#how-an-agent-learns-the-rules)).
+
+## Official tricks
+
+The tricks in Collie's own repository. Each release names the exact version of each one, and Add, in
+Settings → Tricks or with `collie trick add <name>`, fetches that version and nothing else. They
+arrive off, like every trick ([Official and community tricks](tricks.md#official-and-community-tricks)).
+
+## Community tricks
+
+The tricks anyone else writes, each in a repository of its own. The app never fetches a list of them:
+you add one by its address, and its row says "ColliePWA did not check this code."
+([Official and community tricks](tricks.md#official-and-community-tricks)).
+
+## Place
+
+A spot on the phone where a trick can show (a surface). A program trick draws in five: `belt`,
+`session` (shown as Page), `dashboard`, `status` and `tabbar`. An agent view is the sixth, `agent-view`. The Hill is
+built in, and a trick posts there without naming it. A place is not a [space](#space). Each place is
+described in [Places](tricks-reference.md#places).
+
+## Page
+
+A trick's own screen: a row on the Dashboard under Tricks, and the screen it opens. A tap on the
+trick's tile, bottom bar item or chip opens it too. It has no reply box, because a trick is not an
+agent you talk to. The code word in `places` is `session`
+([Where a trick can show](tricks.md#where-a-trick-can-show)).
+
+## Part
+
+What a trick draws in one place: one mark on the Belt, one chip, one tile, one bottom bar item, or one
+Page. The word also names the pieces a screen is built from, such as a row, a chip or a
+button, from a closed list of 22 kinds. A part is data, never code, and one bad part does not hide the
+others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
+
+## Power
+
+What a trick may reach beyond its own code: the environment names it asks for (`env`), the places it
+draws in (`places`), and the files it reads from your agent sessions (`inputs`). The About sheet lists
+them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
+sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#powers-the-environment-and-the-warnings)).
+
+## About sheet
+
+The sheet that opens when you tap a trick's name in Settings → Tricks. It shows the trick's description
+and its own text, then the facts Collie knows: where it draws, what it reads, which environment names it
+asks for, what a text search of its code found, and where it came from
+([The About sheet](tricks.md#the-about-sheet)).
+
+## Decision
+
+One question that an agent or a trick puts on the Hill, with the options you pick from. You answer it by
+tapping an option, and the answer goes back to the session that asked, as your own message. A Decision
+is not a [question card](#question-card-ask): that card is a durable agent's own question
+([Decisions](hill.md#what-a-decision-is)).
+
+## Hill
+
+The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
+It is the fourth item of the Dashboard's bottom bar. One crew has one Hill, on the lead. "Hill" is the
+view's name and stays the same in every language ([The Hill](hill.md)).

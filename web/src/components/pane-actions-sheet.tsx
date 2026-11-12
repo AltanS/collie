@@ -4,6 +4,7 @@ import { Icon } from "@/components/icons/icon";
 import { BottomSheet } from "@/components/ui/sheet";
 import { WalkyIcon, WalkyOffIcon } from "@/components/walky-icon";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
+import { SwitchRow } from "@/components/ui/switch-row";
 import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock, useCrew } from "@/components/crew-provider";
 import { useActionEcho } from "@/hooks/use-action-echo";
@@ -149,6 +150,28 @@ interface PaneActionsSheetProps {
    * closes (durable-simple, 2026-10-13).
    */
   conversation?: boolean;
+  /**
+   * AGENT VIEWS, the session's third body (components/agent-view-screen.tsx, hooks/use-agent-view-pane.ts).
+   * Absent on a pane that has none (a shell, a durable conversation, a bridge without agent views, no
+   * trick that offers one): the sheet is byte-identical to before.
+   *
+   * With a view on, the body switch row above becomes the way back: while the view shows it opens the
+   * standing body (Chat or Terminal) for this session and leaves the view on, and while that body shows a
+   * "<name> view" row returns. One switch row per trick that offers a view, labelled with the trick's
+   * name; at most one is on, and the bridge's answer is what they show. `onSwitch` is a write, absent
+   * where nothing may write, and then no switch row is drawn.
+   */
+  agentViews?: {
+    /** One per trick that offers a view: its id, its name cut for the row, and whether its view is on. */
+    rows: readonly { readonly trick: string; readonly label: string; readonly on: boolean }[];
+    /** The name of the view that is on, cut for the row; undefined with none on. */
+    label: string | undefined;
+    on: boolean;
+    /** The view is on screen. */
+    showing: boolean;
+    onShow: () => void;
+    onSwitch?: (trick: string, on: boolean) => Promise<string | null>;
+  };
 }
 
 const NO_HERD: readonly AgentView[] = [];
@@ -168,6 +191,15 @@ type Mode = "actions" | "rename";
 // read-only they're replaced by a note.
 /** The icon of a row of this sheet. */
 const ROW_ICON = "size-4 shrink-0 text-muted-foreground";
+
+/**
+ * Where the body switch row takes the operator: the other body, or, while an agent view shows, the
+ * standing body itself (the way back from the view, which leaves it on).
+ */
+function bodyRowTarget(paneView: PaneView, viewShowing: boolean): PaneView {
+  if (viewShowing) return paneView;
+  return paneView === "chat" ? "terminal" : "chat";
+}
 
 export function PaneActionsSheet({
   open,
@@ -193,6 +225,7 @@ export function PaneActionsSheet({
   onPinChange,
   onBranchOff,
   conversation = false,
+  agentViews,
 }: PaneActionsSheetProps) {
   useLocale();
   // Whether this pane is pinned on this device, read live from the store so the row's word is right
@@ -465,20 +498,44 @@ export function PaneActionsSheet({
           {paneView !== undefined && onPaneViewChange && (
             <ActionRow
               icon={
-                paneView === "chat" ? (
+                bodyRowTarget(paneView, agentViews?.showing === true) === "terminal" ? (
                   <Icon name="view-terminal" className="size-4 shrink-0 text-muted-foreground" />
                 ) : (
                   <Icon name="view-chat" className="size-4 shrink-0 text-muted-foreground" />
                 )
               }
-              label={t(paneView === "chat" ? "chat.mode.terminal" : "chat.mode.chat")}
+              label={t(bodyRowTarget(paneView, agentViews?.showing === true) === "terminal" ? "chat.mode.terminal" : "chat.mode.chat")}
               hint={paneViewNote}
               onClick={() => {
                 onClose();
-                onPaneViewChange(paneView === "chat" ? "terminal" : "chat");
+                onPaneViewChange(bodyRowTarget(paneView, agentViews?.showing === true));
               }}
             />
           )}
+          {/* Back to the agent view, while Chat or the terminal stands in for it. Close-then-act. */}
+          {agentViews !== undefined && agentViews.on && !agentViews.showing && agentViews.label !== undefined && (
+            <ActionRow
+              icon={<Icon name="view-preview" className={ROW_ICON} />}
+              label={t("view.back", { name: agentViews.label })}
+              onClick={() => {
+                onClose();
+                agentViews.onShow();
+              }}
+            />
+          )}
+          {/* One switch per trick that offers a view: a write, so drawn only where the caller may write.
+              The sheet stays open, as a switch answers in place. */}
+          {agentViews?.onSwitch !== undefined &&
+            agentViews.rows.map((row) => (
+              <SwitchRow
+                key={row.trick}
+                icon={<Icon name="view-preview" className={ROW_ICON} />}
+                label={row.label}
+                hint={t("view.switch.hint")}
+                checked={row.on}
+                onChange={(next) => agentViews.onSwitch?.(row.trick, next) ?? Promise.resolve(null)}
+              />
+            ))}
           {/* Pane settings sits between the looking rows and zen: it is the one row here that opens a
               control rather than a view, and it is still the cheap, reversible half of this sheet — a
               preference on this collie, typed into no terminal. Close-then-act, for the reason the find

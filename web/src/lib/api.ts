@@ -14,7 +14,7 @@ import {
 import { noteSnapshotTaken } from "./snapshot-clock";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
-import { asJsonObject, asJsonString, parseJsonObject, type JsonObject, type JsonValue } from "./json";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson, parseJsonObject, type JsonObject, type JsonValue } from "./json";
 import { readRegistryStatus } from "./theme/registry-status";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
@@ -27,6 +27,9 @@ import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
+import type { OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapBody, WireTrickInfo } from "./tricks/schema";
+import { readTapReplyTolerant, readTricksReplyTolerant } from "./tricks/read";
+import { readOfficialAddReply, readOfficialTricksReply, readTrick } from "./tricks/wire";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { closePaneNotifications } from "./pane-notifications";
@@ -37,6 +40,9 @@ import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
 import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTakeBack, type WalkyTarget, type WalkyWho } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
+import { readHillCrewStateView, readHillList, readHillReceipt } from "./hill/reader";
+import type { HillAnswerRequest, HillCrewState, HillCrewStateView, HillList, HillReceipt } from "./hill/wire";
+import { readTrickViewsAnswer, readTrickViewSession, TRICK_VIEWS_ROUTE, TRICK_VIEWS_SWITCH_ROUTE, type TrickViewSession, type TrickViewsAnswer, type TrickViewSwitchBody } from "./agent-view/wire";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
 import type {
@@ -516,11 +522,15 @@ function captureBuild(res: Response): void {
  */
 type Recover<T> = (status: number, detail: string) => T | null;
 
-/** A request's init, plus the one deadline override a poll read asks for ({@link POLL_TIMEOUT_MS}). */
-type ReqInit = RequestInit & { timeoutMs?: number };
+/**
+ * A request's init, plus the one deadline override a poll read asks for ({@link POLL_TIMEOUT_MS}), and
+ * `provesNothing` for a write an unpaired browser may make (the pairing request, ADR 0139): its 2xx is
+ * not proof that this device is paired, so it must not clear the refusal latch the way a write does.
+ */
+type ReqInit = RequestInit & { timeoutMs?: number; provesNothing?: boolean };
 
 async function doReq<T>(path: string, reqInit?: ReqInit, recover?: Recover<T>): Promise<T> {
-  const { timeoutMs: asked, ...init } = reqInit ?? {};
+  const { timeoutMs: asked, provesNothing = false, ...init } = reqInit ?? {};
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
   const method = init.method?.toUpperCase() ?? "GET";
   const timeoutMs = asked ?? (method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS);
@@ -546,7 +556,7 @@ async function doReq<T>(path: string, reqInit?: ReqInit, recover?: Recover<T>): 
     if (recovered !== null && recovered !== undefined) return recovered;
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
-  notePairing(method, res.status);
+  if (!provesNothing) notePairing(method, res.status);
   if (res.status === 204) {
     // SAFETY: `T` is the response contract each exported wrapper below declares for its own
     // endpoint; `doReq` is the generic transport and has no shape of its own to check against. A
@@ -1722,6 +1732,90 @@ export async function postWalky(body: WalkySendBody): Promise<WalkyReceipt[]> {
 }
 
 /**
+ * GET /api/hill (M96): the open decisions and the newest closed ones. `since` is the revision this
+ * phone holds; the bridge answers `unchanged` when nothing moved. Omit it for a whole read, after a
+ * bridge restart put the revision below the one held. Carries no scope: the hill lives on the lead.
+ * Every decision is read by `lib/hill/reader.ts`, and a body that is no list at all throws.
+ */
+export async function fetchHill(since?: number, signal?: AbortSignal): Promise<HillList> {
+  const query = since === undefined ? "" : `?since=${Math.max(0, Math.floor(since))}`;
+  const got = await req<JsonValue>(`/api/hill${query}`, { signal });
+  const list = readHillList(got);
+  if (list === null) throw new ApiError("The hill route sent a body this phone cannot read.", 502);
+  return list;
+}
+
+/**
+ * GET /api/trick-views: the views of the sessions named, keyed by (trick, session), each with its switch,
+ * head, tail, the screen its agent drew last and the lines the bridge sent from it. `since` is the
+ * revision this phone holds for the same sessions; the bridge answers `unchanged` when nothing moved, or
+ * only the views that moved and `keys`, the views held. Omit it for a whole read. `sessions` names the
+ * sessions the phone shows (`session=<address>` once each); none is every session. Carries no scope, as
+ * the hill's read does: views live on the lead. A body that is no answer at all throws.
+ */
+export async function fetchTrickViews({ since, sessions = [], signal }: { since?: number | undefined; sessions?: readonly string[]; signal?: AbortSignal } = {}): Promise<TrickViewsAnswer> {
+  const query = new URLSearchParams();
+  if (since !== undefined) query.set("since", String(Math.max(0, Math.floor(since))));
+  for (const session of sessions) query.append("session", session);
+  const text = query.toString();
+  const got = await req<JsonValue>(`${TRICK_VIEWS_ROUTE}${text === "" ? "" : `?${text}`}`, { signal });
+  const answer = readTrickViewsAnswer(got);
+  if (answer === null) throw new ApiError("The agent views route sent a body this phone cannot read.", 502);
+  return answer;
+}
+
+/**
+ * POST /api/trick-views/switch: turn one session's view of one trick on or off. An idempotent set, a
+ * paired device's write, on this bridge's own sessions only (a crew member's answers 400). Turning one
+ * trick's view on turns every other trick's view of that session off. The bridge answers 200 with the
+ * view as it now holds it; null when that body does not read, and the next read brings it. A 400, a 404
+ * (no live agent session), a 409 (the trick does not pass the gate) and a 503 (not saved) throw.
+ */
+export async function postTrickViewSwitch(body: TrickViewSwitchBody): Promise<TrickViewSession | null> {
+  const got = await req<JsonValue>(TRICK_VIEWS_SWITCH_ROUTE, { method: "POST", body: JSON.stringify(body) });
+  return readTrickViewSession(got);
+}
+
+/** The words of a refused answer: a JSON body's `reason`, else the plain text the bridge sends, else none. */
+function refusalReason(detail: string): string | null {
+  const parsed = parseJsonObject(detail);
+  if (parsed !== undefined) return asJsonString(parsed.reason) ?? null;
+  const plain = detail.trim();
+  return plain === "" ? null : plain.slice(0, 200);
+}
+
+/**
+ * POST /api/hill/answer (M96): one person's answer to one decision. The caller mints `rid` once per
+ * attempt and sends the same one on a retry, so a lost answer never answers twice: the bridge returns
+ * the receipt it already wrote for a known `rid` and runs nothing. A 401 or 403 is the guards' refusal
+ * and reads as a `denied` receipt; a 400 (a body the bridge could not read) and a 409 (the `rid` already
+ * answered with another choice) as `rejected`, with the bridge's words as the reason: the bridge says
+ * them as plain text, and a JSON `reason` is read first for a body that has one. A 503 (the first receipt
+ * could not be written, so nothing closed and nothing was sent) is NOT recovered here: it throws like a
+ * lost answer, the card says "Not sent." and the retry reuses the same `rid`. A 200 whose body is no
+ * receipt reads as `unknown`: the bridge took the request and may have acted on it, so the phone must
+ * not offer the same answer as unsent. A thrown request (no answer) is the retry case.
+ */
+export async function postHillAnswer(body: HillAnswerRequest): Promise<HillReceipt> {
+  // The refusal in the receipt's own shape, so one reader reads every answer.
+  const refused = (code: "denied" | "rejected", detail: string): JsonObject => ({
+    rid: body.rid,
+    code,
+    reason: code === "rejected" ? refusalReason(detail) : null,
+    state: null,
+    delivery: null,
+    trick: null,
+    at: Date.now(),
+  });
+  const got = await req<JsonValue>("/api/hill/answer", { method: "POST", body: JSON.stringify(body) }, (status, detail) => {
+    if (status === 401 || status === 403) return refused("denied", detail);
+    if (status === 400 || status === 409) return refused("rejected", detail);
+    return null;
+  });
+  return readHillReceipt(got) ?? { rid: body.rid, code: "unknown", reason: null, state: null, delivery: null, trick: null, at: Date.now() };
+}
+
+/**
  * GET /api/walky/who: every agent pane a message can reach, across the crew (M62), the shell panes that
  * never receive one, and how many messages this bridge turned away. The last two are absent from an
  * older bridge, which reads as none.
@@ -2689,6 +2783,177 @@ export async function pairDevice(code: string, label: string): Promise<PairResul
   return "token" in res ? { ok: true, token: res.token, label: res.label } : res;
 }
 
+// ── Pairing with a phone (ADR 0139) ─────────────────────────────────────────────────────────────
+//
+// The new device asks (`POST /api/pair/request`), shows the code and a QR to the approver page, and
+// polls with the secret only it holds. A paired browser opens the QR, reads the request and answers
+// it by tapping one of three codes. Every refusal the screens name is recovered into a value here, so
+// the screens switch on a state and never parse a body.
+
+/** The header the poll secret rides in. Never the URL: a URL lands in logs and history. */
+export const PAIR_POLL_HEADER = "x-collie-pair-poll";
+
+/** A started request, or why none was started. */
+export type PairRequestStart =
+  | { ok: true; publicId: string; pollSecret: string; code: string; expiresInMs: number }
+  | { ok: false; reason: "no-approver" }
+  | { ok: false; reason: "rate-limited"; retryAfterSeconds: number }
+  /** Refused before pairing by the bridge's access check (host, origin or identity). Pairing cannot fix it. */
+  | { ok: false; reason: "refused" };
+
+/** What the poll found. `gone` is an id the bridge does not know (or a wrong secret: it says the same). */
+export type PairRequestPoll =
+  | { state: "waiting"; expiresInMs: number }
+  | { state: "approved"; token: string; label: string }
+  | { state: "refused" }
+  | { state: "expired" }
+  | { state: "gone" };
+
+/** The network class a request came from, as the bridge names it (bridge/pair-audit.ts). */
+export type PairRoute = "loopback" | "tailnet" | "lan" | "internet" | "unknown";
+
+/** What the approver sees of an open request, or why it cannot answer it. */
+export type PairApproval =
+  | {
+      state: "open";
+      browser: string | null;
+      os: string | null;
+      /** The class of the socket the asker came in by: the kernel's, the one fact here. */
+      route: PairRoute;
+      /**
+       * The class a front door on the bridge's machine passed on (`X-Forwarded-For`), or null. A claim:
+       * a local program can write that header too, so the page never states it as fact.
+       */
+      claimed: PairRoute | null;
+      choices: readonly string[];
+      expiresInMs: number;
+      /** When the approver's own access ends, and so the new device's with it; null for no end. */
+      endsAt: number | null;
+    }
+  | { state: "gone" }
+  | { state: "answered" }
+  /** The bridge refused this browser as an approver: no token, a read-only credential, or not allowlisted. */
+  | { state: "forbidden" };
+
+/** The bridge's answer to the approver's tap. */
+export type PairApproveResult =
+  | { state: "approved"; label: string }
+  | { state: "refused"; reason: "wrong-code" | "refused" }
+  | { state: "gone" }
+  | { state: "answered" }
+  | { state: "bad-label" }
+  | { state: "forbidden" };
+
+const PAIR_ROUTES: readonly PairRoute[] = ["loopback", "tailnet", "lan", "internet", "unknown"];
+
+function pairRouteOf(value: JsonValue | undefined): PairRoute {
+  const named = asJsonString(value);
+  return PAIR_ROUTES.find((r) => r === named) ?? "unknown";
+}
+
+const errorOf = (detail: string): string | undefined => asJsonString(parseJsonObject(detail)?.error);
+
+/** Ask the bridge for a pairing request. Open to an unpaired browser, like `POST /api/pair`. */
+export async function startPairRequest(): Promise<PairRequestStart> {
+  const body = await req<JsonObject>(
+    "/api/pair/request",
+    { method: "POST", body: "{}", provesNothing: true },
+    (status, detail) => {
+      if (status === 409 && errorOf(detail) === "no-approver") return { [HTTP_STATUS]: 409 };
+      if (status === 429) return { [HTTP_STATUS]: 429, retryAfter: asJsonNumber(parseJsonObject(detail)?.retryAfter) ?? 60 };
+      if (status === 403) return { [HTTP_STATUS]: 403 };
+      return null;
+    },
+  );
+  const status = asJsonNumber(body[HTTP_STATUS]);
+  if (status === 409) return { ok: false, reason: "no-approver" };
+  if (status === 429) return { ok: false, reason: "rate-limited", retryAfterSeconds: asJsonNumber(body.retryAfter) ?? 60 };
+  if (status === 403) return { ok: false, reason: "refused" };
+  const publicId = asJsonString(body.publicId);
+  const pollSecret = asJsonString(body.pollSecret);
+  const code = asJsonString(body.code);
+  const expiresInMs = asJsonNumber(body.expiresInMs);
+  if (publicId === undefined || pollSecret === undefined || code === undefined || expiresInMs === undefined) {
+    throw new ApiError("/api/pair/request → 200 without a request", 200);
+  }
+  return { ok: true, publicId, pollSecret, code, expiresInMs };
+}
+
+/** One poll of a request this browser started. The secret goes in a header, never in the path. */
+export async function pollPairRequest(publicId: string, pollSecret: string, signal?: AbortSignal): Promise<PairRequestPoll> {
+  const body = await req<JsonObject>(
+    `/api/pair/request/${encodeURIComponent(publicId)}`,
+    { signal, headers: { [PAIR_POLL_HEADER]: pollSecret } },
+    (status) => (status === 404 ? { state: "gone" } : null),
+  );
+  const state = asJsonString(body.state);
+  if (state === "waiting") return { state, expiresInMs: asJsonNumber(body.expiresInMs) ?? 0 };
+  if (state === "approved") {
+    const token = asJsonString(body.token);
+    const label = asJsonString(body.label);
+    if (token !== undefined && label !== undefined) return { state, token, label };
+  }
+  if (state === "refused" || state === "expired" || state === "gone") return { state };
+  throw new ApiError(`/api/pair/request → 200 with no known state`, 200);
+}
+
+/**
+ * End a request this browser started (Cancel, or the block went away). `keepalive`, so it still leaves
+ * when the page is being closed. Nothing waits on it: the request runs out on its own anyway.
+ */
+export async function cancelPairRequest(publicId: string, pollSecret: string): Promise<void> {
+  await req<JsonObject>(
+    `/api/pair/request/${encodeURIComponent(publicId)}`,
+    { method: "DELETE", keepalive: true, provesNothing: true, headers: { [PAIR_POLL_HEADER]: pollSecret } },
+    (status) => (status === 404 ? {} : null),
+  );
+}
+
+/** A 403 from the approver's gate is an answer the page can name, whatever the body said. */
+function approverRefusal(status: number, detail: string): JsonObject | null {
+  if (status === 404) return { state: "gone" };
+  if (status === 409) return { state: "answered" };
+  if (status === 403) return { state: "forbidden" };
+  if (status === 400 && errorOf(detail) === "bad-label") return { state: "bad-label" };
+  return null;
+}
+
+/** Read an open request as the approver. Needs this browser's paired token with write access. */
+export async function fetchPairApproval(publicId: string, signal?: AbortSignal): Promise<PairApproval> {
+  const body = await req<JsonObject>(`/api/pair/approve/${encodeURIComponent(publicId)}`, { signal }, approverRefusal);
+  const state = asJsonString(body.state);
+  if (state === "gone" || state === "answered" || state === "forbidden") return { state };
+  const choices = Array.isArray(body.choices) ? body.choices.flatMap((c) => asJsonString(c) ?? []) : [];
+  if (choices.length !== 3) throw new ApiError("/api/pair/approve → 200 without three codes", 200);
+  return {
+    state: "open",
+    browser: asJsonString(body.browser) ?? null,
+    os: asJsonString(body.os) ?? null,
+    route: pairRouteOf(body.route),
+    claimed: body.forwardedFrom === null || body.forwardedFrom === undefined ? null : pairRouteOf(body.forwardedFrom),
+    choices,
+    expiresInMs: asJsonNumber(body.expiresInMs) ?? 0,
+    endsAt: asJsonNumber(body.endsAt) ?? null,
+  };
+}
+
+/** Answer a request: the tapped code and the new device's name, or `refuse` for "Not my device". */
+export async function answerPairApproval(
+  publicId: string,
+  answer: { code: string; label: string } | { refuse: true },
+): Promise<PairApproveResult> {
+  const body = await req<JsonObject>(
+    `/api/pair/approve/${encodeURIComponent(publicId)}`,
+    { method: "POST", body: JSON.stringify(answer) },
+    approverRefusal,
+  );
+  const state = asJsonString(body.state);
+  if (state === "approved") return { state, label: asJsonString(body.label) ?? "" };
+  if (state === "refused") return { state, reason: asJsonString(body.reason) === "wrong-code" ? "wrong-code" : "refused" };
+  if (state === "gone" || state === "answered" || state === "bad-label" || state === "forbidden") return { state };
+  throw new ApiError("/api/pair/approve → 200 with no known state", 200);
+}
+
 /**
  * The paired-device registry. Read-level, and like every read it needs the token (ADR 0086): an
  * unpaired device learns that it is unpaired from the 403 itself (`isPairingRefusal`).
@@ -2967,4 +3232,180 @@ export async function fetchSttModel(sha256: string, signal?: AbortSignal): Promi
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
   return res;
+}
+
+// ── TRICKS (M94) ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The trick parts changed since `since`, the trick list and every part key present (`GET /api/tricks`).
+ * Asked only when the snapshot's `tricksRev` moved (lib/tricks/store.ts `syncTricks`), so it rides the
+ * snapshot's cadence and has no timer of its own. `since=0` gives every part. A body of another shape
+ * throws, so the store keeps what it holds rather than merging half a reply.
+ */
+export async function fetchTricks(since: number, signal?: AbortSignal): Promise<TricksReply> {
+  const body = await req<JsonValue>(`/api/tricks?since=${Math.max(0, Math.floor(since))}`, { signal, timeoutMs: POLL_TIMEOUT_MS });
+  const reply = readTricksReplyTolerant(body);
+  if (reply === undefined) throw new Error("/api/tricks answered with a body that is not a tricks reply");
+  return reply;
+}
+
+/** A refused tap that still carries a receipt is the receipt. Anything else falls through to the error. */
+function recoverTapReceipt(_status: number, detail: string): JsonValue | null {
+  const parsed = parseJson(detail);
+  return parsed !== undefined && readTapReplyTolerant(parsed) !== undefined ? parsed : null;
+}
+
+/**
+ * Tap a trick's control: `POST /api/tricks/<host>/<id>/tap` with the request id the caller minted. The
+ * reply is the receipt (`applied`, `replayed`, `failed`, `unknown`) and the trick's changed parts. A
+ * refusal that carries a receipt on a non-2xx status is the same value; any other refusal throws an
+ * error with its status, and the store reads that as `failed` (4xx, nothing ran) or `unknown` (5xx).
+ */
+export async function tapTrick(host: string, trick: string, body: TapBody): Promise<TrickTapReply> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/tap`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) }, recoverTapReceipt);
+  const reply = readTapReplyTolerant(raw);
+  if (reply === undefined) throw new Error(`${path} answered with a body that is not a tap receipt`);
+  return reply;
+}
+
+/**
+ * POST /api/hill/switch: switch the Hill on or off for this bridge. Answers the value the switch holds
+ * now. The snapshot carries it too (`hillOff`), so a caller revalidates after a write and draws from
+ * the root data, never from this answer alone.
+ */
+export async function setHillSwitch(on: boolean): Promise<boolean> {
+  const raw = await req<JsonValue>("/api/hill/switch", { method: "POST", body: JSON.stringify({ on }) });
+  const held = asJsonBoolean(asJsonObject(raw)?.on);
+  if (held === undefined) throw new Error("/api/hill/switch answered with a body that is not { on }");
+  return held;
+}
+
+/**
+ * POST /api/hill/clear: remove every closed Decision from the Hill. Answers how many went. The lists
+ * come back through the snapshot's `hillRev`, as for any change to the Hill; a refusal or a body that is
+ * not `{ cleared }` throws, so the caller puts the rows back.
+ */
+export async function clearHillClosed(): Promise<number> {
+  const raw = await req<JsonValue>("/api/hill/clear", { method: "POST", body: JSON.stringify({}) });
+  const cleared = asJsonNumber(asJsonObject(raw)?.cleared);
+  if (cleared === undefined) throw new Error("/api/hill/clear answered with a body that is not { cleared }");
+  return cleared;
+}
+
+/**
+ * POST /api/hill/clear/spoken (1.29.0): withdraw and clear the open Decisions the person answered in their
+ * session, of `ids` (the ones this phone showed) only. Nothing is typed. Answers how many went; the list comes back through the snapshot's `hillRev`.
+ * An older bridge answers 404 and a refusal throws, so the caller says it on the status line.
+ */
+export async function clearHillSpoken(ids: readonly string[]): Promise<number> {
+  const raw = await req<JsonValue>("/api/hill/clear/spoken", { method: "POST", body: JSON.stringify({ ids }) });
+  const cleared = asJsonNumber(asJsonObject(raw)?.cleared);
+  if (cleared === undefined) throw new Error("/api/hill/clear/spoken answered with a body that is not { cleared }");
+  return cleared;
+}
+
+/**
+ * GET /api/hill/state (1.29.0): the crew state this lead holds. A crew member and a deposed lead answer
+ * 409 (the state lives on the lead), a member's page 400, an older bridge 404; each throws, and the list
+ * from such a bridge carries no `crewState` either, so the Hill shows no control.
+ */
+export async function fetchHillCrewState(signal?: AbortSignal): Promise<HillCrewStateView> {
+  const raw = await req<JsonValue>("/api/hill/state", { signal });
+  const view = readHillCrewStateView(raw);
+  if (view === null) throw new Error("/api/hill/state answered with a body that is not a crew state");
+  return view;
+}
+
+/**
+ * POST /api/hill/state (1.29.0): set the crew state to `here`, `quiet` or `away`. Answers the value as the
+ * lead now holds it; a refusal or a body of another shape throws, so the caller puts the control back.
+ */
+export async function setHillCrewState(state: HillCrewState): Promise<HillCrewStateView> {
+  const raw = await req<JsonValue>("/api/hill/state", { method: "POST", body: JSON.stringify({ state }) });
+  const view = readHillCrewStateView(raw);
+  if (view === null) throw new Error("/api/hill/state answered with a body that is not a crew state");
+  return view;
+}
+
+/**
+ * POST /api/hill/state/tell (1.29.0): "Tell all sessions now", once for the change set at `at`. The lead
+ * types one operator line into each waiting session and answers how many it reached. A second tap for the
+ * same change, or a change the phone did not see, is refused with the lead's words (409), and throws.
+ */
+export async function tellHillSessions(at: number): Promise<number> {
+  const raw = await req<JsonValue>("/api/hill/state/tell", { method: "POST", body: JSON.stringify({ at }) });
+  const told = asJsonNumber(asJsonObject(raw)?.told);
+  if (told === undefined) throw new Error("/api/hill/state/tell answered with a body that is not { told }");
+  return told;
+}
+
+/**
+ * Switch a trick on or off: `POST /api/tricks/<host>/<id>/switch` with `{ on }`. The bridge writes the
+ * file `collie trick on|off` writes and answers the trick as the list now shows it. A refusal (404 for a
+ * trick or host that is gone, 403 for a device that may not write) throws with its status; a body of
+ * another shape throws too, so the caller reverts rather than showing a switch the bridge did not take.
+ */
+export async function switchTrick(host: string, trick: string, on: boolean, hash?: string): Promise<WireTrickInfo> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/switch`;
+  // Review 8 V-N1: a switch on names the code the person read (the row's `approves`); the bridge refuses another.
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(on && hash !== undefined ? { on, hash } : { on }) });
+  const info = readTrick(raw);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  return info;
+}
+
+/** How long the phone waits for an add from the official list: the bridge's own two-minute cap, and a margin. */
+export const OFFICIAL_ADD_TIMEOUT_MS = 130_000;
+
+/**
+ * The official list (`GET /api/tricks/official`): the official tricks this Collie release can add, each
+ * with its state on this machine. A read of the bridge's own list and folder; it fetches nothing. A body of
+ * another shape throws, so the card draws no section rather than a half one.
+ */
+export async function fetchOfficialTricks(signal?: AbortSignal): Promise<OfficialTricksReply> {
+  const body = await req<JsonValue>("/api/tricks/official", { signal, timeoutMs: GET_TIMEOUT_MS });
+  const reply = readOfficialTricksReply(body);
+  if (reply === undefined) throw new Error("/api/tricks/official answered with a body that is not the official list");
+  return reply;
+}
+
+/**
+ * Add a trick from the official list, or update one added from it: `POST
+ * /api/tricks/official/<id>/add` or `/update` with `{}`. The bridge fetches the commit the list names,
+ * checks the code, and installs it off. Answers `{ id, state }`; a refusal throws with its status and its
+ * `error` (`unreachable`, `mismatch`, `busy`, `taken`, ...), which the card turns into one status line.
+ */
+export async function addOfficialTrick(id: string, mode: "add" | "update"): Promise<{ id: string; state: OfficialState }> {
+  const path = `/api/tricks/official/${encodeURIComponent(id)}/${mode}`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({}), timeoutMs: OFFICIAL_ADD_TIMEOUT_MS });
+  const reply = readOfficialAddReply(raw);
+  if (reply === undefined) throw new Error(`${path} answered with a body that is not { id, state }`);
+  return reply;
+}
+
+/**
+ * Take a trick's changes without asking, or ask again (crew slice 3): `POST /api/tricks/<host>/<id>/auto`
+ * with `{ on }`, the field `collie trick auto` writes. Answers the trick as the list now shows it. A
+ * refusal (409 for a trick that is off, 404, 403) throws with its status; a body of another shape throws.
+ */
+export async function setTrickAuto(host: string, trick: string, on: boolean): Promise<WireTrickInfo> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/auto`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
+  const info = readTrick(raw);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  return info;
+}
+
+/**
+ * Go back to the version a trick ran before its last change (crew slice 3): `POST
+ * /api/tricks/<host>/<id>/undo` with `{}`. Answers the trick as the list now shows it; a refusal (409 when
+ * there is no earlier version or its copy changed, 404, 403) throws with its status.
+ */
+export async function undoTrick(host: string, trick: string): Promise<WireTrickInfo> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/undo`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({}) });
+  const info = readTrick(raw);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  return info;
 }

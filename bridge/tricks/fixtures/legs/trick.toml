@@ -1,0 +1,9 @@
+# The legs trick: Collie's browser leg on the phone. It reads the newest leg log and draws a belt mark
+# (passed/total) and a Session with the legs, the first red case and, when a leg is red, one decision.
+id = "legs"
+name = "Browser leg"
+run = "./program.sh"
+every = "15s"
+icon = "flask"
+places = ["belt", "session"]
+contract = 1

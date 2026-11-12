@@ -28,11 +28,13 @@ import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SessionState } from "../types.ts";
 import type { CopiedRow } from "./standby-launchers.ts";
+import type { CarryCall } from "./carry-sync.ts";
 import { parseCollisionReport, parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
 import { CREW_VERSION_FIELD } from "../update-action.ts";
 import { WALKY_ACK_HEADER, WALKY_OUTCOMES_ROUTE } from "../walky/crew.ts";
+import { INPUT_CALL_MS, TRICKS_INPUTS_ROUTE } from "../tricks/inputs.ts";
 
 // The LEAD side of a crew link: the client that dials a peer's `/crew/v1/*` surface.
 //
@@ -166,6 +168,8 @@ function readBudgetEnv(env: Record<string, string | undefined>, key: string): st
  * Lead-local, never on the wire, so moving it needs no protocol bump.
  */
 export const WRITE_BUDGET_MS = 5000;
+/** A trick's inputs call (§23): 8 s, no retry, whatever the poll budget is. */
+export const TRICKS_INPUTS_BUDGET_MS = INPUT_CALL_MS;
 
 /**
  * How long a **forwarded read of a pane's screen** (`GET /api/pane/:id`) may take before the lead gives up
@@ -490,6 +494,9 @@ export type PeerOutcome<T> =
     }
   | (PeerFailure & { readonly ok: false; readonly receivedAt: number });
 
+/** How long one §25 call to the deputy may take: a 3 MiB body over a slow relayed link, and room. */
+export const CARRY_CALL_MS = 30_000;
+
 /** How a launcher copy ended (ADR 0127 point 5): landed, a deputy without the route, or anything else. */
 export type LaunchersCopyAnswer = "applied" | "no_route" | "failed";
 
@@ -812,6 +819,35 @@ export class PeerClient {
   }
 
   /**
+   * One §25 call to the DEPUTY (`tricks-copy`, `tricks-copy/code`, `tricks-copy/state`, `hill-copy`,
+   * `hill-copy/media`): the launchers copy's dial, with its status and JSON body handed back. A 404 is a
+   * deputy before the routes. The body is read only up to 64 KiB: every answer is a few ids.
+   */
+  async carryPost(link: CrewLink, route: string, body: JsonObject): Promise<CarryCall> {
+    const outcome = await this.proxy(
+      link,
+      route,
+      undefined,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+      CARRY_CALL_MS,
+      true,
+    );
+    if (!outcome.ok) return { kind: "failed" };
+    const status = outcome.value.status;
+    const text = await outcome.value.text().catch(() => "");
+    let parsed: JsonValue | null = null;
+    if (text.length <= 64 * 1024) {
+      try {
+        // SAFETY: `JSON.parse` output IS a JsonValue by construction; the caller reads it field by field.
+        parsed = JSON.parse(text) as JsonValue;
+      } catch {
+        parsed = null;
+      }
+    }
+    return { kind: "answer", status, body: parsed };
+  }
+
+  /**
    * `POST /crew/v1/pairing` — sync the lead's paired-device registry to the DEPUTY (RFC §6.5, §18.14).
    *
    * An ordinary data dial on the ordinary budget. A `404` or a `401` is the answer, not a fault: a
@@ -913,6 +949,25 @@ export class PeerClient {
       undefined,
       { method: "POST", headers: { "content-type": "application/json" }, body: payload },
       WRITE_BUDGET_MS,
+      false,
+    );
+  }
+
+  /**
+   * `POST /crew/v1/tricks/inputs` — the lead asks a member for a trick's inputs (§23, added in 1.29.0).
+   *
+   * Like the walky outcomes push: the pinned handshake and the dial attestation, no §8.6 signature, and
+   * every status the member chose kept (its 403 is "trick reads are off", its 404 an older member). The
+   * budget is the route's own, {@link TRICKS_INPUTS_BUDGET_MS}, and the call is never retried. The body is
+   * not read here: the caller reads it up to its own cap.
+   */
+  tricksInputs(link: CrewLink, payload: string): Promise<PeerOutcome<Response>> {
+    return this.proxy(
+      link,
+      TRICKS_INPUTS_ROUTE,
+      undefined,
+      { method: "POST", headers: { "content-type": "application/json" }, body: payload },
+      TRICKS_INPUTS_BUDGET_MS,
       false,
     );
   }

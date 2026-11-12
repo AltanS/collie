@@ -1,0 +1,204 @@
+{
+  "v": 1,
+  "asOf": "2026-11-08T09:41:00Z",
+  "fresh": "90s",
+  "parts": [
+    {
+      "at": "belt",
+      "id": "belt",
+      "mark": {
+        "icon": "flask",
+        "label": "23/34",
+        "tone": "accent",
+        "intent": "open"
+      }
+    },
+    {
+      "at": "session",
+      "id": "legs",
+      "name": "Browser leg",
+      "icon": "flask",
+      "subtitle": "case 24 red: the draft stayed in the reply box",
+      "badge": {
+        "count": 1
+      },
+      "progress": {
+        "value": 1,
+        "max": 3
+      },
+      "actions": [
+        {
+          "id": "rerun",
+          "label": "Rerun red",
+          "intent": "rerun",
+          "value": "red",
+          "icon": "refresh"
+        },
+        {
+          "id": "log",
+          "label": "Open log",
+          "intent": "open-log",
+          "icon": "note"
+        }
+      ],
+      "view": [
+        {
+          "kind": "number",
+          "text": "23/34",
+          "attrs": {
+            "label": "cases green",
+            "tone": "accent"
+          }
+        },
+        {
+          "kind": "bar",
+          "attrs": {
+            "label": "Legs"
+          },
+          "kids": [
+            {
+              "kind": "chip",
+              "text": "Solo leg, herdr",
+              "attrs": {
+                "state": "working",
+                "current": ""
+              }
+            },
+            {
+              "kind": "chip",
+              "text": "Solo leg, core",
+              "attrs": {
+                "state": "idle"
+              }
+            },
+            {
+              "kind": "chip",
+              "text": "Crew leg",
+              "attrs": {
+                "state": "idle"
+              }
+            },
+            {
+              "kind": "chip",
+              "attrs": {
+                "icon": "clock",
+                "at": "1794130692000",
+                "clock": "elapsed"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "para",
+          "text": "First red case",
+          "attrs": {
+            "role": "heading"
+          }
+        },
+        {
+          "kind": "line",
+          "text": "case 24, send after restart: expected an empty reply box, found the draft",
+          "attrs": {
+            "style": "fg-red",
+            "role": "status"
+          }
+        },
+        {
+          "kind": "list",
+          "kids": [
+            {
+              "kind": "row",
+              "text": "case 24, send after restart",
+              "attrs": {
+                "tone": "danger",
+                "end": "red",
+                "icon": "flag"
+              },
+              "kids": [
+                {
+                  "kind": "para",
+                  "text": "solo leg, herdr"
+                },
+                {
+                  "kind": "button",
+                  "attrs": {
+                    "label": "Open",
+                    "intent": "open-case",
+                    "value": "24"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "row",
+              "text": "Harness",
+              "attrs": {
+                "end": "claude 2.1.318"
+              }
+            },
+            {
+              "kind": "row",
+              "text": "Mode",
+              "attrs": {
+                "end": "replay, no live turns"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "bar",
+          "kids": [
+            {
+              "kind": "button",
+              "attrs": {
+                "label": "Rerun red",
+                "intent": "rerun",
+                "value": "red",
+                "tone": "accent",
+                "icon": "refresh"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "key": "case-24",
+      "title": "Leg red: case 24. Rerun it?",
+      "summary": "Case 24 failed on the first tap, the other 33 passed.",
+      "body": "The send after a restart left the draft in the reply box.\n\nThe log shows a timeout, not a code change.",
+      "options": [
+        {
+          "intent": "rerun",
+          "label": "Rerun red"
+        },
+        {
+          "intent": "skip",
+          "label": "Skip today",
+          "detail": "The leg stays red until tomorrow's run."
+        }
+      ],
+      "recommends": {
+        "intent": "rerun",
+        "why": "The log shows a timeout, not a code change."
+      },
+      "priority": "today",
+      "about": "lodge:w6X:3",
+      "replyTo": "lodge:w6X:3",
+      "media": [
+        {
+          "file": "shots/case-24.png",
+          "caption": "the failing step"
+        }
+      ],
+      "links": [
+        {
+          "label": "the report",
+          "href": "http://lodge:8832/legs/24"
+        }
+      ]
+    }
+  ]
+}

@@ -14,11 +14,12 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 206 in all, each one named, with its reason:
-#              bridge 115. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
+#              Today, 386 in all, each one named, with its reason:
+#              bridge 172. 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
-#                worktree (see "The fake git of a new worktree, bridge" below).
+#                worktree (see "The fake git of a new worktree, bridge" below). 42 are the Hill and the tricks (see
+#                "The Hill and the tricks, bridge" below).
 #                2 are "createPaneVersion — a harness off the login PATH" in pane-binary.test.ts (the test and its
 #                describe): the off-PATH agent is a `#!/bin/sh` script, which Windows cannot run.
 #                Pi skips the raw-control one-line send test in protocol.unstyled.test.ts; its Alt+Enter remains a named key.
@@ -107,7 +108,30 @@
 #                - "says the branch stayed behind when its delete fails" (the same)
 #                - "keeps the branch when the checkout could not be removed" (the same)
 #                - "never removes a folder that was there before the call" (the same)
-#              cli 66 in all: 21 in the next paragraph, then 3 of the statusLine wrapper and 42 of walky talky. Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              Agent view pictures, bridge (15). Every test of bridge/agent-view/media.test.ts is `posix(...)`, a `test.skipIf`
+#                on win32: it keeps pictures in 0700 folders and reads them through the hill's POSIX file checks
+#                (owner, mode, no link), which Windows does not have. The store and service tests beside it run on Windows.
+#              The Hill and the tricks, bridge (42). A symlink needs a privilege on Windows, a FIFO and a device are POSIX,
+#                Windows has no walky socket, and a shell line is cmd.exe there (bridge/tricks/run.ts), so a `#!/bin/sh`
+#                program does not run. The checks of a 0600 file and a 0700 folder beside them read the access list on
+#                Windows and run there. Each name sits on one line, so the pin test can find it:
+#                - "a symlink, a symlinked folder, a folder, a missing file, a FIFO and a device are refused with the reason" (hill/media.test.ts)
+#                - "a symlink in the folder that points out, a symlinked folder in it, and `../` out of it are refused" (hill/media.test.ts)
+#                - "an image path rides the socket, the bridge reads the file, and the phone reads the bytes" (hill/media.test.ts, the socket)
+#                - "hill.clear over the socket needs no pane, clears every closed decision and answers the count" (hill/routes.test.ts)
+#                - "post over the socket, read the hill, answer, and the walky send types the contract's body" (hill/routes.test.ts)
+#                - "a symlink in the trick folder that points out of it is refused, even to another trick's image" (tricks/hill.test.ts)
+#                - "end to end with the legs trick" (tricks/hill.test.ts, its one test: the legs fixture is `./program.sh`)
+#                - "a symlink is never followed: not to a file outside, not through a folder outside" (tricks/inputs.test.ts)
+#                - "a symlink the program planted is never written through, nor read as a kept file" (tricks/inputs.test.ts)
+#                - "a FIFO as trick.toml or config.toml is refused and never hangs the scan" (tricks/units.test.ts, mkfifo)
+#                32 are bridge/tricks/official.test.ts, the add from the official list: every test of "adding from the list",
+#                "updating an added trick to the list's commit" and "a git run killed at its time cap", and its 3 `test.if(posix)`
+#                cases. The fixture repository is reached as `file://` plus a temp path, which is no file URL on Windows; its
+#                programs are `#!/bin/sh` with an executable bit; the time cap kills a POSIX process group.
+#              cli 180 in all: 21 in the next paragraph, then 3 of the statusLine wrapper, 50 of walky talky, 21 of the agent view,
+#                69 of the Hill verbs and the tricks (see "The Hill verbs and the tricks, cli" below), and 16 gated on Windows (b)
+#                (see "The helper's output, cli" below). Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 9:
 #                "a per-call override wins over the Exec's own environment (#283) > a child killed by a signal says which one"
@@ -127,22 +151,46 @@
 #                `describe.skipIf` off Linux: it signals a POSIX process group, and the wrapper is not on Windows by design
 #                (the usage row, .adr/0115). Its 3 tests are "a SIGTERM to the wrapper stops a compound command's grandchild"
 #                (2, one per group layout) and "passes the command's output and exit code through".
-#              Walky talky, cli (42). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
+#              Walky talky, cli (50). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
 #                dir, and Windows cannot bind it (the same reason as the hold socket). Each of those tests is
-#                `socketTest`, 10 in "send", 28 in "reply, inbox, status, who" (two of them, from M85, are the resting-session sends and the `--wake` refusal on a reply; three, from M89, are `off` and `on`, the who marks and the two off refusals; one, from 1.28.2, is the `pane` question `collie pair` asks), 1 in "cancel" and 3 in "on a crew member". The
+#                `socketTest`, 13 in "send" (M98 added the outside flag and the broadcast refusal), 33 in "reply, inbox, status, who" (two of them, from M85, are the resting-session sends and the `--wake` refusal on a reply; three, from M89, are `off` and `on`, the who marks and the two off refusals; M98 added the who space cases; the pairing fix added one) and 4 in "on a crew member". The
 #                tests that never reach the socket run on Windows: the usage errors, "no bridge at all is
 #                UNREACHABLE" and "on Windows it says why and exits STATE".
-#              scripts 25: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
+#              Agent view, cli (21). cli/trick-view.test.ts drives the `trick view` verbs against a real bridge socket, as
+#                cli/walky.test.ts does, and Windows cannot bind it. Each of those tests is `socketTest`; the parse
+#                and screen-reading tests beside them run on Windows.
+#              The Hill verbs and the tricks, cli (69).
+#                28 are cli/hill.test.ts: each `socketTest` drives `collie hill` against a real walky socket, as cli/walky.test.ts
+#                does, and Windows cannot bind it (the verbs say so there). Four of them, "a picture under /tmp, for a bridge
+#                with a private /tmp", also stage from /tmp, which systemd's PrivateTmp hides.
+#                7 are cli/image-stage.test.ts, `linux(...)`: staging a picture is for a bridge under systemd's PrivateTmp,
+#                on Linux only. Its path and pass-through tests run on Windows.
+#                17 are cli/trick-add.test.ts ("collie trick add", "collie trick update", "collie trick remove"): the fixture
+#                cases build symlinks, exec bits and sh hooks. The source and hardening cases run on Windows.
+#                15 are cli/trick-propose.test.ts: 14 `socketTest` (the walky socket) and 1 `posixTest` (a symlink):
+#                - "refuses a symbolic link, even to a file inside the folder"
+#                2 are cli/trick-kit/trick.test.ts, the helper's POSIX tools. Each name sits on one line, so the pin test can find it:
+#                - "t.sh runs without a shell, never throws, caps its output, stops on time, and hides BUN_BE_BUN from the child" (echo, head, sleep, env, /dev/zero)
+#                - "t.tool finds a program on PATH, else in the extra and user folders, PATH only under TRICK_TOOLS_ONLY_PATH=1" (sh on /usr/bin:/bin, a tool found by its executable bit)
+#              The helper's output, cli (16): gated on Windows (b). A program that uses the trick helper (`./trick.ts`) prints
+#                nothing on Windows yet, so Collie gates tricks there (bridge/tricks/service.ts `gated`). Each test that runs
+#                such a program is `helperTest`, a `test.skipIf` on win32: 1 in cli/trick.test.ts ("the folder init writes
+#                passes check --run with no refusal, in both forms"), 9 in cli/trick-kit/trick.test.ts and 6 in
+#                cli/trick-dev.test.ts. Remove them with the fix of the helper's output.
+#              scripts 34: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
 #                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
 #                The other 2 are in the harness lab (scripts/harness-canary/lab/):
 #                - "POSIX only: the login copy has mode 600" in seed.test.ts (Windows has no file modes)
 #                - "a real throwaway server starts, shows its pane, stops, and leaves no socket" in tmux.test.ts
 #                  (it needs a tmux binary, and Windows has none)
+#                The last 9 are every test of scripts/official-tricks.test.ts, the maintainer script that keeps the official
+#                list in step with the tricks repository: it builds a temp repository of `#!/bin/sh` programs with an
+#                executable bit and reads it through `file://`, as the add from the list does (bridge 32 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 115,
-  [int]$MaxSkipsCli = 66,
-  [int]$MaxSkipsScripts = 25
+  [int]$MaxSkipsBridge = 172,
+  [int]$MaxSkipsCli = 180,
+  [int]$MaxSkipsScripts = 34
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }
 $ErrorActionPreference = "Continue"

@@ -577,6 +577,7 @@ These limits also hold:
 - `herdr plugin install` is not a Windows install path. Use `install.ps1`, then `collie start`.
 - Herdr's action buttons do not exist on Windows, because they need `bash`.
 - A permission that a hook holds is not on Windows yet. Collie builds no hold socket there, so every permission stays a screen ask.
+- Tricks do not run on a Windows machine yet. `collie trick on`, `collie trick add` and `collie trick view` say so, and Settings, Tricks shows that one line. An agent cannot post to the Hill or use WalkyTalky there either, because Collie builds no WalkyTalky socket on Windows.
 - The nightly harness lab runs on Linux only. It is not on Windows.
 - Herdr's Windows build is made by the Herdr project. Collie depends on it and does not control it.
 

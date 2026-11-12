@@ -35,7 +35,7 @@ CSS in it.
 - A colour is `#rrggbb`, `#rrggbbaa` or `oklch(L C H)` with an optional `/ A`. No named colour, no
   `rgb()`, no `var()`.
 - Write the lowest `version` that holds the file: 1 for colours and `fonts.ui` only, 2 with `surface`,
-  `fonts.display` or `ansi`, 3 with `pane-active` or `tab-active`, 4 with `character` or `glyphs`.
+  `fonts.display` or `ansi`, 3 with `pane-active`, `tab-active` or `find`, 4 with `character` or `glyphs`.
 - `character` is optional. See "Characters" below.
 - `glyphs` is optional. See "Glyphs" below.
 - A font is one of the six names under "Write a theme". A theme cannot add a font.

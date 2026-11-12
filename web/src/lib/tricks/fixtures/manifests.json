@@ -1,0 +1,40 @@
+{
+  "legs": {
+    "id": "legs",
+    "name": "Browser leg",
+    "run": "./legs.sh",
+    "every": "30s",
+    "contract": 1,
+    "icon": "flask",
+    "places": [
+      "belt",
+      "session"
+    ]
+  },
+  "tracker": {
+    "id": "tracker",
+    "name": "Tracker",
+    "run": "bun program.ts",
+    "every": "5m",
+    "icon": "flag",
+    "places": [
+      "session"
+    ]
+  },
+  "later": {
+    "id": "watcher",
+    "name": "Watcher",
+    "run": "./watch.sh",
+    "watch": [
+      "~/.cache/collie-lab/leg.log"
+    ],
+    "on": [
+      "turn.end"
+    ],
+    "mode": "serve",
+    "places": [
+      "belt",
+      "header.line"
+    ]
+  }
+}

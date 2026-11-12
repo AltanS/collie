@@ -56,6 +56,8 @@ that browser, and it changes nothing on the bridge.
 Every theme has two halves. The light half is the set of colours for light mode. The dark half is the set
 for dark mode. A colour in a theme has a name, such as `background` or `primary`, and that name is a token.
 
+The [Themes reference](themes-reference.md) lists every key, token, word and limit of a theme file in one page, generated from the code.
+
 ## The four themes
 
 Collie ships four themes, and every one of them uses every part of a theme file except [`character`](#characters). Each picture shows the Dashboard,
@@ -228,7 +230,7 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
   does not ship.
 - A shape word is not on its list, or a number stands where a word goes.
 - It has a `surface` block, a `fonts.display` face or an `ansi` block, and says version 1.
-- It sets `pane-active`, and says version 1 or 2.
+- It sets `pane-active`, `tab-active` or `find`, and says version 1 or 2.
 - It sets `character`, and says version 1, 2 or 3. Or `character` is not a word from
   [Characters](#characters).
 - Its `ansi` block lacks a key, has a colour with an alpha, or fails a gate under
@@ -272,6 +274,7 @@ the other parts. A floor is a contrast ratio, so a higher number is easier to re
 | `rule` on `background` | 1.3 |
 | `pane-active` on `background`, only in a half that sets it | 3 |
 | `tab-active` on `background`, only in a half that sets it | 3 |
+| `foreground` on `find` laid over `background`, only in a half that sets it | 4.5 |
 | `status-blocked` apart from `status-done` | a distance of 0.15 |
 
 - **Destructive text is held to what Collie measures when you keep its colours.** A theme that keeps both
@@ -433,12 +436,12 @@ A file says which version it is, and Collie writes the lowest version that holds
 | --- | --- |
 | 1 | Colours in `light` and `dark`, and `fonts.ui`. |
 | 2 | Everything in version 1, and any of `surface`, `fonts.display` and `ansi`. |
-| 3 | Everything in version 2, and the optional tokens `pane-active` and `tab-active`. |
+| 3 | Everything in version 2, and the optional tokens `pane-active`, `tab-active` and `find`. |
 | 4 | Everything in version 3, the keys `character` and `glyphs`, and `surface.ground` as an object. |
 
 - A file with a `surface` block, a `fonts.display` face or an `ansi` block must say 2. A file that says 1 and
   has one of them is refused.
-- A file with `pane-active` or `tab-active` in `light` or `dark` must say 3. A file that says 1 or 2 and
+- A file with `pane-active`, `tab-active` or `find` in `light` or `dark` must say 3. A file that says 1 or 2 and
   sets one of them is refused. The cause names the token and the version.
 - A file with `character` or `glyphs` must say 4. A file that says 1, 2 or 3 and has one of them is refused:
   "A file with "character" must say version 4. This one says version 3."
@@ -455,8 +458,8 @@ A file says which version it is, and Collie writes the lowest version that holds
 - From 1.28, a file of a version newer than this Collie reads says so: "This file was made for a newer
   Collie (version 5). Update Collie to use it."
 - A newer word or token also needs a newer Collie, whatever the version says. `zoom` needs 1.26.2.
-  `tabs`, `composer` and `tab-active` need Collie 1.27.0 or newer. An older Collie refuses a
-  file that names one of them, because it does not know the key.
+  `tabs`, `composer` and `tab-active` need Collie 1.27.0 or newer. `find` needs Collie 1.29.0 or newer.
+  An older Collie refuses a file that names one of them, because it does not know the key.
 - A theme that names none of those keeps working on every Collie its version allows.
 - A version 1 file means the default word of each list for every token of `surface`.
 
@@ -518,16 +521,18 @@ Each half takes any of these, in four groups.
 
 ### The optional tokens
 
-Two more tokens are optional, and they are the reason for version 3. They are not among the 43, and a theme
+Three more tokens are optional, and they are the reason for version 3. They are not among the 43, and a theme
 may leave them out.
 
 | Token | Meaning |
 | --- | --- |
 | `pane-active` | The frame of the active pane column on a large screen. |
 | `tab-active` | The top edge of the open tab and the ring of the open pane, when the theme sets `tabs` to `folder`. |
+| `find` | The ground under a found or matched piece of text: a hit of Find in Chat, and the marked letters of the session filter. Give it an alpha, because it lies over the surface under the text and the text keeps its own colour. |
 
 When a theme leaves out `pane-active` in a half, that half takes the ink of the theme Collie. When it
 leaves out `tab-active`, that half takes its own text colour, so a folder tab draws its top edge in ink.
+When it leaves out `find`, that half takes the amber of the theme Collie.
 Collie measures each one only in a half that sets it. See [The contrast report](#the-contrast-report). A file
 that sets one of them must say [version 3](#versions).
 

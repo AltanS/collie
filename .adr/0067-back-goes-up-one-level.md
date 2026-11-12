@@ -163,3 +163,18 @@ Rule 3 says the arrow and the swipe land on the same screen, and in the tree the
   The ancestor and same-place tests compared the text, so a pane opened by a typed URL was not the
   parent of its own Changes screen and the arrow replaced instead of stepping back. They compare
   percent-decoded segments now (`decodedPath`).
+
+## Amended 2026-11-10: the footer on the Hill and on a trick's Session
+
+The Dashboard's footer now also shows on `/hill` and on `/trick/:id`
+([ADR 0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md), amended the same day). Its
+taps there follow the three moves, so the footer never builds a stack of taps for the swipe.
+
+- **A tab is an up to one named parent** (`useNav().upTo(homePath(scope))`). It stores the view first,
+  as the footer does on the Dashboard, then steps back onto the Dashboard's entry when that is the entry
+  behind, and otherwise replaces onto it. The Hill or the Session is then forward, never behind.
+- **The Hill item on a trick's Session, and a trick's item on the Hill or on another Session, are
+  sideways** (`nav.side`): a replace that carries `from`, so the new route's arrow still goes up to the
+  Dashboard. A down push here would leave the Hill behind the Session, and the Session's up would then
+  replace onto a Dashboard with the Hill one swipe behind it.
+- **The route's own item does nothing.**

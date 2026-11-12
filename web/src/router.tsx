@@ -10,6 +10,7 @@ import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { HomeRoute } from "@/routes/home";
 import { SlotRoute } from "@/routes/slot";
 import { SpaceRoute } from "@/routes/space";
+import { TrickSessionRoute } from "@/routes/trick-session";
 import { NewRoute } from "@/routes/new";
 import { NewAddRoute } from "@/routes/new-add";
 import { DetailRoute } from "@/routes/detail";
@@ -22,6 +23,7 @@ import {
   SettingsAppearanceRoute,
   SettingsHarnessesRoute,
   SettingsExperimentsRoute,
+  SettingsTricksRoute,
   SettingsDeviceRoute,
   SettingsVoiceRoute,
   SettingsVoiceHostRoute,
@@ -33,6 +35,8 @@ import { CrewRoute } from "@/routes/crew";
 import { MachineRoute } from "@/routes/machine";
 import { MachinesRoute } from "@/routes/machines";
 import { UpdatesRoute } from "@/routes/updates";
+import { HillRoute } from "@/routes/hill";
+import { PairApproveRoute } from "@/routes/pair-approve";
 import {
   devicesLoader,
   historyLoader,
@@ -93,9 +97,19 @@ export const router = createBrowserRouter([
       // A permanent address for one browser tab; it replaces itself with that tab's last pane (lib/slots.ts).
       { path: "slot/:slot", element: <SlotRoute /> },
       { path: "space/:spaceId", element: <SpaceRoute /> },
+      // A trick's own session (M94 slice 03). No loader: it reads the root snapshot (the Tricks Space) and
+      // the tricks store, which the root loader keeps at the snapshot's `tricksRev`.
+      { path: "trick/:paneId", element: <TrickSessionRoute /> },
       // The New page (M48), a page since 1.19.0 and a bottom sheet before. No loader: it reads the root
       // snapshot (for a pane's folder and branch) and asks the chosen machine's bridge for its own lists.
       // Where it was opened from rides in the query (`?machine=`, `?pane=`, `?s=`), so a reload keeps it.
+      // The hill (M96): the Decisions agents posted, one level below the Dashboard. No loader: its
+      // lists live in lib/hill/store.ts, kept current by the root loader.
+      { path: "hill", element: <HillRoute /> },
+      // A paired browser answers another device's pairing request here (ADR 0139). Reached only from the
+      // QR the new device shows (`?r=<public id>`); nothing in the app links to it. No loader: the page
+      // reads the request itself, and a browser that is not paired is told so without a read.
+      { path: "pair/approve", element: <PairApproveRoute /> },
       { path: "new", element: <NewRoute /> },
       // "Add your own" (ADR 0094): a page below New, for a launcher this phone adds on one machine.
       { path: "new/add", element: <NewAddRoute /> },
@@ -124,6 +138,8 @@ export const router = createBrowserRouter([
       // what an operator who bookmarked it gets after the last experiment graduates: an empty page
       // rather than a 404.
       { path: "settings/experiments", element: <SettingsExperimentsRoute /> },
+      // Tricks (M94): routable always; the index offers its row only while the phone holds a tricks reply.
+      { path: "settings/tricks", element: <SettingsTricksRoute /> },
       // The System section carries the paired-device registry, so it gets the loader Settings used
       // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
       // revalidate), with no second data path.

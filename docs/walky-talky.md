@@ -19,10 +19,10 @@ tell that agent to run them.
    ```
 
    ```text
-   ADDRESS           MACHINE  HARNESS  LABEL             STATE
-   local/w1:p1#a1b2  desk     claude   my-app#main       working  (you)
-   local/w1:p2#c3d4  desk     codex    my-app#fix-login  idle
-   local/w1:p3#e5f6  desk     claude   api               done
+   ADDRESS           MACHINE  HARNESS  LABEL             SPACE  STATE
+   local/w1:p1#a1b2  desk     claude   my-app#main       work   working  (you)
+   local/w1:p2#c3d4  desk     codex    my-app#fix-login  work   idle
+   local/w1:p3#e5f6  desk     claude   api               work   done
    ```
 
 2. Send a message to a pane, with an address copied from the ADDRESS column.
@@ -53,8 +53,10 @@ body with `collie walky inbox <id>`. Your reply appears in the first pane the sa
 
 ### Across machines
 
-A [crew](crew.md) joins your machines to one lead. On the lead, `collie walky who` lists the panes of
-every machine, and a message to one of them goes through the lead ([Across a crew](#across-a-crew)).
+A [crew](crew.md) joins your machines to one lead. `collie walky who` lists the panes of your space on every
+machine, and a message to one of them goes through the lead ([Across a crew](#across-a-crew)). An
+agent's message stays in its space, and a space of the same name on two machines is one space
+([Your space](#your-space)).
 
 ### Teach your agents
 
@@ -70,24 +72,33 @@ collie walky who
 collie walky send collie-7k2m9p/w54:p1G#1adi "Tests are green on fix-login. You can merge."
 ```
 
-`who` lists every agent pane you can reach. Pick an address from that list and pass it to `send`.
+`who` lists the agent panes of your space. Pick an address from that list and pass it to `send`.
+`who --all` lists every agent pane you can reach, in every space. Outside an agent pane, `who` lists
+every pane.
 On a machine with only your own agent pane, `who` says
 `You are local/<pane>#<token>. No other agent pane yet. A message needs two.`
 
 ### Read the who table
 
 ```text
-ADDRESS                     MACHINE  HARNESS  LABEL             STATE
-collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       working  (you)
-collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  done
-collie-7k2m9p/w54:p1J#anx6  desk     claude   api               done
-laptop/w11:p4#8h9h          laptop   claude   api               idle
-server/t1#9m3x              server   claude   my-app#main       idle
+ADDRESS                     MACHINE  HARNESS  LABEL             SPACE  STATE
+collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       work   working  (you)
+collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  work   done
+collie-7k2m9p/w54:p1J#anx6  desk     claude   api               work   done
+laptop/w11:p4#8h9h          laptop   claude   api               work   idle
+server/t1#9m3x              server   claude   my-app#main       work   idle
+2 panes are outside your space. List every pane: collie walky who --all
 ```
+
+From an agent pane, the list is the sender's space, `work` here. The last line counts the panes that
+are outside it and names `--all`. It does not print when no pane is outside. A shell that is no agent
+pane has no space, so it lists every pane and prints no such line.
 
 - **Copy ADDRESS as printed.** Its first part is the member id, not the machine. On a lead it is the
   crew id (`collie-7k2m9p`) for the lead's own panes, on a member it is the member's name
   (`laptop`), and with no crew it is `local`. Pick the row by MACHINE and LABEL.
+- **SPACE** is the workspace or session the pane runs in ([Your space](#your-space)). A space with no
+  name of its own prints its label and `(this machine)`.
 - **`(you)` marks your own pane.** A message to it is refused `that is your own pane`.
 - **Labels can repeat.** Two rows above are called `api`, one on each machine. MACHINE tells
   them apart. If two rows still match, ask the operator which one is meant.
@@ -128,17 +139,17 @@ receiver read it or answered it.
 
 ## Addresses
 
-An address names one pane, one machine's panes, every pane, or the panes of one folder.
+An address names one pane, one machine's panes, every pane, the panes of one folder, or your space.
 
 | Address | Who receives it |
 | --- | --- |
 | `<member>/<pane>#<token>` | One pane, while it stays open. `who` prints this form, for example `collie-7k2m9p/w54:p1G#1adi`. The member is the crew id on a lead, the member's name on a member, and `local` with no crew. It is never the machine name |
 | `<member>/<pane>` | Whatever pane holds that id now. On a machine with no crew the member is `local` |
-| `<member>/all` | Every agent pane on that machine. From the phone only |
-| `all` | Every agent pane you can reach. From the phone only |
-| `<repo>` | Every agent pane in a folder of that name, on every machine of the crew, on any branch. `<repo>` is the last part of the folder path, as `who` shows it before the `#` in the LABEL column, for example `my-app` |
+| `<member>/all` | Every agent pane on that machine. From the phone, or from an agent with `--outside` |
+| `all` | Every agent pane you can reach. From the phone, or from an agent with `--outside` |
+| `<repo>` | Every agent pane in a folder of that name, in the sender's space, on every machine of the crew, on any branch. With `--outside`, in every space. `<repo>` is the last part of the folder path, as `who` shows it before the `#` in the LABEL column, for example `my-app` |
 | `<repo>#<branch>` | The same, on one branch, for example `my-app#main` |
-| `here` | The sender's own folder, on every machine of the crew, without the sender's own pane |
+| `here` | The sender's own space, on every machine of the crew, without the sender's own pane |
 
 A terminal may give a closed pane's id to the next pane. Herdr's `w6:p3`, tmux's `%7` and zellij's
 `terminal_3` only count up, but Collie does not rely on that. So Collie gives every pane a token,
@@ -158,28 +169,47 @@ binary. The installed skill pins the binary of the instance that installed it. S
 instance's panes.
 
 A shell pane never receives a message. Only panes the bridge sees as an agent do. An agent may
-message one pane, or the panes of one folder; only you may broadcast to `all` or `<member>/all`.
+message one pane, its space with `here`, or the panes of one folder in its space. An agent's `all`
+or `<member>/all` needs `--outside` ([Leaving your space](#leaving-your-space)). You may broadcast
+to them from the phone as before.
 
-### Send to a workspace
+### Your space
 
-A workspace is a folder name. The same folder name on two machines is one workspace, so one
-message can reach the agents of a project on every machine of the crew. The lead reads the
-LABEL column of its merged `who` list, picks every agent pane whose `<repo>` matches, and makes one
-delivery per pane. The sender's own pane is never one of them. Each delivery has its own receipt.
+A message from an agent stays in the agent's space. A space is the group of panes your multiplexer
+keeps: a Herdr workspace, a tmux session or a zellij session ([Space](terminology.md#space)). Collie
+knows a space by its name. The same name on two machines of a crew is one space, so one message can
+reach the agents of a space on every machine. A message that would leave the space is refused
+`outside your space` ([Leaving your space](#leaving-your-space)).
 
-Check the scope first. `who --workspace` lists only the panes a send to that word would reach, and
-`who --here` does the same for your own folder. `--here` needs a pane. The two flags are not
-allowed together.
+**Name your spaces.** A space with no name of its own is unnamed. It stays on its one machine and
+never joins a space of the same name elsewhere. A tmux session whose name is only digits, such as `0`
+or `3`, counts as unnamed. So does a space that the multiplexer names only by its id. Give a space a
+real name in the multiplexer, on every machine, when its agents must reach each other across the
+crew. `who` prints an unnamed space with `(this machine)` after its label.
+
+### Send to a space or a folder
+
+`here` is your whole space. A word such as `my-app` is a folder, the last part of a pane's folder
+path, and it narrows a send to the panes of that folder inside your space. The same folder name on two
+machines is one folder. The lead reads the LABEL column of its merged `who` list, picks every agent
+pane in your space whose `<repo>` matches, and makes one delivery per pane. The sender's own pane is
+never one of them. Each delivery has its own receipt.
+
+Check the scope first. `who` lists your space, the panes `here` would reach and you. `who --workspace
+<repo>` keeps only the panes of one folder inside the list that is shown, so a folder of another space
+shows only with `--all`. `--here` is the same as the default, and it needs a pane. `--all` and
+`--here` are not allowed together. A folder name in another space is not reached, unless you add
+`--outside`.
 
 ```sh
 collie walky who --workspace my-app
 ```
 
 ```text
-ADDRESS                     MACHINE  HARNESS  LABEL             STATE
-collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       working  (you)
-collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  done
-server/t1#9m3x              server   claude   my-app#main       idle
+ADDRESS                     MACHINE  HARNESS  LABEL             SPACE  STATE
+collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       work   working  (you)
+collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  work   done
+server/t1#9m3x              server   claude   my-app#main       work   idle
 ```
 
 `who --workspace my-app#main` keeps one branch. A folder with no agent pane prints
@@ -199,8 +229,8 @@ collie-7k2m9p/w54:p1G: typed into the pane
 server/t1: typed into the pane
 ```
 
-`here` does the same without naming the folder: `collie walky send here "..."` reaches your
-siblings in your own folder. `status <id>` prints the lines again, each with how this machine knew
+`here` does the same without naming the folder: `collie walky send here "..."` reaches every agent
+in your space, on every machine, whatever its folder. `status <id>` prints the lines again, each with how this machine knew
 the sender, and ends with a totals line, here `2 deliveries: delivered 2`.
 
 A machine the lead cannot reach has one line for all its panes, `<member>/all: not sent: unreachable`.
@@ -210,7 +240,7 @@ them.
 A scope send counts as one message against your 30 in 10 minutes, and as one message per delivery
 against the limits of each machine. A scope that holds more than 50 panes is refused with the
 count. A word that is a member id, such as `laptop`, is refused, and the refusal names
-`laptop/all`. `here` from the phone is refused: a phone has no workspace, so name the folder.
+`laptop/all`. `here` from the phone is refused: a phone has no space, so name the folder.
 A scope with no agent pane is refused with `no panes in scope`, and the refusal names
 `collie walky who`.
 
@@ -237,6 +267,36 @@ Each delivery that is typed is one send into one pane, so it follows the rules o
 delivery, and `status <id>` shows that line as held. Before it types, the member that holds the
 pane reads the pane's label again. A pane that left the scope is refused `out of scope`.
 
+### Leaving your space
+
+An agent's message is for its own space. The machine that owns the target pane checks this, and
+checks again before it types a message that was held. It lets a message through in four ways:
+
+- **It is yours.** A message from the phone is not bound by a space.
+- **It is a reply.** A reply to a message that the target pane sent to you always works, in both
+  directions, so a thread can go on.
+- **The panes share a space.** That is every `here` send, and every send to a pane of your own space.
+- **You add `--outside`.** `collie walky send --outside <address> "<text>"` crosses. `reply --outside`
+  is accepted too. With `here` the flag is accepted and changes nothing. From a shell that is no agent
+  pane the flag is a usage error, because only an agent's message has a space to leave.
+
+Every other send is refused `outside your space`, with a hint to use `here`, a reply or `--outside`.
+An agent uses `--outside` only when its operator asked for it, as with `--wake`. An agent's `all` and
+`<member>/all` need the flag, and a bare word such as `my-app` reaches the panes of other spaces only
+with it. The receipt records how the message passed. The bridge checks the space before the flag. A
+message with `--outside` to a pane of your own space passes as `in`, and its header has no `outside`
+word. Only a message that really crossed has the word `outside` in its header, so the receiver knows the
+sender is not of its space ([What the target pane receives](#what-the-target-pane-receives)). An agent's
+`all` with `--outside` reaches every agent pane: the panes of your space pass as `in`, and the others as
+`outside`.
+
+There is no switch that turns the border off. `--outside` is the way out.
+
+**An upgrade note.** `here` used to mean the sender's folder, across spaces. It is now the sender's
+space. A send to a folder name or to `all` that reached other spaces before is now refused until the
+agent adds `--outside`. The WalkyTalky skill teaches agents the new rule. Run `collie skill sync` to
+update it ([Install the skill](#install-the-skill)).
+
 ## What the target pane receives
 
 An agent's message types one line into the target pane, and no body.
@@ -251,8 +311,9 @@ Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
 ```
 
 The line starts with the header. It names the message id, who typed it, and their pane (with its
-token), harness and label (`<repo>#<branch>`, or the pane's title). A reply adds ` reply to <id>` after the
-parenthesis. The agent then runs `collie walky inbox <id>` and reads the body as that command's
+token), harness and label (`<repo>#<branch>`, or the pane's title). A message that crossed into
+another space with `--outside` adds the word `outside` after the parenthesis, before any
+` reply to <id>`. A message with `--outside` to a pane of the sender's own space adds no word. The agent then runs `collie walky inbox <id>` and reads the body as that command's
 output. A harness treats a command's output as data, not as its operator's words.
 
 Your own message, from the phone, types the header and the body:
@@ -351,12 +412,13 @@ collie walky cancel wt_n2d8s1v7c4b9
 - `inbox` prints this pane's unread messages and marks them read. `--keep` leaves them unread.
 - `inbox --all` prints the last 50 that reached the pane. Outside a pane, it lists every message on
   the machine, and a plain `inbox` is refused.
-- `who --workspace <repo>[#<branch>]` and `who --here` list only the panes of one workspace
-  ([Send to a workspace](#send-to-a-workspace)).
+- `who` lists the panes of your space, and `who --all` lists every pane. `who --workspace
+  <repo>[#<branch>]` lists one folder in the space, and `who --here` is the default
+  ([Send to a space or a folder](#send-to-a-space-or-a-folder)).
 - `status <id>` prints the id, then one line per pane. Each line has the state in words and how
   this machine knew the sender: "signed by" a machine, "relayed by the lead", or "this machine". A
   machine that refused a whole broadcast, for example with WalkyTalky off, has one line for all
-  its panes, `<member>/all`. A send to a workspace adds `to <scope>` under the id and a totals
+  its panes, `<member>/all`. A send to a scope adds `to <scope>` under the id and a totals
   line at the end.
 - `cancel <id>` takes back a message you sent while it is held. Run it in the pane that sent the
   message. The message stays in the inbox, not typed, and the receipt reads
@@ -374,8 +436,9 @@ lead checks the sender's signature against the key it pinned for that machine. T
 receives the message then checks the lead's own signature on it. The lead also sends the sender's
 certificate with its own word for it, so the receiving machine checks the sender's signature too.
 
-- **`who` on the lead** lists the agent panes of every machine. **`who` on a member** lists its own
-  panes, then this line:
+- **`who` on the lead** lists the agent panes of every machine. **`who` on a member** asks the lead
+  for the crew's panes, so its list and a `send here` agree. When the lead does not answer, or is
+  older than 1.29.0, it lists its own panes, then this line:
 
   ```text
   other machines: run `collie walky who` on the lead (desk), or use the phone
@@ -396,6 +459,14 @@ certificate with its own word for it, so the receiving machine checks the sender
   `not sent: older member` at once, with no dial. A member under an older lead gives
   `not sent: older lead`. Run `collie crew update --all` to fix it
   ([Crews](crew.md#messages-between-machines)).
+- **The space border across versions.** A lead older than 1.29.0 cannot check the border, so a member
+  refuses to send it an agent's message, with `lead older than 1.29.0: update the lead`. A lead checks the
+  border itself for a member older than 1.29.0, which cannot. A message from a member older than
+  1.29.0 names no space. It passes as before, and its receipt says `legacy`.
+- **A Decision goes to the lead's Hill.** `collie hill post` on a member posts on the lead, and the
+  answer comes back to the session as a message through the lead. An answer to a session whose
+  machine is not answering is not sent, and the card stays open
+  ([Decisions from any machine](crew.md#decisions-from-any-machine)).
 
 The receipt's `verified` field says how the sender was known. `origin` means the sender's own key
 was checked. `lead` means the lead checked it, and this machine trusts the lead. `local` means
@@ -419,7 +490,7 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 | `accepted` | queued, or held with the reason | Logged, not typed yet. `held: draft present` or `held: turn running`: Collie types it when the box clears or the turn ends, up to 60 minutes. Do not send it again |
 | `delivered` | typed into the pane | The text went into the pane and was submitted |
 | `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 60 minutes` (a draft, a busy pane or an open dialog outlasted the hold), `cancelled by sender`, `dropped by the pane's owner`, `box not free`, `pane busy`, `pane replaced`, `no terminal`, `bridge restarted`, `resting` (a scope or `all` met a session that rests, printed as "the session rests"; send with `--wake` to type it). It waits in the pane's inbox |
-| `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, an older member or lead, a session with its WalkyTalky off, or WalkyTalky off on that machine |
+| `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, outside your space, a limit, an older member or lead, a session with its WalkyTalky off, or WalkyTalky off on that machine |
 | `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 60 minutes, or the log lost the record. Collie never sends it again |
 
 The words are what the CLI and the phone show. `--json` and the receipt keep the state names.
@@ -511,7 +582,10 @@ An agent uses WalkyTalky only when it knows how. Collie writes the skill that te
 your agents' own instruction files.
 
 The skill is a short text. It teaches the agent the `collie walky` verbs, how to read the header
-of a message, and when not to send.
+of a message, and when not to send. It also teaches the agent to put a Decision on the hill with
+`collie hill post`, with the same rules `collie hill post --help` prints, and to read what a trick asks of
+it with `collie trick skill <id>`. A copy installed before this text read as stale until the next
+`collie skill sync`.
 
 After each update, Collie installs the skill into every harness it finds on this machine, and
 keeps each copy current. A rollback and a switch of release line do the same with the build they
@@ -556,8 +630,8 @@ In a shared instruction file, Collie owns only the text between these two lines.
 stays as you wrote it.
 
 ```
-<!-- collie:walky-talky v1 begin -->
-<!-- collie:walky-talky v1 end -->
+<!-- collie:walky-talky v2 begin -->
+<!-- collie:walky-talky v2 end -->
 ```
 
 If the file is absent, Collie creates it. If the block is present, Collie replaces it in place.
@@ -656,13 +730,13 @@ These are the limits that stay on. Each bridge counts them for its own panes, on
 
 | Limit | Refused as |
 | --- | --- |
-| 30 messages per sender in 10 minutes. A sender is its kind, machine and pane, never its label | `rate limit` |
+| 30 messages per sender in 10 minutes. A sender is its kind, machine and pane, never its label. The Hill's "Tell all sessions now" counts in a budget of its own, so it never uses up the one your answers go out on | `rate limit` |
 | Your broadcast to `all` or `<member>/all` counts one message per pane it reaches | `rate limit` |
 | 6 messages in 10 minutes between the same two panes, either direction. `COLLIE_WALKY_PAIR_LIMIT` (`walky_pair_limit` in the `[bridge]` section of the config file) sets it, from 1 to 100, and each machine counts for itself | `pair limit` |
 | On a lead, 60 messages in 10 minutes from one machine, all its panes together | `rate limit` |
 | A body over 4,000 characters, after control bytes are removed | `body over 4,000 characters` |
 | A reply chain deeper than 4 replies | `thread depth` |
-| An agent's message to `all` or `<member>/all`. Only you may broadcast | `only the operator may broadcast` |
+| An agent's message to a pane outside its space, to `all` or `<member>/all`, or to a folder of another space, with no `--outside` and no reply to that pane | `outside your space` |
 | A message to the sender's own pane | `that is your own pane` |
 | A reply to a message this pane never received | `unknown reply` |
 | A pane id that two sessions on one machine both use, in an address with no token | `ambiguous pane` |
@@ -694,8 +768,12 @@ Find the receipt, then follow the symptom. `collie walky status <id>` prints the
   message with `collie walky inbox` ([Receipts](#receipts)).
 - **`not sent: older member` or `not sent: older lead`.** One machine of the crew is too old. Run
   `collie crew update --all` ([Across a crew](#across-a-crew)).
+- **`not sent: outside your space`.** The target pane is in another space. Use `here`, reply to a
+  message that pane sent, or add `--outside` when you asked for it
+  ([Leaving your space](#leaving-your-space)). Two machines share a space only when it has the same
+  name on both, so name an unnamed space ([Your space](#your-space)).
 - **`not sent: unreachable`.** The lead cannot reach that machine. Collie does not retry it
-  ([Send to a workspace](#send-to-a-workspace)).
+  ([Send to a space or a folder](#send-to-a-space-or-a-folder)).
 - **`not sent: walky talky off`.** That session takes messages from you only. Pass the message on
   yourself ([Turn it off for one session](#turn-it-off-for-one-session)).
 - **`not sent: off`, `rate limit` or `pair limit`.** A switch or a limit refused it

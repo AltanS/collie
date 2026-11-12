@@ -244,6 +244,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
+import { BAD_HEAD, hasViewHead, VIEW_NO_PROFILE } from "../../web/src/lib/agent-view/wire.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
@@ -609,7 +610,26 @@ export interface SendRequest {
    * under the pane lock right before the key, to show an idle turn as well as the exact text in the box.
    */
   readonly returnedCard?: boolean;
+  /**
+   * A send from an agent view (bridge/agent-view/service.ts `prepareSend`): set by `POST /api/send` alone,
+   * never read off a body. `check` runs under the pane lock right before the first key and names why the
+   * send may not go (the screen, the switch or the trick moved), or null. `head` is true when the text
+   * carries the view's head: such a send is never held, never steers, and is refused while a turn runs,
+   * while a dialog shows and at an answer box. Typed text sent plain (`head` false) answers a question
+   * as the person's own words and is never held either.
+   */
+  readonly view?: { readonly head: boolean; readonly check: () => string | null };
 }
+
+export { BAD_HEAD, VIEW_NO_PROFILE };
+/** Why a send from a view is refused while held sends wait on the pane: a view send never queues. */
+export const VIEW_BEHIND_HELD = "Sends are waiting on this session; a send from a view does not queue behind them.";
+/** Why a send from a view is refused while the turn runs. */
+export const VIEW_IN_TURN = "The agent is working; a send from a view goes only to a free session.";
+/** Why a send from a view is refused while a dialog or an answer box shows. */
+export const VIEW_AT_QUESTION = "A question or a dialog is open in this session; answer it first.";
+/** Why a send from a view is refused while the person's draft is in the box: no key touches it. */
+export const VIEW_AT_DRAFT = "Your draft is in this session's box; send it or clear it first.";
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
 
@@ -3006,6 +3026,8 @@ export class SendProtocol {
     const waiting = holds?.waiting(target.session, target.paneId) ?? [];
     // A queue of marked sends held over a draft only (M62 spec 02) does not take an unmarked send: that
     // one runs, and a draft still in the box refuses it with its offers, as on a pane with no queue.
+    // A send from an agent view never joins a queue: it goes now or is refused `busy` (rule 8).
+    if (request.view !== undefined && waiting.length > 0) return this.settle(this.bareState(request, accepted.record, target, null), new Ended("refused", "busy", { detail: VIEW_BEHIND_HELD }));
     const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.draftHolds === true && entry.cause === "draft_present");
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
     // which wait for that turn to end anyway.
@@ -3076,6 +3098,8 @@ export class SendProtocol {
    */
   private holdsEnd(state: RunState, end: Ended): boolean {
     if (this.deps.holds === undefined || end.outcome !== "refused") return false;
+    // A send from an agent view never queues: the person taps again once the session is free.
+    if (state.request.view !== undefined) return false;
     // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
     if (state.request.when === "steer") return false;
     const clean = cleanProbe(state, end);
@@ -3761,6 +3785,10 @@ export class SendProtocol {
       return release ? this.backToQueue(state, busy) : this.settle(state, busy);
     }
     try {
+      // A send from an agent view: the screen it was built from, the switch and the trick, read again
+      // under the lock, right before anything is read or typed (agent views SECURITY rule 6).
+      const moved = state.request.view?.check() ?? null;
+      if (moved !== null) throw new Ended("refused", "stale_view", { detail: moved });
       await this.steps(state);
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
@@ -4023,6 +4051,8 @@ export class SendProtocol {
       return held !== null;
     };
 
+    // A send with a view's head goes only where S0 can prove the session free (rule 5): never blind.
+    if (match === null && request.view?.head === true) throw new Ended("refused", "not_free", { detail: VIEW_NO_PROFILE });
     if (match === null && (request.mode === "send" || request.mode === "command")) {
       await this.blindSend(state, lines);
       return;
@@ -4289,6 +4319,13 @@ export class SendProtocol {
     // Replace): a box that answers the agent's question would take it as the answer. It waits. So does
     // every request that is no person's own send from the phone (a walky talky message, a hook, the
     // CLI): only the person answers the agent's question.
+    // A send with a view's head goes only to a free session: no turn, no dialog, no answer box (rule 5).
+    if (state.request.view?.head === true) {
+      if (answersQuestion(state.match, s0) || s0.surface.modal !== "none") throw new Ended("refused", "not_free", { surface: s0.surface, detail: VIEW_AT_QUESTION });
+      if (s0.surface.turn !== "idle") throw new Ended("refused", "busy", { surface: s0.surface, detail: VIEW_IN_TURN });
+      // The person's own draft is theirs: a view send neither joins it nor probes it (review 9, rule 5).
+      if (s0.surface.composer === "draft") throw new Ended("refused", "draft_present", { surface: s0.surface, detail: VIEW_AT_DRAFT });
+    }
     if (answersQuestion(state.match, s0)) {
       if (state.released === true || state.request.fromPhone !== true) {
         state.answerWait = true;
@@ -5281,6 +5318,10 @@ export class SendProtocol {
    */
   private async write(state: RunState, lines: readonly string[]): Promise<void> {
     state.phase = "write";
+    // A send from an agent view (review 9 R4): the screen, the switch and the gate, read once more right
+    // before the first key, since S0's reads and settles may have waited while the agent redrew.
+    const moved = state.request.view?.check() ?? null;
+    if (moved !== null) throw new Ended("refused", "stale_view", { detail: moved });
     const { mux } = this.deps;
     if (state.whole !== null && mux.pasteBlock !== undefined) {
       this.guard(state);
@@ -5841,6 +5882,8 @@ function draftRefusal(state: RunState, s0: Snap): Ended {
  * (a typed `/model`, the belt's Model), the box is emptied first, and the text goes out as a command.
  */
 function textRefusal(request: SendRequest, match: ProfileMatch | null): Ended | null {
+  // One head, one door (agent views SECURITY rule 2): the view's head is typed only by the view's own send.
+  if (request.view?.head !== true && hasViewHead(request.text)) return new Ended("refused", "bad_head", { detail: BAD_HEAD });
   const lines = sendLines(request.text);
   const leads = match?.profile.reservedLeads ?? GENERIC_LEADS;
   const notes = match?.profile.reservedLeadNotes;

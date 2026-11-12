@@ -34,6 +34,7 @@ import { programContract, type ProgramContract } from "../../web/src/lib/surface
 import { askOf, shortHash, type Ask, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import type { CounterKey } from "./counters.ts";
 import type { SendRequest, SendTarget, SessionLocks } from "./protocol.ts";
+import { BAD_HEAD, hasViewHead } from "../../web/src/lib/agent-view/wire.ts";
 import type { AskRecord, RequestStore, SendRecord } from "./requests.ts";
 
 /** The counters row of every program session: its own source, with no version and no profile. */
@@ -493,6 +494,8 @@ export class ProgramDriver {
     run.s0 = markOf(before);
     run.gaps.s0 = this.now() - started;
     if (request.mode !== "send" && request.mode !== "command") return { outcome: "refused", reason: "not_free", detail: NO_BOX };
+    // One head, one door (agent views SECURITY rule 2): a program session takes no view's head at all.
+    if (hasViewHead(request.text)) return { outcome: "refused", reason: "bad_head", detail: BAD_HEAD };
     // A program's turn takes no steer through this driver (M69): its pane view never says `canSteer`.
     if (request.when === "steer") return { outcome: "refused", reason: "steer_unsupported", detail: NO_STEER };
     if (!before.ready) return { outcome: "refused", reason: "not_free", detail: NOT_READ };

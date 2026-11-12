@@ -31,6 +31,7 @@ import {
   sweepPeers,
   takeDataBudget,
   HEADERLESS_PATIENCE_MS,
+  TRICKS_INPUTS_BUDGET_MS,
   WRITE_BUDGET_MS,
   type CrewFetch,
   type CrewLink,
@@ -344,6 +345,18 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     expect(new Headers(calls[0]!.init.headers).get("x-crew-signature")).toBeNull();
     expect(new Headers(calls[0]!.init.headers).get("x-crew-dial")).toBe("attested");
     expect(outcome).toMatchObject({ ok: true, status: 404 });
+  });
+
+  test("a trick's inputs call is a POST to /crew/v1/tricks/inputs, unsigned, attested, and its 403 is an answer (§23)", async () => {
+    const { fetch, calls } = replying({ error: "trick reads are off on this machine", code: "trick_reads_off" }, { status: 403 });
+    const outcome = await client(fetch, { sign: () => "signed", dialSign: () => "attested" }).tricksInputs(laptop, '{"trick":"todo"}');
+    expect(calls[0]!.url).toEndWith("/crew/v1/tricks/inputs");
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(calls[0]!.init.body).toBe('{"trick":"todo"}');
+    expect(new Headers(calls[0]!.init.headers).get("x-crew-signature")).toBeNull();
+    expect(new Headers(calls[0]!.init.headers).get("x-crew-dial")).toBe("attested");
+    expect(outcome).toMatchObject({ ok: true, status: 403 });
+    expect(TRICKS_INPUTS_BUDGET_MS).toBe(8000);
   });
 
   test("the follow headers do not buy the patient budget — only §19's fresh does", async () => {

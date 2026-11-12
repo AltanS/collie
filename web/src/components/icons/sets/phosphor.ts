@@ -55,6 +55,9 @@ export const PHOSPHOR = {
   "copy": "copy", // copy · lucide Copy
   "copy-failed": "x", // the copy failed · lucide X
   "crew": "network", // the crew of machines · lucide Network
+  "decision-dismissed": "x", // a Decision that was dismissed · lucide X
+  "decision-superseded": "arrows-clockwise", // a Decision a newer one replaced · lucide RefreshCw
+  "decision-withdrawn": "arrow-left", // a Decision its poster took back · lucide ArrowLeft
   "delete": "trash", // delete · lucide Trash2
   "detached-head": "git-commit", // HEAD is on a commit, not a branch · lucide GitCommitHorizontal
   "direct-typing": "keyboard", // keystrokes go straight to the terminal · lucide Keyboard
@@ -101,8 +104,12 @@ export const PHOSPHOR = {
   "harness-tree": "tree-view", // session tree (agent command) · lucide ListTree
   "harnesses": "robot", // harnesses · lucide Bot
   "hide-ignored": "eye-slash", // ignored files are hidden · lucide EyeOff
+  "hill": "mountains", // the Hill, where Decisions wait · lucide Mountain
+  "hill-now": "mountains", // the Hill while a `now` Decision is open · lucide MountainSnow
   "history-screen": "scroll", // the scrollback history screen · lucide ScrollText
   "image": "image", // an image · lucide Image
+  "image-next": "caret-right", // the next picture in the picture sheet · lucide ChevronRight
+  "image-prev": "caret-left", // the previous picture in the picture sheet · lucide ChevronLeft
   "info": "info", // information, or the facts of an option · lucide Info
   "install-app": "tray-arrow-down", // install the app · lucide MonitorDown
   "jobs": "timer", // running jobs · lucide Timer
@@ -224,6 +231,7 @@ export const PHOSPHOR = {
   "prompt-user": "user", // the pinned prompt · lucide User
   "queued": "clock", // queued, not yet sent · lucide Clock
   "quick-actions": "lightning", // quick actions · lucide Zap
+  "recommended": "star", // the option the poster recommends · lucide Star
   "refresh": "arrows-clockwise", // refresh or reload · lucide RefreshCw
   "release-line": "git-branch", // release line (Stable or Edge) · lucide GitBranch
   "remove": "x", // remove one item from a list · lucide X

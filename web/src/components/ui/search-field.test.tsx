@@ -25,4 +25,12 @@ describe("SearchField", () => {
     await userEvent.type(field, "git");
     expect(field).toHaveValue("git");
   });
+
+  it("keeps the text short of a trailing control, shown or not", () => {
+    const { rerender } = render(<SearchField value="" onChange={() => {}} placeholder="Find" />);
+    expect(screen.getByRole("textbox").className).toContain("pr-3");
+    rerender(<SearchField value="" onChange={() => {}} placeholder="Find" trailing={<button type="button" className="invisible">x</button>} />);
+    expect(screen.getByRole("textbox").className).toContain("pr-11");
+    expect(screen.getByRole("textbox").className).not.toContain("pr-3");
+  });
 });

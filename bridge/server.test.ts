@@ -171,6 +171,8 @@ import {
   type SnapshotResponse,
 } from "./types.ts";
 import type { StateEngine } from "./state-engine.ts";
+import { HEAD_CASES, NOT_HEAD_CASES } from "./agent-view/testdata/head-cases.ts";
+import { BAD_HEAD } from "../web/src/lib/agent-view/wire.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -936,6 +938,26 @@ describe("pane write prompt binding", () => {
     expect(client.texts).toEqual([]);
     expect(client.keys).toEqual([]);
     expect(entries[0]?.detail).toMatchObject({ submitted: false, textDelivered: false, reason: "old_phone" });
+  });
+
+  test.each(HEAD_CASES.map((c) => [c.name, c.text] as const))("rule 7 (reply door with submit false, review 9 R2, shared case table): text with a view head is refused and nothing reaches the pane: %s", async (_name, text) => {
+    const client = new FakePaneClient();
+    const { audit, entries } = auditEntries();
+    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text, submit: false }), audit, null, "default");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: false, textDelivered: false, error: BAD_HEAD, code: "reply.send_failed", detail: { reason: BAD_HEAD } });
+    expect(client.reads).toEqual([]);
+    expect(client.texts).toEqual([]);
+    expect(client.keys).toEqual([]);
+    expect(entries[0]?.detail).toMatchObject({ submit: false, submitted: false, textDelivered: false, reason: "bad_head" });
+  });
+
+  test.each(NOT_HEAD_CASES.filter((c) => !c.text.includes("\u001b")).map((c) => [c.name, c.text] as const))("rule 7 (reply door with submit false, shared case table): text with no head is typed: %s", async (_name, text) => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text, submit: false }), audit, null, "default");
+    expect(res.status).toBe(200);
+    expect(client.texts).toHaveLength(1);
   });
 
   test("an old phone's keys and its raw text with submit false still work (M56 compat)", async () => {
@@ -2019,7 +2041,16 @@ describe("open routes — every /api route but health and pair asks the pairing 
     expect(blocks.length).toBeGreaterThan(30);
     expect(blocks.map((b) => b.route)).toContain("BLOB_ROUTE");
     expect(blocks.map((b) => b.route)).toContain('"/api/snapshot"');
-    expect(blocks.filter((b) => !b.gated).map((b) => b.route).toSorted()).toEqual(['"/api/health"', '"/api/pair"']);
+    // The pairing request and its poll (ADR 0139) are open like `/api/pair`: the asking browser holds no
+    // token. They still ask `checkAccess`, pinned below.
+    expect(blocks.filter((b) => !b.gated).map((b) => b.route).toSorted()).toEqual([
+      '"/api/health"',
+      '"/api/pair"',
+      '"/api/pair/request"',
+      "PAIR_REQUEST_ROUTE",
+    ]);
+    // The approver's read and answer are gated.
+    expect(blocks.filter((b) => b.gated).map((b) => b.route)).toContain("PAIR_APPROVE_ROUTE");
   });
 
   test("open routes: the snapshot asks guard, not a bare checkAccess", () => {
@@ -2042,6 +2073,15 @@ describe("open routes — every /api route but health and pair asks the pairing 
     const at = src.indexOf('if (pathname === "/api/pair" && req.method === "POST")');
     const handler = src.slice(at, src.indexOf("\n      }\n", at));
     expect(handler).toContain('checkAccess(req, cfg, "write")');
+  });
+
+  test("open routes: the pairing request asks the front door as a write, and its poll as a read", () => {
+    const create = src.indexOf('if (pathname === "/api/pair/request" && req.method === "POST")');
+    expect(src.slice(create, src.indexOf("\n      }\n", create))).toContain('checkAccess(req, cfg, "write")');
+    const poll = src.indexOf("const pairRequestMatch = pathname.match(PAIR_REQUEST_ROUTE);");
+    expect(src.slice(poll, src.indexOf("\n      }\n", poll))).toContain('checkAccess(req, cfg, "read")');
+    const approve = src.indexOf("const pairApproveMatch = pathname.match(PAIR_APPROVE_ROUTE);");
+    expect(src.slice(approve, src.indexOf("\n      }\n", approve))).toContain("guard(req, cfg, pairApproveGateLevel(req.method), pairingGate)");
   });
 
   // The crew path, end to end, in the three pieces `bun test` can reach (ADR 0086 "the crew
@@ -2119,6 +2159,7 @@ describe("parseNotifyPrefsPatch", () => {
     // `{ cache: true }` became an empty patch and the bridge answered with the old value.
     expect(parseNotifyPrefsPatch({ cache: true })).toEqual({ cache: true });
     expect(parseNotifyPrefsPatch({ machines: false })).toEqual({ machines: false });
+    expect(parseNotifyPrefsPatch({ decisions: false })).toEqual({ decisions: false });
     expect(parseNotifyPrefsPatch({ individual: true })).toEqual({ individual: true });
     expect(parseNotifyPrefsPatch({ individual: "yes" })).toBeNull();
     expect(parseNotifyPrefsPatch({ blocked: false, done: true, updates: false, cache: false })).toEqual({
@@ -3615,7 +3656,8 @@ describe("the widened snapshot composes with the host scope (M22/06)", () => {
   test("the peer surface answers the view the LEAD asked for, never a hard-coded one", () => {
     // The blocker M22/06 removed: `snapshot: (session) => localSnapshot(session, null, false)` made a
     // widened peer answer impossible, whatever the lead sent.
-    expect(src).toContain("snapshot: (view) => localSnapshot(view.session, null, view.widen),");
+    // The fourth argument is the crew body (no tricks, review row 12): the view is still the lead's.
+    expect(src).toContain("snapshot: (view) => localSnapshot(view.session, null, view.widen, true),");
     expect(src).not.toContain("localSnapshot(session, null, false)");
   });
 });
@@ -5707,8 +5749,9 @@ describe("pair attempt rate limit", () => {
     for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW; i++) {
       expect(limiter.hit("100.64.0.9", 1_000 + i).allowed).toBe(true);
     }
-    expect(limiter.hit("100.64.0.9", 2_000)).toEqual({ allowed: false, first: true });
-    expect(limiter.hit("100.64.0.9", 2_001)).toEqual({ allowed: false, first: false });
+    // `retryAfterMs` is how long until the oldest attempt (at 1_000) leaves the window.
+    expect(limiter.hit("100.64.0.9", 2_000)).toEqual({ allowed: false, first: true, retryAfterMs: 59_000 });
+    expect(limiter.hit("100.64.0.9", 2_001)).toEqual({ allowed: false, first: false, retryAfterMs: 58_999 });
   });
 
   test("another address is not affected by the first one's burst", () => {

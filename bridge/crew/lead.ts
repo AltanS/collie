@@ -298,6 +298,11 @@ export interface CrewLeadDeps {
    * which is every lead that has never named a deputy and every test that is not about the copy.
    */
   readonly launchersCopy?: LaunchersCopyDistribution;
+  /**
+   * The §25 copies to the DEPUTY: the tricks this lead runs and its open Decisions. Absent ⇒ none, which
+   * is every lead that has never named a deputy and every test that is not about them.
+   */
+  readonly carry?: readonly CarryDistribution[];
   readonly now?: () => number;
   /**
    * Where a `[crew]` line goes. Defaults to `console.log`, which is the bridge's journal.
@@ -358,6 +363,23 @@ export interface LaunchersCopyDistribution {
   current(): Promise<{ readonly rows: readonly CopiedRow[]; readonly digest: string } | null>;
   /** Deliver it. `no_route` is a deputy that predates the route (404). */
   push(link: CrewLink, rows: readonly CopiedRow[]): Promise<LaunchersCopyAnswer>;
+}
+
+/**
+ * One §25 copy to the DEPUTY (CREW_PROTOCOL §25): the tricks this lead runs, or its open Decisions.
+ *
+ * The launchers copy's discipline, on the same sweep: the distribution reads the deputy's own report off
+ * the snapshot answer and decides itself whether anything must go (`carry-sync.ts`). This class only
+ * schedules it, one at a time and off the tick, and stops asking a deputy whose build has no route (404)
+ * until it reconnects or names another release.
+ */
+export interface CarryDistribution {
+  /** A word for the journal: `tricks copy`, `hill copy`. */
+  readonly name: string;
+  /** The deputy this lead has designated, or `null`. Read through the store, never captured. */
+  deputy(): string | null;
+  /** One sync, given the deputy's snapshot answer. `no_route` is a deputy before the routes. */
+  sync(link: CrewLink, body: JsonValue): Promise<"idle" | "done" | "no_route" | "failed">;
 }
 
 /** What the sweep needs to state a release and hand out a turn (§20, M16/04). */
@@ -492,6 +514,10 @@ export class CrewLead {
    * them until the next connect, which is a failed sweep answer or a new version on one (ADR 0127).
    */
   private readonly copyRouteMissing = new Set<string>();
+  /** §25: `<name>:<member>` of a copy whose route that deputy lacks, until it reconnects. */
+  private readonly carryRouteMissing = new Set<string>();
+  /** §25: the copies with a sync in flight, by name. One at a time each. */
+  private readonly carrying = new Set<string>();
   /** Per member: when its backoff was last cleared by contact, and how many times running (M20/02). */
   private readonly contactResets = new Map<string, { at: number; count: number }>();
   /**
@@ -660,6 +686,7 @@ export class CrewLead {
         else this.muxAsked.delete(memberId);
         // A dropped link ends the connect a launcher copy's 404 was learned on: the next one asks again.
         if (!outcome.ok) this.copyRouteMissing.delete(memberId);
+        if (!outcome.ok) this.forgetCarryRoutes(memberId);
         // §18.10: this member follows somebody else. Handed straight over — a lead that has been
         // deposed stops sweeping, so there is nothing here to back off or remember.
         if (!outcome.ok && outcome.state === "conflicted") {
@@ -725,6 +752,9 @@ export class CrewLead {
       await this.guarded("warrant distribution", () => this.distributeWarrant(folded, outcomes));
       await this.guarded("pairing sync", async () => this.distributePairing(folded, outcomes));
       await this.guarded("launcher copy", async () => this.distributeLaunchersCopy(folded, outcomes));
+      for (const distribution of this.deps.carry ?? []) {
+        await this.guarded(distribution.name, async () => this.distributeCarry(distribution, folded, outcomes));
+      }
     } catch (err) {
       // Defensive: nothing above is supposed to reject. If something does, the crew degrades to
       // "stale" rather than taking the lead's poll loop down with it.
@@ -994,6 +1024,40 @@ export class CrewLead {
     })();
   }
 
+  /** Forget every §25 404 learned from `memberId`: a new connect or a new build asks again. */
+  private forgetCarryRoutes(memberId: string): void {
+    for (const key of this.carryRouteMissing) if (key.endsWith(`:${memberId}`)) this.carryRouteMissing.delete(key);
+  }
+
+  /**
+   * Keep one §25 copy on the deputy current (CREW_PROTOCOL §25). To the deputy and to nobody else, off
+   * the tick and never awaited, one sync in flight per copy. Whether anything is sent is the
+   * distribution's own decision, read off the deputy's report in this very answer.
+   */
+  private distributeCarry(distribution: CarryDistribution, due: readonly CrewLink[], outcomes: Map<string, PeerOutcome<unknown>>): void {
+    if (this.carrying.has(distribution.name)) return;
+    const deputy = distribution.deputy();
+    if (deputy === null || this.carryRouteMissing.has(`${distribution.name}:${deputy}`)) return;
+    const link = due.find((l) => l.memberId === deputy);
+    const outcome = outcomes.get(deputy);
+    if (link === undefined || outcome === undefined || !outcome.ok) return;
+    this.carrying.add(distribution.name);
+    void (async () => {
+      try {
+        // SAFETY: `value` is that member's HTTP body after `res.json()`, a JsonValue by construction, the
+        // same cast and the same reason as `parsePairingReport`'s; the distribution re-checks every field.
+        const answer = await distribution.sync(link, outcome.value as JsonValue);
+        if (answer !== "no_route") return;
+        this.carryRouteMissing.add(`${distribution.name}:${deputy}`);
+        this.log(`[crew] ${deputy}: keeps no ${distribution.name} (an older Collie), so it cannot resume them after a takeover; not sent again until it reconnects`);
+      } catch (err) {
+        console.warn(`[crew] ${distribution.name} failed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        this.carrying.delete(distribution.name);
+      }
+    })();
+  }
+
   /**
    * Deliver one warrant, off the tick and never awaited — the same discipline {@link probe} follows,
    * for the same reason: a sweep must cost one strict budget no matter what else it decided to do.
@@ -1105,6 +1169,7 @@ export class CrewLead {
     this.muxAsked.delete(memberId);
     // A new build may have the launcher-copy route a 404 said it lacked (ADR 0127 point 5).
     this.copyRouteMissing.delete(memberId);
+    this.forgetCarryRoutes(memberId);
     this.log(`[crew] ${memberId}: now runs ${version} (was ${before}), asking its hello again`);
   }
 

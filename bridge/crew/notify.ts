@@ -10,6 +10,7 @@ import type { PushMessage } from "../push.ts";
 import { askFloodMessage, AskPush } from "../durable/ask-push.ts";
 import { DEFAULT_GUARD_SESSION } from "../durable/guard.ts";
 import type { AgentStatus, AgentView, CrewMode, PaneWire } from "../types.ts";
+import { realAgentPanes } from "../tricks/panes.ts";
 import type { PeerSnapshotBody } from "./merge.ts";
 import { crewHerdTagFor } from "./tags.ts";
 
@@ -127,7 +128,11 @@ export class PeerNotifier<H = unknown> {
    * machine share one debounce window and collapse into that host's single summary — the existing
    * "one summary, not three races" behaviour, unchanged, because it is the same coordinator doing it.
    */
-  observe(host: string, body: PeerSnapshotBody): void {
+  observe(host: string, peerBody: PeerSnapshotBody): void {
+    // A member's trick sessions (M94 slice 03) are outside push: never blocked or done, and never a
+    // transition here. A member of this build sends none (server.ts `forCrew`); one of an older dev build
+    // may. Dropped once, so no path below can count one.
+    const body: PeerSnapshotBody = { ...peerBody, agents: [...realAgentPanes(peerBody.agents)] };
     const entry = this.hosts.get(host) ?? this.create(host);
     const diff = diffPeerAgents(entry.statuses, body.agents);
     entry.statuses = diff.statuses;

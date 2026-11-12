@@ -1,6 +1,11 @@
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
+
+import type { StatusItem } from "@/components/trick-status-item";
 import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
+import { hasResizeObserver } from "@/lib/env";
 import { effortLabel, modelLabel } from "@/lib/model-label";
+import { visibleStatusCount } from "@/lib/tricks/status";
 import type { PaneUsage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -40,12 +45,69 @@ import { cn } from "@/lib/utils";
 // limits, and it names the model whatever the screen prints, so the dots never float unlabelled
 // (Altan, 2026-10-25). The effort goes with the model either way. The tag is absolute, so it arriving
 // or leaving moves nothing (DESIGN.md §2): there is no line to reserve because it owns none.
+//
+// THE TRICKS' STATUS ITEMS FOLLOW COLLIE'S OWN (M94 re-cut, the `status` place): one chip per trick, in
+// manifest order, after the cost, in the same type and the same gap (components/trick-status-item.tsx).
+// They are the first thing to give way. When the row is wider than the room it has, the last item hides,
+// then the one before it, and Collie's own items never move: the model name truncates only once no trick
+// item is left (lib/tricks/status.ts holds the rule, {@link useStatusFit} measures). A hidden item stays
+// in the tree, invisible and inert and out of the reading order, so its width is still measured and it
+// returns the moment there is room. A trick item may take a tap, so it takes touches back the way the
+// notice slot does; the tag itself still takes none.
 
 /** At or above this percentage a gauge takes the working colour. */
 export const USAGE_WARN_AT = 80;
 
 /** The dots per gauge: one per fifth. */
 const DOTS = 5;
+
+/** The tag's widest share of the mirror box it floats in (`max-w-[70%]` below). */
+const TAG_MAX_SHARE = 0.7;
+/** The tag's own horizontal padding, `px-1` on both sides, in px. */
+const TAG_PADDING = 8;
+/** The gap between two items, `gap-1.5`, in px. */
+const ITEM_GAP = 6;
+
+/** The natural width of an element: what it would take unshrunk, which a truncating label reports as `scrollWidth`. */
+function naturalWidth(el: HTMLElement): number {
+  return Math.max(el.offsetWidth, el.scrollWidth);
+}
+
+/**
+ * How many of the trick items fit, measured from the DOM after every render and, where there is a
+ * `ResizeObserver` (not jsdom), whenever the mirror box, the Collie group or an item changes size. `key`
+ * names the items, so the observer follows them when they change. Returns the count to show, from the
+ * first.
+ */
+function useStatusFit(key: string, count: number, tagRef: RefObject<HTMLDivElement | null>, ownRef: RefObject<HTMLSpanElement | null>, itemsRef: RefObject<HTMLSpanElement | null>): number {
+  const [shown, setShown] = useState(count);
+  const measure = useCallback(() => {
+    const box = tagRef.current?.parentElement;
+    const items = itemsRef.current;
+    if (box === null || box === undefined || items === null) return;
+    const room = Math.floor(box.clientWidth * TAG_MAX_SHARE) - TAG_PADDING;
+    const mine = ownRef.current === null ? [] : [...ownRef.current.children].filter((el): el is HTMLElement => el instanceof HTMLElement);
+    const own = mine.reduce((sum, el) => sum + naturalWidth(el), 0) + ITEM_GAP * Math.max(0, mine.length - 1);
+    const widths = [...items.children].filter((el): el is HTMLElement => el instanceof HTMLElement).map((el) => el.offsetWidth);
+    const next = visibleStatusCount({ room, own, gap: ITEM_GAP, widths });
+    setShown((was) => (was === next ? was : next));
+  }, [tagRef, ownRef, itemsRef]);
+  useLayoutEffect(() => {
+    if (count > 0) measure();
+  });
+  useLayoutEffect(() => {
+    const box = tagRef.current?.parentElement;
+    const items = itemsRef.current;
+    if (count === 0 || box === null || box === undefined || items === null || !hasResizeObserver()) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    for (const el of ownRef.current?.children ?? []) observer.observe(el);
+    for (const el of items.children) observer.observe(el);
+    return () => observer.disconnect();
+    // `key` is the items' identity: a new set of items has new elements to observe.
+  }, [key, count, measure, tagRef, ownRef, itemsRef]);
+  return Math.min(shown, count);
+}
 
 /** The short label and the spoken sentence of each window the phone draws. Unknown windows are skipped. */
 const WINDOW_KEYS = new Map<string, { short: MessageKey; spoken: MessageKey }>([
@@ -132,16 +194,24 @@ export function ModelTag({
   model,
   effort,
   usage,
+  trailing,
 }: {
   model: string | undefined;
   effort?: string | undefined;
   usage?: PaneUsage | undefined;
+  /** The tricks' status items, in manifest order, drawn after Collie's own and hidden first when the row overflows. */
+  trailing?: readonly StatusItem[] | undefined;
 }) {
   useLocale();
+  const tagRef = useRef<HTMLDivElement>(null);
+  const ownRef = useRef<HTMLSpanElement>(null);
+  const itemsRef = useRef<HTMLSpanElement>(null);
+  const items = trailing ?? [];
+  const shown = useStatusFit(items.map((item) => item.id).join(" "), items.length, tagRef, ownRef, itemsRef);
   const name = modelLabel(model);
   const gauges = gaugesOf(usage);
   const cost = costOf(usage);
-  if (name === null && gauges.length === 0 && cost === null) return null;
+  if (name === null && gauges.length === 0 && cost === null && items.length === 0) return null;
   // THE EFFORT FOLLOWS THE MODEL, in the harness's own word (#463): "Opus 5.5 · high". It never draws
   // alone, and it goes with the model when the screen already names it, because the caller passes
   // neither then. The same model at `high` and at `low` is a different trade-off in time and cost.
@@ -154,20 +224,40 @@ export function ModelTag({
   );
   return (
     <div
+      ref={tagRef}
       data-slot="model-tag"
       className="pointer-events-none absolute right-3 bottom-1 z-10 max-w-[70%] rounded-[2px] bg-background/90 px-1 text-[10px]/3 text-muted-foreground"
     >
-      <span aria-hidden className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-        {label !== null && <span className="min-w-0 truncate">{label}</span>}
-        {gauges.map((g) => (
-          <span key={g.id} data-gauge={g.id} className="flex shrink-0 items-center gap-[3px]">
-            <span>{g.short}</span>
-            <Dots used={g.used} />
+      <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+        {(label !== null || gauges.length > 0 || cost !== null) && (
+          <span ref={ownRef} aria-hidden data-slot="usage-own" className="flex min-w-0 items-center gap-1.5">
+            {label !== null && <span className="min-w-0 truncate">{label}</span>}
+            {gauges.map((g) => (
+              <span key={g.id} data-gauge={g.id} className="flex shrink-0 items-center gap-[3px]">
+                <span>{g.short}</span>
+                <Dots used={g.used} />
+              </span>
+            ))}
+            {cost !== null && (
+              <span data-slot="usage-cost" className="shrink-0 tabular-nums">
+                {formatCost(cost)}
+              </span>
+            )}
           </span>
-        ))}
-        {cost !== null && (
-          <span data-slot="usage-cost" className="shrink-0 tabular-nums">
-            {formatCost(cost)}
+        )}
+        {items.length > 0 && (
+          <span ref={itemsRef} data-slot="usage-trick-items" className="flex items-center gap-1.5">
+            {items.map((item, i) => (
+              <span
+                key={item.id}
+                data-status-item={item.id}
+                data-hidden={i >= shown || undefined}
+                inert={i >= shown || undefined}
+                className={cn("flex shrink-0 items-center", i >= shown && "invisible absolute right-0 bottom-0")}
+              >
+                {item.face}
+              </span>
+            ))}
           </span>
         )}
       </span>

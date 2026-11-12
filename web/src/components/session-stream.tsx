@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type RefObject } from "react";
 import { Icon } from "@/components/icons/icon";
 
+import { AgentIcon } from "@/components/agent-icon";
 import { ItemView, PendingTurn, ToolGroup, groupRuns, standsAlone } from "@/components/chat-cards";
 import { StreamBlock } from "@/components/stream-block";
 import { PromptPin } from "@/components/prompt-pin";
@@ -8,12 +9,15 @@ import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { QUEUED_BLOCK, QUEUED_BUTTON, QUEUED_HEAD, QUEUED_LABEL, QUEUED_TEXT } from "@/components/queued-block";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
+import { DividedLine } from "@/components/ui/divided-line";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatFeed } from "@/hooks/use-chat-window";
 import { ASKS_SHOWN, asksAt, shownAsks } from "@/lib/ask";
 import { finished, itemsOf, type ChatItem } from "@/lib/chat-items";
+import { useChatLook, type ChatLook } from "@/lib/chat-look";
 import type { ChatStatus } from "@/lib/chat-window";
 import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
+import { clockTime } from "@/lib/format";
 import { t, type MessageKey } from "@/lib/i18n";
 import { blockOfPin, isPinnable, writingItemId } from "@/lib/message-pins";
 import type { Ask, PinRow, QueuedSendRow } from "@/lib/types";
@@ -56,6 +60,43 @@ import { cn } from "@/lib/utils";
  * Lifted verbatim from the prototype this screen came out of (experiments/session-stream).
  */
 const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-intrinsic-size:auto_64px] -m-3 p-3";
+
+/** A group that is the person's own turn. */
+function isUserGroup(group: readonly ChatItem[] | undefined): boolean {
+  return group !== undefined && group.length === 1 && group[0]!.kind === "user";
+}
+
+/**
+ * Chat look A (lib/chat-look.ts): the margin a block adds to {@link STREAM_BLOCK}'s, or "" for today.
+ *
+ * Every block's margin is -12px and its padding 12px, so two blocks' margins collapse to -12px and their contents
+ * sit 12px apart. A user turn's `mt-2` collapses with the block above to -4px, so a new turn starts 20px down (24px
+ * under `rule`, which spends the extra on its hairline). A block inside an agent run, after another agent block,
+ * takes `-mt-4`: the more negative margin wins the collapse, so its content sits 8px under the one above.
+ */
+function rhythmClass(rhythm: ChatLook["rhythm"], blocks: readonly (readonly ChatItem[])[], index: number): string {
+  if (rhythm === "today" || index === 0) return "";
+  if (isUserGroup(blocks[index])) {
+    return rhythm === "rule"
+      ? "relative mt-3 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-rule"
+      : "mt-2";
+  }
+  return isUserGroup(blocks[index - 1]) ? "" : "-mt-4";
+}
+
+/**
+ * Chat look C (lib/chat-look.ts): the agent's mark and the time, above the first block of each agent run. Chat
+ * draws no such row today; the name is in the header above the stream already, so the row carries none.
+ */
+function AgentHead({ agent, ts }: { agent: string | undefined; ts: string | undefined }) {
+  const ms = ts === undefined ? Number.NaN : Date.parse(ts);
+  return (
+    <div data-slot="agent-head" className="mb-1.5 flex h-4 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
+      {agent === undefined ? null : <AgentIcon agent={agent} className="size-4" />}
+      {Number.isNaN(ms) ? null : <span>{clockTime(ms)}</span>}
+    </div>
+  );
+}
 
 /**
  * THE TAIL ROW: a turn is in flight and nothing has landed yet.
@@ -554,6 +595,7 @@ export function SessionStream({
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
+  const look = useChatLook();
   const { window, loadOlder, loadingOlder } = feed;
   // The asks past the first five stay folded until the person opens them (lib/ask.ts `shownAsks`).
   const [asksOpen, setAsksOpen] = useState(false);
@@ -840,8 +882,12 @@ export function SessionStream({
       // watching the tail", and it also freezes the mirror text the card dock is built from — so
       // scrolling back through a conversation would stop a permission dialog appearing. Reading
       // older turns is an ordinary act in this body and a rare one in that one.
-      className="px-3 pt-0 pb-3"
+      className={look.gutter === "16" ? "px-4 pt-0 pb-3" : "px-3 pt-0 pb-3"}
       style={textTokens(fontSize)}
+      // The pin sits beside the scrollport, so it takes the gutter and the chat font size from here. Only the
+      // hugging look does: the look before it keeps the overlay as it was.
+      overlayClassName={look.userTurn === "hug" && look.gutter === "16" ? "px-4" : undefined}
+      overlayStyle={look.userTurn === "hug" ? textTokens(fontSize) : undefined}
       overlay={pin !== null ? <PromptPin pin={pin} busy={seeking !== null || (pin.kind === "earlier" && loadingOlder)} onTap={onPinTap} /> : null}
     >
       {/* Top of the window. Older turns come off `hasOlder` and nothing else: what the live window
@@ -858,11 +904,16 @@ export function SessionStream({
           {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
         </button>
       ) : (
-        !empty && (
+        !empty &&
+        (look.quiet === "divided" ? (
+          <div className="mb-3">
+            <DividedLine>{t("history.startOfConversation")}</DividedLine>
+          </div>
+        ) : (
           <div className="mb-3 text-center text-[11px] text-muted-foreground">
             {t("history.startOfConversation")}
           </div>
-        )
+        ))
       )}
 
       {blocks.map((group, index) => {
@@ -873,6 +924,12 @@ export function SessionStream({
         // The block a pin can hang on is a single drawn item; a folded run is several, and has no one text to keep.
         const item = drawn ? group[0]! : null;
         const pinnable = item !== null && isPinnable(item) && item.id !== writing;
+        const rhythm = rhythmClass(look.rhythm, blocks, index);
+        const first = group[0]!;
+        const opensRun =
+          look.agentHead === "icon-time" &&
+          (first.kind === "reply" || first.kind === "thinking" || first.kind === "tool") &&
+          (index === 0 || isUserGroup(blocks[index - 1]));
         return (
           <StreamBlock
             key={group[0]!.id}
@@ -880,8 +937,9 @@ export function SessionStream({
             item={pinnable ? item : null}
             pinned={item !== null && pins?.pinned.has(item.id) === true}
             onActions={pinnable ? pins?.onActions : undefined}
-            className={STREAM_BLOCK}
+            className={rhythm === "" ? STREAM_BLOCK : `${STREAM_BLOCK} ${rhythm}`}
           >
+            {opensRun && <AgentHead agent={agent} ts={first.ts} />}
             {drawn ? <ItemView item={group[0]!} /> : <ToolGroup items={group} liveOpens={showToolCalls} />}
             {asks === undefined || askList === undefined ? null : asksAt(blocks, askList.shown, index).map((ask) => <AskCard key={ask.id} ask={ask} {...asks.card} />)}
           </StreamBlock>

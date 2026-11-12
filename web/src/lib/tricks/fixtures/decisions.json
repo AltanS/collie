@@ -1,0 +1,77 @@
+{
+  "good": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "belt",
+        "id": "belt",
+        "mark": {
+          "icon": "flask",
+          "label": "23/34"
+        }
+      }
+    ],
+    "decisions": [
+      {
+        "key": "case-24",
+        "title": "Leg red: case 24. Rerun it?",
+        "summary": "Case 24 failed on the first tap, the other 33 passed.",
+        "body": "The send after a restart left the draft in the reply box.\n\nThe log shows a timeout, not a code change.",
+        "options": [
+          {
+            "intent": "rerun",
+            "label": "Rerun red"
+          },
+          {
+            "intent": "skip",
+            "label": "Skip today",
+            "detail": "The leg stays red until tomorrow's run.",
+            "confirm": "Skip it for sure"
+          }
+        ],
+        "recommends": {
+          "intent": "rerun",
+          "why": "The log shows a timeout, not a code change."
+        },
+        "priority": "today",
+        "about": "lodge:w6X:3",
+        "replyTo": "lodge:w6X:3",
+        "media": [
+          {
+            "file": "shots/case-24.png",
+            "caption": "the failing step"
+          }
+        ],
+        "links": [
+          {
+            "label": "the report",
+            "href": "http://lodge:8832/legs/24"
+          }
+        ]
+      },
+      {
+        "key": "tag-1-28-0",
+        "title": "Tag 1.28.0?",
+        "summary": "Seven of seven gates are green.",
+        "options": [
+          {
+            "intent": "tag",
+            "label": "Tag and push"
+          },
+          {
+            "intent": "wait",
+            "label": "Not yet"
+          }
+        ],
+        "recommends": null,
+        "priority": "now",
+        "expiresAt": 1794200000000
+      },
+      {
+        "key": "note",
+        "title": "Anything to add to the notes?",
+        "summary": "Type a line, or dismiss."
+      }
+    ]
+  }
+}

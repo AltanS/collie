@@ -19,6 +19,7 @@ import { SpeechControl } from "@/components/speech-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HarnessBarControl } from "@/components/harness-bar-control";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
+import { HillSwitchControl } from "@/components/hill-switch-card";
 import { LanguageControl } from "@/components/language-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { PaneNavControl } from "@/components/pane-nav-control";
@@ -36,6 +37,7 @@ import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
 import { MathControl } from "@/components/math-control";
+import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
@@ -208,6 +210,10 @@ export function SettingsAlertsRoute() {
   const availability = usePushAvailability();
   return (
     <SettingsPage title="settings.section.alerts.title">
+      {/* The Hill's switch (bridge/hill/switch.ts): first, because it decides whether agents and tricks
+          may ask at all, and drawn from the snapshot, so it never waits on push state like the cards
+          below. Bridge-wide, like the notification switches. */}
+      <HillSwitchControl />
       <PushControl />
       {/* Mounted while push state is still UNKNOWN, and only removed once we positively learn the
           bridge has no VAPID keys. Gating on truthiness instead inserted ~400px into the middle of
@@ -265,6 +271,20 @@ export function SettingsExperimentsRoute() {
   );
 }
 
+/**
+ * Settings → Tricks (M94 slice 04): one card, one switch per trick. Its own section rather than a card
+ * on System, because the rows are per TRICK, a list that grows with every folder the operator makes
+ * (the same reason Harnesses is a page of its own). The index offers the row only while the phone
+ * holds a tricks reply; the route is reachable by URL either way, and the card then draws nothing.
+ */
+export function SettingsTricksRoute() {
+  return (
+    <SettingsPage title="settings.section.tricks.title">
+      <TricksSettingsCard />
+    </SettingsPage>
+  );
+}
+
 export function SettingsSystemRoute() {
   const root = useOptionalRootData();
   const diagnostics = useServerDiagnostics();
@@ -287,6 +307,7 @@ export function SettingsSystemRoute() {
         device={root?.device}
         build={diagnostics.build}
         redact={diagnostics.redact}
+        denied={root?.authError === true}
       />
       {/* The anonymous install count (M86 spec 02, ADR 0129): one row with its state, above the report
           card because both are about what this machine says to Collie's host. The switch, the cause

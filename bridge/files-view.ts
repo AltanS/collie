@@ -643,6 +643,42 @@ export async function readImage(ctx: FilesContext, path: string): Promise<FilesR
   }
 }
 
+// ── Bytes ───────────────────────────────────────────────────────────────────────────────────────
+
+/** What a byte read comes to: the file's first bytes, a file over the cap, or a root that is not there. */
+export type FileBytesAnswer =
+  | { available: false; reason: "no-folder" }
+  | { available: true; kind: "bytes"; bytes: Uint8Array; size: number; mtimeMs?: number }
+  | { available: true; kind: "too-large"; size: number };
+
+/**
+ * One file under the root as its raw bytes, at most `max` of them (a trick's inputs, M99), through
+ * exactly the checks {@link readImage} runs: the same root, the same shape rule, the same real-path
+ * containment and deny list, the same no-follow open of a regular file checked again on the handle.
+ * A file over `max` answers `too-large` before it is opened, and again when it grew in between.
+ */
+export async function readFileBytes(ctx: FilesContext, path: string, max: number): Promise<FilesResult<FileBytesAnswer>> {
+  const r = await resolveRoot(ctx);
+  if (r === null) return { available: false, reason: "no-folder" };
+  const segments = parseRelPath(path, r.host);
+  if (segments === null || segments.length === 0) return UNKNOWN_PATH;
+  try {
+    const real = await checkedTarget(segments, r);
+    if (real === null) return UNKNOWN_PATH;
+    const st = await r.fs.stat(real).catch(() => null);
+    if (st === null || !st.isFile()) return UNKNOWN_PATH;
+    if (st.size > max) return { available: true, kind: "too-large", size: st.size };
+    const head = await r.fs.readHead(real, max, openedFileAllowed(segments, r, real));
+    if (head === null) return UNKNOWN_PATH;
+    if (head.size > max) return { available: true, kind: "too-large", size: head.size };
+    const answer: FileBytesAnswer = { available: true, kind: "bytes", bytes: head.bytes, size: head.size };
+    if (head.mtimeMs !== undefined) answer.mtimeMs = head.mtimeMs;
+    return answer;
+  } catch {
+    return UNKNOWN_PATH;
+  }
+}
+
 // ── Exist ───────────────────────────────────────────────────────────────────────────────────────
 
 /** The most paths one existence check may name (ADR 0088). More is a refused body, not a cut. */

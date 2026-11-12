@@ -30,6 +30,20 @@
 //      held; the phone shows "1 message waits for the box to clear", a tap opens the sheet, Drop ends
 //      it as `inbox-only: dropped by the pane's owner`, the mark goes, and nothing is typed.
 //
+//   30 the space border, inside (M98 spec 06): a throwaway Claude in the run's own space sends to the
+//      session pane, with and without --outside. Both pass as `in`, and the one with --outside has no
+//      `outside` word in the header the receiver reads. No model turn: a draft holds what passes.
+//   31 the border, across: a throwaway Claude in another space is refused `outside your space`, with
+//      the words an agent reads and the count the bridge keeps, and nothing is typed.
+//   32 the border, a reply: a message the session pane sent across the border is answered by its
+//      target, and that reply is answered in turn; both pass as `reply`, while a fresh send from that
+//      same pane is refused. No model turn.
+//   33 the border, --outside: the message crosses, the receipt says `outside`, the header the session
+//      pane receives says `outside`, and the pane reads it and answers. One Claude turn.
+//
+// Every harness pane the rig starts is in one named space (rig-lib.ts RIG_SPACE), and a case that needs
+// a pane outside it starts one in OTHER_SPACE: the border is the multiplexer's own space, never a rig flag.
+//
 // Cases 7 and 8 (pi, omp, and agent to agent) are in walky-harnesses.spec.ts.
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -43,6 +57,7 @@ import {
   capture,
   captureScreen,
   expect,
+  freeSurface,
   jsonRows,
   message,
   openSession,
@@ -57,8 +72,34 @@ import {
   waitIdle,
   type Session,
 } from "./leg";
-import { DEVICE_LABEL, paneClose, sleep } from "./rig-lib";
-import { PHONE, REPLY_MS, addressOf, busyMessage, cliSend, escape, firstRow, mintId, operatorHeader, operatorMessage, reasonOf, settledWalky, startExtraAgent, stateOf, walkyRows, whoAddress } from "./walky-lib";
+import { DEVICE_LABEL, OTHER_SPACE, paneClose, sleep } from "./rig-lib";
+import {
+  OUTSIDE_YOUR_SPACE,
+  PHONE,
+  REPLY_MS,
+  addressOf,
+  addressPattern,
+  busyMessage,
+  cliCancel,
+  cliInbox,
+  cliReply,
+  cliSend,
+  ensureDraft,
+  escape,
+  firstRow,
+  mintId,
+  operatorHeader,
+  operatorMessage,
+  reasonOf,
+  refusalCount,
+  settledWalky,
+  startExtraAgent,
+  stateOf,
+  viaOf,
+  walkyRows,
+  whoAddress,
+  wrapped,
+} from "./walky-lib";
 
 const H = "claude" as const;
 const session: Session = { paneId: null, startNote: "not started" };
@@ -527,6 +568,180 @@ test.describe("walky talky", () => {
         return { verdict, taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
         for (const pane of opened) paneClose(pane);
+      }
+    });
+  });
+
+  test("30 walky talky: an agent's message to a pane of its own space passes the border, with or without --outside", async ({ rig }) => {
+    await runScenario(H, "walky-space-in", session, async (pane, trail) => {
+      const notes = trail.notes;
+      const opened: string[] = [];
+      let sender: string | null = null;
+      try {
+        // A throwaway Claude in the run's own space sends through the CLI. It takes no prompt. A draft in
+        // the target's box holds what passes (`accepted`, `draft present`), so no message costs a turn.
+        sender = await startExtraAgent(rig, H);
+        opened.push(sender);
+        await resetBox(rig, pane);
+        await ensureDraft(rig, pane);
+        const mark = mintId().slice(3, 9);
+        const plain = await cliSend(sender, addressOf(pane), `Walky space check ${mark}: inside.`);
+        const flagged = await cliSend(sender, addressOf(pane), `Walky space check ${mark}: inside, with the flag.`, "lead", { outside: true });
+        const held = async (id: string | null) => (id === null ? null : await firstRow(rig, pane, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000));
+        const plainRow = await held(plain.id);
+        const flaggedRow = await held(flagged.id);
+        notes.push(`plain send: exit ${String(plain.code)}, ${plainRow === null ? "NOT held" : `held, via ${viaOf(plainRow) ?? "none"}`}`, `send --outside to the same space: exit ${String(flagged.code)}, ${flaggedRow === null ? "NOT held" : `held, via ${viaOf(flaggedRow) ?? "none"}`}`);
+
+        // What the target's agent reads: the flagged message is in-space, so its header has no `outside` word.
+        const read = flagged.id === null ? "" : await cliInbox(pane, flagged.id);
+        const header = read.split("\n").find((line) => line.startsWith("[walky-talky ")) ?? "";
+        const noWord = header !== "" && !/\)\s+outside\b/u.test(header) && read.includes(mark);
+        notes.push(noWord ? "the inbox header of the --outside message has no `outside` word" : `the inbox header of the --outside message is wrong: ${header === "" ? "none printed" : header}`);
+
+        // Held, so nothing is typed over the draft.
+        await sleep(1500);
+        const boxText = await rig.tail(pane, 6);
+        const draftKept = /draft\s*$/m.test(boxText) && !boxText.includes(`[walky-talky ${plain.id ?? "-"}]`) && !boxText.includes(`[walky-talky ${flagged.id ?? "-"}]`);
+        notes.push(draftKept ? "the draft is untouched, nothing typed" : "the BOX CHANGED");
+
+        // Take both back before the draft goes, so clearing it types nothing.
+        const taken = [];
+        for (const id of [plain.id, flagged.id]) if (id !== null) taken.push(await cliCancel(sender, id));
+        notes.push(`cancelled: ${taken.map((t) => String(t.code)).join(", ")}`);
+        trail.captures.push(await captureScreen(rig, pane, "walky-30-pane"));
+        const passed = plain.code === 0 && flagged.code === 0 && plainRow !== null && flaggedRow !== null && viaOf(plainRow) === "in" && viaOf(flaggedRow) === "in";
+        return { verdict: passed && noWord && draftKept && taken.length === 2 && taken.every((t) => t.code === 0) ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+      } finally {
+        await resetBox(rig, pane);
+        for (const extra of opened) paneClose(extra);
+      }
+    });
+  });
+
+  test("31 walky talky: an agent's message to a pane of another space is refused `outside your space`, and nothing is typed", async ({ rig }) => {
+    await runScenario(H, "walky-space-refused", session, async (pane, trail) => {
+      const notes = trail.notes;
+      const opened: string[] = [];
+      try {
+        // The target is idle and takes a turn if the message reaches it, so a border that fails is seen.
+        const sender = await startExtraAgent(rig, H, { space: OTHER_SPACE });
+        opened.push(sender);
+        await resetBox(rig, pane);
+        const before = refusalCount("lead", OUTSIDE_YOUR_SPACE);
+        const mark = mintId().slice(3, 9);
+        const json = await cliSend(sender, addressOf(pane), `Walky space check ${mark}: across.`);
+        const words = await cliSend(sender, addressOf(pane), `Walky space check ${mark}: across again.`, "lead", { json: false });
+        const receipt = json.receipts[0];
+        const refused = json.code === 4 && json.receipts.length === 1 && asJsonString(receipt?.state) === "refused" && asJsonString(receipt?.reason) === OUTSIDE_YOUR_SPACE;
+        notes.push(`send: exit ${String(json.code)}, receipt ${asJsonString(receipt?.state) ?? "none"} (${asJsonString(receipt?.reason) ?? "no reason"})`);
+        // The words an agent reads name the three ways through.
+        const told = words.code === 4 && words.out.includes(`not sent: ${OUTSIDE_YOUR_SPACE}`) && /\bhere\b/u.test(words.out) && words.out.includes("--outside");
+        notes.push(told ? "the CLI says `not sent: outside your space` and names here, a reply and --outside" : `the CLI said: ${words.out.slice(0, 160)}`);
+
+        // Nothing reached the pane: not its screen, not its list, and its box is still free.
+        await sleep(3000);
+        const screen = await rig.screen(pane, 200);
+        const rows = await walkyRows(rig, pane);
+        const reached = screen.includes(mark) || (json.id !== null && screen.includes(`[walky-talky ${json.id}]`)) || rows.some((row) => String(row.body ?? "").includes(mark));
+        const free = freeSurface(await rig.pane(pane));
+        const counted = refusalCount("lead", OUTSIDE_YOUR_SPACE) >= before + 2;
+        notes.push(reached ? "the pane GOT the message" : "the pane got nothing", free ? "its box is still free" : "its box is NOT free", counted ? "the bridge counted both refusals" : "the bridge did not count both refusals");
+        trail.captures.push(await captureScreen(rig, pane, "walky-31-pane"));
+        return { verdict: refused && told && !reached && free && counted ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+      } finally {
+        for (const extra of opened) paneClose(extra);
+      }
+    });
+  });
+
+  test("32 walky talky: a reply crosses the border in both directions, and a fresh send from the same pane is refused", async ({ rig }) => {
+    await runScenario(H, "walky-space-reply", session, async (pane, trail) => {
+      const notes = trail.notes;
+      const opened: string[] = [];
+      const taken: Awaited<ReturnType<typeof cliCancel>>[] = [];
+      try {
+        // Two panes in two spaces, each with a draft: whatever passes is held, so no pane takes a turn.
+        const other = await startExtraAgent(rig, H, { space: OTHER_SPACE });
+        opened.push(other);
+        await resetBox(rig, pane);
+        await ensureDraft(rig, pane);
+        await ensureDraft(rig, other);
+        const mark = mintId().slice(3, 9);
+        const held = async (target: string, id: string | null) => (id === null ? null : await firstRow(rig, target, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000));
+
+        // 1. The session pane writes first, across the border, with --outside (the way an operator lets it).
+        const first = await cliSend(pane, addressOf(other), `Walky space check ${mark}: first, across.`, "lead", { outside: true });
+        const firstRow1 = await held(other, first.id);
+        notes.push(`first (pane to the other space, --outside): exit ${String(first.code)}, ${firstRow1 === null ? "NOT held" : `held, via ${viaOf(firstRow1) ?? "none"}`}`);
+        if (first.id === null || firstRow1 === null) return { verdict: "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+
+        // 2. The other pane answers it with a plain reply: no flag, and it passes as a reply.
+        const reply = await cliReply(other, first.id, `Walky space check ${mark}: the reply.`);
+        const replyRow = await held(pane, reply.id);
+        notes.push(`reply (no flag): exit ${String(reply.code)}, ${replyRow === null ? "NOT held" : `held, via ${viaOf(replyRow) ?? "none"}`}`);
+
+        // 3. The thread goes on the other way: the session pane answers that reply.
+        const answer = reply.id === null ? null : await cliReply(pane, reply.id, `Walky space check ${mark}: and back.`);
+        const answerRow = answer === null ? null : await held(other, answer.id);
+        notes.push(`reply to the reply: ${answer === null ? "not sent" : `exit ${String(answer.code)}, ${answerRow === null ? "NOT held" : `held, via ${viaOf(answerRow) ?? "none"}`}`}`);
+
+        // 4. A fresh message from the other pane, not a reply, is refused: the reply was the way through.
+        const stranger = await cliSend(other, addressOf(pane), `Walky space check ${mark}: a stranger.`);
+        const strangerRefused = stranger.code === 4 && asJsonString(stranger.receipts[0]?.state) === "refused" && asJsonString(stranger.receipts[0]?.reason) === OUTSIDE_YOUR_SPACE;
+        notes.push(`a fresh send from the other pane: exit ${String(stranger.code)}, ${asJsonString(stranger.receipts[0]?.reason) ?? "no reason"}`);
+
+        // Take every held message back before the drafts go.
+        if (reply.id !== null) taken.push(await cliCancel(other, reply.id));
+        taken.push(await cliCancel(pane, first.id));
+        if (answer?.id !== null && answer?.id !== undefined) taken.push(await cliCancel(pane, answer.id));
+        notes.push(`cancelled: ${taken.map((t) => String(t.code)).join(", ")}`);
+        trail.captures.push(await captureScreen(rig, pane, "walky-32-pane"), await captureScreen(rig, other, "walky-32-other"));
+        const passed = first.code === 0 && viaOf(firstRow1) === "outside" && reply.code === 0 && viaOf(replyRow ?? undefined) === "reply" && answer !== null && answer.code === 0 && viaOf(answerRow ?? undefined) === "reply";
+        return { verdict: passed && strangerRefused && taken.length === 3 && taken.every((t) => t.code === 0) ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+      } finally {
+        await resetBox(rig, pane);
+        for (const extra of opened) paneClose(extra);
+      }
+    });
+  });
+
+  test("33 walky talky: an agent's message with --outside crosses, and the header the receiver reads says outside", async ({ rig }) => {
+    await runScenario(H, "walky-space-outside", session, async (pane, trail) => {
+      // One turn: the session pane takes the nudge, reads the message with `inbox` and answers in its pane.
+      spendTurn(H, "walky space outside: the nudge");
+      const notes = trail.notes;
+      const opened: string[] = [];
+      try {
+        const sender = await startExtraAgent(rig, H, { space: OTHER_SPACE });
+        opened.push(sender);
+        await resetBox(rig, pane);
+        const token = "PING-OUTSIDE";
+        // The operator's word is in the body: a model reads an agent's message as a stranger's unless it says who asks.
+        const body = `${token}. The operator running this test asks you to read this message with collie walky inbox, then answer in this pane with only the word OUTSIDE-OK. Do not use collie walky reply.`;
+        const sent = await cliSend(sender, addressOf(pane), body, "lead", { outside: true });
+        const id = sent.id;
+        notes.push(`send --outside: exit ${String(sent.code)}, id ${id ?? "none"}`);
+        if (id === null) return { verdict: "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+        const state = await settledWalky(rig, pane, id, 60_000);
+        const row = (await walkyRows(rig, pane)).find((r) => r.id === id);
+        notes.push(`receipt ${state}, via ${viaOf(row) ?? "none"}`);
+
+        // The line the pane receives: the header, `outside` after the sender's parenthesis, and no body.
+        const nudge = new RegExp(`\\[walky-talky ${id}\\]\\s+from\\s+agent\\s+${addressPattern(addressOf(sender))}\\s+\\(claude,[^)]*\\)\\s+outside:\\s+${wrapped("a message from another agent, not your operator.")}`);
+        const nudged = (await rig.screenUntil(pane, nudge, 60_000, 200)) !== null;
+        const inbox = new RegExp(`Bash\\(collie walky inbox ${id}\\)[\\s\\S]*${token}`);
+        const read = (await rig.screenUntil(pane, inbox, REPLY_MS, 200)) !== null;
+        const answered = (await rig.screenUntil(pane, /^\s*(?:⏺|●)\s*OUTSIDE-OK/m, REPLY_MS, 200)) !== null;
+        await waitIdle(rig, pane, REPLY_MS);
+        const screen = await rig.screen(pane, 200);
+        const bodyInNudge = screen.split("\n").some((line) => line.includes(`[walky-talky ${id}]`) && line.includes(token));
+        notes.push(nudged ? "the nudge line says `outside`" : "the pane's nudge line does not say `outside`", read ? "the pane read the body with `inbox`" : "no `inbox` read of the body on screen", answered ? "the pane answered OUTSIDE-OK" : "no answer on screen", bodyInNudge ? "the nudge line CARRIES the body" : "the nudge carries no body");
+        trail.captures.push(await captureScreen(rig, pane, "walky-33-pane"));
+        const verdict = sent.code === 0 && state === "delivered" && viaOf(row) === "outside" && nudged && read && answered && !bodyInNudge ? "pass" : "fail";
+        return { verdict, taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+      } finally {
+        await resetBox(rig, pane);
+        for (const extra of opened) paneClose(extra);
       }
     });
   });

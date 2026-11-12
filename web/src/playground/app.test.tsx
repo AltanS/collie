@@ -37,44 +37,68 @@ const SLOW = { timeout: 12_000 } as const;
 // mounted (composer effects, MSW-backed fetches). The waits below are generous on purpose — the whole
 // page used to be mounted at once here and settled in a few seconds under a loaded test runner; one
 // tab at a time is lighter, but the budget is left as-is rather than re-measured down.
+// ONE CASE PER SECTION (2026-11-11). The whole page used to render in two cases of 30 s each, one for the
+// error boundaries and one for the handles, and the first sat at its budget on a quiet machine. Now each
+// section mounts ONCE, in its own case with its own budget: the case waits for the section to settle,
+// checks that no route threw, and collects its card handles. The handle rules then run over the union in
+// one last case, so coverage is the same (every card of every section renders) at half the renders.
+// The cases run in order within this file; the last one needs the whole file run, and says so.
+
+/** One section's own budget, well under what the whole page once had in one case. */
+const SECTION_BUDGET = 20_000;
+
+/** The handles every section case collected, by section. */
+const handlesBySection = new Map<string, string[]>();
+
 describe("the states playground", () => {
-  it(
-    "renders every card with no route throwing its error boundary",
-    async () => {
-      for (const entry of SECTIONS) {
-        render(<PlaygroundApp tab={entry.def.id} />);
+  // Each section's module (and what it imports) is loaded and transformed once, up front, so a case times
+  // its section's render and not the cold import that the first section to use a module would pay.
+  beforeAll(async () => {
+    await Promise.all(SECTIONS.map(async (entry) => await entry.load()));
+  }, 60_000);
 
-        // "Pane actions" is `AgentChat`'s own right-cluster button, portalled through `RouteHeader`
-        // into `AppHeaderHost`'s right host; waiting on it is itself a positive assertion that the
-        // host is really there, for the router kind (`PaneRouter`/`PaneStackRouter`) this regression
-        // broke. "Crew"/"Settings" are the override host's take-over title (CrewRoute/SettingsRoute).
-        if (entry.def.id === "pane") {
-          await screen.findAllByRole("button", { name: "Pane actions" }, SLOW);
-        } else if (entry.def.id === "crew") {
-          await screen.findAllByRole("heading", { name: "Crew" }, SLOW);
-        } else if (entry.def.id === "settings") {
-          await screen.findAllByRole("heading", { name: "Settings" }, SLOW);
-        } else {
-          await screen.findAllByRole("heading", { name: entry.def.title }, SLOW);
-        }
+  it.each(SECTIONS.map((entry) => [entry.def.id, entry] as const))(
+    "renders the section %s with no route throwing its error boundary, and reads its card handles",
+    async (_id, entry) => {
+      const { container } = render(<PlaygroundApp tab={entry.def.id} />);
 
-        expect(screen.queryByText(/unexpected application error/i)).not.toBeInTheDocument();
-        expect(screen.queryByText(/must be rendered inside/i)).not.toBeInTheDocument();
-
-        if (entry.def.id === "pane") {
-          expect(screen.getAllByRole("button", { name: "Pane actions" }).length).toBeGreaterThan(0);
-        }
-        if (entry.def.id === "crew") {
-          expect(screen.getAllByRole("heading", { name: "Crew" }).length).toBeGreaterThan(0);
-        }
-        if (entry.def.id === "settings") {
-          expect(screen.getAllByRole("heading", { name: "Settings" }).length).toBeGreaterThan(0);
-        }
-
-        cleanup();
+      // "Pane actions" is `AgentChat`'s own right-cluster button, portalled through `RouteHeader`
+      // into `AppHeaderHost`'s right host; waiting on it is itself a positive assertion that the
+      // host is really there, for the router kind (`PaneRouter`/`PaneStackRouter`) this regression
+      // broke. "Crew"/"Settings" are the override host's take-over title (CrewRoute/SettingsRoute).
+      if (entry.def.id === "pane") {
+        await screen.findAllByRole("button", { name: "Pane actions" }, SLOW);
+      } else if (entry.def.id === "crew") {
+        await screen.findAllByRole("heading", { name: "Crew" }, SLOW);
+      } else if (entry.def.id === "settings") {
+        await screen.findAllByRole("heading", { name: "Settings" }, SLOW);
+      } else {
+        await screen.findAllByRole("heading", { name: entry.def.title }, SLOW);
       }
+      // Let the section's routers settle before reading its cards, so a card that would have thrown is
+      // not silently read as handle-less.
+      await waitFor(() => expect(container.querySelectorAll(".pg-grid > *").length).toBeGreaterThan(0), SLOW);
+
+      expect(screen.queryByText(/unexpected application error/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/must be rendered inside/i)).not.toBeInTheDocument();
+
+      if (entry.def.id === "pane") {
+        expect(screen.getAllByRole("button", { name: "Pane actions" }).length).toBeGreaterThan(0);
+      }
+      if (entry.def.id === "crew") {
+        expect(screen.getAllByRole("heading", { name: "Crew" }).length).toBeGreaterThan(0);
+      }
+      if (entry.def.id === "settings") {
+        expect(screen.getAllByRole("heading", { name: "Settings" }).length).toBeGreaterThan(0);
+      }
+
+      handlesBySection.set(
+        entry.def.id,
+        Array.from(container.querySelectorAll(".pg-grid > *"), (card) => card.getAttribute("data-state") ?? ""),
+      );
+      cleanup();
     },
-    30_000,
+    SECTION_BUDGET,
   );
 });
 
@@ -91,44 +115,28 @@ describe("the states playground", () => {
 // The selector is `.pg-grid > *`: `Section` renders that grid and every card is a direct child of
 // one, while `ui/collapse.tsx` renders its OWN `data-state` ("open" / "closed") deep inside several
 // cards. Scoping to the grid's children tells the two apart without giving the app a second
-// attribute. Only one section mounts at a time now, so the handles are collected one tab at a time
-// and pooled into a single union before the rules run over it.
+// attribute. The section cases above collected the handles one tab at a time; this case pools them.
 describe("the playground's card handles", () => {
-  it(
-    "gives every card a unique flat-kebab handle",
-    async () => {
-      const handles: string[] = [];
-      for (const entry of SECTIONS) {
-        const { container } = render(<PlaygroundApp tab={entry.def.id} />);
-        // Let each section's routers settle before reading its cards, the same way the render test
-        // does, so a card that would have thrown is not silently read as handle-less.
-        await waitFor(
-          () => expect(container.querySelectorAll(".pg-grid > *").length).toBeGreaterThan(0),
-          SLOW,
-        );
-        for (const card of container.querySelectorAll(".pg-grid > *")) {
-          handles.push(card.getAttribute("data-state") ?? "");
-        }
-        cleanup();
-      }
+  it("gives every card a unique flat-kebab handle", () => {
+    // Every section case ran: this file is run whole, never this case alone.
+    expect(SECTIONS.filter((entry) => !handlesBySection.has(entry.def.id)).map((entry) => entry.def.id)).toEqual([]);
+    const handles = [...handlesBySection.values()].flat();
 
-      // A floor, not the count: adding a card must not mean editing this test. It is here only to
-      // stop the three assertions below passing over an empty page.
-      expect(handles.length).toBeGreaterThanOrEqual(54);
+    // A floor, not the count: adding a card must not mean editing this test. It is here only to
+    // stop the three assertions below passing over an empty page.
+    expect(handles.length).toBeGreaterThanOrEqual(54);
 
-      expect(handles.filter((handle) => handle === "")).toEqual([]);
-      expect(handles.filter((handle) => !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(handle))).toEqual([]);
+    expect(handles.filter((handle) => handle === "")).toEqual([]);
+    expect(handles.filter((handle) => !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(handle))).toEqual([]);
 
-      const seen = new Set<string>();
-      const repeated: string[] = [];
-      for (const handle of handles) {
-        if (seen.has(handle)) repeated.push(handle);
-        seen.add(handle);
-      }
-      expect(repeated).toEqual([]);
-    },
-    30_000,
-  );
+    const seen = new Set<string>();
+    const repeated: string[] = [];
+    for (const handle of handles) {
+      if (seen.has(handle)) repeated.push(handle);
+      seen.add(handle);
+    }
+    expect(repeated).toEqual([]);
+  });
 });
 
 // The held-send cards (numbers 14 to 18 of the composer states, ADR 0061 amended 2026-10-18): the real

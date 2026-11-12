@@ -36,4 +36,26 @@ describe("BranchLabel", () => {
     expect(within(label).getByText("Detached at abc1234")).toHaveClass("sr-only");
     expect(label).toHaveAttribute("title", sha);
   });
+
+  it("marks matched letters, and carries a mark across the split to the half it falls in", () => {
+    const name = "perf/dashboard-poll-cadence-and-backoff";
+    const { container } = render(<BranchLabel head={{ kind: "branch", name }} ranges={[[0, 4], [name.length - 10, name.length - 5]]} />);
+    const drawn = container.querySelector('[data-slot="branch-label"] [aria-hidden="true"].flex')!;
+    const [head, tail] = Array.from(drawn.children);
+    expect([...head!.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["perf", "nd"]);
+    expect([...tail!.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["-ba"]);
+    expect(`${head!.textContent}${tail!.textContent}`).toBe(name);
+  });
+
+  it("marks a detached head's drawn text and draws the same DOM with no range", () => {
+    const sha = "abc1234def5678abc1234def5678abc1234def56";
+    const plain = render(<BranchLabel head={{ kind: "detached", sha }} />);
+    const before = plain.container.innerHTML;
+    plain.unmount();
+    const empty = render(<BranchLabel head={{ kind: "detached", sha }} ranges={[]} />);
+    expect(empty.container.innerHTML).toBe(before);
+    empty.unmount();
+    const marked = render(<BranchLabel head={{ kind: "detached", sha }} ranges={[[10, 17]]} />);
+    expect([...marked.container.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["abc1234"]);
+  });
 });

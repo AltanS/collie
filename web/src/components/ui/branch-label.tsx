@@ -1,4 +1,5 @@
 import { Icon } from "@/components/icons/icon";
+import { MatchText, type MatchRange } from "@/components/ui/match-text";
 
 import { t } from "@/lib/i18n";
 import { shortSha } from "@/lib/git-head";
@@ -10,6 +11,17 @@ import { useLocale } from "@/hooks/use-locale";
 const TAIL = 8;
 /** A name this short or shorter is never split, so a short name truncates the ordinary way. */
 const SPLIT_FROM = TAIL + 6;
+
+/** The part of `ranges` inside `[from, to)`, moved so it indexes the slice. */
+function sliceRanges(ranges: readonly MatchRange[], from: number, to: number): MatchRange[] {
+  const out: MatchRange[] = [];
+  for (const [start, end] of ranges) {
+    const a = Math.max(start, from);
+    const b = Math.min(end, to);
+    if (b > a) out.push([a - from, b - from]);
+  }
+  return out;
+}
 
 /**
  * THE BRANCH, on one line: a branch glyph and the name, or a commit glyph and `detached @abc1234`.
@@ -29,8 +41,12 @@ const SPLIT_FROM = TAIL + 6;
  * The drawn text is hidden from a screen reader, which reads the whole name in words instead
  * ("Branch fix-login"), since the eye's version may be cut. Owns no tap: a caller that wants one
  * wraps it.
+ *
+ * `ranges` marks matched letters of the drawn text (the session filter, `MatchText`): indexes into the
+ * whole name, or into `detached @abc1234` as `paneFields` spells it. A mark repaints and never re-lays-out,
+ * and the split at the tail carries each mark to the half it falls in. Absent, the DOM is what it was.
  */
-export function BranchLabel({ head, className }: { head: GitHead; className?: string }) {
+export function BranchLabel({ head, className, ranges }: { head: GitHead; className?: string; ranges?: readonly MatchRange[] | undefined }) {
   useLocale();
   const branch = head.kind === "branch";
   const words = branch ? t("branch.aria", { name: head.name }) : t("branch.detachedAria", { sha: shortSha(head.sha) });
@@ -49,11 +65,25 @@ export function BranchLabel({ head, className }: { head: GitHead; className?: st
       <span aria-hidden className="flex min-w-0">
         {branch ? (
           <>
-            <span className="min-w-0 truncate">{split ? head.name.slice(0, -TAIL) : head.name}</span>
-            {split && <span className="shrink-0">{head.name.slice(-TAIL)}</span>}
+            <span className="min-w-0 truncate">
+              <MatchText
+                text={split ? head.name.slice(0, -TAIL) : head.name}
+                ranges={ranges && sliceRanges(ranges, 0, split ? head.name.length - TAIL : head.name.length)}
+              />
+            </span>
+            {split && (
+              <span className="shrink-0">
+                <MatchText
+                  text={head.name.slice(-TAIL)}
+                  ranges={ranges && sliceRanges(ranges, head.name.length - TAIL, head.name.length)}
+                />
+              </span>
+            )}
           </>
         ) : (
-          <span className="min-w-0 truncate">{t("branch.detached", { sha: shortSha(head.sha) })}</span>
+          <span className="min-w-0 truncate">
+            <MatchText text={t("branch.detached", { sha: shortSha(head.sha) })} ranges={ranges} />
+          </span>
         )}
       </span>
       <span className="sr-only">{words}</span>

@@ -87,6 +87,13 @@ describe("plurals", () => {
     expect(tn("space.overview.paneCount", 2)).toBe("2ペイン");
   });
 
+  it("reads a pending plural set in English, with English's rule, where a bundle lacks it", async () => {
+    setLocale("ru");
+    await whenLocaleReady("ru");
+    expect(tn("home.tabs.hill", 1)).toBe("1 Decision waits on you");
+    expect(tn("home.tabs.hill", 3)).toBe("3 Decisions wait on you");
+  });
+
   it("picks one/few/many for Russian", async () => {
     setLocale("ru");
     await whenLocaleReady("ru");
@@ -261,8 +268,11 @@ describe("every translated dictionary", () => {
         `${code} has keys English lacks`,
       ).toEqual([]);
       // Intl gives Russian `few` and `many` for whole numbers, so a plural base without both would
-      // quietly read `.other` for 2 and for 5.
-      const bases = englishKeys.filter((key) => key.endsWith(".one")).map((key) => key.slice(0, -4));
+      // quietly read `.other` for 2 and for 5. A set still pending translation reads English with
+      // English's rule (`tn`), so it carries no extra category until its translation pass.
+      const bases = englishKeys
+        .filter((key) => key.endsWith(".one") && !pending.has(key))
+        .map((key) => key.slice(0, -4));
       const extras = bases.flatMap((base) => EXTRA_PLURAL_CATEGORIES.map((category) => `${base}.${category}`));
       expect(
         extras.filter((key) => key in dictionary),

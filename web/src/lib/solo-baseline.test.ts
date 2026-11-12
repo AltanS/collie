@@ -64,6 +64,17 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: present only while the mux is down for a refused durable token (M50 spec
   // 14), so a healthy solo body carries no such key and no golden byte moved.
   muxFault: true,
+  // Not a crew dimension either: the tricks revision (M94), which the phone compares to the one it holds
+  // before it asks `/api/tricks` for the changes. Optional, so a bridge with no tricks runner sends none.
+  tricksRev: true,
+  // Not a crew dimension: the hill's revision (M96), a number the bridge puts on every snapshot,
+  // solo included, so the phone knows when to read the hill. The bridge half records its own golden.
+  hillRev: true,
+  // Not a crew dimension: the agent views' revision, a number the bridge puts on every snapshot so the
+  // phone knows when to read `/api/trick-views`. The bridge half records its own golden.
+  trickViewsRev: true,
+  // Not a crew dimension: the Hill's switch, present only while it is off, so no solo byte moved.
+  hillOff: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -180,6 +191,10 @@ const AGENT_VIEW_KEYS = {
   walkyOff: true,
   // How many pins the pane's session holds (M90). Present only above zero, so a solo golden body carries no such key.
   pins: true,
+  // A trick session's part key (M94 slice 03). Present only on a pane of `kind: "trick"`, so a solo golden body carries no such key.
+  view: true,
+  // Whether the space's label is a name of its own (M98). Present only when the adapter's word differs from the default, so a solo golden body carries no such key.
+  workspaceNamed: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -246,12 +261,16 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "agents",
       "bridge",
       "device",
+      "hillOff",
+      "hillRev",
       "muxFault",
       "notifications",
       "servers",
       "sessions",
       "shellPanes",
       "tabs",
+      "trickViewsRev",
+      "tricksRev",
       "ts",
       "update",
       "workspaces",
@@ -323,9 +342,11 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "todos",
       "turnId",
       "usage",
+      "view",
       "walkyOff",
       "workspaceId",
       "workspaceLabel",
+      "workspaceNamed",
       "workspaceNumber",
     ]);
     expect(Object.keys(DEVICE_AUTH_KEYS).toSorted()).toEqual(["authorized", "device", "enforced"]);
