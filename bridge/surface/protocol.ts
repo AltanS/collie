@@ -3957,6 +3957,8 @@ export class SendProtocol {
     const started = this.now();
     const tried = await tryDoor(door, target, { requestId: request.id, text: request.text }, state.deadline - started, this.now);
     state.gaps.door = this.now() - started;
+    // No door for the pane is no news: the screen path is the ordinary one, and the receipt names no door (SPEC V25).
+    if (tried.kind === "absent") return null;
     if (tried.kind === "refused") {
       console.log(`[send] ${request.id}: the ${door.id} door refused (${tried.why}); the screen path goes on`);
       state.doorRefused = true;

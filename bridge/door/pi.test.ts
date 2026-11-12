@@ -98,6 +98,13 @@ async function why(result: Promise<Preflight>): Promise<string> {
   return answer.why;
 }
 
+/** `absent` when the pane has no inbox at all, `refused` when its own inbox was heard and not bound (SPEC V25). */
+async function unbound(result: Promise<Preflight>): Promise<"absent" | "refused"> {
+  const answer = await result;
+  if (answer.ok) throw new Error("the door bound");
+  return answer.absent === true ? "absent" : "refused";
+}
+
 async function submitted(send: InboxReply | "drop"): Promise<{ fake: Fake; answer: Promise<DoorAnswer> }> {
   const { fake, result } = preflight(paneSocket(FILE, send));
   const answer = await result;
@@ -122,16 +129,18 @@ describe("pi's door binds by the session file (V10)", () => {
     expect(fake.sent).toEqual([]);
   });
 
-  test("a pane that names no session file refuses before any socket is asked", async () => {
+  test("a pane that names no session file refuses once its own inbox is heard; with no inbox the door is absent", async () => {
     for (const ref of [null, { kind: "id", value: FILE } as const]) {
-      const { fake, result } = preflight(paneSocket(), ref);
+      const { result } = preflight(paneSocket(), ref);
       expect(await why(result)).toBe("the pane names no pi session file");
-      expect(fake.listed).toEqual([]);
+      expect(await unbound(preflight(paneSocket(), ref).result)).toBe("refused");
+      expect(await unbound(preflight({}, ref).result)).toBe("absent");
     }
   });
 
   test("a pi session with no file refuses", async () => {
     expect(await why(preflight(paneSocket(null)).result)).toBe("pi's session has no file");
+    expect(await unbound(preflight(paneSocket(null)).result)).toBe("refused");
   });
 
   test("an inbox that is not pi's refuses", async () => {
@@ -148,10 +157,13 @@ describe("pi's door finds the pane's socket by its markers (V11)", () => {
     expect((await result).ok).toBe(true);
   });
 
-  test("no socket, or only another pane's, refuses", async () => {
+  test("no socket, or only another pane's, is no door: absent, not refused (SPEC V25)", async () => {
     expect(await why(preflight({}).result)).toBe("no pi inbox is open");
+    expect(await unbound(preflight({}).result)).toBe("absent");
     const other = markersOf("w1:p2");
-    expect(await why(preflight({ [nameOf(other)]: { hello: { status: 200, text: helloText(other) } } }).result)).toBe("no pi inbox names this pane");
+    const sockets = { [nameOf(other)]: { hello: { status: 200, text: helloText(other) } } };
+    expect(await why(preflight(sockets).result)).toBe("no pi inbox names this pane");
+    expect(await unbound(preflight(sockets).result)).toBe("absent");
   });
 
   test("two sockets that name the pane refuse: ambiguity is absence", async () => {
@@ -159,6 +171,7 @@ describe("pi's door finds the pane's socket by its markers (V11)", () => {
     const two = markersOf(PANE, { namespace: "zellij", scope: "s", pane: "3" });
     const sockets = { [nameOf(one)]: { hello: { status: 200, text: helloText(one) } }, [nameOf(two)]: { hello: { status: 200, text: helloText(two) } } };
     expect(await why(preflight(sockets).result)).toBe("more than one pi inbox names this pane");
+    expect(await unbound(preflight(sockets).result)).toBe("refused");
   });
 
   test("a socket that fails the path check, or whose name is not its markers' digest, is not asked or not believed", async () => {

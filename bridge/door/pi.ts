@@ -139,13 +139,13 @@ export function piDoor(deps: PiDoorDeps): Door {
 
   return {
     id: PI_DOOR,
+    // No inbox for the pane is `absent`: the pane has no door, and the screen path is the ordinary one
+    // (SPEC V25). Only the pane's own inbox, heard and then not bound, is a refusal the receipt names.
     async preflight(target: DoorTarget, signal: AbortSignal): Promise<Preflight> {
-      const ref = deps.sessionOf(target.paneId);
-      if (ref?.kind !== "path") return { ok: false, why: "the pane names no pi session file" };
       const scope = await deps.matcher.scope();
-      if (scope === null) return { ok: false, why: "the multiplexer's scope is unknown" };
+      if (scope === null) return { ok: false, why: "the multiplexer's scope is unknown", absent: true };
       const names = (await io.list(deps.dir)).filter((name) => INBOX_SOCKET.test(name));
-      if (names.length === 0) return { ok: false, why: "no pi inbox is open" };
+      if (names.length === 0) return { ok: false, why: "no pi inbox is open", absent: true };
       if (names.length > INBOX_MAX) return { ok: false, why: `more than ${String(INBOX_MAX)} pi inboxes are open` };
       const heard = await Promise.all(names.map((name) => hear(name, signal)));
       const mine = heard.filter(
@@ -153,9 +153,11 @@ export function piDoor(deps: PiDoorDeps): Door {
           one !== null && one.hello.markers.some((marker) => marker.namespace === deps.matcher.namespace && deps.matcher.matches({ paneId: target.paneId }, marker, scope)),
       );
       const [only] = mine;
-      if (only === undefined) return { ok: false, why: "no pi inbox names this pane" };
+      if (only === undefined) return { ok: false, why: "no pi inbox names this pane", absent: true };
       if (mine.length > 1) return { ok: false, why: "more than one pi inbox names this pane" };
       if (only.hello.agent !== PI_DOOR) return { ok: false, why: `the inbox is ${only.hello.agent}'s, not pi's` };
+      const ref = deps.sessionOf(target.paneId);
+      if (ref?.kind !== "path") return { ok: false, why: "the pane names no pi session file" };
       if (only.hello.sessionFile === null) return { ok: false, why: "pi's session has no file" };
       if (only.hello.sessionFile !== ref.value) return { ok: false, why: "pi's session file is not the one the pane names" };
       return { ok: true, door: bound(only.path) };

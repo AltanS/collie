@@ -27,6 +27,10 @@ describe("tryDoor", () => {
     expect(await tryDoor(doorOf(() => bound(() => Promise.resolve({ kind: "refused", why: "busy" }))), TARGET, SEND, 1000)).toEqual({ kind: "refused", why: "busy" });
   });
 
+  test("a pane with no door is absent, never a refusal (SPEC V25)", async () => {
+    expect(await tryDoor(doorOf(() => Promise.resolve({ ok: false, why: "no inbox", absent: true })), TARGET, SEND, 1000)).toEqual({ kind: "absent", why: "no inbox" });
+  });
+
   test("an unbound door, a throw or a hang in preflight is a refusal", async () => {
     expect((await tryDoor(doorOf(() => Promise.resolve({ ok: false, why: "no socket" })), TARGET, SEND, 1000)).kind).toBe("refused");
     expect((await tryDoor(doorOf(() => Promise.reject(new Error("ENOENT"))), TARGET, SEND, 1000)).kind).toBe("refused");

@@ -102,10 +102,10 @@ describe("the bridge's pi door and the real inbox", () => {
     }
   });
 
-  test("another pane, an in-memory session, or a pane that names none refuses", async () => {
+  test("another pane has no door; an in-memory session, or a pane that names none, refuses", async () => {
     const pi = await piInPane({ idle: true, file: undefined }, { file: "/s/one.jsonl" });
     try {
-      expect(await pi.send("x", "req-join-0004", { ...TARGET, paneId: "%99" })).toEqual({ kind: "refused", why: "the pane names no pi session file" });
+      expect(await pi.send("x", "req-join-0004", { ...TARGET, paneId: "%99" })).toEqual({ kind: "absent", why: "no pi inbox names this pane" });
       expect(await pi.send("x", "req-join-0004")).toEqual({ kind: "refused", why: "pi's session has no file" });
       pi.paneSession.file = undefined;
       expect(await pi.send("x", "req-join-0004")).toEqual({ kind: "refused", why: "the pane names no pi session file" });
@@ -126,9 +126,9 @@ describe("the bridge's pi door and the real inbox", () => {
     }
   });
 
-  test("pi gone: no socket is left, and the door refuses", async () => {
+  test("pi gone: no socket is left, and the pane has no door (SPEC V25)", async () => {
     const pi = await piInPane({ idle: true, file: "/s/one.jsonl" }, { file: "/s/one.jsonl" });
     await pi.shutdown();
-    expect(await pi.send("phone one", "req-join-0006")).toEqual({ kind: "refused", why: "no pi inbox is open" });
+    expect(await pi.send("phone one", "req-join-0006")).toEqual({ kind: "absent", why: "no pi inbox is open" });
   });
 });

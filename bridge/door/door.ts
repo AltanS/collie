@@ -38,8 +38,11 @@ export interface BoundDoor {
   submit(send: DoorSend, signal: AbortSignal): Promise<DoorAnswer>;
 }
 
-/** A preflight's answer: the bound door, or why there is none. */
-export type Preflight = { readonly ok: true; readonly door: BoundDoor } | { readonly ok: false; readonly why: string };
+/**
+ * A preflight's answer: the bound door, or why there is none. `absent` says the pane has no door at all
+ * (no inbox for it), so the screen path is the ordinary one and nothing was refused (ADR 0141).
+ */
+export type Preflight = { readonly ok: true; readonly door: BoundDoor } | { readonly ok: false; readonly why: string; readonly absent?: true };
 
 export interface Door {
   /** The harness id this door serves: the receipt's `via` when it sends. */
@@ -62,11 +65,14 @@ export function doorRegistry(doors: readonly Door[]): DoorRegistry {
 
 /**
  * One door attempt's end:
- * - `refused`: nothing reached the agent; the send goes on by the screen (ADR 0141 point 2).
+ * - `absent`: the pane has no door to try; the send goes on by the screen, as it would with no door.
+ * - `refused`: the pane's door was there and took nothing; the send goes on by the screen (ADR 0141
+ *   point 2), and the receipt says so.
  * - `submitted`: the agent answered a hint; the journal settles the send.
  * - `uncertain`: `submit` was called and gave no answer that says nothing arrived; never retyped.
  */
 export type DoorTry =
+  | { readonly kind: "absent"; readonly why: string }
   | { readonly kind: "refused"; readonly why: string }
   | { readonly kind: "submitted"; readonly answer: Exclude<DoorAnswer, { kind: "refused" }> }
   | { readonly kind: "uncertain"; readonly why: string };
@@ -102,7 +108,7 @@ export async function tryDoor(door: Door, target: DoorTarget, send: DoorSend, bu
   } catch (err) {
     return { kind: "refused", why: `preflight: ${err instanceof Error ? err.message : String(err)}` };
   }
-  if (!bound.ok) return { kind: "refused", why: bound.why };
+  if (!bound.ok) return { kind: bound.absent === true ? "absent" : "refused", why: bound.why };
   let answer: DoorAnswer;
   try {
     answer = await within(budgetMs - (now() - start), (signal) => bound.door.submit(send, signal));

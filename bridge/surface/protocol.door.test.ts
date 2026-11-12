@@ -168,6 +168,16 @@ describe("the door goes first (ADR 0141 point 2)", () => {
       expect(pane.keysSeen.at(-1)).toBe("Enter");
     }
   });
+
+  test("a pane with no door (no inbox for it) is the ordinary screen send: no door word on the receipt (SPEC V25)", async () => {
+    const { pane, protocol, send } = rig(new FakeDoor(() => Promise.resolve({ ok: false, why: "no pi inbox is open", absent: true })));
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", via: "screen" });
+    expect(answer.receipt?.doorRefused).toBeUndefined();
+    expect(answer.receipt?.door).toBeUndefined();
+    expect(protocol.recent("%1")[0]?.doorRefused).toBeUndefined();
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
 });
 
 describe("once submit may have reached the agent there is no fallback (ADR 0141 point 2)", () => {
