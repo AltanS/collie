@@ -29,6 +29,8 @@ interface Opening {
   giveUpTimer: ReturnType<typeof setTimeout>;
   /** The screen that began it, so leaving that screen ends it. */
   readonly owner: symbol;
+  /** This opening and no other: only the read that began it may end it (`endOpening`). */
+  readonly token: symbol;
 }
 
 const pending = new Map<string, Opening>();
@@ -50,11 +52,13 @@ function stop(key: string): void {
 }
 
 /**
- * A tap on the row `key` (its glide key, the pane's path). Answers false when that row is already
- * opening: the tap is then a second one and is ignored. Answers true and starts the pending state.
+ * A tap on the row `key` (its glide key, the pane's path). Answers null when that row is already
+ * opening: the tap is then a second one and is ignored. Otherwise starts the pending state and answers
+ * its TOKEN, which `endOpening` needs: an old read that settles after the person left and came back
+ * must not end the NEW opening of the same row, whose own read is still out.
  */
-export function beginOpening(key: string, owner: symbol): boolean {
-  if (pending.has(key)) return false;
+export function beginOpening(key: string, owner: symbol): symbol | null {
+  if (pending.has(key)) return null;
   const showTimer = setTimeout(() => {
     const o = pending.get(key);
     if (o === undefined) return;
@@ -62,13 +66,14 @@ export function beginOpening(key: string, owner: symbol): boolean {
     changed();
   }, OPENING_SHOWN_MS);
   const giveUpTimer = setTimeout(() => stop(key), OPENING_GIVE_UP_MS);
-  pending.set(key, { shown: false, showTimer, giveUpTimer, owner });
-  return true;
+  const token = Symbol("opening");
+  pending.set(key, { shown: false, showTimer, giveUpTimer, owner, token });
+  return token;
 }
 
-/** The read settled, answered or failed. */
-export function endOpening(key: string): void {
-  stop(key);
+/** The read of the opening `token` settled, answered or failed. An opening that is no longer that one stays. */
+export function endOpening(key: string, token: symbol): void {
+  if (pending.get(key)?.token === token) stop(key);
 }
 
 /** The screen `owner` went away: whatever it began is over. */

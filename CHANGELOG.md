@@ -67,6 +67,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A held Dashboard list can no longer stay held.** If a poll removed the row a finger was on, the end of the touch went to a node that was gone and the list stayed frozen. A finger's lift is now also read from its pointer, and no hold lasts past five seconds. With the needs-you switch on, a row whose status just changed no longer leaves, and one that just began to need you no longer joins, while a finger is down: the rows keep what the person last saw and still show the live status.
 - **The wide layout's row drag shows its hold before it arms.** The hold look moved to 250 ms for the Dashboard row, which put it after the 220 ms mark where a touch drag arms on the large-screen sidebar. That gesture now keeps its own look time of 150 ms and the drag still arms at 220 ms.
 - **A press that never lifts can no longer open the wrong pane.** The Dashboard remembers which row was pressed so a click aimed at a neighbour opens the pressed one, but a mouse dragged off the row, a row that unmounted under the finger, or a right or middle click left that press waiting for a click that came later. Each now ends it, and so does a three second ceiling.
+- **An old pane read can no longer end a new opening of the same row.** If you tapped a row, left the screen and came back and tapped it again, the first read settling cleared the second tap's opening mark and let a third tap start another read. Each opening now ends only on its own read.
 
 ### Docs
 

@@ -49,10 +49,12 @@ export function usePaneOpen(
     open: (pane, row) => {
       const to = glideKeyOf(pane);
       // A second tap on a row that is already opening: the first one is on its way.
-      if (!beginOpening(to, owner)) return;
+      const opening = beginOpening(to, owner);
+      if (opening === null) return;
       const ready = prefetchPaneData(pane.paneId, scopeOf(pane));
-      // Settles on an answer and on a failure alike (the loader reports a failure itself).
-      void ready.then(() => endOpening(to));
+      // Settles on an answer and on a failure alike (the loader reports a failure itself). It ends ITS opening:
+      // after the person left and came back and tapped again, an old read settling must not end the new one.
+      void ready.then(() => endOpening(to, opening));
       glideForwardWhenReady("pane", to, ready, () => nav.down(to), row);
     },
   };

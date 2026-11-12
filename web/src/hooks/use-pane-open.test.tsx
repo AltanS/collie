@@ -11,12 +11,18 @@ import { fixtureAgents } from "@/test/handlers";
 const down = vi.fn();
 vi.mock("@/hooks/use-nav", () => ({ useNav: () => ({ down }) }));
 
-const read = { resolve: () => {} };
+// Every read the hook starts, in order: `read.resolve` settles the newest, `read.all[n]` the nth.
+interface Reads {
+  resolve: () => void;
+  all: (() => void)[];
+}
+const read: Reads = { resolve: () => {}, all: [] };
 vi.mock("@/lib/loaders", () => ({
   prefetchPaneData: vi.fn(
     () =>
       new Promise<void>((resolve) => {
         read.resolve = resolve;
+        read.all.push(resolve);
       }),
   ),
 }));
@@ -39,6 +45,7 @@ describe("usePaneOpen: a row that is opening", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     down.mockClear();
+    read.all = [];
   });
   afterEach(() => {
     resetOpenings();
@@ -76,5 +83,22 @@ describe("usePaneOpen: a row that is opening", () => {
     unmount();
     const again = renderHook(() => useOpeningShown(result.current.open.glideKeyOf(pane)));
     expect(again.result.current).toBe(false);
+  });
+  it("tap A, leave, come back, tap A: the first read settling does not end the second opening", async () => {
+    const first = mount();
+    act(() => first.result.current.open.open(pane));
+    first.unmount();
+    const second = mount();
+    act(() => second.result.current.open.open(pane));
+    act(() => vi.advanceTimersByTime(OPENING_SHOWN_MS));
+    expect(second.result.current.shown).toBe(true);
+    // The first read, started before the person left, answers now.
+    await act(async () => read.all[0]!());
+    expect(second.result.current.shown).toBe(true);
+    // A tap on a row whose own read is still out is still ignored.
+    act(() => second.result.current.open.open(pane));
+    expect(down).toHaveBeenCalledTimes(2);
+    await act(async () => read.all[1]!());
+    expect(second.result.current.shown).toBe(false);
   });
 });
