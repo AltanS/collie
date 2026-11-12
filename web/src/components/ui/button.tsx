@@ -2,6 +2,7 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
+import { PRESS_REACH_SOFT } from "@/components/ui/tap-target";
 
 // Every variant shares ONE box. `border border-transparent` lives in the base string, so a
 // component that flips `default` ↔ `outline` (nav-tray's keypad, the quick-reply dock) no longer
@@ -15,7 +16,11 @@ import { cn } from "@/lib/utils";
 // `--tw-outline-style: none`, which the `focus-visible:outline-2` below would then resolve THROUGH,
 // silently painting nothing.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.98] select-none",
+  [
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.98] select-none",
+    // While pressed, the scale's share of the hit area is given back (ui/tap-target.ts).
+    PRESS_REACH_SOFT,
+  ],
   {
     variants: {
       variant: {

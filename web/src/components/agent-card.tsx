@@ -22,6 +22,7 @@ import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
+import { PRESS_REACH_ROW } from "@/components/ui/tap-target";
 import { useOpeningShown } from "@/lib/pane-opening";
 import { cancelPress, markPressHeld, redirectClick, releasePress, rememberPress } from "@/lib/press-memory";
 import { Icon } from "@/components/icons/icon";
@@ -293,6 +294,7 @@ export function AgentCard({
       data-glide-key={glideKey}
       className={cn(
         "w-full text-left transition-transform active:scale-[0.99]",
+        PRESS_REACH_ROW,
         // A held row must not start iOS's selection loupe or touch callout: both end in a
         // `pointercancel` that kills the hold timer (hooks/use-long-press.ts).
         onHold && "select-none [-webkit-touch-callout:none]",

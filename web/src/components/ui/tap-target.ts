@@ -37,7 +37,8 @@ export const TOOLBAR_TAP_TARGET = "relative before:absolute before:-inset-1 befo
  * so the reach stays inside the row and never touches a pill's neighbour. Change the pill's height,
  * its border, or the header's row and this must be re-measured.
  */
-export const HEADER_PILL_TAP_TARGET = "relative before:absolute before:inset-x-0 before:-inset-y-[10px] before:content-['']";
+export const HEADER_PILL_TAP_TARGET =
+  "relative before:absolute before:inset-x-0 before:-inset-y-[10px] before:content-[''] active:before:-inset-x-[3%]";
 
 /**
  * The dashboard's summary line: a 32px button with no border inside a 44px row (`min-h-11`, items
@@ -57,3 +58,27 @@ export const HEADING_TAP_TARGET = "relative before:absolute before:inset-x-0 bef
  * whose `gap-1` is exactly that 4px, so two of them, or one beside a count, touch and never overlap.
  */
 export const SQUARE_36_TAP_TARGET = "relative before:absolute before:-inset-1 before:content-['']";
+
+// ── A PRESS MAY NOT SHRINK THE HIT AREA (hitbox investigation, proposal 5) ─────────────────────────────
+//
+// `active:scale-95` scales the element's box about its centre, and the hit area goes with it: a pill 81px
+// wide loses 2px at each edge, the floating button 2.4px, so a tap that lands in that rim is aimed at
+// whatever lies beneath the shrunken box (for the floating button, a row: a tap on "New" opens a pane).
+// Measured with real touches, any press length from 40ms (REGRESSIONS.md, proposal 5).
+//
+// The fix keeps the look and gives the hit area back. WHILE PRESSED only, the element grows a
+// transparent `::before` reaching out by the share the scale takes away. At rest there is no pseudo-element
+// at all, so no rest geometry changes and no neighbour can be covered by a reach that is not there. It
+// needs no `relative`: a non-`none` `scale` makes the element the containing block of its absolute
+// descendants, and it is only ever drawn while `scale` is set.
+//
+// 3% each way is the 95% scale's loss (2.6%) rounded up; the 98% of `Button` loses 1%, so it takes 1.5%.
+
+/** For an element that scales to 95% while pressed and has no `::before` of its own. */
+export const PRESS_REACH = "active:before:absolute active:before:-inset-[3%] active:before:content-['']";
+
+/** For an element that scales to 98% while pressed and has no `::before` of its own (`Button`). */
+export const PRESS_REACH_SOFT = "active:before:absolute active:before:-inset-[1.5%] active:before:content-['']";
+
+/** For a full-width row that scales to 99%: sideways only, so the next row's edge is never covered. */
+export const PRESS_REACH_ROW = "active:before:absolute active:before:-inset-x-[1%] active:before:inset-y-0 active:before:content-['']";
