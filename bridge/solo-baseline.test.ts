@@ -1316,6 +1316,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_INSIDE",
       "COLLIE_KIRO_ROOT",
       "COLLIE_MAX_UPLOAD_MB",
+      "COLLIE_MCODE_ROOT",
       "COLLIE_MULTI_SESSION",
       "COLLIE_MUSE_ROOT",
       "COLLIE_MUX",
