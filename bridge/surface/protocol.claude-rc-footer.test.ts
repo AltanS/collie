@@ -172,6 +172,15 @@ describe("a send to an idle Claude Code 2.1.319 pane with Remote Control on", ()
     expect(pane.submitted).toEqual([]);
   });
 
+  test("a pointed `❯ /rc` row coming under the box is a list entry, not the status row: the probe fails", async () => {
+    const pane = new RcFooterPane(IDLE);
+    pane.rc = (box) => (box === "" ? null : row("❯ /rc"));
+    const { send } = rig(pane);
+    const answer = await send(TEXT);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(pane.submitted).toEqual([]);
+  });
+
   test("a row that comes under the box and is no Remote Control label still fails the probe", async () => {
     const pane = new RcFooterPane(IDLE);
     pane.rc = (box) => (box === "" ? null : row("/rc something else"));
