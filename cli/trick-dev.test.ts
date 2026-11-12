@@ -10,6 +10,10 @@ import { cmdTrickDev, DEV_INPUTS_MARK, devTrigger, parseDevArgs, watchCounts, wa
 import { cmdTrickInit, type TrickDeps } from "./trick.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 
+// gated on Windows (b): a program that uses the helper (`./trick.ts`) prints nothing on Windows yet, so
+// Collie gates tricks there (bridge/tricks/service.ts `gated`). Each `helperTest` runs such a program.
+const helperTest = test.skipIf(process.platform === "win32");
+
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "collie-trick-dev-"));
@@ -247,7 +251,7 @@ run((t) => {
     expect(parseDevArgs([".", "--inputs"])).toEqual({ error: "--inputs needs a value" });
   });
 
-  test("the globs' files reach the program through t.inputs as the first agent session's; a .env file never does", async () => {
+  helperTest("the globs' files reach the program through t.inputs as the first agent session's; a .env file never does", async () => {
     const d = await deps();
     const dir = await readsTrick(d, '["TODO.md", ".e*"]');
     const proj = join(dirname(d.configDir), "proj");
@@ -279,7 +283,7 @@ run((t) => {
     expect(await readFile(join(dir, "inputs", "mine.txt"), "utf8")).toBe("the author's own\n");
   });
 
-  test("a trick that lists no inputs runs as before, with a note", async () => {
+  helperTest("a trick that lists no inputs runs as before, with a note", async () => {
     const d = await deps();
     const dir = await trickWith(d, "plain", `import { run } from "./trick.ts";\nrun((t) => t.status({ text: "ok" }));\n`, '["status"]');
     expect(await cmdTrickDev(d, [dir, "--inputs", dirname(d.configDir)])).toBe(EXIT.OK);
@@ -289,7 +293,7 @@ run((t) => {
 });
 
 describe("one run", () => {
-  test("the init sample: each part with its place, id and shape, the decisions line, the run against the caps", async () => {
+  helperTest("the init sample: each part with its place, id and shape, the decisions line, the run against the caps", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["legs"]);
     d.out.length = 0;
@@ -304,7 +308,7 @@ describe("one run", () => {
     expect(text).toMatch(/ran in \d+ ms of 10 s, exit 0, stdout [\d.]+ (B|KiB) of 64\.0 KiB/u);
   });
 
-  test("a Decision, a refusal with its path, and a tap on a hill node", async () => {
+  helperTest("a Decision, a refusal with its path, and a tap on a hill node", async () => {
     const d = await deps();
     const dir = await trickWith(
       d,
@@ -367,7 +371,7 @@ run((t) => {
     expect(body.parts.map((p: { part: { id: string } }) => p.part.id)).toEqual(["belt"]);
   });
 
-  test("a failed run prints the problem and the stderr tail; keepDecisions says they stay", async () => {
+  helperTest("a failed run prints the problem and the stderr tail; keepDecisions says they stay", async () => {
     const d = await deps();
     const dir = await trickWith(d, "boom", `import { run } from "./trick.ts";\nrun(() => { throw new Error("no gh on PATH"); });\n`, '["belt"]');
     expect(await cmdTrickDev(d, [dir])).toBe(EXIT.FAIL);
@@ -403,7 +407,7 @@ describe("--watch", () => {
     expect(calls).toBe(1);
   });
 
-  test("cmdTrickDev --watch runs once, runs again on a change, and returns when told to stop", async () => {
+  helperTest("cmdTrickDev --watch runs once, runs again on a change, and returns when told to stop", async () => {
     const d = await deps();
     const dir = await trickWith(d, "watched", `import { run } from "./trick.ts";\nrun((t) => { t.belt({ label: "one" }); });\n`, '["belt"]');
     let stopWatching = (): void => {};

@@ -22,6 +22,10 @@ import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.
 import { inputsSentence, parseTrickDocument, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
 import { TRICKS_WINDOWS_LINE } from "../web/src/lib/tricks/schema.ts";
 
+// gated on Windows (b): a program that uses the helper (`./trick.ts`) prints nothing on Windows yet, so
+// Collie gates tricks there (bridge/tricks/service.ts `gated`). Each `helperTest` runs such a program.
+const helperTest = test.skipIf(process.platform === "win32");
+
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "collie-trick-cli-"));
@@ -153,7 +157,7 @@ describe("collie trick init", () => {
     expect(sampleProgram("legs").trimEnd().split("\n").length).toBeLessThanOrEqual(30);
   });
 
-  test("the folder init writes passes check --run with no refusal, in both forms", async () => {
+  helperTest("the folder init writes passes check --run with no refusal, in both forms", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["hello"]);
     const dir = join(d.configDir, "tricks", "hello");
@@ -167,9 +171,7 @@ describe("collie trick init", () => {
     expect(report.run?.problem).toBeNull();
     expect(report.run?.refusals).toEqual([]);
     expect(report.run?.parts).toEqual(["status status", "dashboard dashboard", "session main"]);
-    // The shell form runs `./program.sh` as a shell line, which is `cmd.exe` on Windows (bridge/tricks/run.ts):
-    // a POSIX sh program, so there the TypeScript form above is the one that runs.
-    if (process.platform === "win32") return;
+    // The shell form runs `./program.sh` as a shell line, which is `cmd.exe` on Windows (bridge/tricks/run.ts).
     const e = await deps();
     await cmdTrickInit(e, ["--sh", "plain"]);
     expect(await cmdTrickCheck(e, ["--run", join(e.configDir, "tricks", "plain")])).toBe(EXIT.OK);

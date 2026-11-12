@@ -10,6 +10,10 @@ import { TRICK_HELPER } from "../../bridge/tricks/scan.ts";
 import { sampleConfig, sampleManifest, sampleProgram } from "../trick.ts";
 import { age, clip, CONTRACT, firstSentence, iso, mapText, mask, minute, now, Trick, v, type Facts, type Node } from "./trick.ts";
 
+// gated on Windows (b): a program that uses the helper (`./trick.ts`) prints nothing on Windows yet, so
+// Collie gates tricks there (bridge/tricks/service.ts `gated`). Each `helperTest` runs such a program.
+const helperTest = test.skipIf(process.platform === "win32");
+
 // The helper (cli/trick-kit/trick.ts) is copied into a trick folder as text, so nothing in the schema's
 // own tests sees it. These tests hold it to the schema: every builder's node and every place's part
 // parses with the real parser, and the helper's run behaves as its comments say when a real Bun runs a
@@ -172,7 +176,7 @@ describe("the builders cannot drift from the schema", () => {
     expect(v.stat(7, "min")).toEqual({ kind: "number", text: "7", attrs: { label: "min" } });
   });
 
-  test("the sample program prints a document the parser takes whole, and it is about 25 lines", async () => {
+  helperTest("the sample program prints a document the parser takes whole, and it is about 25 lines", async () => {
     const { dir, state } = await trickFolder(sampleProgram("kit"), ["status", "dashboard", "session"]);
     await writeFile(join(dir, "config.toml"), sampleConfig("kit"));
     await writeFile(join(dir, "trick.toml"), sampleManifest("kit"));
@@ -186,7 +190,7 @@ describe("the builders cannot drift from the schema", () => {
 });
 
 describe("run, the places and the Decisions", () => {
-  test("every place method prints a part the parser takes; decisions default to [] and keepDecisions leaves the key out", async () => {
+  helperTest("every place method prints a part the parser takes; decisions default to [] and keepDecisions leaves the key out", async () => {
     const program = `import { run, v } from "./trick.ts";
 run((t) => {
   t.status({ text: "3 red", icon: "flask", tone: "danger" });
@@ -213,7 +217,7 @@ run((t) => {
     expect(JSON.parse(tapped.stdout)).not.toHaveProperty("decisions");
   });
 
-  test("decide adds a Decision the parser takes; a tap from any place reads as the one t.tap", async () => {
+  helperTest("decide adds a Decision the parser takes; a tap from any place reads as the one t.tap", async () => {
     const program = `import { run } from "./trick.ts";
 run((t) => {
   t.decide({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip", confirm: "Skip it" }], recommends: { intent: "rerun", why: "It passed yesterday." }, priority: "now" });
@@ -238,7 +242,7 @@ run((t) => {
     expect(partTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", decision: null, text: null, from: "lodge:w6X:3", seen: null });
   });
 
-  test("a thrown error: one warn card in the session and exit 0 when the trick has a session; exit 1 without one", async () => {
+  helperTest("a thrown error: one warn card in the session and exit 0 when the trick has a session; exit 1 without one", async () => {
     const boom = `import { run } from "./trick.ts";\nrun(() => { throw new Error("the gh call failed"); });\n`;
     const withSession = await trickFolder(boom, ["session"]);
     const ran = await runProgram(withSession.dir, factsFor(withSession.dir, withSession.state));
@@ -255,7 +259,7 @@ run((t) => {
     expect(failed.stderr.trimEnd().split("\n").at(-1)).toBe("error: the gh call failed");
   });
 
-  test("the error card goes to the session id the run named", async () => {
+  helperTest("the error card goes to the session id the run named", async () => {
     const program = `import { run, v } from "./trick.ts";\nrun((t) => { t.session({ id: "legs", view: [v.para("x")] }); throw new Error("late"); });\n`;
     const { dir, state } = await trickFolder(program, ["belt"]);
     const ran = await runProgram(dir, factsFor(dir, state));
@@ -263,7 +267,7 @@ run((t) => {
     expect(JSON.parse(ran.stdout).parts[0].id).toBe("legs");
   });
 
-  test("config.toml is t.config; a broken one is the run's error", async () => {
+  helperTest("config.toml is t.config; a broken one is the run's error", async () => {
     const program = `import { run } from "./trick.ts";\nrun((t) => { t.status({ text: String(t.config.repo ?? "none") }); });\n`;
     const { dir, state } = await trickFolder(program, ["status"]);
     expect(JSON.parse((await runProgram(dir, factsFor(dir, state))).stdout).parts[0].chip.text).toBe("none");
@@ -275,7 +279,7 @@ run((t) => {
 });
 
 describe("state, sh and the sessions", () => {
-  test("t.state keeps JSON files in the state folder, written whole; a bad name is the run's error", async () => {
+  helperTest("t.state keeps JSON files in the state folder, written whole; a bad name is the run's error", async () => {
     const program = `import { run } from "./trick.ts";
 run((t) => {
   const n = t.state.get("count", 0) + 1;
@@ -315,7 +319,7 @@ run(async (t) => {
     expect(JSON.parse(subtitle)).toEqual(["$HOME a b\n", true, false, -1, 256 * 1024, false, false]);
   });
 
-  test("sessionAt compares real paths; sessionNamed finds by name", async () => {
+  helperTest("sessionAt compares real paths; sessionNamed finds by name", async () => {
     const root = await tempDir();
     const real = join(root, "repo");
     await mkdir(real);
@@ -500,7 +504,7 @@ describe("helper v2: tools, show and onPrint", () => {
     ]);
   });
 
-  test("t.onPrint changes the whole document before it prints, the error card too", async () => {
+  helperTest("t.onPrint changes the whole document before it prints, the error card too", async () => {
     const key = "sk-or-v1-0000000000fakefakefake0000000000";
     const program = `import { mapText, mask, run, v } from "./trick.ts";
 run((t) => {

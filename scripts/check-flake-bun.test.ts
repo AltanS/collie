@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 370 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 386 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([172, 164, 34]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([172, 180, 34]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -266,8 +266,12 @@ describe("the Windows check runs the flake's Bun", () => {
     const helperSkips = namesIn("cli/trick-kit/trick.test.ts", /test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g);
     expect(helperSkips).toHaveLength(2);
     for (const name of helperSkips) expect(script).toContain(name);
+    // Gated on Windows (b): the tests that run a program using the trick helper, `helperTest` in three files.
+    const helperOutputSkips = ["cli/trick.test.ts", "cli/trick-kit/trick.test.ts", "cli/trick-dev.test.ts"].flatMap((file) => readFileSync(join(ROOT, file), "utf8").match(/^ {2}helperTest\(/gm) ?? []);
+    expect(helperOutputSkips).toHaveLength(16);
+    expect(script).toContain("gated on Windows (b)");
     expect(budget("Cli")).toBe(
-      sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + viewSocketTests.length + 3 + 1 + 2 + hillSocketTests.length + stagingSkips.length + addSkips + proposeSkips.length + helperSkips.length,
+      sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + viewSocketTests.length + 3 + 1 + 2 + hillSocketTests.length + stagingSkips.length + addSkips + proposeSkips.length + helperSkips.length + helperOutputSkips.length,
     );
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");
