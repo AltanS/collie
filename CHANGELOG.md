@@ -42,6 +42,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A trick's row label written in look-alike letters is refused.** "CoIlie", "CIose pane", "C0llie", "Co11ie", and a label with an Armenian o, a Latin alpha or a Cherokee letter passed the rule that keeps a row from reading as Collie's own. The rule now compares a skeleton of the label: one look-alike map for every script, shared with the agent view's head rule and now with Armenian, more Latin, Greek and Cyrillic letters and Cherokee, then capital I, l, 1 and a bar read alike, 0 reads o, rn reads m and vv reads w. The label is shown as written.
 - **The line under a trick's rows passes the same rule as a row's label.** A tap's message that reads as one of the sheet's own rows, holds a word of Collie's or starts like a permission is not sent by the bridge for a tap on a row in a session's settings, and the phone does not show it either; it says "The tap failed" instead.
 - **A trick's row label may not start like a permission in any language.** Besides Allow, Approve, Deny, Grant and Trust, a label that starts with Yes, Always or a word of the permission card's buttons in any of the twelve languages Collie speaks ("Erlauben", "Permitir", "許可") is refused.
+- **A trick's armed row disarms when it changes.** When a row waiting for its second tap changed its words or its action, the second tap ran what the row said now. The row now disarms, and the second tap tells the bridge what the first one saw, so the bridge refuses it when the trick redrew its rows in between.
 
 ### Docs
 

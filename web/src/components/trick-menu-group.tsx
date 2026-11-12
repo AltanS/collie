@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { ListGroup } from "@/components/ui/list-group";
@@ -236,7 +236,9 @@ function TrickMenuGroup({
   settleMs: number;
   onSwitch?: (trick: string, on: boolean) => Promise<string | null>;
 }) {
-  const { pending, confirm } = usePendingConfirm();
+  const { pending, confirm, reset } = usePendingConfirm();
+  // Review 12 N4: what the first tap of a confirm saw, so the second tap confirms that and nothing else.
+  const armedAt = useRef<{ readonly id: string; readonly rev: number; readonly look: string } | null>(null);
   const part = group.partKey === undefined ? undefined : state.parts.get(group.partKey);
   const trick = trickOf(state, group.host, group.trick);
   const name = trick?.name ?? group.name;
@@ -246,10 +248,29 @@ function TrickMenuGroup({
   const busy = tap?.phase === "busy";
   const stale = part !== undefined && (part.stale === true || isPastWindow(part, now));
   const footer = group.partKey === undefined ? null : footerWords({ name, off, tap, part, now });
+  // The armed row as drawn now; any change of it (its words, its intent, gone) disarms.
+  const armedRow = pending === null ? undefined : menu?.find((row) => row.id === pending);
+  const armedLook = armedRow === undefined ? null : JSON.stringify(armedRow);
+  useEffect(() => {
+    if (pending === null) {
+      armedAt.current = null;
+      return;
+    }
+    if (armedAt.current?.id === pending && armedAt.current.look !== armedLook) reset();
+  }, [pending, armedLook, reset]);
   const send = (row: MenuRow): void => {
     if (part === undefined) return;
-    if (row.kind === "button" && row.confirm === true && !confirm(row.id)) return;
-    const input = { host: part.host, trick: part.trick, part: part.part, intent: row.intent, control: row.id, rev: part.rev };
+    let rev = part.rev;
+    if (row.kind === "button" && row.confirm === true) {
+      if (!confirm(row.id)) {
+        armedAt.current = { id: row.id, rev: part.rev, look: JSON.stringify(row) };
+        return;
+      }
+      // The second tap sends the rev the first one saw: the bridge refuses it when the part moved since.
+      rev = armedAt.current?.id === row.id ? armedAt.current.rev : part.rev;
+      armedAt.current = null;
+    }
+    const input = { host: part.host, trick: part.trick, part: part.part, intent: row.intent, control: row.id, rev };
     const value = row.kind === "switch" ? (row.on === true ? "off" : "on") : undefined;
     void store.tap(value === undefined ? input : { ...input, value }, { from: { session: sessionKeyOf(pane, part.host) } });
   };

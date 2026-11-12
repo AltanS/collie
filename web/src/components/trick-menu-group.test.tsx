@@ -135,6 +135,27 @@ describe("the menu place on the phone", () => {
     expect(switchOf(container, "watch")?.disabled).toBe(true);
   });
 
+  it("N4: a confirm disarms when its row changes, and the second tap sends the rev of the first", async () => {
+    const CONFIRM: MenuRow = { ...RERUN, confirm: true };
+    const { store, taps, set } = rig([menuPart("ci", [CONFIRM, WATCH])]);
+    await store.syncTricks(1);
+    const { container } = mount(store);
+    fireEvent.click(rowEl(container, "rerun")!);
+    expect(rowEl(container, "rerun")?.dataset.armed).toBe("");
+    // The armed row now says something else: the first tap confirmed the old words, so it disarms.
+    await set([menuPart("ci", [{ ...CONFIRM, label: "Delete branch" }, WATCH], {}, 2)]);
+    expect(rowEl(container, "rerun")?.dataset.armed).toBeUndefined();
+    fireEvent.click(rowEl(container, "rerun")!);
+    expect(taps).toHaveLength(0);
+    expect(rowEl(container, "rerun")?.dataset.armed).toBe("");
+    // Another row changes: the armed one stays armed, and the tap carries the rev it was armed at.
+    await set([menuPart("ci", [{ ...CONFIRM, label: "Delete branch" }, { ...WATCH, on: false }], {}, 3)]);
+    expect(rowEl(container, "rerun")?.dataset.armed).toBe("");
+    fireEvent.click(rowEl(container, "rerun")!);
+    expect(taps).toHaveLength(1);
+    expect(taps[0]?.body).toMatchObject({ node: "ci", intent: "rerun", rev: 2 });
+  });
+
   it("menu-rows-frozen-at-open: a new row waits for the next open, a removed one stays in place inert, a changed one redraws", async () => {
     const PAUSE: MenuRow = { id: "pause", kind: "button", label: "Pause CI", icon: "clock", intent: "pause" };
     const { store, set } = rig([menuPart("ci", [RERUN, WATCH])]);
