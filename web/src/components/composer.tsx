@@ -3485,7 +3485,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // does not change with it: `text-base` gives the field a unitless line-height, so the
               // placeholder's line box can only shrink (12px x 1.33 against 14-16px x 1.5), and the empty
               // field is already held at `min-h-9` above (at most 16px x 1.5 + 12px of padding = 36px).
-              (staleWords || steerWords) && "placeholder:text-xs",
+              //
+              // THE HINT SITS IN THE MIDDLE OF THE FIELD'S LINE, NOT AT ITS TOP (#758). `text-xs` sets the
+              // placeholder's own line-height too (12px x 1.33 = 16px), and Chromium lays a placeholder out
+              // from the top of the field's line, so a 16px line in a 21px one (the 14px draft size)
+              // left the words 3.5px above the centre of the box, level with neither the attach button
+              // nor Send. The hint takes the field's own line box instead: the field's line-height as a
+              // LENGTH (`leading-[1.5em]`, the same 1.5 x the draft size `text-base` gives it, so the field
+              // itself does not change), which `placeholder:leading-[inherit]` hands to the placeholder,
+              // where a unitless number would be multiplied by the placeholder's 12px again. The draft
+              // size is a setting, so no pixel is named here. The ordinary placeholder is at the
+              // field's own size and never needed it.
+              (staleWords || steerWords) && "leading-[1.5em] placeholder:text-xs placeholder:leading-[inherit]",
               // Mirrored, the field's right side stands against the box's border, so it takes the
               // inset the left used to take from Attach.
               !box && hand === "left" && "pr-2",

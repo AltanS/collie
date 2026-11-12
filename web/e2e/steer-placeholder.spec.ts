@@ -32,6 +32,9 @@ import { installApiStub, pinLocale } from "./fixtures/api";
 // So the case also measures the hint's own width, in the font the placeholder is drawn in, against the
 // room the field leaves it, and wants the whole sentence to fit.
 //
+// The hint is also centred in the field's line, not stood at its top (#758): its line box is measured
+// against the field's own in the same case.
+//
 // Chromium at phone size only. WebKit sizes `field-sizing` differently (it is not the engine this
 // contract was measured on), and the tablet's wide layout is a different composer width.
 
@@ -95,7 +98,7 @@ for (const { code } of LOCALES) {
       const context = document.createElement("canvas").getContext("2d")!;
       context.font = `${ph.fontStyle} ${ph.fontWeight} ${ph.fontSize} ${ph.fontFamily}`;
       const room = field.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      return { text: context.measureText(field.placeholder).width, room, fontSize: ph.fontSize };
+      return { text: context.measureText(field.placeholder).width, room, fontSize: ph.fontSize, hintLine: ph.lineHeight, fieldLine: style.lineHeight };
     });
     canSteer = false;
     const ordinary = await heightWith(reply);
@@ -103,6 +106,11 @@ for (const { code } of LOCALES) {
     expect(steer, `${locale}: the hint "${hint}" resizes the field`).toBe(ordinary);
     expect(steer).toBe(ONE_ROW);
     expect(fit.fontSize).toBe("12px");
+    // THE HINT SITS IN THE MIDDLE OF THE FIELD'S LINE (#758). Chromium lays a placeholder out from the top of
+    // the field's line, so the smaller words sit centred only when their line box is the field's own height.
+    // Equal line boxes put the 12px glyphs and the 14px ordinary words on one centre; at the old `text-xs` 16px
+    // against 21px they stood 3.5px high, and the words lined up with neither button beside the field.
+    expect(parseFloat(fit.hintLine), `${locale}: the hint's line is ${fit.hintLine} in a field line of ${fit.fieldLine}`).toBeCloseTo(parseFloat(fit.fieldLine), 0);
     expect(fit.text, `${locale}: the hint "${hint}" is ${fit.text.toFixed(0)}px in ${fit.room.toFixed(0)}px`).toBeLessThanOrEqual(fit.room);
   });
 }

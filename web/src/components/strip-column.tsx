@@ -3,11 +3,11 @@ import { Icon } from "@/components/icons/icon";
 
 import { ActionsRow, type GeneralAction } from "@/components/actions-row";
 import { HostChip } from "@/components/host-chip";
-import { ModelTag } from "@/components/model-tag";
+import { MODEL_TAG_ROOM, ModelTag, modelTagShows } from "@/components/model-tag";
 import { RawMirror } from "@/components/raw-mirror";
 import { SessionStream } from "@/components/session-stream";
 import { Button } from "@/components/ui/button";
-import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
+import { ChatMessageList, TailRoomContext, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BranchLabel } from "@/components/ui/branch-label";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { UnseenMark } from "@/components/ui/unseen-mark";
@@ -208,6 +208,7 @@ export function PaneColumnBody({
   return (
     <>
       <div data-slot="column-body" className="relative min-h-0 min-w-0 flex-1 border-t border-rule">
+        <TailRoomContext.Provider value={modelTagShows({ model: pane.model, usage: pane.usage }) ? MODEL_TAG_ROOM : 0}>
         {chat ? (
           <SessionStream
             feed={feed}
@@ -222,7 +223,7 @@ export function PaneColumnBody({
             savedCopy={null}
           />
         ) : (
-          <ChatMessageList ref={listRef} clearBand={0} dep={screenText} className="h-full px-3 pb-3 pt-0">
+          <ChatMessageList ref={listRef} clearBand={0} dep={screenText} className="h-full px-3 pb-[max(0.75rem,var(--tail-room,0px))] pt-0">
             {lines.length > 0 ? (
               <RawMirror lines={lines} wrap={prefs.wrap} className="rounded-none px-0" />
             ) : (
@@ -230,6 +231,7 @@ export function PaneColumnBody({
             )}
           </ChatMessageList>
         )}
+        </TailRoomContext.Provider>
         <ModelTag model={pane.model} effort={pane.effort} usage={pane.usage} />
       </div>
       {belt && (

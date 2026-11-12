@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formatCost, hasFigure, hasGauge, ModelTag } from "./model-tag";
+import { formatCost, hasFigure, hasGauge, MODEL_TAG_ROOM, ModelTag, modelTagShows } from "./model-tag";
 import type { StatusItem } from "./trick-status-item";
 
 describe("ModelTag", () => {
@@ -239,5 +239,33 @@ describe("ModelTag trick status items", () => {
       </div>,
     );
     expect(hidden(wide.container)).toEqual([]);
+  });
+});
+
+// THE ROOM THE TAG TAKES FROM THE TAIL (#759): the scrollers under it keep this much clear below the last
+// line while a tag shows. `modelTagShows` is the caller's copy of the tag's own "nothing to say" test.
+describe("modelTagShows", () => {
+  it("agrees with the tag: it shows for a model, a figure or a trick item, and for nothing else", () => {
+    const shows = (props: Parameters<typeof modelTagShows>[0]): boolean => render(<ModelTag {...props} />).container.innerHTML !== "";
+    const item: StatusItem = { id: "t", trick: "t", face: <span>x</span> };
+    const cases: Parameters<typeof modelTagShows>[0][] = [
+      { model: undefined },
+      { model: "  " },
+      { model: "claude-opus-5-5" },
+      { model: undefined, usage: { context: 40 } },
+      { model: undefined, usage: { cost: 0.5 } },
+      { model: undefined, usage: {} },
+      { model: undefined, trailing: [item] },
+      { model: undefined, trailing: [] },
+    ];
+    for (const props of cases) expect(modelTagShows(props), JSON.stringify(props)).toBe(shows(props));
+  });
+
+  it("the room is the tag's top edge above the box bottom (bottom-1 plus its 12px line) and a little air", () => {
+    const { container } = render(<ModelTag model="claude-opus-5-5" />);
+    const tag = container.querySelector("[data-slot='model-tag']");
+    expect(tag?.className).toContain("bottom-1");
+    expect(tag?.className).toContain("text-[10px]/3");
+    expect(MODEL_TAG_ROOM).toBeGreaterThanOrEqual(4 + 12);
   });
 });

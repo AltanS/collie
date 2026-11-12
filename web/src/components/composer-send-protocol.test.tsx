@@ -248,6 +248,9 @@ describe("a stale screen in the placeholder", () => {
     const field = screen.getByRole("textbox");
     expect(field).toHaveAttribute("placeholder", HINT);
     expect(field.className).toMatch(/placeholder:text-xs/);
+    // Centred in the field's line (#758), the same as the Steer hint below.
+    expect(field.className).toMatch(/placeholder:leading-\[inherit\]/);
+    expect(field.className).toMatch(/(^| )leading-\[1\.5em\]/);
     expect(screen.queryByText(HINT)).toBeNull();
   });
 
@@ -309,6 +312,12 @@ describe("Steer or queue on the Send button (M69)", () => {
     renderSteer({ surface: running, canSteer: true });
     expect(field()).toHaveAttribute("placeholder", HINT);
     expect(field().className).toMatch(/placeholder:text-xs/);
+    // THE HINT IS CENTRED IN THE FIELD'S LINE (#758): the smaller words take the field's own line box, as a
+    // length, instead of the 16px line `text-xs` brings, which stood them 3.5px above the box's centre. The
+    // field states its line-height as a length so the placeholder can inherit it; layout is in
+    // e2e/steer-placeholder.spec.ts.
+    expect(field().className).toMatch(/placeholder:leading-\[inherit\]/);
+    expect(field().className).toMatch(/(^| )leading-\[1\.5em\]/);
     // The hint is not text in the page: it is the placeholder or nothing.
     expect(screen.queryByText(HINT)).toBeNull();
   });
@@ -334,6 +343,8 @@ describe("Steer or queue on the Send button (M69)", () => {
     renderSteer({ canSteer: true });
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
     expect(field().className).not.toMatch(/placeholder:text-xs/);
+    // The ordinary words keep the field's own line, untouched by the repair.
+    expect(field().className).not.toMatch(/leading-\[/);
     await openMenu(user, "hello");
     expect(await screen.findByRole("button", { name: "Send as message" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: STEER })).toBeNull();
@@ -344,6 +355,8 @@ describe("Steer or queue on the Send button (M69)", () => {
     renderSteer({ surface: running });
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
     expect(field().className).not.toMatch(/placeholder:text-xs/);
+    // The ordinary words keep the field's own line, untouched by the repair.
+    expect(field().className).not.toMatch(/leading-\[/);
     await openMenu(user, "hello");
     expect(await screen.findByRole("button", { name: "Send as message" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: STEER })).toBeNull();

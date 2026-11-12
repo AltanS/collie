@@ -882,7 +882,7 @@ export function SessionStream({
       // watching the tail", and it also freezes the mirror text the card dock is built from — so
       // scrolling back through a conversation would stop a permission dialog appearing. Reading
       // older turns is an ordinary act in this body and a rare one in that one.
-      className={look.gutter === "16" ? "px-4 pt-0 pb-3" : "px-3 pt-0 pb-3"}
+      className={look.gutter === "16" ? "px-4 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]" : "px-3 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]"}
       style={textTokens(fontSize)}
       // The pin sits beside the scrollport, so it takes the gutter and the chat font size from here. Only the
       // hugging look does: the look before it keeps the overlay as it was.

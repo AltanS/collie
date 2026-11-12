@@ -61,6 +61,15 @@ export const USAGE_WARN_AT = 80;
 /** The dots per gauge: one per fifth. */
 const DOTS = 5;
 
+/**
+ * THE ROOM THE TAG TAKES FROM THE TAIL, in px: what a scroller under it keeps clear below its last line
+ * while a tag shows (`TailRoomContext`, ui/chat/chat-message-list.tsx). The tag's 12px line box
+ * (`text-[10px]/3`) stands 4px above the mirror box's bottom edge (`bottom-1`), so its top edge is 16px
+ * up, and the scrollers' own 12px of `pb-3` left the newest line 4px under it (#759). Two more px of air
+ * so the line does not touch the tag. Keep it in step with `bottom-1` and the line box below.
+ */
+export const MODEL_TAG_ROOM = 18;
+
 /** The tag's widest share of the mirror box it floats in (`max-w-[70%]` below). */
 const TAG_MAX_SHARE = 0.7;
 /** The tag's own horizontal padding, `px-1` on both sides, in px. */
@@ -188,6 +197,22 @@ function Dots({ used }: { used: number }) {
       ))}
     </span>
   );
+}
+
+/**
+ * Whether {@link ModelTag} draws anything for these props, so the caller can reserve {@link MODEL_TAG_ROOM}
+ * for the scrollers under it only while there is a tag. It mirrors the tag's own "nothing to say" test.
+ */
+export function modelTagShows({
+  model,
+  usage,
+  trailing,
+}: {
+  model: string | undefined;
+  usage?: PaneUsage | undefined;
+  trailing?: readonly StatusItem[] | undefined;
+}): boolean {
+  return modelLabel(model) !== null || hasFigure(usage) || (trailing?.length ?? 0) > 0;
 }
 
 export function ModelTag({

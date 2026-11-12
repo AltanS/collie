@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 
-import { ChatMessageList } from "./chat-message-list";
+import { ChatMessageList, TailRoomContext } from "./chat-message-list";
 
 // The mirror's own scroll region: `h-full` inside the flex-col pane, so once its content overruns
 // that height and the user drags past ITS bound, `overscroll-contain` is what stops the gesture from
@@ -21,5 +21,51 @@ describe("ChatMessageList — scroll containment", () => {
     const scrollport = container.querySelector('[class*="overflow-y-auto"]');
     expect(scrollport).not.toBeNull();
     expect(scrollport!.className).toMatch(/(?:^|\s)overscroll-contain(?=\s|$)/);
+  });
+});
+
+// THE ROOM A FLOATING TAG TAKES FROM THE TAIL (#759). Layout is measured in the browser
+// (e2e/model-tag-room.spec.ts); here: the list publishes the number for its caller's padding to read,
+// publishes nothing without a tag, and re-pins a list that follows the tail when the number changes.
+describe("ChatMessageList: the tail room", () => {
+  const scrollTo = vi.fn();
+  beforeAll(() => {
+    Element.prototype.scrollTo = scrollTo;
+  });
+  beforeEach(() => scrollTo.mockClear());
+
+  const scrollport = (container: HTMLElement): HTMLElement => container.querySelector<HTMLElement>('[class*="overflow-y-auto"]')!;
+
+  it("publishes --tail-room on its scrollport while a tag floats over it, and nothing without one", () => {
+    const withTag = render(
+      <TailRoomContext.Provider value={18}>
+        <ChatMessageList className="pb-[max(0.75rem,var(--tail-room,0px))]">
+          <div>line</div>
+        </ChatMessageList>
+      </TailRoomContext.Provider>,
+    );
+    expect(scrollport(withTag.container).style.getPropertyValue("--tail-room")).toBe("18px");
+    const without = render(
+      <ChatMessageList>
+        <div>line</div>
+      </ChatMessageList>,
+    );
+    expect(scrollport(without.container).style.getPropertyValue("--tail-room")).toBe("");
+  });
+
+  it("re-pins to the tail when the tag arrives, since padding is no size change the observers see", () => {
+    const list = (room: number) => (
+      <TailRoomContext.Provider value={room}>
+        <ChatMessageList>
+          <div>line</div>
+        </ChatMessageList>
+      </TailRoomContext.Provider>
+    );
+    const { rerender } = render(list(0));
+    scrollTo.mockClear();
+    rerender(list(18));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    rerender(list(18));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
   });
 });

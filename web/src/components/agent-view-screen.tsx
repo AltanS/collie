@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 import { ViewEarlier, ViewPendingBlock, ViewReceiptCard, ViewSentLine } from "@/components/agent-view-blocks";
 import { ViewChoiceBlock, ViewChoiceDone } from "@/components/agent-view-choice";
@@ -9,6 +9,7 @@ import type { ViewSendResult, ViewTap } from "@/components/composer";
 import { HillImageStrip, viewPictures, type HillMediaSource } from "@/components/hill-media";
 import { MarkdownText } from "@/components/markdown-text";
 import { StatusDot } from "@/components/status-badge";
+import { TailRoomContext, tailRoomStyle } from "@/components/ui/chat/chat-message-list";
 import { KeyedFlow, type FlowItem } from "@/components/ui/keyed-flow";
 import { OneOf } from "@/components/ui/one-of";
 import { PresenceList } from "@/components/ui/presence";
@@ -522,6 +523,8 @@ export function AgentViewScreen({
   // The title and the picture row belong to the part that holds the answer: on top while anything is
   // fresh, inside the Earlier fold when nothing is.
   const isTopOwner = hasFresh || requestAt === null;
+  // The model tag floats over this scroller's bottom like the others (#759): keep its room clear below the last line.
+  const tailRoom = useContext(TailRoomContext);
   const hasEarlier = split.stale.length > 0 || split.isChoiceStale;
   const strip =
     view?.set !== undefined && stripMedia.length > 0 ? <HillImageStrip decisionId={view.set} media={stripMedia} source={viewMediaSource} className="-mx-4 mt-2" scrollerClassName="px-4" /> : null;
@@ -534,7 +537,7 @@ export function AgentViewScreen({
   return (
     <div data-slot="agent-view" data-state={state} data-held={held ? "" : undefined} className="flex h-full w-full min-w-0 flex-col">
       <ViewBand name={name} line={bandLine} age={age} />
-      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-3 pb-4">
+      <div style={tailRoomStyle(tailRoom)} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-3 pb-[max(1rem,var(--tail-room,0px))]">
         {request !== null && (
           <div data-slot="view-request" key={`${String(request.at)}:${request.text}`} className="mb-3 min-w-0">
             {receipt === null ? <ViewRequestBubble text={request.text} /> : <ViewReceiptCard receipt={receipt} phase={request.phase} reason={request.reason} pictures={pictures} />}

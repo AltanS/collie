@@ -8,6 +8,24 @@ import { useAutoScroll } from "@/hooks/use-auto-scroll";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
+/**
+ * THE ROOM, IN PX, A FLOATING TAG TAKES FROM THE BOTTOM OF A SCROLLER (#759). The model tag floats on the
+ * mirror box's bottom-right corner and takes no layout (components/model-tag.tsx), so a scroller under it
+ * has to keep that room clear below its last line, or the newest line ends under the tag. The box that
+ * draws the tag provides the number while a tag shows; 0 is the default, for every list with no tag over it.
+ * The list publishes it as `--tail-room` on its scroller and a caller's bottom padding reads that
+ * (`pb-[max(0.75rem,var(--tail-room,0px))]`), so the padding never drops under what the caller asked for.
+ * A list following the tail re-pins when the room changes, so the line stays in view as the tag arrives.
+ */
+export const TailRoomContext = React.createContext(0);
+
+/** The `--tail-room` custom property for a scroller, or none while no tag floats over it. */
+export function tailRoomStyle(room: number): React.CSSProperties | undefined {
+  // SAFETY: `CSSProperties` has no index signature for custom properties, and React has accepted them on
+  // `style` since 18. The value is a string built here, so the assertion widens the key name only.
+  return room > 0 ? ({ "--tail-room": `${room}px` } as React.CSSProperties) : undefined;
+}
+
 export interface ChatMessageListHandle {
   /** Imperatively jump to the latest output (e.g. after sending a reply). */
   scrollToBottom: () => void;
@@ -55,9 +73,11 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
     ref,
   ) {
     useLocale();
+    const tailRoom = React.useContext(TailRoomContext);
     const { scrollRef, isAtBottom, scrollToBottom, scrollToChild, onScroll } =
       useAutoScroll<HTMLDivElement>({
         dep,
+        reserve: tailRoom,
         onAtBottomChange,
       });
 
@@ -85,7 +105,7 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
             clearBand !== undefined && bandStyle !== undefined && BAND_INSET_CLASS,
             className,
           )}
-          style={clearBand !== undefined ? { ...style, ...bandStyle } : style}
+          style={{ ...(clearBand !== undefined ? { ...style, ...bandStyle } : style), ...tailRoomStyle(tailRoom) }}
           {...props}
         >
           {children}

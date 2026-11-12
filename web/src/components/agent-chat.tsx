@@ -39,7 +39,7 @@ import { stopFor } from "@/lib/harness-bar";
 import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
-import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
+import { ChatMessageList, TailRoomContext, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { StretchTextContext } from "@/components/markdown-text";
 import { BottomSheet, SHEET_BODY_STICKY } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
@@ -106,7 +106,7 @@ import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/l
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { MaskedHint } from "@/components/masked-hint";
-import { hasFigure, ModelTag } from "@/components/model-tag";
+import { hasFigure, MODEL_TAG_ROOM, ModelTag, modelTagShows } from "@/components/model-tag";
 import { useModelOnScreen } from "@/hooks/use-model-on-screen";
 import { modelLabel } from "@/lib/model-label";
 import { useMaskedHintRetired } from "@/lib/masked-hint";
@@ -1284,6 +1284,15 @@ export function AgentChat({
     footerRows,
     modelWords,
   );
+  // THE MODEL TAG'S PROPS, one set for the tag and for the room the scrollers keep clear of it (#759):
+  // a model ALONE stands down while the screen names it, and the tag draws nothing at all without
+  // figures, so the scrollers reserve its height only while it shows.
+  const tagProps = {
+    model: modelOnScreen && !hasFigure(agent?.usage) ? undefined : agent?.model,
+    usage: agent?.usage,
+    trailing: statusItems,
+  };
+  const tagShown = modelTagShows(tagProps);
   const maskedHintOpen = maskOnScreen && !maskedHintRetired;
   // THE SAVED COPY'S DATE, for whichever body is on screen (M46 specs 09 and 10). Chat dates its own
   // window, read back from the Chat tail the phone kept; the terminal dates the last-seen mirror the
@@ -2896,6 +2905,7 @@ export function AgentChat({
                 and the notice floats over both bodies alike (ADR 0061). Both bodies draw agent
                 replies, so whether this device draws their stretches is read once, here. */}
             <StretchTextContext.Provider value={prefs.stretchText}>
+            <TailRoomContext.Provider value={tagShown ? MODEL_TAG_ROOM : 0}>
             {/* THE THIRD BODY, an agent view: it stands in for both while it shows. */}
             {agentView.showing && (
               <AgentViewScreen
@@ -2996,7 +3006,7 @@ export function AgentChat({
               // anyway (page colour on page colour at the top of the buffer, and scrolled away the
               // moment the mirror follows the tail). `pb-3` stays: the tail wants clearance from the
               // composer.
-              className="px-2 pt-0 pb-3"
+              className="px-2 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]"
             >
               {display ? (
                 <>
@@ -3148,6 +3158,7 @@ export function AgentChat({
               )}
             </ChatMessageList>
             ))}
+            </TailRoomContext.Provider>
             </StretchTextContext.Provider>
             {/* THE TERMINAL-DRAFT NOTICE FLOATS HERE (ADR 0061). The composer portals the notice
                 into this box, pinned to the mirror's bottom edge: above the card dock when a card
@@ -3165,12 +3176,7 @@ export function AgentChat({
                 gauge or a cost to draw, the tag is the whole row Claude Code has, model first, whatever the
                 screen prints (Altan, 2026-10-25); a model ALONE stands down while the screen names
                 it, the duplicate `modelOnScreen` exists to avoid. */}
-            <ModelTag
-              model={modelOnScreen && !hasFigure(agent?.usage) ? undefined : agent?.model}
-              effort={agent?.effort}
-              usage={agent?.usage}
-              trailing={statusItems}
-            />
+            <ModelTag {...tagProps} effort={agent?.effort} />
           </div>
 
           {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,
