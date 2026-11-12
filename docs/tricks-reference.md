@@ -28,10 +28,11 @@ A place is a spot on the phone where a trick can show (a surface). A program tri
 
 | Limit | Value |
 | --- | --- |
-| Parts of this place per trick | one |
+| Parts of this place per trick | one unbound, and up to 8 bound ones with `sessions`. No session is named by two parts |
 | `label`, the face word | at most 12 characters |
 | `badge` | a count from 0 to 9999 as text, or "" for a dot |
 | A mark needs | at least one of `icon`, `label` and `badge` |
+| `sessions`, contract 2 | 1 to 8 of the facts' session ids, agent sessions only. The part shows only in those sessions, in place of the trick's unbound part of this place there. Left out, the part is unbound |
 | One part, as compact JSON | at most 16 KiB |
 
 A program prints:
@@ -47,6 +48,38 @@ A program prints:
         "icon": "check",
         "label": "23/34",
         "tone": "ok",
+        "intent": "open"
+      }
+    }
+  ]
+}
+```
+
+A program prints:
+
+```json
+{
+  "v": 2,
+  "parts": [
+    {
+      "at": "belt",
+      "id": "legs",
+      "mark": {
+        "icon": "check",
+        "label": "23/34",
+        "tone": "ok"
+      }
+    },
+    {
+      "at": "belt",
+      "id": "legs-here",
+      "sessions": [
+        "lodge:w1:2"
+      ],
+      "mark": {
+        "icon": "flask",
+        "label": "2 red",
+        "tone": "danger",
         "intent": "open"
       }
     }
@@ -236,7 +269,8 @@ A program prints:
 | Rows | 1 to 6 in a part. Each `id` and each `intent` once |
 | A row | `id`, `kind` (`button` or `switch`), `label`, `intent`, and optionally `icon`, `disabled`, `on` (required on a switch) and `confirm` (a button only). Nothing else |
 | `label` | 1 to 24 characters, refused when longer, never cut. No hidden character. It may not read as one of the sheet's own rows in any language Collie speaks, hold the word `Collie`, `WalkyTalky`, `Hill`, `view`, or start with `Allow`, `Approve`, `Deny`, `Grant`, `Trust` |
-| Parts of this place per trick | one for every agent session of this machine, and bound ones with `sessions` (see Limits) |
+| Parts of this place per trick | one unbound, for every agent session of this machine, and up to 8 bound ones with `sessions`, the only way rows show on a crew member's session. No session is named by two parts |
+| `sessions`, contract 2 | 1 to 8 of the facts' session ids, agent sessions only. The part shows only in those sessions, in place of the trick's unbound part of this place there. Left out, the part is unbound |
 | Rows in one sheet | 12 of every trick together. A trick's group is shown whole or left out whole, in the order of the trick ids, and the sheet says how many tricks it left out |
 | One part, as compact JSON | at most 16 KiB |
 
@@ -280,6 +314,33 @@ name = "CI"
 run = "program.ts"
 contract = 2
 places = ["menu"]
+```
+
+A program prints:
+
+```json
+{
+  "v": 2,
+  "parts": [
+    {
+      "at": "menu",
+      "id": "ci-workshop",
+      "sessions": [
+        "m_workshop:w3:1"
+      ],
+      "rows": [
+        {
+          "id": "deploy",
+          "kind": "button",
+          "label": "Deploy here",
+          "icon": "upload",
+          "intent": "deploy",
+          "confirm": true
+        }
+      ]
+    }
+  ]
+}
 ```
 
 ### `agent-view`
@@ -1260,6 +1321,8 @@ The kinds `watch` and `event` are in the facts schema for a later Collie. This C
 
 A tap on a control of the trick's own part has `node` set to the part's id (`belt` for the Belt mark). Its `intent` is the control's, its `value` the control's one fixed text, and its `from` the session open on the phone, as `{ "session": ... }`, when there is one.
 
+A tap on a row in a session's settings (contract 2) always has `from`: the session whose sheet it was. For a bound part, a belt mark or a menu part with `sessions`, it is one of the part's sessions, at the pane it was bound to; Collie refuses the rest before the program runs.
+
 An answer to a Decision is a tap too: its `node` is `hill/<key>`, and its `seen` is the hash of the version the person saw. See [The Hill](#the-hill).
 
 `rid` is a UUID. A retried tap has the same `rid`, and Collie runs nothing twice for one `rid`: it answers with the first receipt. A program that records an answer keys the record on `rid`. The same `rid` with a different tap is refused.
@@ -1430,6 +1493,14 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | A spark | 2 to 32 numbers |
 | A progress | `max` 1 to 12 |
 | A button's or an action's `value` | at most 1024 bytes |
+
+### Bound parts, contract 2
+
+| Limit | Value |
+| --- | --- |
+| Sessions one part names | 1 to 8, agent sessions of this run's facts. Another id is dropped with a note |
+| Bound parts of one place per trick | 8, beside one unbound part |
+| A part with no session left | not kept, with a note. It never shows in every session instead |
 
 ### Facts
 

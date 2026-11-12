@@ -112,6 +112,8 @@ import {
   LATER_PLACE_WORDS,
   LATER_TRIGGERS,
   MANIFEST_KEYS,
+  BOUND_PARTS_MAX,
+  BOUND_SESSIONS_MAX,
   MENU_CONTRACT,
   MENU_LABEL_MAX,
   MENU_RESERVED_LEADS,
@@ -290,6 +292,12 @@ const BADGE_WORDS = `a count from 0 to ${String(COUNT_MAX)} as text, or "" for a
 const ITEM_BADGE_WORDS = `a count from 0 to ${String(COUNT_MAX)} (0 draws none), or text of 1 to ${String(BADGE_TEXT_MAX)} characters`;
 const ONE_PER_TRICK: Limit = { what: "Parts of this place per trick", value: "one" };
 const PART_SIZE: Limit = { what: "One part, as compact JSON", value: `at most ${sizeWords(PART_MAX_BYTES)}` };
+/** The `sessions` key of a belt mark and a menu part (contract 2): a part bound to sessions. */
+const SESSIONS_LIMIT: Limit = {
+  what: "`sessions`, contract 2",
+  value: `1 to ${String(BOUND_SESSIONS_MAX)} of the facts' session ids, agent sessions only. The part shows only in those sessions, in place of the trick's unbound part of this place there. Left out, the part is unbound`,
+};
+const BOUND_PER_TRICK: Limit = { what: "Parts of this place per trick", value: `one unbound, and up to ${String(BOUND_PARTS_MAX)} bound ones with \`sessions\`. No session is named by two parts` };
 
 /** Every place, described. A place added to `PLACE_KINDS` or to the agent view is a compile error until it is here. */
 export const PLACES = {
@@ -300,14 +308,27 @@ export const PLACES = {
     shows: "One mark: an icon, a face word (`label`), a `badge` and a `tone`. It takes no view.",
     tap: "With an `intent`, a tap runs the trick with that intent. Without one, the mark is the same button and takes no tap.",
     limits: [
-      ONE_PER_TRICK,
+      BOUND_PER_TRICK,
       { what: "`label`, the face word", value: `at most ${String(FACE_MAX)} characters` },
       { what: "`badge`", value: BADGE_WORDS },
       { what: "A mark needs", value: "at least one of `icon`, `label` and `badge`" },
+      SESSIONS_LIMIT,
       PART_SIZE,
     ],
     who: "program",
-    examples: [{ kind: "document", json: { v: 1, parts: [{ at: "belt", id: "legs", mark: { icon: "check", label: "23/34", tone: "ok", intent: "open" } }] } }],
+    examples: [
+      { kind: "document", json: { v: 1, parts: [{ at: "belt", id: "legs", mark: { icon: "check", label: "23/34", tone: "ok", intent: "open" } }] } },
+      {
+        kind: "document",
+        json: {
+          v: MENU_CONTRACT,
+          parts: [
+            { at: "belt", id: "legs", mark: { icon: "check", label: "23/34", tone: "ok" } },
+            { at: "belt", id: "legs-here", sessions: ["lodge:w1:2"], mark: { icon: "flask", label: "2 red", tone: "danger", intent: "open" } },
+          ],
+        },
+      },
+    ],
   },
   session: {
     id: "session",
@@ -399,7 +420,8 @@ export const PLACES = {
       { what: "Rows", value: `1 to ${String(MENU_ROWS_MAX)} in a part. Each \`id\` and each \`intent\` once` },
       { what: "A row", value: `\`id\`, \`kind\` (${orList(MENU_ROW_KINDS)}), \`label\`, \`intent\`, and optionally \`icon\`, \`disabled\`, \`on\` (required on a switch) and \`confirm\` (a button only). Nothing else` },
       { what: "`label`", value: `1 to ${String(MENU_LABEL_MAX)} characters, refused when longer, never cut. No hidden character. It may not read as one of the sheet's own rows in any language Collie speaks, hold the word ${["Collie", "WalkyTalky", "Hill", "view"].map(code).join(", ")}, or start with ${MENU_RESERVED_LEADS.map((lead) => code(lead[0]?.toUpperCase() + lead.slice(1))).join(", ")}` },
-      { what: "Parts of this place per trick", value: "one for every agent session of this machine, and bound ones with `sessions` (see Limits)" },
+      { what: "Parts of this place per trick", value: `one unbound, for every agent session of this machine, and up to ${String(BOUND_PARTS_MAX)} bound ones with \`sessions\`, the only way rows show on a crew member's session. No session is named by two parts` },
+      SESSIONS_LIMIT,
       { what: "Rows in one sheet", value: `${String(MENU_SHEET_ROWS_MAX)} of every trick together. A trick's group is shown whole or left out whole, in the order of the trick ids, and the sheet says how many tricks it left out` },
       PART_SIZE,
     ],
@@ -422,6 +444,20 @@ export const PLACES = {
         },
       },
       { kind: "manifest", toml: `id = "ci"\nname = "CI"\nrun = "program.ts"\ncontract = ${String(MENU_CONTRACT)}\nplaces = ["menu"]\n` },
+      {
+        kind: "document",
+        json: {
+          v: MENU_CONTRACT,
+          parts: [
+            {
+              at: "menu",
+              id: "ci-workshop",
+              sessions: ["m_workshop:w3:1"],
+              rows: [{ id: "deploy", kind: "button", label: "Deploy here", icon: "upload", intent: "deploy", confirm: true }],
+            },
+          ],
+        },
+      },
     ],
   },
   "agent-view": {
@@ -1104,6 +1140,7 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
     triggersLater: TRIGGER_KINDS.filter((kind) => !TRIGGER_WORDS[kind].sent),
     tap: [
       "A tap on a control of the trick's own part has `node` set to the part's id (`belt` for the Belt mark). Its `intent` is the control's, its `value` the control's one fixed text, and its `from` the session open on the phone, as `{ \"session\": ... }`, when there is one.",
+      "A tap on a row in a session's settings (contract 2) always has `from`: the session whose sheet it was. For a bound part, a belt mark or a menu part with `sessions`, it is one of the part's sessions, at the pane it was bound to; Collie refuses the rest before the program runs.",
       `An answer to a Decision is a tap too: its \`node\` is \`${HILL_NODE_PREFIX}<key>\`, and its \`seen\` is the hash of the version the person saw. See [The Hill](#the-hill).`,
       "`rid` is a UUID. A retried tap has the same `rid`, and Collie runs nothing twice for one `rid`: it answers with the first receipt. A program that records an answer keys the record on `rid`. The same `rid` with a different tap is refused.",
     ],
@@ -1280,6 +1317,14 @@ export const LIMITS: readonly LimitGroup[] = [
       { what: "A spark", value: `${rangeWords(SPARK_LIMITS.values)} numbers` },
       { what: "A progress", value: `\`max\` ${rangeWords(VIEW_LIMITS.progressMax)}` },
       { what: "A button's or an action's `value`", value: `at most ${String(VALUE_MAX_BYTES)} bytes` },
+    ],
+  },
+  {
+    group: "Bound parts, contract 2",
+    limits: [
+      { what: "Sessions one part names", value: `1 to ${String(BOUND_SESSIONS_MAX)}, agent sessions of this run's facts. Another id is dropped with a note` },
+      { what: "Bound parts of one place per trick", value: `${String(BOUND_PARTS_MAX)}, beside one unbound part` },
+      { what: "A part with no session left", value: "not kept, with a note. It never shows in every session instead" },
     ],
   },
   {

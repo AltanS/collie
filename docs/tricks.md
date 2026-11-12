@@ -27,18 +27,19 @@ everything:
 
 ## Where a trick can show
 
-A trick can show in seven places on the phone, and nowhere else.
+A trick can show in eight places on the phone, and nowhere else.
 
 A place is a spot on the phone where a trick can show (a surface). Collie owns every place. A trick
 names the places it wants in its manifest, and its parts appear there, drawn by the phone with
 Collie's own look.
 
-- **Five places take a program's parts.** On the Dashboard: a tile in the strip at the top, a row
+- **Six places take a program's parts.** On the Dashboard: a tile in the strip at the top, a row
   under Tricks that opens the trick's own Page, and an item in the bottom bar. In an agent
-  session: a chip in the status line, and a mark at the end of the Belt.
-- **The agent view is the sixth.** It is a view of one agent session, beside Terminal and Chat, and
+  session: a chip in the status line, a mark at the end of the Belt, and rows in the session's
+  settings.
+- **The agent view is the seventh.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
-- **The Hill is the seventh, and it is built in.** It is the page of questions that wait for you. A
+- **The Hill is the eighth, and it is built in.** It is the page of questions that wait for you. A
   trick posts a question there, a Decision, and does not list the Hill in its `places`.
 
 The [Places](tricks-reference.md#places) section of the reference describes each place: where it
@@ -50,6 +51,23 @@ trick's program once, with your tap.
 
 A part for a place that this Collie does not know is left out, with a note, and the other parts still
 show. So a trick written for a newer Collie still works on an older one.
+
+### Session settings rows
+
+A trick can add rows to the settings of an agent session, the sheet that opens from the session's
+⋮ button. Its rows come after Collie's own rows and Close, in a group of their own under "From the
+trick", then the trick's name. A row is a button or a switch.
+
+- A tap runs the trick and tells it which session. Collie gives it no way to type there.
+- A switch shows what the trick last said. It does not flip when you tap it: it waits, with a
+  spinner, until the trick answers.
+- A row with a confirm asks for a second tap and shows its whole label.
+- The rows stay as they were when the sheet opened. A row the trick adds shows the next time.
+- A line under the group says when the trick does not answer, refuses, or is switched off.
+
+The switch of an agent view is in its trick's group too. A trick can also bind a row, or a mark
+on the Belt, to some sessions only. See [Session settings rows](tricks-reference.md#menu) in the
+reference.
 
 > **Note.** A part that is out of date shows without its colour. A trick tells Collie how long its
 > parts stay fresh. After that time the phone shows them as old, and says how old.

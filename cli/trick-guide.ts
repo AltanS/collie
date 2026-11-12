@@ -5,7 +5,21 @@ import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { MANIFEST, PLACES, type ManifestEntry } from "../web/src/lib/tricks/catalogue.ts";
 import { TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../web/src/lib/tricks/contract.ts";
-import { AGENT_VIEW_CONTRACT, AGENT_VIEW_PLACE, PLACE_KINDS, MANIFEST_KEYS, RULES_BLANK_LINES_MAX, RULES_LINE_MAX, RULES_MAX_BYTES, RULES_SPACES_MAX, type PlaceKind } from "../web/src/lib/tricks/schema.ts";
+import {
+  AGENT_VIEW_CONTRACT,
+  AGENT_VIEW_PLACE,
+  BOUND_SESSIONS_MAX,
+  MENU_CONTRACT,
+  MENU_LABEL_MAX,
+  MENU_ROWS_MAX,
+  PLACE_KINDS,
+  MANIFEST_KEYS,
+  RULES_BLANK_LINES_MAX,
+  RULES_LINE_MAX,
+  RULES_MAX_BYTES,
+  RULES_SPACES_MAX,
+  type PlaceKind,
+} from "../web/src/lib/tricks/schema.ts";
 
 // `collie trick guide` (crew slice 8): how to write a trick and hand it to the person, as plain text an
 // agent reads once. It needs no bridge. Its numbers and lists come from the constants the bridge checks
@@ -73,6 +87,16 @@ export function trickGuide(): string[] {
     "A tap tells your program which part, which control and, when the phone was on one, which session (from.session).",
     "Collie checks that the part and the control are ones you drew and that the session is open, nothing more.",
     "from.session is not proof of who tapped or where the part was drawn. Do not let it decide who may do what.",
+    "",
+    "SESSION SETTINGS ROWS",
+    `With contract ${String(MENU_CONTRACT)}, list "menu" in places and print a menu part: 1 to ${String(MENU_ROWS_MAX)} rows in a session's settings sheet.`,
+    `A row is a button or a switch, with an id, a label of at most ${String(MENU_LABEL_MAX)} characters, an intent and an optional icon.`,
+    "A switch carries on, your state. The phone never flips it: it waits for your next document. A button may carry confirm.",
+    "A label that reads like one of Collie's own rows is refused, never cut.",
+    "A tap names its session in from.session. Collie gives your trick no way to type into that session.",
+    `A belt mark or a menu part may name sessions: 1 to ${String(BOUND_SESSIONS_MAX)} session ids from the facts. It then shows only there.`,
+    "Collie binds each id to the pane open now. A pane id that goes to a new session shows nothing and taps nothing.",
+    "An unbound menu part shows on this machine's sessions only. Name the sessions to reach a crew member's.",
     "",
     "AGENT VIEWS",
     `A trick may add a view of a session that the session's own agent draws: list "${AGENT_VIEW_PLACE}" in places.`,

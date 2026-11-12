@@ -145,6 +145,38 @@ program as the answer to that Decision. Every flag of `check` and `dev` is in
 To use the trick, the person reads the code and runs `collie trick on idle-watch` in a shell of their
 own, or uses the switch in Settings → Tricks.
 
+## Session settings rows
+
+A trick with contract 2 can add rows to a session's settings. List `menu` in `places`, and print a
+`menu` part:
+
+```json
+{
+  "v": 2,
+  "parts": [
+    {
+      "at": "menu",
+      "id": "ci",
+      "rows": [
+        { "id": "rerun", "kind": "button", "label": "Rerun CI", "icon": "refresh", "intent": "rerun", "confirm": true },
+        { "id": "watch", "kind": "switch", "label": "Watch branch", "icon": "flag", "intent": "watch", "on": true }
+      ]
+    }
+  ]
+}
+```
+
+A tap runs the program with the row's `intent` and the session in `from.session`. A switch tap
+also has `value`, `"on"` or `"off"`, the state the person asked for. The phone never flips the
+switch itself, so print the new `on` in the answer. A label that reads like one of Collie's own rows
+is refused, never cut.
+
+Add `sessions` to a `menu` part or a `belt` mark to show it only in those sessions, by the facts'
+session ids. Collie binds each id to the pane that is open now, and a pane id that goes to a new
+session shows nothing. A part without `sessions` shows in every agent session of this machine; to
+reach a crew member's session, name it. The [menu place](tricks-reference.md#menu) lists every
+limit.
+
 ## An agent view
 
 Triage lets the agent of one session answer with one screen of what failed. It has no program.
