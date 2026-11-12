@@ -8,7 +8,7 @@ import { parseJson } from "../../web/src/lib/json.ts";
 import { PLACE_KINDS, parseDecisionView, parseFacts, parseTrickDocumentText, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TrickFacts } from "../../web/src/lib/tricks/schema.ts";
 import { TRICK_HELPER } from "../../bridge/tricks/scan.ts";
 import { sampleConfig, sampleManifest, sampleProgram } from "../trick.ts";
-import { age, clip, CONTRACT, firstSentence, iso, mapText, mask, minute, now, Trick, v, type Facts, type Node } from "./trick.ts";
+import { age, clip, CONTRACT, firstSentence, iso, mapText, minute, now, Trick, v, type Facts, type Node } from "./trick.ts";
 
 // gated on Windows (b): a program that uses the helper (`./trick.ts`) prints nothing on Windows yet, so
 // Collie gates tricks there (bridge/tricks/service.ts `gated`). Each `helperTest` runs such a program.
@@ -353,6 +353,13 @@ async function trickHere(opts: { config?: string; places?: readonly string[]; tr
   return { t: new Trick(facts), dir, state };
 }
 
+/** A copy of the helper loaded now, apart from the one this file imports: it reads the environment as it is at this call. */
+async function freshHelper(): Promise<typeof import("./trick.ts")> {
+  const specifier = `./trick.ts?fresh=${Date.now()}`;
+  // SAFETY: the same file as the static import above; the query only makes Bun load it again.
+  return (await import(specifier)) as typeof import("./trick.ts");
+}
+
 /** Run `body` with these environment variables set, then put the old values back. */
 async function withEnv<T>(vars: Record<string, string | undefined>, body: () => Promise<T> | T): Promise<T> {
   const old = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
@@ -383,11 +390,16 @@ describe("helper v2: time and words", () => {
     expect([age(30_000), age(12 * 60_000), age(5 * 3_600_000), age(3 * 86_400_000)]).toEqual(["just now", "12 min", "5 h", "3 d"]);
   });
 
-  test("clip masks before it cuts, folds to one line; mask hides keys and the home folder; firstSentence", () => {
+  test("clip masks before it cuts, folds to one line; mask hides keys and the home folder; firstSentence", async () => {
     const key = "sk-or-v1-0000000000fakefakefake0000000000";
     expect(clip(`a\n\tb ${key}`, 200)).toBe("a b sk-o****");
     expect(clip("x".repeat(50), 10)).toBe("xxxxxxx...");
-    expect(mask(`${process.env.HOME ?? ""}/secret and ${process.env.HOME ?? ""}`)).toBe("~/secret and ~");
+    // The helper reads HOME once, when it loads; the bridge always hands a trick its HOME. The test
+    // process may have none (the GitHub Windows runner sets USERPROFILE only), so the mask is read from
+    // a fresh copy of the helper, loaded with a HOME this test picks.
+    const home = await tempDir();
+    const fresh = await withEnv({ HOME: home }, () => freshHelper());
+    expect(fresh.mask(`${home}/secret and ${home}`)).toBe("~/secret and ~");
     expect(firstSentence("One here. Two there.")).toBe("One here.");
     expect(firstSentence("no stop at all")).toBe("no stop at all");
     expect(mapText({ a: ["x", 1, { b: "y" }], c: null }, (s) => s.toUpperCase())).toEqual({ a: ["X", 1, { b: "Y" }], c: null });
@@ -474,7 +486,10 @@ describe("helper v2: tools, show and onPrint", () => {
 
   test("t.path makes a config path absolute: ~/ is home, a relative path is the trick folder's", async () => {
     const { t, dir } = await trickHere();
-    expect([t.path("/abs/x"), t.path("~/notes"), t.path("~"), t.path("drafts"), t.path("")]).toEqual(["/abs/x", join(process.env.HOME ?? "", "notes"), process.env.HOME ?? "", join(dir, "drafts"), ""]);
+    // A HOME of the test's own: the test process may have none (the GitHub Windows runner), a trick always has one.
+    const home = await tempDir();
+    const paths = await withEnv({ HOME: home }, () => [t.path("/abs/x"), t.path("~/notes"), t.path("~"), t.path("drafts"), t.path("")]);
+    expect(paths).toEqual(["/abs/x", join(home, "notes"), home, join(dir, "drafts"), ""]);
   });
 
   test("t.show reads show from config.toml within the declared places; an unknown word is one warn row at the end of the session", async () => {
