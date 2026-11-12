@@ -1565,9 +1565,9 @@ export class TricksService implements TricksSurface {
     // The program may keep the id in its own state: it is written down before the first run sees it.
     this.deps.keepId?.();
     const world = this.deps.world(host);
-    // Review 12 N6: each agent session's instance token, read in the same turn as the facts, so a bound
-    // part binds to the session the program saw. A pane reused while the program ran has a new token by
-    // then (walky/instances.ts), and the part never shows there.
+    // Review 12 N6: each agent session's instance token and binding generation, read in the same turn as
+    // the facts, so a bound part binds to the session the program saw. A pane another session took while
+    // the program ran has another generation by then, and the store's `rebind` drops the binding.
     const { tokens, generations } = this.tokensOf(world.sessions);
     // Contract 2: the files the trick's globs match in its agent sessions' folders, fetched into the
     // copy's `inputs/` before the run, listed on each session (inputs.ts). Never for a contract 1 trick.

@@ -7,8 +7,8 @@ import type { FactsSession, ParsedPart, ParsedTrickDocument, Refusal, WireBound 
 // would show a trick's rows in a session the program never saw. At store time each named id is resolved
 // against the run's own facts (an agent session there, or it is gone) and stamped with the walky instance
 // token its pane held when those facts were read (service.ts `tokensOf`, review 12 N6;
-// bridge/walky/instances.ts): the token changes when the pane id is reused. The
-// phone draws a bound part only where the session's scope key AND its instance match, and the tap check
+// bridge/walky/instances.ts): the token changes when the pane is out of sight past the grace, and the
+// binding generation below covers a pane id taken inside it. The phone draws a bound part only where the session's scope key AND its instance match, and the tap check
 // asks the same (service.ts `tapRefusal`).
 //
 // THE BINDING GENERATION (review 12, after M1). The instance token is WalkyTalky's: it changes only when
