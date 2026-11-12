@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The runner's PATH goes to the host's own CLI only.** `GET /api/tricks` carried the PATH a trick program runs with to every reader, and only `collie doctor` and `collie trick list` read it. The bridge now adds it only to a request from the local CLI (the host's own read credential, from this host, through no proxy), and a paired phone's reply no longer has the field.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added

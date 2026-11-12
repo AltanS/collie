@@ -38,6 +38,15 @@ export function problemLine(text: string): string {
 }
 
 /** What rides with the accepted parts of one document. */
+/**
+ * What `GET /api/tricks` adds for the host's own CLI and for nobody else: the runner's PATH, which
+ * `collie doctor` prints. It is not in the phone's {@link TricksReply}, and the bridge sets it only
+ * on a request from the local CLI (`isLocalRequest`, bridge/server.ts).
+ */
+export interface CliTricksExtra {
+  path?: string;
+}
+
 export interface DocumentStamp {
   asOf: string;
   fresh: string;
@@ -179,10 +188,10 @@ export class TricksStore {
   }
 
   /** `GET /api/tricks?since=`: the changed parts, the keys present, the list. Absent or a future `since` is everything. */
-  reply(since: number | undefined, path?: string, runsOn?: TricksRunsOn | null): TricksReply {
+  reply(since: number | undefined, path?: string, runsOn?: TricksRunsOn | null): TricksReply & CliTricksExtra {
     const from = since === undefined || since > this.counter ? -Infinity : since;
     const all = [...this.parts.values()];
-    const out: TricksReply = {
+    const out: TricksReply & CliTricksExtra = {
       rev: this.counter,
       tricks: [...this.infos.values()].toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       parts: all.filter((p) => p.rev > from),
