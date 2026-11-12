@@ -63,6 +63,8 @@ const KNOWN_FOREIGN_CLAIMS = new Set([
   // The same shape on 2.1.303: a background agent's Bash permission with a tall command (2026-10-19).
   "claude--v2303-permission-bash-bg-agent-rm--w160.txt",
   "claude--v2303-permission-bash-bg-agent-rm--w80.txt",
+  // And on 2.1.322, the same dialog taller than the screen: its top is cut off (2026-11-12, constructed).
+  "claude--v2322-permission-bash-cut-top--w160.txt",
   // Codex 0.167.0's hook-trust prompt (2026-11-07): three numbered rows under a footer, and no Codex name
   // anywhere on the screen, so `isAlienBuffer` cannot tell it apart. The same reasoning as above.
   "codex--v0167-hooks-review--w120.txt",

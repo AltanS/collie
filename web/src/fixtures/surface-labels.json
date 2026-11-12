@@ -1125,6 +1125,11 @@
    "version": "2.1.303",
    "state": "dialog"
   },
+  "claude--v2322-permission-bash-cut-top--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.322",
+   "state": "dialog"
+  },
   "claude--v2296-question-fullwidth--w150.txt": {
    "harness": "claude",
    "version": "2.1.296",

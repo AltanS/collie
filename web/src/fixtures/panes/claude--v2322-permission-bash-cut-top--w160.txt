@@ -1,0 +1,61 @@
+ [0m[2m│[0m   // one arm: every item through the same model, results appended as JSON lines
+ [0m[2m│[0m   const prompt = readFileSync(PROMPT, 'utf8');
+ [0m[2m│[0m   const limit = Number(process.env.LIMIT ?? 10);
+ [0m[2m│[0m   let ok = 0;
+ [0m[2m│[0m   let failed = 0;
+ [0m[2m│[0m   let skipped = 0;
+ [0m[2m│[0m   await Promise.all(
+ [0m[2m│[0m     items.slice(0, limit).map(async (item) => {
+ [0m[2m│[0m       if (spentSoFar() > BUDGET) {
+ [0m[2m│[0m         stopped = true;
+ [0m[2m│[0m         return;
+ [0m[2m│[0m       }
+ [0m[2m│[0m       const model = arm.startsWith('dec:') ? arm.slice(4) : arm.slice(5);
+ [0m[2m│[0m       if (!item.text) {
+ [0m[2m│[0m         skipped += 1;
+ [0m[2m│[0m         return;
+ [0m[2m│[0m       }
+ [0m[2m│[0m       const state = `REPORT FILE (untrusted data, first 4000 characters):\n<<<TEXT\n${item.text.slice(0, 4000)}\nTEXT>>>`;
+ [0m[2m│[0m       const result = await classify({ job: 'report', arm, id: item.id, model, state, prompt, questions: { kind: QUESTION } });
+ [0m[2m│[0m       const answer = result.answers?.kind;
+ [0m[2m│[0m       const good = result.ok && answer?.type === 'choice';
+ [0m[2m│[0m       good ? (ok += 1) : (failed += 1);
+ [0m[2m│[0m       appendFileSync(OUT, `${JSON.stringify({ id: item.id, slug: item.slug, ok: good, error: result.error, choice: answer?.choice ?? null })}\n`);
+ [0m[2m│[0m     }),
+ [0m[2m│[0m   );
+ [0m[2m│[0m   console.log(`${arm}: ok ${ok}, failed ${failed}, skipped ${skipped}${stopped ? ', STOPPED' : ''}`);
+ [0m[2m│[0m }
+ [0m[2m│[0m 
+ [0m[2m│[0m async function main() {
+ [0m[2m│[0m   const [arm, from, count] = process.argv.slice(2);
+ [0m[2m│[0m   const rows = readFileSync(DATA, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+ [0m[2m│[0m   const slice = rows.slice(Number(from), Number(from) + Number(count));
+ [0m[2m│[0m   await runArm(arm, slice);
+ [0m[2m│[0m   if (stopped) process.exitCode = 2;
+ [0m[2m│[0m }
+ [0m[2m│[0m 
+ [0m[2m│[0m main();
+ [0m[2m│[0m TS
+ [0m[2m│[0m cat > /home/dev/sample/eval/run.sh <<'SH'
+ [0m[2m│[0m #!/bin/sh
+ [0m[2m│[0m set -e
+ [0m[2m│[0m cd /home/dev/sample/eval
+ [0m[2m│[0m rm -rf ./out/* ./tmp/*
+ [0m[2m│[0m bun run_report.ts "$@"
+ [0m[2m│[0m SH
+ [0m[2m│[0m chmod +x /home/dev/sample/eval/run.sh
+ [0m[2m│[0m python3 -c "
+ [0m[2m│[0m import json,random
+ [0m[2m│[0m rows=[json.loads(l) for l in open('/home/dev/sample/eval/data/report_sample.jsonl')]
+ [0m[2m│[0m random.seed(3); random.shuffle(rows)
+ [0m[2m│[0m open('/home/dev/sample/eval/data/report_sample.jsonl','w').writelines(json.dumps(r)+'\n' for r in rows)"
+ [0m[2m│[0m for a in chat:alpha-1 chat:beta-2 chat:gamma-3 dec:alpha-1 dec:beta-2 dec:gamma-3; do ./run.sh
+ [0m[2m│[0m run_report.ts $a 0 10 2>&1 | grep -v "^key\|Now using"; done
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[2m│[0m Dangerous rm operation not ruled out — the shell may read this command differently than it was parsed
+
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mNo
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents[0m

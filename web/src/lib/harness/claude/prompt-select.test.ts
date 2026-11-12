@@ -592,6 +592,148 @@ describe("detectPromptSelectRegion — the dialog's subject", () => {
     expect(region.model.askRegion).toBeNull();
   });
 
+  // ── A dialog taller than the screen (2026-11-12, Claude Code 2.1.322) ─────────────────────────
+  // A subagent's 100-row heredoc on a 61-row pane: the dialog's `─` edge, its header and the start of
+  // the command scrolled off the top, and the card read "Yes / No" alone, the "Dangerous rm operation"
+  // warning dropped. Claude runs on the alt screen, so the read holds the visible grid and nothing
+  // above it. With no edge in the read, every row above the question is the dialog's own.
+  describe("a permission dialog whose top is above the read", () => {
+    const CUT = "claude--v2322-permission-bash-cut-top--w160.txt";
+    const texts = (subject: { segments: { text: string }[] }[] | undefined) =>
+      subject?.map((l) => l.segments.map((s) => s.text).join(""));
+
+    it("still has a subject: the captured rows from the first one down to the question, chrome removed", () => {
+      const lines = fixtureLines(CUT);
+      const region = detectPromptSelectRegion(lines);
+      expect(region).not.toBeNull();
+      const { model, startLine } = region!;
+      expect(model.family).toBe("permission");
+      expect(model.question).toBe("Do you want to proceed?");
+      expect(model.options.map((o) => o.label)).toEqual(["Yes", "No"]);
+      expect(model.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+      expect(model.subjectCut).toBe(true);
+      // The whole read is the dialog's, so the region the card replaces starts at its first row.
+      expect(startLine).toBe(0);
+
+      const subject = texts(model.subject)!;
+      // The first captured row, its `│` gutter and the dialog's indent removed.
+      expect(subject[0]).toBe("  // one arm: every item through the same model, results appended as JSON lines");
+      expect(subject).toContain('run_report.ts $a 0 10 2>&1 | grep -v "^key\\|Now using"; done');
+      // Every captured command row, the `╌` rule dropped: 53 command rows and the warning.
+      expect(subject).toHaveLength(54);
+      expect(subject.some((t) => /╌/.test(t))).toBe(false);
+      expect(subject.some((t) => /^\s*│/.test(t))).toBe(false);
+    });
+
+    it("keeps the warning row under the last `╌` rule, and marks it as the warning", () => {
+      const { model } = detectPromptSelectRegion(fixtureLines(CUT))!;
+      const last = model.subject!.at(-1)!;
+      expect(last.segments.map((s) => s.text).join("")).toBe(
+        "Dangerous rm operation not ruled out — the shell may read this command differently than it was parsed",
+      );
+      expect(last.tone).toBe("warning");
+      // Only that row: the subagent's command rows wear the same `│` gutter above the rule.
+      expect(model.subject!.filter((l) => l.tone === "warning")).toHaveLength(1);
+    });
+
+    it("keeps the ask without a region and the identity as it was: the card only shows more", () => {
+      const lines = fixtureLines(CUT);
+      const { model } = detectPromptSelectRegion(lines)!;
+      expect(model.askRegion).toBeNull();
+      // The identity is what it was before the fix: the lookback window and the question.
+      const rows = lines.map(lineText);
+      const firstOpt = rows.findIndex((t) => t.endsWith("1. Yes"));
+      expect(model.signature).toBe(rows.slice(firstOpt - 40, rows.length).join("\n"));
+      expect(model.coreSignature.split("\n")[0]).toBe(" Do you want to proceed?");
+    });
+
+    // The same cut at other heights, from the 2.1.303 capture: the read starts at its header, inside
+    // the fence, on the warning, or on the question itself.
+    const cutAt = (pattern: RegExp) => {
+      const name = "claude--v2303-permission-bash-bg-agent-rm--w160.txt";
+      const rows = fixtureText(name).split("\r\n");
+      const plain = fixtureLines(name).map(lineText);
+      expect(plain).toHaveLength(rows.length);
+      const from = plain.findIndex((row) => pattern.test(row));
+      expect(from).toBeGreaterThan(0);
+      return detectPromptSelectRegion(splitLines(parseAnsi(rows.slice(from).join("\r\n"))))!;
+    };
+
+    it("cut at the header: the header is the first row, the fence is closed, the warning is marked", () => {
+      const { model, startLine } = cutAt(/^ Bash command · from/);
+      expect(model.subjectCut).toBe(true);
+      expect(startLine).toBe(0);
+      const subject = texts(model.subject)!;
+      expect(subject[0]).toBe("Bash command · from the general-purpose agent");
+      expect(subject[1]).toBe("Install revised set, measure hits and level gaps");
+      expect(model.subject!.filter((l) => l.tone === "warning").map((l) => l.segments.map((s) => s.text).join(""))).toEqual([
+        expect.stringMatching(/^Dangerous rm operation on possibly-empty variable path/),
+      ]);
+    });
+
+    it("cut inside the fence: the open fence reaches the top of the read", () => {
+      const { model } = cutAt(/│ cp_ lock-b lock;/);
+      expect(model.subjectCut).toBe(true);
+      expect(texts(model.subject)![0]).toBe("cp_ lock-b lock; cp_ lock-f lock-alt1; cp_ lock-c lock-alt2");
+      expect(model.subject!.at(-1)!.tone).toBe("warning");
+    });
+
+    it("cut at the warning: the warning alone is the subject", () => {
+      const { model } = cutAt(/│ Dangerous rm operation/);
+      expect(model.subjectCut).toBe(true);
+      expect(texts(model.subject)).toEqual([expect.stringMatching(/^Dangerous rm operation on possibly-empty variable path/)]);
+    });
+
+    it("cut at the question: no subject, and the cut is still said", () => {
+      const { model, startLine } = cutAt(/^ Do you want to proceed\?$/);
+      expect(model.subjectCut).toBe(true);
+      expect(model.subject).toBeUndefined();
+      expect(startLine).toBe(0);
+      expect(model.askRegion).toBeNull();
+    });
+
+    it("claims nothing when a `─` rule stands above the question: the edge is in the read but out of reach", () => {
+      // The pinned case below (a fence with no upper rule): the `─` edge is on the screen, past the
+      // window. That is not a cut, so the old reading holds.
+      const text = fixtureText("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
+      const rows = text.split("\r\n");
+      const fence = rows.findIndex((row) => row.includes("╌".repeat(20)));
+      const unfenced = [...rows.slice(0, fence), ...rows.slice(fence + 1)].join("\r\n");
+      const { model } = detectPromptSelectRegion(splitLines(parseAnsi(unfenced)))!;
+      expect(model.subjectCut).toBeUndefined();
+      expect(model.subject).toBeUndefined();
+    });
+
+    it("claims nothing for unmarked rows: no `╌` rule and no `│` gutter above the question", () => {
+      const text = ["Some transcript prose.", "", " Do you want to proceed?", " ❯ 1. Yes", "   2. No", "", " Esc to cancel · Tab to amend"].join("\n");
+      const region = detectPromptSelectRegion(splitLines(parseAnsi(text)))!;
+      expect(region.model.family).toBe("permission");
+      expect(region.model.subjectCut).toBeUndefined();
+      expect(region.model.subject).toBeUndefined();
+      expect(region.startLine).toBe(3);
+    });
+
+    it("is for a permission dialog only: a select with nothing above its question is not marked", () => {
+      const text = ["Pick a colour?", "❯ 1. Red", "  2. Blue", "", "Enter to select · Esc to cancel"].join("\n");
+      expect(detectPromptSelectRegion(splitLines(parseAnsi(text)))!.model.subjectCut).toBeUndefined();
+    });
+
+    it("an uncut dialog is not marked cut, and its warning is marked the same way", () => {
+      for (const name of [
+        "claude--v2291-permission-bash-subagent.txt",
+        "claude--v2303-permission-bash-bg-agent-rm--w80.txt",
+        "claude-lab--permission-dangerous-rm--w82.txt",
+      ]) {
+        const { model } = detectPromptSelectRegion(fixtureLines(name))!;
+        expect(model.subjectCut, name).toBeUndefined();
+        const warning = model.subject!.filter((l) => l.tone === "warning").map((l) => l.segments.map((s) => s.text).join(""));
+        expect(warning[0], name).toMatch(/^Dangerous rm operation/);
+      }
+      // A dialog with no warning marks no row.
+      expect(detectPromptSelectRegion(fixtureLines("claude-lab--permission-bash-v2291--w82.txt"))!.model.subject!.some((l) => l.tone)).toBe(false);
+    });
+  });
+
   it("the subject plays no part in identity: signature and coreSignature are what they were", () => {
     const lines = fixtureLines("claude--v2291-permission-bash-subagent.txt");
     const { model } = detectPromptSelectRegion(lines)!;

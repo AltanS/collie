@@ -17,6 +17,7 @@ import {
   paneAuthBoxLocked,
   paneAuthBoxWaiting,
   paneBlocked,
+  paneBlockedCutTop,
   paneHeadsUp,
   paneHeadsUpDismissed,
   paneHeadsUpDraft,
@@ -69,6 +70,18 @@ export function PaneSection() {
         >
           <PhoneFrameCard height={760}>
             <PaneRouter home={homeSolo} fixture={paneBlocked} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-permission-cut-top"
+          label="pane, a permission taller than the screen"
+          reach="a command too tall for the screen pushed the dialog's top off it. The card shows the rows that are on the screen, says the start is above it, opens the rows at the bottom, and draws the warning row in the caution ink."
+          note="Constructed from the 2026-11-12 incident (claude--v2322-permission-bash-cut-top--w160.txt). Reads are real; WRITES are not."
+          span={2}
+        >
+          <PhoneFrameCard height={760}>
+            <PaneRouter home={homeSolo} fixture={paneBlockedCutTop} />
           </PhoneFrameCard>
         </Card>
 

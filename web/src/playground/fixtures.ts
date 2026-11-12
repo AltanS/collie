@@ -56,6 +56,7 @@ import type {
 // `node:fs` — the playground's mirror is therefore the exact screen the grammar tests run against,
 // escape sequences and all, rather than a re-typed approximation of one.
 import claudePermissionBash from "@/fixtures/panes/claude--permission-bash.txt?raw";
+import claudePermissionCutTop from "@/fixtures/panes/claude--v2322-permission-bash-cut-top--w160.txt?raw";
 import claudeWorking from "@/fixtures/panes/claude--working.txt?raw";
 import claudeModelPicker from "@/fixtures/panes/claude-lab--menu-model-picker-v2300--w119.txt?raw";
 import claudeHeadsUp from "@/fixtures/panes/claude--v2302-heads-up-above-box--w142.txt?raw";
@@ -1058,6 +1059,34 @@ export const paneBlocked: PaneFixture = {
         ],
         channel: "keys",
         hash: "0000000000",
+      },
+    },
+    composer: "unknown",
+  },
+};
+
+/**
+ * Blocked on a permission whose command is taller than the screen (Claude Code 2.1.322, constructed):
+ * the dialog's top is above the read, so the card shows the rows that are on it, says the start is
+ * above the screen, and draws the "Dangerous rm operation" warning in the caution ink.
+ */
+export const paneBlockedCutTop: PaneFixture = {
+  pane: needsYou[0]!,
+  text: claudePermissionCutTop,
+  revision: 813,
+  surface: {
+    revision: 813,
+    turn: "idle",
+    modal: {
+      ask: {
+        id: "playground-ask-cut",
+        kind: "permission",
+        options: [
+          { id: "1", label: "Yes" },
+          { id: "2", label: "No" },
+        ],
+        channel: "keys",
+        hash: "0000000001",
       },
     },
     composer: "unknown",

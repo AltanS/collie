@@ -997,6 +997,8 @@ export const en = {
   "prompt.family.plan": "Review the plan",
   "prompt.sendingAria": "Sending",
   "prompt.reconnectNote": "Reconnect to answer.",
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "prompt.subjectCut": "The start of this request is above the screen. Open Screen to read all of it.",
   "ask.caption": "Needs your answer",
   "ask.captionNamed": "Needs your answer · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
@@ -4154,6 +4156,7 @@ export const PENDING_TRANSLATION = [
   "pairApprove.error",
   "pairApprove.retry",
   "pairApprove.done",
+  "prompt.subjectCut",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

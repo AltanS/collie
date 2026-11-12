@@ -105,20 +105,24 @@ export function isHeaderRow(line: PromptSubjectLine | undefined): boolean {
 }
 
 /**
- * Whether a vertical scroller still hides content BELOW its fold: it overflows, and it is not
- * scrolled to the bottom. The same measuring as `useOverflowEdges` (ui/overflow-edges.tsx), turned to
- * the vertical axis: read on every render, on every `scroll` (passive) and whenever the box or its
- * content changes size, with the same 1px slack against sub-pixel rounding. React bails out of a
- * re-render when the answer is unchanged, so a scroll event costs no render per frame.
+ * What a vertical scroller still hides past its two folds: rows ABOVE it (not scrolled to the top)
+ * and rows BELOW it (not scrolled to the bottom). The same measuring as `useOverflowEdges`
+ * (ui/overflow-edges.tsx), turned to the vertical axis: read on every render, on every `scroll`
+ * (passive) and whenever the box or its content changes size, with the same 1px slack against
+ * sub-pixel rounding. React bails out of a re-render when the answer is unchanged, so a scroll event
+ * costs no render per frame.
  */
-function useMoreBelow<T extends HTMLElement>() {
+function useHiddenRows<T extends HTMLElement>() {
   const ref = useRef<T>(null);
-  const [more, setMore] = useState(false);
+  const [above, setAbove] = useState(false);
+  const [below, setBelow] = useState(false);
 
   const measure = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    setMore(el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+    const overflows = el.scrollHeight > el.clientHeight;
+    setAbove(overflows && el.scrollTop > 1);
+    setBelow(overflows && el.scrollTop + el.clientHeight < el.scrollHeight - 1);
   }, []);
 
   useLayoutEffect(measure);
@@ -139,7 +143,7 @@ function useMoreBelow<T extends HTMLElement>() {
     return () => ro.disconnect();
   }, [measure]);
 
-  return { ref, more };
+  return { ref, above, below };
 }
 
 /**
@@ -151,7 +155,8 @@ function useMoreBelow<T extends HTMLElement>() {
  * foreground, the rest (` · from the general-purpose agent`) muted. Every other row is the command,
  * diff or warning, drawn as the mirror draws it (RawMirror: mono, the agent's own colours, React text
  * nodes only) but wrapping, and capped at about 40% of the dock's 55dvh with its own scroll, so a
- * long diff never pushes the buttons out of the dock.
+ * long diff never pushes the buttons out of the dock. A warning row (`tone: "warning"`) wears the
+ * caution ink.
  */
 function PromptSubject({ subject }: { subject: PromptSubjectLine[] }) {
   const header = isHeaderRow(subject[0]) ? subject[0]! : null;
@@ -175,29 +180,67 @@ function PromptSubject({ subject }: { subject: PromptSubjectLine[] }) {
 }
 
 /**
- * The subject's rows in their scrolling box, and the fade while rows still hide below it. The fade is
+ * The subject box's height cap: 22dvh, about 40% of the dock's 55dvh, and never more than the dock
+ * leaves once the rest of the card has its room, so the options stay on screen. The rest is about
+ * 16rem with three options: the dock's and the panel's padding, the Terminal control, the caption,
+ * the cut line or the title, the question and the buttons (estimated on 2026-11-12 from a phone
+ * screenshot of a 360 px card: 170 px for the card without a subject, 39 px for a two-row cut line,
+ * 36 px a button; not measured in a browser). By that estimate 22dvh alone left the second button of
+ * a long subject's card under the dock's fold below about 650 px of viewport (a 360 x 640 phone, or
+ * Chrome's toolbars on a 360 x 800 one). Never under 4rem, three rows, however short the screen.
+ */
+const SUBJECT_CAP = "max-h-[max(4rem,min(22dvh,calc(55dvh_-_16rem)))]";
+
+/** The fade over one fold of the subject box: a ground-coloured layer that fades in toward the edge. */
+function foldFade(edge: "top" | "bottom"): string {
+  return cn(
+    "pointer-events-none absolute inset-x-0 h-12",
+    edge === "top"
+      ? "top-0 rounded-t-lg [mask-image:linear-gradient(to_top,transparent,black)]"
+      : "bottom-0 rounded-b-lg [mask-image:linear-gradient(to_bottom,transparent,black)]",
+    MIRROR_SPACE,
+    MIRROR_INVERT,
+  );
+}
+
+/**
+ * The subject's rows in their scrolling box, opened at its BOTTOM: the rows nearest the question
+ * (the end of the command, and the warning under it) are the ones shown first, and a person scrolls
+ * up for the start (RawMirror's `anchor="bottom"`, which holds still across polls that hand over the
+ * same rows). A fade marks each fold that still hides rows, the top one first of all. The fade is
  * the belt's pattern turned to the vertical axis (actions-row.tsx: a ground-coloured layer under a
- * `mask-image` gradient). Its ground is the mirror's own, so it wears the same dark-space colours and
- * the same light-theme inversion as the box it sits on (ADR 0002). It draws nothing when the box fits
- * or is scrolled to its end, and it never takes a tap or a scroll.
+ * `mask-image` gradient). Its ground is the mirror's own, so it wears the same dark-space colours
+ * and the same light-theme inversion as the box it sits on (ADR 0002). It draws nothing when the
+ * box fits, and it never takes a tap or a scroll.
  */
 function SubjectBody({ lines }: { lines: PromptSubjectLine[] }) {
-  const { ref, more } = useMoreBelow<HTMLPreElement>();
+  const { ref, above, below } = useHiddenRows<HTMLPreElement>();
   return (
     <div data-slot="prompt-subject" className="relative">
-      <RawMirror ref={ref} lines={lines} wrap className="max-h-[22dvh] overflow-y-auto overscroll-contain" />
-      {more ? (
-        <div
-          aria-hidden
-          data-slot="prompt-subject-more"
-          className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-12 rounded-b-lg [mask-image:linear-gradient(to_bottom,transparent,black)]",
-            MIRROR_SPACE,
-            MIRROR_INVERT,
-          )}
-        />
-      ) : null}
+      <RawMirror
+        ref={ref}
+        lines={lines}
+        wrap
+        anchor="bottom"
+        rowTone={(i) => lines[i]?.tone}
+        className={cn(SUBJECT_CAP, "overflow-y-auto overscroll-contain")}
+      />
+      {above ? <div aria-hidden data-slot="prompt-subject-more-above" className={foldFade("top")} /> : null}
+      {below ? <div aria-hidden data-slot="prompt-subject-more" className={foldFade("bottom")} /> : null}
     </div>
+  );
+}
+
+/**
+ * The line a card shows when the dialog starts above the screen (`PromptModel.subjectCut`): the
+ * rows on the card are only the end of the request, so it says where the rest is. Shown above the
+ * rows, and alone when the question is all the screen held of the dialog.
+ */
+function SubjectCutNote() {
+  return (
+    <p data-slot="prompt-subject-cut" className="pl-0.5 text-xs leading-snug text-muted-foreground">
+      {t("prompt.subjectCut")}
+    </p>
   );
 }
 
@@ -307,6 +350,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   return (
     <PromptPanel ariaLabel={prompt.question} raw={lines}>
       <OptionGroupCaption>{prompt.caption ?? familyCaption(prompt.family)}</OptionGroupCaption>
+      {prompt.subjectCut ? <SubjectCutNote /> : null}
       {prompt.subject && prompt.subject.length > 0 ? <PromptSubject subject={prompt.subject} /> : null}
       {/* A dialog that names itself (`/resume`'s "Resume session") already shows its title as the
           caption; saying it twice adds nothing. */}

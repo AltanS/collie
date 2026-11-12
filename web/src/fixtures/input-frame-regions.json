@@ -2279,6 +2279,10 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2322-permission-bash-cut-top--w160.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

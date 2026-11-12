@@ -22,6 +22,12 @@ import type { ColumnRange } from "../column-range";
  */
 export interface PromptSubjectLine {
   segments: AnsiSegment[];
+  /**
+   * `warning` marks a row the dialog prints as a WARNING about the request, which the card draws in
+   * the caution tone: Claude's `│`-guttered rows under the dialog's last `╌` rule, such as
+   * "Dangerous rm operation not ruled out …". Absent on every other row. Display only.
+   */
+  tone?: "warning";
 }
 
 /** The single-choice dialog families a harness can report, discriminated by its footer hint bar.
@@ -126,11 +132,22 @@ export interface PromptModel {
    * and a run of blank rows is one. No row cap: the renderer bounds the height.
    *
    * Absent when the grammar found no top edge in reach, or nothing between the edge and the
-   * question. Display only: it plays no part in identity, `signature` already covers these rows.
+   * question. A dialog whose top edge is above the read gets the rows that are in it instead, and
+   * {@link subjectCut}. Display only: it plays no part in identity, `signature` already covers these rows.
    * The card used to leave the subject in the raw mirror above it, which the docked card (ADR 0059)
    * and the journal-based Chat view no longer show.
    */
   subject?: PromptSubjectLine[];
+  /**
+   * The dialog's top is ABOVE the read: its top edge, and maybe its header and the start of its
+   * command, scrolled off the screen (a command taller than the pane). {@link subject} then holds
+   * only the dialog's rows that ARE in the read, from the read's first row down to the question, or
+   * is absent when the question is the first thing in it. The card says the request starts above the
+   * screen. Display only, like `subject`: the ask still has no region (`askRegion: null`), and
+   * `signature` is what it was, so a tap goes the way it went before (the Ask route refuses it,
+   * bridge/surface/ask.ts `NO_EDGE_DETAIL`). Absent whenever the top edge is in the read.
+   */
+  subjectCut?: true;
   /**
    * The grammar's declared FACT that its pointed list clamps at both ends: Up on the first row and
    * Down on the last row leave the pointer where it is. The action layer then commits an edge row

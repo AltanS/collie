@@ -100,18 +100,27 @@ function MirrorRow({ line, open, wrap }: { line: StyledLine; open: FileLinkOpene
  * changes, for a mirror whose point is at the tail (the unread-dialog card: the dialog is the last
  * rows of the pane, #667). It only does something when the caller gave the box a height cap and
  * `overflow-y-auto` through `className`; every other mirror keeps opening at its top.
+ *
+ * `rowTone` (opt-in) names a row the caller marks as a WARNING: the row takes the caution ink,
+ * `--status-working` (ui/notice.tsx's `caution` tone, which "doubles as warning app-wide"), and
+ * `data-tone="warning"`. A token, not a literal (DESIGN.md: a literal colour is a theme bug); inside
+ * the mirror's `color-scheme: dark` its `light-dark()` value resolves to the dark half, which is the
+ * half authored for this ground (ADR 0002, rule 2), and the light theme's invert maps it as it maps
+ * every other row. A segment the agent painted keeps its own colour; the ink reaches the rest.
  */
 export function RawMirror({
   lines,
   wrap = false,
   className,
   anchor,
+  rowTone,
   ref,
 }: {
   lines: StyledLine[];
   wrap?: boolean;
   className?: string;
   anchor?: "bottom";
+  rowTone?: (index: number) => "warning" | undefined;
   ref?: Ref<HTMLPreElement>;
 }) {
   const open = useFileLinks();
@@ -137,12 +146,15 @@ export function RawMirror({
         className,
       )}
     >
-      {lines.map((line, li) => (
-        <span key={li}>
-          {li > 0 ? "\n" : null}
-          <MirrorRow line={line} open={open} wrap={wrap} />
-        </span>
-      ))}
+      {lines.map((line, li) => {
+        const tone = rowTone?.(li);
+        return (
+          <span key={li} data-tone={tone} className={tone === "warning" ? "text-status-working" : undefined}>
+            {li > 0 ? "\n" : null}
+            <MirrorRow line={line} open={open} wrap={wrap} />
+          </span>
+        );
+      })}
     </pre>
   );
 }

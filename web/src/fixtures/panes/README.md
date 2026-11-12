@@ -1433,6 +1433,29 @@ file (`KNOWN_FOREIGN_CLAIMS` in `harness/agy/agy.test.ts`).
 | `claude--v2303-permission-bash-bg-agent-rm--w160.txt` | A background agent's Bash permission, pointer on `1. Yes`, a 26-row command and the warning `Dangerous rm operation on possibly-empty variable path: $D/*.wav in ...`. Lifts `prompt-select` (`permission`, `Do you want to proceed?`, Yes `1`, No `2`) from the `─` edge, with the header, the description, the command and the warning as its subject; the ask has a region, so a tap sends its digit | `blocked` |
 | `claude--v2303-permission-bash-bg-agent-rm--w80.txt` | The same screen at 80 columns: a 33-row command and a three-row warning. Lifts the same way | `blocked` |
 
+## Claude Code 2.1.322 permission taller than the screen (constructed 2026-11-12)
+
+**Not a capture.** The incident of 2026-11-12 on the dev lane (Chat view on the phone, Claude Code
+2.1.322): a subagent asked for a Bash permission whose command was a heredoc of about 100 rows, on a
+61-row pane. Claude runs on the alt screen, so the read is the visible grid and nothing above it
+(HERDR_API.md, `pane.read`): the dialog's `─` edge, its header and the start of the command were
+above the screen. The card showed `Permission required / Do you want to proceed? / Yes / No`, and
+the warning row `Dangerous rm operation not ruled out — the shell may read this command differently
+than it was parsed` was on the screen but not on the card. The dialog was answered before anyone
+captured it, so this screen is built: the layout, the ANSI, the `│` gutter, the `╌` rule, the bare
+`1. Yes` / `2. No` rows and the background-agents footer are the 2.1.303 file below's, byte for byte;
+the 53 command rows are a neutral stand-in in the shape of the incident's (the end of a TypeScript
+heredoc, a `python3 -c` shuffle, a `for` loop over `./run.sh`), paths under `/home/dev`; the warning
+row is the incident's own words, from the phone's screenshot of the terminal. 160 columns, 61 rows,
+CRLF, no trailing newline, no row above the first command row.
+
+It names Claude nowhere, so agy's grammar claims it, the same named exception as the 2.1.291 and
+2.1.303 files (`KNOWN_FOREIGN_CLAIMS` in `harness/agy/agy.test.ts`).
+
+| Fixture | State / what's in it | Grammar state |
+|---|---|---|
+| `claude--v2322-permission-bash-cut-top--w160.txt` | A subagent's Bash permission, pointer on `1. Yes`, the read starting inside the command: 53 command rows, the `╌` rule, the warning row, the question. Lifts `prompt-select` (`permission`, `Do you want to proceed?`, Yes `1`, No `2`) with `subjectCut` and the 53 rows and the warning (marked `tone: "warning"`) as its subject; the ask has no region, so a tap is still refused and the card says to open Screen | `blocked` |
+
 ## Claude Code 2.1.296 question that ends in a fullwidth question mark (reporter's capture, issue 543, 2026-10-20)
 
 A Japanese AskUserQuestion on Claude Code 2.1.296 (Herdr 0.9.0, macOS), captured by the reporter with
