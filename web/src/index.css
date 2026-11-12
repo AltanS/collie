@@ -1486,6 +1486,13 @@
   color: var(--wordmark-lit);
 }
 
+/* Pinch to zoom off (lib/page-zoom.ts): the browser's own pinch is not offered, one finger still pans both
+   ways. Chrome on Android cannot cancel a pinch whose second finger joins a scroll already running; it
+   reads this instead. Set on the root only while the device's switch is off. */
+:root[data-page-zoom-off] {
+  touch-action: pan-x pan-y;
+}
+
 /* A HIDDEN PAGE RUNS NO ANIMATION (issue 748, ADR 0138). lib/page-hidden.ts puts the attribute on <html> while
    `document.visibilityState` is hidden; this pauses every animation, pseudo-elements included, and a
    paused animation resumes where it stopped. Important, because it must beat every rule that sets

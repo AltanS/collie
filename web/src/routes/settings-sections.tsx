@@ -10,6 +10,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { BeltSizeControl } from "@/components/belt-size-control";
 import { ZoomPillControl } from "@/components/zoom-pill-control";
+import { PageZoomControl } from "@/components/page-zoom-control";
 import { ChangesControl } from "@/components/changes-control";
 import { ConnectionInfo } from "@/components/connection-info";
 import { CrewSettingsCard } from "@/components/crew-settings-card";
@@ -23,6 +24,7 @@ import { HarnessBarControl } from "@/components/harness-bar-control";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
 import { HillSwitchControl } from "@/components/hill-switch-card";
 import { LanguageControl } from "@/components/language-control";
+import { ClearNotificationsControl } from "@/components/clear-notifications-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { PaneNavControl } from "@/components/pane-nav-control";
 import { PaneOrderControl } from "@/components/pane-order-control";
@@ -119,6 +121,9 @@ export function SettingsAppearanceRoute() {
       {/* The belt's Zoom pill: in the Screen view or never (lib/zoom-pill.ts). Under the belt's size
           because both decide what that one belt carries. */}
       <ZoomPillControl />
+      {/* Whether a pinch zooms the whole page (lib/page-zoom.ts). Under the Zoom pill because both
+          decide what a zoom does on this phone. On by default, for anyone who needs bigger text. */}
+      <PageZoomControl />
       {/* Which thumb the belt and the reply box are laid out for. Under the belt's size because both
           decide how that one belt is drawn. */}
       <HandControl />
@@ -223,13 +228,14 @@ export function SettingsAlertsRoute() {
       <PushControl />
       {/* Mounted while push state is still UNKNOWN, and only removed once we positively learn the
           bridge has no VAPID keys. Gating on truthiness instead inserted ~400px into the middle of
-          the page one frame late, shoving everything below it down. These two are bridge-wide
-          settings — which transitions notify, and quiet hours — so they are meaningful whatever
-          this particular device's push status turns out to be. */}
+          the page one frame late, shoving everything below it down. These three are bridge-wide —
+          which transitions notify, quiet hours, and clearing what was sent — so they are meaningful
+          whatever this particular device's push status turns out to be. */}
       {availability !== "server-off" && (
         <>
           <NotifyPrefsControl />
           <SnoozeControl snoozedUntil={root?.snoozedUntil ?? null} />
+          <ClearNotificationsControl />
         </>
       )}
     </SettingsPage>

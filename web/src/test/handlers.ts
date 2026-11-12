@@ -1269,6 +1269,7 @@ export const handlers = [
     const { snoozedUntil } = await request.json();
     return HttpResponse.json({ snoozedUntil });
   }),
+  http.post("/api/notifications/clear", () => HttpResponse.json({ clearedSlots: [] })),
   http.get("/api/notifications/prefs", () =>
     HttpResponse.json({ blocked: true, done: false, individual: true, updates: true, cache: false, machines: true, decisions: true }),
   ),

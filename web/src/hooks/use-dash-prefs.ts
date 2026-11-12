@@ -6,6 +6,7 @@ import { coerceDashView, isLegacyDashView, wasFocusView, type DashView } from "@
 import { coercePaneOrder, type PaneOrder } from "@/lib/pane-order";
 import { coercePaneView, type PaneView } from "@/lib/pane-view";
 import { coerceZoomPill, type ZoomPill } from "@/lib/zoom-pill";
+import { setPageZoomAllowed } from "@/lib/page-zoom";
 import type { RecentDir } from "@/lib/triage";
 
 // Dashboard layout preferences, persisted in localStorage. Deliberately separate from
@@ -125,6 +126,12 @@ export interface DashPrefs {
    * Screen view. A choice made here always wins over the theme (lib/zoom-pill.ts).
    */
   zoomPill: ZoomPill | null;
+  /**
+   * Whether a pinch zooms the whole page. ON by default, so a person who needs bigger text keeps the
+   * browser's own zoom. Off stops a stray pinch from zooming the app (lib/page-zoom.ts); the Screen
+   * view's own zoom (components/output-zoom.tsx) handles its pinch itself and works either way.
+   */
+  pageZoom: boolean;
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
@@ -159,6 +166,7 @@ const DEFAULTS: DashPrefs = {
   paneOrder: "place",
   paneView: "chat",
   zoomPill: null,
+  pageZoom: true,
 };
 
 function coerceDepth(raw: JsonValue | undefined): number {
@@ -238,6 +246,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     paneOrder: coercePaneOrder(p.paneOrder),
     paneView: coercePaneView(p.paneView),
     zoomPill: coerceZoomPill(p.zoomPill),
+    pageZoom: asJsonBoolean(p.pageZoom) ?? DEFAULTS.pageZoom,
   };
 }
 
@@ -255,6 +264,11 @@ function loadPrefs(): DashPrefs {
   } catch {
     return { ...DEFAULTS };
   }
+}
+
+/** The stored Pinch to zoom choice, for the page's start (lib/page-zoom.ts keeps it from there). */
+export function loadPageZoomPref(): boolean {
+  return loadPrefs().pageZoom;
 }
 
 function savePrefs(prefs: DashPrefs): void {
@@ -288,6 +302,7 @@ export interface UseDashPrefsReturn {
   setPaneOrder: (order: PaneOrder) => void;
   setPaneView: (view: PaneView) => void;
   setZoomPill: (choice: ZoomPill) => void;
+  setPageZoom: (on: boolean) => void;
 }
 
 export function useDashPrefs(): UseDashPrefsReturn {
@@ -320,6 +335,13 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
   const setZoomPill = useCallback((zoomPill: ZoomPill) => update({ zoomPill }), [update]);
+  const setPageZoom = useCallback(
+    (pageZoom: boolean) => {
+      setPageZoomAllowed(pageZoom);
+      update({ pageZoom });
+    },
+    [update],
+  );
 
   const setBeltScale = useCallback(
     (scale: number) => update({ beltScale: coerceBeltScale(scale) }),
@@ -365,5 +387,6 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setPaneOrder,
     setPaneView,
     setZoomPill,
+    setPageZoom,
   };
 }

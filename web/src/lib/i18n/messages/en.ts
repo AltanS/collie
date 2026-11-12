@@ -282,6 +282,21 @@ export const en = {
   "settings.snooze.preset.min30": "30m",
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
+  // --- settings.clearNotifications ---
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "settings.clearNotifications.title": "Clear notifications",
+  "settings.clearNotifications.description":
+    "Clears the alerts of this machine, the Collie your phone talks to, and of this device. Finished agents count as seen. Other devices follow when they next open Collie. Agents waiting on you stay on the dashboard.",
+  "settings.clearNotifications.crewNote": "Alerts of crew members stay.",
+  "settings.clearNotifications.action": "Clear all",
+  "settings.clearNotifications.done": "Notifications cleared.",
+  "settings.clearNotifications.clearing": "Clearing…",
+  "settings.clearNotifications.failed.notifications":
+    "Cleared, but this device could not close its notifications. Tap again.",
+  "settings.clearNotifications.failed.badge":
+    "Cleared, but this device could not update its icon count. Tap again.",
+  "settings.clearNotifications.failed.both":
+    "Cleared, but this device could not close its notifications or update its icon count. Tap again.",
 
   // --- settings.devices ---
   "settings.devices.title": "Paired devices",
@@ -3307,6 +3322,9 @@ export const en = {
   "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
   "settings.zoomPill.option.screen": "Screen view",
   "settings.zoomPill.option.off": "Off",
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "settings.pageZoom.title": "Pinch to zoom",
+  "settings.pageZoom.description": "Pinch the page to make it bigger. Off stops a stray pinch from zooming the app. The Screen view's own zoom works either way.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Pin",
@@ -4157,6 +4175,17 @@ export const PENDING_TRANSLATION = [
   "pairApprove.retry",
   "pairApprove.done",
   "prompt.subjectCut",
+  "settings.clearNotifications.title",
+  "settings.clearNotifications.description",
+  "settings.clearNotifications.crewNote",
+  "settings.clearNotifications.action",
+  "settings.clearNotifications.done",
+  "settings.clearNotifications.clearing",
+  "settings.clearNotifications.failed.notifications",
+  "settings.clearNotifications.failed.badge",
+  "settings.clearNotifications.failed.both",
+  "settings.pageZoom.title",
+  "settings.pageZoom.description",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

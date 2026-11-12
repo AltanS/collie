@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
+import { createOpenFiles, type LsofRunner } from "./open-files.ts";
 
 import {
   extractUserQuery,
@@ -411,3 +412,114 @@ describe("GrokTranscriptSource.reconcile", () => {
     expect(await src.reconcile({ kind: "id", value: STALE }, CWD)).toEqual({ kind: "id", value: RESUMED });
   });
 });
+
+describe("GrokTranscriptSource.discoverSession", () => {
+  const dirs: string[] = [];
+  afterEach(async () => {
+    for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
+  });
+
+  const CWD = "/Users/you/proj";
+  const alive = (): boolean => true;
+
+  async function grokHome(active: string | null): Promise<string> {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-grok-")));
+    dirs.push(base);
+    await mkdir(join(base, "sessions"), { recursive: true });
+    if (active !== null) await writeFile(join(base, "active_sessions.json"), active);
+    return join(base, "sessions");
+  }
+
+  const row = (sessionId: string, cwd = CWD, pid = 4242) => ({
+    session_id: sessionId,
+    pid,
+    cwd,
+    opened_at: "2026-01-01T00:00:00.000000Z",
+  });
+
+  test("finds a session through active_sessions.json's pid match", async () => {
+    const root = await grokHome(JSON.stringify([row(SID)]));
+    await sessionDir(root, SID);
+    const src = new GrokTranscriptSource(root, alive);
+    const ref = await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 4242 }] });
+    expect(ref).toEqual({ kind: "id", value: SID });
+    expect(await src.resolve(ref!)).not.toBeNull();
+  });
+
+  test("finds a session through the pid's open files when active_sessions.json is absent", async () => {
+    const root = await grokHome(null);
+    const { log } = await sessionDir(root, SID);
+    const asked: string[][] = [];
+    const run: LsofRunner = async (args) => {
+      asked.push([...args]);
+      return ["p10", "f3", `n${log}`, "n/some/other/file"].join("\n");
+    };
+    const src = new GrokTranscriptSource(root, alive, createOpenFiles(run));
+    const ref = await src.discoverSession(CWD, { processes: [{ argv: ["/usr/local/bin/grok"], pid: 10 }] });
+    expect(ref).toEqual({ kind: "id", value: SID });
+    // The union of the pid's files and its group's, on purpose: no `-a` (see open-files.ts).
+    expect(asked).toEqual([["-nP", "-p", "10", "-g", "10", "-Fn"]]);
+  });
+
+  test("answers null with no grok process, no match, and a non-uuid path id", async () => {
+    // No hints at all, and lsof spuriously called: without a grok pid nothing runs.
+    const run: LsofRunner = async () => {
+      throw new Error("lsof must not run");
+    };
+    const root = await grokHome(null);
+    await sessionDir(root, SID);
+    const src = new GrokTranscriptSource(root, alive, createOpenFiles(run));
+    expect(await src.discoverSession(CWD)).toBeNull();
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["node"], pid: 4242 }] })).toBeNull();
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 4242 }] })).toBeNull();
+    expect(await src.discoverSession(CWD, { processes: [{ argv: [] }] })).toBeNull();
+  });
+
+  describe("the one live session in the pane's folder", () => {
+    // Pane A runs grok in CWD and is listed. Pane B starts grok in the same folder and has not
+    // written its row yet, so the list holds only A's.
+    const A = SID;
+    const none: LsofRunner = async () => "";
+
+    test("answers a pane with no process hints when no other pane shares the folder", async () => {
+      const root = await grokHome(JSON.stringify([row(A, CWD, 4242)]));
+      await sessionDir(root, A);
+      const src = new GrokTranscriptSource(root, alive, createOpenFiles(none));
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 9999 }] })).toEqual({ kind: "id", value: A });
+    });
+
+    test("never hands a pane the neighbour's session when another pane shares the folder (#508)", async () => {
+      const root = await grokHome(JSON.stringify([row(A, CWD, 4242)]));
+      await sessionDir(root, A);
+      const src = new GrokTranscriptSource(root, alive, createOpenFiles(none));
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 9999 }], shared: true })).toBeNull();
+      expect(await src.discoverSession(CWD, { shared: true })).toBeNull();
+    });
+
+    test("a shared pane is still answered by its own pid's row", async () => {
+      const root = await grokHome(JSON.stringify([row(A, CWD, 4242)]));
+      await sessionDir(root, A);
+      const src = new GrokTranscriptSource(root, alive, createOpenFiles(none));
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 4242 }], shared: true })).toEqual({ kind: "id", value: A });
+    });
+
+    test("a shared pane is still answered by its own open files", async () => {
+      const root = await grokHome(JSON.stringify([row(A, CWD, 4242)]));
+      await sessionDir(root, A);
+      const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+      const { log } = await sessionDir(root, B);
+      const run: LsofRunner = async () => `p9999\nn${log}`;
+      const src = new GrokTranscriptSource(root, alive, createOpenFiles(run));
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["grok"], pid: 9999 }], shared: true })).toEqual({ kind: "id", value: B });
+    });
+  });
+});
+
+async function sessionDir(root: string, id: string): Promise<{ root: string; log: string }> {
+  const cwdDir = join(root, encodeURIComponent("/Users/you/proj"));
+  const sess = join(cwdDir, id);
+  await mkdir(sess, { recursive: true });
+  const log = join(sess, "chat_history.jsonl");
+  await writeFile(log, "{}\n");
+  return { root, log };
+}

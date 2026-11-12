@@ -22,8 +22,9 @@
 // service, so the bridge is refused (EACCES). /proc/locks is readable by everyone and names the pid,
 // the device and the inode of every lock, which is enough once the lock files are known.
 //
-// LINUX ONLY: the lock table is read from /proc. Elsewhere the reader answers null and discovery
-// finds nothing, which is the safe answer: the pane keeps its terminal view.
+// THE LOCK TABLE, PER PLATFORM: Linux reads /proc/locks; macOS asks lsof for the pid's open files,
+// where only the session writer ever opens `session.lock`. Elsewhere the reader answers null and
+// discovery finds nothing, which is the safe answer: the pane keeps its terminal view.
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -33,6 +34,7 @@ import type { JsonValue } from "../json.ts";
 import { asRecord } from "./cache-probe.ts";
 import { DSH_LOCK_NAME, isDshSessionId, newestLog, scanFrames } from "./dsh-sessions.ts";
 import { containedRealpath, MAX_FRAME_OUTPUT_BYTES } from "./files.ts";
+import { openFiles as defaultOpenFiles, type OpenFiles } from "./open-files.ts";
 import type { AgentSessionRef, DiscoverHints, TranscriptSource } from "./types.ts";
 
 const MAX_PID = 4194304;
@@ -54,6 +56,42 @@ export const LINUX_PROC: ProcReader = {
     if (HOST.platform !== "linux") return null;
     const table = await readFile("/proc/locks", "utf8").catch(() => null);
     return table === null ? null : flocksOf(table, pid);
+  },
+};
+
+/**
+ * The macOS lock table, over `openFiles` (bridge/journal/open-files.ts): the pid's open files, and a
+ * `session.lock` among them is one dsh's session writer holds FLOCK on ("readers never touch the
+ * lock"). The lock file is only ever opened by the holder, so the open file names the same fact
+ * /proc/locks names on Linux. An `lsof` that will not run answers no files, so the set is empty:
+ * "nothing found", which discovery already fails closed on.
+ *
+ * {@link DEFAULT_PROC} is what keeps this to darwin. The reader is injected, so a test passes its own
+ * and no product code knows about tests.
+ */
+export function createDarwinProc(openFiles: OpenFiles): ProcReader {
+  return {
+    async flocks(pid) {
+      const held = new Set<string>();
+      for (const path of await openFiles(pid)) {
+        if (!path.endsWith(`/${DSH_LOCK_NAME}`)) continue;
+        const st = await stat(path, { bigint: true }).catch(() => null);
+        if (st === null || !st.isFile()) continue;
+        held.add(fileKey(st.dev, st.ino));
+      }
+      return held;
+    },
+  };
+}
+
+export const DARWIN_PROC: ProcReader = createDarwinProc(defaultOpenFiles);
+
+/** The real lock table, per platform. Elsewhere every answer is null. */
+export const DEFAULT_PROC: ProcReader = {
+  async flocks(pid) {
+    if (HOST.platform === "linux") return LINUX_PROC.flocks(pid);
+    if (HOST.platform === "darwin") return DARWIN_PROC.flocks(pid);
+    return null;
   },
 };
 
@@ -152,7 +190,7 @@ async function lockedSessions(roots: readonly string[], locked: ReadonlySet<stri
 export function createDshDiscovery(
   roots: readonly string[],
   source: TranscriptSource,
-  proc: ProcReader = LINUX_PROC,
+  proc: ProcReader = DEFAULT_PROC,
 ): (cwd: string, hints?: DiscoverHints) => Promise<AgentSessionRef | null> {
   return async (_cwd, hints): Promise<AgentSessionRef | null> => {
     const listed = hints?.processes;
