@@ -56,8 +56,9 @@ function fakePi() {
   return { pi, sent, emit };
 }
 
-function context(state: { idle: boolean; file?: string | undefined; mode?: string }): InboxContext {
-  return { mode: state.mode ?? "tui", isIdle: () => state.idle, sessionManager: { getSessionFile: () => state.file } };
+function context(state: { idle: boolean; file?: string | undefined; mode?: string; pending?: boolean }): InboxContext {
+  const ctx: InboxContext = { mode: state.mode ?? "tui", isIdle: () => state.idle, sessionManager: { getSessionFile: () => state.file } };
+  return state.pending === undefined ? ctx : { ...ctx, hasPendingMessages: () => state.pending === true };
 }
 
 async function call(sock: string, method: string, url: string, body?: string): Promise<[number, JsonObject | undefined]> {
@@ -68,7 +69,7 @@ async function call(sock: string, method: string, url: string, body?: string): P
 const send = (sock: string, body: JsonObject) => call(sock, "POST", "/send", JSON.stringify(body));
 
 /** An inbox opened in a fresh state dir, in a tmux pane. */
-async function opened(state: { idle: boolean; file?: string | undefined } = { idle: true, file: "/s/one.jsonl" }) {
+async function opened(state: { idle: boolean; file?: string | undefined; pending?: boolean } = { idle: true, file: "/s/one.jsonl" }) {
   const dir = stateDir();
   const env = { ...TMUX_ENV, XDG_STATE_HOME: dir };
   const fake = fakePi();
@@ -245,6 +246,54 @@ describe("/send", () => {
     expect(await call(sock, "POST", "/send", JSON.stringify({ text: "x".repeat(MAX_BODY_BYTES), requestId: "req-00007" }))).toEqual([413, { code: "too-large" }]);
     expect(await call(sock, "GET", "/send")).toEqual([404, { code: "not-found" }]);
     expect(sent).toEqual([]);
+    await emit("session_shutdown");
+  });
+});
+
+describe("/queue", () => {
+  const queue = (sock: string) => call(sock, "GET", "/queue");
+
+  test("a send pi took is pending until a run settles with nothing queued; then it has left", async () => {
+    const { sock, state, emit } = await opened({ idle: false, file: "/s/one.jsonl", pending: true });
+    await send(sock, { text: "two", requestId: "req-00010" });
+    await send(sock, { text: "three", requestId: "req-00011" });
+    expect(await queue(sock)).toEqual([200, { pending: ["req-00010", "req-00011"], left: [] }]);
+    // A settle while pi still holds one (it came in as the run settled) says nothing.
+    await emit("agent_settled", context(state));
+    expect(await queue(sock)).toEqual([200, { pending: ["req-00010", "req-00011"], left: [] }]);
+    // Escape: pi put the queue back in the editor and aborted, so the run settles with nothing pending.
+    state.pending = false;
+    await emit("agent_settled", context(state));
+    expect(await queue(sock)).toEqual([200, { pending: [], left: ["req-00010", "req-00011"] }]);
+    await emit("session_shutdown");
+  });
+
+  test("a taken send is tracked too: pi may have queued it after all", async () => {
+    const { sock, state, emit } = await opened({ idle: true, file: "/s/one.jsonl", pending: false });
+    await send(sock, { text: "one", requestId: "req-00012" });
+    expect(await queue(sock)).toEqual([200, { pending: ["req-00012"], left: [] }]);
+    await emit("agent_settled", context(state));
+    expect(await queue(sock)).toEqual([200, { pending: [], left: ["req-00012"] }]);
+    await emit("session_shutdown");
+  });
+
+  test("a refused send, a replay, and a pi that cannot say what it holds report nothing left", async () => {
+    const { sock, state, emit } = await opened({ idle: false, file: "/s/one.jsonl" });
+    await send(sock, { text: "x", requestId: "short" });
+    await send(sock, { text: "four", requestId: "req-00013" });
+    await send(sock, { text: "four", requestId: "req-00013" });
+    // No `hasPendingMessages` on the context: pi cannot say its queue is empty, so nothing leaves.
+    await emit("agent_settled", context(state));
+    expect(await queue(sock)).toEqual([200, { pending: ["req-00013"], left: [] }]);
+    await emit("session_shutdown");
+  });
+
+  test("a new session knows none of the old one's sends", async () => {
+    const { sock, state, emit } = await opened({ idle: false, file: "/s/one.jsonl", pending: true });
+    await send(sock, { text: "five", requestId: "req-00014" });
+    await emit("session_shutdown");
+    await emit("session_start", context(state));
+    expect(await queue(sock)).toEqual([200, { pending: [], left: [] }]);
     await emit("session_shutdown");
   });
 });

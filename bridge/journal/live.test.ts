@@ -23,7 +23,7 @@ import {
   MAX_WINDOWS,
 } from "./live.ts";
 import { NO_CHANGE, noUnknowns, parseWith, type PendingTool, rememberPending, type RowReducer } from "./reduce.ts";
-import type { ReceiptQueued } from "./receipt-queue.ts";
+import type { DoorProof, ReceiptQueued } from "./receipt-queue.ts";
 import { TranscriptStore } from "./store.ts";
 import { redactEntry } from "./text.ts";
 import type {
@@ -1010,6 +1010,20 @@ describe("what is queued, from the receipts", () => {
     const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, back);
     expect(body!.queued).toEqual([]);
     expect(body!.queuedSends).toEqual([{ requestId: "req-back-00001", state: "returned", text: "second message" }]);
+  });
+
+  test("a door's send the agent said left its queue is returned only by a journal read after that word (SPEC V26)", async () => {
+    const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000)]);
+    const live = windows(fx);
+    const proofs: DoorProof[][] = [];
+    const left: ReceiptQueued[] = [{ requestId: "req-left-00001", text: "back to the editor", at: AT, state: "queued", door: true, leftAt: fx.clock() + 50 }];
+    const first = await live.window(fx.adapter, ref(), { limit: 10 }, left, (p) => proofs.push(p));
+    expect(first!.queuedSends).toEqual([{ requestId: "req-left-00001", state: "queued", text: "back to the editor" }]);
+    expect(proofs).toEqual([]);
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), { limit: 10 }, left, (p) => proofs.push(p));
+    expect(next!.queuedSends).toEqual([{ requestId: "req-left-00001", state: "returned", text: "back to the editor" }]);
+    expect(proofs).toEqual([[{ requestId: "req-left-00001", how: "returned" }]]);
   });
 
   test("an unconfirmed card rides too, and a prompt with its text still takes it", async () => {

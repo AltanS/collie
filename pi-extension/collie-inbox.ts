@@ -17,6 +17,10 @@ import { dirname, isAbsolute, join } from "node:path";
 //                pi was busy and the text waits as its own follow-up turn, `steered` when the person
 //                chose steer. A request id seen before answers what it answered then, with `replayed`,
 //                and runs nothing. These answers are hints too: pi's journal settles the send.
+//   GET  /queue  which sends pi took are still waiting (`pending`), and which have LEFT pi's queue
+//                (`left`): pi settled its run with nothing queued, so each one ran or went back to the
+//                editor (Escape or Stop puts queued messages back there). Which of the two is pi's
+//                journal's to say, never this answer's: the bridge reads `left` beside the journal.
 //
 // THE SOCKET is `<XDG_STATE_HOME or ~/.local/state>/collie/inbox/<pane key>.sock`, the key being the digest
 // that names the pane's beacon, beside Collie's hook-target registry (`bridge/beacon/paths.ts`
@@ -120,12 +124,14 @@ export interface SessionEvent {
 export interface InboxContext {
   readonly mode?: string;
   isIdle(): boolean;
+  /** Whether pi holds a steer or follow-up it has not delivered. Absent: no send is ever reported left. */
+  hasPendingMessages?(): boolean;
   readonly sessionManager?: { getSessionFile?(): string | undefined };
 }
 
 /** The part of pi's extension API this extension uses. */
 export interface InboxApi {
-  on(event: "session_start" | "session_shutdown", handler: (event: SessionEvent, ctx: InboxContext | undefined) => Promise<void> | void): void;
+  on(event: "session_start" | "session_shutdown" | "agent_settled", handler: (event: SessionEvent, ctx: InboxContext | undefined) => Promise<void> | void): void;
   sendUserMessage(text: string, options: { deliverAs: "steer" | "followUp" }): void;
 }
 
@@ -199,6 +205,8 @@ export function activate(pi: InboxApi, env: Env, home: string): boolean {
   let server: Server | undefined;
   let opened: number | undefined;
   const answered = new Map<string, Reply>();
+  // The sends pi took this session, by request id: `pending` until a settle with nothing queued, then `left`.
+  const tracked = new Map<string, "pending" | "left">();
 
   // `deliverAs` is always passed: pi ignores it when idle and starts a turn, and requires it when busy,
   // so a turn that starts between `isIdle()` and the call still queues instead of throwing. `isIdle()`
@@ -225,6 +233,10 @@ export function activate(pi: InboxApi, env: Env, home: string): boolean {
       answered.set(request.requestId, reply);
       const oldest = answered.keys().next();
       if (answered.size > KEEP_REQUEST_IDS && oldest.done !== true) answered.delete(oldest.value);
+      // A `taken` send too: pi may have queued it after all, if a turn started between the two calls.
+      tracked.set(request.requestId, "pending");
+      const first = tracked.keys().next();
+      if (tracked.size > KEEP_REQUEST_IDS && first.done !== true) tracked.delete(first.value);
     }
     return reply;
   };
@@ -234,6 +246,11 @@ export function activate(pi: InboxApi, env: Env, home: string): boolean {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
     };
+    if (req.method === "GET" && req.url === "/queue") {
+      const ids = (state: "pending" | "left") => [...tracked].flatMap(([id, now]) => (now === state ? [id] : []));
+      answer({ status: 200, body: { pending: ids("pending"), left: ids("left") } });
+      return;
+    }
     if (req.method === "GET" && req.url === "/hello") {
       answer({ status: 200, body: { agent: "pi", inbox: INBOX_VERSION, pid: process.pid, sessionFile: sessionFileOf(ctx), markers } });
       return;
@@ -288,8 +305,26 @@ export function activate(pi: InboxApi, env: Env, home: string): boolean {
     return server === undefined ? open() : undefined;
   });
 
+  // pi fires `agent_settled` once no queued continuation will run. With nothing pending then, every send
+  // still pending has left the queue: it ran in this run, or Escape or Stop put it back in the editor.
+  // While pi still holds something (a send that came in as the run settled), nothing is said.
+  pi.on("agent_settled", (_event, next) => {
+    const now = next ?? ctx;
+    if (now === undefined || tracked.size === 0) return;
+    let pending: boolean;
+    try {
+      pending = now.hasPendingMessages?.() ?? true;
+    } catch {
+      return;
+    }
+    if (pending) return;
+    for (const [id, state] of tracked) if (state === "pending") tracked.set(id, "left");
+  });
+
   pi.on("session_shutdown", () => {
     ctx = undefined;
+    // A new instance knows none of these: the bridge hears no word, and the card waits for its bound.
+    tracked.clear();
     server?.close();
     server = undefined;
     // Only the socket this instance opened: a newer instance may already be listening at the path.

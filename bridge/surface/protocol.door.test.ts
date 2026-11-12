@@ -93,7 +93,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 let ids = 0;
 const nextId = (): string => `door_case${String(++ids).padStart(4, "0")}-72207d22`;
 
-function rig(door: Door | null, status?: AgentStatus) {
+function rig(door: Door | null, status?: AgentStatus, generation = "gen-1") {
   const pane = new Pane();
   const clock = { now: 1_000_000 };
   const now = (): number => clock.now;
@@ -104,7 +104,7 @@ function rig(door: Door | null, status?: AgentStatus) {
     locks: new SessionLocks(),
     ring: new RowRing(),
     profile: (harness: string) => Promise.resolve(profileFor(harness, "2.1.310", { log: () => undefined })),
-    generation: () => "gen-1",
+    generation: () => generation,
     muxStatus: () => status,
     doors: doorRegistry(door === null ? [] : [door]),
     now,
@@ -115,7 +115,7 @@ function rig(door: Door | null, status?: AgentStatus) {
   });
   const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> =>
     protocol.handle({ id: nextId(), text, mode: "send", fromPhone: true, ...over }, { session: "main", paneId: "%1", harness: "claude" });
-  return { pane, protocol, send };
+  return { pane, protocol, send, clock };
 }
 
 describe("the door goes first (ADR 0141 point 2)", () => {
@@ -299,6 +299,101 @@ describe("the journal proves a door's send (ADR 0141 point 4)", () => {
       [lost, true, false],
       [merged, true, true],
     ]);
+  });
+});
+
+// SPEC V26: a door's queued card follows the agent's own queue. The door says which sends left it; the
+// journal, read after that word, says which of them never ran, and only those turn returned.
+describe("a door's send the agent gave back", () => {
+  const receiptOf = (id: string) => new RequestStore(join(dir, "sends")).get(id)?.receipt;
+
+  /** A door that binds, takes every send as `queued`, and says `left` holds whatever the test put there. */
+  function queueDoor(left: string[] | null, asked: { count: number }): Door {
+    return {
+      id: "claude",
+      preflight: () =>
+        Promise.resolve({
+          ok: true,
+          door: {
+            submit: () => Promise.resolve({ kind: "queued" }),
+            queue: () => {
+              asked.count++;
+              return Promise.resolve(left === null ? null : { left });
+            },
+          },
+        }),
+    };
+  }
+
+  test("left the queue and no prompt: returned on the receipt, the card offers its text back, and a later prompt still settles it", async () => {
+    const left: string[] = [];
+    const asked = { count: 0 };
+    const { protocol, send, clock } = rig(queueDoor(left, asked), undefined, "claude:s1");
+    const id = (await send("take it back")).receipt!.requestId;
+    await protocol.tickDoors("main");
+    expect(protocol.queuedOf("main", "%1")[0]?.leftAt).toBeUndefined();
+    left.push(id);
+    // Within the poll's floor, no second ask.
+    await protocol.tickDoors("main");
+    expect(asked.count).toBe(1);
+    clock.now += 3_001;
+    await protocol.tickDoors("main");
+    const card = protocol.queuedOf("main", "%1")[0];
+    expect(card).toMatchObject({ requestId: id, state: "queued", leftAt: clock.now });
+    // Once its word is in, the door is not asked about it again.
+    clock.now += 3_001;
+    await protocol.tickDoors("main");
+    expect(asked.count).toBe(2);
+    protocol.proveDoor("main", "%1", [{ requestId: id, how: "returned" }]);
+    expect(receiptOf(id)).toMatchObject({ outcome: "sent", queued: true, via: "claude", late: "returned" });
+    expect(protocol.returnedSource("main", "%1", id)).toBe("take it back");
+    // The person sent it at the desk after all: the journal's prompt still settles the receipt.
+    protocol.proveDoor("main", "%1", [{ requestId: id, how: "landed" }]);
+    expect(receiptOf(id)).toMatchObject({ outcome: "effective", late: "returned" });
+    expect(protocol.queuedOf("main", "%1")).toEqual([]);
+  });
+
+  test("a door with no word changes nothing", async () => {
+    const asked = { count: 0 };
+    const quiet = rig(queueDoor(null, asked), undefined, "claude:s1");
+    const id = (await quiet.send("still waiting")).receipt!.requestId;
+    await quiet.protocol.tickDoors("main");
+    expect(asked.count).toBe(1);
+    quiet.protocol.proveDoor("main", "%1", [{ requestId: id, how: "returned" }]);
+    expect(receiptOf(id)?.late).toBeUndefined();
+    expect(quiet.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: id, state: "queued" }]);
+  });
+
+  test("its Send and Discard are the screen's, held to the box: a box with more than its text presses no key", async () => {
+    const left: string[] = [];
+    const { pane, protocol, send } = rig(queueDoor(left, { count: 0 }), undefined, "claude:s1");
+    const id = (await send("take it back")).receipt!.requestId;
+    left.push(id);
+    await protocol.tickDoors("main");
+    protocol.proveDoor("main", "%1", [{ requestId: id, how: "returned" }]);
+    // pi joins every queued text and the desk's draft into one editor: this card's text alone is not the box.
+    pane.box = "take it back and my own draft";
+    const engine = { current: () => ({ agents: [{ paneId: "%1", agent: "claude" }] }), noteInput: () => undefined, pokeNow: () => undefined };
+    const rt: SendRouteRuntime = { send: protocol, engine, herdr: {}, name: "main" };
+    const context = { audit: new AuditLog(() => undefined), device: "phone", redact: true, acceptEncoding: null };
+    const submit = await (await sendRoute(rt, { id: nextId(), pane: "%1", text: "", mode: "submit", resendOf: id }, context)).json();
+    expect(submit.receipt).toMatchObject({ outcome: "refused" });
+    expect(pane.keysSeen).toEqual([]);
+    expect(protocol.returnedSource("main", "%1", id)).toBe("take it back");
+    const discard = await (await sendRoute(rt, { id: nextId(), pane: "%1", text: "", mode: "discard", resendOf: id }, context)).json();
+    expect(discard.receipt).toMatchObject({ outcome: "refused" });
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.box).toBe("take it back and my own draft");
+    expect(protocol.queuedOf("main", "%1")).toEqual([]);
+  });
+
+  test("a pane whose agent has no door in the registry is not asked", async () => {
+    const asked = { count: 0 };
+    // The generation names another agent than the door's: no door to ask.
+    const other = rig(queueDoor([], asked), undefined, "pi:s1");
+    await other.send("x");
+    await other.protocol.tickDoors("main");
+    expect(asked.count).toBe(0);
   });
 });
 

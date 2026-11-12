@@ -23,7 +23,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { BeaconMatcher } from "../beacon/decorate.ts";
-import { parseInboxHello, parseInboxTook } from "../beacon/parse.ts";
+import { parseInboxHello, parseInboxQueue, parseInboxTook } from "../beacon/parse.ts";
 import { beaconKey, inboxSocketName } from "../beacon/paths.ts";
 import type { InboxHello } from "../beacon/types.ts";
 import type { AgentSessionRef } from "../journal/types.ts";
@@ -134,6 +134,12 @@ export function piDoor(deps: PiDoorDeps): Door {
       if (took.replayed) return { kind: "replayed" };
       if (took.state === "steered") throw new Error("pi steered a send that asked for no steer");
       return { kind: took.state };
+    },
+    // An inbox from before `/queue` answers 404: no word, and the card keeps today's bound.
+    async queue(signal: AbortSignal) {
+      if ((await io.problem(path)) !== null) return null;
+      const reply = await io.request(path, "/queue", undefined, signal);
+      return reply.status === 200 ? parseInboxQueue(reply.text) : null;
     },
   });
 

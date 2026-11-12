@@ -91,3 +91,41 @@ describe("a screen send keeps the exact rule alone", () => {
     expect(got).toEqual({ cards: [{ requestId: "req-scr-00002", state: "queued", text: "fix the tests" }], proofs: [] });
   });
 });
+
+describe("a door's send the agent gave back (SPEC V26)", () => {
+  const LEFT = AT + 3_000;
+  const left = (requestId: string, text: string, at = AT): ReceiptQueued => ({ ...door(requestId, text, at), leftAt: LEFT });
+
+  test("left the queue, journal read after that, no prompt: returned, and the card says so", () => {
+    const got = receiptQueue([left("req-door-0020", "fix the tests")], [prompt("u0", "older", AT - 60_000)], false, [], LEFT + 1);
+    expect(got.proofs).toEqual([{ requestId: "req-door-0020", how: "returned" }]);
+    expect(got.cards).toEqual([{ requestId: "req-door-0020", state: "returned", text: "fix the tests" }]);
+  });
+
+  test("the agent's word alone, or a journal read before it, returns nothing", () => {
+    expect(receiptQueue([door("req-door-0021", "fix the tests")], [], false, [], LEFT + 1).proofs).toEqual([]);
+    expect(receiptQueue([left("req-door-0022", "fix the tests")], [], false, [], LEFT - 1).proofs).toEqual([]);
+    expect(receiptQueue([left("req-door-0023", "fix the tests")], [], false, []).proofs).toEqual([]);
+  });
+
+  test("it ran: its own prompt lands it, a prompt that holds it merges it, an abandoned one keeps it from returning", () => {
+    expect(settle([left("req-door-0024", "fix the tests")], [prompt("u1", "fix the tests", AT + 500)], LEFT + 1).proofs).toEqual([{ requestId: "req-door-0024", how: "landed" }]);
+    expect(settle([left("req-door-0025", "fix the tests")], [prompt("u1", "fix the tests, then lint", AT + 500)], LEFT + 1).proofs).toEqual([{ requestId: "req-door-0025", how: "merged" }]);
+    const abandoned: TranscriptEntry = { ...prompt("u1", "fix the tests", AT + 500), abandoned: true };
+    expect(settle([left("req-door-0026", "fix the tests")], [abandoned], LEFT + 1).proofs).toEqual([]);
+  });
+
+  test("any later prompt that holds a short text keeps it from returning: an unconfirmed card is the safe end", () => {
+    const got = settle([left("req-door-0027", "ok")], [prompt("u1", "first", AT + 500), prompt("u2", "looks ok to me", AT + 9_000)], LEFT + 1);
+    expect(got.proofs).toEqual([]);
+  });
+
+  test("a screen send, a returned or merged card, are never returned again", () => {
+    const sends: ReceiptQueued[] = [
+      { ...screen("req-scr-00020", "typed"), leftAt: LEFT },
+      { ...left("req-door-0028", "a"), state: "returned" },
+      { ...left("req-door-0029", "b"), merged: true },
+    ];
+    expect(settle(sends, [], LEFT + 1).proofs).toEqual([]);
+  });
+});

@@ -30,6 +30,7 @@ import {
   type BeaconStatus,
   type EdgeRecord,
   type InboxHello,
+  type InboxQueue,
   type InboxTook,
 } from "./types.ts";
 
@@ -266,4 +267,20 @@ export function parseInboxTook(text: string): InboxTook | null {
   const state = INBOX_STATES.find((candidate) => candidate === word);
   if (state === undefined) return null;
   return { state, replayed: row.replayed === true };
+}
+
+/** The most ids one `/queue` answer may list: the inbox keeps no more (`KEEP_REQUEST_IDS`). */
+const MAX_QUEUE_IDS = 500;
+
+/** An inbox's `/queue` text, or null when it is not one: no `left` list, a list too long, or a non-string id. */
+export function parseInboxQueue(text: string): InboxQueue | null {
+  const row = objectOf(text);
+  const left = row?.left;
+  if (!Array.isArray(left) || left.length > MAX_QUEUE_IDS) return null;
+  const ids: string[] = [];
+  for (const id of left) {
+    if (typeof id !== "string" || id === "" || id.length > MAX_FIELD_CHARS) return null;
+    ids.push(id);
+  }
+  return { left: ids };
 }

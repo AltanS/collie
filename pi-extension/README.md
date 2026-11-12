@@ -27,6 +27,11 @@ run with no terminal UI (`--print`, `--mode json`, `--mode rpc`).
 |---|---|---|
 | `GET /hello` | none | `200 {agent, inbox, pid, sessionFile, markers}` |
 | `POST /send` | `{text, requestId, steer?}` | `202 {state: "taken" \| "queued" \| "steered", replayed?}` |
+| `GET /queue` | none | `200 {pending, left}`: request ids of the sends pi took this session |
+
+A send moves from `pending` to `left` when pi settles a run with nothing queued: it ran, or Escape or Stop
+put it back in pi's editor. Collie reads pi's session log to tell which, and a send the log does not
+show turns its phone card to "back in the box".
 
 A bad body answers `400`, a body over 512 KiB answers `413`, and a message pi did not take answers `409`.
 None of them runs anything.

@@ -30,7 +30,10 @@
 // that shows its text is a draft at the desk and never marks it returned. And the journal's proof is
 // written back (`proved`): its own prompt ends it, and a prompt that holds it merged or changed keeps its
 // card, marked merged, until Discard or the unconfirmed bound. After a restart a door's `unknown` comes
-// back too, since it is never typed again.
+// back too, since it is never typed again. A door's send is RETURNED only on the agent's word beside the
+// journal's (SPEC V26): the door says the send left the agent's queue (`doorLeft`), and the journal, read
+// after that, shows no prompt for it (journal/receipt-queue.ts). A returned door card ends on its Send or
+// Discard, when the journal shows the prompt, or at the bound; a box read never ends it.
 //
 // THE CLOCK is the time since the last read that saw the pane's turn running, not the submit key: a
 // long turn keeps its queued card. Past {@link QUEUED_SEND_MS} with no busy read, a queued card turns
@@ -102,6 +105,8 @@ interface Entry {
   readonly door: boolean;
   /** A door's send the journal showed merged or changed (ADR 0141 point 4): a card until Discard or its bound. */
   merged: boolean;
+  /** When the door said this send left the agent's queue (SPEC V26), bridge clock. */
+  leftAt?: number;
 }
 
 /** One card the live window is handed for a pane, oldest first. A returned run is one card. */
@@ -116,12 +121,15 @@ export interface ReceiptQueued {
   readonly door?: true;
   /** A door's send already proved merged or changed. */
   readonly merged?: true;
+  /** When the door said the send left the agent's queue: the journal, read after it, says whether it ran. */
+  readonly leftAt?: number;
 }
 
 /** What the journal proved of one door send (ADR 0141 point 4): its own prompt, or one that holds it merged or changed. */
 export interface DoorProof {
   readonly requestId: string;
-  readonly how: "landed" | "merged";
+  /** `returned`: the send left the agent's queue, and the journal read after that shows no prompt for it. */
+  readonly how: "landed" | "merged" | "returned";
 }
 
 /** What `add` takes from a settled run. */
@@ -229,6 +237,7 @@ export class QueuedSends {
       let card: ReceiptQueued = { requestId: entry.id, text: run.map((e) => e.text).join("\n"), at: entry.at, state: entry.state };
       if (entry.door) card = { ...card, door: true };
       if (entry.merged) card = { ...card, merged: true };
+      if (entry.leftAt !== undefined) card = { ...card, leftAt: entry.leftAt };
       cards.push(card);
     }
     return cards;
@@ -254,14 +263,44 @@ export class QueuedSends {
 
   /**
    * The journal settled a door's send on this pane (ADR 0141 point 4): `landed` ends it, `merged` keeps
-   * its card, marked. False when there is no such door send.
+   * its card, marked, and `returned` turns a queued one that left the agent's queue into a returned card
+   * (SPEC V26). False when there is no such door send, or a `returned` for one that is not queued.
    */
-  proved(session: string, paneId: string, id: string, how: "landed" | "merged"): boolean {
+  proved(session: string, paneId: string, id: string, how: DoorProof["how"]): boolean {
     const entry = this.entries.find((e) => e.id === id && e.session === session && e.paneId === paneId && e.door);
     if (entry === undefined) return false;
     if (how === "landed") this.drop(id);
-    else entry.merged = true;
+    else if (how === "merged") entry.merged = true;
+    else {
+      if (entry.state !== "queued" || entry.leftAt === undefined) return false;
+      entry.state = "returned";
+      // The returned clock starts when the journal said so: no box read ever moves a door's card.
+      entry.seenAt = this.deps.now();
+    }
     return true;
+  }
+
+  /**
+   * The panes of a session whose door sends still wait for the agent's word (queued, not merged, never
+   * said to have left), with the agent each was sent to, for the poll that asks the door.
+   */
+  doorWaiting(session: string): { paneId: string; agent: string }[] {
+    this.seed(session);
+    const waiting = new Map<string, string>();
+    for (const entry of this.entries) {
+      if (entry.session !== session || !entry.door || entry.state !== "queued" || entry.merged || entry.leftAt !== undefined) continue;
+      waiting.set(entry.paneId, entry.agent);
+    }
+    return [...waiting].map(([paneId, agent]) => ({ paneId, agent }));
+  }
+
+  /** The pane's door said these sends left the agent's queue, at `at`. Only a waiting door send takes it, once. */
+  doorLeft(session: string, paneId: string, ids: readonly string[], at: number): void {
+    const left = new Set(ids);
+    for (const entry of this.entries) {
+      if (entry.session !== session || entry.paneId !== paneId || !entry.door || entry.state !== "queued" || entry.leftAt !== undefined) continue;
+      if (left.has(entry.id)) entry.leftAt = at;
+    }
   }
 
   /** The panes of a session with open entries, for the poll's tick. */
@@ -319,7 +358,8 @@ export class QueuedSends {
         console.warn(`[send] could not mark ${entry.id} returned: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    const gone = open.filter((entry) => entry.state === "returned" && !held.includes(entry) && (entry.seenAt ?? 0) < readAt);
+    // A door's returned card was never read off the box, so the box cannot end it either (SPEC V26).
+    const gone = open.filter((entry) => !entry.door && entry.state === "returned" && !held.includes(entry) && (entry.seenAt ?? 0) < readAt);
     if (gone.length > 0) this.entries = this.entries.filter((entry) => !gone.includes(entry));
     this.letSteersGo(open, held, reading);
     this.age();

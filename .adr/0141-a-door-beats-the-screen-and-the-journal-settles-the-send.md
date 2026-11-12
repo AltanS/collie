@@ -136,6 +136,11 @@ Not chosen:
   gains the `Amended in scope by 0140` pointer.
 - **A send while the agent waits on the person queues behind that wait.** With an approval dialog
   open, the door's turn queues and runs after the person answers it at the desk.
+- **A door's queued card follows the agent's own queue.** pi's inbox says which sends left its queue
+  (`GET /queue`: pi settled a run with nothing pending), and the journal, read after that word, says
+  whether each ran. One the journal does not show turns `returned` and offers Send and Discard, held
+  to the box like any returned card. The box alone never returns a door's send: a draft with the same
+  text is not the send come back. An inbox that says nothing keeps ADR 0122's bound.
 - **Open:** whether a door's queued
   card and the screen path's queued card share one reducer; opencode's door (`prompt_async`, or
   the `/tui` endpoints) is not tested.

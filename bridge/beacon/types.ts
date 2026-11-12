@@ -235,6 +235,14 @@ export interface InboxHello {
   readonly markers: readonly BeaconMarker[];
 }
 
+/**
+ * What an inbox's `/queue` says: the request ids of sends pi took that have LEFT its queue (it settled a
+ * run with nothing pending, so each ran or went back to the editor). A hint: the journal says which.
+ */
+export interface InboxQueue {
+  readonly left: readonly string[];
+}
+
 /** What a `/send` the inbox accepted says: the state pi put the message in, and whether it was a repeat. */
 export interface InboxTook {
   readonly state: "taken" | "queued" | "steered";

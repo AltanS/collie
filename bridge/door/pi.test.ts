@@ -7,11 +7,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import type { BeaconMatcher } from "../beacon/decorate.ts";
-import { parseInboxHello } from "../beacon/parse.ts";
+import { parseInboxHello, parseInboxQueue } from "../beacon/parse.ts";
 import { beaconKey, inboxSocketName } from "../beacon/paths.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import type { AgentSessionRef } from "../journal/types.ts";
-import { tryDoor, type DoorAnswer, type Preflight } from "./door.ts";
+import { askQueue, tryDoor, type DoorAnswer, type Preflight } from "./door.ts";
 import { HELLO_MS, piDoor, SYSTEM_INBOX_IO, type InboxIo, type InboxReply } from "./pi.ts";
 
 const DIR = "/state/collie/inbox";
@@ -37,6 +37,8 @@ const helloText = (markers: readonly BeaconMarker[], sessionFile: string | null 
 interface FakeSocket {
   readonly hello?: InboxReply | "hang";
   readonly send?: InboxReply | "drop";
+  /** The `/queue` answer; absent answers 404, as an inbox from before the route does. */
+  readonly queue?: InboxReply;
   readonly problem?: string;
 }
 
@@ -65,6 +67,7 @@ function fakeIo(sockets: Sockets): Fake {
         if (socket.hello === "hang") return new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
         return socket.hello === undefined ? Promise.reject(new Error("ECONNREFUSED")) : Promise.resolve(socket.hello);
       }
+      if (route === "/queue") return Promise.resolve(socket.queue ?? { status: 404, text: '{"code":"not-found"}' });
       sent.push({ path, body: body ?? "" });
       if (socket.send === "drop" || socket.send === undefined) return Promise.reject(new Error("socket closed"));
       return Promise.resolve(socket.send);
@@ -215,6 +218,44 @@ describe("pi's answers", () => {
     const fake = fakeIo(paneSocket(FILE, "drop"));
     const door = piDoor({ dir: DIR, matcher: MATCHER, sessionOf: () => ({ kind: "path", value: FILE }), io: fake.io });
     expect((await tryDoor(door, TARGET, SEND, 1000)).kind).toBe("uncertain");
+  });
+});
+
+describe("pi's queue word (SPEC V26)", () => {
+  /** The pane's socket; `queue` undefined is an inbox from before the route. */
+  const withQueue = (queue: InboxReply | undefined) => {
+    const markers = markersOf(PANE);
+    const hello = { status: 200, text: helloText(markers) };
+    const socket: FakeSocket = queue === undefined ? { hello } : { hello, queue };
+    return { [nameOf(markers)]: socket } satisfies Sockets;
+  };
+  const ask = (sockets: Sockets, ref: AgentSessionRef = { kind: "path", value: FILE }) =>
+    askQueue(piDoor({ dir: DIR, matcher: MATCHER, sessionOf: () => ref, io: fakeIo(sockets).io }), TARGET, 1000);
+
+  test("the bound inbox's `left` ids are the word", async () => {
+    expect(await ask(withQueue({ status: 200, text: '{"pending":["a"],"left":["req_door_pi_0001"]}' }))).toEqual(["req_door_pi_0001"]);
+  });
+
+  test("an inbox from before `/queue`, a bad answer, or a pane that no longer binds says nothing", async () => {
+    expect(await ask(withQueue(undefined))).toBeNull();
+    expect(await ask(withQueue({ status: 200, text: '{"left":"x"}' }))).toBeNull();
+    expect(await ask(withQueue({ status: 200, text: '{"left":["a"]}' }), { kind: "path", value: "/other.jsonl" })).toBeNull();
+    expect(await ask({})).toBeNull();
+  });
+
+  test("a hung inbox is no word, inside the budget", async () => {
+    const markers = markersOf(PANE);
+    const door = piDoor({ dir: DIR, matcher: MATCHER, sessionOf: () => ({ kind: "path", value: FILE }), io: fakeIo({ [nameOf(markers)]: { hello: "hang" } }).io });
+    const started = Date.now();
+    expect(await askQueue(door, TARGET, 50)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(HELLO_MS);
+  });
+
+  test("parseInboxQueue reads string ids only", () => {
+    expect(parseInboxQueue('{"left":[]}')).toEqual({ left: [] });
+    expect(parseInboxQueue('{"left":["a",7]}')).toBeNull();
+    expect(parseInboxQueue('{"pending":[]}')).toBeNull();
+    expect(parseInboxQueue(JSON.stringify({ left: Array.from({ length: 501 }, (_, i) => String(i)) }))).toBeNull();
   });
 });
 

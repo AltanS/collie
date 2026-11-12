@@ -25,6 +25,11 @@
 // The containing prompt is not claimed: two door sends folded into one
 // turn are both merged. A screen send keeps the exact rule alone.
 //
+// A door send is RETURNED (SPEC V26) when the agent said it left its queue (`leftAt`), the window's
+// journal was read at or after that word (`readAt`; the agent writes its prompt before it settles), and
+// no prompt since the send, an abandoned one included, equals or holds its text. The agent's word alone
+// never returns a send, and neither does the box: a draft with the same text is not the send come back.
+//
 // The receipt cards ride only in `queuedSends`, never in the legacy `queued` list: a phone one release
 // behind would draw them under its journal card with a Send now button that cannot work for them.
 //
@@ -57,9 +62,9 @@ function folded(text: string): string {
   return text.replace(/\s+/gu, " ").trim();
 }
 
-/** A turn's prompt text and journal time, or null when it is no prompt the operator wrote. */
-function promptOf(entry: TranscriptEntry): { text: string; at: number } | null {
-  if (entry.role !== "user" || entry.abandoned === true) return null;
+/** A turn's prompt text and journal time, or null when it is no prompt the operator wrote. `abandoned` counts it anyway. */
+function promptOf(entry: TranscriptEntry, abandoned = false): { text: string; at: number } | null {
+  if (entry.role !== "user" || (entry.abandoned === true && !abandoned)) return null;
   const text = folded(entry.parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n"));
   const at = Date.parse(entry.ts);
   if (text === "" || Number.isNaN(at)) return null;
@@ -78,7 +83,7 @@ export interface Settled {
  * prompt (sent at the desk, or from the card) ends it. A door send that keeps its card is merged when its
  * next prompt holds its text (see the header); a send already marked merged is not proved again.
  */
-export function settle(sends: readonly ReceiptQueued[], entries: readonly TranscriptEntry[]): Settled {
+export function settle(sends: readonly ReceiptQueued[], entries: readonly TranscriptEntry[], readAt?: number): Settled {
   if (sends.length === 0) return { open: [], proofs: [] };
   const prompts = entries.flatMap((entry) => {
     const prompt = promptOf(entry);
@@ -105,6 +110,20 @@ export function settle(sends: readonly ReceiptQueued[], entries: readonly Transc
     const next = at === -1 || claimed.has(at) ? undefined : prompts[at];
     if (next !== undefined && text !== "" && next.text !== text && next.text.includes(text)) proofs.push({ requestId: send.requestId, how: "merged" });
   }
+  if (readAt === undefined) return { open, proofs };
+  const merged = new Set(proofs.map((proof) => proof.requestId));
+  // Every prompt, abandoned ones too: a send that ran and then left the branch still ran.
+  const ever = entries.flatMap((entry) => {
+    const prompt = promptOf(entry, true);
+    return prompt === null ? [] : [prompt];
+  });
+  for (const send of open) {
+    if (send.door !== true || send.state !== "queued" || send.merged === true || merged.has(send.requestId)) continue;
+    if (send.leftAt === undefined || readAt < send.leftAt) continue;
+    const text = folded(send.text);
+    if (ever.some((prompt) => prompt.at >= send.at - PROMPT_SKEW_MS && prompt.text.includes(text))) continue;
+    proofs.push({ requestId: send.requestId, how: "returned" });
+  }
   return { open, proofs };
 }
 
@@ -117,19 +136,26 @@ export interface ReceiptCards {
 /**
  * The window's receipt cards: the sends the journal does not show as a prompt yet, less every card whose
  * text the journal lists as queued, and, for a harness that records its queue, less every card that is
- * neither back in the box nor merged. Beside them, what the journal proved of the door sends.
+ * neither back in the box nor merged. Beside them, what the journal proved of the door sends. `readAt` is
+ * when the window last read its journal; without it no door send is returned.
  */
 export function receiptQueue(
   sends: readonly ReceiptQueued[],
   entries: readonly TranscriptEntry[],
   recordsQueue: boolean,
   journalQueued: readonly string[],
+  readAt?: number,
 ): ReceiptCards {
   const listed = new Set(journalQueued.map(folded));
-  const { open, proofs } = settle(sends, entries);
-  const merged = new Set(proofs.flatMap((proof) => (proof.how === "merged" ? [proof.requestId] : [])));
+  const { open, proofs } = settle(sends, entries, readAt);
+  const proved = (how: DoorProof["how"]) => new Set(proofs.flatMap((proof) => (proof.how === how ? [proof.requestId] : [])));
+  const [merged, returned] = [proved("merged"), proved("returned")];
+  const stateOf = (send: ReceiptQueued): QueuedSendWire["state"] => {
+    if (send.merged === true || merged.has(send.requestId)) return "merged";
+    return returned.has(send.requestId) ? "returned" : send.state;
+  };
   const cards = open
-    .map((send): QueuedSendWire => ({ requestId: send.requestId, state: send.merged === true || merged.has(send.requestId) ? "merged" : send.state, text: send.text }))
+    .map((send): QueuedSendWire => ({ requestId: send.requestId, state: stateOf(send), text: send.text }))
     .filter((card) => (!recordsQueue || card.state === "returned" || card.state === "merged") && !listed.has(folded(card.text)));
   return { cards, proofs };
 }

@@ -12,6 +12,10 @@
 //              again (point 2). Only the door's own explicit refusal falls back.
 //   prove      is the journal, never the door (point 4): what `submit` answers is a hint.
 //
+// A bound door may also say which of the sends it took have LEFT the agent's queue (`queue`, SPEC V26):
+// the agent ran them, or gave them back to its editor. That word is a hint too. The journal says which
+// of the two, and only a send the journal shows no turn for turns `returned` (journal/receipt-queue.ts).
+//
 // The registry is keyed by the harness id the multiplexer reports for the pane.
 
 /** The pane a send is for, as the bridge's snapshot names it. */
@@ -36,6 +40,8 @@ export type DoorAnswer = { readonly kind: "taken" } | { readonly kind: "queued" 
 /** A door bound to one pane and session by its preflight. */
 export interface BoundDoor {
   submit(send: DoorSend, signal: AbortSignal): Promise<DoorAnswer>;
+  /** The request ids the agent says left its queue, or null when it says nothing a build reads. A throw is no word. */
+  queue?(signal: AbortSignal): Promise<{ readonly left: readonly string[] } | null>;
 }
 
 /**
@@ -117,4 +123,21 @@ export async function tryDoor(door: Door, target: DoorTarget, send: DoorSend, bu
   }
   if (answer.kind === "refused") return { kind: "refused", why: answer.why };
   return { kind: "submitted", answer };
+}
+
+/**
+ * What the pane's door says left the agent's queue, inside `budgetMs`: the request ids, or null for no
+ * word (no door bound, a door with no queue, a refusal, a throw, a timeout). Never throws. Touches
+ * nothing: a preflight and a read.
+ */
+export async function askQueue(door: Door, target: DoorTarget, budgetMs: number): Promise<readonly string[] | null> {
+  try {
+    return await within(budgetMs, async (signal) => {
+      const bound = await door.preflight(target, signal);
+      if (!bound.ok || bound.door.queue === undefined) return null;
+      return (await bound.door.queue(signal))?.left ?? null;
+    });
+  } catch {
+    return null;
+  }
 }

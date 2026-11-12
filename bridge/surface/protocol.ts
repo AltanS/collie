@@ -287,7 +287,7 @@ import { askOf, frameImageKey, isFree, shortHash, type Surface, type SurfaceTurn
 import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
 import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.ts";
 import { askLifetimeOf, type AskBook } from "./ask.ts";
-import { tryDoor, type DoorRegistry } from "../door/door.ts";
+import { askQueue, tryDoor, type DoorRegistry } from "../door/door.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
@@ -328,6 +328,12 @@ const GENERIC_CLEAR = { key: "Backspace", slack: 16 } as const;
 const GENERIC_LEADS = ["/", "!", "@"] as const;
 /** The pause between the text and Enter on a pane with no profile: the 350 ms the reply route waited before the protocol. */
 export const BLIND_SETTLE_MS = 350;
+
+/** How often the poll asks a pane's door which sends left the agent's queue, at most (SPEC V26). */
+export const DOOR_QUEUE_POLL_MS = 3_000;
+
+/** How long one such ask may take, its preflight included: a wedged agent costs a poll no more. */
+export const DOOR_QUEUE_MS = 2_000;
 /** What a blind send's receipt says it saw: nothing was read, because the pane has no profile to read it by. */
 const BLIND_SAW: SurfaceWords = { turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" };
 /** The refusal of a blind send at a password prompt. Never the prompt's row: it may name a user or a key file. */
@@ -2850,6 +2856,9 @@ export class SendProtocol {
   private readonly openSends: OpenSend[] = [];
   /** Sends that settled `sent` + `queued`, with their texts, until the journal or the box closes them (ADR 0122). */
   private readonly queuedSends: QueuedSends;
+  /** The sessions whose doors are being asked now, and when each was last asked (`tickDoors`). */
+  private readonly doorAsking = new Set<string>();
+  private readonly doorAskedAt = new Map<string, number>();
   /** Per ended `typed_not_submitted` row: the empty-box polls in a row since it ended, and the newest one's time ({@link tickTyped}). */
   private readonly typedEmpty = new Map<string, { count: number; at: number }>();
   /** Releases that went back because their box was still starting ({@link RunState.startWait}): no turn can come from them. */
@@ -2883,12 +2892,14 @@ export class SendProtocol {
    * card. A proof for a send that is no open door send of this pane changes nothing. Never throws.
    */
   proveDoor(session: string, paneId: string, proofs: readonly DoorProof[]): void {
+    const said = { landed: "as its own prompt", merged: "merged or changed", returned: "nowhere, and the agent gave it back" } as const;
     for (const proof of proofs) {
       try {
         if (!this.queuedSends.proved(session, paneId, proof.requestId, proof.how)) continue;
         if (proof.how === "landed") this.deps.store.markEffective(proof.requestId);
-        else this.deps.store.markMerged(proof.requestId);
-        console.log(`[send] ${proof.requestId}: the journal shows the door's send ${proof.how === "landed" ? "as its own prompt" : "merged or changed"}`);
+        else if (proof.how === "merged") this.deps.store.markMerged(proof.requestId);
+        else this.deps.store.markReturned(proof.requestId);
+        console.log(`[send] ${proof.requestId}: the journal shows the door's send ${said[proof.how]}`);
       } catch (err) {
         console.warn(`[send] could not record the journal's proof of ${proof.requestId}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -2909,6 +2920,36 @@ export class SendProtocol {
     } catch (err) {
       console.warn(`[send] box read on ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
       return [];
+    }
+  }
+
+  /**
+   * The poll's tick for door sends that still wait (SPEC V26): ask each such pane's door which sends left
+   * the agent's queue, and note them. The journal, read after that, says whether each ran or came back
+   * (journal/receipt-queue.ts). One ask per session at a time, at most every {@link DOOR_QUEUE_POLL_MS};
+   * no door, no word or a failure changes nothing, and the card keeps its bound. Never throws.
+   */
+  async tickDoors(session: string): Promise<void> {
+    const doors = this.deps.doors;
+    const now = this.now();
+    if (doors === undefined || this.doorAsking.has(session) || now - (this.doorAskedAt.get(session) ?? -Infinity) < DOOR_QUEUE_POLL_MS) return;
+    const waiting = this.queuedSends.doorWaiting(session);
+    if (waiting.length === 0) return;
+    this.doorAsking.add(session);
+    this.doorAskedAt.set(session, now);
+    try {
+      await Promise.all(
+        waiting.map(async ({ paneId, agent }) => {
+          const door = doors.get(agent);
+          if (door === undefined) return;
+          const left = await askQueue(door, { session, paneId, harness: agent }, DOOR_QUEUE_MS);
+          if (left !== null && left.length > 0) this.queuedSends.doorLeft(session, paneId, left, this.now());
+        }),
+      );
+    } catch (err) {
+      console.warn(`[send] asking the doors on ${session} failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      this.doorAsking.delete(session);
     }
   }
 

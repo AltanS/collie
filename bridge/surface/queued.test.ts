@@ -129,4 +129,32 @@ describe("QueuedSends", () => {
     expect(m.sends.dismissUnconfirmed("main", "%1", "queued-door-003")).toBe(true);
     expect(m.sends.dismissUnconfirmed("main", "%1", "queued-scr-0001")).toBe(false);
   });
+  test("a door's send turns returned only on the journal's word after the agent's, and no box read ends it (SPEC V26)", () => {
+    const m = memory();
+    const door = (id: string): void => m.sends.add({ id, session: "main", paneId: "%1", generation: "omp:session", text: id, collapse: null, at: m.clock.now, door: true });
+    door("queued-door-004");
+    door("queued-door-005");
+    expect(m.sends.doorWaiting("main")).toEqual([{ paneId: "%1", agent: "omp" }]);
+    // No word from the agent yet: the journal cannot return it.
+    expect(m.sends.proved("main", "%1", "queued-door-004", "returned")).toBe(false);
+    m.clock.now += 1_000;
+    m.sends.doorLeft("main", "%1", ["queued-door-004", "not-mine-000"], m.clock.now);
+    m.sends.doorLeft("main", "%1", ["queued-door-004"], m.clock.now + 5);
+    expect(m.sends.of("main", "%1").map((card) => [card.requestId, card.leftAt])).toEqual([
+      ["queued-door-004", m.clock.now],
+      ["queued-door-005", undefined],
+    ]);
+    expect(m.sends.doorWaiting("main")).toEqual([{ paneId: "%1", agent: "omp" }]);
+    expect(m.sends.proved("main", "%1", "queued-door-004", "returned")).toBe(true);
+    expect(m.sends.proved("main", "%1", "queued-door-004", "returned")).toBe(false);
+    // Box reads, an empty one and one that holds another draft, leave the door's returned card alone.
+    m.clock.now += 1_000;
+    m.sends.boxRead("main", "%1", { box: "", at: m.clock.now, turn: "idle", poll: true });
+    m.sends.boxRead("main", "%1", { box: "something else", at: m.clock.now + 1, turn: "idle", poll: true });
+    expect(m.sends.returnedText("main", "%1", "queued-door-004")).toBe("queued-door-004");
+    expect(m.sends.of("main", "%1").find((card) => card.requestId === "queued-door-004")?.state).toBe("returned");
+    // The bound still ends it, from when it turned returned.
+    m.clock.now += QUEUED_SEND_MS + 1;
+    expect(m.sends.of("main", "%1").find((card) => card.requestId === "queued-door-004")?.state).toBe("unconfirmed");
+  });
 });

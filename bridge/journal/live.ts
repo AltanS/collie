@@ -517,6 +517,8 @@ class LiveWindow {
   private ticked = false;
   private lastTickAt = 0;
   private lastSeen: { size: number; mtimeMs: number } | null = null;
+  /** When the newest finished tick began: the rows hold everything the log had by then. Undefined before one. */
+  private readAt: number | undefined;
   /** The newest rows read, as hashes ({@link TAIL_PRINT_CHARS}). Reset with the generation's read. */
   private print: RowPrint[] = [];
   /** When a reader last asked. The idle rule's whole input. */
@@ -565,6 +567,7 @@ class LiveWindow {
       seen.size === this.lastSeen.size &&
       seen.mtimeMs === this.lastSeen.mtimeMs
     ) {
+      this.readAt = Math.max(this.readAt ?? now, now);
       return;
     }
     const before = this.lastSeen;
@@ -577,6 +580,7 @@ class LiveWindow {
     // sits at the end cannot see a rewrite IN PLACE (#642), so ask whether the content changed.
     const sameSize = seen !== null && before !== null && seen.size === before.size;
     if (sameSize && !read.reset && read.lines.length === 0) await this.recheck(key);
+    this.readAt = Math.max(this.readAt ?? now, now);
   }
 
   /**
@@ -731,7 +735,7 @@ class LiveWindow {
     if (this.adapter.sendQueuedNow !== undefined) body.sendQueuedNow = [...this.adapter.sendQueuedNow];
     // Collie's own queued sends (ADR 0122), checked against every prompt the window holds, not the page.
     if (receipts.length > 0) {
-      const { cards, proofs } = receiptQueue(receipts, this.rows.map((row) => row.entry), this.adapter.recordsQueue === true, body.queued);
+      const { cards, proofs } = receiptQueue(receipts, this.rows.map((row) => row.entry), this.adapter.recordsQueue === true, body.queued, this.readAt);
       if (cards.length > 0) body.queuedSends = cards;
       // The door sends the journal settled (ADR 0141 point 4), for the Send Protocol to write down.
       if (proofs.length > 0) prove?.(proofs);
