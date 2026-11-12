@@ -8,15 +8,8 @@
 //   { "v": 1, "panes": [ { "session": "...", "paneId": "...", "token": "k3f9", "since": <ms>, "lastSeen": <ms> } ] }
 //
 // A pane not seen for more than 30 seconds ({@link INSTANCE_GRACE_MS}) is dropped, and its listeners
-// hear it: the log then unlinks the pane's inbox. The grace rides out a snapshot that missed a pane.
-//
-// THE GRACE IS FOR A MISSED SNAPSHOT ONLY (review 12 M1). With a `look` at the panes (index.ts), a pane
-// missing from a session whose snapshot was read is closed, and goes at once; and a pane whose
-// GENERATION changed (its agent, or the agent session it named: `<agent>:<session or ->`, the Send
-// Protocol's generation) is a new instance under the same id, so it gets a new token and the old one's
-// listeners hear it go. Else a session that took a closed pane's id inside the grace would inherit the
-// old token, and with it a trick's bound rows and taps, the inbox and the off flag. An agent that names
-// its session later (`claude:-` to `claude:<id>`) is the same instance. On load the same rule holds against the clock: a bridge restart inside 30 seconds keeps the
+// hear it: the log then unlinks the pane's inbox. The grace rides out a snapshot that briefly missed a
+// pane. On load the same rule holds against the clock: a bridge restart inside 30 seconds keeps the
 // tokens, a reboot or a long outage mints new ones. The folder is 0700 and the file 0600, as the log's.
 // A file that does not parse reads as empty: every pane then gets a new token, which is the safe side.
 
@@ -55,47 +48,16 @@ export interface PaneKey {
 
 export interface InstanceEntry extends PaneKey {
   readonly token: string;
-  /** The pane's generation when last looked at, with a `look`: `<agent>:<agent session or ->`. */
-  readonly generation?: string;
   /** When the token was minted. */
   readonly since: number;
   /** When the pane was last seen. */
   readonly lastSeen: number;
 }
 
-/** What one look at a pane did: its token, whether it was minted just now, and the entry it replaced. */
+/** What one look at a pane did: its token, and whether it was minted just now. */
 interface Touched {
   readonly token: string;
   readonly minted: boolean;
-  readonly replaced?: InstanceEntry;
-}
-
-/**
- * How the registry looks at a pane (review 12 M1). `generation`: `<agent>:<agent session or ->`, null for a
- * pane it cannot see. `read`: the session's last snapshot was read, so a pane missing from it is closed.
- */
-export interface InstanceLook {
-  generation(session: string, paneId: string): string | null;
-  read(session: string): boolean;
-}
-
-/** A generation's agent and session: `<agent>:<session or ->`. */
-function cut(generation: string): [string, string] {
-  // An agent name holds no colon; a session id may.
-  const colon = generation.indexOf(":");
-  return colon < 0 ? [generation, "-"] : [generation.slice(0, colon), generation.slice(colon + 1)];
-}
-
-/**
- * Whether two generations of one pane id are the same instance: the same agent, and no two different
- * sessions it named. A side not known, or a session not named yet (`-`), changes nothing.
- */
-export function sameGeneration(held: string | undefined, now: string | null): boolean {
-  if (held === undefined || now === null) return true;
-  const [agentHeld, sessionHeld] = cut(held);
-  const [agentNow, sessionNow] = cut(now);
-  if (agentHeld !== agentNow) return false;
-  return sessionHeld === "-" || sessionNow === "-" || sessionHeld === sessionNow;
 }
 
 export type InstanceDropListener = (session: string, paneId: string, token: string) => void;
@@ -112,12 +74,11 @@ export class WalkyInstances {
   private readonly droppedOnLoad: InstanceEntry[] = [];
   private writtenAt = -Infinity;
 
-  /** `dir` null keeps the tokens in memory only (a test). Without `look`, only the grace ends a token. */
+  /** `dir` null keeps the tokens in memory only (a test). */
   constructor(
     private readonly dir: string | null,
     private readonly now: () => number = Date.now,
     private readonly random?: (n: number) => Uint8Array,
-    private readonly look?: InstanceLook,
   ) {
     this.path = dir === null ? null : join(dir, "instances.json");
     this.load();
@@ -141,10 +102,9 @@ export class WalkyInstances {
       const token = asJsonString(entry?.token);
       const since = asJsonNumber(entry?.since);
       const lastSeen = asJsonNumber(entry?.lastSeen);
-      const generation = asJsonString(entry?.generation);
       if (session === undefined || paneId === undefined || token === undefined || since === undefined || lastSeen === undefined) continue;
       if (!INSTANCE_TOKEN.test(token)) continue;
-      const held: InstanceEntry = generation === undefined ? { session, paneId, token, since, lastSeen } : { session, paneId, token, since, lastSeen, generation };
+      const held: InstanceEntry = { session, paneId, token, since, lastSeen };
       if (lastSeen < floor) this.droppedOnLoad.push(held);
       else this.entries.set(keyOf(session, paneId), held);
     }
@@ -166,29 +126,17 @@ export class WalkyInstances {
     }
   }
 
-  /**
-   * The pane's token, minted when it is new or its generation changed (the old entry is `replaced`), its
-   * `lastSeen` set to `at`; `minted` says which.
-   */
+  /** The pane's token, minted when it is new, its `lastSeen` set to `at`; `minted` says which. */
   private touch(pane: PaneKey, at: number): Touched {
     const key = keyOf(pane.session, pane.paneId);
     const held = this.entries.get(key);
-    const generation = this.look?.generation(pane.session, pane.paneId) ?? null;
-    if (held !== undefined && sameGeneration(held.generation, generation)) {
-      // A generation learned (a session named) is kept; one not seen now keeps the last.
-      const known = generation !== null && !generation.endsWith(":-") ? generation : (held.generation ?? generation ?? undefined);
-      this.entries.set(key, known === undefined ? { ...held, lastSeen: Math.max(held.lastSeen, at) } : { ...held, lastSeen: Math.max(held.lastSeen, at), generation: known });
+    if (held !== undefined) {
+      this.entries.set(key, { ...held, lastSeen: Math.max(held.lastSeen, at) });
       return { token: held.token, minted: false };
     }
-    // The new token differs from the replaced one too: `mint` runs while the old entry is still held.
     const token = this.mint(pane.paneId);
-    const fresh: InstanceEntry = { session: pane.session, paneId: pane.paneId, token, since: at, lastSeen: at };
-    this.entries.set(key, generation === null ? fresh : { ...fresh, generation });
-    return held === undefined ? { token, minted: true } : { token, minted: true, replaced: held };
-  }
-
-  private tell(gone: readonly InstanceEntry[]): void {
-    for (const entry of gone) for (const listener of this.listeners) listener(entry.session, entry.paneId, entry.token);
+    this.entries.set(key, { session: pane.session, paneId: pane.paneId, token, since: at, lastSeen: at });
+    return { token, minted: true };
   }
 
   /**
@@ -198,24 +146,19 @@ export class WalkyInstances {
   observe(panes: readonly PaneKey[], at: number = this.now()): void {
     let changed = false;
     const present = new Set<string>();
-    const dropped: InstanceEntry[] = [];
     for (const pane of panes) {
       present.add(keyOf(pane.session, pane.paneId));
-      const touched = this.touch(pane, at);
-      if (touched.minted) changed = true;
-      if (touched.replaced !== undefined) dropped.push(touched.replaced);
+      if (this.touch(pane, at).minted) changed = true;
     }
+    const dropped: InstanceEntry[] = [];
     for (const [key, entry] of this.entries) {
-      if (present.has(key)) continue;
-      // Missing from a session whose snapshot was read: closed now. Else out of sight, for the grace.
-      const closed = this.look?.read(entry.session) === true;
-      if (!closed && at - entry.lastSeen <= INSTANCE_GRACE_MS) continue;
+      if (present.has(key) || at - entry.lastSeen <= INSTANCE_GRACE_MS) continue;
       this.entries.delete(key);
       dropped.push(entry);
     }
     if (dropped.length > 0) changed = true;
     this.persist(changed, at);
-    this.tell(dropped);
+    for (const entry of dropped) for (const listener of this.listeners) listener(entry.session, entry.paneId, entry.token);
   }
 
   /** {@link observe}, then every pane with its token, in the order given. */
@@ -226,13 +169,11 @@ export class WalkyInstances {
 
   /**
    * One pane's token, minted when it is new, for a reader that sees one pane at a time (the snapshot).
-   * It drops no other pane: only {@link observe} sees every pane, and only it may call one gone. A pane
-   * whose generation changed is replaced here too, and the old token's listeners hear it.
+   * It drops nothing: only {@link observe} sees every pane, and only it may call one gone.
    */
   tokenOf(session: string, paneId: string, at: number = this.now()): string {
-    const { token, minted, replaced } = this.touch({ session, paneId }, at);
+    const { token, minted } = this.touch({ session, paneId }, at);
     this.persist(minted, at);
-    if (replaced !== undefined) this.tell([replaced]);
     return token;
   }
 

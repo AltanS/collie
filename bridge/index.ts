@@ -2187,17 +2187,7 @@ hookTarget =
 // Every pane carries an instance token (bridge/walky/instances.ts, `<stateDir>/walky/instances.json`):
 // a multiplexer reuses a pane id, and the token tells the pane a sender meant from a new session that
 // took its id. A pane out of sight for 30 seconds loses its token, and its inbox goes with it.
-// The registry looks at a pane (review 12 M1): its generation, the Send Protocol's `<agent>:<agent session>`,
-// and whether its session's last snapshot was read. A pane missing from a read snapshot is closed, and a
-// pane whose generation changed is a new instance, so a reused pane id never keeps the old token.
-const walkyInstances = new WalkyInstances(join(cfg.stateDir, "walky"), Date.now, undefined, {
-  generation: (session, paneId) => {
-    const current = registry.get(session)?.engine.current();
-    const pane = current?.agents.find((view) => view.paneId === paneId) ?? current?.shellPanes.find((view) => view.paneId === paneId);
-    return pane === undefined ? null : `${pane.agent}:${pane.agentSession?.value ?? "-"}`;
-  },
-  read: (session) => registry.get(session)?.engine.current().bridge === "connected",
-});
+const walkyInstances = new WalkyInstances(join(cfg.stateDir, "walky"));
 // A session that turned its walky talky off (M89, `<stateDir>/walky/off.json`). Read through the pane row.
 const walkyOff = new WalkyOff(join(cfg.stateDir, "walky"));
 // The pins of every session this machine keeps, one file each (M90).

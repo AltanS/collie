@@ -14,7 +14,6 @@ import { trickCodeHash } from "./code-hash.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
-import { WalkyInstances } from "../walky/instances.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
 import { tricksTapRoute } from "./routes.ts";
 import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, RIGHTS_LINE, TAP_LOST_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
@@ -2184,25 +2183,6 @@ describe("the menu place and bound parts (contract 2)", () => {
     expect(again.bound).toEqual([{ session: OWN, instance: "zz99" }]);
     expect(await route(r, { rid: rid(2), node: "mark", intent: "open", from: { session: OWN }, rev: first.rev })).toMatchObject({ refused: "changed" });
     expect(await route(r, { rid: rid(3), node: "mark", intent: "open", from: { session: OWN }, rev: again.rev })).toMatchObject({ code: "ok" });
-  });
-
-  test("M1: with the REAL instance registry, a pane id reused inside the grace by a new agent session taps nothing bound to the old one", async () => {
-    // The walky registry as index.ts builds it: a look at the panes, here a map of generations.
-    const clock = { now: T0 };
-    const generations = new Map<string, string>([["w6X:3", "claude:aaaa"]]);
-    const registry = new WalkyInstances(null, () => clock.now, undefined, { generation: (_session, paneId) => generations.get(paneId) ?? null, read: () => true });
-    const paneOf = (sessionId: string): string => sessionId.slice(sessionId.indexOf(":") + 1);
-    const r = await rig([exited(doc(mark({ sessions: [OWN] })))], { world, instanceOf: (sessionId) => registry.tokenOf("main", paneOf(sessionId)), audit: () => undefined });
-    await makeTrick(r.configDir, "ci", CI, { "ci.sh": "#!/bin/sh\necho 1\n" });
-    await switchOn(r.stateDir, "ci");
-    await tickAt(r, T0);
-    const first = await held(r, "mark");
-    // Five seconds later the pane closed and a new agent session took its id: well inside the 30 s grace.
-    clock.now = T0 + 5_000;
-    generations.set("w6X:3", "claude:bbbb");
-    expect(registry.tokenOf("main", "w6X:3")).not.toBe(first.bound?.[0]?.instance);
-    expect(await route(r, { rid: rid(1), node: "mark", intent: "open", from: { session: OWN }, rev: first.rev })).toMatchObject({ refused: "session" });
-    expect(r.specs).toHaveLength(1);
   });
 
   test("M2: a refused part is not kept stale where an accepted part took its slot, in every one-part place, bound or not", async () => {
