@@ -236,6 +236,18 @@ export const fr: Dictionary = {
   "settings.snooze.preset.min30": "30m",
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
+  "settings.clearNotifications.title": "Effacer les notifications",
+  "settings.clearNotifications.description":
+    "Fermer toutes les notifications Collie sur cet appareil et marquer chaque agent terminé comme vu. Les autres appareils suivent à leur prochaine synchronisation ou à l’ouverture de Collie. Les agents qui vous attendent restent sur le tableau de bord.",
+  "settings.clearNotifications.action": "Tout effacer",
+  "settings.clearNotifications.done": "Notifications effacées.",
+  "settings.clearNotifications.clearing": "Effacement…",
+  "settings.clearNotifications.failed.notifications":
+    "Effacé, mais cet appareil n’a pas pu fermer ses notifications. Touchez à nouveau.",
+  "settings.clearNotifications.failed.badge":
+    "Effacé, mais cet appareil n’a pas pu mettre à jour le nombre sur l’icône. Touchez à nouveau.",
+  "settings.clearNotifications.failed.both":
+    "Effacé, mais cet appareil n’a pu ni fermer ses notifications ni mettre à jour le nombre sur l’icône. Touchez à nouveau.",
   "settings.devices.title": "Appareils associés",
   "settings.devices.description.enforced": "Chaque lecture et chaque écriture nécessite un appareil associé.",
   "settings.devices.pairedAs": "Cet appareil est associé sous le nom {device}.",

@@ -2307,6 +2307,15 @@ export interface CacheWatchListResponse {
   entries: CacheWatchEntryWire[];
 }
 
+/**
+ * POST /api/notifications/clear — the pane slots the clear emptied (`paneTag` of the session's herd
+ * tag and the pane id), one per pane it marked seen that has no alert left. A pane still blocked on
+ * the operator is not listed: its slot keeps counting.
+ */
+export interface NotificationsClearResponse {
+  clearedSlots: string[];
+}
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;

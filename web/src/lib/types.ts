@@ -2691,6 +2691,15 @@ export interface CacheWatchListResponse {
   entries: CacheWatchListEntry[];
 }
 
+/**
+ * POST /api/notifications/clear — the pane slots the clear emptied (`paneTag` of the session's herd
+ * tag and the pane id), one per pane it marked seen that has no alert left. A pane still blocked on
+ * the operator is not listed: its slot keeps counting.
+ */
+export interface NotificationsClearResponse {
+  clearedSlots: string[];
+}
+
 /** Lower sorts first — "needs you" at the top. Mirrors STATUS_RANK on the server. */
 export const STATUS_RANK = {
   blocked: 0,

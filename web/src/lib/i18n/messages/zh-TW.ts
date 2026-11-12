@@ -244,6 +244,18 @@ export const zhTW: Dictionary = {
   "settings.snooze.preset.min30": "30 分鐘",
   "settings.snooze.preset.hour1": "1 小時",
   "settings.snooze.preset.hour4": "4 小時",
+  "settings.clearNotifications.title": "清除通知",
+  "settings.clearNotifications.description":
+    "關閉此裝置上的所有 Collie 通知，並將已完成的代理標記為已查看。其他裝置會在下次同步或開啟 Collie 時跟上。等待你處理的代理仍留在資訊主頁上。",
+  "settings.clearNotifications.action": "全部清除",
+  "settings.clearNotifications.done": "通知已清除。",
+  "settings.clearNotifications.clearing": "正在清除…",
+  "settings.clearNotifications.failed.notifications":
+    "已清除，但此裝置無法關閉它的通知。請再點一次。",
+  "settings.clearNotifications.failed.badge":
+    "已清除，但此裝置無法更新圖示上的數字。請再點一次。",
+  "settings.clearNotifications.failed.both":
+    "已清除，但此裝置既無法關閉它的通知，也無法更新圖示上的數字。請再點一次。",
 
   // --- settings.devices ---
   "settings.devices.title": "已配對裝置",

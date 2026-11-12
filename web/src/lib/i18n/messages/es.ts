@@ -260,6 +260,18 @@ export const es: Dictionary = {
   "settings.snooze.preset.min30": "30m",
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
+  "settings.clearNotifications.title": "Borrar notificaciones",
+  "settings.clearNotifications.description":
+    "Cierra todas las notificaciones de Collie en este dispositivo y marca como vistos todos los agentes terminados. Los demás dispositivos se ponen al día al sincronizar o al abrir Collie. Los agentes que te esperan siguen en el panel.",
+  "settings.clearNotifications.action": "Borrar todo",
+  "settings.clearNotifications.done": "Notificaciones borradas.",
+  "settings.clearNotifications.clearing": "Borrando…",
+  "settings.clearNotifications.failed.notifications":
+    "Borrado, pero este dispositivo no pudo cerrar sus notificaciones. Vuelve a tocar.",
+  "settings.clearNotifications.failed.badge":
+    "Borrado, pero este dispositivo no pudo actualizar el número del icono. Vuelve a tocar.",
+  "settings.clearNotifications.failed.both":
+    "Borrado, pero este dispositivo no pudo cerrar sus notificaciones ni actualizar el número del icono. Vuelve a tocar.",
 
   // --- settings.devices ---
   "settings.devices.title": "Dispositivos vinculados",

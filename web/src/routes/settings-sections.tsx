@@ -20,6 +20,7 @@ import { HapticsControl } from "@/components/haptics-control";
 import { HarnessBarControl } from "@/components/harness-bar-control";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
 import { LanguageControl } from "@/components/language-control";
+import { ClearNotificationsControl } from "@/components/clear-notifications-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { PaneNavControl } from "@/components/pane-nav-control";
 import { PaneOrderControl } from "@/components/pane-order-control";
@@ -211,13 +212,14 @@ export function SettingsAlertsRoute() {
       <PushControl />
       {/* Mounted while push state is still UNKNOWN, and only removed once we positively learn the
           bridge has no VAPID keys. Gating on truthiness instead inserted ~400px into the middle of
-          the page one frame late, shoving everything below it down. These two are bridge-wide
-          settings — which transitions notify, and quiet hours — so they are meaningful whatever
-          this particular device's push status turns out to be. */}
+          the page one frame late, shoving everything below it down. These three are bridge-wide —
+          which transitions notify, quiet hours, and clearing what was sent — so they are meaningful
+          whatever this particular device's push status turns out to be. */}
       {availability !== "server-off" && (
         <>
           <NotifyPrefsControl />
           <SnoozeControl snoozedUntil={root?.snoozedUntil ?? null} />
+          <ClearNotificationsControl />
         </>
       )}
     </SettingsPage>

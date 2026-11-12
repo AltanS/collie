@@ -42,7 +42,7 @@ import { createSessionFolders, createSessionLabels, resolveSessionFolder, withSe
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
-import { paneClears, paneTag } from "./notifications.ts";
+import { paneClears, paneTag, type NotificationCoordinator } from "./notifications.ts";
 import { browseFolders, type FolderBrowseContext } from "./folder-browse.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
@@ -274,6 +274,7 @@ import type {
   CacheRuleWire,
   CacheWatchListResponse,
   CacheWatchResponse,
+  NotificationsClearResponse,
   PaneCache,
   PaneChangeCommitDiffResponse,
   PaneChangeCommitResponse,
@@ -3458,6 +3459,21 @@ export function startServer(opts: {
           }
         }
         return json({ snoozedUntil: snooze.until() }, req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/notifications/clear" && req.method === "POST") {
+        // Clear all: what opening every pane of this collie does, as one request. The gate, the
+        // attribution and the work are serveNotificationsClear's. Not forwardable (§5).
+        const caller: NotificationsClearCaller = {
+          gate: () => guard(req, cfg, "read", pairingGate),
+          device: () => pairedLabel(req, pairingGate),
+        };
+        const sessions = (): ClearSession[] =>
+          registry.all().map((rt) => ({
+            herdTag: herdTagFor(rt.isPrimary, rt.name),
+            coordinator: rt.notifications,
+            markAllSeen: () => activity.noteAllSeen(rt.name),
+          }));
+        return serveNotificationsClear(caller, sessions, push, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/notifications/prefs") {
         // Which agent statuses push (bridge-wide). Read-level like snooze — managing your own
@@ -7369,6 +7385,63 @@ export async function serveFolderRoute(
 // dispatch so `bun test` can drive the gate, the refusals and the audit line with a fake caller.
 
 /** What the machine routes need of their caller: the gate, who is asking, and the audit trail. */
+/** Who is asking `POST /api/notifications/clear`: the read gate, and the paired device it names. */
+export interface NotificationsClearCaller {
+  gate(): Response | null;
+  /** The requesting device's pairing label, or `null` (the host's own CLI credential names none). */
+  device(): string | null;
+}
+
+/** One session of this collie, as clear-all reaches it: its coordinator, its slot, its seen ledger. */
+export interface ClearSession {
+  /** The session's herd slot (`herdTagFor`), whose pane slots are `paneTag(herdTag, paneId)`. */
+  herdTag: string;
+  coordinator: Pick<NotificationCoordinator, "retractFinished" | "outstandingPaneIds">;
+  /** Stamp every pane of the session seen (`ActivityLedger.noteAllSeen`), answering the panes. */
+  markAllSeen(): string[];
+}
+
+/**
+ * `POST /api/notifications/clear`: what opening every pane of this collie through Collie does, as
+ * one request, and nothing that path does not.
+ *
+ * A pane read the page marks as seen does three things on the bridge: it stamps the pane seen (ADR
+ * 0003), the next poll's `retractSeen` then retracts a finished alert of that pane, and it tells push
+ * that the reading device's slot for the pane is shut (`Push.noteSeen`, rule 2, on a row whose page
+ * said `closesOwn`). This does the same for every pane of every session here: `noteAllSeen`, then
+ * `retractFinished` at once rather than at the next poll, then `noteSeen` for the asker. A pane whose
+ * alert is still out after that (blocked on the operator) is left as it is, slot included: its
+ * question stands, and its count stays in the icon.
+ *
+ * Read-level, like snooze: clearing what you have been told is not driving a terminal. A crew
+ * member's panes are not reached: their seen lives on that machine (ADR 0003) and this route is not
+ * forwarded (CREW_PROTOCOL.md §5). Answers the slots it cleared, for the page to close and zero as a
+ * pane read does (web/src/lib/clear-notifications.ts). Exported so the gate and the attribution are
+ * tested without a server.
+ */
+export function serveNotificationsClear(
+  caller: NotificationsClearCaller,
+  sessions: () => ClearSession[],
+  push: Pick<Push, "noteSeen">,
+  acceptEncoding: string | null,
+): Response {
+  const denied = caller.gate();
+  if (denied) return denied;
+  const device = caller.device();
+  const clearedSlots: string[] = [];
+  for (const { herdTag, coordinator, markAllSeen } of sessions()) {
+    const panes = markAllSeen();
+    coordinator.retractFinished();
+    const still = new Set(coordinator.outstandingPaneIds());
+    for (const paneId of panes) if (!still.has(paneId)) clearedSlots.push(paneTag(herdTag, paneId));
+  }
+  // After every retraction, as a read's `noteSeen` follows its own: a clear queued in the same burst
+  // finds the asker's slot shut when it flushes.
+  if (device !== null) for (const tag of clearedSlots) push.noteSeen(device, tag);
+  const body: NotificationsClearResponse = { clearedSlots };
+  return json(body, acceptEncoding);
+}
+
 export interface MachineRouteCaller {
   gate(level: "read" | "write"): Response | null;
   /** The requesting device's name across both gates, or `null` when neither names one. */

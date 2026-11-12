@@ -441,7 +441,8 @@ generation is admissible for the same reason, and it names no secret: an integer
 
 **Deliberately not on the crew surface**, because they are properties of the collie the phone talks to
 rather than of a herd: `POST /api/subscribe` (`:303`), `POST /api/notifications/snooze` (`:318`),
-`GET|POST /api/notifications/prefs` (`:340`), `POST /api/update/check` (`:367`). Push subscriptions
+`GET|POST /api/notifications/prefs` (`:340`), `POST /api/notifications/clear`,
+`POST /api/update/check` (`:367`). Push subscriptions
 live on the lead; notification policy is one crew-wide setting the lead owns; update checking is
 per-machine and is the operator's business on each. A peer's own `/api/*` surface still has them for
 its own operator, when that peer is being used directly.

@@ -234,6 +234,18 @@ export const pt: Dictionary = {
   "settings.snooze.preset.min30": "30m",
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
+  "settings.clearNotifications.title": "Limpar notificações",
+  "settings.clearNotifications.description":
+    "Feche todas as notificações do Collie neste dispositivo e marque todos os agentes concluídos como vistos. Os outros dispositivos acompanham na próxima sincronização ou ao abrir o Collie. Os agentes que esperam por você continuam no painel.",
+  "settings.clearNotifications.action": "Limpar tudo",
+  "settings.clearNotifications.done": "Notificações limpas.",
+  "settings.clearNotifications.clearing": "Limpando…",
+  "settings.clearNotifications.failed.notifications":
+    "Limpo, mas este dispositivo não conseguiu fechar as notificações. Toque de novo.",
+  "settings.clearNotifications.failed.badge":
+    "Limpo, mas este dispositivo não conseguiu atualizar o número do ícone. Toque de novo.",
+  "settings.clearNotifications.failed.both":
+    "Limpo, mas este dispositivo não conseguiu fechar as notificações nem atualizar o número do ícone. Toque de novo.",
   "settings.devices.title": "Dispositivos emparelhados",
   "settings.devices.description.enforced": "Toda leitura e toda gravação precisa de um dispositivo emparelhado.",
   "settings.devices.pairedAs": "Este dispositivo está emparelhado como {device}.",

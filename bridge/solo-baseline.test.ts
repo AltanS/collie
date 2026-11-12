@@ -898,6 +898,11 @@ describe("solo zero-tax — routes", () => {
       "/api/notifications/cache-watch",
       "/api/notifications/cache-watch/forget",
       "/api/notifications/cache-watch/list",
+      // Clear all (ADR 0003, ADR 0042): a SOLO route in the notifications family that legitimately
+      // extends this list, named here rather than exempted. Read-gated like snooze and not forwardable:
+      // it opens every pane of the collie the phone talks to, which holds the subscriptions, and `bridge/crew/router.test.ts` pins it as 404 across a link. A bridge nobody asks writes
+      // nothing through it.
+      "/api/notifications/clear",
       "/api/notifications/prefs",
       "/api/notifications/snooze",
       // The Crew overview (bridge/crew/status-wire.ts) — a FRONT-DOOR route, and it legitimately

@@ -1141,6 +1141,8 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
       "notifications/cache-watch",
       "notifications/cache-watch/list",
       "notifications/cache-watch/forget",
+      // Clear all: opening every pane of the collie the phone talks to, never a member's.
+      "notifications/clear",
       "update/check",
       "config",
       // The Machines routes (ADR 0084): the lead keeps every machine's history and rules itself, so

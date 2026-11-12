@@ -257,6 +257,9 @@ describe("which routes cross a link", () => {
       "/api/subscribe",
       "/api/notifications/snooze",
       "/api/notifications/prefs",
+      // Clear all is opening every pane of the collie the phone talks to; a member keeps its own seen
+      // ledger and is not asked (ADR 0003, ADR 0042).
+      "/api/notifications/clear",
       "/api/update/check",
       // ADR 0084: the lead holds every machine's history and rules, so `?host=` addresses nothing.
       "/api/machines",

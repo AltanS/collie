@@ -276,6 +276,19 @@ export const en = {
   "settings.snooze.preset.min30": "30m",
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
+  // --- settings.clearNotifications ---
+  "settings.clearNotifications.title": "Clear notifications",
+  "settings.clearNotifications.description":
+    "Close every Collie notification on this device and mark every finished agent as seen. Other devices follow when they next sync or open Collie. Agents waiting on you stay on the dashboard.",
+  "settings.clearNotifications.action": "Clear all",
+  "settings.clearNotifications.done": "Notifications cleared.",
+  "settings.clearNotifications.clearing": "Clearing…",
+  "settings.clearNotifications.failed.notifications":
+    "Cleared, but this device could not close its notifications. Tap again.",
+  "settings.clearNotifications.failed.badge":
+    "Cleared, but this device could not update its icon count. Tap again.",
+  "settings.clearNotifications.failed.both":
+    "Cleared, but this device could not close its notifications or update its icon count. Tap again.",
 
   // --- settings.devices ---
   "settings.devices.title": "Paired devices",

@@ -245,6 +245,18 @@ export const zh: Dictionary = {
   "settings.snooze.preset.min30": "30分钟",
   "settings.snooze.preset.hour1": "1小时",
   "settings.snooze.preset.hour4": "4小时",
+  "settings.clearNotifications.title": "清除通知",
+  "settings.clearNotifications.description":
+    "关闭此设备上的所有 Collie 通知，并将已完成的智能体标记为已查看。其他设备会在下次同步或打开 Collie 时跟上。等待你处理的智能体仍留在仪表盘上。",
+  "settings.clearNotifications.action": "全部清除",
+  "settings.clearNotifications.done": "通知已清除。",
+  "settings.clearNotifications.clearing": "正在清除…",
+  "settings.clearNotifications.failed.notifications":
+    "已清除，但此设备无法关闭它的通知。请再点一次。",
+  "settings.clearNotifications.failed.badge":
+    "已清除，但此设备无法更新图标上的数字。请再点一次。",
+  "settings.clearNotifications.failed.both":
+    "已清除，但此设备既无法关闭它的通知，也无法更新图标上的数字。请再点一次。",
 
   // --- settings.devices ---
   "settings.devices.title": "已配对设备",

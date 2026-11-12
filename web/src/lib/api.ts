@@ -52,6 +52,7 @@ import type {
   DevicesResponse,
   CacheRulesResponse,
   CacheWatchListResponse,
+  NotificationsClearResponse,
   CacheWatchState,
   FolderBrowseResponse,
   FoldersResponse,
@@ -2425,6 +2426,16 @@ export function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<NotifyPrefs
     method: "POST",
     body: JSON.stringify(patch),
   });
+}
+
+/**
+ * Clear every notification: what opening every pane of this collie does, in one request. The bridge
+ * marks every pane seen (ADR 0003) and retracts every finished alert; a pane still blocked on you
+ * keeps its alert. Bridge-wide like the snooze, and never forwarded. Answers the slots it cleared,
+ * for lib/clear-notifications.ts to zero on this device.
+ */
+export function clearNotifications(): Promise<NotificationsClearResponse> {
+  return req<NotificationsClearResponse>("/api/notifications/clear", { method: "POST" });
 }
 
 /**
