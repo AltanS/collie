@@ -151,7 +151,7 @@ export const spacesWithWorktrees: WorkspaceView[] = [
 
 export const spaces: WorkspaceView[] = [
   { workspaceId: "w1", number: 1, label: "collie", focused: true, activeTabId: "w1:t1", tabCount: 3, paneCount: 4 },
-  { workspaceId: "w2", number: 2, label: "sprqvntrs-api", focused: false, activeTabId: "w2:t1", tabCount: 3, paneCount: 4 },
+  { workspaceId: "w2", number: 2, label: "example-api", focused: false, activeTabId: "w2:t1", tabCount: 3, paneCount: 4 },
   { workspaceId: "w3", number: 3, label: "nixcfg", focused: false, activeTabId: "w3:t1", tabCount: 2, paneCount: 3 },
   { workspaceId: "w4", number: 4, label: "blog", focused: false, activeTabId: "w4:t1", tabCount: 2, paneCount: 2 },
 ];
@@ -241,13 +241,13 @@ const needsYou: AgentView[] = [
   {
     paneId: "w2:p3",
     workspaceId: "w2",
-    workspaceLabel: "sprqvntrs-api",
+    workspaceLabel: "example-api",
     workspaceNumber: 2,
     tabId: "w2:t1",
     tabLabel: "fix-deploy",
     agent: "codex",
     status: "blocked",
-    cwd: "/home/you/src/sprqvntrs-api",
+    cwd: "/home/you/src/example-api",
     focused: false,
     hasSession: true,
     hint: "asked you a question and is waiting for the answer",
@@ -282,13 +282,13 @@ const readyUnseen: AgentView[] = [
   {
     paneId: "w2:p4",
     workspaceId: "w2",
-    workspaceLabel: "sprqvntrs-api",
+    workspaceLabel: "example-api",
     workspaceNumber: 2,
     tabId: "w2:t3",
     tabLabel: "billing-webhooks",
     agent: "claude",
     status: "done",
-    cwd: "/home/you/src/sprqvntrs-api",
+    cwd: "/home/you/src/example-api",
     focused: false,
     hasSession: true,
     sessionName: "billing webhooks",
@@ -341,13 +341,13 @@ const working: AgentView[] = [
   {
     paneId: "w2:p1",
     workspaceId: "w2",
-    workspaceLabel: "sprqvntrs-api",
+    workspaceLabel: "example-api",
     workspaceNumber: 2,
     tabId: "w2:t2",
     tabLabel: "migrate-users",
     agent: "codex",
     status: "working",
-    cwd: "/home/you/src/sprqvntrs-api",
+    cwd: "/home/you/src/example-api",
     focused: false,
     terminalTitle: "running drizzle-kit generate",
     lastActiveAt: TS - 4 * MIN,
@@ -390,13 +390,13 @@ const working: AgentView[] = [
   {
     paneId: "w2:p2",
     workspaceId: "w2",
-    workspaceLabel: "sprqvntrs-api",
+    workspaceLabel: "example-api",
     workspaceNumber: 2,
     tabId: "w2:t3",
     tabLabel: "billing-webhooks",
     agent: "claude",
     status: "working",
-    cwd: "/home/you/src/sprqvntrs-api",
+    cwd: "/home/you/src/example-api",
     focused: false,
     hasSession: true,
     terminalTitle: "waiting on CI",
@@ -463,13 +463,13 @@ const resting: AgentView[] = [
   {
     paneId: "w2:p5",
     workspaceId: "w2",
-    workspaceLabel: "sprqvntrs-api",
+    workspaceLabel: "example-api",
     workspaceNumber: 2,
     tabId: "w2:t3",
     tabLabel: "billing-webhooks",
     agent: "shell",
     status: "unknown",
-    cwd: "/home/you/src/sprqvntrs-api",
+    cwd: "/home/you/src/example-api",
     focused: false,
     kind: "shell",
     paneLabel: "logs",
@@ -1318,7 +1318,7 @@ export function paneCache(overrides: Partial<PaneCache> & { state: PaneCache["st
  */
 export const watchedPanes: CacheWatchListEntry[] = [
   { id: "b7f1c2a9", label: "collie · next", session: "next", paneId: "%1" },
-  { id: "3d90ee14", label: "infra · claude", host: "minibuch", paneId: "w2:p1" },
+  { id: "3d90ee14", label: "infra · claude", host: "workshop", paneId: "w2:p1" },
 ];
 
 /** One pane's place in the list: off, watchable, with the bridge's own 300-second window. */

@@ -83,10 +83,10 @@ const AGENTS: AgentView[] = [
 ];
 const SHELLS: AgentView[] = shells.map(renamed);
 
-/** The lead is called bluefin, as on Altan's phone; a second machine makes the machine chip appear. */
+/** The lead is called lodge, as on Altan's phone; a second machine makes the machine chip appear. */
 const ROSTER: ServerSummary[] = [
-  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS - 2_000 },
-  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3_000 },
+  { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS - 2_000 },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3_000 },
 ];
 
 const DATA: HomeData = {
