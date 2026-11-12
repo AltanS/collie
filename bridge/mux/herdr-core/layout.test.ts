@@ -134,7 +134,7 @@ describe("the herdr-core snapshot mapping", () => {
     const snapshot = toSnapshot(
       [
         terminal({ address: "t1", name: "review", title: "✳ Reviewing the diff" }),
-        terminal({ address: "t2", title: "altan@lodge:~/projects/x" }),
+        terminal({ address: "t2", title: "dev@lodge:~/projects/x" }),
       ],
       null,
       "/home/dev",
@@ -179,17 +179,17 @@ describe("status and app words", () => {
 });
 
 describe("absoluteCwd", () => {
-  const home = "/home/altan";
+  const home = "/home/dev";
   test("an absolute path stays", () => {
     expect(absoluteCwd("/abs/dir", home)).toBe("/abs/dir");
   });
   test.if(sep === "\\")("a Windows drive path stays on Windows", () => {
-    expect(absoluteCwd("C:\\x", "C:\\Users\\altan")).toBe("C:\\x");
-    expect(absoluteCwd("C:/x", "C:\\Users\\altan")).toBe("C:/x");
+    expect(absoluteCwd("C:\\x", "C:\\Users\\dev")).toBe("C:\\x");
+    expect(absoluteCwd("C:/x", "C:\\Users\\dev")).toBe("C:/x");
   });
   test("~ and ~/x take the home folder", () => {
     expect(absoluteCwd("~", home)).toBe(home);
-    expect(absoluteCwd("~/x", `${home}/`)).toBe("/home/altan/x");
+    expect(absoluteCwd("~/x", `${home}/`)).toBe("/home/dev/x");
   });
   test("relative, ~user, empty and an unknown home are unknown", () => {
     expect(absoluteCwd("rel/dir", home)).toBe("");

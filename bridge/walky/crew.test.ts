@@ -194,7 +194,7 @@ describe("the lead's check of a member's message", () => {
 
 describe("the one shape check both crew hops share", () => {
   const good = signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1");
-  const operator = signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "phone-altan" } });
+  const operator = signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "phone-dev" } });
 
   /** Every signed string field, set to `value`, one at a time. */
   function eachField(base: WalkyMessage, value: string): Array<[string, WalkyMessage]> {

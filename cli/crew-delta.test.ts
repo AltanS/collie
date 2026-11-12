@@ -64,7 +64,7 @@ const crewOf = (...ids: readonly string[]): TrustStoreData => leadStore({ peers:
 describe("crewDelta: the machines a multiplexer knows that this crew does not have", () => {
   test("names the machines of a source that no member covers, by the list's own name", async () => {
     const { deps } = setup({
-      core: machines({ target: "altan@workshop", name: "workshop" }, { target: "vps" }, { target: "nas", name: "nas" }),
+      core: machines({ target: "dev@workshop", name: "workshop" }, { target: "vps" }, { target: "nas", name: "nas" }),
       store: crewOf("nas"),
       ops: { nas: record("nas", "herdr-core") },
     });

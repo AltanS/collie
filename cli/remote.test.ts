@@ -883,9 +883,9 @@ describe("collie crew add", () => {
     const h = harness({
       coreMachines: JSON.stringify({
         machines: [
-          { target: "altan@workshop", name: "workshop", via: false, temporary: false },
+          { target: "dev@workshop", name: "workshop", via: false, temporary: false },
           { target: "sbx-1", name: "sandbox", temporary: true },
-          { target: "altan@vps", name: "vps", via: true, temporary: false },
+          { target: "dev@vps", name: "vps", via: true, temporary: false },
         ],
       }),
       prompt: "1",
@@ -894,30 +894,30 @@ describe("collie crew add", () => {
     expect(h.io.stdout.slice(0, 5)).toEqual([
       "Candidate hosts on this machine:",
       "",
-      "   1  altan@workshop  herdr-core",
-      "      altan@vps       herdr-core  cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config",
+      "   1  dev@workshop  herdr-core",
+      "      dev@vps       herdr-core  cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config",
       "",
     ]);
-    expect(text(h.io)).toContain("probing altan@workshop…");
+    expect(text(h.io)).toContain("probing dev@workshop…");
     expect(text(h.io)).not.toContain("warn:");
   });
 
   test("a greyed via row reached through an ssh hop says to add the hop first, or type its address", async () => {
     const h = harness({
       coreMachines: JSON.stringify({
-        machines: [{ target: "altan@workshop" }, { target: "ssh -p 2222 altan@10.0.0.7", name: "box", via: true }],
+        machines: [{ target: "dev@workshop" }, { target: "ssh -p 2222 dev@10.0.0.7", name: "box", via: true }],
       }),
       prompt: "1",
     });
     expect(await run(h, [])).toBe(EXIT.OK);
     expect(h.io.stdout[3]).toBe(
-      "      ssh -p 2222 altan@10.0.0.7  herdr-core  cannot be added: reached through altan@10.0.0.7; add altan@10.0.0.7 first, or type its address",
+      "      ssh -p 2222 dev@10.0.0.7  herdr-core  cannot be added: reached through dev@10.0.0.7; add dev@10.0.0.7 first, or type its address",
     );
   });
 
   test("typing a blocked machine's name is refused with its reason, and nothing runs", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@workshop"},{"target":"vps","via":true}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop"},{"target":"vps","via":true}]}',
       prompt: "vps",
     });
     expect(await run(h, [])).toBe(EXIT.USAGE);
@@ -1444,7 +1444,7 @@ describe("collie crew add", () => {
 
   test("a blocked name inside a list is refused with its reason, and nothing runs", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@workshop"},{"target":"vps","via":true}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop"},{"target":"vps","via":true}]}',
       prompt: "1 vps",
     });
     expect(await run(h, [])).toBe(EXIT.USAGE);
@@ -1454,7 +1454,7 @@ describe("collie crew add", () => {
 
   test("a row's name reaches the join as --label, is printed as a fact, and the ops record keeps its source", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@workshop","name":"workshop"}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop","name":"workshop"}]}',
       prompt: "1",
     });
     expect(await run(h, [])).toBe(EXIT.OK);
@@ -1465,7 +1465,7 @@ describe("collie crew add", () => {
 
   test("--label beats a row's name, and says nothing about it", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@workshop","name":"workshop"}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop","name":"workshop"}]}',
       prompt: "1",
     });
     expect(await run(h, ["--label", "desk"])).toBe(EXIT.OK);
@@ -1477,7 +1477,7 @@ describe("collie crew add", () => {
 
   test("a row name the join cannot use is dropped with one line, and the hostname default applies", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@workshop","name":"🖥️ !!"}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop","name":"🖥️ !!"}]}',
       prompt: "1",
     });
     expect(await run(h, [])).toBe(EXIT.OK);

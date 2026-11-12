@@ -993,14 +993,14 @@ describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-
 
   test("a shell at a sudo password prompt refuses the send before any key, offers the key pad, and is never held", async () => {
     const holds = new HoldStore(join(dir, "held"));
-    const pane = shellScreen("[sudo] password for altan: ");
+    const pane = shellScreen("[sudo] password for dev: ");
     const { send } = rig({ pane, harness: "", holds });
     const answer = await send("claude-danger");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", profileId: null, keys: [] });
     expect(answer.offers).toEqual(["keys"]);
     expect(answer.detail).toBe("A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.");
     // The receipt never keeps the prompt's row: it names a user.
-    expect(JSON.stringify(answer.receipt)).not.toContain("altan");
+    expect(JSON.stringify(answer.receipt)).not.toContain("dev");
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
     expect(holds.list()).toEqual([]);
