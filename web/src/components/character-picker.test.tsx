@@ -151,9 +151,9 @@ describe("CharacterPicker", () => {
   it("holds every mark of every row still until the one observer says the row is on screen", async () => {
     render(<CharacterPicker />);
     await loaded();
-    // ONE observer for the page, watching all eleven rows.
+    // ONE observer for the page, watching all eleven rows and the preview.
     expect(FakeObserver.all).toHaveLength(1);
-    expect(FakeObserver.all[0]?.targets).toHaveLength(11);
+    expect(FakeObserver.all[0]?.targets).toHaveLength(12);
     for (const radio of radios()) {
       for (const mark of Array.from(radio.querySelectorAll("svg[data-mark]"))) expect(mark.hasAttribute("data-still")).toBe(true);
     }
@@ -169,6 +169,19 @@ describe("CharacterPicker", () => {
 
     act(() => FakeObserver.all[0]?.see({ pixel: false }));
     expect(marksOf("Pixel")[1]?.hasAttribute("data-still")).toBe(true);
+  });
+
+  it("previews the chosen character at 28, 56 and 112 px, and follows a tap at once", async () => {
+    render(<CharacterPicker />);
+    await loaded();
+    const preview = () => Array.from(document.querySelectorAll('[data-slot="character-preview"] svg[data-mark]'));
+    expect(preview().map((mark) => mark.getAttribute("width"))).toEqual(["28", "56", "112"]);
+    expect(preview().map((mark) => mark.getAttribute("data-state"))).toEqual(["rest", "rest", "rest"]);
+    // From the theme previews the theme's character, which is Collie by default.
+    expect(new Set(preview().map((mark) => mark.getAttribute("data-mark")))).toEqual(new Set(["collie"]));
+    await userEvent.click(row("Collie with blaze"));
+    await loaded();
+    expect(new Set(preview().map((mark) => mark.getAttribute("data-mark")))).toEqual(new Set(["collie-blaze"]));
   });
 
   it("stops its observer when it unmounts", () => {

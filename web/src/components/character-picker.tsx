@@ -21,11 +21,11 @@ import { cn } from "@/lib/utils";
 // drawing, so this is a radio group of rows. "From the theme" draws the character the worn theme
 // would give, so the row shows what it means.
 //
-// HOW COST IS KEPT LOW. Eleven rows is thirty-three marks, and a running animation asks for a frame
-// every vsync (issue 748, mark-contract.ts). So the page holds ONE IntersectionObserver for all its
-// rows, tracks which rows are on screen, and gives every mark in a row that is not `turn={0}`, which
-// pauses all of its animations (`data-still`). A row starts as not visible and is let go only when
-// the observer says it is on screen. The Still column is always held. Where the page has no
+// HOW COST IS KEPT LOW. Eleven rows is thirty-three marks and the preview three more, and a running
+// animation asks for a frame every vsync (issue 748, mark-contract.ts). So the page holds ONE
+// IntersectionObserver for its rows and the preview, tracks which of them are on screen, and gives
+// every mark in one that is not `turn={0}`, which pauses all of its animations (`data-still`). A row
+// starts as not visible and is let go only when the observer says it is on screen. The Still column is always held. Where the page has no
 // IntersectionObserver every mark stays still: a held mark costs nothing and is never wrong.
 //
 // THE MARKS ARE DRAWN ON THE CARD (`paper="var(--card)"`), because the knockout that makes a bead
@@ -35,7 +35,24 @@ import { cn } from "@/lib/utils";
 //
 // CHARACTER NAMES ARE PROPER NOUNS and are not translated; "From the theme" and the heads are phrases.
 
-const MARK_SIZE = 28;
+// 40 px, not the header's 28: at 28 the three Collie dogs (plain, collar, blaze) cannot be told apart
+// (lead, 2026-11-12). A row grows to about 56 px and stays one radio.
+const MARK_SIZE = 40;
+
+/**
+ * The preview of the chosen character, at three sizes side by side and with no captions: 28 px as the
+ * header draws it, then 56 and 112 so a difference too small for a row (the collar against the plain
+ * Collie) can be seen (Altan, 2026-11-12). Below about 80 px the header weight reads, above it the
+ * full drawing, as everywhere else the mark is drawn.
+ */
+const PREVIEW = [
+  { size: 28, weight: "header" },
+  { size: 56, weight: "header" },
+  { size: 112, weight: "full" },
+] as const;
+
+/** The observer's key for the preview block; never a choice id. */
+const PREVIEW_KEY = "preview";
 
 type Choice = MarkId | "theme";
 
@@ -47,8 +64,8 @@ const COLUMNS = [
   { state: "idle", head: "settings.character.idle" },
 ] as const satisfies readonly { state: "rest" | "loading" | "idle"; head: MessageKey }[];
 
-/** The mark column's width: wide enough for the head "Loading" and a 28 px mark. */
-const COLUMN = "w-10 shrink-0";
+/** The mark column's width: wide enough for the head "Loading" and a 40 px mark. */
+const COLUMN = "w-11 shrink-0";
 
 /** One row's keys: the choice at the end of a step, wrapping round. */
 function stepFrom({ index, key }: { index: number; key: string }): number | null {
@@ -66,6 +83,7 @@ export function CharacterPicker() {
   const chosen: Choice = useDesignPrefs().mark ?? "theme";
   const fromTheme = useThemeMarkId();
   const listRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const ids = useId();
   // The rows on screen. Empty to begin with: a row is held until the observer has seen it.
@@ -79,7 +97,8 @@ export function CharacterPicker() {
   // ONE observer for the page. It keeps the set of rows on screen; no row has an observer of its own.
   useEffect(() => {
     const list = listRef.current;
-    if (list === null || globalThis.IntersectionObserver === undefined) return;
+    const preview = previewRef.current;
+    if (list === null || preview === null || globalThis.IntersectionObserver === undefined) return;
     const observer = new IntersectionObserver((entries) => {
       setVisible((before) => {
         const next = new Set(before);
@@ -92,6 +111,7 @@ export function CharacterPicker() {
         return next.size === before.size && [...next].every((row) => before.has(row)) ? before : next;
       });
     });
+    observer.observe(preview);
     for (const row of list.querySelectorAll("[data-row]")) observer.observe(row);
     return () => observer.disconnect();
   }, []);
@@ -115,7 +135,31 @@ export function CharacterPicker() {
     <Card className="gap-0 py-0" data-slot="character-picker">
       <p className="p-4 text-sm text-muted-foreground">{t("settings.character.description")}</p>
 
-      <div className="flex items-end gap-2 border-t border-border px-4 pt-2 pb-1 text-[11px] text-muted-foreground">
+      {/* The chosen character, at rest as the header draws it (the drift and all), at three sizes. It
+          is decoration: the radio below names the choice. Held like a row while it is off screen. */}
+      <div
+        ref={previewRef}
+        data-row={PREVIEW_KEY}
+        data-slot="character-preview"
+        aria-hidden
+        className="flex items-end justify-center gap-6 border-t border-border px-4 py-4"
+      >
+        {PREVIEW.map(({ size, weight }) => (
+          <BrandMark
+            key={size}
+            mark={chosen === "theme" ? fromTheme : chosen}
+            size={size}
+            weight={weight}
+            paper="var(--card)"
+            state="rest"
+            turn={visible.has(PREVIEW_KEY) ? undefined : 0}
+          />
+        ))}
+      </div>
+
+      {/* The heads sit over the rows' columns, so they take the list's `--row-inset` (index.css, the
+          list-group rule) and the row's edge as well: a theme with card rows insets every row. */}
+      <div className="flex items-end gap-1.5 border-t border-border px-[calc(1rem+var(--row-inset)+var(--row-edge))] pt-2 pb-1 text-[11px] text-muted-foreground">
         <span className="min-w-0 flex-1" />
         {COLUMNS.map((column) => (
           <span key={column.state} className={cn(COLUMN, "text-center")}>
@@ -149,10 +193,10 @@ export function CharacterPicker() {
               data-row={choice}
               onClick={() => select(choice)}
               onKeyDown={(event) => onKeyDown(event, index)}
-              className="flex min-h-11 w-full items-center gap-2 border-b border-border px-4 py-2 text-left text-sm transition-colors last:border-b-0 active:bg-muted/60"
+              className="flex min-h-14 w-full items-center gap-1.5 border-b border-border px-4 py-2 text-left text-sm transition-colors last:border-b-0 active:bg-muted/60"
             >
               <span className="min-w-0 flex-1">
-                <span id={nameId} className="block font-medium [overflow-wrap:anywhere]">
+                <span id={nameId} className="block font-medium break-words">
                   {isTheme ? t("settings.character.fromTheme") : markName(choice)}
                 </span>
                 {isTheme && (
@@ -162,7 +206,7 @@ export function CharacterPicker() {
                 )}
               </span>
               {COLUMNS.map((column) => (
-                <span key={column.state} className={cn(COLUMN, "grid h-7 place-items-center")}>
+                <span key={column.state} className={cn(COLUMN, "grid h-10 place-items-center")}>
                   <BrandMark
                     mark={mark}
                     size={MARK_SIZE}
