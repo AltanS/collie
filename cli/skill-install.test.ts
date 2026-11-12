@@ -570,8 +570,12 @@ describe("sync", () => {
 // ── The golden copy ──────────────────────────────────────────────────────────
 
 describe("the WalkyTalky skill is byte for byte its golden copy", () => {
-  /** The stamp's collie version as a placeholder, so a release bump does not move the comparison. */
-  const norm = (body: string, version: string): string => body.replaceAll(` collie ${version} -->`, " collie {{VERSION}} -->");
+  /**
+   * The stamp's collie version as a placeholder, so a release bump does not move the comparison, and the
+   * pinned binary as the golden copy spells it: the path is the host's own (`collie.exe` under backslashes
+   * on Windows), the words around it are not.
+   */
+  const norm = (body: string, version: string): string => body.replaceAll(` collie ${version} -->`, " collie {{VERSION}} -->").replaceAll(collieBinary(ROOT), "/opt/collie/bin/collie");
 
   test("the rendered text equals cli/testdata/walky-skill-v2.golden.md", () => {
     const d = deps();
