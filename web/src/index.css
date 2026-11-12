@@ -1396,6 +1396,17 @@
    its rounded corners; ui/list-group.tsx and the key board editor draw their own frame and opt out
    with `p-0`. */
 @layer components {
+  /* THE SHARED BUTTON'S PRESS REACH (components/ui/tap-target.ts, PRESS_REACH_SOFT). It is a class and not an
+     `active:before:` utility on purpose: that utility is (0,2,1), which beats a caller's own reach
+     (`before:-inset-1`, `before:-inset-y-[7px]`, (0,1,1)) while the finger is down, and the reach would SHRINK
+     under the press (composer Send, the belt's pills). `:where()` takes the pressed state out of the
+     specificity, and the components layer sits below utilities, so a caller's reach always wins and this one
+     only fills in where the caller has none. */
+  .press-reach-soft:where(:active)::before {
+    content: "";
+    position: absolute;
+    inset: -1.5%;
+  }
   [data-slot="list-group"] {
     padding: var(--row-inset);
   }

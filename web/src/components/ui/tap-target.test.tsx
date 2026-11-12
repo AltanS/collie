@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -54,7 +57,7 @@ describe("the controls that wear them", () => {
 // is there to cover a neighbour; the real-engine proof is `web/e2e/hitbox/press.run.ts`.
 describe("the press reach", () => {
   it("exists only while the element is pressed: every class is an `active:` one", () => {
-    for (const c of [PRESS_REACH, PRESS_REACH_SOFT, PRESS_REACH_ROW]) {
+    for (const c of [PRESS_REACH, PRESS_REACH_ROW]) {
       for (const cls of c.split(" ")) expect(cls.startsWith("active:")).toBe(true);
       expect(c).toContain("active:before:content-['']");
     }
@@ -63,9 +66,18 @@ describe("the press reach", () => {
   it("gives back at least what its scale takes: 3% for 95%, 1.5% for 98%, 1% sideways for 99%", () => {
     // A box scaled to s about its centre loses (1 - s) / 2 of its size at each edge.
     expect(PRESS_REACH).toContain("-inset-[3%]"); // 95%: 2.5% each side
-    expect(PRESS_REACH_SOFT).toContain("-inset-[1.5%]"); // 98%: 1% each side
     expect(PRESS_REACH_ROW).toContain("-inset-x-[1%]"); // 99%: 0.5% each side
     expect(PRESS_REACH_ROW).toContain("active:before:inset-y-0"); // never above or below: the next row's edge stays its own
+  });
+
+  it("the soft reach is a zero-specificity class, so a caller's reach is never beaten by it", () => {
+    // `index.css` holds `.press-reach-soft:where(:active)::before { inset: -1.5% }` in the components layer. An
+    // `active:before:` utility here would be (0,2,1) and shrink Send's `before:-inset-1` while pressed.
+    expect(PRESS_REACH_SOFT).toBe("press-reach-soft");
+    expect(PRESS_REACH_SOFT).not.toContain("active:");
+    const css = readFileSync(join(process.cwd(), "src/index.css"), "utf8");
+    expect(css).toMatch(/\.press-reach-soft:where\(:active\)::before\s*\{[^}]*inset:\s*-1\.5%/u);
+    expect(css.slice(css.indexOf("@layer components"), css.indexOf(".press-reach-soft"))).not.toContain("@layer utilities");
   });
 
   it("the shared Button wears the soft reach", () => {

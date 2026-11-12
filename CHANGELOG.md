@@ -63,6 +63,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A new small or covered tap target fails a script.** `cd web && bun run hitbox:check` builds the app, walks every screen at two phone sizes in a real browser and exits 1 on a tap target that is small or covered and is not on the written list of known ones (`web/e2e/hitbox/known.json`). It touches nothing outside a temp file and is not part of CI.
 - **A pane held under a finger keeps its place when its tab closes.** The Dashboard list holds its rows while a finger is down, but a pane whose tab closed with it fell to the fallback sort and slid a row. The tab and workspace lists that place the rows are now held by the same rule, and update in place the same way.
 - **The hitbox playground section shows each fix before and after.** Card 14 of the states playground (a dev-only page, never in the app) lists what each tap fix measured before and after in a real browser, and the census cards now read the fix branch's walk. Nothing in the app changes.
+- **A pressed button keeps the reach its caller gave it.** The press reach on the shared Button was a `:active` rule that out-ranked a caller's own reach, so a tap just outside the drawn circle of composer Send, a belt pill or a nav-tray key hit the reach, started the press, and then lost it, and the tap did nothing. The press reach now yields to the caller's, and a browser case taps 3 px outside each such button while it is pressed.
 
 ### Docs
 

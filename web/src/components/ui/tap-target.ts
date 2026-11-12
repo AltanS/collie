@@ -77,8 +77,13 @@ export const SQUARE_36_TAP_TARGET = "relative before:absolute before:-inset-1 be
 /** For an element that scales to 95% while pressed and has no `::before` of its own. */
 export const PRESS_REACH = "active:before:absolute active:before:-inset-[3%] active:before:content-['']";
 
-/** For an element that scales to 98% while pressed and has no `::before` of its own (`Button`). */
-export const PRESS_REACH_SOFT = "active:before:absolute active:before:-inset-[1.5%] active:before:content-['']";
+/**
+ * For `Button`, which scales to 98% while pressed and is worn by callers that bring a reach of their own
+ * (`TOOLBAR_TAP_TARGET`, the belt's pills). It is the class `.press-reach-soft` in `index.css`, 1.5% each way,
+ * at zero specificity and below the utilities layer: a caller's reach always wins and is never shrunk by the
+ * press, where an `active:before:` utility (0,2,1) would beat it.
+ */
+export const PRESS_REACH_SOFT = "press-reach-soft";
 
 /** For a full-width row that scales to 99%: sideways only, so the next row's edge is never covered. */
 export const PRESS_REACH_ROW = "active:before:absolute active:before:-inset-x-[1%] active:before:inset-y-0 active:before:content-['']";

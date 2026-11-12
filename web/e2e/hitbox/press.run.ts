@@ -1,4 +1,4 @@
-import { test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import type { Target } from "@/playground/hitbox/scan";
 
@@ -132,7 +132,17 @@ async function pressCover(page: Page, f: Finger, targets: Target[], vw: number, 
             const at = document.elementFromPoint(x, py);
             if (at !== null && el.contains(at)) right = x;
           }
-          return { covers, width: right - left };
+          let top = py;
+          let bottom = py;
+          for (let y = py; y > py - 200; y -= 1) {
+            const at = document.elementFromPoint(px, y);
+            if (at !== null && el.contains(at)) top = y;
+          }
+          for (let y = py; y < py + 200; y += 1) {
+            const at = document.elementFromPoint(px, y);
+            if (at !== null && el.contains(at)) bottom = y;
+          }
+          return { covers, width: right - left, height: bottom - top };
         },
         { sel, boxes, cx, cy },
       );
@@ -151,7 +161,8 @@ async function pressCover(page: Page, f: Finger, targets: Target[], vw: number, 
       const before = rest.covers[i]?.points ?? 0;
       if (c.points > before) covers.push({ name: c.name, points: c.points - before });
     });
-    const shrankBy = Math.max(0, rest.width - held.width);
+    // Across and down: a reach that shrinks under the press shows in either (review 1, finding 1).
+    const shrankBy = Math.max(0, rest.width - held.width, rest.height - held.height);
     if (shrankBy >= 1) shrunk += 1;
     if (covers.length > 0 || shrankBy >= 1) findings.push({ pressed: t.name, covers, shrankBy });
   }
@@ -186,6 +197,77 @@ for (const id of COVER_SCREENS) {
     totals.pressed += got.pressed;
     totals.shrunk += got.shrunk;
     for (const finding of got.findings) totals.neighboursCovered += finding.covers.length;
+  });
+}
+
+// A PRESS MAY NOT SHRINK A REACH THE CALLER BROUGHT (review 1, finding 1). `Button` gives the scale's share back
+// while pressed, and the callers that bring a reach of their own (composer Send and the toolbar, the belt's
+// pills, the nav tray's keys) have to keep it under the finger: a tap just outside the drawn box, inside the
+// reach, is pointerdown on the `::before`, `:active` applies, and a reach that shrinks to 0.5px would miss the
+// click at the lift. Every Button whose `::before` is drawn at rest on these screens is touched 3px outside its
+// drawn box on the side that has room, with the reach band proven by `elementFromPoint` first, and the click
+// must land. The census reads at rest and cannot see this; this is its pressed-state reading.
+const REACH_SCREENS = ["session-chat", "session-terminal", "composer-keys"];
+
+for (const id of REACH_SCREENS) {
+  test(`a pressed button keeps its own reach on ${id}`, async ({ page }) => {
+    const recipe = SCREENS.find((s) => s.id === id);
+    if (recipe === undefined) throw new Error(`no screen ${id}`);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript({ content: WATCH });
+    await setUpWorld(page, recipe);
+    await page.goto(recipe.path ?? "/");
+    await page.waitForSelector("#root *", { timeout: 8000 });
+    await page.waitForTimeout(1200);
+    await recipe.open?.(page);
+    // Text in the field turns the mic into Send.
+    const field = page.locator('[data-slot="composer-box"] textarea').first();
+    if ((await field.count()) > 0) await field.fill("run the tests");
+    await page.waitForTimeout(500);
+    const f: Finger = { ...(await finger(page)), radius: 1 };
+    const buttons = await page.evaluate(() => {
+      const found: { sel: string; name: string; x: number; y: number; w: number; h: number }[] = [];
+      let n = 0;
+      for (const el of document.querySelectorAll('button[data-slot="button"], button')) {
+        const before = getComputedStyle(el, "::before");
+        if (before.content === "none" || before.position !== "absolute") continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8 || r.x < 4 || r.y < 4 || r.x + r.width > innerWidth - 4 || r.y + r.height > innerHeight - 4) continue;
+        n += 1;
+        el.setAttribute("data-hb-reach", String(n));
+        found.push({ sel: `[data-hb-reach="${String(n)}"]`, name: el.getAttribute("aria-label") ?? (el.textContent ?? "").trim().slice(0, 24), x: r.x, y: r.y, w: r.width, h: r.height });
+      }
+      return found;
+    });
+    const missed: string[] = [];
+    const tried: { [key: string]: Json } = {};
+    for (const b of buttons) {
+      // Above the box, else below it; centred. 3px out, inside a 4px reach.
+      for (const side of ["top", "bottom"] as const) {
+        const x = b.x + b.w / 2;
+        const y = side === "top" ? b.y - 3 : b.y + b.h + 3;
+        const answers = await page.evaluate(({ sel, px, py }) => {
+          const el = document.querySelector(sel);
+          const at = document.elementFromPoint(px, py);
+          return el !== null && at !== null && el.contains(at);
+        }, { sel: b.sel, px: x, py: y });
+        if (!answers) continue;
+        await page.evaluate((sel) => {
+          for (const old of document.querySelectorAll("[data-hb-watch]")) old.removeAttribute("data-hb-watch");
+          document.querySelector(sel)?.setAttribute("data-hb-watch", "1");
+          window.__hbClicks = [];
+        }, b.sel);
+        await press(f, x, y, { holdMs: 80 });
+        await sleep(140);
+        const landed = await page.evaluate(() => (window.__hbClicks ?? []).filter((e) => e.inside).length);
+        tried[`${b.name} ${side}`] = landed;
+        if (landed === 0) missed.push(`${b.name} (${side})`);
+        break;
+      }
+    }
+    out[`reach-held:${id}`] = { buttons: buttons.length, tried, missed };
+    expect(buttons.length, `a button with a reach of its own on ${id}`).toBeGreaterThan(0);
+    expect(missed, "taps 3px outside the drawn box, inside the reach, that the press lost").toEqual([]);
   });
 }
 
