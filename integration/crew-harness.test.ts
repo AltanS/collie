@@ -125,6 +125,23 @@ let root: string;
  * about them look identical. That is what let the beta.9 bug ship. `node:http` performs no content
  * decoding, so the assertion "encoding claimed ⟺ bytes gzipped" is actually decidable.
  */
+// The runner's PATH in `GET /api/tricks` (int/1.29.0, d4de087c0), through the running bridge: only the
+// host's own CLI (its local read credential) gets `path`; a paired phone's reply has no such key.
+describe("the tricks list: the runner's PATH for the local CLI only, through a real request", () => {
+  test("a phone-style request gets no `path`, and the local CLI request gets it", async () => {
+    // The bridge names the PATH only once its tricks folder exists (service.ts `folderExists`).
+    mkdirSync(join(lead.home, ".config", "collie", "tricks"), { recursive: true });
+    const local = async (): Promise<JsonObject | undefined> => parseJsonObject(await (await lead.api("/api/tricks?bound=1")).text());
+    await waitFor(async () => asJsonString((await local())?.path) !== undefined, 10_000, () => "the local CLI read never carried `path`");
+    expect((await local())?.path).toBe(process.env.PATH ?? "");
+    const phone = await fetch(`${lead.origin()}/api/tricks?bound=1`, { headers: await lead.pairingAuth() });
+    expect(phone.status).toBe(200);
+    const body = parseJsonObject(await phone.text());
+    expect(body).toBeDefined();
+    expect(body !== undefined && "path" in body).toBe(false);
+  });
+});
+
 async function rawGet(
   target: string,
   headers: Record<string, string>,

@@ -604,9 +604,8 @@ describe("the routes", () => {
     expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", auto: "write", undo: "write", official: "read", officialAdd: "write" });
     expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
-    // The runner's PATH is added for the host's own CLI only, never for a phone.
-    expect(list.slice(0, 1000)).toContain("const forCli = isLocalRequest(req, pairingGate);");
-    expect(list.slice(0, 1000)).toContain("tricks.reply(parseSince(url.searchParams.get(\"since\")), forCli)");
+    // The runner's PATH for the host's own CLI only is held by a real request in the crew harness
+    // (integration/crew-harness.test.ts, "the tricks list: the runner's PATH").
     const tap = src.slice(src.indexOf("const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);"));
     expect(tap.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.tap, pairingGate)");
     const sw = src.slice(src.indexOf("const tricksSwitch = TRICKS_SWITCH_ROUTE.exec(pathname);"));
