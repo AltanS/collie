@@ -1483,6 +1483,39 @@ describe("warnings at the switch (review 15)", () => {
     await r.service.reply(undefined, { forCli: true });
     expect(asked).toHaveLength(before);
   });
+
+  test("an origin URL with a credential, an ssh or git@ form, a query or a local path never leaves the bridge, and is never read for", async () => {
+    const commit = "3f2a91c0d4e5f60718293a4b5c6d7e8f90a1b2c3";
+    const cases: { url: string; repo: string }[] = [
+      { url: "https://user:tok@github.com/a/b", repo: "a/b" },
+      { url: "https://tok@github.com/a/b.git", repo: "a/b" },
+      { url: "ssh://git@github.com/a/b.git", repo: "ssh://github.com/a/b" },
+      { url: "git@github.com:a/b.git", repo: "github.com:a/b" },
+      { url: "user:tok@github.com:a/b", repo: "github.com:a/b" },
+      { url: "https://github.com/a/b?access_token=tok", repo: "a/b" },
+      { url: "/srv/tricks/legs-repo", repo: "/srv/tricks/legs-repo" },
+    ];
+    for (const { url, repo } of cases) {
+      const asked: string[][] = [];
+      const facts: string[] = [];
+      const repoFacts = {
+        facts: (u: string) => void facts.push(u),
+        want: (urls: Iterable<string>) => void asked.push([...urls]),
+      };
+      const r = await rig([exited(belt("1"))], { repoFacts });
+      const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\nprintf '{}'\n" });
+      await writeFile(join(dir, ".collie-origin.json"), JSON.stringify({ v: 1, url, ref: null, commit, subdir: null, at: "2026-11-10T09:41:00.000Z" }));
+      const reply = await r.service.reply(undefined);
+      const row = reply.tricks.find((t) => t.id === "legs");
+      expect(row?.provenance?.via, url).toBe("repo");
+      expect(row?.provenance?.url, url).toBeUndefined();
+      expect(row?.provenance?.repo, url).toBe(repo);
+      // Nothing secret anywhere in what a phone or a crew lead receives.
+      expect(JSON.stringify(reply), url).not.toContain("tok");
+      expect(asked.flat(), url).toEqual([]);
+      expect(facts, url).toEqual([]);
+    }
+  });
 });
 
 describe("the approved copy (crew slice 2)", () => {

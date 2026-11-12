@@ -15,8 +15,7 @@ import { isWebLink, linkHost } from "@/lib/hill/reader";
 import { t, tn } from "@/lib/i18n";
 import { HostWords } from "@/lib/tricks/render";
 import { originLine, placesLine, readsLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
-import type { TricksRunsOn, WireOfficialTrick, WireRepoFacts, WireTrickInfo, WireTrickRules } from "@/lib/tricks/schema";
-import { isSourceUrl } from "@/lib/tricks/wire";
+import { isSourceUrl, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
 
 // A trick's About sheet: what a person reads before they switch a trick on. Opened by a tap on the trick's
 // name in Settings → Tricks (components/tricks-settings-card.tsx); the switch there is its own tap target.

@@ -32,6 +32,7 @@ import {
   type WireTrickPending,
   type WireTrickWarning,
   TRICKS_WINDOWS_LINE,
+  isSourceUrl,
   tricksGated,
 } from "../../web/src/lib/tricks/schema.ts";
 import type { HillTrickTap } from "../hill/service.ts";
@@ -1378,9 +1379,14 @@ export class TricksService implements TricksSurface {
     };
     // The provenance of what runs: the approved copy keeps the origin record of the version approved.
     const origin = shown.origin;
-    if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit, url: origin.url };
+    // The URL leaves the bridge for every paired phone and a crew lead, so it goes only when it passes the
+    // one rule the phone holds it to (`isSourceUrl`: https, a host, no user, no password, no query): a
+    // credential, an ssh or `git@` form or a local path written by hand into an origin record stays here.
+    const url = origin !== undefined && isSourceUrl(origin.url) ? origin.url : undefined;
+    if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
+    if (url !== undefined && info.provenance !== undefined) info.provenance.url = url;
     // The repository's stars and last commit, from the cache only: the read itself is the list's ask (`reply`).
-    const facts = origin === undefined ? undefined : this.deps.repoFacts?.facts(origin.url);
+    const facts = url === undefined ? undefined : this.deps.repoFacts?.facts(url);
     if (facts !== undefined) info.repoFacts = facts;
     // From the official repository, but not a version of the official list: the row must not read as the list.
     if (origin !== undefined && info.provenance !== undefined && isUnlistedOfficialOrigin(this.officialEntries(), id, origin, shown.codeHash)) info.provenance.unlisted = true;
@@ -1427,7 +1433,8 @@ export class TricksService implements TricksSurface {
     const urls: string[] = [];
     for (const rt of this.runtimes.values()) {
       const url = this.shownOf(rt).origin?.url;
-      if (url !== undefined) urls.push(url);
+      // Only a URL the row may show: a credential or another form is never read for (nor sent).
+      if (url !== undefined && isSourceUrl(url)) urls.push(url);
     }
     return urls;
   }

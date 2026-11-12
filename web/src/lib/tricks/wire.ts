@@ -23,6 +23,7 @@ import {
   MENU_ROW_KINDS,
   TRICK_ICONS,
   isTrickId,
+  isSourceUrl,
   isTrickText,
   NAME_MAX,
   OFFICIAL_STATES,
@@ -267,20 +268,6 @@ export function readRepoFacts(raw: JsonValue | undefined): WireRepoFacts | undef
   if (stars === undefined || !Number.isSafeInteger(stars) || stars < 0) return undefined;
   if (pushedAt === undefined || !ISO_UTC.test(pushedAt) || !Number.isFinite(Date.parse(pushedAt))) return undefined;
   return { stars, pushedAt };
-}
-
-/** The longest repository URL the About sheet links to. */
-const SOURCE_URL_MAX = 512;
-
-/** A repository URL the About sheet may link to: https, a host, no credential, no control character. */
-export function isSourceUrl(text: string): boolean {
-  if (text.length > SOURCE_URL_MAX || !isTrickText(text, { max: SOURCE_URL_MAX })) return false;
-  try {
-    const url = new URL(text);
-    return url.protocol === "https:" && url.hostname !== "" && url.username === "" && url.password === "";
-  } catch {
-    return false;
-  }
 }
 
 /** A provenance with its `url` kept only when it is a link the sheet may draw. */

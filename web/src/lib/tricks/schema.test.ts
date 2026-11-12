@@ -106,6 +106,7 @@ import {
   type TrickAction,
   type View,
   type ViewNode,
+  isSourceUrl,
 } from "./schema";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
@@ -1988,5 +1989,28 @@ describe("the menu place and bound parts", () => {
     expect(menuLabelProblem("x".repeat(MENU_LABEL_MAX))).toBeUndefined();
     expect(menuLabelProblem("x".repeat(MENU_LABEL_MAX + 1))).toBe(`is ${String(MENU_LABEL_MAX + 1)} characters. At most ${String(MENU_LABEL_MAX)}.`);
     expect(menuLabelProblem("")).toBe("is empty.");
+  });
+});
+
+describe("isSourceUrl: the one rule for a repository URL that leaves the bridge", () => {
+  it("takes a plain https URL with a host", () => {
+    for (const url of ["https://github.com/a/b", "https://git.workshop.example/owner/legs.git"]) expect(isSourceUrl(url), url).toBe(true);
+  });
+
+  it("refuses a credential, another protocol, a query, a fragment, a local path, a control character and a long one", () => {
+    for (const url of [
+      "https://user:tok@github.com/a/b",
+      "https://tok@github.com/a/b",
+      "http://github.com/a/b",
+      "ssh://git@github.com/a/b.git",
+      "git@github.com:a/b.git",
+      "https://github.com/a/b?access_token=tok",
+      "https://github.com/a/b#readme",
+      "/srv/tricks/legs",
+      "https://github.com/a/b\u0007",
+      `https://github.com/a/${"b".repeat(600)}`,
+    ]) {
+      expect(isSourceUrl(url), url).toBe(false);
+    }
   });
 });

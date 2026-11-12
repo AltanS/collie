@@ -86,6 +86,7 @@ describe("which source is read", () => {
       "https://github.com:8443/AltanS/collie-tricks",
       "https://user@github.com/AltanS/collie-tricks",
       "https://user:pass@github.com/AltanS/collie-tricks",
+      "https://user:tok@github.com/a/b",
       "ssh://git@github.com/AltanS/collie-tricks",
       "git@github.com:AltanS/collie-tricks.git",
       "/home/someone/tricks/legs",

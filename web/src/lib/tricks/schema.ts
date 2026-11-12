@@ -2405,6 +2405,26 @@ export function isTrickText(value: string, rule: { max: number; multiline?: bool
   return textProblem(value, rule) === undefined;
 }
 
+/** The longest repository URL a trick's About sheet links to. */
+export const SOURCE_URL_MAX = 512;
+
+/**
+ * A repository URL that may leave the bridge and that the About sheet may link to: https, a host, no user
+ * name, no password, no query, no fragment, at most {@link SOURCE_URL_MAX} characters, no control or
+ * invisible character. ONE rule for both sides: the bridge sends `provenance.url` only when it holds
+ * (bridge/tricks/service.ts), so a credential, an ssh or `git@` form or a local path in a hand-written
+ * origin record never reaches a paired phone or a crew lead; the phone checks it again (wire.ts).
+ */
+export function isSourceUrl(text: string): boolean {
+  if (text.length > SOURCE_URL_MAX || !isTrickText(text, { max: SOURCE_URL_MAX })) return false;
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" && url.hostname !== "" && url.username === "" && url.password === "" && url.search === "" && url.hash === "" && !text.includes("@");
+  } catch {
+    return false;
+  }
+}
+
 function valueProblem(value: string): { code: RefusalCode; reason: string } | undefined {
   const bytes = utf8Bytes(value);
   if (bytes > VALUE_MAX_BYTES) return { code: "size", reason: `is ${bytes} bytes. At most ${VALUE_MAX_BYTES}.` };
