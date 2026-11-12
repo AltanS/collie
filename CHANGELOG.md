@@ -44,6 +44,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A trick's row label may not start like a permission in any language.** Besides Allow, Approve, Deny, Grant and Trust, a label that starts with Yes, Always or a word of the permission card's buttons in any of the twelve languages Collie speaks ("Erlauben", "Permitir", "許可") is refused.
 - **A trick's armed row disarms when it changes.** When a row waiting for its second tap changed its words or its action, the second tap ran what the row said now. The row now disarms, and the second tap tells the bridge what the first one saw, so the bridge refuses it when the trick redrew its rows in between.
 - **A trick with an agent view no longer takes the whole row budget of a session's settings.** Its view switch is always there, but its rows now count like any other trick's: when they do not fit, the group shows the switch alone and the trick counts in "more tricks have rows".
+- **A trick's part for one session binds to the session its program saw.** The bridge read the sessions' instance tokens when it stored a run's parts, so a pane reused while the program ran could take a part meant for the session before. It now reads them with the facts the program gets.
 
 ### Docs
 

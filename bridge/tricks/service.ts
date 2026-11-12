@@ -19,6 +19,7 @@ import {
   type TrickTapReply,
   type TricksReply,
   type TricksRunsOn,
+  type FactsSession,
   type ParsedTrickDocument,
   type Refusal,
   TAP_REFUSED_LINES,
@@ -344,8 +345,8 @@ export interface TricksServiceDeps {
   world: (memberId: string, opts?: { readonly all?: boolean }) => Omit<FactsWorld, "memberId">;
   /**
    * Contract 2, bound parts (bound.ts): the walky instance token a facts session's pane holds now, or null
-   * when there is none (a crew member that sent none, a pane not seen). Read when a run's parts are stored
-   * and again at each tap on a bound or a menu part. Absent: every bound part is dropped, fail closed.
+   * when there is none (a crew member that sent none, a pane not seen). Read with a run's facts, before it
+   * starts (review 12 N6), and again at each tap on a bound or a menu part. Absent: every bound part is dropped, fail closed.
    */
   instanceOf?: InstanceOf;
   /** Whether this bridge leads a crew, so a trick's inputs come from every machine (the Settings sentence says so). Absent: false. */
@@ -1504,6 +1505,19 @@ export class TricksService implements TricksSurface {
     void this.begin(rt, tapTrigger(next), next);
   }
 
+  /** The instance token of each agent session of a run's facts, read once, or none without a registry. */
+  private tokensOf(sessions: readonly FactsSession[]): ReadonlyMap<string, string> {
+    const tokens = new Map<string, string>();
+    const instanceOf = this.deps.instanceOf;
+    if (instanceOf === undefined) return tokens;
+    for (const session of sessions) {
+      if (session.agent === undefined) continue;
+      const token = instanceOf(session.id);
+      if (token !== null) tokens.set(session.id, token);
+    }
+    return tokens;
+  }
+
   /** Run the program once and store what it left. The reply is the tap's, when the trigger is a tap. */
   private async runOnce(rt: TrickRuntime, trigger: FactsTrigger): Promise<TrickTapReply> {
     // Everything a run reads comes from the approved copy: the manifest, the working folder, `trick.dir`.
@@ -1524,6 +1538,10 @@ export class TricksService implements TricksSurface {
     // The program may keep the id in its own state: it is written down before the first run sees it.
     this.deps.keepId?.();
     const world = this.deps.world(host);
+    // Review 12 N6: each agent session's instance token, read in the same turn as the facts, so a bound
+    // part binds to the session the program saw. A pane reused while the program ran has a new token by
+    // then (walky/instances.ts), and the part never shows there.
+    const tokens = this.tokensOf(world.sessions);
     // Contract 2: the files the trick's globs match in its agent sessions' folders, fetched into the
     // copy's `inputs/` before the run, listed on each session (inputs.ts). Never for a contract 1 trick.
     const globs = manifest.contract >= INPUTS_CONTRACT ? (manifest.inputs ?? []) : [];
@@ -1577,7 +1595,7 @@ export class TricksService implements TricksSurface {
     const asOf = parsed.asOf ?? new Date(startedAt).toISOString();
     // Contract 2: a part that names sessions is stamped with each one's instance, against this run's own
     // facts; an id that is gone, or has no instance, is dropped with a note (bound.ts).
-    const binding = bindParts(parsed, facts.sessions, this.deps.instanceOf);
+    const binding = bindParts(parsed, facts.sessions, (session) => tokens.get(session) ?? null);
     this.store.applyDocument(host, id, binding.parsed, { asOf, fresh: parsed.fresh ?? freshString(freshMs) }, binding.bound);
     // The decisions reach the hill only from a run that succeeded and listed them. A list refused as a
     // whole (over the cap) changes nothing there either: the last good decisions stay, as the last good

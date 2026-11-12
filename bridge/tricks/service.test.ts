@@ -2258,6 +2258,23 @@ describe("the menu place and bound parts (contract 2)", () => {
     expect(fromBelt.message).toContain("Collie restarted the build");
   });
 
+  test("N6: a bound part takes the instance tokens read with the run's facts, not the ones at store time", async () => {
+    const tokens = new Map([[OWN, "ab12"]]);
+    // The pane is reused while the program runs: the registry mints a new token for the session now there.
+    const later: Scripted = {
+      later: async () => {
+        tokens.set(OWN, "zz99");
+        return exited(doc(mark({ sessions: [OWN] })));
+      },
+    };
+    const r = await rig([later], { world, instanceOf: (session) => tokens.get(session) ?? null, audit: () => undefined });
+    await makeTrick(r.configDir, "ci", CI, { "ci.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "ci");
+    await tickAt(r, T0);
+    // The program saw the session that held ab12; its mark is for that one and never shows for zz99.
+    expect((await held(r, "mark")).bound).toEqual([{ session: OWN, instance: "ab12" }]);
+  });
+
   test("bound-mark-member-no-instance: a crew member's session with no instance token is dropped with a note, never drawn everywhere", async () => {
     const r = await menuRig([doc(mark({ sessions: [MEMBER] }), menu({ sessions: [MEMBER, SHELL, `${HOST}:w6X:9`] })), doc(mark({ sessions: [MEMBER] }))], own);
     const reply = await r.service.reply(undefined, { bound: true });
