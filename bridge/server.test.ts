@@ -5356,7 +5356,7 @@ describe("update status peers — the legs of a crew-wide run", () => {
 
   test("retry crew update: a peers-only run has peer legs only and never touches a current lead", () => {
     const current = "1.5.0";
-    const behind: CrewUpdateRow = { name: "minibuch", version: "1.4.1", verdict: "green", reasons: [], asOf: 1 };
+    const behind: CrewUpdateRow = { name: "desk", version: "1.4.1", verdict: "green", reasons: [], asOf: 1 };
     const state = {
       current,
       // A current lead has nothing above it to take. That is exactly when "Retry crew update" is the
@@ -5392,14 +5392,14 @@ describe("update status peers — the legs of a crew-wide run", () => {
     expect(
       updateStartVerdict(
         { confirm: true, target: null, major: false, peersOnly: true },
-        { ...state, crew: [levelled], peers: [{ name: "minibuch", state: "rolled-back" }] },
+        { ...state, crew: [levelled], peers: [{ name: "desk", state: "rolled-back" }] },
       ),
     ).toMatchObject({ kind: "refuse", status: 409 });
   });
 
   test("retry crew update: one confirm still covers the crew, so a red member refuses it", () => {
     const red: CrewUpdateRow = {
-      name: "minibuch",
+      name: "desk",
       version: "1.4.1",
       verdict: "red",
       reasons: ["less than 200 MB free on /"],
@@ -5641,7 +5641,7 @@ describe("an input written to a pane makes its engine hot", () => {
     expect(isPaneInput("/api/tab/w1%3At1/close", "POST")).toBe(false);
   });
 
-  // A pane launched on minibuch stayed a shell on the phone for up to 12 s (2026-10-14): the lead's
+  // A pane launched on desk stayed a shell on the phone for up to 12 s (2026-10-14): the lead's
   // sweep of the member rode a cold engine, and only inputs warmed it.
   test("isTopologyWrite names the launch, create, close and rename routes, as POSTs, and nothing else", () => {
     for (const path of ["/api/launch", "/api/workspace", "/api/worktree", "/api/tab", "/api/tab/w1%3At1/close", "/api/tab/w1%3At1/rename"]) {
@@ -5723,7 +5723,7 @@ describe("security headers on the app shell", () => {
 
   test("Strict-Transport-Security is absent over plain HTTP", async () => {
     const handler = withHsts(async () => new Response("ok"));
-    const res = await handler(new Request("http://bluefin:8788/"));
+    const res = await handler(new Request("http://lodge:8788/"));
     expect(res.headers.get("strict-transport-security")).toBeNull();
   });
 
@@ -5747,16 +5747,16 @@ describe("pair attempt rate limit", () => {
   test("the 11th attempt inside a minute is refused, and the burst is flagged once", () => {
     const limiter = createPairLimiter();
     for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW; i++) {
-      expect(limiter.hit("100.64.0.9", 1_000 + i).allowed).toBe(true);
+      expect(limiter.hit("100.64.0.2", 1_000 + i).allowed).toBe(true);
     }
     // `retryAfterMs` is how long until the oldest attempt (at 1_000) leaves the window.
-    expect(limiter.hit("100.64.0.9", 2_000)).toEqual({ allowed: false, first: true, retryAfterMs: 59_000 });
-    expect(limiter.hit("100.64.0.9", 2_001)).toEqual({ allowed: false, first: false, retryAfterMs: 58_999 });
+    expect(limiter.hit("100.64.0.2", 2_000)).toEqual({ allowed: false, first: true, retryAfterMs: 59_000 });
+    expect(limiter.hit("100.64.0.2", 2_001)).toEqual({ allowed: false, first: false, retryAfterMs: 58_999 });
   });
 
   test("another address is not affected by the first one's burst", () => {
     const limiter = createPairLimiter();
-    for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW + 2; i++) limiter.hit("100.64.0.9", 1_000);
+    for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW + 2; i++) limiter.hit("100.64.0.2", 1_000);
     expect(limiter.hit("100.64.0.10", 1_001).allowed).toBe(true);
   });
 
@@ -5778,26 +5778,26 @@ describe("pair attempt rate limit", () => {
 
 describe("pair source key (forwarded header trust)", () => {
   test("a non-loopback peer is keyed by its socket address; an untrusted x-forwarded-for does not change it", () => {
-    const a = pairSourceKey("100.64.0.9", false, "1.1.1.1");
-    const b = pairSourceKey("100.64.0.9", false, "2.2.2.2");
-    expect(a).toBe("100.64.0.9");
+    const a = pairSourceKey("100.64.0.2", false, "1.1.1.1");
+    const b = pairSourceKey("100.64.0.2", false, "2.2.2.2");
+    expect(a).toBe("100.64.0.2");
     expect(b).toBe(a);
   });
 
   test("a loopback peer (the front door) is keyed by the RIGHTMOST x-forwarded-for entry, the one the proxy appended", () => {
     expect(pairSourceKey("127.0.0.1", true, "203.0.113.7, 10.0.0.1")).toBe("10.0.0.1");
-    expect(pairSourceKey("127.0.0.1", true, "100.64.0.9")).toBe("100.64.0.9");
+    expect(pairSourceKey("127.0.0.1", true, "100.64.0.2")).toBe("100.64.0.2");
   });
 
   test("entries a client wrote to the left of the proxy's own cannot rotate the key", () => {
-    const a = pairSourceKey("127.0.0.1", true, "1.1.1.1, 100.64.0.9");
-    const b = pairSourceKey("127.0.0.1", true, "2.2.2.2, 3.3.3.3, 100.64.0.9");
-    expect(a).toBe("100.64.0.9");
+    const a = pairSourceKey("127.0.0.1", true, "1.1.1.1, 100.64.0.2");
+    const b = pairSourceKey("127.0.0.1", true, "2.2.2.2, 3.3.3.3, 100.64.0.2");
+    expect(a).toBe("100.64.0.2");
     expect(b).toBe(a);
   });
 
   test("blank entries are skipped, so a trailing comma is not an address", () => {
-    expect(pairSourceKey("127.0.0.1", true, "100.64.0.9, ")).toBe("100.64.0.9");
+    expect(pairSourceKey("127.0.0.1", true, "100.64.0.2, ")).toBe("100.64.0.2");
     expect(pairSourceKey("127.0.0.1", true, " , ")).toBe("loopback");
   });
 
