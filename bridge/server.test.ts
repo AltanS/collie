@@ -5558,6 +5558,84 @@ describe("readPane — the logical read is asked for only when it can repair som
     // The mirror keeps its own rows, styling and all — only the hrefs are repaired downstream.
     expect(body.text).toBe(grid);
   });
+
+  test("?logical=0 keeps the default: omitted without a split URL, SGR-stripped with one", async () => {
+    const url0 = new URL("http://x/api/pane/w1:p1?logical=0");
+    const req0 = new Request(url0);
+    const plain = paneStub("$ echo hi\nhi", "unused");
+    const resPlain = await readPane(plain.adapter, cfg(), "w1:p1", url0, req0);
+    // SAFETY: the bridge's own JSON, served by the call above.
+    const bodyPlain = (await resPlain.json()) as PaneReadResponse;
+    expect(plain.reads()).toBe(0);
+    expect(bodyPlain.logicalText).toBeUndefined();
+
+    const grid = "run:\n\u001b[36mhttps://a.dev/auth?client=1&s\u001b[0m\ntate=y then";
+    const logical = "\u001b[36mrun:\nhttps://a.dev/auth?client=1&state=y then\u001b[0m";
+    const split = paneStub(grid, logical);
+    const resSplit = await readPane(split.adapter, cfg(), "w1:p1", url0, req0);
+    // SAFETY: the bridge's own JSON, served by the call above.
+    const bodySplit = (await resSplit.json()) as PaneReadResponse;
+    expect(split.reads()).toBe(1);
+    expect(bodySplit.logicalText).toBe("run:\nhttps://a.dev/auth?client=1&state=y then");
+  });
+
+  test("?logical=1 always populates logicalText and keeps SGR styling even without a split URL", async () => {
+    const grid = "\u001b[32m$ echo hello world\u001b[0m\nhello \nworld";
+    const logical = "\u001b[32m$ echo hello world\u001b[0m\n\u001b[1mhello world\u001b[0m";
+    const { adapter, reads } = paneStub(grid, logical);
+    const logicalUrl = new URL("http://x/api/pane/w1:p1?logical=1");
+    const res = await readPane(adapter, cfg(), "w1:p1", logicalUrl, new Request(logicalUrl));
+    // SAFETY: the bridge's own JSON, served by the call above.
+    const body = (await res.json()) as PaneReadResponse;
+    expect(reads()).toBe(1);
+    expect(body.logicalText).toBe(logical);
+    expect(body.text).toBe(grid);
+
+    const etag = res.headers.get("etag");
+    expect(etag).toBeTruthy();
+    const res304 = await readPane(
+      adapter,
+      cfg(),
+      "w1:p1",
+      logicalUrl,
+      new Request(logicalUrl, { headers: { "if-none-match": etag ?? "" } }),
+    );
+    expect(res304.status).toBe(304);
+    expect(res304.headers.get("etag")).toBe(etag);
+  });
+
+  test("?logical=1 leaves logicalText absent when the multiplexer has no readLogicalText", async () => {
+    const stub: Partial<MuxAdapter> = {
+      mux: "tmux",
+      readGrid: (paneId: string) =>
+        Promise.resolve(muxOk({ paneId, text: "$ echo hi\nhi", truncated: false, revision: 7 })),
+    };
+    // SAFETY: `readPane` only reaches `mux`, `readGrid` and optional `readLogicalText`.
+    const adapter = stub as MuxAdapter;
+    const logicalUrl = new URL("http://x/api/pane/w1:p1?logical=1");
+    const res = await readPane(adapter, cfg(), "w1:p1", logicalUrl, new Request(logicalUrl));
+    // SAFETY: the bridge's own JSON, served by the call above.
+    const body = (await res.json()) as PaneReadResponse;
+    expect(body.logicalText).toBeUndefined();
+    expect("logicalText" in body).toBe(false);
+  });
+
+  test("?logical=1 with redaction masks a secret split mid-token by SGR escapes while keeping colour", async () => {
+    const keyTail = "PLACEHOLDER00000";
+    const splitAws = `AWS_ACCESS_KEY_ID=AKIA\u001b[31m${keyTail}\u001b[0m`;
+    const splitSk = `sk-proj-\u001b[32m${"1234567890".repeat(2)}\u001b[0m`;
+    const logical = `${splitAws}\n${splitSk}`;
+    const { adapter } = paneStub("$ env\n", logical);
+    const logicalUrl = new URL("http://x/api/pane/w1:p1?logical=1");
+    const res = await readPane(adapter, { ...cfg(), redact: true }, "w1:p1", logicalUrl, new Request(logicalUrl));
+    // SAFETY: the bridge's own JSON, served by the call above.
+    const body = (await res.json()) as PaneReadResponse;
+    expect(body.logicalText).toBe(
+      `AWS_ACCESS_KEY_ID=AKIA\u001b[31m${"•".repeat(16)}\u001b[0m\nsk-p${"•".repeat(4)}\u001b[32m${"•".repeat(20)}\u001b[0m`,
+    );
+    expect(body.logicalText).not.toContain(keyTail);
+    expect(body.logicalText).not.toContain("1234567890");
+  });
 });
 
 describe("the state engine's blocked hint reaches the pane's recent reads (herdr-core history reads hold keys)", () => {

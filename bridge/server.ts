@@ -4992,6 +4992,14 @@ function recentRead(lines: number, hint: MuxReadHint | undefined, purpose: MuxRe
  */
 export const PANE_READ_PURPOSE_PARAM = "purpose";
 
+/**
+ * The query word with which a narrow client opts in to `logicalText` (soft wraps undone, SGR styling
+ * kept) on every read when the multiplexer implements `readLogicalText`:
+ * `GET /api/pane/:id?logical=1`. Without it, `logicalText` is sent (SGR-stripped) only when the grid
+ * shows a split URL (`hasSplitUrl`).
+ */
+export const PANE_READ_LOGICAL_PARAM = "logical";
+
 export async function readPane(
   herdr: MuxAdapter,
   cfg: Config,
@@ -5017,21 +5025,23 @@ export async function readPane(
     // is the phone's Load older; every other read is the mirror's poll, which herdr-core answers from
     // the screen alone.
     const purpose: MuxReadPurpose = url.searchParams.get(PANE_READ_PURPOSE_PARAM) === "older" ? "older" : "poll";
+    const wantLogical = url.searchParams.get(PANE_READ_LOGICAL_PARAM) === "1";
     const read = await herdr.readGrid(paneId, recentRead(lines, hint, purpose));
     if (!read.ok) return text(`${herdr.mux} read failed: ${read.detail}`, 502);
     // A URL the pane's column edge cut in two is the one thing the mirror cannot repair on its own,
-    // and the repair needs the same rows with soft wraps undone. Ask for them only when the grid
-    // shows such a URL — this is a second round trip, and a multiplexer without the source has
-    // nothing to give. Same `lines` and the same escape-carrying form as the grid read above, so a
-    // read that would move the operator's screen here is the one `readGrid` already refuses.
+    // and the repair needs the same rows with soft wraps undone. Ask for them when the grid shows
+    // such a URL, or when a narrow client explicitly opted in (`?logical=1`) — this is a second
+    // round trip, and a multiplexer without the source has nothing to give. Same `lines` and the
+    // same escape-carrying form as the grid read above, so a read that would move the operator's
+    // screen here is the one `readGrid` already refuses.
     const logical =
-      herdr.readLogicalText !== undefined && hasSplitUrl(read.value.text)
+      herdr.readLogicalText !== undefined && (wantLogical || hasSplitUrl(read.value.text))
         ? await herdr.readLogicalText(paneId, lines)
         : undefined;
     const data = paneReadResponse(
       paneId,
       read.value,
-      logical?.ok ? stripSgr(logical.value) : undefined,
+      logical?.ok ? (wantLogical ? logical.value : stripSgr(logical.value)) : undefined,
       cfg.redact,
     );
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
