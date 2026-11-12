@@ -5,9 +5,9 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent }
 import { __resetHaptics } from "@/lib/haptics";
 import { HOLD_FEEDBACK_DELAY_MS, useLongPress } from "./use-long-press";
 
-// The pointer-based long-press behind the pane-pill actions sheet. Fake timers pin the 450ms hold;
+// The pointer-based long-press behind the pane-pill actions sheet. Fake timers pin the 500ms hold;
 // the handlers are called directly with minimal synthetic events (only the fields the hook reads).
-const DELAY = 450;
+const DELAY = 500;
 
 function down(x = 0, y = 0, button = 0): ReactPointerEvent {
   return stubPart<ReactPointerEvent>({ button, clientX: x, clientY: y });
@@ -232,6 +232,34 @@ describe("useLongPress", () => {
       expect(result.current.style).toBeUndefined();
       act(() => vi.advanceTimersByTime(400));
       expect(onLongPress).toHaveBeenCalledOnce();
+    });
+
+    // THE NUMBERS THE HITBOX INVESTIGATION SET (a slow tap measured up to 300ms is a tap, not a hold):
+    // the look comes at 250ms and the sheet at 500ms. A test of the bare numbers, so a change to either
+    // is a change someone made on purpose.
+    it("shows the look at 250ms and opens the hold at 500ms, and a 300ms press is a tap that never showed", () => {
+      expect(HOLD_FEEDBACK_DELAY_MS).toBe(250);
+      const onLongPress = vi.fn();
+      const { result } = renderHook(() => useLongPress(onLongPress));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(249));
+      expect(holding(result.current)).toBeUndefined();
+      act(() => vi.advanceTimersByTime(1));
+      expect(holding(result.current)).toBe("");
+      act(() => vi.advanceTimersByTime(249));
+      expect(onLongPress).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(1));
+      expect(onLongPress).toHaveBeenCalledOnce();
+    });
+
+    it("a 300ms press that lifts opens no hold", () => {
+      const onLongPress = vi.fn();
+      const { result } = renderHook(() => useLongPress(onLongPress));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(300));
+      act(() => result.current.onPointerUp(pointerEndEvent()));
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(onLongPress).not.toHaveBeenCalled();
     });
 
     it("starts at rest: no attribute and no style", () => {

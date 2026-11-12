@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 
 import { buzz } from "@/lib/haptics";
-import { HOLD_FEEDBACK_DELAY_MS } from "@/hooks/use-long-press";
 
 // The gestures a pane row takes on a large screen (ADR 0120): a long-press, or a right-click for a
 // mouse, opens the row's menu ("Open here", "Open beside"), and a drag carries the row into the strip
@@ -19,9 +18,16 @@ import { HOLD_FEEDBACK_DELAY_MS } from "@/hooks/use-long-press";
 // pixels. A hold that never moves reaches the long-press mark and opens the menu instead.
 
 /** Same mark as hooks/use-long-press.ts. */
-const LONG_PRESS_MS = 450;
+const LONG_PRESS_MS = 500;
 /** A touch row is armed for a drag after this hold, before the long-press mark. */
-const TOUCH_ARM_MS = 220;
+export const TOUCH_ARM_MS = 220;
+/**
+ * The hold look on a wide-layout row starts this long after the finger lands. Its OWN time: `use-long-press.ts` moved
+ * its look to 250ms (a slow tap is no hold there), but this gesture arms a drag at 220ms, and a look that came after
+ * the arm would show a drag that had already begun with nothing to say it was coming. So it stays where it was, before
+ * the arm.
+ */
+export const ROW_LOOK_MS = 150;
 const MOUSE_DRAG_PX = 6;
 const TOUCH_SCROLL_PX = 10;
 /** How often the strip scrolls at its edge while a drag holds there. */
@@ -141,8 +147,8 @@ export function useRowDrag(options: Options) {
       // The hold shows itself from one place (DESIGN.md §2, "A hold shows itself in paint").
       g.shownTimer = setTimeout(() => {
         row.dataset.holding = "";
-        row.style.animationDuration = `${LONG_PRESS_MS - HOLD_FEEDBACK_DELAY_MS}ms`;
-      }, HOLD_FEEDBACK_DELAY_MS);
+        row.style.animationDuration = `${LONG_PRESS_MS - ROW_LOOK_MS}ms`;
+      }, ROW_LOOK_MS);
       g.longTimer = setTimeout(() => {
         suppressClick.current = true;
         stop();

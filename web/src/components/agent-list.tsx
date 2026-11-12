@@ -14,7 +14,7 @@ import {
   type WorkspaceGroup,
 } from "@/lib/pane-groups";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
-import { ATTENTION, bucketOf, triage, worstTriage } from "@/lib/triage";
+import { ATTENTION, bucketOf, needsYou, triage, worstTriage } from "@/lib/triage";
 import { groupHost, pinnedRows, shownGroups, stripEntries } from "@/lib/dash-view";
 import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView, WorkspaceView } from "@/lib/types";
 import { paneRowKey, paneScope } from "@/lib/hosts";
@@ -45,6 +45,8 @@ import { PinHint } from "./pin-hint";
 import { WorkspaceNewTab } from "./workspace-new-tab";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useStillList, useStillWhileTouched } from "@/hooks/use-still-list";
+import { SUMMARY_LINE_TAP_TARGET } from "@/components/ui/tap-target";
 import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
 import { PairWithPhone } from "@/components/pair-with-phone";
@@ -216,6 +218,17 @@ export interface HeadingNewTab {
 
 /** A module-level empty list: a fresh `[]` default per render is a new reference for nothing. */
 const NO_PANES: AgentView[] = [];
+/** The keys of the panes that needed you in the list as it was held (agents and shells each held on their own). */
+function frozenNeedsKeys(...lists: (readonly AgentView[] | null)[]): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const list of lists) for (const p of list ?? NO_PANES) if (needsYou(p)) keys.add(paneRowKey(p));
+  return keys;
+}
+const NO_TABS: readonly TabView[] = [];
+const NO_WORKSPACES: readonly WorkspaceView[] = [];
+/** A tab's identity across machines: the tab id alone repeats from one machine to the next. */
+const tabRowKey = (tab: TabView): string => `${tab.host ?? ""}\u0000${tab.tabId}`;
+const workspaceRowKey = (w: WorkspaceView): string => `${w.host ?? ""}\u0000${w.workspaceId}`;
 const NO_KEYS: readonly string[] = [];
 const NO_PINS: readonly Pin[] = [];
 const NO_MACHINES: readonly string[] = [];
@@ -367,6 +380,21 @@ export function AgentList({
   // never on a poll. Above the early return, because a hook cannot sit behind one. It ranks the whole
   // herd, not what the filters leave, so a filter changing never needs a new reading.
   const { ranks, reread } = useFrozenRanks(order, [...agents, ...shellPanes], { rereadOnVisible: true });
+  // THE LIST, HELD STILL UNDER A FINGER (hooks/use-still-list.ts). While a finger is down on this list, and 300ms
+  // after, a pane that arrived or left waits to be drawn, so no row slides out from under a thumb. Every pane
+  // that is drawn is the LIVE copy, so a status or an attention mark still changes in place; the summary
+  // line and the counts below read the live herd and are never held. Untouched, these ARE `agents` and
+  // `shellPanes`, the same arrays.
+  const listRoot = useRef<HTMLDivElement | null>(null);
+  const stillAgents = useStillList(agents, paneRowKey, listRoot);
+  const stillShells = useStillList(shellPanes, paneRowKey, listRoot);
+  const listAgents = stillAgents.items;
+  const listShells = stillShells.items;
+  // A row's PLACE is read from the tab and the workspace it sits in (tabs by number, workspaces by number), so
+  // those two lists are held with the panes: a pane held through its tab's removal must keep the place it was
+  // drawn at, not fall to the fallback sort of a tab the live list no longer has.
+  const heldTabs = useStillWhileTouched(tabs ?? NO_TABS, tabRowKey, listRoot);
+  const heldWorkspaces = useStillWhileTouched(workspaces ?? NO_WORKSPACES, workspaceRowKey, listRoot);
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
   // sit behind the early return below, and the answer is only consulted in the empty branch.
   const agentDetection = useMuxCapability("agentDetection", viewScope);
@@ -470,8 +498,15 @@ export function AgentList({
   // the one summary line. Push and the badge carry the alarm; this screen answers "where".
   const all = triage(agents);
   const attention = all.filter((s) => ATTENTION.has(s.key) && s.agents.length > 0);
-  const groupScope = { order: "fixed" as const, tabs, servers, workspaces, scope: viewScope, sessions: newTab?.sessions };
-  const groups = groupPanesByWorkspace(agents, shellPanes, groupScope);
+  const groupScope = {
+    order: "fixed" as const,
+    tabs: tabs === undefined ? undefined : heldTabs,
+    servers,
+    workspaces: workspaces === undefined ? undefined : heldWorkspaces,
+    scope: viewScope,
+    sessions: newTab?.sessions,
+  };
+  const groups = groupPanesByWorkspace(listAgents, listShells, groupScope);
   if (groups.length === 0) return null;
   // A stale key (a workspace since closed) filters nothing: an isolation nobody can see is dropped,
   // and when every key is stale the list shows everything. An isolated orphan worktree whose root
@@ -507,7 +542,11 @@ export function AgentList({
   // What the body draws. Needs you narrows the rows, a pinned pane leaves its group, and a group left
   // empty is dropped; the group itself rides along whole, so its heading keeps counting every pane
   // (lib/dash-view.ts).
-  const drawn = shownGroups(shown, needsYouOnly, isPinned);
+  // While the list is held, WHO NEEDS YOU is what the finger found: a pane whose status just changed keeps its
+  // row (showing the live status) and a pane that just began to need you waits, so the switch never takes a row
+  // out from under the thumb. Untouched, it is the live `needsYou`.
+  const frozenNeeds = needsYouOnly && (stillAgents.frozen !== null || stillShells.frozen !== null) ? frozenNeedsKeys(stillAgents.frozen, stillShells.frozen) : null;
+  const drawn = shownGroups(shown, needsYouOnly, isPinned, frozenNeeds === null ? undefined : (p) => frozenNeeds.has(paneRowKey(p)));
   // THE RANKED LIST (ADR 0071, rule 2 of "The dashboard takes the setting"): Activity and Cache fold
   // the workspace groups into one list. The filters above (needs you, isolate, hide, hidden machines,
   // pins) have already run, so they decide WHICH rows and never their order; shells are in these
@@ -673,7 +712,13 @@ export function AgentList({
       // Focus (the keyboard's) lands here when an unpin takes a row off the list, so the line must be able to hold
       // it. Only once pins are in play: with none, the line renders exactly as it did.
       focusable={pins.length > 0 || reveal !== null}
-      className={cn((onNeedsYouOnlyChange || onOrderChange) && "min-w-0 flex-1", "transition-opacity", stale && "opacity-50")}
+      className={cn(
+        // The row around the line (`min-h-11`, below) exists exactly when a switch or an order select does,
+        // and it is the 44px the reach fills; the line alone has no room for it.
+        (onNeedsYouOnlyChange || onOrderChange) && cn("min-w-0 flex-1", SUMMARY_LINE_TAP_TARGET),
+        "transition-opacity",
+        stale && "opacity-50",
+      )}
     />
   );
 
@@ -699,7 +744,7 @@ export function AgentList({
   );
 
   return (
-    <div className="flex flex-col gap-5 px-4 pb-4 pt-1">
+    <div ref={listRoot} className="flex flex-col gap-5 px-4 pb-4 pt-1">
       {/* THE TOP OF THE DASHBOARD, one control block (2026-10-07, Altan's pick of "One control bar"):
           ONE line of state words with the needs-you switch at its right end, then ONE row of two
           selects, the workspace filter on the left and the pane order on the right. It replaced a chip

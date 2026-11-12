@@ -1,0 +1,1226 @@
+[
+  {
+    "screen": "composer-attach",
+    "selector": "div > nav > div:nth-of-type(1) > button[aria-label=\"New tab\"]",
+    "name": "New tab",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div > nav > div:nth-of-type(2) > button[aria-label=\"Hide tabs\"]",
+    "name": "Hide tabs",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"button\"]",
+    "name": "Attach file",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"composer-primary\"]",
+    "name": "Send",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"composer-box\"] > textarea[data-slot=\"chat-input\"]",
+    "name": "Type a reply\u2026",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Agent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Display settings",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Quick",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity-name\"]",
+    "name": "Pane settings for kiro",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity\"]",
+    "name": "Open webapp overview, needs you",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(11)",
+    "name": "You Read the file missing-file.txt with your fil",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(12)",
+    "name": "1 read 1 failed Read ~/project/missing-file.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(13)",
+    "name": "The file does not exist.",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(14)",
+    "name": "You In notes.txt, replace the line beta with gam",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(15)",
+    "name": "1 edit, 1 read Edited ~/project/notes.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(16)",
+    "name": "Done.",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(18)",
+    "name": "You lab steer probe: stop at 20 instead 08:36 AM",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(2) > button",
+    "name": "1 other step fetch_cloud_config: fetch_cloud_con",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(2)",
+    "name": "1 other step fetch_cloud_config: fetch_cloud_con",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(21)",
+    "name": "Context compacted \u00b7 08:37 AM",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(22)",
+    "name": "You Reply with exactly lab_after_compact and not",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(3)",
+    "name": "You Reply with exactly lab_plain_answer and noth",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(4)",
+    "name": "lab_plain_answer",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(5)",
+    "name": "You Run the shell command: printf lab_shell_mark",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(6) > button",
+    "name": "1 command Print the lab marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(6)",
+    "name": "1 command Print the lab marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(7)",
+    "name": "lab_shell_marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(8)",
+    "name": "You Create a new file denied.txt containing exac",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(9)",
+    "name": "1 edit 1 failed Edited ~/project/denied.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "nav > div:nth-of-type(1) > div > button",
+    "name": "needs you tab 1",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-attach",
+    "selector": "span[data-slot=\"belt-trick-mark\"] > button[data-slot=\"trick-mark\"]",
+    "name": "CI: 23/34",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div > div:nth-of-type(1) > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Close Keys",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div > nav > div:nth-of-type(1) > button[aria-label=\"New tab\"]",
+    "name": "New tab",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div > nav > div:nth-of-type(2) > button[aria-label=\"Hide tabs\"]",
+    "name": "Hide tabs",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(1) > div:nth-of-type(1) > div > button[data-slot=\"button\"]",
+    "name": "Edit keys",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Alt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Ctrl",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Ctrl+C",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Down",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Enter",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Esc",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Left",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Right",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Shift",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Space",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Tab",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Up",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(2) > button:nth-of-type(1)",
+    "name": "123",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(2) > button:nth-of-type(2)",
+    "name": "PRESETS",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(2) > button:nth-of-type(3)",
+    "name": "F KEYS",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"button\"]",
+    "name": "Attach file",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"composer-primary\"]",
+    "name": "Send",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"composer-box\"] > textarea[data-slot=\"chat-input\"]",
+    "name": "Type a reply\u2026",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Agent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Display settings",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Quick",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Type into terminal",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"harness-bar\"] > button[data-slot=\"button\"]",
+    "name": "Compact",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"harness-bar\"] > button[data-slot=\"button\"]",
+    "name": "Model",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"harness-bar\"] > button[data-slot=\"button\"]",
+    "name": "Resume",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity-name\"]",
+    "name": "Pane settings for codex",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity\"]",
+    "name": "Open collie overview, working",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "nav > div:nth-of-type(1) > div > button:nth-of-type(1)",
+    "name": "working code",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "composer-keys",
+    "selector": "nav > div:nth-of-type(1) > div > button:nth-of-type(2)",
+    "name": "shell",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "dashboard-crew",
+    "selector": "div[data-slot=\"screen-transition\"] > div > div > button[aria-label=\"Open the crew overview\"]",
+    "name": "Open the crew overview",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "dashboard",
+    "selector": "#ws-group-__w3 > div:nth-of-type(1) > span > button[aria-label=\"New tab in docs\"]",
+    "name": "New tab in docs",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "dashboard",
+    "selector": "section > div:nth-of-type(1) > span > button[aria-label=\"New space\"]",
+    "name": "New space",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "hill",
+    "selector": "div[data-slot=\"decision-card\"] > div:nth-of-type(5) > button[data-slot=\"decision-dismiss\"]",
+    "name": "Dismiss Dismiss?",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "hill",
+    "selector": "div[data-slot=\"decision-options\"] > button[data-slot=\"decision-option\"]",
+    "name": "2 Not yet",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "new",
+    "selector": "#_r_8_",
+    "name": "[switch]",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-actions-sheet",
+    "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
+    "name": "Close",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-actions-sheet",
+    "selector": "div[data-slot=\"trick-menu-row\"] > button[data-slot=\"switch\"]",
+    "name": "Quiet hours",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-actions-sheet",
+    "selector": "div[data-slot=\"trick-menu-row\"] > button[data-slot=\"switch\"]",
+    "name": "Watch branch",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div > nav > div:nth-of-type(1) > button[aria-label=\"New tab\"]",
+    "name": "New tab",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div > nav > div:nth-of-type(2) > button[aria-label=\"Hide tabs\"]",
+    "name": "Hide tabs",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"button\"]",
+    "name": "Attach file",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"composer-primary\"]",
+    "name": "Send",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"composer-box\"] > textarea[data-slot=\"chat-input\"]",
+    "name": "Type a reply\u2026",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Agent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Display settings",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Quick",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity-name\"]",
+    "name": "Pane settings for kiro",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity\"]",
+    "name": "Open webapp overview, needs you",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(11)",
+    "name": "You Read the file missing-file.txt with your fil",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(12)",
+    "name": "1 read 1 failed Read ~/project/missing-file.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(13)",
+    "name": "The file does not exist.",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(14)",
+    "name": "You In notes.txt, replace the line beta with gam",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(15)",
+    "name": "1 edit, 1 read Edited ~/project/notes.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(16)",
+    "name": "Done.",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(18)",
+    "name": "You lab steer probe: stop at 20 instead 08:36 AM",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(2) > button",
+    "name": "1 other step fetch_cloud_config: fetch_cloud_con",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(2)",
+    "name": "1 other step fetch_cloud_config: fetch_cloud_con",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(21)",
+    "name": "Context compacted \u00b7 08:37 AM",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(22)",
+    "name": "You Reply with exactly lab_after_compact and not",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(3)",
+    "name": "You Reply with exactly lab_plain_answer and noth",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(4)",
+    "name": "lab_plain_answer",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(5)",
+    "name": "You Run the shell command: printf lab_shell_mark",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(6) > button",
+    "name": "1 command Print the lab marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(6)",
+    "name": "1 command Print the lab marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(7)",
+    "name": "lab_shell_marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(8)",
+    "name": "You Create a new file denied.txt containing exac",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(9)",
+    "name": "1 edit 1 failed Edited ~/project/denied.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "nav > div:nth-of-type(1) > div > button",
+    "name": "needs you tab 1",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-agent-view",
+    "selector": "span[data-slot=\"belt-trick-mark\"] > button[data-slot=\"trick-mark\"]",
+    "name": "CI: 23/34",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div > nav > div:nth-of-type(1) > button[aria-label=\"New tab\"]",
+    "name": "New tab",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div > nav > div:nth-of-type(2) > button[aria-label=\"Hide tabs\"]",
+    "name": "Hide tabs",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"button\"]",
+    "name": "Attach file",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"composer-primary\"]",
+    "name": "Send",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"composer-box\"] > textarea[data-slot=\"chat-input\"]",
+    "name": "Type a reply\u2026",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Agent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Display settings",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Quick",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity-name\"]",
+    "name": "Pane settings for kiro",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity\"]",
+    "name": "Open webapp overview, needs you",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(11)",
+    "name": "You Read the file missing-file.txt with your fil",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(12)",
+    "name": "1 read 1 failed Read ~/project/missing-file.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(13)",
+    "name": "The file does not exist.",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(14)",
+    "name": "You In notes.txt, replace the line beta with gam",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(15)",
+    "name": "1 edit, 1 read Edited ~/project/notes.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(16)",
+    "name": "Done.",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(18)",
+    "name": "You lab steer probe: stop at 20 instead 08:36 AM",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(2) > button",
+    "name": "1 other step fetch_cloud_config: fetch_cloud_con",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(2)",
+    "name": "1 other step fetch_cloud_config: fetch_cloud_con",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(21)",
+    "name": "Context compacted \u00b7 08:37 AM",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(22)",
+    "name": "You Reply with exactly lab_after_compact and not",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(3)",
+    "name": "You Reply with exactly lab_plain_answer and noth",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(4)",
+    "name": "lab_plain_answer",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(5)",
+    "name": "You Run the shell command: printf lab_shell_mark",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(6) > button",
+    "name": "1 command Print the lab marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(6)",
+    "name": "1 command Print the lab marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(7)",
+    "name": "lab_shell_marker",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(8)",
+    "name": "You Create a new file denied.txt containing exac",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "div[data-slot=\"session-stream\"] > div:nth-of-type(9)",
+    "name": "1 edit 1 failed Edited ~/project/denied.txt",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "nav > div:nth-of-type(1) > div > button",
+    "name": "needs you tab 1",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-chat",
+    "selector": "span[data-slot=\"belt-trick-mark\"] > button[data-slot=\"trick-mark\"]",
+    "name": "CI: 23/34",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-history",
+    "selector": "div > div > div:nth-of-type(2) > button[aria-label=\"Next message you sent\"]",
+    "name": "Next message you sent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-history",
+    "selector": "div > div > div:nth-of-type(2) > button[aria-label=\"Previous message you sent\"]",
+    "name": "Previous message you sent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-history",
+    "selector": "div[data-slot=\"header-right\"] > button[aria-label=\"Close history\"]",
+    "name": "Close history",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-history",
+    "selector": "div[data-slot=\"header-right\"] > button[aria-label=\"Find in history\"]",
+    "name": "Find in history",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-pane-settings",
+    "selector": "div:nth-of-type(2) > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Warn me before this pane's cache goes cold",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-pane-settings",
+    "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
+    "name": "Close",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div > nav > div:nth-of-type(1) > button[aria-label=\"New tab\"]",
+    "name": "New tab",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div > nav > div:nth-of-type(2) > button[aria-label=\"Hide tabs\"]",
+    "name": "Hide tabs",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"button\"]",
+    "name": "Attach file",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"composer-box\"] > button[data-slot=\"composer-primary\"]",
+    "name": "Send",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"composer-box\"] > textarea[data-slot=\"chat-input\"]",
+    "name": "Type a reply\u2026",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Agent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Display settings",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Quick",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"composer-controls\"] > button[data-slot=\"button\"]",
+    "name": "Type into terminal",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"harness-bar\"] > button[data-slot=\"button\"]",
+    "name": "Compact",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"harness-bar\"] > button[data-slot=\"button\"]",
+    "name": "Model",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"harness-bar\"] > button[data-slot=\"button\"]",
+    "name": "Resume",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity-name\"]",
+    "name": "Pane settings for codex",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "div[data-slot=\"pane-identity-taps\"] > button[data-slot=\"pane-identity\"]",
+    "name": "Open collie overview, working",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "nav > div:nth-of-type(1) > div > button:nth-of-type(1)",
+    "name": "working code",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-terminal",
+    "selector": "nav > div:nth-of-type(1) > div > button:nth-of-type(2)",
+    "name": "shell",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-zoom",
+    "selector": "div[data-slot=\"output-zoom\"] > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Back to the pane",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-zoom",
+    "selector": "div[data-slot=\"output-zoom\"] > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Reset zoom (1\u00d7)",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "session-zoom",
+    "selector": "div[data-slot=\"output-zoom\"] > div:nth-of-type(1) > button[data-slot=\"button\"]",
+    "name": "Zoom in",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Push notifications",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
+    "name": "1h",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
+    "name": "30m",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
+    "name": "4h",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Needs input",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > button[data-slot=\"switch\"]",
+    "name": "Finished",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(4) > button[data-slot=\"switch\"]",
+    "name": "One notification per agent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(5) > button[data-slot=\"switch\"]",
+    "name": "App updates",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(6) > button[data-slot=\"switch\"]",
+    "name": "Machine load stays high",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(7) > button[data-slot=\"switch\"]",
+    "name": "Decisions that need you now",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(8) > button[data-slot=\"switch\"]",
+    "name": "Cache about to go cold",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-alerts",
+    "selector": "div[data-slot=\"hill-switch\"] > div > button[data-slot=\"switch\"]",
+    "name": "The Hill",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-appearance",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Compaction summaries",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-appearance",
+    "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
+    "name": "Tool calls",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-appearance",
+    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Harness shortcuts",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-appearance",
+    "selector": "main > section > p > a",
+    "name": "How themes work",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-device",
+    "selector": "#changes > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Look for repos inside this folder",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-device",
+    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Haptics",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-device",
+    "selector": "div[data-slot=\"card\"] > div > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Suggestions from Sent",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-device",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Zen mode",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-device",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Enter on landscape",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-device",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > button[data-slot=\"button\"]",
+    "name": "Clear saved copies now",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > button[data-slot=\"switch\"]",
+    "name": "Claude Code: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(10) > button[data-slot=\"switch\"]",
+    "name": "Kiro: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Codex: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > button[data-slot=\"switch\"]",
+    "name": "Grok: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(4) > button[data-slot=\"switch\"]",
+    "name": "Hermes Agent: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(5) > button[data-slot=\"switch\"]",
+    "name": "omp: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(6) > button[data-slot=\"switch\"]",
+    "name": "opencode: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(7) > button[data-slot=\"switch\"]",
+    "name": "Antigravity: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(8) > button[data-slot=\"switch\"]",
+    "name": "Muse: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-harnesses",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(9) > button[data-slot=\"switch\"]",
+    "name": "pi: Show the status line",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-system",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(1) > div:nth-of-type(2) > button[data-slot=\"switch\"]",
+    "name": "Offer a report when sending fails",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-updates",
+    "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"button\"]",
+    "name": "Check for updates",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "sheet-new-tab",
+    "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
+    "name": "Close",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "sheet-row-actions",
+    "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
+    "name": "Close",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "sheet-session-switcher",
+    "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
+    "name": "Close",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "sheet-workspace-filter",
+    "selector": "div > div:nth-of-type(2) > div > button:nth-of-type(5)",
+    "name": "infra \u00b7 working",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "sheet-workspace-filter",
+    "selector": "div[data-slot=\"sheet-title-row\"] > button[data-slot=\"button\"]",
+    "name": "Close",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "space",
+    "selector": "div > nav:nth-of-type(2) > div > button[aria-label=\"New tab\"]",
+    "name": "New tab",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "space",
+    "selector": "nav:nth-of-type(2) > div > div > button:nth-of-type(1)",
+    "name": "All",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "space",
+    "selector": "nav:nth-of-type(2) > div > div > button:nth-of-type(2)",
+    "name": "needs you tab 1",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "space",
+    "selector": "nav:nth-of-type(2) > div > div > button:nth-of-type(3)",
+    "name": "working tab 2",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "space",
+    "selector": "nav:nth-of-type(2) > div > div > button:nth-of-type(4)",
+    "name": "idle tab 3",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  }
+]

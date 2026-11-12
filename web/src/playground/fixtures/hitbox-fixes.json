@@ -1,0 +1,54 @@
+{
+  "measuredOn": "2026-11-12",
+  "rows": [
+    {
+      "fix": "1 · Open the pressed row",
+      "measured": "200 touches, a row arrives (40) or leaves (40) above the pressed row; which pane the router opens",
+      "before": "0 of 80 opened the pressed pane (80 opened a neighbour)",
+      "after": "80 of 80 opened the pressed pane"
+    },
+    {
+      "fix": "2 · Hold the list still",
+      "measured": "Dashboard polls under a held row, 200 taps each, 390 wide: a row arrives / a row leaves; the click reaches the pressed row",
+      "before": "19 of 200 / 21 of 200",
+      "after": "179 of 200 / 178 of 200. At 360 wide: 7 of 60 / 7 of 60 before, 54 of 60 / 54 of 60 after"
+    },
+    {
+      "fix": "2 · Hold the list still",
+      "measured": "Finger down, poll lands: when the summary, a flipped status and the new row show",
+      "before": "Summary 31ms, status 33ms, new row 34ms (the list slid)",
+      "after": "Summary 30ms, status 32ms, new row not drawn while the finger is down, drawn 320ms after the lift. A list nobody touches: 29ms, as before"
+    },
+    {
+      "fix": "3 · The hold at 500ms, the look at 250ms",
+      "measured": "A press of 440 and 470ms on a row (5 each)",
+      "before": "Both opened the sheet, no pane (10 of 10)",
+      "after": "Both opened the pane (10 of 10 at 390 wide; at 360 wide the 470ms press sheets once). 600ms and longer still open the sheet"
+    },
+    {
+      "fix": "4 · A row that is opening says so",
+      "measured": "A 1500ms pane read, three taps on one row",
+      "before": "No mark. 5 reads sent. The pane opened after 2689ms",
+      "after": "Bar and aria-busy on the row at 500ms. 3 reads sent. The pane opened after 1516ms. Row and neighbour moved 0px. Bar contrast 5.6 or more in the four shipped themes, light and dark, motion and reduced"
+    },
+    {
+      "fix": "5 · A press keeps its reach",
+      "measured": "Every target pressed on 10 screens (164 targets); targets whose width shrank, neighbours newly covered",
+      "before": "9 shrank by 2px. 0 covered",
+      "after": "0 shrank. 0 covered. A tap 1.5px and 2.5px inside the pill, the New button and a row's right edge: 0 of 4 before, 4 of 4 after"
+    },
+    {
+      "fix": "6 · Reach for the five short targets",
+      "measured": "Height the browser answers on at 390 wide (summary line, spaces heading, New space, session pill)",
+      "before": "25, 31, 35 and 35px",
+      "after": "43px each, which reads as the 44px floor. The session pill is no longer 0.9 covered by the header's right group"
+    },
+    {
+      "fix": "7 · The census as a check",
+      "measured": "bun run hitbox:check over 72 screen readings (36 screens, 2 phone sizes)",
+      "before": "No check. 258 small, 122 covered, 525 ok of 1015 readings",
+      "after": "Exit 0 on the written list of 204 known small or covered targets. Exit 1 and the new targets named when three were taken off the list. Small 246, covered 122, ok 537"
+    }
+  ],
+  "note": "Measured on 2026-11-12 in headless Chromium with real touches, the investigation's build (b9262b515) against the fix branch, with the same scripts in web/e2e/hitbox. About 9 in 100 poll tries are lost after the fix as before: the page's own poll answered just before the finger landed, so no finger was there to hold the list. REGRESSIONS.md in the experiment folder lists what each fix could break and what covers it."
+}

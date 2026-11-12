@@ -66,11 +66,17 @@ export function shownGroups(
   groups: readonly WorkspaceGroup[],
   needsOnly: boolean,
   pinned: (pane: AgentView) => boolean = NOT_PINNED,
+  /**
+   * Who counts as needing you. `needsYou` by default, the live status. The list held still under a finger hands
+   * the answer the finger found, so a pane whose status just changed does not leave (or join) the list and
+   * slide the next row under the thumb (hooks/use-still-list.ts); the row it draws still shows its live status.
+   */
+  needs: (pane: AgentView) => boolean = needsYou,
 ): ShownGroup[] {
   if (!needsOnly && pinned === NOT_PINNED) return groups.map((group) => ({ group, rows: group.panes }));
   const out: ShownGroup[] = [];
   for (const group of groups) {
-    const rows = group.panes.filter((p) => !pinned(p) && (!needsOnly || needsYou(p)));
+    const rows = group.panes.filter((p) => !pinned(p) && (!needsOnly || needs(p)));
     if (rows.length > 0) out.push({ group, rows });
   }
   return out;

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 
 import { shownStatus } from "@/lib/triage";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,9 @@ import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
+import { PRESS_REACH_ROW } from "@/components/ui/tap-target";
+import { useOpeningShown } from "@/lib/pane-opening";
+import { cancelPress, clearPress, markPressHeld, redirectClick, releasePress, rememberPress } from "@/lib/press-memory";
 import { Icon } from "@/components/icons/icon";
 
 interface AgentCardProps {
@@ -36,7 +40,7 @@ interface AgentCardProps {
   /** The finger landed on the row: the moment to start the pane's read (lib/pane-prefetch.ts). */
   onPress?: () => void;
   /**
-   * A hold on the row (450ms, or `contextmenu`: a right-click, the Menu key, Android's own long
+   * A hold on the row (500ms, or `contextmenu`: a right-click, the Menu key, Android's own long
    * press) opens the pane's actions sheet instead of the pane (ADR 0070). The click that ends the hold
    * is swallowed, so a hold never also opens the pane. Omit and the row has no hold at all.
    */
@@ -148,9 +152,23 @@ export function AgentCard({
   match,
 }: AgentCardProps) {
   useLocale();
+  // The read for this row's pane is out and has taken longer than the glide waits (lib/pane-opening.ts).
+  const opening = useOpeningShown(glideKey);
   // Inert when `onHold` is undefined: every handler returns at once, the native context menu stays,
   // and no click is swallowed, so a row with no hold behaves exactly as it did.
-  const hold = useLongPress(onHold);
+  // THE PRESS, REMEMBERED (lib/press-memory.ts). One symbol per mounted row: the click that ends a press
+  // is aimed at whatever stands under the finger when it lifts, and a list that moved in between aims it
+  // at a neighbour. The neighbour finds this row's press in memory and opens THIS row instead.
+  const [me] = useState(() => Symbol("agent-row"));
+  // A row that unmounts under the finger takes its press with it: nothing will lift on it.
+  useEffect(() => () => cancelPress(me), [me]);
+  const hold = useLongPress(
+    onHold &&
+      (() => {
+        markPressHeld(me);
+        onHold();
+      }),
+  );
   const isShell = agent.kind === "shell";
   const blocked = agent.status === "blocked";
   const inTab = scope === "tab";
@@ -251,18 +269,41 @@ export function AgentCard({
     <button
       id={id}
       type="button"
-      onClick={(e) => onClick(e.currentTarget)}
+      aria-busy={opening || undefined}
+      onClick={(e) => {
+        const route = redirectClick(me, e.detail > 0);
+        if (route === "own") onClick(e.currentTarget);
+        else if (route !== "swallow") route();
+      }}
       {...hold}
       // Both halves of a press: the pane's read starts on the finger landing, and the hold's timer
-      // arms on the same event.
+      // arms on the same event. The same event remembers the row, for the click that may land elsewhere.
       onPointerDown={(e) => {
+        const row = e.currentTarget;
+        // A right or middle button is no tap: it clears whatever press is in memory instead of starting one.
+        if (e.button === 0) rememberPress(me, () => onClick(row));
+        else clearPress();
         onPress?.();
         hold.onPointerDown(e);
+      }}
+      onPointerUp={(e) => {
+        hold.onPointerUp(e);
+        releasePress(me);
+      }}
+      onPointerCancel={(e) => {
+        hold.onPointerCancel(e);
+        cancelPress(me);
+      }}
+      // A mouse or pen dragged off the row ends the press: its lift lands elsewhere and is nobody's tap. Not for a
+      // touch, whose `pointerleave` comes AFTER `pointerup` and would end the press before its click.
+      onPointerLeave={(e) => {
+        if (e.pointerType !== "touch") cancelPress(me);
       }}
       data-glide-origin={glideKey === undefined ? undefined : "pane"}
       data-glide-key={glideKey}
       className={cn(
         "w-full text-left transition-transform active:scale-[0.99]",
+        PRESS_REACH_ROW,
         // A held row must not start iOS's selection loupe or touch callout: both end in a
         // `pointercancel` that kills the hold timer (hooks/use-long-press.ts).
         onHold && "select-none [-webkit-touch-callout:none]",
@@ -476,6 +517,10 @@ export function AgentCard({
             className="pointer-events-none absolute inset-x-3.5 bottom-0 w-auto"
           />
         )}
+        {/* THE ROW IS OPENING: a 2px bar along its top, drawn over the row's own box (no size, no
+            position changes, DESIGN.md §2) while the pane's read is out past the glide's wait. It sits
+            at the top because the pane's progress hairline owns the bottom. */}
+        {opening && <span aria-hidden="true" className="row-opening pointer-events-none absolute inset-x-3.5 top-0" />}
       </Shell>
     </button>
   );

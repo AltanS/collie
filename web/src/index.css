@@ -1396,6 +1396,17 @@
    its rounded corners; ui/list-group.tsx and the key board editor draw their own frame and opt out
    with `p-0`. */
 @layer components {
+  /* THE SHARED BUTTON'S PRESS REACH (components/ui/tap-target.ts, PRESS_REACH_SOFT). It is a class and not an
+     `active:before:` utility on purpose: that utility is (0,2,1), which beats a caller's own reach
+     (`before:-inset-1`, `before:-inset-y-[7px]`, (0,1,1)) while the finger is down, and the reach would SHRINK
+     under the press (composer Send, the belt's pills). `:where()` takes the pressed state out of the
+     specificity, and the components layer sits below utilities, so a caller's reach always wins and this one
+     only fills in where the caller has none. */
+  .press-reach-soft:where(:active)::before {
+    content: "";
+    position: absolute;
+    inset: -1.5%;
+  }
   [data-slot="list-group"] {
     padding: var(--row-inset);
   }
@@ -1544,6 +1555,30 @@
   }
 }
 
+/* A ROW THAT IS OPENING (components/agent-card.tsx, lib/pane-opening.ts): the busy bar's own look, 2px, along
+   the top of the row, in the same two tones and with the same reduced-motion pulse. It is drawn over the
+   row (absolute, no pointer events), so the row's box and its hit area do not change. */
+.row-opening {
+  height: 2px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+}
+.row-opening::before {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 9999px;
+  background: var(--primary);
+  animation: busy-bar-slide 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-opening::before {
+    width: 100%;
+    animation: busy-bar-pulse 1.1s ease-in-out infinite;
+  }
+}
+
 /* The working status mark's "live" turn (components/status-badge.tsx StatusDot, `live` prop): the
    half-filled circle rotates, nothing else. ROTATE ONLY, linear, one full turn in 1.8s: no scale and
    no opacity on top, so a handful of un-phased marks on one phone screen read as "alive" and never
@@ -1627,9 +1662,9 @@
 }
 
 /* THE HOLD, SHOWN (hooks/use-long-press.ts, M38/02). Every element that spreads `useLongPress`'s props
-   carries `data-holding` from 150ms after the finger lands until the hold fires or is cancelled: the
+   carries `data-holding` from 250ms after the finger lands until the hold fires or is cancelled: the
    dashboard rows, the pane pills, the workspace and tab chips. While it does, the element eases toward
-   "pressed" over the time left to the hold's 450ms mark (the hook sets `animation-duration` inline to
+   "pressed" over the time left to the hold's 500ms mark (the hook sets `animation-duration` inline to
    exactly that), so the press visibly fills toward the moment the sheet opens. Linear, because the fill
    is a clock the thumb reads, not a flourish.
    - A TRANSFORM AND A TINT, NOTHING ELSE. `transform` composes with the element's own `active:scale-*`

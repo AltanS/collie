@@ -252,7 +252,7 @@ describe("AgentCard — the meta rides line 1 on every scope", () => {
 describe("AgentCard's hold", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("opens the sheet on a 450ms hold and does not open the pane", () => {
+  it("opens the sheet on a 500ms hold and does not open the pane", () => {
     vi.useFakeTimers();
     const onClick = vi.fn();
     const onHold = vi.fn();
@@ -264,7 +264,7 @@ describe("AgentCard's hold", () => {
     fireEvent.pointerDown(row, { button: 0, clientX: 10, clientY: 10 });
     // The press still starts the pane's read, as a tap does.
     expect(onPress).toHaveBeenCalledOnce();
-    act(() => vi.advanceTimersByTime(449));
+    act(() => vi.advanceTimersByTime(499));
     expect(onHold).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
     expect(onHold).toHaveBeenCalledOnce();

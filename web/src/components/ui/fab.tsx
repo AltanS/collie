@@ -2,6 +2,7 @@ import { Icon } from "@/components/icons/icon";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
+import { PRESS_REACH } from "@/components/ui/tap-target";
 
 interface FabProps {
   /** ALREADY TRANSLATED. The accessible name: "New". */
@@ -66,26 +67,31 @@ export function Fab({ label, onClick, busy = false, bottom, collapsed = false }:
         data-slot="fab"
         data-collapsed={collapsed || undefined}
         className={cn(
-          "pointer-events-auto flex h-12 items-center justify-center overflow-hidden border border-border bg-background text-foreground shadow-md animate-in fade-in hover:bg-accent hover:text-accent-foreground active:scale-95 active:bg-accent disabled:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          "pointer-events-auto flex h-12 items-center justify-center border border-border bg-background text-foreground shadow-md animate-in fade-in hover:bg-accent hover:text-accent-foreground active:scale-95 active:bg-accent disabled:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
           // Dark: the page and a flat row are the same near-black, and --border is a 12% white hairline
           // there (1.26:1). The card step (0.205 against 0.145) lifts the fill so the button still
           // reads as a button over the list; hover and press go back to --accent.
           "dark:bg-card dark:hover:bg-accent dark:active:bg-accent",
+          PRESS_REACH,
           "transition-[width,border-radius,transform] duration-200 ease-out motion-reduce:transition-none",
           // 24px on a 48px square is the circle; 2px is the house corner on the wider pill.
           collapsed ? "w-12 rounded-[24px]" : "w-24 rounded-md",
         )}
       >
-        {busy ? <Icon name="busy" className="size-5 shrink-0 animate-spin" aria-hidden /> : <Icon name="add" className="size-5 shrink-0" aria-hidden />}
-        {/* The word fades and folds with the width. aria-hidden: the label above already names it. */}
-        <span
-          aria-hidden
-          className={cn(
-            "overflow-hidden whitespace-nowrap text-sm font-medium transition-[max-width,opacity,margin] duration-200 ease-out motion-reduce:transition-none",
-            collapsed ? "ml-0 max-w-0 opacity-0" : "ml-1.5 max-w-16 opacity-100",
-          )}
-        >
-          {label}
+        {/* The clip for the label's fold lives here and not on the button: a clip on the button would cut
+            the press reach (ui/tap-target.ts, PRESS_REACH) off at the border. Same box, same corners. */}
+        <span className="flex size-full items-center justify-center overflow-hidden rounded-[inherit]">
+          {busy ? <Icon name="busy" className="size-5 shrink-0 animate-spin" aria-hidden /> : <Icon name="add" className="size-5 shrink-0" aria-hidden />}
+          {/* The word fades and folds with the width. aria-hidden: the label above already names it. */}
+          <span
+            aria-hidden
+            className={cn(
+              "overflow-hidden whitespace-nowrap text-sm font-medium transition-[max-width,opacity,margin] duration-200 ease-out motion-reduce:transition-none",
+              collapsed ? "ml-0 max-w-0 opacity-0" : "ml-1.5 max-w-16 opacity-100",
+            )}
+          >
+            {label}
+          </span>
         </span>
       </button>
     </div>,

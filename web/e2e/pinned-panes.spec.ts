@@ -186,7 +186,7 @@ test("hold: a hold on a row pins it, the row lands in view with focus, and Unpin
   const codex = mainRow(page, "codex");
   const target = await box(codex);
 
-  // A real hold: the finger down for longer than the 450ms threshold, then up. The pane must NOT open.
+  // A real hold: the finger down for longer than the 500ms threshold, then up. The pane must NOT open.
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(700);
@@ -249,8 +249,8 @@ test("hold: a held row shows the hold filling, moves nothing, and drops the look
 
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
   await page.mouse.down();
-  // Inside the fill: past the 150ms delay, short of the 450ms mark. One read, so nothing races it.
-  await page.waitForTimeout(280);
+  // Inside the fill: past the 250ms delay, short of the 500ms mark. One read, so nothing races it.
+  await page.waitForTimeout(360);
   const held = await layout();
   expect(held.holding).toBe(true);
   // Pressed in and tinted, by a transform and a shadow only: the row's own box and the row above stay.
@@ -267,8 +267,8 @@ test("hold: a held row shows the hold filling, moves nothing, and drops the look
   const log = (await page.evaluate(() => window.holdLog)) ?? [];
   expect(log.map((e) => e.holding)).toEqual([true, false]);
   // A tap shorter than the delay would never see the mark, and it ends as the hold counts, at once.
-  expect(log[0]!.t).toBeGreaterThanOrEqual(140);
-  expect(log[1]!.t).toBeGreaterThanOrEqual(440);
+  expect(log[0]!.t).toBeGreaterThanOrEqual(240);
+  expect(log[1]!.t).toBeGreaterThanOrEqual(490);
   expect(log[1]!.transform).toBe("none");
 });
 

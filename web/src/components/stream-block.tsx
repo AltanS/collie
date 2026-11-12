@@ -63,7 +63,7 @@ import { cn } from "@/lib/utils";
 // starts outside the block is a press elsewhere anyway.
 //
 // ── ON A TOUCH SCREEN THE HOLD SHOWS AS A TINT, AND THE TINT STAYS WHILE THE SHEET IS OPEN ────────────
-// `useLongPress` shows a hold in the making (`data-holding` from 150ms). Elsewhere that is a tint and a 0.97 scale;
+// `useLongPress` shows a hold in the making (`data-holding` from 250ms). Elsewhere that is a tint and a 0.97 scale;
 // on a block of text the scale squeezed the message, so a block draws the tint ONLY (index.css). It shows for a touch
 // or pen press alone (`showHold: "touch"`): a mouse still selects a block's text, and its hold stays silent. On a touch
 // screen selection no longer competes, so the tint is safe there (Altan, 2026-11-06). While the sheet is open for
