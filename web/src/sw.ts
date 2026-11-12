@@ -259,7 +259,9 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
 // Two different assets on purpose. `icon` is the large art: the mark on its tile, WITHOUT the
 // maskable safe-zone padding, so it fills the notification slot instead of floating in a frame.
 // `badge` is the small status-bar glyph: Android derives its SHAPE FROM THE ALPHA CHANNEL and tints
-// the result, so it must be a monochrome silhouette on transparency. The maskable home-screen tile
+// the result, so it must be a monochrome silhouette on transparency: the header mark with its ring
+// and beads, one colour, paper cut out. Both files are baked by collie-brand (`collie-badge-96.png`,
+// `collie-notification-icon-192.png`), never drawn here. The maskable home-screen tile
 // (`/web-app-manifest-192x192.png`) must never be used for either — it is opaque with no alpha, so
 // Android stamps it on the icon's corner as a solid grey block.
 const ICON = under("/notification-icon-192x192.png");
