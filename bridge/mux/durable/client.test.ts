@@ -205,6 +205,20 @@ describe.skipIf(SOCKET_ONLY_SKIP)("the path walk (WIRE.md section 1A)", () => {
     expect(await socketFault("/tmp/d.sock", tree(parent))).toEqual({ kind: "parent-wrong-owner", path: "/tmp", owner: 0, uid: ME });
   });
 
+  test("the owned rule lets the parent be 0755, still this user's and closed to writes (ADR 0142)", async () => {
+    const open = { ...good(), "/run/me": entry("dir", ME, 0o755) };
+    expect(await socketFault("/run/me/d.sock", tree(open), "owned")).toBeNull();
+    expect(await socketFault("/run/me/d.sock", tree(good()), "owned")).toBeNull();
+    const writable = { ...good(), "/run/me": entry("dir", ME, 0o775) };
+    expect(await socketFault("/run/me/d.sock", tree(writable), "owned")).toEqual({ kind: "ancestor-open-mode", path: "/run/me", mode: 0o775 });
+    const sticky = { ...good(), "/run/me": entry("dir", ME, 0o1777) };
+    expect(await socketFault("/run/me/d.sock", tree(sticky), "owned")).toEqual({ kind: "ancestor-open-mode", path: "/run/me", mode: 0o777 });
+    const rooted = { ...good(), "/run/me": entry("dir", 0, 0o755) };
+    expect(await socketFault("/run/me/d.sock", tree(rooted), "owned")).toEqual({ kind: "parent-wrong-owner", path: "/run/me", owner: 0, uid: ME });
+    const shared = { ...good(), "/run/me/d.sock": entry("socket", ME, 0o660) };
+    expect(await socketFault("/run/me/d.sock", tree(shared), "owned")).toEqual({ kind: "open-mode", mode: 0o660 });
+  });
+
   test("the parent must be this user's own with mode 0700", async () => {
     const open = { ...good(), "/run/me": entry("dir", ME, 0o755) };
     expect(await socketFault("/run/me/d.sock", tree(open))).toEqual({ kind: "parent-open-mode", path: "/run/me", mode: 0o755 });

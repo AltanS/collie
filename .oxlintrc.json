@@ -127,6 +127,15 @@
       }
     },
     {
+      // The Hermes gateway's answers (ADR 0142): `bridge/door/hermes-wire.ts` is the ONE file under bridge/door/ that reads an unvalidated field, `beacon/parse.ts`'s pattern. It reads the control socket's `identify` and `session-ticket` lines and the gateway's JSON-RPC frames, `session.resume`'s snapshot and `prompt.submit`'s admission. Every `typeof` in it sits inside those readers and IS the parse; the session id the door sends is the binding's, never the gateway's.
+      "files": [
+        "**/bridge/door/hermes-wire.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
       // Crew protocol handling (/crew/v1/*): payloads arrive from another Collie instance across a machine boundary and are untrusted until parsed. See CREW_PROTOCOL.md.
       "files": [
         "**/bridge/crew/**/*.ts"

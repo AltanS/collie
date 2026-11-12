@@ -155,6 +155,12 @@ const STICKY = 0o1000;
 /** The mode the socket's own directory must have: the owner only. */
 const PRIVATE_DIR_MODE = 0o700;
 
+/**
+ * What the socket's own folder must be: `private`, this user's and mode 0700 (the durable wire's rule);
+ * `owned`, this user's and closed to writes by group and others (ADR 0142 point 2).
+ */
+export type ParentRule = "private" | "owned";
+
 /** Which part of the privacy check a path failed. `doctor` names it; the adapter reports it in one line. */
 export type SocketFault =
   | { readonly kind: "missing" }
@@ -206,13 +212,18 @@ function isFault(value: SocketFacts | SocketFault): value is SocketFault {
  * checked: under a systemd user service with `PrivateTmp=yes` the root-owned `/`, `/run` and
  * `/run/user` show up as user 65534, and a swap needs write access, which this rule already denies.
  * The sticky exception holds for an ancestor only, never for the parent.
+ *
+ * `owned` relaxes the parent's mode for a program that makes its socket in a folder it creates 0755,
+ * as Hermes does with `~/.hermes` (ADR 0142 point 2): the folder must still be this user's own and
+ * closed to writes by group and others, so nobody else can swap the socket in it.
  */
-function directoryFault(path: string, facts: SocketFacts, parent: boolean, uid: number): SocketFault | null {
+function directoryFault(path: string, facts: SocketFacts, parent: ParentRule | null, uid: number): SocketFault | null {
   if (facts.isSymbolicLink()) return { kind: "symlink", path };
   if (!facts.isDirectory()) return { kind: "not-a-directory", path };
   const mode = facts.mode & 0o7777;
-  if (parent) {
+  if (parent !== null) {
     if (facts.uid !== uid) return { kind: "parent-wrong-owner", path, owner: facts.uid, uid };
+    if (parent === "owned") return (mode & GROUP_OR_OTHER_WRITE) !== 0 ? { kind: "ancestor-open-mode", path, mode: mode & 0o777 } : null;
     if ((mode & 0o777) !== PRIVATE_DIR_MODE) return { kind: "parent-open-mode", path, mode: mode & 0o777 };
     return null;
   }
@@ -229,14 +240,14 @@ function directoryFault(path: string, facts: SocketFacts, parent: boolean, uid: 
  * no uid cannot show an owner, so it fails closed before anything is read. A missing path is a
  * different answer: nothing is listening yet, and that is not a privacy problem.
  */
-export async function socketFault(path: string, probe: SocketProbe = SYSTEM_PROBE): Promise<SocketFault | null> {
+export async function socketFault(path: string, probe: SocketProbe = SYSTEM_PROBE, parent: ParentRule = "private"): Promise<SocketFault | null> {
   const uid = probe.uid();
   if (uid === undefined) return { kind: "no-uid" };
   const chain = ancestorsOf(path);
   for (const [index, dir] of chain.entries()) {
     const facts = await factsOf(dir, probe);
     if (isFault(facts)) return facts;
-    const fault = directoryFault(dir, facts, index === chain.length - 1, uid);
+    const fault = directoryFault(dir, facts, index === chain.length - 1 ? parent : null, uid);
     if (fault !== null) return fault;
   }
   const facts = await factsOf(path, probe);
