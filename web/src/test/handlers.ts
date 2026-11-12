@@ -709,7 +709,7 @@ export const fixtureWalkyOperator: WalkyRow = {
   v: 1,
   id: "wt_p0q9r8s7t6u5",
   kind: "operator",
-  from: { memberId: "lodge", address: null, harness: null, label: "phone-altan" },
+  from: { memberId: "lodge", address: null, harness: null, label: "phone-dev" },
   to: "lodge/w1:p1",
   replyTo: "wt_k3f9x2m8q1a0",
   at: Date.parse("2026-10-17T09:31:00Z"),

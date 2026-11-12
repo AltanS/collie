@@ -60,12 +60,12 @@ describe("a walky talky turn with its id in the log", () => {
   it("draws an operator message in its own tone, with the reply link and the local word", () => {
     inLog(
       [fixtureWalkyAgent, fixtureWalkyOperator],
-      turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-altan) reply to wt_k3f9x2m8q1a0\nStop.", fixtureWalkyOperator.id, "operator", "wt_k3f9x2m8q1a0"),
+      turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-dev) reply to wt_k3f9x2m8q1a0\nStop.", fixtureWalkyOperator.id, "operator", "wt_k3f9x2m8q1a0"),
     );
     const card = theCard();
     expect(card).toHaveAttribute("data-kind", "operator");
     const inside = within(card);
-    expect(inside.getByText("Message from phone-altan")).toBeInTheDocument();
+    expect(inside.getByText("Message from phone-dev")).toBeInTheDocument();
     expect(inside.getByText("operator")).toBeInTheDocument();
     // The log holds the message it answers, so the footer names its sender and time, not its id.
     expect(inside.getByText(`· in reply to collie-workspace#fix-465, ${clockTime(fixtureWalkyAgent.at)}`)).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe("a walky talky turn with its id in the log", () => {
   it("keeps the id in the footer when the log does not hold the message it answers", () => {
     inLog(
       [fixtureWalkyOperator],
-      turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-altan) reply to wt_k3f9x2m8q1a0\nStop.", fixtureWalkyOperator.id, "operator", "wt_k3f9x2m8q1a0"),
+      turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-dev) reply to wt_k3f9x2m8q1a0\nStop.", fixtureWalkyOperator.id, "operator", "wt_k3f9x2m8q1a0"),
     );
     expect(within(theCard()).getByText("· reply to wt_k3f9x2m8q1a0")).toBeInTheDocument();
   });
@@ -153,11 +153,11 @@ describe("the card's head names a machine that is not the pane's own", () => {
     render(
       <WalkyLogProvider rows={[operator]} reads={0}>
         <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
-          <ItemView item={turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-altan)\nStop.", operator.id, "operator")} />
+          <ItemView item={turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-dev)\nStop.", operator.id, "operator")} />
         </WalkyOpenProvider>
       </WalkyLogProvider>,
     );
-    expect(within(theCard()).getByText("Message from phone-altan")).toBeInTheDocument();
+    expect(within(theCard()).getByText("Message from phone-dev")).toBeInTheDocument();
   });
 });
 
@@ -411,7 +411,7 @@ function livePane(over: Partial<AgentView> = {}): AgentView {
     tabId: "w6:t1",
     agent: "claude",
     status: "idle",
-    cwd: "/home/altan/collie",
+    cwd: "/home/dev/collie",
     focused: false,
     kind: "agent",
     host: "lodge",
@@ -443,7 +443,7 @@ describe("a walky talky card names sessions", () => {
   });
 
   it("never takes the terminal title for a name: a title that is the walky header names nothing, the folder does", () => {
-    withPanes([livePane({ terminalTitle: "Walky-talky message from collie-04rj6a" })], [fixtureWalkyAgent], agentTurn);
+    withPanes([livePane({ terminalTitle: "Walky-talky message from collie-7k2m9x" })], [fixtureWalkyAgent], agentTurn);
     expect(within(theCard()).getByText("Message from collie")).toBeInTheDocument();
     expect(theCard().textContent).not.toContain("04rj6a");
   });

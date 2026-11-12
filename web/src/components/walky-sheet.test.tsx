@@ -324,7 +324,7 @@ function livePane(over: Partial<AgentView> = {}): AgentView {
     tabId: "w6:t1",
     agent: "claude",
     status: "idle",
-    cwd: "/home/altan/collie",
+    cwd: "/home/dev/collie",
     focused: false,
     kind: "agent",
     host: "lodge",

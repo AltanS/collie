@@ -25,7 +25,7 @@ function pane(over: Partial<AgentView> = {}): AgentView {
     tabId: "w6:t1",
     agent: "claude",
     status: "idle",
-    cwd: "/home/altan/collie",
+    cwd: "/home/dev/collie",
     focused: false,
     kind: "agent",
     host: "lodge",
@@ -40,8 +40,8 @@ const names = (parts: readonly WalkyAddressPart[]) => parts.map((p) => (p.kind =
 
 describe("walkyPaneName", () => {
   it("never reads the terminal title: a pane with only a title is named by its folder", () => {
-    expect(walkyPaneName(pane({ terminalTitle: "Walky-talky message from collie-04rj6a" }))).toBe("collie");
-    expect(walkyPaneName(pane({ terminalTitle: "Walky-talky message from collie-04rj6a", terminalTitleStale: false, cwd: "/srv/apps/site/" }))).toBe("site");
+    expect(walkyPaneName(pane({ terminalTitle: "Walky-talky message from collie-7k2m9x" }))).toBe("collie");
+    expect(walkyPaneName(pane({ terminalTitle: "Walky-talky message from collie-7k2m9x", terminalTitleStale: false, cwd: "/srv/apps/site/" }))).toBe("site");
   });
 
   it("names a pane folder#branch when the view carries a branch, and the folder alone for a detached head or none", () => {
@@ -170,7 +170,7 @@ describe("senderNameOf", () => {
 
   it("names an agent by its live pane and an operator by the log's label", () => {
     expect(senderNameOf(row(), live([pane({ paneLabel: "plumbing" })]), SELF).name).toBe("plumbing");
-    expect(senderNameOf(row({ address: null, label: "phone-altan" }, "operator"), live([pane()]), SELF).name).toBe("phone-altan");
+    expect(senderNameOf(row({ address: null, label: "phone-dev" }, "operator"), live([pane()]), SELF).name).toBe("phone-dev");
     expect(senderNameOf(row(), NO_LIVE_PANES, SELF).name).toBe("repo#branch");
   });
 });

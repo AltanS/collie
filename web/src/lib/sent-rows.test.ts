@@ -33,7 +33,7 @@ describe("folderLabel", () => {
   });
 
   it("keeps the last two folders of a deep path and the whole path as the title", () => {
-    expect(folderLabel("/home/altan/projects/collie")).toEqual({ text: "…/projects/collie", title: "/home/altan/projects/collie" });
+    expect(folderLabel("/home/dev/projects/collie")).toEqual({ text: "…/projects/collie", title: "/home/dev/projects/collie" });
   });
 });
 

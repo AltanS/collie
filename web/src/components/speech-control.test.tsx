@@ -160,7 +160,7 @@ afterEach(() => {
 
 // ── The hub ─────────────────────────────────────────────────────────────────────────────────────
 
-/** Whistle on this phone, from a copy of the model the host runs too: the state Altan's phone is in. */
+/** Whistle on this phone, from a copy of the model the host runs too: the state Dev's phone is in. */
 const PHONE_HUB: Partial<SpeechCardsProps> = { ...WHISTLE_HUB, engine: "phone", local: COPY };
 
 describe("the hub", () => {

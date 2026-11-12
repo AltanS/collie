@@ -44,7 +44,7 @@ describe("parseEnvelopeHeader", () => {
   });
 
   it("reads an operator header and its reply suffix", () => {
-    const header = "[walky-talky wt_k3f9x2m8q1a0] from operator (phone-altan) reply to wt_8ab2c3d4e5f6";
+    const header = "[walky-talky wt_k3f9x2m8q1a0] from operator (phone-dev) reply to wt_8ab2c3d4e5f6";
     expect(parseEnvelopeHeader(header)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "operator", replyTo: "wt_8ab2c3d4e5f6" });
   });
 
@@ -73,7 +73,7 @@ describe("parseEnvelopeHeader", () => {
     });
 
     it("still reads an operator header, which has no nudge", () => {
-      expect(parseEnvelopeHeader("[walky-talky wt_k3f9x2m8q1a0] from operator (phone-altan)")).toEqual({
+      expect(parseEnvelopeHeader("[walky-talky wt_k3f9x2m8q1a0] from operator (phone-dev)")).toEqual({
         id: "wt_k3f9x2m8q1a0",
         kind: "operator",
         replyTo: null,

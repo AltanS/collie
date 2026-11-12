@@ -12,7 +12,7 @@ import { SentSheet } from "./sent-sheet";
 // The Sent sheet against the contract fixtures (M61 spec 02): each state it draws, what each tap
 // puts on the wire, and that a tap on a row only hands the line back.
 
-const CWD = "/home/altan/projects/collie";
+const CWD = "/home/dev/projects/collie";
 
 interface Seen {
   url: URL;

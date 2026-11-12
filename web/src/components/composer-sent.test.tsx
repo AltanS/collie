@@ -19,7 +19,7 @@ import { Composer } from "./composer";
 // Sent in the composer of a shell pane (M61 spec 02): the belt's button and the suggestion strip above
 // the box. A line only ever lands in the box; Send is a tap of its own and runs the ordinary Send Protocol.
 
-const CWD = "/home/altan/projects/collie";
+const CWD = "/home/dev/projects/collie";
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};

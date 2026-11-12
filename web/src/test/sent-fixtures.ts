@@ -12,7 +12,7 @@ export const SENT_NOW = NOW;
 export function entry(over: Partial<SentEntry> & Pick<SentEntry, "line">): SentEntry {
   return {
     id: over.id ?? over.line.replace(/\W+/g, "").slice(0, 16).padEnd(16, "0"),
-    cwd: "/home/altan/projects/collie",
+    cwd: "/home/dev/projects/collie",
     at: NOW - 5 * MIN,
     kind: "shell",
     count: 1,

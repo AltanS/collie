@@ -1088,7 +1088,7 @@ describe("cold boot with no network", () => {
         http.get(/\/api\/pane\/[^/]+$/, () =>
           HttpResponse.json({
             paneId: "w1:p1",
-            text: "$ sudo -v\n[sudo] password for altan:",
+            text: "$ sudo -v\n[sudo] password for dev:",
             truncated: false,
             revision: 2,
           }),

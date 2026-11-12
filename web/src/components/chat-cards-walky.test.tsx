@@ -225,7 +225,7 @@ describe("the agent's own send card", () => {
     tabId: "w6:t1",
     agent: "claude",
     status: "idle",
-    cwd: "/home/altan/collie",
+    cwd: "/home/dev/collie",
     focused: false,
     kind: "agent",
     host: "lodge",
@@ -253,9 +253,9 @@ describe("the agent's own send card", () => {
   });
 
   it("names a pane with only a terminal title by its folder, and by folder#branch when the view has the branch", () => {
-    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-04rj6a" })]);
+    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-7k2m9x" })]);
     expect(receipt()).toHaveTextContent("Message to collie: typed into the pane");
-    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-04rj6a", gitHead: { kind: "branch", name: "fix-465" } })]);
+    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-7k2m9x", gitHead: { kind: "branch", name: "fix-465" } })]);
     expect(receipt()).toHaveTextContent("Message to collie#fix-465: typed into the pane");
   });
 
