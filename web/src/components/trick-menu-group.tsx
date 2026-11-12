@@ -32,6 +32,11 @@ import { cn } from "@/lib/utils";
 // again (hooks/use-settled.ts, 500 ms, the agent view's own), so a label that changes under the finger
 // takes no tap. Agent sessions only, never a shell pane.
 //
+// THE FREEZE IS FOR LABELS, ORDER AND PRESENCE, NOT FOR A SWITCH'S STATE. The view switch's words are the
+// open's; its `on` is read from the live `views.rows` on every draw, so after the bridge answers the
+// person's tap it shows what the bridge says. (It once drew the frozen row's `on`, so it fell back to the
+// state at the open and the person tapped again.) A trick's own switch reads its row from the last document.
+//
 // A SWITCH NEVER FLIPS BEFORE THE PROGRAM ANSWERS (`TrickMenuRowView`, not `SwitchRow`): it draws the
 // `on` of the last document; while a tap waits it stays where it was, inert, with Collie's spinner beside
 // it; the receipt's parts redraw it. A `confirm` button arms on the first tap with Collie's own words and
@@ -86,6 +91,7 @@ interface Frozen {
 }
 
 const ROW_ICON = "size-4 shrink-0 text-muted-foreground";
+const NO_VIEWS: readonly TrickMenuViewRow[] = [];
 
 function trickOf(state: TricksState, host: string, id: string): WireTrickInfo | undefined {
   return state.tricks.find((trick) => trick.host === host && trick.id === id);
@@ -229,6 +235,7 @@ function TrickMenuGroup({
   now,
   settleMs,
   onSwitch,
+  liveViews,
 }: {
   group: FrozenGroup;
   state: TricksState;
@@ -237,6 +244,8 @@ function TrickMenuGroup({
   now: number;
   settleMs: number;
   onSwitch?: (trick: string, on: boolean) => Promise<string | null>;
+  /** The session's agent view switches as they stand now: the state of the view switch comes from here. */
+  liveViews: readonly TrickMenuViewRow[];
 }) {
   const { pending, confirm, reset } = usePendingConfirm();
   // Review 12 N4: what the first tap of a confirm saw, so the second tap confirms that and nothing else.
@@ -279,7 +288,9 @@ function TrickMenuGroup({
   const rows: ReactNode[] = [];
   if (group.view !== undefined && onSwitch !== undefined) {
     const view = group.view;
-    rows.push(<SwitchRow key="agent-view" icon={<Icon name="view-preview" className={ROW_ICON} />} label={view.label} hint={t("view.switch.hint")} checked={view.on} onChange={(next) => onSwitch(view.trick, next)} />);
+    // The label is frozen at the open, the state is not: it settles to the bridge's answer while the sheet stays open.
+    const checked = liveViews.find((row) => row.trick === view.trick)?.on ?? view.on;
+    rows.push(<SwitchRow key="agent-view" icon={<Icon name="view-preview" className={ROW_ICON} />} label={view.label} hint={t("view.switch.hint")} checked={checked} onChange={(next) => onSwitch(view.trick, next)} />);
   }
   for (const frozen of group.rows) {
     const live = menu?.find((row) => row.id === frozen.id && row.kind === frozen.kind);
@@ -315,7 +326,7 @@ export function TrickMenuGroups(props: TrickMenuGroupsProps) {
   return (
     <div data-slot="trick-menu" className="mt-3 flex flex-col gap-3">
       {frozen.groups.map((group) => (
-        <TrickMenuGroup key={group.key} group={group} state={state} store={store} pane={pane} now={now} settleMs={props.settleMs ?? SETTLE_MS} onSwitch={props.views?.onSwitch} />
+        <TrickMenuGroup key={group.key} group={group} state={state} store={store} pane={pane} now={now} settleMs={props.settleMs ?? SETTLE_MS} onSwitch={props.views?.onSwitch} liveViews={props.views?.rows ?? NO_VIEWS} />
       ))}
       {frozen.leftOut > 0 && (
         <p data-slot="trick-menu-more" className="px-3 text-xs text-muted-foreground">
