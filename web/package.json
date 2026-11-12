@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "e2e": "vite build && playwright test",
     "e2e:ui": "playwright test --ui",
-    "e2e:recordings:check": "bun e2e/rig/replay/check.ts"
+    "e2e:recordings:check": "bun e2e/rig/replay/check.ts",
+    "hitbox:check": "bun e2e/hitbox/check.ts"
   },
   "dependencies": {
     "@mathjax/mathjax-newcm-font": "^4.1.3",
