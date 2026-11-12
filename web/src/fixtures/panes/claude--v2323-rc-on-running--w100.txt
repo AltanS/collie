@@ -1,0 +1,40 @@
+$ claude --permission-mode default --remote-control labrc
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.323[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mClaude[39m [38;5;246mUltra[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m~/.cache/collie-lab/rc-capture-lab/project[39m
+
+  Fable 5.2 is here for your longest and toughest coding tasks. It draws down usage faster than Opus
+  5.5. Switch with [38;5;153m/model[39m.
+  [38;5;246m1 more notice hidden[39m
+
+  /remote-control is active[38;5;246m · Continue here, on your phone, or at [39m
+  [38;5;246m]8;id=58rilm;https://claude.ai/code/session_000000000000000000000000\https://claude.ai/code/session_000000000000000000000000[39m]8;;\
+
+[38;5;246m[48;5;237m❯ [38;5;231mWrite 400 words about tea, slowly, no tools.[39m
+
+[38;5;174m[49m✶[39m [38;5;174mRuminating… [38;5;246m(2s · [38;5;249mthinking[38;5;246m)[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;246m❯ [7m[39m [0m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246m⏸[39m [38;5;246mmanual[39m [38;5;246mmode[39m [38;5;246mon[39m [38;5;246m·[39m [38;5;246mesc[39m [38;5;246mto[39m [38;5;246minterrupt[39m                                                             
+                                                                                        [38;5;114m]8;id=7kdd6q;https://claude.ai/code/session_000000000000000000000000?from=cli\/rc active[39m]8;;\
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

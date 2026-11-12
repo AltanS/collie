@@ -2295,6 +2295,135 @@
   }
  },
  {
+  "fixture": "claude--v2323-rc-off-ask-single--w100.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2323-rc-off-idle--w100.txt",
+  "frame": {
+   "top": 36,
+   "prompt": 37,
+   "bottom": 38,
+   "label": null,
+   "text": "Try \"how do I log an error?\"",
+   "placeholder": true,
+   "status": {
+    "first": 39,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2323-rc-off-permission-bash--w100.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2323-rc-on-ask-single--w100.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2323-rc-on-draft--w100.txt",
+  "frame": {
+   "top": 12,
+   "prompt": 13,
+   "bottom": 14,
+   "label": null,
+   "text": "hello there",
+   "placeholder": false,
+   "status": {
+    "first": 15,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2323-rc-on-idle-joined--w100.txt",
+  "frame": {
+   "top": 28,
+   "prompt": 29,
+   "bottom": 30,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 31,
+    "last": 31
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2323-rc-on-idle-notice--w100.txt",
+  "frame": {
+   "top": 12,
+   "prompt": 13,
+   "bottom": 14,
+   "label": null,
+   "text": "Try \"how does <filepath> work?\"",
+   "placeholder": true,
+   "status": {
+    "first": 15,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2323-rc-on-idle-usage--w100.txt",
+  "frame": {
+   "top": 12,
+   "prompt": 13,
+   "bottom": 14,
+   "label": null,
+   "text": "Try \"how does <filepath> work?\"",
+   "placeholder": true,
+   "status": {
+    "first": 15,
+    "last": 17
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2323-rc-on-permission-bash--w100.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2323-rc-on-rewind--w100.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2323-rc-on-running--w100.txt",
+  "frame": {
+   "top": 16,
+   "prompt": 17,
+   "bottom": 18,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 19,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2323-rc-on-slash-list--w100.txt",
+  "frame": {
+   "top": 16,
+   "prompt": 17,
+   "bottom": 18,
+   "label": null,
+   "text": "/",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

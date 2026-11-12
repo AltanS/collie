@@ -1390,6 +1390,66 @@
    "version": "2.1.319",
    "state": "idle"
   },
+  "claude--v2323-rc-off-ask-single--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "dialog"
+  },
+  "claude--v2323-rc-off-idle--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "idle"
+  },
+  "claude--v2323-rc-off-permission-bash--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "dialog"
+  },
+  "claude--v2323-rc-on-ask-single--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "dialog"
+  },
+  "claude--v2323-rc-on-draft--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "draft"
+  },
+  "claude--v2323-rc-on-idle-joined--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "idle"
+  },
+  "claude--v2323-rc-on-idle-notice--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "idle"
+  },
+  "claude--v2323-rc-on-idle-usage--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "idle"
+  },
+  "claude--v2323-rc-on-permission-bash--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "dialog"
+  },
+  "claude--v2323-rc-on-rewind--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "dialog"
+  },
+  "claude--v2323-rc-on-running--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "running"
+  },
+  "claude--v2323-rc-on-slash-list--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.323",
+   "state": "popup"
+  },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
    "version": "unversioned",

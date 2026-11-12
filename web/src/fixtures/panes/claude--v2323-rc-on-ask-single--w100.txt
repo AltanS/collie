@@ -1,0 +1,40 @@
+
+  You wait again. Three minutes, maybe four. The waiting is part of the tea.
+
+  Steam rises. You smell it first. Some teas smell like hay. Some smell like smoke, or flowers, or
+  toast. Some smell like rain on warm stone.
+
+  You lift the cup. It is hot. You take a small sip. The taste comes in layers. First there is a
+  soft bitterness. Then a little sweetness follows. Last comes a dry feeling on the tongue. That dry
+  feeling comes from tannin. Tannin is a plant compound. It is also in wine and in oak.
+
+  People have done this for thousands of years. In China, monks drank tea to stay awake through long
+  hours of thought. In Japan, people built a quiet ceremony around one bowl. In Britain, tea became
+  a meal in the afternoon. In Morocco, hosts pour mint tea from high above the glass. In India,
+  street vendors boil it with milk, sugar, and spice.
+
+  The forms change. The core stays the same. Hot water meets a leaf, and someone stops to wait.
+
+  Perhaps that is the real gift of tea. It does not rush you. It gives you a few minutes with
+  nothing to do. You hold something warm. You breathe in. You let the day slow down.
+
+  Then the cup is empty. You can fill it again.
+
+[38;5;246m✻[39m [38;5;246mCogitated[39m [38;5;246mfor[39m [38;5;246m20s[39m [38;5;246m·[39m [38;5;246mdone[39m [38;5;246m12:14[39m [38;5;246mAM[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231mAsk me one question with the AskUserQuestion tool: tea or coffee?[39m
+[38;5;246m[49m────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;16m[48;5;153m ☐ Drink [39m[49m
+
+[1m[38;5;231mWhich do you prefer, tea or coffee?[0m
+
+[38;5;153m❯[39m [38;5;246m1.[39m [38;5;153mTea[39m
+     [38;5;246mLeaves steeped in hot water.[39m
+  [38;5;246m2.[39m Coffee
+     [38;5;246mRoasted beans[39m [38;5;246mbrewed with hot water.[39m
+  [38;5;246m3. Type something.[39m
+[38;5;246m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  4. Chat about this
+
+[38;5;246mEnter[39m [38;5;246mto[39m [38;5;246mselect[39m [38;5;246m·[39m [38;5;246m↑/↓[39m [38;5;246mto[39m [38;5;246mnavigate[39m [38;5;246m·[39m [38;5;246mEsc[39m [38;5;246mto[39m [38;5;246mcancel[39m
+

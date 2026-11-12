@@ -36,6 +36,8 @@ class RcFooterPane {
   keysSeen: string[] = [];
   /** The Remote Control row for the box as it stands: null draws none. */
   rc: (box: string) => string | null = () => RC_ROW;
+  /** The whole footer under the box for the box as it stands, as captured; when set it replaces the status rows and `rc`. */
+  footerFor: ((box: string) => string[]) | null = null;
   private readonly head: string[];
   private readonly rule: string;
   private readonly status: string[];
@@ -57,6 +59,7 @@ class RcFooterPane {
   private render(): string {
     const lines = this.box.split("\n");
     const box = lines.map((line, i) => (i === 0 ? `❯ ${line}` : `  ${line}`));
+    if (this.footerFor !== null) return [...this.head, this.rule, ...box, this.rule, ...this.footerFor(this.box)].join("\n");
     const rc = this.rc(this.box);
     return [...this.head, this.rule, ...box, this.rule, ...this.status, ...(rc === null ? [] : [rc])].join("\n");
   }
@@ -188,5 +191,64 @@ describe("a send to an idle Claude Code 2.1.319 pane with Remote Control on", ()
     const answer = await send(TEXT);
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
     expect(pane.submitted).toEqual([]);
+  });
+});
+
+// The same protocol over what Claude Code 2.1.323 really draws (lab capture 2026-11-13, tmux, 100 columns,
+// classic renderer, `claude --remote-control`; the session code in the row's link is masked). The row is the
+// pill `/rc active` (`/rc` once seen five times), right-aligned and drawn as a hyperlink. It shares the mode
+// row when the mode row leaves room, and takes a row of its own under it when a full-width notice row (the
+// tmux focus-events notice, the usage row) or a long mode row leaves none. So the count of rows under the box
+// moves between 1 and 3 on its own as a notice comes or goes; the count leaves the notice and the row out.
+const real = (name: string): string => readFileSync(join(PANES, `claude--v2323-${name}--w100.txt`), "utf8");
+/** The rows under the lower rule of a capture, without the blank padding of the 40-row pane. */
+function footerOf(capture: string): string[] {
+  const rows = capture.replace(/\r/gu, "").split("\n");
+  while (rows.length > 0 && rows.at(-1)!.trim() === "") rows.pop();
+  const bottom = rows.map(plainOf).findLastIndex((r) => /^─{8,}$/u.test(r));
+  return rows.slice(bottom + 1);
+}
+const JOINED = footerOf(real("rc-on-idle-joined"));
+const OWN_ROW = footerOf(real("rc-on-draft"));
+const NOTICE_ROW = footerOf(real("rc-on-idle-notice"));
+
+describe("a send to a Claude Code 2.1.323 pane with Remote Control on, as the lab captured it", () => {
+  test("the captured footers have the shapes this test relies on", () => {
+    expect(JOINED.map(plainOf)).toEqual([expect.stringMatching(/^ {2}⏸ manual mode on · \? for shortcuts {2,}\/rc active$/u)]);
+    expect(OWN_ROW.map(plainOf)).toEqual([
+      "  ⏸ manual mode on",
+      expect.stringMatching(/^ {2}tmux focus-events off\b/u),
+      expect.stringMatching(/^ {2,}\/rc active$/u),
+    ]);
+    expect(NOTICE_ROW).toHaveLength(3);
+  });
+
+  test("the pill shares the mode row at first and takes its own row once the notice comes: the send goes in", async () => {
+    const pane = new RcFooterPane(real("rc-on-idle-joined"));
+    pane.footerFor = (box) => (box === "" ? JOINED : OWN_ROW);
+    const { send } = rig(pane);
+    const answer = await send(TEXT);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.submitted).toEqual([TEXT]);
+  });
+
+  test("the pill on its own row goes back to the mode row once the notice goes: the send goes in", async () => {
+    const pane = new RcFooterPane(real("rc-on-idle-joined"));
+    pane.footerFor = (box) => (box === "" ? OWN_ROW : JOINED);
+    const { send } = rig(pane);
+    const answer = await send(TEXT);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.submitted).toEqual([TEXT]);
+  });
+
+  test("the idle box with the notice and the pill on its own row reads free, and the send goes in", async () => {
+    const pane = new RcFooterPane(real("rc-on-idle-notice"));
+    pane.footerFor = () => NOTICE_ROW;
+    const { send } = rig(pane);
+    const view = await send("", { mode: "prepare" });
+    expect(view.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const answer = await send(TEXT);
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.submitted).toEqual([TEXT]);
   });
 });

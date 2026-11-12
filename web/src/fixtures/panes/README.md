@@ -3351,6 +3351,47 @@ unfocused labels out, so the row coming or going while Collie types fails no pro
 |---|---|
 | `claude--v2319-rc-footer-idle--w100.txt` | An empty box under a finished turn; under it the statusline, `⏵⏵ bypass permissions on (shift+tab to cycle)`, the update notice and `/rc`. Reads `idle`, `none`, `empty`. Labelled `idle` |
 
+## Claude Code 2.1.323 with Remote Control on and off (captured 2026-11-13, 100 columns)
+
+**Captured**, in a private tmux server (`tmux -L`, `capture-pane -p -e`, 100 x 40, LF line ends, 256-colour SGR), with an
+isolated `CLAUDE_CONFIG_DIR` holding only an access token, no hooks and no plugins, in a scratch git folder,
+`--permission-mode default`. Remote Control came from `claude --remote-control <name>` or `/remote-control`, and every
+session was ended with its Disconnect row afterwards. One sanitization pass, length-preserving: the scratch path
+under the home directory became `/home/dev/rc-lab/sample-project` padded with `-` (it wraps the option row of the
+Bash dialog, so its length is kept), the Remote Control session code in the link text and in the OSC 8 hyperlink
+(`https://claude.ai/code/session_…`) became zeros, and the weekly-limit row's time zone became `Europe/Lisbon`.
+No account name, e-mail address or host name was on any screen.
+
+What Remote Control draws, which the 2.1.319 field report only guessed at: the pill `/rc active` (it shortens to
+`/rc` after five sightings, and the banner's header carries the same pill) in the **footer under the box**, right-aligned
+to the last column, as an OSC 8 hyperlink (`ESC ] 8 ; id=… ; <url> ESC \ /rc active ESC [ 39 m ESC ] 8 ; ; ESC \`) in
+colour 114. It sits on the **mode row** when that row leaves room (`⏸ manual mode on · ? for shortcuts` plus the
+pill), and takes **a row of its own** when a full-width row is above it: the tmux focus-events notice, the usage row, a
+running turn's mode row with `Ctrl+Y to paste deleted text`. So the count of rows under the box moves between one
+and three as a notice comes or goes, which is what the profile's `idle.volatile.below.hints` pattern
+`^\s*/rc(?: …)?$` (issue 767) answers: it matches the row of its own, leading spaces and all. The pill drops out of
+dialogs: a dialog (AskUserQuestion, a Bash permission, `/rewind`, the slash list) replaces the footer, so no `/rc`
+row stands under one, and the readers need nothing for it.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2323-rc-on-idle-notice--w100.txt` | Empty box, mode row, the focus-events notice (cut by `…`), the pill on a row of its own. Reads `idle`, `none`, `empty`. Labelled `idle` |
+| `claude--v2323-rc-on-idle-usage--w100.txt` | The same with the weekly-limit row where the notice was (`Europe/Lisbon`). Labelled `idle` |
+| `claude--v2323-rc-on-idle-joined--w100.txt` | Empty box after a turn, no notice: the pill shares the mode row, one footer row. Labelled `idle` |
+| `claude--v2323-rc-on-draft--w100.txt` | `hello there` in the box, mode row, notice, pill on its own row. Labelled `draft` |
+| `claude--v2323-rc-on-running--w100.txt` | A turn running (`✶ Ruminating…`), the mode row `esc to interrupt`, the pill on its own row. **One edit:** the mode row also carried `Ctrl+Y to paste deleted text` (a hint Claude draws after Ctrl+U), which the unread-dialog card read as a modal key; it was blanked, same width, because it is no part of the Remote Control case. Labelled `running` |
+| `claude--v2323-rc-on-ask-single--w100.txt` | An AskUserQuestion select (`Drink`, Tea or Coffee, two described options, `Type something.`, `Chat about this`) with Remote Control on. No footer, no pill. Labelled `dialog` |
+| `claude--v2323-rc-on-permission-bash--w100.txt` | A Bash permission (`touch demo2.txt`, four options) with Remote Control on. Labelled `dialog` |
+| `claude--v2323-rc-on-slash-list--w100.txt` | `/` in the box, the command list filling the screen (ten rows plus wrapped descriptions). Reads as an autocomplete block; the surface read is `unreadable` as on `claude--v21314-core-slash-list--w120.txt`, with Remote Control off too. Labelled `popup` |
+| `claude--v2323-rc-on-rewind--w100.txt` | `/rewind` with three turns listed (`↑ 11 more` is left out by the capture: this build shows a few at a time). Lifts a menu with Continue and Cancel. Labelled `dialog` |
+| `claude--v2323-rc-off-idle--w100.txt`, `-ask-single--`, `-permission-bash--` | The same idle box, ask and permission dialog with Remote Control off. The dialogs read as the on-captures do (`remote-control.test.ts`). Labelled `idle`, `dialog`, `dialog` |
+
+The Send Protocol is pinned over these footers in `bridge/surface/protocol.claude-rc-footer.test.ts` (the footer
+changing from the joined shape to the own-row shape, and back, while Collie types fails without the hint). The
+tall `/rewind` list in `region-top.test.ts` is **constructed** from `claude--v2323-rc-on-rewind--w100.txt` (the
+extra turns are copies of its own entries): a rewind taller than 30 rows under its plain `─` border is the case the
+border window of 60 rows (`BORDER_SCAN_WINDOW`) reads.
+
 ## omp fuzzy command list under the box (captured 2026-10-25, omp 18.6.1 and 18.12.6, omp-gang testers 01 and 02)
 
 Real pane reads from the testers' rig: a scratch Herdr with its own bridge, `omp` on `openrouter/anthropic/claude-haiku-4.5`,

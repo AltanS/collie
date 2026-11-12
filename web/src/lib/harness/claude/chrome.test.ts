@@ -1142,6 +1142,21 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2304-select-preview-cjk-moved", statusRows: 0, draft: null, stripped: 0 },
     // Remote Control on (2.1.319): `/rc` is the fourth statusline row, stripped with the rest.
     { fixture: "v2319-rc-footer-idle--w100", statusRows: 4, draft: null, stripped: 9 },
+    // Remote Control on, 2.1.323 (lab 2026-11-13): the pill `/rc active` shares the mode row (one statusline row)
+    // or takes a row of its own under a full-width notice (three), and is stripped with the rest. Dialogs draw
+    // no footer, so no status row. The slash list's `/` is the draft; the same idle box with Remote Control off.
+    { fixture: "v2323-rc-off-ask-single--w100", statusRows: 0, draft: null, stripped: 20 },
+    { fixture: "v2323-rc-off-idle--w100", statusRows: 1, draft: null, stripped: 5 },
+    { fixture: "v2323-rc-off-permission-bash--w100", statusRows: 0, draft: null, stripped: 8 },
+    { fixture: "v2323-rc-on-ask-single--w100", statusRows: 0, draft: null, stripped: 2 },
+    { fixture: "v2323-rc-on-draft--w100", statusRows: 3, draft: "hello there", stripped: 30 },
+    { fixture: "v2323-rc-on-idle-joined--w100", statusRows: 1, draft: null, stripped: 14 },
+    { fixture: "v2323-rc-on-idle-notice--w100", statusRows: 3, draft: null, stripped: 30 },
+    { fixture: "v2323-rc-on-idle-usage--w100", statusRows: 3, draft: null, stripped: 30 },
+    { fixture: "v2323-rc-on-permission-bash--w100", statusRows: 0, draft: null, stripped: 5 },
+    { fixture: "v2323-rc-on-rewind--w100", statusRows: 0, draft: null, stripped: 6 },
+    { fixture: "v2323-rc-on-running--w100", statusRows: 2, draft: null, stripped: 26 },
+    { fixture: "v2323-rc-on-slash-list--w100", statusRows: 0, draft: "/", stripped: 26 },
     { fixture: "wizard-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-final", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-pointer-next", statusRows: 0, draft: null, stripped: 0 },

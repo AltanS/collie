@@ -197,6 +197,16 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2310-auth-refresh-output-spinner-timer--w52.txt",
     // Remote Control on, 2.1.319: the lone `/rc` row is the last statusline row, and the box stands.
     "claude--v2319-rc-footer-idle--w100.txt",
+    // Claude Code 2.1.323 with Remote Control on (lab 2026-11-13): the pill `/rc active` right-aligned on the mode
+    // row or on a row of its own, and the box stands. Also the same idle box with Remote Control off, and the
+    // whole slash list under the box, as on the herdr-core capture of 2.1.314.
+    "claude--v2323-rc-off-idle--w100.txt",
+    "claude--v2323-rc-on-draft--w100.txt",
+    "claude--v2323-rc-on-idle-joined--w100.txt",
+    "claude--v2323-rc-on-idle-notice--w100.txt",
+    "claude--v2323-rc-on-idle-usage--w100.txt",
+    "claude--v2323-rc-on-running--w100.txt",
+    "claude--v2323-rc-on-slash-list--w100.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
   ]);
@@ -445,6 +455,8 @@ describe("invariant: rows appended below a box never change the box or its draft
     "claude--v2302-slash-model-list-padded--w120--h36.txt": true,
     // 2.1.314's whole slash list on herdr-core (M78 spec 04): `  ❯ /add-dir` stands in the tail.
     "claude--v21314-core-slash-list--w120.txt": true,
+    // 2.1.323's whole slash list with Remote Control on, the same shape.
+    "claude--v2323-rc-on-slash-list--w100.txt": true,
   } satisfies Record<string, true>;
 
   it.each(BOX_FIXTURES.filter((name) => !Object.hasOwn(POINTER_TAILS, name)))("%s", (name) => {
