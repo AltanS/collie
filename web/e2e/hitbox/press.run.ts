@@ -188,6 +188,9 @@ for (const id of COVER_SCREENS) {
     await page.waitForSelector("#root *", { timeout: 8000 });
     await page.waitForTimeout(1200);
     await recipe.open?.(page);
+    // Text in the field turns the mic into Send, so the composer's own reach is among the targets pressed (review 1).
+    const field = page.locator('[data-slot="composer-box"] textarea').first();
+    if ((await field.count()) > 0) await field.fill("run the tests");
     await page.waitForTimeout(300);
     const sheet = (await page.locator('[role="dialog"]').count()) > 0;
     const result = await scan(page, sheet ? { root: '[role="dialog"]', scroll: false } : { scroll: false });
