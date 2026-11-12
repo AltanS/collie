@@ -10,6 +10,8 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+import fixes from "../fixtures/hitbox-fixes.json";
+
 const mono = "font-mono text-[11px]";
 
 interface Column {
@@ -257,8 +259,26 @@ export function ProposalsTable() {
     <>
       <ProseTable columns={[{ label: "Proposal" }, { label: "Cost" }, { label: "Risk" }]} rows={PROPOSALS} />
       <Fine>
-        Order is by taps won per day of work: 1 and 2 address the biggest loss, 3 and 4 the next two. None of these is in this branch. Nothing under web/src outside the playground changed.
+        Order is by taps won per day of work: 1 and 2 address the biggest loss, 3 and 4 the next two. Seven of the eight are built on the fix branch, one commit each (the missed-tap counter, 8, is not); card 14 holds the numbers before and after. Cards 1 to 13 describe the build as it was found.
       </Fine>
+    </>
+  );
+}
+
+// ── 15. Before and after the fixes ────────────────────────────────────────────────────────────
+
+/**
+ * The seven fixes of the fix branch, each with what was measured before it (the investigation's build,
+ * b9262b515) and after it, in the same engine with the same scripts. The numbers are read from
+ * `fixtures/hitbox-fixes.json`, which is written by hand from the runs named in `REGRESSIONS.md`; the census
+ * rows themselves are in `hitbox-census.json` and follow the browser run.
+ */
+export function BeforeAfterTable() {
+  const rows: Cell[][] = fixes.rows.map((r) => cells(r.fix, r.measured, r.before, r.after));
+  return (
+    <>
+      <ProseTable columns={[{ label: "Fix" }, { label: "Measured" }, { label: "Before" }, { label: "After" }]} rows={rows} />
+      <Fine>{fixes.note}</Fine>
     </>
   );
 }

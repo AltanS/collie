@@ -9,7 +9,7 @@
 // census (every screen, two phone sizes) and the Dashboard experiments. The census tables and overlays
 // below read it or measure live; the written findings quote the experiments and say when.
 //
-// Investigation only: nothing under `web/src` outside the playground changed. DEV-ONLY, unreachable from the
+// Cards 1 to 13 are the investigation, as found at b9262b515; card 14 is the fixes, before and after. DEV-ONLY, unreachable from the
 // app entry: see ../app.tsx and web/playground.html.
 
 import type { ReactNode } from "react";
@@ -17,7 +17,7 @@ import type { ReactNode } from "react";
 import { Card, Group, Section, type SectionDef } from "../layout";
 import { CensusExplorer, VerdictCounts, WorstTwenty } from "../hitbox/census-cards";
 import { DashboardOverlay, DecisionOverlay, PaneOverlay, SettingsOverlay } from "../hitbox/live-cards";
-import { CausesTable, FindingsList, MissingTable, ProposalsTable, RulesTable } from "../hitbox/report";
+import { BeforeAfterTable, CausesTable, FindingsList, MissingTable, ProposalsTable, RulesTable } from "../hitbox/report";
 import { TapLab } from "../hitbox/tap-lab";
 
 export const DEF: SectionDef = {
@@ -103,6 +103,9 @@ export function HitboxSection(): ReactNode {
       <Group title="Proposals">
         <Card state="hitbox-proposals" label="13 · Eight proposals, cost, risk" span="all">
           <ProposalsTable />
+        </Card>
+        <Card state="hitbox-before-after" label="14 · Before and after" reach="the Dashboard, the pane header and the floating button." span="all">
+          <BeforeAfterTable />
         </Card>
       </Group>
     </Section>

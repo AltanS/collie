@@ -212,11 +212,27 @@ async function runPollCell(browser: Browser, cell: PollCell): Promise<Record<str
   let lost = 0;
   const elsewhere: Record<string, number> = {};
   let nodeReplaced = 0;
-  for (let i = 0; i < TRIES; i += 1) {
+  // A try is VOID when the target had already moved between the moment its box was read and the moment the finger
+  // lands: the page's own poll (not the one this cell sends) answered in that gap, with no finger down to hold it.
+  // That is a list moving under no hand, and it tells nothing about a press; the count is reported as `voided`
+  // (`HITBOX_VOID=1`). It catches few: a row that ARRIVES glides in over a few hundred ms, so a poll that answered
+  // just before the finger lands still looks unmoved at the read and slides under the press. About 9 tries in 100
+  // are that (an in-page recorder showed the page's own poll answering 190ms before the finger), after the fix as
+  // before; it is the one loss the held list cannot reach, because no finger was down when the poll committed.
+  let voided = 0;
+  let counted = 0;
+  for (let attempt = 0; counted < TRIES && attempt < TRIES * 3; attempt += 1) {
     const box = await watch(page, def.find(page));
     const x = box.x + box.w / 2;
     const y = box.y + box.h / 2;
     await clicks(page);
+    const stillThere = await def.find(page).first().boundingBox();
+    if (process.env.HITBOX_VOID === "1" && (stillThere === null || Math.abs(stillThere.y - box.y) > 1)) {
+      voided += 1;
+      await sleep(1200);
+      continue;
+    }
+    counted += 1;
     const before = control.asked;
     // The finger lands; 30 ms later the poll starts (what `tick` does on a focus event); the answer
     // comes 60 ms after that and React commits it; the finger lifts at 150 ms.
@@ -240,7 +256,7 @@ async function runPollCell(browser: Browser, cell: PollCell): Promise<Record<str
     await sleep(Number(process.env.HITBOX_SETTLE ?? "220"));
   }
   await close();
-  return { ...cell, tries: TRIES, delivered, lost, elsewhere, nodeReplaced };
+  return { ...cell, tries: TRIES, delivered, lost, elsewhere, nodeReplaced, voided };
 }
 
 test("lost taps while a poll answer lands in the press", async ({ browser }) => {

@@ -62,6 +62,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Dashboard list holds still while a finger is on it.** A poll that brought or removed a row slid the list under a pressed finger, so a tap landed on a neighbour. The list now keeps its order while a finger is down on it and for 300 ms after: a status, an attention mark and the summary count still update in place, and only the arrival or removal of a row waits. A list nobody touches is not delayed at all.
 - **A new small or covered tap target fails a script.** `cd web && bun run hitbox:check` builds the app, walks every screen at two phone sizes in a real browser and exits 1 on a tap target that is small or covered and is not on the written list of known ones (`web/e2e/hitbox/known.json`). It touches nothing outside a temp file and is not part of CI.
 - **A pane held under a finger keeps its place when its tab closes.** The Dashboard list holds its rows while a finger is down, but a pane whose tab closed with it fell to the fallback sort and slid a row. The tab and workspace lists that place the rows are now held by the same rule, and update in place the same way.
+- **The hitbox playground section shows each fix before and after.** Card 14 of the states playground (a dev-only page, never in the app) lists what each tap fix measured before and after in a real browser, and the census cards now read the fix branch's walk. Nothing in the app changes.
 
 ### Docs
 
