@@ -24,10 +24,15 @@ import "./lib/install";
 import { startPushTitleSync } from "./lib/push-titles";
 import { startViewportPin } from "./lib/viewport-pin";
 import { installHiddenPause } from "./lib/page-hidden";
+import { installPageZoomGuard } from "./lib/page-zoom";
+import { loadPrefs } from "./hooks/use-dash-prefs";
 
 // A hidden page runs no animation (issue 748): the root carries an attribute while it is hidden, and
 // index.css pauses every animation under it. First, so a page opened in the background never starts.
 installHiddenPause();
+// A pinch zooms the page unless this device turned Pinch to zoom off (lib/page-zoom.ts). The setting is
+// read at each pinch, so a change in Settings needs no reload.
+installPageZoomGuard(document, () => loadPrefs().pageZoom);
 /** The longest the first paint waits for the worn glyph set's chunk. */
 const FIRST_PAINT_GLYPH_WAIT_MS = 150;
 

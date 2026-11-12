@@ -2963,6 +2963,8 @@ export const ru: Dictionary = {
   "settings.zoomPill.description": "Кнопка с лупой на панели действий, которая открывает экран на весь размер. В чате она не показывается.",
   "settings.zoomPill.option.screen": "Вид экрана",
   "settings.zoomPill.option.off": "Выкл.",
+  "settings.pageZoom.title": "Масштаб щипком",
+  "settings.pageZoom.description": "Сведите или разведите пальцы, чтобы увеличить страницу. Если выключено, случайный щипок не масштабирует приложение. Масштаб в режиме экрана работает в любом случае.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Закрепить",

@@ -2834,6 +2834,8 @@ export const pt: Dictionary = {
   "settings.zoomPill.description": "O botão de lupa da barra de ações que abre a tela em tamanho total. Ele nunca aparece no chat.",
   "settings.zoomPill.option.screen": "Vista de tela",
   "settings.zoomPill.option.off": "Desativado",
+  "settings.pageZoom.title": "Pinçar para ampliar",
+  "settings.pageZoom.description": "Faça pinça na página para ampliá-la. Desativado impede que uma pinça acidental amplie o app. O zoom da visualização Tela funciona de qualquer forma.",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Fixar",
