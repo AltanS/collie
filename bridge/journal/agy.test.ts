@@ -64,16 +64,37 @@ describe("AGY native steps", () => {
       kind: "tool",
       id: "call-1",
       name: "run_command",
+      summary: "pwd",
+      call: { kind: "execute", command: "pwd", exitCode: 0 },
       result: { text: "Command exited with code 0." },
     });
   });
 
-  test("renders compaction separately and native tool errors as failures", () => {
+  test("renders compaction separately, extracts non-zero execute exit codes and marks native tool errors", () => {
     const summary = step(23, field(30, field(5, "Earlier context.")));
+    const failedCmd = step(
+      132,
+      field(140, field(2, field(1, "Command exited with code 2.\n\nCommand output:\nfail"))),
+      field(
+        4,
+        message(
+          field(1, "call-2"),
+          field(2, "run_command"),
+          field(3, '{"CommandLine":"bun test","toolSummary":"Unit test execution"}'),
+        ),
+      ),
+    );
     const error = Buffer.concat([tool, field(31, field(2, "file does not exist"))]);
-    const entries = agyJournal([]).parse([row(3, 23, summary), row(4, 132, error)].join("\n"));
+    const entries = agyJournal([]).parse([row(3, 23, summary), row(4, 132, failedCmd), row(5, 132, error)].join("\n"));
     expect(entries[0]).toMatchObject({ role: "summary", parts: [{ kind: "text", text: "Earlier context." }] });
-    expect(entries[1]?.parts[0]).toMatchObject({ result: { text: "file does not exist", isError: true } });
+    expect(entries[1]?.parts[0]).toMatchObject({
+      kind: "tool",
+      id: "call-2",
+      name: "run_command",
+      summary: "bun test",
+      call: { kind: "execute", command: "bun test", description: "Unit test execution", exitCode: 2 },
+    });
+    expect(entries[2]?.parts[0]).toMatchObject({ result: { text: "file does not exist", isError: true } });
   });
 
   test("supports historical tool step_types (5,7,8,9,17,21,33) and plumbing step_types (90,98,101,139) with 0 unknowns", () => {
@@ -349,11 +370,32 @@ describe("AGY plaintext transcript.jsonl fallback", () => {
         JSON.stringify({
           step_index: 1,
           type: "PLANNER_RESPONSE",
+          thinking: "Let me inspect /a.ts first.",
+          truncated_fields: ["thinking"],
           content: "Fallback answer",
-          tool_calls: [{ name: "view_file", args: { path: "/a.ts" } }],
+          tool_calls: [{ name: "read_file", args: { Path: '"/a.ts"', StartLine: "1", EndLine: "20" } }],
           created_at: "2026-10-21T00:00:01Z",
         }),
-        JSON.stringify({ step_index: 2, type: "GENERIC", content: "Tool output", created_at: "2026-10-21T00:00:02Z" }),
+        JSON.stringify({
+          step_index: 2,
+          type: "PLANNER_RESPONSE",
+          thinking: "Now run the command.",
+          content: "",
+          tool_calls: [
+            { name: "run_command", args: { CommandLine: '"ls -la"', toolSummary: '"List files"' } },
+            {
+              name: "invoke_subagent",
+              args: {
+                TypeName: '"research"',
+                Prompt: '"Investigate \\"\\\\n\\"\\n<truncated 120 bytes>',
+              },
+            },
+            { name: "run_command", args: { CommandLine: "true" } },
+            { name: "read_file", args: { Path: "123", StartLine: 1, EndLine: 20 } },
+          ],
+          created_at: "2026-10-21T00:00:02Z",
+        }),
+        JSON.stringify({ step_index: 3, type: "GENERIC", content: "Tool output", created_at: "2026-10-21T00:00:03Z" }),
       ].join("\n") + "\n",
     );
 
@@ -365,8 +407,46 @@ describe("AGY plaintext transcript.jsonl fallback", () => {
     expect(entries.map((e) => [e.uuid, e.role])).toEqual([
       ["agy-0", "user"],
       ["agy-1", "assistant"],
-      ["agy-2", "note"],
+      ["agy-2", "assistant"],
+      ["agy-3", "note"],
     ]);
     expect(entries[0]?.parts).toEqual([{ kind: "text", text: "Hello from fallback" }]);
+    expect(entries[1]?.parts).toEqual([
+      { kind: "thinking", text: "Let me inspect /a.ts first.", truncated: true },
+      { kind: "text", text: "Fallback answer" },
+      {
+        kind: "tool",
+        name: "read_file",
+        summary: "/a.ts",
+        call: { kind: "read", path: "/a.ts", range: [1, 20] },
+      },
+    ]);
+    expect(entries[2]?.parts).toEqual([
+      { kind: "thinking", text: "Now run the command." },
+      {
+        kind: "tool",
+        name: "run_command",
+        summary: "ls -la",
+        call: { kind: "execute", command: "ls -la", description: "List files" },
+      },
+      {
+        kind: "tool",
+        name: "invoke_subagent",
+        summary: 'Investigate "\\n" <truncated 120 bytes>',
+        call: { kind: "task", agent: "research", summary: 'Investigate "\\n" <truncated 120 bytes>' },
+      },
+      {
+        kind: "tool",
+        name: "run_command",
+        summary: "true",
+        call: { kind: "execute", command: "true" },
+      },
+      {
+        kind: "tool",
+        name: "read_file",
+        summary: "123",
+        call: { kind: "read", path: "123", range: [1, 20] },
+      },
+    ]);
   });
 });

@@ -164,15 +164,21 @@ function stepEntry(idx: number, type: number, payload: Uint8Array): TranscriptEn
       /* Keep a malformed input as the native string. */
     }
     const summary = summarizeToolInput(args);
+    const classified = classifyToolCall(name, args, summary);
     const tool: Extract<TranscriptPart, { kind: "tool" }> = {
       kind: "tool",
       name,
       summary,
-      call: classifyToolCall(name, args, summary),
+      call: classified,
     };
     const id = string(call, 1);
     if (id) tool.id = id;
     const output = string(proto(bytes(proto(bytes(step, 140)), 2)), 1);
+    if (classified.kind === "execute") {
+      const match = /^Command exited with code (-?\d+)\b/m.exec(output);
+      const exitCode = match ? Number(match[1]) : Number.NaN;
+      if (Number.isSafeInteger(exitCode)) classified.exitCode = exitCode;
+    }
     const error = string(proto(bytes(step, 31)), 2);
     if (error) tool.result = { ...clamp(error, MAX_RESULT_CHARS), isError: true };
     else if (output) tool.result = clamp(output, MAX_RESULT_CHARS);
@@ -211,6 +217,117 @@ const JSONL_NOTE_TYPES = new Set([
   "ERROR_MESSAGE",
   "CODE_ACTION",
 ]);
+
+const JSONL_STRING_KEYS = new Set([
+  "file_path",
+  "notebook_path",
+  "path",
+  "filePath",
+  "Path",
+  "TargetFile",
+  "AbsolutePath",
+  "DirectoryPath",
+  "SearchPath",
+  "command",
+  "cmd",
+  "script",
+  "CommandLine",
+  "description",
+  "label",
+  "toolSummary",
+  "pattern",
+  "query",
+  "q",
+  "claim",
+  "Query",
+  "glob",
+  "include",
+  "url",
+  "task",
+  "Role",
+  "subagent_type",
+  "agent",
+  "agent_type",
+  "TypeName",
+  "model",
+  "Model",
+  "prompt",
+  "Prompt",
+  "question",
+  "header",
+]);
+
+function decodeTruncatedJsonString(raw: string): string {
+  let out = "";
+  for (let i = 1; i < raw.length; i++) {
+    const ch = raw[i]!;
+    if (ch !== "\\") {
+      out += ch;
+      continue;
+    }
+    const next = raw[++i];
+    if (next === undefined) break;
+    if (next === '"' || next === "\\" || next === "/") out += next;
+    else if (next === "n") out += "\n";
+    else if (next === "r") out += "\r";
+    else if (next === "t") out += "\t";
+    else if (next === "b") out += "\b";
+    else if (next === "f") out += "\f";
+    else if (next === "u") {
+      const hex = raw.slice(i + 1, i + 5);
+      if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+        out += String.fromCharCode(Number.parseInt(hex, 16));
+        i += 4;
+      } else {
+        out += "\\u";
+      }
+    } else {
+      out += next;
+    }
+  }
+  return out;
+}
+
+// In compact `transcript.jsonl`, AGY serializes each value in `tool_calls[].args` as a JSON string
+// (`"\"/a.ts\""`, `"1"`, or a truncated `"\"hello\n<truncated 40 bytes>"`). Unwrap those values so
+// `summarizeToolInput` and `classifyToolCall` see native strings, numbers and arrays, while leaving
+// already-decoded `transcript_full.jsonl` objects untouched.
+function unwrapJsonlArgs(args: JsonValue | undefined): JsonValue | undefined {
+  if (args === null || args === undefined || typeof args !== "object" || Array.isArray(args)) return args;
+  const entries = Object.entries(args);
+  if (entries.length === 0) return args;
+  const out: Record<string, JsonValue | undefined> = {};
+  let sawQuotedOrContainer = false;
+  for (const [k, v] of entries) {
+    if (typeof v !== "string") return args;
+    if (v.startsWith('"') || v.startsWith("[") || v.startsWith("{")) {
+      try {
+        // SAFETY: JSON.parse returns a valid JsonValue by construction.
+        out[k] = JSON.parse(v) as JsonValue;
+        sawQuotedOrContainer = true;
+        continue;
+      } catch {
+        if (v.startsWith('"') && /<truncated \d+ bytes>$/.test(v)) {
+          out[k] = decodeTruncatedJsonString(v);
+          sawQuotedOrContainer = true;
+          continue;
+        }
+        return args;
+      }
+    }
+    if (!JSONL_STRING_KEYS.has(k) && /^(?:-?\d+(?:\.\d+)?|true|false|null)$/.test(v)) {
+      try {
+        // SAFETY: JSON.parse returns a valid JsonValue by construction.
+        out[k] = JSON.parse(v) as JsonValue;
+        continue;
+      } catch {
+        return args;
+      }
+    }
+    return args;
+  }
+  return sawQuotedOrContainer ? out : args;
+}
 
 export function createAgyReducer(): RowReducer {
   const unknown = createUnknownCounter({ rows: KNOWN_STEP_ROWS, roles: [], parts: [] });
@@ -256,6 +373,11 @@ export function createAgyReducer(): RowReducer {
               : undefined;
       if (role === undefined) return NO_CHANGE;
       const parts: TranscriptPart[] = [];
+      if (role === "assistant" && typeof row.thinking === "string" && row.thinking.trim() !== "") {
+        const clipped = clamp(stripAnsi(row.thinking), MAX_TEXT_CHARS);
+        if (Array.isArray(row.truncated_fields) && row.truncated_fields.includes("thinking")) clipped.truncated = true;
+        parts.push({ kind: "thinking", ...clipped });
+      }
       if (typeof row.content === "string" && row.content.trim() !== "") {
         const content = role === "user" ? userRequest(row.content) : row.content;
         const clipped = clamp(stripAnsi(content), MAX_TEXT_CHARS);
@@ -267,8 +389,9 @@ export function createAgyReducer(): RowReducer {
           if (tool === null || typeof tool !== "object" || Array.isArray(tool) || typeof tool.name !== "string") {
             continue;
           }
-          const summary = summarizeToolInput(tool.args);
-          parts.push({ kind: "tool", name: tool.name, summary, call: classifyToolCall(tool.name, tool.args, summary) });
+          const args = unwrapJsonlArgs(tool.args);
+          const summary = summarizeToolInput(args);
+          parts.push({ kind: "tool", name: tool.name, summary, call: classifyToolCall(tool.name, args, summary) });
         }
       }
       if (parts.length === 0) return NO_CHANGE;
