@@ -145,6 +145,23 @@ describe("Official tricks: one list", () => {
     expect(officialRow("morph").querySelector('[data-line="places"]')).not.toBeNull();
   });
 
+  it("draws Uses agent tokens on an entry before Add, from the pin alone, and keeps it on the row Add makes", async () => {
+    const MORPH: WireOfficialTrick = { ...entry("morph", "Morph", "Your agent answers with one screen you can tap, not a wall of text."), givesRules: true, agentView: true };
+    serveList(() => ({ tricks: [MORPH, { ...REVIEW, decidesReply: true }, BUILDS, { ...INBOX, state: "added", decidesReply: true }] }));
+    const { store } = await liveStore([installed(INBOX, { decidesReply: true }), LEGS]);
+    renderCard(store);
+    await vi.waitFor(() => expect(document.querySelector('[data-official="morph"]')).not.toBeNull());
+    const chip = (row: HTMLElement) => row.querySelector('[data-slot="token-use"]')?.textContent ?? null;
+    expect(chip(officialRow("morph"))).toBe("Uses agent tokens");
+    expect(chip(officialRow("design-review"))).toBe("Uses agent tokens");
+    expect(chip(officialRow("running-builds"))).toBeNull();
+    expect(chip(trickRow("pr-inbox"))).toBe("Uses agent tokens");
+    expect(chip(trickRow("legs"))).toBeNull();
+    // After the origin label, inside the one open button.
+    const button = officialRow("design-review").querySelector('[data-slot="official-about"]');
+    expect([...(button?.querySelector('[data-slot="row-labels"]')?.children ?? [])].map((el) => el.getAttribute("data-slot"))).toEqual(["trick-origin", "token-use"]);
+  });
+
   it("adds a trick and switches it on, and its row keeps its place; no id appears twice", async () => {
     const user = userEvent.setup();
     let state: WireOfficialTrick["state"] = "absent";
@@ -381,6 +398,30 @@ describe("Official tricks: the About sheet before the add", () => {
     await user.click(within(dialog).getByRole("button", { name: "Add" }));
     await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(posts).toEqual(["/api/tricks/official/design-review/add"]);
+  });
+
+  it("adds on a tap on the row's Add and opens no sheet: Add is a sibling of the About button, above its layer", async () => {
+    const user = userEvent.setup();
+    serveList(() => ({ tricks: [REVIEW] }));
+    const posts: string[] = [];
+    server.use(
+      http.post("/api/tricks/official/:id/:mode", ({ request }) => {
+        posts.push(new URL(request.url).pathname);
+        return HttpResponse.json({ id: "design-review", state: "added" });
+      }),
+    );
+    const { store } = await liveStore([LEGS]);
+    renderCard(store);
+    await vi.waitFor(() => officialRow("design-review"));
+    const row = officialRow("design-review");
+    const about = within(row).getByRole("button", { name: "About Design Review" });
+    const add = within(row).getByRole("button", { name: "Add Design Review" });
+    expect(about.contains(add)).toBe(false);
+    expect(about.className).toContain("after:inset-0");
+    expect(add.className).toContain("z-10");
+    await user.click(add);
+    await vi.waitFor(() => expect(posts).toEqual(["/api/tricks/official/design-review/add"]));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("stays open and says why when the add fails", async () => {

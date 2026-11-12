@@ -76,6 +76,8 @@ import {
   DECISION_KEY_MAX,
   DECISION_KEYS,
   DECISION_VIEW_KINDS,
+  DECIDES_REPLY_LINE,
+  DECIDES_WORDS,
   DECISION_VIEW_LIMITS,
   DECISIONS_MAX,
   DEFAULT_DECISION_PRIORITY,
@@ -849,7 +851,7 @@ const DECISION_KEY_WORDS = {
   priority: { type: "word", required: "no", limit: `one of ${codeList(HILL_PRIORITIES)}. Default \`${DEFAULT_DECISION_PRIORITY}\``, what: `A request, not a fact. Only \`now\` sends a notification, and one sender holds at most ${String(HILL_NOW_MAX)} open \`now\` Decisions.` },
   text: { type: "word", required: "no", limit: `one of ${codeList(HILL_TEXT_MODES)}. Default \`${DEFAULT_DECISION_TEXT}\``, what: "Whether the person may, must, or may not add words to the answer. `none` needs at least one option." },
   about: { type: "session id", required: "no", limit: "an `id` from the facts' sessions, `memberId:paneId`", what: "The session the card is about. The card opens its Chat." },
-  replyTo: { type: "session id", required: "no", limit: "an `id` from the facts' sessions", what: "The session that gets the person's words, as the person's own WalkyTalky message." },
+  replyTo: { type: "session id", required: "no", limit: "an `id` from the facts' sessions. Only for a trick whose `trick.toml` says `decides = \"reply\"`", what: "The session that gets the person's words, as the person's own WalkyTalky message. Without `decides = \"reply\"` the Decision is refused." },
   media: { type: "list", required: "no", limit: `at most ${String(HILL_MEDIA_MAX)}; each \`file\` (a PNG, JPEG or WebP in the trick's folder, ${sizeWords(HILL_MEDIA_BYTES_MAX)} at most) and optionally \`caption\` (at most ${String(HILL_MEDIA_CAPTION_MAX)} characters)`, what: "Pictures on the card." },
   links: { type: "list", required: "no", limit: `at most ${String(HILL_LINKS_MAX)}; each \`label\` (at most ${String(HILL_LINK_LABEL_MAX)}) and \`href\` (an https or http address, at most ${String(HILL_LINK_HREF_MAX)} characters)`, what: "Web pages that give more." },
   expiresAt: { type: "instant", required: "no", limit: `epoch milliseconds. Left out, ${String(HILL_DEFAULT_EXPIRY_DAYS)} days; never more than ${String(HILL_MAX_EXPIRY_DAYS)} days`, what: "When the Decision closes by itself, as expired." },
@@ -1206,6 +1208,7 @@ export function hillRulesOf(n: ProgramNumbers): HillRulesEntry {
       { case: "A document with no `decisions` key", result: "Changes nothing." },
       { case: "`decisions` is `[]`", result: "Withdraws every open card of the trick." },
       { case: "A Decision the parser or the Hill refuses, or that names a session that is not there", result: "Changes nothing for its key: the version on the Hill stays. It shows as a refusal." },
+      { case: "A Decision with `replyTo` from a trick whose `trick.toml` does not say `decides = \"reply\"`", result: `Refused with "${DECIDES_REPLY_LINE}" An open card of its key is withdrawn, so no answer reaches a session.` },
       { case: "A failed or timed-out run", result: "Changes nothing." },
       { case: "The trick switched off or removed", result: 'Every open card of the trick is withdrawn at once, "the trick is off".' },
       { case: "The Hill switched off", result: "No post, replace or withdraw happens, and the trick still runs. Its row says its Decisions are not shown." },
@@ -1252,6 +1255,7 @@ const MANIFEST_WORDS = {
   about: { type: "text", required: "no", limit: `at most ${String(ABOUT_MAX)} characters, plain text, a blank line splits paragraphs`, contract: TRICK_CONTRACT_DEFAULT, what: "The text of the About sheet." },
   version: { type: "text", required: "no", limit: `1 to ${String(VERSION_MAX)} characters: letters, digits, \`.\`, \`+\` and \`-\`, such as \`1.2.0\``, contract: TRICK_CONTRACT_DEFAULT, what: "The trick's own version. The About sheet shows it. Collie never compares it and reads no tag." },
   rules: { type: "file name", required: `yes, with \`${AGENT_VIEW_PLACE}\`; refused without it`, limit: `a file in the trick's folder of at most ${String(RULES_NAME_MAX)} characters ending in \`.md\`, such as \`rules.md\``, contract: AGENT_VIEW_CONTRACT, what: "The instructions the agent of a session reads. The person reads them whole before they switch the trick on." },
+  decides: { type: "word", required: "no", limit: `${orList(DECIDES_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: "Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again." },
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: Omit<ManifestEntry, "key"> };
 
 /** A whole `trick.toml` of a program trick, in the smallest useful shape. */

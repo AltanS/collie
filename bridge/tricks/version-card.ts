@@ -133,17 +133,28 @@ export const WARN_VERBS = {
   import: "imports a package Collie does not install",
 } as const satisfies Readonly<Record<keyof typeof WARN_PLAIN, string>>;
 
-/** The rights a manifest asks for past the base: its environment names and its places, an agent view among them. */
-function rightsOf(manifest: Pick<TrickManifest, "env" | "places" | "agentView"> | undefined): Set<string> {
+/** The chip of the right `decides = "reply"`: its Decisions may type your answer into a session. */
+export const DECIDES_REPLY_CHIP = "answers go to a session";
+
+/** The rights a manifest asks for past the base: its environment names, its places (an agent view among them), and `decides`. */
+function rightsOf(manifest: Pick<TrickManifest, "env" | "places" | "agentView" | "decides"> | undefined): Set<string> {
   if (manifest === undefined) return new Set();
   const places: string[] = [...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])];
-  return new Set([...(manifest.env ?? []).map((name) => `env:${name}`), ...places.map((place) => `place:${place}`)]);
+  const decides = manifest.decides === undefined ? [] : [`decides:${manifest.decides}`];
+  return new Set([...(manifest.env ?? []).map((name) => `env:${name}`), ...places.map((place) => `place:${place}`), ...decides]);
+}
+
+/** One right as its chip says it. */
+function rightWords(right: string): string {
+  if (right.startsWith("env:")) return right.slice(4);
+  if (right.startsWith("decides:")) return DECIDES_REPLY_CHIP;
+  return placeWords(right.slice(6));
 }
 
 /** What the new version asks for that the approved one did not, as chip words. */
-export function newRights(base: Pick<TrickManifest, "env" | "places" | "agentView"> | undefined, next: Pick<TrickManifest, "env" | "places" | "agentView"> | undefined): string[] {
+export function newRights(base: Pick<TrickManifest, "env" | "places" | "agentView" | "decides"> | undefined, next: Pick<TrickManifest, "env" | "places" | "agentView" | "decides"> | undefined): string[] {
   const was = rightsOf(base);
-  return [...rightsOf(next)].filter((right) => !was.has(right)).map((right) => (right.startsWith("env:") ? right.slice(4) : placeWords(right.slice(6))));
+  return [...rightsOf(next)].filter((right) => !was.has(right)).map(rightWords);
 }
 
 /** The `inputs` globs the new version reads that the approved one did not (contract 2, M99). */

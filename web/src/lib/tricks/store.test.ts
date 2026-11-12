@@ -473,6 +473,17 @@ describe("the wire readers", () => {
     expect(readTapReply({ rid: ID1, code: "ok", open: { session: "trick:lodge:legs" } })).toEqual({ rid: ID1, code: "ok" });
   });
 
+  it("carry decidesReply only as true, on a trick and on an official entry", () => {
+    const trick = { host: "lodge", id: "inbox", name: "PR Inbox", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    const read = (extra: JsonObject) => readTricksReply({ rev: 1, parts: [], present: [], tricks: [{ ...trick, ...extra }] })?.tricks[0];
+    expect(read({ decidesReply: true })?.decidesReply).toBe(true);
+    expect(read({})).not.toHaveProperty("decidesReply");
+    expect(read({ decidesReply: false })).not.toHaveProperty("decidesReply");
+    const entry = { id: "pr-inbox", name: "PR Inbox", description: "x", repo: "https://github.com/AltanS/collie-tricks", repoName: "AltanS/collie-tricks", commit: "1".repeat(40), state: "absent" };
+    expect(readOfficialTricksReply({ tricks: [{ ...entry, decidesReply: true }] })?.tricks[0]?.decidesReply).toBe(true);
+    expect(readOfficialTricksReply({ tricks: [entry] })?.tricks[0]).not.toHaveProperty("decidesReply");
+  });
+
   it("keep a part of a kind this Collie does not know, for the placeholder to draw", () => {
     const newer = { host: "lodge", trick: "legs", part: "legs", rev: 1, value: { at: "session", id: "legs", view: [{ kind: "hologram" }] } };
     expect(readTricksReply({ rev: 1, parts: [newer], present: ["lodge/legs/legs"], tricks: [] })?.parts).toHaveLength(1);

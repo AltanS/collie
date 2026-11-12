@@ -426,7 +426,7 @@ A Decision a program lists has these keys:
 | `priority` | word | no | one of `now`, `today`, `later`. Default `today` | A request, not a fact. Only `now` sends a notification, and one sender holds at most 3 open `now` Decisions. |
 | `text` | word | no | one of `none`, `optional`, `required`. Default `optional` | Whether the person may, must, or may not add words to the answer. `none` needs at least one option. |
 | `about` | session id | no | an `id` from the facts' sessions, `memberId:paneId` | The session the card is about. The card opens its Chat. |
-| `replyTo` | session id | no | an `id` from the facts' sessions | The session that gets the person's words, as the person's own WalkyTalky message. |
+| `replyTo` | session id | no | an `id` from the facts' sessions. Only for a trick whose `trick.toml` says `decides = "reply"` | The session that gets the person's words, as the person's own WalkyTalky message. Without `decides = "reply"` the Decision is refused. |
 | `media` | list | no | at most 4; each `file` (a PNG, JPEG or WebP in the trick's folder, 2 MiB at most) and optionally `caption` (at most 80 characters) | Pictures on the card. |
 | `links` | list | no | at most 5; each `label` (at most 40) and `href` (an https or http address, at most 500 characters) | Web pages that give more. |
 | `expiresAt` | instant | no | epoch milliseconds. Left out, 14 days; never more than 30 days | When the Decision closes by itself, as expired. |
@@ -502,6 +502,7 @@ After each run that succeeded, Collie makes the Hill agree with the list of `dec
 | A document with no `decisions` key | Changes nothing. |
 | `decisions` is `[]` | Withdraws every open card of the trick. |
 | A Decision the parser or the Hill refuses, or that names a session that is not there | Changes nothing for its key: the version on the Hill stays. It shows as a refusal. |
+| A Decision with `replyTo` from a trick whose `trick.toml` does not say `decides = "reply"` | Refused with "This trick did not say that its Decisions reply to a session." An open card of its key is withdrawn, so no answer reaches a session. |
 | A failed or timed-out run | Changes nothing. |
 | The trick switched off or removed | Every open card of the trick is withdrawn at once, "the trick is off". |
 | The Hill switched off | No post, replace or withdraw happens, and the trick still runs. Its row says its Decisions are not shown. |
@@ -1259,6 +1260,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `about` | text | no | at most 1200 characters, plain text, a blank line splits paragraphs | 1 | The text of the About sheet. |
 | `version` | text | no | 1 to 24 characters: letters, digits, `.`, `+` and `-`, such as `1.2.0` | 1 | The trick's own version. The About sheet shows it. Collie never compares it and reads no tag. |
 | `rules` | file name | yes, with `agent-view`; refused without it | a file in the trick's folder of at most 64 characters ending in `.md`, such as `rules.md` | 2 | The instructions the agent of a session reads. The person reads them whole before they switch the trick on. |
+| `decides` | word | no | `reply`. Refused on a trick that is only an agent view | 1 | Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again. |
 
 In `trick.toml`:
 

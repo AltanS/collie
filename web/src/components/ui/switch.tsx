@@ -10,11 +10,13 @@ interface SwitchProps {
   "aria-labelledby"?: string;
   /** Point at the sentence that says why a disabled switch is disabled. */
   "aria-describedby"?: string;
+  /** Extra classes on the button: a row that is a target of its own lifts the switch above it and widens its reach. */
+  className?: string;
 }
 
 // Minimal accessible toggle (no Radix dependency): a button with role="switch". The thumb slides
 // across a pill track; colors follow the theme tokens used elsewhere.
-function Switch({ checked, onCheckedChange, disabled, id, ...rest }: SwitchProps) {
+function Switch({ checked, onCheckedChange, disabled, id, className, ...rest }: SwitchProps) {
   return (
     <button
       id={id}
@@ -52,6 +54,7 @@ function Switch({ checked, onCheckedChange, disabled, id, ...rest }: SwitchProps
         checked
           ? "border-2 border-transparent bg-control-on-foreground"
           : "border-2 border-muted-foreground bg-muted",
+        className,
       )}
       {...rest}
     >

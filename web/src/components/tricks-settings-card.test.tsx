@@ -227,6 +227,28 @@ describe("TricksSettingsCard: the rows", () => {
   });
 });
 
+describe("TricksSettingsCard: Uses agent tokens (2026-11-12)", () => {
+  it("draws the chip on the name line of a trick that makes an agent read or write more, and none on the others", async () => {
+    const ANSWERS: WireTrickInfo = { ...TRACKER, id: "inbox", name: "PR Inbox", decidesReply: true };
+    const RULES: WireTrickInfo = { ...TRACKER, id: "notes", name: "Notes", rules: { file: "rules.md", text: "Write short.\n" } };
+    renderCard(await storeWith([LEGS, ANSWERS, RULES, { ...TRACKER, decides: true }]));
+    await findRow("inbox");
+    const chip = (id: string) => rowOf(id).querySelector('[data-slot="trick-about"] [data-slot="token-use"]');
+    expect(chip("inbox")?.textContent).toBe("Uses agent tokens");
+    expect(chip("notes")?.textContent).toBe("Uses agent tokens");
+    // A program trick whose last run listed Decisions but declares no reply, and a plain one: no chip.
+    expect(chip("tracker")).toBeNull();
+    expect(chip("legs")).toBeNull();
+    // The name, then the labels as one group that wraps under the name rather than cut it; the open button
+    // keeps the name it always had.
+    const button = rowOf("inbox").querySelector('[data-slot="trick-about"]');
+    expect(button?.className).toContain("flex-wrap");
+    expect([...(button?.children ?? [])].map((el) => el.getAttribute("data-slot"))).toEqual(["row-name", "row-labels"]);
+    expect([...(button?.lastElementChild?.children ?? [])].map((el) => el.getAttribute("data-slot"))).toEqual(["trick-origin", "token-use"]);
+    expect(within(rowOf("inbox")).getByRole("button", { name: "About PR Inbox" })).toBe(button);
+  });
+});
+
 describe("TricksSettingsCard: the warnings before the switch (review 15)", () => {
   const WARNED: WireTrickInfo = {
     ...TRACKER,
@@ -681,6 +703,44 @@ describe("TricksSettingsCard: a trick's About sheet", () => {
     expect(within(dialog).getByText("First paragraph.")).toBeInTheDocument();
     expect(onSwitch).toHaveBeenCalledTimes(1);
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  // The whole row opens the sheet (2026-11-12). jsdom lays nothing out, so a tap on a line cannot be
+  // aimed here: this holds the structure the real engine needs, and e2e/tricks-row-taps.spec.ts aims the
+  // taps (elementFromPoint) in Chromium.
+  it("makes the whole row the About button's reach: one button, a stretched layer, and the switch above it as a sibling", async () => {
+    renderCard(await storeWith([TOLD]));
+    const row = await findRow("legs");
+    const button = within(row).getByRole("button", { name: "About Browser leg" });
+    // One open action, with the name it always had, and no control inside another.
+    expect(within(row).getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
+    expect(button.querySelector("button, [role='switch']")).toBeNull();
+    const toggle = within(row).getByRole("switch", { name: "Browser leg" });
+    expect(button.contains(toggle)).toBe(false);
+    // The layer: the row is the positioned box, the button's ::after fills it, the switch stands above it.
+    expect(row.className).toContain("relative");
+    expect(button.className).toContain("after:absolute");
+    expect(button.className).toContain("after:inset-0");
+    expect(button.className).not.toMatch(/(^|\s)relative(\s|$)/);
+    expect(toggle.className).toContain("z-10");
+    // Every line of the row is plain text under that layer, never a control of its own.
+    for (const line of ["description", "places", "slot"]) {
+      const el = row.querySelector(`[data-line="${line}"]`);
+      expect(el, line).not.toBeNull();
+      expect(el?.closest("button"), line).toBeNull();
+    }
+  });
+
+  it("toggles on a tap on the switch and opens no sheet; the name opens it", async () => {
+    const user = userEvent.setup();
+    const onSwitch = vi.fn(async (_host: string, _id: string, on: boolean) => ({ ...TOLD, on, state: "ok" as const }));
+    renderCard(await storeWith([{ ...TOLD, on: false, state: "off" }]), onSwitch);
+    const toggle = await screen.findByRole("switch", { name: "Browser leg" });
+    await user.click(toggle);
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(onSwitch.mock.calls[0]?.[2]).toBe(true);
+    expect(toggle).toBeChecked();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 

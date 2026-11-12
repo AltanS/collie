@@ -29,6 +29,8 @@ describe("the Hill's row in Settings", () => {
     expect(screen.getByText("The Hill")).toBeInTheDocument();
     expect(screen.getByText("Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar.")).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "The Hill" })).toBeChecked();
+    // Answers to Decisions are typed into sessions: the chip after the label says it costs agent tokens.
+    expect(document.querySelector('[data-slot="hill-switch"] [data-slot="token-use"]')?.textContent).toBe("Uses agent tokens");
   });
 
   it("reads on when the snapshot carries no hillOff", async () => {

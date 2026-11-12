@@ -1143,6 +1143,35 @@ describe("the list pins the places of each trick (contract 2, the menu place)", 
     const right = await rig([pinned(["belt", "menu"])]);
     expect((await right.official.install("ci", "add")).status).toBe(200);
   });
+
+  test("decides = reply (2026-11-12): the list carries it, the phone learns it before Add, and the add holds the folder to it", async () => {
+    // The reader takes the one word, refuses another and an agent view that carries it, and renders it back.
+    const read = parseOfficialList(listOf(entry({ decides: "reply" })));
+    if (!read.ok) throw new Error(read.reason);
+    expect(read.entries[0]?.decides).toBe("reply");
+    expect(parseOfficialList(parseJson(renderOfficialList(read.entries)))).toEqual(read);
+    expect(renderOfficialList(read.entries)).toContain('"decides": "reply"');
+    expect(parseOfficialList(listOf(entry({ decides: "replies" }))).ok).toBe(false);
+    expect(parseOfficialList(listOf(entry({ contract: 2, places: ["agent-view"], rules: "a".repeat(64), decides: "reply" }))).ok).toBe(false);
+    const plain = parseOfficialList(listOf(entry()));
+    if (!plain.ok) throw new Error(plain.reason);
+    expect(renderOfficialList(plain.entries)).not.toContain("decides");
+    // The wire: `decidesReply` on the pinned entry only.
+    const configDir = await tempDir();
+    const wire = await officialWire(configDir, [{ ...fixtureEntry(REPO, C1, H1), decides: "reply" }, fixtureEntry(REPO, C1, H1, "other")]);
+    expect(wire.map((w) => w.decidesReply)).toEqual([true, undefined]);
+    if (!posix) return;
+    // The add: a folder whose manifest says otherwise than the pin installs nothing.
+    const files = { "inbox/trick.toml": { text: MANIFEST("inbox", 'decides = "reply"\n') }, "inbox/program.sh": PROGRAM("one") };
+    const repo = await fixtureRepo([files]);
+    const code = await hashOf({ "trick.toml": files["inbox/trick.toml"], "program.sh": files["inbox/program.sh"] });
+    const plainPin = fixtureEntry(repo.url, repo.shas[0] ?? "", code, "inbox", extrasOf({}));
+    const wrong = await rig([plainPin]);
+    expect(await wrong.official.install("inbox", "add")).toEqual({ status: 422, body: { error: "mismatch", message: OFFICIAL_LINES.mismatch } });
+    await expectNoLeftovers(wrong);
+    const right = await rig([{ ...plainPin, decides: "reply" }]);
+    expect((await right.official.install("inbox", "add")).status).toBe(200);
+  });
 });
 
 describe("the list's repository facts", () => {

@@ -13,7 +13,7 @@ import { hillDir, HillStore } from "../hill/store.ts";
 import { hillAnswerRoute, hillListRoute, hillMediaRoute } from "../server.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { parseJsonObject } from "../../web/src/lib/json.ts";
-import { parseFacts, parseTrickDocument, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
+import { DECIDES_REPLY_LINE, parseFacts, parseTrickDocument, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
 import { decisionContentHash, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
 import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
@@ -359,6 +359,32 @@ describe("the diff by key", () => {
   });
 });
 
+describe("decides = reply, enforced (2026-11-12)", () => {
+  const withReply = { v: 1, parts: [], decisions: [{ key: "case-8", title: "Leg red: case 8. Rerun it?", summary: "Case 8 failed.", options: [{ intent: "rerun", label: "Rerun" }], replyTo: "lodge:w6X:3" }] };
+
+  test("an open post of a key whose replyTo is now refused is withdrawn, so no answer to it reaches a session", () => {
+    const r = rig();
+    // Posted by a build before the check, while nothing was declared.
+    const before = parseTrickDocument(withReply);
+    expect(sync(r, before.decisions, before.refusedDecisions)).toEqual([]);
+    expect(open(r).map((held) => held.replyTo)).toEqual(["local/w6X:3#aaaa"]);
+    // This build reads the same document for a trick that does not declare it.
+    const now = parseTrickDocument(withReply, { decidesReply: false });
+    expect(now.refusals.map((refusal) => [refusal.code, refusal.reason])).toEqual([["undeclared", DECIDES_REPLY_LINE]]);
+    expect(now.refusedDecisions).toEqual([]);
+    expect(sync(r, now.decisions, now.refusedDecisions)).toEqual([]);
+    expect(open(r)).toEqual([]);
+  });
+
+  test("declared, the same document posts as before", () => {
+    const r = rig();
+    const parsed = parseTrickDocument(withReply, { decidesReply: true });
+    expect(parsed.refusals).toEqual([]);
+    expect(sync(r, parsed.decisions, parsed.refusedDecisions)).toEqual([]);
+    expect(open(r).map((held) => held.replyTo)).toEqual(["local/w6X:3#aaaa"]);
+  });
+});
+
 describe("a trick cannot speak as Collie (crew slice 3)", () => {
   test("a decision naming kind collie, a ref or a from is refused by the parser, and the rest posts as the trick's", () => {
     const r = rig();
@@ -687,12 +713,15 @@ const exited = (doc: JsonObject): RunOutcome => ({ kind: "exited", code: 0, stdo
 const doc = (decisions: JsonObject[]): JsonObject => ({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: "10/12", intent: "x" } }], decisions });
 const RED: JsonObject = { key: "case-8", title: "Leg red: case 8. Rerun it?", summary: "Case 8 failed.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip" }] };
 
-async function serviceRig(): Promise<ServiceRig> {
+/** The legs manifest that declares `decides = "reply"`: its Decisions may answer into a session. */
+const LEGS_REPLIES = 'id = "legs"\nname = "Browser leg"\nrun = "./legs.sh"\nplaces = ["belt"]\ndecides = "reply"\n';
+
+async function serviceRig(manifest?: string): Promise<ServiceRig> {
   const root = tempDir();
   const configDir = join(root, "config");
   const stateDir = join(root, "state");
   mkdirSync(stateDir, { recursive: true });
-  makeLegs(configDir);
+  makeLegs(configDir, manifest);
   const base = rig(stateDir);
   const clock = { t: T0 };
   const specs: RunSpec[] = [];
@@ -765,12 +794,41 @@ describe("the runner posts", () => {
   });
 
   test("a refusal from the hill shows in the trick's refusals, the list the Settings row reads", async () => {
-    const r = await serviceRig();
+    const r = await serviceRig(LEGS_REPLIES);
     await switches(r.stateDir, true);
     r.outcome = exited(doc([{ ...RED, replyTo: "lodge:w6X:9" }]));
     await runNow(r);
     const info = (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
     expect(info?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.decision])).toEqual([["target", "/decisions/0/replyTo", "case-8"]]);
+  });
+
+  test("decides = reply declared: a Decision with replyTo posts, and the answer is typed into that session", async () => {
+    const r = await serviceRig(LEGS_REPLIES);
+    await switches(r.stateDir, true);
+    r.outcome = exited(doc([{ ...RED, replyTo: "lodge:w6X:3" }]));
+    await runNow(r);
+    const info = (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
+    expect(info?.refusals).toBeUndefined();
+    expect(info?.decidesReply).toBe(true);
+    const held = open(r)[0]!;
+    expect(held.replyTo).toBe("local/w6X:3#aaaa");
+    expect((await answer(r, held, 1, "rerun")).code).toBe("ok");
+    expect(r.sent.map((m) => m.to)).toEqual(["local/w6X:3#aaaa"]);
+  });
+
+  test("not declared: a Decision with replyTo is refused with the plain line, nothing posts and nothing is typed; one without replyTo posts", async () => {
+    const r = await serviceRig();
+    await switches(r.stateDir, true);
+    r.outcome = exited(doc([{ ...RED, replyTo: "lodge:w6X:3" }, { ...RED, key: "case-9" }]));
+    await runNow(r);
+    const info = (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
+    expect(info?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.decision, refusal.reason])).toEqual([["undeclared", "/decisions/0/replyTo", "case-8", DECIDES_REPLY_LINE]]);
+    expect(info?.decidesReply).toBeUndefined();
+    // The trick still runs: the refusal is a line on its row, not a failure.
+    expect(info?.state).toBe("ok");
+    expect(open(r).map((held) => [held.from.trickKey, held.replyTo])).toEqual([["case-9", null]]);
+    expect((await answer(r, open(r)[0]!, 1, "rerun")).code).toBe("ok");
+    expect(r.sent).toEqual([]);
   });
 
   test("decides: the trick's entry says its last good document lists Decisions, so the row can say they are not shown", async () => {

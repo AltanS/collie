@@ -26,6 +26,8 @@ import {
   ACTION_ICONS,
   BUTTON_LABEL_MAX,
   COUNT_MAX,
+  DECIDES_REPLY_LINE,
+  DECIDES_WORDS,
   DECISIONS_MAX,
   DECISION_KEYS,
   DECISION_OPTION_KEYS,
@@ -36,6 +38,7 @@ import {
   DRAW_TONES,
   FRESH_MAX_MS,
   ITEM_LABEL_MAX,
+  MANIFEST_KEYS,
   NEAR_PLACES,
   NODE_ATTRS,
   NODE_KIDS,
@@ -1570,6 +1573,53 @@ describe("the manifest's description and about", () => {
     expect(parseManifest({ ...base, about: "one\n\ntwo" }).manifest?.about).toBe("one\n\ntwo");
     expect(parseManifest({ ...base, description: 3 }).refusals[0]?.reason).toBe('"description" must be text.');
     expect(parseManifest({ ...base, about: "" }).manifest).toBeUndefined();
+  });
+});
+
+describe("the manifest's decides (2026-11-12)", () => {
+  const base = { id: "review", name: "Design Review", run: "./review.ts", places: ["belt"] };
+  const asked = { key: "ship", title: "Ship it?", summary: "One change.", options: [{ intent: "ship", label: "Ship it" }] };
+  const doc = (decision: JsonObject) => ({ v: 1, parts: [], decisions: [decision] });
+
+  it("takes one closed word, reply, in contract 1 and 2; absent is none", () => {
+    expect(DECIDES_WORDS).toEqual(["reply"]);
+    expect(MANIFEST_KEYS).toContain("decides");
+    expect(parseManifest(base).manifest?.decides).toBeUndefined();
+    for (const contract of [1, 2]) {
+      const read = parseManifest({ ...base, contract, decides: "reply" });
+      expect(read.refusals).toEqual([]);
+      expect(read.manifest?.decides).toBe("reply");
+    }
+  });
+
+  it("refuses another word, a value that is not text, and the key on a trick that is only an agent view", () => {
+    const wrongs: JsonValue[] = ["replies", "Reply", "", true, ["reply"]];
+    for (const decides of wrongs) {
+      const read = parseManifest({ ...base, decides });
+      expect(read.manifest, JSON.stringify(decides)).toBeUndefined();
+      expect(read.refusals.map((r) => [r.code, r.path])).toEqual([["word", "/decides"]]);
+    }
+    const view = parseManifest({ id: "morph", name: "Morph", contract: 2, places: ["agent-view"], rules: "rules.md", decides: "reply" });
+    expect(view.manifest).toBeUndefined();
+    expect(view.refusals.map((r) => r.path)).toEqual(["/decides"]);
+    // An agent view without the key is read as before.
+    expect(parseManifest({ id: "morph", name: "Morph", contract: 2, places: ["agent-view"], rules: "rules.md" }).refusals).toEqual([]);
+  });
+
+  it("a Decision with replyTo passes when the manifest says it, and is refused alone when it does not", () => {
+    const replying = doc({ ...asked, replyTo: "lodge:w1:1" });
+    expect(parseTrickDocument(replying, { decidesReply: true }).decisions.map((d) => d.replyTo)).toEqual(["lodge:w1:1"]);
+    const refused = parseTrickDocument(replying, { decidesReply: false });
+    expect(refused.decisions).toEqual([]);
+    expect(refused.refusals).toEqual([{ code: "undeclared", path: "/decisions/0/replyTo", reason: DECIDES_REPLY_LINE, decision: "ship" }]);
+    // Not kept as refused: an open post of the key is withdrawn, not left standing.
+    expect(refused.refusedDecisions).toEqual([]);
+    expect(DECIDES_REPLY_LINE).toBe("This trick did not say that its Decisions reply to a session.");
+  });
+
+  it("a Decision without replyTo passes either way, and a reader with no manifest checks nothing", () => {
+    expect(parseTrickDocument(doc(asked), { decidesReply: false }).decisions).toHaveLength(1);
+    expect(parseTrickDocument(doc({ ...asked, replyTo: "lodge:w1:1" })).decisions).toHaveLength(1);
   });
 });
 

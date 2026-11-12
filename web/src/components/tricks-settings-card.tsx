@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
+import { ROW_OPEN_BUTTON, ROW_OPEN_CONTROL, ROW_OPEN_ROW, ROW_OPEN_SWITCH } from "@/components/ui/row-open";
 import { Switch } from "@/components/ui/switch";
 import { HillAboutSheetControl, HillEntryRow } from "@/components/hill-entry";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
+import { TokenUseChip } from "@/components/token-use-label";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
 import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
@@ -20,6 +22,7 @@ import { placesLine, readsLine, runsOnLine, warningLines, type WarningLine } fro
 import type { OfficialState, OfficialTricksReply, TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
+import { trickTokenUse } from "@/lib/tricks/token-use";
 import { usePairing } from "@/lib/pairing";
 import { useOptionalRootData } from "@/lib/route-data";
 import { setStatus } from "@/lib/status";
@@ -65,10 +68,12 @@ import { cn } from "@/lib/utils";
 // the card: it is the last group of the trick's About sheet. The card still owns that write (`flipAuto`),
 // which flips at once and holds like the trick's own switch, so a failed post goes back and says so once.
 //
-// A TRICK'S NAME IS A BUTTON (About sheet), with a muted chevron after it as the cue. A tap on the name opens
-// a bottom sheet with the trick's full description (components/trick-about-sheet.tsx). The switch stays its
-// own tap target. A trick whose manifest has a `description` shows that one muted line (at most two lines)
-// under its name; a row without one is drawn as before.
+// THE WHOLE ROW OPENS THE ABOUT SHEET (2026-11-12), with a muted chevron after the name as the cue. The name is
+// the one button (`ui/row-open.ts`): its stretched layer covers the row, so a tap on the description, the
+// places, the source line or the empty space opens the bottom sheet with the trick's full description
+// (components/trick-about-sheet.tsx). The switch, Add, Update and Undo are siblings of that button, lifted
+// above the layer, and stay their own targets: a tap on them never opens the sheet. A trick whose manifest has
+// a `description` shows that one muted line (at most two lines) under its name; a row without one is drawn as before.
 //
 // ONE LIST, EACH TRICK ONCE (2026-11-12). The bridge's `GET /api/tricks/official` lists the official tricks
 // this release can add, each with its state here. The card draws them and the installed tricks as one list in
@@ -258,7 +263,7 @@ function TrickChanges({
           onClick={() => {
             if (tap("undo") === "fire") onUndo();
           }}
-          className={cn("-mr-3 h-11 shrink-0 px-3", undoArmed ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground")}
+          className={cn(ROW_OPEN_CONTROL, "-mr-3 h-11 shrink-0 px-3", undoArmed ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground")}
         >
           {/* Both words in one slot, sized by the wider, so arming moves nothing beside it (DESIGN.md §2). */}
           <OneOf
@@ -300,7 +305,7 @@ function OfficialButton({ word, label, slot, busy, canWrite, onTap }: { word: st
       disabled={!canWrite || busy}
       onClick={onTap}
       // The `::before` reaches the 44px floor above and below the 32px button (DESIGN.md §6).
-      className="relative shrink-0 before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']"
+      className={cn(ROW_OPEN_CONTROL, "shrink-0 before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']")}
     >
       <OneOf
         active={busy ? "busy" : "rest"}
@@ -317,9 +322,33 @@ function OfficialButton({ word, label, slot, busy, canWrite, onTap }: { word: st
 /** The small label after a trick's name: where it comes from, "Official" or "Community". */
 function OriginLabel({ origin }: { origin: TrickOrigin }) {
   return (
-    <Badge variant="outline" data-slot="trick-origin" data-origin={origin} className="ml-1 px-1.5 py-0 text-[11px] leading-4 font-normal text-muted-foreground">
+    <Badge variant="outline" data-slot="trick-origin" data-origin={origin} className="px-1.5 py-0 text-[11px] leading-4 font-normal text-muted-foreground">
       {t(origin === "official" ? "settings.tricks.origin.official" : "settings.tricks.origin.community")}
     </Badge>
+  );
+}
+
+/**
+ * THE NAME LINE OF A ROW (2026-11-12): the name with its chevron, then the labels (Official or Community, and
+ * "Uses agent tokens") as ONE group. The line wraps: the labels stay beside the name while they fit, else
+ * the whole group moves to a line of its own right under the name. So a name is never cut while a second
+ * line has room; only a name wider than the line alone truncates, and the chip cuts its words only when the
+ * group alone is wider than the row. The labels are the trick's facts, the same before and after Add and
+ * whether it is on, so a row's height follows its width and language, never its state.
+ */
+const NAME_LINE = "flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left font-medium";
+
+/** The labels' group: one flex item, never split across lines; the chip inside it shrinks last. */
+const LABELS = "flex max-w-full min-w-0 items-center gap-1";
+
+/** The name and the chevron: the name keeps its width up to the line's, then truncates. */
+function RowName({ name }: { name: string }) {
+  return (
+    <span data-slot="row-name" className="flex max-w-full min-w-0 items-center gap-1">
+      <span className="min-w-0 truncate">{name}</span>
+      {/* The cue that the name opens something: the app's own "this row opens another screen" glyph. */}
+      <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+    </span>
   );
 }
 
@@ -337,20 +366,23 @@ function OfficialRow({ entry, busy, canWrite, onAdd, onAbout }: { entry: WireOff
   const places = entry.places ?? [];
   const view = entry.agentView === true;
   return (
-    <div data-official={entry.id} className="px-4 py-3">
+    <div data-official={entry.id} className={cn(ROW_OPEN_ROW, "px-4 py-3")}>
       <div className="flex min-h-11 items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
           <button
             type="button"
             data-slot="official-about"
+            data-row-open=""
             aria-label={t("settings.tricks.about.open", { name: entry.name })}
             aria-haspopup="dialog"
             onClick={onAbout}
-            className="relative flex w-full items-center gap-1 text-left font-medium before:absolute before:inset-x-0 before:-inset-y-2.5 before:content-['']"
+            className={cn(ROW_OPEN_BUTTON, NAME_LINE)}
           >
-            <span className="min-w-0 truncate">{entry.name}</span>
-            <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-            <OriginLabel origin="official" />
+            <RowName name={entry.name} />
+            <span data-slot="row-labels" className={LABELS}>
+              <OriginLabel origin="official" />
+              {trickTokenUse(entry) !== null && <TokenUseChip />}
+            </span>
           </button>
           <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">
             {entry.description}
@@ -411,23 +443,27 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
   // Before the switch: off, or on with code nobody approved yet. A tap on the switch closes the list.
   const showWarnings = warnings.length > 0 && (!checked || trick.changed === true);
   return (
-    <div data-trick={trick.id} className="px-4 py-3">
+    <div data-trick={trick.id} className={cn(ROW_OPEN_ROW, "px-4 py-3")}>
       <div className="flex min-h-11 items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          {/* The name is the About button. The `::before` reaches the 44px floor above and below the 24px line
-              (DESIGN.md §6) without growing the row: the places line under it is not a control. */}
+          {/* The name is the About button, and its stretched layer is the whole row (ui/row-open.ts): the lines
+              under it are no controls, so a tap on any of them opens the sheet. */}
           <button
             type="button"
             data-slot="trick-about"
+            data-row-open=""
             aria-label={t("settings.tricks.about.open", { name: trick.name })}
             aria-haspopup="dialog"
             onClick={onAbout}
-            className="relative flex w-full items-center gap-1 text-left font-medium before:absolute before:inset-x-0 before:-inset-y-2.5 before:content-['']"
+            className={cn(ROW_OPEN_BUTTON, NAME_LINE)}
           >
-            <span className="min-w-0 truncate">{trick.name}</span>
-            {/* The cue that the name opens something: the app's own "this row opens another screen" glyph. */}
-            <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-            {origin !== undefined && <OriginLabel origin={origin} />}
+            <RowName name={trick.name} />
+            {(origin !== undefined || trickTokenUse(trick) !== null) && (
+              <span data-slot="row-labels" className={LABELS}>
+                {origin !== undefined && <OriginLabel origin={origin} />}
+                {trickTokenUse(trick) !== null && <TokenUseChip />}
+              </span>
+            )}
           </button>
           {trick.description !== undefined && (
             <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">
@@ -458,7 +494,7 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
           <Collapse open={showWarnings}>{showWarnings ? <TrickWarnings lines={warnings} /> : null}</Collapse>
         </div>
         {/* Rules this phone cannot show (review 8 V-N5): no yes from here; a trick that is on can still go off. */}
-        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || (trick.rulesUnshown === true && !checked)} aria-label={trick.name} />
+        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || (trick.rulesUnshown === true && !checked)} aria-label={trick.name} className={ROW_OPEN_SWITCH} />
       </div>
       {trick.on && changed !== null && <TrickChanges trick={trick} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
       {update !== undefined && <OfficialUpdateLine name={trick.name} busy={update.busy} canWrite={canWrite} onUpdate={update.onUpdate} />}

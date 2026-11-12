@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { AGENT_VIEW_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT } from "../../web/src/lib/tricks/contract.ts";
-import { AGENT_VIEW_PLACE, DESCRIPTION_MAX, isTrickId, isTrickText, NAME_MAX, PLACE_KINDS, PLACES_LISTED_MAX, type OfficialState, type TrickManifest, type WireOfficialTrick } from "../../web/src/lib/tricks/schema.ts";
+import { AGENT_VIEW_PLACE, DECIDES_WORDS, DESCRIPTION_MAX, isTrickId, isTrickText, NAME_MAX, PLACE_KINDS, PLACES_LISTED_MAX, type DecidesWord, type OfficialState, type TrickManifest, type WireOfficialTrick } from "../../web/src/lib/tricks/schema.ts";
 import { diskTrickFs, trickCodeHash, type TrickFs } from "./code-hash.ts";
 import shipped from "./official.json";
 import { originRepoName, readOrigin, sameRepo, type TrickOrigin } from "./origin.ts";
@@ -49,8 +49,8 @@ export function isOfficialRepoUrl(url: string, repos: readonly string[] = OFFICI
 export const OFFICIAL_ENTRIES_MAX = 32;
 /** The most earlier versions an entry keeps. */
 export const OFFICIAL_PREVIOUS_MAX = 8;
-/** The keys of an entry, all required, no other. */
-const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "places", "previous"] as const;
+/** The keys of an entry, no other: every one required but `decides`, which an entry writes only when its manifest has it. */
+const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "places", "previous", "decides"] as const;
 
 /** One version of an entry: a commit and the code hash its folder has there. */
 export interface OfficialVersion {
@@ -91,6 +91,12 @@ export interface OfficialEntry {
   places: string[];
   /** Versions earlier releases listed, newest first: a folder at one of them is still from the list. */
   previous: OfficialVersion[];
+  /**
+   * The manifest's `decides` at `commit` (2026-11-12): `reply` when its Decisions may answer into a session.
+   * Absent when the manifest has none. The phone says the trick uses agent tokens before Add from this alone,
+   * and the add refuses a folder whose manifest says otherwise.
+   */
+  decides?: DecidesWord;
 }
 
 export type OfficialList = { ok: true; entries: OfficialEntry[] } | { ok: false; reason: string };
@@ -173,7 +179,13 @@ function readEntry(raw: JsonValue, at: number): EntryRead {
   const places = Array.isArray(doc.places) ? doc.places.map((value) => asJsonString(value) ?? "") : [];
   const previous = readPrevious(doc.previous, commit);
   if (!previous.ok) return refuse(`${id}: ${previous.reason}`);
-  return { ok: true, entry: { id, name, description, repo, dir, commit, hash, extras, rules, contract, places, previous: previous.versions } };
+  const entry: OfficialEntry = { id, name, description, repo, dir, commit, hash, extras, rules, contract, places, previous: previous.versions };
+  if (doc.decides === undefined) return { ok: true, entry };
+  const decides = DECIDES_WORDS.find((word) => word === doc.decides);
+  if (decides === undefined) return refuse(`${id}: decides is not one of ${DECIDES_WORDS.join(", ")}`);
+  if (places.length === 1 && places[0] === AGENT_VIEW_PLACE) return refuse(`${id}: a trick that is only an agent view posts no Decision`);
+  entry.decides = decides;
+  return { ok: true, entry };
 }
 
 /** An entry's earlier versions read strictly, or why not. */
@@ -240,7 +252,13 @@ export function parseOfficialList(raw: JsonValue | undefined): OfficialList {
 
 /** The list's text as the maintainer script writes it: two spaces, the keys in their order, one newline at the end. */
 export function renderOfficialList(entries: readonly OfficialEntry[]): string {
-  const tricks = entries.map((e) => ({ id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, rules: e.rules, contract: e.contract, places: [...e.places], previous: e.previous.map((v) => ({ commit: v.commit, hash: v.hash })) }));
+  const tricks = entries.map((e) => {
+    const head = { id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, rules: e.rules, contract: e.contract, places: [...e.places] };
+    const previous = e.previous.map((v) => ({ commit: v.commit, hash: v.hash }));
+    // `decides` only when the manifest has it, after the places, so every other entry keeps its text.
+    if (e.decides === undefined) return { ...head, previous };
+    return { ...head, decides: e.decides, previous };
+  });
   return `${JSON.stringify({ v: 1, tricks }, null, 2)}\n`;
 }
 
@@ -313,6 +331,8 @@ export async function officialWire(configDir: string, entries: readonly Official
       const places = PLACE_KINDS.filter((kind) => e.places.includes(kind));
       if (places.length > 0) wire.places = places;
       if (e.places.includes(AGENT_VIEW_PLACE)) wire.agentView = true;
+      // That its Decisions may answer into a session, from the pin, so the row shows the token label before Add.
+      if (e.decides === "reply") wire.decidesReply = true;
       return wire;
     }),
   );

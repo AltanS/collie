@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { Badge } from "@/components/ui/badge";
+import { ROW_OPEN_BUTTON, ROW_OPEN_ROW } from "@/components/ui/row-open";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { useArm } from "@/hooks/use-arm";
@@ -20,7 +21,8 @@ import { cn } from "@/lib/utils";
 //
 // THE ROW is the trick row's shape without a switch, a version line or a Remove: the Hill's mountain, the
 // name with the app's "this row opens another screen" chevron, one description line, and the quiet "Built in"
-// badge where a trick shows where it came from. The whole row is the button, a 44px floor.
+// badge where a trick shows where it came from. The whole row is the button, a 44px floor, its padding
+// included (`ui/row-open.ts`), as a trick's row is.
 //
 // THE ARMED SECOND TAP. Off blocks every answer: the Decisions that wait (an agent's, a trick's or Collie's own)
 // stay open and cannot be answered meanwhile. So a first tap on the switch while ANY Decision is open ARMS it
@@ -39,15 +41,16 @@ import { cn } from "@/lib/utils";
 export function HillEntryRow({ onAbout }: { onAbout: () => void }) {
   useLocale();
   return (
-    <div data-slot="hill-entry" className="px-4 py-3">
+    <div data-slot="hill-entry" className={cn(ROW_OPEN_ROW, "px-4 py-3")}>
       <button
         type="button"
         data-slot="hill-about"
+        data-row-open=""
         aria-label={t("settings.tricks.about.open", { name: t("settings.tricks.hill.name") })}
         aria-haspopup="dialog"
         onClick={onAbout}
         // The row's own 44px floor: the text block is taller than that already, the button fills the row.
-        className="flex min-h-11 w-full items-start gap-3 text-left"
+        className={cn(ROW_OPEN_BUTTON, "flex min-h-11 w-full items-start gap-3 text-left")}
       >
         <Icon name="hill" className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 flex-1">

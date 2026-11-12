@@ -1328,6 +1328,12 @@ export interface TrickManifest {
   rulesText?: string;
   /** The SHA-256 (hex) of the rules file's bytes, set with {@link rulesText}. In the powers. */
   rulesSha256?: string;
+  /**
+   * `decides = "reply"`: the trick's Decisions may carry `replyTo`, a session the person's answer is typed
+   * into as their own message. Absent: they never do, and the bridge refuses one that does
+   * ({@link DECIDES_REPLY_LINE}). A right: it is in the powers, so a version that adds it asks again.
+   */
+  decides?: DecidesWord;
 }
 
 /**
@@ -1595,6 +1601,14 @@ export interface WireTrickInfo {
    */
   decides?: boolean;
   /**
+   * The manifest of what runs says `decides = "reply"`: the trick's Decisions may name a session (`replyTo`)
+   * the person's answer is typed into, as their own message. Declared, so it is known before any Decision,
+   * and enforced: the bridge refuses a Decision with `replyTo` from a trick whose approved copy does not
+   * say it ({@link DECIDES_REPLY_LINE}). Not {@link decides}, which says the last document listed some.
+   * Absent: it does not, or an older bridge.
+   */
+  decidesReply?: true;
+  /**
    * Fault B: the trick stopped because its approved copy asks for other rights than the person approved, as
    * this bridge reads them. The row says so in the phone's words; `error` carries the bridge's English line.
    * Absent: the rights hold, or an older bridge.
@@ -1818,6 +1832,12 @@ export interface WireOfficialTrick {
   places?: PlaceKind[];
   /** The list pins the place `agent-view` for the entry. Absent: it does not, or an older bridge. */
   agentView?: true;
+  /**
+   * The list pins `decides = "reply"` for the entry (official.ts `decides`): its Decisions may name a session
+   * the person's answer is typed into, so the row says it uses agent tokens before Add. The add refuses a
+   * folder whose manifest says otherwise. Absent: it does not, or an older bridge.
+   */
+  decidesReply?: true;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */
@@ -3477,6 +3497,13 @@ export interface ParseTrickDocumentOptions {
    * attribute this Collie does not know, anywhere in the part, refuses that part alone ({@link CLOSED_KEY_LINE}).
    */
   contract?: number;
+  /**
+   * Whether the manifest says `decides = "reply"`. False: a Decision with `replyTo` is refused alone with
+   * {@link DECIDES_REPLY_LINE}, and its key is not kept as refused, so its open post is withdrawn (the
+   * person never answers into a session the trick did not declare). Absent: not checked (a reader that has
+   * no manifest, such as the phone).
+   */
+  decidesReply?: boolean;
 }
 
 /**
@@ -3614,7 +3641,7 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     if (parsed.part.place === "tabbar") tabbar = true;
     result.parts.push(parsed.part);
   });
-  readDecisions(top, result);
+  readDecisions(top, result, opts);
   readDocumentExtras(top, result);
   result.refusals = capRefusals(refusals);
   result.notes = capRefusals(notes);
@@ -3954,7 +3981,7 @@ const HILL_OWNED_KEYS = {
   at: "the bridge stamps when it took the post",
 } as const satisfies Readonly<Record<string, string>>;
 
-function readDecisions(top: Fields, out: ParsedTrickDocument): void {
+function readDecisions(top: Fields, out: ParsedTrickDocument, opts: ParseTrickDocumentOptions): void {
   const list = top.array("decisions", { min: 0, max: DECISIONS_MAX, what: "decisions" });
   if (list === undefined) return;
   const seen = new Set<string>();
@@ -3965,9 +3992,14 @@ function readDecisions(top: Fields, out: ParsedTrickDocument): void {
     const key = reading.key;
     if (key !== undefined && seen.has(key)) sink.push({ code: "duplicate", path: pointer(path, "key"), reason: `The decision key "${key}" is used twice. Each decision needs its own.` });
     if (key !== undefined) seen.add(key);
+    // `replyTo` types the person's answer into a session: only a trick whose manifest says so may name one.
+    // Such a decision is not kept as refused, so an open post of its key (from a build before the check) is
+    // withdrawn too, and no answer to it reaches a session.
+    const undeclared = opts.decidesReply === false && reading.decision?.replyTo !== undefined;
+    if (undeclared) sink.push({ code: "undeclared", path: pointer(path, "replyTo"), reason: DECIDES_REPLY_LINE });
     if (sink.length > 0 || reading.decision === undefined) {
       for (const r of sink) out.refusals.push(key === undefined ? r : { ...r, decision: key });
-      if (key !== undefined) out.refusedDecisions.push(key);
+      if (key !== undefined && !undeclared) out.refusedDecisions.push(key);
       return;
     }
     out.decisions.push(reading.decision);
@@ -4119,7 +4151,22 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides"] as const;
+
+// ── `decides`: whether a trick's Decisions answer into a session ────────────────────────────────────
+
+/**
+ * The words `decides` takes: one, `reply`. A trick that writes `decides = "reply"` may give its Decisions a
+ * `replyTo`, and the person's answer is typed into that session as their own message. Absent, a Decision
+ * with `replyTo` is refused. A closed list, so a later word is a refusal here, never a silent yes.
+ */
+export const DECIDES_WORDS = ["reply"] as const;
+export type DecidesWord = (typeof DECIDES_WORDS)[number];
+
+/** The refusal of a Decision with `replyTo` from a trick whose approved manifest does not say `decides = "reply"`. */
+export const DECIDES_REPLY_LINE = "This trick did not say that its Decisions reply to a session.";
+/** The right in a person's words: `collie trick check` and the version card's sentence. */
+export const DECIDES_REPLY_WORDS = "Your answers to its Decisions go to a session as your own message.";
 
 // ── Agent views: the place word `agent-view` and the key `rules` (contract 2) ───────────────────────
 
@@ -4343,7 +4390,7 @@ export const INPUTS_NEED_CONTRACT = `"inputs" needs contract = ${String(INPUTS_C
 export const AGENT_VIEW_NEEDS_CONTRACT = `"agent-view" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 export const RULES_NEEDS_CONTRACT = `"rules" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 /** The keys a trick whose only place is `agent-view` may not name: it has no program. */
-export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env"] as const;
+export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env", "decides"] as const;
 export function viewOnlyRefusal(key: (typeof VIEW_ONLY_REFUSED)[number]): string {
   return `A trick whose only place is "agent-view" has no program, so it takes no "${key}". Remove it, or add a place it draws in.`;
 }
@@ -4524,6 +4571,10 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (agentView && !f.has("rules")) f.push("missing", "places", AGENT_VIEW_NEEDS_RULES);
   if (f.has("rules") && !agentView) f.push("place", "rules", RULES_NEED_AGENT_VIEW);
 
+  // Whether its Decisions answer into a session: one closed word, at every contract (an optional key adds
+  // inside contract 1). A view-only trick runs no program, so it is refused there with the other program keys.
+  const decides = f.word("decides", DECIDES_WORDS);
+
   const fatal = refusals.some((r) => r.code !== "later");
   if (fatal || id === undefined || name === undefined || (run === undefined && !viewOnly) || contract === undefined) return { refusals: capRefusals(refusals) };
   const head = { id, name };
@@ -4531,6 +4582,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   const manifest: TrickManifest = run === undefined ? { ...head, ...rest } : { ...head, run, ...rest };
   if (agentView) manifest.agentView = true;
   if (rules !== undefined) manifest.rules = rules;
+  if (decides !== undefined) manifest.decides = decides;
   if (every !== undefined && everyMs !== undefined && everyOk) {
     manifest.every = every;
     manifest.everyMs = everyMs;
