@@ -464,10 +464,13 @@ member, run it on that member: its log is the one the phone read. Treat the line
 ask the sender if you need it.
 
 **The skill is stale.** `collie doctor` warns on the row `skill-walky-talky`, and the agent follows
-old advice. The text in an instruction file differs from this build. Run `collie skill status` to see
-which harness is behind. Run `collie skill status --check` in a script: it prints nothing and exits
-with code 3 when a copy is stale. Fix it with `collie skill install all`, then restart the agent. A
-target marked `refused` is a symlink or has damaged markers, and an install never touches it.
+old advice. The skill file differs from this build, or an instruction file still holds the block
+that Collie 1.28.2 and earlier wrote there. Run `collie skill status` to see which harness is behind.
+Run `collie skill status --check` in a script: it prints nothing and exits with code 3 when a copy is
+stale. Fix it with `collie skill install all`, then restart the agent. A target marked `refused` is a
+symlink or a file Collie did not write, and an install never touches it. When `doctor` names an old
+block that Collie may not cut, its markers are damaged or appear twice: remove the lines between the
+`collie:walky-talky` markers by hand.
 
 ## Durable agents
 

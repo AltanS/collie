@@ -508,10 +508,11 @@ Each receipt state shows the words in the table above, with the reason after "no
 ## Install the skill
 
 An agent uses WalkyTalky only when it knows how. Collie writes the skill that teaches it into
-your agents' own instruction files.
+your agents' own skills folders.
 
 The skill is a short text. It teaches the agent the `collie walky` verbs, how to read the header
-of a message, and when not to send.
+of a message, and when not to send. An agent keeps only the skill's name and its one-line
+description in its prompt. It reads the rest when it opens the skill.
 
 After each update, Collie installs the skill into every harness it finds on this machine, and
 keeps each copy current. A rollback and a switch of release line do the same with the build they
@@ -529,7 +530,7 @@ It prints nothing when every copy is current. `--dry-run` shows the changes and 
 `--json` prints the result for a script.
 
 For a harness that Collie did not find, name it. Collie then creates the file:
-`claude`, `codex`, `opencode`, `pi` or `gemini`.
+`claude`, `codex`, `opencode`, `pi`, `omp` or `gemini`.
 
 ```sh
 collie skill install claude
@@ -543,30 +544,43 @@ never writes them, and no bridge start touches them.
 
 ### Where the skill goes
 
-| Harness | File | How Collie writes it |
-| --- | --- | --- |
-| Claude Code | `~/.claude/skills/collie-walky-talky/SKILL.md` | The whole file. Collie owns it. Every Claude profile that Collie reads gets the same folder. So does the folder that `CLAUDE_CONFIG_DIR` names, when it is an absolute path where you run the install. |
-| Codex | `$CODEX_HOME/AGENTS.md`, else `~/.codex/AGENTS.md` | A block inside the file. |
-| opencode | `~/.config/opencode/AGENTS.md` | A block inside the file. |
-| pi | `$PI_CODING_AGENT_DIR/AGENTS.md`, else `~/.pi/agent/AGENTS.md` | A block inside the file. |
-| Gemini CLI | `~/.gemini/GEMINI.md` | A block inside the file. |
-| Any other | none | `collie skill print generic` prints the block. Paste it by hand. |
+Each harness gets the file `collie-walky-talky/SKILL.md` in its own skills folder. Collie owns
+that file and replaces it as a whole.
 
-In a shared instruction file, Collie owns only the text between these two lines. Every other line
-stays as you wrote it.
+| Harness | Skills folder |
+| --- | --- |
+| Claude Code | `~/.claude/skills`. Every Claude profile that Collie reads gets the same folder. So does the folder that `CLAUDE_CONFIG_DIR` names, when it is an absolute path where you run the install. |
+| Codex | `$CODEX_HOME/skills`, else `~/.codex/skills` |
+| opencode | `$XDG_CONFIG_HOME/opencode/skills`, else `~/.config/opencode/skills` |
+| pi | `$PI_CODING_AGENT_DIR/skills`, else `~/.pi/agent/skills` |
+| omp | `~/.omp/agent/skills` |
+| Gemini CLI | `~/.gemini/skills`. Gemini CLI reads it from version 0.26.0. |
+| Antigravity | none of its own. It reads `~/.gemini/skills`, so `collie skill install gemini` covers it. |
+| Grok | none of its own. It reads `~/.claude/skills`, so `collie skill install claude` covers it. |
+| Muse | none of its own. It reads `~/.claude/skills` and `$CODEX_HOME/skills`, so the Claude or the Codex install covers it. |
+| Any other | none. `collie skill print generic` prints the skill as a block. Paste it by hand. |
+
+Collie never writes to the shared folder `~/.agents/skills`. Several harnesses read it, and each
+would then list the skill twice. opencode also reads `~/.claude/skills`. With both copies there,
+it shows the skill once and logs a note about the second copy.
+
+Collie 1.28.2 and earlier put the skill as a block into a shared instruction file instead:
+`AGENTS.md` for Codex, opencode and pi, and `~/.gemini/GEMINI.md` for Gemini CLI. The block was
+part of every prompt. `collie skill sync` and `collie skill install` now cut that block out, but
+only after the skill file is in place. They remove only the text between these two lines, and the
+blank line that the old install put before it. Every other line stays as you wrote it. A file
+that held nothing but the block is removed.
 
 ```
 <!-- collie:walky-talky v1 begin -->
 <!-- collie:walky-talky v1 end -->
 ```
 
-If the file is absent, Collie creates it. If the block is present, Collie replaces it in place.
-Codex and pi read `AGENTS.override.md` instead of `AGENTS.md` when that file exists. Collie tells
-you when it sees one, because the block would then be ignored.
-
 Collie keeps a copy of a file as `<file>.collie-backup` before its first change. It refuses a
-symlinked file, a file it cannot read and a block whose markers are damaged. It writes nothing in
-those cases. A second install changes no bytes.
+symlinked file, a file it cannot read, and a skill file that Collie did not write. When the old
+block has damaged markers, or the markers appear more than once, Collie leaves that file as it
+is. `collie skill sync`, `collie skill status` and `collie doctor` then name the file, and you
+remove the block by hand. A second install changes no bytes.
 
 ### Check the skill
 
@@ -576,16 +590,18 @@ collie skill status
 
 Each target is one of these.
 
-- `installed`: the file or block matches this build.
+- `installed`: the file matches this build.
 - `stale`: it differs from this build. The next update brings it up to date, or run
   `collie skill sync` now.
 - `absent`: the harness is not on this machine, the sync is off, or you uninstalled the skill
   there. This is never a problem.
 - `refused`: Collie will not touch it, for example because it is a symlink.
 
+`collie skill status` also notes an old block that is still in an instruction file.
+
 `collie skill status --check` prints nothing and exits with code 3 when any installed copy is
-stale. A new Collie version alone does not make a copy stale. Only a change to the skill text, or
-to the path of the `collie` binary it names, does.
+stale, or an old block is still in place. A new Collie version alone does not make a copy stale.
+Only a change to the skill text, or to the path of the `collie` binary it names, does.
 
 `collie doctor` shows the same answer as the `skill-walky-talky` check. With
 `COLLIE_SKILL_SYNC=off`, `collie update` writes nothing and prints one note when the new build
@@ -597,7 +613,8 @@ carries a newer skill.
 collie skill uninstall all
 ```
 
-This removes the Claude file and cuts out the block. It leaves the rest of each file untouched.
+This removes each skill file, and cuts out an old block that is still in an instruction file. It
+leaves the rest of each file untouched.
 
 Collie records the uninstall under its state directory, so the next update does not put the skill
 back. `collie skill install <harness>` removes that record again.

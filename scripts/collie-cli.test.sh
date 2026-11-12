@@ -2516,19 +2516,25 @@ assert_contains "$STDERR" "usage: collie hooks install"
 beacon_env skill status || fail "\`collie skill status\` failed: ${STDERR}"
 assert_contains "$STDOUT" "absent"
 beacon_env skill status --check || fail "an absent skill read as drift: ${STDERR}"
+# Codex reads a skills folder (#770): the skill is a file there, and the block an older build put in
+# AGENTS.md is cut out once the file is in place, giving back the operator's bytes.
 mkdir -p "${BEACON_HOME}/.codex"
-printf '# My rules\nBe brief.\n' > "${BEACON_HOME}/.codex/AGENTS.md"
+printf '# My rules\nBe brief.\n\n<!-- collie:walky-talky v1 begin -->\n# WalkyTalky\nold\n<!-- collie-skill walky-talky v1 collie 1.28.2 -->\n<!-- collie:walky-talky v1 end -->\n' > "${BEACON_HOME}/.codex/AGENTS.md"
+CODEX_SKILL="${BEACON_HOME}/.codex/skills/collie-walky-talky/SKILL.md"
 beacon_env skill install codex || fail "\`collie skill install codex\` failed: ${STDERR}"
-assert_contains "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "collie:walky-talky v1 begin"
-assert_contains "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "Be brief."
+[ -f "$CODEX_SKILL" ] || fail "\`collie skill install codex\` did not write ${CODEX_SKILL}"
+assert_contains "$(cat "$CODEX_SKILL")" "name: collie-walky-talky"
+assert_contains "$STDOUT" "cut the old WalkyTalky block"
+assert_eq "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "$(printf '# My rules\nBe brief.')"
 beacon_env skill status || fail "\`collie skill status\` failed after install: ${STDERR}"
-assert_contains "$STDOUT" "AGENTS.md: installed"
+assert_contains "$STDOUT" "SKILL.md: installed"
 beacon_env skill status --check || fail "a fresh install read as stale: ${STDERR}"
-sed -i 's/WalkyTalky/WalkyTalky (older)/' "${BEACON_HOME}/.codex/AGENTS.md"
+sed -i 's/WalkyTalky/WalkyTalky (older)/' "$CODEX_SKILL"
 rc=0
 beacon_env skill status --check || rc=$?
 assert_eq "$rc" "3"
 beacon_env skill uninstall codex || fail "\`collie skill uninstall codex\` failed: ${STDERR}"
+[ ! -e "$CODEX_SKILL" ] || fail "\`collie skill uninstall codex\` left ${CODEX_SKILL}"
 assert_eq "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "$(printf '# My rules\nBe brief.')"
 
 # `skill sync` (ADR 0111): the uninstall above is a standing no, a harness whose folder exists gets the

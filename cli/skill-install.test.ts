@@ -15,7 +15,8 @@ import {
   cmdSkillSync,
   cmdSkillUninstall,
   cmdSkillVerb,
-  insertBlock,
+  COVERED_BY,
+  legacyState,
   removeBlock,
   renderWalkySkill,
   SKILL_TARGETS,
@@ -32,10 +33,17 @@ import { collieBinary } from "./unit.ts";
 // harness file.
 
 const CLAUDE_FILE = join(HOME, ".claude", "skills", "collie-walky-talky", "SKILL.md");
-const CODEX_FILE = join(HOME, ".codex", "AGENTS.md");
-const OPENCODE_FILE = join(HOME, ".config", "opencode", "AGENTS.md");
-const PI_FILE = join(HOME, ".pi", "agent", "AGENTS.md");
-const GEMINI_FILE = join(HOME, ".gemini", "GEMINI.md");
+const skill = (...dir: string[]): string => join(...dir, "skills", "collie-walky-talky", "SKILL.md");
+const CODEX_FILE = skill(HOME, ".codex");
+const OPENCODE_FILE = skill(HOME, ".config", "opencode");
+const PI_FILE = skill(HOME, ".pi", "agent");
+const OMP_FILE = skill(HOME, ".omp", "agent");
+const GEMINI_FILE = skill(HOME, ".gemini");
+// Where 1.28.2 and before put the block for the four rows that moved to a skill file (#770).
+const CODEX_OLD = join(HOME, ".codex", "AGENTS.md");
+const OPENCODE_OLD = join(HOME, ".config", "opencode", "AGENTS.md");
+const PI_OLD = join(HOME, ".pi", "agent", "AGENTS.md");
+const GEMINI_OLD = join(HOME, ".gemini", "GEMINI.md");
 const OPS_FILE = join("/srv", "ops", "skills", "collie-walky-talky", "SKILL.md");
 
 function deps(over: { env?: Environment; files?: Record<string, string> } = {}): SkillDeps & {
@@ -86,20 +94,80 @@ describe("the rendered skill", () => {
     expect(block.endsWith(`-->\n${BLOCK_END}`)).toBe(true);
     expect(block).not.toContain("name: collie-walky-talky");
   });
-});
 
-describe("the targets", () => {
-  test("name every harness once, each with a source and a date on the row", () => {
-    expect(SKILL_TARGETS.map((t) => t.harness)).toEqual(["claude", "codex", "opencode", "pi", "gemini"]);
-    expect(skillFiles(context({})).map((f) => f.path)).toEqual([CLAUDE_FILE, CODEX_FILE, OPENCODE_FILE, PI_FILE, GEMINI_FILE]);
+  test("the block's stamp is the format and a hash of the text, and two builds of one text give the same bytes", () => {
+    // The block is prompt: a byte that moved with every release would cost each session its prompt cache (#770).
+    const out = rendered(deps());
+    const block = blockOf(out);
+    const stamp = block.split("\n").at(-2);
+    expect(stamp).toMatch(/^<!-- collie-skill walky-talky v1 text [0-9a-f]{12} -->$/u);
+    expect(block).not.toMatch(/walky-talky v\d+ collie /u);
+    const otherBuild = out.replace(/collie [^ ]+ -->\n$/u, "collie 1.99.0+0123456789 -->\n");
+    expect(otherBuild).not.toBe(out);
+    expect(blockOf(otherBuild)).toBe(block);
+    // A change to the words moves the hash.
+    expect(blockOf(out.replace("# WalkyTalky", "# WalkyTalky (newer)")).split("\n").at(-2)).not.toBe(stamp);
   });
 
-  test("follow CODEX_HOME, PI_CODING_AGENT_DIR and every Claude profile", () => {
-    const env = { CODEX_HOME: "/srv/codex", PI_CODING_AGENT_DIR: "/srv/pi", COLLIE_TRANSCRIPT_ROOT: join("/srv", "ops", "projects") };
-    const paths = skillFiles(context(env)).map((f) => f.path);
-    expect(paths).toContain(join("/srv/codex", "AGENTS.md"));
-    expect(paths).toContain(join("/srv/pi", "AGENTS.md"));
+  test("the file form keeps the build in its stamp, outside the prompt, and front matter a skills loader reads", () => {
+    const out = rendered(deps());
+    expect(out.trimEnd().split("\n").at(-1)).toMatch(/^<!-- collie-skill walky-talky v1 collie .+ -->$/u);
+    const front = out.slice(4, out.indexOf("\n---\n", 4)).split("\n");
+    expect(front[0]).toBe("name: collie-walky-talky");
+    expect(front[1]).toMatch(/^description: \S/u);
+    expect(front).toHaveLength(2);
+    // One line a loader puts in every prompt: short, and plain YAML that every loader (serde, js-yaml) reads
+    // as the two strings, the name matching its folder as pi, opencode and Gemini CLI want it.
+    expect(front[1]!.length).toBeLessThan(300);
+    expect(Bun.YAML.parse(front.join("\n"))).toEqual({ name: "collie-walky-talky", description: front[1]!.slice("description: ".length) });
+  });
+});
+
+/** The block 1.28.2 wrote: the markers, the body, and a stamp with the build in it. */
+const OLD_BLOCK = `${BLOCK_BEGIN}\n# WalkyTalky\n\nOld advice.\n<!-- collie-skill walky-talky v1 collie 1.28.2+22f2f81315 -->\n${BLOCK_END}`;
+
+/** What `collie skill install` of 1.28.2 made of an instruction file: the block after a blank line. */
+function installedBy1282(original: string | null): string {
+  if (original === null || original.trim() === "") return `${OLD_BLOCK}\n`;
+  const lead = original.endsWith("\n") ? original : `${original}\n`;
+  return `${lead}\n${OLD_BLOCK}\n`;
+}
+
+describe("the targets", () => {
+  test("name every row once: the harness's own skills folder, never the shared one", () => {
+    expect(SKILL_TARGETS.map((t) => t.harness)).toEqual(["claude", "codex", "opencode", "pi", "omp", "gemini"]);
+    expect(skillFiles(context({})).map((f) => f.path)).toEqual([CLAUDE_FILE, CODEX_FILE, OPENCODE_FILE, PI_FILE, OMP_FILE, GEMINI_FILE]);
+    // Never `~/.agents/skills`: the harnesses that read it would each list the skill a second time.
+    expect(skillFiles(context({})).filter((f) => f.path.includes(".agents"))).toEqual([]);
+  });
+
+  test("a harness that reads another row's folder has no row of its own", () => {
+    const rows = SKILL_TARGETS.map((t) => t.harness);
+    expect(COVERED_BY).toEqual({ agy: ["gemini"], grok: ["claude"], muse: ["claude", "codex"] });
+    for (const [name, by] of Object.entries(COVERED_BY)) {
+      expect(rows).not.toContain(name);
+      for (const row of by) expect(rows).toContain(row);
+    }
+  });
+
+  test("the four rows that moved name the file their old block sits in", () => {
+    const legacy = Object.fromEntries(skillFiles(context({})).map((f) => [f.target.harness, f.legacy]));
+    expect(legacy).toEqual({ claude: null, codex: CODEX_OLD, opencode: OPENCODE_OLD, pi: PI_OLD, omp: null, gemini: GEMINI_OLD });
+  });
+
+  test("follow CODEX_HOME, PI_CODING_AGENT_DIR, XDG_CONFIG_HOME and every Claude profile", () => {
+    const env = { CODEX_HOME: "/srv/codex", PI_CODING_AGENT_DIR: "/srv/pi", XDG_CONFIG_HOME: "/srv/xdg", COLLIE_TRANSCRIPT_ROOT: join("/srv", "ops", "projects") };
+    const files = skillFiles(context(env));
+    const paths = files.map((f) => f.path);
+    expect(paths).toContain(skill("/srv/codex"));
+    expect(paths).toContain(skill("/srv/pi"));
+    expect(paths).toContain(skill("/srv/xdg", "opencode"));
     expect(paths).toContain(OPS_FILE);
+    // The old block followed CODEX_HOME and PI_CODING_AGENT_DIR, and never XDG_CONFIG_HOME.
+    const legacy = files.map((f) => f.legacy);
+    expect(legacy).toContain(join("/srv/codex", "AGENTS.md"));
+    expect(legacy).toContain(join("/srv/pi", "AGENTS.md"));
+    expect(legacy).toContain(OPENCODE_OLD);
   });
 });
 
@@ -119,17 +187,18 @@ describe("a profile set only by CLAUDE_CONFIG_DIR", () => {
 });
 
 describe("install", () => {
-  test("writes the whole file for Claude and a managed block for the others", () => {
+  test("writes the whole skill file for every row, and no instruction file of the operator's", () => {
     const d = deps();
-    expect(cmdSkillInstall(d, ["claude"])).toBe(EXIT.OK);
-    expect(text(d, CLAUDE_FILE)).toBe(rendered(d));
-    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.OK);
-    expect(text(d, CODEX_FILE)).toBe(`${blockOf(rendered(d))}\n`);
-    expect(stateOf(d, CODEX_FILE)).toBe("installed");
+    for (const [harness, path] of [["claude", CLAUDE_FILE], ["codex", CODEX_FILE], ["opencode", OPENCODE_FILE], ["pi", PI_FILE], ["omp", OMP_FILE], ["gemini", GEMINI_FILE]] as const) {
+      expect(cmdSkillInstall(d, [harness])).toBe(EXIT.OK);
+      expect(text(d, path)).toBe(rendered(d));
+      expect(stateOf(d, path)).toBe("installed");
+    }
+    for (const old of [CODEX_OLD, OPENCODE_OLD, PI_OLD, GEMINI_OLD]) expect(text(d, old)).toBeUndefined();
   });
 
   test("a second install is a no-op: no write, no backup", () => {
-    const d = deps({ files: { [CODEX_FILE]: "my rules\n" } });
+    const d = deps();
     cmdSkillInstall(d, ["claude"]);
     cmdSkillInstall(d, ["codex"]);
     d.files.ops.length = 0;
@@ -140,32 +209,9 @@ describe("install", () => {
     expect(d.io.stdout.join("\n")).toContain("no bytes changed");
   });
 
-  test("appends the block to an existing instruction file and backs it up once", () => {
-    const d = deps({ files: { [CODEX_FILE]: "# My rules\nBe brief.\n" } });
-    cmdSkillInstall(d, ["codex"]);
-    expect(text(d, CODEX_FILE)).toBe(`# My rules\nBe brief.\n\n${blockOf(rendered(d))}\n`);
-    expect(text(d, `${CODEX_FILE}.collie-backup`)).toBe("# My rules\nBe brief.\n");
-  });
-
-  test("replaces only its own block, in place, and leaves the text on both sides", () => {
-    const old = `${BLOCK_BEGIN}\nold advice\n${BLOCK_END}`;
-    const d = deps({ files: { [PI_FILE]: `before\n\n${old}\n\nafter\n` } });
-    expect(stateOf(d, PI_FILE)).toBe("stale");
-    cmdSkillInstall(d, ["pi"]);
-    expect(text(d, PI_FILE)).toBe(`before\n\n${blockOf(rendered(d))}\n\nafter\n`);
-    expect(stateOf(d, PI_FILE)).toBe("installed");
-  });
-
-  test("heals a block written under an older marker version", () => {
-    const d = deps({ files: { [GEMINI_FILE]: "x\n<!-- collie:walky-talky v0 begin -->\nold\n<!-- collie:walky-talky v0 end -->\n" } });
-    expect(stateOf(d, GEMINI_FILE)).toBe("stale");
-    cmdSkillInstall(d, ["gemini"]);
-    expect(text(d, GEMINI_FILE)).toBe(`x\n${blockOf(rendered(d))}\n`);
-  });
-
   test("refuses a symlinked file and writes nothing", () => {
     const d = deps({ files: { [CODEX_FILE]: "mine\n" } });
-    d.fs.entries.set(CODEX_FILE, { kind: "symlink", target: "/nix/store/x-AGENTS.md" });
+    d.fs.entries.set(CODEX_FILE, { kind: "symlink", target: "/nix/store/x-SKILL.md" });
     expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.FAIL);
     expect(d.io.stderr.join("\n")).toContain("is a symlink");
     expect(text(d, CODEX_FILE)).toBe("mine\n");
@@ -173,12 +219,12 @@ describe("install", () => {
     expect(stateOf(d, CODEX_FILE)).toBe("refused");
   });
 
-  test("refuses a damaged marker pair and a Claude file that is not ours", () => {
-    const d = deps({ files: { [OPENCODE_FILE]: `${BLOCK_BEGIN}\nhalf\n`, [CLAUDE_FILE]: "someone else's skill\n" } });
-    expect(cmdSkillInstall(d, ["opencode"])).toBe(EXIT.FAIL);
+  test("refuses a skill file that is not ours", () => {
+    const d = deps({ files: { [CLAUDE_FILE]: "someone else's skill\n", [OPENCODE_FILE]: "mine too\n" } });
     expect(cmdSkillInstall(d, ["claude"])).toBe(EXIT.FAIL);
-    expect(text(d, OPENCODE_FILE)).toBe(`${BLOCK_BEGIN}\nhalf\n`);
+    expect(cmdSkillInstall(d, ["opencode"])).toBe(EXIT.FAIL);
     expect(text(d, CLAUDE_FILE)).toBe("someone else's skill\n");
+    expect(text(d, OPENCODE_FILE)).toBe("mine too\n");
   });
 
   test("`all` skips a harness whose folder was never created, and an explicit name creates it", () => {
@@ -198,10 +244,16 @@ describe("install", () => {
     expect(text(d, CLAUDE_FILE)).toBe(rendered(d));
   });
 
-  test("notes an AGENTS.override.md that the harness reads instead", () => {
-    const d = deps({ files: { [join(HOME, ".codex", "AGENTS.override.md")]: "override\n" } });
-    cmdSkillInstall(d, ["codex"]);
-    expect(d.io.stdout.join("\n")).toContain("reads it instead");
+  test("a harness that reads another row's folder is pointed there, and nothing is written", () => {
+    const d = deps();
+    expect(cmdSkillInstall(d, ["grok"])).toBe(EXIT.USAGE);
+    expect(cmdSkillInstall(d, ["agy"])).toBe(EXIT.USAGE);
+    expect(cmdSkillInstall(d, ["muse"])).toBe(EXIT.USAGE);
+    const err = d.io.stderr.join("\n");
+    expect(err).toContain("`collie skill install claude` covers it");
+    expect(err).toContain("`collie skill install gemini` covers it");
+    expect(err).toContain("`collie skill install claude` or `collie skill install codex` covers it");
+    expect(d.files.entries.size).toBe(0);
   });
 
   test("`generic` has no file, and an unknown name is a usage error", () => {
@@ -210,6 +262,146 @@ describe("install", () => {
     expect(cmdSkillInstall(d, ["cursor"])).toBe(EXIT.USAGE);
     expect(cmdSkillInstall(d, [])).toBe(EXIT.USAGE);
     expect(d.files.entries.size).toBe(0);
+  });
+});
+
+describe("the move from the old block (#770)", () => {
+  const ORIGINAL = "# My rules\nBe brief.\n";
+  const ROWS = [
+    ["codex", CODEX_FILE, CODEX_OLD],
+    ["opencode", OPENCODE_FILE, OPENCODE_OLD],
+    ["pi", PI_FILE, PI_OLD],
+    ["gemini", GEMINI_FILE, GEMINI_OLD],
+  ] as const;
+
+  test("install puts the file in, then cuts the old block and gives back the operator's bytes", () => {
+    for (const [harness, path, old] of ROWS) {
+      const d = deps({ files: { [old]: installedBy1282(ORIGINAL) } });
+      expect(legacyState(d, skillFiles(d.ctx, [harness])[0]!).kind).toBe("block");
+      expect(cmdSkillInstall(d, [harness])).toBe(EXIT.OK);
+      expect(text(d, path)).toBe(rendered(d));
+      expect(text(d, old)).toBe(ORIGINAL);
+      expect(d.io.stdout.join("\n")).toContain(`✓ ${harness}: cut the old WalkyTalky block from ${old}`);
+      // Idempotent: the second run writes nothing.
+      d.files.ops.length = 0;
+      d.io.stdout.length = 0;
+      expect(cmdSkillInstall(d, [harness])).toBe(EXIT.OK);
+      expect(d.files.ops).toEqual([]);
+      expect(d.io.stdout.join("\n")).not.toContain("cut");
+    }
+  });
+
+  test("sync, as `collie update` runs it, moves every old block once and then writes nothing", () => {
+    const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL), [PI_OLD]: installedBy1282(ORIGINAL) } });
+    expect(cmdSkillSync(d, ["--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.io.stdout[0]!).changed).toEqual([
+      { harness: "codex", path: CODEX_FILE, action: "installed" },
+      { harness: "codex", path: CODEX_OLD, action: "cut" },
+      { harness: "pi", path: PI_FILE, action: "installed" },
+      { harness: "pi", path: PI_OLD, action: "cut" },
+    ]);
+    expect(text(d, CODEX_OLD)).toBe(ORIGINAL);
+    expect(text(d, PI_OLD)).toBe(ORIGINAL);
+    expect(text(d, CODEX_FILE)).toBe(rendered(d));
+    d.io.stdout.length = 0;
+    d.files.ops.length = 0;
+    expect(cmdSkillSync(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([]);
+    expect(d.files.ops).toEqual([]);
+  });
+
+  test("the printed lines name the cut", () => {
+    const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL) } });
+    cmdSkillSync(d, []);
+    expect(d.io.stdout).toEqual([`installed codex ${CODEX_FILE}`, `cut the old block from codex ${CODEX_OLD}`]);
+  });
+
+  test("an old file that held nothing but the block is removed, as uninstall does", () => {
+    const d = deps({ files: { [GEMINI_OLD]: installedBy1282(null) } });
+    cmdSkillSync(d, []);
+    expect(text(d, GEMINI_OLD)).toBeUndefined();
+    expect(text(d, GEMINI_FILE)).toBe(rendered(d));
+  });
+
+  test("a block between the operator's lines comes out with its markers, and the lines on both sides stay", () => {
+    const d = deps({ files: { [PI_OLD]: `top\n\n${OLD_BLOCK}\n\nbottom\n` } });
+    cmdSkillSync(d, []);
+    expect(text(d, PI_OLD)).toBe("top\n\nbottom\n");
+  });
+
+  test("damaged or doubled markers: that file stays byte for byte, the skill file still goes in, and the verb says so", () => {
+    const damaged = `mine\n${BLOCK_BEGIN}\nhalf\n`;
+    const doubled = `${OLD_BLOCK}\nmine\n${OLD_BLOCK}\n`;
+    const d = deps({ files: { [CODEX_OLD]: damaged, [OPENCODE_OLD]: doubled } });
+    expect(cmdSkillSync(d, ["--json"])).toBe(EXIT.OK);
+    const result = JSON.parse(d.io.stdout[0]!);
+    expect(result.refused).toEqual([
+      { harness: "codex", path: CODEX_OLD, reason: "its WalkyTalky markers are not one begin and one end, so the old block there was left alone" },
+      { harness: "opencode", path: OPENCODE_OLD, reason: "its WalkyTalky markers are not one begin and one end, so the old block there was left alone" },
+    ]);
+    expect(text(d, CODEX_OLD)).toBe(damaged);
+    expect(text(d, OPENCODE_OLD)).toBe(doubled);
+    expect(text(d, CODEX_FILE)).toBe(rendered(d));
+    expect(text(d, OPENCODE_FILE)).toBe(rendered(d));
+    // A second run writes nothing and says it again.
+    d.io.stdout.length = 0;
+    d.files.ops.length = 0;
+    cmdSkillSync(d, []);
+    expect(d.files.ops).toEqual([]);
+    expect(d.io.stdout).toHaveLength(2);
+    // install names it and fails, so a script sees it; status notes it.
+    d.io.stdout.length = 0;
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.FAIL);
+    expect(d.io.stderr.join("\n")).toContain("Remove the WalkyTalky lines there by hand");
+    expect(text(d, CODEX_OLD)).toBe(damaged);
+    cmdSkillStatus(d, []);
+    expect(d.io.stdout.join("\n")).toContain(`note: ${CODEX_OLD}: its WalkyTalky markers`);
+  });
+
+  test("a symlinked old file is left alone and named", () => {
+    const d = deps({ files: { [PI_OLD]: installedBy1282(ORIGINAL) } });
+    d.fs.entries.set(PI_OLD, { kind: "symlink", target: "/nix/store/z-AGENTS.md" });
+    cmdSkillSync(d, ["--json"]);
+    expect(JSON.parse(d.io.stdout[0]!).refused).toEqual([{ harness: "pi", path: PI_OLD, reason: `${PI_OLD} is a symlink, so the old block there was left alone` }]);
+    expect(text(d, PI_OLD)).toBe(installedBy1282(ORIGINAL));
+  });
+
+  test("the old block stays while the skill file is refused, so the harness never ends with neither", () => {
+    const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL), [CODEX_FILE]: "not ours\n" } });
+    cmdSkillSync(d, []);
+    expect(d.io.stdout).toEqual([`refused codex ${CODEX_FILE}: it is not a Collie skill file`]);
+    expect(text(d, CODEX_OLD)).toBe(installedBy1282(ORIGINAL));
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.FAIL);
+    expect(text(d, CODEX_OLD)).toBe(installedBy1282(ORIGINAL));
+  });
+
+  test("--dry-run says it would install and cut, and writes nothing", () => {
+    const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL) } });
+    cmdSkillSync(d, ["--dry-run"]);
+    expect(d.io.stdout).toEqual([`would install codex ${CODEX_FILE}`, `would cut the old block from codex ${CODEX_OLD}`]);
+    expect(d.files.ops).toEqual([]);
+  });
+
+  test("an old block that waits is drift: status names it, --check exits STATE", () => {
+    const d = deps();
+    cmdSkillInstall(d, ["codex"]);
+    d.files.entries.set(CODEX_OLD, { text: installedBy1282(ORIGINAL) });
+    expect(cmdSkillStatus(d, ["--check"])).toBe(EXIT.STATE);
+    cmdSkillStatus(d, []);
+    expect(d.io.stdout.join("\n")).toContain(`note: ${CODEX_OLD} still carries the old WalkyTalky block.`);
+  });
+
+  test("an uninstall recorded by an older build, under the old path, still keeps the skill out", () => {
+    const d = deps({ files: { [join(HOME, ".codex", "config.toml")]: "", [uninstalledFile(STATE)]: `${CODEX_OLD}\n` } });
+    cmdSkillSync(d, ["--json"]);
+    expect(JSON.parse(d.io.stdout[0]!).skipped).toContainEqual({ harness: "codex", path: CODEX_FILE, reason: "uninstalled" });
+    expect(text(d, CODEX_FILE)).toBeUndefined();
+    d.io.stdout.length = 0;
+    cmdSkillStatus(d, []);
+    expect(d.io.stdout.join("\n")).toContain("you uninstalled it");
+    // install by name takes both spellings off the marker.
+    cmdSkillInstall(d, ["codex"]);
+    expect(text(d, uninstalledFile(STATE))).toBeUndefined();
   });
 });
 
@@ -250,7 +442,7 @@ describe("status and drift", () => {
     expect(cmdSkillStatus(d, ["--check"])).toBe(EXIT.OK);
   });
 
-  test("line ends do not make a copy stale: a CRLF template and a CRLF installed file or block read as installed", () => {
+  test("line ends do not make a copy stale: a CRLF template and a CRLF installed file read as installed", () => {
     // Windows: git's autocrlf can hand the template CRLF, and an editor can save an installed copy with it.
     const crlf = (value: string): string => value.replaceAll("\n", "\r\n");
     const d = deps();
@@ -291,19 +483,29 @@ describe("uninstall", () => {
     expect(text(d, join(HOME, ".claude", "settings.json"))).toBe("{}");
   });
 
-  test("cuts only our block and gives back the operator's text", () => {
+  test("removes the skill file and a leftover old block, and gives back the operator's text", () => {
     const original = "# Mine\nKeep this.\n";
-    const d = deps({ files: { [CODEX_FILE]: original } });
+    const d = deps({ files: { [CODEX_OLD]: original } });
     cmdSkillInstall(d, ["codex"]);
-    cmdSkillUninstall(d, ["codex"]);
-    expect(text(d, CODEX_FILE)).toBe(original);
+    d.files.entries.set(CODEX_OLD, { text: installedBy1282(original) });
+    expect(cmdSkillUninstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(text(d, CODEX_FILE)).toBeUndefined();
+    expect(text(d, CODEX_OLD)).toBe(original);
+    expect(text(d, uninstalledFile(STATE))).toBe(`${CODEX_FILE}\n`);
   });
 
-  test("removes a file that held nothing but the block", () => {
-    const d = deps();
-    cmdSkillInstall(d, ["gemini"]);
-    cmdSkillUninstall(d, ["gemini"]);
-    expect(text(d, GEMINI_FILE)).toBeUndefined();
+  test("cuts an old block where no skill file was ever written, and removes a file that held nothing else", () => {
+    const d = deps({ files: { [GEMINI_OLD]: installedBy1282(null) } });
+    expect(cmdSkillUninstall(d, ["gemini"])).toBe(EXIT.OK);
+    expect(text(d, GEMINI_OLD)).toBeUndefined();
+    expect(d.io.stdout.join("\n")).not.toContain("nothing to remove");
+  });
+
+  test("a damaged old block fails the verb and stays byte for byte", () => {
+    const damaged = `${BLOCK_BEGIN}\nhalf\n`;
+    const d = deps({ files: { [PI_OLD]: damaged } });
+    expect(cmdSkillUninstall(d, ["pi"])).toBe(EXIT.FAIL);
+    expect(text(d, PI_OLD)).toBe(damaged);
   });
 
   test("leaves a Claude file it does not own, and reports nothing to remove", () => {
@@ -315,32 +517,32 @@ describe("uninstall", () => {
 });
 
 describe("block edits", () => {
-  const block = `${BLOCK_BEGIN}\nbody\n${BLOCK_END}`;
-  test("insert then remove round-trips a file that ends in a newline", () => {
-    const original = "a\nb\n";
-    expect(removeBlock(insertBlock(original, block))).toBe(original);
+  test("the cut gives back a file the old install appended the block to", () => {
+    expect(removeBlock(installedBy1282("a\nb\n"))).toBe("a\nb\n");
   });
-  test("an empty or absent file becomes the block alone", () => {
-    expect(insertBlock(null, block)).toBe(`${block}\n`);
-    expect(insertBlock("\n", block)).toBe(`${block}\n`);
+  test("a file that held only the block is left blank", () => {
+    expect(removeBlock(installedBy1282(null)).trim()).toBe("");
   });
-  test("a file with no trailing newline gains one before the block", () => {
-    expect(insertBlock("a", block)).toBe(`a\n\n${block}\n`);
+  test("no block and damaged markers change nothing", () => {
+    expect(removeBlock("a\n")).toBe("a\n");
+    expect(removeBlock(`a\n${BLOCK_BEGIN}\n`)).toBe(`a\n${BLOCK_BEGIN}\n`);
   });
 });
 
 describe("print and the verb router", () => {
-  test("print gives the file for Claude and the block for the rest and for generic", () => {
+  test("print gives the file for every row and the block for generic", () => {
     const d = deps();
-    cmdSkillPrint(d, ["claude"]);
+    cmdSkillPrint(d, ["codex"]);
     expect(d.io.stdout.join("\n")).toBe(rendered(d).trimEnd());
     d.io.stdout.length = 0;
     cmdSkillPrint(d, ["generic"]);
     expect(d.io.stdout.join("\n")).toBe(blockOf(rendered(d)));
     d.io.stdout.length = 0;
     cmdSkillPrint(d, ["all"]);
-    expect(d.io.stdout.filter((l) => l.startsWith("<!-- collie skill:"))).toHaveLength(5);
+    expect(d.io.stdout.filter((l) => l.startsWith("<!-- collie skill:"))).toHaveLength(6);
     expect(cmdSkillPrint(d, ["nope"])).toBe(EXIT.USAGE);
+    expect(cmdSkillPrint(d, ["agy"])).toBe(EXIT.USAGE);
+    expect(d.io.stderr.join("\n")).toContain("`collie skill print gemini` covers it");
   });
 
   test("an unknown word is a usage error with the usage block", () => {
@@ -356,13 +558,13 @@ describe("sync", () => {
   const PI_SETTINGS = join(HOME, ".pi", "agent", "settings.json");
   const older = (d: SkillDeps): string => rendered(d).replace("# WalkyTalky", "# WalkyTalky (older)");
 
-  /** claude installed, codex stale, opencode present but absent, pi refused, gemini not on this machine. */
+  /** claude installed, codex stale, opencode present but absent, pi refused, the rest not on this machine. */
   function machine(): ReturnType<typeof deps> {
     const d = deps({ files: { [CLAUDE_SETTINGS]: "{}", [OPENCODE_CONFIG]: "{}", [PI_SETTINGS]: "{}", [PI_FILE]: "mine\n" } });
     cmdSkillInstall(d, ["claude"]);
     cmdSkillInstall(d, ["codex"]);
-    d.files.entries.set(CODEX_FILE, { text: `${blockOf(older(d))}\n` });
-    d.fs.entries.set(PI_FILE, { kind: "symlink", target: "/nix/store/z-AGENTS.md" });
+    d.files.entries.set(CODEX_FILE, { text: older(d) });
+    d.fs.entries.set(PI_FILE, { kind: "symlink", target: "/nix/store/z-SKILL.md" });
     d.io.stdout.length = 0;
     d.files.ops.length = 0;
     return d;
@@ -414,7 +616,10 @@ describe("sync", () => {
         { harness: "opencode", path: OPENCODE_FILE, action: "installed" },
       ],
       refused: [{ harness: "pi", path: PI_FILE, reason: `${PI_FILE} is a symlink` }],
-      skipped: [{ harness: "gemini", path: GEMINI_FILE, reason: "not on this machine" }],
+      skipped: [
+        { harness: "omp", path: OMP_FILE, reason: "not on this machine" },
+        { harness: "gemini", path: GEMINI_FILE, reason: "not on this machine" },
+      ],
     });
   });
 
@@ -445,7 +650,7 @@ describe("sync", () => {
     cmdSkillInstall(d, ["codex"]);
     cmdSkillInstall(d, ["gemini"]);
     expect(text(d, uninstalledFile(STATE))).toBeUndefined();
-    d.files.entries.set(CODEX_FILE, { text: `${blockOf(older(d))}\n` });
+    d.files.entries.set(CODEX_FILE, { text: older(d) });
     d.io.stdout.length = 0;
     cmdSkillSync(d, []);
     expect(d.io.stdout).toEqual([`updated codex ${CODEX_FILE}`]);

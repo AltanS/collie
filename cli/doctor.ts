@@ -1907,11 +1907,23 @@ function beaconHooks(
  * Warn on stale, ok otherwise, as `hooksAreBehind` treats the hooks: a target with no skill is not
  * drift (the harness is not here, the sync is off, or the operator uninstalled it, ADR 0111). A refused
  * target is named, because install would not heal it, but it is not a warning either.
+ *
+ * An old block that an earlier build left in an instruction file (#770) is a copy behind this build:
+ * sync cuts it. One that sync may not cut (damaged or doubled markers, a symlinked file) is a warning
+ * of its own, because only the operator can take it out.
  */
 function skillWalkyTalky(deps: DoctorDeps): Finding {
   const check = "skill-walky-talky";
   const report = skillReport({ ctx: deps.ctx, files: deps.files, fs: deps.link });
-  const stale = report.filter((r) => r.state.kind === "stale");
+  const stuck = report.flatMap((r) => (r.legacy.kind === "refused" ? [r.legacy] : []));
+  if (stuck.length > 0) {
+    return warn(
+      check,
+      `an old WalkyTalky block Collie may not cut: ${stuck.map((l) => `${l.path} (${l.reason})`).join("; ")}`,
+      "remove the lines between the `collie:walky-talky` markers in that file by hand; every other line there is yours",
+    );
+  }
+  const stale = report.filter((r) => r.state.kind === "stale" || r.legacy.kind === "block");
   const installed = report.filter((r) => r.state.kind === "installed");
   if (stale.length > 0) {
     return warn(

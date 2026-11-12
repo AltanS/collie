@@ -2200,6 +2200,24 @@ describe("skill-walky-talky", () => {
     expect(finding.remedy).toContain("collie skill install all");
     expect(code).toBe(EXIT.OK);
   });
+
+  test("an old block an earlier build left in AGENTS.md is a copy behind this build (#770)", async () => {
+    const old = `# Mine\n\n<!-- collie:walky-talky v1 begin -->\nold\n${STAMP}\n<!-- collie:walky-talky v1 end -->\n`;
+    const h = harness(null, [], { files: { ...healthyFiles(), [join(HOME, ".codex", "AGENTS.md")]: old } });
+    const finding = (await findings(h)).byCheck.get("skill-walky-talky")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.detail).toContain("codex");
+  });
+
+  test("an old block whose markers are damaged warns, names the file and says to cut it by hand", async () => {
+    const file = join(HOME, ".pi", "agent", "AGENTS.md");
+    const h = harness(null, [], { files: { ...healthyFiles(), [file]: "# Mine\n<!-- collie:walky-talky v1 begin -->\nhalf\n" } });
+    const finding = (await findings(h)).byCheck.get("skill-walky-talky")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.detail).toContain(file);
+    expect(finding.detail).toContain("not one begin and one end");
+    expect(finding.remedy).toContain("by hand");
+  });
 });
 
 describe("walky-refusals", () => {

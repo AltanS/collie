@@ -8,7 +8,8 @@
 export interface SyncChange {
   readonly harness: string;
   readonly path: string;
-  readonly action: "installed" | "updated";
+  /** `cut`: the old block came out of an instruction file, after the row moved to a skill file (#770). */
+  readonly action: "installed" | "updated" | "cut";
 }
 
 export interface SyncRefusal {
@@ -48,8 +49,12 @@ export function parseSyncResult(stdout: string): SyncResult | null {
 
 /** The lines `sync` prints: one per change, one per refusal, none for a skip. `collie update` prints the same. */
 export function syncLines(result: SyncResult, dryRun = false): string[] {
-  const verb = (action: SyncChange["action"]): string =>
-    dryRun ? (action === "installed" ? "would install" : "would update") : action;
+  // An action this build does not know (a newer binary's) prints as it came: the update reads that JSON.
+  const verb = (action: SyncChange["action"]): string => {
+    if (action === "cut") return dryRun ? "would cut the old block from" : "cut the old block from";
+    if (!dryRun) return action;
+    return action === "installed" ? "would install" : "would update";
+  };
   return [
     ...result.changed.map((c) => `${verb(c.action)} ${c.harness} ${c.path}`),
     ...result.refused.map((r) => `refused ${r.harness} ${r.path}: ${r.reason}`),
