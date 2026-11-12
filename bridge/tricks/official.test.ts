@@ -1138,3 +1138,21 @@ describe("the list pins the places of each trick (contract 2, the menu place)", 
     expect((await right.official.install("ci", "add")).status).toBe(200);
   });
 });
+
+describe("the list's repository facts", () => {
+  test("a read of the list asks for each repository once and carries what the cache holds, stars and a date only", async () => {
+    const url = "https://github.com/AltanS/collie-tricks";
+    const asked: string[][] = [];
+    let held: { stars: number; pushedAt: string } | undefined;
+    const repoFacts = { facts: (u: string) => (u === url ? held : undefined), want: (urls: Iterable<string>) => void asked.push([...urls]) };
+    const commit = "3f2a91c0d4e5f60718293a4b5c6d7e8f90a1b2c3";
+    const r = await rig([fixtureEntry(url, commit, "a".repeat(64)), fixtureEntry(url, commit, "b".repeat(64), "pals")], { repoFacts });
+    const first = (await r.official.reply()).tricks;
+    expect(asked).toEqual([[url]]);
+    expect(first.map((t) => t.repoFacts)).toEqual([undefined, undefined]);
+    held = { stars: 12, pushedAt: "2026-11-10T08:30:00Z" };
+    const second = (await r.official.reply()).tricks;
+    expect(second.map((t) => t.repoFacts)).toEqual([held, held]);
+    expect(Object.keys(second[0]?.repoFacts ?? {}).toSorted()).toEqual(["pushedAt", "stars"]);
+  });
+});

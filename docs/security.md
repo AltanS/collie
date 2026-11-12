@@ -684,6 +684,19 @@ Besides the daily ping, the one unprompted outbound call is the update check: an
 tags API (`bridge/update.ts`) that compares your version to the newest tag. It carries no data about
 you or your machine, only the static user-agent `collie-update-check`.
 
+A trick's About sheet adds one more read, made by the bridge and never by the phone. When a trick came
+from a repository on `github.com`, the sheet shows its stars and the date of its last commit. The bridge
+asks GitHub's public API once per repository with an anonymous HTTPS `GET`, with the user-agent
+`collie-trick-facts` and nothing about you:
+
+```text
+https://api.github.com/repos/<owner>/<repo>
+```
+
+It reads only when a paired phone lists your tricks, never on a timer. It keeps a good answer for 6 hours
+and a failed one for an hour, in the `tricks` folder of its state folder, and makes at most 20 such reads an
+hour. It follows no redirect, gives up after 5 seconds or 64 KB, and keeps only the two numbers it shows.
+
 The Whistle model download is another outbound call. It happens only when a person taps **Download
 to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine
 (Whistle)](#the-speech-engine-whistle)).

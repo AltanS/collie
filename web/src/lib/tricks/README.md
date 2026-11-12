@@ -425,10 +425,24 @@ for a hash that differs. git offers no size limit of its own on a fetch.
 
 **The one network request.** A tap on Add or Update makes one git fetch over https from
 `github.com/AltanS/collie-tricks`: depth 1, the listed commit only, no redirects, no credential helper,
-no global git config. Nothing else in this feature touches the network: the list comes from the
-binary, `GET /api/tricks/official` reads only the tricks folder, and there is no background check and
-no count. Offline, the tap says "GitHub did not answer. Nothing was added." That line is also true
+no global git config. Besides it, the list touches the network only for the repository facts below:
+the list comes from the binary, `GET /api/tricks/official` reads the tricks folder, and there is no count.
+Offline, the tap says "GitHub did not answer. Nothing was added." That line is also true
 when the repository no longer serves the commit.
+
+**Repository facts.** A trick's About sheet shows its repository's stars and the date of its last commit
+when the source is a `github.com` repository (`bridge/tricks/repo-facts.ts`). The bridge reads them, never
+the phone: exactly one `GET https://api.github.com/repos/<owner>/<repo>` per repository, the owner and the
+name taken from the stored source URL only when its host is exactly `github.com` and both pass GitHub's
+character rules, with no token, no cookie and the fixed user agent `collie-trick-facts`. No redirect is
+followed, the read gives up after 5 s and past 64 KiB, and only `stargazers_count` and `pushed_at` are kept
+(`WireRepoFacts`, on `WireTrickInfo.repoFacts` and `WireOfficialTrick.repoFacts`). It reads lazily, when a
+phone asks for `GET /api/tricks` or `GET /api/tricks/official` and an entry is stale, never on a timer, and
+the answer never waits: it carries the cache, and the next one carries a read that landed. The cache lives
+in memory and in `<stateDir>/tricks/repo-facts.json`: a good answer 6 h, a failed read 1 h, one read per
+repository at a time, and at most 20 reads in a rolling hour for the whole bridge. GitHub allows 60
+unauthenticated requests an hour per IP address; one read costs one of them. A failed or missing read
+shows nothing. There is no switch for it; the install ping's off switches do not gate it.
 
 **The trust root is the binary.** The commit pins what git fetches, and the hash pins what Collie
 writes. A repository that serves other content at that commit fails git's own object check or the hash.

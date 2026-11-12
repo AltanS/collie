@@ -1650,6 +1650,22 @@ export interface WireTrickInfo {
    * go back to. Settings then offers Undo. Absent otherwise, and from an older bridge.
    */
   autoAt?: string;
+  /** The manifest's `version`, the author's own word ({@link VERSION_RE}). Absent: none, or an older bridge. */
+  version?: string;
+  /**
+   * Stars and the last commit of the trick's repository on GitHub, as the bridge last read them
+   * (bridge/tricks/repo-facts.ts). Absent: not a `github.com` repository, not read yet, a failed read, or an
+   * older bridge. The phone never reads GitHub itself.
+   */
+  repoFacts?: WireRepoFacts;
+}
+/**
+ * A GitHub repository's facts for the About sheet: its stars and when it was last pushed to, an ISO instant.
+ * Exactly these two fields: the bridge keeps nothing else of GitHub's answer.
+ */
+export interface WireRepoFacts {
+  stars: number;
+  pushedAt: string;
 }
 /** A trick's rules on the wire: the file's name and its bytes as text, whole. */
 export type WireTrickRules = {
@@ -1687,6 +1703,8 @@ export interface TrickProvenance {
   at?: string;
   repo?: string;
   sha?: string;
+  /** The repository's https URL as the origin record names it, for the About sheet's link. Absent: not from a repository, or an older bridge. */
+  url?: string;
   /**
    * Set for a trick `collie trick propose` handed in (crew slice 8): who proposed it and the machine, as
    * the lead named it. Absent for any other trick, and from an older bridge. `by: "terminal"` means no
@@ -1791,6 +1809,8 @@ export interface WireOfficialTrick {
    * card says so before Add without a fetch. Absent: it adds none, or an older bridge.
    */
   addsMenu?: true;
+  /** Stars and the last commit of the entry's repository, as for an added trick ({@link WireTrickInfo.repoFacts}). */
+  repoFacts?: WireRepoFacts;
 }
 
 /** `GET /api/tricks/official`: the list with each entry's state, empty with `runsOn` on a machine that runs no tricks. */

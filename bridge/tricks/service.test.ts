@@ -1444,7 +1444,44 @@ describe("warnings at the switch (review 15)", () => {
     const row = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
     expect(row && "warnings" in row).toBe(false);
     // The official repository at a commit the official list never named: the row must not read as the list.
-    expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit, unlisted: true });
+    expect(row?.provenance).toEqual({ via: "repo", at: "2026-11-10T09:41:00.000Z", repo: "AltanS/collie-tricks", sha: commit, url: "https://github.com/AltanS/collie-tricks", unlisted: true });
+  });
+
+  test("a phone's list asks for the repository facts, carries what the cache holds, and the manifest's version", async () => {
+    const asked: string[][] = [];
+    const held = new Map<string, { stars: number; pushedAt: string }>();
+    const repoFacts = {
+      facts: (url: string) => held.get(url),
+      want: (urls: Iterable<string>) => void asked.push([...urls]),
+    };
+    const r = await rig([exited(belt("1"))], { repoFacts });
+    const dir = await makeTrick(r.configDir, "legs", `${MANIFEST}version = "1.4.0"\n`, { "legs.sh": "#!/bin/sh\nprintf '{}'\n" });
+    const commit = "3f2a91c0d4e5f60718293a4b5c6d7e8f90a1b2c3";
+    const url = "https://github.com/someone/legs-trick";
+    await writeFile(join(dir, ".collie-origin.json"), JSON.stringify({ v: 1, url, ref: null, commit, subdir: null, at: "2026-11-10T09:41:00.000Z" }));
+    await makeTrick(r.configDir, "clock", 'id = "clock"\nname = "Clock"\nrun = "./clock.sh"\nplaces = ["belt"]\n', { "clock.sh": "#!/bin/sh\nprintf '{}'\n" });
+
+    // The first read finds nothing cached: no facts, and the one repository is asked for.
+    const first = (await r.service.reply(undefined)).tricks;
+    expect(asked).toEqual([[url]]);
+    expect(first.find((t) => t.id === "legs")?.repoFacts).toBeUndefined();
+    expect(first.find((t) => t.id === "legs")?.version).toBe("1.4.0");
+    expect(first.find((t) => t.id === "clock")?.version).toBeUndefined();
+
+    // A read landed: the rows take it at once and the rev moves.
+    const rev = r.service.rev();
+    held.set(url, { stars: 7, pushedAt: "2026-11-09T12:00:00Z" });
+    r.service.repoFactsMoved();
+    expect(r.service.rev()).toBeGreaterThan(rev ?? 0);
+    const legs = (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    expect(legs?.repoFacts).toEqual({ stars: 7, pushedAt: "2026-11-09T12:00:00Z" });
+    expect(Object.keys(legs?.repoFacts ?? {}).toSorted()).toEqual(["pushedAt", "stars"]);
+    expect((await r.service.reply(undefined)).tricks.find((t) => t.id === "clock")?.repoFacts).toBeUndefined();
+
+    // The host's own CLI reads the list without asking for anything.
+    const before = asked.length;
+    await r.service.reply(undefined, { forCli: true });
+    expect(asked).toHaveLength(before);
   });
 });
 

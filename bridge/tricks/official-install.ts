@@ -6,6 +6,7 @@ import { rulesTextProblems, type OfficialState, type OfficialTricksReply, type T
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStanding, officialStateOf, officialWire, pinnedPlaces, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
+import type { RepoFactsPort } from "./repo-facts.ts";
 import { renderOrigin } from "./origin.ts";
 import { tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { replaceCode, writeNewTrick, type ProposalWrite } from "./proposal-install.ts";
@@ -117,6 +118,8 @@ export interface OfficialTricksDeps {
   lane?: <T>(work: () => Promise<T>) => Promise<T>;
   /** One audit line per add and update. */
   audit?: (entry: { action: string; detail: Record<string, string> }) => void;
+  /** The list's repository facts (repo-facts.ts): a read of the list asks for the stale ones and carries what is cached. Absent: none. */
+  repoFacts?: RepoFactsPort;
   warn?: (line: string) => void;
   now?: () => number;
   /** TEST SEAM: the git runner, a `file://` source, a shorter deadline, a lower byte cap. The bridge never sets them. */
@@ -217,7 +220,17 @@ export class OfficialTricks implements OfficialTricksSurface {
     if ((this.deps.gate?.() ?? null) !== null) return { tricks: [], gate: "windows" };
     const runsOn = this.deps.runsOn?.() ?? null;
     if (runsOn !== null) return { tricks: [], runsOn };
-    return { tricks: await officialWire(this.deps.configDir, this.entries()) };
+    const entries = this.entries();
+    const tricks = await officialWire(this.deps.configDir, entries);
+    const facts = this.deps.repoFacts;
+    if (facts === undefined) return { tricks };
+    // The repository's stars and last commit from the cache; a stale one is read in the background, never waited for.
+    facts.want(new Set(entries.map((e) => e.repo)));
+    for (const wire of tricks) {
+      const known = facts.facts(wire.repo);
+      if (known !== undefined) wire.repoFacts = known;
+    }
+    return { tricks };
   }
 
   async install(id: string, mode: "add" | "update"): Promise<OfficialAnswer> {

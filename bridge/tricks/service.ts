@@ -54,6 +54,7 @@ import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, tr
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
 import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
+import type { RepoFactsPort } from "./repo-facts.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
@@ -406,6 +407,11 @@ export interface TricksServiceDeps {
   versions?: TrickVersionsPort;
   /** Fault B: the card that says a trick stopped for its rights (rights-card.ts). Absent: the row alone says it. */
   rights?: TrickRightsPort;
+  /**
+   * Stars and the last commit of a trick's GitHub repository (repo-facts.ts), for the About sheet. A phone's
+   * read of the list asks for the stale ones; the read never waits for them. Absent: no facts, no read.
+   */
+  repoFacts?: RepoFactsPort;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -722,6 +728,9 @@ export class TricksService implements TricksSurface {
     if (this.gated()) return { rev: this.store.rev, tricks: [], parts: [], present: [], gate: "windows" };
     await this.refresh();
     this.rebind();
+    // A phone's read asks for the repositories' facts (repo-facts.ts): lazily, in the background, within the
+    // cap. The host's own CLI shows none, so its read asks for none.
+    if (opts?.forCli !== true) this.deps.repoFacts?.want(this.sourceUrls());
     return this.store.reply(since, opts?.forCli === true && this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.(), { bound: opts?.bound === true });
   }
 
@@ -1369,7 +1378,10 @@ export class TricksService implements TricksSurface {
     };
     // The provenance of what runs: the approved copy keeps the origin record of the version approved.
     const origin = shown.origin;
-    if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit };
+    if (origin !== undefined) info.provenance = { via: "repo", at: origin.at, repo: originRepoName(origin.url), sha: origin.commit, url: origin.url };
+    // The repository's stars and last commit, from the cache only: the read itself is the list's ask (`reply`).
+    const facts = origin === undefined ? undefined : this.deps.repoFacts?.facts(origin.url);
+    if (facts !== undefined) info.repoFacts = facts;
     // From the official repository, but not a version of the official list: the row must not read as the list.
     if (origin !== undefined && info.provenance !== undefined && isUnlistedOfficialOrigin(this.officialEntries(), id, origin, shown.codeHash)) info.provenance.unlisted = true;
     // A proposed trick (`collie trick propose`, crew slice 8): the web reads `proposed` and says "Proposed …"
@@ -1395,6 +1407,7 @@ export class TricksService implements TricksSurface {
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
+    if (m?.version !== undefined) info.version = m.version;
     // Contract 2: an agent view and its rules, whole, for the About sheet; this build draws no view yet.
     const approves = approvesOf(rt);
     if (approves !== undefined) info.approves = approves;
@@ -1407,6 +1420,21 @@ export class TricksService implements TricksSurface {
     const taken = this.warningsOf.get(id);
     if (this.wantsWarnings(rt) && taken !== undefined && taken.codeHash === rt.found.codeHash && taken.warnings.length > 0) info.warnings = taken.warnings;
     this.store.setInfo(info);
+  }
+
+  /** The repository URL of every trick that came from one, as its row shows it. */
+  private sourceUrls(): string[] {
+    const urls: string[] = [];
+    for (const rt of this.runtimes.values()) {
+      const url = this.shownOf(rt).origin?.url;
+      if (url !== undefined) urls.push(url);
+    }
+    return urls;
+  }
+
+  /** A read of the repository facts changed what they say: every row takes them, and the rev moves once. */
+  repoFactsMoved(): void {
+    for (const id of this.runtimes.keys()) this.publish(id);
   }
 
   /** Whether the trick may run at all: on, with an approved copy that holds and whose manifest parsed. */
