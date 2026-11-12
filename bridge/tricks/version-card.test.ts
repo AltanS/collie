@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HillService } from "../hill/service.ts";
@@ -138,7 +138,7 @@ describe("the diff of two copies", () => {
       ["c.sh", "@@ -1 +1 @@\n-1\r\n+\techo 2\r\n"],
       ["d.sh", "@@ -1 +1 @@\n-1\n+echo 2\n"],
     ]);
-    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(argv.at(-1)?.split("/").at(-1) ?? "") ?? "", timedOut: false });
+    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(basename(argv.at(-1) ?? "")) ?? "", timedOut: false });
     const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
     expect(diff.files.map((file) => [file.rel, file.cut === true])).toEqual([
       ["a.sh", true],
@@ -169,7 +169,7 @@ describe("the diff of two copies", () => {
       ["b.sh", "@@ -1 +1 @@\n-1\r\n+echo 2\r\n"],
       ["c.sh", '@@ -1 +1,2 @@\n-1\n+a();\rb();\n+KEY="sk-or-v1-your-key-here-placeholder00"\n'],
     ]);
-    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(argv.at(-1)?.split("/").at(-1) ?? "") ?? "", timedOut: false });
+    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(basename(argv.at(-1) ?? "")) ?? "", timedOut: false });
     const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
     expect(diff.files.map((file) => [file.rel, file.masked, file.strayCr])).toEqual([
       ["a.sh", 1, true],
@@ -186,7 +186,7 @@ describe("the diff of two copies", () => {
       ["legs.sh", '@@ -1 +1,4 @@\n-1\n+KEY="sk-or-v1-your-key-here-placeholder00"\n+echo "‮ok"\n+echo hi\u0007\n+echo 2\n'],
       ["tool.sh", '@@ -1 +1 @@\n-1\n+TOKEN="sk-or-v1-your-key-here-placeholder11"\n'],
     ]);
-    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(argv.at(-1)?.split("/").at(-1) ?? "") ?? "", timedOut: false });
+    const run = async (argv: readonly string[]): Promise<DiffRun> => ({ code: 1, stdout: patches.get(basename(argv.at(-1) ?? "")) ?? "", timedOut: false });
     const diff = await versionDiff({ base, next, git: "/usr/bin/git", run });
     expect(diff.files.map((file) => [file.rel, file.masked])).toEqual([
       ["legs.sh", 3],

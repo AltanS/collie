@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import type { HillDecision, HillMedia } from "../../web/src/lib/hill/wire.ts";
@@ -138,7 +138,7 @@ describe("the lead's open Decisions reach its deputy (§25)", () => {
     // Replayed, or re-sent by a confused lead: the id is closed here for good.
     await apply(7, [agent(1), agent(2)]);
     expect((await deputy.load())?.decisions.map((d) => d.id)).toEqual([agent(2).id]);
-    expect(await new StandbyHillStore(deputy.dir.replace(/\/standby-hill$/u, "")).load().then((i) => i?.closed)).toEqual([agent(1).id]);
+    expect(await new StandbyHillStore(dirname(deputy.dir)).load().then((i) => i?.closed)).toEqual([agent(1).id]);
   });
 
   test("a picture is taken only as the type and size its record says, read from its bytes", async () => {

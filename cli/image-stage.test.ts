@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../bridge/host.ts";
@@ -33,9 +34,10 @@ function setup() {
 
 describe("where staging goes", () => {
   test("the root is under XDG_CACHE_HOME when it is absolute, else under ~/.cache", () => {
-    expect(imageStagingRoot({ env: { XDG_CACHE_HOME: "/x/cache" }, home: "/home/pat" })).toBe("/x/cache/collie/image-staging");
-    expect(imageStagingRoot({ env: {}, home: "/home/pat" })).toBe("/home/pat/.cache/collie/image-staging");
-    expect(imageStagingRoot({ env: { XDG_CACHE_HOME: "relative" }, home: "/home/pat" })).toBe("/home/pat/.cache/collie/image-staging");
+    // Joined by the host's own rule, with backslashes on Windows.
+    expect(imageStagingRoot({ env: { XDG_CACHE_HOME: "/x/cache" }, home: "/home/pat" })).toBe(join("/x/cache", "collie", "image-staging"));
+    expect(imageStagingRoot({ env: {}, home: "/home/pat" })).toBe(join("/home/pat", ".cache", "collie", "image-staging"));
+    expect(imageStagingRoot({ env: { XDG_CACHE_HOME: "relative" }, home: "/home/pat" })).toBe(join("/home/pat", ".cache", "collie", "image-staging"));
   });
 
   test("only /tmp and /var/tmp are the folders PrivateTmp hides", () => {
@@ -72,10 +74,12 @@ describe("staging a picture", () => {
   });
 
   test("a picture outside /tmp passes unchanged, and nothing is created", () => {
-    const s = setup();
-    const staged = stageImagesForBridge(s.deps, [{ path: "/home/pat/shots/a.png", caption: "Home" }]);
+    // No picture under /tmp, so the root may sit in the host's own temp folder: a Windows host has no /tmp.
+    const root = join(mkdtempSync(join(tmpdir(), "stage-root-")), "image-staging");
+    made.push(join(root, ".."));
+    const staged = stageImagesForBridge({ env: {}, home: "/home/nobody", stagingRoot: () => root }, [{ path: "/home/pat/shots/a.png", caption: "Home" }]);
     expect(staged).toMatchObject({ ok: true, images: [{ path: "/home/pat/shots/a.png", caption: "Home" }] });
-    expect(existsSync(s.root)).toBe(false);
+    expect(existsSync(root)).toBe(false);
   });
 
   linux("a mix stages only what is under /tmp, and keeps the order", () => {

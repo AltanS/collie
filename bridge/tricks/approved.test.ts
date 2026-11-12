@@ -218,7 +218,9 @@ describe("nothing unseen enters the copy (security re-review)", () => {
   });
 
   test("B2: a file name with a control or an invisible direction character is refused for approval", async () => {
-    for (const name of ["evil\u202egnp.ts", "two\nlines.ts", "zero\u200bwidth.ts"]) {
+    // NTFS refuses a control character in a file name, so on Windows the newline cannot be there to refuse.
+    const names = ["evil\u202egnp.ts", "two\nlines.ts", "zero\u200bwidth.ts"].filter((name) => process.platform !== "win32" || !/\p{Cc}/u.test(name));
+    for (const name of names) {
       const { configDir, dir } = await setup();
       await writeFile(join(dir, name), "x\n");
       const hashed = await trickCodeHash(dir);

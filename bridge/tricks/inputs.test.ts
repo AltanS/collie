@@ -124,15 +124,17 @@ describe("the member's read, through the Files view", () => {
     expect(read.files.map((f) => f.rel)).toEqual([".editorconfig"]);
   });
 
-  test.skipIf(process.platform === "win32")("a name with a control, bidi or zero-width character is never served, and counts as skipped; plain non-ASCII names pass", async () => {
+  test("a name with a control, bidi or zero-width character is never served, and counts as skipped; plain non-ASCII names pass", async () => {
     const m = machine();
-    for (const name of ["evil\u202Etxt.md", "zero\u200Bwidth.md", "bell\u0007.md", "übersicht.md", "日本.txt"]) m.put(name, "x");
+    // NTFS refuses a control character in a file name, so on Windows the bell name cannot be there to refuse.
+    const names = ["evil\u202Etxt.md", "zero\u200Bwidth.md", "bell\u0007.md", "übersicht.md", "日本.txt"].filter((name) => process.platform !== "win32" || !/\p{Cc}/u.test(name));
+    for (const name of names) m.put(name, "x");
     m.put("dir\u202E/inner.md", "x");
     m.put("ok/inner.md", "x");
     const read = await readPaneInputs(m.ctx, ["*.md", "*.txt", "*/inner.md"], new Map(), budget(), false);
     expect(read.files.filter((f) => f.skipped === undefined).map((f) => f.rel)).toEqual(["übersicht.md", "日本.txt", "ok/inner.md"]);
     const refused = read.files.filter((f) => f.skipped === "name");
-    expect(refused).toHaveLength(3);
+    expect(refused).toHaveLength(process.platform === "win32" ? 2 : 3);
     for (const file of refused) {
       expect(file.b64).toBeUndefined();
       expect(file.sha256).toBeUndefined();

@@ -80,8 +80,11 @@ describe("the flags", () => {
   });
 
   test("--watch counts code and config.toml, never a log, a dot file, media/ or captures/", () => {
-    for (const yes of ["program.ts", "config.toml", "lib/x.ts", "trick.toml"]) expect(watchCounts(yes)).toBe(true);
-    for (const no of ["run.log", ".cache/x", "media/shot.png", "captures/a.png", "node_modules/x/index.js", "lib/.hidden", ""]) expect(watchCounts(no)).toBe(false);
+    // A path as the watcher hands it over: relative, with the host's own separator (watchFolder).
+    const rel = (path: string): string => join(...path.split("/"));
+    for (const yes of ["program.ts", "config.toml", "lib/x.ts", "trick.toml"]) expect(watchCounts(rel(yes))).toBe(true);
+    for (const no of ["run.log", ".cache/x", "media/shot.png", "captures/a.png", "node_modules/x/index.js", "lib/.hidden"]) expect(watchCounts(rel(no))).toBe(false);
+    expect(watchCounts("")).toBe(false);
   });
 });
 
