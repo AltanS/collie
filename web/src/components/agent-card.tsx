@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { shownStatus } from "@/lib/triage";
 import { cn } from "@/lib/utils";
@@ -24,7 +24,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
 import { PRESS_REACH_ROW } from "@/components/ui/tap-target";
 import { useOpeningShown } from "@/lib/pane-opening";
-import { cancelPress, markPressHeld, redirectClick, releasePress, rememberPress } from "@/lib/press-memory";
+import { cancelPress, clearPress, markPressHeld, redirectClick, releasePress, rememberPress } from "@/lib/press-memory";
 import { Icon } from "@/components/icons/icon";
 
 interface AgentCardProps {
@@ -160,6 +160,8 @@ export function AgentCard({
   // is aimed at whatever stands under the finger when it lifts, and a list that moved in between aims it
   // at a neighbour. The neighbour finds this row's press in memory and opens THIS row instead.
   const [me] = useState(() => Symbol("agent-row"));
+  // A row that unmounts under the finger takes its press with it: nothing will lift on it.
+  useEffect(() => () => cancelPress(me), [me]);
   const hold = useLongPress(
     onHold &&
       (() => {
@@ -278,7 +280,9 @@ export function AgentCard({
       // arms on the same event. The same event remembers the row, for the click that may land elsewhere.
       onPointerDown={(e) => {
         const row = e.currentTarget;
+        // A right or middle button is no tap: it clears whatever press is in memory instead of starting one.
         if (e.button === 0) rememberPress(me, () => onClick(row));
+        else clearPress();
         onPress?.();
         hold.onPointerDown(e);
       }}
@@ -289,6 +293,11 @@ export function AgentCard({
       onPointerCancel={(e) => {
         hold.onPointerCancel(e);
         cancelPress(me);
+      }}
+      // A mouse or pen dragged off the row ends the press: its lift lands elsewhere and is nobody's tap. Not for a
+      // touch, whose `pointerleave` comes AFTER `pointerup` and would end the press before its click.
+      onPointerLeave={(e) => {
+        if (e.pointerType !== "touch") cancelPress(me);
       }}
       data-glide-origin={glideKey === undefined ? undefined : "pane"}
       data-glide-key={glideKey}

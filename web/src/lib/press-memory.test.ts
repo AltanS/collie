@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  PRESS_MAX_MS,
   RELEASE_GRACE_MS,
   cancelPress,
+  clearPress,
   markPressHeld,
   redirectClick,
   releasePress,
@@ -95,5 +97,31 @@ describe("press memory", () => {
     rememberPress(B, openB);
     vi.advanceTimersByTime(RELEASE_GRACE_MS + 10);
     expect(redirectClick(A, true)).toBe(openB);
+  });
+  it("a press that never lifts ends at the ceiling: a click long after is never aimed back at it", () => {
+    rememberPress(A, vi.fn());
+    vi.advanceTimersByTime(PRESS_MAX_MS - 1);
+    expect(redirectClick(B, true)).not.toBe("own");
+    rememberPress(A, vi.fn());
+    vi.advanceTimersByTime(PRESS_MAX_MS);
+    expect(redirectClick(B, true)).toBe("own");
+  });
+
+  it("the ceiling counts from the press, not from the lift", () => {
+    rememberPress(A, vi.fn());
+    vi.advanceTimersByTime(PRESS_MAX_MS - 100);
+    releasePress(A);
+    vi.advanceTimersByTime(100);
+    expect(redirectClick(B, true)).toBe("own");
+  });
+
+  it("a right or middle button clears the press in memory", () => {
+    rememberPress(A, vi.fn());
+    clearPress();
+    expect(redirectClick(B, true)).toBe("own");
+  });
+
+  it("clearing with nothing in memory is a no-op", () => {
+    expect(() => clearPress()).not.toThrow();
   });
 });

@@ -14,6 +14,9 @@
 //   2. A press lives from `pointerdown` until `pointercancel` (a scroll starts one, and no click follows),
 //      or until `RELEASE_GRACE_MS` after `pointerup`, which is long past the click that follows a lift.
 //      A press older than that is never consulted, so a stray click cannot reach back to it.
+//      A press whose lift the row never sees ends too, so it cannot wait for a click that is hours away: a
+//      mouse dragged off the row (`pointerleave`), a row that unmounts under the finger, a right or middle
+//      button (`clearPress`), and, whatever else, `PRESS_MAX_MS` after the finger landed (review 1, finding 5).
 //   3. A press that became a HOLD opens no pane, and neither does the click on a neighbour that the
 //      shifted list sends the lift to: that click is swallowed (`"swallow"`).
 //   4. A press on the row the click lands on is no redirect at all: the ordinary tap runs as it always did.
@@ -24,6 +27,12 @@
 /** How long a lifted press stays on offer to the click that follows the lift. */
 export const RELEASE_GRACE_MS = 400;
 
+/**
+ * The longest a press is remembered, lifted or not. Past a long press (500ms) and any hold a person means; a press
+ * that is still "down" after this lost its end (a pointer that left the page, an event that never came).
+ */
+export const PRESS_MAX_MS = 3000;
+
 interface Press {
   /** The row that was pressed: a symbol per mounted row, so two rows of one pane (a pinned copy) differ. */
   readonly owner: symbol;
@@ -33,19 +42,24 @@ interface Press {
   held: boolean;
   /** Set when the finger lifted; the press then ends `RELEASE_GRACE_MS` later. */
   timer: ReturnType<typeof setTimeout> | null;
+  /** The ceiling: the press ends `PRESS_MAX_MS` after it began, whatever else happens. */
+  age: ReturnType<typeof setTimeout> | null;
 }
 
 let current: Press | null = null;
 
 function end(press: Press): void {
   if (press.timer !== null) clearTimeout(press.timer);
+  if (press.age !== null) clearTimeout(press.age);
   if (current === press) current = null;
 }
 
 /** The finger landed on a row. Replaces any press before it: one finger at a time. */
 export function rememberPress(owner: symbol, open: () => void): void {
   if (current !== null) end(current);
-  current = { owner, open, held: false, timer: null };
+  const press: Press = { owner, open, held: false, timer: null, age: null };
+  press.age = setTimeout(() => end(press), PRESS_MAX_MS);
+  current = press;
 }
 
 /** The press on `owner` became a hold. */
@@ -64,6 +78,11 @@ export function releasePress(owner: symbol): void {
 /** The browser took the touch (a scroll, a system gesture): no click follows. */
 export function cancelPress(owner: symbol): void {
   if (current !== null && current.owner === owner) end(current);
+}
+
+/** A right or middle button went down: whatever press is in memory is not a tap any more. */
+export function clearPress(): void {
+  if (current !== null) end(current);
 }
 
 /** What a click on a row does with the press in memory. */

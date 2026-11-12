@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { AgentCard } from "./agent-card";
-import { resetPressMemory } from "@/lib/press-memory";
+import { PRESS_MAX_MS, resetPressMemory } from "@/lib/press-memory";
 import { fixtureAgents } from "@/test/handlers";
 import type { AgentView } from "@/lib/types";
 
@@ -87,6 +87,66 @@ describe("AgentCard: the pressed row opens", () => {
     fireEvent.pointerDown(a, { button: 2, pointerType: "mouse" });
     fireEvent.click(b, { detail: 1 });
     expect(onB).toHaveBeenCalledTimes(1);
+  });
+
+  it("a mouse dragged off the row ends its press: the click that lands on B is B's own", () => {
+    const onA = vi.fn();
+    const onB = vi.fn();
+    const { a, b } = twoRows(onA, onB);
+    fireEvent.pointerDown(a, { button: 0, pointerType: "mouse" });
+    fireEvent.pointerLeave(a, { pointerType: "mouse" });
+    fireEvent.click(b, { detail: 1 });
+    expect(onB).toHaveBeenCalledTimes(1);
+    expect(onA).not.toHaveBeenCalled();
+  });
+
+  it("a touch's pointerleave, which follows its pointerup, does not end the press before the click", () => {
+    const onA = vi.fn();
+    const onB = vi.fn();
+    const { a, b } = twoRows(onA, onB);
+    fireEvent.pointerDown(a, { button: 0, pointerType: "touch" });
+    fireEvent.pointerUp(a, { pointerType: "touch" });
+    fireEvent.pointerLeave(a, { pointerType: "touch" });
+    fireEvent.click(b, { detail: 1 });
+    expect(onA).toHaveBeenCalledTimes(1);
+    expect(onB).not.toHaveBeenCalled();
+  });
+
+  it("a row that unmounts under the finger takes its press with it", () => {
+    const onA = vi.fn();
+    const onB = vi.fn();
+    const { a, b } = twoRows(onA, onB);
+    fireEvent.pointerDown(a, { button: 0, pointerType: "mouse" });
+    cleanup();
+    twoRows(onA, onB);
+    const [, b2] = screen.getAllByRole("button");
+    expect(b).not.toBe(b2);
+    fireEvent.click(b2!, { detail: 1 });
+    expect(onB).toHaveBeenCalledTimes(1);
+    expect(onA).not.toHaveBeenCalled();
+  });
+
+  it("a right or middle button clears a press that is in memory", () => {
+    const onA = vi.fn();
+    const onB = vi.fn();
+    const { a, b } = twoRows(onA, onB);
+    fireEvent.pointerDown(a, { button: 0, pointerType: "mouse" });
+    fireEvent.pointerDown(b, { button: 1, pointerType: "mouse" });
+    fireEvent.click(b, { detail: 1 });
+    expect(onB).toHaveBeenCalledTimes(1);
+    expect(onA).not.toHaveBeenCalled();
+  });
+
+  it("a press that outlives the ceiling is gone: the click on B is B's own", () => {
+    vi.useFakeTimers();
+    const onA = vi.fn();
+    const onB = vi.fn();
+    const { a, b } = twoRows(onA, onB);
+    fireEvent.pointerDown(a, { button: 0, pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(PRESS_MAX_MS));
+    fireEvent.click(b, { detail: 1 });
+    expect(onB).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("a hold on A opens neither pane when the shifted list sends the click to B", () => {
