@@ -1025,6 +1025,8 @@ describe.if(posix)("a git run killed at its time cap", () => {
 
 // ── review 8 V-N3: the list pins an official trick's agent instructions ─────
 
+// The two adds below run on POSIX only: they install through the fixture repository and the rig of "adding from
+// the list" below, which is POSIX only as a whole (`file://${bare}` of a temp path is not a file URL on Windows).
 describe("the list pins the rules of a trick that gives agents instructions", () => {
   const RULES = "Draw one screen.\n";
   const SHA = new Bun.CryptoHasher("sha256").update(RULES).digest("hex");
@@ -1044,7 +1046,7 @@ describe("the list pins the rules of a trick that gives agents instructions", ()
     expect(round).toMatchObject({ ok: true, entries: [{ rules: SHA }] });
   });
 
-  test("an entry without a program (no run line, a README beside its rules) adds, holds no program, and its code hash is the listed one", async () => {
+  test.if(posix)("an entry without a program (no run line, a README beside its rules) adds, holds no program, and its code hash is the listed one", async () => {
     const files = { "morph/trick.toml": { text: VIEW("morph") }, "morph/rules.md": { text: RULES }, "morph/README.md": { text: "# Morph\n" } };
     const repo = await fixtureRepo([files]);
     const code = await hashOf({ "trick.toml": files["morph/trick.toml"], "rules.md": files["morph/rules.md"], "README.md": files["morph/README.md"] });
@@ -1062,7 +1064,7 @@ describe("the list pins the rules of a trick that gives agents instructions", ()
     expect(wire.some((w) => "rules" in w)).toBe(false);
   });
 
-  test("an add takes only the rules the list pins: other rules, or rules where the list names none, install nothing", async () => {
+  test.if(posix)("an add takes only the rules the list pins: other rules, or rules where the list names none, install nothing", async () => {
     const files = { "morph/trick.toml": { text: VIEW("morph") }, "morph/rules.md": { text: RULES } };
     const repo = await fixtureRepo([files]);
     const code = await hashOf({ "trick.toml": files["morph/trick.toml"], "rules.md": files["morph/rules.md"] });

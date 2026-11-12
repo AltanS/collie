@@ -293,7 +293,8 @@ run((t) => {
     expect(ran.stderr).toContain('state name "../up" is not plain names joined by "/"');
   });
 
-  test("t.sh runs without a shell, never throws, caps its output, stops on time, and hides BUN_BE_BUN from the child", async () => {
+  // POSIX tools: echo, head, sleep and env are programs on POSIX and not on a Windows PATH, and /dev/zero is POSIX.
+  test.skipIf(process.platform === "win32")("t.sh runs without a shell, never throws, caps its output, stops on time, and hides BUN_BE_BUN from the child", async () => {
     const program = `import { run } from "./trick.ts";
 run(async (t) => {
   const echo = await t.sh("echo", ["$HOME", "a b"]);
@@ -318,7 +319,8 @@ run(async (t) => {
     const root = await tempDir();
     const real = join(root, "repo");
     await mkdir(real);
-    await symlink(real, join(root, "link"));
+    // A junction on Windows, which needs no privilege; the type is ignored elsewhere.
+    await symlink(real, join(root, "link"), "junction");
     const program = `import { run } from "./trick.ts";
 run((t) => {
   const at = t.sessionAt(${JSON.stringify(join(root, "link"))});
@@ -449,7 +451,8 @@ describe("helper v2: the state folder", () => {
 });
 
 describe("helper v2: tools, show and onPrint", () => {
-  test("t.tool finds a program on PATH, else in the extra and user folders, PATH only under TRICK_TOOLS_ONLY_PATH=1", async () => {
+  // POSIX tool folders: `sh` on /usr/bin:/bin, and a `#!/bin/sh` tool found by its executable bit, which Windows has neither of.
+  test.skipIf(process.platform === "win32")("t.tool finds a program on PATH, else in the extra and user folders, PATH only under TRICK_TOOLS_ONLY_PATH=1", async () => {
     const { t } = await trickHere();
     const bin = await tempDir();
     await writeFile(join(bin, "fake-tool-kit"), "#!/bin/sh\necho hi\n", { mode: 0o755 });

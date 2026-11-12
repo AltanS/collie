@@ -699,6 +699,8 @@ describe("post --image", () => {
     expect(d.io.stderr).toEqual([`hill: ${HILL_IMAGES_DROPPED}`]);
   });
 
+  // Each case that stages stands a Unix socket up for the bridge and stages from /tmp, the folder systemd's
+  // PrivateTmp hides: both POSIX, and the hill verbs refuse on Windows, which has no walky socket.
   describe("a picture under /tmp, for a bridge with a private /tmp", () => {
     /** A folder of the test's own as the staging root, and a folder under /tmp for the picture. */
     function stage() {
@@ -741,7 +743,7 @@ describe("post --image", () => {
     const okAnswer = `${JSON.stringify({ ok: true, decision: storedDecision("dc_staged000001") })}\n`;
     const refusal = (staged: string[]) => `${JSON.stringify({ ok: false, hill: true, code: "bad_image", error: `${staged[0] ?? ""}: the bridge does not like this picture` })}\n`;
 
-    test("is copied, the copy is the path sent, and the copy is gone when the post is answered", async () => {
+    socketTest("is copied, the copy is the path sent, and the copy is gone when the post is answered", async () => {
       const sock = await socket();
       const s = stage();
       const seen = seenNone();
@@ -756,7 +758,7 @@ describe("post --image", () => {
       expect(s.left()).toEqual([]);
     });
 
-    test("a bridge refusal names the path the agent typed, not the copy, and the copy is gone", async () => {
+    socketTest("a bridge refusal names the path the agent typed, not the copy, and the copy is gone", async () => {
       const sock = await socket();
       const s = stage();
       const seen = seenNone();
@@ -768,7 +770,7 @@ describe("post --image", () => {
       expect(s.left()).toEqual([]);
     });
 
-    test("a timeout and a throw leave no copy behind", async () => {
+    socketTest("a timeout and a throw leave no copy behind", async () => {
       const sock = await socket();
       const s = stage();
       const seen = seenNone();
@@ -804,7 +806,7 @@ describe("post --image", () => {
       expect(existsSync(s.root)).toBe(false);
     });
 
-    test("a picture the helper refuses is a plain error and a non-zero exit, and nothing is posted", async () => {
+    socketTest("a picture the helper refuses is a plain error and a non-zero exit, and nothing is posted", async () => {
       const sock = await socket();
       const s = stage();
       const seen = seenNone();
