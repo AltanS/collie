@@ -263,6 +263,9 @@ async function answer(route: Route, path: string, pins: PinStub): Promise<void> 
   if (path === "/api/notifications/snooze") {
     return fulfillJson(route, { snoozedUntil: null });
   }
+  if (path === "/api/notifications/clear") {
+    return fulfillJson(route, { clearedSlots: [] });
+  }
   if (path === "/api/update/check") {
     // Level with itself: nothing on offer, so the ribbon has nothing to say on any route.
     return fulfillJson(route, {
