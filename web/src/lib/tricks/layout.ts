@@ -11,7 +11,7 @@
 // its kids (they flow down; a `bar` is the tallest of its kids), which the leaves already fix. The
 // same function decides whether a new view is a new FORM, which waits while a finger is down.
 
-import { DIFF_LINE_REM } from "../../components/ui/diff-lines";
+import { DIFF_LINE_REM } from "../diff-line-metrics";
 import { VIEW_LIMITS, type CellNode, type ColAlign, type View, type ViewNode } from "./schema";
 
 /** A reserved height: rem, which scales with the text size, plus px, which does not. */

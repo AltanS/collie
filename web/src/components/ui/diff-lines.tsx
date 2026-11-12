@@ -144,8 +144,6 @@ export function diffLineKind(line: string): DiffLineKind {
 export const DIFF_ROW_TONE = { add: "bg-status-done/12", del: "bg-status-blocked/12", hunk: "bg-muted/60 text-muted-foreground", context: "" } as const satisfies Record<DiffLineKind, string>;
 /** The sign's ink per kind. */
 export const DIFF_SIGN_TONE = { add: "text-status-done", del: "text-status-blocked", hunk: "", context: "" } as const satisfies Record<DiffLineKind, string>;
-/** One line's height, in rem: the block reserves its lines from this (`leading-5`). */
-export const DIFF_LINE_REM = 1.25;
 
 export function DiffLines({
   lines,

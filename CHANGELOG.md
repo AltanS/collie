@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The bridge and the CLI type-check and test with only the root install again.** The trick layout read one diff line height from a web component, which imports a package only the web app installs, so `bun run typecheck` and `bun test ./bridge` failed in a checkout without `web/node_modules`. The height lives in a module of its own now, and a test holds that nothing the bridge or the CLI reaches imports a web component or a web-only package.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added
