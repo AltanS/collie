@@ -26,7 +26,7 @@ describe("crew-mux-probe authHeaders", () => {
   });
 
   test("the local secret never goes to another host", () => {
-    for (const lead of ["http://100.64.0.8:8789", "https://collie.example.test", "not a url"]) {
+    for (const lead of ["http://100.64.10.8:8789", "https://collie.example.test", "not a url"]) {
       expect(authHeaders(lead, { COLLIE_STATE_DIR: STATE }, withSecret)).toEqual({});
     }
   });
@@ -39,6 +39,6 @@ describe("crew-mux-probe authHeaders", () => {
   test("isLoopbackUrl", () => {
     expect(isLoopbackUrl("http://127.0.0.2:1")).toBe(true);
     expect(isLoopbackUrl("http://127.0.0.1.example.test")).toBe(false);
-    expect(isLoopbackUrl("http://minibuch:8789")).toBe(false);
+    expect(isLoopbackUrl("http://workshop:8789")).toBe(false);
   });
 });

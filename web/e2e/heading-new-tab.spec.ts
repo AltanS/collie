@@ -14,7 +14,7 @@ import { fill, installApiStub, installCrewWorld } from "./fixtures/api";
 //
 // The fixture herd (src/test/handlers.ts): webapp (w1) holds a blocked claude pane; collie (w2)
 // holds a working codex pane and a bare shell. The crew world adds moonward, the peer workshop's own
-// `w1`, beside the lead bluefin's webapp `w1`.
+// `w1`, beside the lead lodge's webapp `w1`.
 
 test.use({ serviceWorkers: "block" });
 

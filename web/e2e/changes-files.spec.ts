@@ -314,7 +314,7 @@ async function deepRoot(page: import("@playwright/test").Page, root: string) {
 
 test("a folder's header line says the label alone when the folder is named like it, at 375 px", async ({ page }) => {
   const label = fixtureAgents[0]!.workspaceLabel;
-  await deepRoot(page, `/var/home/altan/projects/clients/acme/storefront-monorepo/packages/${label}`);
+  await deepRoot(page, `/var/home/dev/projects/clients/acme/storefront-monorepo/packages/${label}`);
   const line = page.locator("header").getByText(label, { exact: true }).first();
   await expect(line).toBeVisible();
   await expect(page.locator('[data-slot="files-root-folder"]')).toHaveCount(0);
@@ -326,7 +326,7 @@ test("a folder named otherwise adds only its last segment in mono, never the pat
   const label = fixtureAgents[0]!.workspaceLabel;
   // The title column is about 90 px wide beside the four squares, so a short segment is the case that
   // must fit whole; a long one is cut at its END, never from the left.
-  await deepRoot(page, "/var/home/altan/projects/clients/acme/storefront-monorepo/packages/app");
+  await deepRoot(page, "/var/home/dev/projects/clients/acme/storefront-monorepo/packages/app");
   const segment = page.locator('[data-slot="files-root-folder"]');
   await expect(segment).toHaveText("· app");
   await expect(segment).toHaveCSS("font-family", /mono/i);
