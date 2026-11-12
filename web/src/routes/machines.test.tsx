@@ -48,20 +48,20 @@ describe("the machines list", () => {
     const names = screen
       .getAllByRole("button")
       .map((b) => b.textContent ?? "")
-      .filter((text) => ["bluefin", "workshop", "attic", "pantry"].includes(text));
-    expect(names).toEqual(["bluefin", "workshop", "attic", "pantry"]);
+      .filter((text) => ["lodge", "workshop", "attic", "pantry"].includes(text));
+    expect(names).toEqual(["lodge", "workshop", "attic", "pantry"]);
   });
 
   it("puts the lead first even when the answer did not", async () => {
     const shuffled = { ts: FIXTURE_MACHINES_TS, machines: [fixtureMachineRows[1]!, fixtureMachineRows[0]!] };
     renderMachines({ census: shuffled, error: false });
-    const first = (await screen.findAllByRole("button", { name: /^(bluefin|workshop)$/ }))[0];
-    expect(first).toHaveTextContent("bluefin");
+    const first = (await screen.findAllByRole("button", { name: /^(lodge|workshop)$/ }))[0];
+    expect(first).toHaveTextContent("lodge");
   });
 
   it("gives a reachable machine its CPU and memory now, their half hour, network and load", async () => {
     renderMachines(crew);
-    const card = await cardOf("bluefin");
+    const card = await cardOf("lodge");
     expect(within(card).getByText("34%")).toBeInTheDocument();
     expect(within(card).getByText("46%")).toBeInTheDocument();
     expect(within(card).getByText("7.4 / 16 GB")).toBeInTheDocument();
@@ -76,11 +76,11 @@ describe("the machines list", () => {
 
   it("draws a spark from the census's minutes, and the reading now at its right edge", async () => {
     renderMachines(crew);
-    const spark = sparkOf(await cardOf("bluefin"), "CPU");
+    const spark = sparkOf(await cardOf("lodge"), "CPU");
     expect(spark.querySelector('[data-series="line"]')).not.toBeNull();
     expect(spark.querySelector('[data-series="now"]')).not.toBeNull();
     expect(spark.querySelector('[data-series="threshold"]')).not.toBeNull();
-    expect(sparkOf(await cardOf("bluefin"), "Memory").querySelector('[data-series="threshold"]')).toBeNull();
+    expect(sparkOf(await cardOf("lodge"), "Memory").querySelector('[data-series="threshold"]')).toBeNull();
   });
 
   it("says a reachable machine with no sample needs an update, and draws no spark for it", async () => {
@@ -103,7 +103,7 @@ describe("the machines list", () => {
   it("shows a reachable machine whose reading stopped as stale: quieted numbers and the age in words", async () => {
     const stuck = { ...fixtureMachineRows[0]!, sampledAt: FIXTURE_MACHINES_TS - 5 * 60_000 };
     renderMachines({ census: withSpark({ ts: FIXTURE_MACHINES_TS, machines: [stuck] }), error: false });
-    const card = await cardOf("bluefin");
+    const card = await cardOf("lodge");
     expect(within(card).getByText("reachable")).toBeInTheDocument();
     expect(within(card).getByText(/^Last reading 5m ago$/)).toBeInTheDocument();
     expect(within(card).getByText("34%").className).toContain("text-muted-foreground");
@@ -139,7 +139,7 @@ describe("the machines list", () => {
     expect(fact!.textContent).toBe("Disk89%");
     expect(fact!.className).toContain("whitespace-nowrap");
     expect(within(workshop).getAllByRole("img")).toHaveLength(2);
-    expect((await cardOf("bluefin")).querySelector('[data-fact="disk"]')!.textContent).toBe("Disk66%");
+    expect((await cardOf("lodge")).querySelector('[data-fact="disk"]')!.textContent).toBe("Disk66%");
   });
 
   it("tints the disk figure while a disk alert fires, and says it in words", async () => {
@@ -152,7 +152,7 @@ describe("the machines list", () => {
 
   it("says nothing about alerts on a machine where none fires", async () => {
     renderMachines(crew);
-    const card = await cardOf("bluefin");
+    const card = await cardOf("lodge");
     expect(within(card).queryByText(/Alert firing/)).toBeNull();
     expect(sparkOf(card, "CPU").getAttribute("class")).toContain("text-status-info");
   });
@@ -166,7 +166,7 @@ describe("the machines list", () => {
 
   it("marks the lead on a crew", async () => {
     renderMachines(crew);
-    const card = await cardOf("bluefin");
+    const card = await cardOf("lodge");
     expect(within(card).getByText("lead")).toBeInTheDocument();
     expect(within(await cardOf("workshop")).queryByText("lead")).toBeNull();
   });

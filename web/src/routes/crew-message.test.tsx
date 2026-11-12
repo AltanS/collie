@@ -35,7 +35,7 @@ async function sendAndConfirm(user: ReturnType<typeof userEvent.setup>, dialog: 
 }
 
 const WHO_TARGETS = [
-  { address: "bluefin/w1:p1", memberId: "bluefin", machine: "bluefin", harness: "claude", label: "a#b", state: "idle" },
+  { address: "lodge/w1:p1", memberId: "lodge", machine: "lodge", harness: "claude", label: "a#b", state: "idle" },
   { address: "workshop/w1:p1", memberId: "workshop", machine: "workshop", harness: "codex", label: "c#d", state: "idle" },
   { address: "workshop/w2:p1", memberId: "workshop", machine: "workshop", harness: "pi", label: "e#f", state: "idle" },
 ];
@@ -53,8 +53,8 @@ describe("Message all agents", () => {
     expect(posted?.id).toMatch(/^wt_[a-z0-9]{12}$/);
     const rows = await within(dialog).findAllByRole("listitem");
     expect(rows.map((r) => r.textContent)).toEqual([
-      "bluefin/w1:p1queued · this machine",
-      "minibuch/w2:p1queued · this machine",
+      "lodge/w1:p1queued · this machine",
+      "workshop/w2:p1queued · this machine",
     ]);
     // The text left with the message.
     expect(within(dialog).getByRole("textbox")).toHaveValue("");
@@ -64,7 +64,7 @@ describe("Message all agents", () => {
     server.use(
       http.get("/api/walky/who", () =>
         HttpResponse.json({
-          targets: [{ address: "bluefin/w1:p1", memberId: "bluefin", machine: "bluefin", harness: "claude", label: "collie#main", state: "idle" }],
+          targets: [{ address: "lodge/w1:p1", memberId: "lodge", machine: "lodge", harness: "claude", label: "collie#main", state: "idle" }],
         }),
       ),
     );
@@ -74,8 +74,8 @@ describe("Message all agents", () => {
     await within(dialog).findByText("Agents reached: 1");
     await user.type(within(dialog).getByRole("textbox"), "hi");
     await sendAndConfirm(user, dialog);
-    expect(await within(dialog).findByText("collie#main on bluefin")).toBeInTheDocument();
-    expect(within(dialog).getByText("minibuch/w2:p1")).toBeInTheDocument();
+    expect(await within(dialog).findByText("collie#main on lodge")).toBeInTheDocument();
+    expect(within(dialog).getByText("workshop/w2:p1")).toBeInTheDocument();
   });
 
   it("aims at one machine as <memberId>/all", async () => {
@@ -95,7 +95,7 @@ describe("Message all agents", () => {
       http.get("/api/walky/who", () =>
         HttpResponse.json({
           targets: [
-            { address: "bluefin/w1:p1", memberId: "bluefin", machine: "bluefin", harness: "claude", label: "a#b", state: "idle" },
+            { address: "lodge/w1:p1", memberId: "lodge", machine: "lodge", harness: "claude", label: "a#b", state: "idle" },
             { address: "workshop/w1:p1", memberId: "workshop", machine: "workshop", harness: "codex", label: "c#d", state: "idle" },
             { address: "workshop/w2:p1", memberId: "workshop", machine: "workshop", harness: "pi", label: "e#f", state: "idle" },
           ],
@@ -243,7 +243,7 @@ describe("Message all agents", () => {
 
   describe("what the who answer adds", () => {
     const SKIPPED = [
-      { address: "bluefin/w1:p2", memberId: "bluefin", machine: "bluefin", label: "zsh" },
+      { address: "lodge/w1:p2", memberId: "lodge", machine: "lodge", label: "zsh" },
       { address: "workshop/w3:p1", memberId: "workshop", machine: "workshop", label: "bash" },
     ];
 
@@ -253,10 +253,10 @@ describe("Message all agents", () => {
       renderCrew();
       const dialog = await open(user);
       expect(await within(dialog).findByText("Shell panes, skipped")).toBeInTheDocument();
-      expect(within(dialog).getByText("zsh (bluefin/w1:p2): skipped")).toBeInTheDocument();
+      expect(within(dialog).getByText("zsh (lodge/w1:p2): skipped")).toBeInTheDocument();
       expect(within(dialog).getByText("bash (workshop/w3:p1): skipped")).toBeInTheDocument();
       await user.selectOptions(within(dialog).getByRole("combobox"), "workshop");
-      expect(within(dialog).queryByText("zsh (bluefin/w1:p2): skipped")).toBeNull();
+      expect(within(dialog).queryByText("zsh (lodge/w1:p2): skipped")).toBeNull();
       expect(within(dialog).getByText("bash (workshop/w3:p1): skipped")).toBeInTheDocument();
     });
 

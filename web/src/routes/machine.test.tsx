@@ -50,14 +50,14 @@ const charts = () => screen.findAllByRole("img");
 
 describe("the machine page", () => {
   it("shows the numbers large, the machine's name as the title, and the age of the reading", async () => {
-    renderMachine("bluefin");
-    expect(await screen.findByRole("heading", { name: "bluefin", level: 1 })).toBeInTheDocument();
+    renderMachine("lodge");
+    expect(await screen.findByRole("heading", { name: "lodge", level: 1 })).toBeInTheDocument();
     expect(screen.getAllByRole("meter", { name: "CPU" })[0]).toHaveAttribute("aria-valuetext", "34%");
     expect(screen.getByText("Last reading just now")).toBeInTheDocument();
   });
 
   it("draws CPU, memory, disk and network charts from the history", async () => {
-    renderMachine("bluefin");
+    renderMachine("lodge");
     const imgs = await charts();
     expect(imgs).toHaveLength(4);
     expect(imgs.map((i) => i.getAttribute("data-kind"))).toEqual(["cpu", "mem", "disk", "net"]);
@@ -66,7 +66,7 @@ describe("the machine page", () => {
 
   it("switches between the last hour and the last 24 hours without asking again", async () => {
     const user = userEvent.setup();
-    renderMachine("bluefin");
+    renderMachine("lodge");
     await charts();
     expect(historyReads).toBe(1);
 
@@ -82,7 +82,7 @@ describe("the machine page", () => {
   });
 
   it("starts on the last hour", async () => {
-    renderMachine("bluefin");
+    renderMachine("lodge");
     await charts();
     expect(screen.getByRole("radio", { name: "1 h" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: "24 h" })).toHaveAttribute("aria-checked", "false");
@@ -97,10 +97,10 @@ describe("the machine page", () => {
   });
 
   it("draws no threshold on a metric that has no rule", async () => {
-    renderMachine("bluefin");
+    renderMachine("lodge");
     const [cpu, mem] = await charts();
     expect(cpu!.querySelector('line[data-series="threshold"]')).not.toBeNull();
-    // bluefin has a CPU rule and no memory rule.
+    // lodge has a CPU rule and no memory rule.
     expect(mem!.querySelector('line[data-series="threshold"]')).toBeNull();
   });
 
@@ -130,14 +130,14 @@ describe("the machine page", () => {
 
   it("opens Settings, Alerts from the alert card", async () => {
     const user = userEvent.setup();
-    const router = renderMachine("bluefin", undefined, "/machines/bluefin?tab=alerts");
+    const router = renderMachine("lodge", undefined, "/machines/lodge?tab=alerts");
     await user.click(await screen.findByRole("button", { name: "Settings, Alerts" }));
     expect(router.state.location.pathname).toBe("/settings/alerts");
   });
 
   it("goes back up to Machines", async () => {
     const user = userEvent.setup();
-    const router = renderMachine("bluefin");
+    const router = renderMachine("lodge");
     await user.click(await screen.findByRole("button", { name: "Back" }));
     expect(router.state.location.pathname).toBe("/machines");
   });
@@ -154,7 +154,7 @@ describe("the machine page", () => {
 
   it("shows a reachable machine whose reading stopped with its age marked, its numbers quieted", async () => {
     const stuck = { ...fixtureMachines.machines[0]!, sampledAt: FIXTURE_MACHINES_TS - 5 * 60_000 };
-    renderMachine("bluefin", { census: { ts: FIXTURE_MACHINES_TS, machines: [stuck] }, error: false });
+    renderMachine("lodge", { census: { ts: FIXTURE_MACHINES_TS, machines: [stuck] }, error: false });
     const age = await screen.findByText("Last reading 5m ago");
     expect(age.className).toContain("text-status-working");
   });
@@ -185,17 +185,17 @@ describe("the machine page", () => {
 
 describe("the two views", () => {
   it("opens on Status, with no parameter, and the Alerts view holds the rules and no chart", async () => {
-    renderMachine("bluefin");
+    renderMachine("lodge");
     const status = await screen.findByRole("tab", { name: "Status" });
     expect(status).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("switch")).toBeNull();
-    renderMachine("bluefin", undefined, "/machines/bluefin?tab=alerts");
+    renderMachine("lodge", undefined, "/machines/lodge?tab=alerts");
     expect(await screen.findAllByRole("switch", { name: "CPU alert" })).toHaveLength(1);
   });
 
   it("a switch replaces the entry, so Back leaves the machine and never lands on the other view", async () => {
     const user = userEvent.setup();
-    const router = renderMachine("bluefin", undefined, "/machines/bluefin", ["/"]);
+    const router = renderMachine("lodge", undefined, "/machines/lodge", ["/"]);
     await user.click(await screen.findByRole("tab", { name: "Alerts" }));
     expect(router.state.location.search).toBe("?tab=alerts");
     expect(router.state.historyAction).toBe("REPLACE");
@@ -216,7 +216,7 @@ describe("the two views", () => {
         { path: "/", element: <div data-testid="home" /> },
         { path: "/machines", element: <div data-testid="machines" /> },
       ],
-      { initialEntries: ["/", { pathname: "/machines/bluefin", state: { from: "/" } }], initialIndex: 1 },
+      { initialEntries: ["/", { pathname: "/machines/lodge", state: { from: "/" } }], initialIndex: 1 },
     );
     render(<RouterProvider router={router} />);
     await user.click(await screen.findByRole("tab", { name: "Alerts" }));
@@ -234,7 +234,7 @@ describe("the two views", () => {
         return HttpResponse.json(fixtureMachineHistory());
       }),
     );
-    renderMachine("bluefin", undefined, "/machines/bluefin?tab=alerts");
+    renderMachine("lodge", undefined, "/machines/lodge?tab=alerts");
     await screen.findByRole("switch", { name: "CPU alert" });
     expect(historyReads).toBe(0);
     await user.click(screen.getByRole("tab", { name: "Status" }));
@@ -251,7 +251,7 @@ describe("the two views", () => {
     renderMachine("workshop");
     const alerts = await screen.findByRole("tab", { name: "Alerts, alert firing" });
     expect(alerts.querySelector('[data-slot="segmented-mark"]')).not.toBeNull();
-    renderMachine("bluefin");
+    renderMachine("lodge");
     expect(await screen.findByRole("tab", { name: "Alerts" })).toBeInTheDocument();
   });
 
@@ -276,7 +276,7 @@ describe("the two views", () => {
     renderMachine("attic", undefined, "/machines/attic?tab=alerts");
     expect(await screen.findByRole("switch", { name: "CPU alert" })).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "Disk alert" })).toBeNull();
-    renderMachine("bluefin", undefined, "/machines/bluefin?tab=alerts");
+    renderMachine("lodge", undefined, "/machines/lodge?tab=alerts");
     expect(await screen.findByRole("switch", { name: "Disk alert" })).toBeInTheDocument();
   });
 });
@@ -289,19 +289,19 @@ describe("the machine page without its data", () => {
   });
 
   it("answers a 404 census with the unavailable card", async () => {
-    renderMachine("bluefin", { census: null, error: false });
+    renderMachine("lodge", { census: null, error: false });
     expect(await screen.findByText("No machine list here")).toBeInTheDocument();
     expect(historyReads).toBe(0);
   });
 
   it("answers a failed census with the error card", async () => {
-    renderMachine("bluefin", { census: null, error: true });
+    renderMachine("lodge", { census: null, error: true });
     expect(await screen.findByText("Could not load machines")).toBeInTheDocument();
   });
 
   it("says the history could not load, in each chart's own place", async () => {
     server.use(http.get("/api/machines/:id/history", () => HttpResponse.json({ error: "x" }, { status: 500 })));
-    renderMachine("bluefin");
+    renderMachine("lodge");
     expect(await screen.findAllByText(/Could not load the history/)).toHaveLength(4);
     // The numbers above still show.
     expect(screen.getAllByRole("meter", { name: "CPU" })[0]).toHaveAttribute("aria-valuetext", "34%");
@@ -315,7 +315,7 @@ describe("the history read", () => {
 
   it("reads again once a minute while the page is visible, and never on a poll tick", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    renderMachine("bluefin");
+    renderMachine("lodge");
     await waitFor(() => expect(historyReads).toBe(1));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(HISTORY_REFRESH_MS - 1_000);
@@ -349,7 +349,7 @@ describe("the history read", () => {
         });
       }),
     );
-    renderMachine("bluefin");
+    renderMachine("lodge");
     await waitFor(() => expect(historyReads).toBe(1));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(HISTORY_REFRESH_MS + 1_000);
@@ -363,7 +363,7 @@ describe("the history read", () => {
   });
 
   it("does not re-read on a loader revalidation, which is what every poll tick is", async () => {
-    const router = renderMachine("bluefin");
+    const router = renderMachine("lodge");
     await charts();
     for (let tick = 0; tick < 3; tick += 1) {
       await act(async () => {
@@ -375,7 +375,7 @@ describe("the history read", () => {
 
   it("skips the minute's read while the page is hidden", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    renderMachine("bluefin");
+    renderMachine("lodge");
     await waitFor(() => expect(historyReads).toBe(1));
     const spy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     await act(async () => {

@@ -8,7 +8,7 @@ import { MachineLoad } from "./machine-load";
 afterEach(cleanup);
 
 const workshop = fixtureMachineRows.find((r) => r.id === "workshop")!;
-const bluefin = fixtureMachineRows.find((r) => r.id === "bluefin")!;
+const lodge = fixtureMachineRows.find((r) => r.id === "lodge")!;
 
 // On a card the firing metric's number is red. On the machine page's Status view only the bar was, and
 // the number kept the ordinary ink, so the same machine read two ways. Both now use `text-status-blocked`.
@@ -27,7 +27,7 @@ describe("MachineLoad, the Status view", () => {
   });
 
   it("nothing is red on a machine with no alert firing", () => {
-    render(<MachineLoad row={bluefin} ts={FIXTURE_MACHINES_TS} size="large" />);
+    render(<MachineLoad row={lodge} ts={FIXTURE_MACHINES_TS} size="large" />);
     expect(screen.getByText("34%").className).not.toContain("text-status-blocked");
   });
 

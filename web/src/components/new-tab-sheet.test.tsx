@@ -141,7 +141,7 @@ describe("NewTabSheet, the rows", () => {
   });
 
   it("lists no rows of another machine before this machine's answer is in, and says it is reading", () => {
-    mount({ scope: { host: "minibuch" }, list: launchers({ host: "atlas" }) });
+    mount({ scope: { host: "workshop" }, list: launchers({ host: "atlas" }) });
     expect(sheet().queryByRole("button", { name: /Claude Code/ })).toBeNull();
     expect(sheet().getByText("Reading the agents on this machine…")).toBeInTheDocument();
     expect(row("Just a shell")).toBeEnabled();
@@ -155,12 +155,12 @@ describe("NewTabSheet, the rows", () => {
 
 describe("NewTabSheet, a tap", () => {
   it("starts an agent as a tab beside the workspace's pane, with a fresh request id, and closes on done", async () => {
-    const { calls } = mount({ scope: { host: "minibuch" }, list: launchers({ host: "minibuch" }) });
+    const { calls } = mount({ scope: { host: "workshop" }, list: launchers({ host: "workshop" }) });
     await userEvent.click(row(/Claude Code/));
     await waitFor(() => expect(calls.closed).toBe(1));
     expect(calls.asks).toHaveLength(1);
     const { ask, at } = calls.asks[0]!;
-    expect(at).toEqual({ host: "minibuch" });
+    expect(at).toEqual({ host: "workshop" });
     expect(ask.what).toEqual({ kind: "harness", id: "claude" });
     expect(ask.beside).toEqual({ paneId: "w2:p1", workspaceId: "w2" });
     expect(ask.requestId).toMatch(/\S/);
@@ -215,13 +215,13 @@ describe("NewTabSheet, a tap", () => {
   });
 
   it("goes to the New page for this workspace on More options", async () => {
-    const { calls, router } = mount({ scope: { host: "minibuch", session: "work" } });
+    const { calls, router } = mount({ scope: { host: "workshop", session: "work" } });
     await userEvent.click(row("More options"));
     expect(calls.closed).toBe(1);
     expect(router.state.location.pathname).toBe("/new");
     const q = new URLSearchParams(router.state.location.search);
     expect(q.get("beside")).toBe("w2:p1");
-    expect(q.get("machine")).toBe("minibuch");
+    expect(q.get("machine")).toBe("workshop");
     expect(q.get("s")).toBe("work");
     expect(q.get("pane")).toBeNull();
   });

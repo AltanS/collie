@@ -3814,7 +3814,7 @@ describe("Composer — an attachment is a chip (ADR 0060)", () => {
     expect(typed).toEqual(["[Image #7] is a label"]);
   });
 
-  // 2026-10-14, minibuch: a draft carried a stale `[Image #1]` with no chip behind it (text copied
+  // 2026-10-14, workshop: a draft carried a stale `[Image #1]` with no chip behind it (text copied
   // from a pane that was closed), the next photo was numbered #1 again, and Send swapped BOTH copies
   // for its path. Two trailing paths became two images in Claude's box, and the send stalled.
   it("numbers a new chip past every marker already in the text, so a stale one is never its twin", async () => {

@@ -27,7 +27,7 @@ const BOTH: MachineAlerts = { cpu: { above: 0.9, forMin: 10 }, mem: { above: 0.8
 
 describe("MachineAlertsControl", () => {
   it("shows each metric's switch and its stored choices", () => {
-    render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={BOTH} />);
     expect(screen.getByRole("switch", { name: "CPU alert" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeChecked();
     const cpuAbove = screen.getByRole("radiogroup", { name: "CPU alert threshold" });
@@ -37,7 +37,7 @@ describe("MachineAlertsControl", () => {
   });
 
   it("offers 80, 90 and 95 percent and 5, 10, 30 and 60 minutes", () => {
-    render(<MachineAlertsControl machineId="bluefin" alerts={{ cpu: { above: 0.9, forMin: 10 } }} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={{ cpu: { above: 0.9, forMin: 10 } }} />);
     const above = screen.getByRole("radiogroup", { name: "CPU alert threshold" });
     expect([...above.querySelectorAll('[role="radio"]')].map((n) => n.textContent)).toEqual(["80%", "90%", "95%"]);
     const forMin = screen.getByRole("radiogroup", { name: "CPU alert duration" });
@@ -45,13 +45,13 @@ describe("MachineAlertsControl", () => {
   });
 
   it("hides the choices of a metric that has no rule", () => {
-    render(<MachineAlertsControl machineId="bluefin" alerts={{ cpu: { above: 0.9, forMin: 10 } }} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={{ cpu: { above: 0.9, forMin: 10 } }} />);
     expect(screen.queryByRole("radiogroup", { name: /Memory alert/ })).toBeNull();
     expect(screen.getByRole("switch", { name: "Memory alert" })).not.toBeChecked();
   });
 
   it("keeps a stored value that is not one of the shipped choices, selected", () => {
-    render(<MachineAlertsControl machineId="bluefin" alerts={{ cpu: { above: 0.85, forMin: 15 } }} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={{ cpu: { above: 0.85, forMin: 15 } }} />);
     const above = screen.getByRole("radiogroup", { name: "CPU alert threshold" });
     expect(above.querySelector('[aria-checked="true"]')).toHaveTextContent("85%");
     expect([...above.querySelectorAll('[role="radio"]')].map((n) => n.textContent)).toEqual(["80%", "85%", "90%", "95%"]);
@@ -59,11 +59,11 @@ describe("MachineAlertsControl", () => {
 
   it("posts the WHOLE object when one choice changes, the other metric's rule included", async () => {
     const user = userEvent.setup();
-    render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={BOTH} />);
     await user.click(within95(screen.getByRole("radiogroup", { name: "CPU alert threshold" })));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toEqual({
-      id: "bluefin",
+      id: "lodge",
       body: { cpu: { above: 0.95, forMin: 10 }, mem: { above: 0.8, forMin: 5 } },
     });
   });
@@ -80,13 +80,13 @@ describe("MachineAlertsControl", () => {
   });
 
   it("offers a disk rule only for a machine that reports disks, or one that already holds a disk rule", () => {
-    const { unmount } = render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);
+    const { unmount } = render(<MachineAlertsControl machineId="lodge" alerts={BOTH} />);
     expect(screen.queryByRole("switch", { name: "Disk alert" })).toBeNull();
     unmount();
-    const second = render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} hasDisks />);
+    const second = render(<MachineAlertsControl machineId="lodge" alerts={BOTH} hasDisks />);
     expect(screen.getByRole("switch", { name: "Disk alert" })).not.toBeChecked();
     second.unmount();
-    render(<MachineAlertsControl machineId="bluefin" alerts={{ disk: { above: 0.95, forMin: 60 } }} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={{ disk: { above: 0.95, forMin: 60 } }} />);
     expect(screen.getByRole("switch", { name: "Disk alert" })).toBeChecked();
   });
 
@@ -100,7 +100,7 @@ describe("MachineAlertsControl", () => {
 
   it("removes a rule by leaving its key out of the body", async () => {
     const user = userEvent.setup();
-    render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={BOTH} />);
     await user.click(screen.getByRole("switch", { name: "CPU alert" }));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]!.body).toEqual({ mem: { above: 0.8, forMin: 5 } });
@@ -129,7 +129,7 @@ describe("MachineAlertsControl", () => {
       }),
     );
     const onSaved = vi.fn();
-    render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} onSaved={onSaved} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={BOTH} onSaved={onSaved} />);
     await user.click(screen.getByRole("switch", { name: "Memory alert" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Saving"));
     // Nothing else can be tapped while it saves: a second POST would race the first.
@@ -148,7 +148,7 @@ describe("MachineAlertsControl", () => {
       ),
     );
     const onSaved = vi.fn();
-    render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} onSaved={onSaved} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={BOTH} onSaved={onSaved} />);
     await user.click(screen.getByRole("switch", { name: "Memory alert" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Could not save. The rules are unchanged."));
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeChecked();
@@ -162,7 +162,7 @@ describe("MachineAlertsControl", () => {
     server.use(
       http.post("/api/machines/:id/alerts", () => new HttpResponse("device not paired", { status: 403 })),
     );
-    render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={BOTH} />);
     await user.click(screen.getByRole("switch", { name: "Memory alert" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Pair this device to change alerts"));
     expect(screen.getByRole("status")).not.toHaveTextContent("Could not save");
@@ -180,14 +180,14 @@ describe("MachineAlertsControl", () => {
   });
 
   it("says in words which metric is firing", () => {
-    render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} firing={["cpu"]} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={BOTH} firing={["cpu"]} />);
     expect(screen.getAllByText("Firing now")).toHaveLength(1);
   });
 
   it("says the push reaches every subscribed device, and links to Settings, Alerts", async () => {
     const user = userEvent.setup();
     const onOpenAlerts = vi.fn();
-    render(<MachineAlertsControl machineId="bluefin" alerts={{}} onOpenAlerts={onOpenAlerts} />);
+    render(<MachineAlertsControl machineId="lodge" alerts={{}} onOpenAlerts={onOpenAlerts} />);
     expect(screen.getByText("The push goes to every device subscribed to this Collie.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Settings, Alerts" }));
     expect(onOpenAlerts).toHaveBeenCalledOnce();

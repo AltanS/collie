@@ -326,13 +326,13 @@ describe("mintWalkyId", () => {
 
 describe("paneAddress", () => {
   it("names the machine: the scope's host, else the lead, else local", () => {
-    expect(paneAddress("w1:p1", { host: "workshop" }, "lodge")).toBe("workshop/w1:p1");
+    expect(paneAddress("w1:p1", { host: "studio" }, "lodge")).toBe("studio/w1:p1");
     expect(paneAddress("w1:p1", undefined, "lodge")).toBe("lodge/w1:p1");
     expect(paneAddress("w1:p1", undefined, undefined)).toBe("local/w1:p1");
   });
 
   it("appends #<token> when the pane carries an instance, and sends the bare address when it does not", () => {
-    expect(paneAddress("w1:p1", { host: "workshop" }, "lodge", "k3f9")).toBe("workshop/w1:p1#k3f9");
+    expect(paneAddress("w1:p1", { host: "studio" }, "lodge", "k3f9")).toBe("studio/w1:p1#k3f9");
     expect(paneAddress("w1:p1", undefined, "lodge", "k3f9")).toBe("lodge/w1:p1#k3f9");
     expect(paneAddress("w1:p1", undefined, undefined, "a0b1")).toBe("local/w1:p1#a0b1");
     expect(paneAddress("w1:p1", undefined, "lodge", undefined)).toBe("lodge/w1:p1");
@@ -353,7 +353,7 @@ describe("the words", () => {
   const receipt = fixtureWalkyAgent.receipt;
 
   it("names who signed a message: its signer, else its sender's machine, else the receipt's writer", () => {
-    expect(verifiedWord(receipt, "workshop")).toBe("signed by workshop");
+    expect(verifiedWord(receipt, "studio")).toBe("signed by studio");
     expect(verifiedWord(receipt, signerOf({ signer: null, from: { ...fixtureWalkyAgent.from, memberId: "workshop" } }))).toBe(
       "signed by workshop",
     );
@@ -362,7 +362,7 @@ describe("the words", () => {
   });
 
   it("never says verified for a message the lead only relayed", () => {
-    expect(verifiedWord({ ...receipt, verified: "lead" }, "workshop")).toBe("relayed by the lead");
+    expect(verifiedWord({ ...receipt, verified: "lead" }, "studio")).toBe("relayed by the lead");
   });
 
   it("calls a local one this machine, and one nothing could check not verified", () => {
@@ -680,16 +680,16 @@ describe("a row a sibling instance on this machine recorded", () => {
   it("names no other machine for a sender on the sibling's own member id", () => {
     expect(remoteMachineOf(received, fixtureWalkySelf)).toBeNull();
     expect(remoteMachineOf({ ...received, recordedAs: undefined }, fixtureWalkySelf)).toBe("sibling");
-    const away = { ...received, from: { ...received.from, memberId: "workshop", address: "workshop/w11:p4#8h9h" } };
-    expect(remoteMachineOf(away, fixtureWalkySelf)).toBe("workshop");
+    const away = { ...received, from: { ...received.from, memberId: "studio", address: "studio/w11:p4#8h9h" } };
+    expect(remoteMachineOf(away, fixtureWalkySelf)).toBe("studio");
   });
 });
 
 describe("remoteMachineOf", () => {
-  const away = { ...fixtureWalkyAgent, from: { ...fixtureWalkyAgent.from, memberId: "workshop", address: "workshop/w11:p4#8h9h" } };
+  const away = { ...fixtureWalkyAgent, from: { ...fixtureWalkyAgent.from, memberId: "studio", address: "studio/w11:p4#8h9h" } };
 
   it("names the sender's machine when it is not the pane's own", () => {
-    expect(remoteMachineOf(away, fixtureWalkySelf)).toBe("workshop");
+    expect(remoteMachineOf(away, fixtureWalkySelf)).toBe("studio");
   });
 
   it("is null for the pane's own machine, with or without a token on either address", () => {

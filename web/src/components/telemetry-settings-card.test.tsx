@@ -198,7 +198,7 @@ describe("Telemetry card (M86 spec 02)", () => {
 
   describe("this machine only (M86 hardening)", () => {
     const member = (id: string, name: string, isLead = false): ServerSummary => ({ id, name, isLead, reachable: true, protocol: "ok", lastSeenAt: 0 });
-    const crew = [member("bluefin", "bluefin", true), member("minibuch", "minibuch"), member("hc-box", "bluefin-hc")];
+    const crew = [member("lodge", "lodge", true), member("workshop", "workshop"), member("hc-box", "lodge-hc")];
 
     it("says the switch changes this machine only, with no crew", async () => {
       renderCard(view());
@@ -213,7 +213,7 @@ describe("Telemetry card (M86 spec 02)", () => {
 
     it("a lead with members lists their names and says to set it on each machine", async () => {
       renderCard(view(), "", crew);
-      expect(await screen.findByText("Not covered by this switch: minibuch, bluefin-hc. Set it on each machine.")).toBeInTheDocument();
+      expect(await screen.findByText("Not covered by this switch: workshop, lodge-hc. Set it on each machine.")).toBeInTheDocument();
       expect(screen.getByText("This switch changes this machine only.")).toBeInTheDocument();
     });
 
@@ -225,7 +225,7 @@ describe("Telemetry card (M86 spec 02)", () => {
 
     it("the member note does not depend on the reading: it is there when the read fails", async () => {
       renderCard("fail", "", crew);
-      expect(await screen.findByText("Not covered by this switch: minibuch, bluefin-hc. Set it on each machine.")).toBeInTheDocument();
+      expect(await screen.findByText("Not covered by this switch: workshop, lodge-hc. Set it on each machine.")).toBeInTheDocument();
     });
   });
 

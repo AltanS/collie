@@ -19,7 +19,7 @@ import { SpaceRoute } from "./space";
 // space while still keyed on the lead matched nothing, so every tab drew as "(empty tab)" while the
 // header still counted the panes (#209).
 
-const LEAD = "bluefin";
+const LEAD = "lodge";
 const PEER = "workshop";
 
 const workspaces: WorkspaceView[] = [

@@ -111,14 +111,14 @@ describe("the pane's Messages row and sheet", () => {
 
   it("sends a Reply to the sender's address as it stands, token included", async () => {
     const user = userEvent.setup();
-    const row = { ...fixtureWalkyAgent, from: { ...fixtureWalkyAgent.from, address: "bluefin/w6:p3#k3f9" } };
+    const row = { ...fixtureWalkyAgent, from: { ...fixtureWalkyAgent.from, address: "lodge/w6:p3#k3f9" } };
     renderPane({}, [row]);
     await openMessages(user);
     await user.click(await screen.findByRole("button", { name: "Reply to collie-workspace#fix-465" }));
     await user.type(await screen.findByPlaceholderText(/type a reply/i), "Merge it");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
-    expect(recordedWalkyPosts()[0]).toMatchObject({ to: "bluefin/w6:p3#k3f9", replyTo: row.id, body: "Merge it" });
+    expect(recordedWalkyPosts()[0]).toMatchObject({ to: "lodge/w6:p3#k3f9", replyTo: row.id, body: "Merge it" });
   });
 
   it("addresses a message from the pane to its own session instance", async () => {
@@ -145,7 +145,7 @@ describe("the pane's Messages row and sheet", () => {
 // A tap on a Chat card, or on an id chip in the agent's own words, opens the Messages sheet on that
 // message. The turns come from the pane's journal, as they do on a real pane.
 describe("the Chat card and the id chip open the Messages sheet on their message", () => {
-  const HEADER = "[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)";
+  const HEADER = "[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465)";
 
   function withJournal(entries: readonly object[]) {
     server.use(

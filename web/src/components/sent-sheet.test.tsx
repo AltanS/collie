@@ -66,7 +66,7 @@ describe("Sent sheet: rows", () => {
     const bun = screen.getByRole("button", { name: /^bun test/ });
     expect(bun).toHaveTextContent("~");
     expect(within(bun).queryByText(/×/)).toBeNull();
-    expect(git).not.toHaveTextContent("bluefin");
+    expect(git).not.toHaveTextContent("lodge");
   });
 
   it("asks this folder first, with the pane's folder and a page of fifty", async () => {

@@ -159,11 +159,11 @@ describe("the dashboard across machines", () => {
   it("labels each row with its machine — a label, never a split", async () => {
     renderHome(packed());
     await settled();
-    expect(screen.getAllByLabelText("Host: bluefin").length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText("Host: lodge").length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText("Host: workshop").length).toBeGreaterThan(0);
     // No per-host heading anywhere: hosts do not carve the list up.
     const headings = screen.getAllByRole("heading").map((h) => h.textContent ?? "");
-    expect(headings.some((h) => /workshop|bluefin/i.test(h))).toBe(false);
+    expect(headings.some((h) => /workshop|lodge/i.test(h))).toBe(false);
   });
 
   it("opens a PEER's row addressed to the peer, not to the machine the URL points at", async () => {

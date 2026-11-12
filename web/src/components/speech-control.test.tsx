@@ -201,7 +201,7 @@ describe("the hub", () => {
   const READY_TITLES: { name: string; over: Partial<SpeechCardsProps>; expected: Partial<ReturnType<typeof inUse>> }[] = [
     { name: "Whistle on this phone", over: PHONE_HUB, expected: { title: "Whistle by Cactus Compute", where: "On this phone" } },
     { name: "Whistle on the host", over: WHISTLE_HUB, expected: { title: "Whistle by Cactus Compute", where: "On your host", status: "Ready. Whistle ca52876 is on your host." } },
-    { name: "Whistle on a crew's lead", over: { ...WHISTLE_HUB, hostName: "bluefin" }, expected: { title: "Whistle by Cactus Compute", where: "On your host, bluefin" } },
+    { name: "Whistle on a crew's lead", over: { ...WHISTLE_HUB, hostName: "lodge" }, expected: { title: "Whistle by Cactus Compute", where: "On your host, lodge" } },
     {
       name: "your own command",
       over: { whistle: READY, host: { provider: "local-cli", available: true, configuredBy: "file", switchable: LOCKED("terminal") } },
@@ -368,9 +368,9 @@ describe("the hub", () => {
 
   const NAMED_CASES: { name: string; over: Partial<SpeechCardsProps>; expected: Partial<ReturnType<typeof inUse>> }[] = [
     {
-      name: "the old Whistle wrapper on bluefin",
-      over: { whistle: READY, host: HOST_WRAPPER, hostName: "bluefin" },
-      expected: { title: "whistle-stt", model: "", where: "Your own command on your host, bluefin", status: "Ready. Your host found the command and can run it." },
+      name: "the old Whistle wrapper on lodge",
+      over: { whistle: READY, host: HOST_WRAPPER, hostName: "lodge" },
+      expected: { title: "whistle-stt", model: "", where: "Your own command on your host, lodge", status: "Ready. Your host found the command and can run it." },
     },
     {
       name: "a command with a model file",
@@ -389,8 +389,8 @@ describe("the hub", () => {
     },
     {
       name: "Whistle on the host, by its pinned version",
-      over: { ...WHISTLE_HUB, host: { ...HOST_WHISTLE, setup: { model: "ca52876" } }, hostName: "bluefin" },
-      expected: { title: "Whistle by Cactus Compute", model: "Model ca52876", where: "On your host, bluefin" },
+      over: { ...WHISTLE_HUB, host: { ...HOST_WHISTLE, setup: { model: "ca52876" } }, hostName: "lodge" },
+      expected: { title: "Whistle by Cactus Compute", model: "Model ca52876", where: "On your host, lodge" },
     },
     {
       name: "Whistle on this phone, by the copy's version",
@@ -398,9 +398,9 @@ describe("the hub", () => {
       expected: { title: "Whistle by Cactus Compute", model: "Model 0123456", where: "On this phone" },
     },
     {
-      name: "ChatGPT on bluefin",
-      over: { whistle: READY, host: HOST_CODEX, hostName: "bluefin" },
-      expected: { title: "ChatGPT subscription (OpenAI)", model: "", where: "Through Codex on your host, bluefin" },
+      name: "ChatGPT on lodge",
+      over: { whistle: READY, host: HOST_CODEX, hostName: "lodge" },
+      expected: { title: "ChatGPT subscription (OpenAI)", model: "", where: "Through Codex on your host, lodge" },
     },
   ];
 
@@ -416,7 +416,7 @@ describe("the hub", () => {
   });
 
   it("the old Whistle wrapper: one plain line, and a button that opens Host speech", async () => {
-    const p = props({ whistle: READY, host: HOST_WRAPPER, hostName: "bluefin" });
+    const p = props({ whistle: READY, host: HOST_WRAPPER, hostName: "lodge" });
     render(<SpeechCards {...p} />);
     expect(statusExtra()).toContain("This is the old Whistle wrapper. Collie now runs Whistle itself, without ffmpeg.");
     await userEvent.click(within(statusCard()).getByRole("button", { name: "Switch to built-in Whistle" }));
@@ -434,7 +434,7 @@ describe("the hub", () => {
   });
 
   it("with the wrapper, a tap between the two choices still moves no row", () => {
-    const base = props({ whistle: READY, host: HOST_WRAPPER, local: COPY, hostName: "bluefin" });
+    const base = props({ whistle: READY, host: HOST_WRAPPER, local: COPY, hostName: "lodge" });
     const { rerender } = render(<SpeechCards {...base} />);
     const content = (el: HTMLElement) => ({ text: el.textContent, nodes: el.querySelectorAll("*").length });
     const before = content(statusCard());
@@ -446,8 +446,8 @@ describe("the hub", () => {
 
   it("names the device and the time when the host's option was set from Settings, and the host by name in a crew", () => {
     const changedAt = "2026-10-11T09:41:00.000Z";
-    render(<SpeechCards {...props({ ...WHISTLE_HUB, host: { ...HOST_WHISTLE, changedBy: "Pixel 8", changedAt }, hostName: "bluefin" })} />);
-    expect(inUse()).toMatchObject({ where: "On your host, bluefin", setUp: `From Settings by Pixel 8, ${dateTime(Date.parse(changedAt))}` });
+    render(<SpeechCards {...props({ ...WHISTLE_HUB, host: { ...HOST_WHISTLE, changedBy: "Pixel 8", changedAt }, hostName: "lodge" })} />);
+    expect(inUse()).toMatchObject({ where: "On your host, lodge", setUp: `From Settings by Pixel 8, ${dateTime(Date.parse(changedAt))}` });
   });
 
   it("a tap between the two choices changes words and paint, never the rows: both cards and the in-use card keep their content", () => {

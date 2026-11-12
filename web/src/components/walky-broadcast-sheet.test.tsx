@@ -12,11 +12,11 @@ import { WalkyBroadcastSheet } from "./walky-broadcast-sheet";
 // routes/crew-message.test.tsx.
 
 const MEMBERS = [
-  { id: "bluefin", name: "bluefin" },
+  { id: "lodge", name: "lodge" },
   { id: "workshop", name: "workshop" },
 ];
 const TARGETS = [
-  { address: "bluefin/w1:p1", memberId: "bluefin", machine: "bluefin", harness: "claude", label: "a#b", state: "idle" },
+  { address: "lodge/w1:p1", memberId: "lodge", machine: "lodge", harness: "claude", label: "a#b", state: "idle" },
   { address: "workshop/w1:p1", memberId: "workshop", machine: "workshop", harness: "codex", label: "c#d", state: "idle" },
 ];
 
@@ -49,7 +49,7 @@ describe("WalkyBroadcastSheet", () => {
   it("names a receipt for the bare target `all` as every machine, never the raw word", async () => {
     server.use(
       http.post("/api/walky", () =>
-        HttpResponse.json({ receipts: [{ id: "wt_aaaaaaaaaaaa", state: "accepted", verified: "local", at: 1, by: "bluefin", target: "all" }] }),
+        HttpResponse.json({ receipts: [{ id: "wt_aaaaaaaaaaaa", state: "accepted", verified: "local", at: 1, by: "lodge", target: "all" }] }),
       ),
     );
     const user = userEvent.setup();
@@ -65,12 +65,12 @@ describe("WalkyBroadcastSheet", () => {
   it("shows a receipt's bare target with the label of a `who` pane that carries a session token", async () => {
     server.use(
       http.get("/api/walky/who", () =>
-        HttpResponse.json({ targets: [{ ...TARGETS[0]!, address: "bluefin/w1:p1#k3f9" }, TARGETS[1]!] }),
+        HttpResponse.json({ targets: [{ ...TARGETS[0]!, address: "lodge/w1:p1#k3f9" }, TARGETS[1]!] }),
       ),
       http.post("/api/walky", () =>
         HttpResponse.json({
           receipts: [
-            { id: "wt_aaaaaaaaaaaa", state: "delivered", verified: "local", at: 1, by: "bluefin", target: "bluefin/w1:p1" },
+            { id: "wt_aaaaaaaaaaaa", state: "delivered", verified: "local", at: 1, by: "lodge", target: "lodge/w1:p1" },
             { id: "wt_aaaaaaaaaaaa", state: "refused", reason: "pane replaced", verified: "local", at: 1, by: "workshop", target: "workshop/w1:p1" },
           ],
         }),
@@ -85,7 +85,7 @@ describe("WalkyBroadcastSheet", () => {
     await user.click(await within(dialog).findByRole("button", { name: "Send" }));
     const rows = await within(dialog).findAllByRole("listitem");
     // No live pane is known, so the `who` label names the session, with its machine; the address stays on the wire.
-    expect(rows[0]).toHaveTextContent("a#b on bluefin");
+    expect(rows[0]).toHaveTextContent("a#b on lodge");
     expect(rows[1]).toHaveTextContent("c#d on workshop");
     expect(rows[1]).not.toHaveTextContent("workshop/w1:p1");
     expect(rows[1]).toHaveTextContent("not sent: pane replaced");
@@ -102,7 +102,7 @@ describe("WalkyBroadcastSheet", () => {
     const user = userEvent.setup();
     const live = {
       panes: [{ paneId: "w1:p1", host: "workshop", workspaceId: "w1", workspaceLabel: "c", workspaceNumber: 1, tabId: "w1:t1", agent: "codex", status: "idle" as const, cwd: "/", focused: false, paneLabel: "release notes" }],
-      lead: "bluefin",
+      lead: "lodge",
     };
     render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} live={live} />);
     const dialog = await screen.findByRole("dialog");
@@ -131,7 +131,7 @@ describe("WalkyBroadcastSheet", () => {
     const user = userEvent.setup();
     const live = {
       panes: [{ paneId: "w1:p1", host: "workshop", instance: "n3w1", workspaceId: "w1", workspaceLabel: "c", workspaceNumber: 1, tabId: "w1:t1", agent: "codex", status: "idle" as const, cwd: "/", focused: false, paneLabel: "newcomer" }],
-      lead: "bluefin",
+      lead: "lodge",
     };
     render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} live={live} />);
     const dialog = await screen.findByRole("dialog");
@@ -168,7 +168,7 @@ describe("WalkyBroadcastSheet", () => {
 
   describe("resting panes (M85)", () => {
     const SKIPPED = [
-      { address: "bluefin/w1:p3", memberId: "bluefin", machine: "bluefin", label: "sh#main", reason: "shell" },
+      { address: "lodge/w1:p3", memberId: "lodge", machine: "lodge", label: "sh#main", reason: "shell" },
       { address: "workshop/w1:p1", memberId: "workshop", machine: "workshop", label: "c#d", reason: "resting" },
     ];
     beforeEach(() => {
@@ -191,7 +191,7 @@ describe("WalkyBroadcastSheet", () => {
       // The shell keeps its own group, and the resting pane is not in it.
       const shells = slotOf(dialog, "walky-skipped");
       expect(within(shells).getByText("Shell panes, skipped")).toBeInTheDocument();
-      expect(within(shells).getByText("sh#main (bluefin/w1:p3): skipped")).toBeInTheDocument();
+      expect(within(shells).getByText("sh#main (lodge/w1:p3): skipped")).toBeInTheDocument();
       expect(within(shells).queryByText(/c#d/)).toBeNull();
     });
 
@@ -231,7 +231,7 @@ describe("WalkyBroadcastSheet", () => {
       const dialog = await screen.findByRole("dialog");
       await within(dialog).findByText("Agents reached: 1");
       await user.click(within(dialog).getByRole("switch", { name: "Wake them too" }));
-      await user.selectOptions(within(dialog).getByRole("combobox"), "bluefin");
+      await user.selectOptions(within(dialog).getByRole("combobox"), "lodge");
       expect(dialog.querySelector('[data-slot="walky-resting"]')).toBeNull();
       await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Pause");
       await user.click(within(dialog).getByRole("button", { name: "Send message" }));

@@ -12,7 +12,7 @@ import { WALKY_LIST_LIMIT, type WalkyRow } from "@/lib/walky";
 // The Chat card for a walky talky message (M62 spec 05). The turn only claims to be one; the card is
 // drawn from the pane's own log, by id, and a header the log does not hold stays a plain turn.
 
-const HEADER_AGENT = "[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)";
+const HEADER_AGENT = "[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465)";
 const NOT_IN_LOG = "no log record on this machine";
 
 function turn(text: string, id: string, kind: "agent" | "operator" = "agent", replyTo: string | null = null): ChatItem {
@@ -52,7 +52,7 @@ describe("a walky talky turn with its id in the log", () => {
     expect(inside.getByText("Message from collie-workspace#fix-465")).toBeInTheDocument();
     expect(inside.getByText("agent")).toBeInTheDocument();
     expect(inside.getByText("Tests are green on fix-465. You can merge.")).toBeInTheDocument();
-    expect(inside.getByText("· signed by bluefin")).toBeInTheDocument();
+    expect(inside.getByText("· signed by lodge")).toBeInTheDocument();
     // The plain turn's "You" caption is gone: this is the other side of the conversation.
     expect(screen.queryByText("You")).toBeNull();
   });
@@ -117,8 +117,8 @@ describe("the card's head names a machine that is not the pane's own", () => {
   };
   const OTHER_MACHINE: WalkyRow = {
     ...SAME_LABEL,
-    from: { ...SAME_LABEL.from, memberId: "minibuch", address: "minibuch/w11:p4#8h9h" },
-    signer: "minibuch",
+    from: { ...SAME_LABEL.from, memberId: "workshop", address: "workshop/w11:p4#8h9h" },
+    signer: "workshop",
   };
 
   function inPane(row: WalkyRow, self: string | undefined) {
@@ -139,8 +139,8 @@ describe("the card's head names a machine that is not the pane's own", () => {
   it("says 'on <machine>' when the sender is on another machine, and keeps the footer", () => {
     inPane(OTHER_MACHINE, fixtureWalkySelf);
     const inside = within(theCard());
-    expect(inside.getByText("Message from walky-live on minibuch")).toBeInTheDocument();
-    expect(inside.getByText("· signed by minibuch")).toBeInTheDocument();
+    expect(inside.getByText("Message from walky-live on workshop")).toBeInTheDocument();
+    expect(inside.getByText("· signed by workshop")).toBeInTheDocument();
   });
 
   it("says nothing of a machine on a mount that cannot name its pane", () => {
@@ -149,7 +149,7 @@ describe("the card's head names a machine that is not the pane's own", () => {
   });
 
   it("leaves the operator card as it is, whatever machine it came from", () => {
-    const operator: WalkyRow = { ...fixtureWalkyOperator, from: { ...fixtureWalkyOperator.from, memberId: "minibuch" } };
+    const operator: WalkyRow = { ...fixtureWalkyOperator, from: { ...fixtureWalkyOperator.from, memberId: "workshop" } };
     render(
       <WalkyLogProvider rows={[operator]} reads={0}>
         <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
@@ -319,7 +319,7 @@ describe("a header that borrows an id this pane sent", () => {
     render(
       <WalkyLogProvider rows={[fixtureWalkySent]} reads={1}>
         <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
-          <ItemView item={turn("[walky-talky wt_s3ntaaaa0001] from agent bluefin/w6:p3 (claude, x)\nhi", fixtureWalkySent.id)} />
+          <ItemView item={turn("[walky-talky wt_s3ntaaaa0001] from agent lodge/w6:p3 (claude, x)\nhi", fixtureWalkySent.id)} />
         </WalkyOpenProvider>
       </WalkyLogProvider>,
     );
@@ -414,7 +414,7 @@ function livePane(over: Partial<AgentView> = {}): AgentView {
     cwd: "/home/altan/collie",
     focused: false,
     kind: "agent",
-    host: "bluefin",
+    host: "lodge",
     ...over,
   };
 }
@@ -423,7 +423,7 @@ function withPanes(panes: AgentView[], rows: readonly WalkyRow[], item: ChatItem
   const openPane = vi.fn();
   render(
     <WalkyLogProvider rows={rows}>
-      <WalkyPanesProvider value={{ live: { panes, lead: "bluefin" }, open: openPane }}>
+      <WalkyPanesProvider value={{ live: { panes, lead: "lodge" }, open: openPane }}>
         <WalkyOpenProvider open={open} self={fixtureWalkySelf}>
           <ItemView item={item} />
         </WalkyOpenProvider>
@@ -455,7 +455,7 @@ describe("a walky talky card names sessions", () => {
 
   it("names a live session in the body, as a button that opens that pane", async () => {
     const user = userEvent.setup();
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3#k3f9 and ghost/w1:p1 about it." };
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask lodge/w6:p3#k3f9 and ghost/w1:p1 about it." };
     const panes = [livePane({ paneLabel: "plumbing", instance: "k3f9" })];
     const openPane = withPanes(panes, [row], turn(`${HEADER_AGENT}\nx`, row.id));
     const chip = within(theCard()).getByRole("button", { name: "Open plumbing" });
@@ -465,23 +465,23 @@ describe("a walky talky card names sessions", () => {
   });
 
   it("keeps an address written without its token as the agent wrote it, with the name after it and no button", () => {
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3 and w6:p3 now." };
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask lodge/w6:p3 and w6:p3 now." };
     withPanes([livePane({ paneLabel: "plumbing", instance: "k3f9" })], [row], turn(`${HEADER_AGENT}\nx`, row.id));
-    expect(theCard().textContent).toContain("Ask bluefin/w6:p3 (plumbing) and w6:p3 (plumbing) now.");
+    expect(theCard().textContent).toContain("Ask lodge/w6:p3 (plumbing) and w6:p3 (plumbing) now.");
     expect(within(theCard()).queryByRole("button")).toBeNull();
   });
 
   it("draws no chip for a token whose session is gone: the pane id was reused by another instance", () => {
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3#k3f9 now." };
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask lodge/w6:p3#k3f9 now." };
     withPanes([livePane({ paneLabel: "newcomer", instance: "n3w1" })], [row], turn(`${HEADER_AGENT}\nx`, row.id));
     const body = theCard().querySelector('[data-slot="walky-body"]');
-    expect(body).toHaveTextContent("Ask bluefin/w6:p3#k3f9 now.");
+    expect(body).toHaveTextContent("Ask lodge/w6:p3#k3f9 now.");
     expect(within(theCard()).queryByRole("button")).toBeNull();
     expect(body?.textContent).not.toContain("newcomer");
   });
 
   it("draws the name as quiet text, not a nested button, when the card is itself the button to the sheet", () => {
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3#k3f9 now." };
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask lodge/w6:p3#k3f9 now." };
     withPanes([livePane({ paneLabel: "plumbing", instance: "k3f9" })], [row], turn(`${HEADER_AGENT}\nx`, row.id), vi.fn());
     const card = theCard();
     expect(card.tagName).toBe("BUTTON");
@@ -490,7 +490,7 @@ describe("a walky talky card names sessions", () => {
   });
 
   it("draws a name as text, never as markup", () => {
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "See bluefin/w6:p3#k3f9" };
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "See lodge/w6:p3#k3f9" };
     withPanes([livePane({ paneLabel: "<b>bold</b>", instance: "k3f9" })], [row], turn(`${HEADER_AGENT}\nx`, row.id));
     expect(theCard().querySelector("b")).toBeNull();
     expect(theCard().textContent).toContain("<b>bold</b>");

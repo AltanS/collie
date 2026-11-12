@@ -17,7 +17,7 @@ import { HOLD_TAP_GUARD_MS } from "./hook-hold-card";
 // The hook hold card on a crew member's pane (M56 spec 12). A held permission has no dialog on the
 // screen, so the key route has nothing to press: the card answers the member's ask through the ask
 // route, which the lead carries to the member (`POST /api/ask/<id>?host=<member>`). Before this the
-// card was drawn on a member's pane with its buttons off (minibuch, 2026-11-09).
+// card was drawn on a member's pane with its buttons off (workshop, 2026-11-09).
 
 vi.mock("@/lib/liveness", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/liveness")>()),
@@ -25,7 +25,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
   useLive: () => true,
 }));
 
-const HOST = "minibuch";
+const HOST = "workshop";
 const BASE = fixtureAgents[0]!;
 const NOTE: HoldNote = {
   askId: "ask-0d0d0d0d0d0d0d",

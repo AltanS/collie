@@ -15,7 +15,7 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
 }
 
 describe("StatusDetailSheet", () => {
-  const longText = "connection refused: dial tcp 100.64.0.5:22: connect: no route to host";
+  const longText = "connection refused: dial tcp 192.0.2.5:22: connect: no route to host";
 
   it("renders the full text when open", () => {
     render(<StatusDetailSheet open text={longText} onClose={vi.fn()} onDismiss={vi.fn()} />);

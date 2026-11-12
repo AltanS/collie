@@ -8,7 +8,7 @@ import type { WalkyRow } from "@/lib/walky";
 // The mirror's walky row style (M62 spec 05): a row-level tag on the envelope's header line, never a
 // Block kind and never a harness grammar. It earns the style only when the pane's log holds the id.
 
-const HEADER = "[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)";
+const HEADER = "[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465)";
 const SCREEN = ["some earlier output", `❯ ${HEADER}`, "Tests are green on fix-465. You can merge.", "next row"].join("\n");
 
 function mirror(rows: readonly WalkyRow[] | null | "none", text = SCREEN) {
@@ -62,7 +62,7 @@ describe("the mirror's walky row", () => {
   });
 
   it("tags the agent's own send output, one row for each id the log holds", () => {
-    const text = ["$ collie walky send bluefin/w1:p1 hi", "wt_k3f9x2m8q1a0", "to bluefin/w1:p1, claude, repo#x", "typed into the pane"].join("\n");
+    const text = ["$ collie walky send lodge/w1:p1 hi", "wt_k3f9x2m8q1a0", "to lodge/w1:p1, claude, repo#x", "typed into the pane"].join("\n");
     const { container } = mirror([fixtureWalkyAgent], text);
     expect(tagged(container).map((el) => el.textContent)).toEqual(["wt_k3f9x2m8q1a0"]);
   });
