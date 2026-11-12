@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { MARKS } from "@/lib/mark-ids";
+import { MARKS, type MarkId } from "@/lib/mark-ids";
 import { describeMarkConformance, keyframeNames, sheetOf } from "@/test/mark-conformance";
 
 import { loadMark } from "./brand-mark";
@@ -21,7 +21,8 @@ import { loadMark } from "./brand-mark";
 // Collie mark ships in the entry):
 //
 //     collie-mark.tsx          76 KB      the full drawing, with the shaded beads
-//     every theme mark         34 KB      kawaii, kawaii-tilt, pixel, glass, sheep, owl, and the rest
+//     every theme mark         34 KB      kawaii, kawaii-tilt, pixel, glass, sheep, owl, the two Collie
+//                                         coat variants (collar, blaze, about 20 KB each), and the rest
 //
 // "KB" is 1000 bytes. A mark over its line does not get a bigger line here: shrink the drawing, or
 // the lead moves the number on purpose, in this table and in the test below.
@@ -30,6 +31,8 @@ const BUDGET_BYTES = { collie: 76_000, theme: 34_000 } as const;
 
 const FILES = {
   collie: "collie-mark.tsx",
+  "collie-collar": "collie-collar-mark.tsx",
+  "collie-blaze": "collie-blaze-mark.tsx",
   kawaii: "kawaii-mark.tsx",
   "kawaii-tilt": "kawaii-tilt-mark.tsx",
   pixel: "pixel-mark.tsx",
@@ -50,23 +53,52 @@ describe("the registry", () => {
     expect(Object.keys(FILES).toSorted()).toEqual(MARKS.map((m) => m.id).toSorted());
   });
 
-  it("gives every mark its own prefix", () => {
-    const prefixes = MARKS.map((m) => m.prefix);
-    expect(new Set(prefixes).size).toBe(prefixes.length);
+  it("gives every family its own prefix, and every mark in a family that one prefix", () => {
+    const prefixOfFamily = new Map<string, string>();
+    for (const { id, family, prefix } of MARKS) {
+      expect(prefixOfFamily.get(family) ?? prefix, `${id} breaks its family's prefix`).toBe(prefix);
+      prefixOfFamily.set(family, prefix);
+    }
+    const prefixes = [...prefixOfFamily.values()];
+    expect(new Set(prefixes).size, "two families share a prefix").toBe(prefixes.length);
   });
 
-  it("shares no keyframe name between two marks, because a <style> in an SVG is document-wide", () => {
-    const seen = new Map<string, string>();
+  it("names a family only by one of its own marks' ids, so a family has a head", () => {
+    for (const { family } of MARKS) expect(MARKS.some((m) => m.id === family)).toBe(true);
+  });
+
+  it("shares a keyframe name only inside one family, and only where the whole stylesheet is the same", () => {
+    // A <style> in an SVG is document-wide, so two marks that draw the same keyframe name write one
+    // rule between them. Marks of one family are one stylesheet with another head (collieFamilyMark),
+    // so the name is the same rule by construction. Anywhere else it is a leak.
+    const seen = new Map<string, { id: MarkId; family: string; sheet: string }>();
     for (const { id, Mark } of entries) {
+      const family = MARKS.find((m) => m.id === id)?.family;
+      if (family === undefined) throw new Error(`${id} is not registered`);
       const { container } = render(<Mark />);
       const root = container.querySelector<SVGSVGElement>("svg[data-mark]");
       if (root === null) throw new Error(`${id} drew no root`);
-      for (const name of keyframeNames(sheetOf(root))) {
-        expect(seen.get(name), `${name} is in ${id} and ${seen.get(name)}`).toBeUndefined();
-        seen.set(name, id);
+      const sheet = sheetOf(root);
+      for (const name of keyframeNames(sheet)) {
+        const first = seen.get(name);
+        if (first === undefined) {
+          seen.set(name, { id, family, sheet });
+          continue;
+        }
+        expect(first.family, `${name} is in ${id} and ${first.id}, which are not one family`).toBe(family);
+        expect(sheet, `${id} and ${first.id} share ${name} but not their whole stylesheet`).toBe(first.sheet);
       }
     }
     expect(seen.size).toBeGreaterThan(0);
+  });
+
+  it("draws each Collie coat with a head of its own", () => {
+    const html = (id: MarkId) => {
+      const Mark = entries.find((entry) => entry.id === id)?.Mark;
+      if (Mark === undefined) throw new Error(`no ${id}`);
+      return render(<Mark />).container.innerHTML;
+    };
+    expect(new Set([html("collie"), html("collie-collar"), html("collie-blaze")]).size).toBe(3);
   });
 
   for (const { id } of MARKS) {

@@ -401,6 +401,16 @@ export const en = {
   // Nunito has a real 400 to 700 axis, so unlike Aldrich its bold is drawn.
   "settings.typeface.note.nunito": "Soft and rounded, with a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
+  // --- settings.character (which character the header draws: a per-device choice that wins over the
+  // theme's `character`, ADR 0136). English only until the translation pass: listed in PENDING_TRANSLATION
+  // below. The character names are proper nouns and stay in lib/mark-ids.ts. ---
+  "settings.character.title": "Character",
+  "settings.character.description": "The character in the header, on this device.",
+  "settings.character.fromTheme": "From the theme",
+  "settings.character.still": "Still",
+  "settings.character.loading": "Loading",
+  "settings.character.idle": "Idle",
+  "settings.character.note": "The app icon, the splash and the push badge stay the Collie mark.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
   "settings.math.title": "Math",
   "settings.math.description": "LaTeX in chat and Markdown files, on this device.",
@@ -3720,6 +3730,13 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "settings.character.title",
+  "settings.character.description",
+  "settings.character.fromTheme",
+  "settings.character.still",
+  "settings.character.loading",
+  "settings.character.idle",
+  "settings.character.note",
   "tricks.placeholder",
   "tricks.time.ago",
   "tricks.time.in",

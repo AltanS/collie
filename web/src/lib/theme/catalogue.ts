@@ -492,6 +492,8 @@ export const FONTS: readonly { readonly word: ShippedFont; readonly name: string
 
 const CHARACTER_WORDS = {
   collie: "The collie head in profile, in the ink of the page. The default.",
+  "collie-collar": "The collie head in profile with a white collar, drawn in the colour of the page.",
+  "collie-blaze": "The collie head in profile with a white blaze, drawn in a soft grey.",
   kawaii: "A round puppy face from the front, with big glossy eyes and candy pearls.",
   "kawaii-tilt": "The same puppy with its head tilted.",
   pixel: "An 8-bit collie head with square beads that hop.",

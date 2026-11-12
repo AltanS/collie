@@ -350,6 +350,14 @@ export function installCountPath(scope?: Scope): string {
   return `/settings/system/install-count${scopeSearch(scope)}`;
 }
 
+/**
+ * Settings → Appearance → Character: the page below Appearance that lists the characters the header
+ * can draw (ADR 0136, amended 2026-11-12). A CHILD of Appearance, carrying the scope.
+ */
+export function characterPath(scope?: Scope): string {
+  return `/settings/appearance/character${scopeSearch(scope)}`;
+}
+
 /** Where the dashboard notice's button opens the Telemetry card. */
 export function telemetrySettingsPath(scope?: Scope): string {
   return installCountPath(scope);
@@ -468,7 +476,7 @@ const ANY_TRICK = "/trick/*";
  *   L1 `/space/:id`, `/settings`, `/crew`, `/hill`, `/new` (from the dashboard, a space or a pane)
  *   L1 `/trick/:id`, a trick session (M94 slice 03)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
- *   L3 `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
+ *   L3 `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/settings/appearance/character`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
  *      `?dir=` or `?path=`)
  *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`), `/pane/:id/changes/files`
@@ -533,6 +541,10 @@ export function ancestorsOf(pathname: string): string[] {
   // The install count's page sits one level below System.
   if (head === "settings" && seg.length === 3 && id === "system" && leaf === "install-count") {
     return ["/settings/system", "/settings", "/"];
+  }
+  // The Character page sits one level below Appearance.
+  if (head === "settings" && seg.length === 3 && id === "appearance" && leaf === "character") {
+    return ["/settings/appearance", "/settings", "/"];
   }
   if (head === "crew" && seg.length === 1) return ["/settings/system", "/settings", "/"];
   // Machines is opened from the Settings index and from the crew card in System, so both are
@@ -779,6 +791,9 @@ export function parentChain(pathname: string, search: string): string[] {
   }
   if (head === "settings" && seg.length === 3 && id === "system" && leaf === "install-count") {
     return [home, `/settings${q}`, `/settings/system${q}`];
+  }
+  if (head === "settings" && seg.length === 3 && id === "appearance" && leaf === "character") {
+    return [home, `/settings${q}`, `/settings/appearance${q}`];
   }
   if (head === "crew" && seg.length === 1) return [home, `/settings${q}`, `/settings/system${q}`];
   if (head === "machines" && seg.length === 1) return [home, `/settings${q}`];

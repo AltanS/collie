@@ -98,7 +98,7 @@ describe("collie theme check", () => {
     const { deps, io } = world({ "character.json": file });
     expect(cmdThemeCheck(deps, ["character.json"])).toBe(EXIT.FAIL);
     expect(io.stdout).toEqual([
-      `character.json: refused: ${en["theme.refusal.mark"]} (character: "character" must be one of: collie, kawaii, kawaii-tilt, pixel, glass, glass-front, sheep, owl.)`,
+      `character.json: refused: ${en["theme.refusal.mark"]} (character: "character" must be one of: collie, collie-collar, collie-blaze, kawaii, kawaii-tilt, pixel, glass, glass-front, sheep, owl.)`,
     ]);
   });
 

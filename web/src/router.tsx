@@ -29,6 +29,7 @@ import {
   SettingsVoiceHostRoute,
   SettingsVoiceModelRoute,
   SettingsSystemRoute,
+  SettingsCharacterRoute,
   SettingsInstallCountRoute,
 } from "@/routes/settings-sections";
 import { CrewRoute } from "@/routes/crew";
@@ -126,6 +127,8 @@ export const router = createBrowserRouter([
         element: <SettingsRoute />,
       },
       { path: "settings/appearance", element: <SettingsAppearanceRoute /> },
+      // One level below Appearance, like Voice's two pages: which character the header draws.
+      { path: "settings/appearance/character", element: <SettingsCharacterRoute /> },
       { path: "settings/harnesses", element: <SettingsHarnessesRoute /> },
       { path: "settings/device", element: <SettingsDeviceRoute /> },
       { path: "settings/voice", element: <SettingsVoiceRoute /> },

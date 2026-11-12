@@ -35,6 +35,7 @@ import {
   type Theme,
 } from "./schema";
 import { GLYPH_SET_IDS } from "../glyph-sets";
+import { resolveMarkId } from "../mark";
 import { MARK_IDS } from "../mark-ids";
 import {
   ANSI_KEYS,
@@ -1008,8 +1009,8 @@ describe("the optional tokens", () => {
 // ── Schema version 4: the header character ─────────────────────────────────────────────────────────
 
 describe("the character key", () => {
-  it("is a closed list of eight words, collie first", () => {
-    expect(MARK_IDS).toEqual(["collie", "kawaii", "kawaii-tilt", "pixel", "glass", "glass-front", "sheep", "owl"]);
+  it("is a closed list of ten words, collie first, then its two coats", () => {
+    expect(MARK_IDS).toEqual(["collie", "collie-collar", "collie-blaze", "kawaii", "kawaii-tilt", "pixel", "glass", "glass-front", "sheep", "owl"]);
   });
 
   it.each(MARK_IDS)("reads %s from a version 4 file, and hands the theme back as version 4", (character) => {
@@ -1017,6 +1018,14 @@ describe("the character key", () => {
     expect(result.ok && result.theme.character).toBe(character);
     expect(result.ok && result.theme.version).toBe(4);
     expect(result.ok && versionOf(result.theme)).toBe(4);
+  });
+
+  it("resolves a version 4 theme with character collie-blaze to collie-blaze, and the version stays 4", () => {
+    const result = parseTheme(file({ version: 4, character: "collie-blaze" }), CAP);
+    if (!result.ok) throw new Error("refused");
+    expect(knownCharacter(result.theme)).toBe("collie-blaze");
+    expect(resolveMarkId({ device: undefined, trial: null, active: result.theme })).toBe("collie-blaze");
+    expect(versionOf(result.theme)).toBe(4);
   });
 
   it("lifts a theme that sets a character above one that sets an optional token", () => {
@@ -1035,7 +1044,7 @@ describe("the character key", () => {
   it.each([["Kawaii"], ["kawaii_tilt"], ["Kawaii-Tilt"], [""], [3], [null], [["pixel"]], [{ id: "pixel" }]])("refuses %j as a character, and names the list", (character) => {
     const result = parseTheme(file({ version: 4, character }), CAP);
     expect(codes(result)).toEqual(["character character"]);
-    expect(refusals(result)[0]?.detail).toBe('"character" must be one of: collie, kawaii, kawaii-tilt, pixel, glass, glass-front, sheep, owl.');
+    expect(refusals(result)[0]?.detail).toBe('"character" must be one of: collie, collie-collar, collie-blaze, kawaii, kawaii-tilt, pixel, glass, glass-front, sheep, owl.');
   });
 
   it("reports the version and the word together, so one round trip fixes both", () => {

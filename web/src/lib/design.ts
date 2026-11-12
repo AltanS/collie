@@ -3,9 +3,10 @@ import { useSyncExternalStore } from "react";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 import { OPERATOR_FONT_PREFIX, type OperatorFontFace } from "@/lib/operator-fonts";
 import { SHIPPED_FONTS, isShippedFont, type ShippedFont } from "@/lib/shipped-fonts";
+import { isMarkId, type MarkId } from "@/lib/mark-ids";
 import { DEFAULT_THEME_ID, isThemeId } from "@/lib/theme/schema";
 
-// The device's own look — its face, its colour theme, its math engine — and the shape is an OBJECT on
+// The device's own look — its face, its colour theme, its math engine, its header character — and the shape is an OBJECT on
 // purpose.
 //
 // WHY AN OBJECT FOR ONE FIELD. This is the seed of theming: an accent colour, a density, a corner
@@ -64,6 +65,14 @@ export interface DesignPrefs {
    * what a device that never chose stores.
    */
   math?: Exclude<MathEngine, "off">;
+  /**
+   * The header character this device chose (Settings > Appearance > Character, ADR 0136 amended
+   * 2026-11-12). Absent means "From the theme": the worn theme's `character`, else Collie
+   * (`lib/mark.ts` is the one place that decides). Like `math`, the default is the absence of the
+   * field, so a device that goes back to "From the theme" stores what a device that never chose
+   * stores. Device-local: it is never sent to the bridge. Validated by `isMarkId` on every read.
+   */
+  mark?: MarkId;
 }
 
 /** The math renderers a device may choose. `off` is the default and is never stored. */
@@ -135,6 +144,8 @@ function load(): DesignPrefs {
     // The retired shipped id: `collie` now wears that look. Drop the field and write it back, once.
     const kept: DesignPrefs = { font: parsed.font };
     if (parsed.operatorFont !== undefined) kept.operatorFont = parsed.operatorFont;
+    if (parsed.math !== undefined) kept.math = parsed.math;
+    if (parsed.mark !== undefined) kept.mark = parsed.mark;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(kept));
     return kept;
   } catch {
@@ -167,6 +178,8 @@ export function parseDesignPrefs(raw: string): DesignPrefs {
   if (theme !== undefined && isThemeId(theme) && theme !== DEFAULT_THEME_ID) next.theme = theme;
   const math = asJsonString(doc.math);
   if (math !== undefined && isMathEngine(math) && math !== "off") next.math = math;
+  const mark = asJsonString(doc.mark);
+  if (mark !== undefined && isMarkId(mark)) next.mark = mark;
   return next;
 }
 
@@ -226,6 +239,7 @@ export function setDesignFont(font: string, face?: OperatorFontFace): void {
   // survives a change of face, and so does the math engine.
   if (prefs.theme !== undefined) next.theme = prefs.theme;
   if (prefs.math !== undefined) next.math = prefs.math;
+  if (prefs.mark !== undefined) next.mark = prefs.mark;
   prefs = next;
   persist();
   applyFontClass(prefs.font);
@@ -243,6 +257,7 @@ export function setDesignTheme(id: string): void {
   if (prefs.operatorFont !== undefined) next.operatorFont = prefs.operatorFont;
   if (id !== DEFAULT_THEME_ID) next.theme = id;
   if (prefs.math !== undefined) next.math = prefs.math;
+  if (prefs.mark !== undefined) next.mark = prefs.mark;
   prefs = next;
   persist();
   for (const fn of listeners) fn();
@@ -258,6 +273,23 @@ export function setDesignMath(engine: string): void {
   if (prefs.operatorFont !== undefined) next.operatorFont = prefs.operatorFont;
   if (prefs.theme !== undefined) next.theme = prefs.theme;
   if (engine !== "off") next.math = engine;
+  if (prefs.mark !== undefined) next.mark = prefs.mark;
+  prefs = next;
+  persist();
+  for (const fn of listeners) fn();
+}
+
+/**
+ * Choose the header character. `null` is "From the theme" and is the absence of the field (see
+ * {@link DesignPrefs.mark}); every other field is kept as it is. The type admits only a real id, so
+ * there is nothing to ignore here: a caller with a string asks `isMarkId` first.
+ */
+export function setDesignMark(mark: MarkId | null): void {
+  const next: DesignPrefs = { font: prefs.font };
+  if (prefs.operatorFont !== undefined) next.operatorFont = prefs.operatorFont;
+  if (prefs.theme !== undefined) next.theme = prefs.theme;
+  if (prefs.math !== undefined) next.math = prefs.math;
+  if (mark !== null) next.mark = mark;
   prefs = next;
   persist();
   for (const fn of listeners) fn();

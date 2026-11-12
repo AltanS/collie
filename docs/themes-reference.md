@@ -451,6 +451,8 @@ The header character, set with the key `character` at the top level. A theme wit
 | Word | Name | What it is |
 | --- | --- | --- |
 | `collie` | Collie | The collie head in profile, in the ink of the page. The default. |
+| `collie-collar` | Collie with collar | The collie head in profile with a white collar, drawn in the colour of the page. |
+| `collie-blaze` | Collie with blaze | The collie head in profile with a white blaze, drawn in a soft grey. |
 | `kawaii` | Kawaii | A round puppy face from the front, with big glossy eyes and candy pearls. |
 | `kawaii-tilt` | Kawaii Tilt | The same puppy with its head tilted. |
 | `pixel` | Pixel | An 8-bit collie head with square beads that hop. |

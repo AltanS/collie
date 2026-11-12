@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { __resetDesign, setDesignMark } from "@/lib/design";
 import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 import { collieMark, markPaper } from "@/test/collie-mark";
 
@@ -30,6 +31,7 @@ const pending = (root: ParentNode) => root.querySelector<HTMLElement>('[data-slo
 
 beforeEach(() => {
   localStorage.clear();
+  __resetDesign();
   __resetThemeStore();
 });
 
@@ -99,6 +101,25 @@ describe("BrandMark", () => {
     expect(pending(container)).toBeNull();
   });
 
+  it("follows the device's choice over the worn theme's, at once, and goes back on From the theme", async () => {
+    importCharacters("kawaii");
+    setActiveTheme("wears-kawaii");
+    const { container } = render(<BrandMark size={28} />);
+    await waitFor(() => expect(drawn(container)).toBe("kawaii"));
+    act(() => setDesignMark("pixel"));
+    await waitFor(() => expect(drawn(container)).toBe("pixel"));
+    act(() => setDesignMark(null));
+    await waitFor(() => expect(drawn(container)).toBe("kawaii"));
+  });
+
+  it("draws the two Collie coat variants as their own marks, once their chunks have arrived", async () => {
+    const { container, rerender } = render(<BrandMark mark="collie-collar" size={28} />);
+    await waitFor(() => expect(container.querySelector('svg[data-mark="collie-collar"]')).not.toBeNull());
+    rerender(<BrandMark mark="collie-blaze" size={28} />);
+    await waitFor(() => expect(container.querySelector('svg[data-mark="collie-blaze"]')).not.toBeNull());
+    expect(container.querySelector('svg[data-mark="collie-collar"]')).toBeNull();
+  });
+
   it("follows the worn theme's character when `mark` is not given, live", async () => {
     importCharacters("pixel", "kawaii", "kawaii-tilt", "collie");
     const { container } = render(<BrandMark size={28} />);
@@ -166,7 +187,7 @@ describe("the chunked marks", () => {
   }
 
   it("are every character but Collie, each with a generated file beside the host", () => {
-    expect(chunked).toEqual(["kawaii", "kawaii-tilt", "pixel", "glass", "glass-front", "sheep", "owl"]);
+    expect(chunked).toEqual(["collie-collar", "collie-blaze", "kawaii", "kawaii-tilt", "pixel", "glass", "glass-front", "sheep", "owl"]);
     for (const id of chunked) expect(readFileSync(join(import.meta.dirname, `${id}-mark.tsx`), "utf8")).toContain("// generated: sha256=");
   });
 

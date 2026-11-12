@@ -2,6 +2,8 @@ import { Icon } from "@/components/icons/icon";
 import { useLoaderData } from "react-router";
 
 import { AppearanceIntro } from "@/components/appearance-intro";
+import { CharacterPicker } from "@/components/character-picker";
+import { CharacterSettingsRow } from "@/components/character-settings-row";
 import { SettingsPage } from "@/components/settings-page";
 import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
@@ -89,13 +91,17 @@ export function SettingsAppearanceRoute() {
       {/* "Make Collie your own": one line and a docs link over the two cards that make the app
           yours, in the order a person decides them: the theme (Paste, Browse and Try live in its
           card), then which half of the theme you see. The header's character comes with the theme
-          and has no card of its own: it is something a theme maker sets, not a device setting. */}
+          unless this device picks one: that is the Character row below them. */}
       <AppearanceIntro />
       {/* Which theme, then which half of it: the picker sits directly above the three-way (System,
           Light, Dark) because the two are one question asked twice, and a person who finds one
           should find the other. First on the page, because it is the one people come here for. */}
       <ThemePickerControl />
       <ThemeControl />
+      {/* Which character the header draws on this device: one row with its value, and the page it
+          opens lists them (ADR 0136, amended 2026-11-12). Under the theme because its default is
+          "From the theme". */}
+      <CharacterSettingsRow />
       {/* Beside appearance because both are "how this phone presents itself". */}
       <LanguageControl />
       {/* TWO FONT CARDS, ADJACENT, IN THIS ORDER. Adjacency answers the only question either one
@@ -316,6 +322,16 @@ export function SettingsSystemRoute() {
       {/* Report a problem (ADR 0123): the offer's switch and the sheet's third door, with the diagnostics
           because a report is the one way those leave this phone, and only by the person's taps. */}
       <ReportControl />
+    </SettingsPage>
+  );
+}
+
+/** Settings → Appearance → Character: the radio list of characters, one level below Appearance. */
+export function SettingsCharacterRoute() {
+  const scope = useScope();
+  return (
+    <SettingsPage title="settings.character.title" parent={settingsSectionPath("appearance", scope)}>
+      <CharacterPicker />
     </SettingsPage>
   );
 }

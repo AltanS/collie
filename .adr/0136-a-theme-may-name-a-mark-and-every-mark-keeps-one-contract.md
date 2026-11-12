@@ -67,7 +67,29 @@ each further mark would break it quietly: a bead drawn as a `rect` instead of a 
   pixel-identical at rest and loading, proved by a pixel comparison in collie-brand.
 - The website copies the Collie mark, so it now copies `mark-contract.ts` too.
 - A new mark is a generator entry in collie-brand, a row in `mark-ids.ts`, a loader case in `brand-mark.tsx`
-  and the sealed file. The suite then decides whether it ships.
+  and the sealed file. The suite then decides whether it ships. A family variant (a coat of the Collie mark)
+  is only a head file: it shares the family's stylesheet and prefix through `collieFamilyMark`, and its row in
+  `mark-ids.ts` names the family (amendment of 2026-11-12).
 - The turn table is one table for every mark. A mark that wanted its own pace (the first pixel mark drifted at
   96 seconds) gives that up, because a spin round and the reconnection's single turn are timed in turns.
 - Revisit if a mark needs a state the five do not cover: add it to the contract, never to one mark.
+
+## Amendment of 2026-11-12: a device may choose the character
+
+Item 2 above ("Only the theme names a character. There is no device setting.") is reversed, on Altan's order.
+
+- **A device choice wins.** Settings > Appearance > Character lists "From the theme" and every character.
+  The choice wins over the theme's `character` on that device, and only there. It is stored in the design
+  store (`collie:design:v1`, the `mark` field, `lib/design.ts`) and is never sent to the bridge. "From the
+  theme" is the absence of the field. The order is the device's choice, then the worn or tried theme's
+  character, then Collie (`lib/mark.ts`). A theme file still names a character as before, and no theme
+  version moves.
+- **The favicon, the app icon, the splash and the push badge stay the Collie mark.** The header and the in-app marks change.
+- **Two coat variants join the registry:** `collie-collar` (Collie with collar) and `collie-blaze` (Collie
+  with blaze). Each is the Collie mark with another head. They share the Collie mark's stylesheet byte for
+  byte, so they share its prefix `cm` and its keyframe names on purpose. The registry's `family` field says
+  so, and the conformance suite now asks that prefixes are unique across families, and that a keyframe name
+  is shared only inside one family and only where the whole stylesheet is identical.
+- **The page keeps its cost low.** Each row draws a character still, loading and idle. One observer tracks
+  which rows are on screen, and a mark in a row that is not on screen is held (`turn={0}`), so no animation
+  runs off screen (issue 748).

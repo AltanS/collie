@@ -31,6 +31,7 @@ import {
   updatesPath,
   upTarget,
   voicePagePath,
+  characterPath,
   installCountPath,
   telemetrySettingsPath,
 } from "./nav";
@@ -241,6 +242,13 @@ describe("installCountPath", () => {
   });
 });
 
+describe("characterPath", () => {
+  it("names the page below Appearance, keeping the scope", () => {
+    expect(characterPath()).toBe("/settings/appearance/character");
+    expect(characterPath({ host: "badger", session: "demo" })).toBe("/settings/appearance/character?h=badger&s=demo");
+  });
+});
+
 describe("pairLandingPath", () => {
   // The QR `collie pair` prints names `/settings?pair=<code>`. The form is on System now, so the
   // index forwards a code there with the whole query, scope included.
@@ -307,6 +315,9 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/settings/system", "/settings/system/install-count", true],
     ["/settings", "/settings/system/install-count", true],
     ["/settings/system/install-count", "/settings/system", false],
+    ["/settings/appearance", "/settings/appearance/character", true],
+    ["/settings", "/settings/appearance/character", true],
+    ["/settings/appearance/character", "/settings/appearance", false],
     ["/settings/voice/host", "/settings/voice", false],
     ["/settings/voice/host", "/settings/voice/model", false],
     ["/", "/settings", true],
@@ -438,6 +449,9 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     // The install count sits one level below System: the index and System behind it.
     ["/settings/system/install-count", "", ["/", "/settings", "/settings/system"]],
     ["/settings/system/install-count", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/system?h=badger"]],
+    // The Character page sits one level below Appearance: the index and Appearance behind it.
+    ["/settings/appearance/character", "", ["/", "/settings", "/settings/appearance"]],
+    ["/settings/appearance/character", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/appearance?h=badger"]],
     ["/crew", "", ["/", "/settings", "/settings/system"]],
     // Machines sits under Settings, and one machine under Machines: a cold deep link gets both behind it.
     ["/machines", "", ["/", "/settings"]],

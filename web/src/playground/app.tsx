@@ -75,6 +75,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "tour", title: "First run" }, load: () => import("./sections/tour").then((m) => ({ default: m.TourSection })) },
   { def: { id: "idle", title: "Idle & resume" }, load: () => import("./sections/idle").then((m) => ({ default: m.IdleSection })) },
   { def: { id: "brand", title: "Brand" }, load: () => import("./sections/brand").then((m) => ({ default: m.BrandSection })) },
+  { def: { id: "character-picker", title: "Character picker" }, load: () => import("./sections/character-picker").then((m) => ({ default: m.CharacterPickerSection })) },
   { def: { id: "notices", title: "Notices" }, load: () => import("./sections/notices").then((m) => ({ default: m.NoticesSection })) },
   { def: { id: "update-screen", title: "Update mode" }, load: () => import("./sections/update-screen").then((m) => ({ default: m.UpdateScreenSection })) },
   { def: { id: "motion", title: "Motion" }, load: () => import("./sections/motion").then((m) => ({ default: m.MotionSection })) },

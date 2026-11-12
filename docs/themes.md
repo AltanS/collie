@@ -545,11 +545,17 @@ A character is the figure in the header of the app. Every character keeps the sa
 an orbit and hold still at rest. While Collie works for you they turn fast, in the character's own colours. An
 update and a reconnect turn them in the same colours for every character.
 
+A person can also pick a character for one device, in Settings > Appearance > Character. That choice
+wins over the character a theme names, on that device only. It is stored on the device and is never sent
+to the bridge. "From the theme" gives the choice back to the theme.
+
 These are the characters today. More may follow.
 
 | Word | Character |
 | --- | --- |
 | `collie` | **Collie**, the collie head in profile, in the ink of the page. The default. |
+| `collie-collar` | **Collie with collar**, the collie head in profile with a white collar, drawn in the colour of the page. |
+| `collie-blaze` | **Collie with blaze**, the collie head in profile with a white blaze, drawn in a soft grey. |
 | `kawaii` | **Kawaii**, a round puppy face from the front, with big glossy eyes and candy pearls. |
 | `kawaii-tilt` | **Kawaii Tilt**, the same puppy with its head tilted. |
 | `pixel` | **Pixel**, an 8-bit collie head with square beads that hop. |
