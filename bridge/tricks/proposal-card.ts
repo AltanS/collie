@@ -84,7 +84,7 @@ function plain(raw: string, max: number): string {
   return chars.length <= max ? chars.join("") : `${chars.slice(0, max - 1).join("")}…`;
 }
 
-/** "An agent session (repo#one) on minibuch proposes it." */
+/** "An agent session (repo#one) on lodge proposes it." */
 export function proposerSentence(proposer: ProposerFacts): string {
   const host = plain(proposer.host, 40);
   // No agent pane placed: the machine is known, the session is not (proposals.ts "WHAT IS CONFIRMED").

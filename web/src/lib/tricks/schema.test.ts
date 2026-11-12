@@ -1339,7 +1339,7 @@ describe("ids and keys", () => {
   });
 
   it("opens an https or an http address and nothing else", () => {
-    for (const url of ["https://github.com/AltanS/collie", "http://lodge:8080/", "http://100.64.0.8:8795/x?y=1"]) expect(isTrickUrl(url), url).toBe(true);
+    for (const url of ["https://github.com/AltanS/collie", "http://lodge:8080/", "http://100.64.0.2:8080/x?y=1"]) expect(isTrickUrl(url), url).toBe(true);
     for (const url of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,x", "ftp://lodge/", "//lodge:8080/", "http://a b/", "HTTP://lodge/"]) {
       expect(isTrickUrl(url), url).toBe(false);
     }

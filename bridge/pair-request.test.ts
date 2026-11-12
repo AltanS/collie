@@ -129,7 +129,7 @@ async function body(res: Response): Promise<Record<string, JsonValue>> {
   return (await res.json()) as Record<string, JsonValue>;
 }
 
-async function create(r: Rig, source = "100.64.0.9", ua: string | null = CHROME_LINUX) {
+async function create(r: Rig, source = "192.0.2.9", ua: string | null = CHROME_LINUX) {
   const res = await pairRequestCreateRoute(r.deps, { source, route: TAILNET, userAgent: ua });
   return { res, json: await body(res) };
 }
@@ -270,9 +270,9 @@ describe("POST /api/pair/request", () => {
 
   test("at most 3 open in all: the fourth is 429 with retry-after until the soonest ends", async () => {
     const r = rig();
-    for (let i = 0; i < MAX_OPEN_REQUESTS; i++) await made(r, `100.64.0.${i + 1}`);
+    for (let i = 0; i < MAX_OPEN_REQUESTS; i++) await made(r, `192.0.2.${i + 1}`);
     r.clock.now += 30_000;
-    const { res, json } = await create(r, "100.64.0.50");
+    const { res, json } = await create(r, "192.0.2.50");
     expect(res.status).toBe(429);
     expect(json.error).toBe("rate-limited");
     expect(res.headers.get("retry-after")).toBe(String((REQUEST_TTL_MS - 30_000) / 1000));
@@ -280,26 +280,26 @@ describe("POST /api/pair/request", () => {
     expect(r.audits.at(-1)).toEqual({ action: "pair-request-refused", detail: { reason: "rate" } });
     // Once they ran out, a place is free again.
     r.clock.now += REQUEST_TTL_MS;
-    expect((await create(r, "100.64.0.50")).res.status).toBe(200);
+    expect((await create(r, "192.0.2.50")).res.status).toBe(200);
   });
 
   test("at most 6 per source in 10 minutes, keyed by the source, audited once per burst", async () => {
     const r = rig();
     for (let i = 0; i < REQUESTS_PER_SOURCE; i++) {
-      const m = await made(r, "100.64.0.9");
+      const m = await made(r, "192.0.2.9");
       // End each one so the global cap is not what refuses.
       await approve(r, m.publicId, { refuse: true });
     }
-    const first = await create(r, "100.64.0.9");
+    const first = await create(r, "192.0.2.9");
     expect(first.res.status).toBe(429);
     expect(Number(first.res.headers.get("retry-after"))).toBe(REQUEST_SOURCE_WINDOW_MS / 1000);
-    expect((await create(r, "100.64.0.9")).res.status).toBe(429);
+    expect((await create(r, "192.0.2.9")).res.status).toBe(429);
     expect(r.audits.filter((a) => a.action === "pair-request-refused" && a.detail?.reason === "rate")).toHaveLength(1);
     // Another source is not affected.
-    expect((await create(r, "100.64.0.10")).res.status).toBe(200);
+    expect((await create(r, "192.0.2.10")).res.status).toBe(200);
     // The window slides: past it, the source may ask again.
     r.clock.now += REQUEST_SOURCE_WINDOW_MS;
-    expect((await create(r, "100.64.0.9")).res.status).toBe(200);
+    expect((await create(r, "192.0.2.9")).res.status).toBe(200);
   });
 
   test("a crew member serves no browser door: every route answers 404", async () => {
@@ -714,7 +714,7 @@ describe("N3: sources are keyed by /64, and the global caps hold", () => {
     expect(requestSourceKey("2001:db8::1")).toBe("2001:db8:0:0::/64");
     expect(requestSourceKey("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
     expect(requestSourceKey("::ffff:192.0.2.7")).toBe("192.0.2.7");
-    expect(requestSourceKey("100.64.0.9")).toBe("100.64.0.9");
+    expect(requestSourceKey("192.0.2.9")).toBe("192.0.2.9");
     expect(requestSourceKey("loopback")).toBe("loopback");
     expect(requestSourceKey("not an address")).toBe("not an address");
   });
@@ -744,7 +744,7 @@ describe("N3: sources are keyed by /64, and the global caps hold", () => {
 
   test("the open cap's refusals are audited once per window, not once each", async () => {
     const r = rig();
-    for (let i = 0; i < MAX_OPEN_REQUESTS; i++) await made(r, `100.64.0.${i + 1}`);
+    for (let i = 0; i < MAX_OPEN_REQUESTS; i++) await made(r, `192.0.2.${i + 1}`);
     for (let i = 0; i < 5; i++) expect((await create(r, `100.64.1.${i}`)).res.status).toBe(429);
     expect(r.audits.filter((a) => a.detail?.reason === "rate")).toHaveLength(1);
   });
@@ -794,8 +794,8 @@ describe("N4: cancel, and one open request per source", () => {
 
   test("a new request from the same source replaces its open one", async () => {
     const r = rig();
-    const first = await made(r, "100.64.0.9");
-    const second = await made(r, "100.64.0.9");
+    const first = await made(r, "192.0.2.9");
+    const second = await made(r, "192.0.2.9");
     expect(r.book.openCount()).toBe(1);
     expect(await poll(r, first.publicId, first.pollSecret)).toEqual({ status: 200, json: { state: "expired" } });
     expect((await poll(r, second.publicId, second.pollSecret)).json.state).toBe("waiting");
@@ -804,15 +804,15 @@ describe("N4: cancel, and one open request per source", () => {
 
   test("so three Cancels in a row never fill the open cap", async () => {
     const r = rig();
-    for (let i = 0; i < 5; i++) await made(r, "100.64.0.9");
+    for (let i = 0; i < 5; i++) await made(r, "192.0.2.9");
     expect(r.book.openCount()).toBe(1);
   });
 
   test("a replaced request whose device was approved and not collected takes that device with it", async () => {
     const r = rig();
-    const first = await made(r, "100.64.0.9");
+    const first = await made(r, "192.0.2.9");
     await approve(r, first.publicId, { code: first.code, label: "desk" });
-    await made(r, "100.64.0.9");
+    await made(r, "192.0.2.9");
     expect(r.revoked).toEqual(["desk"]);
   });
 

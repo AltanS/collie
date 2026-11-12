@@ -548,8 +548,8 @@ agent and no crew member reaches (`HillService.postCollie`):
 
 - title `Switch on the trick <id>?`, no recommendation, options "Switch it on" (asks twice: "Yes,
   switch on") and "Not now", no text box, priority today, and it closes after 3 days;
-- the summary says who proposes ("An agent session (repo#one) on minibuch proposes it.", "An agent
-  session on minibuch proposes it." or, with no agent pane placed, "Someone on minibuch proposes it.
+- the summary says who proposes ("An agent session (repo#one) on lodge proposes it.", "An agent
+  session on lodge proposes it." or, with no agent pane placed, "Someone on lodge proposes it.
   Collie could not confirm which session."), "It replaces an earlier proposal from the same session."
   when it does, how many files, and the rights the manifest asks for; the view lists every right,
   every `inputs` glob and every warning of the code search in full (as chips when each fits a chip and
@@ -624,10 +624,10 @@ the card's (`PROPOSAL_CHANGED` otherwise). The files become `<configDir>/tricks/
 sibling and one rename, never over a folder that appeared meanwhile; the code written is approved as it
 is and switched on, by `proposal` in the switch file and the audit. A dot file
 `.collie-origin.json` records the proposal (`by`, `host`, `label`, `at`): `collie trick list` shows it as
-`proposed by agent on minibuch`, and the wire's `provenance` carries `proposed: { by, host }`, so the
-Settings row says "Proposed by an agent on minibuch" and the About sheet "Proposed by an agent session
-on minibuch." With no agent pane placed they say "Proposed from minibuch, session not confirmed" and
-"Proposed from minibuch. The session is not confirmed." "Not now", a dismiss, the expiry, or a newer
+`proposed by agent on lodge`, and the wire's `provenance` carries `proposed: { by, host }`, so the
+Settings row says "Proposed by an agent on lodge" and the About sheet "Proposed by an agent session
+on lodge." With no agent pane placed they say "Proposed from lodge, session not confirmed" and
+"Proposed from lodge. The session is not confirmed." "Not now", a dismiss, the expiry, or a newer
 proposal from the same session removes the stored copy.
 
 **A trick that exists.** Only a trick a proposal made takes a new version by proposal. Before the

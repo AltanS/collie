@@ -81,7 +81,7 @@ async function readOriginText(dir: string, fs: TrickFs): Promise<string | null> 
 // A PROPOSED TRICK (crew slice 8). A trick an agent or a terminal handed in with `collie trick propose`,
 // installed after the person's yes, carries the other form of the record:
 //
-//   { "v": 1, "via": "proposal", "by": "agent", "host": "minibuch", "label": "repo#one",
+//   { "v": 1, "via": "proposal", "by": "agent", "host": "lodge", "label": "repo#one",
 //     "at": "2026-11-11T09:41:00.000Z" }
 //
 // `by` is `agent` or `terminal`; `host` and `label` are what the lead knew of the proposer when the
@@ -128,7 +128,7 @@ export async function readProposalOrigin(dir: string, fs: TrickFs = diskTrickFs)
   return parseProposalOrigin(await readOriginText(dir, fs));
 }
 
-/** One short word for `collie trick list`: `proposed by agent on minibuch`. */
+/** One short word for `collie trick list`: `proposed by agent on lodge`. */
 export function proposalShort(origin: ProposalOrigin): string {
   return `proposed by ${origin.by} on ${origin.host}`;
 }
