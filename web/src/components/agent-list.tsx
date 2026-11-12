@@ -14,7 +14,7 @@ import {
   type WorkspaceGroup,
 } from "@/lib/pane-groups";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
-import { ATTENTION, bucketOf, triage, worstTriage } from "@/lib/triage";
+import { ATTENTION, bucketOf, needsYou, triage, worstTriage } from "@/lib/triage";
 import { groupHost, pinnedRows, shownGroups, stripEntries } from "@/lib/dash-view";
 import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView, WorkspaceView } from "@/lib/types";
 import { paneRowKey, paneScope } from "@/lib/hosts";
@@ -45,7 +45,7 @@ import { PinHint } from "./pin-hint";
 import { WorkspaceNewTab } from "./workspace-new-tab";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { useStillWhileTouched } from "@/hooks/use-still-list";
+import { useStillList, useStillWhileTouched } from "@/hooks/use-still-list";
 import { SUMMARY_LINE_TAP_TARGET } from "@/components/ui/tap-target";
 import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
@@ -218,6 +218,12 @@ export interface HeadingNewTab {
 
 /** A module-level empty list: a fresh `[]` default per render is a new reference for nothing. */
 const NO_PANES: AgentView[] = [];
+/** The keys of the panes that needed you in the list as it was held (agents and shells each held on their own). */
+function frozenNeedsKeys(...lists: (readonly AgentView[] | null)[]): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const list of lists) for (const p of list ?? NO_PANES) if (needsYou(p)) keys.add(paneRowKey(p));
+  return keys;
+}
 const NO_TABS: readonly TabView[] = [];
 const NO_WORKSPACES: readonly WorkspaceView[] = [];
 /** A tab's identity across machines: the tab id alone repeats from one machine to the next. */
@@ -380,8 +386,10 @@ export function AgentList({
   // line and the counts below read the live herd and are never held. Untouched, these ARE `agents` and
   // `shellPanes`, the same arrays.
   const listRoot = useRef<HTMLDivElement | null>(null);
-  const listAgents = useStillWhileTouched(agents, paneRowKey, listRoot);
-  const listShells = useStillWhileTouched(shellPanes, paneRowKey, listRoot);
+  const stillAgents = useStillList(agents, paneRowKey, listRoot);
+  const stillShells = useStillList(shellPanes, paneRowKey, listRoot);
+  const listAgents = stillAgents.items;
+  const listShells = stillShells.items;
   // A row's PLACE is read from the tab and the workspace it sits in (tabs by number, workspaces by number), so
   // those two lists are held with the panes: a pane held through its tab's removal must keep the place it was
   // drawn at, not fall to the fallback sort of a tab the live list no longer has.
@@ -534,7 +542,11 @@ export function AgentList({
   // What the body draws. Needs you narrows the rows, a pinned pane leaves its group, and a group left
   // empty is dropped; the group itself rides along whole, so its heading keeps counting every pane
   // (lib/dash-view.ts).
-  const drawn = shownGroups(shown, needsYouOnly, isPinned);
+  // While the list is held, WHO NEEDS YOU is what the finger found: a pane whose status just changed keeps its
+  // row (showing the live status) and a pane that just began to need you waits, so the switch never takes a row
+  // out from under the thumb. Untouched, it is the live `needsYou`.
+  const frozenNeeds = needsYouOnly && (stillAgents.frozen !== null || stillShells.frozen !== null) ? frozenNeedsKeys(stillAgents.frozen, stillShells.frozen) : null;
+  const drawn = shownGroups(shown, needsYouOnly, isPinned, frozenNeeds === null ? undefined : (p) => frozenNeeds.has(paneRowKey(p)));
   // THE RANKED LIST (ADR 0071, rule 2 of "The dashboard takes the setting"): Activity and Cache fold
   // the workspace groups into one list. The filters above (needs you, isolate, hide, hidden machines,
   // pins) have already run, so they decide WHICH rows and never their order; shells are in these

@@ -2,7 +2,7 @@ import { act, render } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { STILL_QUIET_MS, useStillWhileTouched } from "./use-still-list";
+import { STILL_MAX_HOLD_MS, STILL_QUIET_MS, useStillWhileTouched } from "./use-still-list";
 
 // A LIST HELD STILL UNDER A FINGER (hitbox proposal 2). What waits is arrival, removal and order; what does not
 // is the data of a pane that is drawn, and a list nobody touches.
@@ -173,6 +173,50 @@ describe("useStillWhileTouched", () => {
     });
     rerender(<Probe live={[row("new"), ...first]} />);
     act(() => vi.advanceTimersByTime(STILL_QUIET_MS * 5));
+    expect(ids()).toEqual(["a:idle"]);
+  });
+
+  it("a touchend that goes to a removed node never reaches the document: the pointerup of that finger ends the hold", () => {
+    const first = [row("a"), row("b")];
+    const { rerender } = render(<Probe live={first} />);
+    // The touch begins on a row; the poll removes that row; its `touchend` goes to the detached node, so the
+    // document sees no end at all.
+    const target = rootEl!.querySelector("span")!;
+    touch("touchstart", target, 1);
+    rerender(<Probe live={[row("b")]} />);
+    expect(ids()).toEqual(["a:idle", "b:idle"]);
+    const detached = target.cloneNode();
+    const end = new Event("touchend", { bubbles: false });
+    Object.defineProperty(end, "changedTouches", { value: [{ identifier: 1, target: detached }] });
+    detached.dispatchEvent(end);
+    // The pointer is told to the document: the finger lifted.
+    const up = new Event("pointerup", { bubbles: true });
+    Object.defineProperty(up, "pointerType", { value: "touch" });
+    act(() => {
+      document.body.dispatchEvent(up);
+      vi.advanceTimersByTime(STILL_QUIET_MS);
+    });
+    expect(ids()).toEqual(["b:idle"]);
+  });
+
+  it("with no end event of any kind the hold still lets go at the ceiling", () => {
+    const first = [row("a"), row("b")];
+    const { rerender } = render(<Probe live={first} />);
+    touch("touchstart", rootEl!.querySelector("span")!, 1);
+    rerender(<Probe live={[row("b")]} />);
+    act(() => vi.advanceTimersByTime(STILL_MAX_HOLD_MS - 1));
+    expect(ids()).toEqual(["a:idle", "b:idle"]);
+    act(() => vi.advanceTimersByTime(1));
+    expect(ids()).toEqual(["b:idle"]);
+  });
+
+  it("a finger down after the ceiling holds the list again", () => {
+    const first = [row("a")];
+    const { rerender } = render(<Probe live={first} />);
+    touch("touchstart", rootEl!, 1);
+    act(() => vi.advanceTimersByTime(STILL_MAX_HOLD_MS));
+    touch("touchstart", rootEl!, 2);
+    rerender(<Probe live={[row("new"), ...first]} />);
     expect(ids()).toEqual(["a:idle"]);
   });
 

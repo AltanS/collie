@@ -97,6 +97,25 @@ describe("AgentList held still under a finger", () => {
     expect(rows()).toHaveLength(2);
   });
 
+  it("needs-you mode: a row whose status just turned idle stays and one that just began to need you waits", () => {
+    const a = agent("w0:p1", "blocked", "alpha");
+    const b = agent("w0:p2", "blocked", "beta");
+    const c = agent("w0:p3", "idle", "gamma");
+    const props = { onOpen: vi.fn(), needsYouOnly: true };
+    const { rerender, container } = render(<AgentList agents={[a, b, c]} {...props} />);
+    const names = () => rows().map((r) => ["alpha", "beta", "gamma"].find((n) => r.includes(n)));
+    expect(names()).toEqual(["alpha", "beta"]);
+    touch("touchstart", container.querySelector("section")!, 1);
+    // A poll: alpha was answered (idle) and gamma now needs you. Unheld, alpha leaves and gamma joins, and beta slides up.
+    rerender(<AgentList agents={[{ ...a, status: "idle" }, b, { ...c, status: "blocked" }]} {...props} />);
+    expect(names()).toEqual(["alpha", "beta"]);
+    // alpha is drawn with its LIVE status: it no longer says it needs you.
+    expect(rows()[0]).not.toMatch(/needs you|blocked/iu);
+    touch("touchend", container.querySelector("section")!, 1);
+    act(() => vi.advanceTimersByTime(STILL_QUIET_MS));
+    expect(names()).toEqual(["beta", "gamma"]);
+  });
+
   it("a list nobody touches changes at once", () => {
     const a = agent("w0:p1", "idle", "alpha");
     const { rerender } = render(<AgentList agents={[a]} onOpen={vi.fn()} />);
