@@ -112,6 +112,14 @@ import {
   LATER_PLACE_WORDS,
   LATER_TRIGGERS,
   MANIFEST_KEYS,
+  MENU_CONTRACT,
+  MENU_LABEL_MAX,
+  MENU_RESERVED_LEADS,
+  MENU_ROW_KINDS,
+  MENU_ROWS_MAX,
+  MENU_SHEET_ROWS_MAX,
+  MENU_TAP_WORDS,
+  MENU_WORDS,
   NAME_MAX,
   NODE_ATTR_RULES,
   NODE_ATTRS,
@@ -258,7 +266,7 @@ export type Example =
 /** Who writes to a place: a program the person switched on, or the agent of one session. */
 export type Who = "program" | "agent";
 
-/** Every place word: the five a program draws in, and the one an agent view adds. */
+/** Every place word: the six a program draws in, and the one an agent view adds. */
 export type PlaceId = PlaceKind | typeof AGENT_VIEW_PLACE;
 
 export interface PlaceEntry {
@@ -380,6 +388,42 @@ export const PLACES = {
     who: "program",
     examples: [{ kind: "document", json: { v: 1, parts: [{ at: "tabbar", id: "legs", item: { label: "Legs", icon: "check", badge: "new" } }] } }],
   },
+  menu: {
+    id: "menu",
+    name: "Session settings rows",
+    where: `Rows in a session's settings (the sheet of the session's ⋮ button), in a group of the trick's own after Collie's rows and Close, under the heading "From the trick", then the trick's name. Agent sessions only. ${MENU_WORDS}`,
+    shows: `Rows: a \`button\` or a \`switch\`, each with a \`label\`, an \`icon\` and an \`intent\`. A switch shows the \`on\` of the last document and never flips before the program answers.`,
+    tap: `${MENU_TAP_WORDS} A button sends its intent; a switch sends its intent with the state asked for as \`value\`, "on" or "off". With \`confirm\` a button arms on the first tap and shows its whole label.`,
+    limits: [
+      { what: "Contract", value: String(MENU_CONTRACT) },
+      { what: "Rows", value: `1 to ${String(MENU_ROWS_MAX)} in a part. Each \`id\` and each \`intent\` once` },
+      { what: "A row", value: `\`id\`, \`kind\` (${orList(MENU_ROW_KINDS)}), \`label\`, \`intent\`, and optionally \`icon\`, \`disabled\`, \`on\` (required on a switch) and \`confirm\` (a button only). Nothing else` },
+      { what: "`label`", value: `1 to ${String(MENU_LABEL_MAX)} characters, refused when longer, never cut. No hidden character. It may not read as one of the sheet's own rows in any language Collie speaks, hold the word ${["Collie", "WalkyTalky", "Hill", "view"].map(code).join(", ")}, or start with ${MENU_RESERVED_LEADS.map((lead) => code(lead[0]?.toUpperCase() + lead.slice(1))).join(", ")}` },
+      { what: "Parts of this place per trick", value: "one for every agent session of this machine, and bound ones with `sessions` (see Limits)" },
+      { what: "Rows in one sheet", value: `${String(MENU_SHEET_ROWS_MAX)} of every trick together. A trick's group is shown whole or left out whole, in the order of the trick ids, and the sheet says how many tricks it left out` },
+      PART_SIZE,
+    ],
+    who: "program",
+    examples: [
+      {
+        kind: "document",
+        json: {
+          v: MENU_CONTRACT,
+          parts: [
+            {
+              at: "menu",
+              id: "ci",
+              rows: [
+                { id: "rerun", kind: "button", label: "Rerun CI", icon: "refresh", intent: "rerun", confirm: true },
+                { id: "watch", kind: "switch", label: "Watch branch", icon: "flag", intent: "watch", on: true },
+              ],
+            },
+          ],
+        },
+      },
+      { kind: "manifest", toml: `id = "ci"\nname = "CI"\nrun = "program.ts"\ncontract = ${String(MENU_CONTRACT)}\nplaces = ["menu"]\n` },
+    ],
+  },
   "agent-view": {
     id: "agent-view",
     name: "Agent view",
@@ -411,7 +455,7 @@ export const PLACES = {
   },
 } satisfies Readonly<Record<PlaceId, PlaceEntry>>;
 
-/** The places in the order the reference lists them: the five a program draws in, then the agent view. */
+/** The places in the order the reference lists them: the six a program draws in, then the agent view. */
 export const PLACE_ORDER: readonly PlaceId[] = [...PLACE_KINDS, AGENT_VIEW_PLACE];
 
 // ── Parts: the node kinds ────────────────────────────────────────────────────────────────────
@@ -1295,7 +1339,6 @@ export interface LaterEntry {
 /** What each later place is called in the table. Typed against the parser's own list of later places. */
 const LATER_PLACE_NAMES = {
   "header.line": "A line in the header.",
-  menu: "An entry in a menu, as `menu:<match>`.",
   settings: "A part of the Settings screen.",
 } as const satisfies { readonly [K in keyof typeof LATER_PLACE_WORDS]: string };
 

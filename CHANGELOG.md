@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A trick can add rows to a session's settings, and bind a part to sessions.** At contract 2 a trick may list the place `menu` and print a `menu` part: one to six rows, each a `button` or a `switch` with a `label` of at most 24 characters, an `icon` and an `intent`; a switch carries `on`, a button may carry `confirm`. A label that reads as one of the sheet's own rows in any language Collie speaks, holds Collie, WalkyTalky, Hill or view, starts with Allow, Approve, Deny, Grant or Trust, or holds a hidden character is refused, never cut. A belt mark and a menu part may name `sessions`, one to eight of the facts' session ids; a trick draws one unbound part of each such place and up to eight bound ones, and no session is named twice. A contract 1 trick that names `sessions` has that part refused, and its `menu` is left out with a note.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added

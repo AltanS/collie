@@ -58,6 +58,11 @@ import {
   TRICK_CONTRACT,
   TRICK_CONTRACT_DEFAULT,
   INPUTS_CONTRACT,
+  MENU_CONTRACT,
+  MENU_LABEL_MAX,
+  MENU_NEEDS_CONTRACT,
+  menuLabelProblem,
+  SESSIONS_NEED_CONTRACT,
   INPUTS_NEED_CONTRACT,
   inputGlobMatches,
   inputGlobProblem,
@@ -180,9 +185,12 @@ describe("the module", () => {
   it("imports only the JSON helpers and the contract number, so the bridge and the CLI load it without a DOM", () => {
     const source = readRepo("web/src/lib/tricks/schema.ts");
     const imports = [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]);
-    expect(imports).toEqual(["../hidden-chars", "../json", "./contract"]);
+    expect(imports).toEqual(["../fold", "../hidden-chars", "../json", "./contract", "./sheet-labels"]);
     // The hidden-character rule is plain code and imports nothing.
     expect(readRepo("web/src/lib/hidden-chars.ts")).not.toMatch(/^import /m);
+    // The fold (shared with the agent view) imports only the hidden-character rule; the sheet's labels are generated data.
+    expect([...readRepo("web/src/lib/fold.ts").matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1])).toEqual(["./hidden-chars"]);
+    expect(readRepo("web/src/lib/tricks/sheet-labels.ts")).not.toMatch(/^import /m);
     expect(source).not.toContain(`from "@/`);
     // The contract module is one number and imports nothing.
     expect(readRepo("web/src/lib/tricks/contract.ts")).not.toMatch(/^import /m);
@@ -232,14 +240,17 @@ describe("the module", () => {
 });
 
 describe("valid fixtures", () => {
+  // The menu place is contract 2's: its document says v 2, and is read as a contract 2 trick's.
+  const contractOf = (place: PlaceKind): number => (place === "menu" ? MENU_CONTRACT : TRICK_CONTRACT_DEFAULT);
+
   it.each(NEAR_PLACES)("the %s document parses clean with the default places", (place) => {
-    const result = parseTrickDocument(PLACE_DOCUMENTS[place]);
+    const result = parseTrickDocument(PLACE_DOCUMENTS[place], { contract: contractOf(place) });
     expect(result.refusals).toEqual([]);
     expect(result.parts.map((p) => p.place)).toEqual([place]);
   });
 
   it.each(NEAR_PLACES)("the %s document is left out with one note when the place is not enabled", (place) => {
-    const by = parseTrickDocument(PLACE_DOCUMENTS[place], { places: PLACE_KINDS.filter((p) => p !== place) });
+    const by = parseTrickDocument(PLACE_DOCUMENTS[place], { places: PLACE_KINDS.filter((p) => p !== place), contract: contractOf(place) });
     expect(by.refusals).toEqual([]);
     expect(by.refusedParts).toEqual([]);
     expect(by.parts).toEqual([]);
@@ -946,18 +957,16 @@ describe("places", () => {
     }
   });
 
-  it("names header.line, menu:<match> and settings as later, with the place named", () => {
+  it("names header.line and settings as later, with the place named; menu:<match> is no place since menu came", () => {
     for (const [at, word] of [
       ["header.line", "header.line"],
-      ["menu:*", "menu:<match>"],
-      ["menu:agent:claude", "menu:<match>"],
       ["settings", "settings"],
     ]) {
       const read = parseAt(at ?? "");
       expect("code" in read && read.code, at).toBe("later");
       expect("reason" in read && read.reason, at).toContain(`"${word}"`);
     }
-    for (const at of ["tab-mark", "tab", "view:*", "nowhere"]) expect(parseAt(at), at).toMatchObject({ code: "place" });
+    for (const at of ["tab-mark", "tab", "view:*", "nowhere", "menu:*", "menu:agent:claude"]) expect(parseAt(at), at).toMatchObject({ code: "place" });
   });
 
   it("parses every place by default: belt, session, dashboard, status, tabbar", () => {
@@ -1516,7 +1525,7 @@ describe("parseManifest", () => {
     expect(bad({ places: ["sidebar"] }).manifest).toBeUndefined();
     expect(bad({ places: [1] }).refusals.map((r) => r.code)).toEqual(["type"]);
     expect(bad({ places: ["header.line"] }).refusals.map((r) => r.code)).toEqual(["later", "place"]);
-    expect(bad({ places: ["menu"] }).refusals[0]?.reason).toContain('"menu:<match>"');
+    expect(bad({ places: ["menu"] }).refusals[0]?.reason).toBe(MENU_NEEDS_CONTRACT);
     expect(bad({ id: "Legs" }).refusals.map((r) => r.path)).toEqual(["/id"]);
     expect(parseManifest({ id: "legs" }).refusals.map((r) => r.path)).toEqual(["/name", "/run", "/places"]);
   });
@@ -1780,5 +1789,134 @@ describe("the icon set", () => {
   it("gives actions the twelve words of the bridge's PANE_ACTION_ICONS", () => {
     const bridge = readRepo("bridge/types.ts").match(/export const PANE_ACTION_ICONS = \[([^\]]*)\]/)?.[1] ?? "";
     expect([...bridge.matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([...ACTION_ICONS]);
+  });
+});
+
+// ── The menu place and bound parts (contract 2), tests named by rule ─────────────────────────────
+
+describe("the menu place and bound parts", () => {
+  const S1 = "lodge:w1:3";
+  const S2 = "workshop:w2:1";
+  const btn = (over: JsonObject = {}): JsonObject => ({ id: "rerun", kind: "button", label: "Rerun CI", icon: "refresh", intent: "rerun", ...over });
+  const sw = (over: JsonObject = {}): JsonObject => ({ id: "watch", kind: "switch", label: "Watch branch", icon: "flag", intent: "watch", on: true, ...over });
+  const menu = (over: JsonObject = {}): JsonObject => ({ at: "menu", id: "ci", rows: [btn(), sw()], ...over });
+  const two = { contract: 2 } as const;
+  const codes = (doc: JsonObject, opts: { contract?: number } = two) => parseTrickDocument(doc, opts).refusals.map((r) => [r.code, r.path]);
+
+  it("menu-needs-contract-2: a contract 1 manifest leaves menu out with a later note, and its menu part is refused alone", () => {
+    const base = { id: "ci", name: "CI", run: "program.ts", places: ["belt", "menu"] };
+    const one = parseManifest(base);
+    expect(one.refusals.map((r) => [r.code, r.path, r.reason])).toEqual([["later", "/places/1", MENU_NEEDS_CONTRACT]]);
+    expect(one.manifest?.places).toEqual(["belt"]);
+    expect(parseManifest({ ...base, contract: 2 }).manifest?.places).toEqual(["belt", "menu"]);
+    const doc = { v: 1, parts: [menu(), { at: "belt", id: "b", mark: { label: "1" } }] };
+    for (const opts of [{}, { contract: 1 }]) {
+      const read = parseTrickDocument(doc, opts);
+      expect(read.refusals.map((r) => [r.code, r.path, r.reason])).toEqual([["version", "/parts/0/at", MENU_NEEDS_CONTRACT]]);
+      expect(read.parts.map((p) => p.place)).toEqual(["belt"]);
+    }
+    const read = parseTrickDocument({ ...doc, v: 2 }, two);
+    expect(read.refusals).toEqual([]);
+    expect(read.parts[0]).toEqual({ place: "menu", part: { at: "menu", id: "ci", rows: [btn(), sw()] } });
+  });
+
+  it("bound-mark-contract-1-refused: a contract 1 belt mark with sessions is refused alone, never drawn everywhere", () => {
+    const bound = { at: "belt", id: "b", mark: { label: "1" }, sessions: [S1] };
+    const other = { at: "status", id: "c", chip: { text: "ok" } };
+    for (const opts of [{}, { contract: 1 }]) {
+      const read = parseTrickDocument({ v: 1, parts: [bound, other] }, opts);
+      expect(read.refusals.map((r) => [r.code, r.path, r.reason])).toEqual([["version", "/parts/0/sessions", SESSIONS_NEED_CONTRACT]]);
+      expect(read.parts.map((p) => p.part.id)).toEqual(["c"]);
+      // Not an ignored key with a note: the part is refused, so no reader draws it with its binding lost.
+      expect(read.notes).toEqual([]);
+    }
+    const read = parseTrickDocument({ v: 2, parts: [bound, other] }, two);
+    expect(read.refusals).toEqual([]);
+    expect(read.parts[0]?.part).toEqual(bound);
+  });
+
+  it("bound parts: one unbound per trick and place, up to eight bound ones, no session named by two", () => {
+    const mark = (id: string, sessions?: string[]): JsonObject => (sessions === undefined ? { at: "belt", id, mark: { label: "1" } } : { at: "belt", id, mark: { label: "1" }, sessions });
+    expect(codes({ v: 2, parts: [mark("a"), mark("b", [S1]), mark("c", [S2])] })).toEqual([]);
+    expect(codes({ v: 2, parts: [mark("a"), mark("b")] })).toEqual([["duplicate", "/parts/1/at"]]);
+    expect(codes({ v: 2, parts: [mark("a", [S1]), mark("b", [S2, S1])] })).toEqual([["duplicate", "/parts/1/sessions"]]);
+    const many = Array.from({ length: 9 }, (_, i) => mark(`m${String(i)}`, [`lodge:w1:${String(i)}`]));
+    expect(codes({ v: 2, parts: many })).toEqual([["duplicate", "/parts/8/sessions"]]);
+    expect(codes({ v: 2, parts: [menu(), menu({ id: "ci2" })] })).toEqual([["duplicate", "/parts/1/at"]]);
+    expect(codes({ v: 2, parts: [menu(), menu({ id: "ci2", sessions: [S1] }), mark("a"), mark("b", [S1])] })).toEqual([]);
+    // The ids: 1 to 8 real scope keys, none twice; never a name or a trick session.
+    expect(codes({ v: 2, parts: [mark("a", [])] })).toEqual([["count", "/parts/0/sessions"]]);
+    expect(codes({ v: 2, parts: [mark("a", Array.from({ length: 9 }, (_, i) => `lodge:w1:${String(i)}`))] })).toEqual([["count", "/parts/0/sessions"]]);
+    expect(codes({ v: 2, parts: [mark("a", ["composer", "trick:lodge:ci"])] })).toEqual([
+      ["target", "/parts/0/sessions/0"],
+      ["target", "/parts/0/sessions/1"],
+    ]);
+    expect(codes({ v: 2, parts: [mark("a", [S1, S1])] })).toEqual([["duplicate", "/parts/0/sessions/1"]]);
+  });
+
+  it("menu rows: 1 to 6, each id and intent once, on for a switch only, confirm for a button only, no other key", () => {
+    const rows = (list: JsonValue[]) => ({ v: 2, parts: [menu({ rows: list })] });
+    expect(codes(rows([]))).toEqual([["count", "/parts/0/rows"]]);
+    expect(codes(rows(Array.from({ length: 7 }, (_, i) => btn({ id: `r${String(i)}`, intent: `i${String(i)}` }))))).toEqual([["count", "/parts/0/rows"]]);
+    expect(codes(rows([btn(), btn({ id: "two" })]))).toEqual([["duplicate", "/parts/0/rows/1/intent"]]);
+    expect(codes(rows([btn(), btn({ intent: "two" })]))).toEqual([["duplicate", "/parts/0/rows/1/id"]]);
+    expect(codes(rows([sw({ on: undefined })]))).toEqual([["missing", "/parts/0/rows/0/on"]]);
+    expect(codes(rows([btn({ on: false })]))).toEqual([["target", "/parts/0/rows/0/on"]]);
+    expect(codes(rows([sw({ confirm: true })]))).toEqual([["target", "/parts/0/rows/0/confirm"]]);
+    expect(codes(rows([btn({ kind: "slider" })]))).toEqual([["word", "/parts/0/rows/0/kind"]]);
+    expect(codes(rows([btn({ icon: "spinner" })]))).toEqual([["icon", "/parts/0/rows/0/icon"]]);
+    // Read closed, as every contract 2 part: a key this Collie does not know refuses the part.
+    for (const key of ["tone", "hint", "badge", "value"]) expect(codes(rows([btn({ [key]: "x" })])), key).toEqual([["unknown-key", `/parts/0/rows/0/${key}`]]);
+    // An icon is optional: the phone draws the trick's own.
+    expect(codes(rows([btn({ icon: undefined })]))).toEqual([]);
+  });
+
+  it("a switch row sends the state it asks for; a disabled row sends nothing", () => {
+    const read = parseTrickDocument({ v: 2, parts: [menu({ rows: [btn(), sw(), sw({ id: "off", intent: "mute", on: false }), btn({ id: "gone", intent: "gone", disabled: true })] })] }, two);
+    const part = read.parts[0]?.part;
+    expect(part === undefined ? [] : tapControls(part)).toEqual([{ intent: "rerun" }, { intent: "watch", value: "off" }, { intent: "mute", value: "on" }]);
+  });
+
+  it("menu-label-reserved-phrase-any-locale: a label that reads as the sheet's own row, in any language, or as Collie's word, is refused", () => {
+    const refused = [
+      "Close pane",
+      "close  PANE",
+      "Pane schließen",
+      "Cerrar conversación",
+      "ペインを閉じる",
+      "Focus in tmux",
+      "In zellij anzeigen",
+      "Rename",
+      "Pin to top",
+      "From the trick CI",
+      "Waiting for CI…",
+      "Restart Collie",
+      "Cоllie logs",
+      "WalkyTalky",
+      "Walky Talky off",
+      "Hill",
+      "Claude view",
+      "Allow push",
+      "Approve",
+      "Deny all",
+      "Grant access",
+      "Trust this repo",
+    ];
+    for (const label of refused) {
+      expect(menuLabelProblem(label), label).toBeDefined();
+      expect(codes({ v: 2, parts: [menu({ rows: [btn({ label })] })] }), label).toEqual([["text", "/parts/0/rows/0/label"]]);
+    }
+    for (const label of ["Rerun CI", "Watch branch", "Approved list", "Hillside deploy", "Close the PR", "Focus mode", "Pane count", "Overview"]) {
+      expect(menuLabelProblem(label), label).toBeUndefined();
+    }
+  });
+
+  it("menu-label-hidden-char: a label with a hidden or control character, or past 24 characters, is refused and never cut", () => {
+    for (const label of ["Rerun​CI", "Re‮run", "Rerunㅤ", "Rerun CI", "Rerun CI", "Rerun\u0007", "Rerun"]) {
+      expect(menuLabelProblem(label), JSON.stringify(label)).toBeDefined();
+    }
+    expect(menuLabelProblem("x".repeat(MENU_LABEL_MAX))).toBeUndefined();
+    expect(menuLabelProblem("x".repeat(MENU_LABEL_MAX + 1))).toBe(`is ${String(MENU_LABEL_MAX + 1)} characters. At most ${String(MENU_LABEL_MAX)}.`);
+    expect(menuLabelProblem("")).toBe("is empty.");
   });
 });

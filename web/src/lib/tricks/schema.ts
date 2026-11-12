@@ -70,11 +70,13 @@ import {
   type HillPriority,
   type HillTextMode,
 } from "../hill/wire";
+import { foldedWords } from "../fold";
 import { codePointName, firstHiddenChar, hasHiddenChar } from "../hidden-chars";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
-import { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
+import { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
+import { SHEET_LABEL_FOLDS } from "./sheet-labels";
 
-export { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT };
+export { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT };
 
 // ── Versions and byte caps ───────────────────────────────────────────────────────────────────
 
@@ -508,28 +510,116 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
 /**
  * Where a part draws. The `at` of a part names one, and the manifest's `places` lists the ones it uses.
  * Every place here is drawn by this Collie: `belt` (agent-chat.tsx), `status` (trick-status-item.tsx),
- * `dashboard` and `tabbar` (trick-place-items.tsx, dashboard-tab-bar.tsx) and `session` (the bridge's
- * Tricks Space, panes.ts, and routes/trick-session.tsx). M94 review 11 removed `tab`, `tab:<match>` and
+ * `dashboard` and `tabbar` (trick-place-items.tsx, dashboard-tab-bar.tsx), `session` (the bridge's
+ * Tricks Space, panes.ts, and routes/trick-session.tsx) and, from contract 2, `menu` (rows in a session's
+ * settings, trick-menu-group.tsx; {@link MENU_CONTRACT}). M94 review 11 removed `tab`, `tab:<match>` and
  * `view:<match>`, which parsed and drew nowhere; a later Collie adds a place back at the same contract,
  * and an older one leaves a part there out (`parseTrickDocument`).
  */
-export const PLACE_KINDS = ["belt", "session", "dashboard", "status", "tabbar"] as const;
+export const PLACE_KINDS = ["belt", "session", "dashboard", "status", "tabbar", "menu"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 /** The places a parser call with no `places` accepts: every place. */
 export const NEAR_PLACES: readonly PlaceKind[] = PLACE_KINDS;
 /** The place kinds a later slice builds and a caller may refuse as "later" by leaving them out of `places`. None since step 3. */
 export const LATER_PLACES: readonly PlaceKind[] = [];
-/**
- * Place words of the first schema that come back later, each refused with the code "later" and its
- * place named, in an `at` and in the manifest's `places`. `menu` is the word of `menu:<match>`.
- */
 /** The most place words a manifest's `places` may list, known or not. */
 export const PLACES_LISTED_MAX = 16;
+/**
+ * Place words of the first schema that come back later, each refused with the code "later" and its
+ * place named, in an `at` and in the manifest's `places`. `menu` left this list when the place came
+ * (contract 2): a `menu:<match>` of the first schema is now a word this Collie does not know, left out
+ * with its note like any other.
+ */
 export const LATER_PLACE_WORDS = {
   "header.line": '"header.line" is a later place, not in this Collie yet. The other parts still draw.',
-  menu: '"menu:<match>" is a later place, not in this Collie yet. The other parts still draw.',
   settings: '"settings" is a later place, not in this Collie yet. The other parts still draw.',
 } as const satisfies Readonly<Record<string, string>>;
+
+// ── The menu place and bound parts (contract 2) ─────────────────────────────────────────────────
+//
+// A `menu` part adds rows to a session's settings, the session actions sheet, in a group of its own after
+// Collie's rows and Close. A row is a button or a switch. A tap runs the program with the tap and the
+// session's scope key, nothing more: a trick has no way to type into a session (no `draft`, no send).
+//
+// A belt mark and a menu part may name `sessions`: the facts' ids (`memberId:paneId`) it is drawn in.
+// The bridge resolves each one against the run's facts and stamps the pane's walky instance token on the
+// stored part (`WireTrickPart.bound`), so a pane id the multiplexer gave to a new session never shows it.
+// A bound part replaces the trick's unbound one of that place in its sessions.
+
+/** What a menu row is: a button that runs the trick once, or a switch whose state the program owns. */
+export const MENU_ROW_KINDS = ["button", "switch"] as const;
+export type MenuRowKind = (typeof MENU_ROW_KINDS)[number];
+/** Every key a menu row takes. Nothing else: no tone, hint, badge or value. */
+export const MENU_ROW_KEYS = ["id", "kind", "label", "icon", "intent", "on", "disabled", "confirm"] as const;
+/** The rows of one menu part. A session shows one part of a trick, so this is the rows per trick there. */
+export const MENU_ROWS_MAX = 6;
+/** A row's label, in characters. A longer one is refused, never cut. */
+export const MENU_LABEL_MAX = 24;
+/** The sessions one bound part names. */
+export const BOUND_SESSIONS_MAX = 8;
+/** The bound parts of one place a trick may draw, beside its one unbound part of that place. */
+export const BOUND_PARTS_MAX = 8;
+/** The trick rows one sheet shows. A trick's group is shown whole or left out whole. */
+export const MENU_SHEET_ROWS_MAX = 12;
+/** The characters of a program's answer the group's footer line shows; past it the cut is shown. */
+export const MENU_MESSAGE_MAX = 80;
+/** The words a menu label may not say, as whole words: Collie's own names and the view row's word. */
+export const MENU_RESERVED_WORDS = ["collie", "walkytalky", "walky talky", "hill", "view"] as const;
+/** The words a menu label may not start with: they read as a permission Collie asks for. */
+export const MENU_RESERVED_LEADS = ["allow", "approve", "deny", "grant", "trust"] as const;
+
+/** The lines a contract 1 trick's `menu` place and `sessions` key are refused with. */
+export const MENU_NEEDS_CONTRACT = `"menu" needs contract = ${String(MENU_CONTRACT)}. Add contract = ${String(MENU_CONTRACT)} to trick.toml to add rows to a session's settings.`;
+export const SESSIONS_NEED_CONTRACT = `"sessions" needs contract = ${String(MENU_CONTRACT)}, so the part is left out: an older Collie would draw it in every session. Add contract = ${String(MENU_CONTRACT)} to trick.toml.`;
+
+/**
+ * The words a person reads for the `menu` right, the same in the About sheet (`settings.tricks.about.menu`
+ * and `.menuTap`, held equal by a test), on the official card and in the catalogue.
+ */
+export const MENU_WORDS = "Adds rows to a session's settings.";
+export const MENU_TAP_WORDS = "A tap runs it and tells it which session. Collie gives it no way to type there.";
+
+/** Whether index `at` of folded words sits on a word's edge: a blank or an end beside it, or not two Latin letters or digits. */
+function edgeAt(text: string, at: number): boolean {
+  const before = text[at - 1];
+  const after = text[at];
+  if (before === undefined || after === undefined || before === " " || after === " ") return true;
+  return !(/[a-z0-9]/u.test(before) && /[a-z0-9]/u.test(after));
+}
+
+/** Whether folded words read as one of the sheet's own labels, a template's with anything in its slots. */
+function readsAsSheetLabel(words: string): boolean {
+  return SHEET_LABEL_FOLDS.some((fold) => {
+    if ("words" in fold) return words === fold.words;
+    if (words.length < fold.head.length + fold.tail.length) return false;
+    if (!words.startsWith(fold.head) || !words.endsWith(fold.tail)) return false;
+    return edgeAt(words, fold.head.length) && edgeAt(words, words.length - fold.tail.length);
+  });
+}
+
+/**
+ * Why a menu row's label cannot be drawn, or undefined when it can; said after `"label" `. 1 to
+ * {@link MENU_LABEL_MAX} characters, no control and no hidden character ({@link hasHiddenChar}, the shared
+ * predicate), and nothing that reads as Collie's own. Folded as the agent view's phrase rule folds (fold.ts:
+ * NFKC, lower case, marks and look-alikes folded, every run of other characters one blank), it may not be
+ * one of the sheet's own labels in any of the twelve languages (sheet-labels.ts, a template's with
+ * anything in its slots), hold the word Collie, WalkyTalky, Hill or view, or start with Allow, Approve,
+ * Deny, Grant or Trust.
+ */
+export function menuLabelProblem(label: string): string | undefined {
+  const text = textProblem(label, { max: MENU_LABEL_MAX });
+  if (text !== undefined) return text;
+  const hidden = firstHiddenChar(label);
+  if (hidden !== null) return `holds a hidden character (${codePointName(hidden)}). Remove it.`;
+  const words = foldedWords(label).trim();
+  if (readsAsSheetLabel(words)) return "reads as one of Collie's own rows in this sheet. Name it another way.";
+  const padded = ` ${words} `;
+  const word = MENU_RESERVED_WORDS.find((reserved) => padded.includes(` ${reserved} `));
+  if (word !== undefined) return `holds "${word}", a word of Collie's own. Name it another way.`;
+  const lead = MENU_RESERVED_LEADS.find((reserved) => words === reserved || words.startsWith(`${reserved} `));
+  if (lead !== undefined) return `starts with "${lead}", which reads as a permission Collie asks for. Name it another way.`;
+  return undefined;
+}
 
 // ── Node kinds ───────────────────────────────────────────────────────────────────────────────
 
@@ -911,6 +1001,39 @@ export interface BeltPart {
   at: "belt";
   id: string;
   mark: Mark;
+  /**
+   * Contract 2: the facts' ids of the sessions the mark is drawn in (1 to {@link BOUND_SESSIONS_MAX}). A
+   * bound mark replaces the trick's unbound one there. Absent: every agent session.
+   */
+  sessions?: string[];
+}
+/**
+ * One row of a trick's group in a session's settings. A `button` runs the trick once with its intent; with
+ * `confirm` it arms on the first tap and shows its whole label. A `switch` shows `on` as the program's last
+ * document says it and never flips before the program answers; a tap sends the state asked for as the
+ * value, `"on"` or `"off"`.
+ */
+export interface MenuRow {
+  id: string;
+  kind: MenuRowKind;
+  /** 1 to {@link MENU_LABEL_MAX} characters, by {@link menuLabelProblem}. */
+  label: string;
+  /** From the trick icon set. Absent: the trick's own icon. */
+  icon?: TrickIcon;
+  intent: string;
+  /** A switch's state, as the program holds it. Required on a switch, refused on a button. */
+  on?: boolean;
+  disabled?: boolean;
+  /** A button only: Collie's two-tap arm. */
+  confirm?: boolean;
+}
+/** Contract 2: a trick's rows in a session's settings. */
+export interface MenuPart {
+  at: "menu";
+  id: string;
+  /** The facts' ids of the sessions the rows show in, as on a belt mark. Absent: every agent session of this machine. */
+  sessions?: string[];
+  rows: MenuRow[];
 }
 /**
  * A trick's item in the status line above the Belt: the attributes of a tree `chip`, and no others. No
@@ -972,7 +1095,7 @@ export interface SessionPart {
   actions?: TrickAction[];
   view: View;
 }
-export type TrickPart = BeltPart | SessionPart | DashboardPart | StatusPart | TabbarPart;
+export type TrickPart = BeltPart | SessionPart | DashboardPart | StatusPart | TabbarPart | MenuPart;
 
 /** A part the parser accepted, with its place. */
 export type ParsedPart =
@@ -980,7 +1103,8 @@ export type ParsedPart =
   | { place: "status"; part: StatusPart }
   | { place: "session"; part: SessionPart }
   | { place: "dashboard"; part: DashboardPart }
-  | { place: "tabbar"; part: TabbarPart };
+  | { place: "tabbar"; part: TabbarPart }
+  | { place: "menu"; part: MenuPart };
 
 /** One control a part draws that sends a tap: its intent, and the value it sends (none for a mark). */
 export interface TapControl {
@@ -991,8 +1115,8 @@ export interface TapControl {
 /**
  * Every control of a part that sends a tap to the program (fault A): what the bridge holds a phone's tap
  * against. A belt mark with an intent; a session's actions and every `button` of its view, at any depth,
- * that sends an intent. A disabled control and a button that only copies send nothing, so they are left
- * out. A status chip, a Dashboard tile and a bottom bar item are no controls: a tap there opens the
+ * that sends an intent; a menu part's rows. A disabled control and a button that only copies send
+ * nothing, so they are left out. A switch row sends the state it asks for, the other one than its `on`. A status chip, a Dashboard tile and a bottom bar item are no controls: a tap there opens the
  * trick's session on the phone and never reaches the bridge.
  */
 export function tapControls(part: TrickPart): TapControl[] {
@@ -1018,11 +1142,18 @@ export function tapControls(part: TrickPart): TapControl[] {
       walk(part.view);
       return out;
     }
+    case "menu":
+      return part.rows.filter((row) => row.disabled !== true).map((row) => (row.kind === "switch" ? { intent: row.intent, value: row.on === true ? "off" : "on" } : { intent: row.intent }));
     case "status":
     case "dashboard":
     case "tabbar":
       return [];
   }
+}
+
+/** The sessions a bound part names (a belt mark or a menu part with `sessions`), or undefined for an unbound one. */
+export function boundSessionsOf(part: TrickPart): readonly string[] | undefined {
+  return part.at === "belt" || part.at === "menu" ? part.sessions : undefined;
 }
 
 // ── Types: decisions (the Hill's decision shape, as a trick lists it) ───────────────────────
@@ -1375,6 +1506,18 @@ export interface WireTrickPart extends TrickPartKey {
   stale?: true;
   /** One masked line about why it is stale, at most `PROBLEM_MAX`. */
   problem?: string;
+  /**
+   * Contract 2: a part that names `sessions`, as the bridge resolved them against the run's facts: each
+   * session's scope key and the walky instance token its pane held then. The phone draws the part only in
+   * a session whose scope key and instance both match one. Sent only to a phone that asks for bound parts
+   * (`GET /api/tricks?bound=1`), so an older phone never draws a bound part in every session.
+   */
+  bound?: WireBound[];
+}
+/** One session a bound part is drawn in: its scope key and its pane's walky instance token. */
+export interface WireBound {
+  session: string;
+  instance: string;
 }
 export const TRICK_STATES = ["ok", "failing", "stopped", "off", "skipped"] as const;
 /**
@@ -2274,8 +2417,7 @@ export interface AtProblem {
 export function parseAt(at: string): AtReading | AtProblem {
   if (codePoints(at) > AT_MAX) return { code: "place", reason: `"at" is longer than ${AT_MAX} characters.` };
   if (isOneOf(PLACE_KINDS, at)) return { place: at };
-  const word = at.startsWith("menu:") ? "menu" : at;
-  const later = reasonOf(LATER_PLACE_WORDS, word);
+  const later = reasonOf(LATER_PLACE_WORDS, at);
   if (later !== undefined) return { code: "later", reason: later };
   return { code: "place", reason: `"${at}" is not a place this Collie knows. The places are: ${quoteList(PLACE_KINDS)}.` };
 }
@@ -3218,14 +3360,17 @@ export const SUB_KEYS = {
   chip: ["text", "icon", "tone", "at", "clock"],
   /** The item of a `dashboard` or a `tabbar` part: an icon over a short name, a badge, a tone. */
   item: ["icon", "label", "badge", "tone"],
+  /** One row of a `menu` part (contract 2). */
+  row: MENU_ROW_KEYS,
 } as const;
 
 export const PART_KEYS = {
-  belt: ["at", "id", "mark"],
+  belt: ["at", "id", "mark", "sessions"],
   session: ["at", "id", "name", "icon", "tone", "subtitle", "badge", "progress", "actions", "view"],
   dashboard: ["at", "id", "item"],
   status: ["at", "id", "chip"],
   tabbar: ["at", "id", "item"],
+  menu: ["at", "id", "sessions", "rows"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
 
 const PLACE_WORDS = {
@@ -3234,6 +3379,7 @@ const PLACE_WORDS = {
   dashboard: "a dashboard part",
   status: "a status part",
   tabbar: "a tabbar part",
+  menu: "a menu part",
 } as const satisfies { readonly [K in PlaceKind]: string };
 
 export interface ParseTrickDocumentOptions {
@@ -3338,7 +3484,9 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   const result: ParsedTrickDocument = { parts: [], decisions: [], refusals, refusedParts: [], refusedDecisions: [], documentRefused: false, notes };
 
   const seen = new Set<string>();
-  let belt = false;
+  // A belt mark and a menu part: one unbound per trick, and up to BOUND_PARTS_MAX bound ones, no two
+  // naming one session (a bound part replaces the unbound one in its sessions, so one shows per session).
+  const bound = { belt: new Bound(), menu: new Bound() };
   let status = false;
   let dashboard = false;
   let tabbar = false;
@@ -3357,8 +3505,9 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     // A part in a place this Collie does not draw is left out: no refusal, no last good version.
     if (parsed.dropped === true) return;
     if (id !== undefined && seen.has(id)) sink.push({ code: "duplicate", path: pointer(path, "id"), reason: `The part id "${id}" is used twice. Each part needs its own.` });
-    if (parsed.part?.place === "belt" && belt) {
-      sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one belt mark. This is a second one." });
+    if (parsed.part?.place === "belt" || parsed.part?.place === "menu") {
+      const problem = bound[parsed.part.place].problem(parsed.part.part.sessions, parsed.part.place === "belt" ? "belt mark" : "menu part");
+      if (problem !== undefined) sink.push({ code: "duplicate", path: pointer(path, problem.key), reason: problem.reason });
     }
     if (parsed.part?.place === "status" && status) {
       sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one status item. This is a second one." });
@@ -3376,7 +3525,7 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
       if (id !== undefined && closed.length === 0) result.refusedParts.push(id);
       return;
     }
-    if (parsed.part.place === "belt") belt = true;
+    if (parsed.part.place === "belt" || parsed.part.place === "menu") bound[parsed.part.place].take(parsed.part.part.sessions);
     if (parsed.part.place === "status") status = true;
     if (parsed.part.place === "dashboard") dashboard = true;
     if (parsed.part.place === "tabbar") tabbar = true;
@@ -3387,6 +3536,34 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   result.refusals = capRefusals(refusals);
   result.notes = capRefusals(notes);
   return result;
+}
+
+/**
+ * The parts of one bound place a document drew so far (a belt mark, a menu part): whether its unbound
+ * one came, how many bound ones, and the sessions those name. A later part that breaks the rule is refused.
+ */
+class Bound {
+  private unbound = false;
+  private count = 0;
+  private readonly named = new Set<string>();
+
+  /** Why a part naming `sessions` (undefined: unbound) cannot come after the ones taken, and the key to point at. */
+  problem(sessions: readonly string[] | undefined, what: string): { key: string; reason: string } | undefined {
+    if (sessions === undefined) return this.unbound ? { key: "at", reason: `A trick has one ${what} for every session. This is a second one; name its "sessions" to bind it.` } : undefined;
+    if (this.count >= BOUND_PARTS_MAX) return { key: "sessions", reason: `A trick has at most ${String(BOUND_PARTS_MAX)} bound parts of a place. This is one more.` };
+    const twice = sessions.find((session) => this.named.has(session));
+    if (twice !== undefined) return { key: "sessions", reason: `"${twice}" is named by an earlier ${what} of this trick. A session shows one ${what} of a trick.` };
+    return undefined;
+  }
+
+  take(sessions: readonly string[] | undefined): void {
+    if (sessions === undefined) {
+      this.unbound = true;
+      return;
+    }
+    this.count += 1;
+    for (const session of sessions) this.named.add(session);
+  }
 }
 
 function readDocumentExtras(top: Fields, out: ParsedTrickDocument): void {
@@ -3443,6 +3620,12 @@ function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTr
     return { id };
   }
   const place = reading.place;
+  const contract = opts.contract ?? TRICK_CONTRACT_DEFAULT;
+  // Contract 2: a contract 1 trick draws no menu. Its manifest left `menu` out with a later note.
+  if (place === "menu" && contract < MENU_CONTRACT) {
+    sink.push({ code: "version", path: pointer(path, "at"), reason: MENU_NEEDS_CONTRACT });
+    return { id };
+  }
   if (opts.declared !== undefined && !opts.declared.includes(place)) {
     sink.push({ code: "undeclared", path: pointer(path, "at"), reason: `The manifest's "places" does not list "${place}". Add it there.` });
     return { id };
@@ -3454,11 +3637,11 @@ function readPart(value: JsonValue, path: string, sink: Refusal[], opts: ParseTr
     return undefined;
   });
   const kinds = opts.kinds ?? NODE_KINDS;
-  const part = readPartBody(place, id ?? "", f, kinds);
+  const part = readPartBody(place, id ?? "", f, kinds, contract);
   return { id, part };
 }
 
-function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly NodeKind[]): ParsedPart | undefined {
+function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly NodeKind[], contract: number): ParsedPart | undefined {
   const view = (): View => {
     if (!f.has("view")) {
       f.missing("view", "the nodes it draws");
@@ -3470,7 +3653,13 @@ function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly N
     case "belt": {
       const markFields = f.object("mark", "a mark", true);
       const mark = markFields === undefined ? {} : readMark(markFields);
-      return { place: "belt", part: { at: "belt", id, mark } };
+      const sessions = readBoundSessions(f, contract);
+      return { place: "belt", part: sessions === undefined ? { at: "belt", id, mark } : { at: "belt", id, mark, sessions } };
+    }
+    case "menu": {
+      const sessions = readBoundSessions(f, contract);
+      const rows = readMenuRows(f);
+      return { place: "menu", part: sessions === undefined ? { at: "menu", id, rows } : { at: "menu", id, sessions, rows } };
     }
     case "status": {
       const chipFields = f.object("chip", "a chip", true);
@@ -3486,6 +3675,94 @@ function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly N
       return place === "dashboard" ? { place: "dashboard", part: { at: "dashboard", id, item } } : { place: "tabbar", part: { at: "tabbar", id, item } };
     }
   }
+}
+
+/**
+ * A part's `sessions` (contract 2): 1 to {@link BOUND_SESSIONS_MAX} of the facts' ids, each a real
+ * session's scope key, none twice. A contract 1 part that names them is refused alone
+ * ({@link SESSIONS_NEED_CONTRACT}): an older Collie would draw it in every session.
+ */
+function readBoundSessions(f: Fields, contract: number): string[] | undefined {
+  if (!f.has("sessions")) return undefined;
+  if (contract < MENU_CONTRACT) {
+    f.push("version", "sessions", SESSIONS_NEED_CONTRACT);
+    return undefined;
+  }
+  const list = f.array("sessions", { min: 1, max: BOUND_SESSIONS_MAX, what: "session ids" });
+  if (list === undefined) return undefined;
+  const out: string[] = [];
+  list.forEach((value, i) => {
+    const path = pointer(f.at("sessions"), i);
+    const id = asJsonString(value);
+    if (id === undefined || !isScopeKey(id)) {
+      f.sink.push({ code: "target", path, reason: 'Each of "sessions" is a session\'s "id" from the facts (memberId:paneId, such as lodge:w6X:3), never a name.' });
+      return;
+    }
+    if (out.includes(id)) {
+      f.sink.push({ code: "duplicate", path, reason: `"${id}" is listed twice.` });
+      return;
+    }
+    out.push(id);
+  });
+  return out;
+}
+
+/** A menu part's rows: 1 to {@link MENU_ROWS_MAX}, each id and each intent once. */
+function readMenuRows(f: Fields): MenuRow[] {
+  const list = f.array("rows", { min: 1, max: MENU_ROWS_MAX, required: true, what: "rows" });
+  if (list === undefined) return [];
+  const out: MenuRow[] = [];
+  const ids = new Set<string>();
+  const intents = new Set<string>();
+  list.forEach((value, i) => {
+    const r = itemFields(value, pointer(f.at("rows"), i), f.sink, "a menu row", f.notes);
+    if (r === undefined) return;
+    r.keys(MENU_ROW_KEYS);
+    const idRaw = asJsonString(r.obj.id);
+    if (idRaw === undefined || !isPartId(idRaw)) r.push("id", "id", 'A row needs an "id" of 1 to 32 lower-case letters, digits and hyphens.');
+    if (idRaw !== undefined && ids.has(idRaw)) r.push("duplicate", "id", `The row id "${idRaw}" is used twice.`);
+    if (idRaw !== undefined) ids.add(idRaw);
+    const kind = r.word("kind", MENU_ROW_KINDS, true);
+    const label = readMenuLabel(r);
+    const icon = r.icon("icon");
+    const intent = r.intent("intent", true);
+    if (intent !== undefined && intents.has(intent)) r.push("duplicate", "intent", `The intent "${intent}" is used by two rows. Each row of a part sends its own.`);
+    if (intent !== undefined) intents.add(intent);
+    const on = r.bool("on");
+    const disabled = r.bool("disabled");
+    const confirm = r.bool("confirm");
+    if (kind === "switch" && !r.has("on")) r.missing("on", "the switch's state as the program holds it, true or false");
+    if (kind === "button" && r.has("on")) r.push("target", "on", '"on" is a switch\'s state. A button takes none.');
+    if (kind === "switch" && r.has("confirm")) r.push("target", "confirm", '"confirm" arms a button. A switch takes none.');
+    if (kind === undefined || label === undefined || intent === undefined) return;
+    const row: MenuRow = { id: idRaw ?? "", kind, label, intent };
+    if (icon !== undefined) row.icon = icon;
+    if (on !== undefined && kind === "switch") row.on = on;
+    if (disabled !== undefined) row.disabled = disabled;
+    if (confirm !== undefined && kind === "button") row.confirm = confirm;
+    out.push(row);
+  });
+  return out;
+}
+
+/** A row's label, by {@link menuLabelProblem}: refused when longer than the cap, never cut. */
+function readMenuLabel(r: Fields): string | undefined {
+  const raw = r.obj.label;
+  if (raw === undefined) {
+    r.missing("label", `text of 1 to ${String(MENU_LABEL_MAX)} characters`);
+    return undefined;
+  }
+  const label = asJsonString(raw);
+  if (label === undefined) {
+    r.push("type", "label", '"label" must be text.');
+    return undefined;
+  }
+  const problem = menuLabelProblem(label);
+  if (problem !== undefined) {
+    r.push("text", "label", `"label" ${problem}`);
+    return undefined;
+  }
+  return label;
 }
 
 function readSessionPart(f: Fields, id: string, view: View): ParsedPart {
@@ -4120,6 +4397,11 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
     const later = word === undefined ? undefined : reasonOf(LATER_PLACE_WORDS, word);
     if (later !== undefined) {
       refusals.push({ code: "later", path, reason: later });
+      return;
+    }
+    // Contract 2: a session's settings rows. A contract 1 trick keeps running with its other places.
+    if (word === "menu" && contract !== undefined && contract < MENU_CONTRACT) {
+      refusals.push({ code: "later", path, reason: MENU_NEEDS_CONTRACT });
       return;
     }
     if (word === undefined) {

@@ -122,7 +122,7 @@ function placesSection(): string[] {
   const lines: string[] = [
     "## Places",
     "",
-    "A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first five. An agent view, one screen that the session's own agent draws, is the sixth.",
+    "A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first six. An agent view, one screen that the session's own agent draws, is the seventh.",
     "",
     ...table(
       ["Place", "Name", "Where it shows", "Drawn by"],

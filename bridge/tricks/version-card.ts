@@ -112,6 +112,7 @@ const PLACE_WORDS = {
   dashboard: "the Dashboard",
   status: "the status line",
   tabbar: "the bottom bar",
+  menu: "session settings",
 } as const satisfies Readonly<Record<PlaceKind, string>>;
 
 /** The chip word of the place `agent-view` (contract 2): a view of a session that its own agent draws. */

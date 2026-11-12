@@ -26,6 +26,13 @@
 // shipped (a Stable or an Edge tag), the shape of a key it knows is fixed at that number. A key whose
 // shape changes after that moves to the next number, and so does a new key an older build of the same
 // number would refuse in a confusing way.
+//
+// Contract 2 also takes the place `menu` (rows in a session's settings) and the part key `sessions` (a
+// belt mark or a menu part bound to named sessions), 2026-11-12, after v1.29.0-edge.1 shipped contract 2.
+// Both are safe at the same number because that build reads a contract 2 part CLOSED (fault C, schema.ts
+// `CLOSED_KEY_LINE`): a part with `sessions` is refused alone there, never drawn in every session, and a
+// part at `menu` is left out with its note, as at any place it does not draw. A contract 1 trick gets
+// neither: `menu` stays a later word in its `places`, and a part of it with `sessions` is refused alone.
 
 /** The newest trick contract this Collie speaks. */
 export const TRICK_CONTRACT = 2;
@@ -38,3 +45,6 @@ export const INPUTS_CONTRACT = 2;
 
 /** The first contract that takes the place word `agent-view` and the manifest key `rules`. */
 export const AGENT_VIEW_CONTRACT = 2;
+
+/** The first contract that takes the place `menu` and the part key `sessions`. */
+export const MENU_CONTRACT = 2;

@@ -17,7 +17,7 @@ import refused from "./refused.json";
 import replies from "./replies.json";
 import tracker from "./tracker.json";
 
-/** One valid document per place. Every place parses with the default `places` since step 3; this Collie draws `belt`, `session`, `status`, `dashboard` and `tabbar`. */
+/** One valid document per place. Every place parses with the default `places` since step 3; this Collie draws `belt`, `session`, `status`, `dashboard`, `tabbar` and, at contract 2, `menu`. */
 export const PLACE_DOCUMENTS = places satisfies { readonly [K in PlaceKind]: JsonValue };
 
 /**

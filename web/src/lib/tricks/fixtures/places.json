@@ -89,5 +89,32 @@
         }
       }
     ]
+  },
+  "menu": {
+    "v": 2,
+    "parts": [
+      {
+        "at": "menu",
+        "id": "ci",
+        "rows": [
+          {
+            "id": "rerun",
+            "kind": "button",
+            "label": "Rerun CI",
+            "icon": "refresh",
+            "intent": "rerun",
+            "confirm": true
+          },
+          {
+            "id": "watch",
+            "kind": "switch",
+            "label": "Watch branch",
+            "icon": "flag",
+            "intent": "watch",
+            "on": true
+          }
+        ]
+      }
+    ]
   }
 }

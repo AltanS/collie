@@ -101,6 +101,18 @@ export const PLACE_ENTRIES = {
     scene: "session",
     find: byText("5/7"),
   },
+  menu: {
+    n: PLACE_NUMBER["menu"],
+    name: PLACES["menu"].name,
+    where: PLACES["menu"].where,
+    group: "session",
+    good: "A switch or a button for this one session, where its other settings are.",
+    tap: "Runs the trick once and tells it which session. A switch waits for the trick's answer.",
+    trick: "CI: rerun this session's checks, or watch its branch.",
+    scene: "session",
+    // The session scene draws no open sheet, so nothing is lit; the entry names the place.
+    find: () => null,
+  },
   "agent-view": {
     n: PLACE_NUMBER["agent-view"],
     name: PLACES["agent-view"].name,

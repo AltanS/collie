@@ -53,6 +53,7 @@ import {
   HILL_WHY_MAX,
   type HillMedia,
 } from "../hill/wire";
+import { foldedWords, foldViewLine } from "../fold";
 import { hasHiddenChar, isHiddenChar } from "../hidden-chars";
 import { DOCUMENT_VERSION, isTrickId, isTrickUrl, PART_MAX_BYTES, parseDecisionView, parseTrickDocument, VIEW_LIMITS, type Refusal, type View, type ViewNode } from "../tricks/schema";
 
@@ -99,6 +100,9 @@ export const TRICK_VIEWS_MEDIA_ROUTE = "/api/trick-views/media/";
 /** One picture of a screen, as the bridge kept it: the hill's media shape. */
 export type ViewMedia = HillMedia;
 
+/** The fold lives in ../fold.ts, shared with the tricks schema; the doors keep reading it here. */
+export { foldViewLine };
+
 /** The route a picture's bytes are read at. Both ids are checked by the bridge before any path is built. */
 export function viewMediaPath(set: string, mediaId: string): string {
   return `${TRICK_VIEWS_MEDIA_ROUTE}${encodeURIComponent(set)}/${encodeURIComponent(mediaId)}`;
@@ -125,28 +129,6 @@ const LINE_BREAK = /\r\n|[\r\n\v\f\u0085\u2028\u2029]/u;
  */
 // eslint-disable-next-line no-control-regex -- the point is to find a control sequence
 const CSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/gu;
-/** Combining marks, removed after NFD so `v̲iew` reads `view`. */
-const MARK = /\p{M}/gu;
-/**
- * Look-alikes NFKC leaves alone, for the characters of `[view:`, `[morph`, `] from operator:` (review 9
- * M2): Cyrillic and Greek letters, small capitals, and brackets and colons of other scripts.
- */
-const CONFUSABLE = new Map(Object.entries({
-  "\u0430": "a", "\u0435": "e", "\u0456": "i", "\u043c": "m", "\u043e": "o", "\u0440": "p", "\u0442": "t",
-  "\u04bb": "h", "\u0475": "v", "\u051d": "w", "\u0491": "r",
-  "\u03b1": "a", "\u03b5": "e", "\u03b7": "n", "\u03b9": "i", "\u03bc": "m", "\u03bd": "v", "\u03bf": "o",
-  "\u03c1": "p", "\u03c4": "t", "\u03c9": "w",
-  "\u1d00": "a", "\u1d07": "e", "\u026a": "i", "\u1d0d": "m", "\u0274": "n", "\u1d0f": "o", "\u1d18": "p",
-  "\u0280": "r", "\u1d1b": "t", "\u1d20": "v", "\u1d21": "w", "\u029c": "h", "\ua730": "f",
-  // The letters of Collie's own words (review 10): Cyrillic c, s, d, y, x, k, the palochka, and small capitals.
-  "\u0441": "c", "\u0455": "s", "\u0501": "d", "\u0443": "y", "\u0445": "x", "\u043a": "k", "\u04cf": "l",
-  "\u1d04": "c", "\u029f": "l",
-  "\u27e6": "[", "\u27e8": "[", "\u3014": "[", "\u3010": "[", "\u3016": "[", "\u3018": "[", "\u301a": "[",
-  "\u2768": "[", "\u276a": "[", "\u2772": "[", "\u2045": "[", "\u298b": "[", "\u298d": "[", "\u298f": "[",
-  "\u27e7": "]", "\u27e9": "]", "\u3015": "]", "\u3011": "]", "\u3017": "]", "\u3019": "]", "\u301b": "]",
-  "\u2769": "]", "\u276b": "]", "\u2773": "]", "\u2046": "]", "\u298c": "]", "\u298e": "]", "\u2990": "]",
-  "\ua789": ":", "\u2236": ":", "\u02f8": ":", "\u0589": ":", "\u05c3": ":", "\u16ec": ":", "\ufe55": ":",
-} satisfies Record<string, string>));
 /** What a head may stand behind and still read as one: blanks, quote and list marks, emphasis, a list number. */
 const LEAD_IN = /^(?:[\s>\-*+#_~`"'|\u201c\u201d\u201e\u2018\u2019\u00ab\u00bb]|\d+[.)])*/u;
 /** The view head, and the head of the native build before agent views, at the start of a folded line. */
@@ -156,22 +138,6 @@ const OPERATOR_REACH = 80;
 /** `] from operator:` after a `[`: what an agent reads as the operator speaking, wherever the bracket opens. */
 const OPERATOR_MARK = /\]\s*from\s+operator\s*:/u;
 
-/**
- * One line as an agent would read it once typed, folded for comparison: every hidden character (the
- * shared {@link isHiddenChar}, which holds Cc, so ESC and DEL too) removed as the typing path removes
- * them, a tab made a space, then NFKC, lower case, combining marks removed and look-alikes folded.
- */
-export function foldViewLine(line: string): string {
-  let kept = "";
-  for (const ch of line) {
-    if (ch === "\t") kept += " ";
-    else if (!isHiddenChar(ch)) kept += ch;
-  }
-  const folded = kept.normalize("NFKC").toLowerCase().normalize("NFD").replace(MARK, "");
-  let out = "";
-  for (const ch of folded) out += CONFUSABLE.get(ch) ?? ch;
-  return out;
-}
 
 /**
  * THE head rule (agent views SECURITY rule 7, review 9 M2), one function for every door: whether one line,
@@ -673,10 +639,6 @@ export const VIEW_COLLIE_PHRASES = [
   "The agent answered in text",
 ] as const;
 
-/** A text's words, folded as the head rule folds ({@link foldViewLine}), every run of other characters one space, padded. */
-function foldedWords(text: string): string {
-  return ` ${foldViewLine(text).replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
-}
 
 const COLLIE_PHRASES_FOLDED = VIEW_COLLIE_PHRASES.map((phrase) => ({ phrase, words: foldedWords(phrase) }));
 

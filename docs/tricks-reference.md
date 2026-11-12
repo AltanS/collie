@@ -6,7 +6,7 @@ This page lists every place, part, manifest key, limit and command of a ColliePW
 
 ## Places
 
-A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first five. An agent view, one screen that the session's own agent draws, is the sixth.
+A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first six. An agent view, one screen that the session's own agent draws, is the seventh.
 
 | Place | Name | Where it shows | Drawn by |
 | --- | --- | --- | --- |
@@ -15,6 +15,7 @@ A place is a spot on the phone where a trick can show (a surface). A program tri
 | `dashboard` | Dashboard tile | A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile. | A program |
 | `status` | Status chip | One chip in the status line above the Belt, after Collie's own items. | A program |
 | `tabbar` | Bottom bar item | An item in the Dashboard's bottom bar, after the Hill. | A program |
+| `menu` | Session settings rows | Rows in a session's settings (the sheet of the session's ⋮ button), in a group of the trick's own after Collie's rows and Close, under the heading "From the trick", then the trick's name. Agent sessions only. Adds rows to a session's settings. | A program |
 | `agent-view` | Agent view | A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session. | A session's agent |
 
 ### `belt`
@@ -219,6 +220,66 @@ A program prints:
     }
   ]
 }
+```
+
+### `menu`
+
+**Where.** Rows in a session's settings (the sheet of the session's ⋮ button), in a group of the trick's own after Collie's rows and Close, under the heading "From the trick", then the trick's name. Agent sessions only. Adds rows to a session's settings.
+
+**Shows.** Rows: a `button` or a `switch`, each with a `label`, an `icon` and an `intent`. A switch shows the `on` of the last document and never flips before the program answers.
+
+**A tap.** A tap runs it and tells it which session. Collie gives it no way to type there. A button sends its intent; a switch sends its intent with the state asked for as `value`, "on" or "off". With `confirm` a button arms on the first tap and shows its whole label.
+
+| Limit | Value |
+| --- | --- |
+| Contract | 2 |
+| Rows | 1 to 6 in a part. Each `id` and each `intent` once |
+| A row | `id`, `kind` (`button` or `switch`), `label`, `intent`, and optionally `icon`, `disabled`, `on` (required on a switch) and `confirm` (a button only). Nothing else |
+| `label` | 1 to 24 characters, refused when longer, never cut. No hidden character. It may not read as one of the sheet's own rows in any language Collie speaks, hold the word `Collie`, `WalkyTalky`, `Hill`, `view`, or start with `Allow`, `Approve`, `Deny`, `Grant`, `Trust` |
+| Parts of this place per trick | one for every agent session of this machine, and bound ones with `sessions` (see Limits) |
+| Rows in one sheet | 12 of every trick together. A trick's group is shown whole or left out whole, in the order of the trick ids, and the sheet says how many tricks it left out |
+| One part, as compact JSON | at most 16 KiB |
+
+A program prints:
+
+```json
+{
+  "v": 2,
+  "parts": [
+    {
+      "at": "menu",
+      "id": "ci",
+      "rows": [
+        {
+          "id": "rerun",
+          "kind": "button",
+          "label": "Rerun CI",
+          "icon": "refresh",
+          "intent": "rerun",
+          "confirm": true
+        },
+        {
+          "id": "watch",
+          "kind": "switch",
+          "label": "Watch branch",
+          "icon": "flag",
+          "intent": "watch",
+          "on": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+In `trick.toml`:
+
+```toml
+id = "ci"
+name = "CI"
+run = "program.ts"
+contract = 2
+places = ["menu"]
 ```
 
 ### `agent-view`
@@ -1130,7 +1191,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `mode` | word | no | `once` or `serve`. Default `once` | 1 | `once` runs once per trigger and prints one document. `serve` is kept for a later Collie. |
 | `contract` | whole number | no | 1 to 999. Default 1. This Collie speaks 1 to 2 | 1 | The contract the trick is written for. Write 2 to read files with `inputs` or to add an agent view. A higher number than this Collie knows is refused with one line. |
 | `icon` | word | no | one of the icon words in Shared values. Default `plug` | 1 | The trick's icon. `collie trick check` names a wrong one. |
-| `places` | list of words | yes | 1 to 16 of `belt`, `session`, `dashboard`, `status`, `tabbar`, `agent-view`. Each once | 1 | Where its parts draw. Each place a part uses must be listed. `agent-view` adds an agent view and needs contract 2. |
+| `places` | list of words | yes | 1 to 16 of `belt`, `session`, `dashboard`, `status`, `tabbar`, `menu`, `agent-view`. Each once | 1 | Where its parts draw. Each place a part uses must be listed. `agent-view` adds an agent view and needs contract 2. |
 | `env` | list of names | no | at most 32 names of at most 64 characters: letters, digits and `_`, not starting with a digit | 1 | Environment names the program gets beyond the base list, such as `GH_TOKEN`. The person sees each one. |
 | `inputs` | list of globs | no | at most 8 globs of at most 256 characters and 6 steps, relative to a session's folder | 2 | Files the program reads from each agent session's folder. They are untrusted data: show them, never run them. |
 | `description` | text | no | at most 140 characters, plain text | 1 | One plain line that says what the trick does. Settings shows it under the name. |
@@ -1558,7 +1619,6 @@ A trick that names one of these still runs. This Collie leaves the word out, say
 | Kind | Word | What it will be |
 | --- | --- | --- |
 | place | `header.line` | A line in the header. |
-| place | `menu` | An entry in a menu, as `menu:<match>`. |
 | place | `settings` | A part of the Settings screen. |
 | manifest key | `watch` | Run again when a watched file changes (manifest key `watch`). |
 | manifest key | `on` | Run on an event, such as `session.status` (manifest key `on`). |

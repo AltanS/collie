@@ -58,7 +58,7 @@ import {
   TAP_REFUSED_LINES,
   type PlaceKind,
 } from "../web/src/lib/tricks/schema.ts";
-import type { JsonValue } from "../web/src/lib/json.ts";
+import { asJsonNumber, asJsonObject, type JsonValue } from "../web/src/lib/json.ts";
 import { helperNumber, programNumbers, REFERENCE_COMMAND, REFERENCE_PAGE, renderReference } from "./tricks-reference.ts";
 
 // THE TRICKS REFERENCE (docs/tricks-reference.md) is generated from the catalogue. This file holds it to
@@ -99,10 +99,15 @@ function showsKind(node: JsonValue, kind: string): boolean {
   return JSON.stringify(node).includes(`"kind":"${kind}"`);
 }
 
+/** The contract an example document follows: its own `"v"` (a `menu` example says 2), read as a trick of that contract. */
+function exampleContract(json: JsonValue): number {
+  return asJsonNumber(asJsonObject(json)?.v) ?? 1;
+}
+
 function checkExample(example: Example, label: string): void {
   switch (example.kind) {
     case "document": {
-      const parsed = parseTrickDocument(example.json);
+      const parsed = parseTrickDocument(example.json, { contract: exampleContract(example.json) });
       expect(parsed.refusals, label).toEqual([]);
       expect(parsed.notes, label).toEqual([]);
       expect(parsed.parts.length, label).toBeGreaterThan(0);
@@ -199,7 +204,7 @@ describe("every example passes the real parser", () => {
       const example = PLACES[id].examples[0];
       expect(example?.kind).toBe("document");
       if (example?.kind !== "document") continue;
-      const parsed = parseTrickDocument(example.json);
+      const parsed = parseTrickDocument(example.json, { contract: exampleContract(example.json) });
       expect(parsed.parts.map((part) => part.place)).toEqual([id satisfies PlaceKind]);
     }
   });
