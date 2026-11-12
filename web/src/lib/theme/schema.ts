@@ -21,7 +21,7 @@
 // wrong shape.
 //
 // VERSIONS. The parser reads 1, 2, 3 and 4 and hands back the LOWEST version that holds the content: 4
-// when the theme sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`), else 2 when it carries
+// when the theme sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`, `find`), else 2 when it carries
 // a surface block, a display face or a palette, else 1. So a colour-only theme is stored and
 // exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
@@ -131,10 +131,12 @@ export type ThemeToken = (typeof THEME_TOKENS)[number];
  * component reads it as `border-pane-active` (the frame of the active pane column on a large
  * screen). `tab-active` joins it: the top edge of the open folder tab and the ring of the
  * open pane, drawn only under the surface word `tabs: folder` (lib/tab-look.ts); its `:root` pair is
- * the foreground ink of each half. Both are appended after the list above, so no earlier file or
- * order moves.
+ * the foreground ink of each half. `find` is the ground of a found or matched piece of text (Find in
+ * Chat, the session filter's matched letters); it may carry alpha, and its `:root` pair is the amber
+ * the app drew before the token existed. All three are appended after the list above, so no earlier
+ * file or order moves.
  */
-export const OPTIONAL_THEME_TOKENS = ["pane-active", "tab-active"] as const;
+export const OPTIONAL_THEME_TOKENS = ["pane-active", "tab-active", "find"] as const;
 
 export type OptionalThemeToken = (typeof OPTIONAL_THEME_TOKENS)[number];
 
@@ -238,10 +240,10 @@ export interface ParseThemeOptions {
   allowReservedId?: boolean;
 }
 
-const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
-const NAME_MAX = 40;
-const AUTHOR_MAX = 60;
-const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs"] as const;
+export const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+export const NAME_MAX = 40;
+export const AUTHOR_MAX = 60;
+export const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs"] as const;
 const HALVES = ["light", "dark"] as const;
 
 export function isThemeToken(value: string): value is ThemeToken {
@@ -862,7 +864,7 @@ function readFace(fonts: JsonObject, key: "ui" | "display", refusals: Refusal[])
 export const ANSI_BRIGHT_LUMINANCE = 0.6;
 /** The slots that must sit above the line; every other slot must not. */
 export const ANSI_BRIGHT_SLOTS: readonly AnsiKey[] = ["3", "7", "11", "15"];
-const ANSI_SLOT_FLOOR = 3;
+export const ANSI_SLOT_FLOOR = 3;
 
 function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): Ansi | undefined {
   if (doc.ansi === undefined) return undefined;
@@ -1256,13 +1258,13 @@ export interface Finding {
   pass: boolean;
 }
 
-const TEXT_FLOOR = 4.5;
-const RULE_FLOOR = 1.3;
-const CHIP_ALPHA = 0.15;
+export const TEXT_FLOOR = 4.5;
+export const RULE_FLOOR = 1.3;
+export const CHIP_ALPHA = 0.15;
 /** WCAG 1.4.11, for a colour that only draws a shape: the destructive icon. */
-const NON_TEXT_FLOOR = 3;
+export const NON_TEXT_FLOOR = 3;
 /** The least oklab distance between `status-blocked` and `status-done`, so the two never look alike. */
-const BLOCKED_DONE_FLOOR = 0.15;
+export const BLOCKED_DONE_FLOOR = 0.15;
 
 const STATUS_TOKENS = [
   "status-blocked",
@@ -1355,6 +1357,17 @@ export function contrastReport(theme: Theme, base: Theme): Finding[] {
     // the page colour the tab joins, so the same floor and the same rule: only a half that sets it.
     if (theme[half]?.["tab-active"] !== undefined) {
       push("tab-active on background", contrast(values["tab-active"] ?? "", values.background ?? ""), NON_TEXT_FLOOR);
+    }
+    // A found or matched piece of text (`find`) is a ground the page ink sits on, laid over the page
+    // colour with its own alpha. The ink is measured as text on that composite, only in a half that
+    // sets it.
+    if (theme[half]?.find !== undefined) {
+      const mark = toRgba(values.find ?? "");
+      const page = rgba("background");
+      const ink = rgba("foreground");
+      const value =
+        mark === undefined || page === undefined || ink === undefined ? 1 : ratio(ink, over(mark, page, mark.alpha));
+      push("foreground on find", value, TEXT_FLOOR);
     }
 
     // THE GROUND AND THE BAND (M57 spec 17). A gradient or a grain changes the page colour under the

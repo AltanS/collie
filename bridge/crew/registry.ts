@@ -2,7 +2,7 @@ import type { PeerPreflight } from "../update-action.ts";
 import { TURN_MISSED_SWEEPS } from "./follow.ts";
 import { isMemberId } from "./identity.ts";
 import type { CrewLink, PeerFailure, PeerOutcome } from "./peer-client.ts";
-import type { TrustedMember } from "./trust-store.ts";
+import { isActiveMember, type TrustedMember } from "./trust-store.ts";
 import type { SessionRuntime } from "../sessions.ts";
 
 // The host dimension of the address triple `(host, session, paneId)` (CREW_PROTOCOL.md §4).
@@ -565,7 +565,7 @@ export class CrewRegistry {
   }
 
   private enrolled(): readonly TrustedMember[] {
-    return this.deps.members().filter((m) => m.status === "enrolled");
+    return this.deps.members().filter(isActiveMember);
   }
 }
 

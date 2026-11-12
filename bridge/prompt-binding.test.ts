@@ -510,6 +510,7 @@ describe("verifyPromptBinding: the style check", () => {
       });
     });
 
+    // It reads and projects every fixture (over 1300): the Windows VM took 5.5 s, past Bun's 5 s default.
     test("every committed pane fixture has aligned text and styled projections", () => {
       const names = readdirSync(FIXTURE_DIR).filter((f) => f.endsWith(".txt"));
       expect(names.length).toBeGreaterThan(100);
@@ -518,7 +519,7 @@ describe("verifyPromptBinding: the style check", () => {
         return normalizePromptRegion(raw).length !== styledRegionLines(raw).length;
       });
       expect(misaligned).toEqual([]);
-    });
+    }, 30_000);
   });
 
   describe("the format line", () => {

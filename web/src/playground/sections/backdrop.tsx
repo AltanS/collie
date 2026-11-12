@@ -20,6 +20,7 @@ import { herd, homeSolo, sessionsSolo, tabs, TS } from "../fixtures";
 import { PackedRootRouter } from "../harness";
 import { Section, type SectionDef } from "../layout";
 import { Round, type RoundOption } from "../round";
+import { useCardFilter } from "./shared";
 
 export const DEF: SectionDef = { id: "backdrop", title: "Backdrop" };
 
@@ -69,11 +70,13 @@ function Header() {
 }
 
 function Screen() {
+  const filter = useCardFilter();
   return (
     <AppHeaderHost bridge="connected" error={false}>
       <Header />
       <div data-pg-scroll className="min-h-0 flex-1">
         <AgentList
+          filter={filter}
           agents={DATA.agents}
           shellPanes={DATA.shellPanes}
           bridge="connected"

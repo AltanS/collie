@@ -312,3 +312,13 @@ export function deposedAnswer(
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
 }
+
+/**
+ * Whether this machine's Hill is no longer the crew's (CREW_PROTOCOL §25): it is deposed, or its trust
+ * store names a lead. The second covers the old lead after `approve-promote`, whose store says peer
+ * while the process still runs as the lead it booted as, and any machine that boots as a peer with
+ * open Decisions left on disk. Its Hill takes no post and no answer; they belong to the lead.
+ */
+export function hillMovedAway(deposed: DeposedState | null, held: TrustStoreData | null): boolean {
+  return deposed !== null || (held !== null && held.lead !== null);
+}

@@ -892,7 +892,7 @@ describe("the ground and the band in the contrast report", () => {
   });
 });
 
-// ── Schema version 3: the optional tokens (pane-active, tab-active) ───────────────────────────
+// ── Schema version 3: the optional tokens (pane-active, tab-active, find) ───────────────────────────
 
 describe("the optional tokens", () => {
   const collie = parseTheme(read("src/themes/collie.json"), { ...CAP, allowReservedId: true });
@@ -900,9 +900,9 @@ describe("the optional tokens", () => {
   const base = collie.theme;
 
   it("are appended after the 43, so the order of every earlier file holds", () => {
-    expect(OPTIONAL_THEME_TOKENS).toEqual(["pane-active", "tab-active"]);
+    expect(OPTIONAL_THEME_TOKENS).toEqual(["pane-active", "tab-active", "find"]);
     expect(ALL_THEME_TOKENS.slice(0, 43)).toEqual([...THEME_TOKENS]);
-    expect(ALL_THEME_TOKENS).toHaveLength(45);
+    expect(ALL_THEME_TOKENS).toHaveLength(46);
   });
 
   it("are read from a version 3 file, and the theme is handed back as version 3", () => {
@@ -976,6 +976,24 @@ describe("the optional tokens", () => {
       "light tab-active on background 3 false",
     ]);
     expect(contrastReport(base, base).some((f) => f.check.startsWith("tab-active"))).toBe(true);
+  });
+
+  it("reads find with an alpha from a version 3 file and refuses it in version 2", () => {
+    const ok = parseTheme(file({ version: 3, light: { find: "oklch(0.879 0.169 91.605 / 0.7)" } }), CAP);
+    expect(ok.ok && ok.theme.light?.find).toBe("oklch(0.879 0.169 91.605 / 0.7)");
+    expect(ok.ok && versionOf(ok.theme)).toBe(3);
+    expect(codes(parseTheme(file({ version: 2, dark: { find: "#ffcc00" } }), CAP))).toEqual(["version dark.find"]);
+  });
+
+  it("measures the page ink on the find ground over the page, only in a half that sets it", () => {
+    const theme: Theme = { version: 3, id: "a", name: "A", light: { find: "#1111118c" }, dark: { find: "oklch(0.769 0.188 70.08 / 0.4)" } };
+    const checks = contrastReport(theme, base).filter((f) => f.check === "foreground on find");
+    expect(checks.map((f) => `${f.half} ${f.floor}`).toSorted()).toEqual(["dark 4.5", "light 4.5"]);
+    expect(checks.find((f) => f.half === "dark")?.pass).toBe(true);
+    // the default pair of Collie's own file passes in both halves
+    const own = contrastReport(base, base).filter((f) => f.check === "foreground on find");
+    expect(own.map((f) => f.pass)).toEqual([true, true]);
+    expect(contrastReport({ version: 1, id: "a", name: "A", light: { background: "#ffffff" } }, base).some((f) => f.check === "foreground on find")).toBe(false);
   });
 
   it("measures an optional token only in a half that sets it", () => {

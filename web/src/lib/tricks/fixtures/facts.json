@@ -1,0 +1,108 @@
+{
+  "timer": {
+    "contract": 1,
+    "trigger": {
+      "kind": "timer"
+    },
+    "trick": {
+      "id": "legs",
+      "dir": "/var/home/altan/.config/collie/tricks/legs",
+      "state": "/var/home/altan/.local/state/collie/tricks/legs"
+    },
+    "memberId": "lodge",
+    "host": "lodge",
+    "sessions": [
+      {
+        "id": "lodge:w6X:3",
+        "memberId": "lodge",
+        "sessionId": "lodge:w6X:3",
+        "paneId": "w6X:3",
+        "host": "lodge",
+        "name": "composer",
+        "agent": "claude",
+        "status": "working",
+        "cwd": "/var/home/altan/projects/collie-workspace/collie",
+        "space": "collie",
+        "tab": "fix",
+        "lastActiveAt": "2026-11-08T09:41:00Z"
+      },
+      {
+        "id": "lodge:w6X:4",
+        "memberId": "lodge",
+        "sessionId": "lodge:w6X:4",
+        "paneId": "w6X:4",
+        "host": "lodge",
+        "status": "idle",
+        "cwd": "/var/home/altan"
+      }
+    ],
+    "spaces": [
+      {
+        "name": "collie",
+        "folder": "/var/home/altan/projects/collie-workspace"
+      }
+    ]
+  },
+  "tap": {
+    "contract": 1,
+    "trigger": {
+      "kind": "tap",
+      "rid": "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5",
+      "node": "legs",
+      "intent": "open-case",
+      "value": "24",
+      "from": {
+        "session": "lodge:w6X:3"
+      }
+    },
+    "trick": {
+      "id": "legs",
+      "dir": "/var/home/altan/.config/collie/tricks/legs",
+      "state": "/var/home/altan/.local/state/collie/tricks/legs"
+    },
+    "memberId": "lodge",
+    "host": "lodge",
+    "sessions": [],
+    "spaces": []
+  },
+  "answer": {
+    "contract": 1,
+    "trigger": {
+      "kind": "tap",
+      "rid": "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e",
+      "node": "hill/case-24",
+      "intent": "rerun",
+      "value": {
+        "text": "Rerun it, then tell me."
+      }
+    },
+    "trick": {
+      "id": "legs",
+      "dir": "/var/home/altan/.config/collie/tricks/legs",
+      "state": "/var/home/altan/.local/state/collie/tricks/legs"
+    },
+    "memberId": "lodge",
+    "host": "lodge",
+    "sessions": [],
+    "spaces": []
+  },
+  "start": {
+    "contract": 1,
+    "trigger": {
+      "kind": "start"
+    },
+    "trick": {
+      "id": "tracker",
+      "dir": "/var/home/altan/.config/collie/tricks/tracker",
+      "state": "/var/home/altan/.local/state/collie/tricks/tracker"
+    },
+    "memberId": "lodge",
+    "host": "lodge",
+    "sessions": [],
+    "spaces": [
+      {
+        "name": "collie"
+      }
+    ]
+  }
+}

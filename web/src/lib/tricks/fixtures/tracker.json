@@ -1,0 +1,146 @@
+{
+  "v": 1,
+  "asOf": "2026-11-08T09:40:00Z",
+  "fresh": "15m",
+  "parts": [
+    {
+      "at": "session",
+      "id": "tracker",
+      "name": "Tracker",
+      "icon": "flag",
+      "subtitle": "3 due, next: M93 spec 03",
+      "badge": {
+        "count": 3
+      },
+      "actions": [
+        {
+          "id": "refresh",
+          "label": "Refresh",
+          "intent": "refresh",
+          "icon": "refresh"
+        },
+        {
+          "id": "next",
+          "label": "Ask about next",
+          "intent": "ask-next",
+          "icon": "send"
+        }
+      ],
+      "view": [
+        {
+          "kind": "group",
+          "attrs": {
+            "label": "Due",
+            "badge": "3"
+          },
+          "kids": [
+            {
+              "kind": "row",
+              "text": "Harness drift check",
+              "attrs": {
+                "tone": "warn",
+                "end": "1d late"
+              },
+              "kids": [
+                {
+                  "kind": "para",
+                  "text": "ritual, due 2026-11-07"
+                },
+                {
+                  "kind": "button",
+                  "attrs": {
+                    "label": "Run",
+                    "intent": "run-ritual",
+                    "value": "harness-drift"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "row",
+              "text": "WebKit scheduled run",
+              "attrs": {
+                "end": "today"
+              },
+              "kids": [
+                {
+                  "kind": "para",
+                  "text": "vigil, due today"
+                },
+                {
+                  "kind": "button",
+                  "attrs": {
+                    "label": "Run",
+                    "intent": "run-ritual",
+                    "value": "webkit-run"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "row",
+              "text": "Release size recap",
+              "attrs": {
+                "end": "today"
+              },
+              "kids": [
+                {
+                  "kind": "para",
+                  "text": "ritual, due 2026-11-08"
+                },
+                {
+                  "kind": "button",
+                  "attrs": {
+                    "label": "Run",
+                    "intent": "run-ritual",
+                    "value": "release-size"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "group",
+          "attrs": {
+            "label": "Next task"
+          },
+          "kids": [
+            {
+              "kind": "row",
+              "text": "Milestone",
+              "attrs": {
+                "end": "M93 Math engines"
+              }
+            },
+            {
+              "kind": "row",
+              "text": "Spec",
+              "attrs": {
+                "end": "03, KaTeX fallback"
+              }
+            },
+            {
+              "kind": "para",
+              "text": "Draw a formula with KaTeX when the MathJax bundle is not cached. Keep the height of the block fixed."
+            }
+          ]
+        },
+        {
+          "kind": "bar",
+          "kids": [
+            {
+              "kind": "button",
+              "attrs": {
+                "label": "Copy the task",
+                "does": "copy",
+                "value": "Work on M93 spec 03: draw a formula with KaTeX when MathJax is not cached.",
+                "icon": "copy"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

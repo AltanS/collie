@@ -635,6 +635,23 @@ describe("askRoute", () => {
     }
   });
 
+  test("rule 6 of agent views (review 9 R3, ask door): an answer whose keys reached the pane is a person turn in its session; a replay is none", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, poll } = askRuntime(dir);
+      const ask = poll();
+      const { audit } = auditLines();
+      const turns: string[] = [];
+      const context = { audit, device: "phone", redact: false, acceptEncoding: null, personTurn: (paneId: string) => turns.push(paneId) };
+      expect((await askRoute(rt, ask.id, { pane: "%1", hash: ask.hash, optionId: "1", origin: "person_tap" }, context)).status).toBe(200);
+      expect(turns).toEqual(["%1"]);
+      await askRoute(rt, ask.id, { pane: "%1", hash: ask.hash, optionId: "1", origin: "person_tap" }, context);
+      expect(turns).toEqual(["%1"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a changed dialog answers the new ask, with its labels masked under the redact switch", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {

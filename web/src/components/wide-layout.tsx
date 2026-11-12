@@ -30,7 +30,7 @@ import { writeRefusal } from "@/lib/host-health";
 import { hostKey, hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
-import { homePath, newPath, panePath } from "@/lib/nav";
+import { homePath, trickSessionPath, newPath, panePath } from "@/lib/nav";
 import { useTabLook } from "@/lib/tab-look";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
@@ -811,6 +811,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
 /** The real switcher list, with the switcher sheet's own wiring: pins, Shells, Launch. */
 function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | undefined; paneId: string; scope: Scope; onSelect: (pane: AgentView) => void }) {
   const root = useRootData();
+  const nav = useNav();
   const dash = useDashPrefs();
   const pins = usePins();
   const { launchers, home: launchersHome } = useLaunchers(scope);
@@ -828,6 +829,9 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
         shellPanes={root.shellPanes}
         currentPaneKey={agent ? paneRowKey(agent) : ""}
         onSelect={onSelect}
+        // The Tricks Space's sessions (M94 slice 03), one level down from the pane.
+        trickSessions={root.trickSessions}
+        onSelectTrick={(pane) => nav.down(trickSessionPath(pane.paneId))}
         tabs={root.tabs}
         servers={root.servers}
         workspaces={root.workspaces}
@@ -858,6 +862,8 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
         order={dash.prefs.paneOrder}
         onOrderChange={dash.setPaneOrder}
         className="px-2 py-2"
+        // The filter field sticks at the top of the sidebar's scroller, its rule across the sidebar.
+        filterClassName="top-0 -mx-2 px-2"
         roomy
       />
       {sheet}

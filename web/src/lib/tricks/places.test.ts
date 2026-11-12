@@ -1,0 +1,117 @@
+import { describe, expect, it } from "vitest";
+
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+import { countAlerting, countBlocked, bucketOf, hasReady, triage, worstTriage } from "../triage";
+import { paneProgress } from "../pane-marks";
+import type { AgentView, TabView, WorkspaceView } from "../types";
+import { findTrickSession, findScopedPane, realAgentPanes, splitTrickSessions } from "./places";
+
+function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
+  return { paneId, workspaceId: "w1", workspaceLabel: "collie", workspaceNumber: 1, tabId: "w1:t1", agent: "claude", status: "idle", cwd: "/w", focused: false, ...over };
+}
+
+const TRICK = pane("trick:lodge:legs:legs", {
+  workspaceId: "trick:lodge",
+  workspaceLabel: "Tricks",
+  workspaceNumber: 2,
+  tabId: "trick:lodge:legs",
+  agent: "legs",
+  kind: "trick",
+  status: "working",
+  view: "lodge/legs/legs",
+  progress: { kind: "percent", value: 68 },
+});
+const TRICK2 = { ...TRICK, paneId: "trick:lodge:legs:second", view: "lodge/legs/second" };
+const REAL = pane("w6X:3");
+const SPACES: WorkspaceView[] = [
+  { workspaceId: "w1", number: 1, label: "collie", focused: true, activeTabId: "w1:t1", tabCount: 1, paneCount: 1 },
+  { workspaceId: "trick:lodge", number: 2, label: "Tricks", focused: false, activeTabId: "trick:lodge:legs", tabCount: 1, paneCount: 1 },
+];
+const TABS: TabView[] = [
+  { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "main", focused: true, paneCount: 1 },
+  { tabId: "trick:lodge:legs", workspaceId: "trick:lodge", number: 1, label: "Browser leg", focused: false, paneCount: 1 },
+];
+
+describe("the trick sessions leave the herd", () => {
+  it("takes the trick panes, their Space and their tabs out of every list, in the bridge's order", () => {
+    const split = splitTrickSessions({ agents: [REAL, TRICK, TRICK2], shellPanes: [], workspaces: SPACES, tabs: TABS });
+    expect(split.agents).toEqual([REAL]);
+    expect(split.trickSessions.map((p) => p.paneId)).toEqual([TRICK.paneId, TRICK2.paneId]);
+    expect(split.workspaces.map((w) => w.workspaceId)).toEqual(["w1"]);
+    expect(split.tabs.map((t) => t.tabId)).toEqual(["w1:t1"]);
+  });
+
+  it("hands back the same arrays for a body with no trick session, so nothing re-renders for it", () => {
+    const agents = [REAL];
+    const workspaces = SPACES.slice(0, 1);
+    const split = splitTrickSessions({ agents, shellPanes: [], workspaces, tabs: TABS });
+    expect(split.agents).toBe(agents);
+    expect(split.workspaces).toBe(workspaces);
+    expect(split.trickSessions).toEqual([]);
+  });
+
+  it("keeps a trick pane outside triage even if one slips into a list", () => {
+    expect(bucketOf({ ...TRICK, status: "blocked" })).toBe("recent");
+    expect(countBlocked([{ ...TRICK, status: "blocked" }])).toBe(0);
+  });
+
+  it("realAgentPanes is the one filter: the real panes, and the same array when there is no trick pane", () => {
+    const list = [REAL, TRICK, TRICK2];
+    expect(realAgentPanes(list)).toEqual([REAL]);
+    const plain = [REAL];
+    expect(realAgentPanes(plain)).toBe(plain);
+  });
+
+  it("triage never receives a trick pane: no section, no count, no chip, whatever its status", () => {
+    const blocked = { ...TRICK, status: "blocked" as const };
+    const done = { ...TRICK2, status: "done" as const, lastActiveAt: 2, lastSeenAt: 1 };
+    const herd = [REAL, blocked, done];
+    const sections = triage(herd);
+    expect(sections.flatMap((section) => section.agents).map((agent) => agent.paneId)).toEqual([REAL.paneId]);
+    expect(countBlocked(herd)).toBe(0);
+    expect(countAlerting(herd, { blocked: true, done: true })).toBe(0);
+    expect(hasReady(herd)).toBe(false);
+    expect(worstTriage([blocked, done])).toBeNull();
+  });
+
+  it("no lib file tests a pane's kind for a trick but places.ts: each reads realAgentPanes or isTrickPane", () => {
+    // pane-marks.ts draws a trick session's progress (a look, not a filter), so it may name the kind.
+    const allowed = new Set(["tricks/places.ts", "pane-marks.ts"]);
+    const lib = join(__dirname, "..");
+    const offenders = readdirSync(lib, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file) && !allowed.has(file.split("\\").join("/")))
+      // A Decision's `from.kind` is its sender, not a pane: not counted.
+      .filter((file) => /(?<!from\.)\bkind\s*[!=]==\s*"trick"/.test(readFileSync(join(lib, file), "utf8")));
+    expect(offenders).toEqual([]);
+  });
+
+  it("draws a trick session's progress in any state, and a program's only while it works", () => {
+    expect(paneProgress({ ...TRICK, status: "idle" })).toEqual({ kind: "percent", label: null, value: 68 });
+    expect(paneProgress({ ...TRICK, kind: "agent", status: "idle" })).toBeNull();
+  });
+});
+
+describe("where a link goes", () => {
+  it("finds a trick session by its id, and the trick's first session part by the trick alone", () => {
+    expect(findTrickSession("trick:lodge:legs:second", [TRICK, TRICK2])).toBe(TRICK2);
+    expect(findTrickSession("trick:lodge:legs", [TRICK, TRICK2])).toBe(TRICK);
+    expect(findTrickSession("trick:lodge:legs:gone", [TRICK])).toBeUndefined();
+    expect(findTrickSession("trick:workshop:legs", [TRICK])).toBeUndefined();
+    expect(findTrickSession("w6X:3", [TRICK])).toBeUndefined();
+  });
+
+  it("finds the real pane a scope key names, the bridge's own host matching a pane with no host", () => {
+    const peer = pane("w6X:3", { host: "workshop" });
+    expect(findScopedPane("lodge:w6X:3", [REAL, peer], "lodge")).toBe(REAL);
+    expect(findScopedPane("workshop:w6X:3", [REAL, peer], "lodge")).toBe(peer);
+    expect(findScopedPane("laptop:w6X:3", [REAL, peer], "lodge")).toBeUndefined();
+    // Never a trick session: it has no reply box.
+    expect(findScopedPane("lodge:trick:lodge:legs:legs", [TRICK], "lodge")).toBeUndefined();
+  });
+
+  it("finds no pane for a key that is not a scope key: a name, a URL, a script", () => {
+    for (const key of ["w6X:3", "composer", "https://a.example/", "javascript:alert(1)", "trick:lodge:legs"]) expect(findScopedPane(key, [REAL, TRICK], "lodge"), key).toBeUndefined();
+  });
+});

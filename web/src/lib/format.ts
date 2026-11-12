@@ -130,6 +130,12 @@ export function clockTime(ts: number): string {
   return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
 }
 
+/** {@link clockTime} of an ISO timestamp, or "" when it does not parse. */
+export function clockTimeOf(iso: string): string {
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? "" : clockTime(ms);
+}
+
 /**
  * A date and a time, medium and short, in the active APP locale — for a moment that may be weeks
  * away, like a paired device's expiry. An age ("in 3 days") would have to be recomputed to stay

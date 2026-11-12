@@ -18,6 +18,7 @@ import { capture, context } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import {
+  askPaneKind,
   askPanePlace,
   askSocket,
   cmdWalky,
@@ -33,6 +34,9 @@ import {
   OFF_WORDS,
   OLDER_BRIDGE_SWITCH,
   ON_WORDS,
+  OUTSIDE_NEEDS_A_PANE,
+  OUTSIDE_SPACE_WORDS,
+  outsideLine,
   SENDER_OFF_WORDS,
   WALKY_OFF_WORDS,
   YOU_ARE_OFF_WORDS,
@@ -43,6 +47,11 @@ import {
   verifiedWords,
   type WalkyDeps,
 } from "./walky.ts";
+
+import { spaceOf } from "../bridge/walky/space.ts";
+
+/** One named space: every fixture pane shares it, as the panes of one tmux session or Herdr workspace do. */
+const SOLO_SPACE = spaceOf({ memberId: "local", spaceId: "w1", spaceLabel: "work", spaceNamed: true });
 
 // The CLI against a real bridge socket in a temp state dir: the socket, the request lines and the
 // answers are the real ones, and only the panes and the Send Protocol are fakes.
@@ -78,8 +87,8 @@ interface Bridge {
 function scratch(over: Partial<ConstructorParameters<typeof WalkyService>[0]> = {}): Bridge {
   const stateDir = mkdtempSync(join(tmpdir(), "walky-cli-"));
   const panes: WalkyPane[] = [
-    { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-    { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
+    { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+    { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
   ];
   const state: Bridge = { stateDir, sent: [], answer: { outcome: "sent" } };
   const host: WalkyHost = {
@@ -285,8 +294,8 @@ describe("send", () => {
     const states = new Map<string, SendResult>();
     const heldHost: WalkyHost = {
       panes: () => [
-        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
       ],
       send: async (_pane, sendId): Promise<SendResult> => {
         states.set(sendId, { outcome: "held", reason: "draft_present" });
@@ -335,12 +344,96 @@ describe("send", () => {
     expect(receiptLine({ ...receipt, reason: "draft present" }, true, new Set(["local/%2"]))).toBe("local/%2: held: draft present");
   });
 
-  socketTest("an agent's `all` is refused: only the operator may broadcast", async () => {
+  socketTest("an agent's `all` without the outside flag is refused: outside your space (M98)", async () => {
     const b = await bridge();
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkySend(d, ["all", "standup"])).toBe(EXIT.REFUSED);
-    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to all", "not sent: only the operator may broadcast"]);
+    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to all", OUTSIDE_SPACE_WORDS]);
+    expect(OUTSIDE_SPACE_WORDS).toBe("not sent: outside your space. Use here, reply to a message, or add --outside if your operator asked for it.");
     expect(b.sent).toEqual([]);
+  });
+
+  /** `ask` that keeps every request line it passes on. */
+  const recording = () => {
+    const lines: string[] = [];
+    return {
+      lines,
+      ask: (path: string, line: string) => {
+        lines.push(line);
+        return askSocket(path, line, 2000);
+      },
+    };
+  };
+  const sends = (lines: readonly string[]) =>
+    lines.flatMap((line) => {
+      const request = parseJsonObject(line);
+      return request?.op === "send" ? [request] : [];
+    });
+
+  socketTest("--outside rides the send request, and an agent's `all` with it is delivered; the inbox header of a pane in another space says outside (M98)", async () => {
+    // %2 sits in another space: a message to a pane of the sender's own space passes as `in` and carries no word.
+    const sent: string[] = [];
+    const elsewhere = spaceOf({ memberId: "local", spaceId: "w2", spaceLabel: "other", spaceNamed: true });
+    const host: WalkyHost = {
+      panes: () => [
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: elsewhere },
+      ],
+      send: async (_pane, _id, text) => {
+        sent.push(text);
+        return { outcome: "sent" };
+      },
+      sendState: () => ({ outcome: "sent" }),
+      cancelHeld: () => undefined,
+    };
+    const b = await bridge({ host });
+    const seen = recording();
+    const d = deps(b, inPane("%1"), { ask: seen.ask });
+    expect(await cmdWalkySend(d, ["--outside", "all", "standup"])).toBe(EXIT.OK);
+    expect(sends(seen.lines)).toEqual([expect.objectContaining({ to: "all", outside: true })]);
+    expect(d.io.stdout.join("\n")).toContain("typed into the pane");
+    expect(sent).toHaveLength(1);
+    // The pane that got it reads the word in its header, as the envelope it was typed with does.
+    const inbox = deps(b, inPane("%2"));
+    expect(await cmdWalkyInbox(inbox, [])).toBe(EXIT.OK);
+    expect(inbox.io.stdout[0]).toMatch(/^\[walky-talky wt_aaaaaaaaaaa1\] from agent local\/%1#aaaa \(agent-x, repo#one\) outside$/u);
+    // A message with no flag carries no such field, and across the border it is refused.
+    const plain = recording();
+    const quiet = deps(b, inPane("%1"), { ask: plain.ask, mintId: () => "wt_aaaaaaaaaaa2" });
+    expect(await cmdWalkySend(quiet, ["local/%2", "hi"])).toBe(EXIT.REFUSED);
+    expect(sends(plain.lines)[0]).not.toHaveProperty("outside");
+    expect(sent).toHaveLength(1);
+  });
+
+  socketTest("--outside on `here` is accepted and changes nothing: the request carries no flag and the message no outside word (M98)", async () => {
+    const b = await bridge();
+    const seen = recording();
+    const d = deps(b, inPane("%1"), { ask: seen.ask });
+    expect(await cmdWalkySend(d, ["here", "--outside", "hello"])).toBe(EXIT.OK);
+    expect(sends(seen.lines)).toHaveLength(1);
+    expect(sends(seen.lines)[0]).not.toHaveProperty("outside");
+    const inbox = deps(b, inPane("%2"));
+    expect(await cmdWalkyInbox(inbox, [])).toBe(EXIT.OK);
+    expect(inbox.io.stdout[0]).not.toContain("outside");
+  });
+
+  socketTest("reply --outside sends the flag with the reply (M98)", async () => {
+    const b = await bridge();
+    const first = deps(b, inPane("%2"), { mintId: () => "wt_aaaaaaaaaaa9" });
+    expect(await cmdWalkySend(first, ["local/%1", "question"])).toBe(EXIT.OK);
+    const seen = recording();
+    const d = deps(b, inPane("%1"), { ask: seen.ask });
+    expect(await cmdWalkyReply(d, ["--outside", "wt_aaaaaaaaaaa9", "answer"])).toBe(EXIT.OK);
+    expect(sends(seen.lines)).toEqual([expect.objectContaining({ replyTo: "wt_aaaaaaaaaaa9", outside: true })]);
+  });
+
+  test("--outside from a shell that is no agent pane is a usage error: an operator's message is not bound to a space (M98)", async () => {
+    const b = scratch();
+    for (const verb of [cmdWalkySend, cmdWalkyReply]) {
+      const d = deps(b);
+      expect(await verb(d, ["--outside", verb === cmdWalkySend ? "all" : "wt_aaaaaaaaaaa9", "hi"])).toBe(EXIT.USAGE);
+      expect(d.io.stderr[0]).toBe(`error: ${OUTSIDE_NEEDS_A_PANE}`);
+    }
   });
 
   test("usage errors: no address, a bad address, no text on a terminal", async () => {
@@ -538,8 +631,8 @@ describe("reply, inbox, status, who", () => {
   /** Two agent panes in one folder: `%1` asks, `%2` finished 20 minutes ago. */
   const resting = (typed: string[] = []): WalkyHost => ({
     panes: () => [
-      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#main", state: "working", activeAt: Date.now(), instance: "aaaa", terminal: true, off: false },
-      { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#feat", state: "done", activeAt: Date.now() - 20 * 60_000, instance: "bbbb", terminal: true, off: false },
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#main", state: "working", activeAt: Date.now(), instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#feat", state: "done", activeAt: Date.now() - 20 * 60_000, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
     ],
     send: async (pane) => {
       typed.push(pane.paneId);
@@ -594,8 +687,8 @@ describe("reply, inbox, status, who", () => {
   const switchable = () => {
     const off = new WalkyOff(null);
     const rows: WalkyPane[] = [
-      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-      { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false },
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
     ];
     const host: WalkyHost = {
       panes: () => rows.map((pane) => Object.assign({}, pane, { off: off.isOff(pane) })),
@@ -644,6 +737,16 @@ describe("reply, inbox, status, who", () => {
     expect(mixed.io.stdout).toEqual([OFF_WORDS]);
   });
 
+  socketTest("askPaneKind: the bridge says agent for an agent's pane; no pane, no bridge or an older one say unknown", async () => {
+    const b = await bridge();
+    expect(await askPaneKind(deps(b, inPane("%1")))).toBe("agent");
+    expect(await askPaneKind(deps(b))).toBe("unknown");
+    expect(await askPaneKind(deps(b, inPane("%9")))).toBe("unknown");
+    const older = await olderBridge();
+    expect(await askPaneKind(deps(b, inPane("%1"), { sockets: () => [older.path] }))).toBe("unknown");
+    expect(await askPaneKind(deps(b, inPane("%1"), { sockets: () => [] }))).toBe("unknown");
+  });
+
   socketTest("askPanePlace: the pane's kind, session and id as the bridge placed them; no pane, no bridge or an older one say unknown", async () => {
     const b = await bridge();
     expect(await askPanePlace(deps(b, inPane("%1")))).toEqual({ kind: "agent", session: "main", paneId: "%1" });
@@ -673,9 +776,9 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL     STATE",
-      "local/%1#aaaa  desk     agent-x  repo#one  idle  (you)",
-      "local/%2#bbbb  desk     agent-y  repo#two  working, walky off",
+      "ADDRESS        MACHINE  HARNESS  LABEL     SPACE  STATE",
+      "local/%1#aaaa  desk     agent-x  repo#one  work   idle  (you)",
+      "local/%2#bbbb  desk     agent-y  repo#two  work   working, walky off",
     ]);
     const json = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(json, ["--json"])).toBe(EXIT.OK);
@@ -704,8 +807,8 @@ describe("reply, inbox, status, who", () => {
   socketTest("who on a solo install with only the asking agent pane says a message needs two", async () => {
     const lone: WalkyHost = {
       panes: () => [
-        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-        { session: "main", paneId: "%2", agent: false, harness: null, label: "repo#two", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+        { session: "main", paneId: "%2", agent: false, harness: null, label: "repo#two", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
       ],
       send: async () => ({ outcome: "sent" }),
       sendState: () => null,
@@ -716,7 +819,7 @@ describe("reply, inbox, status, who", () => {
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["You are local/%1#aaaa. No other agent pane yet. A message needs two."]);
     // An asker that is off hears it here too, where the table is not printed.
-    lone.panes = () => [{ session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: true }];
+    lone.panes = () => [{ session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: true, space: SOLO_SPACE }];
     const offAsker = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(offAsker, [])).toBe(EXIT.OK);
     expect(offAsker.io.stdout).toEqual(["You are local/%1#aaaa. No other agent pane yet. A message needs two.", YOU_ARE_OFF_WORDS]);
@@ -727,18 +830,18 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL     STATE",
-      "local/%1#aaaa  desk     agent-x  repo#one  idle  (you)",
-      "local/%2#bbbb  desk     agent-y  repo#two  working",
+      "ADDRESS        MACHINE  HARNESS  LABEL     SPACE  STATE",
+      "local/%1#aaaa  desk     agent-x  repo#one  work   idle  (you)",
+      "local/%2#bbbb  desk     agent-y  repo#two  work   working",
     ]);
   });
 
   /** Three agent panes in two folders, one a checkout on a branch: what a workspace filter has to tell apart. */
   const folders = (): WalkyHost => ({
     panes: () => [
-      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false },
-      { session: "main", paneId: "%2", agent: true, harness: "agent-x", label: "other", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false },
-      { session: "main", paneId: "%3", agent: true, harness: "agent-y", label: "collie-workspace#feat/x", state: "working", activeAt: null, instance: "cccc", terminal: true, off: false },
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-x", label: "other", state: "idle", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE },
+      { session: "main", paneId: "%3", agent: true, harness: "agent-y", label: "collie-workspace#feat/x", state: "working", activeAt: null, instance: "cccc", terminal: true, off: false, space: SOLO_SPACE },
     ],
     send: async () => ({ outcome: "sent" }),
     sendState: () => ({ outcome: "sent" }),
@@ -750,9 +853,9 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%2"));
     expect(await cmdWalkyWho(d, ["--workspace", "collie-workspace"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL                    STATE",
-      "local/%1#aaaa  desk     agent-x  collie-workspace#main    idle",
-      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  working",
+      "ADDRESS        MACHINE  HARNESS  LABEL                    SPACE  STATE",
+      "local/%1#aaaa  desk     agent-x  collie-workspace#main    work   idle",
+      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  work   working",
     ]);
   });
 
@@ -760,7 +863,7 @@ describe("reply, inbox, status, who", () => {
     const b = await bridge({ host: folders() });
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, ["--workspace", "collie-workspace#feat/x"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["ADDRESS        MACHINE  HARNESS  LABEL                    STATE", "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  working"]);
+    expect(d.io.stdout).toEqual(["ADDRESS        MACHINE  HARNESS  LABEL                    SPACE  STATE", "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  work   working"]);
     const json = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(json, ["--workspace", "collie-workspace#main", "--json"])).toBe(EXIT.OK);
     const body = JSON.parse(json.io.stdout[0]!);
@@ -772,36 +875,112 @@ describe("reply, inbox, status, who", () => {
     const b = await bridge({ host: folders() });
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, ["--workspace", "nowhere"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["no agent panes in nowhere"]);
+    expect(d.io.stdout).toEqual(["no agent panes in nowhere (your space)"]);
+    const all = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(all, ["--all", "--workspace", "nowhere"])).toBe(EXIT.OK);
+    expect(all.io.stdout).toEqual(["no agent panes in nowhere"]);
   });
 
-  socketTest("who --here lists the asking pane's own folder, marks the asking pane, and works from any pane", async () => {
+  socketTest("who --here is the default from an agent pane: its space, narrowed by --workspace to a folder inside it", async () => {
     const b = await bridge({ host: folders() });
-    const d = deps(b, inPane("%1"));
-    expect(await cmdWalkyWho(d, ["--here"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL                    STATE",
-      "local/%1#aaaa  desk     agent-x  collie-workspace#main    idle  (you)",
-      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  working",
+    const explicit = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(explicit, ["--here"])).toBe(EXIT.OK);
+    const plain = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(plain, [])).toBe(EXIT.OK);
+    expect(explicit.io.stdout).toEqual(plain.io.stdout);
+    expect(plain.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  LABEL                    SPACE  STATE",
+      "local/%1#aaaa  desk     agent-x  collie-workspace#main    work   idle  (you)",
+      "local/%2#bbbb  desk     agent-x  other                    work   idle",
+      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  work   working",
     ]);
-    const lone = deps(b, inPane("%2"));
-    expect(await cmdWalkyWho(lone, ["--here"])).toBe(EXIT.OK);
-    expect(lone.io.stdout).toEqual(["ADDRESS        MACHINE  HARNESS  LABEL  STATE", "local/%2#bbbb  desk     agent-x  other  idle  (you)"]);
+    const folder = deps(b, inPane("%2"));
+    expect(await cmdWalkyWho(folder, ["--here", "--workspace", "collie-workspace"])).toBe(EXIT.OK);
+    expect(folder.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  LABEL                    SPACE  STATE",
+      "local/%1#aaaa  desk     agent-x  collie-workspace#main    work   idle",
+      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  work   working",
+    ]);
   });
 
-  socketTest("who --here off a pane is refused in one line that names --workspace", async () => {
+  /** Four agent panes in three spaces: two in the named space `work`, one in `other`, one in a space with no name of its own. */
+  const spaces = (): WalkyHost => {
+    const pane = (paneId: string, space: WalkyPane["space"], label: string): WalkyPane => ({ session: "main", paneId, agent: true, harness: "agent-x", label, state: "idle", activeAt: null, instance: paneId.slice(1).repeat(4), terminal: true, off: false, space });
+    return {
+      panes: () => [
+        pane("%1", SOLO_SPACE, "repo#one"),
+        pane("%2", SOLO_SPACE, "repo#two"),
+        pane("%3", spaceOf({ memberId: "local", spaceId: "w2", spaceLabel: "other", spaceNamed: true }), "repo#three"),
+        pane("%4", spaceOf({ memberId: "local", spaceId: "w9", spaceLabel: "w9", spaceNamed: false }), "repo#four"),
+      ],
+      send: async () => ({ outcome: "sent" }),
+      sendState: () => ({ outcome: "sent" }),
+      cancelHeld: () => undefined,
+    };
+  };
+
+  socketTest("who from an agent pane lists its space and says how many panes are outside it; --all lists every pane, a space with no name says it is this machine's", async () => {
+    const b = await bridge({ host: spaces() });
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  LABEL     SPACE  STATE",
+      "local/%1#1111  desk     agent-x  repo#one  work   idle  (you)",
+      "local/%2#2222  desk     agent-x  repo#two  work   idle",
+      "2 panes are outside your space. List every pane: collie walky who --all",
+    ]);
+    expect(outsideLine(1)).toBe("1 pane is outside your space. List every pane: collie walky who --all");
+    const all = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(all, ["--all"])).toBe(EXIT.OK);
+    expect(all.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  LABEL       SPACE              STATE",
+      "local/%1#1111  desk     agent-x  repo#one    work               idle  (you)",
+      "local/%2#2222  desk     agent-x  repo#two    work               idle",
+      "local/%3#3333  desk     agent-x  repo#three  other              idle",
+      "local/%4#4444  desk     agent-x  repo#four   w9 (this machine)  idle",
+    ]);
+  });
+
+  socketTest("who --json carries each row's space and the asker's own space; the default list is the space, --all every row", async () => {
+    const b = await bridge({ host: spaces() });
+    const d = deps(b, inPane("%2"));
+    expect(await cmdWalkyWho(d, ["--json"])).toBe(EXIT.OK);
+    const body = JSON.parse(d.io.stdout[0]!);
+    expect(body.ownSpace).toEqual({ key: "work", named: true, label: "work" });
+    expect(body.targets.map((row: { address: string }) => row.address)).toEqual(["local/%1#1111", "local/%2#2222"]);
+    expect(body.targets.every((row: { space: { key: string } }) => row.space.key === "work")).toBe(true);
+    const all = deps(b, inPane("%2"));
+    expect(await cmdWalkyWho(all, ["--json", "--all"])).toBe(EXIT.OK);
+    const everyone = JSON.parse(all.io.stdout[0]!);
+    expect(everyone.targets).toHaveLength(4);
+    expect(everyone.ownSpace.key).toBe("work");
+    expect(everyone.targets[3].space).toEqual({ key: "local\u0000w9", named: false, label: "w9" });
+  });
+
+  socketTest("who from a shell that is no agent pane lists every pane, whatever its space", async () => {
+    const b = await bridge({ host: spaces() });
+    const d = deps(b);
+    expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toHaveLength(5);
+    expect(d.io.stdout.join("\n")).not.toContain("outside your space");
+    const json = deps(b);
+    expect(await cmdWalkyWho(json, ["--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(json.io.stdout[0]!)).toMatchObject({ self: null, ownSpace: null });
+  });
+
+  socketTest("who --here off a pane is refused in one line that names --all", async () => {
     const b = await bridge({ host: folders() });
     const d = deps(b);
     expect(await cmdWalkyWho(d, ["--here"])).toBe(EXIT.STATE);
     expect(d.io.stdout).toEqual([]);
-    expect(d.io.stderr).toEqual(["walky talky: `--here` needs a pane: run it inside an agent's pane, or name the folder with `--workspace <repo>`"]);
+    expect(d.io.stderr).toEqual(["walky talky: `--here` needs a pane: run it inside an agent's pane, or use `--all`"]);
   });
 
-  socketTest("--workspace and --here together are refused before any bridge is asked", async () => {
+  socketTest("--all and --here together are refused before any bridge is asked", async () => {
     const b = await bridge({ host: folders() });
     const d = deps(b, inPane("%1"));
-    expect(await cmdWalkyWho(d, ["--workspace", "collie-workspace", "--here"])).toBe(EXIT.USAGE);
-    expect(d.io.stderr[0]).toBe("error: `--workspace` and `--here` both pick the panes: use one of them");
+    expect(await cmdWalkyWho(d, ["--all", "--here"])).toBe(EXIT.USAGE);
+    expect(d.io.stderr[0]).toBe("error: `--all` lists every pane and `--here` lists your space: use one of them");
     expect(d.io.stderr[1]).toStartWith("usage: collie walky who");
     expect(d.io.stdout).toEqual([]);
   });
@@ -852,11 +1031,14 @@ describe("reply, inbox, status, who", () => {
 
 describe("the send arguments", () => {
   test("flags before the text, the text after the address", () => {
-    expect(parseSendArgs(["local/%2", "a", "--b"])).toEqual({ to: "local/%2", replyTo: null, text: "a --b", json: false, wake: false });
-    expect(parseSendArgs(["--json", "--to", "all", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: true, wake: false });
-    expect(parseSendArgs(["here", "--wake", "x"])).toEqual({ to: "here", replyTo: null, text: "x", json: false, wake: true });
+    expect(parseSendArgs(["local/%2", "a", "--b"])).toEqual({ to: "local/%2", replyTo: null, text: "a --b", json: false, wake: false, outside: false });
+    expect(parseSendArgs(["--json", "--to", "all", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: true, wake: false, outside: false });
+    expect(parseSendArgs(["here", "--wake", "x"])).toEqual({ to: "here", replyTo: null, text: "x", json: false, wake: true, outside: false });
+    expect(parseSendArgs(["all", "--outside", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: false, wake: false, outside: true });
+    expect(parseSendArgs(["--outside", "--reply-to", "wt_aaaaaaaaaaa1", "--", "x"])).toEqual({ to: null, replyTo: "wt_aaaaaaaaaaa1", text: "x", json: false, wake: false, outside: true });
     // After the text starts, a flag is part of the text.
-    expect(parseSendArgs(["here", "x", "--wake"])).toEqual({ to: "here", replyTo: null, text: "x --wake", json: false, wake: false });
+    expect(parseSendArgs(["here", "x", "--wake"])).toEqual({ to: "here", replyTo: null, text: "x --wake", json: false, wake: false, outside: false });
+    expect(parseSendArgs(["here", "x", "--outside"])).toEqual({ to: "here", replyTo: null, text: "x --outside", json: false, wake: false, outside: false });
     expect(parseSendArgs(["--reply-to", "bad"])).toEqual({ error: "`bad` is not a message id" });
     expect(parseSendArgs(["--nope"])).toEqual({ error: "unknown flag `--nope`" });
   });
@@ -914,11 +1096,45 @@ describe("on a crew member (CREW_PROTOCOL §21)", () => {
     expect(status.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "desk/w2:p2: typed into the pane (signed by laptop)"]);
   });
 
-  socketTest("who lists this machine's panes and says the other machines are the lead's to list", async () => {
+  socketTest("who lists this machine's panes and says the other machines are the lead's to list, when the lead gives no list", async () => {
     const b = await member();
     const d = deps(b);
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout.at(-1)).toBe("other machines: run `collie walky who` on the lead (desk), or use the phone");
+    // A lead that did not answer (an older lead, a refused or slow dial) is the same: this machine's panes and the note.
+    const silent = await bridge({ memberId: "laptop", outcomesOnLead: true, leadName: () => "desk", leadTargets: async () => null });
+    const fallback = deps(silent, inPane("%1"));
+    expect(await cmdWalkyWho(fallback, [])).toBe(EXIT.OK);
+    expect(fallback.io.stdout.at(-1)).toBe("other machines: run `collie walky who` on the lead (desk), or use the phone");
+    expect(fallback.io.stdout.filter((line) => line.startsWith("laptop/"))).toHaveLength(2);
+  });
+
+  /** A row as the lead lists a pane of its own or of another member. */
+  const leadRow = (address: string, label: string, space: ReturnType<typeof spaceOf>) => ({ address, memberId: "desk", machine: "desk", harness: "agent-x", label, state: "idle", space });
+  const CREW_PANES = [
+    leadRow("desk/w2:p2#cccc", "api#main", SOLO_SPACE),
+    leadRow("desk/w3:p3#dddd", "web#main", spaceOf({ memberId: "desk", spaceId: "w3", spaceLabel: "other", spaceNamed: true })),
+    // The lead's list also holds this member's own pane, from its last sweep: the member's live row stands instead.
+    { ...leadRow("laptop/%1#aaaa", "stale", SOLO_SPACE), memberId: "laptop", machine: "laptop", state: "unreachable" },
+  ];
+
+  socketTest("who on a member lists the crew as its lead does: its own panes now, the other machines' panes from the lead, its space by default", async () => {
+    const b = await bridge({ memberId: "laptop", outcomesOnLead: true, leadName: () => "desk", leadTargets: async () => CREW_PANES });
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "ADDRESS          MACHINE  HARNESS  LABEL     SPACE  STATE",
+      "laptop/%1#aaaa   desk     agent-x  repo#one  work   idle  (you)",
+      "laptop/%2#bbbb   desk     agent-y  repo#two  work   working",
+      "desk/w2:p2#cccc  desk     agent-x  api#main  work   idle",
+      "1 pane is outside your space. List every pane: collie walky who --all",
+    ]);
+    const all = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(all, ["--all", "--json"])).toBe(EXIT.OK);
+    const body = JSON.parse(all.io.stdout[0]!);
+    expect(body.targets.map((row: { address: string }) => row.address)).toEqual(["laptop/%1#aaaa", "laptop/%2#bbbb", "desk/w2:p2#cccc", "desk/w3:p3#dddd"]);
+    expect(body.note).toBeUndefined();
+    expect(body.ownSpace.key).toBe("work");
   });
 });
 

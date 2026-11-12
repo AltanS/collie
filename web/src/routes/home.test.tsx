@@ -7,6 +7,8 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { CrewProvider } from "@/components/crew-provider";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { setPinned } from "@/lib/pins";
+import { __resetDashFilter } from "@/lib/dash-filter";
+import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
 import { __resetBundleFocus, BUNDLE_FOCUS_TTL_MS, bundleFocusPending, requestBundleFocus } from "@/lib/bundle-apply";
 import {
   fixtureAgents,
@@ -25,6 +27,10 @@ import type { StartLaunchBody } from "@/lib/api";
 import type { SnapshotResponse } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
+import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
+import { hillDecision } from "@/test/hill-fixtures";
+import { partKey, type PlaceItem, type TricksReply, type WireTrickPart } from "@/lib/tricks/schema";
+import { tricksStore } from "@/lib/tricks/store";
 import { HomeRoute } from "./home";
 
 // The dashboard, one machine and several. The point of the pair is that the FIRST one is unchanged:
@@ -75,6 +81,7 @@ function renderHome(data: HomeData, initialPath?: string) {
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
       { path: "/space/:spaceId/changes", element: <div data-testid="space-changes" /> },
       { path: "/crew", element: <div data-testid="crew" /> },
+      { path: "/hill", element: <div data-testid="hill" /> },
     ],
     { initialEntries: [initialPath ?? (data.scope.host ? `/?h=${data.scope.host}` : "/")] },
   );
@@ -1169,5 +1176,222 @@ describe("the dashboard's update line after a tap on the updating mark", () => {
     expect(lineScrolls(spy)).toHaveLength(0);
     // And the stale request is gone, so a later plain visit cannot find it either.
     expect(bundleFocusPending()).toBe(false);
+  });
+});
+
+describe("the Hill in the Dashboard's bar (M96)", () => {
+  beforeEach(() => __resetHill());
+  afterEach(() => __resetHill());
+
+  async function openOnHill(count: number) {
+    const open = Array.from({ length: count }, (_, i) => hillDecision({ title: `Decision ${i + 1}`, priority: i === count - 1 ? "now" : "later" }));
+    server.use(http.get("/api/hill", () => HttpResponse.json({ v: 1, rev: 1, open, closed: [] })));
+    await act(async () => {
+      syncHill(1);
+      await __settleHill();
+    });
+  }
+
+  const bar = () => document.querySelector<HTMLElement>('[data-slot="tab-bar"]')!;
+  const hillItem = () => bar().querySelector<HTMLElement>('[data-slot="tab-link"][data-link="hill"]');
+
+  it("has no Hill item where the snapshot carries no hill, and no row above the list", async () => {
+    renderHome(solo());
+    await settled();
+    expect(hillItem()).toBeNull();
+    expect(document.querySelector('[data-slot="hill-entry"]')).toBeNull();
+  });
+
+  it("is the fourth item at the bar's right end, with no badge while nothing is open, and not selected on the Dashboard", async () => {
+    renderHome({ ...packed(), hill: true });
+    await settled();
+    const cells = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')];
+    expect(cells.map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Crew", "Dashboard", "Files", "Hill"]);
+    expect(hillItem()!.querySelector('[data-icon="hill"]')).not.toBeNull();
+    expect(hillItem()!.querySelector('[data-slot="tab-badge"]')).toBeNull();
+    expect(hillItem()).not.toHaveAttribute("aria-current");
+    // Today's bar otherwise: equal widths, nothing scrolls.
+    expect(bar().dataset.mode).toBe("equal");
+  });
+
+  it("a solo bridge with a hill and no tricks draws the bar: Dashboard, Files and the Hill, with nothing open", async () => {
+    renderHome({ ...solo(), hill: true });
+    await settled();
+    const cells = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')];
+    expect(cells.map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Files", "Hill"]);
+    expect(hillItem()!.querySelector('[data-slot="tab-badge"]')).toBeNull();
+    expect(bar().dataset.mode).toBe("equal");
+  });
+
+  it("carries the open count in the bar's red badge, and a tap opens the Hill without selecting it", async () => {
+    await openOnHill(3);
+    const router = renderHome({ ...solo(), hill: true });
+    await settled();
+    const item = hillItem()!;
+    expect(item.querySelector('[data-slot="tab-badge"]')).toHaveTextContent("3");
+    expect(item).toHaveAccessibleName("Hill, 3 Decisions wait on you");
+    // One of them is `now`: the mountain wears its snow cap in the warm accent (A5).
+    expect(item.querySelector('[data-icon="hill-now"]')?.getAttribute("class")).toContain("text-status-working");
+    await userEvent.click(item);
+    await waitFor(() => expect(url(router)).toBe("/hill"));
+  });
+});
+
+describe("the tricks' places on the Dashboard (2026-11-10)", () => {
+  let rev = 100;
+  const item = (trick: string, at: "dashboard" | "tabbar", it: PlaceItem): WireTrickPart => ({
+    host: "lodge",
+    trick,
+    part: at,
+    rev: 1,
+    asOf: new Date().toISOString(),
+    value: { at, id: at, item: it },
+  });
+  async function seed(parts: WireTrickPart[]) {
+    rev += 1;
+    const tricks = [...new Set(parts.map((p) => p.trick))].map((id) => ({ host: "lodge", id, name: id, icon: "flask" as const, on: true, state: "ok" as const, places: ["dashboard" as const, "tabbar" as const] }));
+    const reply: TricksReply = { rev, tricks, parts, present: parts.map(partKey) };
+    server.use(http.get(/\/api\/tricks/, () => HttpResponse.json(reply)));
+    await act(() => tricksStore.syncTricks(rev));
+  }
+  afterEach(async () => seed([]));
+
+  const strip = () => document.querySelector<HTMLElement>('[data-slot="trick-dashboard-strip"]');
+  const bar = () => document.querySelector<HTMLElement>('[data-slot="tab-bar"]')!;
+
+  it("draws no strip and today's bar while no trick has a place there", async () => {
+    renderHome({ ...packed(), hill: true });
+    await settled();
+    expect(strip()).toBeNull();
+    expect(bar().dataset.mode).toBe("equal");
+    expect(bar().querySelector('[data-slot="tab-bar-divider"]')).toBeNull();
+  });
+
+  it("draws the tiles above the summary line on the Dashboard, in manifest order, and not on Crew", async () => {
+    await seed([item("legs", "dashboard", { label: "Legs", badge: 3 }), item("tracker", "dashboard", { label: "Tracker", tone: "accent" })]);
+    renderHome(packed());
+    await settled();
+    const tiles = [...strip()!.querySelectorAll<HTMLElement>('[data-slot="tile"]')];
+    expect(tiles.map((tile) => tile.dataset.trick)).toEqual(["legs", "tracker"]);
+    const summary = document.getElementById("dash-summary-line")!;
+    expect(strip()!.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.click(within(bar()).getByRole("button", { name: /^Crew$/ }));
+    expect(strip()).toBeNull();
+    await userEvent.click(within(bar()).getByRole("button", { name: /^Files$/ }));
+    expect(strip()).toBeNull();
+  });
+
+  it("draws today's bar with the Hill when every trick is switched off: their bar items are not drawn", async () => {
+    rev += 1;
+    const parts = [item("legs", "tabbar", { label: "Legs" }), item("tracker", "tabbar", { label: "Tracker" })];
+    const tricks = ["legs", "tracker"].map((id) => ({ host: "lodge", id, name: id, icon: "flask" as const, on: false, state: "ok" as const, places: ["tabbar" as const] }));
+    const reply: TricksReply = { rev, tricks, parts, present: parts.map(partKey) };
+    server.use(http.get(/\/api\/tricks/, () => HttpResponse.json(reply)));
+    await act(() => tricksStore.syncTricks(rev));
+    renderHome({ ...solo(), hill: true });
+    await settled();
+    expect(bar().dataset.mode).toBe("equal");
+    expect(bar().querySelector('[data-slot="tab-extra"]')).toBeNull();
+    expect(bar().querySelector('[data-slot="tab-link"][data-link="hill"]')).not.toBeNull();
+  });
+
+  it("draws the bar, in its equal mode, for a trick with only a dashboard tile", async () => {
+    await seed([item("legs", "dashboard", { label: "Legs", badge: 3 })]);
+    renderHome({ ...solo(), hill: true });
+    await settled();
+    expect(strip()).not.toBeNull();
+    expect(bar().dataset.mode).toBe("equal");
+    expect(bar().querySelector('[data-slot="tab-extra"]')).toBeNull();
+    expect([...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')].map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Files", "Hill"]);
+  });
+
+  it("puts the tabbar items after the Hill and a divider, and pins the tabs", async () => {
+    await seed([item("legs", "tabbar", { label: "Legs", badge: "23/34" })]);
+    renderHome({ ...packed(), hill: true });
+    await settled();
+    expect(bar().dataset.mode).toBe("scroll");
+    const order = [...bar().querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"], [data-slot="tab-bar-divider"], [data-slot="tab-extra"]')].map(
+      (el) => el.dataset.trick ?? el.dataset.link ?? el.dataset.slot,
+    );
+    expect(order).toEqual(["tab", "tab", "tab", "hill", "tab-bar-divider", "legs"]);
+  });
+});
+
+// THE SESSION FILTER on the Dashboard (M97 spec 04): its query lives in memory, per machine, while the app is open.
+describe("the dashboard's session filter", () => {
+  const extra = (n: number, workspaceLabel: string, sessionName: string) => ({
+    ...fixtureAgents[0]!,
+    paneId: `w${n}:p1`,
+    workspaceId: `w${n}`,
+    workspaceNumber: n,
+    workspaceLabel,
+    tabId: `w${n}:t1`,
+    sessionName,
+    status: "idle" as const,
+    cwd: `/home/you/${workspaceLabel}`,
+  });
+  const many = () =>
+    homeData({
+      agents: [...fixtureAgents, extra(5, "moonward", "api server"), extra(6, "moonward", "migrations"), extra(7, "scratch", "notes"), extra(8, "scratch", "ideas")],
+      shellPanes: [],
+      sessions: fixtureSessions,
+    });
+  const magnifier = () => screen.getByRole("button", { name: "Filter sessions" });
+  const field = () => screen.getByRole("textbox", { name: "Filter sessions" });
+  /** The session rows on screen, by DOM id: the Spaces overview below draws workspace names too, and the filter leaves it alone. */
+  const rows = () => document.querySelectorAll("button[id^='pane-row-']").length;
+
+  beforeEach(() => __resetDashFilter());
+
+  it("keeps the query, and the open field, across a visit to a session and back", async () => {
+    const router = renderHome(many());
+    await settled();
+    await userEvent.click(magnifier());
+    await userEvent.type(await screen.findByRole("textbox", { name: "Filter sessions" }), "moon");
+    expect(rows()).toBe(2);
+
+    await act(async () => {
+      await router.navigate("/pane/w5%3Ap1");
+    });
+    await screen.findByTestId("pane");
+    await act(async () => {
+      await router.navigate("/");
+    });
+    await settled();
+    expect(field()).toHaveValue("moon");
+    expect(magnifier()).toHaveAttribute("aria-pressed", "true");
+    expect(rows()).toBe(2);
+  });
+
+  it("starts empty on a fresh page: the query is never stored on the device", async () => {
+    renderHome(many());
+    await settled();
+    await userEvent.click(magnifier());
+    await userEvent.type(await screen.findByRole("textbox", { name: "Filter sessions" }), "moon");
+    expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain("moon");
+    cleanup();
+    // A page load empties the module's store; the same reset stands in for it here.
+    __resetDashFilter();
+    renderHome(many());
+    await settled();
+    expect(screen.queryByRole("textbox", { name: "Filter sessions" })).toBeNull();
+    expect(magnifier()).toHaveAttribute("aria-pressed", "false");
+    expect(rows()).toBe(6);
+  });
+
+  it("restores the scroll position of the list when it comes back filtered", async () => {
+    const key = `home:${"\u0000"}`;
+    rememberScroll(key, 120);
+    renderHome(many());
+    await settled();
+    await userEvent.click(magnifier());
+    await userEvent.type(await screen.findByRole("textbox", { name: "Filter sessions" }), "moon");
+    expect(recallScroll(key)).toBe(120);
+  });
+
+  it("offers no magnifier on a Dashboard of five rows or fewer", async () => {
+    renderHome(solo());
+    await settled();
+    expect(screen.queryByRole("button", { name: "Filter sessions" })).toBeNull();
   });
 });

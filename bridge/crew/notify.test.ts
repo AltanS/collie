@@ -189,6 +189,19 @@ describe("PeerNotifier — a peer's alerts on the lead's phone", () => {
     });
   });
 
+  test("a member's trick session (M94) never pushes, even on a status a trick pane never has", () => {
+    const { clock, push, peer } = notifier();
+    const trick = (status: AgentStatus) => pane("trick:laptop:legs:legs", status, "legs", { kind: "trick", workspaceId: "trick:laptop", tabId: "trick:laptop:legs" });
+    peer.observe("laptop", body([trick("working"), pane("p1", "working")]));
+    peer.observe("laptop", body([trick("blocked"), pane("p1", "working")]));
+    clock.fireAll();
+    expect(push.sent).toEqual([]);
+    // The same sweep with a real pane blocking does push: the filter is the trick pane's alone.
+    peer.observe("laptop", body([trick("done"), pane("p1", "blocked")]));
+    clock.fireAll();
+    expect(push.sent).toHaveLength(1);
+  });
+
   test("a pane that stays blocked across many sweeps is announced exactly once", () => {
     const { clock, push, peer } = notifier();
     peer.observe("laptop", body([pane("p1", "working")]));

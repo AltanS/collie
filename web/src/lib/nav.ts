@@ -146,6 +146,14 @@ export function filesFolders(at: FilesAt): string[] {
   return folders;
 }
 
+/**
+ * A trick's own session (M94 slice 03): the screen with its view and its actions, one level below the
+ * Dashboard. The id names its host (`trick:<host>:<trick>:<part>`), so no `?h=` rides along.
+ */
+export function trickSessionPath(paneId: string): string {
+  return `/trick/${encodeURIComponent(paneId)}`;
+}
+
 /** A space's detail route (its tabs + panes). Deep-linkable; carries the scope like panePath. */
 export function spacePath(spaceId: string, scope?: Scope): string {
   return `/space/${encodeURIComponent(spaceId)}${scopeSearch(scope)}`;
@@ -277,10 +285,11 @@ export function readNewAt(search: string): NewAt {
  * instead of a page that renders nothing.
  *
  * The fifth is the only one that can be absent from the index: Experiments renders while
- * `lib/experiments.ts` holds something. Its path needs nothing here — the two ladders below already
- * read every `/settings/<x>` as a child of the index.
+ * `lib/experiments.ts` holds something; Tricks (M94) renders while the phone holds a tricks reply. Their
+ * paths need nothing here — the two ladders below already read every `/settings/<x>` as a child of
+ * the index.
  */
-export type SettingsSection = "appearance" | "harnesses" | "device" | "voice" | "alerts" | "system" | "experiments";
+export type SettingsSection = "appearance" | "harnesses" | "device" | "voice" | "alerts" | "system" | "tricks" | "experiments";
 
 /** One Settings section — a CHILD of the index, carrying the scope like every other path helper. */
 export function settingsSectionPath(section: SettingsSection, scope?: Scope): string {
@@ -304,6 +313,14 @@ export function voicePagePath(page: VoicePage, scope?: Scope): string {
  */
 export function crewPath(scope?: Scope): string {
   return `/crew${scopeSearch(scope)}`;
+}
+
+/**
+ * The hill (M96): the Decisions agents posted. A CHILD of the Dashboard, opened from the bottom bar. Carries the
+ * scope like the others, so Back returns to the machine and session the Dashboard was showing.
+ */
+export function hillPath(scope?: Scope): string {
+  return `/hill${scopeSearch(scope)}`;
 }
 
 /**
@@ -441,12 +458,15 @@ export function pathOnly(href: string): string {
 const ANY_SPACE = "/space/*";
 /** Likewise for a pane: the New page is opened from any one of them. */
 const ANY_PANE = "/pane/*";
+/** A trick session: a trick's view opens a pane, and back comes up to the view (M94 slice 03). */
+const ANY_TRICK = "/trick/*";
 
 /**
  * Every pathname that may legitimately sit above `pathname` in the level tree, nearest first.
  *
  *   L0 `/`
- *   L1 `/space/:id`, `/settings`, `/crew`, `/new` (from the dashboard, a space or a pane)
+ *   L1 `/space/:id`, `/settings`, `/crew`, `/hill`, `/new` (from the dashboard, a space or a pane)
+ *   L1 `/trick/:id`, a trick session (M94 slice 03)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
  *   L3 `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
@@ -477,11 +497,20 @@ export function ancestorsOf(pathname: string): string[] {
   if (head === "pane" && seg.length === 4 && leaf === "changes" && seg[3] === "files") {
     return [`/pane/${id}/changes`, `/pane/${id}`, ANY_SPACE, "/"];
   }
-  if (head === "pane" && seg.length === 2) return [ANY_SPACE, "/"];
+  if (head === "pane" && seg.length === 2) return [ANY_SPACE, "/", ANY_TRICK];
   if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "zoom" || leaf === "changes")) {
     return [`/pane/${id}`, ANY_SPACE, "/"];
   }
+  // A trick session sits on the Dashboard (M94 slice 03). It is opened from a pane too (Switch session,
+  // a belt mark), and a trick's own view may open another trick's session.
+  if (head === "trick" && seg.length === 2) return ["/", ANY_PANE, ANY_TRICK];
   if (head === "settings" && seg.length === 1) return ["/"];
+  // The hill is opened from the bottom bar's fixed Hill item (M96): down from the Dashboard, or sideways
+  // from a trick's Session, where the bar stays too (amended 2026-11-10). A sideways move carries `from`,
+  // so the Dashboard is its only parent either way.
+  if (head === "hill" && seg.length === 1) return ["/"];
+  // The approver's page (ADR 0139) is opened from a QR, from outside the app: the Dashboard is its parent.
+  if (head === "pair" && seg.length === 2 && id === "approve") return ["/"];
   // A durable program's conversations are opened from a space's sheet (dashboard or space page) and
   // from a pane's menu; one conversation sits below the list.
   if (head === "conversations" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
@@ -537,6 +566,7 @@ export function decodedPath(pathname: string): string {
 function matches(pattern: string, pathname: string): boolean {
   if (pattern === ANY_SPACE) return /^\/space\/[^/]+$/.test(pathname);
   if (pattern === ANY_PANE) return /^\/pane\/[^/]+$/.test(pathname);
+  if (pattern === ANY_TRICK) return /^\/trick\/[^/]+$/.test(pathname);
   return decodedPath(pattern) === decodedPath(pathname);
 }
 
@@ -710,11 +740,14 @@ export function parentChain(pathname: string, search: string): string[] {
     return [...chain, filesUnder(list), ...filesFolders(at).slice(0, at.path !== undefined ? undefined : -1).map((dir) => filesUnder(list, { dir }))];
   }
   if (head === "pane" && seg.length === 2) return [home];
+  if (head === "trick" && seg.length === 2) return [home];
   if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "zoom" || leaf === "changes")) {
     const pane = `/pane/${id}${q}`;
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }
   if (head === "settings" && seg.length === 1) return [home];
+  if (head === "hill" && seg.length === 1) return [home];
+  if (head === "pair" && seg.length === 2 && id === "approve") return [home];
   // The conversations list: behind it the pane it was opened for, else the dashboard. One conversation
   // sits under the dashboard, which is a durable machine's conversation list (M53 spec 12).
   if (head === "conversations" && seg.length === 1) {

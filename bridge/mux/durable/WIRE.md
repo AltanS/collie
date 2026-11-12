@@ -762,6 +762,8 @@ cut.
 
 - An object in a reply whose id breaks the rule is **dropped** by the adapter, with everything that
   hangs from it (a pane with a bad `tabId` is dropped too).
+- A workspace, tab or pane id that starts with `trick:` is reserved for Collie's own trick sessions and
+  is dropped the same way.
 - A request whose id breaks the rule gets 400 `bad-id` from the program. The adapter checks first
   and never sends one.
 

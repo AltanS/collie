@@ -1,0 +1,93 @@
+{
+  "belt": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "belt",
+        "id": "belt",
+        "mark": {
+          "icon": "flask",
+          "label": "23/34",
+          "tone": "accent",
+          "intent": "open"
+        }
+      }
+    ]
+  },
+  "session": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "session",
+        "id": "deploy",
+        "name": "Deploy",
+        "icon": "machine",
+        "subtitle": "colliepwa.dev at 72f69369",
+        "badge": {
+          "text": "live"
+        },
+        "progress": {
+          "value": 1
+        },
+        "actions": [
+          {
+            "id": "redeploy",
+            "label": "Redeploy",
+            "intent": "redeploy",
+            "icon": "refresh"
+          }
+        ],
+        "view": [
+          {
+            "kind": "para",
+            "text": "Three containers up."
+          }
+        ]
+      }
+    ]
+  },
+  "dashboard": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "dashboard",
+        "id": "glance",
+        "item": {
+          "icon": "file",
+          "label": "Tracker",
+          "badge": 3,
+          "tone": "accent"
+        }
+      }
+    ]
+  },
+  "status": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "status",
+        "id": "tag",
+        "chip": {
+          "text": "tag 5/7",
+          "icon": "tag",
+          "tone": "accent"
+        }
+      }
+    ]
+  },
+  "tabbar": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "tabbar",
+        "id": "legs",
+        "item": {
+          "icon": "flask",
+          "label": "Legs",
+          "badge": "23/34",
+          "tone": "ok"
+        }
+      }
+    ]
+  }
+}

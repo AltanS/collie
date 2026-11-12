@@ -495,3 +495,29 @@ describe("send-keys with this adapter's own read-only watcher attached", () => {
     expect(sendKeys(fake)).toHaveLength(1);
   });
 });
+
+describe("whether a space has a name of its own (M98)", () => {
+  test("a session the operator named is named", async () => {
+    const pane = await paneOf(new TmuxMux(new FakeTmux()), TITLED_PANE);
+    expect(pane.spaceLabel).toBe("collie");
+    expect(pane.spaceNamed).toBe(true);
+  });
+
+  test("a session tmux numbered itself is not named: every machine has a `0`", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    const created = await adapter.createSpace({ cwd: "/tmp" });
+    if (!created.ok) throw new Error("unreachable");
+    const pane = await paneOf(adapter, created.value.paneId);
+    expect(pane.spaceLabel).toMatch(/^\d+$/u);
+    expect(pane.spaceNamed).toBe(false);
+  });
+
+  test("a session named with letters next to digits is named", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    const created = await adapter.createSpace({ cwd: "/tmp", label: "api2" });
+    if (!created.ok) throw new Error("unreachable");
+    expect((await paneOf(adapter, created.value.paneId)).spaceNamed).toBe(true);
+  });
+});

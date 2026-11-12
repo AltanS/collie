@@ -27,6 +27,8 @@ import {
   readFailureKind,
 } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
+import { splitTrickSessions } from "@/lib/tricks/places";
+import { syncTricks } from "@/lib/tricks/store";
 import { noteUpdateRun } from "./self-update";
 import { splitLines } from "@/lib/blocks";
 import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
@@ -35,6 +37,8 @@ import { markLive as markPaneLive, markSavedCopy } from "@/lib/liveness";
 import { paneGridOf, settleSessionCapabilities } from "@/lib/mux-capability";
 import { ambientSpaces, findPane } from "@/lib/hosts";
 import { noteSessionCards } from "@/lib/session-cards";
+import { syncHill } from "@/lib/hill/store";
+import { syncAgentViews } from "@/lib/agent-view/store";
 import {
   loadLastPaneText,
   loadLastSnapshot,
@@ -123,6 +127,24 @@ export interface HomeData {
   /** Every machine's workspaces from the snapshot (issue #587), so the herd list folds linked worktrees on peers too. */
   herdWorkspaces?: WorkspaceView[];
   tabs: TabView[];
+  /**
+   * The trick sessions (M94 slice 03): the panes of `kind: "trick"`, out of `agents` and the Tricks Space out of
+   * `workspaces` and `tabs`, in the bridge's order. Optional in the TYPE only, so hand-built fixtures stay
+   * valid; every loader return sets it, empty on a body with no trick session.
+   */
+  trickSessions?: AgentView[];
+  /**
+   * Whether this view has a hill (M96): the snapshot carries `hillRev`. False on a bridge older than the
+   * hill and on a crew member's own scope, where the Dashboard's bar draws no Hill item. Optional in the
+   * TYPE only, so hand-built fixtures stay valid.
+   */
+  hill?: boolean;
+  /**
+   * Whether the Hill is switched off on this bridge: the snapshot carries `hillOff` (and then no
+   * `hillRev`, so `hill` is false). The Hill's route and its row in Settings read it. Optional in the
+   * TYPE only, so hand-built fixtures stay valid.
+   */
+  hillOff?: boolean;
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
@@ -373,9 +395,14 @@ function toHomeData(
   // merged into the next one, so a pane that moves between the two lists keeps its reading and a pane
   // in neither list drops it. This runs on the stale path as well, because the same snapshot read
   // twice may not answer twice.
+  // THE TRICK SESSIONS (M94 slice 03) leave the herd here, with their Space and tabs, into a list of
+  // their own (lib/tricks/places.ts says why). A body with none hands every list back unchanged. A live
+  // answer also brings the tricks store to the body's `tricksRev`: no timer of its own, the snapshot's cadence.
+  const split = splitTrickSessions({ agents: snap.agents, shellPanes: snap.shellPanes ?? [], workspaces: snap.workspaces ?? [], tabs: snap.tabs ?? [] });
+  if (!error) void syncTricks(snap.tricksRev);
   const holdIn = paneCacheHold;
-  const agents = holdCacheReadings(holdIn, snap.agents);
-  const shells = holdCacheReadings(holdIn, snap.shellPanes ?? []);
+  const agents = holdCacheReadings(holdIn, split.agents);
+  const shells = holdCacheReadings(holdIn, split.shellPanes);
   paneCacheHold = new Map([...agents.held, ...shells.held]);
   const home: HomeData = {
     lastSeenAt,
@@ -388,9 +415,12 @@ function toHomeData(
     // beside them: the navigator is a tree of ONE machine, and on a crew the lead's merged body now
     // carries every machine's spaces. A solo body carries no host on any row, so both calls pass
     // everything through by identity and nothing about a solo dashboard changes.
-    workspaces: ambientSpaces(snap.workspaces ?? [], scope, snap.servers),
-    herdWorkspaces: snap.workspaces ?? [],
-    tabs: ambientSpaces(snap.tabs ?? [], scope, snap.servers),
+    workspaces: ambientSpaces(split.workspaces, scope, snap.servers),
+    herdWorkspaces: split.workspaces,
+    tabs: ambientSpaces(split.tabs, scope, snap.servers),
+    trickSessions: split.trickSessions,
+    hill: snap.hillRev !== undefined,
+    hillOff: snap.hillOff === true,
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,
@@ -444,6 +474,7 @@ async function staleHome(scope: Scope, viewAll: boolean): Promise<HomeData> {
     shellPanes: [],
     workspaces: [],
     tabs: [],
+    trickSessions: [],
     sessions: [],
     servers: [],
     ts: 0,
@@ -494,6 +525,11 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
       } else snap = outcome;
     } else snap = await fetching;
     answeredLive = true;
+    // The hill reads its list when the snapshot's number moved (lib/hill/store.ts). Live snapshots
+    // only: a saved copy's number is as old as the copy, and the store keeps what it last read.
+    syncHill(snap.hillRev);
+    // The agent views are read the same way, on their own number (lib/agent-view/store.ts).
+    syncAgentViews(snap.trickViewsRev);
     lastSnapshot.set(snapshotKey(scope, viewAll), snap);
     lastSnapshotAt.set(snapshotKey(scope, viewAll), Date.now());
     // Write-through: the same body, dated, in a store that outlives this page (lib/last-seen.ts).
@@ -935,6 +971,12 @@ export interface DevicesData {
   devices: PairedDeviceWire[];
   /** True when the fetch failed — the lists below are then empty rather than authoritative. */
   error: boolean;
+  /**
+   * True when that failure was a 401 or 403 that is not the bridge's own pairing refusal: the read
+   * was refused, so nothing here is known, and the card says so instead of "could not load". Only
+   * ever set together with `error`.
+   */
+  denied?: boolean;
 }
 
 /**
@@ -968,6 +1010,9 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
     // answer, not a failure: pairing is on and this device is not in it, and the card then offers the
     // pair form. The latch was already set where the refusal was read (lib/api.ts).
     if (isPairingRefusal(e)) return { enforced: true, current: null, devices: [], error: false };
+    // Any other refusal (a fronting proxy's 401/403) is a read that was refused: the card says that
+    // this browser is not allowed to read, and does not guess what is or is not paired.
+    if (isAuthError(e)) return { enforced: false, current: null, devices: [], error: true, denied: true };
     // Any other failed read says nothing about pairing, so the latch is left exactly as it was.
     return { enforced: false, current: null, devices: [], error: true };
   }

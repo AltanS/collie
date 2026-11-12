@@ -317,6 +317,20 @@ function idOf(object: JsonObject, key: string): string | null {
   return isText(value) && isWireId(value) ? value : null;
 }
 
+/**
+ * The prefix of Collie tricks' own Space, tab and session ids (M94, web/src/lib/tricks/schema.ts
+ * `TRICK_SESSION_PREFIX`). Reserved the way ADR 0104 reserves a source name: a workspace, tab or pane a
+ * program names with it is dropped like a bad id, so a program's conversation never answers to a trick
+ * session's address. Spelled out, not imported, so this file keeps no edge into the web tree.
+ */
+export const RESERVED_ID_PREFIX = "trick:";
+
+/** A layout id field (workspace, tab, pane), or null when it breaks the id rule or takes the reserved prefix. */
+function layoutIdOf(object: JsonObject, key: string): string | null {
+  const id = idOf(object, key);
+  return id === null || id.startsWith(RESERVED_ID_PREFIX) ? null : id;
+}
+
 /** An absolute path inside its cap, or undefined. A path over the cap is ignored, not cut. */
 function cwdOf(object: JsonObject): string | undefined {
   const value = object.cwd;
@@ -637,7 +651,7 @@ function readAsk(value: Json): DurableAsk | null {
 
 function readWorkspace(value: Json): DurableWorkspace | null {
   if (!isRecord(value)) return null;
-  const id = idOf(value, "id");
+  const id = layoutIdOf(value, "id");
   if (id === null) return null;
   const cwd = cwdOf(value);
   return { id, title: textOf(value, "title", CAPS.title), cwd };
@@ -645,7 +659,7 @@ function readWorkspace(value: Json): DurableWorkspace | null {
 
 function readTab(value: Json, workspaces: ReadonlyMap<string, DurableWorkspace>): DurableTab | null {
   if (!isRecord(value)) return null;
-  const id = idOf(value, "id");
+  const id = layoutIdOf(value, "id");
   const workspaceId = idOf(value, "workspaceId");
   if (id === null || workspaceId === null || !workspaces.has(workspaceId)) return null;
   return { id, workspaceId, title: textOf(value, "title", CAPS.title) };
@@ -682,7 +696,7 @@ function readPane(
   tabs: ReadonlyMap<string, DurableTab>,
 ): DurablePane | null {
   if (!isRecord(value)) return null;
-  const id = idOf(value, "id");
+  const id = layoutIdOf(value, "id");
   const workspaceId = idOf(value, "workspaceId");
   const tabId = idOf(value, "tabId");
   const turnId = idOf(value, "turnId");

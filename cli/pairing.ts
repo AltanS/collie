@@ -175,9 +175,10 @@ function parsePairArgs(
 
 /**
  * What `collie pair` (every form, `--json` included) says inside an agent's pane, on stderr. A SPEED BUMP,
- * NOT A WALL: the CLI asks the running bridge over the walky socket whether the pane its markers name
- * runs an agent, and refuses only on a yes. A paired device can read and drive every pane, so an agent
- * that pairs one for itself has skipped every tap Collie asks a person for. No bridge, a bridge
+ * NOT A WALL, the same one `collie trick on` has (cli/trick.ts `agentPaneRefusal`): the CLI asks the
+ * running bridge over the walky socket whether the pane its markers name runs an agent, and refuses only
+ * on a yes. A paired device can read and drive every pane, approve a trick and answer a Decision, so an
+ * agent that pairs one for itself has skipped every tap Collie asks a person for. No bridge, a bridge
  * that does not know the pane, or no markers at all lets `pair` run as before; a process that strips the
  * markers, or writes the pending file itself, gets past any check here. The user account is the real
  * boundary (docs/security.md, "What a program running as you can still do").

@@ -262,8 +262,8 @@ describe("collie pair", () => {
     });
   });
 
-  // A speed bump, not a wall: the bridge says whether this pane runs an agent, and `pair` refuses only
-  // on a yes.
+  // A speed bump, not a wall, the same one `collie trick on` has: the bridge says whether this pane runs
+  // an agent, and `pair` refuses only on a yes.
   describe("inside an agent's pane", () => {
     const PANE = { HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" };
 

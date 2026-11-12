@@ -187,6 +187,13 @@ export interface MuxPane extends MuxIdentity {
   readonly paneId: string;
   readonly spaceId: string;
   readonly spaceLabel: string;
+  /**
+   * True when `spaceLabel` is a name of the space's own: one the operator or the multiplexer's own naming
+   * gave it, never the id it fell back to and never a label derived from a folder. Walky talky reads it
+   * (bridge/walky/space.ts): a named space joins the space of the same name on another machine, an unnamed
+   * one stays on its machine. Each adapter says it; absent means `spaceLabel !== spaceId`.
+   */
+  readonly spaceNamed?: boolean;
   /** The space's position, as the multiplexer orders them. 1-based; 0 when it has no ordering. */
   readonly spaceNumber: number;
   readonly tabId: string;

@@ -1,7 +1,8 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { formatCost, hasFigure, hasGauge, ModelTag } from "./model-tag";
+import type { StatusItem } from "./trick-status-item";
 
 describe("ModelTag", () => {
   it("draws the short model name, named for a screen reader, and takes no touch", () => {
@@ -164,5 +165,79 @@ describe("ModelTag session cost", () => {
     const { container } = render(<ModelTag model="claude-opus-5-5" usage={{ cost: 0.11 }} />);
     expect(container.querySelector("[aria-hidden]")?.textContent).toBe("Opus 5.5$0.11");
     expect(container.querySelector(".sr-only")?.textContent).toBe("Model Opus 5.5. Session cost $0.11");
+  });
+});
+
+describe("ModelTag trick status items", () => {
+  const items: StatusItem[] = ["a", "b", "c"].map((id) => ({ id, trick: id, face: <span data-w="60">{`item ${id}`}</span> }));
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const name of ["offsetWidth", "scrollWidth", "clientWidth"]) Reflect.deleteProperty(HTMLElement.prototype, name);
+  });
+
+  /** jsdom has no layout: each element is as wide as its `data-w`, else 5px a character, else its first child's. */
+  function stubLayout() {
+    const width = (el: HTMLElement): number => {
+      const own = el.dataset.w;
+      if (own !== undefined) return Number(own);
+      const child = el.firstElementChild;
+      if (child instanceof HTMLElement && child.dataset.w !== undefined) return Number(child.dataset.w);
+      return (el.textContent ?? "").length * 5;
+    };
+    for (const name of ["offsetWidth", "scrollWidth", "clientWidth"]) {
+      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get(this: HTMLElement) { return width(this); } });
+    }
+  }
+  const hidden = (container: HTMLElement) => [...container.querySelectorAll("[data-status-item]")].filter((el) => el.hasAttribute("data-hidden")).map((el) => el.getAttribute("data-status-item"));
+
+  it("draws the items after Collie's own, in order, and a lone item draws the tag with no model", () => {
+    const { container } = render(<ModelTag model="claude-opus-5-5" trailing={items} />);
+    const row = container.querySelector("[data-slot='model-tag']")?.textContent;
+    expect(row).toContain("Opus 5.5item aitem bitem c");
+    expect(container.querySelectorAll("[data-status-item]")).toHaveLength(3);
+    expect(render(<ModelTag model={undefined} trailing={items.slice(0, 1)} />).container.querySelector("[data-slot='model-tag']")?.textContent).toBe("item a");
+    expect(render(<ModelTag model={undefined} trailing={[]} />).container.innerHTML).toBe("");
+  });
+
+  it("keeps the tag a box of no line and the tag itself touch-free", () => {
+    const { container } = render(<ModelTag model="claude-opus-5-5" trailing={items} />);
+    const tag = container.querySelector("[data-slot='model-tag']");
+    expect(tag?.className).toContain("pointer-events-none");
+    expect(tag?.className).toContain("absolute");
+    expect(tag?.className).not.toMatch(/(^|\s)(flex|block|relative|static)(\s|$)/);
+  });
+
+  it("hides the newest items first when the row is wider than its room, inert and invisible, still in the tree", () => {
+    stubLayout();
+    // The mirror box is 280px: 70% is 196, less 8 of padding, 188. "Opus 5.5" is 40, each item 60, gaps of 6:
+    // 40 + 6 + 60 + 6 + 60 = 172 fits two; the third would make 238.
+    const { container } = render(
+      <div data-w="280">
+        <ModelTag model="claude-opus-5-5" trailing={items} />
+      </div>,
+    );
+    expect(hidden(container)).toEqual(["c"]);
+    const c = container.querySelector("[data-status-item='c']");
+    expect(c?.className).toContain("invisible");
+    expect(c?.hasAttribute("inert")).toBe(true);
+    expect(container.querySelector("[data-status-item='a']")?.hasAttribute("inert")).toBe(false);
+  });
+
+  it("hides every item before it lets the model name shrink, and hides none with room to spare", () => {
+    stubLayout();
+    const narrow = render(
+      <div data-w="100">
+        <ModelTag model="claude-opus-5-5" trailing={items} />
+      </div>,
+    );
+    expect(hidden(narrow.container)).toEqual(["a", "b", "c"]);
+    expect(narrow.container.querySelector("[data-slot='usage-own']")?.textContent).toBe("Opus 5.5");
+    const wide = render(
+      <div data-w="600">
+        <ModelTag model="claude-opus-5-5" trailing={items} />
+      </div>,
+    );
+    expect(hidden(wide.container)).toEqual([]);
   });
 });

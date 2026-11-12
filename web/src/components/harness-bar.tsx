@@ -10,7 +10,7 @@ import type { Hand } from "@/hooks/use-display-prefs";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
-import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
+import { useArm } from "@/hooks/use-arm";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { barFor, PROGRAM_MARK, durableBarFor, type DurableBarItem, type HarnessBarItem } from "@/lib/harness-bar";
 import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
@@ -462,39 +462,26 @@ export interface ScreenStopProps {
  */
 export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }: ScreenStopProps) {
   useLocale();
-  const [armed, setArmed] = useState(false);
+  const { armed: armedKey, tap: arm, disarm } = useArm<"stop">();
+  const armed = armedKey === "stop";
   const [busy, setBusy] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const armedAt = useRef(0);
   const flying = useRef(false);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
   // A button that stops being pressable also stops being armed, and so does one on another pane or
   // over a turn that no longer runs: the arm was for that turn.
   useEffect(() => {
     if (disabled !== true && running) return;
-    clearTimeout(timer.current);
-    setArmed(false);
-  }, [disabled, running]);
+    disarm();
+  }, [disabled, running, disarm]);
   useEffect(() => {
-    clearTimeout(timer.current);
-    setArmed(false);
-  }, [paneId]);
+    disarm();
+  }, [paneId, disarm]);
 
   async function tap() {
     // An idle turn has nothing to stop: no arm, no request. The bridge would only answer `turn_idle`.
     if (disabled === true || !running || flying.current) return;
-    if (!armed) {
-      setArmed(true);
-      armedAt.current = Date.now();
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => setArmed(false), ARM_MS);
-      return;
-    }
-    // Inside the dwell the tap is the same touch landing twice, not a second decision.
-    if (Date.now() - armedAt.current < ARM_DWELL_MS) return;
-    clearTimeout(timer.current);
-    setArmed(false);
+    // The first tap arms; a tap inside the dwell is the same touch landing twice (lib/arm.ts).
+    if (arm("stop") !== "fire") return;
     flying.current = true;
     setBusy(true);
     try {

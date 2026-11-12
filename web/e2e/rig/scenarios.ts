@@ -41,6 +41,13 @@ export const SCENARIOS = [
   { id: "clear-pi", title: "28 Clear a pi draft from the Keys board", only: ["pi"] },
   // A send queued behind a running omp turn (ADR 0122), case 29: the receipt card, Stop, Send, Discard.
   { id: "queued-omp", title: "29 a queued send on omp: card, Stop, Send or Discard", only: ["omp"] },
+  // The space border (M98 spec 06): an agent's message stays in its space. Cases 30 to 33 start a throwaway
+  // Claude as the sender, in the run's own space (30) or in another one (31 to 33), and send through the CLI.
+  // Only 33 spends a model turn; the others hold what passes behind a draft, or are refused.
+  { id: "walky-space-in", title: "30 walky talky: a message inside the space passes", only: ["claude"] },
+  { id: "walky-space-refused", title: "31 walky talky: a message to another space is refused, nothing typed", only: ["claude"] },
+  { id: "walky-space-reply", title: "32 walky talky: a reply crosses the border, in both directions", only: ["claude"] },
+  { id: "walky-space-outside", title: "33 walky talky: --outside crosses, and the header says outside", only: ["claude"] },
   // The crew leg (crew.config.ts, walky-crew.spec.ts): a lead and a member. Each case is one row,
   // under the harness that starts it (Claude on the lead); pi on the member is its other end.
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },
@@ -50,6 +57,10 @@ export const SCENARIOS = [
   { id: "walky-crew-member-to-lead", title: "19 crew: member agent to lead agent and back", only: ["claude"], leg: "crew" },
   { id: "walky-crew-off", title: "20 crew: walky talky off on the member", only: ["claude"], leg: "crew" },
   { id: "walky-crew-pair-limit", title: "21 crew: the seventh message between two panes is refused", only: ["claude"], leg: "crew" },
+  // The same border across machines: a space is known by its name, so `here` reaches the member's space of the
+  // same name (34) and never an unnamed one (35). Both come after case 21 and leave pi's draft alone.
+  { id: "walky-crew-space-here", title: "34 crew: here reaches the space of the same name on the member", only: ["claude"], leg: "crew" },
+  { id: "walky-crew-space-unnamed", title: "35 crew: an unnamed space on the member is outside", only: ["claude"], leg: "crew" },
 ] as const;
 export type ScenarioId = (typeof SCENARIOS)[number]["id"];
 

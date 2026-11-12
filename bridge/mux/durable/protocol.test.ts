@@ -399,6 +399,26 @@ describe("the id rule drops what hangs from a bad id", () => {
     expect(snapshot.panes.map((pane) => pane.id)).toEqual(["conv-02", "conv-03", "conv-04"]);
   });
 
+  test("a pane, a tab or a workspace that takes a trick session's prefix is dropped like a bad id (M94)", () => {
+    const pane = read((raw) => {
+      raw.panes = raw.panes.map((p) => (p.id === "conv-03" ? { ...p, id: "trick:lodge:legs:legs" } : p));
+    });
+    expect(pane.panes.map((p) => p.id)).toEqual(["conv-01", "conv-02", "conv-04", "conv-05"]);
+    const tab = read((raw) => {
+      raw.tabs = raw.tabs.map((t) => (t.id === "ws-notes:research" ? { ...t, id: "trick:lodge:legs" } : t));
+    });
+    expect(tab.tabs.map((t) => t.id)).toEqual(["ws-notes:main", "ws-site:main"]);
+    const space = read((raw) => {
+      raw.workspaces = raw.workspaces.map((w) => (w.id === "ws-notes" ? { ...w, id: "trick:lodge" } : w));
+    });
+    expect(space.workspaces.map((w) => w.id)).toEqual(["ws-site"]);
+    // Only the prefix is reserved: an id that merely holds the word keeps its pane.
+    const near = read((raw) => {
+      raw.panes = raw.panes.map((p) => (p.id === "conv-03" ? { ...p, id: "modular:3" } : p));
+    });
+    expect(near.panes.map((p) => p.id)).toContain("modular:3");
+  });
+
   test("a repeated id keeps the first object", () => {
     const snapshot = read((raw) => {
       raw.panes = [...raw.panes, ...raw.panes.map((pane) => Object.assign({}, pane, { title: "second" }))];

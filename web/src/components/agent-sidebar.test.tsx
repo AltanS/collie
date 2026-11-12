@@ -1,12 +1,21 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ThreadSidebar } from "./agent-sidebar";
 import { CrewProvider } from "./crew-provider";
+import { BottomSheet } from "./ui/sheet";
 import { paneRowKey } from "@/lib/hosts";
 import { currentPins, setPinned } from "@/lib/pins";
 import { fixtureAgents, fixtureCrewAgents, fixtureServers, fixtureShellPanes } from "@/test/handlers";
 import type { AgentView, Launcher, WorkspaceView } from "@/lib/types";
+
+// The filter's own switch, for the one test that renders the list with the feature's code path off:
+// every other test runs the real `filterOffered`.
+const filterSwitch = vi.hoisted(() => ({ off: false }));
+vi.mock("@/lib/pane-filter", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/pane-filter")>();
+  return { ...real, filterOffered: (count: number) => !filterSwitch.off && real.filterOffered(count) };
+});
 
 const idleAgent: AgentView = {
   paneId: "w3:p1",
@@ -893,5 +902,273 @@ describe("ThreadSidebar: each row says its own status (#695)", () => {
     rerender(<ThreadSidebar agents={[{ ...resting, status: "working" }, working]} currentPaneKey="" onSelect={vi.fn()} />);
     expect(order()).toEqual(before);
     expect(within(row("reader")).getByRole("img", { name: "working" })).toBeInTheDocument();
+  });
+});
+
+// THE FILTER (M97 spec 03): a field over a long list, a loose match, the matched letters marked.
+describe("ThreadSidebar: the filter", () => {
+  const at = (paneId: string, workspaceId: string, workspaceLabel: string, workspaceNumber: number, over: Partial<AgentView> = {}): AgentView => ({
+    paneId,
+    workspaceId,
+    workspaceLabel,
+    workspaceNumber,
+    tabId: `${workspaceId}:t1`,
+    agent: "claude",
+    status: "idle",
+    cwd: `/home/you/${workspaceLabel}`,
+    focused: false,
+    ...over,
+  });
+  const RELEASE = at("w1:p1", "w1", "collie-workspace", 1, { paneLabel: "release notes", gitHead: { kind: "branch", name: "fix/748-sheet" } });
+  const TRIAGE = at("w1:p2", "w1", "collie-workspace", 1, { paneLabel: "triage" });
+  const API = at("w2:p1", "w2", "moonward", 2, { paneLabel: "api server", agent: "codex" });
+  const MIGRATE = at("w2:p2", "w2", "moonward", 2, { paneLabel: "migrations" });
+  const LANDING = at("w3:p1", "w3", "webapp", 3, { paneLabel: "landing page", status: "blocked" });
+  const AGENTS = [RELEASE, TRIAGE, API, MIGRATE, LANDING];
+  const SHELLS = [
+    at("w1:p8", "w1", "collie-workspace", 1, { agent: "shell", kind: "shell", status: "unknown", paneLabel: "dev server" }),
+    at("w2:p9", "w2", "moonward", 2, { agent: "shell", kind: "shell", status: "unknown", paneLabel: "logs" }),
+  ];
+  const field = () => screen.getByRole("textbox", { name: "Filter sessions" });
+  const rows = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>("button[data-pane-key]")].map((b) => b.dataset.paneKey);
+  const headings = () => screen.queryAllByRole("heading", { level: 3 }).map((h) => h.firstChild?.textContent ?? h.textContent);
+  const list = (over: Partial<React.ComponentProps<typeof ThreadSidebar>> = {}) => (
+    <ThreadSidebar agents={AGENTS} shellPanes={SHELLS} currentPaneKey="" onSelect={vi.fn()} {...over} />
+  );
+
+  afterEach(() => {
+    filterSwitch.off = false;
+  });
+
+  it("renders exactly what it rendered before below the block while the field is empty", () => {
+    // Off: the feature's code path never runs (no block, no match). On: the block leads, empty.
+    filterSwitch.off = true;
+    const props = { shellsOpen: false, onShellsOpenChange: vi.fn(), launchers: [{ command: "kiro", label: "Kiro" }], onLaunch: vi.fn(), onOrderChange: vi.fn() };
+    const off = render(list(props));
+    expect(off.container.querySelector('[data-slot="session-filter"]')).toBeNull();
+    const before = off.container.innerHTML;
+    off.unmount();
+
+    filterSwitch.off = false;
+    const on = render(list(props));
+    const block = on.container.querySelector('[data-slot="session-filter"]');
+    expect(block).not.toBeNull();
+    block!.remove();
+    expect(on.container.innerHTML).toBe(before);
+    expect(on.container.querySelector("mark")).toBeNull();
+  });
+
+  it("is a named search region with no focus taken on open", () => {
+    render(list());
+    expect(screen.getByRole("search", { name: "Filter sessions" })).toContainElement(field());
+    expect(field()).not.toHaveFocus();
+    expect(field()).toHaveAttribute("enterkeyhint", "go");
+  });
+
+  it("offers no field to a list of five rows or fewer", () => {
+    render(<ThreadSidebar agents={AGENTS} currentPaneKey="" onSelect={vi.fn()} />);
+    expect(screen.queryByRole("textbox", { name: "Filter sessions" })).toBeNull();
+  });
+
+  it("keeps a row by its name and marks the matched letters", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "rel");
+    expect(rows(container)).toEqual([paneRowKey(RELEASE)]);
+    expect([...container.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["rel"]);
+    expect(headings()).toEqual(["collie-workspace"]);
+  });
+
+  it("keeps the rows of a space, in place order, and the empty sections leave with their headings", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "moon");
+    expect(rows(container)).toEqual([API, MIGRATE, SHELLS[1]!].map(paneRowKey));
+    expect(headings()).toEqual(["moonward", expect.stringMatching(/^Shells/u)]);
+  });
+
+  it("names a field the row does not draw on its second line, with the letters marked", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "f7");
+    expect(rows(container)).toEqual([paneRowKey(RELEASE)]);
+    const via = container.querySelector('[data-slot="pane-row-via"]')!;
+    expect(via.textContent).toBe("fix/748-sheet");
+    expect(via.previousElementSibling?.textContent).toBe("branch");
+    expect([...via.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["f", "7"]);
+    // The place words gave the line up; the row has no third line.
+    expect(screen.getByRole("button", { name: /release notes/ })).not.toHaveTextContent("collie-workspace");
+  });
+
+  it("with drawn-only does not search a field the row does not draw", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list({ filterHidden: "drawn-only" }));
+    await user.type(field(), "f7");
+    expect(rows(container)).toEqual([]);
+  });
+
+  it("opens a folded Shells under a query without writing the fold, and folds it again after", async () => {
+    const user = userEvent.setup();
+    const onShellsOpenChange = vi.fn();
+    const { container } = render(list({ shellsOpen: false, onShellsOpenChange }));
+    expect(rows(container)).not.toContain(paneRowKey(SHELLS[0]!));
+    await user.type(field(), "dev");
+    expect(rows(container)).toEqual([paneRowKey(SHELLS[0]!)]);
+    expect(screen.queryByRole("button", { expanded: false })).toBeNull();
+    await user.clear(field());
+    expect(screen.getByRole("button", { name: /shells/i })).toHaveAttribute("aria-expanded", "false");
+    expect(onShellsOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("hides the Launch rows while a query is set", async () => {
+    const user = userEvent.setup();
+    const launchers: Launcher[] = [{ command: "kiro", label: "Launch Kiro" }];
+    render(list({ launchers, onLaunch: vi.fn() }));
+    expect(screen.getByText("Launch Kiro")).toBeInTheDocument();
+    await user.type(field(), "api");
+    expect(screen.queryByText("Launch Kiro")).toBeNull();
+  });
+
+  it("counts what it shows, politely", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    const count = container.querySelector('[data-slot="session-filter-count"]')!;
+    expect(count).toHaveAttribute("aria-live", "polite");
+    expect(count.className).toContain("invisible");
+    await user.type(field(), "moon");
+    expect(count).toHaveTextContent("3 of 7");
+    expect(count.className).not.toContain("invisible");
+  });
+
+  it("switches to the first row shown on Enter, and does nothing on an empty field", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(list({ onSelect }));
+    await user.type(field(), "{Enter}");
+    expect(onSelect).not.toHaveBeenCalled();
+    await user.type(field(), "moon{Enter}");
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(API);
+  });
+
+  it("switches on the form's submit, the Go key of a keyboard that sends no Enter", () => {
+    const onSelect = vi.fn();
+    render(list({ onSelect, initialQuery: "triage" }));
+    fireEvent.submit(screen.getByRole("search"));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(TRIAGE);
+  });
+
+  it("clears from the button in the field's edge, kept in its slot while the field is empty", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    const clear = within(screen.getByRole("search")).getByRole("button", { name: "Clear filter", hidden: true });
+    expect(clear.className).toContain("invisible");
+    await user.type(field(), "api");
+    expect(clear.className).not.toContain("invisible");
+    await user.click(clear);
+    expect(field()).toHaveValue("");
+    expect(field()).toHaveFocus();
+    expect(rows(container)).toHaveLength(7);
+  });
+
+  it("says nothing matches, in the list's place, with a way out", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "zzz");
+    const empty = container.querySelector<HTMLElement>('[data-slot="session-filter-empty"]')!;
+    expect(empty).toHaveTextContent("No session matches “zzz”.");
+    expect(headings()).toEqual([]);
+    await user.click(within(empty).getByRole("button", { name: "Clear filter" }));
+    expect(field()).toHaveValue("");
+    expect(container.querySelector('[data-slot="session-filter-empty"]')).toBeNull();
+  });
+
+  it("clears on the first Escape and leaves the second to the sheet", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <BottomSheet open onClose={onClose} title="Switch pane">
+        {list()}
+      </BottomSheet>,
+    );
+    await user.type(field(), "api");
+    await user.keyboard("{Escape}");
+    expect(field()).toHaveValue("");
+    expect(onClose).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("filters a ranked order in place", async () => {
+    const user = userEvent.setup();
+    // Newest last in the list, so activity order turns it round: migrations ran after the api server.
+    const ranked = AGENTS.map((a, i) => Object.assign({}, a, { lastActiveAt: 100 + i }));
+    const { container } = render(list({ agents: ranked, order: "activity", onOrderChange: vi.fn() }));
+    await user.type(field(), "moon");
+    expect(rows(container)).toEqual([MIGRATE, API, SHELLS[1]!].map(paneRowKey));
+    expect(headings()).toEqual([expect.stringMatching(/^Newest first/u)]);
+  });
+
+  it("in best-first order draws one flat list, best match first", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list({ filterOrder: "best" }));
+    await user.type(field(), "server");
+    // "api server" holds the word at its second word, "dev server" too; ties keep the place order.
+    expect(rows(container)).toEqual([paneRowKey(API), paneRowKey(SHELLS[0]!)]);
+    expect(headings()).toEqual([]);
+  });
+
+  it("filters the Tricks group like any other group: a row that does not match leaves, an empty group leaves", async () => {
+    const user = userEvent.setup();
+    const trick = (id: string, name: string, tabLabel: string): AgentView =>
+      at(`trick:lodge:${id}:${id}`, "trick:lodge", "Tricks", 9, {
+        tabId: `trick:lodge:${id}`,
+        agent: id,
+        kind: "trick",
+        paneLabel: name,
+        sessionName: name,
+        tabLabel,
+        cwd: `/home/you/.config/collie/tricks/${id}`,
+      });
+    const LEGS = trick("legs", "Browser legs", "Legs");
+    const TRACKER = trick("tracker", "Milestones", "Tracker");
+    const onSelectTrick = vi.fn();
+    // No query: below the block, the list with the Tricks group is exactly the list without the filter.
+    filterSwitch.off = true;
+    const off = render(list({ trickSessions: [LEGS, TRACKER], onSelectTrick }));
+    const before = off.container.innerHTML;
+    off.unmount();
+    filterSwitch.off = false;
+    const { container } = render(list({ trickSessions: [LEGS, TRACKER], onSelectTrick }));
+    const block = container.querySelector('[data-slot="session-filter"]')!;
+    const blockHtml = block.outerHTML;
+    expect(container.innerHTML.replace(blockHtml, "")).toBe(before);
+    const trickRows = () => [...container.querySelectorAll<HTMLElement>('[data-slot="trick-session"]')].map((b) => b.dataset.paneId);
+    expect(trickRows()).toEqual([LEGS.paneId, TRACKER.paneId]);
+    expect(headings().at(-1)).toMatch(/^Tricks/u);
+
+    await user.type(field(), "browser");
+    expect(rows(container)).toEqual([]);
+    expect(trickRows()).toEqual([LEGS.paneId]);
+    expect(headings()).toEqual([expect.stringMatching(/^Tricks/u)]);
+    expect([...container.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["Browser"]);
+    expect(container.querySelector('[data-slot="session-filter-count"]')).toHaveTextContent("1 of 9");
+    await user.type(field(), "{Enter}");
+    expect(onSelectTrick).toHaveBeenCalledExactlyOnceWith(LEGS);
+
+    await user.clear(field());
+    await user.type(field(), "moon");
+    expect(trickRows()).toEqual([]);
+    expect(headings()).not.toContainEqual(expect.stringMatching(/^Tricks/u));
+  });
+
+  it("jumps to a needs-you row the query hides by clearing the query first", async () => {
+    const user = userEvent.setup();
+    Element.prototype.scrollIntoView = vi.fn();
+    const { container } = render(list());
+    await user.type(field(), "moon");
+    await user.click(screen.getByRole("button", { name: /1 needs you/i }));
+    expect(field()).toHaveValue("");
+    const landing = [...container.querySelectorAll<HTMLElement>("button[data-pane-key]")].find((b) => b.dataset.paneKey === paneRowKey(LANDING));
+    expect(landing).toHaveFocus();
   });
 });

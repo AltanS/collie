@@ -7,9 +7,14 @@ import { readMarkers } from "../beacon/parse.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { MEMBER_ID_RE } from "../crew/identity.ts";
-import { parseAddress } from "./address.ts";
+import { HILL_ID_RE, isHillCrewState, type HillCrewState } from "../../web/src/lib/hill/wire.ts";
+import { HILL_BAD_ID } from "../hill/parse.ts";
+import { isTrickId } from "../../web/src/lib/tricks/schema.ts";
+import { LOCAL_MEMBER, parseAddress } from "./address.ts";
+import type { WalkySpace } from "./space.ts";
 import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
 import {
+  BORDER_VERDICTS,
   isPrintableAscii,
   RECEIPT_REASON_MAX,
   RECEIPT_STATES,
@@ -20,11 +25,21 @@ import {
   type WalkyReceipt,
   type WalkyReceiptState,
   type WalkySender,
+  type WalkyTarget,
   type WalkyVerified,
 } from "./types.ts";
 
 /** The longest request line the socket reads. A body of 4,000 characters fits many times over. */
 export const WALKY_LINE_MAX = 64 * 1024;
+
+/**
+ * The longest `trick.propose` line (crew slice 8): a trick's files, at most 5 MB, written as base64 (about
+ * 6.7 MB), with up to 300 paths and the frame. The socket reads this much only for a line that opens with
+ * {@link PROPOSE_LINE_PREFIX}, at most two at a time.
+ */
+export const PROPOSE_LINE_MAX = 8 * 1024 * 1024;
+/** How a `trick.propose` line opens, as `collie trick propose` writes it: the socket raises its cap for it. */
+export const PROPOSE_LINE_PREFIX = '{"op":"trick.propose",';
 
 /** The longest raw body a request may carry before cleaning. Longer is refused, not cut. */
 export const RAW_BODY_MAX = 32 * 1024;
@@ -42,6 +57,35 @@ export function isWalkyId(value: string | null | undefined): value is string {
   return value !== null && value !== undefined && WALKY_ID.test(value);
 }
 
+/** The longest space key or label a message may carry (M98). A space name is far shorter. */
+export const WALKY_SPACE_MAX = 1024;
+
+/** The separator of an unnamed space key (space.ts). */
+const UNNAMED_SEPARATOR = "\u0000";
+
+/**
+ * A sender's space (M98) as the wire or the log carries it: the space, null (an operator's), undefined
+ * when the field is absent (a bridge before 1.29.0), or false when it is there and not one. A space is
+ * `{ key, named, label }`, both strings within {@link WALKY_SPACE_MAX}. `named` must be the key's form:
+ * a named key holds no NUL, an unnamed key is `<member id>\u0000<space id>` with one NUL and a member
+ * id before it (space.ts `spaceOf`). Whose member id it is, is the crew check's (crew.ts).
+ */
+export function readSpace(value: JsonValue | undefined): WalkySpace | null | undefined | false {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const row = asJsonObject(value);
+  if (row === undefined) return false;
+  const key = asJsonString(row.key);
+  const named = asJsonBoolean(row.named);
+  const label = asJsonString(row.label);
+  if (key === undefined || named === undefined || label === undefined) return false;
+  if (key === "" || key.length > WALKY_SPACE_MAX || label.length > WALKY_SPACE_MAX) return false;
+  const parts = key.split(UNNAMED_SEPARATOR);
+  if (named && parts.length !== 1) return false;
+  if (!named && (parts.length !== 2 || !(parts[0] === LOCAL_MEMBER || MEMBER_ID_RE.test(parts[0]!)))) return false;
+  return { key, named, label };
+}
+
 function readSender(value: JsonValue | undefined): WalkySender | null {
   const row = asJsonObject(value);
   if (row === undefined) return null;
@@ -49,10 +93,13 @@ function readSender(value: JsonValue | undefined): WalkySender | null {
   const address = textOrNull(row, "address");
   const harness = textOrNull(row, "harness");
   const label = text(row, "label");
-  if (memberId === undefined || address === undefined || harness === undefined || label === null) return null;
+  const space = readSpace(row.space);
+  if (memberId === undefined || address === undefined || harness === undefined || label === null || space === false) return null;
   if (address !== null && parseAddress(address)?.kind !== "pane") return null;
   if (harness !== null && !/^[a-z0-9][a-z0-9._-]{0,31}$/u.test(harness)) return null;
-  return { memberId, address, harness, label: label.slice(0, 200) };
+  const sender: WalkySender = { memberId, address, harness, label: label.slice(0, 200) };
+  // Absent stays absent: a message from an older bridge has no space, and its canonical string no line.
+  return space === undefined ? sender : { ...sender, space };
 }
 
 /** A message as the log stored it, or as a crew hop carries it (spec 03). Null when any field fails. */
@@ -73,7 +120,8 @@ export function readMessage(value: JsonValue | undefined): WalkyMessage | null {
   if (replyTo === undefined || (replyTo !== null && !isWalkyId(replyTo))) return null;
   if (at === undefined || !Number.isSafeInteger(at) || body === null || signer === undefined || signature === undefined) return null;
   const message: WalkyMessage = { v: 1, id, kind, from, to, replyTo, at, body, signer, signature };
-  return asJsonBoolean(row.wake) === true ? { ...message, wake: true } : message;
+  const woken: WalkyMessage = asJsonBoolean(row.wake) === true ? { ...message, wake: true } : message;
+  return asJsonBoolean(row.outside) === true ? { ...woken, outside: true } : woken;
 }
 
 const VERIFIED: readonly WalkyVerified[] = ["origin", "lead", "local", "none"];
@@ -101,20 +149,84 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
   const rawSendId = text(row, "sendId");
   const sendId = rawSendId !== null && SEND_ID.test(rawSendId) ? rawSendId : null;
   const withReason = reason === null ? receipt : { ...receipt, reason };
-  return sendId === null ? withReason : { ...withReason, sendId };
+  const withSend = sendId === null ? withReason : { ...withReason, sendId };
+  // How the message passed the space border (M98): one of the five words, or dropped.
+  const via = BORDER_VERDICTS.find((candidate) => candidate === row.via);
+  return via === undefined ? withSend : { ...withSend, via };
 }
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────
 
-export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane";
+export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp | "trick.propose" | ViewOp;
+
+/** What a `hill.state` request with a word that is no crew state is refused with. */
+export const HILL_BAD_CREW_STATE = "bad request: the crew state is here, quiet or away";
+
+/** The hill's operations (M96), beside walky's own. Added, never a change to one of them. */
+export type HillOp = "hill.post" | "hill.status" | "hill.withdraw" | "hill.list" | "hill.clear" | "hill.state" | "hill.spoken.clear";
 
 export type WalkyRequest =
-  | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string | null; readonly body: string; readonly replyTo: string | null; readonly wake: boolean }
+  | {
+      readonly op: "send";
+      readonly markers: readonly BeaconMarker[];
+      readonly id: string;
+      readonly to: string | null;
+      readonly body: string;
+      readonly replyTo: string | null;
+      readonly wake: boolean;
+      /** M98: the message may leave the sender's space. Absent or anything but `true` reads as false. */
+      readonly outside: boolean;
+    }
   | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
   | { readonly op: "who" | "off" | "on" | "pane"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
   | { readonly op: "ack"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] | null }
-  | { readonly op: "cancel"; readonly markers: readonly BeaconMarker[]; readonly id: string };
+  | { readonly op: "cancel"; readonly markers: readonly BeaconMarker[]; readonly id: string }
+  // The hill (M96): a post's fields are read by bridge/hill/parse.ts, which owns their shape.
+  | { readonly op: "hill.post"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
+  | { readonly op: "hill.status" | "hill.withdraw"; readonly markers: readonly BeaconMarker[]; readonly id: string }
+  | { readonly op: "hill.list"; readonly markers: readonly BeaconMarker[] }
+  // Clear every closed decision, from the person's terminal: it names no pane and no id.
+  | { readonly op: "hill.clear"; readonly markers: readonly BeaconMarker[] }
+  // The second Clear (1.29.0): withdraw and clear the open cards answered in the session. A new op, not a
+  // flag on `hill.clear`, so a bridge before it refuses it as unknown instead of clearing the closed ones.
+  | { readonly op: "hill.spoken.clear"; readonly markers: readonly BeaconMarker[] }
+  // The crew state (1.29.0): a read with no `state`, a person's write with one. A new op, so a bridge
+  // before it answers it as unknown and never takes a write it cannot read.
+  | { readonly op: "hill.state"; readonly markers: readonly BeaconMarker[]; readonly state: HillCrewState | null }
+  // A trick handed to the lead (crew slice 8): its fields are read by bridge/tricks/propose-wire.ts.
+  | { readonly op: "trick.propose"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
+  // Agent views: every op names the trick (`trick`, a trick id) whose view it writes or reads. The
+  // fields of a show, a start and a block op are read by bridge/agent-view/, which owns their shape.
+  // `session` is the address the caller names with `--session`, or null: the bridge checks it against
+  // the pane the markers placed and never takes it in their place. There is no `on` and no `off`: only
+  // the person turns a view on or off, on the phone (agent views SECURITY N9).
+  | { readonly op: "trick.view.show" | "trick.view.start" | "trick.view.clear" | ViewBlockOp; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly session: string | null; readonly fields: JsonObject }
+  | { readonly op: "trick.view.status" | "trick.view.help"; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly session: string | null };
+
+/** The agent view operations, beside walky's own and the hill's. Added, never a change to one of them. */
+export type ViewOp = "trick.view.start" | "trick.view.show" | "trick.view.clear" | "trick.view.status" | "trick.view.help" | ViewBlockOp;
+
+/** The agent view block operations (a screen is a list of blocks). */
+export type ViewBlockOp = "trick.view.set" | "trick.view.pending" | "trick.view.remove" | "trick.view.keep" | "trick.view.choice";
+
+/** The sentence a view op without a readable trick id is refused with. */
+export const VIEW_BAD_TRICK = "an agent view op names its trick: `trick` is a trick id";
+
+/** Whether a request is one of the agent view block operations, which carry fields. */
+export function isViewBlockOp(op: string | null): op is ViewBlockOp {
+  return op === "trick.view.set" || op === "trick.view.pending" || op === "trick.view.remove" || op === "trick.view.keep" || op === "trick.view.choice";
+}
+
+/** Whether a request is one of the agent view operations. */
+export function isViewOp(op: string | null): op is ViewOp {
+  return op === "trick.view.start" || op === "trick.view.show" || op === "trick.view.clear" || op === "trick.view.status" || op === "trick.view.help" || isViewBlockOp(op);
+}
+
+/** Whether a request is one of the hill's operations (M96). */
+export function isHillOp(op: string | null): op is HillOp {
+  return op === "hill.post" || op === "hill.status" || op === "hill.withdraw" || op === "hill.list" || op === "hill.clear" || op === "hill.state" || op === "hill.spoken.clear";
+}
 
 /**
  * One request line read, or why it is not one (added 2026-10-30). An unread request keeps the markers
@@ -135,8 +247,8 @@ function done(request: WalkyRequest): WalkyRequestRead {
 }
 
 /** One request line: `v` must be 1; an unknown op, a bad id or a bad address fails with its reason. */
-export function readWalkyRequest(line: string): WalkyRequestRead {
-  if (line.length > WALKY_LINE_MAX) return unread(BAD_REQUEST_LINE);
+export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): WalkyRequestRead {
+  if (line.length > max) return unread(BAD_REQUEST_LINE);
   let parsed: JsonValue;
   try {
     // SAFETY: `JSON.parse` output IS a JsonValue by construction.
@@ -165,6 +277,30 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
     const ids = row.ids.map((entry) => asJsonString(entry) ?? null);
     return ids.every((id) => isWalkyId(id)) ? done({ op, markers, ids: ids.filter((id): id is string => id !== null) }) : unread(BAD_MESSAGE_ID, markers);
   }
+  // The hill (M96). A bridge built without it answers these as it answers any op it does not know.
+  if (op === "hill.post") return done({ op, markers, fields: row });
+  if (op === "hill.status" || op === "hill.withdraw") {
+    const id = text(row, "id");
+    return id !== null && HILL_ID_RE.test(id) ? done({ op, markers, id }) : unread(HILL_BAD_ID, markers);
+  }
+  if (op === "hill.list" || op === "hill.clear" || op === "hill.spoken.clear") return done({ op, markers });
+  if (op === "hill.state") {
+    const state = row.state ?? null;
+    if (state !== null && !isHillCrewState(state)) return unread(HILL_BAD_CREW_STATE, markers);
+    return done({ op, markers, state });
+  }
+  if (op === "trick.propose") return done({ op, markers, fields: row });
+  // Agent views. A bridge built without them answers these as it answers any op it does not know.
+  if (isViewOp(op)) {
+    // `session` is absent, null, or text; anything else is a request this bridge cannot read.
+    const session = row.session === undefined || row.session === null ? null : asJsonString(row.session);
+    if (session === undefined) return unread(BAD_REQUEST_LINE, markers);
+    const trick = asJsonString(row.trick);
+    if (trick === undefined || !isTrickId(trick)) return unread(VIEW_BAD_TRICK, markers);
+    // A write carries its fields, so the bridge refuses one it does not know (fault C, N6 of review 11).
+    if (op === "trick.view.show" || op === "trick.view.start" || op === "trick.view.clear" || isViewBlockOp(op)) return done({ op, markers, trick, session, fields: row });
+    return done({ op, markers, trick, session });
+  }
   if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);
   const id = text(row, "id");
   // The address as the bridge spells it: `parseAddress` reads past blanks, and the signed `to` must not
@@ -178,7 +314,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
   if (to !== null && parseAddress(to) === null) return unread(unreadAddress(to), markers);
   if (body === null) return unread(BAD_REQUEST_LINE, markers);
   if (body.length > RAW_BODY_MAX) return unread(bodyOverRaw(RAW_BODY_MAX), markers);
-  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true });
+  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true, outside: asJsonBoolean(row.outside) === true });
 }
 
 /** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */
@@ -239,6 +375,37 @@ export function readOutcomesPush(value: JsonValue | undefined): WalkyReceipt[] |
   const row = asJsonObject(value);
   if (row === undefined || !Array.isArray(row.receipts)) return null;
   return readReceiptList(row.receipts);
+}
+
+/** The most panes a lead's `who` answer holds. Far above any crew's agent panes. */
+export const WHO_ROWS_MAX = 2000;
+
+/**
+ * The lead's answer to a member's `who` (M98 spec 04, `POST /crew/v1/walky/who`): `{ targets }`, each row
+ * as `collie walky who` lists it. A row that is not a pane address, or has no well formed space, is
+ * dropped: it is display data, and the receiving bridge decides every send itself. Null when the body is
+ * not an object with a `targets` list.
+ */
+export function readWhoAnswer(value: JsonValue | undefined): WalkyTarget[] | null {
+  const row = asJsonObject(value);
+  if (row === undefined || !Array.isArray(row.targets)) return null;
+  const out: WalkyTarget[] = [];
+  for (const entry of row.targets.slice(0, WHO_ROWS_MAX)) {
+    const target = asJsonObject(entry);
+    if (target === undefined) continue;
+    const address = text(target, "address");
+    const memberId = text(target, "memberId");
+    const machine = text(target, "machine");
+    const label = text(target, "label");
+    const state = text(target, "state");
+    const harness = textOrNull(target, "harness");
+    const space = readSpace(target.space);
+    if (address === null || memberId === null || machine === null || label === null || state === null || harness === undefined) continue;
+    if (space === undefined || space === null || space === false || parseAddress(address)?.kind !== "pane") continue;
+    const base: WalkyTarget = { address, memberId, machine, harness, label, state, space };
+    out.push(target.walky === "off" ? { ...base, walky: "off" } : base);
+  }
+  return out;
 }
 
 /** The longest `sender.certPem` a delivery may carry. A P-256 certificate is well under 1,000. */

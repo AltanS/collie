@@ -43,7 +43,7 @@ import {
   type DemotionRefused,
   type EnrollRefusal,
 } from "./enrollment.ts";
-import { randomToken, type RandomSource } from "./identity.ts";
+import { bearerToken, randomToken, secretEquals, type RandomSource } from "./identity.ts";
 import {
   parseTimestamp,
   timestampVerdict,
@@ -72,6 +72,9 @@ import { cleanHost } from "./machine-host.ts";
 import { selectView, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
 import { WALKY_ACK_HEADER, WALKY_REPORT_FIELD, type CrewAnswer } from "../walky/crew.ts";
+import type { HillCrewAnswer } from "../hill/crew.ts";
+import { INPUT_REQUEST_MAX_BYTES } from "../tricks/inputs.ts";
+import { PROPOSE_TOO_MANY_PARTS, proposalParseable } from "../tricks/propose-wire.ts";
 import type { WalkyReportBody } from "../walky/parse.ts";
 
 // The `/crew/v1/*` surface. This module exists **so that `bridge/server.ts` contains no crew route
@@ -195,6 +198,37 @@ export const CREW_PAIRING_PATH = "/crew/v1/pairing";
  */
 export const CREW_LAUNCHERS_COPY_PATH = "/crew/v1/launchers-copy";
 /**
+ * `POST` — the lead sends the DEPUTY ONLY an inert copy of the tricks it runs (CREW_PROTOCOL §25, added
+ * in 1.29.0). The launchers copy's gate. What lands goes under `<stateDir>/standby-tricks/`, read by no
+ * loader and run by nothing: only the person's tap on the deputy's own standby page adopts it
+ * (`carry-adopt.ts`).
+ */
+export const CREW_TRICKS_COPY_PATH = "/crew/v1/tricks-copy";
+/** `POST` — one part of one trick's code, in order (§25). */
+export const CREW_TRICKS_COPY_CODE_PATH = "/crew/v1/tricks-copy/code";
+/** `POST` — one trick's small state folder and pictures (§25). */
+export const CREW_TRICKS_COPY_STATE_PATH = "/crew/v1/tricks-copy/state";
+/** `POST` — the lead's open Decisions, its closed ids, its Hill switch and its trick map entries (§25). */
+export const CREW_HILL_COPY_PATH = "/crew/v1/hill-copy";
+/** `POST` — one picture of an open Decision (§25). */
+export const CREW_HILL_COPY_MEDIA_PATH = "/crew/v1/hill-copy/media";
+
+/**
+ * The body caps of the §25 routes, read before a byte of the body is (they ride the pinned handshake,
+ * so they are not in {@link SIGNED_BODY_CAPS}, which caps the signed member → lead routes).
+ */
+export const CARRY_BODY_CAPS: ReadonlyMap<string, number> = new Map([
+  [CREW_TRICKS_COPY_PATH, 8 * 1024 * 1024],
+  [CREW_TRICKS_COPY_CODE_PATH, 3 * 1024 * 1024],
+  [CREW_TRICKS_COPY_STATE_PATH, 6 * 1024 * 1024],
+  [CREW_HILL_COPY_PATH, 8 * 1024 * 1024],
+  [CREW_HILL_COPY_MEDIA_PATH, 3 * 1024 * 1024],
+]);
+/** How many §25 bodies a deputy reads at once. The lead sends one at a time; one more is room. */
+export const CARRY_READS_MAX = 2;
+/** How long one §25 body may take to arrive. */
+export const CARRY_READ_MS = 60_000;
+/**
  * `POST` — a member hands its lead one walky talky message to deliver and route (§21). Signed per
  * §8.6, because it travels peer → lead, and answered only by a collie that leads.
  */
@@ -205,6 +239,34 @@ export const CREW_WALKY_PATH = "/crew/v1/walky";
  * every such call, and it is answered only by a collie that has a lead, to that lead.
  */
 export const CREW_WALKY_OUTCOMES_PATH = "/crew/v1/walky/outcomes";
+/**
+ * `POST` — a member asks its lead for the crew's agent panes (§21, added in 1.29.0, M98). Signed per
+ * §8.6 like the message route, answered only by a collie that leads, and a read: it changes no roster
+ * and advances no floor.
+ */
+export const CREW_WALKY_WHO_PATH = "/crew/v1/walky/who";
+/**
+ * `POST` — a member hands its lead one image of a Decision it is about to post (§22, added in 1.29.0).
+ * Signed per §8.6, answered only by a collie that leads, held there by its hash for 15 minutes.
+ */
+export const CREW_HILL_MEDIA_PATH = "/crew/v1/hill/media";
+/** `POST` — a member posts a Decision for one of its own sessions on its lead's Hill (§22, added in 1.29.0). */
+export const CREW_HILL_POST_PATH = "/crew/v1/hill/post";
+/** `POST` — a member asks its lead for a Decision's status, withdraws one, or lists its own (§22, added in 1.29.0). */
+export const CREW_HILL_OP_PATH = "/crew/v1/hill/op";
+/**
+ * `POST` — the lead asks a member for the files a trick's `inputs` globs match in that member's agent
+ * sessions' folders (§23, added in 1.29.0, M99). Lead → peer, so it rides the pinned handshake and the
+ * dial attestation like the walky outcomes push, is answered only by a collie that has a lead, to that
+ * lead, and only while the member's trick reads are on. A read: it writes nothing on the member.
+ */
+export const CREW_TRICKS_INPUTS_PATH = "/crew/v1/tricks/inputs";
+/**
+ * `POST`: a member hands its lead a trick an agent or a terminal there proposed with `collie trick
+ * propose` (§24, added in 1.29.0, crew slice 8). Member → lead and signed per §8.6 like the Hill's routes;
+ * answered only by a collie that leads. The lead stores it inert and asks the person on its Hill.
+ */
+export const CREW_TRICKS_PROPOSE_PATH = "/crew/v1/tricks/propose";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -272,7 +334,167 @@ const SIGNABLE_PATHS: ReadonlySet<string> = new Set([
   // `MEMBERSHIP_PATHS`: it changes no roster, the message id is its replay key, and a replay returns
   // the stored receipts and types nothing, so it never advances the monotonic floor.
   CREW_WALKY_PATH,
+  // §21's pane list, member → lead (added in 1.29.0). The same direction and the same reasoning as the
+  // message route above; not in `MEMBERSHIP_PATHS` either, because it is a read.
+  CREW_WALKY_WHO_PATH,
+  // §22's Decisions from a member, member → lead (added in 1.29.0). The same direction and reasoning as
+  // the walky routes: the signature is what names the member, and the lead takes the poster's machine
+  // from it, never from the body. Not in `MEMBERSHIP_PATHS`: they change no roster, and a post's request
+  // id (an image's hash) is its replay key.
+  CREW_HILL_MEDIA_PATH,
+  CREW_HILL_POST_PATH,
+  CREW_HILL_OP_PATH,
+  // §24's trick proposal, member → lead (added in 1.29.0). The same direction and reasoning as the Hill's
+  // routes; not in `MEMBERSHIP_PATHS`: it changes no roster, and its request id is its replay key.
+  CREW_TRICKS_PROPOSE_PATH,
 ]);
+
+/**
+ * The most bytes a signed body may carry, per route of {@link SIGNABLE_PATHS} — the one table, read
+ * before the body is (§8.6, added in 1.29.0).
+ *
+ * The body of a signed request is read whole, BEFORE the two factors are known, because its digest is
+ * part of what was signed. Without a cap any caller that sends the signature header could make this
+ * collie buffer up to the server's own request limit. So a declared `Content-Length` over the cap is
+ * refused without reading a byte, and a body with no declared length is read only up to the cap.
+ *
+ * The caps of the routes that existed before are generous on purpose, many times what they send
+ * today, so the cap can never refuse a real call: `leave` and `hello` send nothing or a few hundred
+ * bytes; `lead`, `warrant` and `takeover` carry a roster with one certificate per member (about 1.5 KB
+ * each); a walky talky message is at most 4,000 characters of body plus its envelope and its space
+ * (each key and label at most 1,024 characters), under 40 KiB written as JSON at its worst.
+ */
+export const SIGNED_BODY_CAPS: ReadonlyMap<string, number> = new Map([
+  [CREW_LEAVE_PATH, 64 * 1024],
+  [CREW_HELLO_PATH, 64 * 1024],
+  [CREW_LEAD_PATH, 1024 * 1024],
+  [CREW_WARRANT_PATH, 1024 * 1024],
+  [CREW_TAKEOVER_PATH, 1024 * 1024],
+  [CREW_WALKY_PATH, 256 * 1024],
+  [CREW_WALKY_WHO_PATH, 64 * 1024],
+  // §22: one image, base64, at most 2 MiB of bytes (about 2.7 MiB written), plus its hash.
+  [CREW_HILL_MEDIA_PATH, 3 * 1024 * 1024],
+  [CREW_HILL_POST_PATH, 64 * 1024],
+  [CREW_HILL_OP_PATH, 4 * 1024],
+  // §24: a trick's files, at most 5 MB, written as base64 (5 MiB × 4/3, about 6.7 MiB), plus up to 300
+  // paths of at most 256 characters each with their JSON frame (under 0.2 MiB). 8 MiB leaves room and no
+  // more; a body past it is refused unread.
+  [CREW_TRICKS_PROPOSE_PATH, 8 * 1024 * 1024],
+]);
+
+/** The machine-readable `code` on a signed body refused for its size before it was read. */
+export const BODY_TOO_LARGE = "body_too_large";
+
+/**
+ * How many signed bodies with a large cap (over {@link SIGNED_READS_LARGE_CAP}: `lead`, `warrant`,
+ * `takeover`) are read at once, before their signature is known (§8.6, added in 1.29.0). One more is
+ * answered `503` with `Retry-After` and no byte read; the routes with a small cap (`walky`, `hello`,
+ * `hill/post`, ...) are not counted. `hill/media` has its own count, {@link SIGNED_MEDIA_READS_MAX}, so a
+ * member's uploads, stalled or not, can never turn away the crew's own lead, warrant or takeover calls.
+ * At most 4 × 1 MiB plus 4 × 3 MiB unverified in memory.
+ */
+export const SIGNED_READS_MAX = 4;
+/** How many `hill/media` bodies are read at once, counted apart from {@link SIGNED_READS_MAX}. */
+export const SIGNED_MEDIA_READS_MAX = 4;
+/** A cap above this is a large one, counted against {@link SIGNED_READS_MAX}. */
+export const SIGNED_READS_LARGE_CAP = 256 * 1024;
+/**
+ * How many `tricks/propose` bodies are read at once (§24), counted apart from the others, so proposals
+ * never turn away the crew's own calls or a member's images. At most 2 × 8 MiB unverified in memory.
+ */
+export const SIGNED_PROPOSE_READS_MAX = 2;
+/**
+ * How long one `tricks/propose` body may take to arrive (§24): a stalled upload gives its slot back. Five
+ * megabytes over a slow relayed link fit in it many times over.
+ */
+export const PROPOSE_READ_MS = 60_000;
+/** The machine-readable `code` on a signed body not read because its count was full. */
+export const SIGNED_READS_BUSY = "signed_reads_busy";
+/** The machine-readable `code` on a signed body whose stream broke off before its end. */
+export const BODY_UNREAD = "body_unread";
+
+/** The 400 for a signed body whose stream broke off. Said before the signature is known. */
+function bodyUnreadResponse(): Response {
+  return new Response(JSON.stringify({ error: "the body broke off before its end; send it again", code: BODY_UNREAD }), {
+    status: 400,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
+    },
+  });
+}
+
+/** The 503 for a large signed body while its count is full. Said before the signature is known. */
+function signedReadsBusyResponse(): Response {
+  return new Response(JSON.stringify({ error: "the lead is reading other uploads; try again", code: SIGNED_READS_BUSY }), {
+    status: 503,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "retry-after": "1",
+      [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
+    },
+  });
+}
+
+/**
+ * A signed request's body as text, read only up to `cap` bytes, or null when it is larger. A declared
+ * `Content-Length` over the cap is refused before a byte is read; a stream that passes the cap is
+ * cancelled at the chunk that passes it.
+ */
+async function readSignedBody(req: Request, cap: number, timeoutMs?: number): Promise<string | null> {
+  const declared = req.headers.get("content-length");
+  if (declared !== null) {
+    const length = Number(declared.trim());
+    if (!Number.isSafeInteger(length) || length < 0 || length > cap) return null;
+  }
+  if (req.body === null) return "";
+  const reader = req.body.getReader();
+  // A read past its time is cancelled and throws, which the caller answers as a body that broke off.
+  let late = false;
+  const timer =
+    timeoutMs === undefined
+      ? null
+      : setTimeout(() => {
+          late = true;
+          void reader.cancel().catch(() => undefined);
+        }, timeoutMs);
+  timer?.unref?.();
+  try {
+    const text = await readChunks(reader, cap);
+    if (late) throw new Error("the body took too long");
+    return text;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
+
+/** The body's chunks up to `cap`, as text, or null past it. Throws when the stream breaks. */
+async function readChunks(reader: ReadableStreamDefaultReader<Uint8Array>, cap: number): Promise<string | null> {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    size += chunk.value.byteLength;
+    if (size > cap) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(chunk.value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** The 413 for a signed body over its cap. Said before admission, so it names no member and no secret. */
+function bodyTooLargeResponse(cap: number): Response {
+  return new Response(JSON.stringify({ error: `the body is larger than this route takes (${String(cap)} bytes)`, code: BODY_TOO_LARGE }), {
+    status: 413,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
+    },
+  });
+}
 
 /** The subset of {@link SIGNABLE_PATHS} that CHANGES STATE, and therefore advances the replay floor. */
 const MEMBERSHIP_PATHS: ReadonlySet<string> = new Set([
@@ -393,6 +615,25 @@ export interface StandbySurface {
   readonly copyDigest?: () => string | null;
   /** Replace `standby-launchers.json` wholesale with what `from`, this collie's lead, sent. */
   readonly applyCopy?: (copy: { from: string; crewId: string; rows: readonly CopiedRow[] }) => Promise<void>;
+  /**
+   * The §25 copy of the lead's tricks and open Decisions. Optional: absent, the routes refuse like any
+   * other non-deputy, and `hello` and `snapshot` carry no `tricksDigest` or `hillDigest`.
+   */
+  readonly carry?: StandbyCarrySurface;
+}
+
+/** One §25 call, answered: a status and a JSON body. */
+export interface CarryAnswer {
+  readonly status: number;
+  readonly body: JsonObject;
+}
+
+/** What the deputy does with the §25 routes (`index.ts` wires the stores). */
+export interface StandbyCarrySurface {
+  /** The fields to put on `hello` and `snapshot`: `tricksDigest`, `tricksSeq`, `tricksNeed`, `hillDigest`, ... */
+  report(): JsonObject;
+  /** Answer one §25 route, by its path, for `from` (this collie's lead) in `crewId`. */
+  handle(path: string, ctx: { readonly from: string; readonly crewId: string }, body: JsonValue): Promise<CarryAnswer>;
 }
 
 export interface CrewRouterDeps {
@@ -586,6 +827,33 @@ export interface CrewRouterDeps {
     readonly fromMember?: (body: JsonValue | undefined, member: TrustedMember) => Promise<CrewAnswer>;
     readonly report?: (ack: string | null) => WalkyReportBody | null;
     readonly outcomes?: (body: JsonValue | undefined, from: string) => CrewAnswer;
+    /** `POST /crew/v1/walky/who` on a LEAD (added in 1.29.0, M98): the crew's agent panes, for a signed member. */
+    readonly who?: () => CrewAnswer;
+  };
+  /**
+   * A trick's inputs (§23, added in 1.29.0), on a MEMBER: the lead's `POST /crew/v1/tricks/inputs`. The
+   * handler holds the member's gate (`COLLIE_CREW_TRICK_READS`) and answers 403 when it is off. Absent ⇒
+   * the route 404s, which is what a member before 1.29.0 answers and the lead reads as `older`.
+   */
+  readonly tricks?: {
+    readonly inputs: (body: JsonValue | undefined) => Promise<{ readonly status: number; readonly body: JsonValue }>;
+  };
+  /**
+   * The Hill across the crew (§22, added in 1.29.0), on a LEAD: a member's image, post and follow-up
+   * call, each for the member §8.6's signature named. A handler's 401 is the uniform 401. Absent ⇒ the
+   * three routes 404, which is what a lead before 1.29.0 answers.
+   */
+  /**
+   * A trick proposal from a member (§24, added in 1.29.0, crew slice 8), on a LEAD, for the member §8.6's
+   * signature named. A handler's 401 is the uniform 401. Absent ⇒ the route 404s, as before 1.29.0.
+   */
+  readonly proposals?: {
+    readonly propose: (body: JsonValue | undefined, member: TrustedMember) => Promise<HillCrewAnswer>;
+  };
+  readonly hill?: {
+    readonly media: (body: JsonValue | undefined, member: TrustedMember) => HillCrewAnswer;
+    readonly post: (body: JsonValue | undefined, member: TrustedMember) => HillCrewAnswer | Promise<HillCrewAnswer>;
+    readonly op: (body: JsonValue | undefined, member: TrustedMember) => HillCrewAnswer | Promise<HillCrewAnswer>;
   };
   readonly now?: () => number;
   readonly random?: RandomSource;
@@ -905,6 +1173,10 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   const now = deps.now ?? Date.now;
   const random = deps.random ?? randomToken;
 
+  // The large signed bodies being read now, before their signature is known: `hill/media` uploads
+  // (SIGNED_MEDIA_READS_MAX) and the crew's own large routes (SIGNED_READS_MAX), counted apart.
+  const reads = { media: 0, large: 0, propose: 0, carry: 0 };
+
   const refuse = (path: string, factor: RefusedFactor): Response => {
     // Audited locally with the real cause; the caller is told only "unauthorized" (§8.1). The two
     // are not in tension: the log is the peer operator's own record on their own disk (§12).
@@ -942,8 +1214,45 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     const signature = SIGNABLE_PATHS.has(pathname) ? req.headers.get(SIGNATURE_HEADER) : null;
     let signedBody: string | null = null;
     let signed: SignedCaller = { member: null };
-    if (signature !== null && data !== null) {
-      signedBody = req.method === "GET" || req.method === "HEAD" ? "" : await req.text();
+    if (signature !== null && data !== null && data.crew !== null) {
+      // What can be checked without the body is checked before it is read (added in 1.29.0). The crew
+      // secret travels beside the signature, and admission refuses every request without it whatever
+      // the signature says, so a caller without it is refused here and nothing is read: a tailnet caller
+      // with a junk signature can no longer make this collie buffer megabytes. The answer is the same
+      // uniform 401. What it does tell apart (read or not) is only whether a guessed 256-bit secret is
+      // right, which is no oracle. A timestamp that is no timestamp is refused here too; its window is
+      // still checked after the signature, so a caller who cannot sign learns nothing about the clock.
+      if (!secretEquals(bearerToken(req.headers.get("authorization")), data.crew.secret)) return refuse(pathname, "secret");
+      if (parseTimestamp(req.headers.get(TIMESTAMP_HEADER)) === null) return refuse(pathname, "certificate");
+      // Capped per route (SIGNED_BODY_CAPS): a body over its cap is refused before it is read, so an
+      // unadmitted caller cannot make this collie buffer it. A signable path with no row is a bug, and
+      // reads as the smallest cap rather than none.
+      const cap = SIGNED_BODY_CAPS.get(pathname) ?? 0;
+      const bodied = req.method !== "GET" && req.method !== "HEAD";
+      // At most SIGNED_MEDIA_READS_MAX uploads and SIGNED_READS_MAX other large bodies are read at once,
+      // each in its own count; one more is turned away unread. The slot is given back however the read
+      // ends, and a stream that breaks off is a 400, not a throw.
+      const slot: keyof typeof reads | null = !bodied || cap <= SIGNED_READS_LARGE_CAP ? null : pathname === CREW_HILL_MEDIA_PATH ? "media" : pathname === CREW_TRICKS_PROPOSE_PATH ? "propose" : "large";
+      const slotMax = slot === "media" ? SIGNED_MEDIA_READS_MAX : slot === "propose" ? SIGNED_PROPOSE_READS_MAX : SIGNED_READS_MAX;
+      if (slot !== null && reads[slot] >= slotMax) {
+        deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "signed-reads-busy" } });
+        return signedReadsBusyResponse();
+      }
+      if (slot !== null) reads[slot] += 1;
+      let read: string | null;
+      try {
+        read = bodied ? await readSignedBody(req, cap, pathname === CREW_TRICKS_PROPOSE_PATH ? PROPOSE_READ_MS : undefined) : "";
+      } catch {
+        deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "body-unread" } });
+        return bodyUnreadResponse();
+      } finally {
+        if (slot !== null) reads[slot] -= 1;
+      }
+      if (read === null) {
+        deps.audit?.record({ action: "crew.refused", detail: { path: pathname, factor: "body-too-large", cap } });
+        return bodyTooLargeResponse(cap);
+      }
+      signedBody = read;
       signed = verifySigned(data, req, url, signature, signedBody, now());
       // A signature the ROSTER cannot account for is normally the uniform 401. One caller is exempt,
       // and only from the refusal: the DEPUTY this listener anchored. RFC §9's reconciliation is a
@@ -1069,6 +1378,8 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // ADR 0127 point 5: the launcher copy's digest, read the same absent-means-nothing-held way.
       const copy = deps.standby?.copyDigest?.() ?? null;
       if (copy !== null) hello[LAUNCHERS_DIGEST_FIELD] = copy;
+      // §25: the tricks and Hill copies' report, read the same absent-means-nothing-held way.
+      Object.assign(hello, deps.standby?.carry?.report() ?? {});
       // M22/03: what THIS machine's multiplexer can do, so the lead can answer `/api/config?host=`
       // for this member without forwarding a config read (ADR 0011 keeps the crew link the only
       // cross-machine transport, and `forward.ts` keeps `config` off the forwarded list).
@@ -1111,6 +1422,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     if (pathname === CREW_LAUNCHERS_COPY_PATH && req.method === "POST") {
       return launchersCopy(req, signedBody, verdict.member, verdict.self, data);
     }
+    if (CARRY_BODY_CAPS.has(pathname) && req.method === "POST") {
+      return carryCopy(req, pathname, verdict.member, verdict.self, data);
+    }
     if (pathname === CREW_TAKEOVER_PATH && req.method === "POST") {
       // A takeover arriving at a collie that still believes it LEADS is a deposition, not a witness
       // question — the same proof, at a different kind of recipient, exactly as `/crew/v1/warrant`
@@ -1132,6 +1446,39 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       if (answer.status === 401) return refuse(pathname, "certificate");
       return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
     }
+    if (pathname === CREW_WALKY_WHO_PATH && req.method === "POST" && deps.walky?.who !== undefined && data !== null && isLeading(data)) {
+      // §21 (added in 1.29.0): the pane list, to a SIGNED member of this lead's roster only.
+      if (signed.member === null) return refuse(pathname, "certificate");
+      const answer = deps.walky.who();
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
+    if (
+      (pathname === CREW_HILL_MEDIA_PATH || pathname === CREW_HILL_POST_PATH || pathname === CREW_HILL_OP_PATH) &&
+      req.method === "POST" &&
+      deps.hill !== undefined &&
+      data !== null &&
+      isLeading(data)
+    ) {
+      // §22 (added in 1.29.0): only a collie that leads takes a member's Decision, and only from a SIGNED
+      // member of its roster. The handler takes the member from here and refuses a body that names a
+      // session of another machine with its 401, which is the uniform 401, audited like any refusal.
+      if (signed.member === null) return refuse(pathname, "certificate");
+      const body = await readJson(req, signedBody);
+      const handle = pathname === CREW_HILL_MEDIA_PATH ? deps.hill.media : pathname === CREW_HILL_POST_PATH ? deps.hill.post : deps.hill.op;
+      const answer = await handle(body, verdict.member);
+      if (answer.status === 401) return refuse(pathname, "certificate");
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
+    if (pathname === CREW_TRICKS_PROPOSE_PATH && req.method === "POST" && deps.proposals !== undefined && data !== null && isLeading(data)) {
+      // §24 (added in 1.29.0): only a collie that leads takes a proposal, and only from a SIGNED member of
+      // its roster; the handler takes the member from here, and its 401 is the uniform 401.
+      if (signed.member === null) return refuse(pathname, "certificate");
+      // The body is counted before `JSON.parse` builds it (review S3): a 400 with the plain line.
+      if (signedBody !== null && !proposalParseable(signedBody)) return badRequest(verdict.self, PROPOSE_TOO_MANY_PARTS);
+      const answer = await deps.proposals.propose(await readJson(req, signedBody), verdict.member);
+      if (answer.status === 401) return refuse(pathname, "certificate");
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
     if (
       pathname === CREW_WALKY_OUTCOMES_PATH &&
       req.method === "POST" &&
@@ -1145,6 +1492,23 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       if (verdict.member.memberId !== data.lead.memberId) return refuse(pathname, "certificate");
       const answer = deps.walky.outcomes(await readJson(req, signedBody), verdict.member.memberId);
       if (answer.status === 401) return refuse(pathname, "certificate");
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
+    if (
+      pathname === CREW_TRICKS_INPUTS_PATH &&
+      req.method === "POST" &&
+      deps.tricks !== undefined &&
+      data !== null &&
+      data.lead !== null &&
+      data.lead.status === "enrolled"
+    ) {
+      // §23 (added in 1.29.0): only a collie that HAS a lead answers, and only to that lead, as the walky
+      // outcomes push above. A deputy's second anchor, any other member and a stranger are the uniform 401.
+      if (verdict.member.memberId !== data.lead.memberId) return refuse(pathname, "certificate");
+      // The body is read only up to its cap, never whole: the request is a few globs and pane ids.
+      const text = await readSignedBody(req, INPUT_REQUEST_MAX_BYTES);
+      if (text === null) return bodyTooLargeResponse(INPUT_REQUEST_MAX_BYTES);
+      const answer = await deps.tricks.inputs(await readJson(req, text));
       return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
     }
     if (pathname === CREW_LEAVE_PATH && req.method === "POST") {
@@ -1208,7 +1572,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       const withClash = clash.length === 0 ? withDigest : { ...withDigest, pairingCollision: [...clash] };
       // ADR 0127 point 5: the launcher copy's digest, in the same seat and for the same reason.
       const copy = deps.standby?.copyDigest?.() ?? null;
-      const withReport = copy === null ? withClash : { ...withClash, [LAUNCHERS_DIGEST_FIELD]: copy };
+      const withCopy = copy === null ? withClash : { ...withClash, [LAUNCHERS_DIGEST_FIELD]: copy };
+      // §25: the tricks and Hill copies' report, in the same seat and for the same reason.
+      const withReport = { ...withCopy, ...deps.standby?.carry?.report() };
       // §19: this machine's own update preflight, in the same seat, for the same reason. The lead's
       // `X-Crew-Preflight: fresh` is passed on as a REQUEST — a peer that honours it answers with a
       // freshly-run report, and one that does not answers with an older one and an `asOf` saying so.
@@ -1617,6 +1983,43 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       status: 200,
       headers: crewResponseHeaders(self),
     });
+  }
+
+  /**
+   * The §25 routes: the lead sends the DEPUTY an inert copy of its tricks and of its open Decisions.
+   *
+   * The launchers copy's two role questions, both of which must answer yes: the caller is this collie's
+   * own lead, and this collie holds a verified warrant naming itself. Only then is the body read, and
+   * only up to its route's cap ({@link CARRY_BODY_CAPS}), at most {@link CARRY_READS_MAX} at once and
+   * within {@link CARRY_READ_MS}. A member, the deputy's second anchor or a stranger never gets as far.
+   */
+  async function carryCopy(req: Request, path: string, from: TrustedMember, self: string, data: TrustStoreData | null): Promise<Response> {
+    const carry = deps.standby?.carry;
+    if (data === null || data.crew === null || data.lead === null || data.lead.memberId !== from.memberId) {
+      return refuse(path, "not-a-crew-member");
+    }
+    if (carry === undefined || deps.standby?.warrantsSelf() !== true) return refuse(path, "not-a-crew-member");
+    const cap = CARRY_BODY_CAPS.get(path) ?? 0;
+    if (reads.carry >= CARRY_READS_MAX) return signedReadsBusyResponse();
+    reads.carry += 1;
+    let text: string | null;
+    try {
+      text = await readSignedBody(req, cap, CARRY_READ_MS);
+    } catch {
+      return bodyUnreadResponse();
+    } finally {
+      reads.carry -= 1;
+    }
+    if (text === null) return bodyTooLargeResponse(cap);
+    let body: JsonValue;
+    try {
+      // SAFETY: `JSON.parse` output IS a JsonValue by construction; every field is a checked read.
+      body = JSON.parse(text) as JsonValue;
+    } catch {
+      return badRequest(self, "the body is not JSON");
+    }
+    const answer = await carry.handle(path, { from: from.memberId, crewId: data.crew.crewId }, body);
+    return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(self) });
   }
 
   /**

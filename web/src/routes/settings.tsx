@@ -7,6 +7,7 @@ import { BuildStamp } from "@/components/build-stamp";
 import { Card } from "@/components/ui/card";
 import { SettingsNavRow } from "@/components/settings-nav-row";
 import { InstallControl } from "@/components/install-control";
+import { useTricksPresent } from "@/components/tricks-settings-card";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { hasExperiments } from "@/lib/experiments";
 import { useLocale } from "@/hooks/use-locale";
@@ -126,10 +127,28 @@ const ROWS: Row[] = [
     : []),
 ];
 
+// Tricks sits after Machines and before Experiments: it is a standing list like the others, and, like
+// Experiments, it is offered only when it has something to say.
+const TRICKS_ROW: Row = {
+  id: "tricks",
+  to: (scope) => settingsSectionPath("tricks", scope),
+  icon: "mods",
+  title: "settings.section.tricks.title",
+  blurb: "settings.section.tricks.blurb",
+};
+
+function rows(withTricks: boolean): Row[] {
+  if (!withTricks) return ROWS;
+  const at = ROWS.findIndex((row) => row.id === "experiments");
+  return at === -1 ? [...ROWS, TRICKS_ROW] : [...ROWS.slice(0, at), TRICKS_ROW, ...ROWS.slice(at)];
+}
+
 export function SettingsRoute() {
   const nav = useNav();
   const scope = useScope();
   const updates = useUpdatesStatus();
+  // Tricks (M94): a row only while the phone holds a tricks reply, so an install without tricks is unchanged.
+  const tricks = useTricksPresent();
   useLocale();
 
   return (
@@ -187,7 +206,7 @@ export function SettingsRoute() {
               }
               onOpen={() => nav.down(updatesPath(scope))}
             />
-            {ROWS.map((row) => (
+            {rows(tricks).map((row) => (
               <SettingsNavRow
                 key={row.id}
                 icon={row.icon}

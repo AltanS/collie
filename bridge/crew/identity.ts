@@ -32,6 +32,21 @@ export function isMemberId<T>(value: T): value is T & string {
 }
 
 /**
+ * The words the walky address grammar treats specially (bridge/walky/address.ts): `local` is "this
+ * machine" on every bridge, `all` the whole crew, `here` the sender's folder. A member with one of these
+ * as its id would be read as another target: on the lead, `local/<pane>` is the LEAD's own pane, so a
+ * member called `local` could point a Decision's answer into the lead's sessions (security re-review A1).
+ * No path mints one ({@link mintMemberId}), enrollment refuses one as a label, and admission refuses a
+ * member that already holds one (admission.ts), without touching the store.
+ */
+export const RESERVED_MEMBER_IDS: ReadonlySet<string> = new Set(["local", "all", "here"]);
+
+/** Whether a member id is one of {@link RESERVED_MEMBER_IDS}. */
+export function isReservedMemberId(memberId: string): boolean {
+  return RESERVED_MEMBER_IDS.has(memberId);
+}
+
+/**
  * Turn an operator-supplied label into a candidate member id, or `null` when nothing survives.
  *
  * Returning `null` rather than a fallback is the point: "laptop 🐕" slugs cleanly, but a label of
@@ -64,11 +79,12 @@ export function mintMemberId(
   random: RandomSource = randomToken,
 ): string {
   const wanted = label === null ? null : slugifyMemberId(label);
-  if (wanted !== null && !taken.has(wanted)) return wanted;
+  // A reserved word is never an id: it falls through to the suffixed form (`local-x7k2`).
+  if (wanted !== null && !taken.has(wanted) && !isReservedMemberId(wanted)) return wanted;
   for (let attempt = 0; attempt < 8; attempt++) {
     const suffix = random(4).replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 8);
     const candidate = wanted === null ? `collie-${suffix}` : `${wanted}-${suffix}`.slice(0, 63);
-    if (MEMBER_ID_RE.test(candidate) && !taken.has(candidate)) return candidate;
+    if (MEMBER_ID_RE.test(candidate) && !taken.has(candidate) && !isReservedMemberId(candidate)) return candidate;
   }
   throw new Error("could not mint a unique member id");
 }

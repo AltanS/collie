@@ -1,0 +1,27 @@
+// test.sh's checker (a template: test.sh writes the schema's path over SCHEMA, so this is not a .ts file): reads one document on stdin, parses it with the trick schema, and compares what
+// the expectation JSON (argv[2]) names. Prints the first mismatch and exits 1.
+import { parseTrickDocumentText } from "SCHEMA";
+
+const want = JSON.parse(process.argv[2] ?? "{}");
+const text = await Bun.stdin.text();
+const parsed = parseTrickDocumentText(text, { declared: ["belt", "session"] });
+const fail = (why: string): never => {
+  console.error(`FAIL ${why}\n${text.slice(0, 600)}`);
+  process.exit(1);
+};
+if (parsed.refusals.length > 0) fail(`refusals: ${JSON.stringify(parsed.refusals)}`);
+if (parsed.parts.length !== 2) fail(`parts: ${parsed.parts.length}`);
+const doc = JSON.parse(text);
+const belt = doc.parts[0].mark;
+if (want.label !== undefined && belt.label !== want.label) fail(`belt label ${belt.label}, want ${want.label}`);
+if (want.tone !== undefined && belt.tone !== want.tone) fail(`belt tone ${belt.tone}, want ${want.tone}`);
+const keys = (doc.decisions ?? []).map((d: { key: string }) => d.key);
+if (want.decisions !== undefined && JSON.stringify(keys) !== JSON.stringify(want.decisions)) fail(`decisions ${keys}, want ${want.decisions}`);
+const d = (doc.decisions ?? [])[0];
+if (want.about !== undefined && want.about !== null && d?.about !== want.about) fail(`about ${d?.about}, want ${want.about}`);
+if (want.about === null && (d?.about !== undefined || d?.replyTo !== undefined)) fail("about or replyTo set");
+if (want.chips !== undefined) {
+  const bar = doc.parts[1].view.find((n: { kind: string }) => n.kind === "bar");
+  if (bar?.kids.length !== want.chips) fail(`chips ${bar?.kids.length}, want ${want.chips}`);
+}
+if (/"draft"|"open"/.test(text)) fail("draft or open in the output");

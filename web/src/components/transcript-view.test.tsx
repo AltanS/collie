@@ -53,6 +53,48 @@ describe("TranscriptView", () => {
     expect(screen.getByText("One commit.")).toBeInTheDocument();
   });
 
+  it("draws the reader's turn as the same well Chat does, with no caption row and the time on its last row", () => {
+    render(<TranscriptView agent="claude" entries={[turn({ uuid: "u1", role: "user", parts: [{ kind: "text", text: "what changed?" }] })]} />);
+    const well = screen.getByText("what changed?").closest("div.rounded-md")!;
+    expect(well).toHaveClass("ml-auto", "w-fit", "max-w-[85%]", "border-status-working/25", "bg-status-working/8");
+    expect(screen.getByText("You")).toHaveClass("sr-only");
+    expect(well.firstElementChild).toBe(screen.getByText("You"));
+    // The time is the well's last row, and only a turn that shows its header draws it.
+    const time = well.lastElementChild!;
+    expect(time).toHaveClass("text-right", "text-[10px]");
+    expect(time.textContent).not.toBe("");
+  });
+
+  it("draws no time row in the well of a turn that continues the speaker's run", () => {
+    render(
+      <TranscriptView
+        agent="claude"
+        entries={[
+          turn({ uuid: "u1", role: "user", parts: [{ kind: "text", text: "first ask" }] }),
+          turn({ uuid: "u2", role: "user", parts: [{ kind: "text", text: "second ask" }] }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("first ask").closest("div.rounded-md")!.querySelector(".text-right")).not.toBeNull();
+    expect(screen.getByText("second ask").closest("div.rounded-md")!.querySelector(".text-right")).toBeNull();
+  });
+
+  it("draws the day divider and the compaction marker as a quiet line between two hairlines", () => {
+    const { container } = render(
+      <TranscriptView
+        agent="claude"
+        entries={[
+          turn({ uuid: "a1", role: "assistant", ts: "2026-07-25T06:00:00.000Z" }),
+          turn({ uuid: "s1", role: "summary", ts: "2026-07-25T07:00:00.000Z", parts: [{ kind: "text", text: "recap" }] }),
+        ]}
+      />,
+    );
+    const marker = screen.getByText(/Context compacted/);
+    expect(marker).toHaveClass("text-[11px]");
+    expect(marker.parentElement!.querySelectorAll("div[aria-hidden].h-px")).toHaveLength(2);
+    expect(container.querySelectorAll("div[aria-hidden].h-px.bg-border").length).toBeGreaterThanOrEqual(4);
+  });
+
   it("shows a tool call's summary but keeps its output collapsed until tapped", async () => {
     showToolCalls();
     render(
@@ -134,6 +176,7 @@ describe("TranscriptView", () => {
     const button = screen.getByRole("button", { name: /Bash/ });
     expect(button).toHaveAttribute("aria-expanded", "true");
     expect(container.querySelector("pre mark")).toHaveTextContent("SECRET_TOKEN");
+    expect(container.querySelector("pre mark")?.className).toBe("rounded-sm bg-find text-inherit");
   });
 
   it("a tool call auto-expanded by a search query can be collapsed by tapping its header, and clearing the query does not leave it stuck open", async () => {

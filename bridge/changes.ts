@@ -182,7 +182,7 @@ export function gitEnv(base: Record<string, string | undefined>) {
 }
 
 /** The `-c` overrides every run carries. Fixed: none of them depends on the repo. */
-const HARDENING: readonly string[] = [
+export const HARDENING: readonly string[] = [
   "core.fsmonitor=false",
   "core.hooksPath=/dev/null",
   "diff.external=",

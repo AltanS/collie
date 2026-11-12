@@ -3,6 +3,8 @@
 
 import { useState, type ReactNode } from "react";
 
+import type { DashFilterControl } from "@/lib/dash-filter";
+
 import type { GeneralAction } from "@/components/actions-row";
 import { PhoneFrame } from "../layout";
 
@@ -79,4 +81,15 @@ export function useRoomyActions(): readonly GeneralAction[] {
     { id: "agent", icon: "agent-commands", label: "Agent", onSelect: toggle("cmd") },
     { id: "display", icon: "display-settings", label: "Display settings", word: "Display", on: open === "display", expanded: open === "display", onSelect: toggle("display") },
   ];
+}
+
+/**
+ * One card's own session filter (M97): the query and the field's open state in the card's state, so
+ * typing into one dashboard card never filters another. The app keeps them in the module store of
+ * `lib/dash-filter.ts`, one per host scope, and every card here shares one scope.
+ */
+export function useCardFilter(initial: { query: string; open: boolean } = { query: "", open: false }): DashFilterControl {
+  const [query, setQuery] = useState(initial.query);
+  const [open, setOpen] = useState(initial.open);
+  return { query, open, setQuery, setOpen };
 }

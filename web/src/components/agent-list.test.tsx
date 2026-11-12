@@ -16,7 +16,17 @@ import { workspacePrefKey } from "./agent-list";
 import { paneRowKey } from "@/lib/hosts";
 import { currentPins, setPinned } from "@/lib/pins";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
+import { __resetDashFilter } from "@/lib/dash-filter";
+import { __resetPinHint } from "@/lib/pin-hint";
 import type { AgentStatus, AgentView, MuxConfig, ServerSummary } from "@/lib/types";
+
+// The filter's own switch, for the one test that renders the list with the feature's code path off:
+// every other test runs the real `filterOffered`.
+const filterSwitch = vi.hoisted(() => ({ off: false }));
+vi.mock("@/lib/pane-filter", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/pane-filter")>();
+  return { ...real, filterOffered: (count: number) => !filterSwitch.off && real.filterOffered(count) };
+});
 
 function agent(
   paneId: string,
@@ -463,6 +473,20 @@ describe("AgentList — the empty herd", () => {
   it("says only 'Disconnected' when it cannot date the data", () => {
     render(<AgentList agents={[]} onOpen={vi.fn()} error />);
     expect(screen.getByText("Disconnected")).toBeInTheDocument();
+    // An outage is not a refusal: no pairing block.
+    expect(screen.queryByRole("button", { name: "Pair with your phone" })).toBeNull();
+  });
+
+  // ADR 0139: an unpaired browser, and one the bridge refused ("Access refused"), get the phone block.
+  it("offers pairing with a phone beside `collie pair` when the bridge asked to be paired", () => {
+    render(<AgentList agents={[]} onOpen={vi.fn()} error notPaired />);
+    expect(screen.getByText("collie pair")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pair with your phone" })).toBeInTheDocument();
+  });
+
+  it("offers it under Access refused too", () => {
+    render(<AgentList agents={[]} onOpen={vi.fn()} error refused />);
+    expect(screen.getByRole("button", { name: "Pair with your phone" })).toBeInTheDocument();
   });
 });
 
@@ -1555,5 +1579,338 @@ describe("AgentList — the order select", () => {
     expect(summaryLine().parentElement!.querySelector(".invisible")).not.toBeNull();
     const selectRow = filterButton().closest("div.relative")!.parentElement!;
     expect(selectRow.querySelector(".invisible")).not.toBeNull();
+  });
+});
+
+// THE FILTER (M97 spec 04): a field over the Dashboard's session rows, a loose match, the matched letters marked.
+describe("AgentList — the session filter", () => {
+  const at = (paneId: string, workspaceId: string, workspaceLabel: string, workspaceNumber: number, over: Partial<AgentView> = {}): AgentView =>
+    agent(paneId, "idle", {
+      workspaceId,
+      workspaceLabel,
+      workspaceNumber,
+      tabId: `${workspaceId}:t1`,
+      cwd: `/home/you/${workspaceLabel}`,
+      ...over,
+    });
+  const RELEASE = at("w1:p1", "w1", "collie-workspace", 1, { sessionName: "release notes", gitHead: { kind: "branch", name: "fix/748-sheet" } });
+  const TRIAGE = at("w1:p2", "w1", "collie-workspace", 1, { sessionName: "triage" });
+  const API = at("w2:p1", "w2", "moonward", 2, { sessionName: "api server", agent: "codex" });
+  const MIGRATE = at("w2:p2", "w2", "moonward", 2, { sessionName: "migrations" });
+  const LANDING = at("w3:p1", "w3", "webapp", 3, { sessionName: "landing page", status: "blocked", lastActiveAt: 500, lastSeenAt: 1 });
+  const HEROES = at("w3:p2", "w3", "webapp", 3, { sessionName: "heroes", status: "working" });
+  const AGENTS = [RELEASE, TRIAGE, API, MIGRATE, LANDING, HEROES];
+  const SHELLS = [at("w1:p8", "w1", "collie-workspace", 1, { agent: "shell", kind: "shell", status: "unknown", sessionName: "dev server" })];
+
+  const field = () => screen.getByRole("textbox", { name: "Filter sessions" });
+  const magnifier = () => screen.queryByRole("button", { name: "Filter sessions" });
+  const keys = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>("button[id^='pane-row-']")].map((b) => b.id);
+  const idOf = (p: AgentView) => `pane-row-${paneRowKey(p).replace(/[^A-Za-z0-9_-]/gu, "_")}`;
+  const headingTexts = () => screen.queryAllByRole("heading", { level: 2 }).map((h) => h.firstChild?.textContent ?? h.textContent);
+  const list = (over: Partial<React.ComponentProps<typeof AgentList>> = {}) => (
+    <AgentList agents={AGENTS} shellPanes={SHELLS} onOpen={vi.fn()} filterEntry="always" {...over} />
+  );
+
+  beforeEach(() => {
+    __resetDashFilter();
+    __resetPinHint();
+  });
+  afterEach(() => {
+    filterSwitch.off = false;
+  });
+
+  it("renders exactly what it rendered before while the query is empty, in both entries", () => {
+    // `useId` numbers differ between two renders; the markup is compared with them blanked.
+    const blank = (html: string) => html.replace(/_r_[a-z0-9]+_/gu, "_id_");
+    for (const entry of ["button", "always"] as const) {
+      filterSwitch.off = true;
+      const off = render(list({ filterEntry: entry }));
+      expect(off.container.querySelector('[data-slot="session-filter"]')).toBeNull();
+      const before = blank(off.container.innerHTML);
+      off.unmount();
+
+      filterSwitch.off = false;
+      const on = render(list({ filterEntry: entry }));
+      // The feature's own parts come out; what is left is the markup of the list without them.
+      on.container.querySelector('[data-slot="toggle-button"]')?.parentElement?.remove();
+      on.container.querySelector('[data-slot="session-filter"]')?.parentElement?.remove();
+      expect(blank(on.container.innerHTML)).toBe(before);
+      expect(on.container.querySelector("mark")).toBeNull();
+      on.unmount();
+    }
+  });
+
+  it("draws no magnifier and no field on five rows or fewer, and the bar is what it was", () => {
+    const five = [RELEASE, TRIAGE, API, MIGRATE, LANDING];
+    const { container, rerender } = render(<AgentList agents={five} onOpen={vi.fn()} />);
+    expect(magnifier()).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    const before = container.innerHTML;
+    rerender(<AgentList agents={five} onOpen={vi.fn()} filterEntry="always" />);
+    expect(container.innerHTML).toBe(before);
+    rerender(<AgentList agents={[...five, HEROES]} onOpen={vi.fn()} />);
+    expect(magnifier()).not.toBeNull();
+  });
+
+  it("counts the shell panes among the session rows", () => {
+    render(<AgentList agents={[RELEASE, TRIAGE, API, MIGRATE, LANDING]} shellPanes={SHELLS} onOpen={vi.fn()} />);
+    expect(magnifier()).not.toBeNull();
+  });
+
+  describe("the magnifier entry", () => {
+    it("sits at the end of the control bar, a 44px toggle, and opens the field on a tap with the caret in it", async () => {
+      const user = userEvent.setup();
+      render(list({ filterEntry: "button", onOrderChange: vi.fn() }));
+      const button = magnifier()!;
+      expect(button).toHaveClass("size-11");
+      expect(button).toHaveAttribute("aria-pressed", "false");
+      expect(button.parentElement!.parentElement).toBe(filterButton().closest("div.relative")!.parentElement);
+      expect(screen.queryByRole("textbox")).toBeNull();
+      await user.click(button);
+      await waitFor(() => expect(field()).toHaveFocus());
+    });
+
+    it("closes on a second tap, keeping the query, and reads pressed while a query is set", async () => {
+      const user = userEvent.setup();
+      const { container } = render(list({ filterEntry: "button" }));
+      await user.click(magnifier()!);
+      await waitFor(() => expect(field()).toHaveFocus());
+      await user.type(field(), "moon");
+      expect(magnifier()).toHaveAttribute("aria-pressed", "true");
+      await user.click(magnifier()!);
+      await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+      // The field is gone, the filter stands, and the button says so.
+      expect(magnifier()).toHaveAttribute("aria-pressed", "true");
+      expect(keys(container)).toEqual([API, MIGRATE].map(idOf));
+    });
+
+    it("closes on Escape on an empty field, after the first Escape cleared the query", async () => {
+      const user = userEvent.setup();
+      render(list({ filterEntry: "button" }));
+      await user.click(magnifier()!);
+      await waitFor(() => expect(field()).toHaveFocus());
+      await user.type(field(), "moon");
+      await user.keyboard("{Escape}");
+      expect(field()).toHaveValue("");
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+      expect(magnifier()).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("the always entry draws no magnifier and takes no focus", () => {
+      render(list({ filterEntry: "always" }));
+      expect(magnifier()).toBeNull();
+      expect(field()).not.toHaveFocus();
+    });
+
+    it("the Changes tab keeps both parts as invisible slots", () => {
+      const { container } = render(list({ filterEntry: "button", renderBody: () => <p>changes</p> }));
+      expect(screen.queryByRole("button", { name: "Filter sessions" })).toBeNull();
+      expect(container.querySelector('[data-slot="toggle-button"]')!.closest(".invisible")).not.toBeNull();
+    });
+  });
+
+  it("the Changes tab keeps the always field as an invisible slot", () => {
+    const { container } = render(list({ filterEntry: "always", renderBody: () => <p>changes</p> }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(container.querySelector('[data-slot="session-filter"]')!.closest(".invisible")).not.toBeNull();
+  });
+
+  it("keeps a row by its name, marks the matched letters, and keeps the row's height class", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "rel");
+    expect(keys(container)).toEqual([RELEASE].map(idOf));
+    expect([...container.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["rel"]);
+    expect(container.querySelector(`#${idOf(RELEASE)} > div`)!.className).toMatch(/(?:^|\s)h-11(?=\s|$)/);
+    expect(headingTexts()).toEqual(["collie-workspace"]);
+  });
+
+  it("finds a row by its branch and marks it on the branch line", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "fix");
+    expect(keys(container)).toEqual([RELEASE].map(idOf));
+    const branch = container.querySelector('[data-slot="branch-label"]')!;
+    expect([...branch.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["fix"]);
+  });
+
+  it("names a field the row does not draw on line 2, in the same slot, with the letters marked", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "codex");
+    expect(keys(container)).toEqual([API].map(idOf));
+    const via = container.querySelector('[data-slot="agent-row-via"]')!;
+    expect(via.textContent).toBe("codex");
+    expect(via.previousElementSibling?.textContent).toBe("agent");
+    expect([...via.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["codex"]);
+    const slot = via.parentElement!;
+    expect(slot).toHaveAttribute("data-slot", "agent-row-detail");
+    expect(slot.className).toMatch(/(?:^|\s)h-4(?=\s|$)/);
+    expect(container.querySelector(`#${idOf(API)} > div`)!.className).toMatch(/(?:^|\s)h-11(?=\s|$)/);
+  });
+
+  it("names the folder when only the folder matched (the row draws no folder)", async () => {
+    const user = userEvent.setup();
+    const odd = at("w9:p1", "w9", "scratch", 9, { sessionName: "notes", cwd: "/srv/zebra-farm" });
+    const { container } = render(list({ agents: [...AGENTS, odd] }));
+    await user.type(field(), "zebra");
+    expect(keys(container)).toEqual([odd].map(idOf));
+    const via = container.querySelector('[data-slot="agent-row-via"]')!;
+    expect(via.previousElementSibling?.textContent).toBe("folder");
+    expect(via.textContent).toBe("zebra-farm");
+  });
+
+  it("with drawn-only does not search the folder", async () => {
+    const user = userEvent.setup();
+    const odd = at("w9:p1", "w9", "scratch", 9, { sessionName: "notes", cwd: "/srv/zebra-farm" });
+    const { container } = render(list({ agents: [...AGENTS, odd], filterHidden: "drawn-only" }));
+    await user.type(field(), "zebra");
+    expect(keys(container)).toEqual([]);
+  });
+
+  it("keeps the groups in place order and drops the groups left empty with their headings", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "moon");
+    expect(keys(container)).toEqual([API, MIGRATE].map(idOf));
+    expect(headingTexts()).toEqual(["moonward"]);
+  });
+
+  it("does not re-sort by score in the default order", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "e");
+    const shown = keys(container);
+    expect(shown.length).toBeGreaterThan(1);
+    // The rows left are the unfiltered list's rows, in the unfiltered list's order.
+    await user.clear(field());
+    const whole = keys(container);
+    expect(shown).toEqual(whole.filter((id) => shown.includes(id)));
+  });
+
+  it("in best-first order draws one flat list with no workspace headings", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list({ filterOrder: "best" }));
+    await user.type(field(), "server");
+    // A tie keeps the place order: the shell sits in the first workspace, before moonward.
+    expect(keys(container)).toEqual([SHELLS[0]!, API].map(idOf));
+    expect(headingTexts()).toEqual([]);
+  });
+
+  it("hides the pin hint while a query is set", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list({ onHold: vi.fn() }));
+    const hint = () => container.querySelector('[data-slot="notice"]');
+    expect(hint()).not.toBeNull();
+    await user.type(field(), "rel");
+    expect(hint()).toBeNull();
+  });
+
+  it("filters Pinned in place and drops the group when no pinned row matches", async () => {
+    const user = userEvent.setup();
+    const all = [...AGENTS, ...SHELLS];
+    setPinned(TRIAGE, true, all, 1);
+    setPinned(API, true, all, 2);
+    const { container } = render(list({ pins: currentPins() }));
+    expect(keys(container).slice(0, 2)).toEqual([TRIAGE, API].map(idOf));
+    await user.type(field(), "api");
+    expect(keys(container)).toEqual([API].map(idOf));
+    expect(screen.queryByRole("region", { name: "Pinned" })).not.toBeNull();
+    await user.clear(field());
+    await user.type(field(), "mig");
+    expect(keys(container)).toEqual([MIGRATE].map(idOf));
+    expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
+  });
+
+  it("combines with the needs-you switch: those narrow first, the count is against what is left", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list({ needsYouOnly: true }));
+    expect(keys(container)).toEqual([LANDING].map(idOf));
+    await user.type(field(), "l");
+    expect(keys(container)).toEqual([LANDING].map(idOf));
+    expect(screen.getByText("1 of 1")).toBeInTheDocument();
+    await user.clear(field());
+    await user.type(field(), "moon");
+    expect(keys(container)).toEqual([]);
+    expect(screen.getByText(/No session matches “moon”/)).toBeInTheDocument();
+  });
+
+  it("combines with the workspace choice: the chosen workspace's rows only", async () => {
+    const user = userEvent.setup();
+    const moonward = workspacePrefKey(groupPanesByWorkspace([API])[0]!);
+    const { container } = render(list({ isolated: [moonward], onIsolate: vi.fn() }));
+    await user.type(field(), "a");
+    // `a` matches names in other workspaces too; only moonward's rows are in play.
+    expect(keys(container).every((k) => [API, MIGRATE].map(idOf).includes(k))).toBe(true);
+    expect(screen.getByText(/ of 2$/)).toBeInTheDocument();
+  });
+
+  it("counts what it shows against the rows left, politely", async () => {
+    const user = userEvent.setup();
+    render(list());
+    const count = () => document.querySelector('[data-slot="session-filter-count"]')!;
+    expect(count()).toHaveAttribute("aria-live", "polite");
+    await user.type(field(), "moon");
+    expect(count()).toHaveTextContent("2 of 7");
+  });
+
+  it("opens the first row shown on Enter, through the row's own navigation, and does nothing on an empty field", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    render(list({ onOpen }));
+    await user.click(field());
+    await user.keyboard("{Enter}");
+    expect(onOpen).not.toHaveBeenCalled();
+    await user.type(field(), "moon{Enter}");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    // SAFETY: the list calls `onOpen(pane, rowElement)`; the mock recorded exactly those two arguments.
+    const [pane, row] = onOpen.mock.calls[0] as [AgentView, HTMLElement];
+    expect(pane).toBe(API);
+    expect(row.id).toBe(idOf(API));
+  });
+
+  it("says nothing matches, in the list's place, with a way out", async () => {
+    const user = userEvent.setup();
+    const { container } = render(list());
+    await user.type(field(), "zzz");
+    expect(keys(container)).toEqual([]);
+    expect(screen.getByText("No session matches “zzz”.")).toBeInTheDocument();
+    await user.click(within(container.querySelector('[data-slot="session-filter-empty"]')!).getByRole("button", { name: "Clear filter" }));
+    expect(field()).toHaveValue("");
+    expect(keys(container)).toHaveLength(AGENTS.length + SHELLS.length);
+  });
+
+  it("jumps to a needs-you row the query hides by clearing the query first", async () => {
+    const user = userEvent.setup();
+    Element.prototype.scrollIntoView = vi.fn();
+    const { container } = render(list());
+    await user.type(field(), "moon");
+    await user.click(screen.getByRole("button", { name: /1 needs you/i }));
+    expect(field()).toHaveValue("");
+    await waitFor(() => expect(container.querySelector(`#${idOf(LANDING)}`)).toBeInTheDocument());
+  });
+
+  it("keeps the query in the store for the host scope, so a remount finds it, and stores nothing on the device", async () => {
+    const user = userEvent.setup();
+    const first = render(list({ scope: { host: "h1" } }));
+    await user.type(field(), "moon");
+    first.unmount();
+    const second = render(list({ scope: { host: "h1" } }));
+    expect(field()).toHaveValue("moon");
+    expect(keys(second.container)).toEqual([API, MIGRATE].map(idOf));
+    second.unmount();
+    // Another machine's Dashboard holds its own.
+    render(list({ scope: { host: "h2" } }));
+    expect(field()).toHaveValue("");
+    expect(JSON.stringify({ ...localStorage })).not.toContain("moon");
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain("moon");
+  });
+
+  it("a caller that owns the query is not read from the store", () => {
+    const { container } = render(list({ filter: { query: "moon", open: true, setQuery: vi.fn(), setOpen: vi.fn() } }));
+    expect(field()).toHaveValue("moon");
+    expect(keys(container)).toEqual([API, MIGRATE].map(idOf));
   });
 });

@@ -1,0 +1,3159 @@
+{
+  "removed-stack": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "stack",
+              "children": [
+                {
+                  "kind": "para",
+                  "text": "ok"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-grid": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "grid",
+              "cols": 2,
+              "children": [
+                {
+                  "kind": "para",
+                  "text": "ok"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "table-first-schema": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "table",
+              "columns": [
+                {
+                  "label": "a"
+                }
+              ],
+              "rows": 1,
+              "items": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/1/view/1/kids"
+    ],
+    "notes": [
+      "/parts/1/view/1/columns",
+      "/parts/1/view/1/rows",
+      "/parts/1/view/1/items"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "removed-kv": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "kv",
+              "rows": [
+                {
+                  "label": "a",
+                  "value": "b"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-steps": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "steps",
+              "steps": [
+                {
+                  "label": "a",
+                  "state": "done"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-time": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "time",
+              "at": "2026-11-08T09:38:12Z"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-section": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "section",
+              "title": "x",
+              "children": [
+                {
+                  "kind": "para",
+                  "text": "ok"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-divider": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "divider"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-log": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "log",
+              "lines": 2,
+              "tail": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-text": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "text",
+              "text": "ok",
+              "lines": 1
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-progress": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "progress",
+              "value": 40
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-badge": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "badge",
+              "count": 2
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-icon": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "icon",
+              "name": "check"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "spark-first-schema": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "spark",
+              "values": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/1/view/1/attrs"
+    ],
+    "notes": [
+      "/parts/1/view/1/values"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "removed-ring": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "ring",
+              "value": 40
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-mark": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "mark",
+              "icon": "flask"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-screen": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "screen",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-sheet": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "sheet",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-toast": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "toast",
+              "text": "x"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-form": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "form",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-field": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "field"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-select": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "select",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-composer": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "composer"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-prompt": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "prompt",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-tool": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "tool",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-turn": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "turn",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-chat": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "chat",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-pane": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "pane",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-think": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "think",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "removed-option": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "option",
+              "kids": []
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "unknown-kind": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            },
+            {
+              "kind": "chart",
+              "values": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/1/view/1/kind"
+    ],
+    "keeps": [
+      "belt",
+      "s"
+    ]
+  },
+  "view-not-a-list": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": {
+            "kind": "para",
+            "text": "ok"
+          }
+        },
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "row-outside-a-list": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "row",
+              "text": "x"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kind"
+    ],
+    "keeps": []
+  },
+  "attr-at-the-top": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "card",
+              "tone": "ok",
+              "kids": [
+                {
+                  "kind": "para",
+                  "text": "ok"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/view/0/tone"
+    ],
+    "keeps": [
+      "s"
+    ]
+  },
+  "attr-not-text": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "meter",
+              "attrs": {
+                "value": 68
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/attrs/value"
+    ],
+    "keeps": []
+  },
+  "row-state": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "list",
+              "kids": [
+                {
+                  "kind": "row",
+                  "text": "x",
+                  "attrs": {
+                    "state": "waiting"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/view/0/kids/0/attrs/state"
+    ],
+    "keeps": [
+      "s"
+    ]
+  },
+  "button-does-wipe": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "bar",
+              "kids": [
+                {
+                  "kind": "button",
+                  "attrs": {
+                    "label": "Wipe",
+                    "does": "wipe"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids/0/attrs/does"
+    ],
+    "keeps": []
+  },
+  "button-pref": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "bar",
+              "kids": [
+                {
+                  "kind": "button",
+                  "attrs": {
+                    "label": "Theme",
+                    "intent": "x",
+                    "pref": "theme"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/view/0/kids/0/attrs/pref"
+    ],
+    "keeps": [
+      "s"
+    ]
+  },
+  "button-no-intent": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "bar",
+              "kids": [
+                {
+                  "kind": "button",
+                  "attrs": {
+                    "label": "Go"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids/0/attrs/intent"
+    ],
+    "keeps": []
+  },
+  "para-text-and-kids": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "x",
+              "kids": [
+                {
+                  "kind": "run",
+                  "text": "y"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0"
+    ],
+    "keeps": []
+  },
+  "para-line-break": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "one\ntwo"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/text"
+    ],
+    "keeps": []
+  },
+  "row-two-buttons": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "list",
+              "kids": [
+                {
+                  "kind": "row",
+                  "text": "x",
+                  "kids": [
+                    {
+                      "kind": "button",
+                      "attrs": {
+                        "label": "A",
+                        "intent": "a"
+                      }
+                    },
+                    {
+                      "kind": "button",
+                      "attrs": {
+                        "label": "B",
+                        "intent": "b"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids/0/kids"
+    ],
+    "keeps": []
+  },
+  "chip-clock-without-at": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "bar",
+              "kids": [
+                {
+                  "kind": "chip",
+                  "text": "x",
+                  "attrs": {
+                    "clock": "ago"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids/0/attrs"
+    ],
+    "keeps": []
+  },
+  "chip-at-iso": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "bar",
+              "kids": [
+                {
+                  "kind": "chip",
+                  "attrs": {
+                    "at": "2026-11-08T09:38:12Z",
+                    "clock": "ago"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids/0/attrs/at"
+    ],
+    "keeps": []
+  },
+  "progress-max-13": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "meter",
+              "attrs": {
+                "role": "progress",
+                "value": "3",
+                "max": "13"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/attrs/max"
+    ],
+    "keeps": []
+  },
+  "meter-over-max": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "meter",
+              "attrs": {
+                "value": "35",
+                "max": "34"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/attrs/value"
+    ],
+    "keeps": []
+  },
+  "link-pane-name": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "kids": [
+                {
+                  "kind": "link",
+                  "text": "x",
+                  "attrs": {
+                    "href": "composer",
+                    "rel": "pane"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids/0/attrs/href"
+    ],
+    "keeps": []
+  },
+  "link-file-url": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "kids": [
+                {
+                  "kind": "link",
+                  "text": "x",
+                  "attrs": {
+                    "href": "file:///etc/passwd"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids/0/attrs/href"
+    ],
+    "keeps": []
+  },
+  "bad-style": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "line",
+              "text": "x",
+              "attrs": {
+                "style": "fg-orange"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/attrs/style"
+    ],
+    "keeps": []
+  },
+  "long-subtitle": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ],
+          "subtitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/subtitle"
+    ],
+    "keeps": []
+  },
+  "draft-is-gone": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "draft": {
+        "session": "lodge:w6X:3",
+        "text": "fix case 24"
+      }
+    },
+    "paths": [],
+    "notes": [
+      "/draft"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "open-is-gone": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "open": {
+        "url": "https://example.com/"
+      }
+    },
+    "paths": [],
+    "notes": [
+      "/open"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "unknown-part-key": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          },
+          "color": "#ff0000"
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/color"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "unknown-top-key": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "theme": "dark"
+    },
+    "paths": [],
+    "notes": [
+      "/theme"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "later-place": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "header.line",
+          "id": "d",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ]
+        },
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/at"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "not-a-place": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "header",
+          "id": "h",
+          "line": {
+            "text": "x"
+          }
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/at"
+    ],
+    "keeps": []
+  },
+  "header-line-is-gone": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "header.line",
+          "id": "h",
+          "line": {
+            "text": "x"
+          }
+        },
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/at"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "wrong-version": {
+    "doc": {
+      "v": 3,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/v"
+    ],
+    "keeps": [],
+    "whole": true
+  },
+  "parts-not-a-list": {
+    "doc": {
+      "v": 1,
+      "parts": {
+        "belt": {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      }
+    },
+    "paths": [
+      "/parts"
+    ],
+    "keeps": [],
+    "whole": true
+  },
+  "duplicate-id": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "belt",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ]
+        },
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/1/id"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "second-belt": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        },
+        {
+          "at": "belt",
+          "id": "belt2",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/1/at"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "status-tone": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "tone": "blocked"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/mark/tone"
+    ],
+    "keeps": []
+  },
+  "old-tone": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "tone": "error"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/mark/tone"
+    ],
+    "keeps": []
+  },
+  "unknown-icon": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "rocket"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/mark/icon"
+    ],
+    "keeps": []
+  },
+  "empty-mark": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "tone": "ok"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/mark"
+    ],
+    "keeps": []
+  },
+  "mark-face": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "face": "23/34"
+          }
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/mark/face"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "list-kids-51": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "list",
+              "kids": [
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                },
+                {
+                  "kind": "row",
+                  "text": "x"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids"
+    ],
+    "keeps": []
+  },
+  "five-actions": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ],
+          "actions": [
+            {
+              "id": "a0",
+              "label": "A",
+              "intent": "a"
+            },
+            {
+              "id": "a1",
+              "label": "A",
+              "intent": "a"
+            },
+            {
+              "id": "a2",
+              "label": "A",
+              "intent": "a"
+            },
+            {
+              "id": "a3",
+              "label": "A",
+              "intent": "a"
+            },
+            {
+              "id": "a4",
+              "label": "A",
+              "intent": "a"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/actions"
+    ],
+    "keeps": []
+  },
+  "image-escape": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "image",
+              "attrs": {
+                "src": "../secret.png",
+                "alt": "x",
+                "w": "10",
+                "h": "10"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/attrs/src"
+    ],
+    "keeps": []
+  },
+  "image-no-size": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "image",
+              "attrs": {
+                "src": "media/a.png",
+                "alt": "x"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/attrs/w",
+      "/parts/0/view/0/attrs/h"
+    ],
+    "keeps": []
+  },
+  "badge-count-10000": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ],
+          "badge": {
+            "count": 10000
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/badge/count"
+    ],
+    "keeps": []
+  },
+  "badge-text-13": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ],
+          "badge": {
+            "text": "xxxxxxxxxxxxx"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/badge/text"
+    ],
+    "keeps": []
+  },
+  "progress-old-shape": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ],
+          "progress": {
+            "kind": "percent",
+            "value": 68
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/progress/value"
+    ],
+    "notes": [
+      "/parts/0/progress/kind"
+    ],
+    "keeps": []
+  },
+  "progress-max-13-part": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ],
+          "progress": {
+            "value": 1,
+            "max": 13
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/progress/max"
+    ],
+    "keeps": []
+  },
+  "fresh-2s": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "fresh": "2s"
+    },
+    "paths": [
+      "/fresh"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "asof-no-zone": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "asOf": "2026-11-08T09:41:00"
+    },
+    "paths": [
+      "/asOf"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "control-in-label": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "bar",
+              "kids": [
+                {
+                  "kind": "button",
+                  "attrs": {
+                    "label": "Re\nrun",
+                    "intent": "rerun"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/kids/0/attrs/label"
+    ],
+    "keeps": []
+  },
+  "bidi-in-text": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "abc‮def"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/text"
+    ],
+    "keeps": []
+  },
+  "action-args": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": "ok"
+            }
+          ],
+          "actions": [
+            {
+              "id": "a",
+              "label": "A",
+              "intent": "a",
+              "args": {
+                "n": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [],
+    "notes": [
+      "/parts/0/actions/0/args"
+    ],
+    "keeps": [
+      "s"
+    ]
+  },
+  "many-faults": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "session",
+          "id": "s",
+          "view": [
+            {
+              "kind": "para",
+              "text": ""
+            },
+            {
+              "kind": "kv",
+              "rows": []
+            },
+            {
+              "kind": "card",
+              "kids": []
+            }
+          ],
+          "subtitle": ""
+        }
+      ]
+    },
+    "paths": [
+      "/parts/0/view/0/text",
+      "/parts/0/view/2/kids",
+      "/parts/0/subtitle"
+    ],
+    "notes": [
+      "/parts/0/view/1/kind"
+    ],
+    "keeps": []
+  },
+  "decision-recommends-not-an-option": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "key": "case-24",
+          "title": "Leg red: case 24. Rerun it?",
+          "summary": "Case 24 failed on the first tap, the other 33 passed.",
+          "body": "The send after a restart left the draft in the reply box.\n\nThe log shows a timeout, not a code change.",
+          "options": [
+            {
+              "intent": "rerun",
+              "label": "Rerun red"
+            },
+            {
+              "intent": "skip",
+              "label": "Skip today",
+              "detail": "The leg stays red until tomorrow's run."
+            }
+          ],
+          "recommends": {
+            "intent": "merge",
+            "why": "x"
+          },
+          "priority": "today",
+          "about": "lodge:w6X:3",
+          "replyTo": "lodge:w6X:3",
+          "media": [
+            {
+              "file": "shots/case-24.png",
+              "caption": "the failing step"
+            }
+          ],
+          "links": [
+            {
+              "label": "the report",
+              "href": "http://lodge:8832/legs/24"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/decisions/0/recommends/intent"
+    ],
+    "keeps": [
+      "belt"
+    ],
+    "refusedDecisions": [
+      "case-24"
+    ]
+  },
+  "decision-over-caps": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "key": "case-24",
+          "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "summary": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "body": "The send after a restart left the draft in the reply box.\n\nThe log shows a timeout, not a code change.",
+          "options": [
+            {
+              "intent": "o0",
+              "label": "O"
+            },
+            {
+              "intent": "o1",
+              "label": "O"
+            },
+            {
+              "intent": "o2",
+              "label": "O"
+            },
+            {
+              "intent": "o3",
+              "label": "O"
+            },
+            {
+              "intent": "o4",
+              "label": "O"
+            },
+            {
+              "intent": "o5",
+              "label": "O"
+            }
+          ],
+          "recommends": null,
+          "priority": "today",
+          "about": "lodge:w6X:3",
+          "replyTo": "lodge:w6X:3",
+          "media": [
+            {
+              "file": "a.png"
+            },
+            {
+              "file": "a.png"
+            },
+            {
+              "file": "a.png"
+            },
+            {
+              "file": "a.png"
+            },
+            {
+              "file": "a.png"
+            }
+          ],
+          "links": [
+            {
+              "label": "l",
+              "href": "https://a.example/"
+            },
+            {
+              "label": "l",
+              "href": "https://a.example/"
+            },
+            {
+              "label": "l",
+              "href": "https://a.example/"
+            },
+            {
+              "label": "l",
+              "href": "https://a.example/"
+            },
+            {
+              "label": "l",
+              "href": "https://a.example/"
+            },
+            {
+              "label": "l",
+              "href": "https://a.example/"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/decisions/0/title",
+      "/decisions/0/summary",
+      "/decisions/0/options",
+      "/decisions/0/media",
+      "/decisions/0/links"
+    ],
+    "keeps": [
+      "belt"
+    ],
+    "refusedDecisions": [
+      "case-24"
+    ]
+  },
+  "decision-too-many": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "key": "d0",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d1",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d2",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d3",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d4",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d5",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d6",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d7",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d8",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d9",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d10",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d11",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d12",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d13",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d14",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d15",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d16",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d17",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d18",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d19",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "d20",
+          "title": "T",
+          "summary": "S"
+        }
+      ]
+    },
+    "paths": [
+      "/decisions"
+    ],
+    "keeps": [
+      "belt"
+    ]
+  },
+  "decision-no-summary": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "key": "a",
+          "title": "T"
+        },
+        {
+          "key": "b",
+          "title": "T",
+          "summary": "S"
+        }
+      ]
+    },
+    "paths": [
+      "/decisions/0/summary"
+    ],
+    "keeps": [
+      "belt"
+    ],
+    "refusedDecisions": [
+      "a"
+    ],
+    "keepsDecisions": [
+      "b"
+    ]
+  },
+  "decision-duplicate-key": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "key": "a",
+          "title": "T",
+          "summary": "S"
+        },
+        {
+          "key": "a",
+          "title": "T",
+          "summary": "S"
+        }
+      ]
+    },
+    "paths": [
+      "/decisions/1/key"
+    ],
+    "keeps": [
+      "belt"
+    ],
+    "refusedDecisions": [
+      "a"
+    ],
+    "keepsDecisions": [
+      "a"
+    ]
+  },
+  "decision-hill-intent": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "key": "a",
+          "title": "T",
+          "summary": "S",
+          "options": [
+            {
+              "intent": "dismiss",
+              "label": "No"
+            }
+          ]
+        }
+      ]
+    },
+    "paths": [
+      "/decisions/0/options/0/intent"
+    ],
+    "keeps": [
+      "belt"
+    ],
+    "refusedDecisions": [
+      "a"
+    ]
+  },
+  "decision-reply-to-name": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "key": "a",
+          "title": "T",
+          "summary": "S",
+          "replyTo": "composer"
+        }
+      ]
+    },
+    "paths": [
+      "/decisions/0/replyTo"
+    ],
+    "keeps": [
+      "belt"
+    ],
+    "refusedDecisions": [
+      "a"
+    ]
+  },
+  "decision-from": {
+    "doc": {
+      "v": 1,
+      "parts": [
+        {
+          "at": "belt",
+          "id": "belt",
+          "mark": {
+            "icon": "flask",
+            "label": "23/34"
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "key": "a",
+          "title": "T",
+          "summary": "S",
+          "from": {
+            "kind": "agent"
+          }
+        }
+      ]
+    },
+    "paths": [
+      "/decisions/0/from"
+    ],
+    "keeps": [
+      "belt"
+    ],
+    "refusedDecisions": [
+      "a"
+    ]
+  }
+}

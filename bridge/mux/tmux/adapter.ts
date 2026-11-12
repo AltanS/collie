@@ -879,6 +879,18 @@ function clientsToSwitch(listing: TmuxListing, sessionId: string): TmuxClient[] 
 
 type MutableMuxPane = { -readonly [K in keyof MuxPane]: MuxPane[K] };
 
+/**
+ * Whether a tmux session carries a name somebody chose. tmux names a session nobody named by a bare
+ * number (`0`, `1`, ...), the same on every machine, so a purely numeric name is not a name: two
+ * machines' `0` must never read as one space. A session the listing does not hold, or one with an empty
+ * name, fell back to its id.
+ */
+function tmuxSessionNamed(session: TmuxSession | undefined): boolean {
+  if (session === undefined) return false;
+  const name = session.name.trim();
+  return name.length > 0 && !/^\d+$/u.test(name);
+}
+
 /** One tmux pane record as a {@link MuxPane}. */
 
 /** A {@link MuxSpace} while it is being built, so an optional field is set only when present. */
@@ -898,6 +910,7 @@ function toMuxPane(
     paneId: raw.id,
     spaceId: raw.sessionId,
     spaceLabel: session !== undefined && session.name.length > 0 ? session.name : raw.sessionId,
+    spaceNamed: tmuxSessionNamed(session),
     spaceNumber: numberById.get(raw.sessionId) ?? 0,
     tabId: raw.windowId,
     cwd: raw.cwd,

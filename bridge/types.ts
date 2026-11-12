@@ -49,14 +49,25 @@ export interface AgentView {
   paneId: string;
   workspaceId: string;
   workspaceLabel: string;
+  /**
+   * Whether `workspaceLabel` is a name of the space's own (`MuxPane.spaceNamed`). Present only when it
+   * differs from the default `workspaceLabel !== workspaceId`, so a pane whose adapter agrees with the
+   * default is byte-identical to one from before this field. Absent from an older peer: read it through
+   * `spaceNamedOf` (bridge/walky/space.ts), which computes the default.
+   */
+  workspaceNamed?: boolean;
   workspaceNumber: number;
   tabId: string;
   agent: string;
   status: AgentStatus;
   cwd: string;
   focused: boolean;
-  /** "agent" for an agent-bearing pane, "shell" for a bare shell. Defaults to "agent" when absent. */
-  kind?: "agent" | "shell";
+  /**
+   * "agent" for an agent-bearing pane, "shell" for a bare shell. Defaults to "agent" when absent.
+   * "trick" for a trick's own session (M94, bridge/tricks/panes.ts): no terminal behind it, its body is a
+   * view, and it sits in the host's Tricks Space, outside triage, push and the session counts.
+   */
+  kind?: "agent" | "shell" | "trick";
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
@@ -384,6 +395,12 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * only when there is at least one; the text takes the mirror's mask like a title does.
    */
   held?: HeldRow[];
+  /**
+   * A trick session's part (M94), as its `partKey` (`host/trick/part`): the part whose view is the pane's
+   * body. The view itself travels on `GET /api/tricks`, never on the snapshot. Present only on a pane of
+   * `kind: "trick"`, so every other pane and every body with no tricks stays what it was.
+   */
+  view?: string;
 };
 
 /** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */
@@ -807,7 +824,12 @@ export type SessionState = "ready" | "starting" | "unreachable";
  */
 export interface SessionCard {
   name: string;
-  kind: "terminal" | "program";
+  /**
+   * `trick` is reserved for Collie tricks (M94) so the phone can tell one from a program. DECISION (slice
+   * 03): no card of that kind is sent yet. A trick session rides as a pane of `kind: "trick"` in the
+   * ambient session; a card would grow `sessions` and wake the session switcher for nothing.
+   */
+  kind: "terminal" | "program" | "trick";
   /** herdr, tmux, zellij, tuios, tern, or the program's hello `host.name` cleaned, else "durable". */
   mux: string;
   /** The capability set of this session, the same shape `/api/config` answers today. */
@@ -874,11 +896,34 @@ export interface SnapshotResponse {
    * precisely true. Present ⇒ `host` is stamped on every session and every pane; absent ⇒ on none.
    */
   servers?: ServerSummary[];
+  /**
+   * Collie tricks (M94): the runner's rev. When it moves, the phone asks `GET /api/tricks?since=<rev>` for
+   * the parts that changed. **Absent when there is no tricks folder**, like `servers`, so an install
+   * without tricks sends the bytes and the ETag it always sent (solo-baseline.test.ts).
+   */
+  tricksRev?: number;
   /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. */
   notifications?: { snoozedUntil: number | null };
   /** Update-availability signal. Optional — a stale bridge that predates the field simply omits it,
    *  which the client reads as "no info" (see bridge/update.ts). */
   update?: UpdateStatus;
+  /**
+   * The hill's revision (M96): it moves on every change to this bridge's decisions, and the phone
+   * refetches `GET /api/hill` when it does. Absent until the decisions file exists, so a bridge that
+   * never took a post serves the same body, and the same ETag, as a build without the hill.
+   */
+  hillRev?: number;
+  /**
+   * Morph's revision: it moves on every switch, show and clear on this bridge, and the phone refetches
+   * `GET /api/morph` when it does. Absent until Morph's state file exists, as `hillRev`.
+   */
+  trickViewsRev?: number;
+  /**
+   * The Hill is switched off on this bridge (bridge/hill/switch.ts): then the snapshot carries no
+   * `hillRev`, the phone shows no Hill item, and the Hill's route and Settings say it is off. Absent
+   * while the Hill is on, so an install that never switched it keeps its bytes.
+   */
+  hillOff?: true;
   ts: number;
 }
 

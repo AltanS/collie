@@ -22,6 +22,7 @@ interface Prefs {
   updates: boolean;
   cache: boolean;
   machines: boolean;
+  decisions: boolean;
 }
 
 // The control sends ONE key per toggle, so a patch is a partial of the same contract — which is
@@ -31,7 +32,7 @@ let currentPrefs: Prefs;
 
 beforeEach(() => {
   lastPatch = undefined;
-  currentPrefs = { blocked: true, done: false, individual: true, updates: true, cache: false, machines: true };
+  currentPrefs = { blocked: true, done: false, individual: true, updates: true, cache: false, machines: true, decisions: true };
   server.use(
     http.get("/api/notifications/prefs", () => HttpResponse.json(currentPrefs)),
     http.post<never, Partial<Prefs>>("/api/notifications/prefs", async ({ request }) => {
@@ -145,6 +146,21 @@ describe("NotifyPrefsControl — the fourth switch and the panes it watches", ()
 
     await waitFor(() => expect(lastPatch).toEqual({ machines: false }));
     await waitFor(() => expect(machines).not.toBeChecked());
+  });
+
+  // A `now` Decision on the Hill rings the phone (bridge/hill/push.ts). Default on, its own switch.
+  test("the Decisions switch is on by default, sits above the cache switch, and POSTs {decisions: false}", async () => {
+    const user = userEvent.setup();
+    render(<NotifyPrefsControl />);
+    const decisions = await screen.findByRole("switch", { name: /decisions that need you now/i });
+    await waitFor(() => expect(decisions).toBeChecked());
+    const switches = screen.getAllByRole("switch");
+    expect(switches.indexOf(decisions)).toBe(switches.length - 2);
+
+    await user.click(decisions);
+
+    await waitFor(() => expect(lastPatch).toEqual({ decisions: false }));
+    await waitFor(() => expect(decisions).not.toBeChecked());
   });
 
   test("toggling the fourth switch POSTs {cache: true}", async () => {

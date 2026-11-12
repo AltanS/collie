@@ -168,12 +168,21 @@ export const NUDGE_MARK = ": a message from another agent, not your operator.";
 // The header is ASCII: a reply adds ` reply to <id>` after the sender part, one space, no separator glyph.
 const REPLY_SUFFIX = / reply to (wt_[a-z0-9]{12})$/;
 
+/**
+ * The word a header carries right after the sender's closing parenthesis, before any reply suffix, when
+ * the message passed the receiver's space border by the sender's outside flag (M98). A reader before it
+ * took the word as part of the sender's text, so the id, the kind and the reply suffix still read.
+ */
+const OUTSIDE_SUFFIX = /(?<=\)) outside$/;
+
 export interface EnvelopeHeader {
   id: string;
   /** What the header CLAIMS. A card draws the log's kind instead. */
   kind: WalkyKind;
   /** The header's own `replyTo` suffix, when it has one. */
   replyTo: string | null;
+  /** Present when the header CLAIMS the sender is not of the receiver's space (M98). The card does not draw it. */
+  outside?: true;
 }
 
 /**
@@ -189,8 +198,10 @@ export function parseEnvelopeHeader(line: string): EnvelopeHeader | null {
   // The nudge goes first: a reply suffix sits just before it, so the suffix rule reads the text that remains.
   const sender = m[3] ?? "";
   const nudge = sender.indexOf(NUDGE_MARK);
-  const reply = REPLY_SUFFIX.exec(nudge === -1 ? sender : sender.slice(0, nudge));
-  return { id, kind, replyTo: reply?.[1] ?? null };
+  const head = nudge === -1 ? sender : sender.slice(0, nudge);
+  const reply = REPLY_SUFFIX.exec(head);
+  const header: EnvelopeHeader = { id, kind, replyTo: reply?.[1] ?? null };
+  return OUTSIDE_SUFFIX.test(reply === null ? head : head.slice(0, reply.index)) ? { ...header, outside: true } : header;
 }
 
 /** A turn's first line (the text up to the first line break, with a CR dropped). */
@@ -557,6 +568,9 @@ export function reasonWord(reason: string): string {
       return t("walky.reason.walkyOff");
     case "your walky talky is off":
       return t("walky.reason.senderOff");
+    // A message across the space border (M98): the bridge's reason, worded for a person.
+    case "outside your space":
+      return t("walky.reason.outsideSpace");
     default:
       return reason;
   }

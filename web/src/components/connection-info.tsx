@@ -18,6 +18,7 @@ export function ConnectionInfo({
   device,
   build,
   redact,
+  denied = false,
 }: {
   bridge: BridgeStatus | undefined;
   device: DeviceAuth | undefined;
@@ -25,6 +26,8 @@ export function ConnectionInfo({
   build?: string;
   /** Whether the bridge masks secrets (from /api/config); omitted while loading, offline, or on an older bridge. */
   redact?: boolean;
+  /** The snapshot read was refused (401/403): this browser's access is then unknown, not "paired". */
+  denied?: boolean;
 }) {
   useLocale();
   const { token, refused } = usePairing();
@@ -33,7 +36,7 @@ export function ConnectionInfo({
   // Pairing is always on (ADR 0086), so "is this device paired" is part of its access. No token, or a
   // refusal latched since the last proof, is the answer here: an unpaired phone gets no snapshot, and
   // the header gate's `device` field it would have carried is then absent, not "off".
-  const d = deviceLabel(device, paired);
+  const d = deviceLabel(device, paired, denied);
   const m = maskingLabel(redact);
   const secure = hasWindow() && window.isSecureContext;
   const host = hasWindow() ? window.location.host : "—";
@@ -127,9 +130,14 @@ function bridgeLabel(bridge: BridgeStatus | undefined, paired: boolean): StatusL
 // with no device header, i.e. the on-host loopback operator. Pairing comes first: it is always
 // enforced, and an unpaired device has no other access to describe. With the proxy's header gate off
 // (or not yet known), a paired device's access is its pairing.
-function deviceLabel(device: DeviceAuth | undefined, paired: boolean): StatusLine {
+function deviceLabel(device: DeviceAuth | undefined, paired: boolean, denied: boolean): StatusLine {
   if (!paired) {
     return { text: t("settings.connection.device.notPaired"), tone: "text-status-working" };
+  }
+  // The snapshot that would carry `device` was refused, so its absence means "unknown", and a token in
+  // storage is not proof the bridge accepts it.
+  if (denied && !device) {
+    return { text: t("settings.connection.device.denied"), tone: "text-status-working" };
   }
   if (!device || !device.enforced) {
     return { text: t("settings.connection.device.paired"), tone: "text-status-done" };

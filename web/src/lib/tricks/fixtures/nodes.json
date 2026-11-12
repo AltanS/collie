@@ -1,0 +1,536 @@
+{
+  "card": {
+    "kind": "card",
+    "attrs": {
+      "tone": "ok"
+    },
+    "kids": [
+      {
+        "kind": "para",
+        "text": "Deploy",
+        "attrs": {
+          "role": "heading"
+        }
+      },
+      {
+        "kind": "para",
+        "text": "green at 72f69369"
+      },
+      {
+        "kind": "spacer"
+      },
+      {
+        "kind": "number",
+        "text": "3",
+        "attrs": {
+          "label": "containers"
+        }
+      }
+    ]
+  },
+  "group": {
+    "kind": "group",
+    "attrs": {
+      "label": "Red cases",
+      "fold": "open",
+      "badge": "1"
+    },
+    "kids": [
+      {
+        "kind": "row",
+        "text": "case 24",
+        "attrs": {
+          "end": "red",
+          "tone": "danger"
+        }
+      },
+      {
+        "kind": "group",
+        "attrs": {
+          "label": "Older"
+        },
+        "kids": [
+          {
+            "kind": "row",
+            "text": "case 19",
+            "attrs": {
+              "end": "green"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "list": {
+    "kind": "list",
+    "kids": [
+      {
+        "kind": "row",
+        "text": "case 25",
+        "attrs": {
+          "end": "green"
+        }
+      },
+      {
+        "kind": "group",
+        "attrs": {
+          "label": "core"
+        },
+        "kids": [
+          {
+            "kind": "row",
+            "text": "case 26"
+          }
+        ]
+      }
+    ]
+  },
+  "row": {
+    "kind": "list",
+    "kids": [
+      {
+        "kind": "row",
+        "text": "case 24, send after restart",
+        "attrs": {
+          "href": "http://lodge:8832/legs/24",
+          "end": "red",
+          "badge": "2",
+          "tone": "danger",
+          "cut": "end",
+          "icon": "flag",
+          "disabled": ""
+        },
+        "kids": [
+          {
+            "kind": "para",
+            "text": "solo leg, herdr"
+          },
+          {
+            "kind": "chip",
+            "text": "core"
+          },
+          {
+            "kind": "button",
+            "attrs": {
+              "label": "Rerun",
+              "intent": "rerun",
+              "value": "24"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "bar": {
+    "kind": "bar",
+    "attrs": {
+      "role": "strip",
+      "scroll": "x",
+      "label": "Legs"
+    },
+    "kids": [
+      {
+        "kind": "chip",
+        "text": "core"
+      },
+      {
+        "kind": "button",
+        "attrs": {
+          "label": "Rerun",
+          "intent": "rerun"
+        }
+      },
+      {
+        "kind": "link",
+        "text": "Report",
+        "attrs": {
+          "href": "https://github.com/AltanS/collie/actions/runs/1234"
+        }
+      }
+    ]
+  },
+  "chip": {
+    "kind": "bar",
+    "kids": [
+      {
+        "kind": "chip",
+        "text": "Solo leg, herdr",
+        "attrs": {
+          "state": "done",
+          "tone": "ok",
+          "icon": "check",
+          "short": "herdr"
+        }
+      },
+      {
+        "kind": "chip",
+        "text": "Crew leg",
+        "attrs": {
+          "state": "working",
+          "current": ""
+        }
+      },
+      {
+        "kind": "chip",
+        "attrs": {
+          "at": "1794130692000",
+          "clock": "ago"
+        }
+      }
+    ]
+  },
+  "button": {
+    "kind": "card",
+    "kids": [
+      {
+        "kind": "button",
+        "attrs": {
+          "label": "Rerun red",
+          "intent": "rerun",
+          "value": "red",
+          "tone": "accent",
+          "icon": "refresh",
+          "confirm": "Rerun now?",
+          "hint": "Runs the red cases again",
+          "badge": "1",
+          "pressed": "false"
+        }
+      },
+      {
+        "kind": "button",
+        "attrs": {
+          "label": "Copy the log path",
+          "does": "copy",
+          "value": "~/.cache/collie-lab/leg-logs/24.log",
+          "disabled": "No log yet"
+        }
+      }
+    ]
+  },
+  "para": {
+    "kind": "para",
+    "attrs": {
+      "bullet": "-"
+    },
+    "kids": [
+      {
+        "kind": "run",
+        "text": "The core leg replays "
+      },
+      {
+        "kind": "run",
+        "text": "recorded",
+        "attrs": {
+          "style": "bold"
+        }
+      },
+      {
+        "kind": "run",
+        "text": " turns. "
+      },
+      {
+        "kind": "link",
+        "text": "The report",
+        "attrs": {
+          "href": "http://lodge:8832/legs",
+          "icon": "link"
+        }
+      }
+    ]
+  },
+  "line": {
+    "kind": "line",
+    "text": "make\tok",
+    "attrs": {
+      "style": "fg-green bold",
+      "role": "status"
+    }
+  },
+  "run": {
+    "kind": "para",
+    "attrs": {
+      "term": "Started"
+    },
+    "kids": [
+      {
+        "kind": "run",
+        "text": "at "
+      },
+      {
+        "kind": "run",
+        "text": "09:38",
+        "attrs": {
+          "at": "1794130692000",
+          "clock": "time"
+        }
+      },
+      {
+        "kind": "run",
+        "text": " in "
+      },
+      {
+        "kind": "run",
+        "text": "web/",
+        "attrs": {
+          "code": "",
+          "style": "dim"
+        }
+      },
+      {
+        "kind": "run",
+        "text": " (log)",
+        "attrs": {
+          "href": "http://lodge:8832/legs/log"
+        }
+      }
+    ]
+  },
+  "code": {
+    "kind": "code",
+    "attrs": {
+      "lang": "sh",
+      "max": "4"
+    },
+    "kids": [
+      {
+        "kind": "line",
+        "text": "case 22 green"
+      },
+      {
+        "kind": "line",
+        "text": "case 23 green"
+      },
+      {
+        "kind": "line"
+      },
+      {
+        "kind": "line",
+        "kids": [
+          {
+            "kind": "run",
+            "text": "case 24 red",
+            "attrs": {
+              "style": "fg-red"
+            }
+          },
+          {
+            "kind": "run",
+            "text": ": draft left in the box"
+          }
+        ]
+      }
+    ]
+  },
+  "link": {
+    "kind": "para",
+    "kids": [
+      {
+        "kind": "run",
+        "text": "Open "
+      },
+      {
+        "kind": "link",
+        "text": "the composer session",
+        "attrs": {
+          "href": "lodge:w6X:3",
+          "rel": "pane",
+          "icon": "terminal"
+        }
+      },
+      {
+        "kind": "run",
+        "text": " or "
+      },
+      {
+        "kind": "link",
+        "text": "the log",
+        "attrs": {
+          "href": "http://lodge:8832/legs/24.log",
+          "rel": "url",
+          "badge": ""
+        }
+      }
+    ]
+  },
+  "image": {
+    "kind": "image",
+    "attrs": {
+      "src": "media/case-24.png",
+      "alt": "The reply box with the draft still in it",
+      "w": "1280",
+      "h": "720"
+    }
+  },
+  "meter": {
+    "kind": "card",
+    "kids": [
+      {
+        "kind": "meter",
+        "attrs": {
+          "value": "23",
+          "max": "34",
+          "label": "cases green",
+          "tone": "ok",
+          "role": "meter"
+        }
+      },
+      {
+        "kind": "meter",
+        "attrs": {
+          "value": "3.5",
+          "max": "7",
+          "role": "progress",
+          "label": "update"
+        }
+      },
+      {
+        "kind": "meter",
+        "attrs": {
+          "role": "progress"
+        }
+      }
+    ]
+  },
+  "spacer": {
+    "kind": "spacer",
+    "attrs": {
+      "label": "Yesterday"
+    }
+  },
+  "number": {
+    "kind": "number",
+    "text": "23/34",
+    "attrs": {
+      "label": "cases green",
+      "tone": "accent",
+      "unit": "cases"
+    }
+  },
+  "compare": {
+    "kind": "compare",
+    "kids": [
+      {
+        "kind": "image",
+        "attrs": {
+          "src": "media/before.png",
+          "alt": "The reply box before the fix",
+          "w": "390",
+          "h": "844",
+          "caption": "Before"
+        }
+      },
+      {
+        "kind": "image",
+        "attrs": {
+          "src": "media/after.png",
+          "alt": "The reply box after the fix",
+          "w": "390",
+          "h": "844",
+          "focus": "50 80 2"
+        }
+      }
+    ]
+  },
+  "table": {
+    "kind": "table",
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Case"
+      },
+      {
+        "kind": "col",
+        "text": "Before"
+      },
+      {
+        "kind": "col",
+        "text": "After",
+        "attrs": {
+          "align": "end"
+        }
+      },
+      {
+        "kind": "cell",
+        "text": "pane glide"
+      },
+      {
+        "kind": "cell",
+        "text": "612 ms"
+      },
+      {
+        "kind": "cell",
+        "text": "380 ms",
+        "attrs": {
+          "tone": "ok"
+        }
+      },
+      {
+        "kind": "cell",
+        "text": "first paint"
+      },
+      {
+        "kind": "cell",
+        "text": "1.2 s"
+      },
+      {
+        "kind": "cell",
+        "text": ""
+      }
+    ]
+  },
+  "col": {
+    "kind": "table",
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Gate",
+        "attrs": {
+          "align": "start"
+        }
+      },
+      {
+        "kind": "cell",
+        "text": "e2e"
+      }
+    ]
+  },
+  "cell": {
+    "kind": "table",
+    "kids": [
+      {
+        "kind": "col",
+        "text": "Gate"
+      },
+      {
+        "kind": "col",
+        "text": "Runs"
+      },
+      {
+        "kind": "cell",
+        "text": "e2e",
+        "attrs": {
+          "tone": "danger"
+        }
+      },
+      {
+        "kind": "cell",
+        "text": "18"
+      }
+    ]
+  },
+  "diff": {
+    "kind": "diff",
+    "text": "@@ -12,3 +12,3 @@\n const budget = 400;\n-const wait = 612;\n+const wait = 380;",
+    "attrs": {
+      "file": "web/e2e/pane-glide.spec.ts"
+    }
+  },
+  "spark": {
+    "kind": "spark",
+    "attrs": {
+      "values": "612 580 540 455 380",
+      "tone": "ok",
+      "label": "pane glide, ms"
+    }
+  }
+}

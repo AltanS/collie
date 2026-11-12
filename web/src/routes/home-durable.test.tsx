@@ -231,6 +231,14 @@ describe("durable home: one list with no filter", () => {
     await waitFor(() => expect(getMuxConfig()).not.toBeNull());
     expect(await screen.findByRole("button", { name: "Files" })).toBeInTheDocument();
   });
+
+  it("durable home: a solo machine with no screen draws the bar once there is a hill: the Dashboard and the Hill", async () => {
+    declares({ paneGrid: false });
+    renderHome(homeData({ hill: true }));
+    await waitFor(() => expect(list()).not.toBeNull());
+    const bar = await screen.findByRole("navigation", { name: "Dashboard views" });
+    expect([...bar.querySelectorAll<HTMLElement>('[data-slot="tab"], [data-slot="tab-link"]')].map((cell) => cell.querySelector(".truncate")?.textContent)).toEqual(["Dashboard", "Hill"]);
+  });
 });
 
 describe("durable home: the tap targets", () => {

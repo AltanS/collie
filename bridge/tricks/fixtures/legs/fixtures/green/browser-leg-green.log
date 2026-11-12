@@ -1,0 +1,33 @@
+up: bridge http://127.0.0.1:18700  worktree /home/dev/collie-lab/main
+    herdr session collie-rig  socket /run/user/1000/collie-rig/herdr.sock
+
+Running 8 tests using 1 worker
+
+  ✓   1 [phone] › claude › 1 model picker: the first tap on 'Use this session only' commits (8.7s)
+  ✓   2 [phone] › claude › 2 permission card: Yes from the phone runs the command (6.4s)
+  ✓   3 [phone] › claude › 3 pick-many question: toggles, then Submit through 'Type something' (9.3s)
+  ✓   4 [phone] › claude › 4 send while the agent streams a long reply (34.1s)
+  ✓   5 [phone] › claude › 5 Load older with an empty phone cache: the pin leaves the row free (37.7s)
+  ✓   6 [phone] › claude › 22 Model from the belt over a draft: Replace empties the box and opens the picker (7.0s)
+  ✓   7 [phone] › clear on pi › 28 Clear a pi draft from the Keys board: one tap, the receipt says cleared, the box reads free (4.5s)
+  ✓   8 [phone] › pi › 1 model picker (pi): open it, move, commit from the phone (7.2s)
+
+OpenRouter requests this run: 0 (no provider key was loaded)
+Anthropic requests this run: 0 (Claude replayed on a dummy login)
+
+  8 passed (3.1m)
+
+up: bridge http://127.0.0.1:18701  worktree /home/dev/collie-lab/main
+    member rig-member  bridge http://127.0.0.1:18702
+
+Running 4 tests using 1 worker
+
+  ✓  1 [phone] › pi › 2 permission card (pi) (6.7s)
+  ✓  2 [phone] › pi › 3 question (pi): a pick-one card; pick-many is raw by design (5.4s)
+  ✓  3 [phone] › pi › 4 send while streaming (pi) (16.4s)
+  ✓  4 [phone] › pi › 5 Load older with an empty phone cache (pi) (1.3m)
+
+OpenRouter requests this run: 0 (no provider key was loaded)
+Anthropic requests this run: 0 (Claude replayed on a dummy login)
+
+  4 passed (1.4m)

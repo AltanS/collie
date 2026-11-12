@@ -1,0 +1,50 @@
+{
+  "legs-after-rerun": {
+    "v": 1,
+    "asOf": "2026-11-08T09:42:00Z",
+    "parts": [
+      {
+        "at": "belt",
+        "id": "belt",
+        "mark": {
+          "icon": "flask",
+          "label": "rerun",
+          "tone": "accent",
+          "intent": "open"
+        }
+      },
+      {
+        "at": "session",
+        "id": "legs",
+        "name": "Browser leg",
+        "subtitle": "rerunning case 24",
+        "progress": {},
+        "view": [
+          {
+            "kind": "meter",
+            "attrs": {
+              "role": "progress",
+              "label": "case 24"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "legs-decision-answered": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "belt",
+        "id": "belt",
+        "mark": {
+          "icon": "flask",
+          "label": "34/34",
+          "tone": "ok",
+          "intent": "open"
+        }
+      }
+    ],
+    "decisions": []
+  }
+}

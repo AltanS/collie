@@ -1,0 +1,30 @@
+up: bridge http://127.0.0.1:18700  worktree /home/dev/collie-lab/int-1.23
+    herdr session collie-rig  socket /run/user/1000/collie-rig/herdr.sock
+
+Running 12 tests using 1 worker
+
+  ✓   1 [phone] › claude › 1 model picker: the first tap on 'Use this session only' commits (8.1s)
+  ✓   2 [phone] › claude › 2 permission card: Yes from the phone runs the command (6.5s)
+  ✓   3 [phone] › claude › 3 pick-many question: toggles, then Submit through 'Type something' (8.8s)
+  ✓   4 [phone] › claude › 4 send while the agent streams a long reply (35.8s)
+  ✓   5 [phone] › claude › 5 Load older with an empty phone cache: the pin leaves the row free (16.0s)
+  ✓   6 [phone] › pi › 1 model picker (pi): open it, move, commit from the phone (6.8s)
+  ✓   7 [phone] › pi › 2 permission card (pi) (1.0m)
+  ✘   8 [phone] › pi › 3 question (pi): a pick-one card; pick-many is raw by design (1.0m)
+  -   9 [phone] › pi › 4 send while streaming (pi)
+  ✓  10 [phone] › pi › 5 Load older with an empty phone cache (pi) (2.5m)
+  ✓  11 [phone] › omp › 1 model picker (omp): open it, move, commit from the phone (10.8s)
+  ✓  12 [phone] › omp › 2 permission card (omp) (1.0m)
+down: bridge and scratch Herdr stopped
+
+
+  1) [phone] › others.spec.ts:181:5 › pi › 3 question (pi)
+
+    Error: no question card on the phone
+
+    Error: element(s) not found
+
+  1 failed
+    [phone] › others.spec.ts:181:5 › pi › 3 question (pi)
+  1 skipped
+  10 passed (6.2m)

@@ -6,9 +6,12 @@ import { DEVICES_SUBCOMMANDS } from "./pairing.ts";
 import { PUSH_SUBCOMMANDS } from "./push.ts";
 import { STT_SUBCOMMANDS } from "./stt.ts";
 import { CONFIG_SUBCOMMANDS } from "./config.ts";
+import { HILL_SUBCOMMANDS } from "./hill.ts";
+import { VIEW_SUBCOMMANDS, viewTopLines } from "./trick-view.ts";
 import { WALKY_SUBCOMMANDS } from "./walky.ts";
 import { DURABLE_SUBCOMMANDS } from "./durable-attach.ts";
 import { MUX_SUBCOMMANDS } from "./mux-list.ts";
+import { TRICK_SUBCOMMANDS } from "./trick.ts";
 import { SESSIONS_VERB } from "./sessions.ts";
 import {
   type Command,
@@ -96,6 +99,8 @@ const PUSH_VERBS = ["push"];
 const STT_VERBS = ["stt"];
 /** The config-file tree (ADR 0040). Declared right after `stt`, for the same reasons. */
 const CONFIG_VERBS = ["config"];
+// Collie tricks (M94 slice 01). Declared after `config`: a trick is a folder in the same config dir.
+const TRICK_VERBS = ["trick"];
 const DURABLE_VERBS = ["durable"];
 // `mux list` (M76 spec 02). Declared after `durable`: it reads the multiplexers the durable adapter is one of.
 const MUX_VERBS = ["mux"];
@@ -104,6 +109,8 @@ const SESSIONS_VERBS = [SESSIONS_VERB];
 // Walky talky (M62). Declared after `sessions`. One spelling: the `wt` alias was dropped before
 // release, because Windows Terminal's binary is `wt.exe`.
 const WALKY_VERBS = ["walky"];
+// The hill (M96), declared right after `walky`: an agent posts a decision over the same socket.
+const HILL_VERBS = ["hill"];
 // `theme check` (M59 spec 05), declared after `walky`. It reads files and touches no state.
 const THEME_VERBS = ["theme"];
 // The manual, printed out of the binary: `collie skill` for an AI agent, `collie docs` for the
@@ -127,10 +134,12 @@ describe("the verb table", () => {
       ...PUSH_VERBS,
       ...STT_VERBS,
       ...CONFIG_VERBS,
+      ...TRICK_VERBS,
       ...DURABLE_VERBS,
       ...MUX_VERBS,
       ...SESSIONS_VERBS,
       ...WALKY_VERBS,
+      ...HILL_VERBS,
       ...THEME_VERBS,
       ...CREW_VERBS,
       ...MANUAL_VERBS,
@@ -431,8 +440,26 @@ describe("the subcommand trees", () => {
     expect(findCommand("wt")).toBeUndefined();
   });
 
+  test("`hill` declares exactly `cli/hill.ts`'s sub-verbs, in its order", () => {
+    expect(findCommand("hill")?.subcommands?.map((s) => s.name)).toEqual([...HILL_SUBCOMMANDS]);
+  });
+
+  test("there is no `morph` verb any more: an agent view is `trick view <trick> <verb>`", () => {
+    expect(findCommand("morph")).toBeUndefined();
+    const view = findCommand("trick")?.subcommands?.find((s) => s.name === "view");
+    expect(view).toBeDefined();
+    expect(view?.usage?.()).toEqual(viewTopLines());
+    for (const verb of VIEW_SUBCOMMANDS) expect(view?.summary).toContain(verb);
+  });
+
   test("`durable` declares exactly `cli/durable-attach.ts`'s sub-verbs, in its order", () => {
     expect(findCommand("durable")?.subcommands?.map((s) => s.name)).toEqual([...DURABLE_SUBCOMMANDS]);
+  });
+
+  test("`trick` declares exactly `cli/trick.ts`'s sub-verbs, in its order", () => {
+    // `view` is declared first in cli/program.ts but listed last in `TRICK_SUBCOMMANDS` (cli/trick.ts): the
+    // rest keep one order, and one of the two lists should move `view` so this reads as a plain equality.
+    expect(findCommand("trick")?.subcommands?.map((s) => s.name)).toEqual([...TRICK_SUBCOMMANDS]);
   });
 
   test("`mux` declares exactly `cli/mux-list.ts`'s sub-verbs, in its order", () => {
@@ -449,9 +476,11 @@ describe("the subcommand trees", () => {
       "push",
       "stt",
       "config",
+      "trick",
       "durable",
       "mux",
       "walky",
+      "hill",
       "theme",
       "crew",
       // The alias carries the SAME array — that is what `cli/crew.test.ts` pins.
@@ -578,6 +607,13 @@ describe("exit codes", () => {
       // that same real path before they decide anything. cli/config.test.ts drives all three against
       // fakes in a temp dir.
       ...CONFIG_VERBS,
+      // `trick on`/`off`/`init` write into the developer's own config and state dirs, `list` dials this
+      // host's bridge, and `check --run` runs a provider. cli/trick.test.ts drives all five against temp dirs.
+      // `add`/`update` fetch over the network and write a trick folder, `remove` deletes one;
+      // cli/trick-add.test.ts drives them against a local bare repository through the test seam.
+      // `trick view` talks to this host's running bridges over their local sockets, and a `show` puts a
+      // screen on one; cli/trick-view.test.ts drives every sub-verb against a temp socket.
+      ...TRICK_VERBS,
       ...DURABLE_VERBS,
       // `mux list` resolves the real context and reads the real hook target registry, and removes the
       // record of a dead bridge there. cli/mux-list.test.ts drives it against fakes.
@@ -585,6 +621,9 @@ describe("exit codes", () => {
       // `walky` talks to this host's running bridges over their local sockets, and a `send`
       // would type into a real pane. cli/walky.test.ts drives every sub-verb against a temp socket.
       ...WALKY_VERBS,
+      // `hill` talks to the same sockets, and a `post` puts a decision on a running bridge's hill.
+      // cli/hill.test.ts drives every sub-verb against a temp socket.
+      ...HILL_VERBS,
       // `sessions` dials this host's own running bridge for its snapshot. cli/sessions.test.ts drives it against a fake fetch.
       ...SESSIONS_VERBS,
     ];

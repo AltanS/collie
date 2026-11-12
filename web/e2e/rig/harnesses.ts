@@ -35,6 +35,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, w
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+import { HILL_RULES, HILL_WRITING } from "../../../cli/hill-rules";
 import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude, seedClaudeReplay } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";
@@ -141,8 +142,8 @@ const UNSET = ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_
 
 /** This checkout: web/e2e/rig/harnesses.ts is three levels below it. */
 const WORKTREE = resolve(import.meta.dirname, "..", "..", "..");
-const BLOCK_BEGIN = "<!-- collie:walky-talky v1 begin -->";
-const BLOCK_END = "<!-- collie:walky-talky v1 end -->";
+const BLOCK_BEGIN = "<!-- collie:walky-talky v2 begin -->";
+const BLOCK_END = "<!-- collie:walky-talky v2 end -->";
 
 /**
  * A `collie` on PATH that runs this checkout's CLI. The rig's agents are started from a shell whose
@@ -165,7 +166,7 @@ function writeCollieShim(root: string, stateDir: string): string {
  * file. Written by hand rather than by `collie skill install`, which also writes into every real profile.
  */
 function writeWalkySkill(path: string, form: "file" | "block"): void {
-  const rendered = readFileSync(SKILL_TEMPLATE, "utf8").replaceAll("{{COLLIE_BIN}}", "collie").replaceAll("{{COLLIE_VERSION}}", "rig").replace(/\n+$/u, "\n");
+  const rendered = readFileSync(SKILL_TEMPLATE, "utf8").replaceAll("{{HILL_WRITING}}", HILL_WRITING.join("\n")).replaceAll("{{HILL_RULES}}", HILL_RULES.map((rule) => `- ${rule}`).join("\n")).replaceAll("{{COLLIE_BIN}}", "collie").replaceAll("{{COLLIE_VERSION}}", "rig").replace(/\n+$/u, "\n");
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   if (form === "file") {
     writeFileSync(path, rendered, { mode: 0o600 });

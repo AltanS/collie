@@ -68,6 +68,16 @@ export function useAnySheetOpen(): boolean {
  */
 export const TALL_SHEET_CLEARANCE = "pb-[calc(env(safe-area-inset-bottom)_+_1.5rem)]";
 
+/**
+ * Where a block in the sheet's body sticks: right under the sticky head, and across the panel's whole
+ * width (the body's 16px gutter taken back), so its own rule meets both edges as the head's does. The
+ * session switcher's filter field. The offset is the head's stated height, a sum of fixed boxes, in rem
+ * so it grows with the text size: the grab handle's row (`pt-2 pb-1` around the `h-1` handle, 1rem),
+ * the title row (the `size-8` close button, taller than the `text-sm` title, plus `pb-3`, 2.75rem) and
+ * the head's 1px `border-b`. Change one of those and this sum with it; `sheet.test.tsx` reads both.
+ */
+export const SHEET_BODY_STICKY = "top-[calc(3.75rem+1px)] -mx-4 px-4";
+
 // A minimal bottom sheet — no Radix, no portals, no extra deps. Renders nothing when closed.
 // Dismisses on backdrop tap or Escape. Animations come from tw-animate-css (already imported).
 interface BottomSheetProps {
@@ -169,7 +179,8 @@ export function BottomSheet({
   // attached NON-PASSIVE so we can `preventDefault()` the downward pull — that's what suppresses
   // the browser's pull-to-refresh (otherwise a pull-down at the top would reload the whole app
   // instead of closing the sheet). A gesture that starts mid-scroll falls through to normal list
-  // scrolling; only a pull that begins at the top engages the dismiss.
+  // scrolling; only a pull that begins at the top engages the dismiss. A move a child claimed with
+  // preventDefault, or one with two fingers down, lets the pull go (see onMove).
   //
   // `onClose` IS READ THROUGH A REF, NOT A DEPENDENCY. A caller may pass a fresh function on every
   // render (the switcher passes `closeDrawer`, an inline arrow), and with `onClose` in the deps every
@@ -186,7 +197,17 @@ export function BottomSheet({
     const SLOP = 6; // ignore taps / tiny jitter before engaging the drag
     const CLOSE = 90; // px past which release closes instead of snapping back
 
+    // Lets go of the pull for the rest of this touch, and the panel settles back to the top.
+    const release = () => {
+      drag.current = { startY: 0, atTop: false, engaged: false, dy: 0 };
+      setDragY(0);
+    };
     const onStart = (e: TouchEvent) => {
+      // A second finger landing is a pinch, never a pull to close.
+      if (e.touches.length > 1) {
+        release();
+        return;
+      }
       const t = e.touches[0];
       if (!t) return;
       const inTextarea = e.target instanceof Element && e.target.closest("textarea") !== null;
@@ -195,6 +216,13 @@ export function BottomSheet({
     const onMove = (e: TouchEvent) => {
       const d = drag.current;
       if (!d.atTop) return;
+      // A move a part inside the sheet already claimed (a zoomed picture's pan or pinch calls
+      // preventDefault before the move bubbles here, ui/zoom-picture.tsx), or a second finger, is
+      // never a pull to close. The drag lets go for the rest of this touch and the panel settles back.
+      if (e.defaultPrevented || e.touches.length > 1) {
+        release();
+        return;
+      }
       const t = e.touches[0];
       if (!t) return;
       const dy = t.clientY - d.startY;

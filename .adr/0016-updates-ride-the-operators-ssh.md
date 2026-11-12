@@ -8,7 +8,9 @@ reasons, one verb earlier) · [ADR 0013](./0013-a-peer-listens-without-becoming-
 peer listens for its lead and admits nobody else) · contract:
 [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §7.1, §8.5, §11 · narrowed in scope, not reversed, by
 [Addendum — 2026-09-04](#addendum--2026-09-04-peers-follow-and-the-link-still-carries-nothing)
-below (`PACK_PROTOCOL.md` §19, §20)
+below (`PACK_PROTOCOL.md` §19, §20) · narrowed again by
+[Addendum — 2026-11-10](#addendum--2026-11-10-trick-code-may-cross-as-inert-data-and-runs-only-on-a-tap)
+below (`CREW_PROTOCOL.md` §2, §22)
 
 ## Context
 
@@ -235,3 +237,80 @@ outlived the process it described.
 Unchanged. Neither trigger above has fired: this is not a fleet of appliances, and Collie has not
 become a standalone multiplexer. Both remain the cases that would move this ADR's mechanism rather
 than its rule.
+
+## Addendum — 2026-11-10: trick code may cross as inert data, and runs only on a tap
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum records the
+owner's decision of 2026-11-10, taken before tricks and the Hill work from every machine of a crew,
+and it is a narrowing of the rule above, said as such.
+
+### 1. The decision
+
+**Trick code may cross the crew link only as inert data. It is held, never installed and never run,
+until a person taps on the surface of the machine that will run it.** A remote command on a member
+stays refused: no route, no header and no verb lets a lead, a member or a trick run a command on
+another machine.
+
+### 2. What it changes, and what it does not
+
+- **The decision sentence above is narrowed, not reversed.** The link still never distributes Collie
+  itself: a peer's Collie comes from GitHub or over the operator's SSH, exactly as before. What may now
+  cross is the code of a trick (`<configDir>/tricks/<id>/`), a folder of files a person reads and
+  switches on, never a build of Collie, never an update and never anything a peer starts by itself.
+- **"A peer accepts nothing inbound that could change what code it runs"** now reads: a peer accepts
+  nothing inbound that **runs** without a person's tap on that machine. Bytes that arrive are kept
+  apart from the running code, as data, and nothing schedules, imports or executes them on arrival.
+- **The tap belongs to the machine that runs the code.** A proposal from a member is a card on the
+  lead's phone, and the lead installs nothing before that tap. A copy on the deputy starts only at the
+  takeover tap, on the standby page the deputy serves from its own disk. A tap on one machine never
+  starts code on another.
+- **A remote command stays refused.** `sh`, exec, a probe shipped to members, or any other way to run
+  a command on a member from the link is the worst case this ADR names ("reachable without any
+  human"), and the narrowing above does not touch it.
+
+### 3. Why this is the smaller change
+
+The argument above is about two things: a stolen crew secret must cost an outage and not a supply
+chain, and nothing may happen on a machine while nobody is looking. Inert data plus a tap on the
+running machine keeps both. A compromised lead already holds every peer's terminals (§8.5); it gains
+inert files on the deputy, which start only when the operator takes over by hand and reads the list of
+what will start. A compromised member gains a card it cannot answer. Neither gains a way to run code
+unattended, which is the line this ADR draws.
+
+### 4. What is built on it so far
+
+In 1.29.0 the first routes that ride this addendum carry no code at all: a member forwards a Decision,
+its images and its follow-up calls to its lead (`CREW_PROTOCOL.md` §22). Images are data the lead
+sniffs and keeps, as it keeps an image from its own agents. Trick proposals and the deputy's copy of
+the tricks, when they are built, are specified in `CREW_PROTOCOL.md` in the commit that builds them,
+under this addendum's rule.
+
+Trick proposals are built (crew slice 8, `CREW_PROTOCOL.md` §24, 2026-11-11): a member forwards a
+trick's files to its lead over a signed route, and the lead keeps them as inert data in a dot folder,
+files 0600 without an executable bit, until the person taps "Switch it on" on the lead's Hill. That tap
+installs only bytes whose hash is the card's. No member and no agent can answer the card.
+
+The deputy's copy of the tricks is built (crew slice 10, `CREW_PROTOCOL.md` §25, 2026-11-11): the lead
+sends its deputy, and only its deputy, the approved code of each trick that is on, with its switch,
+`config.toml` and small state. The deputy keeps it under its state folder, which no tricks loader
+reads, files 0600 without an executable bit. Two taps on the deputy start it, and nothing else does:
+the Take over button on the standby page the deputy serves from its own disk, which names every trick
+it starts (eight in a sentence, all of them behind a "Show all" control), and `collie promote` typed on
+the deputy. The page shows no rights. The deputy trusts what its lead says was approved: it cannot see
+the person's yes on the lead. Each tap starts a trick only after the held code hashes to the version
+the lead names, and only when the rights the lead says were approved are the rights of that code; a
+trick whose rights differ is written but left off, and a card on the Hill says so. It never writes over
+a folder the deputy already has. The copy is removed when the machine stops being that lead's deputy.
+(Corrected 2026-11-11, review 7 R6: the text said the page "first names every trick" while it named
+eight, and that the code hashes "to the version the person approved on the lead", which the deputy
+cannot know.)
+
+The lead's open Decisions come along by the same rules (same date): records and pictures only. Of
+Collie's own cards the deputy takes only the notice that a carried trick did not start, with its one OK
+answer; a trick proposal card and a new version card are dropped, as their files are never carried, so
+no carried card can install or approve code on the deputy.
+
+### 5. What would justify revisiting
+
+Unchanged from the decision above. A crew that wants a member to run code a lead sends, with no person
+at the member, is the appliance case named there, and it needs its own admission story.

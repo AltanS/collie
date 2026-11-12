@@ -52,6 +52,11 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
+import { cmdTrickDev } from "./trick-dev.ts";
+import { cmdTrickGuide } from "./trick-guide.ts";
+import { cmdTrickPropose } from "./trick-propose.ts";
+import { cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate } from "./trick-add.ts";
+import { cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
   cmdJoin,
@@ -114,6 +119,7 @@ import { HOST } from "../bridge/host.ts";
 import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 import {
+  askPaneKind,
   askPanePlace,
   askSocket,
   cmdWalky,
@@ -128,6 +134,8 @@ import {
   WALKY_SUBCOMMANDS,
   type WalkyDeps,
 } from "./walky.ts";
+import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
+import { cmdTrickView, viewTopLines, type ViewDeps } from "./trick-view.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -190,6 +198,11 @@ export interface Command {
 export interface Subcommand {
   readonly name: string;
   readonly summary: string;
+  /**
+   * The lines `collie <verb> <sub> --help` prints in place of the one-line summary, for a sub-verb whose
+   * usage carries rules a caller must read first (`hill post`, M96). Absent: the summary, as before.
+   */
+  readonly usage?: () => readonly string[];
   run(args: readonly string[], session: Session): number | Promise<number>;
 }
 
@@ -241,7 +254,7 @@ function pairingDeps(io: Io): PairingDeps {
     exec: realExec(ctx.env, ctx.home),
     // The bridge's own trail: `devices revoke` records the launcher rows it removes there (ADR 0094).
     appendAudit: (line) => appendFileSync(join(ctx.stateDir, "audit.log"), `${line}\n`, { mode: 0o600 }),
-    // `pair` asks the running bridge over the walky socket whether its pane runs an agent.
+    // `pair` asks the running bridge whether its pane runs an agent, as `trick on` does.
     panePlace: () => askPanePlace(walkyDeps(io)),
   };
 }
@@ -296,8 +309,66 @@ function walkyDeps(io: Io): WalkyDeps {
     platform: HOST.platform,
     readStdin: () => Bun.stdin.text(),
     stdinIsTty: process.stdin.isTTY === true,
-    ask: (path, line) => askSocket(path, line),
+    ask: (path, line, ms) => askSocket(path, line, ms),
   };
+}
+
+/** `hill` (M96): walky's own deps, since the hill speaks over the walky socket. */
+function hillDeps(io: Io): HillDeps {
+  // The person's verbs ask what this pane runs, as `collie trick on` does.
+  return { ...walkyDeps(io), paneKind: () => askPaneKind(walkyDeps(io)) };
+}
+
+/** The sub-verbs of `hill` (M96). `post --help` prints the usage and the rules an agent reads first. */
+const HILL_TREE: readonly Subcommand[] = [
+  {
+    name: "post",
+    summary: "post a decision for your person: `hill post --title ... --summary ... --option <intent>=<label> --recommend <intent> --why ...`; prints its id",
+    usage: hillPostHelp,
+    run: (args, s) => cmdHillPost(hillDeps(s.io), args),
+  },
+  {
+    name: "status",
+    summary: "a decision's state, and the answer when there is one: `hill status <dc_id>`",
+    run: (args, s) => cmdHillStatus(hillDeps(s.io), args),
+  },
+  {
+    name: "withdraw",
+    summary: "take back an open decision you posted: `hill withdraw <dc_id>`",
+    run: (args, s) => cmdHillWithdraw(hillDeps(s.io), args),
+  },
+  {
+    name: "list",
+    summary: "your own decisions, open first",
+    run: (args, s) => cmdHillList(hillDeps(s.io), args),
+  },
+  {
+    name: "clear",
+    summary: "remove every closed decision from the Hill (open ones stay): `hill clear`",
+    run: (args, s) => cmdHillClear(hillDeps(s.io), args),
+  },
+  // The crew state (1.29.0): anyone reads it; the person sets it, never from an agent's pane.
+  {
+    name: "state",
+    summary: "the crew state (here, quiet or away) and since when; `hill state away` sets it, from your own terminal",
+    run: (args, s) => cmdHillState(hillDeps(s.io), args),
+  },
+  // The Hill's switch: a file in this instance's state folder, read again by the running bridge.
+  {
+    name: "on",
+    summary: "switch the Hill on for this Collie (it is on unless switched off)",
+    run: (args, s) => cmdHillSwitch(hillDeps(s.io), "on", args),
+  },
+  {
+    name: "off",
+    summary: "switch the Hill off: agents and tricks cannot post, the open decisions stay",
+    run: (args, s) => cmdHillSwitch(hillDeps(s.io), "off", args),
+  },
+];
+
+/** `trick view`: walky's own deps, since an agent view speaks over the walky socket. */
+function viewDeps(io: Io): ViewDeps {
+  return walkyDeps(io);
 }
 
 /** The sub-verbs of `walky`. */
@@ -371,6 +442,11 @@ function sttDeps(io: Io): SttDeps {
 /** `config`'s seams: the context (which already carries the file layer), the io and the filesystem. */
 function configVerbDeps(io: Io): ConfigDeps {
   return configDeps(loadContext(io.err), io, realFiles);
+}
+
+/** `trick`: the context, the filesystem, and the one read `list` makes of this instance's own bridge. */
+function trickVerbDeps(io: Io): TrickDeps {
+  return { ctx: loadContext(io.err), io, files: realFiles, fetch: (url, init) => fetch(url, init), now: Date.now, paneKind: () => askPaneKind(walkyDeps(io)), platform: HOST.platform };
 }
 
 /**
@@ -939,6 +1015,93 @@ export const COMMANDS: readonly Command[] = [
     // Bare or misspelt lands here, and `cmdConfig` owns that message — as `cmdStt` does.
     run: (args, s) => cmdConfig(configVerbDeps(s.io), args),
   },
+  // ── Collie tricks (M94 slice 01) ─────────────────────────────────────────────
+  // Declared beside `config` because it is the same shape of verb: a tree the operator's own terminal
+  // drives, over folders in their own config dir. `on` and `off` write the switch file the running
+  // bridge rereads; nothing is restarted. `check --run` runs the provider once, as the bridge would.
+  {
+    name: "trick",
+    summary: `Collie tricks, programs whose output the phone draws: ${TRICK_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "list",
+        summary: "every trick folder: its switch, state, last run and last error (--json); --official lists the tricks this Collie can add from the phone",
+        run: async (args, s) => await cmdTrickList(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "add",
+        summary: "copy a trick from a git repository into the tricks folder, off: <name> or <https-url>[//<folder>][#<ref>]; with none, list the official tricks",
+        run: async (args, s) => await cmdTrickAdd(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "update",
+        summary: "fetch a trick added with add again and replace its code, keeping config.toml: <id> (--ref <ref>, --dry-run)",
+        run: async (args, s) => await cmdTrickUpdate(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "remove",
+        summary: "delete a trick that is off, with its state folder: <id>",
+        run: async (args, s) => await cmdTrickRemove(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "on",
+        summary: "switch a trick on, approving its code as it is now: <id> (refused inside an agent's pane)",
+        run: async (args, s) => await cmdTrickSwitch(trickVerbDeps(s.io), args, true),
+      },
+      {
+        name: "off",
+        summary: "switch a trick off: <id>",
+        run: async (args, s) => await cmdTrickSwitch(trickVerbDeps(s.io), args, false),
+      },
+      {
+        name: "auto",
+        summary: "take a trick's new versions without asking while its powers do not change and it does nothing new: <id> on|off",
+        run: async (args, s) => await cmdTrickAuto(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "check",
+        summary: "check a trick folder: its manifest, places and command lines (--run runs it once, --json)",
+        run: async (args, s) => await cmdTrickCheck(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "dev",
+        summary: "run a trick once with fixture facts and summarise what the phone gets: <folder|id> (--tap <intent>, --json, --watch)",
+        run: async (args, s) => await cmdTrickDev(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "init",
+        summary: "make a new trick folder with a TypeScript program and the helper: <id> (--sh for a shell provider)",
+        run: async (args, s) => await cmdTrickInit(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "helper",
+        summary: "rewrite a trick's trick.ts with the helper this Collie carries: <id|folder>",
+        run: async (args, s) => await cmdTrickHelper(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "skill",
+        summary: "what a trick that is on asks of an agent: <id>; with no id, how to write a trick",
+        run: async (args, s) => await cmdTrickSkill(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "guide",
+        summary: "how to write a trick and hand it to your person, in plain text (--json)",
+        run: (args, s) => cmdTrickGuide({ io: s.io }, args),
+      },
+      {
+        name: "propose",
+        summary: "hand a trick folder to your person: a card on the lead's Hill, nothing runs before their yes: <folder> (--json)",
+        run: async (args, s) => await cmdTrickPropose(walkyDeps(s.io), args),
+      },
+      {
+        name: "view",
+        summary: "an agent view, from the agent's pane: `trick view <trick> <start|show|set|pending|remove|choice|keep|clear|status|help> ...`",
+        usage: () => viewTopLines(),
+        run: async (args, s) => await cmdTrickView(viewDeps(s.io), args),
+      },
+    ],
+    run: (args, s) => cmdTrick({ io: s.io }, args),
+  },
   // ── Durable programs (M55, ADR 0104) ───────────────────────────────────────
   // Declared beside `config` because it is the same shape of verb: a tree the operator's own
   // terminal drives, over a file in their own config dir. `attach` and `detach` write
@@ -996,6 +1159,15 @@ export const COMMANDS: readonly Command[] = [
     summary: `WalkyTalky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
     subcommands: WALKY_TREE,
     run: (args, s) => cmdWalky({ io: s.io }, args),
+  },
+  // ── The hill (M96) ─────────────────────────────────────────────────────────
+  // An agent posts a Decision for its person over the walky socket; the answer comes back as a
+  // WalkyTalky message. Declared after `walky`, whose socket and markers it uses.
+  {
+    name: "hill",
+    summary: `the hill, decisions an agent asks its person: ${HILL_SUBCOMMANDS.join(", ")}`,
+    subcommands: HILL_TREE,
+    run: (args, s) => cmdHill({ io: s.io }, args),
   },
   // ── Themes (M59 spec 05) ───────────────────────────────────────────────────
   // `theme check` runs the app's own theme parser and contrast report over files on disk, for a
@@ -1204,6 +1376,7 @@ async function helpGuard(
   internal: boolean,
   args: readonly string[],
   body: Command["run"],
+  usage?: () => readonly string[],
 ): Promise<number> {
   if (!helpAsked) return body(args, session);
   // A `_` verb is only ever spelled by another Collie (`_apply-update` by `update`), never by
@@ -1212,6 +1385,10 @@ async function helpGuard(
   if (internal) {
     session.io.err(`error: \`collie ${name}\` is internal and has no usage; nothing was run`);
     return EXIT.USAGE;
+  }
+  if (usage !== undefined) {
+    for (const line of usage()) session.io.out(line);
+    return EXIT.OK;
   }
   session.io.out(`usage: collie ${name} [options]`);
   session.io.out("");
@@ -1287,7 +1464,7 @@ function buildProgram(
         .helpOption(false)
         .argument("[args...]")
         .action(async (args: string[]) =>
-          setCode(await helpGuard(session, helpAsked, `${c.name} ${sub.name}`, sub.summary, c.name.startsWith("_"), args, sub.run)),
+          setCode(await helpGuard(session, helpAsked, `${c.name} ${sub.name}`, sub.summary, c.name.startsWith("_"), args, sub.run, sub.usage)),
         );
     }
   }

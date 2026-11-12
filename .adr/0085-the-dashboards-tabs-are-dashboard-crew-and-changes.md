@@ -125,3 +125,25 @@ counts line and the three-glyph order toggle are gone.
 
 Where "Consequences" says the summary row holds the summary line, the switch and three order
 segments, read the summary line with the switch, and a second row for the two selects.
+
+## Amended 2026-11-10: the Dashboard tab is no longer in the middle
+
+The operator decided this on 2026-11-10, after he compared the options on the phone and picked the
+one called "A5". The footer reads Crew, Dashboard, Files, then the Hill at the right end
+([ADR 0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md), amended the same day).
+The Hill opens a route of its own and is never the selected tab on the Dashboard. A trick's `tabbar`
+items may follow it and scroll, with the tabs and the Hill pinned at a fixed width. The footer stays on
+the Hill's route and on a trick's Session, with no tab selected and that route's own item drawn as the
+current one (ADR 0066's amendment says how its taps move).
+
+- **The decision's "Dashboard sits in the middle under the thumb" no longer holds.** With a crew the
+  Dashboard is second of four, and on a solo Collie first of three. The Hill takes the right end under
+  the thumb, because a Decision that waits on the operator is the trip most worth one tap.
+- **Points 1 to 8 are unchanged.** The tabs, their order, the corner mark on the Dashboard tab, the
+  needs-you switch and the migration stand.
+- **The footer shows on a solo Collie with no screen when there is a Hill or a trick item.** Before, a
+  solo Collie with no screen had a single tab and drew no footer. The Hill needs a way in, so the footer
+  is drawn whenever it holds more than the Dashboard tab.
+- **A trick's `dashboard` place is a strip of tiles at the top of the Dashboard view.** It sits under
+  the header and above the summary line, and only on the Dashboard tab. It is not drawn while no trick
+  has a tile, so the list does not move for an operator with no tricks.
