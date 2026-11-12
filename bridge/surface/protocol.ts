@@ -3951,7 +3951,8 @@ export class SendProtocol {
   private async throughDoor(state: RunState): Promise<SendAnswer | null> {
     const { request, target, match } = state;
     const door = this.deps.doors?.get(target.harness);
-    if (door === undefined || request.mode !== "send" || request.when === "steer") return null;
+    // A send from an agent view is held to S0's view rules (rule 5), which only the screen path reads (SPEC V27).
+    if (door === undefined || request.mode !== "send" || request.when === "steer" || request.view !== undefined) return null;
     if (reservedLead(sendLines(request.text)[0] ?? "", match?.profile.reservedLeads ?? GENERIC_LEADS) !== null) return null;
     if (textRefusal(request, match) !== null) return null;
     const started = this.now();

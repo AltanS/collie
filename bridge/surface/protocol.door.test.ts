@@ -301,3 +301,31 @@ describe("the journal proves a door's send (ADR 0141 point 4)", () => {
     ]);
   });
 });
+
+// SPEC V27: a send from an agent view never goes through a door. S0's view rules (rule 5: no question,
+// no dialog, an idle turn, no draft) are the screen path's, and a door would skip them, so for a view
+// send the door is absent: no submit, no `doorRefused`, the screen path decides.
+describe("a send from an agent view keeps the screen path", () => {
+  const HEAD = "[view:morph local/%1#aaaa] from operator:";
+
+  test("a view send with a head to a pane in a turn is refused busy by S0; the door is never asked", async () => {
+    const door = new FakeDoor();
+    const { pane, send } = rig(door);
+    const answer = await send(`${HEAD} tapped "Yes"`, { view: { head: true, check: () => null } });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "busy" });
+    expect(answer.receipt?.via).toBe("screen");
+    expect(answer.receipt?.doorRefused).toBeUndefined();
+    expect(door.submits).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("the person's plain send from a view goes by the screen, as before doors, and names no door", async () => {
+    const door = new FakeDoor();
+    const { pane, send } = rig(door);
+    const answer = await send("also check the docs", { view: { head: false, check: () => null } });
+    expect(door.submits).toEqual([]);
+    expect(answer.receipt?.via).toBe("screen");
+    expect(answer.receipt?.doorRefused).toBeUndefined();
+    expect(pane.keysSeen).toContain("Enter");
+  });
+});
