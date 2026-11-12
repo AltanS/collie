@@ -604,7 +604,9 @@ export class GrokTranscriptSource implements TranscriptSource {
       for (const line of stdout.split("\n")) {
         if (!line.startsWith("n")) continue;
         const path = line.slice(1);
-        const m = /(?:^|\/)([0-9a-f-]{36})\/chat_history\.jsonl$/.exec(path);
+        // Both separators: how the bridge reads any path a command or a fixture printed
+        // (agy.ts's lock and database names do the same).
+        const m = /(?:^|[/\\])([0-9a-f-]{36})[/\\]chat_history\.jsonl$/.exec(path);
         const id = m?.[1];
         if (id === undefined || !isGrokSessionId(id) || seen.has(id)) continue;
         seen.add(id);

@@ -22,8 +22,9 @@
 // service, so the bridge is refused (EACCES). /proc/locks is readable by everyone and names the pid,
 // the device and the inode of every lock, which is enough once the lock files are known.
 //
-// LINUX ONLY: the lock table is read from /proc. Elsewhere the reader answers null and discovery
-// finds nothing, which is the safe answer: the pane keeps its terminal view.
+// THE LOCK TABLE, PER PLATFORM: Linux reads /proc/locks; macOS asks lsof for the pid's open files,
+// where only the session writer ever opens `session.lock`. Elsewhere the reader answers null and
+// discovery finds nothing, which is the safe answer: the pane keeps its terminal view.
 
 import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -91,11 +92,13 @@ export const LINUX_PROC: ProcReader = {
  * The real macOS lock table: `lsof` lists the pid's open files, and a `session.lock` among them is
  * one dsh's session writer holds FLOCK on ("readers never touch the lock"). The lock file is only
  * ever opened by the holder, so the open file names the same fact /proc/locks names on Linux.
- * Null off darwin or when `lsof` cannot be run.
+ *
+ * {@link DEFAULT_PROC} is what keeps this to darwin. Called on its own — as the tests do, with
+ * `lsof` stubbed — it asks `lsof` wherever it runs, and an `lsof` that will not run leaves the set
+ * empty: "nothing found", which is the same answer discovery already fails closed on.
  */
 export const DARWIN_PROC: ProcReader = {
   async flocks(pid) {
-    if (HOST.platform !== "darwin") return null;
     const { stdout } = await runLsof("lsof", ["-nP", "-p", String(pid), "-g", String(pid), "-Fn"], {
       timeout: 1000,
       maxBuffer: 1024 * 1024,
