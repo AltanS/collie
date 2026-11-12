@@ -17,8 +17,8 @@ const agent: WalkyMessage = {
   v: 1,
   id: "wt_k3f9x2m8q1a0",
   kind: "agent",
-  from: { memberId: "bluefin", address: "bluefin/w6:p3", harness: "claude", label: "collie-workspace#fix-465" },
-  to: "minibuch/w1:p1",
+  from: { memberId: "lodge", address: "lodge/w6:p3", harness: "claude", label: "collie-workspace#fix-465" },
+  to: "desk/w1:p1",
   replyTo: null,
   at: 1_786_000_000_000,
   body: "Tests are green on fix-465. You can merge.",
@@ -41,7 +41,7 @@ describe("the envelope", () => {
   test("an agent's message types one nudge line and no body", () => {
     const line = formatEnvelope(agent);
     expect(line).toBe(
-      '[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"',
+      '[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"',
     );
     expect(line.includes("\n")).toBe(false);
     expect(line.includes(agent.body)).toBe(false);
@@ -50,8 +50,8 @@ describe("the envelope", () => {
 
   test("an agent's reply keeps ` reply to <id>` in the header part, and the parse reads it back", () => {
     const line = formatEnvelope({ ...agent, replyTo: "wt_8ab2k1m4q7zx" });
-    expect(line.startsWith("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465) reply to wt_8ab2k1m4q7zx: a message")).toBe(true);
-    expect(parseEnvelopeHeader(line)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", sender: "bluefin/w6:p3 (claude, collie-workspace#fix-465)", replyTo: "wt_8ab2k1m4q7zx" });
+    expect(line.startsWith("[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465) reply to wt_8ab2k1m4q7zx: a message")).toBe(true);
+    expect(parseEnvelopeHeader(line)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", sender: "lodge/w6:p3 (claude, collie-workspace#fix-465)", replyTo: "wt_8ab2k1m4q7zx" });
   });
 
   test("an operator's message types the header, then the body", () => {
@@ -60,11 +60,11 @@ describe("the envelope", () => {
   });
 
   test("the inbox reads any message as its header, then its body", () => {
-    expect(formatRead(agent)).toBe("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)\nTests are green on fix-465. You can merge.");
+    expect(formatRead(agent)).toBe("[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465)\nTests are green on fix-465. You can merge.");
   });
 
   test("the inbox shows the outside word for a message that crossed by the outside verdict, as the envelope does (M98 spec 04)", () => {
-    expect(formatRead(agent, "outside")).toBe("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465) outside\nTests are green on fix-465. You can merge.");
+    expect(formatRead(agent, "outside")).toBe("[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465) outside\nTests are green on fix-465. You can merge.");
     const reply = formatRead({ ...agent, replyTo: "wt_8ab2k1m4q7zx" }, "outside").split("\n")[0]!;
     expect(reply.endsWith(") outside reply to wt_8ab2k1m4q7zx")).toBe(true);
     expect(parseEnvelopeHeader(reply)).toMatchObject({ outside: true, replyTo: "wt_8ab2k1m4q7zx" });
@@ -89,12 +89,12 @@ describe("the envelope", () => {
 
   test("a reply adds ` reply to <id>` after the parenthesis, ASCII only", () => {
     const header = formatHeader({ ...agent, replyTo: "wt_8ab2k1m4q7zx" });
-    expect(header).toBe("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465) reply to wt_8ab2k1m4q7zx");
+    expect(header).toBe("[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465) reply to wt_8ab2k1m4q7zx");
     expect(header).toMatch(/^[\x20-\x7e]+$/u);
   });
 
   test("an agent with no harness shows its label alone", () => {
-    expect(formatHeader({ ...agent, from: { ...agent.from, harness: null } })).toBe("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (collie-workspace#fix-465)");
+    expect(formatHeader({ ...agent, from: { ...agent.from, harness: null } })).toBe("[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (collie-workspace#fix-465)");
   });
 
   test("a label cannot break the header: no brackets, no parentheses, no line break, no non-ASCII", () => {
@@ -110,7 +110,7 @@ describe("the envelope", () => {
     expect(parseEnvelopeHeader(header)).toEqual({
       id: "wt_k3f9x2m8q1a0",
       kind: "agent",
-      sender: "bluefin/w6:p3 (claude, collie-workspace#fix-465)",
+      sender: "lodge/w6:p3 (claude, collie-workspace#fix-465)",
       replyTo: "wt_8ab2k1m4q7zx",
     });
     expect(parseEnvelopeHeader("[walky-talky wt_SHORT] from agent x")).toBeNull();
@@ -135,9 +135,9 @@ describe("the outside word in the header (M98, README decision 12)", () => {
   }
 
   test("a message that passed by the outside flag carries the word after the sender's parenthesis, before the reply", () => {
-    expect(formatEnvelope(agent, "outside").startsWith("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465) outside: a message")).toBe(true);
+    expect(formatEnvelope(agent, "outside").startsWith("[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465) outside: a message")).toBe(true);
     const reply = formatEnvelope({ ...agent, replyTo: "wt_8ab2k1m4q7zx" }, "outside");
-    expect(reply.startsWith("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465) outside reply to wt_8ab2k1m4q7zx: a message")).toBe(true);
+    expect(reply.startsWith("[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465) outside reply to wt_8ab2k1m4q7zx: a message")).toBe(true);
     expect(reply).toMatch(/^[\x20-\x7e]+$/u);
     expect(reply.includes("\n")).toBe(false);
   });
@@ -152,7 +152,7 @@ describe("the outside word in the header (M98, README decision 12)", () => {
 
   test("the reader cuts the word from the sender and says so; a line without it reads as before", () => {
     const reply = formatEnvelope({ ...agent, replyTo: "wt_8ab2k1m4q7zx" }, "outside");
-    expect(parseEnvelopeHeader(reply)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", sender: "bluefin/w6:p3 (claude, collie-workspace#fix-465)", replyTo: "wt_8ab2k1m4q7zx", outside: true });
+    expect(parseEnvelopeHeader(reply)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", sender: "lodge/w6:p3 (claude, collie-workspace#fix-465)", replyTo: "wt_8ab2k1m4q7zx", outside: true });
     expect(parseEnvelopeHeader(formatEnvelope(agent))).not.toHaveProperty("outside");
     // The word inside the parenthesis is the label's, not the mark.
     expect(parseEnvelopeHeader(formatEnvelope({ ...agent, from: { ...agent.from, label: "repo outside" } }))).not.toHaveProperty("outside");
@@ -161,7 +161,7 @@ describe("the outside word in the header (M98, README decision 12)", () => {
   test("an older reader reads the id, the kind and the reply of the new line as a normal message", () => {
     for (const replyTo of [null, "wt_8ab2k1m4q7zx"]) {
       const line = formatEnvelope({ ...agent, replyTo }, "outside");
-      expect(readerBefore(line)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", sender: "bluefin/w6:p3 (claude, collie-workspace#fix-465) outside", replyTo });
+      expect(readerBefore(line)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "agent", sender: "lodge/w6:p3 (claude, collie-workspace#fix-465) outside", replyTo });
       expect(HEADER_RE.test(line)).toBe(true);
     }
   });

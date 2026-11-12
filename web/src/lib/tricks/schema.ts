@@ -1680,8 +1680,6 @@ export interface TricksReply {
   parts: WireTrickPart[];
   /** Every part key present now (`partKey`). A key the phone holds and this list lacks is gone. */
   present: string[];
-  /** The PATH the bridge's runner gives programs, for `collie doctor`. The phone may ignore it. */
-  path?: string;
   /**
    * Set when this bridge schedules no tricks because another machine of its crew does: a crew member,
    * a deputy or a deposed lead (bridge/index.ts). Absent on a lead and a solo bridge.

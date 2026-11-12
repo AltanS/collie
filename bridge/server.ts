@@ -3222,7 +3222,9 @@ export function startServer(opts: {
         const tricks = opts.tricks;
         if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
         if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();
-        return json(await tricks.reply(parseSince(url.searchParams.get("since")), { bound: asksBound(url.searchParams) }), req.headers.get("accept-encoding"));
+        // The runner's PATH is for `collie doctor` and `collie trick list` only: the host's own CLI, never a phone.
+        const forCli = isLocalRequest(req, pairingGate);
+        return json(await tricks.reply(parseSince(url.searchParams.get("since")), { bound: asksBound(url.searchParams), forCli }), req.headers.get("accept-encoding"));
       }
       // The official list: the read is gated like the list, the add and the update like the switch,
       // since they bring code onto the machine. Only a paired phone with the write right gets past the
@@ -8934,6 +8936,15 @@ export function requestDevice(req: Request, cfg: Config, pairing?: PairingGate):
     // device is still read-only, and vice versa.
     authorized: header.authorized && paired !== null,
   };
+}
+
+/**
+ * Whether `req` is the host's own CLI: the local read credential, from this host through no proxy
+ * ({@link browserPairingGate}'s `local`). A paired phone is never this, nor a request with no token.
+ */
+export function isLocalRequest(req: Request, pairing?: PairingGate): boolean {
+  if (pairing === undefined) return false;
+  return pairing.local?.(bearerToken(req.headers), req) === true;
 }
 
 /**

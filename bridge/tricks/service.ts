@@ -53,7 +53,7 @@ import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
 import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
-import { TricksStore, problemLine } from "./store.ts";
+import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
 
@@ -198,8 +198,12 @@ export interface TricksSurface {
   rev(): number | undefined;
   /** A paired phone looked (`/api/snapshot`, `/api/tricks`). */
   noteWatched(): void;
-  /** `GET /api/tricks?since=`, with bound parts only for a phone that asks `bound=1` (bound.ts). */
-  reply(since: number | undefined, opts?: BoundAsk): Promise<TricksReply>;
+  /**
+   * `GET /api/tricks?since=`, with bound parts only for a phone that asks `bound=1` (bound.ts). `forCli`
+   * is true only for a request from the host's own CLI; the reply then also carries the runner's PATH,
+   * which no phone gets.
+   */
+  reply(since: number | undefined, opts?: BoundAsk & { readonly forCli?: boolean }): Promise<TricksReply & CliTricksExtra>;
   /** `POST /api/tricks/<host>/<id>/tap`, its receipt's parts with bound ones only for `bound=1`. */
   tap(host: string, id: string, body: JsonValue | undefined, opts?: BoundAsk): Promise<TapAnswer>;
   /**
@@ -697,10 +701,10 @@ export class TricksService implements TricksSurface {
     return this.slots.held;
   }
 
-  async reply(since: number | undefined, opts?: BoundAsk): Promise<TricksReply> {
+  async reply(since: number | undefined, opts?: BoundAsk & { readonly forCli?: boolean }): Promise<TricksReply & CliTricksExtra> {
     if (this.gated()) return { rev: this.store.rev, tricks: [], parts: [], present: [], gate: "windows" };
     await this.refresh();
-    return this.store.reply(since, this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.(), { bound: opts?.bound === true });
+    return this.store.reply(since, opts?.forCli === true && this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.(), { bound: opts?.bound === true });
   }
 
   sessionPanes(): TrickSessionPanes | undefined {

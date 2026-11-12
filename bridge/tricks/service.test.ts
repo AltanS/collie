@@ -276,7 +276,10 @@ describe("discovery and the switch", () => {
     expect(reply.parts.map((p) => partKey(p))).toEqual(["lodge/legs/belt"]);
     expect(reply.parts[0]?.value).toEqual({ at: "belt", id: "belt", mark: { label: "23/34", intent: "x" } });
     expect(reply.parts[0]?.fresh).toBe("90s");
-    expect(reply.path).toBe(process.env.PATH ?? "/usr/bin:/bin");
+    // The runner's PATH goes to the host's own CLI only: a phone's reply has no `path` at all.
+    expect("path" in reply).toBe(false);
+    expect((await r.service.reply(undefined, { forCli: false })).path).toBeUndefined();
+    expect((await r.service.reply(undefined, { forCli: true })).path).toBe(process.env.PATH ?? "/usr/bin:/bin");
   });
 
   test("switched off: the parts go, and it does not run", async () => {

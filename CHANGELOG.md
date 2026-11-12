@@ -31,6 +31,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Trick helper v5: `t.menu`, and `sessions` on `t.belt`.** `t.menu(rows, { sessions?, id? })` prints a trick's rows in a session's settings, and `t.belt({ ..., sessions, id? })` binds a mark to sessions; a bound part with no `id` is numbered `menu-1`, `belt-1`. An installed trick keeps the helper copy it was approved with, and Collie still reads a v4 copy as its own code, so no trick asks for a yes; `collie trick helper <id>` writes v5 into a folder, and that trick then waits for a yes as before.
 - **The states playground has a Trick menu section.** Eight cases over the real sheet and belt: one trick's group, a switch that waits, a confirm armed, two tricks, the cap line, a trick switched off while the sheet is open, the agent view switch in its trick's group, and a belt mark bound to one session.
 
+### Changed
+
+- **The runner's PATH goes to the host's own CLI only.** `GET /api/tricks` carried the PATH a trick program runs with to every reader, and only `collie doctor` and `collie trick list` read it. The bridge now adds it only to a request from the local CLI (the host's own read credential, from this host, through no proxy), and a paired phone's reply no longer has the field.
+
 ### Docs
 
 - **Session settings rows have a section in each tricks page.** The reference lists the `menu` place with a bound example, the `sessions` key on a belt mark and a menu part, and a "Bound parts" group of limits; `docs/tricks.md`, `docs/tricks-authoring.md` and `collie trick guide` each say in a few lines what the rows do, how a switch waits for the trick, and how a part binds to sessions.

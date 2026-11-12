@@ -54,7 +54,10 @@ function fail(): never {
   throw new Error("the manifest did not parse");
 }
 
-async function deps(answer: TricksReply | null = null): Promise<TrickDeps & Captured & { configDir: string; stateDir: string; asked: string[] }> {
+/** What the bridge answers the CLI: the phone's reply, plus the runner's PATH only the CLI gets. */
+type CliAnswer = TricksReply & { path?: string };
+
+async function deps(answer: CliAnswer | null = null): Promise<TrickDeps & Captured & { configDir: string; stateDir: string; asked: string[] }> {
   const root = await tempDir();
   const configDir = join(root, "config");
   const stateDir = join(root, "state");
