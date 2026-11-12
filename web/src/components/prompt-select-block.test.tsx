@@ -129,12 +129,16 @@ describe("PromptSelectBlock — the subject and the question are on the card", (
       "Dangerous rm operation on statically-unresolvable target: /var/home/devel/projects/sample-workspace/*",
     );
     expect(subject.textContent).not.toMatch(/[╌│]/);
-    // Wraps at phone width instead of panning, and scrolls on its own past its cap, so a long diff
-    // never pushes the buttons out of the dock.
+    // Wraps at phone width instead of panning, and scrolls on its own, so a long diff never pushes
+    // the buttons out of the dock.
     expect(subject.className).toContain("whitespace-pre-wrap");
-    // 22dvh, and never more than the dock leaves the subject beside the rest of the card (2026-11-12).
-    expect(subject.className).toContain("max-h-[max(4rem,min(22dvh,calc(55dvh_-_16rem)))]");
     expect(subject.className).toContain("overflow-y-auto");
+    // The one box of the card that shrinks to fit the dock, never under three rows (2026-11-12). The
+    // heights themselves are a layout engine's to check: e2e/permission-card-fits.spec.ts.
+    const box = subject.parentElement!;
+    expect(box.hasAttribute("data-fit-shrink")).toBe(true);
+    expect(box.className).toContain("min-h-[calc(3lh+0.75rem)]");
+    expect(card.getByRole("group").hasAttribute("data-fit")).toBe(true);
 
     expect(container.querySelector('[data-slot="prompt-question"]')!.textContent).toBe("Do you want to proceed?");
     expect(card.getAllByRole("button").map((b) => b.textContent)).toEqual(["1Yes", "2No"]);
@@ -269,7 +273,7 @@ describe("PromptSelectBlock — the subject and the question are on the card", (
       vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(150);
       const { container } = render(<PromptSelectBlock prompt={fixtureModel(CUT)} onAction={vi.fn()} />);
       const pre = container.querySelector<HTMLElement>('[data-slot="prompt-subject"] pre')!;
-      expect(pre.className).toContain("max-h-[max(4rem,min(22dvh,calc(55dvh_-_16rem)))]");
+      expect(pre.parentElement!.hasAttribute("data-fit-shrink")).toBe(true);
       expect(pre.className).toContain("overflow-y-auto");
       expect(pre.scrollTop).toBe(900);
       expect(container.querySelector('[data-slot="prompt-subject-more-above"]')).not.toBeNull();

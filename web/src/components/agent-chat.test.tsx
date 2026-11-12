@@ -2402,6 +2402,20 @@ describe("the pane fits its viewport", () => {
       kb.restore();
     }
   });
+  // A permission card with subject rows fits the dock (card-dock.tsx): the floor turns soft for it,
+  // the same share as a flex basis that shrinks first, so a short phone shows every button of the card
+  // and less chat. The heights are a layout engine's: e2e/permission-card-fits.spec.ts.
+  it("softens the reading floor for a permission card that fits the dock", () => {
+    const text = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "claude--v2322-permission-bash-cut-top--w160.txt"), "utf8");
+    const { container } = renderChat({ text });
+    const reading = container.querySelector<HTMLElement>('[data-slot="pane-reading"]')!;
+    expect(reading.className).toMatch(/(?:^|\s)flex-\[1_1000_30dvh\](?=\s|$)/);
+    expect(reading.className).toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
+    expect(reading.className).not.toMatch(/min-h-\[30dvh\]|(?:^|\s)flex-1(?=\s|$)/);
+    const dock = container.querySelector<HTMLElement>('[data-slot="card-dock"]')!;
+    expect(dock.className).toMatch(/(?:^|\s)grow-\[1000\](?=\s|$)/);
+    expect(dock.querySelector("[data-fit] [data-fit-shrink]")).not.toBeNull();
+  });
 
   it("keeps a floor under the folder tab — the gap above the mirror may shrink, never close", () => {
     // THE OPERATOR ASKED FOR A DENSER TAB ROW and chose this gap rather than shrinking the tab's

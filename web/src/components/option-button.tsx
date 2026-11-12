@@ -102,6 +102,7 @@ export function PromptPanel({
   raw,
   rawMode = "reveal",
   wrap,
+  fit = false,
   children,
 }: {
   ariaLabel: string;
@@ -113,6 +114,15 @@ export function PromptPanel({
    *  lines setting, so putting the buttons away keeps the mirror as it was. Default false, as
    *  RawMirror. */
   wrap?: boolean;
+  /** The card fits the dock's height (card-dock.tsx) instead of making the dock scroll. The panel
+   *  may shrink, and its one child that can takes the cut: the child marked `data-fit-shrink`, a box
+   *  with a `min-height` and a `max-height` whose first child is its scroller. Every other child
+   *  keeps its full height (a flex item never shrinks under its content by default). The dock reads
+   *  `data-fit` and those heights to size itself (card-dock.tsx `fitSize`). Only for a card that HAS
+   *  such a child; without one the
+   *  panel would shrink under its own rows. Off in the Terminal view, which scrolls the dock as
+   *  before. */
+  fit?: boolean;
   children: ReactNode;
 }) {
   useLocale();
@@ -145,7 +155,11 @@ export function PromptPanel({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="my-1.5 flex flex-col gap-1.5 rounded-xl border border-border bg-card p-1.5 shadow-sm"
+      data-fit={fit && !showRaw ? "" : undefined}
+      className={cn(
+        "my-1.5 flex flex-col gap-1.5 rounded-xl border border-border bg-card p-1.5 shadow-sm",
+        fit && !showRaw && "min-h-0",
+      )}
     >
       {raw !== undefined && !showRaw && (
         <button

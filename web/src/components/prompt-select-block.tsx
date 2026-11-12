@@ -116,6 +116,14 @@ function useHiddenRows<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [above, setAbove] = useState(false);
   const [below, setBelow] = useState(false);
+  // Whether the box shows its last row, as far as the PERSON is concerned. The box opens there
+  // (RawMirror's `anchor="bottom"`), and its height follows the dock's (the keyboard, a rotation, a
+  // note line appearing, the dock settling on its measured size), so a resize keeps that last row in
+  // view until the person scrolls away from it. Only a scroll that follows the person's own input
+  // moves this: a resize clamps the scroll position too, and its scroll event lands a frame later,
+  // after the next resize, where it would read "not at the end" for a box nobody touched.
+  const atEnd = useRef(true);
+  const touched = useRef(false);
 
   const measure = useCallback(() => {
     const el = ref.current;
@@ -130,15 +138,30 @@ function useHiddenRows<T extends HTMLElement>() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.addEventListener("scroll", measure, { passive: true });
-    return () => el.removeEventListener("scroll", measure);
+    const onInput = () => {
+      touched.current = true;
+    };
+    const onScroll = () => {
+      if (touched.current) atEnd.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      measure();
+    };
+    const inputs = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    for (const type of inputs) el.addEventListener(type, onInput, { passive: true });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      for (const type of inputs) el.removeEventListener(type, onInput);
+      el.removeEventListener("scroll", onScroll);
+    };
   }, [measure]);
 
   // A font finishing, the viewport resizing, the keyboard opening. Guarded for jsdom.
   useEffect(() => {
     const el = ref.current;
     if (!el || !hasResizeObserver()) return;
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(() => {
+      if (atEnd.current) el.scrollTop = el.scrollHeight;
+      measure();
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [measure]);
@@ -146,50 +169,59 @@ function useHiddenRows<T extends HTMLElement>() {
   return { ref, above, below };
 }
 
-/**
- * What the dialog asks about (`PromptModel.subject`), above the question. The card used to leave it
- * in the raw scrollback above itself, which the docked card (ADR 0059) and the Chat view no longer
- * show, so a subagent's permission read "Yes / No" and nothing else.
- *
- * A header row (bold in the terminal) is the card's title, in text weight: its bold runs in the
- * foreground, the rest (` · from the general-purpose agent`) muted. Every other row is the command,
- * diff or warning, drawn as the mirror draws it (RawMirror: mono, the agent's own colours, React text
- * nodes only) but wrapping, and capped at about 40% of the dock's 55dvh with its own scroll, so a
- * long diff never pushes the buttons out of the dock. A warning row (`tone: "warning"`) wears the
- * caution ink.
- */
-function PromptSubject({ subject }: { subject: PromptSubjectLine[] }) {
+interface SubjectParts {
+  header: PromptSubjectLine | null;
+  body: PromptSubjectLine[];
+}
+
+/** A subject split for the card: its header row (bold in the terminal), if it has one, and the rows
+ *  under it, less the blank row the terminal left right under the header (the card has its own gap). */
+function subjectParts(subject: PromptSubjectLine[] | undefined): SubjectParts {
+  if (!subject || subject.length === 0) return { header: null, body: [] };
   const header = isHeaderRow(subject[0]) ? subject[0]! : null;
   const rest = header ? subject.slice(1) : subject;
-  // A blank row right under the header is the gap the terminal left after it; the card has its own.
   const body = rest[0]?.segments.every((s) => s.text.trim() === "") ? rest.slice(1) : rest;
+  return { header, body };
+}
+
+/** Whether this prompt's card fits the dock instead of scrolling it (PromptPanel's `fit`): exactly
+ *  when it has subject rows under the title, the one box that can give up height. card-dock.tsx and
+ *  agent-chat.tsx read it to give the card the room it needs. */
+export function promptCardFits(prompt: PromptModel): boolean {
+  return subjectParts(prompt.subject).body.length > 0;
+}
+
+/**
+ * What the dialog asks about (`PromptModel.subject`), above the question: its header row as the
+ * card's title. The card used to leave the subject in the raw scrollback above itself, which the
+ * docked card (ADR 0059) and the Chat view no longer show, so a subagent's permission read "Yes / No"
+ * and nothing else. The title is in text weight: its bold runs in the foreground, the rest
+ * (` · from the general-purpose agent`) muted. The rows under it are {@link SubjectBody}.
+ */
+function SubjectTitle({ header }: { header: PromptSubjectLine }) {
   return (
-    <>
-      {header ? (
-        <p data-slot="prompt-subject-title" className="font-content pl-0.5 text-sm leading-snug wrap-anywhere">
-          {header.segments.map((s, i) => (
-            <span key={i} className={s.bold ? "font-medium text-foreground" : "text-muted-foreground"}>
-              {i === 0 ? s.text.trimStart() : s.text}
-            </span>
-          ))}
-        </p>
-      ) : null}
-      {body.length > 0 ? <SubjectBody lines={body} /> : null}
-    </>
+    <p data-slot="prompt-subject-title" className="font-content pl-0.5 text-sm leading-snug wrap-anywhere">
+      {header.segments.map((s, i) => (
+        <span key={i} className={s.bold ? "font-medium text-foreground" : "text-muted-foreground"}>
+          {i === 0 ? s.text.trimStart() : s.text}
+        </span>
+      ))}
+    </p>
   );
 }
 
 /**
- * The subject box's height cap: 22dvh, about 40% of the dock's 55dvh, and never more than the dock
- * leaves once the rest of the card has its room, so the options stay on screen. The rest is about
- * 16rem with three options: the dock's and the panel's padding, the Terminal control, the caption,
- * the cut line or the title, the question and the buttons (estimated on 2026-11-12 from a phone
- * screenshot of a 360 px card: 170 px for the card without a subject, 39 px for a two-row cut line,
- * 36 px a button; not measured in a browser). By that estimate 22dvh alone left the second button of
- * a long subject's card under the dock's fold below about 650 px of viewport (a 360 x 640 phone, or
- * Chrome's toolbars on a 360 x 800 one). Never under 4rem, three rows, however short the screen.
+ * The subject box's height, by layout and not by estimate. The card is a column that fits the dock
+ * (PromptPanel's `fit`, card-dock.tsx), and this box is the one part of it that shrinks: the caption,
+ * the cut line, the title, the question, the note lines and the buttons keep their full height, and
+ * the box takes what the dock has left. Never under three rows (`3lh`, the rows' own line height,
+ * plus the mirror's `py-1.5`), so a short dock still shows the end of the command; below that the
+ * chat above the dock gives way, and only then does the dock scroll, from its top (card-dock.tsx,
+ * "THE ROOM OF A CARD THAT FITS"). Never over 24rem (about 27 rows), so on a tall screen
+ * the card does not grow into a page. The font size and line height are the mirror's (RawMirror), set
+ * here too so `lh` measures the same rows.
  */
-const SUBJECT_CAP = "max-h-[max(4rem,min(22dvh,calc(55dvh_-_16rem)))]";
+const SUBJECT_BOX = "relative flex max-h-[24rem] min-h-[calc(3lh+0.75rem)] flex-col text-[11px] leading-[1.25]";
 
 /** The fade over one fold of the subject box: a ground-coloured layer that fades in toward the edge. */
 function foldFade(edge: "top" | "bottom"): string {
@@ -216,14 +248,14 @@ function foldFade(edge: "top" | "bottom"): string {
 function SubjectBody({ lines }: { lines: PromptSubjectLine[] }) {
   const { ref, above, below } = useHiddenRows<HTMLPreElement>();
   return (
-    <div data-slot="prompt-subject" className="relative">
+    <div data-slot="prompt-subject" data-fit-shrink className={SUBJECT_BOX}>
       <RawMirror
         ref={ref}
         lines={lines}
         wrap
         anchor="bottom"
         rowTone={(i) => lines[i]?.tone}
-        className={cn(SUBJECT_CAP, "overflow-y-auto overscroll-contain")}
+        className="min-h-0 overflow-y-auto overscroll-contain"
       />
       {above ? <div aria-hidden data-slot="prompt-subject-more-above" className={foldFade("top")} /> : null}
       {below ? <div aria-hidden data-slot="prompt-subject-more" className={foldFade("bottom")} /> : null}
@@ -322,6 +354,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   // The answer recipe reaches a focused field itself, so the terminal's focus locks the options only.
   const answerLocked = Boolean(disabled) || offline || sending !== null;
   const feedbackCopy = feedback ? feedbackCopyFor(feedback.purpose ?? "plan-change") : null;
+  const subject = subjectParts(prompt.subject);
 
   async function press(id: string, action: PromptBlockAction): Promise<boolean> {
     if (action.kind === "feedback" && isAnswer ? answerLocked : locked) return false;
@@ -348,10 +381,11 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   );
 
   return (
-    <PromptPanel ariaLabel={prompt.question} raw={lines}>
+    <PromptPanel ariaLabel={prompt.question} raw={lines} fit={promptCardFits(prompt)}>
       <OptionGroupCaption>{prompt.caption ?? familyCaption(prompt.family)}</OptionGroupCaption>
       {prompt.subjectCut ? <SubjectCutNote /> : null}
-      {prompt.subject && prompt.subject.length > 0 ? <PromptSubject subject={prompt.subject} /> : null}
+      {subject.header ? <SubjectTitle header={subject.header} /> : null}
+      {subject.body.length > 0 ? <SubjectBody lines={subject.body} /> : null}
       {/* A dialog that names itself (`/resume`'s "Resume session") already shows its title as the
           caption; saying it twice adds nothing. */}
       {prompt.question !== prompt.caption ? (

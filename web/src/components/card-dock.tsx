@@ -1,5 +1,6 @@
-import type { CSSProperties, MouseEvent, ReactNode, Ref } from "react";
+import { useImperativeHandle, useLayoutEffect, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 
+import { hasResizeObserver } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import type {
   Block,
@@ -12,7 +13,7 @@ import type {
 } from "@/lib/blocks";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
 import type { Scope } from "@/lib/scope";
-import { PromptSelectBlock, type PromptBlockAction } from "@/components/prompt-select-block";
+import { PromptSelectBlock, promptCardFits, type PromptBlockAction } from "@/components/prompt-select-block";
 import { WizardBlock } from "@/components/wizard-block";
 import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
 import { MultiSelectBlock } from "@/components/multi-select-block";
@@ -122,6 +123,114 @@ const DIALOG_CARD_KINDS: ReadonlySet<Block["kind"]> = new Set<Block["kind"]>(["p
 /** Whether the dock shows a dialog card for these blocks: the place "Answer the dialog" goes to. */
 export function hasDialogCard(blocks: CardDockProps["blocks"]): boolean {
   return blocks.some((block) => DIALOG_CARD_KINDS.has(block.kind));
+}
+
+/** Whether the dock's card fits the dock (PromptPanel's `fit`) instead of scrolling it: a permission
+ *  card with subject rows. AgentChat reads it too, to soften the reading floor for it. */
+export function dockFits(blocks: CardDockProps["blocks"]): boolean {
+  // The same pick as liftedCard: a prompt-select block wins over every other kind.
+  const prompt = blocks.find((b): b is PromptBlock => b.kind === "prompt-select");
+  return prompt !== undefined && promptCardFits(prompt.prompt);
+}
+
+/** A computed length in px, 0 for anything else (`auto`, `normal`). */
+function px(value: string): number {
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** The two heights of a card that fits the dock, in px, each with the dock's own padding and border. */
+export interface FitSize {
+  /** The least: every row of the card at its own height, its shrinking box at its `min-height`. */
+  floor: number;
+  /** The most it can use: the same rows, its shrinking box at its whole content, up to its `max-height`. */
+  natural: number;
+}
+
+/**
+ * The heights of a card that fits the dock (`[data-fit]`, PromptPanel): every row of the card at its
+ * own height, its one shrinking box (`[data-fit-shrink]`) at its `min-height` for the floor and at
+ * its content (its first child's scroll height, up to its `max-height`) for the natural height, plus
+ * the gaps, the paddings, the borders and the card's margins. Measured from the rows on screen, so
+ * it holds for any wording, locale, font or number of buttons; nothing in it is a guess. Null when
+ * the dock holds no such card (any other card, or this one put down to its Terminal view).
+ */
+export function fitSize(dock: HTMLElement): FitSize | null {
+  const card = dock.querySelector<HTMLElement>(":scope > [data-fit]");
+  if (card === null) return null;
+  const d = getComputedStyle(dock);
+  const c = getComputedStyle(card);
+  const rows = [...card.children];
+  let fixed = 0;
+  let least = 0;
+  let most = 0;
+  for (const row of rows) {
+    if (!row.hasAttribute("data-fit-shrink")) {
+      fixed += row.getBoundingClientRect().height;
+      continue;
+    }
+    const box = getComputedStyle(row);
+    least += px(box.minHeight);
+    const content = row.firstElementChild?.scrollHeight ?? 0;
+    const max = box.maxHeight === "none" ? Number.POSITIVE_INFINITY : px(box.maxHeight);
+    most += Math.max(px(box.minHeight), Math.min(content, max));
+  }
+  const edges =
+    px(d.paddingTop) + px(d.paddingBottom) + px(d.borderTopWidth) + px(d.borderBottomWidth) +
+    px(c.marginTop) + px(c.marginBottom) + px(c.paddingTop) + px(c.paddingBottom) + px(c.borderTopWidth) + px(c.borderBottomWidth) +
+    px(c.rowGap) * Math.max(0, rows.length - 1);
+  return { floor: Math.ceil(edges + fixed + least), natural: Math.ceil(edges + fixed + most) };
+}
+
+/** Two sizes are the same, so a measure that found nothing new renders nothing. */
+function sameSize(a: FitSize | null, b: FitSize | null): boolean {
+  return a === b || (a !== null && b !== null && a.floor === b.floor && a.natural === b.natural);
+}
+
+/**
+ * The heights of the dock's card that fits ({@link fitSize}), kept current: on the dock's and every
+ * row's resize (the width, a font, the keyboard) and on any change inside the card (the offline
+ * note, a new question, new subject rows). Neither height depends on the dock's own height, so
+ * setting the dock from them settles in one pass.
+ */
+function useFitSize(dock: HTMLDivElement | null, fits: boolean): FitSize | null {
+  const [size, setSize] = useState<FitSize | null>(null);
+  useLayoutEffect(() => {
+    if (!fits || dock === null) return;
+    const measure = () => {
+      const next = fitSize(dock);
+      setSize((prev) => (sameSize(prev, next) ? prev : next));
+    };
+    measure();
+    const ro = hasResizeObserver() ? new ResizeObserver(measure) : null;
+    const watch = () => {
+      if (ro === null) return;
+      ro.disconnect();
+      ro.observe(dock);
+      const card = dock.querySelector(":scope > [data-fit]");
+      for (const row of card?.children ?? []) ro.observe(row);
+    };
+    watch();
+    const mo = new MutationObserver(() => {
+      watch();
+      measure();
+    });
+    mo.observe(dock, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-fit"] });
+    return () => {
+      ro?.disconnect();
+      mo.disconnect();
+    };
+  }, [dock, fits]);
+  return fits ? size : null;
+}
+
+/** The dock's flex sizing for a card that fits it, from its two heights: see "THE ROOM OF A CARD THAT
+ *  FITS" on {@link CardDock}. */
+function fitStyle(size: FitSize, cap: string): CSSProperties {
+  return {
+    flexBasis: `${size.floor}px`,
+    maxHeight: `min(${size.natural}px, max(${size.floor}px, ${cap}))`,
+  };
 }
 
 /** The one card on screen, as a React element, or null when every block is raw. */
@@ -247,27 +356,58 @@ function liftedCard({
  * composer off the screen. `dvh` already tracks the keyboard (hooks/use-keyboard.ts), so the cap is
  * a share of what is really visible. It also SHRINKS (`min-h-0 shrink`): the reading box above it
  * holds a floor (agent-chat.tsx, #667), so on a short phone the dock gives up room before the chat does.
+ * That floor, not the cap, is what bounds the dock on a phone: the column is the screen less the top
+ * bar and tabs (about 97 px), the reading floor (30dvh, 20dvh with the keyboard up), and the belt
+ * and composer (about 109 px). Measured on 2026-11-12 in Chromium: 384 px of dock on a 390 x 844
+ * phone, 241 px on 360 x 640 and 185 px on 360 x 560, against a 55dvh cap of 464, 352 and 308. The
+ * playground's phone frame is shorter than the page whose `dvh` it reads, so its dock is smaller
+ * still (262 px in a 760 px frame on a 390 x 844 page).
+ *
+ * A COLUMN. The dock lays its card out as a flex column, so a card that opts in (PromptPanel's `fit`,
+ * the permission card with subject rows) shrinks to the dock's height and gives the room to its one
+ * scroller (the subject box) while its question, note lines and buttons keep their size. Every other
+ * card keeps its full height, as a flex item does by default, and the dock scrolls it as before.
+ *
+ * THE ROOM OF A CARD THAT FITS. Such a card has two heights ({@link fitSize}, measured): its floor,
+ * all its rows with the subject box at three rows, and its natural height, the subject box at all
+ * its rows (up to the box's own max). The dock starts at the floor (its flex basis) and grows first
+ * (weight 1000, the reading box 1) up to its natural height or its cap, whichever is less; a floor
+ * over the cap wins over the cap. The reading box starts at its share of the screen (agent-chat.tsx)
+ * and shrinks first (weight 1000 there, 1 here). So, as the screen gets shorter: the subject gives
+ * up its spare rows down to three, then the chat goes under its share, down to nothing, and only
+ * then does the dock go under its floor and scroll, from its top. The composer is never pushed off.
+ * CSS alone cannot give a box a floor of "its rows but one box at its minimum": a box's min-content
+ * height in the block axis is its whole content, so the two heights are measured.
  *
  * LOOK. The page background and one uniform 1px top rule: a docked sheet standing on the column, not
  * a second card around the card. `px-3` is the mirror list's own gutter, so the card's edges line up
  * with the terminal text above it.
  */
 export function CardDock(props: CardDockProps) {
+  const [dock, setDock] = useState<HTMLDivElement | null>(null);
+  // The caller's ref still reaches the dock's box; ours watches it for the floor.
+  useImperativeHandle(props.ref, () => dock!, [dock]);
+  const fits = dockFits(props.blocks);
+  const size = useFitSize(dock, fits);
   const card = liftedCard(props);
   if (card === null) return null;
+  const cap = props.composing ? "40dvh" : "55dvh";
   return (
     // `role="presentation"`, the mirror wrapper's own reading: a layout box whose click adds nothing
     // a keyboard user lacks (the textarea is the next tabbable thing).
     <div
-      ref={props.ref}
+      ref={setDock}
       role="presentation"
       data-slot="card-dock"
       className={cn(
-        "min-h-0 shrink overflow-y-auto overscroll-contain border-t border-border bg-background px-3 pt-2 pb-2",
+        "flex min-h-0 flex-col overflow-y-auto overscroll-contain border-t border-border bg-background px-3 pt-2 pb-2",
+        // A card that fits grows first and shrinks last; the reading box does the opposite
+        // (agent-chat.tsx). See "THE ROOM OF A CARD THAT FITS" above.
+        fits ? "grow-[1000] shrink" : "shrink",
         props.composing ? "max-h-[40dvh]" : "max-h-[55dvh]",
         props.faceClassName,
       )}
-      style={props.faceStyle}
+      style={size === null ? props.faceStyle : { ...props.faceStyle, ...fitStyle(size, cap) }}
       onClick={props.onClick}
     >
       {card}

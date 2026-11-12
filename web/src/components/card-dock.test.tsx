@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { CardDock, hasDialogCard } from "@/components/card-dock";
+import { CardDock, fitSize, hasDialogCard } from "@/components/card-dock";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { buildBlocks } from "@/lib/harness";
@@ -163,5 +163,52 @@ describe("CardDock: a pi question whose descriptions wrap", () => {
       expect.objectContaining({ kind: "option", option: expect.objectContaining({ label: "Green", keys: ["Down", "Enter"] }) }),
       expect.objectContaining({ question: "Pick a color for the Collie probe" }),
     );
+  });
+});
+
+// A permission card with subject rows fits the dock (2026-11-12): the dock sizes itself from the
+// card's two measured heights. jsdom lays nothing out, so the rows' heights are stubbed here; the
+// real heights are e2e/permission-card-fits.spec.ts.
+describe("fitSize: the two heights of a card that fits the dock", () => {
+  function dockWith(rows: { height: number; shrink?: { min: number; max: string; content: number } }[]): HTMLElement {
+    const dock = document.createElement("div");
+    dock.style.cssText = "padding-top: 8px; padding-bottom: 8px; border-top: 1px solid";
+    const card = document.createElement("div");
+    card.setAttribute("data-fit", "");
+    card.style.cssText = "margin: 6px 0; padding: 6px; border: 1px solid; row-gap: 6px";
+    for (const row of rows) {
+      const el = document.createElement("div");
+      vi.spyOn(el, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, row.height));
+      if (row.shrink) {
+        el.setAttribute("data-fit-shrink", "");
+        el.style.minHeight = `${row.shrink.min}px`;
+        el.style.maxHeight = row.shrink.max;
+        const scroller = document.createElement("pre");
+        vi.spyOn(scroller, "scrollHeight", "get").mockReturnValue(row.shrink.content);
+        el.append(scroller);
+      }
+      card.append(el);
+    }
+    dock.append(card);
+    return dock;
+  }
+
+  it("counts every row at its height and the shrinking box at its minimum, then at its content up to its max", () => {
+    // Edges: dock 8 + 8 + 1, card margins 12, padding 12, border 2 = 43, plus a gap of 6 between rows.
+    const dock = dockWith([{ height: 20 }, { height: 999, shrink: { min: 53, max: "384px", content: 1085 } }, { height: 18 }, { height: 76 }]);
+    expect(fitSize(dock)).toEqual({ floor: 61 + 20 + 53 + 18 + 76, natural: 61 + 20 + 384 + 18 + 76 });
+  });
+
+  it("takes a short box's own content as its natural height, never under its minimum", () => {
+    const short = dockWith([{ height: 20 }, { height: 0, shrink: { min: 53, max: "384px", content: 80 } }]);
+    expect(fitSize(short)).toEqual({ floor: 49 + 20 + 53, natural: 49 + 20 + 80 });
+    const tiny = dockWith([{ height: 20 }, { height: 0, shrink: { min: 53, max: "none", content: 30 } }]);
+    expect(fitSize(tiny)).toEqual({ floor: 49 + 20 + 53, natural: 49 + 20 + 53 });
+  });
+
+  it("is null for a dock whose card does not fit it", () => {
+    const dock = document.createElement("div");
+    dock.append(document.createElement("div"));
+    expect(fitSize(dock)).toBeNull();
   });
 });

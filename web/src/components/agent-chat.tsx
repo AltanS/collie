@@ -50,7 +50,7 @@ import { HeaderStatus } from "@/components/header-status";
 import { AgentStart } from "@/components/agent-start";
 import { AnsiOutput } from "@/components/ansi-output";
 import { OutputZoom } from "@/components/output-zoom";
-import { CardDock, hasDialogCard } from "@/components/card-dock";
+import { CardDock, dockFits, hasDialogCard } from "@/components/card-dock";
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
@@ -1019,6 +1019,9 @@ export function AgentChat({
   // the composer reads the Surface only); it still keeps the queued-keys card and the dialog taps
   // from writing an unbound key into a dialog (below).
   const dialogPresent = useMemo(() => blocks.some(blockOwnsKeyboard), [blocks]);
+  // The docked card fits the dock (a permission card with subject rows, card-dock.tsx): the reading
+  // box's floor turns soft for it, below.
+  const cardFits = useMemo(() => dockFits(blocks), [blocks]);
   // The composer's Surface (M56 spec 06): the bridge's read, with the facts the phone knows before
   // any read folded in as `composer: unreachable` (lib/send-slot.ts, `paneSurface`).
   const { surface: composerSurface, unreachableNote } = useMemo(
@@ -2869,7 +2872,19 @@ export function AgentChat({
               // lines under the floating tags. The floor is a share of the viewport, and `dvh` already
               // follows the keyboard, so it is lower while the keyboard is up. On a tall screen the
               // box is far above it and the floor changes nothing.
-              composing ? "min-h-[20dvh]" : "min-h-[30dvh]",
+              // A SOFT FLOOR for a card that fits the dock (card-dock.tsx, a permission card with
+              // subject rows): the same share, as the box's flex basis, not its min-height, and the
+              // first box to shrink (weight 1000, the dock 1). The dock gives up its spare subject
+              // rows before this box goes under the share, and this box goes under it rather than
+              // push the card's buttons out of the dock: a short phone shows the whole question and
+              // every button, and less chat, while the card is up.
+              cardFits
+                ? composing
+                  ? "min-h-0 flex-[1_1000_20dvh]"
+                  : "min-h-0 flex-[1_1000_30dvh]"
+                : composing
+                  ? "min-h-[20dvh]"
+                  : "min-h-[30dvh]",
               mirrorFace.className,
             )}
             style={mirrorFace.style}
