@@ -119,6 +119,7 @@ export function trickGuide(): string[] {
     "  t.config       config.toml, parsed.",
     "  t.tap          the tap that started this run, or null.",
     "  t.belt, t.status, t.dashboard, t.tabbar   one part in each place.",
+    "  t.menu         rows in a session's settings. t.menu(rows, { sessions }) and t.belt({ ..., sessions }) bind to sessions.",
     "  t.session      the trick's Page (the place session): a row on the Dashboard and a screen.",
     "  v.row, v.para, v.chip and the rest of v   one builder per view node.",
     "  t.decide       ask the person a question on the Hill. The answer comes back as a tap.",

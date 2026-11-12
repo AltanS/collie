@@ -581,3 +581,38 @@ describe("helper v4: a session's inputs", () => {
     expect(t.inputs(first)).toEqual([]);
   });
 });
+
+describe("helper v5: session settings rows and bound parts", () => {
+  test("t.menu and a bound t.belt print parts the contract 2 parser takes, each bound part with its own id", async () => {
+    const { t } = await trickHere({ places: ["belt", "menu"] });
+    t.facts.contract = 2;
+    const session = t.facts.sessions[0]?.id;
+    const other = t.facts.sessions[1]?.id;
+    if (session === undefined || other === undefined) throw new Error("the fixture facts hold fewer than two sessions");
+    t.menu([
+      { kind: "button", id: "rerun", label: "Rerun CI", intent: "rerun", icon: "refresh", confirm: true },
+      { kind: "switch", id: "watch", label: "Watch branch", intent: "watch", on: true },
+    ]);
+    t.menu([{ kind: "button", id: "deploy", label: "Deploy here", intent: "deploy" }], { sessions: [session] });
+    t.belt({ label: "23/34", icon: "check" });
+    t.belt({ label: "2 red", tone: "danger", intent: "open", sessions: [session] });
+    t.belt({ label: "named", sessions: [other], id: "legs-here" });
+    const doc = t.document();
+    expect(doc.v).toBe(2);
+    expect(doc.parts.map((part) => part.id)).toEqual(["menu", "menu-1", "belt", "belt-1", "legs-here"]);
+    // The mark keeps its own keys: `sessions` and `id` sit on the part.
+    expect(doc.parts[3]).toEqual({ at: "belt", id: "belt-1", sessions: [session], mark: { label: "2 red", tone: "danger", intent: "open" } });
+    const parsed = parseTrickDocumentText(JSON.stringify(doc), { declared: ["belt", "menu"], contract: 2 });
+    expect(parsed.refusals).toEqual([]);
+    expect(parsed.parts.map((part) => part.part.id)).toEqual(["menu", "menu-1", "belt", "belt-1", "legs-here"]);
+  });
+
+  test("the v4 helper is still Collie's own code to the scan, so a trick folder that keeps it asks for no yes", async () => {
+    const { shippedHelperVersion, HELPER_VERSION } = await import("../../bridge/tricks/scan.ts");
+    expect(HELPER_VERSION).toBe(5);
+    expect(TRICK_HELPER.startsWith("// collie trick helper v5\n")).toBe(true);
+    const v4 = await Bun.$`git show v1.29.0-edge.1:cli/trick-kit/trick.ts`.quiet().nothrow();
+    if (v4.exitCode !== 0) return;
+    expect(shippedHelperVersion(v4.stdout.toString())).toBe(4);
+  });
+});

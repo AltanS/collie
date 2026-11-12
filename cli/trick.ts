@@ -1022,6 +1022,8 @@ version. \`run((t) => { ... })\` reads the facts, calls your function once and p
 | \`t.config\` | \`config.toml\`, parsed; {} when there is none |
 | \`t.tap\` | the tap that started this run, or null: \`rid\`, \`node\`, \`intent\`, \`value\`, and for an answer to a Decision \`decision\` (its key), \`text\` and \`seen\` |
 | \`t.status\`, \`t.belt\`, \`t.dashboard\`, \`t.tabbar\`, \`t.session\` | one part in each place; list the place in \`places\` |
+| \`t.menu(rows, { sessions? })\` | rows in a session's settings (contract 2): buttons and switches; a switch shows your next document's \`on\` |
+| \`t.belt({ ..., sessions })\`, \`t.menu(rows, { sessions })\` | contract 2: show only in those sessions (the facts' ids), each bound part with its own \`id\` or numbered |
 | \`v.card\`, \`v.row\`, \`v.para\`, and the rest of \`v\` | one builder per node kind, for a view |
 | \`t.decide\`, \`t.keepDecisions\` | ask the person on the Hill; leave the open Decisions as they are |
 | \`t.state.get\`, \`t.state.set\` | small JSON files in the trick's state folder; a name may hold folders (\`cache/ci\`) |

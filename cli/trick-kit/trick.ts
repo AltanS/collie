@@ -1,4 +1,4 @@
-// collie trick helper v4
+// collie trick helper v5
 // The helper of a Collie trick: it reads the facts, collects the parts and the Decisions, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
@@ -321,9 +321,16 @@ function tapOf(t: Trigger): Tap | null {
 export interface Item { label: string; icon?: Icon; badge?: Num; tone?: Tone }
 export interface Action { id: string; label: string; intent: string; value?: string; icon?: "play" | "pause" | "check" | "x" | "refresh" | "archive" | "flag" | "star" | "send" | "note" | "search" | "more"; disabled?: boolean }
 export interface SessionPart { id?: string; name?: string; icon?: Icon; tone?: Tone; subtitle?: string; badge?: { count: number } | { text: string }; progress?: { value?: number; max?: number }; actions?: Action[]; view: Node[] }
+/** A row in a session's settings (contract 2): a button, or a switch whose `on` is your state. */
+export type MenuRow =
+  | { kind: "button"; id: string; label: string; intent: string; icon?: Icon; disabled?: boolean; confirm?: boolean }
+  | { kind: "switch"; id: string; label: string; intent: string; on: boolean; icon?: Icon; disabled?: boolean };
+/** Where a belt mark or a menu part shows (contract 2): `sessions`, facts ids, binds it to those sessions only. */
+export interface Bind { sessions?: string[]; id?: string }
 export type Part =
   | { at: "status"; id: "status"; chip: { text: string; icon?: Icon; tone?: Tone } }
-  | { at: "belt"; id: "belt"; mark: { label: string; icon?: Icon; tone?: Tone; badge?: string; intent?: string } }
+  | { at: "belt"; id: string; sessions?: string[]; mark: { label: string; icon?: Icon; tone?: Tone; badge?: string; intent?: string } }
+  | { at: "menu"; id: string; sessions?: string[]; rows: MenuRow[] }
   | { at: "dashboard" | "tabbar"; id: "dashboard" | "tabbar"; item: Item }
   | ({ at: "session"; id: string } & Omit<SessionPart, "id">);
 export interface Decision {
@@ -455,10 +462,32 @@ export class Trick {
   status(chip: { text: string; icon?: Icon; tone?: Tone }): void {
     this.parts.push({ at: "status", id: "status", chip });
   }
-  /** One mark at the end of the Belt. `intent` makes a tap run the trick. */
-  belt(mark: { label: string; icon?: Icon; tone?: Tone; badge?: Num; intent?: string }): void {
-    const { badge, ...rest } = mark;
-    this.parts.push({ at: "belt", id: "belt", mark: badge === undefined ? rest : { ...rest, badge: String(badge) } });
+  /**
+   * One mark at the end of the Belt. `intent` makes a tap run the trick. With `sessions` (contract 2, the
+   * facts' session ids) the mark shows only in those sessions, in place of the unbound one; give each bound
+   * mark its own `id`, or the helper numbers them `belt-1`, `belt-2`.
+   */
+  belt(mark: { label: string; icon?: Icon; tone?: Tone; badge?: Num; intent?: string } & Bind): void {
+    const { badge, sessions, id, ...rest } = mark;
+    const face = badge === undefined ? rest : { ...rest, badge: String(badge) };
+    this.parts.push(sessions === undefined ? { at: "belt", id: id ?? "belt", mark: face } : { at: "belt", id: id ?? this.boundId("belt"), sessions, mark: face });
+  }
+  /**
+   * Rows in a session's settings (contract 2, list "menu" in places): 1 to 6 buttons and switches. A tap
+   * runs the trick with the row's intent and `t.tap.from.session`; a switch's tap carries the state asked
+   * for as `value`, "on" or "off", and the phone shows your next document's `on`, never a guess. Without
+   * `sessions` the rows show in every agent session of this machine; with it, only in those sessions.
+   */
+  menu(rows: MenuRow[], bind: Bind = {}): void {
+    const { sessions, id } = bind;
+    this.parts.push(sessions === undefined ? { at: "menu", id: id ?? "menu", rows } : { at: "menu", id: id ?? this.boundId("menu"), sessions, rows });
+  }
+  /** The next free id of a bound part of `place`: `<place>-1`, `<place>-2`. */
+  private boundId(place: "belt" | "menu"): string {
+    const taken = new Set(this.parts.map((part) => part.id));
+    // One more number than there are parts: one of them is free.
+    const free = Array.from({ length: this.parts.length + 1 }, (_, i) => `${place}-${String(i + 1)}`).find((id) => !taken.has(id));
+    return free ?? `${place}-${String(this.parts.length + 1)}`;
   }
   /** One tile in the strip at the top of the Dashboard. */
   dashboard(item: Item): void {

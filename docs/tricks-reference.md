@@ -1381,7 +1381,8 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 | --- | --- |
 | `t.facts`, `t.config`, `t.tap` | The facts, `config.toml` parsed (`{}` when there is none), and the tap that started the run or `null`. A tap has `rid`, `node`, `intent`, `value`, `decision` (the key of the Decision it answers, or `null`), `text`, `from` and `seen`. |
 | `t.status({ text, icon?, tone? })` | The chip in the status line. `text` is at most 12 characters. |
-| `t.belt({ label, icon?, tone?, badge?, intent? })` | The mark at the end of the Belt. |
+| `t.belt({ label, icon?, tone?, badge?, intent?, sessions?, id? })` | The mark at the end of the Belt. With `sessions` (contract 2) it shows only in those sessions; a bound mark without an `id` is numbered `belt-1`, `belt-2`. |
+| `t.menu(rows, { sessions?, id? })` | Rows in a session's settings (contract 2): buttons `{ kind: "button", id, label, intent, icon?, confirm? }` and switches `{ kind: "switch", id, label, intent, on, icon? }`. The phone shows a switch's `on` from your next document, never a guess. |
 | `t.dashboard(item)`, `t.tabbar(item)` | The Dashboard tile and the bottom bar item: `{ label, icon?, badge?, tone? }`. |
 | `t.session({ id?, name?, icon?, tone?, subtitle?, badge?, progress?, actions?, view })` | The trick's own Page. Keep the default id `main`. |
 | `v.card`, `v.list`, `v.row`, and one builder for each other kind in Parts | Build a view. `v.table` makes the `col` and `cell` kids, so those two have no builder. `v.checks`, `v.stat` and `v.beforeAfter` put kinds together. |
