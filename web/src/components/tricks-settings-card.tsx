@@ -10,7 +10,7 @@ import { ROW_OPEN_BUTTON, ROW_OPEN_CONTROL, ROW_OPEN_ROW, ROW_OPEN_SWITCH } from
 import { Switch } from "@/components/ui/switch";
 import { HillAboutSheetControl, HillEntryRow } from "@/components/hill-entry";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
-import { TOKEN_USE_NAME, TokenUseChip } from "@/components/token-use-label";
+import { TokenUseChip } from "@/components/token-use-label";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
 import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
@@ -322,9 +322,33 @@ function OfficialButton({ word, label, slot, busy, canWrite, onTap }: { word: st
 /** The small label after a trick's name: where it comes from, "Official" or "Community". */
 function OriginLabel({ origin }: { origin: TrickOrigin }) {
   return (
-    <Badge variant="outline" data-slot="trick-origin" data-origin={origin} className="ml-1 px-1.5 py-0 text-[11px] leading-4 font-normal text-muted-foreground">
+    <Badge variant="outline" data-slot="trick-origin" data-origin={origin} className="px-1.5 py-0 text-[11px] leading-4 font-normal text-muted-foreground">
       {t(origin === "official" ? "settings.tricks.origin.official" : "settings.tricks.origin.community")}
     </Badge>
+  );
+}
+
+/**
+ * THE NAME LINE OF A ROW (2026-11-12): the name with its chevron, then the labels (Official or Community, and
+ * "Uses agent tokens") as ONE group. The line wraps: the labels stay beside the name while they fit, else
+ * the whole group moves to a line of its own right under the name. So a name is never cut while a second
+ * line has room; only a name wider than the line alone truncates, and the chip cuts its words only when the
+ * group alone is wider than the row. The labels are the trick's facts, the same before and after Add and
+ * whether it is on, so a row's height follows its width and language, never its state.
+ */
+const NAME_LINE = "flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left font-medium";
+
+/** The labels' group: one flex item, never split across lines; the chip inside it shrinks last. */
+const LABELS = "flex max-w-full min-w-0 items-center gap-1";
+
+/** The name and the chevron: the name keeps its width up to the line's, then truncates. */
+function RowName({ name }: { name: string }) {
+  return (
+    <span data-slot="row-name" className="flex max-w-full min-w-0 items-center gap-1">
+      <span className="min-w-0 truncate">{name}</span>
+      {/* The cue that the name opens something: the app's own "this row opens another screen" glyph. */}
+      <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+    </span>
   );
 }
 
@@ -352,12 +376,13 @@ function OfficialRow({ entry, busy, canWrite, onAdd, onAbout }: { entry: WireOff
             aria-label={t("settings.tricks.about.open", { name: entry.name })}
             aria-haspopup="dialog"
             onClick={onAbout}
-            className={cn(ROW_OPEN_BUTTON, "flex w-full items-center gap-1 text-left font-medium")}
+            className={cn(ROW_OPEN_BUTTON, NAME_LINE)}
           >
-            <span className={TOKEN_USE_NAME}>{entry.name}</span>
-            <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-            <OriginLabel origin="official" />
-            {trickTokenUse(entry) !== null && <TokenUseChip />}
+            <RowName name={entry.name} />
+            <span data-slot="row-labels" className={LABELS}>
+              <OriginLabel origin="official" />
+              {trickTokenUse(entry) !== null && <TokenUseChip />}
+            </span>
           </button>
           <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">
             {entry.description}
@@ -430,13 +455,15 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
             aria-label={t("settings.tricks.about.open", { name: trick.name })}
             aria-haspopup="dialog"
             onClick={onAbout}
-            className={cn(ROW_OPEN_BUTTON, "flex w-full items-center gap-1 text-left font-medium")}
+            className={cn(ROW_OPEN_BUTTON, NAME_LINE)}
           >
-            <span className={TOKEN_USE_NAME}>{trick.name}</span>
-            {/* The cue that the name opens something: the app's own "this row opens another screen" glyph. */}
-            <Icon name="row-go" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-            {origin !== undefined && <OriginLabel origin={origin} />}
-            {trickTokenUse(trick) !== null && <TokenUseChip />}
+            <RowName name={trick.name} />
+            {(origin !== undefined || trickTokenUse(trick) !== null) && (
+              <span data-slot="row-labels" className={LABELS}>
+                {origin !== undefined && <OriginLabel origin={origin} />}
+                {trickTokenUse(trick) !== null && <TokenUseChip />}
+              </span>
+            )}
           </button>
           {trick.description !== undefined && (
             <p data-line="description" className="line-clamp-2 break-words text-sm text-muted-foreground">

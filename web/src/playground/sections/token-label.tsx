@@ -1,5 +1,5 @@
 // The "Uses agent tokens" section of the states playground (2026-11-12): the label as built, beside today's
-// look without it. Every card mounts the REAL components over fixtures, and the label comes from the facts
+// look without it. The session sheet's agent view switch carries none (no third hint line at 360 px). Every card mounts the REAL components over fixtures, and the label comes from the facts
 // (lib/tricks/token-use.ts, lib/token-use-features.ts), never from a flag set here per trick. The one hand
 // this section has on it is `TokenUseLookProvider` (components/token-use-label.tsx): off for "0 Today", and
 // the chip's words in another language to try its width before the translation pass. Those words are a
@@ -13,16 +13,11 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { HillSwitchCard } from "@/components/hill-switch-card";
-import { Icon } from "@/components/icons/icon";
-import { FeatureTokenChip, TokenUseLookProvider, useTokenUseShown, type TokenUseLook } from "@/components/token-use-label";
+import { TokenUseLookProvider, type TokenUseLook } from "@/components/token-use-label";
 import { TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
-import { ListGroup } from "@/components/ui/list-group";
-import { SectionLabel } from "@/components/ui/section-label";
-import { SwitchRow } from "@/components/ui/switch-row";
 import { WalkyOffSwitch } from "@/components/walky-sheet";
 import { useTheme } from "@/hooks/use-theme";
-import { t } from "@/lib/i18n";
 import { isShippedThemeId, SHIPPED_THEME_IDS } from "@/lib/theme/schema";
 import { setActiveTheme, useActiveTheme } from "@/lib/theme/store";
 import type { OfficialTricksReply, TricksReply, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
@@ -176,39 +171,6 @@ function HillPlace() {
   return <HillSwitchCard on={on} disabled={false} onToggle={setOn} />;
 }
 
-/**
- * Morph's switch in the session sheet, as components/trick-menu-group.tsx draws it, with the chip at the end
- * of its hint. NOT BUILT: at 360 px the chip does not fit the hint's second line and adds a third, so the app
- * draws no chip there. Shown here for the decision.
- */
-function SessionSheetPlace() {
-  const [on, setOn] = useState(true);
-  const shown = useTokenUseShown();
-  return (
-    <div data-pg-place="session-sheet" className="-mx-4 border-y border-rule bg-card px-4 py-3">
-      {shown && <p className="px-3 pb-1 text-[11px] text-muted-foreground">Not built: adds a third hint line at 360 px.</p>}
-      <section className="flex flex-col gap-1">
-        <SectionLabel caps={false} className="px-3 text-xs text-muted-foreground">
-          {t("tricks.menu.heading", { name: MORPH.name })}
-        </SectionLabel>
-        <ListGroup>
-          <SwitchRow
-            icon={<Icon name="view-preview" className="size-4 shrink-0 text-muted-foreground" />}
-            label={MORPH.name}
-            hint={t("view.switch.hint")}
-            hintEnd={<FeatureTokenChip feature="agent-view" className="ml-1 align-[-2px]" />}
-            checked={on}
-            onChange={async (next) => {
-              setOn(next);
-              return null;
-            }}
-          />
-        </ListGroup>
-      </section>
-    </div>
-  );
-}
-
 /** An About sheet, open, in a phone box that is its own containing block. */
 function AboutPlace({ trick, width }: { trick: WireTrickInfo; width: WidthId }) {
   const style: CSSProperties & { "--app-h"?: string } = { width: Number(width), height: 640, transform: "translate(0)", "--app-h": "640px" };
@@ -240,7 +202,6 @@ function LookCard({ n, title, look, store, width }: { n: string; title: string; 
             <TricksSettingsCard store={store} onSwitch={switchStandIn} onOfficialList={OFFICIAL} now={NOW} />
             <HillPlace />
             <WalkyPlace />
-            <SessionSheetPlace />
             <AboutPlace trick={MORPH} width={width} />
             <AboutPlace trick={INBOX} width={width} />
           </Column>

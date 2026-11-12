@@ -159,7 +159,7 @@ describe("Official tricks: one list", () => {
     expect(chip(trickRow("legs"))).toBeNull();
     // After the origin label, inside the one open button.
     const button = officialRow("design-review").querySelector('[data-slot="official-about"]');
-    expect([...(button?.children ?? [])].slice(-2).map((el) => el.getAttribute("data-slot"))).toEqual(["trick-origin", "token-use"]);
+    expect([...(button?.querySelector('[data-slot="row-labels"]')?.children ?? [])].map((el) => el.getAttribute("data-slot"))).toEqual(["trick-origin", "token-use"]);
   });
 
   it("adds a trick and switches it on, and its row keeps its place; no id appears twice", async () => {

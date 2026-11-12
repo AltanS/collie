@@ -16,15 +16,12 @@ export function SwitchRow({
   icon,
   label,
   hint,
-  hintEnd,
   checked,
   onChange,
 }: {
   icon: ReactNode;
   label: string;
   hint?: string | undefined;
-  /** Drawn inline at the end of the hint, on its last line (an inline chip such as "Uses agent tokens"). */
-  hintEnd?: ReactNode;
   checked: boolean;
   onChange: (next: boolean) => Promise<string | null>;
 }) {
@@ -50,7 +47,6 @@ export function SwitchRow({
           {hint !== undefined && (
             <span id={hintId} className="block text-xs font-normal leading-snug text-muted-foreground">
               {hint}
-              {hintEnd}
             </span>
           )}
         </span>

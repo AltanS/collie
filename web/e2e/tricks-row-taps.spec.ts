@@ -126,3 +126,64 @@ test("the Hill's row opens its sheet from its padding too", async ({ page }) => 
   const box = (await page.locator('[data-slot="hill-entry"]').boundingBox())!;
   expect(await targetAt(page, box.x + box.width - 4, box.y + 3)).toBe("About Hill");
 });
+
+// THE NAME LINE WRAPS (2026-11-12): at 360 px, a row with both labels keeps the whole name and moves the labels
+// under it as one group. Only a name wider than the line alone may truncate. The long German chip words are
+// put in by hand here: the translation pass has not run, and the width is what is checked.
+test("at 360 px Design Review keeps its whole name beside Official and Uses agent tokens, in English and with long words", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await installApiStub(page);
+  await page.route("**/api/snapshot", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...fixtureSnapshot, tricksRev: 1 }) }));
+  await page.route("**/api/tricks?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ rev: 1, tricks: [LEGS], parts: [], present: [] } satisfies TricksReply) }));
+  const review: OfficialTricksReply = {
+    tricks: [
+      {
+        id: "design-review",
+        name: "Design Review",
+        description: "Turns an agent's UI notes into Decisions you approve by name.",
+        repo: "https://github.com/AltanS/collie-tricks",
+        repoName: "AltanS/collie-tricks",
+        commit: "0c1e5d82346486815073fedcdb994bc4c2041b55",
+        state: "absent",
+        places: ["belt", "session"],
+        decidesReply: true,
+      },
+    ],
+  };
+  await page.route("**/api/tricks/official", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(review) }));
+  await page.goto("/settings/tricks");
+  const row = page.locator('[data-official="design-review"]');
+  await expect(row.locator('[data-slot="token-use"]')).toBeVisible();
+  const measure = () =>
+    row.evaluate((el) => {
+      const name = el.querySelector('[data-slot="row-name"] > span');
+      const chip = el.querySelector('[data-slot="token-use"] > span');
+      const labels = el.querySelector('[data-slot="row-labels"]');
+      const add = el.querySelector('[data-slot="official-add"]');
+      const button = el.querySelector('[data-slot="official-about"]');
+      if (!(name instanceof HTMLElement) || !(chip instanceof HTMLElement) || !(labels instanceof HTMLElement) || !(add instanceof HTMLElement) || !(button instanceof HTMLElement)) throw new Error("the row is not drawn");
+      const box = el.getBoundingClientRect();
+      const addBox = add.getBoundingClientRect();
+      return {
+        nameWhole: name.scrollWidth <= name.clientWidth,
+        chipWhole: chip.scrollWidth <= chip.clientWidth,
+        labelsRight: labels.getBoundingClientRect().right,
+        buttonRight: button.getBoundingClientRect().right,
+        addCentreOffset: Math.abs(addBox.top + addBox.height / 2 - (box.top + box.height / 2)),
+      };
+    });
+  const english = await measure();
+  expect(english.nameWhole).toBe(true);
+  expect(english.chipWhole).toBe(true);
+  expect(english.labelsRight).toBeLessThanOrEqual(english.buttonRight + 0.5);
+  // Add stays where it is today: centred on the row, whatever the row's height.
+  expect(english.addCentreOffset).toBeLessThan(1.5);
+  await row.locator('[data-slot="token-use"] > span').evaluate((el) => {
+    el.textContent = "Verbraucht Agenten-Tokens";
+  });
+  const german = await measure();
+  expect(german.nameWhole).toBe(true);
+  expect(german.chipWhole).toBe(true);
+  expect(german.labelsRight).toBeLessThanOrEqual(german.buttonRight + 0.5);
+  expect(german.addCentreOffset).toBeLessThan(1.5);
+});

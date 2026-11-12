@@ -4,7 +4,7 @@ import { Icon } from "@/components/icons/icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
-import { FeatureTokenChip, TOKEN_USE_NAME } from "@/components/token-use-label";
+import { FeatureTokenChip } from "@/components/token-use-label";
 import { WalkyIdChip } from "@/components/walky-id-chip";
 import { useWalkyLive, useWalkyLog } from "@/components/walky-log";
 import { WalkyBodyText, sentTargetWords } from "@/components/walky-name-chip";
@@ -181,8 +181,9 @@ export function WalkyOffSwitch({ off, onChange }: { off: boolean; onChange: (off
         <span className="flex min-w-0 items-start gap-2">
           <Mark className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="min-w-0">
-            <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
-              <span className={TOKEN_USE_NAME}>{t("walky.off.label")}</span>
+            {/* The chip follows the label while it fits, else on a line of its own: the label is never cut for it. */}
+            <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium">
+              <span className="max-w-full min-w-0 truncate">{t("walky.off.label")}</span>
               <FeatureTokenChip feature="walky-talky" />
             </span>
             <span id={hintId} className="block text-xs leading-snug text-muted-foreground">

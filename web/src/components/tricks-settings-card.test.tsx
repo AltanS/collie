@@ -239,12 +239,12 @@ describe("TricksSettingsCard: Uses agent tokens (2026-11-12)", () => {
     // A program trick whose last run listed Decisions but declares no reply, and a plain one: no chip.
     expect(chip("tracker")).toBeNull();
     expect(chip("legs")).toBeNull();
-    // The chip comes after the name, which truncates first; the open button keeps the name it always had.
+    // The name, then the labels as one group that wraps under the name rather than cut it; the open button
+    // keeps the name it always had.
     const button = rowOf("inbox").querySelector('[data-slot="trick-about"]');
-    expect(button?.lastElementChild?.getAttribute("data-slot")).toBe("token-use");
-    expect(button?.firstElementChild?.className).toContain("truncate");
-    // It gives up width only after the name is gone (components/token-use-label.tsx).
-    expect(button?.firstElementChild?.className).toContain("shrink-[1000]");
+    expect(button?.className).toContain("flex-wrap");
+    expect([...(button?.children ?? [])].map((el) => el.getAttribute("data-slot"))).toEqual(["row-name", "row-labels"]);
+    expect([...(button?.lastElementChild?.children ?? [])].map((el) => el.getAttribute("data-slot"))).toEqual(["trick-origin", "token-use"]);
     expect(within(rowOf("inbox")).getByRole("button", { name: "About PR Inbox" })).toBe(button);
   });
 });

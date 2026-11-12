@@ -11,11 +11,10 @@ import { cn } from "@/lib/utils";
 // set by hand: lib/tricks/token-use.ts for a trick, lib/token-use-features.ts for Collie's own switches.
 //
 // The look of the origin label beside it (tricks-settings-card.tsx `OriginLabel`), on the secondary ground,
-// with no icon: a fact, not a warning, so never the warning colour or glyph. It never wraps (ui/badge.tsx).
-// In a row the NAME truncates first: the name beside it carries `TOKEN_USE_NAME` (a flex-shrink a thousand
-// times the chip's), so the chip gives up width only once the name is gone, and then cuts its own words
-// with an ellipsis rather than run past its column into the switch or Add. In English at 360 px it keeps its words; a long translation may not
-// (measured 2026-11-12 with the playground's `?words=` fixture: German and Japanese leave no name at 360 px).
+// with no icon: a fact, not a warning, so never the warning colour or glyph. Its words never wrap
+// (ui/badge.tsx). Where it stands after a name, the line wraps instead: the chip moves under the name rather
+// than cut it (tricks-settings-card.tsx `NAME_LINE`, the Hill's and WalkyTalky's titles). The chip shrinks,
+// with an ellipsis, only when it alone is wider than its line, so it never runs into a switch or Add.
 //
 // A trick's About sheet says why in one sentence, the first row of "What it does" (`tokenUseWhy`), and draws
 // no chip there.
@@ -51,9 +50,6 @@ export function TokenUseChip({ className }: { className?: string }) {
     </Badge>
   );
 }
-
-/** The class of the name the chip stands after: it truncates first, then the chip. */
-export const TOKEN_USE_NAME = "min-w-0 shrink-[1000] truncate";
 
 /** The chip of one of Collie's own switches, or nothing when the feature list does not name it. */
 export function FeatureTokenChip({ feature, className }: { feature: string; className?: string }) {
