@@ -147,6 +147,18 @@ export function dateTime(ts: number): string {
 }
 
 /**
+ * A calendar date alone, medium, in the active APP locale: "10 Nov 2026". For a day that may be months
+ * back, like a repository's last commit, where the clock time says nothing. `timeZone` pins the zone for a
+ * test; the app leaves it out and reads the device's own. "" for an instant that does not parse.
+ */
+export function dateOnly(ts: number, timeZone?: string): string {
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "";
+  const locale = getLocaleSnapshot().locale;
+  return new Intl.DateTimeFormat(locale, timeZone === undefined ? { dateStyle: "medium" } : { dateStyle: "medium", timeZone }).format(date);
+}
+
+/**
  * When a saved copy was fetched, the way the offline banners say it (M46 spec 10): the clock time
  * when it was today, else a date and a time. A clock time alone for a copy from yesterday would read
  * as this morning. Not an age, for {@link clockTime}'s reason: the screen may sit there for an hour.

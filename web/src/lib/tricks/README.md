@@ -444,7 +444,12 @@ the answer never waits: it carries the cache, and the next one carries a read th
 in memory and in `<stateDir>/tricks/repo-facts.json`: a good answer 6 h, a failed read 1 h, one read per
 repository at a time, and at most 20 reads in a rolling hour for the whole bridge. GitHub allows 60
 unauthenticated requests an hour per IP address; one read costs one of them. A failed or missing read
-shows nothing. There is no switch for it; the install ping's off switches do not gate it.
+shows nothing. There is no switch for it; the install ping's off switches do not gate it. On the phone
+(`components/trick-about-sheet.tsx`) the facts are a second small line inside the repository's link row in
+"Where it comes from". The row is 44 px with or without them, so their arrival moves nothing in a sheet
+anchored at the bottom. The link row follows the Hill Decision link (`isWebLink`, `linkHost`), with the host
+in full (`HostWords`), and shows only for an https source URL. Settings, Tricks reads the official list once
+more 3 s after a first answer that lacked a GitHub repository's facts, and never again.
 
 **The trust root is the binary.** The commit pins what git fetches, and the hash pins what Collie
 writes. A repository that serves other content at that commit fails git's own object check or the hash.

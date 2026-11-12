@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TricksSettingsCard } from "@/components/tricks-settings-card";
+import { FACTS_REREAD_MS, TricksSettingsCard } from "@/components/tricks-settings-card";
 import { addOfficialTrick, fetchOfficialTricks } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import type { OfficialTricksReply, TricksReply, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
@@ -179,6 +179,36 @@ describe("Official tricks: one list", () => {
     for (const rows of [before, added, on]) {
       const ids = rows.map((row) => row.split(":")[1]);
       expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it("reads the list once more after the first answer lacked a GitHub repository's facts, and never again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const listed = serveList(() => ({ tricks: [REVIEW] }));
+      const { store } = await liveStore([LEGS]);
+      renderCard(store);
+      await vi.waitFor(() => expect(listed.reads()).toBe(1));
+      await vi.advanceTimersByTimeAsync(FACTS_REREAD_MS + 100);
+      await vi.waitFor(() => expect(listed.reads()).toBe(2));
+      await vi.advanceTimersByTimeAsync(FACTS_REREAD_MS * 5);
+      expect(listed.reads()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not read again when the first answer carried the facts", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const listed = serveList(() => ({ tricks: [{ ...REVIEW, repoFacts: { stars: 3, pushedAt: "2026-11-10T08:00:00Z" } }] }));
+      const { store } = await liveStore([LEGS]);
+      renderCard(store);
+      await vi.waitFor(() => expect(listed.reads()).toBe(1));
+      await vi.advanceTimersByTimeAsync(FACTS_REREAD_MS * 3);
+      expect(listed.reads()).toBe(1);
+    } finally {
+      vi.useRealTimers();
     }
   });
 

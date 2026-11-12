@@ -3468,6 +3468,14 @@ export const en = {
   "settings.tricks.switchMoved": "The trick changed after you read it. Read it again, then switch it on.",
   // Official tricks, the ones this release can add (M94): English only until the translation pass,
   // listed in PENDING_TRANSLATION below. The failure lines are the bridge's own (bridge/tricks/official-install.ts).
+  // The About sheet's facts of a trick's repository (2026-11-12): the bridge reads them, the phone never does.
+  // `{date}` is a date in the app's language; `{version}` is the author's own word from trick.toml.
+  "settings.tricks.about.stars.one": "{count} star",
+  "settings.tricks.about.stars.other": "{count} stars",
+  "settings.tricks.about.lastCommit": "last commit {date}",
+  "settings.tricks.about.repoFacts": "{stars}, {commit}",
+  "settings.tricks.about.version": "Version {version}",
+  "settings.tricks.about.repoOpen": "Open the repository",
   // The label after a trick's name in the one list of Settings, Tricks: where it comes from.
   "settings.tricks.origin.official": "Official",
   "settings.tricks.origin.community": "Community",
@@ -4007,6 +4015,12 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.switchMoved",
   // Official tricks (M94).
   "settings.tricks.origin.official",
+  "settings.tricks.about.stars.one",
+  "settings.tricks.about.stars.other",
+  "settings.tricks.about.lastCommit",
+  "settings.tricks.about.repoFacts",
+  "settings.tricks.about.version",
+  "settings.tricks.about.repoOpen",
   "settings.tricks.origin.community",
   "settings.tricks.official.add",
   "settings.tricks.official.addAria",
