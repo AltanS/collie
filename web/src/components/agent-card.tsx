@@ -22,6 +22,7 @@ import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
+import { useOpeningShown } from "@/lib/pane-opening";
 import { cancelPress, markPressHeld, redirectClick, releasePress, rememberPress } from "@/lib/press-memory";
 import { Icon } from "@/components/icons/icon";
 
@@ -150,6 +151,8 @@ export function AgentCard({
   match,
 }: AgentCardProps) {
   useLocale();
+  // The read for this row's pane is out and has taken longer than the glide waits (lib/pane-opening.ts).
+  const opening = useOpeningShown(glideKey);
   // Inert when `onHold` is undefined: every handler returns at once, the native context menu stays,
   // and no click is swallowed, so a row with no hold behaves exactly as it did.
   // THE PRESS, REMEMBERED (lib/press-memory.ts). One symbol per mounted row: the click that ends a press
@@ -263,6 +266,7 @@ export function AgentCard({
     <button
       id={id}
       type="button"
+      aria-busy={opening || undefined}
       onClick={(e) => {
         const route = redirectClick(me, e.detail > 0);
         if (route === "own") onClick(e.currentTarget);
@@ -502,6 +506,10 @@ export function AgentCard({
             className="pointer-events-none absolute inset-x-3.5 bottom-0 w-auto"
           />
         )}
+        {/* THE ROW IS OPENING: a 2px bar along its top, drawn over the row's own box (no size, no
+            position changes, DESIGN.md §2) while the pane's read is out past the glide's wait. It sits
+            at the top because the pane's progress hairline owns the bottom. */}
+        {opening && <span aria-hidden="true" className="row-opening pointer-events-none absolute inset-x-3.5 top-0" />}
       </Shell>
     </button>
   );

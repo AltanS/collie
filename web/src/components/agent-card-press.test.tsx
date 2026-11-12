@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { AgentCard } from "./agent-card";
 import { resetPressMemory } from "@/lib/press-memory";
@@ -102,6 +102,46 @@ describe("AgentCard: the pressed row opens", () => {
     fireEvent.click(b, { detail: 1 });
     expect(onA).not.toHaveBeenCalled();
     expect(onB).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+});
+
+// THE ROW THAT IS OPENING (hitbox proposal 4): a bar along its top, aria-busy on the button, no box change.
+describe("AgentCard: a row that is opening", () => {
+  it("draws the bar and says it is busy only once the open has taken longer than 120ms", async () => {
+    const { beginOpening, resetOpenings, OPENING_SHOWN_MS } = await import("@/lib/pane-opening");
+    vi.useFakeTimers();
+    const key = "/pane/w9%3Ap1";
+    render(<AgentCard agent={row("w9:p1", "alpha pane")} onClick={() => {}} glideKey={key} />);
+    const button = screen.getByRole("button");
+    expect(button).not.toHaveAttribute("aria-busy");
+    act(() => {
+      beginOpening(key, Symbol("screen"));
+      vi.advanceTimersByTime(OPENING_SHOWN_MS - 1);
+    });
+    expect(button).not.toHaveAttribute("aria-busy");
+    expect(button.querySelector(".row-opening")).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button.querySelector(".row-opening")).not.toBeNull();
+    // Over the row, never in its layout, and it takes no tap of its own.
+    expect(button.querySelector(".row-opening")?.className).toMatch(/absolute/u);
+    expect(button.querySelector(".row-opening")?.className).toMatch(/pointer-events-none/u);
+    act(() => resetOpenings());
+    expect(button).not.toHaveAttribute("aria-busy");
+    vi.useRealTimers();
+  });
+
+  it("another row's open draws nothing here", async () => {
+    const { beginOpening, resetOpenings, OPENING_SHOWN_MS } = await import("@/lib/pane-opening");
+    vi.useFakeTimers();
+    render(<AgentCard agent={row("w9:p1", "alpha pane")} onClick={() => {}} glideKey="/pane/w9%3Ap1" />);
+    act(() => {
+      beginOpening("/pane/w9%3Ap2", Symbol("screen"));
+      vi.advanceTimersByTime(OPENING_SHOWN_MS);
+    });
+    expect(screen.getByRole("button")).not.toHaveAttribute("aria-busy");
+    act(() => resetOpenings());
     vi.useRealTimers();
   });
 });
