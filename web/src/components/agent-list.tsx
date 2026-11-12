@@ -45,6 +45,7 @@ import { PinHint } from "./pin-hint";
 import { WorkspaceNewTab } from "./workspace-new-tab";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { SUMMARY_LINE_TAP_TARGET } from "@/components/ui/tap-target";
 import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
 import { PairWithPhone } from "@/components/pair-with-phone";
@@ -673,7 +674,13 @@ export function AgentList({
       // Focus (the keyboard's) lands here when an unpin takes a row off the list, so the line must be able to hold
       // it. Only once pins are in play: with none, the line renders exactly as it did.
       focusable={pins.length > 0 || reveal !== null}
-      className={cn((onNeedsYouOnlyChange || onOrderChange) && "min-w-0 flex-1", "transition-opacity", stale && "opacity-50")}
+      className={cn(
+        // The row around the line (`min-h-11`, below) exists exactly when a switch or an order select does,
+        // and it is the 44px the reach fills; the line alone has no room for it.
+        (onNeedsYouOnlyChange || onOrderChange) && cn("min-w-0 flex-1", SUMMARY_LINE_TAP_TARGET),
+        "transition-opacity",
+        stale && "opacity-50",
+      )}
     />
   );
 

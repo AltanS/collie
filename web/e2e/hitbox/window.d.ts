@@ -6,4 +6,5 @@ interface Window {
   __hbSwallow?: boolean;
   __hbTrack?: { t: number; first: number | null; fab: number | null; summary: number | null }[];
   __hbSlide?: { t: number; hit: string }[];
+  __hbOwns?: (el: Element | null) => boolean;
 }

@@ -18,3 +18,42 @@ export const TOOLBAR_TAP_TARGET = "relative before:absolute before:-inset-1 befo
 
 // Also worn by the voice takeover's OK and trash (components/voice-takeover.tsx), so OK stands on the
 // mic's own 44px reach, in the same box.
+
+// ── THE DASHBOARD'S FIVE SHORT TARGETS (hitbox investigation, proposal 6) ──────────────────────────
+//
+// Five controls on the dashboard drew less than the 44px floor with nothing to stop them reaching out:
+// the session pill (81x26), the summary line (314x32), a section heading's fold button (289x36), the
+// "+" that adds a space (36x36) and the spaces filter. Each buys the floor back as HIT AREA with a
+// transparent `::before`, the move `STRIP_TAP_TARGET` makes, and each constant below states its own
+// arithmetic, because a `::before` resolves its insets against the PADDING box, 1px inside a border.
+//
+// THE RULE EVERY ONE OF THEM OBEYS: the reach may not overlap a neighbour's visible box. It is
+// measured, not argued: `web/e2e/hitbox/census.run.ts` reads every target's hit rectangle and flags a
+// neighbour that a reach covers (REGRESSIONS.md, proposal 6).
+
+/**
+ * The 26px bordered pills in the app header (the session pill, the host pill). 24px of padding box
+ * plus `-10px` on both sides is 44, vertical only: the header row is 48px and the pills stand 4px apart,
+ * so the reach stays inside the row and never touches a pill's neighbour. Change the pill's height,
+ * its border, or the header's row and this must be re-measured.
+ */
+export const HEADER_PILL_TAP_TARGET = "relative before:absolute before:inset-x-0 before:-inset-y-[10px] before:content-['']";
+
+/**
+ * The dashboard's summary line: a 32px button with no border inside a 44px row (`min-h-11`, items
+ * centred), so `-6px` above and below is 44 and ends exactly on the row's edges. Only where that row
+ * exists: alone, the line has 4px of gap below it, and 6px of reach would lie over the next row.
+ */
+export const SUMMARY_LINE_TAP_TARGET = "relative before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']";
+
+/**
+ * A foldable section heading's button: 36px (`min-h-9`) with no border, `-4px` above and below is 44.
+ * The sections are `gap-2` (8px) apart, so the reach never lies over the group beneath it.
+ */
+export const HEADING_TAP_TARGET = "relative before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']";
+
+/**
+ * A square 36px button with no border: `-4px` on every side is 44 by 44. It stands in a trailing slot
+ * whose `gap-1` is exactly that 4px, so two of them, or one beside a count, touch and never overlap.
+ */
+export const SQUARE_36_TAP_TARGET = "relative before:absolute before:-inset-1 before:content-['']";

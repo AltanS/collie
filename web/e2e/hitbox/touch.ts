@@ -8,6 +8,11 @@ import type { CDPSession, Page } from "@playwright/test";
 
 export interface Finger {
   cdp: CDPSession;
+  /**
+   * The contact's radius in CSS px, default 8. Chromium snaps a tap to the nearest clickable node within the
+   * contact's radius (touch adjustment), so a measurement of what a REACH adds uses a point, radius 1.
+   */
+  radius?: number;
 }
 
 export async function finger(page: Page): Promise<Finger> {
@@ -19,7 +24,7 @@ async function send(f: Finger, type: "touchStart" | "touchMove" | "touchEnd" | "
     type,
     // A fingertip is about 9mm: roughly 17 CSS px across at the phone's pixel density. Chromium's
     // own gesture code reads the radius, so a fat contact is not the same as a point.
-    touchPoints: type === "touchEnd" || type === "touchCancel" ? [] : [{ x, y, radiusX: 8, radiusY: 8, force: 1 }],
+    touchPoints: type === "touchEnd" || type === "touchCancel" ? [] : [{ x, y, radiusX: f.radius ?? 8, radiusY: f.radius ?? 8, force: 1 }],
   });
 }
 

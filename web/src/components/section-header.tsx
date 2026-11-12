@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { StatusDot } from "@/components/status-badge";
 import type { AgentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { HEADING_TAP_TARGET } from "@/components/ui/tap-target";
 
 interface SectionHeaderProps {
   /** Section name, e.g. "Recent". Rendered uppercase. */
@@ -127,6 +128,7 @@ export function SectionHeader({
             // min-h-9 keeps the row on the 36px touch floor even though the text is tiny.
             className={cn(
               "flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded text-left transition-colors",
+              HEADING_TAP_TARGET,
               type,
               tone,
             )}

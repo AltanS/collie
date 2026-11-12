@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
+import { HEADER_PILL_TAP_TARGET } from "@/components/ui/tap-target";
 import { useNav } from "@/hooks/use-nav";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
@@ -122,7 +123,10 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
         type="button"
         onClick={() => setOpen(true)}
         aria-label={t("connection.server.aria", { name: currentName })}
-        className="flex min-w-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent active:scale-95"
+        className={cn(
+          "flex min-w-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent active:scale-95",
+          HEADER_PILL_TAP_TARGET,
+        )}
       >
         <Icon name="machine" className="size-3.5 shrink-0" />
         <span className="min-w-0 max-w-[6rem] truncate">{currentName}</span>

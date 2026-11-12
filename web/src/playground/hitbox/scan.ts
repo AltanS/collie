@@ -260,7 +260,12 @@ function describeCover(hit: Element | null): string {
 }
 
 function isHit(el: Element, at: Element | null): boolean {
-  return at !== null && (at === el || el.contains(at));
+  if (at === null) return false;
+  if (at === el || el.contains(at)) return true;
+  // A tap on a LABEL's own padding is a tap on its control: the browser forwards the click and the focus
+  // (a search field inside a padded row takes the whole row). `control` is that association, whether by
+  // nesting or by `for`.
+  return at instanceof HTMLLabelElement && at.control === el;
 }
 
 function fixedOrSticky(el: Element): boolean {
