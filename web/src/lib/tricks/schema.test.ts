@@ -1936,6 +1936,20 @@ describe("the menu place and bound parts", () => {
     expect(parsed.parts[0]?.place === "menu" ? parsed.parts[0].part.rows[0]?.label : undefined).toBe("Run 10 tests");
   });
 
+  it("N2: a label that starts with the permission card's words in any of the twelve languages, or with yes or always, is refused", () => {
+    const refused = [
+      "Erlauben: push", "Immer erlauben", "Verweigern", "Permitir deploy", "Denegar", "Autoriser le push", "Refuser",
+      "Consenti push", "Nega", "許可する", "常に許可", "拒否", "허용", "항상 허용", "거부", "Sempre permitir", "Negar",
+      "Разрешить push", "Всегда разрешать", "Запретить", "İzin ver", "Her zaman izin ver", "Reddet", "允许推送",
+      "始终允许", "拒绝", "允許", "一律允許", "拒絕", "Yes, deploy", "Always run", "YES",
+    ];
+    for (const label of refused) expect(menuLabelProblem(label), label).toMatch(/^starts with "/u);
+    expect(menuLabelProblem("Erlauben")).toBe(`starts with "Erlauben", which reads as a permission Collie asks for. Name it another way.`);
+    for (const label of ["Yesterday's build", "Negative tests", "Allowance report", "Permits", "Deploy, always"]) {
+      expect(menuLabelProblem(label), label).toBeUndefined();
+    }
+  });
+
   it("menu-label-hidden-char: a label with a hidden or control character, or past 24 characters, is refused and never cut", () => {
     for (const label of ["Rerun​CI", "Re‮run", "Rerunㅤ", "Rerun CI", "Rerun CI", "Rerun\u0007", "Rerun"]) {
       expect(menuLabelProblem(label), JSON.stringify(label)).toBeDefined();

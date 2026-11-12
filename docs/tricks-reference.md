@@ -268,7 +268,7 @@ A program prints:
 | Contract | 2 |
 | Rows | 1 to 6 in a part. Each `id` and each `intent` once |
 | A row | `id`, `kind` (`button` or `switch`), `label`, `intent`, and optionally `icon`, `disabled`, `on` (required on a switch) and `confirm` (a button only). Nothing else |
-| `label` | 1 to 24 characters, refused when longer, never cut. No hidden character. It may not read as one of the sheet's own rows in any language Collie speaks, hold the word `Collie`, `WalkyTalky`, `Hill`, `view`, or start with `Allow`, `Approve`, `Deny`, `Grant`, `Trust` |
+| `label` | 1 to 24 characters, refused when longer, never cut. No hidden character. It may not read as one of the sheet's own rows in any language Collie speaks, hold the word `Collie`, `WalkyTalky`, `Hill`, `view`, or start with `Allow`, `Approve`, `Deny`, `Grant`, `Trust`, `Yes`, `Always`, or with a word of the permission card's buttons in any language Collie speaks. Look-alike letters count as the letters they pass for: `C0llie` is `Collie` |
 | Parts of this place per trick | one unbound, for every agent session of this machine, and up to 8 bound ones with `sessions`, the only way rows show on a crew member's session. No session is named by two parts |
 | `sessions`, contract 2 | 1 to 8 of the facts' session ids, agent sessions only. The part shows only in those sessions, in place of the trick's unbound part of this place there. Left out, the part is unbound |
 | Rows in one sheet | 12 of every trick together. A trick's group is shown whole or left out whole, in the order of the trick ids, and the sheet says how many tricks it left out |

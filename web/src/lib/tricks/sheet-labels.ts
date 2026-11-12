@@ -255,3 +255,46 @@ export const SHEET_LABEL_FOLDS: readonly SheetFold[] = [
   {"words":"關閉對話"},
   {"words":"關閉窗格"},
 ];
+
+// The words of the permission card's buttons in every language, folded alike. `lead` is matched at a label's
+// start, `says` is the word as the card says it.
+
+export type PermissionLead = { readonly lead: string; readonly says: string };
+
+export const PERMISSION_LEADS: readonly PermissionLead[] = [
+  {"lead":"allow","says":"Allow"},
+  {"lead":"always allow","says":"Always allow"},
+  {"lead":"autorlser","says":"Autoriser"},
+  {"lead":"consentl","says":"Consenti"},
+  {"lead":"consentl sempre","says":"Consenti sempre"},
+  {"lead":"denegar","says":"Denegar"},
+  {"lead":"deny","says":"Deny"},
+  {"lead":"erlauben","says":"Erlauben"},
+  {"lead":"her zaman lzln ver","says":"Her zaman izin ver"},
+  {"lead":"lmmer erlauben","says":"Immer erlauben"},
+  {"lead":"lzln ver","says":"İzin ver"},
+  {"lead":"nega","says":"Nega"},
+  {"lead":"negar","says":"Negar"},
+  {"lead":"paзpeшиtь","says":"Разрешить"},
+  {"lead":"permltlr","says":"Permitir"},
+  {"lead":"permltlr slempre","says":"Permitir siempre"},
+  {"lead":"reddet","says":"Reddet"},
+  {"lead":"refuser","says":"Refuser"},
+  {"lead":"sempre permltlr","says":"Sempre permitir"},
+  {"lead":"toujours autorlser","says":"Toujours autoriser"},
+  {"lead":"verwelgem","says":"Verweigern"},
+  {"lead":"вceгдa paзpeшatь","says":"Всегда разрешать"},
+  {"lead":"зaпpetиtь","says":"Запретить"},
+  {"lead":"거부","says":"거부"},
+  {"lead":"항상 허용","says":"항상 허용"},
+  {"lead":"허용","says":"허용"},
+  {"lead":"一律允許","says":"一律允許"},
+  {"lead":"允許","says":"允許"},
+  {"lead":"允许","says":"允许"},
+  {"lead":"始终允许","says":"始终允许"},
+  {"lead":"常に許可","says":"常に許可"},
+  {"lead":"拒否","says":"拒否"},
+  {"lead":"拒絕","says":"拒絕"},
+  {"lead":"拒绝","says":"拒绝"},
+  {"lead":"許可","says":"許可"},
+];

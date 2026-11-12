@@ -74,7 +74,7 @@ import { skeletonWords } from "../fold";
 import { codePointName, firstHiddenChar, hasHiddenChar } from "../hidden-chars";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
 import { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
-import { SHEET_LABEL_FOLDS } from "./sheet-labels";
+import { PERMISSION_LEADS, type PermissionLead, SHEET_LABEL_FOLDS } from "./sheet-labels";
 
 export { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT };
 
@@ -565,8 +565,11 @@ export const MENU_SHEET_ROWS_MAX = 12;
 export const MENU_MESSAGE_MAX = 80;
 /** The words a menu label may not say, as whole words: Collie's own names and the view row's word. */
 export const MENU_RESERVED_WORDS = ["collie", "walkytalky", "walky talky", "hill", "view"] as const;
-/** The words a menu label may not start with: they read as a permission Collie asks for. */
-export const MENU_RESERVED_LEADS = ["allow", "approve", "deny", "grant", "trust"] as const;
+/**
+ * The words a menu label may not start with: they read as a permission Collie asks for. With these, the
+ * permission card's own words in all twelve languages (sheet-labels.ts `PERMISSION_LEADS`, review 12 N2).
+ */
+export const MENU_RESERVED_LEADS = ["allow", "approve", "deny", "grant", "trust", "yes", "always"] as const;
 
 /** The lines a contract 1 trick's `menu` place and `sessions` key are refused with. */
 export const MENU_NEEDS_CONTRACT = `"menu" needs contract = ${String(MENU_CONTRACT)}. Add contract = ${String(MENU_CONTRACT)} to trick.toml to add rows to a session's settings.`;
@@ -588,6 +591,12 @@ function edgeAt(text: string, at: number): boolean {
 }
 
 /** Whether folded words read as one of the sheet's own labels, a template's with anything in its slots. */
+/** {@link MENU_RESERVED_LEADS} then the card's words of every language, folded, each with the word it says. */
+const PERMISSION_WORDS: readonly PermissionLead[] = [
+  ...MENU_RESERVED_LEADS.map((says) => ({ lead: skeletonWords(says).trim(), says })),
+  ...PERMISSION_LEADS,
+];
+
 function readsAsSheetLabel(words: string): boolean {
   return SHEET_LABEL_FOLDS.some((fold) => {
     if ("words" in fold) return words === fold.words;
@@ -604,7 +613,8 @@ function readsAsSheetLabel(words: string): boolean {
  * NFKC, lower case, marks and look-alikes folded, every run of other characters one blank), it may not be
  * one of the sheet's own labels in any of the twelve languages (sheet-labels.ts, a template's with
  * anything in its slots), hold the word Collie, WalkyTalky, Hill or view, or start with Allow, Approve,
- * Deny, Grant or Trust.
+ * Deny, Grant, Trust, Yes, Always or a word of the permission card's buttons in any of the twelve
+ * languages (review 12 N2). Compared by skeleton (fold.ts `skeletonWords`, review 12 M3).
  */
 export function menuLabelProblem(label: string): string | undefined {
   const text = textProblem(label, { max: MENU_LABEL_MAX });
@@ -625,10 +635,8 @@ export function menuWordsProblem(text: string): string | undefined {
   const padded = ` ${words} `;
   const word = MENU_RESERVED_WORDS.find((reserved) => padded.includes(` ${skeletonWords(reserved).trim()} `));
   if (word !== undefined) return `holds "${word}", a word of Collie's own. Name it another way.`;
-  const lead = MENU_RESERVED_LEADS.find((reserved) => {
-    const skeleton = skeletonWords(reserved).trim();
-    return words === skeleton || words.startsWith(`${skeleton} `);
-  });
+  // A lead ends at a word's edge, so "Allowance" passes and "許可する" does not (no blank in Japanese).
+  const lead = PERMISSION_WORDS.find((reserved) => words.startsWith(reserved.lead) && edgeAt(words, reserved.lead.length))?.says;
   if (lead !== undefined) return `starts with "${lead}", which reads as a permission Collie asks for. Name it another way.`;
   return undefined;
 }
