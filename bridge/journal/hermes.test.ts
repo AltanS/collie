@@ -8,9 +8,11 @@ import { NO_CURSOR } from "./cursor.ts";
 import { FIRST_TAIL_ROWS } from "./files.ts";
 import {
   HermesTranscriptSource,
+  hermesJournal,
   isHermesSessionId,
   parseHermesTranscript,
 } from "./hermes.ts";
+import { receiptQueue, type ReceiptQueued } from "./receipt-queue.ts";
 
 const SID = "20260909_154520_9e0b91";
 const LOCAL_SID = "local-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -394,5 +396,58 @@ describe("parseHermesTranscript: the structured tool call", () => {
       JSON.stringify({ id: 4, role: "tool", tool_name: "terminal", content: "done", timestamp: 4 }),
     );
     expect(rows[0]?.parts).toEqual([{ kind: "tool", name: "terminal", summary: "", result: { text: "done" } }]);
+  });
+});
+
+// A door's send to a busy Hermes session waits in the gateway's FIFO as its own turn (SPEC V13; leg C
+// check 5: admitted `queued`, started as the next generation once the desk turn completed, one user
+// row). Its card stays until the journal shows that row. This is the Hermes half of that rule: the
+// real `messages` columns and Hermes's epoch-second `timestamp`, read the way the live window reads,
+// settled by the shared proof (receipt-queue.ts).
+describe("a door's send queued behind a desk turn (SPEC V13)", () => {
+  const MESSAGES =
+    "create table messages (id integer primary key autoincrement, session_id text not null, role text not null, content text, tool_call_id text, tool_calls text, tool_name text, timestamp real not null, token_count integer, finish_reason text, reasoning text, reasoning_content text, reasoning_details text, codex_reasoning_items text, codex_message_items text, platform_message_id text, observed integer default 0, active integer not null default 1, compacted integer not null default 0, effect_disposition text, api_content text, display_kind text, display_metadata text, _compressed_summary integer not null default 0, display_identity blob, display_order integer, message_uid text, absorbed_message_uids text, tool_call_uids text, tool_call_uid text)";
+  const SENT_AT = Date.parse("2026-11-12T12:44:22Z");
+  const SEND: ReceiptQueued = { requestId: "req_door_hermes_0002", text: "door two", at: SENT_AT, state: "queued", door: true };
+
+  /** The proof over every row the session holds, for the one door send, as the live window asks it. */
+  async function settleOver(rows: readonly (readonly [role: string, text: string, secondsFromSend: number])[]) {
+    const root = await mkdtemp(join(tmpdir(), "collie-hermes-door-"));
+    const db = new Database(join(root, "state.db"));
+    db.run("create table sessions (id text primary key, source text, started_at real, parent_session_id text)");
+    db.run(MESSAGES);
+    db.run("insert into sessions (id, source, started_at) values (?, 'tui', ?)", [LOCAL_SID, SENT_AT / 1000 - 60]);
+    for (const [role, text, offset] of rows) {
+      db.run("insert into messages (session_id, role, content, timestamp) values (?, ?, ?, ?)", [LOCAL_SID, role, text, SENT_AT / 1000 + offset]);
+    }
+    const src = new HermesTranscriptSource(root);
+    const key = await src.resolve({ kind: "id", value: LOCAL_SID });
+    const read = await src.readSince(key!, NO_CURSOR);
+    db.close();
+    await rm(root, { recursive: true, force: true });
+    const entries = read.lines.flatMap((line) => parseHermesTranscript(line));
+    return receiptQueue([SEND], entries, hermesJournal([]).recordsQueue === true, []);
+  }
+
+  const DESK = [
+    ["user", "door one", -40],
+    ["assistant", "Fake model reply: received.", -39],
+    ["user", "slow desk turn", -2.5],
+  ] as const;
+
+  test("while the desk turn runs, the card waits: the desk's row is no proof and no merge", async () => {
+    expect(await settleOver(DESK)).toEqual({ cards: [{ requestId: SEND.requestId, state: "queued", text: "door two" }], proofs: [] });
+  });
+
+  test("its own row, written when its turn starts, lands it once and the card goes", async () => {
+    const turns = [...DESK, ["assistant", "Fake model reply: received.", 10.9], ["user", "door two", 11]] as const;
+    expect(await settleOver(turns)).toEqual({ cards: [], proofs: [{ requestId: SEND.requestId, how: "landed" }] });
+  });
+
+  test("a desk prompt that ran first, between the send and its row, neither lands nor merges it", async () => {
+    const between = [...DESK, ["user", "and check the lint", 3]] as const;
+    expect((await settleOver(between)).proofs).toEqual([]);
+    const after = [...between, ["user", "door two", 20]] as const;
+    expect((await settleOver(after)).proofs).toEqual([{ requestId: SEND.requestId, how: "landed" }]);
   });
 });
