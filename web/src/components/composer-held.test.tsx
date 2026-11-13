@@ -220,11 +220,6 @@ describe("the held-send card", () => {
       expect(card).not.toHaveTextContent("walky-talky");
     });
 
-    it("an ended message (expired, refused, unknown) draws no row: the Messages sheet tells how it ended", () => {
-      renderComposer({ held: [mail("req00001", "ended", { outcome: "expired" }), mail("req00002", "ended", { outcome: "refused", reason: "changed" }), mail("req00003", "ended", { outcome: "unknown" })] });
-      expect(document.querySelector('[data-slot="held-card"]')).toBeNull();
-    });
-
     it("a message left typed in the box keeps its row, with Submit, Discard and Dismiss, and no Resend", () => {
       renderComposer({ held: [mail("req00001", "ended", { outcome: "typed_not_submitted" })] });
       const card = document.querySelector('[data-slot="held-card"]')!;
@@ -235,11 +230,65 @@ describe("the held-send card", () => {
       expect(screen.queryByRole("button", { name: "Resend the message" })).toBeNull();
     });
 
-    it("drawnHeldRows keeps every row of the person's own and only a typed-not-submitted message", () => {
-      const own = [row("req00001", "held"), row("req00002", "ended", { outcome: "expired" })];
-      const typed = mail("req00003", "ended", { outcome: "typed_not_submitted" });
-      const rows = [own[0]!, mail("req00004", "held"), own[1]!, mail("req00005", "running"), mail("req00006", "ended", { outcome: "expired" }), typed];
-      expect(drawnHeldRows(rows).map((r) => r.requestId)).toEqual(["req00001", "req00002", "req00003"]);
+    // Every state and end a mail row can reach. `inBox`: the message's text may be in the person's input box
+    // at that moment. The rule: a row is drawn exactly when `inBox`, with its words and its actions; a row with
+    // nothing in the box stays out, and the held mark or the Messages sheet carries the message.
+    //   buttons: what the drawn row offers (a mail row never offers Resend: the bridge keeps the envelope).
+    const MATRIX: { name: string; row: Partial<HeldRow> & Pick<HeldRow, "state">; inBox: boolean; words?: string; buttons?: string[] }[] = [
+      { name: "waiting for the draft", row: { state: "held", cause: "draft_present" }, inBox: false },
+      { name: "waiting for a turn", row: { state: "held", cause: "turn_running" }, inBox: false },
+      { name: "waiting for a box that is not free", row: { state: "held", cause: "not_free" }, inBox: false },
+      { name: "going out now (being typed)", row: { state: "running" }, inBox: false },
+      { name: "ended refused before any write (busy)", row: { state: "ended", outcome: "refused", reason: "busy" }, inBox: false },
+      { name: "ended refused, pane gone", row: { state: "ended", outcome: "refused", reason: "pane_gone" }, inBox: false },
+      { name: "ended refused, taken back out of the box (changed)", row: { state: "ended", outcome: "refused", reason: "changed" }, inBox: false },
+      { name: "ended refused, draft present", row: { state: "ended", outcome: "refused", reason: "draft_present" }, inBox: false },
+      { name: "ended expired", row: { state: "ended", outcome: "expired" }, inBox: false },
+      { name: "ended sent (a stray row)", row: { state: "ended", outcome: "sent" }, inBox: false },
+      { name: "ended effective (a stray row)", row: { state: "ended", outcome: "effective" }, inBox: false },
+      { name: "ended cancelled (a stray row)", row: { state: "ended", outcome: "cancelled" }, inBox: false },
+      ...(["mismatch", "changed", "modal_cue", "stale_token", "submit_failed", "dialog_open", "unreadable"] as const).map((reason) => ({
+        name: `ended typed_not_submitted, ${reason}`,
+        row: { state: "ended", outcome: "typed_not_submitted", reason } as const,
+        inBox: true,
+        words: "Typed, not sent. The text is still in the box.",
+        buttons: ["Submit the text in the box", "Discard the text in the box", "Dismiss the message"],
+      })),
+      { name: "ended typed_not_submitted, no reason", row: { state: "ended", outcome: "typed_not_submitted" }, inBox: true, words: "Typed, not sent. The text is still in the box.", buttons: ["Submit the text in the box", "Discard the text in the box", "Dismiss the message"] },
+      ...(["bound", "crash", "lost_lock", "no_evidence", "dialog_after_enter"] as const).map((reason) => ({
+        name: `ended unknown, ${reason}`,
+        row: { state: "ended", outcome: "unknown", reason } as const,
+        inBox: true,
+        words: "The text may have reached the agent. Read the chat.",
+        buttons: ["Dismiss the message"],
+      })),
+      { name: "ended unknown, no reason", row: { state: "ended", outcome: "unknown" }, inBox: true, words: "The text may have reached the agent. Read the chat.", buttons: ["Dismiss the message"] },
+      { name: "ended with an end this list does not know (discarded)", row: { state: "ended", outcome: "discarded" }, inBox: true },
+      { name: "ended with no outcome", row: { state: "ended" }, inBox: true },
+    ];
+
+    it.each(MATRIX)("$name: the row is drawn exactly when the text may be in the box", ({ row: ended, inBox, words, buttons }) => {
+      expect(drawnHeldRows([mail("req00001", ended.state, ended)])).toHaveLength(inBox ? 1 : 0);
+      renderComposer({ held: [mail("req00001", ended.state, ended)] });
+      const card = document.querySelector<HTMLElement>('[data-slot="held-card"]');
+      if (!inBox) {
+        expect(card).toBeNull();
+        return;
+      }
+      if (card === null) throw new Error("no held card for a mail row that may be in the box");
+      // Its words: the line the agent sent, so the person can tell whose text sits in the box.
+      expect(card).toHaveTextContent("[walky-talky wt_aaaaaaaaaaa1]");
+      if (words !== undefined) expect(card).toHaveTextContent(words);
+      if (buttons === undefined) return;
+      expect(within(card).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(buttons);
+      expect(screen.queryByRole("button", { name: "Resend the message" })).toBeNull();
+    });
+
+    it("drawnHeldRows keeps the person's own rows whatever their end, and drops only a mail row with nothing in the box", () => {
+      const own = [row("req00001", "held"), row("req00002", "ended", { outcome: "expired" }), row("req00003", "ended", { outcome: "refused", reason: "busy" })];
+      const typed = mail("req00004", "ended", { outcome: "typed_not_submitted" });
+      const rows = [own[0]!, mail("req00005", "held"), own[1]!, mail("req00006", "running"), mail("req00007", "ended", { outcome: "expired" }), own[2]!, typed, mail("req00008", "ended", { outcome: "unknown", reason: "crash" })];
+      expect(drawnHeldRows(rows).map((r) => r.requestId)).toEqual(["req00001", "req00002", "req00003", "req00004", "req00008"]);
     });
   });
 

@@ -72,15 +72,25 @@ function canResend(row: HeldRow): boolean {
 }
 
 /**
+ * How a mail row ended with nothing of the message in the person's box: the bridge settled it before any
+ * key (`refused`), its clock ran out (`expired`), or it went out or was taken back (`sent`, `effective`,
+ * `cancelled`, which leave no row at all today). Any other end may have left the message's text there.
+ */
+const NOTHING_IN_THE_BOX = new Set<HeldRow["outcome"]>(["refused", "expired", "cancelled", "sent", "effective"]);
+
+/**
  * The rows the card draws. The one typed line of a WalkyTalky message (`walky`) has its own places on the
- * phone, the held mark above the box and the pane's Messages sheet, so a row of it that waits, or ended
- * without a person's action to take, is left out: two cards for one message was the fault (2026-11-13).
- * One mail row stays: `typed_not_submitted`, the line the bridge could not take out of the box again. It
- * sits in the person's input box, and Submit and Discard on this card are the only way to deal with it
- * there; the mark does not cover a message that ended. Every row of the person's own sends stays.
+ * phone, the held mark above the box and the pane's Messages sheet, so a row of it that waits, is going
+ * out, or ended with nothing in the box is left out: two cards for one message was the fault (2026-11-13).
+ * A mail row that ended with its text possibly in the person's input box stays, with its words and its
+ * actions: `typed_not_submitted` (any reason: the line the bridge could not take out of the box again) and
+ * `unknown` (a write went out and nothing proved the end). The mark does not cover a message that ended,
+ * and without the row the person would not know why the box holds another agent's words. The test is the
+ * other way round on purpose: an end this list does not know is drawn. Every row of the person's own
+ * sends stays.
  */
 export function drawnHeldRows(rows: readonly HeldRow[]): readonly HeldRow[] {
-  return rows.filter((row) => row.walky === undefined || (row.state === "ended" && row.outcome === "typed_not_submitted"));
+  return rows.filter((row) => row.walky === undefined || (row.state === "ended" && !NOTHING_IN_THE_BOX.has(row.outcome)));
 }
 
 interface HeldCardProps {
