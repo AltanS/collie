@@ -34,5 +34,6 @@ bridge/surface/fixtures/** -text
 bridge/journal/fixtures/** -text
 bridge/fixtures/** -text
 bridge/mux/herdr/captures/** -text
+bridge/mux/herdr-core/fixtures/** -text
 bridge/mux/tern/captures/** -text
 bridge/mux/durable/fixtures/** -text

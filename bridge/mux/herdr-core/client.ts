@@ -2,14 +2,15 @@ import { existsSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { homedir } from "node:os";
 import type { JsonObject, JsonValue } from "../../json.ts";
+import { firstPaintEnd, styledSnapshot, type SnapshotSize } from "./snapshot.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The herdr-core socket, the TRANSPORT. This is the only file that knows the core's method names
 // and wire shapes; `adapter.ts` next to it is the only file that knows these typed methods, and
 // everything above that talks the mux port (bridge/mux/types.ts). Every fact here is in
-// HC_API.md, probed on hc 0.1.14 (protocol generation 1) on 2026-10-29.
+// HC_API.md, probed on hc 0.1.14 on 2026-10-29 and 0.1.15 on 2026-10-31 (generation 1).
 //
-// Four wire facts shape this file:
+// Five wire facts shape this file:
 //
 //  • **Plain mode is JSON-RPC 2.0, one message per line, and needs no `hello`.** So a call opens
 //    one connection, writes one line and reads one answer, as the Herdr and tuios clients do. The
@@ -20,6 +21,8 @@ import type { JsonObject, JsonValue } from "../../json.ts";
 //  • **The last active attached viewer sets the terminal's size**, and typing makes a viewer
 //    active. So the attach names the terminal's OWN `cols` and `rows`, read on the same connection
 //    a moment before, and nothing herdr-app shows is resized.
+//  • **Named keys are paced 30 ms apart.** Keep one native batch, but allow its known work within
+//    the caller's existing deadline. A timed-out batch remains unconfirmed, never safe to retry.
 //  • **The event stream has a heartbeat every 15 s.** A stream that goes quiet for longer than
 //    {@link HC_STREAM_SILENCE_MS} is a dead stream, whatever the socket says.
 //
@@ -27,8 +30,14 @@ import type { JsonObject, JsonValue } from "../../json.ts";
 // dialer's handle writes strings only.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Per-call wall-clock budget, when the target names none. */
+/** Base per-call wait, when the target names none. A key batch also allows for native pacing. */
 export const DEFAULT_HC_TIMEOUT_MS = 5000;
+
+// hc 0.1.15 input.rs pauses 30 ms after every named key (HC_API.md § Long key batches).
+const HC_KEY_GAP_MS = 30;
+// A bound cursor-key request has one guard read, then one key RPC. Keep their combined allowance
+// below the phone's unchanged 20 s mutation deadline, leaving 1 s for the HTTP round trip.
+const HC_KEY_REQUEST_BUDGET_MS = 19_000;
 
 /** The protocol generation this client speaks, sent in `hello`. */
 export const HC_GENERATION = 1;
@@ -45,6 +54,7 @@ const MAX_FRAME_PAYLOAD = 1024 * 1024;
 
 /** Frame kinds (HC_API.md § Transport, framed mode). */
 const FRAME_DATA = 0;
+const FRAME_CREDIT = 1;
 const FRAME_CLOSE = 2;
 
 /** What `hello` says about the core. */
@@ -99,9 +109,11 @@ export interface WireTerminal {
   readonly foreground: WireForeground | null;
 }
 
-/** What `terminal.read` hands back. Plain text: the core gives no colour. */
+/** What a read hands back: plain text, or a validated SGR-only observer snapshot when requested. */
 export interface WireRead {
   readonly text: string;
+  /** A whole observer snapshot supplied the styles, including an all-plain style. Absent on fallback. */
+  readonly styled?: true;
   /** `false` when part of what was asked for may be missing. */
   readonly complete: boolean;
   /** How the core read it: `screen`, `history` or `stitched` (HC_API.md § terminal.read). Absent when the core said none. */
@@ -265,6 +277,10 @@ function parseForeground(value: JsonValue | undefined): WireForeground | null {
   return { name: str(record, "name"), cwd: str(record, "cwd"), ...goodPid, ...goodArgv };
 }
 
+function statusReportCount(record: JsonObject): number {
+  return Object.keys(asObject(record.records)).length + (record.status === null || record.status === undefined ? 0 : 1);
+}
+
 /** One terminal record. Exported for the fake core, which builds its answers from the same shape. */
 export function parseTerminal(value: JsonValue | undefined): WireTerminal {
   const record = asObject(value);
@@ -342,11 +358,12 @@ interface FrameTake {
 }
 
 /** Whole frames off the front of `buf`, and what is left over. */
-function takeFrames(buf: Buffer): FrameTake {
+function takeFrames(buf: Buffer, maxPayload = Infinity): FrameTake {
   const frames: Frame[] = [];
   let offset = 0;
   while (buf.length - offset >= 9) {
     const length = buf.readUInt32LE(offset + 5);
+    if (length > maxPayload) throw new Error("herdr-core terminal.attach: frame exceeds the snapshot limit");
     if (buf.length - offset < 9 + length) break;
     frames.push({
       channel: buf.readUInt32LE(offset),
@@ -392,7 +409,7 @@ export class HcClient {
   ) {}
 
   /** One plain-mode call on its own connection. Rejects on an error answer, a timeout or a close. */
-  private call(method: string, params: JsonObject = {}): Promise<JsonValue> {
+  private call(method: string, params: JsonObject = {}, timeoutMs = this.timeoutMs): Promise<JsonValue> {
     const id = nextId();
     return new Promise<JsonValue>((resolve, reject) => {
       let buf = "";
@@ -406,8 +423,8 @@ export class HcClient {
         fn();
       };
       const timer = setTimeout(
-        () => finish(() => reject(new HcTimeout(method, this.timeoutMs))),
-        this.timeoutMs,
+        () => finish(() => reject(new HcTimeout(method, timeoutMs))),
+        timeoutMs,
       );
       socket.setEncoding("utf8");
       socket.on("connect", () => {
@@ -470,20 +487,160 @@ export class HcClient {
     return parseTerminal(await this.call("terminal.get", { terminal: address }));
   }
 
-  /** The screen, plus up to `lines` lines of history above it, as plain text. */
-  async readTerminal(address: string, lines: number): Promise<WireRead> {
+  /** Plain history; a screen-only `preserve` read additionally observes one validated first paint.
+   * Old callers stay plain. Unsupported repaint forms retain that plain read; transport errors do not.
+   */
+  async readTerminal(address: string, lines: number, styling: "preserve" | "strip" = "strip"): Promise<WireRead> {
+    const started = Date.now();
     const result = asObject(await this.call("terminal.read", { terminal: address, lines: Math.max(0, Math.floor(lines)) }));
     const read: MutableRead = { text: str(result, "text"), complete: result.complete !== false };
     const how = str(result, "how");
     const why = str(result, "why");
     if (how !== "") read.how = how;
     if (why !== "") read.why = why;
+    if (styling === "preserve" && lines === 0 && read.complete) {
+      const remaining = this.timeoutMs - (Date.now() - started);
+      if (remaining <= 0) throw new HcTimeout("terminal.attach", this.timeoutMs);
+      const snapshot = await this.observeSnapshot(address, remaining);
+      if (snapshot.size !== null) {
+        // Frame boundaries do not delimit first_paint: the outbox can split it or merge live bytes.
+        // Find the known metadata end in bytes, so invalid/split UTF-8 in later live output is ignored.
+        const end = firstPaintEnd(snapshot.paint.toString("latin1"), snapshot.size.reports);
+        if (end === null) return read;
+        let paint: string;
+        try {
+          paint = new TextDecoder("utf-8", { fatal: true }).decode(snapshot.paint.subarray(0, end));
+        } catch {
+          return read; // a split/invalid UTF-8 paint is not a complete styled snapshot
+        }
+        const styled = styledSnapshot(paint, read, snapshot.size);
+        if (styled !== null) {
+          read.text = styled;
+          read.styled = true;
+        }
+      }
+    }
     return read;
   }
 
-  /** Named keys, in order, encoded by the core for the program's keyboard mode. */
+  /** One short-lived observer. CLOSE detaches it as soon as its attach reply arrives. Drain the
+   * bounded queued bytes through CLOSE acknowledgement, with read credits only: never input,
+   * resize, focus or display facts. The remaining budget includes the preceding plain read.
+   */
+  private observeSnapshot(address: string, budgetMs: number): Promise<{ paint: Buffer; size: SnapshotSize | null }> {
+    return new Promise((resolve, reject) => {
+      const socket: Socket = createConnection(this.socketPath);
+      let settled = false;
+      let framed = false;
+      let lineBuf = "";
+      let frameBuf: Buffer = Buffer.alloc(0);
+      let before: WireTerminal | null = null;
+      let beforeReports = 0;
+      let size: SnapshotSize | null = null;
+      let channel = -1;
+      let paintChannel = -1;
+      const paint: Buffer[] = [];
+      let paintBytes = 0;
+      let closing = false;
+      const getId = nextId(), attachId = nextId();
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.destroy();
+        fn();
+      };
+      const timer = setTimeout(() => finish(() => reject(new HcTimeout("terminal.attach", this.timeoutMs))), budgetMs);
+      const sendRpc = (id: number, method: string, params: JsonObject) =>
+        socket.write(frame(0, FRAME_DATA, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id, method, params }))));
+      const closeObserver = () => {
+        if (channel < 0 || closing) return;
+        if (paintChannel >= 0 && channel !== paintChannel) throw new Error("herdr-core terminal.attach: unexpected snapshot channel");
+        closing = true;
+        socket.write(frame(channel, FRAME_CLOSE, Buffer.alloc(0)));
+      };
+      const onRpc = (message: JsonObject) => {
+        if (message.id === getId) {
+          const record = asObject(decodeAnswer(message, "terminal.get"));
+          before = parseTerminal(record);
+          beforeReports = statusReportCount(record);
+          if (before.address !== address) throw new Error("herdr-core terminal.get: snapshot names another terminal");
+          sendRpc(attachId, "terminal.attach", { terminal: address, cols: before.cols, rows: before.rows, observe: true, history: 0 });
+        } else if (message.id === attachId) {
+          const result = asObject(decodeAnswer(message, "terminal.attach"));
+          channel = num(result, "channel");
+          if (!Number.isInteger(channel) || channel <= 0) throw new Error("herdr-core terminal.attach: invalid snapshot channel");
+          const record = asObject(result.terminal);
+          const after = parseTerminal(record), reports = statusReportCount(record);
+          if (before !== null && after.address === address && after.cols === before.cols && after.rows === before.rows && reports === beforeReports) {
+            size = { cols: after.cols, rows: after.rows, reports };
+          }
+          closeObserver();
+        }
+      };
+      const onFrames = (chunk: Buffer) => {
+        frameBuf = Buffer.concat([frameBuf, chunk]);
+        const taken = takeFrames(frameBuf, MAX_FRAME_PAYLOAD);
+        frameBuf = taken.rest;
+        for (const incoming of taken.frames) {
+          if (incoming.channel === 0 && incoming.kind === FRAME_DATA) {
+            const message = parseLine(incoming.payload.toString("utf8"));
+            if (message === null) throw new Error("herdr-core terminal.attach: invalid snapshot reply");
+            onRpc(message);
+          } else if (incoming.channel !== 0 && incoming.kind === FRAME_DATA) {
+            if (paintChannel < 0) paintChannel = incoming.channel;
+            if (incoming.channel !== paintChannel || (channel >= 0 && incoming.channel !== channel)) {
+              throw new Error("herdr-core terminal.attach: unexpected snapshot stream");
+            }
+            paintBytes += incoming.payload.length;
+            if (paintBytes > MAX_FRAME_PAYLOAD) throw new Error("herdr-core terminal.attach: queued snapshot exceeds its limit");
+            paint.push(incoming.payload);
+            // Credits consume output only. They let a multi-frame paint drain before CLOSE without
+            // holding an observer open or granting input, resize, focus or display facts.
+            const credit = Buffer.alloc(4);
+            credit.writeUInt32LE(incoming.payload.length, 0);
+            socket.write(frame(incoming.channel, FRAME_CREDIT, credit));
+          } else if (incoming.channel === channel && incoming.kind === FRAME_CLOSE) {
+            if (!closing || paintBytes === 0) throw new Error("herdr-core terminal.attach: closed before a snapshot");
+            finish(() => resolve({ paint: Buffer.concat(paint, paintBytes), size }));
+          }
+          if (settled) return;
+        }
+      };
+      socket.on("connect", () => {
+        socket.write(`${JSON.stringify({ jsonrpc: "2.0", id: nextId(), method: "hello", params: { generation: HC_GENERATION, framed: true } })}\n`);
+      });
+      socket.on("data", (chunk: Buffer) => {
+        try {
+          if (framed) { onFrames(chunk); return; }
+          lineBuf += chunk.toString("latin1");
+          if (lineBuf.length > MAX_FRAME_PAYLOAD) throw new Error("herdr-core terminal.attach: snapshot handshake exceeds its limit");
+          const nl = lineBuf.indexOf("\n");
+          if (nl < 0) return;
+          const hello = parseLine(Buffer.from(lineBuf.slice(0, nl), "latin1").toString("utf8"));
+          const rest = Buffer.from(lineBuf.slice(nl + 1), "latin1");
+          decodeAnswer(hello ?? {}, "hello");
+          framed = true;
+          sendRpc(getId, "terminal.get", { terminal: address });
+          if (rest.length > 0) onFrames(rest);
+        } catch (err) {
+          finish(() => reject(err));
+        }
+      });
+      socket.on("error", (err) => finish(() => reject(err)));
+      socket.on("close", () => finish(() => reject(new Error("herdr-core terminal.attach: snapshot stream closed before acknowledgement"))));
+    });
+  }
+
+  /** Named keys, in order, encoded by the core for the program's keyboard mode.
+   * The existing wait covers one key; each extra key adds the core's measured pacing time.
+   * Reserve the base allowance for the binding read. Never extend a longer configured wait.
+   * A timeout still leaves the core's queue running: it is unconfirmed, never safe to resend.
+   */
   async pressKeys(address: string, keys: readonly string[]): Promise<void> {
-    await this.call("terminal.keys", { terminal: address, keys: [...keys] });
+    const cap = Math.max(this.timeoutMs, HC_KEY_REQUEST_BUDGET_MS - this.timeoutMs);
+    const paced = this.timeoutMs + Math.max(0, keys.length - 1) * HC_KEY_GAP_MS;
+    await this.call("terminal.keys", { terminal: address, keys: [...keys] }, Math.min(cap, paced));
   }
 
   /** End the program: hangup, then terminate, then kill. */

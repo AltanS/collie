@@ -1,0 +1,40 @@
+ host."}]}]}
+
+ </file>
+ Call ask_user_question exactly once using these exact
+ parameters. Await the user answers. Do not choose any
+ answers yourself.
+
+
+
+ Ask Plan · Checks · Delivery · Optional
+
+
+───────────────────────────────────────────────────────────
+ ←  □ Plan   □ Checks   □ Delivery   □ Optional   ✓ Submit
+
+
+ Which checks should the Collie probe run?
+
+  1. [ ] Unit tests
+  Verify local behavior.
+  2. [ ] Integration tests
+  Verify the real interaction.
+❯ 3. [✔] Known answer.
+  Next
+
+ Note for this answer: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…
+───────────────────────────────────────────────────────────
+
+ Enter to select · ↑/↓ to navigate · Space to toggle · Tab…
+
+
+
+
+
+
+
+
+
+/tmp/collie-rpiv-core-validation.2MQAlf/home/.cache/coll...
+↑1.8k ↓295 $0.003 1.1%/200k (auto)  anthropic/claude-haiku-

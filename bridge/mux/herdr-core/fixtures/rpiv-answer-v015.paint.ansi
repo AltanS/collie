@@ -1,0 +1,120 @@
+[!p[?2026l[?9l[?1000l[?1001l[?1002l[?1003l[?1004l[?1005l[?1006l[?1015l[?1016l[?2004l[?1l[?66l[?2031l[?2048l[=0;1u[?1049l[?1047l[?47l[H[2J[?1049h[?7l[?25l[?1000h[?1002h[?1003h[?1004h[?1006h[?2004h[?2031h[3g[9GH[17GH[25GH[33GH[41GH[49GH[57GH[65GH[73GH[81GH[89GH[97GH[105GH[113GH[121GH[129GH[137GH[145GH[153GH[161GH[169GH[177GH[185GH[193GH[H
+ [0m[38;2;228;138;122m[48;2;79;142;179m▀[0m[38;2;228;138;122m▀█[0m  [0m[38;2;134;134;134mv1.4.0[0m                                                                                                                                                                                            
+ [0m[38;2;79;142;179m█▀[0m [0m[38;2;234;182;93m█[0m [0m[38;2;134;134;134mescape[0m[38;2;164;164;164m interrupt · [0m[38;2;134;134;134mctrl+c/ctrl+d[0m[38;2;164;164;164m clear/exit · [0m[38;2;134;134;134m/[0m[38;2;164;164;164m commands · [0m[38;2;134;134;134m![0m[38;2;164;164;164m bash · [0m[38;2;134;134;134mctrl+o[0m[38;2;164;164;164m more[0m                                                                                                                   
+ [0m[38;2;134;134;134mPress ctrl+o to show full startup help and loaded resources.[0m                                                                                                                                           
+                                                                                                                                                                                                        
+ [0m[38;2;134;134;134mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[0m                                                                                                                  
+
+[0m[38;2;197;157;74m[Extensions][0m                                                                                                                                                                                            
+[0m[38;2;134;134;134m  rpiv-ask-user-question[0m                                                                                                                                                                                
+
+[0m[48;2;45;59;71m                                                                                                                                                                                                        [0m
+[0m[48;2;45;59;71m <file name="/home/wlucas/Development/collie/web/e2e/rig/editor-questions.json">                                                                                                                        [0m
+[0m[48;2;45;59;71m {"questions":[{"question":"Which implementation should the Collie probe use?","header":"Plan","options":[{"label":"Sequential","description":"Keep the steps ordered.","preview":"Plan A\nRead ->      [0m
+[0m[48;2;45;59;71m Write\nKeep ordering"},{"label":"Parallel","description":"Run independent work together.","preview":"Plan B\nRead + Check\nThen write"}]},{"question":"Which checks should the Collie probe            [0m
+[0m[48;2;45;59;71m run?","header":"Checks","multiSelect":true,"options":[{"label":"Unit tests","description":"Verify local behavior."},{"label":"Integration tests","description":"Verify the real                        [0m
+[0m[48;2;45;59;71m interaction."}]},{"question":"How should the Collie probe describe delivery?","header":"Delivery","options":[{"label":"Standard","description":"Use a standard                                         [0m
+[0m[48;2;45;59;71m answer."},{"label":"Custom","description":"Use a custom answer instead."}]},{"question":"Which optional platform should the Collie probe                                                               [0m
+[0m[48;2;45;59;71m name?","header":"Optional","options":[{"label":"Linux","description":"Test the Linux host."},{"label":"Mac","description":"Test the Mac host."}]}]}                                                    [0m
+[0m[48;2;45;59;71m                                                                                                                                                                                                        [0m
+[0m[48;2;45;59;71m </file>                                                                                                                                                                                                [0m
+[0m[48;2;45;59;71m Call ask_user_question exactly once using these exact parameters. Await the user answers. Do not select any answers yourself.                                                                          [0m
+[0m[48;2;45;59;71m                                                                                                                                                                                                        [0m
+
+[0m[48;2;57;57;57m                                                                                                                                                                                                        [0m
+[0m[48;2;57;57;57m [0m[1m[48;2;57;57;57mAsk[0m[48;2;57;57;57m [0m[38;2;181;152;189m[48;2;57;57;57mPlan · Checks · Delivery · Optional[0m[48;2;57;57;57m                                                                                                                                                                [0m
+[0m[48;2;57;57;57m                                                                                                                                                                                                        [0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0m[38;2;181;152;189m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ ← [0m[48;2;45;59;71m □ Plan [0m [0m[38;2;164;164;164m □ Checks [0m [0m[38;2;164;164;164m □ Delivery [0m [0m[38;2;164;164;164m □ Optional [0m [0m[38;2;134;134;134m ✓ Submit [0m →
+
+
+ [0m[1mWhich implementation should the Collie probe use?[0m                                                                                                                                                      
+
+  1. Sequential
+     [0m[38;2;164;164;164mKeep the steps ordered.[0m
+  2. Parallel
+     [0m[38;2;164;164;164mRun independent work together.[0m
+[0m[1m[38;2;181;152;189m❯ 3. Core first line[0m
+[0m[1m[38;2;181;152;189m       Core second 😀[0m[1m[7m[38;2;181;152;189m [0m
+
+[0m[38;2;181;152;189m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[38;2;134;134;134mEnter to select · ↑/↓ to navigate · Tab to switch questions · Esc to cancel · Ctrl+] to collapse · Shift+Enter for newline · Ctrl+U to clear[0m
+
+
+
+
+[0m[38;2;134;134;134m/tmp/collie-rpiv-core.fgOSJp/pi[0m
+[0m[38;2;134;134;134m↑1.8k ↓295 $0.003 1.1%/200k (auto)                                                                                                                             anthropic/claude-haiku-4.5 • thinking off[0m[110;22H[0m[=7;1u]2;π - pi\[?9001l]7501;state=working:app=pi\

@@ -54,6 +54,8 @@
 //    terminals answer at once.
 
 import type { MuxWrite } from "../conformance.ts";
+import { cropRawColumns } from "../../../web/src/lib/column-range.ts";
+import { stripSgr } from "../../../web/src/lib/surface/plain.ts";
 import {
   HcError,
   HcTimeout,
@@ -530,7 +532,7 @@ export class FakeHcCore implements HcRpc {
     return record(this.known(address));
   }
 
-  async readTerminal(address: string, lines: number): Promise<WireRead> {
+  async readTerminal(address: string, lines: number, styling: "preserve" | "strip" = "strip"): Promise<WireRead> {
     this.assertConnected("terminal.read");
     if (lines > 0) this.historyCounts.set(address, this.historyReads(address) + 1);
     if (lines > 0 && this.slowHistory.has(address)) return this.slowRead(address);
@@ -540,9 +542,15 @@ export class FakeHcCore implements HcRpc {
     const history = lines > 0 ? terminal.history.slice(-lines) : [];
     const shown = terminal.screen.slice(-terminal.rows);
     while (shown.length < terminal.rows) shown.push("");
-    const rows = [...history, ...shown.map((row) => [...row].slice(0, terminal.cols).join(""))];
+    // This fake stands in for HcClient, including its validated styled screen observation.
+    // Native terminal.read/history and the default client call remain plain.
+    const rows = [...history, ...shown].map((row) => cropRawColumns(
+      styling === "preserve" && lines === 0 ? row : stripSgr(row), { start: 0, end: terminal.cols },
+    ));
     const text = `${rows.join("\n")}\n`;
-    if (lines === 0) return { text, complete: true, how: "screen" };
+    if (lines === 0) return styling === "preserve"
+      ? { text, complete: true, how: "screen", styled: true }
+      : { text, complete: true, how: "screen" };
     if (terminal.fullScreen === null) return { text, complete: true, how: "history" };
     if (terminal.fullScreen.working) return { text, complete: false, how: "stitched", why: "working" };
     return { text, complete: true, how: "stitched" };
