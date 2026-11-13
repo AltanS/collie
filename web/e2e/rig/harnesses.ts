@@ -31,6 +31,7 @@
 // on when COLLIE_RIG_KEY_FILE is set (COLLIE_RIG_PI_TURNS=0 / COLLIE_RIG_OMP_TURNS=0 turn one off).
 // On 2026-10-17 pi's own auth.json key answered 401 and omp had no credential, so without a key
 // file both stay off. The model is set here, or with COLLIE_RIG_PI_MODEL / COLLIE_RIG_OMP_MODEL.
+import { dataClaude } from "./rig-data";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -255,7 +256,11 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
       { mode: 0o600 },
     );
     env.push(`CLAUDE_CONFIG_DIR=${sq(d.config)}`, "DISABLE_AUTOUPDATER=1", "DISABLE_TELEMETRY=1");
-    argv = [BIN.claude, "--model", SETUPS.claude.model, "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(d.config, EMPTY_MCP_FILE)];
+    // The data path (M99 spec 13, COLLIE_RIG_DATA=1): the mod from this checkout, for this session only,
+    // and the hook target folder of this machine's own bridge. Nothing in the default run.
+    const data = dataClaude(WORKTREE, machineDirs(machine).bridgeHome);
+    for (const [name, value] of Object.entries(data.env)) env.push(`${name}=${sq(value)}`);
+    argv = [BIN.claude, "--model", SETUPS.claude.model, "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(d.config, EMPTY_MCP_FILE), ...data.argv];
   } else {
     for (const dir of [d.home, d.agent, join(d.agent, "extensions")]) mkdirSync(dir, { recursive: true, mode: 0o700 });
     // The stub's base URL for this harness, and whether this harness replays (then no key, no

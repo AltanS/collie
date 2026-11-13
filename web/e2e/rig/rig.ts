@@ -140,6 +140,7 @@ import {
 } from "./rig-scope";
 import { startStub, type Stub } from "./replay/stub";
 import { CASSETTE_ROOT, planTiers, readVersions, rigLiterals, tiersFromEnv } from "./replay/tier";
+import { cassetteLeg, dataBridgeEnv } from "./rig-data";
 import { coreSocketIn } from "./rig-mux";
 import { socketPathProblem, sunPathLimit } from "./sock-path";
 
@@ -471,6 +472,9 @@ function bridgeEnv(machine: Machine, port: number, socket: string) {
     // The release check is the bridge's only outbound call; a loopback mirror with nothing
     // listening keeps it off the network (bridge/update.ts, the rehearsal mirror).
     COLLIE_UPDATE_MIRROR: "http://127.0.0.1:1",
+    // The inside socket (M99 spec 13): open with COLLIE_RIG_DATA=1, closed in the default run, so a
+    // link on the operator's machine never turns a default leg into a data one.
+    ...dataBridgeEnv(),
   });
   if (machine === "member") for (const [name, value] of memberEnvOverrides()) env[name] = value;
   return env;
@@ -690,7 +694,7 @@ async function daemon(): Promise<void> {
     const leg = crew ? "crew" : "solo";
     const tiers = tiersFromEnv() ?? planTiers(leg, process.env, readVersions());
     const taken = [run.port, ...(run.member === undefined ? [] : [run.member.port])];
-    stub = await startStub({ root: CASSETTE_ROOT, leg, plans: tiers, literals: rigLiterals(STATE_ROOT), speed: Number(process.env.COLLIE_RIG_REPLAY_SPEED ?? "1") || 1, log: (line) => log(`stub: ${line}`) }, await freePort(taken));
+    stub = await startStub({ root: CASSETTE_ROOT, leg: cassetteLeg(leg), plans: tiers, literals: rigLiterals(STATE_ROOT), speed: Number(process.env.COLLIE_RIG_REPLAY_SPEED ?? "1") || 1, log: (line) => log(`stub: ${line}`) }, await freePort(taken));
     run.stub = { port: stub.port, tiers };
     writeRun(run);
     for (const machine of machines) await (muxOf(machine) === "herdr-core" ? startCore(machine) : startHerdr(machine));

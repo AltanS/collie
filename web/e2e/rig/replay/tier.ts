@@ -17,6 +17,7 @@
 //
 // A live pi or omp needs COLLIE_RIG_KEY_FILE. Without it, it spends no turn (harnesses.ts turns it off,
 // as before M67) and records nothing. A live Claude needs its own login instead (seed.ts), never the key.
+import { cassetteLeg, rigDataFrom } from "../rig-data";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
@@ -218,7 +219,7 @@ export function planTiers(leg: Leg, env: Readonly<Record<string, string | undefi
   const skill = skillHash();
   const plan = (h: StubHarness): TierPlan => {
     const version = versions[h];
-    return decideTier(h, version, leg, version === null ? null : readMeta(root, h, version), modelFor(h, env), skill, ask);
+    return decideTier(h, version, cassetteLeg(leg, rigDataFrom(env.COLLIE_RIG_DATA)), version === null ? null : readMeta(root, h, version), modelFor(h, env), skill, ask);
   };
   const runs = (h: StubHarness): boolean => LEG_HARNESSES[leg].some((id) => id === h);
   const plans: TierPlans = {};
