@@ -374,7 +374,7 @@ import { ProposeDoor } from "./tricks/propose-door.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
 import { HillCrewStateFile } from "./hill/crew-state.ts";
-import { hillSessionName, OneLook, walkyPlace, walkySend } from "./hill/walky.ts";
+import { hillCensus, hillLeftTheCrew, hillSessionName, OneLook, walkyPlace, walkySend, type HillCensusMember } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -2572,6 +2572,9 @@ const hillPlace = walkyPlace({ who: hillWho.read }, walkyMemberId);
 // On a lead (CREW_PROTOCOL §22): the crew machine an address is on when it is not answering now, read
 // off the sweep's ledger. Assigned where the lead runtime is built, after this.
 let hillOffline: (address: string) => string | null = () => null;
+// On a lead: every member as the sweep holds it, for the Hill's census (M96 spec 10). Assigned with the
+// lead runtime; until then no member's census is known, so no card for a session there closes.
+let hillMembers: () => readonly HillCensusMember[] = () => [];
 // The "new version" card of a trick (crew slice 3): built after the Hill, which it posts into; the Hill
 // hands it the answer to one of its cards. An answer only ever comes after boot.
 let versionCards: VersionCards | undefined;
@@ -2596,8 +2599,26 @@ const hill = new HillService({
     redact: cfg.redact,
   }),
   look: (fn) => hillWho.within(() => hillViews.within(fn)),
-  // The sweep closes a decision whose target ended only once the bridge lists sessions at all.
-  sessionsKnown: () => walky.who().length > 0,
+  // The sweep closes a decision whose target ended only on a census read with success (M96 spec 10): every
+  // multiplexer here answered its last read since the start, or the member's own reads did. An empty list
+  // from a good read is a fact; a failed read, or no read yet, is unknown and closes nothing.
+  censusKnown: hillCensus({
+    memberId: walkyMemberId,
+    local: () => registry.ordered().map((rt) => ({ reachable: rt.engine.current().bridge === "connected" })),
+    members: () => hillMembers(),
+  }),
+  // A card whose answer would go to a machine the roster no longer lists closes (M96 spec 10): the roster
+  // is the trust store as this bridge read it (a `leave` the lead's router takes updates it live, and
+  // `crew remove` restarts the bridge). No store, or one that did not read, removes nobody.
+  removed: hillLeftTheCrew({
+    memberId: walkyMemberId,
+    ownIds: [bridgeId.id, bridgeId.previous],
+    roster: () => {
+      const held = trustStore.current();
+      if (held === null) return null;
+      return [held.self.memberId, ...(held.lead === null ? [] : [held.lead.memberId]), ...held.peers.map((member) => member.memberId)];
+    },
+  }),
   crewMode: () => crew.mode,
   // §25: a deposed lead's Hill is nobody's; the crown and its Decisions moved to the deputy. So is the
   // Hill of a lead whose store already names a new lead (after approve-promote, before its restart).
@@ -3345,6 +3366,7 @@ if (crewLead !== undefined && walkyMemberId !== null) {
     if (member === undefined) return null;
     return member.state.health === "reachable" ? null : member.name;
   };
+  hillMembers = () => lead.contributions().map((c) => ({ memberId: c.state.memberId, reachable: c.state.health === "reachable", sessions: c.body?.sessions ?? null }));
   walkyLeadHalf = {
     route: leadRouteRemote({
       self: walkyMemberId,

@@ -290,6 +290,92 @@ describe("the diff by key", () => {
     expect(again?.id).not.toBe(first.id);
   });
 
+  // M96 spec 10: the hill clears a trick's card that closed without the person 60 s after it closed
+  // (HillService.selfClear). The runner reads the tombstone's state, so the self-clear moves none of its rules.
+  test("self-cleared after an expiry or an undeliverable close, an unchanged key asks again by the 10 minute rule, once, with a new request id", () => {
+    for (const closed of ["undeliverable", "expired"] as const) {
+      const r = rig();
+      sync(r, [decision("case-8")]);
+      const first = open(r)[0]!;
+      r.store.put({ ...first, state: closed, closedAt: 1100, closedReason: closed });
+      // No run saw it close: the map still says open when the 60 s self-clear takes the row.
+      expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ state: "open" });
+      r.hill.sweep(1100 + 60_000);
+      expect(r.store.get(first.id)).toBeUndefined();
+      expect(r.hill.clearedState(first.id)).toBe(closed);
+      // Not at once on the next sync: the tombstone's state is read, and the 10 minutes count from the post.
+      sync(r, [decision("case-8")]);
+      expect(r.store.all()).toEqual([]);
+      expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ decisionId: first.id, state: closed, seq: 1 });
+      r.clock.t += REASK_AFTER_MS - 1;
+      expect(sync(r, [decision("case-8")])).toEqual([]);
+      expect(r.store.all()).toEqual([]);
+      // Not never: at 10 minutes it asks again, under the next count, so the tombstone is not met.
+      r.clock.t += 1;
+      expect(sync(r, [decision("case-8")])).toEqual([]);
+      const [again] = open(r);
+      expect(again?.id).not.toBe(first.id);
+      expect(again?.requestId).not.toBe(first.requestId);
+      expect(again?.supersedes).toBeNull();
+      expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ decisionId: again?.id, state: "open", seq: 2 });
+      // Once: the next run posts nothing more.
+      sync(r, [decision("case-8")]);
+      expect(open(r)).toHaveLength(1);
+    }
+  });
+
+  test("a key the trick withdrew does not come back when its closed row is self-cleared", () => {
+    const r = rig();
+    sync(r, [decision("case-8"), decision("case-9")]);
+    const nine = open(r).find((held) => held.from.trickKey === "case-9")!;
+    sync(r, [decision("case-8")]);
+    expect(r.store.get(nine.id)?.state).toBe("withdrawn");
+    r.hill.sweep(1000 + 60_000);
+    expect(r.store.get(nine.id)).toBeUndefined();
+    for (let run = 0; run < 3; run += 1) {
+      r.clock.t += REASK_AFTER_MS;
+      sync(r, [decision("case-8")]);
+    }
+    expect(r.store.all().map((held) => held.from.trickKey)).toEqual(["case-8"]);
+    expect(r.tricks.entries("legs")).not.toHaveProperty("case-9");
+  });
+
+  test("a superseded version does not come back when its closed row is self-cleared", () => {
+    const r = rig();
+    sync(r, [decision("case-8")]);
+    const first = open(r)[0]!;
+    sync(r, [decision("case-8", { summary: "Red again." })]);
+    const second = open(r)[0]!;
+    expect(r.store.get(first.id)?.state).toBe("superseded");
+    r.hill.sweep(1000 + 60_000);
+    expect(r.store.get(first.id)).toBeUndefined();
+    for (let run = 0; run < 3; run += 1) {
+      r.clock.t += REASK_AFTER_MS;
+      sync(r, [decision("case-8", { summary: "Red again." })]);
+    }
+    expect(r.store.all().map((held) => held.id)).toEqual([second.id]);
+    expect(r.tricks.entries("legs")["case-8"]).toMatchObject({ decisionId: second.id, state: "open", seq: 2 });
+  });
+
+  test("the runner does not warn or write again for a key whose decision the hill self-cleared", () => {
+    const r = rig();
+    const warned: string[] = [];
+    const tricks = new TrickHill({ stateDir: r.stateDir, hill: r.hill, addressOf: (scopeKey, listed) => scopeKeyAddress(scopeKey, (memberId) => memberId === HOST, "local", place(() => r.live), listed), now: () => r.clock.t, warn: (line) => warned.push(line) });
+    tricks.sync(r.trick, { decisions: [decision("case-8")], refusedKeys: [] });
+    const first = open(r)[0]!;
+    r.store.put({ ...first, state: "undeliverable", closedAt: 1100, closedReason: "undeliverable" });
+    r.hill.sweep(1100 + 60_000);
+    tricks.sync(r.trick, { decisions: [decision("case-8")], refusedKeys: [] });
+    const path = join(r.stateDir, "hill", TRICKS_MAP_FILE);
+    const saved = readFileSync(path, "utf8");
+    const mtime = statSync(path).mtimeMs;
+    for (let run = 0; run < 5; run += 1) expect(tricks.sync(r.trick, { decisions: [decision("case-8")], refusedKeys: [] })).toEqual([]);
+    expect(readFileSync(path, "utf8")).toBe(saved);
+    expect(statSync(path).mtimeMs).toBe(mtime);
+    expect(warned).toEqual([]);
+    expect(r.store.all()).toEqual([]);
+  });
+
   test("a key that closed without the person asks again on a later run, at most once per 10 minutes", () => {
     for (const closed of ["undeliverable", "expired", "withdrawn"] as const) {
       const r = rig();

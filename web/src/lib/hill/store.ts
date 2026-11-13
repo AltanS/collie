@@ -37,6 +37,15 @@ import { sortOpenDecisions, type HillCrewStateView, type HillDecision, type Hill
 // keyed by the decision, for as long as the page lives, and its row under Answered shows them with
 // Copy. Nothing is persisted: a reload reads the bridge's own list.
 //
+// ── WORDS NEVER LEAVE WITH THEIR CARD (M96 spec 10) ──────────────────────────────────────────────
+// A card that closed without the person leaves the Hill a minute later (the bridge's sweep clears it),
+// and a card can leave the open list while the person types a note into it (it expired, its session
+// ended, another phone answered it). The words stay here. A card's unsent words are noted as they are
+// typed (`noteHillDraft`, no publish); a list that no longer serves the card as open moves them into
+// `kept`, with the card's title. An answer that went (`ok`) or that the bridge kept as gone drops them.
+// A kept entry whose closed row the bridge no longer serves draws a row of its own under Answered
+// (hill-view.tsx), with "Your answer, not delivered" and Copy, until the page is left or reloaded.
+//
 // ── THE CREW STATE (1.29.0) ──────────────────────────────────────────────────────────────────────
 // The lead's `here` / `quiet` / `away` rides on the list (`crewState`), and a change of it moves the
 // hill's number, so every phone reads it as it reads a new card. A lead with no decisions file yet sends
@@ -62,8 +71,10 @@ interface HillHeld {
   /** How many closed decisions the bridge holds, which may exceed `closed`. What Clear says it removes. */
   closedTotal: number;
   receipts: ReadonlyMap<string, HillAnswerHeld>;
-  /** The words of an answer that did not reach its target, per decision. */
+  /** The words of an answer that did not reach its target, or of a note whose card left, per decision. */
   kept: ReadonlyMap<string, string>;
+  /** The title of each card in `kept`, for its row once the bridge no longer serves the card. */
+  keptTitles: ReadonlyMap<string, string>;
   /** The lead's crew state, or null when this bridge serves none. */
   crewState: HillCrewStateView | null;
 }
@@ -71,7 +82,12 @@ interface HillHeld {
 const NO_DECISIONS: readonly HillDecision[] = [];
 const NO_RECEIPTS: ReadonlyMap<string, HillAnswerHeld> = new Map();
 const NO_KEPT: ReadonlyMap<string, string> = new Map();
-const EMPTY: HillHeld = { rev: null, open: NO_DECISIONS, closed: NO_DECISIONS, closedTotal: 0, receipts: NO_RECEIPTS, kept: NO_KEPT, crewState: null };
+const EMPTY: HillHeld = { rev: null, open: NO_DECISIONS, closed: NO_DECISIONS, closedTotal: 0, receipts: NO_RECEIPTS, kept: NO_KEPT, keptTitles: NO_KEPT, crewState: null };
+
+/** The words typed into each open card and not sent yet. Noted, never published: the card draws its own. */
+const drafts = new Map<string, string>();
+/** The cards whose answer is on its way: a list that closes one (the answer itself did) keeps its words noted. */
+const sending = new Set<string>();
 
 let held: HillHeld = EMPTY;
 /** The newest revision a snapshot named, or null when the last one named none. */
@@ -111,6 +127,26 @@ function receiptsOfClosed(closed: readonly HillDecision[]): ReadonlyMap<string, 
   return keep.size === 0 ? NO_RECEIPTS : keep;
 }
 
+/**
+ * Move the unsent words of every held open card that `stillOpen` does not list into `kept`, with its
+ * title. Answers the new `kept` and `keptTitles`, the held ones when nothing moved.
+ */
+function keepLeftDrafts(stillOpen: ReadonlySet<string>): Pick<HillHeld, "kept" | "keptTitles"> {
+  let kept = held.kept;
+  let keptTitles = held.keptTitles;
+  for (const [id, text] of drafts) {
+    if (stillOpen.has(id) || sending.has(id)) continue;
+    const card = held.open.find((decision) => decision.id === id);
+    // A note for a card this page never held open stays noted until a list that held it.
+    if (card === undefined) continue;
+    drafts.delete(id);
+    if (text.trim() === "" || kept.get(id) !== undefined) continue;
+    kept = new Map(kept).set(id, text.trim());
+    keptTitles = new Map(keptTitles).set(id, card.title);
+  }
+  return { kept, keptTitles };
+}
+
 /** Take a list the bridge served. An `unchanged` answer moves the number only. */
 function take(list: HillList): void {
   lists += 1;
@@ -124,7 +160,7 @@ function take(list: HillList): void {
     closed: list.closed.length === 0 ? NO_DECISIONS : list.closed,
     closedTotal: Math.max(list.closedTotal ?? 0, list.closed.length),
     receipts: receiptsOfClosed(list.closed),
-    kept: held.kept,
+    ...keepLeftDrafts(new Set(list.open.map((decision) => decision.id))),
     crewState: list.crewState ?? null,
   });
 }
@@ -179,7 +215,7 @@ export function syncHill(rev: number | undefined): void {
     // The crew state stays too: a lead that never had a decision sends no number, and its state is the
     // one the route read itself (`noteHillCrewState`). A member's route reads none, so it holds none.
     const holdsList = held.rev !== null || held.open.length > 0 || held.closed.length > 0 || held.receipts.size > 0;
-    if (holdsList) publish({ ...EMPTY, kept: held.kept, crewState: held.crewState });
+    if (holdsList) publish({ ...EMPTY, ...keepLeftDrafts(new Set()), crewState: held.crewState });
     return;
   }
   wanted = rev;
@@ -209,17 +245,53 @@ export function noteHillCrewState(view: HillCrewStateView | null): void {
   publish({ ...held, crewState: view });
 }
 
+/**
+ * Note the words typed into an open card and not sent yet, as they change; empty words drop the note. Never
+ * publishes: the card draws its own field. A list that takes the card off the open list keeps them.
+ */
+export function noteHillDraft(decisionId: string, text: string): void {
+  if (text.trim() === "") drafts.delete(decisionId);
+  else drafts.set(decisionId, text);
+}
+
+/** An answer to the card is on its way: its words wait for the answer's end, not for the next list. */
+export function noteHillSending(decisionId: string): void {
+  sending.add(decisionId);
+}
+
+/**
+ * The answer's request ended (after `noteHillAnswer` when a receipt came). Words still noted for a card
+ * the held list no longer serves as open are kept now, as a list would have kept them.
+ */
+export function noteHillSendEnded(decisionId: string): void {
+  sending.delete(decisionId);
+  if (!drafts.has(decisionId) || held.open.some((decision) => decision.id === decisionId)) return;
+  const text = drafts.get(decisionId) ?? "";
+  drafts.delete(decisionId);
+  if (text.trim() === "" || held.kept.has(decisionId)) return;
+  const title = held.closed.find((decision) => decision.id === decisionId)?.title;
+  publish({ ...held, kept: new Map(held.kept).set(decisionId, text.trim()), keptTitles: title === undefined ? held.keptTitles : new Map(held.keptTitles).set(decisionId, title) });
+}
+
+/** The words noted for an open card, or "" with none: what the card's field starts with when it draws again. */
+export function hillDraft(decisionId: string): string {
+  return drafts.get(decisionId) ?? "";
+}
+
 /** Keep what one answer came to, until the next list. A `gone` answer's words are kept beyond it. */
 export function noteHillAnswer(decisionId: string, answer: HillAnswerHeld): void {
   const receipts = new Map(held.receipts);
   receipts.set(decisionId, answer);
   let kept = held.kept;
+  let keptTitles = held.keptTitles;
+  // An answer that went, or that the bridge took as gone, settles the card's unsent words: they went with it.
+  if (answer.receipt.code === "ok" || answer.receipt.code === "gone") drafts.delete(decisionId);
   if (answer.receipt.code === "gone" && answer.text !== null && answer.text.trim() !== "") {
-    const next = new Map(kept);
-    next.set(decisionId, answer.text);
-    kept = next;
+    kept = new Map(kept).set(decisionId, answer.text);
+    const title = held.open.find((decision) => decision.id === decisionId)?.title ?? held.closed.find((decision) => decision.id === decisionId)?.title;
+    if (title !== undefined) keptTitles = new Map(keptTitles).set(decisionId, title);
   }
-  publish({ ...held, receipts, kept });
+  publish({ ...held, receipts, kept, keptTitles });
 }
 
 /**
@@ -292,6 +364,15 @@ export function useHillKept(): ReadonlyMap<string, string> {
   );
 }
 
+/** The title of each card whose words are kept, for its row once the bridge no longer serves the card. */
+export function useHillKeptTitles(): ReadonlyMap<string, string> {
+  return useSyncExternalStore(
+    subscribe,
+    () => held.keptTitles,
+    () => NO_KEPT,
+  );
+}
+
 /** The lead's crew state, or null when this bridge serves none (a member, or an older bridge). */
 export function useHillCrewState(): HillCrewStateView | null {
   return useSyncExternalStore(
@@ -309,6 +390,8 @@ export function __resetHill(): void {
   lists += 1;
   reading = false;
   inFlight = null;
+  drafts.clear();
+  sending.clear();
   publish(EMPTY);
 }
 

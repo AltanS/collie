@@ -30,7 +30,7 @@ soon each one needs you.
 | Now | Needs you now. A Decision marked `now` also sends a notification |
 | Today | The default |
 | Later | Can wait |
-| Answered | The Decisions that are closed, newest first, up to 20 |
+| Answered | The closed Decisions, newest first, up to 20 |
 
 Above the cards, the Crew state control says how much you want to hear now
 ([Here, Quiet and Away](#here-quiet-and-away)). The header says how many Decisions are open and how
@@ -53,7 +53,13 @@ and Next, and its options show on the last card. The yes stays off until every c
 ([A trick an agent proposes](#a-trick-an-agent-proposes)).
 
 When you wrote to a session after its agent asked, the card says "You wrote to this session after it
-asked." ([Clear](#clear) takes such cards away.)
+asked." ([Clear](#clear) takes such cards away.) When your message from the phone started that
+session's next turn, its cards close by themselves
+([When a card closes by itself](#when-a-card-closes-by-itself)).
+
+Answered keeps the cards you answered or dismissed until you clear them. A card that closed without
+you, because it expired, was withdrawn or replaced, or could not be delivered, stays there for one
+minute with its state, and then leaves by itself.
 
 The recommended option carries a star. Collie never preselects it, and never focuses it. A
 recommendation that you do not read must not become the answer by default.
@@ -82,7 +88,7 @@ A Decision is in one of seven states. A closed one keeps its state and shows it.
 | `answered` | "Answered" |
 | `dismissed` | "Dismissed" |
 | `expired` | "Expired" |
-| `withdrawn` | "Withdrawn by the poster" |
+| `withdrawn` | "Withdrawn by the poster", or "Answered in the session" |
 | `superseded` | "Replaced by a newer Decision" |
 | `undeliverable` | "Could not be delivered" |
 
@@ -215,6 +221,27 @@ A session holds at most 20 open Decisions. The agents of one machine hold at mos
 Hill at most 200. With the Hill off, every post is refused with: "the Hill is off on this Collie; your
 person can switch it on in Settings, Experiments, on the phone, or with: collie hill on".
 
+### When a card closes by itself
+
+The bridge looks at the open cards every 15 seconds. It closes a card only on a fact it read, never
+on a guess.
+
+| What it read | The card closes as |
+| --- | --- |
+| The card's expiry passed | `expired` |
+| The session the answer goes to is gone, at two looks in a row | `undeliverable` |
+| The machine the answer goes to was removed from the crew | `undeliverable` |
+| Your message from the phone started that session's next turn | `withdrawn`, "Answered in the session" |
+
+A session counts as gone only when the multiplexer answered the look and did not list it. A look
+that failed, a bridge that just started, and a crew machine that does not answer close nothing. A
+machine whose last agent left closes its cards in 15 to 30 seconds.
+
+Your message closes a card only when the session waited for you, and the message started a new turn.
+Nothing is typed for that card: your message already started the turn its answer would have started.
+A steer, or a message queued behind a running turn, only marks the card. Typing in the terminal is
+not seen, and a card waits there as before.
+
 ## How you answer
 
 Each option is a button. Tap one, and the answer goes. A few rules shape that tap.
@@ -263,7 +290,9 @@ After a tap the card says "Sending…", then one line that says what came of it.
 | "Not sent." with "Try again" | The answer did not reach the bridge |
 
 When a Decision closes before your answer lands, the card keeps your words under "Your answer, not
-delivered" and offers "Copy your answer", so you do not lose them.
+delivered" and offers "Copy your answer", so you do not lose them. The same holds for a note you were
+still writing when its card closed. The words stay under Answered until you leave the page, also
+after the card itself left the Hill.
 
 The same record is in `status` as `delivery`: `typed`, `held`, `unknown` or `none`. A Decision is
 never closed because a crew machine went away. Dismiss still closes it, and the phone then says the
@@ -285,6 +314,11 @@ it is `collie hill clear --spoken`, which refuses in a pane where an agent works
 `collie hill clear` without `--spoken` never touches an open Decision, and it works with the Hill off. Collie keeps a small marker of
 each cleared Decision, so a repeated post with the same request id is refused and not posted twice,
 and a late answer still reads as gone.
+
+A card that closed without you needs no Clear. One minute after it expired, was withdrawn or replaced,
+or could not be delivered, the bridge clears it the same way. Collie's own cards wait for your Clear.
+The agent that posted still reads the state of a cleared card: `collie hill status <id>` prints, for
+example, "dc_k3f9x2m8q1a0 is expired; it has left the Hill".
 
 ## Switch the Hill on or off
 

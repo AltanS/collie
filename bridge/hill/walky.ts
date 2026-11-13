@@ -71,6 +71,62 @@ export function walkyPlace(walky: Pick<WalkyService, "who">, memberId: string | 
   };
 }
 
+/** One crew member as the lead's sweep holds it, as far as the census reads it. */
+export interface HillCensusMember {
+  readonly memberId: string;
+  /** The lead's sweep reached it at its last try. */
+  readonly reachable: boolean;
+  /** Its sessions as its last good answer listed them (each with its own last read), or null with none. */
+  readonly sessions: readonly { readonly reachable: boolean }[] | null;
+}
+
+/** At least one session, and the last read of every one answered. */
+function goodCensus(sessions: readonly { readonly reachable: boolean }[] | null): boolean {
+  return sessions !== null && sessions.length > 0 && sessions.every((session) => session.reachable);
+}
+
+/**
+ * Whether the bridge holds a census of the machine a walky address is on that was read with success
+ * (M96 spec 10), the Hill sweep's `censusKnown`. On this machine: it drives at least one session and the
+ * last read of every one answered (the state engine's `connected`, which starts `disconnected` until the
+ * first good read after boot, and keeps the last good panes when a read fails). On a crew member: the
+ * lead's sweep reached it, it answered with at least one session, and that machine's own last read of
+ * every one answered. Anything else is unknown, also an address that is not a pane's.
+ */
+export function hillCensus(opts: {
+  readonly memberId: string | null;
+  readonly local: () => readonly { readonly reachable: boolean }[];
+  readonly members: () => readonly HillCensusMember[];
+}): (address: string) => boolean {
+  return (raw) => {
+    const at = parseAddress(raw);
+    if (at === null || at.kind !== "pane") return false;
+    if (isSelf(at.memberId, opts.memberId)) return goodCensus(opts.local());
+    const member = opts.members().find((candidate) => candidate.memberId === at.memberId);
+    return member !== undefined && member.reachable && goodCensus(member.sessions);
+  };
+}
+
+/**
+ * Whether a walky address is on a crew machine that the roster no longer lists (M96 spec 10), the Hill
+ * sweep's `removed`. `roster` answers every member id the trust store lists now, whatever its status (the
+ * lead, the peers, this machine), or null when there is no roster this bridge read with success. An
+ * address on this machine (`local`, this bridge's walky member, or one of `ownIds`, its bridge ids now
+ * and before) is never removed; neither is anything when the roster is unknown.
+ */
+export function hillLeftTheCrew(opts: {
+  readonly memberId: string | null;
+  readonly ownIds: readonly (string | null)[];
+  readonly roster: () => readonly string[] | null;
+}): (address: string) => boolean {
+  return (raw) => {
+    const at = parseAddress(raw);
+    if (at === null || at.kind !== "pane" || isSelf(at.memberId, opts.memberId) || opts.ownIds.includes(at.memberId)) return false;
+    const roster = opts.roster();
+    return roster !== null && !roster.includes(at.memberId);
+  };
+}
+
 /** A pane as the snapshot holds it, as far as the Dashboard's name rule reads it. */
 export type HillNameablePane = NameableP & { readonly paneId: string };
 

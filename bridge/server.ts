@@ -3398,10 +3398,10 @@ export function startServer(opts: {
         };
         // The Hill's quiet mark (1.29.0): a send that reached an agent's pane marks the open Decisions it
         // posted. The same person turn ends a view's screen on a harness that reports no conversation.
-        const spoke = (paneId: string) => {
+        const spoke = (paneId: string, started: boolean) => {
           const address = addressOf(paneId);
           if (address === null) return;
-          hill?.noteSpoke(address);
+          hill?.noteSpoke(address, undefined, started);
           views?.notePersonTurn(address);
         };
         // A send from an agent view (SECURITY rule 3): only a paired device's own token with write access.
@@ -9623,7 +9623,7 @@ export interface SendRouteRuntime {
   readonly name: string;
   readonly herdr: Pick<MuxAdapter, "controlTurn">;
   readonly engine: {
-    current(): { readonly agents: readonly Pick<AgentView, "paneId" | "agent">[]; readonly shellPanes?: readonly Pick<AgentView, "paneId">[] };
+    current(): { readonly agents: readonly (Pick<AgentView, "paneId" | "agent"> & { readonly status?: AgentView["status"] })[]; readonly shellPanes?: readonly Pick<AgentView, "paneId">[] };
     noteInput(): void;
     pokeNow(): void;
   };
@@ -9642,6 +9642,21 @@ export function sendSpoke(mode: SendRequest["mode"], outcome: string): boolean {
   return SPOKE_MODES.has(mode) && SPOKE_OUTCOMES.has(outcome);
 }
 
+/** The pane states in which a session waits for the person: no turn runs, and no question or dialog is open. */
+const WAITING_STATES: ReadonlySet<string> = new Set(["idle", "done"]);
+
+/**
+ * Whether one phone send that spoke ALSO started the session's next turn (M96 spec 10): the Hill then
+ * closes that session's open cards with nothing typed. A positive reading only, from two sources that
+ * must agree: the bridge's own state read the pane waiting right before the send (`waited`, the
+ * WAITING_STATES), and the Send Protocol's receipt says the words went in as a new prompt, `effective`
+ * (the harness's own prompt edge took it) or `sent`, and not `queued` behind a running turn (a Stop may
+ * give a queued send back). A `steered` send joined the running turn and keeps the quiet mark only.
+ */
+export function sendStartedTurn(mode: SendRequest["mode"], outcome: string, read: { readonly queued: boolean; readonly waited: boolean }): boolean {
+  return sendSpoke(mode, outcome) && outcome !== "steered" && !read.queued && read.waited;
+}
+
 export async function sendRoute(
   rt: SendRouteRuntime,
   body: JsonValue | undefined,
@@ -9650,8 +9665,11 @@ export async function sendRoute(
     readonly device: string | null;
     readonly redact: boolean;
     readonly acceptEncoding: string | null;
-    /** Told once per send whose words reached a pane (`sendSpoke`): the Hill marks that session's open cards. */
-    readonly spoke?: (paneId: string) => void;
+    /**
+     * Told once per send whose words reached a pane (`sendSpoke`): the Hill marks that session's open cards.
+     * `started` is `sendStartedTurn`: the send also started the session's next turn, and the Hill closes them.
+     */
+    readonly spoke?: (paneId: string, started: boolean) => void;
     /**
      * The agent views, for a send with a `view` field: given only by `POST /api/send` once the request
      * passed the paired-device gate. Absent (any other caller, a crew route, a test), a `view` is refused 403.
@@ -9705,6 +9723,9 @@ export async function sendRoute(
     const { when: _steer, ...plain } = asked;
     sendRequest = { ...plain, text: source.text, mode: source.mode };
   }
+  // Whether the session waited for the person right before this send, by the bridge's own last read.
+  const status = rt.engine.current().agents.find((agent) => agent.paneId === paneId)?.status;
+  const waited = status !== undefined && WAITING_STATES.has(status);
   let answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
   let receipt = answer.receipt;
   // The old row goes once the new request was taken; a refusal keeps it, text and all.
@@ -9727,7 +9748,7 @@ export async function sendRoute(
     const path = rt.send.pathOf(sendRequest.id);
     if (path !== null) detail.path = path;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
-    if (sendSpoke(sendRequest.mode, receipt.outcome)) context.spoke?.(paneId);
+    if (sendSpoke(sendRequest.mode, receipt.outcome)) context.spoke?.(paneId, sendStartedTurn(sendRequest.mode, receipt.outcome, { queued: receipt.queued === true, waited }));
     if (receipt.keys.length > 0) {
       rt.engine.noteInput();
       rt.engine.pokeNow();
@@ -9757,7 +9778,7 @@ async function viewSendRoute(
     readonly device: string | null;
     readonly redact: boolean;
     readonly acceptEncoding: string | null;
-    readonly spoke?: (paneId: string) => void;
+    readonly spoke?: (paneId: string, started: boolean) => void;
     readonly view: { readonly service: AgentViewService; readonly addressOf: (paneId: string) => string | null };
     readonly field: ViewSendField;
   },
@@ -9794,7 +9815,8 @@ async function viewSendRoute(
     const detail: AuditDetail = { mode, outcome: receipt.outcome, textLength: receipt.textLength, view: plan.trick };
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
-    if (plan.plain && sendSpoke(mode, receipt.outcome)) context.spoke?.(paneId);
+    // A view's line marks the cards only: whether it started a turn is not read here (M96 spec 10).
+    if (plan.plain && sendSpoke(mode, receipt.outcome)) context.spoke?.(paneId, false);
     if (receipt.keys.length > 0) {
       rt.engine.noteInput();
       rt.engine.pokeNow();

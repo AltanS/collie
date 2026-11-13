@@ -374,6 +374,8 @@ export function DecisionCard({
   hostSlot = null,
   trickIcon,
   playgroundCard,
+  initialDraft = "",
+  onDraft,
 }: {
   decision: HillDecision;
   answer: HillAnswerState;
@@ -386,11 +388,16 @@ export function DecisionCard({
    * The live card never passes it: a group always opens on card 1.
    */
   playgroundCard?: number;
+  /** The words the field starts with: a note this page noted before the card drew again. */
+  initialDraft?: string;
+  /** Told the field's words on every change, so they outlive the card (lib/hill/store.ts `noteHillDraft`). */
+  onDraft?: (text: string) => void;
 }) {
   useLocale();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialDraft);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
+  // A note that comes back is shown: words hidden behind "Add a note" would still go with an option's tap.
+  const [noteOpen, setNoteOpen] = useState(() => initialDraft.trim() !== "");
   const { armed, tap, disarm } = useArm<string>();
   const bodyId = useId();
   const summaryId = useId();
@@ -487,6 +494,7 @@ export function DecisionCard({
       value={draft}
       onChange={(e) => {
         setDraft(e.target.value);
+        onDraft?.(e.target.value);
         // An armed confirm was for the answer as it read when it was armed: new words need a new first tap.
         if (armed?.startsWith("option:")) disarm();
       }}

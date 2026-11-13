@@ -432,6 +432,10 @@ lead with the Hill off refuses with "the Hill is off on the lead of this crew; y
 it on in Settings, Experiments, on the phone". Only a member whose own switch says off refuses on its
 own machine.
 
+A machine removed from the crew is another matter. After `collie crew remove` on the lead, or
+`collie leave` on the member, the cards whose answer would go to that machine close as undeliverable
+at the next look, with nothing typed. No answer can reach that machine any more.
+
 When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. When the answer
 comes late, it says the post is not confirmed, and exits 5. Either way it prints the command to send
 the same post again, with its `--request-id`: the lead keeps one Decision for it.

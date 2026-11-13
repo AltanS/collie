@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { HILL_T0, hillDecision, hillReceipt } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
 
-import { __resetHill, __settleHill, clearClosedLocally, noteHillAnswer, readHillNow, syncHill, useHillAnswerHeld, useHillClosed, useHillClosedTotal, useHillCount, useHillKept, useHillOpen } from "./store";
+import { __resetHill, __settleHill, clearClosedLocally, hillDraft, noteHillAnswer, noteHillDraft, noteHillSendEnded, noteHillSending, readHillNow, syncHill, useHillAnswerHeld, useHillClosed, useHillClosedTotal, useHillCount, useHillKept, useHillKeptTitles, useHillOpen } from "./store";
 import type { HillDecision } from "./wire";
 
 // The snapshot's hillRev says when to read. The same number reads nothing, a higher one reads with
@@ -269,5 +269,75 @@ describe("clearing the closed rows on the phone", () => {
     });
     act(() => putBack());
     expect(result.current).toBe(before);
+  });
+});
+
+describe("a note whose card leaves the open list (M96 spec 10)", () => {
+  it("keeps the unsent words with the card's title when a list no longer serves the card as open", async () => {
+    const decision = hillDecision({ title: "Ship it?" });
+    const other = hillDecision({ title: "Still open" });
+    serve((since) => (since === null ? list(1, [decision, other]) : list(2, [other], [{ ...decision, state: "expired" }])));
+    const { result } = renderHook(() => ({ kept: useHillKept(), titles: useHillKeptTitles() }));
+    await sync(1);
+    noteHillDraft(decision.id, "  wait for the leg  ");
+    noteHillDraft(other.id, "still typing");
+    await sync(2);
+    expect(result.current.kept.get(decision.id)).toBe("wait for the leg");
+    expect(result.current.titles.get(decision.id)).toBe("Ship it?");
+    // The card that stays open keeps its note for the field, and nothing of it is kept.
+    expect(result.current.kept.has(other.id)).toBe(false);
+    expect(hillDraft(other.id)).toBe("still typing");
+    expect(hillDraft(decision.id)).toBe("");
+  });
+
+  it("keeps nothing for an empty note, and the words outlive a snapshot with no number", async () => {
+    const decision = hillDecision();
+    const blank = hillDecision();
+    serve(() => list(1, [decision, blank]));
+    const { result } = renderHook(() => useHillKept());
+    await sync(1);
+    noteHillDraft(decision.id, "my note");
+    noteHillDraft(blank.id, "   ");
+    await sync(undefined);
+    expect([...result.current.keys()]).toEqual([decision.id]);
+  });
+
+  it("an answer that went drops the note: a list that closes the card while it is on its way keeps nothing", async () => {
+    const decision = hillDecision();
+    serve((since) => (since === null ? list(1, [decision]) : list(2, [], [{ ...decision, state: "answered" }])));
+    const { result } = renderHook(() => useHillKept());
+    await sync(1);
+    noteHillDraft(decision.id, "yes, ship it");
+    noteHillSending(decision.id);
+    // The bridge closed the card at the claim, before its answer came back.
+    await sync(2);
+    expect(result.current.size).toBe(0);
+    act(() => noteHillAnswer(decision.id, { receipt: hillReceipt(), intent: "yes", text: "yes, ship it" }));
+    act(() => noteHillSendEnded(decision.id));
+    expect(result.current.size).toBe(0);
+    expect(hillDraft(decision.id)).toBe("");
+  });
+
+  it("an answer that never came back keeps the words once the card is no longer open", async () => {
+    const decision = hillDecision({ title: "Ship it?" });
+    serve((since) => (since === null ? list(1, [decision]) : list(2, [], [{ ...decision, state: "expired" }])));
+    const { result } = renderHook(() => ({ kept: useHillKept(), titles: useHillKeptTitles() }));
+    await sync(1);
+    noteHillDraft(decision.id, "my words");
+    noteHillSending(decision.id);
+    await sync(2);
+    expect(result.current.kept.size).toBe(0);
+    act(() => noteHillSendEnded(decision.id));
+    expect(result.current.kept.get(decision.id)).toBe("my words");
+    expect(result.current.titles.get(decision.id)).toBe("Ship it?");
+  });
+
+  it("a gone answer keeps its words with the card's title", async () => {
+    const decision = hillDecision({ title: "Ship it?" });
+    serve(() => list(1, [decision]));
+    const { result } = renderHook(() => useHillKeptTitles());
+    await sync(1);
+    act(() => noteHillAnswer(decision.id, { receipt: hillReceipt({ code: "gone", state: null, delivery: null }), intent: "yes", text: "my words" }));
+    expect(result.current.get(decision.id)).toBe("Ship it?");
   });
 });

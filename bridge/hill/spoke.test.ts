@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AuditEntry } from "../audit.ts";
-import { hillSpokenClearRoute, sendSpoke } from "../server.ts";
+import { hillSpokenClearRoute, sendSpoke, sendStartedTurn } from "../server.ts";
 import type { HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_ANSWERED_IN_SESSION, HillService, NOT_ON_LEAD, type HillAgentSender, type HillCrewMode } from "./service.ts";
@@ -169,3 +169,76 @@ describe("Clear cards you answered in the session", () => {
   });
 });
 
+describe("a message that started the session's next turn (M96 spec 10)", () => {
+  test("closes that session's open cards `withdrawn`, answered in the session, and types nothing", () => {
+    const r = rig();
+    const asked = r.hill.post(ONE, input(1));
+    const other = r.hill.post(TWO, input(2));
+    if (!asked.ok || !other.ok) throw new Error("not posted");
+    r.state.clock = 5000;
+    r.state.audit.length = 0;
+    expect(r.hill.noteSpoke(ONE.address, 5000, true)).toBe(1);
+    const closed = r.hill.list().closed.find((d) => d.id === asked.decision.id);
+    expect(closed).toMatchObject({ state: "withdrawn", closedAt: 5000, closedReason: HILL_ANSWERED_IN_SESSION });
+    expect(r.hill.list().open.map((d) => d.id)).toEqual([other.decision.id]);
+    expect(r.state.sent).toBe(0);
+    expect(r.state.audit).toContainEqual({ action: "hill.spoke.closed", detail: { count: 1 } });
+  });
+
+  test("a card posted after the send, and one whose answer goes to another session, stay open", () => {
+    const r = rig();
+    const routed = r.hill.post(ONE, { ...input(1), replyTo: TWO.address });
+    if (!routed.ok) throw new Error("not posted");
+    r.state.clock = 5000;
+    const later = r.hill.post(ONE, input(2));
+    if (!later.ok) throw new Error("not posted");
+    // The send happened at 4000, before the second card.
+    expect(r.hill.noteSpoke(ONE.address, 4000, true)).toBe(1);
+    const open = r.hill.list().open;
+    // The routed one takes the quiet mark only: its answer would start a turn in TWO, not in ONE.
+    expect(open.find((d) => d.id === routed.decision.id)).toMatchObject({ state: "open", spokeAfter: 4000 });
+    expect(open.find((d) => d.id === later.decision.id)?.spokeAfter).toBeUndefined();
+  });
+
+  test("a steer (not started) keeps today's mark, and the second Clear still takes it", () => {
+    const r = rig();
+    const asked = r.hill.post(ONE, input(1));
+    if (!asked.ok) throw new Error("not posted");
+    r.state.clock = 5000;
+    expect(r.hill.noteSpoke(ONE.address, 5000, false)).toBe(1);
+    expect(r.hill.list().open[0]).toMatchObject({ state: "open", spokeAfter: 5000 });
+    expect(r.hill.clearSpoken()).toEqual({ ok: true, cleared: 1 });
+  });
+
+  test("a card whose answer is running is left to that answer", async () => {
+    const r = rig();
+    const asked = r.hill.post(ONE, input(1));
+    if (!asked.ok) throw new Error("not posted");
+    r.state.clock = 5000;
+    // The answer's claim is in flight: its receipt write has not settled yet.
+    const answering = r.hill.answer({ rid: "00000000-0000-4000-8000-000000000999", node: `hill/${asked.decision.id}`, intent: "yes", value: { text: null } }, asked.decision.id, "Pixel 9");
+    expect(r.hill.noteSpoke(ONE.address, 5000, true)).toBe(0);
+    const outcome = await answering;
+    expect(outcome).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "answered" } });
+    expect(r.state.sent).toBe(1);
+  });
+
+  test("a member closes nothing", () => {
+    const r = rig();
+    const asked = r.hill.post(ONE, input(1));
+    if (!asked.ok) throw new Error("not posted");
+    r.state.mode = "peer";
+    expect(r.again().noteSpoke(ONE.address, 9000, true)).toBe(0);
+  });
+
+  test("only a send that started the next turn counts: not a steer, not one queued behind a turn, not one into a session that was not waiting", () => {
+    expect(sendStartedTurn("send", "effective", { queued: false, waited: true })).toBe(true);
+    expect(sendStartedTurn("submit", "sent", { queued: false, waited: true })).toBe(true);
+    expect(sendStartedTurn("send", "steered", { queued: false, waited: true })).toBe(false);
+    expect(sendStartedTurn("send", "sent", { queued: true, waited: true })).toBe(false);
+    expect(sendStartedTurn("send", "effective", { queued: true, waited: true })).toBe(false);
+    expect(sendStartedTurn("send", "sent", { queued: false, waited: false })).toBe(false);
+    expect(sendStartedTurn("send", "held", { queued: false, waited: true })).toBe(false);
+    expect(sendStartedTurn("command", "effective", { queued: false, waited: true })).toBe(false);
+  });
+});

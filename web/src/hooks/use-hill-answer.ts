@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { postHillAnswer } from "@/lib/api";
 import { HILL_LIST_READ_AFTER_MS } from "@/lib/hill/motion";
-import { noteHillAnswer, readHillNow, useHillAnswerHeld } from "@/lib/hill/store";
+import { noteHillAnswer, noteHillSendEnded, noteHillSending, readHillNow, useHillAnswerHeld } from "@/lib/hill/store";
 import { hillNode, type HillAnswerRequest, type HillGroupAnswer, type HillReceipt } from "@/lib/hill/wire";
 import { mintRequestId } from "@/lib/worktree-name";
 
@@ -59,6 +59,7 @@ export function useHillAnswer(decisionId: string): HillAnswer {
       if (attempt.current?.key !== key) attempt.current = { key, rid: mintRequestId() };
       const rid = attempt.current.rid;
       inFlight.current = true;
+      noteHillSending(decisionId);
       const tappedAt = Date.now();
       setLocal({ phase: "sending", intent, text });
       try {
@@ -77,6 +78,7 @@ export function useHillAnswer(decisionId: string): HillAnswer {
         setLocal({ phase: "failed", intent, text });
       } finally {
         inFlight.current = false;
+        noteHillSendEnded(decisionId);
       }
     },
     [decisionId],
