@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from "../json.ts";
+import { LAUNCH_BUDGET_MS } from "../create-confirm.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import {
   DEVICE_HEADER,
@@ -216,6 +217,25 @@ export const PANE_READ_BUDGET_MS = 5000;
  * Lead-local, never on the wire, so moving it needs no protocol bump.
  */
 export const PANE_WRITE_BUDGET_MS = 15000;
+
+/**
+ * How long a **forwarded launch, tab or space create** (`POST /api/launch`, `/api/tab`, `/api/workspace`) may
+ * take before the lead gives up on it and tells the phone `write_outcome_unknown`. {@link WRITE_BUDGET_MS}
+ * covers every other write that is not addressed to a pane.
+ *
+ * ── WHY (M100 spec 04) ────────────────────────────────────────────────────────
+ * These creates do more than one thing on the member: the multiplexer's create call (5 s of its own), a
+ * look in the snapshot when that call timed out ({@link CONFIRM_BOUND_MS} in `bridge/create-confirm.ts`), and,
+ * for a launch, the member's wait for the new shell to draw (5 s) before it types. A lead that dialled them on
+ * the 5 s write budget gave up while the member was still inside its own wait, read 504 `write_outcome_unknown`
+ * over a pane the member then made, and the next tap made a second agent. The budget is the member's own
+ * bound, {@link LAUNCH_BUDGET_MS} (18 s), so the lead never gives up before the member's own deadline passes.
+ * It stays inside the phone's 20 s mutation budget (`web/src/lib/api.ts` `MUTATION_TIMEOUT_MS`). The lead
+ * still dials a write once, and the phone's request id makes the retry land on the member's receipt.
+ *
+ * Lead-local, never on the wire, so moving it needs no protocol bump.
+ */
+export const CREATE_WRITE_BUDGET_MS = LAUNCH_BUDGET_MS;
 
 /**
  * How long a **forwarded worktree create** (`POST /api/worktree`, ADR 0126) may take before the lead gives up on

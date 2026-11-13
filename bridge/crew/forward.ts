@@ -9,6 +9,7 @@ import {
   type CrewParams,
   type PeerFailure,
   type PeerOutcome,
+  CREATE_WRITE_BUDGET_MS,
   PANE_READ_BUDGET_MS,
   PANE_WRITE_BUDGET_MS,
   WORKTREE_WRITE_BUDGET_MS,
@@ -325,14 +326,19 @@ export function forwardKind(route: string, method?: string): ForwardKind {
 /** `pane/<id>`: the read of one pane's screen, the one read whose member-side work can outlast a poll. */
 const PANE_SCREEN_ROUTE = /^pane\/[^/]+$/;
 
+/** The routes that make a pane: a launch, a tab, a space. Each carries its own request id. */
+const CREATE_ROUTES: ReadonlySet<string> = new Set(["launch", "tab", "workspace"]);
+
 /**
  * The explicit budget a forwarded request dials on: {@link PANE_WRITE_BUDGET_MS} for a write to a pane (a send on a
  * herdr-core member costs about 6.4 s), {@link WORKTREE_WRITE_BUDGET_MS} for a worktree create (git and a new
- * space), {@link WRITE_BUDGET_MS} for every other write, {@link PANE_READ_BUDGET_MS}
+ * space), {@link CREATE_WRITE_BUDGET_MS} for a launch, a tab or a space create (the member's own waits sum
+ * to more than 5 s), {@link WRITE_BUDGET_MS} for every other write, {@link PANE_READ_BUDGET_MS}
  * for a pane's screen read, none for every other read (the transport's own poll budget and bootstrap credit).
  */
 export function budgetOf(kind: ForwardKind, route: string): number | undefined {
   if (kind === "write" && route === "worktree") return WORKTREE_WRITE_BUDGET_MS;
+  if (kind === "write" && CREATE_ROUTES.has(route)) return CREATE_WRITE_BUDGET_MS;
   // An ask answer may walk a dialog with keys on the member (ASK_LOCK_MS), so it dials on a pane write's budget.
   if (kind === "write") return route.startsWith("pane/") || ASK_ROUTE.test(route) ? PANE_WRITE_BUDGET_MS : WRITE_BUDGET_MS;
   return PANE_SCREEN_ROUTE.test(route) ? PANE_READ_BUDGET_MS : undefined;
