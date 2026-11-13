@@ -49,14 +49,30 @@ describe("herdr", () => {
     expect(tab.ok ? "" : tab.detail).toBe("herdr tab.create: timed out after 5000ms");
   });
 
-  test("a dropped connection is still unreachable", async () => {
+  test("a connection that closed before the reply may have made it: unconfirmed, on a tab and on a space", async () => {
     class Dropped extends FakeHerdr {
+      override async createTab(): Promise<never> {
+        await Promise.resolve();
+        throw new Error("herdr tab.create: connection closed before reply");
+      }
       override async createWorkspace(): Promise<never> {
         await Promise.resolve();
-        throw new Error("herdr workspace.create: connection closed before a reply");
+        throw new Error("herdr workspace.create: connection closed before reply");
       }
     }
-    expect(reasonOf(await new HerdrMux(new Dropped(), () => []).createSpace({ cwd: "/tmp" }))).toBe("unreachable");
+    const mux = new HerdrMux(new Dropped(), () => []);
+    expect(reasonOf(await mux.createSpace({ cwd: "/tmp" }))).toBe("unconfirmed");
+    expect(reasonOf(await mux.createTab({ spaceId: "w1" }))).toBe("unconfirmed");
+  });
+
+  test("a dial that never reached Herdr is still unreachable", async () => {
+    class NoSocket extends FakeHerdr {
+      override async createWorkspace(): Promise<never> {
+        await Promise.resolve();
+        throw new Error("connect ENOENT /run/user/1000/herdr.sock");
+      }
+    }
+    expect(reasonOf(await new HerdrMux(new NoSocket(), () => []).createSpace({ cwd: "/tmp" }))).toBe("unreachable");
   });
 });
 
@@ -93,6 +109,17 @@ describe("tmux", () => {
     expect(reasonOf(await mux.createSpace({ cwd: "/tmp" }))).toBe("unconfirmed");
   });
 
+  test("a create that ran and printed no pane id is unconfirmed: something was made", async () => {
+    const fake = new FakeTmux();
+    const run = fake.run.bind(fake);
+    fake.run = (args, stdin) => (args.some((arg) => arg === "new-window" || arg === "new-session") ? Promise.resolve({ code: 0, stdout: "garbage\n", stderr: "" }) : run(args, stdin));
+    const mux = new TmuxMux(fake);
+    const tab = await mux.createTab({ spaceId: "$1" });
+    expect(reasonOf(tab)).toBe("unconfirmed");
+    expect(tab.ok ? "" : tab.detail).toContain("reported no pane id");
+    expect(reasonOf(await mux.createSpace({ cwd: "/tmp" }))).toBe("unconfirmed");
+  });
+
   test("a refused create is still a refusal", async () => {
     const fake = new FakeTmux();
     const mux = new TmuxMux(fake);
@@ -122,6 +149,61 @@ describe("zellij", () => {
     };
     const second = await new ZellijMux(new ZellijSessionBinding(lostListing, "")).createTab({ spaceId: ZELLIJ_SPACE_ID });
     expect(reasonOf(second)).toBe("unconfirmed");
+  });
+});
+
+describe("zellij, a tab made with no pane in it", () => {
+  test("a listing with no pane in the new tab is unconfirmed, and so is an id that was not printed", async () => {
+    const empty = new FakeZellij();
+    const run = empty.run.bind(empty);
+    let made = false;
+    empty.run = async (args) => {
+      if (args.includes("new-tab")) {
+        made = true;
+        return { code: 0, stdout: "9\n", stderr: "" };
+      }
+      if (made && args.includes("list-panes")) return { code: 0, stdout: "[]", stderr: "" };
+      return run(args);
+    };
+    const first = await new ZellijMux(new ZellijSessionBinding(empty, "")).createTab({ spaceId: ZELLIJ_SPACE_ID });
+    expect(reasonOf(first)).toBe("unconfirmed");
+    expect(first.ok ? "" : first.detail).toContain("holds no pane");
+
+    const silent = new FakeZellij();
+    const silentRun = silent.run.bind(silent);
+    silent.run = (args) => (args.includes("new-tab") ? Promise.resolve({ code: 0, stdout: "", stderr: "" }) : silentRun(args));
+    expect(reasonOf(await new ZellijMux(new ZellijSessionBinding(silent, "")).createTab({ spaceId: ZELLIJ_SPACE_ID }))).toBe("unconfirmed");
+  });
+});
+
+describe("tern, a create that worked", () => {
+  test("a snapshot that fails after the create, and a snapshot with no fresh pane, are unconfirmed on a tab and on a space", async () => {
+    // A daemon that answers until the create ran, and not after.
+    const goneAfterCreate = (): TernMux => {
+      const lost = new FakeTern();
+      const run = lost.run.bind(lost);
+      let made = false;
+      lost.run = (args, stdin) => {
+        if (args[0] === "new") {
+          made = true;
+          return run(args, stdin);
+        }
+        return made ? Promise.resolve({ code: 1, stdout: "", stderr: "daemon gone" }) : run(args, stdin);
+      };
+      return new TernMux(lost);
+    };
+    const spaceId = (await new TernMux(new FakeTern()).snapshot()).spaces[0]?.spaceId ?? "1";
+    expect(reasonOf(await goneAfterCreate().createTab({ spaceId }))).toBe("unconfirmed");
+    expect(reasonOf(await goneAfterCreate().createSpace({ cwd: "/tmp", label: "y" }))).toBe("unconfirmed");
+
+    const nothing = new FakeTern();
+    const nothingRun = nothing.run.bind(nothing);
+    nothing.run = (args, stdin) => (args[0] === "new" ? Promise.resolve({ code: 0, stdout: "", stderr: "" }) : nothingRun(args, stdin));
+    const quiet = new TernMux(nothing);
+    const tab = await quiet.createTab({ spaceId });
+    expect(reasonOf(tab)).toBe("unconfirmed");
+    expect(tab.ok ? "" : tab.detail).toBe("tab was created but fresh pane was not found");
+    expect(reasonOf(await quiet.createSpace({ cwd: "/tmp", label: "z" }))).toBe("unconfirmed");
   });
 });
 

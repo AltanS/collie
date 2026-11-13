@@ -229,8 +229,10 @@ export class TernMux implements MuxAdapter {
     const result = await this.attemptCreate(args);
     if (!result.ok) return result;
 
+    // The tab is made. A snapshot that cannot be read now, or shows no fresh pane, does not say it failed:
+    // the route looks (bridge/create-confirm.ts) before anything is said or made again.
     const afterLook = await this.attemptSnapshot();
-    if (!afterLook.ok) return afterLook;
+    if (!afterLook.ok) return muxUnconfirmed(afterLook.detail);
     const beforeIds = new Set(before.panes.map((p) => p.paneId));
     const created = afterLook.value.panes.find((p) => p.alive && !beforeIds.has(p.paneId));
     if (created) {
@@ -245,7 +247,7 @@ export class TernMux implements MuxAdapter {
         cwd: created.cwd,
       });
     }
-    return muxRefused("tab was created but fresh pane was not found");
+    return muxUnconfirmed("tab was created but fresh pane was not found");
   }
 
   async renameTab(tabId: string, label: string): Promise<MuxAck> {
@@ -285,8 +287,9 @@ export class TernMux implements MuxAdapter {
     const result = await this.attemptCreate(args);
     if (!result.ok) return result;
 
+    // The session is made: see createTab for why a failed read is not a failed create.
     const afterLook = await this.attemptSnapshot();
-    if (!afterLook.ok) return afterLook;
+    if (!afterLook.ok) return muxUnconfirmed(afterLook.detail);
     const beforeIds = new Set(before.panes.map((p) => p.paneId));
     const created = afterLook.value.panes.find((p) => p.alive && !beforeIds.has(p.paneId));
     if (created) {
@@ -298,7 +301,7 @@ export class TernMux implements MuxAdapter {
         cwd: created.cwd,
       });
     }
-    return muxRefused("space was created but fresh pane was not found");
+    return muxUnconfirmed("space was created but fresh pane was not found");
   }
 
   async listSessions(): Promise<MuxOutcome<readonly MuxSession[]>> {

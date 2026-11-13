@@ -628,7 +628,8 @@ export class TmuxMux implements MuxAdapter {
     const result = await this.attemptCreate(args);
     if (!result.ok) return result;
     const created = parseCreated(result.value.stdout);
-    if (created === null) return muxRefused(`tmux created something and reported no pane id: ${result.value.stdout.trim()}`);
+    // Something was made and its identity is unknown: not a failure, the route looks (bridge/create-confirm.ts).
+    if (created === null) return muxUnconfirmed(`tmux created something and reported no pane id: ${result.value.stdout.trim()}`);
     return muxOk({
       paneId: created.paneId,
       spaceId: created.sessionId,
