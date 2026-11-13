@@ -581,7 +581,7 @@ function MatchGroup() {
   const [caseId, setCaseId] = useState<CaseId>(isCaseId(asked) ? asked : "busy");
   return (
     <>
-      <div className="sticky top-0 z-40 -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm">
+      <div className="sticky top-[var(--pg-top,0px)] z-20 -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm lg:top-0">
         <Segmented name="Case" value={caseId} options={CASES} onChange={setCaseId} />
       </div>
       <Group title="The chosen look, on the option's data">

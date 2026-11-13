@@ -416,7 +416,7 @@ function TopBar({ finder, activeId }: { finder: FinderState; activeId: string })
       {finder.found.length > 0 && (
         // With a query the matches wrap, so every one is in view without a sideways scroll; the box
         // stops at a share of the screen, so the keyboard never pushes the field out of it.
-        <div className={cn("pt-2", searching ? "max-h-[40dvh] overflow-y-auto" : "pg-scroll-row")}>
+        <div className={cn("pt-2", searching ? "max-h-[25dvh] overflow-y-auto" : "pg-scroll-row")}>
           <TabBar orientation="horizontal" wrap={searching} sections={finder.found} activeId={activeId} onSelect={finder.onOpen} />
         </div>
       )}

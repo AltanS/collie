@@ -230,7 +230,7 @@ export function TokenLabelSection() {
   const word = WORDS[words];
   return (
     <Section def={DEF}>
-      <div className="sticky top-0 z-40 -mx-4 flex flex-wrap items-center gap-2 bg-background/95 px-4 py-2 backdrop-blur-sm">
+      <div className="sticky top-[var(--pg-top,0px)] z-20 -mx-4 flex flex-wrap items-center gap-2 bg-background/95 px-4 py-2 backdrop-blur-sm lg:top-0">
         <Segmented name="Theme" value={isShippedThemeId(active.id) ? active.id : "collie"} options={THEME_OPTIONS} onChange={setActiveTheme} />
         <Segmented name="Half" value={resolved} options={HALF_OPTIONS} onChange={setTheme} />
         <Segmented name="Width" value={width} options={WIDTH_OPTIONS} onChange={setWidth} />
