@@ -5783,8 +5783,11 @@ export class SendProtocol {
    * no longer reads as `base` did, or with no frame a read holds more of the text's first characters
    * than `base`). When it shows, the run goes on: the caller's S1 proves the whole text before any
    * submit key, as for any write, or ends `typed_not_submitted` with what stands in the box. When no
-   * read shows it, nothing of it is in the box, and the write is refused as before (`write_failed`,
-   * with the multiplexer's sentence). The request's bound grows by the wait, so S1 keeps its own.
+   * read shows it, the run ends `unknown(no_evidence)` with the multiplexer's sentence, never a
+   * refusal: "not seen in 3.2 s" is a time-out too, and the text may still land after it. A refusal
+   * would tell the phone that nothing was typed, and a retap would type the text twice; `unknown` keeps
+   * the draft and makes the next tap with the same text ask "Send it again?" (M100 spec 03). The
+   * request's bound grows by the wait, so S1 keeps its own.
    */
   private async unconfirmedWrite(state: RunState, base: Snap, text: string, detail: string): Promise<void> {
     this.stretch(state, UNCONFIRMED_WRITE.ms);
@@ -5797,7 +5800,7 @@ export class SendProtocol {
       return head.length > 0 && countIn(snap.texts, head) > countIn(base.texts, head) ? "pass" : "wait";
     };
     const seen = await this.poll(state, "write", UNCONFIRMED_WRITE, shows);
-    if (seen.verdict !== "pass") throw new Ended("refused", "write_failed", { detail });
+    if (seen.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail });
   }
 
   /**
