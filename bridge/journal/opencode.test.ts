@@ -902,6 +902,26 @@ describe("OpencodeTranscriptSource — the 2.1 upgrade layout", () => {
     await rm(base, { recursive: true, force: true });
   });
 
+  test("nameProbe on a database another process holds locked says nothing and never waits on it", async () => {
+    const { base, root, db } = await fixture();
+    db.close();
+    const journal = opencodeJournal(root);
+    const sessionKey = (await new OpencodeTranscriptSource(root).resolve({ kind: "id", value: LEGACY_SID }))!;
+    expect(sessionKey).not.toBeNull();
+    // OpenCode mid-write: an exclusive lock in rollback journal mode keeps every reader out.
+    const writer = new Database(join(root, "opencode.db"));
+    writer.run("pragma journal_mode = delete");
+    writer.run("begin exclusive");
+    writer.run("update session_v2 set title = 'mid write' where id = ?", [LEGACY_SID]);
+    const started = performance.now();
+    expect(await journal.nameProbe?.({ kind: "id", value: LEGACY_SID })).toBeNull();
+    expect(performance.now() - started).toBeLessThan(2000);
+    writer.run("rollback");
+    writer.close();
+    expect(await journal.nameProbe?.({ kind: "id", value: LEGACY_SID })).toEqual({ agent: "legacy session" });
+    await rm(base, { recursive: true, force: true });
+  });
+
   test("a fresh session with no rows yet still resolves to the generation that will write it", async () => {
     const { base, root, db } = await fixture();
     const fresh = "ses_freshV2session00001";

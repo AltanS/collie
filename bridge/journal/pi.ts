@@ -1502,8 +1502,11 @@ export class PiTranscriptSource implements TranscriptSource {
  *
  * Oh My Pi 18.10 keeps the session's CURRENT title in a padded `title` row at the top of the file and
  * rewrites it in place (measured 2026-11-13: line 1 of every session that has one), and logs each
- * change as a `title_change` row. Both carry `source`: `auto` is the title Oh My Pi gave the session, any
- * other source is a title the person set. pi 1.1.0 appends a `session_info` row with the `name` the
+ * change as a `title_change` row. Both carry `source`, typed `"auto" | "user"` in Oh My Pi
+ * (`TitleChangeEntry` in pi-agent-core `compaction/entries.ts`, `SessionTitleSource` in pi-coding-agent
+ * `session/agent-session.ts`, read 2026-11-13 on 18.6.1): `user` is a title the person set, `auto` the
+ * one Oh My Pi gave the session. Only `user` counts as the person's: a missing or unknown source is the
+ * agent's, so `COLLIE_REDACT` masks it. pi 1.1.0 appends a `session_info` row with the `name` the
  * person gave (`/name`). An empty title or name clears it.
  */
 async function piNameProbe(source: PiTranscriptSource, ref: AgentSessionRef): Promise<NameReading | null> {
@@ -1513,10 +1516,13 @@ async function piNameProbe(source: PiTranscriptSource, ref: AgentSessionRef): Pr
   return piNamesOf(head, tail?.lines ?? []);
 }
 
-/** Which of the two names a pi title row sets: the agent's own on `auto` or no source, else the person's. */
+/** The `source` values that mark a title the person set (see {@link piNameProbe}). */
+const PERSON_TITLE_SOURCES: ReadonlySet<string> = new Set(["user"]);
+
+/** Which of the two names a pi title row sets: the person's on a known person source, else the agent's. */
 function titleSide(row: JsonObject): "person" | "agent" {
   const from = stringField(row, "source");
-  return from === undefined || from === "auto" ? "agent" : "person";
+  return from !== undefined && PERSON_TITLE_SOURCES.has(from) ? "person" : "agent";
 }
 
 /** The names in a pi log's head row and tail window, newest wins (see {@link piNameProbe}). Pure. */

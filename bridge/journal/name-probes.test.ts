@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { JsonObject } from "../json.ts";
 import { claudeJournal, claudeNamesOf } from "./claude.ts";
 import { piJournal, piNamesOf } from "./pi.ts";
+import { NAME_HEAD_BYTES } from "./name-probe.ts";
 
 // Each harness's nameProbe (JournalAdapter.nameProbe): which rows name a session, and whether the
 // person or the agent set the name. The row shapes are copied from real logs, 2026-11-13: Claude Code
@@ -58,8 +59,19 @@ describe("pi and Oh My Pi: piNamesOf", () => {
     });
   });
 
-  test("a header title from another source is the person's name", () => {
+  test("a header title from the user source is the person's name", () => {
     expect(piNamesOf(header("release prep", "user"), [])).toEqual({ person: "release prep" });
+  });
+
+  test("an unknown or missing source is the agent's title, so the mask covers it", () => {
+    expect(piNamesOf(header("Rotate the key", "imported"), [])).toEqual({ agent: "Rotate the key" });
+    const { source: _none, ...bare } = header("No source");
+    expect(piNamesOf(bare, [])).toEqual({ agent: "No source" });
+    expect(piNamesOf(null, [row({ type: "title_change", title: "From a plugin", source: "plugin" })])).toEqual({ agent: "From a plugin" });
+  });
+
+  test("a tail with no title rows names nothing, so the tracker keeps the last name", () => {
+    expect(piNamesOf({ type: "session", id: "x" }, [row({ type: "message", id: "m1" })])).toEqual({});
   });
 
   test("an empty header title clears the agent's title, and outranks an older title_change in the tail", () => {
@@ -75,6 +87,18 @@ describe("pi and Oh My Pi: piNamesOf", () => {
   test("pi's session_info name is the person's name", () => {
     const tail = [row({ type: "session_info", id: "n1", parentId: "p0", name: "a name" })];
     expect(piNamesOf({ type: "session", id: "x" }, tail)).toEqual({ person: "a name" });
+  });
+
+  test("a first row longer than the 4 KB head window is no header: the tail's title_change stands in", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "collie-pi-names-")));
+    const folder = join(root, "--home-you-demo--");
+    await mkdir(folder, { recursive: true });
+    const file = join(folder, "2026-10-25T09-26-39-663Z_01a17262-2f2f-76c6-879e-042be1195276.jsonl");
+    // Oh My Pi's title slot is 256 bytes (SESSION_TITLE_SLOT_BYTES); a longer first row is not its slot.
+    const long = { ...header("Head title"), pad: " ".repeat(NAME_HEAD_BYTES + 100) };
+    await writeFile(file, `${[row(long), row({ type: "title_change", title: "Tail title", source: "auto" })].join("\n")}\n`);
+    expect(await piJournal(root).nameProbe?.({ kind: "path", value: file })).toEqual({ agent: "Tail title" });
+    await rm(root, { recursive: true, force: true });
   });
 
   test("the adapter reads the header and the tail off a real log", async () => {

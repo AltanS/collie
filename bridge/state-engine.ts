@@ -1,7 +1,7 @@
 import type { AgentSessionRef, ForegroundProcess } from "./journal/types.ts";
 import type { MuxAdapter, MuxAttention, MuxPane } from "./mux/types.ts";
 import { SCREEN_NAME_READERS } from "./harness-name-sources.ts";
-import { normalizeTitle, type SessionTitles } from "./session-title.ts";
+import { normalizeTerminalTitle, normalizeTitle, type SessionTitles } from "./session-title.ts";
 import {
   type AgentStatus,
   type AgentView,
@@ -284,7 +284,7 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // Every multiplexer's title goes through the one normalizer (session-title.ts), so a spinner glyph,
   // a control byte or an endless title reads the same way on tmux, zellij, tern and the durable adapter
   // as it already did on Herdr. The stale check below still reads the raw title.
-  const title = normalizeTitle(pane.terminalTitle);
+  const title = normalizeTerminalTitle(pane.terminalTitle);
   if (title !== undefined) view.terminalTitle = title;
   // The program's own line under the title and its small mark, from an adapter with no screen. Absent
   // stays absent, so every other pane is byte-identical.

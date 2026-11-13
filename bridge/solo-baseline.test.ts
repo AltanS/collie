@@ -1435,6 +1435,10 @@ const STATE_DIR_ENTRIES = [
   // line. Written by use and by nothing else: absent until the first line sent to a shell pane, or the
   // first one-off run, that the skip rules keep. `COLLIE_SENT=off` never writes it.
   "sent.jsonl",
+  // The last names of each harness session (bridge/session-titles-store.ts), so a `/rename` name stays
+  // after a restart. Written by use and by nothing else: absent until a harness log first names a
+  // session. Transcripts off never builds the tracker, so it never writes it.
+  "session-titles.json",
   "snooze.json",
   // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
   // else: absent until the first starter run, which only a peer on `COLLIE_MUX=durable` can offer.

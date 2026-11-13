@@ -14,7 +14,15 @@
 //
 // A READ THAT SAYS NOTHING KEEPS THE LAST NAME. A failed stat or probe, or a window that holds no name
 // row, keeps what the last successful read found (a 128 KB tail is a window, not the log). Only an
-// explicit `null` from the probe drops a name: the records prove it was cleared.
+// explicit `null` from the probe drops a name: the records prove it was cleared. The last names also
+// outlive the bridge: with a store (session-titles-store.ts), a session the tracker has not read since
+// it started is seeded from the file, and each change is written back.
+//
+// ONE LOOK AT A TIME PER MULTIPLEXER SESSION. The poll fires `refresh` and does not wait, so a slow disk
+// could start a second look before the first ended and read every log twice inside the floor. A
+// refresh for a session whose last refresh is still running returns at once. The cache tracker reads
+// the same tail on its own schedule; sharing one read between them would tie the two floors together,
+// so each keeps its own read.
 //
 // OWNERSHIP AND THE REAP are the cache tracker's too: each entry remembers the multiplexer session and
 // the pane it was read for, and a poll forgets only its own session's entries whose pane left the list
@@ -26,6 +34,7 @@ import { QUERY_BACKED_AGENTS } from "./cache/tracker.ts";
 import { adapterFor } from "./journal/registry.ts";
 import type { AgentSessionRef, JournalAdapter } from "./journal/types.ts";
 import { normalizeTitle, type NameReading, type SessionTitles } from "./session-title.ts";
+import type { RememberedTitles, SessionTitleStore } from "./session-titles-store.ts";
 import { journalAgentOf, type AgentView } from "./types.ts";
 
 export const DEFAULT_TITLE_FLOOR_MS = 5000;
@@ -34,6 +43,8 @@ export const DEFAULT_TITLE_QUERY_FLOOR_MS = 10_000;
 export interface SessionTitleTrackerOptions {
   floorMs?: number;
   queryFloorMs?: number;
+  /** Where the last names outlive a restart. None: memory only. */
+  store?: Pick<SessionTitleStore, "load" | "save">;
 }
 
 interface Entry {
@@ -52,6 +63,14 @@ export class SessionTitleTracker {
 
   private readonly queryFloorMs: number;
 
+  private readonly store: Pick<SessionTitleStore, "load" | "save"> | undefined;
+
+  /** The last names of every session, by session id, as the store keeps them. */
+  private remembered = new Map<string, RememberedTitles>();
+
+  /** The multiplexer sessions whose refresh is running now. */
+  private readonly running = new Set<string>();
+
   constructor(
     private readonly registry: Record<string, JournalAdapter>,
     private readonly now: () => number,
@@ -59,6 +78,14 @@ export class SessionTitleTracker {
   ) {
     this.floorMs = options.floorMs ?? DEFAULT_TITLE_FLOOR_MS;
     this.queryFloorMs = options.queryFloorMs ?? DEFAULT_TITLE_QUERY_FLOOR_MS;
+    this.store = options.store;
+  }
+
+  /** Read the store once, at boot, before the first refresh. Never throws. */
+  async restore(): Promise<void> {
+    if (this.store === undefined) return;
+    const kept = await this.store.load();
+    for (const [id, row] of kept) if (!this.remembered.has(id)) this.remembered.set(id, row);
   }
 
   /** The cleaned names of one harness session, or undefined. A synchronous map read. */
@@ -75,8 +102,19 @@ export class SessionTitleTracker {
 
   /** Walk the agent panes and bring their names up to date. NEVER THROWS. */
   async refresh(panes: readonly AgentView[], scope: { session?: string } = {}): Promise<void> {
+    const slot = scope.session ?? "";
+    if (this.running.has(slot)) return;
+    this.running.add(slot);
+    try {
+      await this.refreshNow(panes, scope.session);
+    } finally {
+      this.running.delete(slot);
+    }
+  }
+
+  private async refreshNow(panes: readonly AgentView[], session: string | undefined): Promise<void> {
     const at = this.now();
-    const session = scope.session;
+    let changed = false;
     const named = new Map<string, string | undefined>();
     for (const pane of panes) {
       const ref = pane.agentSession;
@@ -91,11 +129,30 @@ export class SessionTitleTracker {
         this.bySession.set(ref.value, { ...entry, ...owner });
         continue;
       }
-      await this.look(adapter, ref, at, owner, entry);
+      const seeded = entry ?? this.seed(ref.value);
+      await this.look(adapter, ref, at, owner, seeded);
+      if (this.remember(ref.value, at)) changed = true;
     }
     for (const [key, entry] of this.bySession) {
       if (entry.session === session && departed(named, key, entry.paneId)) this.bySession.delete(key);
     }
+    if (changed && this.store !== undefined) await this.store.save(this.remembered);
+  }
+
+  /** A first look's starting point: the names the store kept, never read against a stat. */
+  private seed(key: string): Entry | undefined {
+    const kept = this.remembered.get(key);
+    return kept === undefined ? undefined : { session: undefined, paneId: "", lastProbedAt: Number.NEGATIVE_INFINITY, seen: null, titles: kept.titles };
+  }
+
+  /** Copy a session's names into the kept map; true when they differ from what was kept. */
+  private remember(key: string, at: number): boolean {
+    const titles = this.bySession.get(key)?.titles ?? {};
+    const kept = this.remembered.get(key)?.titles ?? {};
+    if (titles.person === kept.person && titles.agent === kept.agent) return false;
+    if (titles.person === undefined && titles.agent === undefined) this.remembered.delete(key);
+    else this.remembered.set(key, { titles, at });
+    return true;
   }
 
   /** One session's look: stat it, and read its names only when the stat moved. */

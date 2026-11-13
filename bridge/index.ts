@@ -16,6 +16,7 @@ import { trackActivity } from "./activity-tracking.ts";
 import { CacheTracker } from "./cache/tracker.ts";
 import { ARGV_NAMED_AGENT } from "./harness-name-sources.ts";
 import { SessionTitleTracker } from "./session-titles.ts";
+import { SessionTitleStore } from "./session-titles-store.ts";
 import { CacheWarden } from "./cache/warden.ts";
 import { CacheWatchStore } from "./cache/watch.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
@@ -895,8 +896,10 @@ const museNames = cfg.transcript ? museSessionNameReader(cfg.journalRoots.muse) 
 // What each harness session is called in its own journal (bridge/session-titles.ts): a name the person
 // set in the harness, and the agent's own title. One tracker for the whole bridge, keyed by session id,
 // read by every engine from memory and refreshed on each session's poll. Null with transcripts off, and
-// every pane then keeps the screen read and its fallbacks exactly as before.
-const sessionTitles = journals === null ? null : new SessionTitleTracker(journals, () => Date.now());
+// every pane then keeps the screen read and its fallbacks exactly as before. The last names outlive a
+// restart in the state folder (bridge/session-titles-store.ts), loaded once here before any poll.
+const sessionTitles = journals === null ? null : new SessionTitleTracker(journals, () => Date.now(), { store: new SessionTitleStore(cfg) });
+await sessionTitles?.restore();
 const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
 const paneCache =
   journals === null

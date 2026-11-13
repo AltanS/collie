@@ -4,6 +4,7 @@ import { NO_CURSOR } from "./journal/cursor.ts";
 import { NO_CHANGE, noQueue, noUnknowns } from "./journal/reduce.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import type { NameReading } from "./session-title.ts";
+import type { RememberedTitles } from "./session-titles-store.ts";
 import { mergeTitles, SessionTitleTracker } from "./session-titles.ts";
 import type { AgentView } from "./types.ts";
 
@@ -71,11 +72,11 @@ function clock(start = NOW) {
 
 describe("mergeTitles", () => {
   test("a read replaces, cleaned; a null clears; a missing field keeps the last name", () => {
-    expect(mergeTitles({}, { person: "  ✳ migrate  bluefin ", agent: "Auto" })).toEqual({ person: "migrate bluefin", agent: "Auto" });
+    expect(mergeTitles({}, { person: "  🚀 migrate  bluefin ", agent: "Auto" })).toEqual({ person: "🚀 migrate bluefin", agent: "Auto" });
     expect(mergeTitles({ person: "old", agent: "Auto" }, { person: null })).toEqual({ agent: "Auto" });
     expect(mergeTitles({ person: "old", agent: "Auto" }, {})).toEqual({ person: "old", agent: "Auto" });
-    // A name the normalizer reads as nothing (a bare glyph) is no evidence, so the last one stands.
-    expect(mergeTitles({ agent: "Auto" }, { agent: "◐" })).toEqual({ agent: "Auto" });
+    // A name the normalizer reads as nothing (zero-width characters only) is no evidence, so the last one stands.
+    expect(mergeTitles({ agent: "Auto" }, { agent: "\u200B\u2060" })).toEqual({ agent: "Auto" });
   });
 });
 
@@ -162,5 +163,52 @@ describe("SessionTitleTracker", () => {
     // The pane left: its entry goes.
     await tracker.refresh([], { session: "b" });
     expect(tracker.get("s2")).toBeUndefined();
+  });
+
+  test("after a restart, a session whose tail lost its title rows keeps the name the store kept", async () => {
+    const saved: Map<string, RememberedTitles>[] = [];
+    const store = { load: async () => new Map<string, RememberedTitles>(), save: async (all: ReadonlyMap<string, RememberedTitles>) => void saved.push(new Map(all)) };
+    const first = fakeAdapter("claude");
+    const before = new SessionTitleTracker({ claude: first.adapter }, () => NOW, { store });
+    await before.refresh([pane("claude", "s1")]);
+    expect(saved.at(-1)?.get("s1")?.titles).toEqual({ person: "migrate bluefin", agent: "Bluefin migration" });
+
+    // The bridge restarts. The tail now holds only the agent's newer title row, no `/rename` row.
+    const second = fakeAdapter("claude");
+    second.state.reading = { agent: "Bluefin migration, part two" };
+    const after = new SessionTitleTracker({ claude: second.adapter }, () => NOW, { store: { ...store, load: async () => saved.at(-1)! } });
+    await after.restore();
+    await after.refresh([pane("claude", "s1")]);
+    expect(after.get("s1")).toEqual({ person: "migrate bluefin", agent: "Bluefin migration, part two" });
+  });
+
+  test("an unchanged read writes nothing back", async () => {
+    let saves = 0;
+    const store = { load: async () => new Map<string, RememberedTitles>(), save: async () => void saves++ };
+    const { adapter, state } = fakeAdapter("claude");
+    const c = clock();
+    const tracker = new SessionTitleTracker({ claude: adapter }, c.now, { floorMs: 0, store });
+    await tracker.refresh([pane("claude", "s1")]);
+    state.stat = { size: 20, mtimeMs: 200 };
+    c.advance(1);
+    await tracker.refresh([pane("claude", "s1")]);
+    expect(saves).toBe(1);
+  });
+
+  test("a refresh while the last one for the same session still runs returns at once", async () => {
+    const { adapter, calls } = fakeAdapter("claude");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slow: JournalAdapter = { ...adapter, nameProbe: async (ref) => (await gate, adapter.nameProbe!(ref)) };
+    const tracker = new SessionTitleTracker({ claude: slow }, () => NOW, { floorMs: 0 });
+    const first = tracker.refresh([pane("claude", "s1")], { session: "a" });
+    await tracker.refresh([pane("claude", "s1")], { session: "a" });
+    // Another multiplexer session is not held up by session a's look.
+    const other = tracker.refresh([pane("claude", "s2", "w2:p1")], { session: "b" });
+    release();
+    await Promise.all([first, other]);
+    expect(calls.probe).toBe(2);
+    expect(tracker.get("s1")).toBeDefined();
+    expect(tracker.get("s2")).toBeDefined();
   });
 });
