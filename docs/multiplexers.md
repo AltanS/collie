@@ -478,7 +478,7 @@ Behavior details for Claude configuration changes:
 - Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
   preserved. `hooks uninstall claude` removes only Collie entries.
 - **Leaves your statusLine alone unless you ask.** Without a flag the install does not touch
-  `statusLine`. You still get the context dot beside the model above the belt: the hooks read the
+  `statusLine`. You still get the context figure beside the model above the belt: the hooks read the
   session transcript, and the window size from the session start.
 - **The 5-hour and 7-day windows show on their own.** They need no hook and no statusLine. While a
   Claude pane is open, the bridge reads your Claude login on this machine

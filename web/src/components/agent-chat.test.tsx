@@ -4838,7 +4838,7 @@ describe("AgentChat — the model label and a footer that already names it", () 
     expect(tag(container)).toBeNull();
   });
 
-  it("with a gauge to draw, the tag names the model beside the dots even while the screen names it", () => {
+  it("with a gauge to draw, the tag names the model beside the figures even while the screen names it", () => {
     terminal();
     const footer = pane("codex--v0157-idle.txt");
     const usage = { context: 42, limits: [{ window: "5h" as const, used: 30 }] };
@@ -4846,7 +4846,7 @@ describe("AgentChat — the model label and a footer that already names it", () 
     expect(screen.getAllByText(/GPT-6-Luna low/).length).toBeGreaterThan(0); // the footer names it
     const shown = tag(container);
     expect(shown?.querySelector("[aria-hidden]")?.textContent).toContain("gpt-6-luna · low");
-    expect(shown?.querySelectorAll('[data-slot="usage-dots"]').length).toBe(2);
+    expect([...(shown?.querySelectorAll('[data-slot="usage-percent"]') ?? [])].map((f) => f.textContent)).toEqual(["42%", "30%"]);
     cleanup();
     // No gauge: the model alone would repeat the footer, so there is no tag at all.
     const bare = renderChat({ text: footer, agent: on("codex", "gpt-6-luna", { usage: {} }) });

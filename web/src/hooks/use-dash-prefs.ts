@@ -1,10 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "@/lib/json";
 
 import type { ChangesLayout } from "@/lib/changes-tree";
 import { coerceDashView, isLegacyDashView, wasFocusView, type DashView } from "@/lib/dash-view";
 import { coercePaneOrder, type PaneOrder } from "@/lib/pane-order";
 import { coercePaneView, type PaneView } from "@/lib/pane-view";
+import { coerceUsageRow, DEFAULT_USAGE_ROW, type UsageRow } from "@/lib/usage-row";
 import { coerceZoomPill, type ZoomPill } from "@/lib/zoom-pill";
 import { setPageZoomAllowed } from "@/lib/page-zoom";
 import type { RecentDir } from "@/lib/triage";
@@ -132,6 +133,11 @@ export interface DashPrefs {
    * view's own zoom (components/output-zoom.tsx) handles its pinch itself and works either way.
    */
   pageZoom: boolean;
+  /**
+   * How the usage row of a session draws its gauges: a whole `percent` (the default) or five `dots`
+   * (lib/usage-row.ts). Read by the model tag, wherever it is drawn (components/model-tag.tsx).
+   */
+  usageRow: UsageRow;
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
@@ -167,6 +173,7 @@ const DEFAULTS: DashPrefs = {
   paneView: "chat",
   zoomPill: null,
   pageZoom: true,
+  usageRow: DEFAULT_USAGE_ROW,
 };
 
 function coerceDepth(raw: JsonValue | undefined): number {
@@ -247,6 +254,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     paneView: coercePaneView(p.paneView),
     zoomPill: coerceZoomPill(p.zoomPill),
     pageZoom: asJsonBoolean(p.pageZoom) ?? DEFAULTS.pageZoom,
+    usageRow: coerceUsageRow(p.usageRow),
   };
 }
 
@@ -303,10 +311,28 @@ export interface UseDashPrefsReturn {
   setPaneView: (view: PaneView) => void;
   setZoomPill: (choice: ZoomPill) => void;
   setPageZoom: (on: boolean) => void;
+  setUsageRow: (choice: UsageRow) => void;
 }
+
+/**
+ * THE OTHER READERS OF A CHANGED PREF. Every hook call keeps its own copy of the stored prefs, which is
+ * enough for a control and the page it sits on, but not for a reader that stays mounted while the
+ * choice is made elsewhere: the model tag of a strip column (wide layout) stays on screen while
+ * Settings is open beside it. A write tells every copy its patch, and each applies it in memory; the
+ * writer's own call stores it.
+ */
+type PrefsListener = (patch: Partial<DashPrefs>) => void;
+const listeners = new Set<PrefsListener>();
 
 export function useDashPrefs(): UseDashPrefsReturn {
   const [prefs, setPrefs] = useState<DashPrefs>(loadPrefs);
+  useEffect(() => {
+    const listener: PrefsListener = (patch) => setPrefs((p) => ({ ...p, ...patch }));
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
 
   const update = useCallback((patch: Partial<DashPrefs>) => {
     setPrefs((p) => {
@@ -314,6 +340,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
       savePrefs(next);
       return next;
     });
+    for (const listener of listeners) listener(patch);
   }, []);
 
   const setSpacesOpen = useCallback((spacesOpen: boolean) => update({ spacesOpen }), [update]);
@@ -334,6 +361,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setShowCompactions = useCallback((showCompactions: boolean) => update({ showCompactions }), [update]);
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
+  const setUsageRow = useCallback((usageRow: UsageRow) => update({ usageRow }), [update]);
   const setZoomPill = useCallback((zoomPill: ZoomPill) => update({ zoomPill }), [update]);
   const setPageZoom = useCallback(
     (pageZoom: boolean) => {
@@ -388,5 +416,6 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setPaneView,
     setZoomPill,
     setPageZoom,
+    setUsageRow,
   };
 }

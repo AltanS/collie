@@ -1,8 +1,12 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { formatCost, hasFigure, hasGauge, MODEL_TAG_ROOM, ModelTag, modelTagShows } from "./model-tag";
 import type { StatusItem } from "./trick-status-item";
+import { UsageRowControl } from "./usage-row-control";
+
+afterEach(() => localStorage.clear());
 
 describe("ModelTag", () => {
   it("draws the short model name, named for a screen reader, and takes no touch", () => {
@@ -40,11 +44,11 @@ describe("ModelTag", () => {
   });
 });
 
-describe("ModelTag usage dots", () => {
+describe("ModelTag usage dots (the Dots choice)", () => {
   const usage = { context: 42, limits: [{ window: "5h" as const, used: 58 }, { window: "7d" as const, used: 81 }] };
 
   it("draws a gauge per reported number after the model, five dots each, and says the figures", () => {
-    const { container } = render(<ModelTag model="claude-opus-5-5" effort="high" usage={usage} />);
+    const { container } = render(<ModelTag model="claude-opus-5-5" effort="high" usage={usage} usageRow="dots" />);
     const tag = container.querySelector("[data-slot='model-tag']");
     expect(tag?.querySelector("[aria-hidden]")?.textContent).toBe("Opus 5.5 · highctx5h7d");
     const gauges = [...container.querySelectorAll("[data-gauge]")].map((g) => g.getAttribute("data-gauge"));
@@ -64,7 +68,7 @@ describe("ModelTag usage dots", () => {
   });
 
   it("draws the dots alone while the screen names the model, and only the gauges reported", () => {
-    const { container } = render(<ModelTag model={undefined} effort="high" usage={{ context: 7 }} />);
+    const { container } = render(<ModelTag model={undefined} effort="high" usage={{ context: 7 }} usageRow="dots" />);
     expect(container.querySelector("[aria-hidden]")?.textContent).toBe("ctx");
     expect(container.querySelector(".sr-only")?.textContent).toBe("Context 7% used");
   });
@@ -78,7 +82,7 @@ describe("ModelTag usage dots", () => {
 
   it("lights one dot per full fifth, so only 100% lights the fifth", () => {
     const lit = (context: number) =>
-      render(<ModelTag model={undefined} usage={{ context }} />).container.querySelector("[data-slot='usage-dots']")?.getAttribute("data-lit");
+      render(<ModelTag model={undefined} usage={{ context }} usageRow="dots" />).container.querySelector("[data-slot='usage-dots']")?.getAttribute("data-lit");
     // One dot per FULL fifth: only a full window lights the fifth dot.
     expect(lit(0)).toBe("0");
     expect(lit(19)).toBe("0");
@@ -86,6 +90,94 @@ describe("ModelTag usage dots", () => {
     expect(lit(81)).toBe("4");
     expect(lit(99)).toBe("4");
     expect(lit(100)).toBe("5");
+  });
+});
+
+describe("ModelTag usage percent (the default)", () => {
+  const usage = { context: 19, limits: [{ window: "5h" as const, used: 58 }, { window: "7d" as const, used: 83 }] };
+  const figures = (container: HTMLElement) => [...container.querySelectorAll("[data-slot='usage-percent']")];
+
+  it("draws a whole percentage per gauge, in the same labels and order, and no dots", () => {
+    const { container } = render(<ModelTag model="claude-opus-5-5" effort="medium" usage={usage} />);
+    const tag = container.querySelector("[data-slot='model-tag']");
+    expect(tag?.querySelector("[aria-hidden]")?.textContent).toBe("Opus 5.5 · mediumctx19%5h58%7d83%");
+    expect([...container.querySelectorAll("[data-gauge]")].map((g) => g.getAttribute("data-gauge"))).toEqual(["context", "5h", "7d"]);
+    expect(figures(container).map((f) => f.textContent)).toEqual(["19%", "58%", "83%"]);
+    expect(container.querySelector("[data-slot='usage-dots']")).toBeNull();
+    expect(figures(container).every((f) => f.className.includes("tabular-nums"))).toBe(true);
+    // The screen reader keeps the sentence it always had.
+    expect(tag?.querySelector(".sr-only")?.textContent).toBe(
+      "Model Opus 5.5 · medium. Context 19% used. 5-hour limit 58% used. 7-day limit 83% used",
+    );
+  });
+
+  it("rounds to a whole number and holds it to 0 to 100", () => {
+    const text = (context: number) =>
+      render(<ModelTag model={undefined} usage={{ context }} />).container.querySelector("[data-slot='usage-percent']")?.textContent;
+    expect(text(0)).toBe("0%");
+    expect(text(18.6)).toBe("19%");
+    expect(text(41.4)).toBe("41%");
+    expect(text(100)).toBe("100%");
+    expect(text(130)).toBe("100%");
+    expect(text(-4)).toBe("0%");
+  });
+
+  it("takes the working colour from 80% and not before, as the dots do, never red", () => {
+    const tone = (context: number) => {
+      const el = render(<ModelTag model={undefined} usage={{ context }} />).container.querySelector("[data-slot='usage-percent']");
+      return [el?.hasAttribute("data-warn"), el?.className.includes("text-status-working")];
+    };
+    expect(tone(79)).toEqual([false, false]);
+    expect(tone(79.4)).toEqual([false, false]);
+    expect(tone(80)).toEqual([true, true]);
+    expect(tone(100)).toEqual([true, true]);
+  });
+
+  it("draws nothing for a gauge that is not reported, and never NaN% or 0% for it", () => {
+    const { container } = render(<ModelTag model="claude-opus-5-5" usage={{ context: Number.NaN, limits: [{ window: "7d", used: Number.POSITIVE_INFINITY }, { window: "5h", used: 12 }] }} />);
+    expect([...container.querySelectorAll("[data-gauge]")].map((g) => g.getAttribute("data-gauge"))).toEqual(["5h"]);
+    expect(container.textContent).not.toMatch(/NaN|Infinity/);
+    expect(figures(container).map((f) => f.textContent)).toEqual(["12%"]);
+    expect(render(<ModelTag model={undefined} usage={{ context: Number.NaN }} />).container.innerHTML).toBe("");
+    expect(hasGauge({ context: Number.NaN })).toBe(false);
+  });
+});
+
+describe("The Usage row setting reaches the tag", () => {
+  const usage = { context: 42, limits: [{ window: "7d" as const, used: 81 }] };
+  const stored = () => JSON.parse(localStorage.getItem("collie:dash-prefs:v1") ?? "{}");
+
+  it("is Percent on a device that never chose, and on a stored value it does not know", () => {
+    expect(render(<ModelTag model={undefined} usage={usage} />).container.querySelector("[data-slot='usage-percent']")).not.toBeNull();
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ usageRow: "bars" }));
+    expect(render(<ModelTag model={undefined} usage={usage} />).container.querySelector("[data-slot='usage-dots']")).toBeNull();
+  });
+
+  it("draws dots when the device stored Dots", () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ usageRow: "dots" }));
+    const { container } = render(<ModelTag model={undefined} usage={usage} />);
+    expect(container.querySelectorAll("[data-slot='usage-dots']")).toHaveLength(2);
+    expect(container.querySelector("[data-slot='usage-percent']")).toBeNull();
+  });
+
+  it("switches a tag that stays mounted when the choice is made in Settings, and stores it", async () => {
+    const { container } = render(
+      <>
+        <ModelTag model={undefined} usage={usage} />
+        <UsageRowControl />
+      </>,
+    );
+    expect(screen.getByRole("radiogroup", { name: "Usage row" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Percent" })).toHaveAttribute("aria-checked", "true");
+    expect(stored().usageRow).toBeUndefined();
+    await userEvent.click(screen.getByRole("radio", { name: "Dots" }));
+    expect(stored().usageRow).toBe("dots");
+    expect(screen.getByRole("radio", { name: "Dots" })).toHaveAttribute("aria-checked", "true");
+    expect(container.querySelectorAll("[data-slot='usage-dots']")).toHaveLength(2);
+    expect(container.querySelector("[data-slot='usage-percent']")).toBeNull();
+    await userEvent.click(screen.getByRole("radio", { name: "Percent" }));
+    expect(stored().usageRow).toBe("percent");
+    expect(container.querySelectorAll("[data-slot='usage-percent']")).toHaveLength(2);
   });
 });
 
@@ -124,7 +216,7 @@ describe("ModelTag session cost", () => {
   it("draws the cost after the last gauge, as a figure and not a gauge, and says it", () => {
     const { container } = render(<ModelTag model="claude-opus-5-5" usage={{ context: 42, cost: 0.1137 }} />);
     const tag = container.querySelector("[data-slot='model-tag']");
-    expect(tag?.querySelector("[aria-hidden]")?.textContent).toBe("Opus 5.5ctx$0.11");
+    expect(tag?.querySelector("[aria-hidden]")?.textContent).toBe("Opus 5.5ctx42%$0.11");
     const cost = container.querySelector("[data-slot='usage-cost']");
     expect(cost?.textContent).toBe("$0.11");
     expect(cost?.className).toContain("tabular-nums");

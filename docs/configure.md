@@ -1062,7 +1062,7 @@ logged. A folder that is not on disk at launch time falls back to home.
 
 ## Usage windows
 
-The dots beside the model show your 5-hour and 7-day limits for Claude and Codex, with no setup.
+The figures beside the model show your 5-hour and 7-day limits for Claude and Codex, with no setup. They read as a percentage of what is used (`7d 83%`) unless you choose dots in Settings, Appearance, Usage row.
 
 ```bash
 # turn every source off
@@ -1100,7 +1100,7 @@ Each source reads a different thing.
 
 `collie doctor` shows every source in its `account-windows` row: on or off, the file it reads and the host it asks. [Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the statusLine road.
 
-The context dot needs no setting. For pi, OMP, Codex and OpenCode, Collie reads the tokens of the last turn from the session log. It reads the model's window from Codex's log, or from the harness's own model list on disk (pi's `models-store.json`, OMP's `models.db`, OpenCode's `~/.cache/opencode/models.json`). A model that list does not name gets no context dot; the model name still shows. The tag also shows the session's cost in dollars after the dots when the harness reports one: Claude Code through the wrapped status line, pi, OMP and OpenCode from their logs. Codex has none, so its tag shows no cost.
+The context figure needs no setting. For pi, OMP, Codex and OpenCode, Collie reads the tokens of the last turn from the session log. It reads the model's window from Codex's log, or from the harness's own model list on disk (pi's `models-store.json`, OMP's `models.db`, OpenCode's `~/.cache/opencode/models.json`). A model that list does not name gets no context figure; the model name still shows. The tag also shows the session's cost in dollars after the figures when the harness reports one: Claude Code through the wrapped status line, pi, OMP and OpenCode from their logs. Codex has none, so its tag shows no cost.
 
 ## Dark mode / light mode
 

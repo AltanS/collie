@@ -3325,6 +3325,11 @@ export const en = {
   // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "settings.pageZoom.title": "Pinch to zoom",
   "settings.pageZoom.description": "Pinch the page to make it bigger. Off stops a stray pinch from zooming the app. The Screen view's own zoom works either way.",
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "settings.usageRow.title": "Usage row",
+  "settings.usageRow.description": "How the small model line shows context and limits: as the percent used, or as five dots.",
+  "settings.usageRow.option.percent": "Percent",
+  "settings.usageRow.option.dots": "Dots",
 
   // --- pins (M90: pinned messages): the block actions, the mark, the refusals ---
   "pins.action.pin": "Pin",
@@ -4186,6 +4191,10 @@ export const PENDING_TRANSLATION = [
   "settings.clearNotifications.failed.both",
   "settings.pageZoom.title",
   "settings.pageZoom.description",
+  "settings.usageRow.title",
+  "settings.usageRow.description",
+  "settings.usageRow.option.percent",
+  "settings.usageRow.option.dots",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

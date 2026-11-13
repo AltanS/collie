@@ -1,12 +1,14 @@
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import type { StatusItem } from "@/components/trick-status-item";
+import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
 import { hasResizeObserver } from "@/lib/env";
 import { effortLabel, modelLabel } from "@/lib/model-label";
 import { visibleStatusCount } from "@/lib/tricks/status";
 import type { PaneUsage } from "@/lib/types";
+import type { UsageRow } from "@/lib/usage-row";
 import { cn } from "@/lib/utils";
 
 // THE PANE'S MODEL, SMALL, ABOVE THE BELT. Altan asked for the selected model "somewhere subtle and
@@ -25,12 +27,19 @@ import { cn } from "@/lib/utils";
 // enough that the mirror's last row still shows where the tag ends, and opaque enough that a dot does
 // not drown in the letters under it. Absent, never a placeholder: nothing to say, no tag.
 //
-// THE USAGE DOTS FOLLOW THE MODEL (.adr/0115): the context use, then the 5-hour and 7-day windows of
-// the subscription, five dots each, one per fifth. Picked by Altan from three shapes in the playground
-// (2026-10-23, `#usage-row`, card 2). A dot lights from the left for each FULL fifth, so only 100% lights
-// the fifth and 81% shows four, not five as a full window would; at 80% and up the lit dots take the
-// working colour, never red, because red marks harm (DESIGN.md §4). A gauge the harness did not report
-// is not drawn, and the screen reader gets the exact figure the dots round down.
+// THE USAGE GAUGES FOLLOW THE MODEL (.adr/0115): the context use, then the 5-hour and 7-day windows of
+// the subscription. Every gauge is the share USED, 0 to 100, whichever way it is drawn. Picked by Altan
+// from three shapes in the playground (2026-10-23, `#usage-row`, card 2: dots); a per-device setting
+// since 1.29.0 (lib/usage-row.ts) draws them as a whole percentage instead, the default: `ctx 19%`.
+// THE ONE SWITCH IS {@link Meter}: every place that draws the tag (the pane's mirror, the wide layout's
+// strip column) goes through it, so the choice applies to all of them.
+//
+// PERCENT: the figure rounded to a whole number, in tabular digits so the row does not jitter as the
+// number changes. DOTS: five dots, one per fifth, lit from the left for each FULL fifth, so only 100%
+// lights the fifth and 81% shows four, not five as a full window would. In both, 80% and up takes the
+// working colour (the number, or the lit dots), never red, because red marks harm (DESIGN.md §4). A
+// gauge the harness did not report is not drawn, in either, and the screen reader gets the exact
+// figure either way.
 //
 // THE SESSION COST CLOSES THE ROW (.adr/0115, amended 2026-10-25): dollars after the last gauge, in the
 // gauges' muted colour and the tag's own size. It is a figure, not a gauge: no dots and never the working
@@ -74,8 +83,13 @@ export const MODEL_TAG_ROOM = 18;
 const TAG_MAX_SHARE = 0.7;
 /** The tag's own horizontal padding, `px-1` on both sides, in px. */
 const TAG_PADDING = 8;
-/** The gap between two items, `gap-1.5`, in px. */
-const ITEM_GAP = 6;
+/**
+ * The gap between two items in px, and the class that draws it: `gap-1.5` (6px) beside the dots, `gap-1`
+ * (4px) beside the percentages. A percentage is 3px wider than its five dots, and the longest realistic
+ * row (`Opus 5.5 · medium`, ctx, 5h, 7d and a cost) fits a 360px phone's 70% share by 1px with dots, so
+ * the percentages take their 8px back here and the model name is cut no sooner than it was.
+ */
+const ITEM_GAPS = { dots: { px: 6, className: "gap-1.5" }, percent: { px: 4, className: "gap-1" } } as const satisfies Record<UsageRow, { px: number; className: string }>;
 
 /** The natural width of an element: what it would take unshrunk, which a truncating label reports as `scrollWidth`. */
 function naturalWidth(el: HTMLElement): number {
@@ -88,7 +102,7 @@ function naturalWidth(el: HTMLElement): number {
  * names the items, so the observer follows them when they change. Returns the count to show, from the
  * first.
  */
-function useStatusFit(key: string, count: number, tagRef: RefObject<HTMLDivElement | null>, ownRef: RefObject<HTMLSpanElement | null>, itemsRef: RefObject<HTMLSpanElement | null>): number {
+function useStatusFit(key: string, gap: number, count: number, tagRef: RefObject<HTMLDivElement | null>, ownRef: RefObject<HTMLSpanElement | null>, itemsRef: RefObject<HTMLSpanElement | null>): number {
   const [shown, setShown] = useState(count);
   const measure = useCallback(() => {
     const box = tagRef.current?.parentElement;
@@ -96,11 +110,11 @@ function useStatusFit(key: string, count: number, tagRef: RefObject<HTMLDivEleme
     if (box === null || box === undefined || items === null) return;
     const room = Math.floor(box.clientWidth * TAG_MAX_SHARE) - TAG_PADDING;
     const mine = ownRef.current === null ? [] : [...ownRef.current.children].filter((el): el is HTMLElement => el instanceof HTMLElement);
-    const own = mine.reduce((sum, el) => sum + naturalWidth(el), 0) + ITEM_GAP * Math.max(0, mine.length - 1);
+    const own = mine.reduce((sum, el) => sum + naturalWidth(el), 0) + gap * Math.max(0, mine.length - 1);
     const widths = [...items.children].filter((el): el is HTMLElement => el instanceof HTMLElement).map((el) => el.offsetWidth);
-    const next = visibleStatusCount({ room, own, gap: ITEM_GAP, widths });
+    const next = visibleStatusCount({ room, own, gap, widths });
     setShown((was) => (was === next ? was : next));
-  }, [tagRef, ownRef, itemsRef]);
+  }, [gap, tagRef, ownRef, itemsRef]);
   useLayoutEffect(() => {
     if (count > 0) measure();
   });
@@ -148,17 +162,27 @@ interface Gauge {
   used: number;
 }
 
+/** A reading a gauge can draw: a finite number. Anything else is "not reported", so no `NaN%` is ever drawn. */
+function isReading(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value);
+}
+
+/** The whole percentage a reading is written as, held to 0 to 100 like the dots' fill. */
+function wholePercent(used: number): number {
+  return Math.min(100, Math.max(0, Math.round(used)));
+}
+
 /** The gauges to draw, in order: the context, then each window this build knows. */
 function gaugesOf(usage: PaneUsage | undefined): Gauge[] {
   if (usage === undefined) return [];
   const gauges: Gauge[] = [];
-  if (usage.context !== undefined) {
-    gauges.push({ id: "context", short: t("chat.usage.context"), spoken: t("chat.usage.context.aria", { percent: Math.round(usage.context) }), used: usage.context });
+  if (isReading(usage.context)) {
+    gauges.push({ id: "context", short: t("chat.usage.context"), spoken: t("chat.usage.context.aria", { percent: wholePercent(usage.context) }), used: usage.context });
   }
   for (const limit of usage.limits ?? []) {
     const keys = WINDOW_KEYS.get(limit.window);
-    if (keys === undefined) continue;
-    gauges.push({ id: limit.window, short: t(keys.short), spoken: t(keys.spoken, { percent: Math.round(limit.used) }), used: limit.used });
+    if (keys === undefined || !isReading(limit.used)) continue;
+    gauges.push({ id: limit.window, short: t(keys.short), spoken: t(keys.spoken, { percent: wholePercent(limit.used) }), used: limit.used });
   }
   return gauges;
 }
@@ -199,6 +223,22 @@ function Dots({ used }: { used: number }) {
   );
 }
 
+/** The gauge as a whole percentage, `19%`. The tone follows the number as written: 80 and up is the working colour. */
+function Percent({ used }: { used: number }) {
+  const percent = wholePercent(used);
+  const warn = percent >= USAGE_WARN_AT;
+  return (
+    <span data-slot="usage-percent" data-warn={warn || undefined} className={cn("tabular-nums", warn && "text-status-working")}>
+      {percent}%
+    </span>
+  );
+}
+
+/** One gauge's figure, drawn the way the device chose (lib/usage-row.ts). The only place that decides. */
+export function Meter({ used, mode }: { used: number; mode: UsageRow }) {
+  return mode === "dots" ? <Dots used={used} /> : <Percent used={used} />;
+}
+
 /**
  * Whether {@link ModelTag} draws anything for these props, so the caller can reserve {@link MODEL_TAG_ROOM}
  * for the scrollers under it only while there is a tag. It mirrors the tag's own "nothing to say" test.
@@ -220,19 +260,24 @@ export function ModelTag({
   effort,
   usage,
   trailing,
+  usageRow: forced,
 }: {
   model: string | undefined;
   effort?: string | undefined;
   usage?: PaneUsage | undefined;
   /** The tricks' status items, in manifest order, drawn after Collie's own and hidden first when the row overflows. */
   trailing?: readonly StatusItem[] | undefined;
+  /** Draws the gauges this way whatever the device chose. For the playground, which shows both modes side by side; the app passes none. */
+  usageRow?: UsageRow | undefined;
 }) {
   useLocale();
+  const chosen = useDashPrefs().prefs.usageRow;
+  const usageRow = forced ?? chosen;
   const tagRef = useRef<HTMLDivElement>(null);
   const ownRef = useRef<HTMLSpanElement>(null);
   const itemsRef = useRef<HTMLSpanElement>(null);
   const items = trailing ?? [];
-  const shown = useStatusFit(items.map((item) => item.id).join(" "), items.length, tagRef, ownRef, itemsRef);
+  const shown = useStatusFit(items.map((item) => item.id).join(" "), ITEM_GAPS[usageRow].px, items.length, tagRef, ownRef, itemsRef);
   const name = modelLabel(model);
   const gauges = gaugesOf(usage);
   const cost = costOf(usage);
@@ -253,14 +298,14 @@ export function ModelTag({
       data-slot="model-tag"
       className="pointer-events-none absolute right-3 bottom-1 z-10 max-w-[70%] rounded-[2px] bg-background/90 px-1 text-[10px]/3 text-muted-foreground"
     >
-      <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+      <span className={cn("flex min-w-0 items-center whitespace-nowrap", ITEM_GAPS[usageRow].className)}>
         {(label !== null || gauges.length > 0 || cost !== null) && (
-          <span ref={ownRef} aria-hidden data-slot="usage-own" className="flex min-w-0 items-center gap-1.5">
+          <span ref={ownRef} aria-hidden data-slot="usage-own" className={cn("flex min-w-0 items-center", ITEM_GAPS[usageRow].className)}>
             {label !== null && <span className="min-w-0 truncate">{label}</span>}
             {gauges.map((g) => (
-              <span key={g.id} data-gauge={g.id} className="flex shrink-0 items-center gap-[3px]">
+              <span key={g.id} data-gauge={g.id} className={cn("flex shrink-0 items-center", usageRow === "percent" ? "gap-0.5" : "gap-[3px]")}>
                 <span>{g.short}</span>
-                <Dots used={g.used} />
+                <Meter used={g.used} mode={usageRow} />
               </span>
             ))}
             {cost !== null && (
@@ -271,7 +316,7 @@ export function ModelTag({
           </span>
         )}
         {items.length > 0 && (
-          <span ref={itemsRef} data-slot="usage-trick-items" className="flex items-center gap-1.5">
+          <span ref={itemsRef} data-slot="usage-trick-items" className={cn("flex items-center", ITEM_GAPS[usageRow].className)}>
             {items.map((item, i) => (
               <span
                 key={item.id}

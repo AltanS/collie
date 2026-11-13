@@ -22,6 +22,7 @@ import { ModelTag } from "@/components/model-tag";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import type { Surface } from "@/lib/surface/surface";
 import type { PaneUsage } from "@/lib/types";
+import type { UsageRow } from "@/lib/usage-row";
 import { cn } from "@/lib/utils";
 
 import { Card, CardControls, Group, Section, type SectionDef } from "../layout";
@@ -32,7 +33,7 @@ export const DEF: SectionDef = {
   id: "usage-row",
   title: "Usage row",
   intent:
-    "The model tag above the belt, with the session's context use and the 5-hour and 7-day subscription windows beside it. Three shapes: small bars, dots, and short text on a second line. Pick one by its number. Each card shows the same four states: a working session, one near every limit, an API-key session with no subscription windows, and a pane whose own statusline already names the model.",
+    "The model tag above the belt, with the session's context use and the 5-hour and 7-day subscription windows beside it. The first two cards are what ships: the real tag as a percentage (the default) and as dots, the Usage row setting. The three shapes below are the design round of 2026-10-23, kept for the record. Each card shows the same four states: a working session, one near every limit, an API-key session with no subscription windows, and a pane whose own statusline already names the model.",
 };
 
 /** One reading, as Claude Code's statusLine input reports it. A gauge it did not send is absent. */
@@ -136,8 +137,18 @@ const MODEL_IDS = new Map<string, { model: string; effort?: string }>([
   ["Sonnet 5.5", { model: "claude-sonnet-5-5" }],
 ]);
 
-/** Card 2 mounts the REAL tag, so this card shows what ships, not a copy of it. */
+/** Card 2 mounts the REAL tag, so this card shows what ships, not a copy of it. Dots, whatever the device chose. */
 function DotsTag({ usage }: { usage: Usage }) {
+  return <RealTag usage={usage} mode="dots" />;
+}
+
+/** The same real tag, as the percentage the Usage row setting defaults to. */
+function PercentTag({ usage }: { usage: Usage }) {
+  return <RealTag usage={usage} mode="percent" />;
+}
+
+/** The real tag drawing one mode, whatever the device chose (the setting is Settings, Appearance, Usage row). */
+function RealTag({ usage, mode }: { usage: Usage; mode: UsageRow }) {
   const named = usage.model === undefined ? undefined : MODEL_IDS.get(usage.model);
   const limits = [
     ...(usage.fiveHour === undefined ? [] : [{ window: "5h" as const, used: usage.fiveHour }]),
@@ -146,7 +157,7 @@ function DotsTag({ usage }: { usage: Usage }) {
   const pane: PaneUsage = {};
   if (usage.ctx !== undefined) pane.context = usage.ctx;
   if (limits.length > 0) pane.limits = limits;
-  return <ModelTag model={named?.model} effort={named?.effort} usage={pane} />;
+  return <ModelTag model={named?.model} effort={named?.effort} usage={pane} usageRow={mode} />;
 }
 
 // ── Shape 3: short text, on a line of its own ─────────────────────────────────────────────────────
@@ -321,10 +332,59 @@ function OptionCard({ def, state }: { def: VariantDef; state: string }) {
   );
 }
 
+/** One card of the shipped row: the real tag in one mode, over the same four states. */
+function ModeCard({ state, mode, title, line }: { state: string; mode: UsageRow; title: string; line: string }) {
+  const [first, ...rest] = STATES;
+  const Tag = mode === "percent" ? PercentTag : DotsTag;
+  return (
+    <Card state={state} label={title} reach="Settings, Appearance, Usage row. Percent is the default." note={line}>
+      <CardControls className="flex items-center gap-3">
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+      </CardControls>
+      <div className="flex flex-col gap-3">
+        {first !== undefined && (
+          <div>
+            <p className="mb-1 text-xs text-muted-foreground">{first.title}, over the real belt</p>
+            <WithBelt n={mode === "percent" ? 4 : 5}>
+              <Mirror>
+                <Tag usage={first.usage} />
+              </Mirror>
+            </WithBelt>
+          </div>
+        )}
+        {rest.map((s) => (
+          <div key={s.key}>
+            <p className="mb-1 text-xs text-muted-foreground">{s.title}</p>
+            <PhoneMock>
+              <Mirror rows={MIRROR_ROWS.slice(-3)}>
+                <Tag usage={s.usage} />
+              </Mirror>
+            </PhoneMock>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function UsageRowSection() {
   return (
     <Section def={DEF}>
-      <Group title="Three shapes for the usage gauges">
+      <Group title="The shipped row, both modes (the Usage row setting)">
+        <ModeCard
+          state="usage-row-percent"
+          mode="percent"
+          title="Percent (the default)"
+          line="The share used, as a whole number: ctx 42%. Exact, and the number takes the working colour from 80%. Tabular digits, so the row does not jitter."
+        />
+        <ModeCard
+          state="usage-row-dots"
+          mode="dots"
+          title="Dots"
+          line="The same share as five dots, one per full fifth. Chosen in Settings, Appearance, Usage row."
+        />
+      </Group>
+      <Group title="The design round: three shapes for the usage gauges">
         {/* Literal handles, written out: the e2e roll call reads the state props from source. */}
         <OptionCard state="usage-row-1" def={VARIANTS[0]!} />
         <OptionCard state="usage-row-2" def={VARIANTS[1]!} />

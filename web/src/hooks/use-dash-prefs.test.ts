@@ -48,6 +48,7 @@ describe("coerceDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      usageRow: "percent",
     });
   });
 
@@ -94,6 +95,7 @@ describe("coerceDashPrefs", () => {
       paneView: "terminal",
       zoomPill: "off",
       pageZoom: true,
+      usageRow: "percent",
     });
   });
 
@@ -101,6 +103,13 @@ describe("coerceDashPrefs", () => {
     expect(coerceDashPrefs({}).pageZoom).toBe(true);
     expect(coerceDashPrefs({ pageZoom: "no" }).pageZoom).toBe(true);
     expect(coerceDashPrefs({ pageZoom: false }).pageZoom).toBe(false);
+  });
+
+  it("reads the usage row as Percent unless Dots is stored, so an install with no value gets Percent", () => {
+    expect(coerceDashPrefs({}).usageRow).toBe("percent");
+    expect(coerceDashPrefs({ usageRow: "bars" }).usageRow).toBe("percent");
+    expect(coerceDashPrefs({ usageRow: 3 }).usageRow).toBe("percent");
+    expect(coerceDashPrefs({ usageRow: "dots" }).usageRow).toBe("dots");
   });
 
   it("reads an unknown stored zoomPill as never chosen", () => {
@@ -224,6 +233,7 @@ describe("coerceDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      usageRow: "percent",
     });
   });
 });
@@ -254,6 +264,7 @@ describe("useDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      usageRow: "percent",
     });
   });
 
@@ -279,6 +290,7 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setPaneOrder("activity"));
     act(() => first.result.current.setPaneView("terminal"));
     act(() => first.result.current.setZoomPill("off"));
+    act(() => first.result.current.setUsageRow("dots"));
 
     const second = renderHook(() => useDashPrefs());
     expect(second.result.current.prefs).toEqual({
@@ -302,6 +314,7 @@ describe("useDashPrefs", () => {
       paneView: "terminal",
       zoomPill: "off",
       pageZoom: true,
+      usageRow: "dots",
     });
   });
 

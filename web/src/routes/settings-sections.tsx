@@ -9,6 +9,7 @@ import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { BeltSizeControl } from "@/components/belt-size-control";
+import { UsageRowControl } from "@/components/usage-row-control";
 import { ZoomPillControl } from "@/components/zoom-pill-control";
 import { PageZoomControl } from "@/components/page-zoom-control";
 import { ChangesControl } from "@/components/changes-control";
@@ -124,6 +125,9 @@ export function SettingsAppearanceRoute() {
       {/* Whether a pinch zooms the whole page (lib/page-zoom.ts). Under the Zoom pill because both
           decide what a zoom does on this phone. On by default, for anyone who needs bigger text. */}
       <PageZoomControl />
+      {/* How the usage row (the model, context and limits) draws its gauges: a percentage or dots
+          (lib/usage-row.ts). Under the zoom cards because it too decides how the belt's surroundings read. */}
+      <UsageRowControl />
       {/* Which thumb the belt and the reply box are laid out for. Under the belt's size because both
           decide how that one belt is drawn. */}
       <HandControl />
