@@ -5,7 +5,6 @@
 // `delivered` while the screen shows nothing, or a screen that shows a line the receipt calls refused,
 // fails the case.
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -15,7 +14,6 @@ import { devices } from "@playwright/test";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonObject } from "../../src/lib/json";
 import { readSendReceipts } from "../../src/lib/send-protocol";
 import { SETUPS, harnessDirs, type HarnessId } from "./harnesses";
-import { RIG_DATA } from "./rig-data";
 import {
   NotReached,
   PHONE_DEVICE,
@@ -401,46 +399,6 @@ export async function ensureDraft(rig: Rig, paneId: string, host?: Host): Promis
   if (await reads()) return;
   await rig.keys(paneId, ["d", "r", "a", "f", "t"], host);
   if ((await rig.until(reads, (drafted) => drafted, 15_000, 500)) !== true) throw new NotReached(`the box of ${paneId} never read as a draft`);
-}
-
-/** How a pane was made unable to take a message now ({@link holdPane}). */
-export interface PaneHold {
-  /** The reason a held message's receipt carries. */
-  readonly reason: "draft present" | "turn running";
-  /** Undo the hold once the held messages are taken back. A draft is left for `resetBox`. Safe to call twice. */
-  release(): Promise<void>;
-}
-
-/** The prompt that holds a linked pane: one tool call that asks first (`sleep` does not), and its permission dialog stays open. */
-const DIALOG_PROMPT = "Run this exact shell command with the Bash tool and nothing else: touch walky-hold-probe.txt";
-
-/**
- * Make a pane unable to take a message now, so what passes the border is held (`accepted`), never typed,
- * and can be taken back: the space and border cases (30, 32, 34, 35) read the verdict on held messages.
- * A draft does that ({@link ensureDraft}), except in a Claude pane the data run links (COLLIE_RIG_DATA=1):
- * a message handed to the part does not touch the box, so a draft holds nothing there (M99 spec 05). That
- * pane is held by a running turn instead: a prompt whose permission dialog stays open (one model call),
- * dismissed by `release` (Escape), which ends the turn.
- */
-export async function holdPane(rig: Rig, paneId: string, harness: HarnessId, host?: Host): Promise<PaneHold> {
-  if (!RIG_DATA || harness !== "claude" || host !== undefined) {
-    await ensureDraft(rig, paneId, host);
-    return { reason: "draft present", release: async () => undefined };
-  }
-  spendTurn(harness, "a permission dialog that holds the pane");
-  const sent = await rig.post("/api/send", { id: randomUUID(), pane: paneId, text: DIALOG_PROMPT, mode: "send" });
-  if (sent.status !== 200) throw new NotReached(`the prompt that holds ${paneId} was not taken (${String(sent.status)})`);
-  if ((await rig.screenUntil(paneId, /Do you want to proceed\?/u, 60_000, 60)) === null) throw new NotReached(`no permission dialog in ${paneId}`);
-  let released = false;
-  return {
-    reason: "turn running",
-    release: async () => {
-      if (released) return;
-      released = true;
-      await rig.keys(paneId, ["Escape"]);
-      await waitIdle(rig, paneId, REPLY_MS);
-    },
-  };
 }
 
 /** This checkout: web/e2e/rig/walky-lib.ts is three levels below it. */
