@@ -414,7 +414,17 @@ export class HerdrCoreMux implements MuxAdapter {
     const remote = remoteRefusal(paneId);
     if (remote !== null) return remote;
     if (text.length === 0) return muxAck();
-    return this.attempt(() => this.writeRaw(paneId, text));
+    // A write the core did not answer in time may still land: `unconfirmed`, and the caller's next read
+    // decides, as for keys ({@link attemptKeys}).
+    try {
+      await this.writeRaw(paneId, text);
+      return muxAck();
+    } catch (err) {
+      if (err instanceof HcTimeout) {
+        return muxUnconfirmed(`herdr-core did not confirm the text written to ${paneId} in time (${err.message}). It may still arrive, so it was not written again.`);
+      }
+      return refusalFor(err);
+    }
   }
 
   /**
@@ -611,7 +621,7 @@ export class HerdrCoreMux implements MuxAdapter {
   }
 
   /**
-   * {@link attempt} for keys. A call the core did not answer in time is `unconfirmed`, not a failure:
+   * The ack-or-refusal of a key call. A call the core did not answer in time is `unconfirmed`, not a failure:
    * the core may still deliver the key (it did, M78 report 10 case 2). Nothing here sends it again;
    * the next read of the pane shows whether it landed.
    */
@@ -632,16 +642,6 @@ export class HerdrCoreMux implements MuxAdapter {
     this.blockedPanes.clear();
     for (const pane of snapshot.panes) {
       if (pane.status === "blocked") this.blockedPanes.add(pane.paneId);
-    }
-  }
-
-  /** One verb that answers nothing but "it happened", as the contract's ack-or-refusal. */
-  private async attempt(call: () => Promise<void>): Promise<MuxAck> {
-    try {
-      await call();
-      return muxAck();
-    } catch (err) {
-      return refusalFor(err);
     }
   }
 

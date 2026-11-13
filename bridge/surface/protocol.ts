@@ -330,6 +330,33 @@ const BLIND_SAW: SurfaceWords = { turn: "unknown", modal: "unknown", composer: "
 /** The refusal of a blind send at a password prompt. Never the prompt's row: it may name a user or a key file. */
 const NO_ECHO_REFUSAL = "A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.";
 
+/** The blind road refuses (M100 spec 06, item 1): the pane's last rows look like an agent's, not a shell's. */
+const BLIND_ROAD_REFUSAL = "Collie cannot tell which agent runs in this pane, and its last rows show an input box, a dialog or an agent's footer, so nothing was typed. Use Type to answer it.";
+
+/** How many of the last non-blank rows the blind road reads for a footer the profiles name. */
+const BLIND_FOOTER_ROWS = 8;
+
+/**
+ * Why a pane the multiplexer cannot name (no profile, the blind road: a shell, ADR 0107) must not take a
+ * blind send, or null when it may (M100 spec 06, item 1, approved 2026-11-13). Its rows are read under
+ * every profile Collie ships, as data: an input box any profile's frame finds (`frame`), a strong modal
+ * cue in the last rows or a lifted ask (`cue`), or a row near the bottom that a profile names as a footer
+ * or hint row under its box (`footer`, `idle.volatile.below.footerRows` and `hints`). A shell prompt and
+ * its output show none of these, so a shell keeps its one-tap send.
+ */
+export function blindRoadSign(rows: readonly FrameRow[], surface: Surface, profiles: Iterable<Profile> = loadProfiles().values()): "frame" | "cue" | "footer" | null {
+  const all = [...profiles];
+  if (all.some((profile) => findInputFrame(rows, profile.idle) !== null)) return "frame";
+  if (askOf(surface.modal) !== null || readCuesFor(rows, null, null).strength === "strong") return "cue";
+  const texts = rows.map((row) => rowText(row).trimEnd());
+  const filled = texts.filter((text) => text.trim().length > 0).slice(-BLIND_FOOTER_ROWS);
+  const footers = all.flatMap((profile) => {
+    const below = profile.idle.volatile.below;
+    return [...(below.footerRows ?? []).map((row) => row.pattern), ...(below.hints ?? [])].map((source) => new RegExp(source, "u"));
+  });
+  return filled.some((text) => footers.some((footer) => footer.test(text))) ? "footer" : null;
+}
+
 /** The refusal of a box that does not take keys, after its second S0 read (2026-10-25); the phone reads the same words. */
 export { STALE_SCREEN };
 /** The wait before a stale box's second S0 read: one S0 gap. */
@@ -378,6 +405,26 @@ function probeMayRemain(probe: string): string {
  * stderr) stay in the bridge log: a receipt lives seven days and its list is returned to the phone.
  */
 const WRITE_FAILED = "Collie could not type into the pane.";
+
+/**
+ * The wait for the screen after a text write the multiplexer did not confirm ({@link SendProtocol.unconfirmedWrite}):
+ * the core holds a terminal's input behind a slow read for about three seconds (herdr-core 0.1.14, HC_API.md).
+ */
+const UNCONFIRMED_WRITE = { reads: 5, ms: 3200 } as const;
+
+/** How many of the text's first characters a read of a pane with no frame looks for after an unconfirmed write. */
+const UNCONFIRMED_HEAD = 6;
+
+/**
+ * A text write's answer: null when it went, the multiplexer's sentence when it took the text and did not
+ * confirm it in time (`unconfirmed`: it may still land, MuxRefusal), and a `write_failed` refusal for any
+ * other refusal (nothing of the text is in the box).
+ */
+function writeAck(ack: MuxAck): string | null {
+  if (ack.ok) return null;
+  if (ack.reason === "unconfirmed") return ack.detail;
+  throw new Ended("refused", "write_failed", { detail: ack.detail });
+}
 
 /** The detail after a Submit that went out on a box holding another text than the request named. */
 const HELD_OTHER = "The box held a different text than the request when Enter went out.";
@@ -1209,6 +1256,28 @@ const FRAMELESS_READS = 2;
  */
 function modalAtBox(snap: Snap): boolean {
   return snap.frame !== null && snap.surface.modal !== "none";
+}
+
+/**
+ * One bad frame per guard (M100 spec 03): the first read that shows a cue, a modal claim or rows under
+ * the box that changed answers `wait`, and the guard's next read decides; it passes only on the whole
+ * test against the stable read. A second such read answers `fail`, as the guard did before. A lifted ask
+ * and a box that went away (S0 had one) answer `fail` at once: they are no single frame.
+ */
+interface Strike {
+  (snap: Snap): Verdict;
+  /** Whether the one wait is spent. */
+  readonly used: () => boolean;
+}
+
+function oneStrike(s0: Snap): Strike {
+  let spent = false;
+  const hit = (snap: Snap): Verdict => {
+    if (spent || askOf(snap.surface.modal) !== null || (s0.frame !== null && snap.frame === null)) return "fail";
+    spent = true;
+    return "wait";
+  };
+  return Object.assign(hit, { used: () => spent });
 }
 
 /** Whether the framed cue read found cues and every one stands on a row of the frame itself: the box's own rows, not a list drawn under or over it. */
@@ -2534,6 +2603,12 @@ interface RunState {
   probeWriteMs?: number;
   /** The newest read came back marked partial (`MuxGrid.partial`) and was taken as no read. */
   partialRead?: boolean;
+  /**
+   * The multiplexer took the submit keys and did not confirm them in time (`unconfirmed`): the keys may
+   * still land, so the send is no `typed_not_submitted` and they are never sent again. The S2 read
+   * decides ({@link SendProtocol.awaitSent}); this is the multiplexer's own sentence. Null otherwise.
+   */
+  enterUnconfirmed: string | null;
   /** The screen at S0 took the manual Send (no frame found, an unreadable overlay, a weak cue): the probe and S1 compare less. */
   manual: boolean;
   /** The pane has no profile: the text went in blind, with no read ({@link SendProtocol.blindSend}). */
@@ -3889,6 +3964,7 @@ export class SendProtocol {
       ghost: null,
       placeholderProbe: null,
       placeholderFailed: false,
+      enterUnconfirmed: null,
     };
   }
 
@@ -4630,7 +4706,7 @@ export class SendProtocol {
     }
     // A text that is the placeholder's own words reads as the placeholder once typed: from here the box is read as it shows.
     if (state.ghost !== null && wsFree(lines.join("")) === wsFree(state.ghost)) state.ghost = null;
-    await this.write(state, lines);
+    await this.write(state, lines, s0);
     this.lap(state, "write");
 
     if (state.noticeKey) {
@@ -4697,8 +4773,16 @@ export class SendProtocol {
     if (noEchoPromptIn(snap.texts) !== null) {
       throw new Ended("refused", "not_free", { surface: snap.surface, framed: false, offers: ["keys"], detail: NO_ECHO_REFUSAL });
     }
+    // A pane whose last rows look like an agent's (an input box, a dialog, a footer a profile names) is
+    // no shell to type into blind: the agent may be starting, or one Collie has no name for here.
+    if (blindRoadSign(snap.rows, snap.surface) !== null) {
+      throw new Ended("refused", "not_free", { surface: snap.surface, framed: false, offers: ["keys"], detail: BLIND_ROAD_REFUSAL });
+    }
     this.lap(state, "s0");
-    await this.write(state, lines);
+    // A write not confirmed in time that showed on the screen (unconfirmedWrite): a blind pane has no
+    // box to prove the whole text in, so Enter waits for the person.
+    const wrote = await this.write(state, lines, snap);
+    if (wrote !== "written") throw new Ended("typed_not_submitted", "changed", { framed: false, offers: ["keys"], detail: wrote.detail });
     this.lap(state, "write");
     await this.sleep(BLIND_SETTLE_MS);
     state.phase = "commit";
@@ -4708,6 +4792,12 @@ export class SendProtocol {
     store.markSubmitSent(state.record.id);
     const token = gate.mint(paneId, GENERIC_SUBMIT, gate.revision(paneId));
     const result = await this.within(state, gate.commit(token));
+    // Enter left and the multiplexer did not confirm it: it may still land, and a blind pane has no box
+    // to read, so the send is `unknown`, never `typed_not_submitted` (a Resend could deliver it twice).
+    if (!result.ok && result.reason === "mux" && result.refusal.reason === "unconfirmed") {
+      state.keys.push(...GENERIC_SUBMIT);
+      throw new Ended("unknown", "no_evidence", { framed: false, offers: ["keys"], detail: result.refusal.detail });
+    }
     if (!result.ok) {
       const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;
       throw new Ended("typed_not_submitted", reason, { framed: false, offers: ["keys"], detail: result.reason === "mux" ? result.refusal.detail : result.detail });
@@ -4869,7 +4959,10 @@ export class SendProtocol {
     const ghostable = mayHoldPlaceholder(state.match, s0);
     const failed = (detail: string, snap: Snap | null): Ended => new Ended("refused", "probe_failed", sawNote(snap, { detail, framed: true }));
     state.probeAt = this.now();
-    await this.probeWrite(state, () => this.writeText(state, probe, false));
+    // A probe write not confirmed in time is read like any other: the probe's reads decide where it went.
+    await this.probeWrite(state, async () => {
+      await this.writeText(state, probe, false);
+    });
     state.keys.push("probe");
     let away = false;
     let ghost = false;
@@ -5447,11 +5540,24 @@ export class SendProtocol {
         throw err;
       }
     };
-    const first = await readInBound();
+    // A read the multiplexer marks partial is no read (readNow), and the contract says the protocol waits
+    // for a whole one (`MuxGrid.partial`): S0 takes one more read in its place, once, inside its bound.
+    let spare = 1;
+    const wholeInBound = async (): Promise<Snap | null> => {
+      const snap = await readInBound();
+      if (snap !== null || state.partialRead !== true || spare === 0) return snap;
+      spare--;
+      // No time left for it: the partial read stands, and S0 ends on it (noRead says so).
+      if (this.now() + S0_GAP_MS > until) return null;
+      await this.sleep(S0_GAP_MS);
+      return readInBound();
+    };
+    const first = await wholeInBound();
+    if (first === null) throw this.noRead(state);
     if (this.now() + S0_GAP_MS > until) throw late();
     await this.sleep(S0_GAP_MS);
-    const second = await readInBound();
-    if (first === null || second === null) throw this.noRead(state);
+    const second = await wholeInBound();
+    if (second === null) throw this.noRead(state);
     if (belowMovedAlone(first, second)) state.belowMoved = true;
     // With a frame only the box is compared: the volatile rows around it (a spinner, a timer, a token
     // count, a statusline) move on their own while a turn runs. A box that holds no draft compares
@@ -5538,14 +5644,41 @@ export class SendProtocol {
     return { snap: last, verdict: "wait", reads };
   }
 
-  /** Writes text into the pane: a bracketed paste where both sides allow it, else typed. Noted on the gate. */
-  private async writeText(state: RunState, text: string, allowPaste: boolean): Promise<void> {
+  /**
+   * Writes text into the pane: a bracketed paste where both sides allow it, else typed. Noted on the gate.
+   * A write the multiplexer took and did not confirm in time (`unconfirmed`) may still land: it is no
+   * refusal, and the multiplexer's sentence comes back for the caller's read to decide on.
+   */
+  private async writeText(state: RunState, text: string, allowPaste: boolean): Promise<string | null> {
     this.guard(state);
     const { mux } = this.deps;
     const paste = allowPaste && state.match?.profile.paste?.bracketed === true && mux.pasteText !== undefined;
     const ack = await this.within(state, paste ? mux.pasteText!(state.target.paneId, text) : mux.typeText(state.target.paneId, text));
     this.deps.gate.noteWrite(state.target.paneId);
-    if (!ack.ok) throw new Ended("refused", "write_failed", { detail: ack.detail });
+    return writeAck(ack);
+  }
+
+  /**
+   * After a text write the multiplexer did not confirm (`unconfirmed`, {@link writeAck}): the screen
+   * decides, never the time-out. Reads inside {@link UNCONFIRMED_WRITE} until the text shows (the box
+   * no longer reads as `base` did, or with no frame a read holds more of the text's first characters
+   * than `base`). When it shows, the run goes on: the caller's S1 proves the whole text before any
+   * submit key, as for any write, or ends `typed_not_submitted` with what stands in the box. When no
+   * read shows it, nothing of it is in the box, and the write is refused as before (`write_failed`,
+   * with the multiplexer's sentence). The request's bound grows by the wait, so S1 keeps its own.
+   */
+  private async unconfirmedWrite(state: RunState, base: Snap, text: string, detail: string): Promise<void> {
+    this.stretch(state, UNCONFIRMED_WRITE.ms);
+    const head = [...text.trim()].slice(0, UNCONFIRMED_HEAD).join("");
+    const shows = (snap: Snap): Verdict => {
+      if (base.frame !== null) {
+        if (snap.frame === null) return "wait";
+        return wsFree(boxText(snap.frame)) !== wsFree(boxText(base.frame)) ? "pass" : "wait";
+      }
+      return head.length > 0 && countIn(snap.texts, head) > countIn(base.texts, head) ? "pass" : "wait";
+    };
+    const seen = await this.poll(state, "write", UNCONFIRMED_WRITE, shows);
+    if (seen.verdict !== "pass") throw new Ended("refused", "write_failed", { detail });
   }
 
   /** Keys through the gate on the newest revision. `outcome` is what a refusal turns into. */
@@ -5576,25 +5709,38 @@ export class SendProtocol {
     const budget = { reads: BOUNDS.probe.reads, ms: BOUNDS.probe.ms };
 
     state.probeAt = this.now();
-    await this.probeWrite(state, () => this.writeText(state, probe, false));
+    // A probe write not confirmed in time is read like any other: the probe's reads decide where it went.
+    await this.probeWrite(state, async () => {
+      await this.writeText(state, probe, false);
+    });
     state.keys.push("probe");
     let landing: Landing | null = null;
     let frameless = 0;
+    // The first read that shows the probe where it belongs but a cue, a modal claim or another count of
+    // rows under the box is one frame (M100 spec 03): it waits for one more read, which must pass the
+    // whole test. A second such read fails as before; a lifted ask or a box that went away fails at once.
+    const strike = oneStrike(s0);
+    // The last verdict was such a wait: a bound that ends on it ends as the failed read it was.
+    let struckLast = false;
     // A message probe on a harness that takes a message during a turn: only the box and the rows under
     // it decide, as at S1 (2026-10-17). Commands and manual sends keep the full compare below.
     const boxOnly = s0.frame !== null && !state.command && !state.manual && queuesInTurn(state.match);
     const typedFrom = this.now();
-    const shows = (snap: Snap): Verdict => {
+    const judge = (snap: Snap): Verdict => {
       if (s0.frame !== null) {
         // Queued: the Surface's claim of a modal over a found box fails, and so do two reads in a row
         // with no box. One read with no box may be torn, and its Surface claims nothing to trust.
         frameless = snap.frame === null ? frameless + 1 : 0;
         const inTurn = state.queued || state.streamed;
-        if (inTurn && (frameless >= FRAMELESS_READS || modalAtBox(snap))) return "fail";
+        if (inTurn && frameless >= FRAMELESS_READS) return "fail";
+        if (inTurn && modalAtBox(snap)) return strike(snap);
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
+        // The probe stands in the box as it should: only what is around the box failed the read.
+        const holdsProbe = wsFree(boxText(snap.frame)) === wsFree(prefix) + probe;
+        const inBox = holdsProbe && snap.otherScreen === null;
         if (boxOnly) {
-          if (!probeBoxPasses(s0, snap, prefix, probe)) return "fail";
+          if (!probeBoxPasses(s0, snap, prefix, probe)) return inBox ? strike(snap) : "fail";
           // The rows above moved on a harness that queues in a turn: the commit takes its queue key.
           if (!state.queued && !aboveUnchanged(s0, snap)) state.streamed = true;
           return "pass";
@@ -5605,18 +5751,31 @@ export class SendProtocol {
           : state.manual
             ? manualOutsideUnchanged(s0, snap)
             : outsideUnchanged(s0, snap, aboveLosesText(state)) || this.aboveMovedInTurn(state, s0, snap);
-        return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe && outside ? "pass" : "fail";
+        if (!holdsProbe) return "fail";
+        if (outside) return "pass";
+        // A cue or another count of rows under the box may be one frame; rows above that moved are not.
+        return inBox && (cueAppeared(s0, snap) || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) ? strike(snap) : "fail";
       }
       if (snap.plain.join("\n") === s0.plain.join("\n")) return "wait";
       landing = probeLanding(s0.plain, snap.plain, probe, { freeBelow: state.manual });
-      return landing !== null && !cueAppeared(s0, snap) ? "pass" : "fail";
+      if (landing === null) return "fail";
+      return cueAppeared(s0, snap) ? strike(snap) : "pass";
     };
-    let typed = await this.poll(state, "probe", { reads: budget.reads - 1, ms: budget.ms }, shows);
+    const shows = (snap: Snap): Verdict => {
+      const before = strike.used();
+      const verdict = judge(snap);
+      struckLast = verdict === "wait" && !before && strike.used();
+      return verdict;
+    };
+    // The bound ended on the read that waited for one more: that read failed, and fails the probe as before.
+    const struckEnd = (got: { snap: Snap | null; verdict: Verdict; reads: number }): { snap: Snap | null; verdict: Verdict; reads: number } =>
+      got.verdict === "wait" && struckLast ? { ...got, verdict: "fail" } : got;
+    let typed = struckEnd(await this.poll(state, "probe", { reads: budget.reads - 1, ms: budget.ms }, shows));
     let shownLate = false;
     if (!again && this.lateWindowOpens(state, s0, typed, probe)) {
       // The late-probe window (the header): a busy agent draws a typed key seconds late (#623).
       this.stretch(state, LATE_PROBE.ms);
-      const late = await this.poll(state, "probe", LATE_PROBE, shows);
+      const late = struckEnd(await this.poll(state, "probe", LATE_PROBE, shows));
       typed = { snap: late.snap ?? typed.snap, verdict: late.verdict, reads: typed.reads + late.reads };
       shownLate = late.verdict !== "wait";
     }
@@ -5751,7 +5910,7 @@ export class SendProtocol {
    * paste is what the harness folds into its collapse form (`[Pasted text #N +M lines]`), one row,
    * which S1 matches (boxMatches); a short one lands literally.
    */
-  private async write(state: RunState, lines: readonly string[]): Promise<void> {
+  private async write(state: RunState, lines: readonly string[], base: Snap): Promise<"written" | { readonly detail: string }> {
     state.phase = "write";
     // A send from an agent view (review 9 R4): the screen, the switch and the gate, read once more right
     // before the first key, since S0's reads and settles may have waited while the agent redrew.
@@ -5763,8 +5922,10 @@ export class SendProtocol {
       // Called on the mux, never torn off it: an adapter's method reads its own `this`.
       const ack = await this.within(state, mux.pasteBlock(state.target.paneId, lines.join("\n")));
       this.deps.gate.noteWrite(state.target.paneId);
-      if (!ack.ok) throw new Ended("refused", "write_failed", { detail: ack.detail });
-      return;
+      const unconfirmed = writeAck(ack);
+      if (unconfirmed === null) return "written";
+      await this.unconfirmedWrite(state, base, lines.join("\n"), unconfirmed);
+      return { detail: unconfirmed };
     }
     const newline = state.match?.profile.keys.newline ?? null;
     for (let i = 0; i < lines.length; i++) {
@@ -5774,14 +5935,22 @@ export class SendProtocol {
       }
       const line = lines[i]!;
       if (line.length === 0) continue;
+      let unconfirmed: string | null;
       try {
-        await this.writeText(state, line, true);
+        unconfirmed = await this.writeText(state, line, true);
       } catch (err) {
         // Nothing of the text is in the box when the first write fails; after that, part of it is.
         if (err instanceof Ended && i > 0) throw new Ended("typed_not_submitted", "changed", err.extra);
         throw err;
       }
+      if (unconfirmed === null) continue;
+      // A write not confirmed in time may still land (writeAck): no line follows it. Once part of the
+      // text is in the box, it is typed, not submitted; S1 reads what stands there after the last line.
+      if (i === 0) await this.unconfirmedWrite(state, base, line, unconfirmed);
+      if (i < lines.length - 1) throw new Ended("typed_not_submitted", "changed", { detail: unconfirmed });
+      return { detail: unconfirmed };
     }
+    return "written";
   }
 
   /**
@@ -5802,6 +5971,10 @@ export class SendProtocol {
     // The last read showed a command typed and a typeahead popup open under the box.
     let popupOpen = false;
     let earlier: Snap | null = null;
+    // One read that shows a cue is one frame, not yet a dialog (M100 spec 03): it waits for the next read,
+    // which must be clean and pass the whole test against S0 for Enter to go. A second cue read ends S1 as
+    // before, and so does a lifted ask or a box that went away, at once.
+    const strike = oneStrike(s0);
     // A message into a framed box on a harness that takes one in a turn: only the box and what is under
     // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
     // exists, rows above that moved may be a turn Collie did not see, so the full compare stays.
@@ -5819,7 +5992,7 @@ export class SendProtocol {
         }
         if (verdict !== "pass") {
           if (verdict !== "wait") why = verdict;
-          return verdict === "modal_cue" ? "fail" : "wait";
+          return verdict === "modal_cue" ? strike(snap) : "wait";
         }
         // The rows above moved on a harness that queues in a turn: the commit takes its queue key.
         if (!state.queued && queuesInTurn(state.match) && !aboveUnchanged(s0, snap)) state.streamed = true;
@@ -5854,7 +6027,7 @@ export class SendProtocol {
           : cueAppeared(s0, snap) && !this.aboveMovedInTurn(state, s0, snap);
       if (cueGrew) {
         why = "modal_cue";
-        return "fail";
+        return strike(snap);
       }
       if (s0.frame !== null) {
         if (snap.frame === null) return "wait";
@@ -6001,6 +6174,14 @@ export class SendProtocol {
     this.openSend(state);
     const token = gate.mint(state.target.paneId, keys, s1.gateRevision);
     const result = await this.within(state, gate.commit(token));
+    // The multiplexer took the keys and did not confirm them in time: they may still land (MuxRefusal
+    // `unconfirmed`). That is no fact about the box, so it is never `typed_not_submitted`, and nothing
+    // sends them again. S2 reads as after any submit key, and its read decides ({@link awaitSent}).
+    if (!result.ok && result.reason === "mux" && result.refusal.reason === "unconfirmed") {
+      state.enterUnconfirmed = result.refusal.detail;
+      state.keys.push(...keys);
+      return;
+    }
     if (!result.ok) {
       const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;
       throw new Ended("typed_not_submitted", reason, { framed: s1.frame !== null, rowsHash: s1.rowsHash, detail: result.reason === "mux" ? result.refusal.detail : result.detail });
@@ -6046,6 +6227,9 @@ export class SendProtocol {
         // evidence that the harness took it.
         if (queued) return boxText(snap.frame).length === 0 ? "pass" : "wait";
         if (command && !wsFree(boxText(snap.frame)).includes(wsFree(withoutLead(lines).join("")))) return "pass";
+        // Submit keys the multiplexer did not confirm: only the box letting go of the text says they
+        // landed. A running sign beside the text still in the box may be a turn of its own.
+        if (state.enterUnconfirmed !== null) return boxText(snap.frame).length === 0 ? "pass" : "wait";
         return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame, state.match?.profile.idle.runningRows) ? "pass" : "wait";
       }
       if (landing === null) return "wait";
@@ -6069,6 +6253,13 @@ export class SendProtocol {
     // by the request's deadline). Only a command waits: a send that left its text in the box has no
     // screen to wait for. A box that never changes still ends `no_evidence`.
     if (command && result.verdict === "wait") result = await this.poll(state, "s2", BOUNDS.s2, test);
+    // Submit keys the multiplexer did not confirm may land late (herdr-core holds a terminal's keys
+    // behind a slow read for seconds): a box that still holds the text gets one more S2 bound before
+    // the send is called typed, not submitted, so a late Enter is not taken for one that never came.
+    if (!command && state.enterUnconfirmed !== null && result.verdict === "wait") {
+      this.stretch(state, BOUNDS.s2.ms);
+      result = await this.poll(state, "s2", BOUNDS.s2, test);
+    }
     state.marks.s2 = result.snap;
     if (witnessed && result.verdict === "pass") {
       state.witnessed = true;
@@ -6080,6 +6271,18 @@ export class SendProtocol {
     const lastFrame = result.snap?.frame ?? null;
     if (result.verdict !== "pass" && queued && lastFrame !== null && wsFree(boxText(lastFrame)) === wsFree(sentText) && wsFree(sentText).length > 0) {
       throw new Ended("unknown", "dialog_after_enter", sawNote(result.snap, { offers: ["keys"], detail: ENTER_MISSED_BOX }));
+    }
+    if (result.verdict !== "pass" && state.enterUnconfirmed !== null) {
+      // The submit keys were not confirmed (commit). The last read still shows the conversation's box,
+      // no dialog over it, holding the whole text S1 proved: the keys did not land, and the text is
+      // typed, not submitted (the leftover rule keeps it for the next send). Any other read proves
+      // neither, and the send is `unknown`: a Resend could deliver it twice.
+      const last = result.snap;
+      const box = last?.frame ?? null;
+      if (last !== null && box !== null && last.otherScreen === null && last.surface.modal === "none" && wsFree(sentText).length > 0 && wsFree(boxText(box)) === wsFree(sentText)) {
+        throw new Ended("typed_not_submitted", "submit_failed", sawNote(last, { framed: true, rowsHash: last.rowsHash, detail: state.enterUnconfirmed }));
+      }
+      throw new Ended("unknown", "no_evidence", sawNote(last, { detail: state.enterUnconfirmed }));
     }
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });
   }

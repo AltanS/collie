@@ -851,8 +851,10 @@ Collie checks the input box of an agent before it sends a message from the phone
 A profile file describes that box for one agent. It says where the box starts and ends.
 It says how a draft looks, which key sends, and which text the agent draws for a long paste.
 A plain shell and an agent with no profile still take sends. Collie cannot read their input box,
-so it types the text and presses Enter without a check, one line at a time. Only a password prompt
-on the last rows stops it: Collie types nothing there, and the phone offers Type.
+so it types the text and presses Enter without a check, one line at a time. A password prompt
+on the last rows stops it: Collie types nothing there, and the phone offers Type. So do last rows
+that look like an agent's: an input box, a dialog's choices, or a footer row that an agent's
+profile names. Collie then cannot tell which agent runs there, so it types nothing either.
 
 | Agent | Enter during a turn | Send key | Probe | Checked against |
 | ----- | ------------------- | -------- | ----------------- | --------------- |

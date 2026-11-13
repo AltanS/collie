@@ -59,6 +59,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   muxUnsupported,
   requestedCwd,
@@ -84,6 +85,7 @@ import {
   DEFAULT_TUIOS_TIMEOUT_MS,
   TuiosClient,
   TuiosError,
+  TuiosTimeout,
   TUIOS_PROTOCOL,
   TUIOS_REQUIRED_EVENT,
   type StreamResume,
@@ -357,7 +359,18 @@ export class TuiosMux implements MuxAdapter {
   /** Literal text, written to the pane's PTY verbatim, submitting nothing. */
   async typeText(paneId: string, text: string): Promise<MuxAck> {
     if (text.length === 0) return muxAck();
-    return this.onPane(paneId, (session) => this.rpc.sendText(session, paneId, text));
+    const located = await this.locate(paneId);
+    if (!located.ok) return located;
+    const session = located.value.session.name;
+    // A write the daemon did not answer in time may still have reached the pane: `unconfirmed`, never
+    // `unreachable`, and the caller's next read decides (MuxRefusal).
+    try {
+      await this.rpc.sendText(session, paneId, text);
+      return muxAck();
+    } catch (err) {
+      if (err instanceof TuiosTimeout) return muxUnconfirmed(`tuios did not confirm the text written to ${paneId} in time (${err.message}). It may still arrive, so it was not written again.`);
+      return refusalFor(err);
+    }
   }
 
   /**

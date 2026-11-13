@@ -82,7 +82,8 @@ function idlePane() {
     ["> earlier", "", RULE, box === "" ? "❯ \u001b[2mTry something\u001b[0m" : `❯ ${box}`, RULE, "  status row"].join("\n");
   return {
     written,
-    readGrid: (paneId: string): Promise<MuxOutcome<MuxGrid>> => Promise.resolve(muxOk({ paneId, text: render(), truncated: false, revision })),
+    // %7 is the engine's bare shell pane: a shell prompt, which the blind road types into.
+    readGrid: (paneId: string): Promise<MuxOutcome<MuxGrid>> => Promise.resolve(muxOk({ paneId, text: paneId === "%7" ? "$ ls\nnotes.txt\n$ " : render(), truncated: false, revision })),
     typeText: (_paneId: string, text: string): Promise<MuxAck> => {
       written.push(text);
       box += text;

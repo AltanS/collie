@@ -59,6 +59,9 @@ export const ASK_REASONS = [
   "write_failed", // the multiplexer refused the keys
   // refused after the walk: arrows went, Enter did not
   "ask_mismatch", // the highlighted row is not the chosen option
+  // refused before any key (M100 spec 03): the read before the first key failed or came back partial,
+  // twice, so the dialog could not be seen whole; nothing was sent
+  "unreadable",
   // unknown: the request ended without evidence either way
   "bound",
   "crash",

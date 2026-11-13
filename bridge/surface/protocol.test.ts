@@ -934,6 +934,11 @@ describe("a command whose own screen draws late (the browser leg, omp /model, 20
 /** A plain shell pane as the dev lane read it on v1.22.4 (Herdr agent `shell`): the Bluefin motd, then a starship prompt. */
 const SHELL_SCREEN = "shell--starship-bluefin-motd--w117.txt";
 
+/** A plain shell's screen (starship at its prompt): what the blind road types into. */
+function shellText(): string {
+  return readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${SHELL_SCREEN}`), "utf8");
+}
+
 describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-10-17 field case)", () => {
   // On v1.22.4 both a send and a command on a plain shell were refused `unconfirmed` with `no-match`:
   // a pane with no profile took the two-tap manual Send. It takes the send the way 1.21.3 did.
@@ -965,8 +970,9 @@ describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-
   test("a send on a pane with no profile is never held, even with a hold queue and a screen that will not hold still", async () => {
     const holds = new HoldStore(join(dir, "held"));
     const r = rig({ harness: "", holds });
+    r.pane.fixed = shellText();
     r.pane.beforeRead = (p) => {
-      p.transcript.push("a row that came in");
+      p.fixed = `${p.fixed ?? ""}\r\na row that came in`;
     };
     const answer = await r.send("hello");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
@@ -1009,6 +1015,7 @@ describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-
 
   test("an Enter the multiplexer refuses leaves the text typed, and offers only the key pad: there is no rows hash to bind a Submit to", async () => {
     const r = rig({ mode: "generic", harness: "" });
+    r.pane.fixed = shellText();
     r.pane.writeKeys = () => Promise.resolve(muxRefused("no such pane"));
     const answer = await r.send("make test");
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "submit_failed", keys: [] });
@@ -4532,7 +4539,8 @@ describe("counters, the cap and the examples", () => {
 
   test("a blind send on a pane with no profile counts sent, never manual and never probed, and the cap never asks", async () => {
     const ledger = ledgerFor({ cap: 0 });
-    const { send } = rig({ mode: "generic", ledger, harness: NO_PROFILE });
+    const { pane, send } = rig({ mode: "generic", ledger, harness: NO_PROFILE });
+    pane.fixed = shellText();
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
     expect(rowOf(ledger, NO_PROFILE)).toMatchObject({ manual: 0, sent: 1, probed: 0, status: "-", profileId: "-" });
   });
@@ -4639,7 +4647,9 @@ describe("counters, the cap and the examples", () => {
         throw new Error("disk full");
       },
     };
-    const { send, deps } = rig({ mode: "generic" });
+    const { pane, send, deps } = rig({ mode: "generic" });
+    // A shell's screen: the blind road types into it (an agent's box there is refused, M100 spec 06).
+    pane.fixed = shellText();
     const protocol = new SendProtocol({ ...deps, ledger: broken });
     const target = { session: "main", paneId: "%1", harness: "nothing-known" };
     const first = await protocol.handle({ id: nextId(), text: "hello from the phone", mode: "send" }, target);
@@ -7147,9 +7157,10 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
   test("a pane with no profile never holds: its send goes in blind, with no read for a hold to wait on", async () => {
     const holds = new HoldStore(join(dir, "held"));
     const r = rig({ harness: NO_PROFILE, holds });
+    r.pane.fixed = shellText();
     // The screen would move between the two S0 reads (not_free, the reason a profiled pane holds); no read is taken.
     r.pane.beforeRead = (p, n) => {
-      if (n === 2) p.transcript.push("a row that came in");
+      if (n === 2) p.fixed = `${p.fixed ?? ""}\r\na row that came in`;
     };
     const answer = await r.send("hello");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });

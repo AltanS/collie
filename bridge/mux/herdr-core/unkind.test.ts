@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import { STATUS_RANK } from "../../types.ts";
 import { HerdrCoreMux, HISTORY_READ_BUDGET_MS, OLDER_NOTE_BLOCKED, OLDER_NOTE_READING } from "./adapter.ts";
-import { DEFAULT_HC_TIMEOUT_MS, type WireRead } from "./client.ts";
+import { DEFAULT_HC_TIMEOUT_MS, HcTimeout, type WireRead } from "./client.ts";
 import { FakeHcCore, KEY_HOLD_MS, ManualClock } from "./fake-core.ts";
 
 interface Built {
@@ -517,5 +517,23 @@ describe("a core stop and start (HC_API.md, error kinds finished and unavailable
     expect(reason(await adapter.typeText("t1", "ls"))).toBe("refused");
     fake.shellsReady();
     expect((await adapter.typeText("t1", "ls")).ok).toBe(true);
+  });
+});
+
+// M100 spec 03, item 2: a text write the core did not answer in time may still land, as keys may.
+describe("a text write the core does not confirm in time", () => {
+  class LateCore extends FakeHcCore {
+    override async typeRaw(address: string, text: string): Promise<void> {
+      void address;
+      void text;
+      throw new HcTimeout("terminal.input", DEFAULT_HC_TIMEOUT_MS);
+    }
+  }
+
+  test("typeText answers unconfirmed, and says it may still arrive", async () => {
+    const adapter = new HerdrCoreMux(new LateCore(), "/home/dev");
+    const ack = await adapter.typeText("t2", "hello");
+    expect(reason(ack)).toBe("unconfirmed");
+    if (!ack.ok) expect(ack.detail).toContain("may still arrive");
   });
 });

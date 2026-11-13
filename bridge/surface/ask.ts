@@ -70,6 +70,12 @@ export function askBinding(generation: string, dialog: LiftedDialog): string {
  * dialog still shows after them. The keys may still land, so they are never sent again (MuxRefusal,
  * `unconfirmed`): the receipt says `unknown`, never a failure.
  */
+/** A check read the multiplexer marked partial, twice (M100 spec 03): nothing was sent. */
+export const PARTIAL_ASK_READ = "The terminal says rows may be missing from the screen it reads, so Collie cannot see the dialog whole. Nothing was sent. Tap again.";
+
+/** A check read that failed twice, on a pane the multiplexer does not call gone (M100 spec 03): nothing was sent. */
+export const FAILED_ASK_READ = "The screen could not be read, so Collie cannot see the dialog. Nothing was sent. Tap again.";
+
 export const UNCONFIRMED_COMMIT_DETAIL = "The keys were not confirmed in time and the dialog still shows. They may still arrive, so Collie did not send them again.";
 
 /** The detail of a walk whose arrows were not confirmed in time and whose highlight did not reach the choice. */
@@ -364,6 +370,10 @@ interface AskRun {
   readonly keys: string[];
   /** The steps whose keys left and the multiplexer did not confirm in time: they may still land. */
   readonly unconfirmed: Set<"walk" | "commit">;
+  /** The newest read came back marked partial (`MuxGrid.partial`) and was taken as no read. */
+  partialRead?: boolean;
+  /** The newest read failed because the multiplexer says the pane is gone. */
+  readGone?: boolean;
 }
 
 class AskEnded extends Error {
@@ -610,8 +620,12 @@ export class AskAnswerer {
     try {
       if (held.dialog !== null) {
         // The dialog the ask was read from must still be on the screen: else the desk answered.
-        const check = await this.read(state, "check", this.now() + ASK_BOUNDS.check.ms, "refused").catch(() => null);
+        const check = await this.wholeRead(state, "check", ASK_BOUNDS.check.ms).catch(() => null);
         state.marks.check = check;
+        // A read the multiplexer marked partial, twice, proves nothing about the dialog: the hook stays held.
+        if (check === null && state.partialRead === true) {
+          return this.holdReply(answer, target, held, "refused", "unreadable", state, { detail: PARTIAL_ASK_READ });
+        }
         if (check === null || check.dialog === null || !sameDialog(held.dialog, check.dialog)) {
           holds.end(held, "desk");
           return this.holdReply(answer, target, held, "refused", "ask_desk", state, {});
@@ -794,7 +808,7 @@ export class AskAnswerer {
     if (this.deps.generation(target.paneId) !== entry.generation) throw new AskEnded("refused", "pane_gone");
 
     // The check: a fresh read, the dialog lifted again, the same binding. Before any key.
-    const check = await this.readOnce(state, "check", ASK_BOUNDS.check.ms, "refused");
+    const check = await this.readOnce(state, "check", ASK_BOUNDS.check.ms);
     state.marks.check = check;
     if (check.dialog === null) {
       this.deps.book.void(answer.askId);
@@ -857,7 +871,8 @@ export class AskAnswerer {
     });
     try {
       const grid = await Promise.race([this.deps.mux.readGrid(target.paneId, { scope: "viewport", lines: ASK_READ_LINES, styling: "preserve" }), late]);
-      if (grid === null || !grid.ok) return null;
+      // A partial read publishes nothing: a dialog missing from it would void the live ask.
+      if (grid === null || !grid.ok || grid.value.partial === true) return null;
       const dialog = liftDialog(readerBlocks(splitLines(parseAnsi(grid.value.text)), target.harness));
       const match = await this.deps.profile(target.harness, target.paneId);
       return this.deps.book.publish(target.paneId, generation, dialog, askLifetimeOf(match));
@@ -925,7 +940,15 @@ export class AskAnswerer {
     const { paneId, harness } = state.target;
     const grid = await this.within(state, this.deps.mux.readGrid(paneId, { scope: "viewport", lines: ASK_READ_LINES, styling: "preserve" }), until, outcome);
     const gateRevision = this.deps.gate.noteRead(paneId);
+    state.partialRead = false;
+    state.readGone = !grid.ok && grid.reason === "gone";
     if (!grid.ok) return null;
+    // The multiplexer says rows may be missing: no read, and nothing published. A dialog missing from it
+    // would void the ask as gone (M100 spec 03).
+    if (grid.value.partial === true) {
+      state.partialRead = true;
+      return null;
+    }
     const rows = splitLines(parseAnsi(grid.value.text));
     const texts = rows.map((row) => rowText(row).trimEnd());
     this.deps.ring?.push({ requestId: state.answer.askId, step, at: this.now(), rows: texts });
@@ -938,10 +961,31 @@ export class AskAnswerer {
     return { revision: grid.value.revision, gateRevision, hash: shortHash(texts.join("\n")), texts, dialog, surface };
   }
 
-  private async readOnce(state: AskRun, step: string, ms: number, outcome: "refused" | "unknown"): Promise<AskSnap> {
-    const snap = await this.read(state, step, this.now() + ms, outcome);
-    if (snap === null) throw new AskEnded(outcome, "pane_gone");
-    return snap;
+  /**
+   * A whole read before any key (M100 spec 03): a read that failed or came back partial is no read, so
+   * one more is taken inside the same bound. Null when that one is no whole read either; `partialRead`
+   * then says whether it was partial.
+   */
+  private async wholeRead(state: AskRun, step: string, ms: number): Promise<AskSnap | null> {
+    const until = this.now() + ms;
+    const first = await this.read(state, step, until, "refused");
+    if (first !== null) return first;
+    if (until - this.now() <= FIRST_GAP_MS) return null;
+    await this.sleep(FIRST_GAP_MS);
+    return this.read(state, step, until, "refused");
+  }
+
+  /**
+   * The check's read: a whole one ({@link wholeRead}), or the answer ends `refused(unreadable)` with no
+   * key sent. A read that failed or was partial says nothing of the dialog or the program, so it is
+   * never `ask_gone` and never `pane_gone`.
+   */
+  private async readOnce(state: AskRun, step: string, ms: number): Promise<AskSnap> {
+    const snap = await this.wholeRead(state, step, ms);
+    if (snap !== null) return snap;
+    // The multiplexer itself says the pane is gone: that one is true.
+    if (state.readGone === true) throw new AskEnded("refused", "pane_gone");
+    throw new AskEnded("refused", "unreadable", { detail: state.partialRead === true ? PARTIAL_ASK_READ : FAILED_ASK_READ });
   }
 
   /** Reads until the test passes or fails, inside the step's (reads, ms) bound. */

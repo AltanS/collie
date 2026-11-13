@@ -37,6 +37,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   requestedCwd,
   type MuxAck,
@@ -59,6 +60,7 @@ import {
 import {
   DEFAULT_TIMEOUT_MS,
   HerdrClient,
+  HerdrTimeout,
   paneAgentSession,
   type CreatedShell,
   type HerdrRpc,
@@ -362,7 +364,7 @@ export class HerdrMux implements MuxAdapter {
   }
 
   async typeText(paneId: string, text: string): Promise<MuxAck> {
-    return this.attempt(() => this.client.sendPaneText(paneId, text));
+    return this.attemptWrite(paneId, () => this.client.sendPaneText(paneId, text));
   }
 
   /**
@@ -375,7 +377,7 @@ export class HerdrMux implements MuxAdapter {
   async pasteBlock(paneId: string, text: string): Promise<MuxAck> {
     const body = [...text].filter(pasteKeeps).join("");
     if (body.length === 0) return muxAck();
-    return this.attempt(() => this.client.sendPaneText(paneId, `${PASTE_START}${body}${PASTE_END}`));
+    return this.attemptWrite(paneId, () => this.client.sendPaneText(paneId, `${PASTE_START}${body}${PASTE_END}`));
   }
 
   /**
@@ -529,6 +531,20 @@ export class HerdrMux implements MuxAdapter {
       },
       onDown: (why) => options.onDown(why),
     });
+  }
+
+  /**
+   * {@link attempt} for a text write. A write Herdr did not answer in time may still have reached the
+   * pane: it is `unconfirmed`, never `unreachable`, and the caller's next read decides (MuxRefusal).
+   */
+  private async attemptWrite(paneId: string, call: () => Promise<void>): Promise<MuxAck> {
+    try {
+      await call();
+      return muxAck();
+    } catch (err) {
+      if (err instanceof HerdrTimeout) return muxUnconfirmed(`Herdr did not confirm the text written to ${paneId} in time (${err.message}). It may still arrive, so it was not written again.`);
+      return transportRefusal(err);
+    }
   }
 
   /** One RPC that answers nothing but "it happened", as the contract's ack-or-refusal. */

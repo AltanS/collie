@@ -309,6 +309,18 @@ export type TuiosRpc = Pick<
   | "subscribe"
 >;
 
+/**
+ * A request the tuios daemon did not answer inside the client's budget. The message is the one a plain
+ * Error carried before; the class lets a write tell "not confirmed, it may still land" from a transport
+ * that failed (MuxRefusal `unconfirmed`, bridge/mux/types.ts).
+ */
+export class TuiosTimeout extends Error {
+  constructor(verb: string, timeoutMs: number) {
+    super(`tuios ${verb}: timed out after ${String(timeoutMs)}ms`);
+    this.name = "TuiosTimeout";
+  }
+}
+
 export class TuiosClient {
   constructor(
     private readonly socketPath: string,
@@ -340,7 +352,7 @@ export class TuiosClient {
         cancelDial = null;
       };
       const timer = setTimeout(
-        () => finish(() => reject(new Error(`tuios ${verb}: timed out after ${String(this.timeoutMs)}ms`))),
+        () => finish(() => reject(new TuiosTimeout(verb, this.timeoutMs))),
         this.timeoutMs,
       );
       // `bun`, never `auto`: `auto` maps a path to a Windows named pipe, which is Herdr's transport

@@ -68,6 +68,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   muxUnsupported,
   type MuxAck,
@@ -87,7 +88,7 @@ import {
   type MuxTabRequest,
   type MuxWatchOptions,
 } from "../types.ts";
-import { resolveZellijBinary, SpawnZellijExec } from "./exec.ts";
+import { resolveZellijBinary, SpawnZellijExec, TIMED_OUT_CODE } from "./exec.ts";
 import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
 import { toZellijKey, ZELLIJ_UNSENDABLE_KEYS } from "./keys.ts";
 import { zellijBeaconMatcher } from "./markers.ts";
@@ -364,7 +365,13 @@ export class ZellijMux implements MuxAdapter {
     }
     const gone = await this.livePane(paneId);
     if (gone !== null) return gone;
-    return this.ack(writeCharsArgs(paneId, text));
+    const call: ZellijCall = await this.session.run(writeCharsArgs(paneId, text));
+    // A `write-chars` that ran out of budget was killed, maybe after it wrote: `unconfirmed`, never a
+    // refusal, and the caller's next read decides (MuxRefusal).
+    if (call.ok && call.result.code === TIMED_OUT_CODE) {
+      return muxUnconfirmed(`zellij did not confirm the text written to ${paneId} in time (${call.result.stderr.trim()}). It may still arrive, so it was not written again.`);
+    }
+    return this.ackOf(call);
   }
 
   /**
@@ -594,7 +601,11 @@ export class ZellijMux implements MuxAdapter {
 
   /** One fire-and-forget zellij verb, as the contract's acknowledgement or refusal. */
   private async ack(args: readonly string[]): Promise<MuxAck> {
-    const call: ZellijCall = await this.session.run(args);
+    return this.ackOf(await this.session.run(args));
+  }
+
+  /** One zellij call's answer as the contract's acknowledgement or refusal. */
+  private ackOf(call: ZellijCall): MuxAck {
     if (!call.ok) return muxUnreachable(call.detail);
     // A non-zero exit that survived the session check is zellij refusing the arguments themselves —
     // an unsupported key name is the one the probe found (keys.ts).

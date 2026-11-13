@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import type { MuxSpace } from "../types.ts";
 import { HerdrMux, SCROLL_STATE_MEMO_MS } from "./adapter.ts";
-import type { CreatedShell, PaneRead, WirePane, WireSnapshot, WireWorkspace } from "./client.ts";
+import { HerdrTimeout, type CreatedShell, type PaneRead, type WirePane, type WireSnapshot, type WireWorkspace } from "./client.ts";
 import { FakeHerdr } from "./fixture.ts";
 
 // THE SPACE'S FOLDER, across the two Herdr shapes (ADR 0032, ADR 0126).
@@ -469,5 +469,35 @@ describe("a space whose folder is a linked worktree", () => {
     const created = await new HerdrMux(fake, () => []).createSpace(ASKED);
     expect(created.ok).toBe(false);
     expect(fake.plainCreates).toBe(0);
+  });
+});
+
+// M100 spec 03, item 2: a text write Herdr did not answer in time may still have reached the pane. It is
+// `unconfirmed` (the caller reads the box), not `unreachable` (which read as "nothing typed").
+describe("a text write Herdr does not confirm in time", () => {
+  class LateHerdr extends FakeHerdr {
+    override async sendPaneText(paneId: string, text: string): Promise<void> {
+      void paneId;
+      void text;
+      throw new HerdrTimeout("pane.send_text", 5000);
+    }
+  }
+
+  test("typeText and pasteBlock answer unconfirmed, and say it may still arrive", async () => {
+    const mux = new HerdrMux(new LateHerdr(), () => []);
+    for (const ack of [await mux.typeText("w1:p1", "hello"), await mux.pasteBlock("w1:p1", "a\nb")]) {
+      expect(ack.ok ? "ok" : ack.reason).toBe("unconfirmed");
+      if (!ack.ok) expect(ack.detail).toContain("may still arrive");
+    }
+  });
+
+  test("any other failure of the write stays unreachable", async () => {
+    class DeadHerdr extends FakeHerdr {
+      override async sendPaneText(): Promise<void> {
+        throw new Error("herdr pane.send_text: connection closed");
+      }
+    }
+    const ack = await new HerdrMux(new DeadHerdr(), () => []).typeText("w1:p1", "hello");
+    expect(ack.ok ? "ok" : ack.reason).toBe("unreachable");
   });
 });

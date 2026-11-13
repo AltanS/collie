@@ -241,6 +241,18 @@ let idCounter = 0;
 /** Per-request wall-clock budget. Exported so callers can pass it explicitly alongside a dial mode. */
 export const DEFAULT_TIMEOUT_MS = 5000;
 
+/**
+ * A request Herdr did not answer inside the client's budget. The message is the one a plain Error carried
+ * before; the class lets a write tell "not confirmed, it may still land" from a transport that failed
+ * (MuxRefusal `unconfirmed`, bridge/mux/types.ts).
+ */
+export class HerdrTimeout extends Error {
+  constructor(method: string, timeoutMs: number) {
+    super(`herdr ${method}: timed out after ${String(timeoutMs)}ms`);
+    this.name = "HerdrTimeout";
+  }
+}
+
 export class HerdrClient {
   constructor(
     private readonly socketPath: string,
@@ -291,7 +303,7 @@ export class HerdrClient {
         cancelDial = null;
       };
       const timer = setTimeout(
-        () => finish(() => reject(new Error(`herdr ${method}: timed out after ${this.timeoutMs}ms`))),
+        () => finish(() => reject(new HerdrTimeout(method, this.timeoutMs))),
         this.timeoutMs,
       );
 
