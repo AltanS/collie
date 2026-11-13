@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Segmented } from "@/playground/layout";
 import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { __forgetSendIntentMemory } from "@/lib/send-intent";
-import ROUND, { CAPTION, STAGE_HEIGHT } from "./send-it-again";
+import ROUND, { CAPTION, FRAME_HEIGHT, STAGE_HEIGHT } from "./send-it-again";
 
 // The round for "Send it again?", drawn the way the design app's round page draws it: one option, ONE Case
 // switch, the real composer with a fake bridge behind it.
@@ -49,15 +49,21 @@ describe("the Send it again? round", () => {
     expect(screen.getAllByRole("group", { name: "Case" })).toHaveLength(1);
   });
 
-  it("fits the design app's frame: a stage 458 high inside the 470 frame, and a caption in plain words", () => {
-    expect(STAGE_HEIGHT).toBe(458);
-    expect(ROUND.frameHeight).toBe(470);
-    expect(CAPTION).toBe("The question stays for 3 seconds. In After unknown, tap Send to see it again.");
+  it("fits a frame 400 high: a stage of at most 400, the caption on one line of words, the send button inside it", async () => {
+    expect(FRAME_HEIGHT).toBe(400);
+    expect(ROUND.frameHeight).toBe(400);
+    expect(STAGE_HEIGHT).toBeLessThanOrEqual(400);
+    expect(CAPTION).toBe("The question stays 3 seconds. Tap Send to see it again.");
     render(<Round />);
     const stage = frame().querySelector<HTMLElement>('[data-slot="send-it-again-stage"]')!;
-    expect(stage.style.height).toBe("458px");
+    expect(Number.parseInt(stage.style.height, 10)).toBe(STAGE_HEIGHT);
     expect(within(stage).getByText(CAPTION)).toBeInTheDocument();
-  });
+    // jsdom lays nothing out, so "the bottom edge lies inside the stage" is checked in a browser (the worker's
+    // report); here the send button is a child of the stage and the stage clips: it holds no more than its height.
+    const send = await within(stage).findByRole("button", { name: "Send" }, SLOW);
+    expect(stage.contains(send)).toBe(true);
+    expect(stage.className).toContain("overflow-hidden");
+  }, TEST_MS);
 
   it("After unknown: a tap of your own on Send asks, and the next tap sends as sent", async () => {
     render(<Round />);
@@ -81,6 +87,16 @@ describe("the Send it again? round", () => {
     render(<Round />);
     useCase("Asking");
     expect(await within(frame()).findByRole("button", { name: "Send it again?" }, SLOW)).toBeInTheDocument();
+  }, TEST_MS);
+
+  it("Asking holds its state: the question runs out after its 3 seconds and the case asks again", async () => {
+    render(<Round />);
+    useCase("Asking");
+    await within(frame()).findByRole("button", { name: "Send it again?" }, SLOW);
+    await waitFor(() => expect(within(frame()).queryByRole("button", { name: "Send it again?" })).toBeNull(), SLOW);
+    expect(await within(frame()).findByRole("button", { name: "Send it again?" }, SLOW)).toBeInTheDocument();
+    // The case never sent: the text is still in the box.
+    expect(within(frame()).getByRole<HTMLTextAreaElement>("textbox").value).toContain("Run the full test suite");
   }, TEST_MS);
 
   it("After the confirm: the text went, the box is empty and the question is gone", async () => {
