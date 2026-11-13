@@ -14,6 +14,11 @@ over a Unix socket. The parser is `wire.ts`, the socket `server.ts`, the binding
 One socket per bridge: `<stateDir>/inside/sock`, mode `0600`, in a folder of mode `0700` that the
 bridge's own user owns and that is not a link. The bridge refuses to listen otherwise.
 
+The socket is opt-in. A bridge opens it only when the operator turned the wire on for that instance
+(`COLLIE_INSIDE=1`, or `inside = true` in `[bridge]`; off by default, `bridge/inside/gate.ts`). Off is
+also the kill switch: no socket, no `inside` field in the hook target file, and every session keeps
+the screen path. Windows keeps the screen path in this version.
+
 A part finds every live bridge of the machine through the hook target folder
 (`$XDG_STATE_HOME/collie/hook-targets/`, else `~/.local/state/collie/hook-targets/`). Each bridge that
 serves the wire writes its socket into its own file there:
@@ -176,6 +181,13 @@ capped, and no body text (a prompt, a draft, an ask's input) is ever written to 
 credentials of the connecting process (`SO_PEERCRED`) are not checked: Bun's server does not expose
 them. That check would tie a connection to its pid; it is a follow-up, not a border this version
 claims.
+
+## Known limits
+
+- **Claude Code marks a data prompt at the desk.** A prompt the Claude mod submits, also with
+  `asUser`, shows "Prompt from the collie plugin" above it in the desk transcript. That is Claude
+  Code's own mark; the mod cannot remove it.
+- **Peer credentials are not checked** (see the threat model).
 
 ## Versions
 

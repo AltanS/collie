@@ -454,6 +454,14 @@ export interface Config {
    */
   multiSession: boolean;
   /**
+   * The inside wire (`COLLIE_INSIDE=1`, M99, `bridge/inside/WIRE.md`): the bridge opens its inside
+   * socket, and a part that binds may take sends, asks and wake events as data. Off by default, and
+   * off is also the kill switch: no socket, no hook target `inside` field, and every session keeps
+   * the screen path exactly as before. Until `collie link` (M99 spec 09) exists this setting is the
+   * only gate; that spec turns it on for an instance with a linked harness.
+   */
+  inside: boolean;
+  /**
    * Surface shadow mode (`COLLIE_SURFACE_SHADOW=1`, M56 spec 04): the bridge computes each agent pane's
    * Surface from the screen on every poll beside the old readers, logs every disagreement and serves
    * the Surface on the snapshot and on `GET /api/surface`. Off by default; nothing decides a send by it.
@@ -884,6 +892,7 @@ export function loadConfig(
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true, env),
     surfaceShadow: envBool("COLLIE_SURFACE_SHADOW", false, env),
+    inside: envBool("COLLIE_INSIDE", false, env),
     sendProtocol: envBool("COLLIE_SEND_PROTOCOL", true, env),
     walky: envBool("COLLIE_WALKY", true, env),
     walkyPairLimit: envInt("COLLIE_WALKY_PAIR_LIMIT", PAIR_LIMIT, { min: 1, max: 100 }, env),

@@ -245,6 +245,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "sendProtocol",
   },
   {
+    key: "inside",
+    env: "COLLIE_INSIDE",
+    section: "bridge",
+    kind: "bool",
+    default: false,
+    doc: "Experimental (M99): open the inside socket so a linked agent part can take sends, asks and wake events as data. Off keeps the screen path for every session.",
+    configField: "inside",
+  },
+  {
     key: "walky",
     env: "COLLIE_WALKY",
     section: "bridge",

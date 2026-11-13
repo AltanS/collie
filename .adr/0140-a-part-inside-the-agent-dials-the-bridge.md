@@ -49,6 +49,7 @@ listen. A pi extension could listen, but two shapes of wire for two programs is 
   checked, because Bun's server does not expose them; that is the first thing to revisit.
 - Every send path now has two roads, and every caller must pick one per request id. The pick lives in
   one pure function (M99 spec 03), so the rule is read in one place.
-- The bridge serves a socket on every start, linked part or not. It costs one listener and a timer.
+- The socket is opt-in per instance (`COLLIE_INSIDE`, off by default, and the kill switch). Until
+  `collie link` exists that setting is the only gate; then a linked harness turns it on.
 - Revisit when a vendor ships a supported local service that does the same job (then the bridge may
   dial it, as M99 spec 07 does for Codex), or when the wire needs a second transport off the machine.

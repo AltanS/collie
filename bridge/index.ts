@@ -301,6 +301,7 @@ import { SurfaceLedger } from "./surface/counters.ts";
 import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
+import { insideGate } from "./inside/gate.ts";
 import { InsideHub } from "./inside/hub.ts";
 import { placeHello } from "./inside/place.ts";
 import { CommandQueue } from "./inside/queue.ts";
@@ -1767,11 +1768,12 @@ const holdServer =
       });
 // The inside wire (M99 spec 01, bridge/inside/WIRE.md): parts inside an agent program (a Claude Code
 // mod, a pi extension) dial `<stateDir>/inside/sock` and bind to their pane through the same placement
-// as a hook edge. Built with the edges, since it places on the same targets. Nothing acts on a part
-// yet: until specs 03 to 05 add their listeners, every send, ask and WalkyTalky message keeps the
-// screen path, and a part only binds and reports.
+// as a hook edge. Built with the edges, since it places on the same targets. Opt-in: the socket opens
+// only when `insideGate` says so (`COLLIE_INSIDE`, off by default; `bridge/inside/gate.ts`). Closed,
+// no part can bind and every send, ask and WalkyTalky message keeps the screen path.
+const insideGateState = insideGate({ setting: cfg.inside, edges: edgeRouter !== null, platform: HOST.platform });
 const insideHub =
-  edgeRouter === null
+  insideGateState !== "open" || edgeRouter === null
     ? null
     : new InsideHub({
         registry: new PartRegistry(),
@@ -2202,6 +2204,7 @@ if (holdServer !== null && (await holdServer.start())) console.log(`[surface] ho
 // And the inside socket (M99 spec 01), also before the target file, which names it in its `inside` field.
 const insideStarted = insideServer !== null && (await insideServer.start());
 if (insideStarted) console.log(`[inside] socket at ${insideSocketPath(cfg.stateDir)}`);
+else if (insideGateState !== "off") console.log(`[inside] socket closed: ${insideGateState === "platform" ? "not on this platform" : insideGateState === "no-edges" ? "no hook edges" : "did not start"}`);
 // The target file also says which multiplexer this bridge drives, under which instance, on which port,
 // so `collie mux list` reads the live bridges without dialling them (M76 spec 02).
 hookTarget =
