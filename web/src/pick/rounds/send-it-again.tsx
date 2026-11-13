@@ -8,6 +8,11 @@
 // slot), "Asking" (a second tap on the same text: the Send slot reads "Send it again?" and nothing was sent),
 // "After the confirm" (the confirming tap: the text goes under a new id, the fake bridge answers sent).
 //
+// The stage is built for the design app's frame, 390 wide and 470 high (378 by 458 inside its border): a caption
+// line, one row of terminal, the real composer and a short keyboard stand-in, with no scroll. The question stays
+// 3 seconds, the real `usePendingConfirm` time, so "Asking" plays its taps when the case opens (and again on the
+// page's Replay, which remounts the option), and a tap of your own in any case arms it afresh.
+//
 // The question is the existing destructive-send confirm's slot and button (`Really send?`), with other words and
 // no note above the box: no new row, no sheet. After the pick: this file and its line in ../rounds.ts go.
 //
@@ -21,7 +26,7 @@ import { saveDraft } from "@/lib/drafts";
 import { markLive } from "@/lib/liveness";
 import { forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent } from "@/lib/send-intent";
-import { ChromeBlock, PhoneMock } from "@/playground/sections/shared";
+import { ChromeBlock } from "@/playground/sections/shared";
 
 import type { PickCase, PickOption, PickRoundDef } from "../types";
 
@@ -62,15 +67,12 @@ const PREFS = {
   stretchText: false,
 } as const;
 
-const MIRROR = [
-  "● Update(web/src/lib/sync.ts)",
-  "  ⎿  Updated web/src/lib/sync.ts with 6 additions",
-  "",
-  "● Bash(bunx vitest run src/lib)",
-  "  ⎿  Test Files  38 passed (38)",
-  "",
-  "● The retry is in. Waiting for your next step.",
-];
+const MIRROR = ["● The retry is in. Waiting for your next step."];
+
+/** The design app's frame inside its 6 px border: what the stage must fit, with no scroll. */
+export const STAGE_HEIGHT = 458;
+/** The caption under the round, in plain words: how long the question stays and how to see it again. */
+export const CAPTION = "The question stays for 3 seconds. In After unknown, tap Send to see it again.";
 
 /** The bridge's two answers: no evidence the first time, then a send that went. */
 function fakeSendAnswer(sent: number): object {
@@ -82,7 +84,7 @@ function fakeSendAnswer(sent: number): object {
 /** Stands in for the soft keyboard: the composer sits on top of it, as it does on a phone. */
 function Keyboard() {
   return (
-    <div aria-hidden="true" className="h-[260px] shrink-0 bg-muted/60 pt-2 text-center text-[11px] text-muted-foreground">
+    <div aria-hidden="true" className="h-[96px] shrink-0 bg-muted/60 pt-2 text-center text-[11px] text-muted-foreground">
       keyboard
     </div>
   );
@@ -184,20 +186,21 @@ function SendItAgainPhone({ caseId }: { caseId: string }) {
   }, [root, caseId]);
 
   return (
-    <div ref={setRoot} data-state="send-it-again" className="flex flex-col">
-      <PhoneMock>
-        <div className="h-44 overflow-hidden bg-background px-3 pt-2 font-mono text-[11px] leading-snug text-muted-foreground">
-          <div className="whitespace-pre">{MIRROR.join("\n")}</div>
-        </div>
-        <RouterProvider router={router} />
-        <Keyboard />
-      </PhoneMock>
+    <div ref={setRoot} data-state="send-it-again" data-slot="send-it-again-stage" className="flex flex-col overflow-hidden bg-background" style={{ height: STAGE_HEIGHT }}>
+      <p data-slot="send-it-again-caption" className="shrink-0 px-3 py-1.5 text-[11px] leading-snug text-muted-foreground">
+        {CAPTION}
+      </p>
+      <div className="min-h-0 flex-1 overflow-hidden px-3 font-mono text-[11px] leading-snug text-muted-foreground">
+        <div className="whitespace-pre">{MIRROR.join("\n")}</div>
+      </div>
+      <RouterProvider router={router} />
+      <Keyboard />
     </div>
   );
 }
 
 const OPTIONS: readonly PickOption[] = [{ n: 1, label: "Send it again?", state: "send-it-again", render: (caseId) => <SendItAgainPhone key={caseId} caseId={caseId} /> }];
 
-const ROUND: PickRoundDef = { title: "Send it again?", cases: CASES, options: OPTIONS, frameHeight: 740 };
+const ROUND: PickRoundDef = { title: "Send it again?", cases: CASES, options: OPTIONS, frameHeight: STAGE_HEIGHT + 12 };
 
 export default ROUND;
