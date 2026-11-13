@@ -88,6 +88,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, tokenCount } from "./cache-probe.ts";
+import type { NameReading } from "../session-title.ts";
 import { type CatalogLookup, type MeasuredContext, opencodeModelsWindow, WindowCatalog } from "./model-window.ts";
 import {
   type Cursor,
@@ -1127,6 +1128,7 @@ export function opencodeJournal(roots: string | readonly string[], modelsCatalog
     parse: parseOpencodeTranscript,
     reducer: createOpencodeReducer,
     cacheProbe: (ref) => opencodeCacheProbe(source, ref, windows),
+    nameProbe: (ref) => opencodeNameProbe(source, ref),
   };
 }
 
@@ -1397,6 +1399,42 @@ export function opencodeContextOf(
     return out;
   }
   return undefined;
+}
+
+/**
+ * The placeholder title OpenCode gives a session before its own titler runs, `New session - <ISO time>`
+ * (and `Child session - …` for a subagent's). It names a time, not the work, so it is no title.
+ */
+const OPENCODE_PLACEHOLDER_TITLE = /^(New|Child) session - \d{4}-\d{2}-\d{2}T/u;
+
+/**
+ * What OpenCode calls the session (JournalAdapter.nameProbe): the `title` column of its row in
+ * `session_v2` (2.1 and later) or `session` (1.x). OpenCode writes that title itself from the first
+ * prompt, so it is the agent's; OpenCode keeps no name a person set apart from it. One indexed query on
+ * the session tables this module already reads, bound parameter, read-only.
+ */
+async function opencodeNameProbe(source: OpencodeTranscriptSource, ref: AgentSessionRef): Promise<NameReading | null> {
+  const key = await source.resolve(ref);
+  if (key === null) return null;
+  const split = splitOpencodeKey(key);
+  if (split === null) return null;
+  const title = withDb(split.dbPath, (db) => {
+    const tables = tableNames(db);
+    for (const table of ["session_v2", "session"] as const) {
+      if (!tables.has(table)) continue;
+      const row = db.query<{ title: string | null }, [string]>(`select title from ${table} where id = ?`).get(split.sessionId);
+      if (row !== null) return row.title ?? "";
+    }
+    return undefined;
+  });
+  if (title === null || title === undefined) return null;
+  return { agent: opencodeTitleOf(title) };
+}
+
+/** A session row's title as the agent's name: null for an empty title or OpenCode's placeholder. Pure. */
+export function opencodeTitleOf(title: string): string | null {
+  const trimmed = title.trim();
+  return trimmed === "" || OPENCODE_PLACEHOLDER_TITLE.test(trimmed) ? null : trimmed;
 }
 
 async function opencodeCacheProbe(

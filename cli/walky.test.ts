@@ -776,9 +776,9 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL     SPACE  STATE",
-      "local/%1#aaaa  desk     agent-x  repo#one  work   idle  (you)",
-      "local/%2#bbbb  desk     agent-y  repo#two  work   working, walky off",
+      "ADDRESS        MACHINE  HARNESS  SPACE  FOLDER    NAME  TITLE  STATE",
+      "local/%1#aaaa  desk     agent-x  work   repo#one  -     -      idle  (you)",
+      "local/%2#bbbb  desk     agent-y  work   repo#two  -     -      working, walky off",
     ]);
     const json = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(json, ["--json"])).toBe(EXIT.OK);
@@ -790,6 +790,37 @@ describe("reply, inbox, status, who", () => {
     expect(await cmdWalkyWho(self, [])).toBe(EXIT.OK);
     expect(self.io.stdout.at(-1)).toBe(YOU_ARE_OFF_WORDS);
     expect(YOU_ARE_OFF_WORDS).toBe("Your walky talky is off. Turn it on: collie walky on");
+  });
+
+  socketTest("who shows each session's space, folder, name and the agent's own title, in the table and in --json", async () => {
+    const named: WalkyHost = {
+      panes: () => [
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", activeAt: null, instance: "aaaa", terminal: true, off: false, space: SOLO_SPACE, name: "dialog pings", nameBy: "harness", title: "Dialog ping sounds" },
+        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "collie-workspace#main", state: "working", activeAt: null, instance: "bbbb", terminal: true, off: false, space: SOLO_SPACE, title: "Release notes draft" },
+        { session: "main", paneId: "%3", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", activeAt: null, instance: "cccc", terminal: true, off: false, space: SOLO_SPACE, name: "lead", nameBy: "collie" },
+      ],
+      send: async () => ({ outcome: "sent" }),
+      sendState: () => null,
+      cancelHeld: () => undefined,
+    };
+    const b = await bridge({ host: named });
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  SPACE  FOLDER                 NAME          TITLE                STATE",
+      "local/%1#aaaa  desk     agent-x  work   collie-workspace#main  dialog pings  Dialog ping sounds   idle  (you)",
+      "local/%2#bbbb  desk     agent-y  work   collie-workspace#main  -             Release notes draft  working",
+      "local/%3#cccc  desk     agent-x  work   collie-workspace#main  lead          -                    idle",
+    ]);
+    const json = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(json, ["--json"])).toBe(EXIT.OK);
+    // SAFETY: `who --json` prints one object whose `targets` rows carry the names fields when there are any.
+    const rows = (JSON.parse(json.io.stdout[0]!) as { targets: { label: string; name?: string; nameBy?: string; title?: string; space: { label: string } }[] }).targets;
+    expect(rows.map((row) => [row.space.label, row.label, row.name ?? null, row.nameBy ?? null, row.title ?? null])).toEqual([
+      ["work", "collie-workspace#main", "dialog pings", "harness", "Dialog ping sounds"],
+      ["work", "collie-workspace#main", null, null, "Release notes draft"],
+      ["work", "collie-workspace#main", "lead", "collie", null],
+    ]);
   });
 
   socketTest("a send to an off session, and from one, exits REFUSED with the next step in words", async () => {
@@ -830,9 +861,9 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL     SPACE  STATE",
-      "local/%1#aaaa  desk     agent-x  repo#one  work   idle  (you)",
-      "local/%2#bbbb  desk     agent-y  repo#two  work   working",
+      "ADDRESS        MACHINE  HARNESS  SPACE  FOLDER    NAME  TITLE  STATE",
+      "local/%1#aaaa  desk     agent-x  work   repo#one  -     -      idle  (you)",
+      "local/%2#bbbb  desk     agent-y  work   repo#two  -     -      working",
     ]);
   });
 
@@ -853,9 +884,9 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%2"));
     expect(await cmdWalkyWho(d, ["--workspace", "collie-workspace"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL                    SPACE  STATE",
-      "local/%1#aaaa  desk     agent-x  collie-workspace#main    work   idle",
-      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  work   working",
+      "ADDRESS        MACHINE  HARNESS  SPACE  FOLDER                   NAME  TITLE  STATE",
+      "local/%1#aaaa  desk     agent-x  work   collie-workspace#main    -     -      idle",
+      "local/%3#cccc  desk     agent-y  work   collie-workspace#feat/x  -     -      working",
     ]);
   });
 
@@ -863,7 +894,10 @@ describe("reply, inbox, status, who", () => {
     const b = await bridge({ host: folders() });
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, ["--workspace", "collie-workspace#feat/x"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["ADDRESS        MACHINE  HARNESS  LABEL                    SPACE  STATE", "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  work   working"]);
+    expect(d.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  SPACE  FOLDER                   NAME  TITLE  STATE",
+      "local/%3#cccc  desk     agent-y  work   collie-workspace#feat/x  -     -      working",
+    ]);
     const json = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(json, ["--workspace", "collie-workspace#main", "--json"])).toBe(EXIT.OK);
     const body = JSON.parse(json.io.stdout[0]!);
@@ -889,17 +923,17 @@ describe("reply, inbox, status, who", () => {
     expect(await cmdWalkyWho(plain, [])).toBe(EXIT.OK);
     expect(explicit.io.stdout).toEqual(plain.io.stdout);
     expect(plain.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL                    SPACE  STATE",
-      "local/%1#aaaa  desk     agent-x  collie-workspace#main    work   idle  (you)",
-      "local/%2#bbbb  desk     agent-x  other                    work   idle",
-      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  work   working",
+      "ADDRESS        MACHINE  HARNESS  SPACE  FOLDER                   NAME  TITLE  STATE",
+      "local/%1#aaaa  desk     agent-x  work   collie-workspace#main    -     -      idle  (you)",
+      "local/%2#bbbb  desk     agent-x  work   other                    -     -      idle",
+      "local/%3#cccc  desk     agent-y  work   collie-workspace#feat/x  -     -      working",
     ]);
     const folder = deps(b, inPane("%2"));
     expect(await cmdWalkyWho(folder, ["--here", "--workspace", "collie-workspace"])).toBe(EXIT.OK);
     expect(folder.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL                    SPACE  STATE",
-      "local/%1#aaaa  desk     agent-x  collie-workspace#main    work   idle",
-      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  work   working",
+      "ADDRESS        MACHINE  HARNESS  SPACE  FOLDER                   NAME  TITLE  STATE",
+      "local/%1#aaaa  desk     agent-x  work   collie-workspace#main    -     -      idle",
+      "local/%3#cccc  desk     agent-y  work   collie-workspace#feat/x  -     -      working",
     ]);
   });
 
@@ -924,20 +958,20 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL     SPACE  STATE",
-      "local/%1#1111  desk     agent-x  repo#one  work   idle  (you)",
-      "local/%2#2222  desk     agent-x  repo#two  work   idle",
+      "ADDRESS        MACHINE  HARNESS  SPACE  FOLDER    NAME  TITLE  STATE",
+      "local/%1#1111  desk     agent-x  work   repo#one  -     -      idle  (you)",
+      "local/%2#2222  desk     agent-x  work   repo#two  -     -      idle",
       "2 panes are outside your space. List every pane: collie walky who --all",
     ]);
     expect(outsideLine(1)).toBe("1 pane is outside your space. List every pane: collie walky who --all");
     const all = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(all, ["--all"])).toBe(EXIT.OK);
     expect(all.io.stdout).toEqual([
-      "ADDRESS        MACHINE  HARNESS  LABEL       SPACE              STATE",
-      "local/%1#1111  desk     agent-x  repo#one    work               idle  (you)",
-      "local/%2#2222  desk     agent-x  repo#two    work               idle",
-      "local/%3#3333  desk     agent-x  repo#three  other              idle",
-      "local/%4#4444  desk     agent-x  repo#four   w9 (this machine)  idle",
+      "ADDRESS        MACHINE  HARNESS  SPACE              FOLDER      NAME  TITLE  STATE",
+      "local/%1#1111  desk     agent-x  work               repo#one    -     -      idle  (you)",
+      "local/%2#2222  desk     agent-x  work               repo#two    -     -      idle",
+      "local/%3#3333  desk     agent-x  other              repo#three  -     -      idle",
+      "local/%4#4444  desk     agent-x  w9 (this machine)  repo#four   -     -      idle",
     ]);
   });
 
@@ -1123,10 +1157,10 @@ describe("on a crew member (CREW_PROTOCOL §21)", () => {
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual([
-      "ADDRESS          MACHINE  HARNESS  LABEL     SPACE  STATE",
-      "laptop/%1#aaaa   desk     agent-x  repo#one  work   idle  (you)",
-      "laptop/%2#bbbb   desk     agent-y  repo#two  work   working",
-      "desk/w2:p2#cccc  desk     agent-x  api#main  work   idle",
+      "ADDRESS          MACHINE  HARNESS  SPACE  FOLDER    NAME  TITLE  STATE",
+      "laptop/%1#aaaa   desk     agent-x  work   repo#one  -     -      idle  (you)",
+      "laptop/%2#bbbb   desk     agent-y  work   repo#two  -     -      working",
+      "desk/w2:p2#cccc  desk     agent-x  work   api#main  -     -      idle",
       "1 pane is outside your space. List every pane: collie walky who --all",
     ]);
     const all = deps(b, inPane("%1"));

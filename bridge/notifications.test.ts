@@ -9,6 +9,7 @@ import {
   makeNotifySink,
   paneClears,
   paneTag,
+  pushName,
   type HerdSummary,
   type NotifyClock,
   type NotifySink,
@@ -1042,5 +1043,28 @@ describe("clear all — the seen ledger", () => {
       activity.stop();
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("pushName — the given name, never the terminal title", () => {
+  const base = { agent: "claude", kind: "agent" as const };
+
+  test("names a pane by the agent's own session title when nobody set a name (2026-11-13)", () => {
+    expect(pushName({ ...base, agentTitle: "Bluefin Silverblue to NixOS migration", terminalTitle: "Reviewing the diff" })).toBe(
+      "Bluefin Silverblue to NixOS migration",
+    );
+  });
+
+  test("keeps the order of the one name rule: Collie rename, person's name, agent's title, tab", () => {
+    const all = { ...base, paneLabel: "release", sessionName: "migrate", agentTitle: "Auto title", soleTabName: "work" };
+    expect(pushName(all)).toBe("release");
+    expect(pushName({ ...all, paneLabel: undefined })).toBe("migrate");
+    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined })).toBe("Auto title");
+    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined, agentTitle: undefined })).toBe("work");
+  });
+
+  test("never falls back to the terminal title, and strips control and bidi characters", () => {
+    expect(pushName({ ...base, terminalTitle: "cat ~/.ssh/id_ed25519" })).toBe("claude");
+    expect(pushName({ ...base, agentTitle: "‮evil‬ title" })).toBe("evil title");
   });
 });

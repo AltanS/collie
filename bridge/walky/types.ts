@@ -214,7 +214,23 @@ export interface WalkyTarget {
    * from the member's pane list with the default for `named`.
    */
   readonly space: WalkySpace;
+  /**
+   * The name a person gave the session (pane-name.ts `personName`): a Collie rename, a name set in the
+   * harness, or a named one-pane tab, and which of the three in `nameBy`. Display data, at most
+   * {@link WALKY_NAME_MAX} characters. Absent when nobody named it, and from a bridge before 1.29.0.
+   */
+  readonly name?: string;
+  readonly nameBy?: "collie" | "harness" | "tab";
+  /**
+   * The title the agent gave its session in its own journal (types.ts `AgentView.agentTitle`). Absent
+   * when the harness keeps none, when COLLIE_REDACT is on (it is the agent's text, so it stays off a
+   * listing like the terminal title does), and from a bridge before 1.29.0.
+   */
+  readonly title?: string;
 }
+
+/** The longest session name or title a `who` row carries. The bridge already caps both at 80. */
+export const WALKY_NAME_MAX = 120;
 
 /** A shell pane, which never receives a message: a broadcast lists it as skipped. */
 export interface WalkySkipped {

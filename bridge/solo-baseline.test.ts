@@ -416,6 +416,10 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: a trick session's part key (M94 slice 03). Present only on a pane of
   // `kind: "trick"`, and this harness has no tricks folder, so no golden byte moved.
   view: true,
+  // Not a crew dimension: the title the agent gave its session, from its journal (bridge/session-titles.ts,
+  // added 2026-11-13). Present only when the harness wrote one, and this harness builds its engine with no
+  // title tracker, so no golden byte moved.
+  agentTitle: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -557,6 +561,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
       "actions",
       "agent",
+      "agentTitle",
       "asks",
       "badge",
       "cache",
@@ -1430,6 +1435,10 @@ const STATE_DIR_ENTRIES = [
   // line. Written by use and by nothing else: absent until the first line sent to a shell pane, or the
   // first one-off run, that the skip rules keep. `COLLIE_SENT=off` never writes it.
   "sent.jsonl",
+  // The last names of each harness session (bridge/session-titles-store.ts), so a `/rename` name stays
+  // after a restart. Written by use and by nothing else: absent until a harness log first names a
+  // session. Transcripts off never builds the tracker, so it never writes it.
+  "session-titles.json",
   "snooze.json",
   // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
   // else: absent until the first starter run, which only a peer on `COLLIE_MUX=durable` can offer.

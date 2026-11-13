@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { cacheWarnings, warnMinutes } from "./warn.ts";
-import { watchKeyOf, type CacheWarnPane } from "./watch-key.ts";
+import { paneWatchLabel, watchKeyOf, type CacheWarnPane } from "./watch-key.ts";
 import type { PaneCache } from "./engine.ts";
 
 // The decision, driven as data: no timers, no push, no clock. Every gate in the module header gets a
@@ -181,5 +181,15 @@ describe("cacheWarnings", () => {
     ]);
     expect(out.messages.map((m) => m.paneId)).toEqual(["w1:p1", "w2:p1"]);
     expect(out.sentPairs).toHaveLength(2);
+  });
+});
+
+describe("paneWatchLabel names a pane as a push does", () => {
+  test("the given name and the workspace, cleaned of control and bidi characters; never the terminal title", () => {
+    const base = { paneId: "w1:p1", agent: "agent-x", kind: "agent" as const, terminalTitle: "vim ~/.ssh/id_ed25519" };
+    expect(paneWatchLabel({ ...base, workspaceLabel: "col‮lie", agentTitle: "Fix\u0007 the login" })).toBe("collie · Fix the login");
+    expect(paneWatchLabel({ ...base, soleTabName: "deploy" })).toBe("deploy");
+    expect(paneWatchLabel(base)).toBe("agent-x");
+    expect(paneWatchLabel({ ...base, kind: "shell" })).toBe("shell");
   });
 });

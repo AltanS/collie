@@ -6,9 +6,12 @@
 //
 // The rule is here, once:
 //
-//   NAME  — paneLabel, else sessionName, else a named one-pane tab's label, else a non-stale
-//           terminalTitle, else the agent word
+//   NAME  — paneLabel (a Collie rename), else sessionName (a name the person set in the harness),
+//           else agentTitle (the title the agent gave its session), else a named one-pane tab's
+//           label, else a non-stale terminalTitle, else the agent word
 //           ("claude", "codex") for an agent pane and "shell" for a bare shell.
+//           The first four are the GIVEN name (`givenName`); a surface that may not show a terminal
+//           title (a push, a WalkyTalky name) asks for that alone and states its own fallback.
 //   PLACE — `space › tab`, or the space alone when the tab carries no name of its own.
 //
 // The place is never the name. A name answers "what is this work", a place answers "where does it
@@ -23,24 +26,51 @@ import type { AgentView } from "./types.ts";
 
 /** The fields the name rule reads. A `Pick` so a caller holding half a pane can still ask. */
 export type NameableP = Pick<AgentView, "agent"> &
-  Partial<Pick<AgentView, "paneLabel" | "sessionName" | "terminalTitle" | "terminalTitleStale" | "kind" | "soleTabName">>;
+  Partial<Pick<AgentView, "paneLabel" | "sessionName" | "agentTitle" | "terminalTitle" | "terminalTitleStale" | "kind" | "soleTabName">>;
 
 /**
  * Line 1 on every surface: what this pane is called.
  *
- * The two hand-set names outrank the title because a name you chose should not be overwritten by one
- * the process rewrites every turn. The title outranks the agent word because "claude" tells you
- * nothing when four rows say it. A STALE title names nothing — the program that wrote it has exited,
- * so it is a fact about the past — and such a pane falls back to what it would be called with no
- * title at all.
+ * The given name first ({@link givenName}): the hand-set names, then the agent's own title for its
+ * session, then a named one-pane tab. The terminal title comes after them because the process rewrites
+ * it every turn, and it outranks the agent word because "claude" tells you nothing when four rows say
+ * it. A STALE title names nothing — the program that wrote it has exited, so it is a fact about the
+ * past — and such a pane falls back to what it would be called with no title at all.
  */
 export function paneName(pane: NameableP): string {
-  if (pane.paneLabel) return pane.paneLabel;
-  if (pane.sessionName) return pane.sessionName;
-  const tab = soleTabName(pane);
-  if (tab !== null) return tab;
+  const given = givenName(pane);
+  if (given !== null) return given;
   if (pane.terminalTitle && pane.terminalTitleStale !== true) return pane.terminalTitle;
   return pane.kind === "shell" ? "shell" : pane.agent;
+}
+
+/**
+ * The name somebody or something gave this session, or null: Collie's rename (`paneLabel`), a name the
+ * person set in the harness (`sessionName`), the title the agent gave its session (`agentTitle`), a
+ * named one-pane tab. One order for every surface that names a session, so a session reads the same in
+ * the dashboard, the chat header, a push and WalkyTalky; each surface adds only its own fallback after it.
+ */
+export function givenName(pane: NameableP): string | null {
+  if (pane.paneLabel) return pane.paneLabel;
+  if (pane.sessionName) return pane.sessionName;
+  if (pane.agentTitle) return pane.agentTitle;
+  return soleTabName(pane);
+}
+
+/** Who set a session's name: Collie's rename, the person in the harness, or the multiplexer's tab. */
+export type NameSetter = "collie" | "harness" | "tab";
+
+/**
+ * The name a PERSON gave this session, and where they gave it, or null: the given name without the
+ * agent's own title. `collie walky who` lists it beside that title, so an agent can address "the
+ * session in workspace X" by either. Bridge-only, not one of the mirrored functions: no phone surface
+ * splits the two.
+ */
+export function personName(pane: Partial<Pick<AgentView, "paneLabel" | "sessionName" | "soleTabName">>): { name: string; by: NameSetter } | null {
+  if (pane.paneLabel) return { name: pane.paneLabel, by: "collie" };
+  if (pane.sessionName) return { name: pane.sessionName, by: "harness" };
+  const tab = soleTabName(pane);
+  return tab === null ? null : { name: tab, by: "tab" };
 }
 
 /**

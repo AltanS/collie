@@ -341,6 +341,18 @@ describe("the merged snapshot's titles", () => {
   });
 });
 
+describe("the agent's own session title", () => {
+  test("is masked like a program-set title; the person's own name in the harness is not", () => {
+    const snap = {
+      agents: [{ paneId: "w1:p1", agentTitle: `Rotate ${key}`, sessionName: `mine ${key}` }],
+      shellPanes: [],
+    };
+    const out = maskSnapshotTitles(snap);
+    expect(out.agents[0]!.agentTitle).toBe(`Rotate ${masked}`);
+    expect(out.agents[0]!.sessionName).toBe(`mine ${key}`);
+  });
+});
+
 describe("a pane's todo list", () => {
   test("maskTodoList masks the words and leaves the id and the status", () => {
     const todos = [

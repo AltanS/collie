@@ -71,14 +71,23 @@ export interface AgentView {
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
-   * The harness's OWN session name, set in-agent by the operator: Claude's via `/rename`, read
-   * out of the pane's rendered text (see `extractClaudeSessionName` in state-engine.ts), and
-   * Muse's user-given name, read out of its journal's `session.name.changed` rows (see
-   * `museSessionNameReader` in journal/muse.ts) — never Muse's automatic session name, which
-   * every session carries and the operator never chose. Derived, not a wire field — absent for
-   * unnamed sessions and every other harness. Display priority is `paneLabel` first.
+   * The harness's OWN session name, set in-agent by the person: read from the harness's journal by
+   * its adapter (journal/*.ts `nameProbe`: Claude's `/rename` rows, pi's `/name`, an Oh My Pi title the
+   * person set), else off the screen where a harness paints it and the journal is out of reach
+   * (Claude's `/rename` name, `extractClaudeSessionName` in state-engine.ts), else Muse's user-given
+   * name from its journal (`museSessionNameReader` in journal/muse.ts). Cleaned by the one normalizer
+   * (session-title.ts). Absent for an unnamed session. Display priority is `paneLabel` first
+   * (pane-name.ts).
    */
   sessionName?: string;
+  /**
+   * The title the agent gave its session itself, from the harness's journal (journal/*.ts `nameProbe`):
+   * Claude's `ai-title`, Oh My Pi's automatic title, OpenCode's session title. Cleaned by the one
+   * normalizer (session-title.ts) and, with COLLIE_REDACT on, masked like the terminal title, because
+   * the agent wrote it. It names the pane after the two hand-set names and before a sole tab's name
+   * (pane-name.ts). Absent when the harness keeps none, and from an older peer.
+   */
+  agentTitle?: string;
   /**
    * How the agent named its session (Herdr `agent_session`), when it named one at all.
    *

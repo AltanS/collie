@@ -1,4 +1,5 @@
-import { panePlace, soleTabName, type NameableP } from "./pane-name.ts";
+import { panePlace } from "./pane-name.ts";
+import { pushName, stripControlChars } from "./push-name.ts";
 import { pushTitle, type PushTitleCode, type PushTitleDetail } from "./push-titles.ts";
 import { paneTopic, type PushMessage } from "./push.ts";
 import type { AgentStatus, AgentView, AskPushText } from "./types.ts";
@@ -161,48 +162,20 @@ export function paneClears(herdTag: string, paneIds: Iterable<string>): PushMess
   return [...paneIds].map((paneId) => paneClear(herdTag, paneId));
 }
 
-// ── A PUSH NAMES A PANE BY THE OPERATOR'S LABEL, NEVER BY THE PROGRAM'S TITLE ─────────────────────
+// ── A PUSH NAMES A PANE BY ITS GIVEN NAME, NEVER BY THE TERMINAL TITLE ──────────────────────────
 // Every other surface leads with `paneName` (pane-name.ts), which falls back to the terminal title.
 // A push may not. A program sets that title with an escape sequence, so anything running in the pane
 // chooses it, and it can carry a path, a command line or a secret. A push crosses a third-party push
 // service and shows on a lock screen, which is the last place for any of those. So the push asks
-// {@link pushName}, which is the one name rule with the title taken out, and with no fallback to it,
-// not even a stale one. A pane with no label of the operator's gets the neutral harness word, and
-// the digest's collision rule adds its place when two read the same. The body is masked on top
-// (`push.ts` § redactPushMessage), but the title stays out by rule, not by luck. Written down in
-// docs/security.md too.
+// {@link pushName}: the given name (`givenName`, pane-name.ts) and no fallback to the terminal title,
+// not even a stale one. The given name includes the title the agent gave its session in its own
+// journal (`agentTitle`, decided 2026-11-13): it is the name the person sees for the session in the
+// harness itself, it is cleaned and capped by the one normalizer (session-title.ts) before it reaches
+// a view, and control and bidi characters are stripped again here. A pane with no given name gets the
+// neutral harness word, and the digest's collision rule adds its place when two read the same. The
+// body and title are masked on top (`push.ts` § redactPushMessage). Written down in docs/security.md.
 
-const CONTROL_AND_BIDI_CHARS = /[\p{Cc}\p{Bidi_Control}]+/gu;
-
-/**
- * Strip C0/C1 control characters and Unicode bidirectional overrides/isolates from notification
- * strings so embedded RLO/LRO or control bytes in a label, place or description cannot reorder
- * lock-screen text.
- */
-export function stripControlChars(value: string): string {
-  return value.replace(CONTROL_AND_BIDI_CHARS, "");
-}
-
-/**
- * What a push calls a pane: the operator's label (`paneLabel`), Claude's `/rename` name, or the
- * operator's name for a one-pane tab; else `shell` or the harness word. Never `terminalTitle`.
- */
-export function pushName(pane: NameableP): string {
-  if (pane.paneLabel) {
-    const clean = stripControlChars(pane.paneLabel);
-    if (clean) return clean;
-  }
-  if (pane.sessionName) {
-    const clean = stripControlChars(pane.sessionName);
-    if (clean) return clean;
-  }
-  const tab = soleTabName(pane);
-  if (tab !== null) {
-    const clean = stripControlChars(tab);
-    if (clean) return clean;
-  }
-  return pane.kind === "shell" ? "shell" : stripControlChars(pane.agent);
-}
+export { pushName, stripControlChars } from "./push-name.ts";
 
 function cleanAskText(askText: AskPushText): AskPushText {
   const title = askText.title === undefined ? undefined : stripControlChars(askText.title);

@@ -195,6 +195,8 @@ const AGENT_VIEW_KEYS = {
   view: true,
   // Whether the space's label is a name of its own (M98). Present only when the adapter's word differs from the default, so a solo golden body carries no such key.
   workspaceNamed: true,
+  // Not a crew dimension: the title the agent gave its session, from its journal (2026-11-13). Present only when the harness wrote one, so a solo golden body carries no such key.
+  agentTitle: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -300,6 +302,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
       "actions",
       "agent",
+      "agentTitle",
       "asks",
       "badge",
       "cache",
