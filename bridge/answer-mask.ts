@@ -19,12 +19,13 @@ import { redactAnsi, redactText } from "./redact.ts";
 
 /**
  * A mirror read with its text masked. The grid keeps its escapes and its columns (`redactAnsi`), and
- * the unwrapped rows a split URL needs are masked as plain text. Key order is the body's own, so the
- * ETag hashed over it is stable.
+ * the unwrapped rows (`logicalText`, plain on a split-URL repair or SGR-styled under `?logical=1`)
+ * are masked on their plain text before any colour is kept (`redactAnsi(..., false)`). Key order is
+ * the body's own, so the ETag hashed over it is stable.
  */
 export function maskPaneRead<T extends PaneReadResponse>(body: T): T {
   const masked = { ...body, text: redactAnsi(body.text) };
-  if (body.logicalText !== undefined) masked.logicalText = redactText(body.logicalText);
+  if (body.logicalText !== undefined) masked.logicalText = redactAnsi(body.logicalText, false);
   return masked;
 }
 
