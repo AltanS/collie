@@ -4,7 +4,7 @@
 // REAL props; drive a module store through its own mutators). This file follows both, and every card
 // keeps its label short.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";

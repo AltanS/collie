@@ -54,10 +54,10 @@ primitive before you build a new one, and extract a component as soon as two pla
 visual pattern. `DESIGN.md` also documents the layout stability constraints, radius and border
 tokens, and the Tailwind v4 issues that cause regressions.
 
-Check UI states in the playground (`web/src/playground/`, `cd web && bun run playground`) before
-changing a banner, the mark, the boot splash, the idle lock, or the crew page. Every card there
-carries a `data-state` handle, so a browser case can address it directly instead of matching its
-prose label.
+Check UI states in the design reference (`web/design.html`, `cd web && bun run design`) before
+changing a banner, the mark, the boot splash, the idle lock, or the crew page. Its search field finds
+an entry by title, id or keyword. Every card there carries a `data-state` handle, so a browser case
+can address it directly instead of matching its prose label.
 
 To add an icon set that a theme can name, follow
 [Add an icon set to Collie](./docs/themes.md#add-an-icon-set-to-collie): one pull request that maps

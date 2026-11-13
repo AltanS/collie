@@ -405,7 +405,7 @@ component, not a spec. On 2026-10-17 the specs that did not pass that test moved
   `web/e2e/`: `smoke.spec.ts`, the layout and engine cases (`belt`, `changes`, `pane-glide`,
   `theme-first-paint`, `update-screen` and the rest), and `web/e2e/service-worker.spec.ts`, which
   builds two bundles under `web/e2e/.builds/` to prove an old shell picks up a new one. The
-  playground has no browser target any more: its card handles are tested in
+  design reference has no browser target any more: its card handles are tested in
   `web/src/playground/app.test.tsx`.
 - **Tier 2** runs by hand, from the workspace root: `make e2e`. It drives the dev lane's lead,
   instance `next` on port 8788, reads only, and never restarts or rebuilds anything. Its cases live
@@ -437,7 +437,7 @@ case never invents its own payload.
 
 **The selector rule.** A case addresses a role and an accessible name, `getByRole` or `getByText`,
 never a CSS class. No case adds a `data-testid` anywhere in `web/src`. The one exception is the
-playground: every card carries an explicit `data-state` handle, set by a `state` prop on `Card`
+design reference: every card carries an explicit `data-state` handle, set by a `state` prop on `Card`
 (`web/src/playground/layout.tsx`), never derived from its label.
 
 **The locale rule.** A case that checks translated text pins the locale before the first
@@ -521,12 +521,33 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
 - **Before adding any recurring visual pattern, check `web/src/components/ui/` for the
   primitive; if none exists, the primitive comes first, in its own commit.** A pattern built at
   a call site first is one that never gets promoted — the alert family cost six components that way.
-- **Check UI states in the playground** (`web/src/playground/`, `cd web && bun run playground`,
-  README → "The states playground") before changing a banner, the mark, the boot splash, the idle
-  lock, or the crew page — it renders every state at once. Never import playground code from app
-  code.
-  A card's label is a number and at most five words. Explanation goes in the report to Altan, not
-  on the page. `reach` and `note` are optional and hidden by default (the page's Notes switch).
+- **Check UI states in the design reference** (`web/design.html`, code in `web/src/playground/`,
+  `cd web && bun run design`, README → "The design reference") before changing a banner, the mark,
+  the boot splash, the idle lock, or the crew page. It renders every state at once, and its search
+  field finds an entry by title, id or keyword. Never import its code from app code. The old address
+  `playground.html` forwards to it; the folder keeps the name `playground/` because the website
+  imports `@/playground/harness` and `@/playground/fixtures` by name.
+- **The design reference holds only final states:** what the product ships, or what Altan approved.
+  One entry per state, no option rounds, no "today" beside a proposal, no measuring or explainer
+  pages. When a feature changes, its entry changes in the same branch; when it is gone, the entry
+  goes too.
+  - **Add an entry:** one row in `ENTRIES` (`web/src/playground/registry.tsx`) with an `id` (flat
+    kebab-case, its address `design.html#<id>`), a `title`, a `group` (the product area), and
+    `keywords`: the component names it
+    mounts and the words a person types to find it ("walky", "worktree", "permission"). Then a file
+    under `web/src/playground/sections/` exporting `DEF` (same id and title) and the section.
+    `registry.test.ts` fails on a missing id, a repeated id or no keywords.
+  - A card's label is a number and at most five words. Explanation goes in the report to Altan, not
+    on the page. `reach` and `note` are optional and hidden by default (the page's Notes switch).
+  - Links: `design.html#<id>` opens an entry, `#<id>/<card-handle>` scrolls to a card,
+    `?q=<words>` carries a search. Both survive a cold load.
+- **A pick round is a proposal, never a design reference entry.** When Altan picks between
+  options, the feature branch declares the round: a file `web/src/pick/rounds/<id>.tsx` (default
+  export a `PickRoundDef` from `web/src/pick/types.ts`: a title, numbered options of at most five
+  words, the cases) and one line in `web/src/pick/rounds.ts`; `rounds.test.ts` holds the contract.
+  The page that draws it (one case switch, phone frames, the Pick controls) is the maintainers'
+  design app, outside this repo. After the pick, the chosen state becomes a design reference entry
+  and the round's file and its line are deleted before the branch merges.
 - Data flows through **React Router** (`createBrowserRouter`, data mode): route **loaders**
   (`web/src/lib/loaders.ts`) fetch the snapshot + pane; **polling is `useRevalidator()` on an
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls

@@ -6,7 +6,7 @@
 // One query word makes shots easy: `?solo=<case>` draws that one case over the whole screen, and
 // `&shot=1` hides its close button.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
