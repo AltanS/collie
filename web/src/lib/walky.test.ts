@@ -19,6 +19,7 @@ import {
   parseEnvelopeHeader,
   signerOf,
   standingOf,
+  ownerStateWord,
   stateWord,
   targetWord,
   verifiedWord,
@@ -253,6 +254,17 @@ describe("the words", () => {
     expect(stateWord({ ...receipt, state: "accepted", reason: "draft present" })).toBe("held: that session has unsent text");
     expect(stateWord({ ...receipt, state: "accepted", reason: "turn running" })).toBe("held: that session is busy");
     expect(stateWord({ ...receipt, state: "accepted", reason: "" })).toBe("queued");
+  });
+
+  it("reads a message that reached this pane in the owner's words: waiting for what, and delivered with the text kept", () => {
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "draft present" })).toBe("Waiting, because you have unsent text");
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "turn running" })).toBe("Waiting, because the agent is busy");
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "resting" })).toBe("Waiting: that session rests");
+    expect(ownerStateWord({ ...receipt, state: "delivered", via: "data" })).toBe("Delivered. Your text is still in the box.");
+    // Every other state reads as it always did: a typed message is "typed into the pane".
+    expect(ownerStateWord({ ...receipt, state: "delivered" })).toBe("typed into the pane");
+    expect(ownerStateWord({ ...receipt, state: "inbox-only" })).toBe("waiting in the inbox, not typed");
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "outcome known on the lead" })).toBe(stateWord({ ...receipt, state: "accepted", reason: "outcome known on the lead" }));
   });
 
   it("words the bridge's known reasons for a person and leaves an unknown reason as the bridge wrote it (M80 spec 12)", () => {

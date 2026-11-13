@@ -2840,8 +2840,6 @@ export const ja: Dictionary = {
   "walky.sheet.notHeld": "保留されていません。取り消すものはありません。",
   "walky.sheet.elsewhere": "別のマシンで保持されています。そのマシンに戻してください。キャンセルされていません。",
   "walky.sheet.takeBackFailed": "取り消されませんでした: {error}",
-  "walky.held.mark.one": "{count} 件のメッセージがボックスのクリアを待機しています",
-  "walky.held.mark.other": "{count} 件のメッセージがボックスのクリアを待機しています",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "送信オプション",
   "walky.composer.sendAsMessage": "メッセージとして送信",

@@ -16,7 +16,7 @@ import { useDeliverNow } from "@/hooks/use-deliver-now";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime, timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { directionOf, isHeld, signerOf, stateWord, verifiedWord, type DeliverNow, type WalkyRow } from "@/lib/walky";
+import { directionOf, isHeld, ownerStateWord, signerOf, stateWord, verifiedWord, type DeliverNow, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
 import { senderNameOf } from "@/lib/walky-names";
 
@@ -50,8 +50,10 @@ import { senderNameOf } from "@/lib/walky-names";
 // of such a pane gets a third way out beside Drop: "Deliver now" hands the message to the agent as data, at
 // once, and leaves the box and its draft as they are. It is the person's own act, behind the same write gate
 // as Drop and Reply. `onDeliverNow` is the seam (`DeliverNow`, lib/walky.ts); without `linked` the sheet is
-// drawn as it always was. `deliverConfirm` adds a short line under the row, "Your draft stays.", with its own
-// Back and Deliver now, so one tap does not cost a turn.
+// drawn as it always was. Before the tap the row says where the message goes, what happens to the person's own
+// text and what the agent does ("The agent gets it now and starts on it. Your text stays in the box."), as a
+// line under the buttons; `deliverAsk` puts the same in a question that opens in the row, with Deliver and Back,
+// so one tap does not cost a turn. After the tap the row reads "Delivered. Your text is still in the box."
 //
 // ── A FOCUSED MESSAGE ─────────────────────────────────────────────────────────
 // A tap on a Chat card, or on an id chip, opens this sheet on ONE message (`focusId`): the sheet scrolls
@@ -92,8 +94,8 @@ interface WalkySheetProps {
   linked?: boolean | undefined;
   /** Hand a held message to the agent as data, the draft untouched (the seam, `DeliverNow`). Absent: no Deliver now. */
   onDeliverNow?: DeliverNow | undefined;
-  /** Ask first: Deliver now opens a line under the row, "Your draft stays.", and a second tap sends. */
-  deliverConfirm?: boolean | undefined;
+  /** Ask first: Deliver now opens a question in the row, with Deliver and Back, instead of a line under the buttons. */
+  deliverAsk?: boolean | undefined;
 }
 
 /**
@@ -112,7 +114,7 @@ function centreInScroller(el: HTMLElement): void {
   box.scrollTop += a.top - b.top - (box.clientHeight - a.height) / 2;
 }
 
-export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self, onCancel, onDrop, walkyOff = false, onWalkyOff, linked = false, onDeliverNow, deliverConfirm = false }: WalkySheetProps) {
+export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self, onCancel, onDrop, walkyOff = false, onWalkyOff, linked = false, onDeliverNow, deliverAsk = false }: WalkySheetProps) {
   useLocale();
   const log = useWalkyLog();
   const rows = log === null ? [] : newestFirst(log.rows);
@@ -147,7 +149,7 @@ export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, s
                 onCancel={onCancel}
                 onDrop={onDrop}
                 deliver={linked ? onDeliverNow : undefined}
-                deliverConfirm={deliverConfirm}
+                deliverAsk={deliverAsk}
               />
             </li>
           ))}
@@ -233,7 +235,7 @@ function WalkyListRow({
   onCancel,
   onDrop,
   deliver,
-  deliverConfirm,
+  deliverAsk,
 }: {
   row: WalkyRow;
   self: string | undefined;
@@ -246,7 +248,7 @@ function WalkyListRow({
   onDrop: ((row: WalkyRow) => Promise<string | null>) | undefined;
   /** The seam, given only for a linked pane. */
   deliver: DeliverNow | undefined;
-  deliverConfirm: boolean;
+  deliverAsk: boolean;
 }) {
   const refused = row.receipt.state === "refused" || row.receipt.state === "expired";
   // The person reads names; the address and the id stay on the wire (lib/walky-names.ts).
@@ -323,7 +325,7 @@ function WalkyListRow({
         {/* The state words are lower case (they also follow a colon in the composer's note), so the line capitalises its own first letter. */}
         <p className={cn("min-w-0 text-[11px] text-muted-foreground first-letter:uppercase", deliverable ? "w-full" : "flex-1")}>
           <span data-slot="walky-state" className={cn(refused && "text-status-blocked")}>
-            {stateWord(row.receipt)}
+            {sent ? stateWord(row.receipt) : ownerStateWord(row.receipt)}
           </span>
           {!sent && ` · ${verifiedWord(row.receipt, signerOf(row))}`}
         </p>
@@ -354,22 +356,27 @@ function WalkyListRow({
         {deliverable && (
           <DeliverNowButton
             className={cn("h-11 shrink-0", armed && "bg-accent")}
-            busy={!deliverConfirm && delivery.busy}
-            disabled={deliverConfirm && delivery.busy}
+            busy={!deliverAsk && delivery.busy}
+            disabled={deliverAsk && delivery.busy}
             aria-label={deliverAria}
-            aria-expanded={deliverConfirm ? armed : undefined}
-            onClick={() => (deliverConfirm ? setArmed(!armed) : void delivery.run(row.id))}
+            aria-expanded={deliverAsk ? armed : undefined}
+            onClick={() => (deliverAsk ? setArmed(!armed) : void delivery.run(row.id))}
           />
         )}
       </div>
-      {deliverable && deliverConfirm && (
+      {deliverable && !deliverAsk && (
+        <p data-slot="walky-deliver-help" className="mt-1 text-xs text-muted-foreground">
+          {t("walky.sheet.deliverHelp")}
+        </p>
+      )}
+      {deliverable && deliverAsk && (
         <Collapse open={armed}>
-          <div data-slot="walky-deliver-confirm" className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2">
-            <p className="min-w-[8rem] flex-1 text-xs text-muted-foreground">{t("walky.sheet.deliverConfirm")}</p>
+          <div data-slot="walky-deliver-ask" className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2">
+            <p className="min-w-[8rem] flex-1 text-xs text-foreground">{t("walky.sheet.deliverAsk")}</p>
             <Button type="button" variant="outline" size="sm" className="h-11 shrink-0" disabled={delivery.busy} onClick={() => setArmed(false)}>
               {t("walky.crew.confirmBack")}
             </Button>
-            <DeliverNowButton className="h-11 shrink-0" busy={delivery.busy} aria-label={deliverAria} onClick={() => void delivery.run(row.id)} />
+            <DeliverNowButton className="h-11 shrink-0" label={t("walky.sheet.deliver")} busy={delivery.busy} aria-label={deliverAria} onClick={() => void delivery.run(row.id)} />
           </div>
         </Collapse>
       )}

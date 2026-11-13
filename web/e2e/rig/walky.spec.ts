@@ -27,7 +27,7 @@
 //      held; Cancel in the pane's WalkyTalky sheet ends it as `inbox-only: cancelled by sender`, the
 //      draft is untouched, and nothing is typed after the draft clears.
 //   23 a held message dropped from the held mark (M62 spec 03): an agent's message over a draft is
-//      held; the phone shows "1 message waits for the box to clear", a tap opens the sheet, Drop ends
+//      held; the phone shows "1 message waits while you type", a tap opens the sheet, Drop ends
 //      it as `inbox-only: dropped by the pane's owner`, the mark goes, and nothing is typed.
 //
 //   30 the space border, inside (M98 spec 06): a throwaway Claude in the run's own space sends to the
@@ -535,7 +535,7 @@ test.describe("walky talky", () => {
         phone ??= await phoneOn(browser, rig, pane, PHONE);
         const { page, recorder } = phone;
         // The owner's mark above the box, and the tap that opens the sheet on it.
-        const markOnPhone = page.getByRole("button", { name: message("walky.held.mark.one", { count: 1 }) });
+        const markOnPhone = page.getByRole("button", { name: message("walky.held.waits.one", { count: 1 }) });
         await expect(markOnPhone, "no held mark above the box").toBeVisible({ timeout: 20_000 });
         trail.captures.push(await capture(page, "walky-23-held-mark"));
         log.push(await tap(recorder, markOnPhone, "the held mark", { expectAnswer: false }));

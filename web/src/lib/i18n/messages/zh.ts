@@ -2820,8 +2820,6 @@ export const zh: Dictionary = {
   "walky.sheet.notHeld": "未被暂留。无需撤回。",
   "walky.sheet.elsewhere": "已暂留在另一台机器上。请到那台机器上撤回。并未取消。",
   "walky.sheet.takeBackFailed": "未撤回：{error}",
-  "walky.held.mark.one": "有 {count} 条消息正在等待输入框清空",
-  "walky.held.mark.other": "有 {count} 条消息正在等待输入框清空",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "发送选项",
   "walky.composer.sendAsMessage": "作为消息发送",

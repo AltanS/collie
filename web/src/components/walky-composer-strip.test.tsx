@@ -16,7 +16,7 @@ describe("the held mark", () => {
     const onOpen = vi.fn();
     render(<WalkyHeldStrip count={1} onOpen={onOpen} deliverId={ID} onDeliverNow={vi.fn(async () => {})} />);
     expect(screen.queryByRole("button", { name: "Deliver now" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "1 message waits for the box to clear" }));
+    await user.click(screen.getByRole("button", { name: "1 message waits while you type" }));
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
@@ -34,14 +34,19 @@ describe("the held mark", () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
     render(<WalkyHeldStrip count={1} onOpen={onOpen} linked deliverId={ID} onDeliverNow={vi.fn(async () => {})} />);
-    await user.click(screen.getByRole("button", { name: "1 message waits for the box to clear" }));
+    await user.click(screen.getByRole("button", { name: "1 message waits while you type" }));
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("says on a second line that the person's text stays, beside the button", () => {
+    render(<WalkyHeldStrip count={1} onOpen={vi.fn()} linked deliverId={ID} onDeliverNow={vi.fn(async () => {})} />);
+    expect(screen.getByText("Your text stays in the box.")).toBeInTheDocument();
   });
 
   it("is drawn as today with more than one message, linked or not", () => {
     render(<WalkyHeldStrip count={3} onOpen={vi.fn()} linked deliverId={ID} onDeliverNow={vi.fn(async () => {})} />);
     expect(screen.queryByRole("button", { name: "Deliver now" })).toBeNull();
-    expect(screen.getByRole("button", { name: "3 messages wait for the box to clear" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "3 messages wait while you type" })).toBeInTheDocument();
   });
 
   it("is disabled while the call is in flight, and says why when it fails", async () => {
@@ -54,8 +59,8 @@ describe("the held mark", () => {
     expect(button).toBeDisabled();
     await user.click(button);
     expect(onDeliverNow).toHaveBeenCalledTimes(1);
-    fail(new Error("The session did not take it."));
-    expect(await screen.findByText("Not delivered: The session did not take it.")).toBeInTheDocument();
+    fail(new Error("The agent did not take it."));
+    expect(await screen.findByText("Not delivered. The message still waits and your text is unchanged. The agent did not take it.")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Deliver now" })).toBeEnabled());
   });
 });

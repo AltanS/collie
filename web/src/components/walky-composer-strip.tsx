@@ -30,15 +30,16 @@ export function WalkyAimStrip({ aim, onCancel }: { aim: WalkyAim; onCancel: () =
 }
 
 /**
- * The held mark (M62 spec 03): "N messages wait for the box to clear", for the owner of the pane whose
- * box they wait for. A tap opens the pane's Messages sheet, where each held row has its Drop. The whole
+ * The held mark (M62 spec 03): "N messages wait while you type", for the owner of the pane whose box
+ * they wait for. A tap opens the pane's Messages sheet, where each held row has its Drop. The whole
  * notice is the tap, so it needs no control of its own; it goes when nothing is held any more.
  *
  * Deliver now (prototype): for a LINKED pane with exactly one message waiting (`deliverId`, the id of that
- * message), the mark carries "Deliver now" beside its words. It hands the message to the agent as data and leaves
- * the draft alone. The notice then cannot be one whole tap (a control inside a tap is not allowed, see
- * `ui/notice.tsx`), so the words become the button that opens the sheet, and Deliver now is the other. With
- * more than one message, or a pane that is not linked, the mark is drawn as it always was.
+ * message), the mark carries a second line, the button "Deliver now" and "Your text stays in the box." The
+ * button hands the message to the agent as data and leaves the person's text alone. The notice then cannot be
+ * one whole tap (a control inside a tap is not allowed, see `ui/notice.tsx`), so the first line becomes the
+ * button that opens the sheet. With more than one message, or a pane that is not linked, the mark is drawn
+ * as it always was.
  */
 export function WalkyHeldStrip({
   count,
@@ -59,7 +60,7 @@ export function WalkyHeldStrip({
   }
   return (
     <Notice tone="info" variant="box" className="mb-2" announce="status" icon={<WalkyIcon />} onActivate={onOpen}>
-      <span data-slot="walky-held">{tn("walky.held.mark", count)}</span>
+      <span data-slot="walky-held">{tn("walky.held.waits", count)}</span>
     </Notice>
   );
 }
@@ -68,20 +69,19 @@ function WalkyHeldDeliverStrip({ count, onOpen, deliverId, onDeliverNow }: { cou
   // The mark exists only while a message is held, so it is held for as long as this is drawn.
   const delivery = useDeliverNow(true, onDeliverNow);
   return (
-    <Notice
-      tone={delivery.error === null ? "info" : "danger"}
-      variant="box"
-      className="mb-2"
-      announce="status"
-      icon={<WalkyIcon />}
-      action={<DeliverNowButton variant="ghost" className={NOTICE_ACTION} busy={delivery.busy} onClick={() => void delivery.run(deliverId)} />}
-    >
-      {/* The words open the sheet. The transparent reach brings the 44px floor without growing the box. */}
-      <button type="button" data-slot="walky-held-open" onClick={onOpen} className="relative text-left before:absolute before:inset-x-0 before:-inset-y-[11px] before:content-['']">
-        <span data-slot="walky-held">{tn("walky.held.mark", count)}</span>
+    <Notice tone={delivery.error === null ? "info" : "danger"} variant="box" className="mb-2" announce="status" icon={<WalkyIcon />}>
+      {/* The words open the sheet. A real 32px height, so its tap and the button's below do not overlap. */}
+      <button type="button" data-slot="walky-held-open" onClick={onOpen} className="flex min-h-8 w-full items-center text-left">
+        <span data-slot="walky-held">{tn("walky.held.waits", count)}</span>
       </button>
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-normal">
+        <DeliverNowButton variant="outline" className={NOTICE_ACTION} busy={delivery.busy} onClick={() => void delivery.run(deliverId)} />
+        <span data-slot="walky-held-stays" className="min-w-0 flex-1">
+          {t("walky.held.deliverStays")}
+        </span>
+      </span>
       {delivery.error !== null && (
-        <span data-slot="walky-deliver-note" className="mt-0.5 block font-normal">
+        <span data-slot="walky-deliver-note" className="mt-1 block font-normal">
           {delivery.error}
         </span>
       )}

@@ -296,22 +296,22 @@ describe("the held mark (M62 spec 03)", () => {
     const user = userEvent.setup();
     const onOpenMessages = vi.fn();
     renderWithRows([heldForThisPane, heldElsewhere], onOpenMessages);
-    const mark = await screen.findByText("1 message waits for the box to clear");
+    const mark = await screen.findByText("1 message waits while you type");
     expect(mark).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "1 message waits for the box to clear" }));
+    await user.click(screen.getByRole("button", { name: "1 message waits while you type" }));
     expect(onOpenMessages).toHaveBeenCalledOnce();
   });
 
   it("reads the plural, and draws nothing with no held message or no sheet to open", () => {
     const second: WalkyRow = { ...heldForThisPane, id: "wt_he1dh01dh02d", receipt: { ...heldForThisPane.receipt, id: "wt_he1dh01dh02d" } };
     renderWithRows([heldForThisPane, second], vi.fn());
-    expect(screen.getByText("2 messages wait for the box to clear")).toBeInTheDocument();
+    expect(screen.getByText("2 messages wait while you type")).toBeInTheDocument();
     cleanup();
     renderWithRows([heldElsewhere], vi.fn());
-    expect(screen.queryByText(/wait(s)? for the box to clear/)).toBeNull();
+    expect(screen.queryByText(/wait(s)? while you type/)).toBeNull();
     cleanup();
     renderWithRows([heldForThisPane], undefined);
-    expect(screen.queryByText(/wait(s)? for the box to clear/)).toBeNull();
+    expect(screen.queryByText(/wait(s)? while you type/)).toBeNull();
   });
 });
 

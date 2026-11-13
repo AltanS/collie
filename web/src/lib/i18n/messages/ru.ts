@@ -2795,10 +2795,6 @@ export const ru: Dictionary = {
   "walky.sheet.notHeld": "Не удерживается. Нечего отзывать.",
   "walky.sheet.elsewhere": "Удерживается на другой машине. Заберите ее обратно туда. Операция не отменена.",
   "walky.sheet.takeBackFailed": "Не отозвано: {error}",
-  "walky.held.mark.one": "{count} сообщение ожидает освобождения ящика",
-  "walky.held.mark.other": "{count} сообщения ожидают освобождения ящика",
-  "walky.held.mark.few": "{count} сообщений ожидает освобождения ящика",
-  "walky.held.mark.many": "{count} сообщений ожидает освобождения ящика",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Параметры отправки",
   "walky.composer.sendAsMessage": "Отправить как сообщение",

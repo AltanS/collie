@@ -2814,8 +2814,6 @@ export const zhTW: Dictionary = {
   "walky.sheet.notHeld": "未暫留，無法收回。",
   "walky.sheet.elsewhere": "已暫留在另一台機器上。請到那台機器上收回。並未取消。",
   "walky.sheet.takeBackFailed": "未收回：{error}",
-  "walky.held.mark.one": "有 {count} 則訊息正在等待對話框清空",
-  "walky.held.mark.other": "有 {count} 則訊息正在等待對話框清空",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "傳送選項",
   "walky.composer.sendAsMessage": "以訊息傳送",

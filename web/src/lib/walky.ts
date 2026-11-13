@@ -71,6 +71,12 @@ export interface WalkyReceipt {
   /** The Send Protocol request id, when a send was made. */
   sendId?: string;
   /**
+   * How a `delivered` message reached the agent: `data` is the linked transport (Deliver now), handed over
+   * as data with the input box untouched. Absent: typed into the pane, as always. SEAM: the bridge does not
+   * send it yet (deliver-now prototype), the owner's row words read it in {@link ownerStateWord}.
+   */
+  via?: "data";
+  /**
    * The pane address this receipt is about. A message to `all` or `<memberId>/all` yields one receipt
    * per target under the same message `id`, and this is what tells them apart.
    */
@@ -603,6 +609,27 @@ export function stateWord(receipt: WalkyReceipt): string {
 }
 
 /**
+ * Where a message that reached THIS pane stands, in the owner's words (second person: the person owns the
+ * box). A waiting message says what it waits for ("Waiting, because you have unsent text"), and one handed
+ * over as data says that the person's text is still in the box. Every other state reads as {@link stateWord}.
+ * A row this pane SENT keeps `stateWord`: the sender reads about "that session".
+ */
+export function ownerStateWord(receipt: WalkyReceipt): string {
+  if (isHeld(receipt) && receipt.reason !== OUTCOME_ON_LEAD) {
+    switch (receipt.reason) {
+      case "draft present":
+        return t("walky.owner.waitDraft");
+      case "turn running":
+        return t("walky.owner.waitBusy");
+      default:
+        return t("walky.owner.wait", { reason: reasonWord(receipt.reason ?? "") });
+    }
+  }
+  if (receipt.state === "delivered" && receipt.via === "data") return t("walky.owner.deliveredData");
+  return stateWord(receipt);
+}
+
+/**
  * The messages held for the pane at `self` (M62 spec 03): received, and `accepted` with the reason that
  * holds them. What the held mark above the box counts, and what the Messages sheet offers Drop on. With
  * no `self` nothing is held: a mount that cannot name its pane cannot tell a sent row from a received one.
@@ -615,8 +642,10 @@ export function heldForPane(rows: readonly WalkyRow[], self: string | undefined)
 /**
  * SEAM (deliver-now prototype): the call that hands one held message to the agent as data and leaves the
  * box as it is. The prototype takes it as a prop (`onDeliverNow`) on `WalkySheet` and `WalkyHeldStrip`; the
- * playground fills it with a fake. It resolves once the bridge took the message and rejects with the reason
- * otherwise; the list is read again by the caller. The real call goes beside `dropWalky` in `lib/api.ts`
+ * pick page (`pick/rounds/walky-deliver-now.tsx`) fills it with a fake. It resolves once the bridge took the message and rejects with the reason
+ * otherwise; the list is read again by the caller. The caller also shows the note above the box, "Message
+ * delivered. Your text stays here." (`walky.composer.delivered`, a `success` `WalkyNoteStrip`), for a few seconds.
+ * The real call goes beside `dropWalky` in `lib/api.ts`
  * and is passed where `onDrop` is passed (`agent-chat.tsx`, the `WalkySheet`) and where `WalkyHeldStrip` is
  * drawn (`composer.tsx`), together with `linked`, which the bridge will send as `linked: true` on the pane read (`AgentView` in lib/types.ts has no such field yet, and `lib/solo-baseline.test.ts` pins its keys). Nothing there calls it yet.
  */
