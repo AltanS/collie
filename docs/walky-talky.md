@@ -384,7 +384,8 @@ A draft in the box holds the message too. Collie never types into a box that hol
 It types the message once the box is empty and the pane idle on two checks in a row. If you send
 the draft instead, its turn starts, and Collie types the message after that turn.
 
-While a message waits, its receipt reads `held: draft present` or `held: turn running`. Collie
+While a message waits, its receipt reads `held: draft present` or `held: turn running`, or `held: box
+not free` when Collie could not read the box as free. Collie
 types it when the box clears or the turn ends, up to 60 minutes. Do not send it again. One clock
 runs for both reasons, and a bridge restart keeps the hold and the clock.
 
@@ -548,6 +549,15 @@ a Drop button there: the hold ends, the message stays in the inbox, and its row 
 phone has Cancel instead, on its row and on the line under the box. Its row then reads
 `cancelled by sender`. A message that was already typed answers "Already typed. Nothing to take
 back." The line and the buttons go when nothing is held any more.
+
+On a Claude Code session linked with `collie harness link claude`, a message that waits for your text
+also has Deliver now: on the line above the box when it is the only one, with "Your text stays in the
+box.", and on its row in the sheet. A tap hands that message to the agent at once, and your text stays
+in the box as you left it. Its row then reads "Delivered. Your text is still in the box." Deliver now
+does not go while the agent works or asks you something; the message keeps waiting, and the line says
+why. When the message stopped waiting a moment before your tap (it went in by itself, or was dropped,
+cancelled or expired), the line reads "This message no longer waits for your text." and the list is read
+again, so the row says what became of it. On a crew, Deliver now is on the machine that owns the pane.
 
 When an agent runs `collie walky` in a tool card, the card wears a small "WalkyTalky" badge. After
 `send` or `reply`, one line under it reads "Message to" the pane and the receipt state, for example

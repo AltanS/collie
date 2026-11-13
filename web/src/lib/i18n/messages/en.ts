@@ -3191,6 +3191,7 @@ export const en = {
   // The owner's view of a message waiting for this pane (second person: the person owns the box).
   "walky.owner.waitDraft": "Waiting, because you have unsent text",
   "walky.owner.waitBusy": "Waiting, because the agent is busy",
+  "walky.owner.waitBox": "Waiting, because the box is not free",
   "walky.owner.wait": "Waiting: {reason}",
   "walky.owner.deliveredData": "Delivered. Your text is still in the box.",
   "walky.held.waits.one": "{count} message waits while you type",
@@ -3205,6 +3206,8 @@ export const en = {
   "walky.sheet.deliverNowAria": "Deliver the message from {label} now",
   "walky.sheet.deliverHelp": "The agent gets it now and starts on it. Your text stays in the box.",
   "walky.sheet.deliverFailed": "Not delivered. The message still waits and your text is unchanged. {error}",
+  // The tap came a moment too late: the message went in by itself, or was dropped, cancelled or expired. A neutral line, never "still waits".
+  "walky.sheet.deliverGone": "This message no longer waits for your text.",
   "walky.held.deliverStays": "Your text stays in the box.",
   "walky.composer.delivered": "Message delivered. Your text stays here.",
   // The composer's long-press menu, and the strip that says where a message is going.
@@ -4253,6 +4256,7 @@ export const PENDING_TRANSLATION = [
   "settings.usageRow.option.dots",
   "walky.owner.waitDraft",
   "walky.owner.waitBusy",
+  "walky.owner.waitBox",
   "walky.owner.wait",
   "walky.owner.deliveredData",
   "walky.held.waits.one",
@@ -4265,6 +4269,7 @@ export const PENDING_TRANSLATION = [
   "walky.sheet.deliverNowAria",
   "walky.sheet.deliverHelp",
   "walky.sheet.deliverFailed",
+  "walky.sheet.deliverGone",
   "walky.held.deliverStays",
   "walky.composer.delivered",
 ] as const satisfies readonly MessageKey[];

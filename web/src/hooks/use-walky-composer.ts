@@ -159,12 +159,15 @@ export function useWalkyComposer({
   }, [graced, waiting]);
   // After Deliver now: "Message delivered. Your text stays here." for a few seconds, over the box.
   const delivered = useCallback(() => setNote({ tone: "success", text: t("walky.composer.delivered") }), []);
-  const deliveredShown = note?.text === t("walky.composer.delivered");
+  // After a Deliver now that came a moment too late: the message no longer waited. One neutral line, no claim
+  // that it still waits; the held mark and the row are read again at once and say what became of it.
+  const tooLate = useCallback(() => setNote({ tone: "info", text: t("walky.sheet.deliverGone") }), []);
+  const timedShown = note?.text === t("walky.composer.delivered") || note?.text === t("walky.sheet.deliverGone");
   useEffect(() => {
-    if (!deliveredShown) return;
+    if (!timedShown) return;
     const timer = setTimeout(() => setNote(null), DELIVERED_NOTE_MS);
     return () => clearTimeout(timer);
-  }, [deliveredShown]);
+  }, [timedShown]);
 
   return {
     aim,
@@ -174,6 +177,8 @@ export function useWalkyComposer({
     mark,
     /** Deliver now went through: say so above the box, and that the person's text stays. */
     delivered,
+    /** Deliver now came too late, the message no longer waited: say so above the box, and nothing more. */
+    tooLate,
     /** Take the followed message back while it is held (M62 spec 03), or null when nothing of the operator's is held. */
     cancelFollowed: heldId === null ? null : cancelFollowed,
     /** Open the box for a message to `to`: a reply to an agent's message. */

@@ -173,6 +173,11 @@ export interface WalkyReceipt {
    * owns the pane wrote after the check. Absent on a refusal, and on every receipt from an older bridge.
    */
   readonly via?: BorderVerdict;
+  /**
+   * Deliver now (M99 spec 05, decision of 2026-11-13): the person chose to hand this message to the agent by
+   * data while their own text stayed in the box. Only on `delivered` and `unknown`, and only `true`.
+   */
+  readonly overDraft?: true;
 }
 
 /**

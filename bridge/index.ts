@@ -311,6 +311,7 @@ import { insideGate, insideWanted, INTERVAL_TIMER, linkReader, watchLink } from 
 import { linkedHarnesses, partsRoot } from "./inside/links.ts";
 import { ownerHold } from "./inside/owner.ts";
 import { applyWake, releasesHeld, type WakeSink } from "./inside/wake.ts";
+import { isLinked } from "./surface/path.ts";
 import { InsideHub } from "./inside/hub.ts";
 import { placeHello } from "./inside/place.ts";
 import { CommandQueue } from "./inside/queue.ts";
@@ -2386,6 +2387,12 @@ const walkyHost: WalkyHost = {
   cancelHeld: (session, paneId, sendId) => {
     registry.get(session)?.send?.cancelHeld(session, paneId, sendId);
   },
+  // Deliver now (M99 spec 05): the pane's Send Protocol runs the held send once, by data only.
+  deliverOverDraft: async (session, paneId, sendId) => {
+    const protocol = registry.get(session)?.send;
+    if (protocol === undefined) return "not-linked";
+    return (await protocol.deliverOverDraft(session, paneId, sendId)).result;
+  },
 };
 const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
 // This bridge's one stable id (bridge-id.ts): the crew member id when it has a trust store, else the
@@ -4112,6 +4119,8 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   usage,
   gitHeads,
   walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
+  // The pane read's `linked` (M99 spec 15): the session half of the send pick, one function.
+  paneLinked: (session, paneId) => insideHub !== null && isLinked({ enabled: insideOn(), part: insideHub.partOf({ session, paneId }) }),
   walkyPaneOff: (session, paneId) => {
     const instance = walkyInstances.peek(session, paneId);
     return instance !== null && walkyOff.isOff({ session, paneId, instance });

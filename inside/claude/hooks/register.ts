@@ -311,9 +311,10 @@ async function handle($: $, link: Link, part: string, command: Command): Promise
     await post($, link, draftEvent(part, command.id, box))
     return
   }
-  if (command.kind === 'mail') {
+  if (command.kind === 'mail' && command.overDraft !== true) {
     // Another agent's words never go in over the person's draft (spec 05): the box is read right before
     // the submit, and a draft, or a box that cannot be read, sends the message back with nothing submitted.
+    // Deliver now (`overDraft`) is the person's own choice: the box is not read, and the submit leaves it.
     const box = await $.prompt.read().catch(() => null)
     if (box === null || holdsDraft(box.text)) {
       if (box !== null) noteDraft($, box.text)

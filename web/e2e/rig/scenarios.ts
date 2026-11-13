@@ -48,6 +48,9 @@ export const SCENARIOS = [
   { id: "walky-space-refused", title: "31 walky talky: a message to another space is refused, nothing typed", only: ["claude"] },
   { id: "walky-space-reply", title: "32 walky talky: a reply crosses the border, in both directions", only: ["claude"] },
   { id: "walky-space-outside", title: "33 walky talky: --outside crosses, and the header says outside", only: ["claude"] },
+  // Deliver now (M99 spec 05): on the data run the person hands a held message over the draft, one turn; the
+  // default run shows the mark with no Deliver now and drops the message, no turn.
+  { id: "walky-deliver-now", title: "36 walky talky: Deliver now hands a held message over the draft", only: ["claude"] },
   // The crew leg (crew.config.ts, walky-crew.spec.ts): a lead and a member. Each case is one row,
   // under the harness that starts it (Claude on the lead); pi on the member is its other end.
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },

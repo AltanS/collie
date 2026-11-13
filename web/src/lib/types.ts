@@ -21,6 +21,11 @@ export interface AgentView {
   /** True when the session turned its walky talky off (M89). Absent when on, and on an older machine. */
   walkyOff?: true;
   /**
+   * True when the session is linked (M99 spec 15): a part inside the agent program takes a plain message by data.
+   * Absent otherwise, and on an older machine. Deliver now on a held message needs it.
+   */
+  linked?: true;
+  /**
    * How many pinned messages the pane's session holds (M90). Absent at zero, on a machine that predates pins, and on
    * a pane whose session the bridge has not read yet, so the pane view reads the list once when it opens.
    */

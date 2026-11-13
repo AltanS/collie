@@ -1904,6 +1904,24 @@ export async function dropWalky(paneId: string, id: string, scope?: Scope): Prom
 }
 
 /**
+ * Deliver now (M99 spec 05): the pane's owner hands one message held for their draft to the agent by data, and
+ * the draft stays in the box. Resolves when it was delivered, or with `"unknown"` when the agent took it and said
+ * nothing (it may have arrived, and it is not sent again), or with `"gone"` when the bridge answers 410: the
+ * message no longer waits for the person's text, so nothing was refused and there is no reason to say. A message
+ * that still waits is a 409 whose words say why, thrown. Only this machine's own panes: a member's message is delivered on that machine, like Drop.
+ */
+export async function deliverWalky(paneId: string, id: string, scope?: Scope): Promise<void | "unknown" | "gone"> {
+  if (!isLead(scope)) throw new ApiError("A message held on a crew member is delivered on that machine.", 400);
+  try {
+    const got = await req<{ result?: { result?: string } }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/walky/${encodeURIComponent(id)}/deliver`, scope), { method: "POST" });
+    return got.result?.result === "may have arrived" ? "unknown" : undefined;
+  } catch (thrown) {
+    if (apiErrorStatus(thrown) === 410) return "gone";
+    throw thrown;
+  }
+}
+
+/**
  * Take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an answer, not an error:
  * the request is going out now, and a 409 carries it. This machine's own panes use
  * `DELETE /api/send/<id>?pane=<id>`; a pane on a crew member uses `DELETE /api/pane/<id>/held?request=<id>`,

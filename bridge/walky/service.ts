@@ -11,7 +11,7 @@ import { hasViewHead } from "../../web/src/lib/agent-view/wire.ts";
 import { isScopeAddress, isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
-import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, isResting, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type DeliverOptions, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
+import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, isResting, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type DeliverNow, type DeliverOptions, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
 import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import { withNames } from "./names.ts";
 import { WalkyOff, type WalkyOffBy } from "./off.ts";
@@ -131,6 +131,9 @@ export interface WalkyStatus {
 export const NOT_THE_SENDER = "only the sender can cancel it";
 
 /** A take-back's answer (M62 spec 03): one result per logged target, or why none was touched. */
+/** What Deliver now answers: one target's end, or why nothing was asked. */
+export type DeliverNowAnswer = { readonly ok: true; readonly result: DeliverNow } | { readonly ok: false; readonly error: string };
+
 export type TakeBackAnswer = { readonly ok: true; readonly results: readonly TakeBack[] } | { readonly ok: false; readonly error: string };
 
 /** Who asks to take a message back: the agent in a pane of this bridge, or the operator on a paired device. */
@@ -444,6 +447,17 @@ export class WalkyService {
     const records = this.deps.log.all(id).filter((record) => record.session === pane.session && record.paneId === pane.paneId && sameInstance(record.instance, pane.instance));
     if (records.length === 0) return { ok: false, error: `no message ${id} for this pane` };
     return { ok: true, results: records.map((record) => this.deliverer.takeBack(record, DROPPED_BY_OWNER)) };
+  }
+
+  /**
+   * Deliver now (M99 spec 05, decision of 2026-11-13): the pane's owner hands one message held for their
+   * draft to the agent by data, on the machine that owns the pane, with the same right as {@link drop}.
+   * Only the record placed on that pane instance is asked for.
+   */
+  async deliverNow(id: string, pane: { readonly session: string; readonly paneId: string; readonly instance: string }): Promise<DeliverNowAnswer> {
+    const record = this.deps.log.all(id).find((candidate) => candidate.session === pane.session && candidate.paneId === pane.paneId && sameInstance(candidate.instance, pane.instance));
+    if (record === undefined) return { ok: false, error: `no message ${id} for this pane` };
+    return { ok: true, result: await this.deliverer.deliverNow(record) };
   }
 
   /** Mark messages read for a pane instance: the ids, or all of them. */

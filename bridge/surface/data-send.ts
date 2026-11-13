@@ -31,10 +31,20 @@ export interface DataDoor {
   draftOf(address: PaneAddress): boolean | null;
   /** The reason of a command's `failed`, or null. */
   failReasonOf(id: string): string | null;
-  enqueue(address: PaneAddress, command: { readonly id: string; readonly kind: "prompt" | "mail"; readonly text: string }): EnqueueOutcome;
+  /** Whether the part holds a question open: a dialog stands. */
+  askOpen(address: PaneAddress): boolean;
+  enqueue(address: PaneAddress, command: DataCommand): EnqueueOutcome;
   withdraw(id: string): boolean;
   waitFor(id: string, states: readonly CommandState[], ms: number): Promise<CommandState | null>;
 }
+
+/**
+ * What the data road hands a part. `overDraft` only on a `mail` the person chose to deliver over their own
+ * draft (Deliver now, spec 05): the part submits it without reading the box.
+ */
+export type DataCommand =
+  | { readonly id: string; readonly kind: "prompt"; readonly text: string }
+  | { readonly id: string; readonly kind: "mail"; readonly text: string; readonly overDraft?: true };
 
 /** How a data send ended. `screen`: nothing reached the part, and the screen road may run it once. */
 export type DataResult =
@@ -53,7 +63,7 @@ export interface DataLimits {
 export async function sendByData(
   door: DataDoor,
   address: PaneAddress,
-  send: { readonly id: string; readonly kind: "prompt" | "mail"; readonly text: string },
+  send: DataCommand,
   limits: DataLimits = { takeMs: TAKE_MS, wordMs: WORD_MS },
 ): Promise<DataResult> {
   const { id } = send;

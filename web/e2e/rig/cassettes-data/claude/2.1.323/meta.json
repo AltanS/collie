@@ -6,7 +6,7 @@
     "solo-data": {
       "model": "haiku",
       "skill": "3f9281a14626941f",
-      "recordedAt": "2026-11-13T12:06:42.827Z",
+      "recordedAt": "2026-11-13T16:49:52.231Z",
       "cases": [
         "claude.load-older",
         "claude.permission",
@@ -15,6 +15,7 @@
         "claude.walky",
         "claude.walky-broadcast",
         "claude.walky-busy",
+        "claude.walky-deliver-now",
         "claude.walky-drop",
         "claude.walky-forged",
         "claude.walky-inbox",

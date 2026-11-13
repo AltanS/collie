@@ -406,6 +406,9 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: a session turned its walky talky off (M89). Present only while it is off,
   // and this harness builds its body with no reader, so no golden byte moved.
   walkyOff: true,
+  // Not a crew dimension: the pane is linked (M99 spec 15, added 2026-11-13). Present only while a part of
+  // the pane declares what a send needs, and this harness builds its body with no reader, so no golden byte moved.
+  linked: true,
   // Not a crew dimension: how many pins the pane's session holds (M90). Present only above zero, and this
   // harness builds its body with no pin store, so no golden byte moved.
   pins: true,
@@ -582,6 +585,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "kind",
       "lastActiveAt",
       "lastSeenAt",
+      "linked",
       "model",
       "paneId",
       "paneLabel",
@@ -843,6 +847,9 @@ describe("solo zero-tax — routes", () => {
       // Walky talky's list for one pane (M62): the messages that reached it, newest first. A read, gated
       // like the pane read, this collie's own panes only until spec 03 makes it forwardable.
       "/^\\/api\\/pane\\/([^/]+)\\/walky$/",
+      // M99 spec 05, Deliver now: the pane owner hands one message held for their draft over by data. This
+      // machine's own panes only, like Drop; the lead answers 400 for a member's.
+      "/^\\/api\\/pane\\/([^/]+)\\/walky\\/([^/]+)\\/deliver$/",
       // The pane owner's Drop on a held walky talky message (M62 spec 03): a write, this collie's own
       // panes only. A message held on a crew member is dropped on that machine; the lead answers 400.
       "/^\\/api\\/pane\\/([^/]+)\\/walky\\/([^/]+)\\/drop$/",

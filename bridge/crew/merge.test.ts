@@ -997,3 +997,16 @@ describe("mergeSnapshot — a member's walky off flag (M89, §21)", () => {
     expect("walkyOff" in of("w2:p2")!).toBe(false);
   });
 });
+
+describe("mergeSnapshot — a member's linked field (M99 spec 15, §21)", () => {
+  test("linked field: a member's `linked` reaches the phone through the merge unchanged, and an older member's pane carries none", () => {
+    const merged = mergeSnapshot(localBody(), {
+      self: SELF,
+      peers: [contribution({ state: state({ memberId: "laptop" }), body: { ...peerBody, agents: [pane({ paneId: "w2:p1", linked: true }), pane({ paneId: "w2:p2" })] } })],
+      now: NOW,
+    });
+    const of = (paneId: string) => merged.agents.find((row) => row.paneId === paneId && row.host === "laptop");
+    expect(of("w2:p1")?.linked).toBe(true);
+    expect("linked" in of("w2:p2")!).toBe(false);
+  });
+});

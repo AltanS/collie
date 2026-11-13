@@ -184,7 +184,9 @@ export function parseHelloAnswer(status: number, text: string): HelloAnswer | nu
 
 /** A command from `next`. */
 export type Command =
-  | { readonly id: string; readonly kind: "prompt" | "mail" | "steer"; readonly text: string }
+  | { readonly id: string; readonly kind: "prompt" | "steer"; readonly text: string }
+  /** `overDraft`: the person chose Deliver now, so the box is not read and the draft stays (spec 05). */
+  | { readonly id: string; readonly kind: "mail"; readonly text: string; readonly overDraft?: true }
   | { readonly id: string; readonly kind: "answer"; readonly ask: string; readonly decision: "allow" | "deny" }
   | { readonly id: string; readonly kind: "draft" };
 
@@ -197,7 +199,10 @@ export function parseCommand(text: string): Command | null {
   const kind = stringOf(row.kind);
   if (kind === "prompt" || kind === "mail" || kind === "steer") {
     const body = stringOf(row.text);
-    return body !== null && body.length > 0 && body.length <= COMMAND_TEXT_MAX ? { id, kind, text: body } : null;
+    if (body === null || body.length === 0 || body.length > COMMAND_TEXT_MAX) return null;
+    // Only a literal `true` is the person's choice; anything else is a mail a draft sends back.
+    if (kind === "mail" && row.overDraft === true) return { id, kind, text: body, overDraft: true };
+    return { id, kind, text: body };
   }
   if (kind === "answer") {
     const ask = stringOf(row.ask);

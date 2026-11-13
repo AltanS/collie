@@ -70,10 +70,14 @@ describe("the mod speaks the bridge's wire", () => {
     const commands = [
       { id: "req-12345678", kind: "prompt" as const, text: "hi" },
       { id: "req-12345678", kind: "mail" as const, text: "[walky-talky wt_1] hi" },
+      { id: "req-12345678", kind: "mail" as const, text: "[walky-talky wt_1] hi", overDraft: true as const },
       { id: "req-12345678", kind: "answer" as const, ask: "perm-1-ab", decision: "deny" as const },
       { id: "req-12345678", kind: "draft" as const },
     ];
     for (const command of commands) expect(parseCommand(commandBody(command))).toEqual(command);
+    // Deliver now is a literal true on a mail only: a string "true" is a plain mail, which a draft sends back.
+    expect(parseCommand('{"wire":1,"id":"req-12345678","kind":"mail","text":"m","overDraft":"true"}')).toEqual({ id: "req-12345678", kind: "mail", text: "m" });
+    expect(parseCommand('{"wire":1,"id":"req-12345678","kind":"prompt","text":"m","overDraft":true}')).toEqual({ id: "req-12345678", kind: "prompt", text: "m" });
     for (const bad of ["", "{}", '{"wire":2,"id":"req-12345678","kind":"draft"}', '{"wire":1,"id":"x","kind":"draft"}', '{"wire":1,"id":"req-12345678","kind":"type"}']) {
       expect(parseCommand(bad)).toBeNull();
     }

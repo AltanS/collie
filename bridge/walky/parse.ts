@@ -153,7 +153,9 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
   const withSend = sendId === null ? withReason : { ...withReason, sendId };
   // How the message passed the space border (M98): one of the five words, or dropped.
   const via = BORDER_VERDICTS.find((candidate) => candidate === row.via);
-  return via === undefined ? withSend : { ...withSend, via };
+  const withVia = via === undefined ? withSend : { ...withSend, via };
+  // Deliver now (spec 05): only a literal true on an end that may follow it.
+  return row.overDraft === true && (state === "delivered" || state === "unknown") ? { ...withVia, overDraft: true } : withVia;
 }
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────

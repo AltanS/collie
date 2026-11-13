@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog } from "../audit.ts";
-import { walkyCancelRoute, walkyDropRoute, walkyOffRoute, walkyOlderMemberAnswer, walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT, WALKY_OLDER_MEMBER_TEXT } from "../server.ts";
-import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
+import { DELIVER_NOW_WORDS, walkyCancelRoute, walkyDeliverRoute, walkyDropRoute, walkyOffRoute, walkyOlderMemberAnswer, walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT, WALKY_OLDER_MEMBER_TEXT } from "../server.ts";
+import type { OverDraftResult, SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog, type SiblingSource } from "./log.ts";
 import { WalkyOff } from "./off.ts";
 import { WalkyService } from "./service.ts";
@@ -282,6 +282,79 @@ describe("the take-backs (M62 spec 03)", () => {
     expect(audit.join("")).not.toContain('"hi"');
     // The message stays in the pane's inbox, readable.
     expect(walky.inbox("main", "w1:p2", "aaaa", false).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa1"]);
+  });
+});
+
+describe("POST /api/pane/<pane>/walky/<id>/deliver, Deliver now (M99 spec 05)", () => {
+  /** A message to w1:p2 held for the draft; the Send Protocol's answer to a Deliver now is `answer`, its calls counted. */
+  async function held(answer: OverDraftResult) {
+    const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
+    roots.push(root);
+    const states = new Map<string, SendResult>();
+    const calls: string[] = [];
+    const heldHost: WalkyHost = {
+      panes: () => panes,
+      send: async (_pane, sendId): Promise<SendResult> => {
+        states.set(sendId, { outcome: "held", reason: "draft_present" });
+        return { outcome: "held", reason: "draft_present" };
+      },
+      sendState: (sendId) => states.get(sendId) ?? null,
+      cancelHeld: () => undefined,
+      deliverOverDraft: async (_session, _paneId, sendId) => {
+        calls.push(sendId);
+        if (answer === "sent") states.set(sendId, { outcome: "sent" });
+        return answer;
+      },
+    };
+    const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: heldHost, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, sleep: () => new Promise(() => undefined) });
+    await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w1:p2", body: "secret body", replyTo: null }, { kind: "agent", pane: panes[0]! });
+    for (let i = 0; i < 50 && walky.status("wt_aaaaaaaaaaa1").receipts[0]?.reason !== "draft present"; i++) await Bun.sleep(2);
+    return { walky, calls };
+  }
+
+  test("a delivery answers 200 with the receipt that says so; a repeat answers the stored receipt and asks nothing again", async () => {
+    const { walky, calls } = await held("sent");
+    const audit: string[] = [];
+    const res = await walkyDeliverRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context(audit));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ result: { target: "local/w1:p2", result: "delivered", receipt: { state: "delivered", overDraft: true } } });
+    const again = await walkyDeliverRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context(audit));
+    expect(await again.json()).toMatchObject({ result: { result: "repeat", receipt: { state: "delivered", overDraft: true } } });
+    expect(calls).toHaveLength(1);
+    expect(audit.join("")).toContain("walky.deliverNow");
+    expect(audit.join("")).not.toContain("secret body");
+  });
+
+  test("a refusal is a 409 in words and the message keeps waiting; another pane, no such pane and a bad id ask nothing", async () => {
+    const { walky, calls } = await held("busy");
+    const res = await walkyDeliverRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context([]));
+    expect(res.status).toBe(409);
+    expect(await res.text()).toBe(DELIVER_NOW_WORDS.busy);
+    expect(walky.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+    expect("overDraft" in walky.status("wt_aaaaaaaaaaa1").receipts[0]!).toBe(false);
+    expect((await walkyDeliverRoute(walky, "main", "w1:p1", "wt_aaaaaaaaaaa1", context([]))).status).toBe(404);
+    expect((await walkyDeliverRoute(walky, "main", "w9:p9", "wt_aaaaaaaaaaa1", context([]))).status).toBe(404);
+    expect((await walkyDeliverRoute(walky, "main", "w1:p2", "nope", context([]))).status).toBe(400);
+    expect((await walkyDeliverRoute(undefined, "main", "w1:p2", "wt_aaaaaaaaaaa1", context([]))).status).toBe(404);
+    expect(calls).toHaveLength(1);
+  });
+
+  test("a message that no longer waits answers 410, not 409: it did not stay waiting", async () => {
+    // The hold ended a moment before the tap (it went in, was dropped, cancelled or expired): the Send Protocol finds nothing held.
+    const { walky, calls } = await held("not-held");
+    const res = await walkyDeliverRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context([]));
+    expect(res.status).toBe(410);
+    expect(await res.text()).toBe(DELIVER_NOW_WORDS["not held"]);
+    expect(calls).toHaveLength(1);
+  });
+
+  test("may have arrived answers 200 with the unknown receipt, and a repeat sends nothing", async () => {
+    const { walky, calls } = await held("unknown");
+    const res = await walkyDeliverRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context([]));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ result: { result: "may have arrived", receipt: { state: "unknown", reason: "no evidence", overDraft: true } } });
+    expect(await (await walkyDeliverRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context([]))).json()).toMatchObject({ result: { result: "repeat" } });
+    expect(calls).toHaveLength(1);
   });
 });
 

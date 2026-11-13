@@ -263,7 +263,7 @@ describe("the held mark (M62 spec 03)", () => {
     receipt: { ...heldForThisPane.receipt, id: "wt_he1de1sewhe", target: "local/w2:p1" },
   };
 
-  function renderWithRows(rows: readonly WalkyRow[], onOpenMessages: (() => void) | undefined) {
+  function renderWithRows(rows: readonly WalkyRow[], onOpenMessages: (() => void) | undefined, extra: Partial<ComponentProps<typeof Composer>> = {}) {
     const props: ComponentProps<typeof Composer> = {
       paneId: "w1:p1",
       agent: "claude",
@@ -278,6 +278,7 @@ describe("the held mark (M62 spec 03)", () => {
       display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
       onOpenMessages,
+      ...extra,
     };
     const router = createMemoryRouter([
       {
@@ -313,6 +314,30 @@ describe("the held mark (M62 spec 03)", () => {
     cleanup();
     renderWithRows([heldForThisPane, busy], vi.fn());
     expect(screen.getByText("2 messages wait")).toBeInTheDocument();
+  });
+
+  it("Deliver now that came too late says one neutral line above the box, never that the message still waits, and the mark can go", async () => {
+    const user = userEvent.setup();
+    const onDeliverNow = vi.fn(async () => "gone" as const);
+    renderWithRows([heldForThisPane], vi.fn(), { walkyLinked: true, onDeliverNow });
+    await user.click(await screen.findByRole("button", { name: "Deliver now" }));
+    expect(onDeliverNow).toHaveBeenCalledExactlyOnceWith(heldForThisPane.id);
+    expect(await screen.findByText("This message no longer waits for your text.")).toBeInTheDocument();
+    expect(screen.queryByText(/Not delivered/)).toBeNull();
+    expect(screen.queryByText("Message delivered. Your text stays here.")).toBeNull();
+  });
+
+  it("a Deliver now that went in says delivered, and one that may have arrived says neither", async () => {
+    const user = userEvent.setup();
+    renderWithRows([heldForThisPane], vi.fn(), { walkyLinked: true, onDeliverNow: vi.fn(async () => {}) });
+    await user.click(await screen.findByRole("button", { name: "Deliver now" }));
+    expect(await screen.findByText("Message delivered. Your text stays here.")).toBeInTheDocument();
+    cleanup();
+    renderWithRows([heldForThisPane], vi.fn(), { walkyLinked: true, onDeliverNow: vi.fn(async () => "unknown" as const) });
+    await user.click(await screen.findByRole("button", { name: "Deliver now" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Deliver now" })).toBeDisabled());
+    expect(screen.queryByText("Message delivered. Your text stays here.")).toBeNull();
+    expect(screen.queryByText("This message no longer waits for your text.")).toBeNull();
   });
 
   it("reads the plural, and draws nothing with no held message or no sheet to open", () => {

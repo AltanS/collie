@@ -277,6 +277,7 @@ import { BAD_HEAD, hasViewHead, VIEW_MEDIA_ID_RE, VIEW_SESSION_MAX, VIEW_SET_RE,
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
+import type { DeliverNow } from "./walky/deliver.ts";
 import { olderThanWalky, type WalkyCrew } from "./walky/crew.ts";
 import { journalModelShown, paneModel, type ModelReading } from "./pane-model.ts";
 import type {
@@ -612,6 +613,12 @@ const ASK_ROUTE = /^\/api\/ask\/([^/]+)$/;
 // The id's shape is the handler's check (`isWalkyId`), so the route table keeps one shape of segment.
 const WALKY_CANCEL_ROUTE = /^\/api\/walky\/([^/]+)\/cancel$/;
 const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
+/**
+ * Deliver now (M99 spec 05, decision of 2026-11-13): `POST /api/pane/<pane>/walky/<id>/deliver`, the pane
+ * owner's, for one message held for their draft, on the machine that owns the pane, under the browser
+ * gate like Drop.
+ */
+const WALKY_DELIVER_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/deliver$/;
 // Collie tricks (M94 slice 01): a tap on a trick's control, on this bridge's own host. The list and the
 // parts are `GET /api/tricks`, an exact path below.
 const TRICKS_TAP_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
@@ -1462,6 +1469,12 @@ export function startServer(opts: {
   /** Whether the pane's session turned its walky talky off (M89), read at serialise time like the token. True adds `walkyOff` to the pane. */
   walkyPaneOff?: (session: string, paneId: string) => boolean;
   /**
+   * Whether the pane is linked (M99 spec 15, `bridge/surface/path.ts` `isLinked`): the inside wire is on
+   * and a live part of the pane declares what a send needs. True adds `linked` to the pane, read at
+   * serialise time like the off switch. Absent: no pane carries the key.
+   */
+  paneLinked?: (session: string, paneId: string) => boolean;
+  /**
    * The pins of every session this machine keeps (M90, bridge/pins/store.ts), on disk under the state
    * folder in `bridge/index.ts`. Absent keeps them in memory only, which is every test that builds this
    * server by hand.
@@ -1590,6 +1603,7 @@ export function startServer(opts: {
   const gitHeads = opts.gitHeads;
   const walkyInstance = opts.walkyInstance;
   const walkyPaneOff = opts.walkyPaneOff;
+  const paneLinked = opts.paneLinked;
   const pins = opts.pins ?? new PinStore(null);
   // The key a pane's pins are filed under, for the snapshot's badge. The route's own resolver
   // (`resolvePinSession`) is the one key function; this cache stores what it answered (bridge/pins/keys.ts).
@@ -1977,6 +1991,8 @@ export function startServer(opts: {
       const marked: PaneWire = paneCanSteer(from, wire.paneId) ? { ...withHold, sendProtocol: true as const, canSteer: true as const } : { ...withHold, sendProtocol: true as const };
       return held.length === 0 ? marked : { ...marked, held: shown };
     };
+    // M99 spec 15: a linked pane says so. Only a `true` rides; an unlinked pane and every older body carry no key.
+    const withLinked = (wire: PaneWire, from: SessionRuntime): PaneWire => (paneLinked?.(from.name, wire.paneId) === true ? { ...wire, linked: true as const } : wire);
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
       const wired = sources.map((from) => ({
@@ -1986,8 +2002,11 @@ export function startServer(opts: {
         // back from `withOpenAsks` and `withTurn` as the same object. One whose program lists belt actions
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
-          withSurface(
-            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId), pinCountOf(from, p)), from.herdr), from.herdr), from.herdr),
+          withLinked(
+            withSurface(
+              withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId), walkyPaneOff?.(from.name, p.paneId), pinCountOf(from, p)), from.herdr), from.herdr), from.herdr),
+              from,
+            ),
             from,
           ),
         ),
@@ -3614,6 +3633,22 @@ export function startServer(opts: {
           return text("malformed URL", 400);
         }
         return walkyDropRoute(walky, rt.name, paneId, walkyDrop[2]!, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // Deliver now (M99 spec 05): the pane's owner, this machine's own panes only, the same right as Drop.
+      const walkyDeliver = pathname.match(WALKY_DELIVER_ROUTE);
+      if (walkyDeliver && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(WALKY_DELIVER_LOCAL_TEXT, 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        let paneId: string;
+        try {
+          paneId = decodeURIComponent(walkyDeliver[1]!);
+        } catch {
+          return text("malformed URL", 400);
+        }
+        return walkyDeliverRoute(walky, rt.name, paneId, walkyDeliver[2]!, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const walkyPane = pathname.match(WALKY_PANE_ROUTE);
       // The POST on this path is the lead's, through the crew dispatch (§21): never a phone's.
@@ -10026,6 +10061,49 @@ const WALKY_LIST_DEFAULT = 50;
 
 /** What the drop route answers on a crew member: the lead's phone forwards no take-back. */
 export const WALKY_DROP_LOCAL_TEXT = "a message held on a crew member is dropped on that machine";
+export const WALKY_DELIVER_LOCAL_TEXT = "a message held on a crew member is delivered on that machine";
+
+/**
+ * What a person reads when Deliver now did not deliver (spec 05). The phone puts a 409 line after "Not delivered.
+ * The message still waits and your text is unchanged." `not held` is a 410 and the phone prints its own line, for
+ * the message no longer waits and "still waits" would be untrue. `may have arrived` is the one end that is no
+ * refusal and no delivery: it answers 200 like a delivery, and the row says the rest.
+ */
+export const DELIVER_NOW_WORDS = {
+  busy: "The agent is busy. Try again when its turn ends.",
+  "not linked": "This session is not linked now.",
+  "not taken": "The session did not take it.",
+  "not held": "It no longer waits for your text.",
+  elsewhere: "It waits on another machine.",
+} as const satisfies Record<Exclude<DeliverNow["result"], "delivered" | "repeat" | "may have arrived">, string>;
+
+/**
+ * `POST /api/pane/<pane>/walky/<id>/deliver` (M99 spec 05, decision of 2026-11-13): the pane's owner hands
+ * one message held for their draft to the agent by data; the draft stays in the box. 200 with the result
+ * and the newest receipt when it went (`delivered`, `repeat`) or may have (`may have arrived`); 409 with
+ * the reason in words when it still waits (`busy`, `not linked`, `not taken`, `elsewhere`); 410 when it
+ * waits no more (`not held`: it went in by itself, or was dropped, cancelled or expired a moment before the
+ * tap); 404 for a pane or message this bridge does not have. One audit line, never the body and never the draft.
+ */
+export async function walkyDeliverRoute(
+  walky: WalkyService | undefined,
+  session: string,
+  paneId: string,
+  id: string,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  if (!isPaneId(paneId)) return text("bad pane", 400);
+  if (!isWalkyId(id)) return text("bad message id", 400);
+  const instance = walky.instanceOf(session, paneId);
+  if (instance === null) return text("no such pane", 404);
+  const answer = await walky.deliverNow(id, { session, paneId, instance });
+  context.audit.record({ action: "walky.deliverNow", paneId, session, device: context.device, detail: { id, result: answer.ok ? `${answer.result.target}: ${answer.result.result}` : answer.error } });
+  if (!answer.ok) return text(answer.error, 404);
+  const { result } = answer.result;
+  if (result === "delivered" || result === "repeat" || result === "may have arrived") return json({ result: answer.result }, context.acceptEncoding);
+  return text(DELIVER_NOW_WORDS[result], result === "not held" ? 410 : 409);
+}
 
 /** A take-back's answer as the phone reads it: `{ results }` (200), or the reason in a 404 or 403. */
 function walkyTakeBackResponse(answer: TakeBackAnswer, acceptEncoding: string | null): Response {

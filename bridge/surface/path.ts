@@ -64,14 +64,38 @@ export interface PathPick {
 
 const screen = (why: PathWhy): PathPick => ({ path: "screen", why });
 
+/** What the session half of the pick reads: the kill switch and the pane's part. */
+export interface PathSession {
+  readonly enabled: boolean;
+  readonly part: PathPart | null;
+}
+
+/**
+ * The session half of the pick (M99 spec 15): why this pane's sends take the screen whatever the request,
+ * or null when its part can take one by data. `needs` is what the send needs, a phone send's by default.
+ * Pure. {@link pickSendPath} asks it first, so the pane read's `linked` and the road cannot disagree.
+ */
+export function sessionRoad(session: PathSession, needs: readonly string[] = DATA_SEND_NEEDS): "off" | "no-part" | "not-declared" | null {
+  if (!session.enabled) return "off";
+  if (session.part === null) return "no-part";
+  const { capabilities } = session.part;
+  return needs.every((word) => capabilities.has(word)) ? null : "not-declared";
+}
+
+/**
+ * Whether a pane is linked (M99 spec 15): the inside wire is on, and a live part of the pane declares
+ * what a phone send needs. The pane read's `linked: true`. It does not promise every send: a command,
+ * an attachment and a queued send still take the screen.
+ */
+export function isLinked(session: PathSession): boolean {
+  return sessionRoad(session) === null;
+}
+
 /** The road for one send. Pure. */
 export function pickSendPath(input: PathInput): PathPick {
-  if (!input.enabled) return screen("off");
-  if (input.part === null) return screen("no-part");
-  const { capabilities } = input.part;
   const { request } = input;
-  const needs = request.mail ? DATA_MAIL_NEEDS : DATA_SEND_NEEDS;
-  if (!needs.every((word) => capabilities.has(word))) return screen("not-declared");
+  const away = sessionRoad(input, request.mail ? DATA_MAIL_NEEDS : DATA_SEND_NEEDS);
+  if (away !== null) return screen(away);
   if (request.mode !== "send" || request.when !== undefined || request.fromView) return screen("not-plain-mode");
   if (request.text.trim() === "") return screen("empty");
   if (reservedLead(request.text, COMMAND_LEADS) !== null) return screen("command");

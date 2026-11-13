@@ -206,6 +206,20 @@ command id. What is left is the gap between that read and the submit inside the 
 step of its own event loop, and the submit does not touch the box: a key the person types in that gap
 stays in the draft, and the message goes in beside it, never over it.
 
+**Deliver now** (decision of 2026-11-13). The person may hand ONE held message to the agent over
+their own draft: the pane owner's `POST /api/pane/<pane>/walky/<id>/deliver`, under the browser write
+gate and the audit like Drop. The bridge sends it as `mail` with `"overDraft": true`, and the part
+submits it without reading the box; the draft stays where it is, and the bridge never reads its text.
+Only a message held for the draft (`draft present`), on this machine's own pane, whose part declares
+`mail` and `wake`, is asked for. It runs through the hold queue's own release under the same request
+id, so the person's tap, the part's "no draft" and the poll take it at most once between them. It
+never runs while the part reports a turn running or a question open, or while the turn is unknown;
+it never falls back to the screen. A miss (busy, no part, not taken, or a part too old to know
+`overDraft`, which answers `failed` with `draft`) leaves the message held for the draft, its try not
+counted. A part that took it and gave no word leaves "may have arrived", and nothing sends it again.
+The receipt of its end carries `overDraft: true`. A part that does not know the field reads the box as
+for any `mail`.
+
 ## One id, one path, never twice
 
 A command's life is `queued`, then `taken`, then `sent` or `failed`; or `queued`, then `withdrawn`.
