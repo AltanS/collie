@@ -186,10 +186,6 @@ export const SECTIONS: readonly SectionEntry[] = [
     load: () => import("./sections/switcher").then((m) => ({ default: m.SwitcherSection })),
   },
   {
-    def: { id: "filter", title: "Session filter", keywords: ["filter", "search", "match", "order", "ThreadSidebar", "AgentList"] },
-    load: () => import("./sections/filter").then((m) => ({ default: m.FilterRoundSection })),
-  },
-  {
     def: { id: "new-tab", title: "New tab sheet", keywords: ["new", "tab", "plus", "NewTabSheet", "launcher", "start"] },
     load: () => import("./sections/new-tab").then((m) => ({ default: m.NewTabSection })),
   },
