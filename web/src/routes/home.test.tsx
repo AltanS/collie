@@ -811,7 +811,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(rowsOf(section)[0]).toHaveTextContent("worktree-agent");
     // Clicking "+" on the root heading opens a tab in the root workspace (`w1`), not the worktree (`w2`).
     await userEvent.click(screen.getByRole("button", { name: "New tab in membero" }));
-    await waitFor(() => expect(createdTabBody).toBe(JSON.stringify({ workspaceId: "w1" })));
+    await waitFor(() => expect(JSON.parse(createdTabBody)).toEqual({ workspaceId: "w1", requestId: expect.any(String) }));
     // Spaces below also shows both membero and lucky-meadow-d1ec, not lucky-meadow-d1ec alone.
     expect(screen.getByRole("button", { name: /membero.*0 panes/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /lucky-meadow-d1ec.*1 pane/i })).toBeInTheDocument();
@@ -1079,7 +1079,8 @@ describe("the dashboard heading's '+' and the New tab sheet", () => {
     const sheet = within(await screen.findByRole("dialog", { name: "New tab in webapp" }));
     await userEvent.click(sheet.getByRole("button", { name: "Just a shell" }));
     await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap8"));
-    expect(sent.tab).toEqual([JSON.stringify({ workspaceId: first.workspaceId })]);
+    // The same create as always, now with the request id every create carries (M100 spec 04).
+    expect(sent.tab.map((body) => JSON.parse(body))).toEqual([{ workspaceId: first.workspaceId, requestId: expect.any(String) }]);
     expect(sent.launch).toEqual([]);
   });
 

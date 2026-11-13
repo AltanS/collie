@@ -572,7 +572,8 @@ describe("the New page: Start", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
-    expect(created).toEqual([{}]);
+    // The create it always was, plus the request id every create carries (M100 spec 04).
+    expect(created).toEqual([{ requestId: expect.any(String) }]);
   });
 });
 

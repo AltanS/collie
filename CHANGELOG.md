@@ -124,6 +124,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A create that times out is looked up before Collie calls it failed.** When the multiplexer does not answer a new space or tab in time, Collie reads the panes again and uses the one it made, with its receipt. Only when none stands after four seconds is the create reported as not made, so a retry no longer makes a second pane.
 - **A launch, a new tab and a new space keep a receipt from before the pane exists.** The receipt is written as pending before the create and settles after it, and a repeat of the same request id answers the first pane or joins the one still running. A launch left pending when the bridge stopped reads unknown once 18 seconds have passed, and the same id then starts nothing.
 - **A launch, a new tab or a new space through a crew member waits as long as the member does.** The lead gave these 5 seconds while the member may wait 5 seconds for the new shell and then type, so a tap that worked read as outcome unknown and the next tap started a second agent. The lead now waits 18 seconds for them.
+- **A quick launch, a new tab and a new space send a request id.** The phone mints a fresh one for each tap, as the New page does, so a repeat of the same request answers the first pane and never starts a second agent.
 
 ### Docs
 

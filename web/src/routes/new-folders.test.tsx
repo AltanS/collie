@@ -140,7 +140,7 @@ describe("the New page: favourite and recent folders", () => {
     await user.type(field, FOLDER);
     await user.click(startButton());
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
-    expect(bridge.creates).toEqual([{ cwd: FOLDER }]);
+    expect(bridge.creates).toEqual([{ cwd: FOLDER, requestId: expect.any(String) }]);
 
     // The next time the page opens, the folder the bridge recorded is under Recent.
     cleanup();
@@ -189,7 +189,7 @@ describe("the New page: favourite and recent folders", () => {
     await waitFor(() => expect(startButton()).toBeEnabled());
     await user.click(startButton());
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
-    expect(bridge.creates).toEqual([{}]);
+    expect(bridge.creates).toEqual([{ requestId: expect.any(String) }]);
 
     cleanup();
     mount();
