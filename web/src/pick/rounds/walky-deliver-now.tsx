@@ -1,5 +1,6 @@
-// "Deliver now", the picked design (option 3, "On the mark"), kept on the pick page for one more look at the timing:
-// /pick.html?round=walky-deliver-now
+// "Deliver now", the picked design (option 3, "On the mark"), kept as a round for one more look at the timing:
+// registered as `walky-deliver-now` in ../rounds.ts and built by the design app. Its one option names the mark,
+// `data-state="walky-deliver-mark"` (the root of `WalkyHeldStrip`).
 //
 // A message waits for a pane while its owner has unsent text in the box (or while the agent runs a turn). The
 // mark above the box tells the owner only after the OLDEST waiting message has waited WALKY_MARK_GRACE_MS (20 s),
@@ -22,7 +23,7 @@
 //     receipt reads `state: "delivered"` with `via: "data"` (lib/walky.ts, `WalkyReceipt.via`). The web calls it
 //     through `DeliverNow` (lib/walky.ts) from `onDeliverNow`, to be written beside `dropWalky` in lib/api.ts.
 //
-// DEV-ONLY, unreachable from the app entry. The pick shell holds the rules: a number and at most five words per option.
+// DEV-ONLY, unreachable from the app entry. The round contract (../types.ts) holds the rules: a number and at most five words per option.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
@@ -36,7 +37,7 @@ import { useWalkyMarkGrace } from "@/hooks/use-walky-mark-grace";
 import { heldForPane, waitKindOf, WALKY_MARK_GRACE_MS, type WalkyRow } from "@/lib/walky";
 import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf } from "@/test/handlers";
 
-import type { PickCase, PickOption, PickRoundDef } from "../pick-page";
+import type { PickCase, PickOption, PickRoundDef } from "../types";
 
 const FAKE_MS = 800;
 /** How long the note above the box stays after a delivery, unless the person taps first. */
@@ -254,7 +255,7 @@ function Option({ caseId }: { caseId: string }) {
   return <Pane key={caseId} scenario={scenarioOf(caseId)} />;
 }
 
-const OPTIONS: readonly PickOption[] = [{ n: 3, label: "On the mark", render: (caseId) => <Option caseId={caseId} /> }];
+const OPTIONS: readonly PickOption[] = [{ n: 1, label: "On the mark", state: "walky-deliver-mark", render: (caseId) => <Option caseId={caseId} /> }];
 
 const ROUND: PickRoundDef = { title: "Deliver now", cases: CASES, options: OPTIONS, frameHeight: 740 };
 

@@ -64,7 +64,7 @@ import { cn } from "@/lib/utils";
 // (DESIGN.md §4, "The Hill's warm accent").
 //
 // ── THE LOOK IS THE OPTION'S, TO THE PIXEL ─────────────────────────────────────────────────────────
-// Sizes, inks and spacing are option B1's own (web/src/playground/hill-look/cards.tsx), free sizes
+// Sizes, inks and spacing are option B1's own (the M96 "Hill look" round, removed once built), free sizes
 // included (the 15px summary and quote, the 11px caption): the owner chose that card by name, so a
 // nearest Tailwind step is a deviation. One change since, on the owner's word of 2026-11-10 ("this needs
 // your attention, it's a question/summary"): the head reads as one unit, a question with its why. The

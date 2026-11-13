@@ -1,10 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { PickPage } from "../pick-page";
+import { Segmented } from "@/playground/layout";
 import round from "./walky-deliver-now";
 
-// The round for Deliver now, on the pick page: the picked design, one frame, ONE Case switch, the real sheet, mark and note.
+// The round for Deliver now, drawn the way the design app's round page draws it: the picked design, one option, ONE Case
+// switch, the real sheet, mark and note.
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
@@ -21,13 +23,33 @@ const frame = () => document.querySelector<HTMLElement>("[data-option]")!;
 const draft = () => within(frame()).getByRole<HTMLTextAreaElement>("textbox", { name: "Your message" });
 const mark = () => within(frame()).queryByRole("button", { name: /^\d+ messages? (waits?|wait)/ });
 
+/** The least of a round page: one Case switch over every option, as the design app draws it. */
+function Round() {
+  const [caseId, setCaseId] = useState(round.cases[0]!.id);
+  return (
+    <>
+      <Segmented name="Case" value={caseId} options={round.cases.map((c) => ({ value: c.id, label: c.label }))} onChange={setCaseId} />
+      {round.options.map((o) => (
+        <section key={o.n} data-option={o.n}>
+          <div key={caseId}>{o.render(caseId)}</div>
+        </section>
+      ))}
+    </>
+  );
+}
+
 function mount(caseName?: string) {
-  window.history.replaceState(null, "", "/pick.html?round=walky-deliver-now");
-  render(<PickPage {...round} />);
+  render(<Round />);
   if (caseName !== undefined) useCase(caseName);
 }
 
 describe("the Deliver now round", () => {
+  it("declares one option, n 1 \"On the mark\", whose state is on the mark's root", () => {
+    expect(round.options.map((o) => [o.n, o.label, o.state])).toEqual([[1, "On the mark", "walky-deliver-mark"]]);
+    mount("After 20 s");
+    expect(frame().querySelector('[data-state="walky-deliver-mark"]')).not.toBeNull();
+  });
+
   it("has one frame, one Case switch with the ten cases, and the person's text in a box", () => {
     mount();
     expect(document.querySelectorAll("[data-option]")).toHaveLength(1);

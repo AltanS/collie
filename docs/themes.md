@@ -645,7 +645,7 @@ A new icon set comes in as a pull request that maps an open-licensed icon librar
 bun scripts/glyph-keys.ts
 cd web && bunx vitest run --project dom src/components/icons src/lib/theme
 cd web && bun run build && ls dist/glyphs
-cd web && bun run playground
+cd web && bun run design
 ```
 
 These are the files a new set touches.
@@ -684,10 +684,10 @@ These are the files a new set touches.
    cd web && bun run build && gzip -9c dist/glyphs/<word>-*.js | wc -c
    ```
 
-7. Open the playground and look at the grid.
+7. Open the design reference and look at the grid.
 
    ```sh
-   cd web && bun run playground
+   cd web && bun run design
    ```
 
 The key table is `web/src/components/icons/keys.ts`. A key names what an icon means, not its
@@ -702,7 +702,7 @@ shape, so map Close to the library's close icon and Remove to its remove icon, e
   its text into `web/public/glyphs/LICENSE-<family>.txt`.
 - **Stroke or fill.** A `stroke` set takes the theme's `icons` width; a `fill` set ignores it. A
   stroke set drawn on a lighter line needs its own width rule in `web/src/index.css`, as Iconoir has.
-- **Check it by eye.** The playground's Brand page has the card "Glyph sets": every key in a row,
+- **Check it by eye.** The design reference's Brand entry has the card "Glyph sets": every key in a row,
   one column per set. A faded cell is a key that set draws in Lucide.
 - **Credit in the CHANGELOG.** Name the library and its authors in the pull request description.
   The maintainer writes the CHANGELOG line with that credit, because a fork's pull request leaves

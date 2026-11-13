@@ -12,7 +12,7 @@ import { HERD, richSnapshot } from "./world";
 
 // THE CENSUS. One run walks every screen in `screens.ts` at the two phone sizes, scans each for tap
 // targets (`src/playground/hitbox/scan.ts`) and writes ONE file, `src/playground/fixtures/hitbox-census.json`,
-// which the playground's "Hitbox investigation" section reads. Run it again after any UI change:
+// which `bun run hitbox:check` reads. Run it again after any UI change:
 //
 //     cd web && bunx vite build && bunx playwright test -c e2e/hitbox/playwright.config.ts census
 //

@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- DEV-ONLY design reference: every final state of Collie's UI, one entry per state, with a search.
+     It is NOT part of the production bundle: Vite's default `build.rollupOptions.input` is the root
+     `index.html` alone, so `vite build` never sees this file and the PWA precache manifest (built from
+     `dist`) can never list it. `src/playground/playground-entry.test.ts` pins that. Reach it at
+     http://<host>:<port>/design.html while `bun run design` (or `vite dev`) is running; `?q=<words>`
+     carries a search and `#<entry id>` opens an entry. The old address, playground.html, forwards here. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <!-- Same first-paint theme pin the real app uses, so the page reads the operator's own
+         light/dark choice out of the same localStorage key. -->
+    <script src="/theme-init.js"></script>
+    <title>Collie design reference</title>
+    <!-- The dev pages' own red icon set (web/vite-icons.ts's PLAYGROUND_ICON_LINKS), linked
+         directly rather than through the channel plugin: the page has no manifest and no service
+         worker (see the file header above), so there is no per-channel branch to run. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon-playground.svg" />
+    <link rel="shortcut icon" href="/favicon-playground.ico" />
+    <link rel="icon" type="image/png" href="/favicon-playground-96x96.png" sizes="96x96" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/playground/main.tsx"></script>
+  </body>
+</html>

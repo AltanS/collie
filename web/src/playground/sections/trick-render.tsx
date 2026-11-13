@@ -4,7 +4,7 @@
 // the page colour. The two tap cards run a store of their own over a stand-in transport, so a tap shows
 // Collie's busy state for a moment and then the receipt.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { useEffect, useMemo, type ReactNode } from "react";
 

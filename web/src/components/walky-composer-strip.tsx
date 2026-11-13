@@ -64,13 +64,20 @@ export function WalkyHeldStrip({
   onDeliverNow?: DeliverNow | undefined;
 }) {
   useLocale();
+  // `data-state` names the mark for a design round's pick record (pick/rounds/walky-deliver-now.tsx).
   if (linked && count === 1 && kind === "text" && deliverId !== undefined && onDeliverNow !== undefined) {
-    return <WalkyHeldDeliverStrip count={count} onOpen={onOpen} deliverId={deliverId} onDeliverNow={onDeliverNow} />;
+    return (
+      <div data-state="walky-deliver-mark">
+        <WalkyHeldDeliverStrip count={count} onOpen={onOpen} deliverId={deliverId} onDeliverNow={onDeliverNow} />
+      </div>
+    );
   }
   return (
-    <Notice tone="info" variant="box" className="mb-2" announce="status" icon={<WalkyIcon />} onActivate={onOpen}>
-      <span data-slot="walky-held">{markWords(count, kind)}</span>
-    </Notice>
+    <div data-state="walky-deliver-mark">
+      <Notice tone="info" variant="box" className="mb-2" announce="status" icon={<WalkyIcon />} onActivate={onOpen}>
+        <span data-slot="walky-held">{markWords(count, kind)}</span>
+      </Notice>
+    </div>
   );
 }
 

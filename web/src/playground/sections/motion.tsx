@@ -5,7 +5,7 @@
 // rules (mount REAL components with REAL props; drive a module store through its own mutators).
 // This file follows both, with short card labels.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { useEffect, useState, type ReactNode } from "react";
 

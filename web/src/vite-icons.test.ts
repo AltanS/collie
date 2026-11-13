@@ -138,8 +138,8 @@ describe("transformIndexIcons — the release build stays byte-identical", () =>
   });
 });
 
-describe("the states playground wears its own red icon set", () => {
-  const playgroundHtml = readFileSync(resolve(import.meta.dirname, "../playground.html"), "utf8");
+describe("the design reference wears its own red icon set", () => {
+  const playgroundHtml = readFileSync(resolve(import.meta.dirname, "../design.html"), "utf8");
 
   it("PLAYGROUND_ICON_LINKS names the -playground files", () => {
     expect(PLAYGROUND_ICON_LINKS.map((l) => l.href)).toEqual([
@@ -149,7 +149,7 @@ describe("the states playground wears its own red icon set", () => {
     ]);
   });
 
-  it("playground.html links every -playground file directly, unconditionally", () => {
+  it("design.html links every -playground file directly, unconditionally", () => {
     for (const link of PLAYGROUND_ICON_LINKS) {
       expect(playgroundHtml).toContain(`href="${link.href}"`);
     }

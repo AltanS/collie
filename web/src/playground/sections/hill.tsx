@@ -436,10 +436,10 @@ const undeliverableId = closedRows.find((row) => row.state === "undeliverable")?
 const withImagesAndBody: HillDecision = { ...threeImages, body: "The new header keeps the count line in every state." };
 
 // ── The chosen look, on the option's own data (2026-11-10) ───────────────────────────────────────────
-// The owner picked B1, C1 and A5 from the "Hill look" section. These screens mount the REAL components
-// on that section's fixtures (`../hill-look/fixtures.ts`, cases a to d), so a shot of an option and a
+// The owner picked B1, C1 and A5 from the "Hill look" round (removed once built). These screens mount the
+// REAL components on that round's fixtures (`../hill-look/fixtures.ts`, cases a to d), so a shot of an option and a
 // shot of the build compare one to one: `?case=<case>&match=<B1|C1|A5>#hill` draws one over the whole
-// screen, as the look section's `solo` does.
+// screen.
 
 type MatchId = "B1" | "C1" | "A5";
 const MATCHES: readonly MatchId[] = ["B1", "C1", "A5"];
@@ -581,7 +581,7 @@ function MatchGroup() {
   const [caseId, setCaseId] = useState<CaseId>(isCaseId(asked) ? asked : "busy");
   return (
     <>
-      <div className="sticky top-0 z-40 -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm">
+      <div className="sticky top-[var(--pg-top,0px)] z-20 -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm lg:top-0">
         <Segmented name="Case" value={caseId} options={CASES} onChange={setCaseId} />
       </div>
       <Group title="The chosen look, on the option's data">
