@@ -20,6 +20,7 @@ import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
 import { answerLine, closedWord, priorityWord } from "@/lib/hill/words";
+import { hillDraft, noteHillDraft } from "@/lib/hill/store";
 import { hostSlot } from "@/lib/hosts";
 import { t, tn } from "@/lib/i18n";
 import { useTricksState } from "@/lib/tricks/store";
@@ -124,6 +125,22 @@ function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | 
             <KeptWords text={kept} />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The words of a card the bridge no longer serves (it left the Hill, by a clear or by itself), kept by
+ * this page: the card's title and "Your answer, not delivered" with Copy, until the page is left.
+ */
+function KeptRow({ title, text }: { title: string | undefined; text: string }) {
+  return (
+    <div data-slot="hill-kept-row" className="flex min-w-0 items-start gap-3 px-3.5 py-2.5">
+      <Icon name="error" aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {title !== undefined && <span className="font-content truncate text-sm font-medium">{title}</span>}
+        <KeptWords text={text} />
       </div>
     </div>
   );
@@ -317,6 +334,7 @@ export function HillView({
   renderCard,
   closedTotal = closed.length,
   clear,
+  keptTitles,
 }: {
   open: readonly HillDecision[];
   closed: readonly HillDecision[];
@@ -324,12 +342,16 @@ export function HillView({
   renderCard: (decision: HillDecision) => ReactNode;
   closedTotal?: number;
   clear?: HillClearControl;
+  /** The title of each card in `kept`, for the row of one the bridge no longer serves. */
+  keptTitles?: ReadonlyMap<string, string>;
 }) {
   useLocale();
   const [answeredOpen, setAnsweredOpen] = useState(open.length === 0);
   const answeredId = useId();
   // The closed list holds closed decisions only (lib/hill/reader.ts); an open one would draw an empty row.
   const closedRows = closed.filter((d) => d.state !== "open");
+  // Kept words whose card is neither open nor served closed any more: a row of their own, after the rest.
+  const keptLeft = [...kept].filter(([id]) => !closedRows.some((d) => d.id === id) && !open.some((d) => d.id === id));
   return (
     <div className="flex flex-col gap-7">
       {/* The open cards and the clear hill take turns in one band: the last card collapses while the
@@ -351,7 +373,7 @@ export function HillView({
           (the group is held while it goes, so the header does not show a count of 0 on the way out).
           A clear that fails puts the rows back, and the group grows back with them. */}
       <PresenceList gap={28}>
-        {closedRows.length === 0 && (clear?.spoken ?? 0) === 0
+        {closedRows.length === 0 && keptLeft.length === 0 && (clear?.spoken ?? 0) === 0
           ? []
           : [
               <section key="answered" data-slot="hill-answered" className="flex flex-col gap-2">
@@ -366,9 +388,10 @@ export function HillView({
                 <Collapse open={answeredOpen}>
                   <ListGroup as="ul" id={answeredId}>
                     <PresenceList itemAs="li">
-                      {closedRows.map((decision) => (
-                        <ClosedRow key={decision.id} decision={decision} kept={kept.get(decision.id)} />
-                      ))}
+                      {[
+                        ...closedRows.map((decision) => <ClosedRow key={decision.id} decision={decision} kept={kept.get(decision.id)} />),
+                        ...keptLeft.map(([id, text]) => <KeptRow key={`kept:${id}`} title={keptTitles?.get(id)} text={text} />),
+                      ]}
                     </PresenceList>
                   </ListGroup>
                 </Collapse>
@@ -396,6 +419,8 @@ export function LiveDecisionCard({ decision }: { decision: HillDecision }) {
       onSend={(intent, text, group) => void send(intent, text, group)}
       hostSlot={hostSlot(servers, from.memberId ?? undefined)}
       trickIcon={trickIcon}
+      initialDraft={hillDraft(decision.id)}
+      onDraft={(text) => noteHillDraft(decision.id, text)}
     />
   );
 }

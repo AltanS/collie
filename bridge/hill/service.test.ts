@@ -8,6 +8,7 @@ import {
   BY_THE_POSTER,
   HILL_DEFAULT_EXPIRY_MS,
   HILL_MAX_EXPIRY_MS,
+  HILL_SELF_CLEAR_MS,
   HILL_WALKY_OFF,
   HillService,
   hillPostDigest,
@@ -609,6 +610,86 @@ describe("the sweep closes decisions whose target ended", () => {
     r.hill.sweep(2000);
     expect(r.hill.sweep(3000)).toBe(1);
     expect(r.store.get(decision.id)?.state).toBe("undeliverable");
+  });
+});
+
+describe("a card that closed without the person leaves by itself (M96 spec 10)", () => {
+  test("expired, withdrawn, superseded and undeliverable stay 60 seconds with their closing line, then leave as Clear removes them", () => {
+    const r = rig();
+    const expiring = posted(r.hill.post(POSTER, input(1, { expiresAt: 2000 })));
+    const withdrawn = posted(r.hill.post(POSTER, input(2)));
+    const old = posted(r.hill.post(POSTER, input(3)));
+    const ending = posted(r.hill.post(OTHER, input(4)));
+    r.clock = 2000;
+    r.hill.withdraw(POSTER, withdrawn.id);
+    posted(r.hill.post(POSTER, input(5, { supersedes: old.id })));
+    r.live = PLACES.filter((place) => place.address !== OTHER.address);
+    r.hill.sweep(2000);
+    r.hill.sweep(3000);
+    expect(r.store.get(expiring.id)?.state).toBe("expired");
+    expect(r.store.get(ending.id)?.state).toBe("undeliverable");
+    // Inside the minute every one is still served, closed, with its line.
+    r.audit.length = 0;
+    r.hill.sweep(2000 + HILL_SELF_CLEAR_MS - 1);
+    expect(r.hill.list().closed.map((d) => d.id).toSorted()).toEqual([expiring.id, withdrawn.id, old.id, ending.id].toSorted());
+    expect(r.audit.filter((entry) => entry.action === "hill.clear.self")).toEqual([]);
+    // At the minute the three closed at 2000 leave; the one closed at 3000 waits one more second.
+    r.hill.sweep(2000 + HILL_SELF_CLEAR_MS);
+    expect(r.hill.list().closed.map((d) => d.id)).toEqual([ending.id]);
+    expect(r.hill.clearedState(expiring.id)).toBe("expired");
+    expect(r.hill.clearedState(withdrawn.id)).toBe("withdrawn");
+    expect(r.hill.clearedState(old.id)).toBe("superseded");
+    expect(r.audit).toContainEqual({ action: "hill.clear.self", detail: { count: 3 } });
+    r.hill.sweep(3000 + HILL_SELF_CLEAR_MS);
+    expect(r.hill.list().closed).toEqual([]);
+    expect(r.hill.clearedState(ending.id)).toBe("undeliverable");
+    // Nothing was typed for any of them.
+    expect(r.sent).toEqual([]);
+  });
+
+  test("answered and dismissed stay under Answered until the person clears them", async () => {
+    const r = rig();
+    const answered = posted(r.hill.post(POSTER, input(1)));
+    const dismissed = posted(r.hill.post(POSTER, input(2)));
+    await receiptOf(r, answerOf(answered, 100, "yes"));
+    await receiptOf(r, answerOf(dismissed, 101, "dismiss"));
+    r.hill.sweep(1000 + 10 * HILL_SELF_CLEAR_MS);
+    expect(r.hill.list().closed.map((d) => d.state).toSorted()).toEqual(["answered", "dismissed"]);
+  });
+
+  test("Collie's own cards keep today's rule: they stay until the person clears them", () => {
+    const r = rig();
+    const ref = { type: "version" as const, id: "nightly-leg", hash: "a".repeat(64) };
+    const card = r.hill.postCollie({ kind: "collie", ref, label: "Nightly leg" }, input(1));
+    if (!card.ok) throw new Error("not posted");
+    r.hill.withdrawCollie({ kind: "collie", ref, label: "Nightly leg" }, card.decision.id, "gone");
+    r.hill.sweep(1000 + 10 * HILL_SELF_CLEAR_MS);
+    expect(r.store.get(card.decision.id)?.state).toBe("withdrawn");
+  });
+
+  test("the poster still reads the state after the clear, with status and withdraw", () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1, { expiresAt: 2000 })));
+    r.hill.sweep(2000);
+    r.hill.sweep(2000 + HILL_SELF_CLEAR_MS);
+    expect(r.store.get(decision.id)).toBeUndefined();
+    expect(r.hill.status(POSTER, decision.id)).toEqual({ ok: false, missing: false, error: `${decision.id} is expired; it has left the Hill` });
+    expect(r.hill.withdraw(POSTER, decision.id)).toEqual({ ok: false, missing: false, error: `${decision.id} is expired; it has left the Hill` });
+    // Another session still reads it as not found.
+    expect(r.hill.status(OTHER, decision.id)).toMatchObject({ ok: false, missing: true });
+  });
+
+  test("a write that fails leaves the closed cards where they are, for the next sweep", () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1, { expiresAt: 2000 })));
+    r.hill.sweep(2000);
+    const real = r.store.forget.bind(r.store);
+    r.store.forget = () => null;
+    r.hill.sweep(2000 + HILL_SELF_CLEAR_MS);
+    expect(r.store.get(decision.id)?.state).toBe("expired");
+    r.store.forget = real;
+    r.hill.sweep(2000 + HILL_SELF_CLEAR_MS + 15_000);
+    expect(r.store.get(decision.id)).toBeUndefined();
   });
 });
 

@@ -130,6 +130,32 @@ describe("the Hill", () => {
     expect(row).toHaveTextContent("Could not be delivered");
     expect(row.querySelector('[data-slot="decision-kept"]')).toHaveTextContent("Call it workshop-hc.");
   });
+
+  it("keeps the words of a card that left the Hill on a row of their own, with its title and Copy (M96 spec 10)", () => {
+    const open = hillDecision({ title: "Still open" });
+    const served = hillDecision({ state: "expired", title: "Served" });
+    const kept = new Map([
+      ["dc_gone00000001", "my note"],
+      [served.id, "on its row"],
+      [open.id, "never twice"],
+    ]);
+    const { container } = render(
+      <HillView open={[open]} closed={[served]} kept={kept} keptTitles={new Map([["dc_gone00000001", "Ship it?"]])} renderCard={(d) => <DecisionCard key={d.id} decision={d} answer={HILL_IDLE} onSend={() => {}} />} />,
+    );
+    fireEvent.click(container.querySelector('[data-slot="hill-answered"] button[aria-expanded]')!);
+    const rows = [...container.querySelectorAll('[data-slot="hill-kept-row"]')];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("Ship it?");
+    expect(rows[0]!.querySelector('[data-slot="decision-kept"]')).toHaveTextContent("Your answer, not delivered");
+    expect(rows[0]!.querySelector('[data-slot="decision-kept"]')).toHaveTextContent("my note");
+    expect(container.querySelector('[data-slot="hill-closed-row"] [data-slot="decision-kept"]')).toHaveTextContent("on its row");
+  });
+
+  it("shows Answered for kept words alone, when nothing closed is served", () => {
+    const { container } = renderView([], [], new Map([["dc_gone00000001", "my note"]]));
+    expect(container.querySelector('[data-slot="hill-answered"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="hill-kept-row"]')).toHaveTextContent("my note");
+  });
 });
 
 describe("nothing arrives or leaves the Hill with a jump (2026-11-10)", () => {

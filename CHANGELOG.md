@@ -78,6 +78,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The usage row shows percentages.** The small line with the model, `ctx`, `5h` and `7d` now writes each gauge as the share used, as a whole number (`ctx 19%  7d 83%`), instead of five dots. In Settings, Appearance, Usage row, "Percent" is the default and "Dots" brings the old look back, on every screen that draws the row. English only until the translation pass.
 - **A usage gauge at 80% or more is red.** In the model tag's row, `ctx`, `5h` and `7d` turn red from 80% used, as the number in Percent and as the lit dots in Dots, where they were the working colour. The tone follows the whole percentage the figure is written as, so the number and the dots turn together.
 
+- **A Hill card that closed without you leaves by itself after a minute.** A card that expired, that its agent withdrew or replaced, or whose session ended stays under Answered for 60 seconds with its closing line, then goes as Clear removes it. An answered or dismissed card stays until you clear it, as before. `collie hill status` still names the state of a card that left.
 ### Fixed
 
 - **Starting a worktree again after a lost answer no longer opens a second space.** When the reply to a new worktree is lost, or the space did not open, and you start the same worktree again, Collie now finds the space that already shows the folder and uses it, on every multiplexer. A launcher row is typed there only when that pane is a bare shell. Nothing changes on the phone except that the duplicate is gone. Thanks @viniciosrab (#732).
@@ -138,6 +139,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **One held request that cannot be ended no longer stops the poll for the others.** A write that fails while the hold poll ends an expired or gone request (a full disk) is caught for that request alone, warned once, and tried again on the next poll.
 
 - **A Hill card closes when its machine's last agent leaves.** The Hill closed a card whose session ended only while some agent was still running on that machine, so the cards of a machine with no agent left waited 14 days. The sweep now trusts an empty list when the multiplexer answered the read, and closes such a card after two sweeps, 15 to 30 seconds. A read that failed, or a bridge that has not read its multiplexer yet, closes nothing.
+- **A note you typed into a Hill card is not lost when the card leaves.** When a card closed while you wrote a note in it, the note went with the card. It now stays under Answered as "Your answer, not delivered" with Copy until you leave the page, and so do the words of an answer that did not arrive, after its card left the Hill.
 ### Docs
 
 - **Session settings rows have a section in each tricks page.** The reference lists the `menu` place with a bound example, the `sessions` key on a belt mark and a menu part, and a "Bound parts" group of limits; `docs/tricks.md`, `docs/tricks-authoring.md` and `collie trick guide` each say in a few lines what the rows do, how a switch waits for the trick, and how a part binds to sessions.

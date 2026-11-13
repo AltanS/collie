@@ -408,6 +408,18 @@ describe("Add a note", () => {
     expect(slot("decision-send")).toHaveTextContent("Send answer");
   });
 
+  it("tells every change of the words, and draws a noted note again open, so it never rides on a tap unseen (M96 spec 10)", () => {
+    const onDraft = vi.fn<(text: string) => void>();
+    const first = render(<DecisionCard decision={hillDecision()} answer={HILL_IDLE} onSend={() => {}} onDraft={onDraft} />);
+    fireEvent.click(first.container.querySelector('[data-slot="decision-note"]')!);
+    fireEvent.change(first.container.querySelector('[data-slot="decision-text"]')!, { target: { value: "after the leg" } });
+    expect(onDraft).toHaveBeenLastCalledWith("after the leg");
+    first.unmount();
+    const again = render(<DecisionCard decision={hillDecision()} answer={HILL_IDLE} onSend={() => {}} initialDraft="after the leg" />);
+    expect(again.container.querySelector('[data-slot="decision-text"]')).toHaveValue("after the leg");
+    expect(again.container.querySelector('[data-slot="decision-note"]')).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("takes no note on a card that takes no answers", () => {
     const { slot } = renderCard(hillDecision(), { phase: "sending", intent: "yes", text: null });
     expect(slot("decision-note")).toBeDisabled();

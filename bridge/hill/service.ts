@@ -440,6 +440,17 @@ export const TRICK_OFF = "the trick is off";
 export const TARGET_ENDED = "target session ended";
 /** The closed reason of an expired decision. */
 export const EXPIRED = "expired";
+/**
+ * How long a card that closed without the person stays on the Hill with its closing line (M96 spec 10):
+ * then the sweep clears it as Clear does. The sweep runs every 15 seconds, so it leaves 60 to 75 s after.
+ */
+export const HILL_SELF_CLEAR_MS = 60_000;
+/** The closed states that leave by themselves. An answer and a dismiss were the person's; those stay. */
+const SELF_CLEARING: ReadonlySet<HillState> = new Set<HillState>(["expired", "withdrawn", "superseded", "undeliverable"]);
+/** What `status` and `withdraw` answer the poster for a decision that left the Hill: the state it closed in. */
+export function leftTheHill(id: string, state: HillState): string {
+  return `${id} is ${state}; it has left the Hill`;
+}
 /** The first line of a dismiss's message carries this as its second line. */
 export const DISMISSED = "Dismissed.";
 /** How many characters of the title the answer message's first line keeps, the `…` included. */
@@ -1334,7 +1345,19 @@ export class HillService {
    */
   status(sender: HillSender, id: string): HillOneAnswer {
     const decision = this.mine(sender, id) ?? this.addressedTo(sender, id);
-    return decision === null ? { ok: false, missing: true, error: `no decision ${id} from this session` } : { ok: true, decision: served(this.named(decision)) };
+    if (decision !== null) return { ok: true, decision: served(this.named(decision)) };
+    return this.left(sender, id) ?? { ok: false, missing: true, error: `no decision ${id} from this session` };
+  }
+
+  /**
+   * The answer for one of the sender's decisions that a clear removed (the person's or the sweep's), from
+   * its tombstone: the state it closed in. Null when the sender posted no such decision, or its tombstone aged out.
+   */
+  private left(sender: AnySender, id: string): HillOneAnswer | null {
+    if (this.deps.store.get(id) !== undefined) return null;
+    const stone = this.deps.store.tombstone(id);
+    if (stone === undefined || stone.key !== senderKey(sender)) return null;
+    return { ok: false, missing: false, error: leftTheHill(id, stone.state) };
   }
 
   /** A decision whose `replyTo` is the asking agent's live session, or null. */
@@ -1380,7 +1403,7 @@ export class HillService {
 
   private withdrawAny(sender: AnySender, id: string, reason: string): HillOneAnswer {
     const decision = this.mine(sender, id);
-    if (decision === null) return { ok: false, missing: true, error: `no decision ${id} from this session` };
+    if (decision === null) return this.left(sender, id) ?? { ok: false, missing: true, error: `no decision ${id} from this session` };
     if (decision.state !== "open") return { ok: false, missing: false, error: `${id} is ${decision.state}, nothing to withdraw` };
     const closed: HillDecision = { ...decision, state: "withdrawn", closedAt: this.now(), closedReason: reason };
     if (!this.save(closed)) return { ok: false, missing: false, error: "the change could not be saved on this machine; the decision stays open" };
@@ -1418,16 +1441,7 @@ export class HillService {
       }
     }
     if (chosen.length === 0) return { cleared: [], skipped };
-    const stones = chosen.map((decision): HillTombstone => ({
-      id: decision.id,
-      requestId: decision.requestId,
-      key: keyOf(decision),
-      digest: decision.postDigest ?? null,
-      // `chosen` holds closed decisions only.
-      state: decision.state === "open" ? "withdrawn" : decision.state,
-      closedAt: decision.closedAt ?? decision.at,
-    }));
-    const removed = this.deps.store.forget(stones);
+    const removed = this.forgetClosed(chosen);
     if (removed === null) return null;
     this.deps.audit?.({ action: "hill.clear", device, detail: { count: removed.length, all: ids === null, skipped: skipped.length } });
     return { cleared: removed, skipped };
@@ -1456,6 +1470,7 @@ export class HillService {
     // A switch the CLI moved is seen here within one sweep, so its notifications close without a phone.
     this.isOn();
     this.pruneMedia();
+    this.selfClear(now);
     const due = this.deps.store.all().filter((decision) => decision.state === "open" && decision.expiresAt !== null && decision.expiresAt <= now);
     const expired = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));
     const ended = this.look(() => this.endedTargets(new Set(due.map((decision) => decision.id))));
@@ -1465,6 +1480,34 @@ export class HillService {
     // Not saved: the ended ones are still absent, and the next sweep tries them again.
     for (const decision of ended) this.absent.add(decision.id);
     return 0;
+  }
+
+  /**
+   * Clear every agent's or trick's decision that closed without the person ({@link SELF_CLEARING}) at
+   * least {@link HILL_SELF_CLEAR_MS} ago, as Clear does: removed with its images, a tombstone kept, the
+   * revision moved, one `hill.clear.self` audit line with the count. Collie's own cards are left to the
+   * person: the version card reads an expired card as seen, and a cleared one would ask again. A write
+   * that fails leaves them for the next sweep.
+   */
+  private selfClear(now: number): void {
+    const due = this.deps.store.all().filter((decision) => SELF_CLEARING.has(decision.state) && decision.from.kind !== "collie" && (decision.closedAt ?? decision.at) + HILL_SELF_CLEAR_MS <= now);
+    if (due.length === 0) return;
+    const removed = this.forgetClosed(due);
+    if (removed !== null && removed.length > 0) this.deps.audit?.({ action: "hill.clear.self", detail: { count: removed.length } });
+  }
+
+  /** Remove closed decisions with a tombstone each. The ids removed, or null when the write failed. */
+  private forgetClosed(chosen: readonly HillDecision[]): string[] | null {
+    const stones = chosen.map((decision): HillTombstone => ({
+      id: decision.id,
+      requestId: decision.requestId,
+      key: keyOf(decision),
+      digest: decision.postDigest ?? null,
+      // Only closed decisions are chosen.
+      state: decision.state === "open" ? "withdrawn" : decision.state,
+      closedAt: decision.closedAt ?? decision.at,
+    }));
+    return this.deps.store.forget(stones);
   }
 
   /** The open decisions whose target was gone at this sweep and the last one. Moves the memory of who was gone. */

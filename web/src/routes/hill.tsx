@@ -11,7 +11,7 @@ import { useHillCrewStateControl } from "@/hooks/use-hill-crew-state";
 import { useHillSwitch } from "@/hooks/use-hill-switch";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
-import { useHillClosed, useHillClosedTotal, useHillKept, useHillOpen } from "@/lib/hill/store";
+import { useHillClosed, useHillClosedTotal, useHillKept, useHillKeptTitles, useHillOpen } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
 import { homePath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
@@ -49,6 +49,7 @@ export function HillRoute() {
   const spoken = open.flatMap((d) => (d.spokeAfter === undefined ? [] : [d.id]));
   const closed = useHillClosed();
   const kept = useHillKept();
+  const keptTitles = useHillKeptTitles();
   const closedTotal = useHillClosedTotal();
   const clearing = useHillClear();
   const bar = useDashboardBar();
@@ -79,7 +80,7 @@ export function HillRoute() {
                 onTell={() => void crew.tell()}
               />
             )}
-            <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: spoken.length, onClearSpoken: () => void clearing.clearSpoken(spoken) }} kept={kept} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
+            <HillView open={open} closed={closed} closedTotal={closedTotal} clear={{ canWrite: clearing.canWrite, busy: clearing.busy, onClear: () => void clearing.clear(), spoken: spoken.length, onClearSpoken: () => void clearing.clearSpoken(spoken) }} kept={kept} keptTitles={keptTitles} renderCard={(decision) => <LiveDecisionCard key={decision.id} decision={decision} />} />
           </>
         )}
       </BandMain>
