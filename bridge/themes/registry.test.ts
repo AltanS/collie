@@ -123,7 +123,7 @@ describe("readRegistry", () => {
   });
 
   test("keeps a file refused only for a newer version, flagged, and drops every other refusal", () => {
-    const future = JSON.stringify({ version: 5, id: "my-day", name: "My day", sparkle: "x", light: { background: "nope" } });
+    const future = JSON.stringify({ version: 6, id: "my-day", name: "My day", sparkle: "x", light: { background: "nope" } });
     const read = readRegistry(
       doc([
         entry({ text: future, stars: 3 }),
