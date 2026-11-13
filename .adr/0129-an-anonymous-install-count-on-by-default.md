@@ -137,3 +137,26 @@ one-time notice of that release covers both and no second notice is shown; a fie
 
 The `screen` field of a dialog row, added in 1.27.4, has its own record:
 [ADR 0134](./0134-the-trouble-tally-names-the-dialog-by-a-hash-of-its-key-hint-row.md).
+
+## Amendment, 2026-11-13: the ping carries which agents and multiplexers ran
+
+The ping gains an eleventh key, `usage`, and its schema becomes `v: 3`. It is a list of rows,
+`{ harness, mux, linked }`: one row per pair of agent program and multiplexer that ran since the last
+ping. `linked` is true when at least one session of the pair had the optional data link on, a part
+bound to its pane after `collie harness link`. A `trouble` row gains the same `linked` for its own
+pane. The reason: which agents and multiplexers are in use, and whether the data road is used at all,
+decides where work goes, and the trouble rows alone cannot say it.
+
+The operator decided on 2026-11-13 that the part is presence only. A first design carried a session
+count per row; it is not built. The ping never says how many sessions ran, and never a name, path,
+title, prompt, model or timing. The words come from closed lists the build already has (the journal
+adapters and their aliases, the multiplexer registry); any other word is `other`; a ping holds at
+most 24 unique, sorted rows. The bridge keeps only the set of pairs in its state file, no hash and no
+pane, and the set is cleared with the ID when the count is off, and when the ping that carried it is
+sent. Each bridge reports its own panes; a crew member pings for itself.
+
+The operator also decided that no second notice is shown for this field. The Consequences above ask
+for one on a new field; this amendment records the exception. The Telemetry card names the new fact in
+its one sentence and shows the exact next message, and the CHANGELOG, `README.md`,
+`docs/security.md` and `telemetry/README.md` say the same. The receiver accepts v2 and v3 side by
+side and refuses a v3 body with a `sessions` key. `telemetry/README.md` is the contract.

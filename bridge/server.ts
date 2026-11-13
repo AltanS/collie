@@ -159,7 +159,7 @@ import {
   type UpdateStartResult,
 } from "./update-action.ts";
 import { type ReleaseLine, type UpdateLineRecord, withLine } from "./update-line.ts";
-import { parseTelemetryRequest, parseTroubleSignal, type Telemetry } from "./telemetry.ts";
+import { parseTelemetryRequest, parseTroubleBody, type Telemetry } from "./telemetry.ts";
 import { REPORT_SCREEN_ROWS, reportDoctorRows, reportScreen, type DoctorRowSource, type ReportContext, type ReportDoctorRow } from "./report.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry, journalAgentName } from "./journal/registry.ts";
@@ -10251,14 +10251,14 @@ export async function reportContextRoute(
 /**
  * `POST /api/telemetry/trouble` once the write gate passed (M86 spec 05): one trouble signal from the
  * phone. A body that is not exactly `{ kind, harness, version, mux }` in their shapes, plus an optional
- * `screen` hash on a dialog signal, is a 400, plain text, because the phone never shows it. A good body is a 204 whether or not it was counted: with the
+ * `screen` hash on a dialog signal and an optional `pane` (and `session`) that only say which local pane to ask whether it is linked, is a 400, plain text, because the phone never shows it. A good body is a 204 whether or not it was counted: with the
  * ping off for any reason, nothing is stored. Undefined telemetry answers 503, like the setting route.
  */
 export function telemetryTroubleRoute(ping: Pick<Telemetry, "trouble"> | undefined, body: JsonValue | undefined): Response {
   if (!ping) return text("telemetry unavailable", 503);
-  const signal = parseTroubleSignal(body);
-  if (signal === null) return text("telemetry.trouble_invalid", 400);
-  ping.trouble(signal);
+  const parsed = parseTroubleBody(body);
+  if (parsed === null) return text("telemetry.trouble_invalid", 400);
+  ping.trouble(parsed.signal, parsed.where);
   return secure(new Response(null, { status: 204 }));
 }
 

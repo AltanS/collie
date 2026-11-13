@@ -87,8 +87,8 @@ describe("the trouble signal from a streak (M86 spec 05)", () => {
     noteSend(key, "w9:p1", fail(4));
     noteSend(key, "w9:p1", fail(5));
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(posted).toEqual([{ kind: "send", harness: "codex", version: null, mux: "herdr-core" }]);
-    expect(JSON.stringify(posted)).not.toContain("w9:p1");
+    // The lead's own pane rides as `pane`, only so the bridge can say whether it is linked.
+    expect(posted).toEqual([{ kind: "send", harness: "codex", version: null, mux: "herdr-core", pane: "w9:p1" }]);
   });
 });
 
@@ -118,7 +118,7 @@ describe("the trouble signal's facts (1.27.4)", () => {
   it("a lead pane with no send names the bridge's cached version, and the dialog's screen hash", async () => {
     const { posted, configReads } = listen(LEAD_CONTEXT, null);
     await signalTrouble({ kind: "dialog", paneId: "w1:p1", agent: "omp", screen: "cd5c9922" });
-    expect(posted).toEqual([{ kind: "dialog", harness: "omp", version: "18.16.0", mux: "herdr", screen: "cd5c9922" }]);
+    expect(posted).toEqual([{ kind: "dialog", harness: "omp", version: "18.16.0", mux: "herdr", screen: "cd5c9922", pane: "w1:p1" }]);
     // The lead's own pane reads its context, never the config.
     expect(configReads).toEqual([]);
   });
@@ -126,7 +126,7 @@ describe("the trouble signal's facts (1.27.4)", () => {
   it("a send signal never carries a screen, whatever the caller passed", async () => {
     const { posted } = listen(LEAD_CONTEXT, null);
     await signalTrouble({ kind: "send", paneId: "w1:p2", screen: "cd5c9922" });
-    expect(posted).toEqual([{ kind: "send", harness: "omp", version: "18.16.0", mux: "herdr" }]);
+    expect(posted).toEqual([{ kind: "send", harness: "omp", version: "18.16.0", mux: "herdr", pane: "w1:p2" }]);
   });
 
   it("a crew member's pane names the member's own multiplexer from the lead's config for that host", async () => {

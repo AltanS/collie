@@ -2923,7 +2923,6 @@ export const ru: Dictionary = {
   "telemetry.row.off": "Выкл",
   "telemetry.row.reading": "Чтение…",
   "telemetry.row.failed": "Не удалось прочитать",
-  "telemetry.card.description": "Анонимно: один ping в день со счетчиком установок и сигналами о неполадках, под случайным ID. Ничего больше.",
   "telemetry.card.reading": "Чтение настройки с этой машины…",
   "telemetry.card.readFailed": "Не удалось прочитать настройку с этой машины.",
   "telemetry.card.saving": "Сохранение…",

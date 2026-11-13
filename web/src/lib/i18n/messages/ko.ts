@@ -2949,7 +2949,6 @@ export const ko: Dictionary = {
   "telemetry.row.off": "꺼짐",
   "telemetry.row.reading": "읽는 중…",
   "telemetry.row.failed": "읽을 수 없음",
-  "telemetry.card.description": "익명: 무작위 ID로 설치 수와 문제 신호를 하루에 한 번 전송합니다. 그 외에는 전송하지 않습니다.",
   "telemetry.card.reading": "이 머신에서 설정을 읽는 중…",
   "telemetry.card.readFailed": "이 머신에서 설정을 읽지 못했습니다.",
   "telemetry.card.saving": "저장하는 중…",

@@ -38,11 +38,23 @@ import {
   utcDay,
   type PingFetch,
   type TelemetryDecider,
+  type TelemetryDeps,
   type TelemetryOrigin,
   type TelemetrySetting,
   type TelemetryRecord,
   type TelemetryState,
   type TroubleSignal,
+  type UsagePane,
+  type UsageRow,
+  noteSessions,
+  parseTroubleBody,
+  PING_SCHEMA,
+  USAGE_HARNESSES,
+  USAGE_MUXES,
+  USAGE_PANES_MAX,
+  USAGE_ROWS_MAX,
+  USAGE_SAMPLE_MS,
+  usageWord,
 } from "./telemetry.ts";
 
 const RELEASE = "1.26.0+fd5a796587";
@@ -214,33 +226,33 @@ describe("resolveTelemetryUrl: the override rules", () => {
 });
 
 describe("buildPing", () => {
-  const ping = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [] });
+  const ping = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [], usage: [] });
 
-  test("the key set is exactly v, id, day, version, os, arch, install, line, role, trouble (ten keys)", () => {
-    expect(Object.keys(ping)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line", "role", "trouble"]);
+  test("the key set is exactly v, id, day, version, os, arch, install, line, role, trouble, usage (eleven keys)", () => {
+    expect(Object.keys(ping)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line", "role", "trouble", "usage"]);
   });
 
-  test("an empty tally is [], and a row carries exactly kind, harness, version, mux, count", () => {
+  test("an empty tally is [], and a row carries exactly kind, harness, version, mux, linked, count", () => {
     expect(ping.trouble).toEqual([]);
-    // A row read from a record file that grew a stray field still leaves with its five fields only.
-    const grown = { kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", count: 2, paneId: "w1:p1" } as const;
-    const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [grown] });
-    expect(built.trouble).toEqual([{ kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", count: 2 }]);
-    expect(Object.keys(built.trouble[0] ?? {})).toEqual(["kind", "harness", "version", "mux", "count"]);
+    // A row read from a record file that grew a stray field still leaves with its six fields only.
+    const grown = { kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", linked: true, count: 2, paneId: "w1:p1" } as const;
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [grown], usage: [] });
+    expect(built.trouble).toEqual([{ kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", linked: true, count: 2 }]);
+    expect(Object.keys(built.trouble[0] ?? {})).toEqual(["kind", "harness", "version", "mux", "linked", "count"]);
   });
 
-  test("a row without a screen is byte for byte a 1.27.3 row; a dialog row with one carries it before count (1.27.4)", () => {
-    const plain = { kind: "dialog", harness: "codex", version: "0.167.0", mux: "herdr", count: 13 } as const;
+  test("a dialog row with a screen carries it before linked and count, and a row without one has no screen key", () => {
+    const plain = { kind: "dialog", harness: "codex", version: "0.167.0", mux: "herdr", linked: false, count: 13 } as const;
     const hashed = { ...plain, screen: "634c6530" } as const;
-    const built = buildPing({ id: "a".repeat(32), day: "2026-11-08", version: "1.27.4", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [plain, hashed] });
-    expect(JSON.stringify(built.trouble[0])).toBe('{"kind":"dialog","harness":"codex","version":"0.167.0","mux":"herdr","count":13}');
-    expect(JSON.stringify(built.trouble[1])).toBe('{"kind":"dialog","harness":"codex","version":"0.167.0","mux":"herdr","screen":"634c6530","count":13}');
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-08", version: "1.27.4", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [plain, hashed], usage: [] });
+    expect(JSON.stringify(built.trouble[0])).toBe('{"kind":"dialog","harness":"codex","version":"0.167.0","mux":"herdr","linked":false,"count":13}');
+    expect(JSON.stringify(built.trouble[1])).toBe('{"kind":"dialog","harness":"codex","version":"0.167.0","mux":"herdr","screen":"634c6530","linked":false,"count":13}');
     expect(built.trouble[0]).not.toHaveProperty("screen");
   });
 
   test("each role value is carried as given", () => {
     for (const role of ["solo", "lead", "member"] as const) {
-      const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role, trouble: [] });
+      const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role, trouble: [], usage: [] });
       expect(built.role).toBe(role);
     }
   });
@@ -251,9 +263,9 @@ describe("buildPing", () => {
     expect(pingRole("peer")).toBe("member");
   });
 
-  test("the values are the ones given, and the schema is 2", () => {
+  test("the values are the ones given, and the schema is 3", () => {
     expect(ping).toEqual({
-      v: 2,
+      v: 3,
       id: "a".repeat(32),
       day: "2026-11-04",
       version: "1.26.0",
@@ -263,6 +275,7 @@ describe("buildPing", () => {
       line: "stable",
       role: "solo",
       trouble: [],
+      usage: [],
     });
   });
 
@@ -421,7 +434,7 @@ describe("createTelemetry", () => {
     expect(call?.init.method).toBe("POST");
     expect(call?.init.headers).toEqual({ "content-type": "application/json", "user-agent": PING_USER_AGENT });
     expect(JSON.parse(String(call?.init.body))).toEqual({
-      v: 2,
+      v: 3,
       id: "1".repeat(32),
       day: utcDay(r.clock.now),
       version: "1.26.0",
@@ -431,6 +444,7 @@ describe("createTelemetry", () => {
       line: "stable",
       role: "solo",
       trouble: [],
+      usage: [],
     });
     expect(call?.init.signal).toBeDefined();
   });
@@ -516,7 +530,7 @@ describe("createTelemetry", () => {
     expect(one.next?.id).toBe("1".repeat(32));
     expect(two.next?.id).toBe("1".repeat(32));
     expect(one.next).toEqual({
-      v: 2,
+      v: 3,
       id: "1".repeat(32),
       day: utcDay(r.clock.now),
       version: "1.26.0",
@@ -526,6 +540,7 @@ describe("createTelemetry", () => {
       line: "stable",
       role: "solo",
       trouble: [],
+      usage: [],
     });
   });
 
@@ -773,10 +788,10 @@ describe("noteTrouble: the tally, pure", () => {
   const SEND: TroubleSignal = { kind: "send", harness: "claude", version: "2.1.316", mux: "tmux" };
   const base = { ...EMPTY_TELEMETRY_RECORD, id: "a".repeat(32), firstSeenAt: 1 };
 
-  test("a new signal makes a row of exactly kind, harness, version, mux, count", () => {
+  test("a new signal makes a row of exactly kind, harness, version, mux, linked, count", () => {
     const next = noteTrouble(base, DIALOG, ON);
-    expect(next.trouble).toEqual([{ ...DIALOG, count: 1 }]);
-    expect(Object.keys(next.trouble[0] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "mux", "version"]);
+    expect(next.trouble).toEqual([{ ...DIALOG, linked: false, count: 1 }]);
+    expect(Object.keys(next.trouble[0] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "linked", "mux", "version"]);
   });
 
   test("the same four names count one more; any other name is its own row", () => {
@@ -785,9 +800,9 @@ describe("noteTrouble: the tally, pure", () => {
     record = noteTrouble(record, SEND, ON);
     record = noteTrouble(record, { ...SEND, version: null }, ON);
     expect(record.trouble).toEqual([
-      { ...DIALOG, count: 2 },
-      { ...SEND, count: 1 },
-      { ...SEND, version: null, count: 1 },
+      { ...DIALOG, linked: false, count: 2 },
+      { ...SEND, linked: false, count: 1 },
+      { ...SEND, version: null, linked: false, count: 1 },
     ]);
   });
 
@@ -801,7 +816,7 @@ describe("noteTrouble: the tally, pure", () => {
   });
 
   test(`a count stops at ${String(TROUBLE_COUNT_MAX)}`, () => {
-    const record = { ...base, trouble: [{ ...DIALOG, count: TROUBLE_COUNT_MAX - 1 }] };
+    const record = { ...base, trouble: [{ ...DIALOG, linked: false, count: TROUBLE_COUNT_MAX - 1 }] };
     const once = noteTrouble(record, DIALOG, ON);
     expect(once.trouble[0]?.count).toBe(TROUBLE_COUNT_MAX);
     expect(noteTrouble(once, DIALOG, ON).trouble[0]?.count).toBe(TROUBLE_COUNT_MAX);
@@ -813,16 +828,16 @@ describe("noteTrouble: the tally, pure", () => {
     record = noteTrouble(record, { ...DIALOG, screen: "41ea66c7" }, ON);
     record = noteTrouble(record, DIALOG, ON);
     expect(record.trouble).toEqual([
-      { ...DIALOG, screen: "634c6530", count: 2 },
-      { ...DIALOG, screen: "41ea66c7", count: 1 },
-      { ...DIALOG, count: 1 },
+      { ...DIALOG, screen: "634c6530", linked: false, count: 2 },
+      { ...DIALOG, screen: "41ea66c7", linked: false, count: 1 },
+      { ...DIALOG, linked: false, count: 1 },
     ]);
-    expect(Object.keys(record.trouble[2] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "mux", "version"]);
-    expect(Object.keys(record.trouble[0] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "mux", "screen", "version"]);
+    expect(Object.keys(record.trouble[2] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "linked", "mux", "version"]);
+    expect(Object.keys(record.trouble[0] ?? {}).toSorted()).toEqual(["count", "harness", "kind", "linked", "mux", "screen", "version"]);
   });
 
   test("off for any reason: the signal is dropped and the tally goes with the ID", () => {
-    const record = { ...base, lastSentDay: "2026-11-05", trouble: [{ ...DIALOG, count: 4 }] };
+    const record = { ...base, lastSentDay: "2026-11-05", trouble: [{ ...DIALOG, linked: false, count: 4 }] };
     const next = noteTrouble(record, SEND, OFF);
     expect(next.trouble).toEqual([]);
     expect(next.id).toBeNull();
@@ -889,13 +904,13 @@ describe("the tally in the shell (M86 spec 05)", () => {
     r.telemetry.observe();
     r.telemetry.trouble(SIGNAL);
     r.telemetry.trouble(SIGNAL);
-    expect(r.telemetry.view().next?.trouble).toEqual([{ ...SIGNAL, count: 2 }]);
+    expect(r.telemetry.view().next?.trouble).toEqual([{ ...SIGNAL, linked: false, count: 2 }]);
     await r.telemetry.tick();
     expect(r.sent).toHaveLength(0);
     r.clock.now += FIRST_PING_DELAY_MS;
     await r.telemetry.tick();
     expect(r.sent).toHaveLength(1);
-    expect(JSON.parse(String(r.sent[0]?.init.body)).trouble).toEqual([{ ...SIGNAL, count: 2 }]);
+    expect(JSON.parse(String(r.sent[0]?.init.body)).trouble).toEqual([{ ...SIGNAL, linked: false, count: 2 }]);
     const after = readTelemetryRecord(r.stateDir);
     expect(after.trouble).toEqual([]);
     expect(after.lastSentDay).toBe(utcDay(r.clock.now));
@@ -940,8 +955,8 @@ describe("the tally in the shell (M86 spec 05)", () => {
     r.clock.now += FIRST_PING_DELAY_MS;
     await r.telemetry.tick();
     const body = String(r.sent[0]?.init.body);
-    expect(body).toContain('{"kind":"dialog","harness":"codex","version":"0.46.0","mux":"herdr","screen":"634c6530","count":1}');
-    expect(body).toContain('{"kind":"dialog","harness":"codex","version":"0.46.0","mux":"herdr","count":1}');
+    expect(body).toContain('{"kind":"dialog","harness":"codex","version":"0.46.0","mux":"herdr","screen":"634c6530","linked":false,"count":1}');
+    expect(body).toContain('{"kind":"dialog","harness":"codex","version":"0.46.0","mux":"herdr","linked":false,"count":1}');
   });
 
   test("the record file round-trips a screen, and drops a row whose screen is out of shape or on a send", () => {
@@ -956,13 +971,407 @@ describe("the tally in the shell (M86 spec 05)", () => {
         ],
       }),
     );
-    expect(record.trouble).toEqual([{ ...SIGNAL, screen: "634c6530", count: 2 }]);
+    expect(record.trouble).toEqual([{ ...SIGNAL, screen: "634c6530", linked: false, count: 2 }]);
   });
 
   test("the record file round-trips the tally, and a bad row in it is dropped", () => {
     const record = parseTelemetryRecord(
       JSON.stringify({ ...EMPTY_TELEMETRY_RECORD, trouble: [{ ...SIGNAL, count: 3 }, { ...SIGNAL, mux: "Screen", count: 1 }, { ...SIGNAL, count: 0 }] }),
     );
-    expect(record.trouble).toEqual([{ ...SIGNAL, count: 3 }]);
+    expect(record.trouble).toEqual([{ ...SIGNAL, linked: false, count: 3 }]);
+  });
+});
+
+// ── THE USAGE TALLY (ping v3): presence only ─────────────────────────────────────────────────────
+
+const ON: TelemetryState = { on: true, decidedBy: "default" };
+const OFF: TelemetryState = { on: false, decidedBy: "settings" };
+const WITH_ID: TelemetryRecord = { ...EMPTY_TELEMETRY_RECORD, id: "a".repeat(32) };
+
+const pane = (paneId: string, agent: string, extra: Partial<UsagePane> = {}): UsagePane => ({ paneId, agent, ...extra });
+const NONE = (): boolean => false;
+
+const seen = (record: TelemetryRecord, a: { mux: string; panes: readonly UsagePane[]; linked?: (paneId: string) => boolean }): TelemetryRecord =>
+  noteSessions(record, { mux: a.mux, panes: a.panes, linked: a.linked ?? NONE }, ON);
+
+describe("the closed lists", () => {
+  test("a word on the list stays, any other word is other", () => {
+    expect(usageWord("claude", USAGE_HARNESSES)).toBe("claude");
+    expect(usageWord("omp", USAGE_HARNESSES)).toBe("omp");
+    expect(usageWord("my-private-agent", USAGE_HARNESSES)).toBe("other");
+    expect(usageWord("", USAGE_HARNESSES)).toBe("other");
+    expect(usageWord("tmux", USAGE_MUXES)).toBe("tmux");
+    expect(usageWord("my-mux", USAGE_MUXES)).toBe("other");
+  });
+
+  test("the lists are the code's own: the journal adapters and aliases, the mux registry's ids", () => {
+    for (const word of ["claude", "codex", "pi", "omp"]) expect(USAGE_HARNESSES).toContain(word);
+    for (const word of ["herdr", "herdr-core", "tmux", "zellij", "durable"]) expect(USAGE_MUXES).toContain(word);
+    expect(USAGE_HARNESSES).not.toContain("other");
+    expect(USAGE_MUXES).not.toContain("other");
+    expect(USAGE_HARNESSES).not.toContain("shell");
+  });
+});
+
+describe("noteSessions: the pairs, pure", () => {
+  test("a fake session list gives one row per pair, however many sessions ran", () => {
+    const next = seen(WITH_ID, {
+      mux: "herdr",
+      panes: [pane("w1:p1", "claude"), pane("w1:p2", "claude"), pane("w2:p1", "codex"), pane("w3:p1", "omp")],
+    });
+    expect(next.usage).toEqual([
+      { harness: "claude", mux: "herdr", linked: false },
+      { harness: "codex", mux: "herdr", linked: false },
+      { harness: "omp", mux: "herdr", linked: false },
+    ]);
+  });
+
+  test("a row holds no count of any kind, whatever the list was", () => {
+    const next = seen(WITH_ID, { mux: "tmux", panes: Array.from({ length: 50 }, (_, at) => pane(`p${String(at)}`, "claude")) });
+    expect(next.usage).toEqual([{ harness: "claude", mux: "tmux", linked: false }]);
+    expect(JSON.stringify(next)).not.toContain("sessions");
+    expect(JSON.stringify(next)).not.toContain("count\":5");
+  });
+
+  test("linked is true when one session of the pair is linked, and stays true for the window", () => {
+    const first = seen(WITH_ID, { mux: "herdr", panes: [pane("a", "claude"), pane("b", "claude")], linked: (id) => id === "b" });
+    expect(first.usage).toEqual([{ harness: "claude", mux: "herdr", linked: true }]);
+    const later = seen(first, { mux: "herdr", panes: [pane("a", "claude")] });
+    expect(later).toBe(first);
+  });
+
+  test("a pair first seen unlinked turns linked when a linked pane shows up later", () => {
+    const first = seen(WITH_ID, { mux: "herdr", panes: [pane("a", "codex")] });
+    const later = seen(first, { mux: "herdr", panes: [pane("a", "codex")], linked: () => true });
+    expect(later.usage).toEqual([{ harness: "codex", mux: "herdr", linked: true }]);
+  });
+
+  test("the same pair read again changes nothing", () => {
+    const first = seen(WITH_ID, { mux: "tmux", panes: [pane("%1", "claude")] });
+    expect(seen(first, { mux: "tmux", panes: [pane("%1", "claude")] })).toBe(first);
+  });
+
+  test("a bare shell and a pane with no agent are not a pair", () => {
+    const next = seen(WITH_ID, { mux: "herdr", panes: [pane("a", "shell"), pane("b", "claude", { kind: "shell" }), pane("d", "")] });
+    expect(next).toBe(WITH_ID);
+  });
+
+  test("a harness off the list is other, and so is a mux off the list; the unknown ones share a row", () => {
+    const next = seen(WITH_ID, { mux: "some-mux", panes: [pane("1", "private-agent"), pane("2", "another-agent"), pane("3", "claude")] });
+    expect(next.usage).toEqual([
+      { harness: "other", mux: "other", linked: false },
+      { harness: "claude", mux: "other", linked: false },
+    ]);
+  });
+
+  test("the record keeps no pane id, no agent word off the lists and no hash", () => {
+    const next = seen(WITH_ID, { mux: "herdr", panes: [pane("w9:p9", "private-agent")] });
+    const text = JSON.stringify(next.usage);
+    for (const leak of ["w9:p9", "private-agent"]) expect(text).not.toContain(leak);
+    expect(Object.keys(next.usage[0] ?? {})).toEqual(["harness", "mux", "linked"]);
+    expect(Object.keys(next)).not.toContain("seen");
+  });
+
+  test("off: nothing is kept, and the tally goes with the ID", () => {
+    const counted = seen(WITH_ID, { mux: "herdr", panes: [pane("1", "claude")] });
+    const off = noteSessions(counted, { mux: "herdr", panes: [pane("2", "claude")], linked: NONE }, OFF);
+    expect(off.id).toBeNull();
+    expect(off.usage).toEqual([]);
+  });
+
+  test("a record with no ID keeps nothing", () => {
+    expect(noteSessions(EMPTY_TELEMETRY_RECORD, { mux: "herdr", panes: [pane("1", "claude")], linked: NONE }, ON)).toBe(EMPTY_TELEMETRY_RECORD);
+  });
+
+  test("a sample reads at most 2000 panes", () => {
+    const spent = Array.from({ length: USAGE_PANES_MAX }, () => pane("same", "shell"));
+    expect(seen(WITH_ID, { mux: "herdr", panes: [...spent, pane("beyond", "claude")] })).toBe(WITH_ID);
+  });
+
+  test("the rows stop at 24: a pair past the cap is dropped, a pair already there can still turn linked", () => {
+    let record = WITH_ID;
+    const harnesses = [...USAGE_HARNESSES, "other"];
+    const pairs = harnesses.flatMap((harness) => USAGE_MUXES.map((mux) => ({ harness, mux })));
+    expect(pairs.length).toBeGreaterThan(USAGE_ROWS_MAX);
+    pairs.forEach(({ harness, mux }, at) => {
+      record = seen(record, { mux, panes: [pane(`n${String(at)}`, harness)] });
+    });
+    expect(record.usage).toHaveLength(USAGE_ROWS_MAX);
+    const first = record.usage[0];
+    const again = seen(record, { mux: first?.mux ?? "", panes: [pane("x", first?.harness ?? "")], linked: () => true });
+    expect(again.usage[0]).toEqual({ harness: first?.harness ?? "", mux: first?.mux ?? "", linked: true });
+    expect(again.usage).toHaveLength(USAGE_ROWS_MAX);
+  });
+});
+
+describe("the record file and the ping carry the pairs", () => {
+  const rows: UsageRow[] = [
+    { harness: "codex", mux: "herdr", linked: false },
+    { harness: "claude", mux: "tmux", linked: true },
+  ];
+
+  test("the file round-trips, and a bad row, a repeated pair or a stray key is dropped or ignored", () => {
+    const record = parseTelemetryRecord(
+      JSON.stringify({
+        usage: [
+          ...rows,
+          { harness: "claude", mux: "tmux", linked: false },
+          { harness: "mine", mux: "tmux", linked: true },
+          { harness: "claude", mux: "mine", linked: true },
+          { harness: "claude", mux: "zellij", sessions: 5000 },
+          "x",
+        ],
+      }),
+    );
+    expect(record.usage).toEqual([...rows, { harness: "claude", mux: "zellij", linked: false }]);
+    expect(parseTelemetryRecord(JSON.stringify({ usage: "x" })).usage).toEqual([]);
+    expect(parseTelemetryRecord(JSON.stringify({ id: "a".repeat(32) })).usage).toEqual([]);
+  });
+
+  test("an old file with the counting tally reads as its rows without counts", () => {
+    const record = parseTelemetryRecord(JSON.stringify({ usage: { rows: [{ harness: "claude", mux: "tmux", sessions: 3 }], seen: ["0123456789abcdef"] } }));
+    expect(record.usage).toEqual([]);
+  });
+
+  test("a file with too many rows is cut to the cap", () => {
+    const rowFlood = USAGE_HARNESSES.flatMap((harness) => USAGE_MUXES.map((mux) => ({ harness, mux, linked: false })));
+    expect(parseTelemetryRecord(JSON.stringify({ usage: rowFlood })).usage).toHaveLength(USAGE_ROWS_MAX);
+  });
+
+  test("buildPing leaves each row with exactly harness, mux and linked, unique, in name order, capped", () => {
+    const grown = { harness: "claude", mux: "tmux", linked: false, sessions: 5000, paneId: "w1:p1" };
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-13", version: "1.29.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [], usage: [...rows.slice(0, 1), grown, ...rows.slice(1)] });
+    expect(JSON.stringify(built.usage)).toBe('[{"harness":"claude","mux":"tmux","linked":true},{"harness":"codex","mux":"herdr","linked":false}]');
+    const flood = Array.from({ length: 100 }, (_, at) => ({ harness: "claude", mux: `m${String(at)}`, linked: false }));
+    const capped = buildPing({ id: "a".repeat(32), day: "2026-11-13", version: "1.29.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [], usage: flood });
+    expect(capped.usage).toHaveLength(USAGE_ROWS_MAX);
+  });
+
+  test("the worst ping the caps allow stays under 8 KB", () => {
+    const trouble = Array.from({ length: TROUBLE_ROWS_MAX }, () => ({
+      kind: "dialog" as const,
+      harness: "x".repeat(24),
+      version: "1.2.3-beta.1234567890abcdef0123456789",
+      mux: "y".repeat(24),
+      screen: "634c6530",
+      linked: true,
+      count: TROUBLE_COUNT_MAX,
+    }));
+    const usage = Array.from({ length: USAGE_ROWS_MAX }, (_, at) => ({ harness: `claude-${String(at)}`, mux: "herdr-core", linked: true }));
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-13", version: "1.29.0-edge.12", os: "freebsd", arch: "arm64", installKind: "detached-checkout", line: "stable", role: "member", trouble, usage });
+    expect(JSON.stringify(built).length).toBeLessThan(8 * 1024);
+  });
+});
+
+describe("a trouble row says whether its pane was linked (ping v3)", () => {
+  const SIGNAL: TroubleSignal = { kind: "send", harness: "claude", version: "2.1.316", mux: "herdr" };
+
+  test("linked is part of the row, so a linked and an unlinked signal are two rows", () => {
+    const a = noteTrouble(WITH_ID, SIGNAL, ON, true);
+    const b = noteTrouble(a, SIGNAL, ON, false);
+    const c = noteTrouble(b, SIGNAL, ON, true);
+    expect(c.trouble).toEqual([
+      { ...SIGNAL, linked: true, count: 2 },
+      { ...SIGNAL, linked: false, count: 1 },
+    ]);
+  });
+
+  test("the ping row carries linked before count, always, and a record row without it reads false", () => {
+    const record = parseTelemetryRecord(JSON.stringify({ trouble: [{ ...SIGNAL, count: 2 }, { ...SIGNAL, mux: "tmux", linked: true, count: 1 }] }));
+    expect(record.trouble).toEqual([{ ...SIGNAL, linked: false, count: 2 }, { ...SIGNAL, mux: "tmux", linked: true, count: 1 }]);
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-13", version: "1.29.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: record.trouble, usage: [] });
+    expect(JSON.stringify(built.trouble[0])).toBe('{"kind":"send","harness":"claude","version":"2.1.316","mux":"herdr","linked":false,"count":2}');
+  });
+
+  test("parseTroubleBody reads pane and session as where, and refuses what is not a short string", () => {
+    expect(parseTroubleBody({ ...SIGNAL, pane: "w1:p1" })).toEqual({ signal: SIGNAL, where: { paneId: "w1:p1", session: null } });
+    expect(parseTroubleBody({ ...SIGNAL, pane: "w1:p1", session: "default" })?.where).toEqual({ paneId: "w1:p1", session: "default" });
+    expect(parseTroubleBody({ ...SIGNAL })).toEqual({ signal: SIGNAL, where: null });
+    expect(parseTroubleBody({ ...SIGNAL, pane: 5 })).toBeNull();
+    expect(parseTroubleBody({ ...SIGNAL, pane: "" })).toBeNull();
+    expect(parseTroubleBody({ ...SIGNAL, pane: "x".repeat(200) })).toBeNull();
+    expect(parseTroubleBody({ ...SIGNAL, extra: 1 })).toBeNull();
+    expect(parseTroubleBody({ ...SIGNAL, linked: true })).toBeNull();
+  });
+});
+
+describe("the tally in the shell (ping v3)", () => {
+  const DAY1 = Date.UTC(2026, 10, 3, 12, 0, 0);
+  const sample = (r: ReturnType<typeof rig>, scope: string, mux: string, panes: UsagePane[], linked: (paneId: string) => boolean = NONE): void =>
+    r.telemetry.sessions({ scope, mux, panes, linked });
+
+  test("a day with no agent sends usage as an empty list, in exactly the v3 shape", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    expect(String(r.sent[0]?.init.body)).toBe(
+      `{"v":3,"id":"${"1".repeat(32)}","day":"${utcDay(r.clock.now)}","version":"1.26.0","os":"linux","arch":"x64","install":"binary","line":"stable","role":"solo","trouble":[],"usage":[]}`,
+    );
+    expect(PING_SCHEMA).toBe(3);
+  });
+
+  test("the pairs of the window ride the ping, exactly, and the send clears them", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    sample(r, "default", "herdr", [pane("w1:p1", "claude"), pane("w1:p2", "claude"), pane("w1:p3", "codex"), pane("w1:p4", "shell")], (id) => id === "w1:p2");
+    expect(r.telemetry.view().next?.usage).toEqual([
+      { harness: "claude", mux: "herdr", linked: true },
+      { harness: "codex", mux: "herdr", linked: false },
+    ]);
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    const body = String(r.sent[0]?.init.body);
+    const sent = JSON.parse(body);
+    expect(Object.keys(sent)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line", "role", "trouble", "usage"]);
+    expect(body).toContain('"usage":[{"harness":"claude","mux":"herdr","linked":true},{"harness":"codex","mux":"herdr","linked":false}]');
+    expect(body).not.toContain("sessions");
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual([]);
+    sample(r, "default", "herdr", [pane("w1:p1", "claude")]);
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual([{ harness: "claude", mux: "herdr", linked: false }]);
+  });
+
+  test("the state file keeps pairs and nothing else: no hash, no pane, no session", () => {
+    const r = rig();
+    r.telemetry.observe();
+    sample(r, "default", "herdr", [pane("w9:p9", "claude")]);
+    const file = JSON.parse(readFileSync(telemetryPath(r.stateDir), "utf8"));
+    expect(file.usage).toEqual([{ harness: "claude", mux: "herdr", linked: false }]);
+    expect(readFileSync(telemetryPath(r.stateDir), "utf8")).not.toContain("w9:p9");
+  });
+
+  test("a failed send still clears the tally", async () => {
+    const r = rig({ fail: true });
+    r.telemetry.observe();
+    sample(r, "default", "herdr", [pane("1", "claude")]);
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    expect(r.sent).toHaveLength(1);
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual([]);
+  });
+
+  test("a scope is sampled at most every 30 seconds, and each scope has its own clock", () => {
+    const r = rig({ start: DAY1 });
+    r.telemetry.observe();
+    sample(r, "one", "herdr", [pane("1", "claude")]);
+    r.clock.now += 1500;
+    sample(r, "one", "herdr", [pane("1", "claude"), pane("2", "codex")]);
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual([{ harness: "claude", mux: "herdr", linked: false }]);
+    sample(r, "two", "herdr", [pane("1", "codex")]);
+    expect(readTelemetryRecord(r.stateDir).usage).toHaveLength(2);
+    r.clock.now += USAGE_SAMPLE_MS;
+    sample(r, "one", "herdr", [pane("1", "claude")], () => true);
+    expect(readTelemetryRecord(r.stateDir).usage).toContainEqual({ harness: "claude", mux: "herdr", linked: true });
+  });
+
+  test("the phone's off clears the tally with the ID, and a sample while off stores nothing", () => {
+    const r = rig();
+    r.telemetry.observe();
+    sample(r, "default", "herdr", [pane("1", "claude")]);
+    expect(readTelemetryRecord(r.stateDir).usage).toHaveLength(1);
+    r.telemetry.choose({ setting: "off", requestId: REQUEST_ID });
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual([]);
+    r.clock.now += USAGE_SAMPLE_MS;
+    const before = readFileSync(telemetryPath(r.stateDir), "utf8");
+    sample(r, "default", "herdr", [pane("2", "claude")]);
+    expect(readFileSync(telemetryPath(r.stateDir), "utf8")).toBe(before);
+    expect(r.telemetry.view().next).toBeNull();
+  });
+
+  test("every off switch keeps nothing and sends nothing", async () => {
+    const offs: Environment[] = [{ COLLIE_TELEMETRY: "0" }, { DO_NOT_TRACK: "1" }, { CI: "true" }, { COLLIE_TELEMETRY_URL: "ftp://x.test/p" }];
+    for (const env of offs) {
+      const r = rig({ env });
+      r.telemetry.observe();
+      const before = readFileSync(telemetryPath(r.stateDir), "utf8");
+      sample(r, "default", "herdr", [pane("1", "claude")]);
+      r.telemetry.trouble({ kind: "send", harness: "claude", version: null, mux: "herdr" }, { paneId: "1", session: null });
+      expect(readFileSync(telemetryPath(r.stateDir), "utf8")).toBe(before);
+      r.clock.now += FIRST_PING_DELAY_MS;
+      await r.telemetry.tick();
+      expect(r.sent).toHaveLength(0);
+      expect(readTelemetryRecord(r.stateDir).usage).toEqual([]);
+    }
+  });
+
+  test("a development build keeps nothing", () => {
+    const r = rig({ version: DEV });
+    r.telemetry.observe();
+    sample(r, "default", "herdr", [pane("1", "claude")]);
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual([]);
+  });
+
+  test("a trouble signal's pane is asked whether it is linked, and a doubt reads as not linked", async () => {
+    const asked: unknown[] = [];
+    const base: Omit<TelemetryDeps, "stateDir" | "linked"> = {
+      env: {},
+      origin: "env",
+      version: RELEASE,
+      installKind: "binary",
+      line: () => "stable",
+      crewMode: () => "solo",
+      now: () => DAY1,
+      fetch: async () => new Response("ok"),
+      os: "linux",
+      arch: "x64",
+    };
+    const make = (linked: (where: { paneId: string; session: string | null }) => boolean) => {
+      const stateDir = mkdtempSync(join(tmpdir(), "collie-telemetry-"));
+      dirs.push(stateDir);
+      return { stateDir, telemetry: createTelemetry({ ...base, stateDir, linked }) };
+    };
+    const yes = make((where) => {
+      asked.push(where);
+      return true;
+    });
+    yes.telemetry.observe();
+    yes.telemetry.trouble({ kind: "send", harness: "claude", version: null, mux: "herdr" }, { paneId: "w1:p1", session: "default" });
+    expect(asked).toEqual([{ paneId: "w1:p1", session: "default" }]);
+    expect(readTelemetryRecord(yes.stateDir).trouble.map((row) => row.linked)).toEqual([true]);
+    const none = make(() => {
+      throw new Error("no hub");
+    });
+    none.telemetry.observe();
+    none.telemetry.trouble({ kind: "send", harness: "claude", version: null, mux: "herdr" }, { paneId: "w1:p1", session: null });
+    none.telemetry.trouble({ kind: "send", harness: "claude", version: null, mux: "herdr" });
+    expect(readTelemetryRecord(none.stateDir).trouble.map((row) => row.linked)).toEqual([false]);
+  });
+
+  test("a write that fails never reaches the poll", () => {
+    const broken = createTelemetry({
+      stateDir: "/nonexistent-collie-state",
+      env: {},
+      origin: "env",
+      version: RELEASE,
+      installKind: "binary",
+      line: () => "stable",
+      crewMode: () => "solo",
+      now: () => DAY1,
+      fetch: async () => new Response("ok"),
+      os: "linux",
+      arch: "x64",
+      files: {
+        mkdirp: () => {
+          throw new Error("read-only");
+        },
+        write: () => {
+          throw new Error("read-only");
+        },
+        rename: () => {
+          throw new Error("read-only");
+        },
+      },
+    });
+    expect(() => broken.sessions({ scope: "default", mux: "herdr", panes: [pane("1", "claude")], linked: NONE })).not.toThrow();
+  });
+});
+
+describe("the bridge feeds the tally (ping v3)", () => {
+  test("each session's engine hands its real agent panes, with its own multiplexer and the link reader, to the ping", () => {
+    const src = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
+    // A trick's own session is no agent: the one filter drops it before the tally sees it.
+    expect(src).toContain("panes: realAgentPanes(s.agents),");
+    expect(src).toContain('const usageMux = endpoint.kind === "program" ? DURABLE_MUX : cfg.mux;');
+    expect(src).toContain("linked: (paneId) => (insideHub?.partOf({ session: name, paneId }) ?? null) !== null,");
   });
 });

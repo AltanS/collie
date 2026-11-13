@@ -243,7 +243,8 @@ async function postSignal(a: Parameters<typeof signalTrouble>[0]): Promise<void>
     const mux = lead ? context?.mux : memberMux;
     const signal = troubleSignal({ kind: a.kind, harness: facts.harness, version: facts.version, mux, screen: a.screen });
     if (signal === null) return;
-    await postTroubleSignal(signal);
+    // Only the lead's own panes: a crew member's pane is not one this bridge can say is linked.
+    await postTroubleSignal(signal, lead ? { paneId: a.paneId, session: a.scope?.session } : undefined);
   } catch {
     // Dropped: a count is never worth a retry.
   }

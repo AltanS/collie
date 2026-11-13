@@ -3989,8 +3989,41 @@ describe("the update write gate — POST api/update rides the pane path's own ga
         const ping = telemetryIn(dir);
         expect(telemetryTroubleRoute(ping, { ...SIGNAL }).status).toBe(204);
         expect(telemetryTroubleRoute(ping, { ...SIGNAL }).status).toBe(204);
-        expect(readTelemetryRecord(dir).trouble).toEqual([{ ...SIGNAL, count: 2 }]);
-        expect(ping.view().next?.trouble).toEqual([{ ...SIGNAL, count: 2 }]);
+        expect(readTelemetryRecord(dir).trouble).toEqual([{ ...SIGNAL, linked: false, count: 2 }]);
+        expect(ping.view().next?.trouble).toEqual([{ ...SIGNAL, linked: false, count: 2 }]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("a body with a pane asks the link reader about that pane and stores only whether it was linked", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "collie-trouble-route-"));
+      try {
+        const asked: unknown[] = [];
+        const ping = createTelemetry({
+          stateDir: dir,
+          env: {},
+          origin: "env",
+          version: "1.27.0+fd5a796587",
+          installKind: "binary",
+          line: () => "stable",
+          crewMode: () => "solo",
+          now: () => Date.UTC(2026, 10, 6, 12),
+          fetch: async () => new Response("ok"),
+          os: "linux",
+          arch: "x64",
+          newId: () => "1".repeat(32),
+          linked: (where) => {
+            asked.push(where);
+            return where.paneId === "w1:p1";
+          },
+        });
+        expect(telemetryTroubleRoute(ping, { ...SIGNAL, pane: "w1:p1", session: "default" }).status).toBe(204);
+        expect(telemetryTroubleRoute(ping, { ...SIGNAL, pane: "w1:p2" }).status).toBe(204);
+        expect(asked).toEqual([{ paneId: "w1:p1", session: "default" }, { paneId: "w1:p2", session: null }]);
+        const text = readFileSync(telemetryPath(dir), "utf8");
+        expect(text).not.toContain("w1:p1");
+        expect(readTelemetryRecord(dir).trouble.map((row) => row.linked)).toEqual([true, false]);
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
@@ -4024,8 +4057,8 @@ describe("the update write gate — POST api/update rides the pane path's own ga
           expect(await res.text()).toBe("telemetry.trouble_invalid");
         }
         expect(readTelemetryRecord(dir).trouble).toEqual([
-          { ...dialog, screen: "634c6530", count: 1 },
-          { ...dialog, count: 1 },
+          { ...dialog, screen: "634c6530", linked: false, count: 1 },
+          { ...dialog, linked: false, count: 1 },
         ]);
       } finally {
         await rm(dir, { recursive: true, force: true });

@@ -2987,7 +2987,6 @@ export const de: Dictionary = {
   "telemetry.row.off": "Aus",
   "telemetry.row.reading": "Wird gelesen…",
   "telemetry.row.failed": "Konnte nicht gelesen werden",
-  "telemetry.card.description": "Anonym: ein Ping pro Tag mit der Anzahl der Installationen und Fehlersignalen unter einer zufälligen ID. Nichts weiter.",
   "telemetry.card.reading": "Die Einstellung wird von diesem Rechner gelesen…",
   "telemetry.card.readFailed": "Die Einstellung konnte von diesem Rechner nicht gelesen werden.",
   "telemetry.card.saving": "Wird gespeichert…",

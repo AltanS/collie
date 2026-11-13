@@ -69,7 +69,7 @@ describe("signalTrouble once per kind, pane and UTC day", () => {
     expect(posted).toHaveLength(4);
   });
 
-  it("prunes yesterday's entries on the next write and keeps the pane id out of the body", async () => {
+  it("prunes yesterday's entries on the next write and sends the pane id only as `pane`", async () => {
     const posted = capture();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(DAY1);
@@ -78,7 +78,9 @@ describe("signalTrouble once per kind, pane and UTC day", () => {
     vi.setSystemTime(DAY2);
     await signalTrouble({ kind: "dialog", paneId: "w1:p2", agent: "claude" });
     expect(JSON.parse(localStorage.getItem(KEY) ?? "[]")).toEqual(["dialog|lead|w1:p2|2026-11-08"]);
-    expect(JSON.stringify(posted)).not.toContain("w1:p");
+    // The bridge reads `pane` once, to say whether that pane is linked; the once key never leaves the device.
+    expect(JSON.stringify(posted)).not.toContain("|lead|");
+    expect(JSON.stringify(posted)).not.toContain("2026-11");
   });
 
   it("posts every time when storage throws", async () => {

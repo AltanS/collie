@@ -677,15 +677,23 @@ error, with the fix. A folder that Collie cannot check is a warning: `cannot con
 From 1.27.0 each Collie bridge sends one small anonymous ping a day to our own analytics. It carries
 the Collie version, the operating system, how Collie was installed, and whether the bridge runs
 alone or in a crew, under a random ID made on your machine. No IP address is stored with the ping.
-Nothing else is sent: no host name, no folder, nothing you type or read. We need these numbers to
+No host name, no folder and nothing you type or read is sent. We need these numbers to
 spot regressions and slow degradations after a release, and to steer what gets built next. Up to
 1.26.x Collie sent nothing ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md)).
 
-When Collie shows one of its two trouble cards, the next ping also carries how often, in six fields:
-which card, the name and version of the agent program, the multiplexer it ran on, a count and, from
-1.27.4, a screen field on a dialog card. The screen field is a short hash of the dialog's key-hint
+When Collie shows one of its two trouble cards, the next ping also carries how often:
+which card, the name and version of the agent program, the multiplexer it ran on, whether the optional
+data link was on for that pane, a count and, from 1.27.4, a screen field on a dialog card. The screen field is a short hash of the dialog's key-hint
 row only, never a row with your text, never the screen or what you typed. It is absent unless that
 row is a short list of key hints, such as `enter select · esc back`.
+
+The ping also says which agents ran on which multiplexers since the last ping, about a day, one row per
+pair, for example `claude` on `tmux`. Each row has one more fact: whether the optional data link was on
+for at least one session of that pair (`collie harness link`). A row of the trouble count above carries
+the same fact for its own pane. The names come from fixed lists in Collie, and any other name reads
+`other`. It is never how many sessions ran, and never a name, folder, title, prompt or model. The bridge
+keeps only the pairs it has seen, in its state file, and the list goes with the install ID when the count
+is off. A crew member reports its own agents and pings for itself.
 
 Turning it off is one switch: Settings, System, **Telemetry**. `COLLIE_TELEMETRY=0`,
 `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one

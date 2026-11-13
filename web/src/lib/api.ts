@@ -2723,8 +2723,13 @@ export function setTelemetry(a: { setting: TelemetrySetting; requestId: string }
  * Fire and forget, through the transport below the busy signal: a count is no tap of the person's, so
  * the progress bar never shows it. The bridge answers 204 whether or not it counted.
  */
-export async function postTroubleSignal(signal: TroubleSignal): Promise<void> {
-  await doReq<undefined>("/api/telemetry/trouble", { method: "POST", body: JSON.stringify(signal) });
+export async function postTroubleSignal(signal: TroubleSignal, where?: { readonly paneId: string; readonly session?: string | undefined }): Promise<void> {
+  // `pane` and `session` only tell the bridge which of its own panes to ask whether it is linked. The
+  // bridge uses them once and neither stores nor sends them.
+  const body: TroubleSignal & { pane?: string; session?: string } = { ...signal };
+  if (where !== undefined) body.pane = where.paneId;
+  if (where?.session !== undefined) body.session = where.session;
+  await doReq<undefined>("/api/telemetry/trouble", { method: "POST", body: JSON.stringify(body) });
 }
 
 /**

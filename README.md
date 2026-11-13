@@ -348,8 +348,10 @@ instance with its own state folder) sends one small ping to `ping.colliepwa.dev`
 on your machine, the day, the version, the OS, the CPU, the install kind, the release line (Stable
 or Edge) and whether the bridge runs alone, leads a crew or is a member. When a trouble card showed
 ("Cannot read a dialog" or "Send not landing"), it also carries a count: which card, the agent
-program's name and version, the multiplexer and, from 1.27.4, for a dialog a short hash of its
-key-hint row. No IP address is stored. No usage, no content, nothing you type or read.
+program's name and version, the multiplexer, whether its pane had the optional data link on and,
+from 1.27.4, for a dialog a short hash of its key-hint row. It also says which agents ran on which multiplexers (for example `claude` on `tmux`) and
+whether the optional data link was on for them, never how many. No IP
+address is stored. No content, nothing you type or read.
 
 Turn it off on each machine in Settings, System, **Telemetry**, with `COLLIE_TELEMETRY=0` (in the
 instance's `.env` for a service), `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1`. Blocking
