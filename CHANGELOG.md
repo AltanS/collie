@@ -63,6 +63,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A usage gauge at 80% or more is red.** In the model tag's row, `ctx`, `5h` and `7d` turn red from 80% used, as the number in Percent and as the lit dots in Dots, where they were the working colour. The tone follows the whole percentage the figure is written as, so the number and the dots turn together.
 - **A linked session's permission card is owned per dialog, not per link (experimental, off by default).** A part owns a dialog only while its own hold for it is live; until then, and after that hold ends with no decision, the settings hook or the screen keeps the card, so a permission never shows no card. The hold settles from the part's own word, and a send to a part that reported no turn yet takes the screen path.
 - **`collie uninstall` keeps the linked harness parts while another Collie instance is installed.** The parts are shared by every instance of the user; the last uninstall removes them, and an earlier one says which instance still uses them.
+- **`collie link --help` names both meanings.** With no word `collie link` still puts `collie` on the PATH; with a harness it links it for the data path. The WalkyTalky skill now says "went in" where a message may be handed over by data.
 
 ### Fixed
 

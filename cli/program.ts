@@ -52,7 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
-import { cmdHarnessLink, cmdHarnessUnlink, cmdLinkStatus, cmdLinkSync, harnessLinkUsage, isLinkHarness, type HarnessLinkDeps } from "./harness-link.ts";
+import { cmdHarnessLink, cmdHarnessUnlink, cmdLinkStatus, cmdLinkSync, harnessLinkHelp, harnessLinkUsage, isLinkHarness, type HarnessLinkDeps } from "./harness-link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrickGuide } from "./trick-guide.ts";
 import { cmdTrickPropose } from "./trick-propose.ts";
@@ -193,6 +193,8 @@ export interface Command {
    * and an unknown subcommand, with the usage block those two have always printed.
    */
   readonly subcommands?: readonly Subcommand[];
+  /** The lines `collie <verb> --help` prints in place of the one-line summary, for a verb with two meanings (`link`). */
+  readonly usage?: () => readonly string[];
   run(args: readonly string[], session: Session): number | Promise<number>;
 }
 
@@ -849,11 +851,13 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "link",
     summary: "put `collie` on your PATH: ~/.local/bin/collie → this checkout's binary; `link <harness>` links a harness for the data path, `link status` says which are linked",
+    usage: () => harnessLinkHelp("link"),
     run: (args, s) => runLink(args, s.io, false),
   },
   {
     name: "unlink",
     summary: "remove that name again (only when it points at THIS checkout); `unlink <harness>` takes a harness's part away",
+    usage: () => harnessLinkHelp("unlink"),
     run: (args, s) => runLink(args, s.io, true),
   },
   // ── Agent beacons (M11) ────────────────────────────────────────────────────
@@ -1474,7 +1478,7 @@ function buildProgram(
       .helpOption(false)
       .argument("[args...]");
     if (c.subcommands === undefined) {
-      leaf.action(async (args: string[]) => setCode(await helpGuard(session, helpAsked, c.name, c.summary, c.name.startsWith("_"), args, c.run)));
+      leaf.action(async (args: string[]) => setCode(await helpGuard(session, helpAsked, c.name, c.summary, c.name.startsWith("_"), args, c.run, c.usage)));
       continue;
     }
     // A parent with children: commander matches a child by name, and anything else — including
