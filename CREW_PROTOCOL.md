@@ -3642,6 +3642,7 @@ without them keeps the string above and every older bridge still verifies it:
 wake
 space "<from.space.key as a JSON string>"
 outside
+subject "<subject as a JSON string>"
 ```
 
 - `wake` (added 2026-11-04, M85): the message has `wake: true`.
@@ -3651,6 +3652,8 @@ outside
   message is read, and the label is display data like `from.label`.
 - `outside` (added 2026-11-10, M98): the message has `outside: true`, the sender's word that it may
   leave its space.
+- `subject` (added 2026-11-13, M98 spec 07): the message has a `subject`. A subject holds only ASCII
+  letters, digits, the space and `. , - _ / # + ' ? % @ =`, so its JSON form is the subject in quotes.
 
 The lead's attestation, signed by the lead's key, beside a message it routes to one member:
 
@@ -3701,6 +3704,30 @@ Both receiving sides run ONE shape check on the message as it arrived, before th
 
 A malformed field is a 400 that says why, because the caller passed both factors. A sender or a pane
 that does not match the signer is the uniform 401.
+
+### The subject of a message *(added 2026-11-13, M98 spec 07)*
+
+A walky message may carry the sender's subject, additive-optional (§7.1):
+
+- **`subject`**: a string, or absent. It is the sender's words for what the message is about, already
+  cleaned (`readSubject` in `bridge/walky/types.ts`, the allow-list in `web/src/lib/walky-subject.ts`):
+  only ASCII letters, digits, the space and `. , - _ / # + ' ? % @ =`, one space between words, no
+  blank at either end, at most 6 words and 48 characters. Any other
+  value fails the message. The sender's bridge refuses a longer one with the receipt reason
+  `subject over 6 words or 48 characters: shorten it`, and never cuts it.
+
+It is signed (the `subject` line above), so a hop cannot add, change or drop it. A bridge below 1.29.0
+drops the field when it reads a message, and cannot verify a canonical string that holds the line. So
+it rides the space's skew rule below: a lead routes a member below 1.29.0 a copy without the `subject`
+line, as it drops the space and `outside` lines, attested over that copy. A member that knows its lead
+is below 1.29.0 never refuses for the subject: its bridge, the signer, signs a message that may leave
+the machine without the subject, and the sender's answer carries `subjectLeftOut: true`. The space
+rule's own refusal is unchanged. 1.29.0-edge.1
+counts as below 1.29.0: a prerelease sorts before its release.
+
+The header a receiving bridge types carries `about "<subject>"` after the sender's parenthesis and
+the word `outside`, before any ` reply to <id>`. A reader that predates it takes it as part of the
+sender's text and still finds the id, the kind and the reply suffix.
 
 ### The space of a message *(added 2026-11-10, M98)*
 

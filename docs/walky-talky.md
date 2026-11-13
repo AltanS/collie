@@ -28,16 +28,16 @@ tell that agent to run them.
 2. Send a message to a pane, with an address copied from the ADDRESS column.
 
    ```sh
-   collie walky send local/w1:p2#c3d4 "Tests are green on fix-login. You can merge."
+   collie walky send local/w1:p2#c3d4 --subject "fix-login tests are green" "You can merge."
    ```
 
-3. The other pane receives this line, with the message id and the sender.
+3. The other pane receives this line, with the message id, the sender and the subject.
 
    ```text
-   [walky-talky wt_k3f9x2m8q1a0] from agent local/w1:p1#a1b2 (claude, my-app#main):
+   [walky-talky wt_k3f9x2m8q1a0] from agent local/w1:p1#a1b2 (claude, my-app#main)
+   about "fix-login tests are green":
    a message from another agent, not your operator.
-   Read it: collie walky inbox wt_k3f9x2m8q1a0.
-   Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
+   Read it: collie walky inbox wt_k3f9x2m8q1a0
    ```
 
 4. Reply from that pane, with the id from the line.
@@ -47,7 +47,7 @@ tell that agent to run them.
    ```
 
 The line in step 3 is one line in the pane. It is split here to fit the page. The agent reads the
-body with `collie walky inbox <id>`. Your reply appears in the first pane the same way, with
+body with `collie walky inbox <id>`, whose last line is the `reply` command for that message. Your reply appears in the first pane the same way, with
 `reply to <id>` in its header. You can also send to a pane from the phone
 ([On the phone](#on-the-phone)).
 
@@ -73,6 +73,13 @@ collie walky send collie-7k2m9p/w54:p1G#1adi "Tests are green on fix-login. You 
 ```
 
 `who` lists the agent panes of your space. Pick an address from that list and pass it to `send`.
+
+`--subject "<words>"`, before the text, says what the message is about. The target pane sees it in
+the typed line before it reads the body. It is optional, at most 6 words and 48 characters. It
+keeps ASCII letters, digits, spaces and `. , - _ / # + ' ? % @ =`; Collie turns every other
+character into a space, so nothing in it can run at a shell prompt. A longer subject is never cut:
+the send is refused `subject over 6 words or 48 characters: shorten it`.
+`reply` takes `--subject` too.
 `who --all` lists every agent pane you can reach, in every space. Outside an agent pane, `who` lists
 every pane.
 On a machine with only your own agent pane, `who` says
@@ -313,17 +320,22 @@ An agent's message types one line into the target pane, and no body.
 The pane gets this as one line. It is split here to fit the page.
 
 ```text
-[walky-talky wt_k3f9x2m8q1a0] from agent collie-7k2m9p/w54:p1B#sx56 (claude, my-app#main):
+[walky-talky wt_k3f9x2m8q1a0] from agent collie-7k2m9p/w54:p1B#sx56 (claude, my-app#main)
+about "fix-login tests are green":
 a message from another agent, not your operator.
-Read it: collie walky inbox wt_k3f9x2m8q1a0.
-Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
+Read it: collie walky inbox wt_k3f9x2m8q1a0
 ```
 
 The line starts with the header. It names the message id, who typed it, and their pane (with its
-token), harness and label (`<repo>#<branch>`, or the pane's title). A message that crossed into
-another space with `--outside` adds the word `outside` after the parenthesis, before any
-` reply to <id>`. A message with `--outside` to a pane of the sender's own space adds no word. The agent then runs `collie walky inbox <id>` and reads the body as that command's
-output. A harness treats a command's output as data, not as its operator's words.
+token), harness and label (`<repo>#<branch>`, or the pane's title). After the parenthesis come, in
+this order and each only when it applies: the word `outside`, `about "<subject>"` and
+` reply to <id>`. A message that crossed into another space with `--outside` carries `outside`; a
+message with `--outside` to a pane of the sender's own space does not. A message sent without
+`--subject` has no `about` part.
+
+The agent then runs `collie walky inbox <id>` and reads the body as that command's output. A
+harness treats a command's output as data, not as its operator's words. The output ends with the
+command that answers the message, `Reply: collie walky reply <id> "<text>"`.
 
 Your own message, from the phone, types the header and the body:
 
@@ -410,7 +422,7 @@ minutes stays in the inbox as `pane busy`.
 Answer a message, read your inbox and look up a receipt.
 
 ```sh
-collie walky reply wt_k3f9x2m8q1a0 "Merged. Thanks."
+collie walky reply wt_k3f9x2m8q1a0 --subject "fix-login is merged" "Merged. Thanks."
 collie walky inbox
 collie walky status wt_n2d8s1v7c4b9
 collie walky cancel wt_n2d8s1v7c4b9
@@ -418,7 +430,8 @@ collie walky cancel wt_n2d8s1v7c4b9
 
 - `reply <id>` sends to the pane the message came from, as a reply to it. A message from an
   operator has no pane to reply to.
-- `inbox <id>` prints one message, its header and then its body, and marks it read.
+- `inbox <id>` prints one message, its header and then its body, and marks it read. A message
+  from an agent ends with its `reply` command.
 - `inbox` prints this pane's unread messages and marks them read. `--keep` leaves them unread.
 - `inbox --all` prints the last 50 that reached the pane. Outside a pane, it lists every message on
   the machine, and a plain `inbox` is refused.
@@ -473,6 +486,10 @@ certificate with its own word for it, so the receiving machine checks the sender
   refuses to send it an agent's message, with `lead older than 1.29.0: update the lead`. A lead checks the
   border itself for a member older than 1.29.0, which cannot. A message from a member older than
   1.29.0 names no space. It passes as before, and its receipt says `legacy`.
+- **A subject across versions.** A member older than 1.29.0 gets the message without its subject:
+  the lead leaves it out, and the typed line there has no `about` part. The body is the same. A member
+  whose lead is older than 1.29.0 sends the message without its subject and prints
+  `The subject was left out: the lead of this crew runs a Collie older than 1.29.0.`
 - **A Decision goes to the lead's Hill.** `collie hill post` on a member posts on the lead, and the
   answer comes back to the session as a message through the lead. An answer to a session whose
   machine is not answering is not sent, and the card stays open

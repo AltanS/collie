@@ -9,7 +9,7 @@ import type { OverDraftResult, SendResult, WalkyHost, WalkyPane } from "./delive
 import { WalkyLog, type SiblingSource } from "./log.ts";
 import { WalkyOff } from "./off.ts";
 import { WalkyService } from "./service.ts";
-import type { WalkyEntry } from "./types.ts";
+import { SUBJECT_TOO_LONG, type WalkyEntry } from "./types.ts";
 
 import { spaceOf } from "./space.ts";
 
@@ -69,6 +69,26 @@ describe("POST /api/walky", () => {
     const fits = await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa2", to: "local/w1:p1", body: "x".repeat(4000) }, context([]));
     expect(await fits.json()).toMatchObject({ receipt: { state: "accepted" } });
     expect(walky.status("wt_aaaaaaaaaaa2").message?.body).toHaveLength(4000);
+  });
+
+  test("the API takes `subject`: cleaned and stored; past a limit the send is refused, never cut, and counted (M98 spec 07)", async () => {
+    const walky = service();
+    const res = await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa1", to: "local/w1:p1", body: "hi", subject: ' standup:  "in" 5 ' }, context([]));
+    expect(await res.json()).toMatchObject({ receipt: { state: "accepted" } });
+    expect(walky.status("wt_aaaaaaaaaaa1").message).toMatchObject({ subject: "standup in 5" });
+    const long = await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa2", to: "local/w1:p1", body: "hi", subject: "one two three four five six seven" }, context([]));
+    expect(await long.json()).toMatchObject({ receipt: { target: "local/w1:p1", state: "refused", reason: SUBJECT_TOO_LONG } });
+    expect(walky.status("wt_aaaaaaaaaaa2").receipts).toEqual([]);
+    expect(walky.refusals().counts).toEqual({ "subject over 6 words or 48 characters": 1 });
+    // Only stripped characters, or null: no subject, and the message goes.
+    for (const [id, subject] of [["wt_aaaaaaaaaaa3", '"::"'], ["wt_aaaaaaaaaaa4", null]] as const) {
+      await walkyPostRoute(walky, { id, to: "local/w1:p1", body: "hi", subject }, context([]));
+      expect(walky.status(id).message).not.toHaveProperty("subject");
+    }
+    // A subject that is not text is a body this bridge cannot read.
+    const bad = await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa5", to: "local/w1:p1", body: "hi", subject: 7 }, context([]));
+    expect(bad.status).toBe(400);
+    expect(await bad.text()).toBe("bad subject");
   });
 
   test("the address is signed and logged without the blanks around it", async () => {

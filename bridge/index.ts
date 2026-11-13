@@ -2486,6 +2486,9 @@ const walky = new WalkyService({
   // (M98, README decision 9b and 9c). A lead knows each member's reported version; a member knows its
   // lead's stated release, and takes its lead's word for any other member's message: the lead refused
   // such a message before routing it unless it knew that member to be older. Unknown is not older.
+  // A member whose lead is known to be below 1.29.0 signs a message that may leave this machine without its
+  // subject (M98 spec 07): that lead cannot verify the subject line, and a subject must never cost a send.
+  leadOlderThanSubject: crew.mode === "peer" ? () => olderThanSpace(heardLeadRelease, crewVersion, compareSemver) : undefined,
   signerOlderThanSpace: (signer) => {
     if (signer === null || signer === walkyMemberId) return false;
     if (crew.mode === "lead") return olderThanSpace(walkyMemberVersion(signer), crewVersion, compareSemver);

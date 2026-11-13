@@ -611,7 +611,7 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         // The same holds for the space line and the `outside` line on a member older than 1.29.0 (M98):
         // this lead checked the border for it just above, so the copy drops both.
         const dropWake = message.wake === true && deps.olderThanWake?.(memberId) === true;
-        const dropSpace = olderSpace && carriesSpace(message);
+        const dropSpace = olderSpace && carriesNewLines(message);
         const plain = dropWake || dropSpace;
         const legMessage = plain ? plainCopy(message, { wake: dropWake, space: dropSpace }, signing.keyPem, deps.self) : message;
         const attest = attestFor(legMessage, signing.keyPem, signing.crewId, memberId);
@@ -636,8 +636,19 @@ export function carriesSpace(message: Pick<WalkyMessage, "from" | "outside">): b
 }
 
 /**
+ * Whether a message's canonical string holds a line a bridge below 1.29.0 cannot verify: the space line,
+ * the `outside` line, or the subject line (M98 spec 07, also first in 1.29.0). 1.29.0-edge.1 counts as
+ * below: it has no subject line, and `compareSemver` puts it before 1.29.0. A lead drops all three for such
+ * a member. A member never refuses for the subject alone: it signs the message without it
+ * (service.ts `leadOlderThanSubject`).
+ */
+export function carriesNewLines(message: Pick<WalkyMessage, "from" | "outside" | "subject">): boolean {
+  return carriesSpace(message) || message.subject !== undefined;
+}
+
+/**
  * The message without the lines an older member cannot verify: `wake` for a member below 1.26.1, the
- * sender's space and `outside` for one below 1.29.0 (M98). The lead's own message is signed again with
+ * sender's space, `outside` and the subject for one below 1.29.0 (M98). The lead's own message is signed again with
  * the lead's key, so the member still reads it as `origin`. Another member's message keeps the signer
  * and signature its sender made: they cover the string with the dropped lines, so they no longer
  * verify, but the member never checks them without a `sender` block. It trusts the lead's attestation
@@ -645,11 +656,14 @@ export function carriesSpace(message: Pick<WalkyMessage, "from" | "outside">): b
  * the sender: the member's shape check refuses a signer that is not `from.memberId`.
  */
 function plainCopy(message: WalkyMessage, drop: { readonly wake: boolean; readonly space: boolean }, keyPem: string, self: string): WalkyMessage {
-  const { wake, outside, from, ...rest } = message;
+  const { wake, outside, subject, from, ...rest } = message;
   const { space: _space, ...bare } = from;
   const kept: WalkyMessage = { ...rest, from: drop.space ? bare : from };
   const woken: WalkyMessage = wake === true && !drop.wake ? { ...kept, wake } : kept;
-  const copy: WalkyMessage = outside === true && !drop.space ? { ...woken, outside } : woken;
+  const outsideKept: WalkyMessage = outside === true && !drop.space ? { ...woken, outside } : woken;
+  // The subject goes with the space (M98 spec 07): an older member drops an unknown field when it reads
+  // the message, so a kept subject would only break the attestation it checks over its own copy.
+  const copy: WalkyMessage = subject !== undefined && !drop.space ? { ...outsideKept, subject } : outsideKept;
   return message.signer === self ? signMessage(copy, keyPem, self) : copy;
 }
 

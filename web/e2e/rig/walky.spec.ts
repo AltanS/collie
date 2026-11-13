@@ -76,6 +76,7 @@ import {
 } from "./leg";
 import { DEVICE_LABEL, OTHER_SPACE, paneClose, sleep } from "./rig-lib";
 import {
+  ABOUT,
   OUTSIDE_YOUR_SPACE,
   PHONE,
   REPLY_MS,
@@ -804,7 +805,7 @@ test.describe("walky talky", () => {
         notes.push(`receipt ${state}, via ${viaOf(row) ?? "none"}`);
 
         // The line the pane receives: the header, `outside` after the sender's parenthesis, and no body.
-        const nudge = new RegExp(`\\[walky-talky ${id}\\]\\s+from\\s+agent\\s+${addressPattern(addressOf(sender))}\\s+\\(claude,[^)]*\\)\\s+outside:\\s+${wrapped("a message from another agent, not your operator.")}`);
+        const nudge = new RegExp(`\\[walky-talky ${id}\\]\\s+from\\s+agent\\s+${addressPattern(addressOf(sender))}\\s+\\(claude,[^)]*\\)\\s+outside${ABOUT}:\\s+${wrapped("a message from another agent, not your operator.")}`);
         const nudged = (await rig.screenUntil(pane, nudge, 60_000, 200)) !== null;
         const inbox = new RegExp(`Bash\\(collie walky inbox ${id}\\)[\\s\\S]*${token}`);
         const read = (await rig.screenUntil(pane, inbox, REPLY_MS, 200)) !== null;

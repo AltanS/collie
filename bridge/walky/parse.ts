@@ -16,6 +16,7 @@ import type { WalkySpace } from "./space.ts";
 import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
 import {
   BORDER_VERDICTS,
+  isCleanSubject,
   isPrintableAscii,
   RECEIPT_REASON_MAX,
   RECEIPT_STATES,
@@ -121,8 +122,13 @@ export function readMessage(value: JsonValue | undefined): WalkyMessage | null {
   if (replyTo === undefined || (replyTo !== null && !isWalkyId(replyTo))) return null;
   if (at === undefined || !Number.isSafeInteger(at) || body === null || signer === undefined || signature === undefined) return null;
   const message: WalkyMessage = { v: 1, id, kind, from, to, replyTo, at, body, signer, signature };
+  // The subject (M98 spec 07): absent, or exactly a clean subject. Anything else fails the record: a
+  // subject is typed into a box, and a signed one cannot be cleaned here without breaking the signature.
+  const subject = row.subject === undefined ? undefined : (asJsonString(row.subject) ?? null);
+  if (subject === null || (subject !== undefined && !isCleanSubject(subject))) return null;
   const woken: WalkyMessage = asJsonBoolean(row.wake) === true ? { ...message, wake: true } : message;
-  return asJsonBoolean(row.outside) === true ? { ...woken, outside: true } : woken;
+  const outside: WalkyMessage = asJsonBoolean(row.outside) === true ? { ...woken, outside: true } : woken;
+  return subject === undefined ? outside : { ...outside, subject };
 }
 
 const VERIFIED: readonly WalkyVerified[] = ["origin", "lead", "local", "none"];
@@ -179,6 +185,8 @@ export type WalkyRequest =
       readonly wake: boolean;
       /** M98: the message may leave the sender's space. Absent or anything but `true` reads as false. */
       readonly outside: boolean;
+      /** M98 spec 07: the sender's subject as sent, not yet cleaned or checked (the service does both). Null when absent. */
+      readonly subject: string | null;
     }
   | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
   | { readonly op: "who" | "off" | "on" | "pane"; readonly markers: readonly BeaconMarker[] }
@@ -317,7 +325,10 @@ export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): Wa
   if (to !== null && parseAddress(to) === null) return unread(unreadAddress(to), markers);
   if (body === null) return unread(BAD_REQUEST_LINE, markers);
   if (body.length > RAW_BODY_MAX) return unread(bodyOverRaw(RAW_BODY_MAX), markers);
-  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true, outside: asJsonBoolean(row.outside) === true });
+  // Absent or null: no subject. Text: the service cleans and checks it. Anything else cannot be read.
+  const subject = row.subject === undefined ? null : textOrNull(row, "subject");
+  if (subject === undefined) return unread(BAD_REQUEST_LINE, markers);
+  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true, outside: asJsonBoolean(row.outside) === true, subject });
 }
 
 /** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */
@@ -334,6 +345,8 @@ export interface PhoneSend {
   readonly replyTo: string | null;
   /** M85: a fan-out also types into resting panes. */
   readonly wake: boolean;
+  /** M98 spec 07: the sender's subject as sent, not yet cleaned or checked (the service does both). Null when absent. */
+  readonly subject: string | null;
 }
 
 /** The phone's body, or a word for the 400. */
@@ -348,7 +361,10 @@ export function parsePhoneSend(value: JsonValue | undefined): PhoneSend | { read
   if (to === null || parseAddress(to) === null) return { error: "bad to" };
   if (body === null || body.length > RAW_BODY_MAX) return { error: "bad body" };
   if (replyTo !== null && !isWalkyId(replyTo)) return { error: "bad replyTo" };
-  return { id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true };
+  // A subject that is not text is a body this bridge cannot read; its limits are the service's refusal.
+  const subject = row.subject === undefined ? null : textOrNull(row, "subject");
+  if (subject === undefined) return { error: "bad subject" };
+  return { id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true, subject };
 }
 
 // ── The crew hops (CREW_PROTOCOL §21) ────────────────────────────────────────────────────────────
