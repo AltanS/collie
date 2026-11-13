@@ -263,6 +263,18 @@ export const de: Dictionary = {
   "settings.snooze.preset.min30": "30m",
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
+  "settings.clearNotifications.title": "Benachrichtigungen löschen",
+  "settings.clearNotifications.description":
+    "Alle Collie-Benachrichtigungen auf diesem Gerät schließen und jeden fertigen Agenten als gesehen markieren. Andere Geräte folgen, sobald sie sich synchronisieren oder Collie geöffnet wird. Agenten, die auf dich warten, bleiben im Dashboard.",
+  "settings.clearNotifications.action": "Alle löschen",
+  "settings.clearNotifications.done": "Benachrichtigungen gelöscht.",
+  "settings.clearNotifications.clearing": "Wird gelöscht…",
+  "settings.clearNotifications.failed.notifications":
+    "Gelöscht, aber dieses Gerät konnte seine Benachrichtigungen nicht schließen. Tippe noch einmal.",
+  "settings.clearNotifications.failed.badge":
+    "Gelöscht, aber dieses Gerät konnte die Zahl am App-Symbol nicht aktualisieren. Tippe noch einmal.",
+  "settings.clearNotifications.failed.both":
+    "Gelöscht, aber dieses Gerät konnte weder seine Benachrichtigungen schließen noch die Zahl am App-Symbol aktualisieren. Tippe noch einmal.",
 
   // --- settings.devices ---
   "settings.devices.title": "Gekoppelte Geräte",

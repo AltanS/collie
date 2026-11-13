@@ -539,6 +539,15 @@ as the pushes, so it counts exactly what notifies you.
 Opening a finished pane in Collie retracts its alert, from the lock screen and from the count. A
 blocked pane's alert stays until you answer it.
 
+To clear everything at once, tap **Clear all** under **Settings → Alerts → Clear notifications**.
+It does what opening every pane does: every pane counts as opened, the finished alerts are retracted,
+and the dashboard's green dots go. The phone you tapped on closes all its notifications at once.
+Other devices drop theirs when the retraction reaches them, or when Collie is next opened there. A
+pane blocked on you stays on the dashboard and in the count until you answer it.
+
+> **Note.** In a crew, Clear all reaches only the panes of the machine your phone talks to. A
+> member's panes keep their own record of what you have seen, so open each one there as before.
+
 Taking an alert off the lock screen costs a push that shows nothing, and Chrome allows a site only a
 few of those a day before it shows "This site has been updated in the background". So Collie sends
 each phone at most four of them in a day. Past that, the alert for something you already handled

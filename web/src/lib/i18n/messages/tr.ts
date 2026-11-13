@@ -234,6 +234,18 @@ export const tr: Dictionary = {
   "settings.snooze.preset.min30": "30dk",
   "settings.snooze.preset.hour1": "1sa",
   "settings.snooze.preset.hour4": "4sa",
+  "settings.clearNotifications.title": "Bildirimleri temizle",
+  "settings.clearNotifications.description":
+    "Bu cihazdaki tüm Collie bildirimlerini kapatın ve biten her ajanı görüldü olarak işaretleyin. Diğer cihazlar bir sonraki eşitlemede veya Collie açıldığında güncellenir. Sizi bekleyen ajanlar panoda kalır.",
+  "settings.clearNotifications.action": "Tümünü temizle",
+  "settings.clearNotifications.done": "Bildirimler temizlendi.",
+  "settings.clearNotifications.clearing": "Temizleniyor…",
+  "settings.clearNotifications.failed.notifications":
+    "Temizlendi, ancak bu cihaz bildirimlerini kapatamadı. Yeniden dokunun.",
+  "settings.clearNotifications.failed.badge":
+    "Temizlendi, ancak bu cihaz simgedeki sayıyı güncelleyemedi. Yeniden dokunun.",
+  "settings.clearNotifications.failed.both":
+    "Temizlendi, ancak bu cihaz ne bildirimlerini kapatabildi ne de simgedeki sayıyı güncelleyebildi. Yeniden dokunun.",
   "settings.devices.title": "Eşlenen cihazlar",
   "settings.devices.description.enforced": "Her okuma ve her yazma işlemi eşlenmiş bir cihaz gerektirir.",
   "settings.devices.pairedAs": "Bu cihaz {device} olarak eşlendi.",
