@@ -38,6 +38,7 @@ import {
   utcDay,
   type PingFetch,
   type TelemetryDecider,
+  type TelemetryDeps,
   type TelemetryOrigin,
   type TelemetrySetting,
   type TelemetryRecord,
@@ -1302,7 +1303,7 @@ describe("the tally in the shell (ping v3)", () => {
 
   test("a trouble signal's pane is asked whether it is linked, and a doubt reads as not linked", async () => {
     const asked: unknown[] = [];
-    const base = {
+    const base: Omit<TelemetryDeps, "stateDir" | "linked"> = {
       env: {},
       origin: "env",
       version: RELEASE,
@@ -1313,7 +1314,7 @@ describe("the tally in the shell (ping v3)", () => {
       fetch: async () => new Response("ok"),
       os: "linux",
       arch: "x64",
-    } as const;
+    };
     const make = (linked: (where: { paneId: string; session: string | null }) => boolean) => {
       const stateDir = mkdtempSync(join(tmpdir(), "collie-telemetry-"));
       dirs.push(stateDir);
