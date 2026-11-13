@@ -8,6 +8,7 @@ import { SHIPPED_FONTS } from "../web/src/lib/shipped-fonts.ts";
 import {
   ANSI_KEY_WORDS,
   CHARACTERS,
+  CHARACTER_MOTION_ENTRIES,
   FILE_EXAMPLE,
   FILE_KEYS,
   FONTS,
@@ -107,12 +108,13 @@ describe("the page is the generator's output", () => {
 });
 
 describe("every example passes the real parser", () => {
-  test("the complete file is read as version 4, with no refusal", () => {
+  test("the complete file is read as version 5, with no refusal", () => {
     const parsed = parseTheme(FILE_EXAMPLE, CAP);
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.refusals));
-    expect(parsed.theme.version).toBe(4);
+    expect(parsed.theme.version).toBe(5);
     expect(parsed.theme.character).toBe("kawaii");
     expect(parsed.theme.glyphs).toBe("phosphor");
+    expect(parsed.theme.characterMotion).toBe("still");
   });
 
   for (const entry of VERSIONS) {
@@ -262,10 +264,17 @@ describe("the other pages teach no word that the catalogue lacks", () => {
     for (const id of GLYPH_SET_IDS) expect(SKILL, id).toContain(`\`${id}\``);
   });
 
+  test("docs/themes.md has a Character motion section that names the key and each of its words", () => {
+    const lines = section(THEMES, "### Character motion").join("\n");
+    expect(lines).toContain("`characterMotion`");
+    for (const entry of CHARACTER_MOTION_ENTRIES) expect(lines, entry.word).toContain(`\`${entry.word}\``);
+    expect(PAGE).toContain("## Character motion");
+  });
+
   test("cli/theme-skill.md: every optional token it names is a token, and it names the version that holds each key", () => {
     for (const word of ticked(SKILL)) {
       if (/^(?:pane|tab)-active$|^find$/u.test(word)) expect(TOKEN_WORDS, word).toContain(word);
     }
-    for (const entry of FILE_KEYS) if (entry.version === 4) expect(SKILL, entry.key).toContain(`\`${entry.key}\``);
+    for (const entry of FILE_KEYS) if (entry.version >= 4) expect(SKILL, entry.key).toContain(`\`${entry.key}\``);
   });
 });

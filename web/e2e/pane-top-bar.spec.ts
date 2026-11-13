@@ -6,6 +6,7 @@ import { fixtureSnapshot } from "@/test/handlers";
 import { installApiStub } from "./fixtures/api";
 import { collieHalves } from "./fixtures/collie-theme";
 import { keepPhoneLayout } from "./fixtures/layout";
+import { STILL_MARK } from "./fixtures/still-mark";
 
 // THE PANE SCREEN'S TWO STRIPS, measured in a real engine (option 3 of the 2026-09-23 top-bar
 // deck). The tab row is 30px and the pane row 26px, and neither draws a tap floor's worth of
@@ -189,7 +190,7 @@ for (const look of ["folder", "plain"] as const) {
             localStorage.setItem("collie:design:v1", design!);
             localStorage.setItem("collie:themes:v1", library!);
           },
-          [JSON.stringify({ theme: "plain-collie" }), JSON.stringify({ version: 1, themes: [{ version: 2, id: "plain-collie", name: "Plain", ...collieHalves }] })],
+          [JSON.stringify({ ...STILL_MARK, theme: "plain-collie" }), JSON.stringify({ version: 1, themes: [{ version: 2, id: "plain-collie", name: "Plain", ...collieHalves }] })],
         );
       }
       await page.goto(`/pane/${encodeURIComponent(pane)}`);

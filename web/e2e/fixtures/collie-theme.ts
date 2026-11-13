@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { OPTIONAL_THEME_TOKENS, parseTheme, type Half } from "@/lib/theme/schema";
+import { STILL_MARK } from "./still-mark";
 
 // COLLIE'S TWO HALVES FOR A VERSION 1 OR 2 FIXTURE. The theme specs build an imported theme from
 // `src/themes/collie.json` and change one or two tokens. Since schema version 3 (ADR 0120) that file
@@ -48,6 +49,6 @@ export async function wearPlainLook(page: import("@playwright/test").Page): Prom
       localStorage.setItem("collie:design:v1", design);
       localStorage.setItem("collie:themes:v1", library);
     },
-    [JSON.stringify({ font: "aldrich", theme: plainLookTheme.id }), JSON.stringify({ version: 1, themes: [plainLookTheme] })] as const,
+    [JSON.stringify({ ...STILL_MARK, font: "aldrich", theme: plainLookTheme.id }), JSON.stringify({ version: 1, themes: [plainLookTheme] })] as const,
   );
 }

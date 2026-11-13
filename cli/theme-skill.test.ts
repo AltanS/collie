@@ -64,7 +64,8 @@ describe("collie theme skill", () => {
     for (const id of MARK_IDS) expect(BRIEF).toContain(`\`${id}\``);
     expect(BRIEF).toContain("4 with `character`");
     expect(BRIEF).toContain("## Characters");
-    expect(THEME_VERSIONS_READ.at(-1)).toBe(4);
+    expect(THEME_VERSIONS_READ.at(-1)).toBe(5);
+    expect(BRIEF).toContain("`characterMotion`");
   });
 
   test("the brief teaches the glyphs key: every set, and the version that holds it", () => {

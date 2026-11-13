@@ -13,6 +13,7 @@ import {
   parseDesignPrefs,
   setDesignFont,
   setDesignMark,
+  setDesignMarkMoves,
   setDesignMath,
   setDesignTheme,
 } from "./design";
@@ -184,6 +185,47 @@ describe("the math field", () => {
       theme: "midnight",
       math: "mathjax",
     });
+  });
+});
+
+describe("the markMoves field", () => {
+  it("reads a boolean, and treats anything else as absence (a switch nobody touched)", () => {
+    expect(parseDesignPrefs('{"font":"aldrich","markMoves":false}')).toEqual({ font: "aldrich", markMoves: false });
+    expect(parseDesignPrefs('{"font":"aldrich","markMoves":true}').markMoves).toBe(true);
+    for (const bad of ['"false"', "0", "1", "null", '"no"', "[]"]) {
+      expect(parseDesignPrefs(`{"font":"aldrich","markMoves":${bad}}`)).toEqual({ font: "aldrich" });
+    }
+  });
+
+  it("is absent on a device that never touched the switch", () => {
+    expect(designPrefs().markMoves).toBeUndefined();
+  });
+
+  it("stores both values, so a touched switch survives a reload", () => {
+    setDesignMarkMoves(false);
+    expect(stored()).toEqual({ font: "atkinson", markMoves: false });
+    __resetDesign();
+    expect(designPrefs().markMoves).toBe(false);
+    setDesignMarkMoves(true);
+    expect(stored()).toEqual({ font: "atkinson", markMoves: true });
+  });
+
+  it("survives a change of face, theme, math and character, and they survive it", () => {
+    setDesignMarkMoves(false);
+    setDesignFont("system");
+    setDesignTheme("midnight");
+    setDesignMath("katex");
+    setDesignMark("pixel");
+    expect(stored()).toEqual({ font: "system", theme: "midnight", math: "katex", mark: "pixel", markMoves: false });
+    setDesignMark(null);
+    setDesignMarkMoves(true);
+    expect(stored()).toEqual({ font: "system", theme: "midnight", math: "katex", markMoves: true });
+  });
+
+  it("is kept when a retired theme id is moved to collie on load", () => {
+    localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ font: "aldrich", theme: RETIRED_THEME_ID, markMoves: false }));
+    __resetDesign();
+    expect(stored()).toEqual({ font: "aldrich", markMoves: false });
   });
 });
 

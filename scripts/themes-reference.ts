@@ -17,6 +17,7 @@ import {
   FILE_EXAMPLE,
   FILE_KEYS,
   FONTS,
+  CHARACTER_MOTION_ENTRIES,
   GLYPH_SET_ENTRIES,
   GROUND_INK_WORDS,
   GROUND_KEY_ENTRIES,
@@ -227,6 +228,8 @@ export function renderReference(): string {
     ...fontsSection(),
     "",
     ...namedSection("Characters", "The header character, set with the key `character` at the top level. A theme without it shows Collie.", "Word", CHARACTERS),
+    "",
+    ...namedSection("Character motion", "Whether the header character drifts at rest, set with the key `characterMotion` at the top level. A theme without it moves. A person's own switch in Settings wins over the theme on that device.", "Word", CHARACTER_MOTION_ENTRIES),
     "",
     ...namedSection("Glyph sets", "The icon set every icon is drawn in, set with the key `glyphs` at the top level. A theme without it shows Lucide.", "Word", GLYPH_SET_ENTRIES),
   ];

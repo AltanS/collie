@@ -82,3 +82,27 @@ roll, and only the roll.
 Measured on the comparison page (two marks, 10 s each, 3x): option 11 at rest, in use, 60 frames,
 0 main-thread frames, 0 paints, 0.6 ms a second; rested, 0 frames. Applying, either option, 60 frames,
 0 main-thread frames, 0 paints, about 2 ms a second (no timer, no script call in the trace).
+
+## Amendment 2026-11-13
+
+Altan ordered the character to move at all times, "not just after activity like scrolling", and asked for
+a way to turn it off in a theme and in the app. This takes the choice the 2026-11-09 amendment left open
+(`MARK_DRIFT.mode`, "always" or "in use") and takes it for "always", as a default a device or a theme can
+leave.
+
+- A resting mark drifts for as long as the page is visible, with no input needed. The app passes
+  `drift="always"`, a prop the contract already has, so the sealed contract is unchanged
+  (`web/src/lib/mark-motion.ts`, read by `BrandMark`). A hidden page, `pagehide` and
+  `prefers-reduced-motion` hold it, whatever the switch says.
+- The device's switch, "Character moves", sits under the list on the Character page and is stored in
+  `collie:design:v1` as `markMoves`, both values. A theme may set `characterMotion` (`moves` or `still`,
+  schema version 5). The device's own touched switch wins, an untouched one follows the worn theme, and
+  no key means it moves. A theme may only switch the drift off: the look of the mark never changes.
+- A live state (`loading`, `applying`, `reconnected`) and `idle` are drawn as before. The idle lock, the
+  tour and the thumbnails of a theme list keep the contract's own rule (`in-use`).
+- The cost is the one the 2026-11-09 amendment measured: 60 compositor frames a second, no main-thread
+  work, for as long as the page is visible. The switch and the theme key are the way out for a device
+  that cannot afford them (issue #748). Every browser case runs with the switch off
+  (`web/e2e/fixtures/still-mark.ts`), so no case pays it; `web/e2e/mark-moves.spec.ts` is the one that
+  turns it on. `web/e2e/idle-repaint.spec.ts` now holds the first two claims for a device with the
+  switch off.

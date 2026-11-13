@@ -7,15 +7,17 @@ import type { AgentView, PaneChatResponse, SnapshotResponse } from "@/lib/types"
 import { FIXTURE_CHAT_GEN, FIXTURE_SEQ_BASE, fixtureAgents, fixtureShellPanes, fixtureSnapshot, fixtureTranscript } from "@/test/handlers";
 import { installApiStub, installPaneWorld, paneCapture, pinLocale } from "./fixtures/api";
 import { collieHalves } from "./fixtures/collie-theme";
+import { STILL_MARK } from "./fixtures/still-mark";
 
 // ISSUE 748, ADR 0138: AN APP THAT IS LEFT ALONE ASKS FOR NO FRAME. Three claims only an engine can check,
 // because jsdom runs no CSS animation: the header mark holds still at rest for every character, a
 // dashboard at rest runs no animation anywhere, and a hidden page pauses the ones a working pane runs.
-// Since 2026-11-09 the resting mark drifts again, smooth, while the page is in use: a person touched,
-// wheeled or typed in the last MARK_DRIFT.windowMs. Then it eases to a stop and holds (`data-still`),
-// every animation paused. A page that was only opened, with no input, is not in use and holds from the
-// first frame. The cases fake the clock and let the window pass, so the claims below hold for a page
-// left alone, which is the page issue 748 is about.
+// Since 2026-11-09 the resting mark drifts again, smooth; since the owner's order of 2026-11-13 it drifts
+// at all times while the page is visible, unless the device's own switch ("Character moves") or the worn
+// theme says still. So the first two claims hold for a device with the switch OFF, which is how every case
+// of this tier runs (`fixtures/still-mark.ts`): the mark is held from the first frame, every animation
+// paused. `mark-moves.spec.ts` holds the other half, the switch on. The cases still fake the clock and let
+// the old window pass, so a mark that drifted on a timer would show here.
 
 test.use({ serviceWorkers: "block" });
 
@@ -55,15 +57,15 @@ for (const { id } of MARKS) {
         localStorage.setItem("collie:design:v1", design);
         localStorage.setItem("collie:themes:v1", library);
       },
-      [JSON.stringify({ theme: theme.id }), JSON.stringify({ version: 1, themes: [theme] })] as const,
+      [JSON.stringify({ ...STILL_MARK, theme: theme.id }), JSON.stringify({ version: 1, themes: [theme] })] as const,
     );
     await page.clock.install();
     await installApiStub(page);
     await page.goto("/");
     const mark = page.getByRole("button", { name: en["nav.home.aria.default"] }).locator(`svg[data-mark="${id}"]`);
     await expect(mark).toHaveAttribute("data-state", "rest");
-    // The load itself may turn the mark (a route loader is work the operator waits on). A page nobody
-    // touched is not in use, so the mark rests from the first frame: every animation is there, every one paused.
+    // The load itself may turn the mark (a route loader is work the operator waits on). The switch is off,
+    // so the mark rests from the first frame: every animation is there, every one paused.
     await page.clock.runFor(LEFT_ALONE_MS);
     await expect(mark).toHaveAttribute("data-still", "", { timeout: 5000 });
     await expect.poll(() => runningIn(mark)).toEqual([]);

@@ -89,7 +89,9 @@ export function ThemeMarkLine({ theme }: { theme: Theme }) {
   return (
     <div data-testid="theme-mark-line" className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
       <span className="grid size-7 shrink-0 place-items-center">
-        <BrandMark mark={character} size={28} weight="header" paper="var(--card)" />
+        {/* A thumbnail in a list of cards: it keeps the contract's own rule (drifts while the page is in use),
+            so a list of many does not run a mark each at all times. */}
+        <BrandMark mark={character} size={28} weight="header" paper="var(--card)" drift="in-use" />
       </span>
       <span className="min-w-0 truncate">{t("theme.preview.mark", { name: markName(character) })}</span>
     </div>

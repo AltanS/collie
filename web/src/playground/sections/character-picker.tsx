@@ -3,6 +3,10 @@
 //
 // DEV-ONLY, unreachable from the app entry.
 //
+// THE MOTION SWITCH, in both states, is the page's own row (`CharacterMovesRow`) given a fixed value
+// and no store, because the real page reads this device's one choice and could show only one state.
+// Its first row's border-top is the card's own, so the frame sits it in a Card as Settings does.
+//
 // THE PAGE IS THE REAL COMPONENT. Each frame mounts `CharacterPicker` itself, under the theme's own
 // colours (the same declarations `PageSample` sets on its box), so a row, a column head and a mark are
 // the ones the app draws. Two honest limits: a tap on any row writes this device's real choice (the
@@ -16,7 +20,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 
 import { loadMark } from "@/components/brand-mark";
-import { CharacterPicker } from "@/components/character-picker";
+import { CharacterMovesRow, CharacterPicker } from "@/components/character-picker";
 import { collieFamilyMark } from "@/components/collie-mark";
 import { COLLIE_COLLAR_GREY_HEAD } from "@/components/collie-collar-grey-head";
 import { collieTheme, displayOf, styleOf } from "@/components/theme-page-sample";
@@ -24,6 +28,8 @@ import { THEME_TOKENS, fillHalves, type Theme } from "@/lib/theme/schema";
 import { shippedThemes } from "@/lib/theme/store";
 import { fullSurfaceDeclarations, type Declaration } from "@/lib/theme/surface";
 import { cn } from "@/lib/utils";
+
+import { Card as ShellCard } from "@/components/ui/card";
 
 import { Card, Group, Section, type SectionDef } from "../layout";
 
@@ -101,6 +107,24 @@ export function CharacterPickerSection() {
                   </div>
                 )),
               )}
+            </div>
+          </Card>
+        ))}
+      </Group>
+      <Group title="The motion switch">
+        {([true, false] as const).map((moves, i) => (
+          <Card key={String(moves)} state={moves ? "character-moves-on" : "character-moves-off"} label={`${i + 1}. ${moves ? "Moves, on" : "Still, off"}`} span="all">
+            <div className="flex flex-wrap items-start gap-4">
+              {HALVES.map((half) => (
+                <div key={half} className="flex flex-col gap-1">
+                  <p className="font-mono text-[10px] uppercase text-muted-foreground">{half}</p>
+                  <ThemeFrame theme={collieTheme()} half={half} width={390}>
+                    <ShellCard className="gap-0 py-0 [&_[data-slot=character-moves]]:border-t-0">
+                      <CharacterMovesRow moves={moves} onChange={() => {}} />
+                    </ShellCard>
+                  </ThemeFrame>
+                </div>
+              ))}
             </div>
           </Card>
         ))}

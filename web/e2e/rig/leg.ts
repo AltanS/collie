@@ -22,6 +22,7 @@ import { TOKEN_STORAGE_KEY } from "../../src/lib/pairing";
 import { readSendReceipts, readSurface } from "../../src/lib/send-protocol";
 import { askOf, isFree, type Surface } from "../../src/lib/surface/surface";
 import { TOUR_STORAGE_KEY, TOUR_VERSION } from "../../src/lib/tour";
+import { DESIGN_KEY, STILL_MARK } from "../fixtures/still-mark";
 import { BIN } from "./bins";
 import { SETUPS, harnessDirs, prepareHarness, type HarnessId } from "./harnesses";
 import type { ScenarioId } from "./scenarios";
@@ -284,12 +285,14 @@ export async function phoneContext(browser: Browser, rig: Rig, device: Device): 
   memGuard("a browser context");
   const context = await browser.newContext({ ...device, baseURL: rig.base });
   await context.addInitScript(
-    ([localeKey, tokenKey, token, tourKey, tour]) => {
+    ([localeKey, tokenKey, token, tourKey, tour, designKey, design]) => {
       window.localStorage.setItem(localeKey, "en");
       window.localStorage.setItem(tokenKey, token);
       window.localStorage.setItem(tourKey, tour);
+      // The character holds still: a page that moves asks for a frame at every vsync (fixtures/still-mark.ts).
+      window.localStorage.setItem(designKey, design);
     },
-    [LOCALE_STORAGE_KEY, TOKEN_STORAGE_KEY, rig.deviceToken(), TOUR_STORAGE_KEY, String(TOUR_VERSION)],
+    [LOCALE_STORAGE_KEY, TOKEN_STORAGE_KEY, rig.deviceToken(), TOUR_STORAGE_KEY, String(TOUR_VERSION), DESIGN_KEY, JSON.stringify(STILL_MARK)],
   );
   return context;
 }

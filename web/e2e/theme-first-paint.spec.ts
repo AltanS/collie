@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { installApiStub } from "./fixtures/api";
 import { collieHalves } from "./fixtures/collie-theme";
+import { STILL_MARK } from "./fixtures/still-mark";
 
 // A PINNED THEME PAINTS IN ITSELF ON THE FIRST FRAME (M57). public/theme-init.js reads the design
 // blob and the theme library and sets the inline properties before the bundle's module script runs.
@@ -33,7 +34,7 @@ async function seed(page: import("@playwright/test").Page) {
       localStorage.setItem("collie:themes:v1", library);
     },
     [
-      JSON.stringify({ font: "aldrich", theme: "midnight" }),
+      JSON.stringify({ ...STILL_MARK, font: "aldrich", theme: "midnight" }),
       JSON.stringify({ version: 1, themes: [theme] }),
     ] as const,
   );
@@ -84,7 +85,7 @@ test("a version 2 theme's radius is on the page before the bundle runs", async (
       localStorage.setItem("collie:themes:v1", library);
     },
     [
-      JSON.stringify({ font: "aldrich", theme: "midnight" }),
+      JSON.stringify({ ...STILL_MARK, font: "aldrich", theme: "midnight" }),
       JSON.stringify({ version: 1, themes: [round] }),
     ] as const,
   );
@@ -93,12 +94,12 @@ test("a version 2 theme's radius is on the page before the bundle runs", async (
 });
 
 test("the default theme's radius on the first frame is the sharp 2px", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("collie:design:v1", JSON.stringify({ font: "aldrich" })));
+  await page.addInitScript((blob) => localStorage.setItem("collie:design:v1", blob), JSON.stringify({ ...STILL_MARK, font: "aldrich" }));
   expect(await firstFrameRadius(page)).toBe("2px");
 });
 
 test("a device on the default theme gets no attribute and no inline property", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("collie:design:v1", JSON.stringify({ font: "aldrich" })));
+  await page.addInitScript((blob) => localStorage.setItem("collie:design:v1", blob), JSON.stringify({ ...STILL_MARK, font: "aldrich" }));
   await page.route("**/assets/*.js", (route) => route.abort());
   await page.goto("/");
   const seen = await page.evaluate(() => ({
@@ -109,7 +110,7 @@ test("a device on the default theme gets no attribute and no inline property", a
 });
 
 test("a device that stored the retired collie-new paints the default on the first frame", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("collie:design:v1", JSON.stringify({ font: "atkinson", theme: "collie-new" })));
+  await page.addInitScript((blob) => localStorage.setItem("collie:design:v1", blob), JSON.stringify({ ...STILL_MARK, font: "atkinson", theme: "collie-new" }));
   await page.route("**/assets/*.js", (route) => route.abort());
   await page.goto("/");
   const seen = await page.evaluate(() => ({
@@ -151,7 +152,7 @@ test("a device with only theme collie stored paints Atkinson on the first frame"
 });
 
 test("a device that stored aldrich keeps Aldrich on the first frame", async ({ page }) => {
-  const seen = await firstFrameFace(page, JSON.stringify({ font: "aldrich" }));
+  const seen = await firstFrameFace(page, JSON.stringify({ ...STILL_MARK, font: "aldrich" }));
   expect(seen.classes).toContain("font-aldrich");
   expect(seen.stack).toMatch(/^"Aldrich"/);
   expect(seen.body).toMatch(/^"?Aldrich/);
@@ -165,7 +166,7 @@ test("a stored theme with a hostile value paints nothing from that token", async
       localStorage.setItem("collie:themes:v1", library);
     },
     [
-      JSON.stringify({ font: "aldrich", theme: "midnight" }),
+      JSON.stringify({ ...STILL_MARK, font: "aldrich", theme: "midnight" }),
       JSON.stringify({ version: 1, themes: [hostile] }),
     ] as const,
   );

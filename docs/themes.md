@@ -60,7 +60,7 @@ The [Themes reference](themes-reference.md) lists every key, token, word and lim
 
 ## The four themes
 
-Collie ships four themes, and every one of them uses every part of a theme file except [`character`](#characters). Each picture shows the Dashboard,
+Collie ships four themes, and every one of them uses every part of a theme file except [`character`](#characters) and [`characterMotion`](#character-motion). Each picture shows the Dashboard,
 light on the left and dark on the right.
 
 - **Collie** is the default. It is black and white like the Collie dog, with warm neutral greys, the black ink
@@ -233,6 +233,7 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
 - It sets `pane-active`, `tab-active` or `find`, and says version 1 or 2.
 - It sets `character`, and says version 1, 2 or 3. Or `character` is not a word from
   [Characters](#characters).
+- It sets `characterMotion`, and says version 1 to 4. Or `characterMotion` is not `moves` or `still`.
 - Its `ansi` block lacks a key, has a colour with an alpha, or fails a gate under
   [Terminal palette](#terminal-palette).
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
@@ -370,7 +371,8 @@ repository.
 
 A file has these keys, and no others. An unknown key anywhere is refused with its name. This is a complete
 version 2 file: it is Daylight with a shorter list of colours and the full palette. A theme that sets
-[`character`](#characters) or [`glyphs`](#glyphs) says version 4.
+[`character`](#characters) or [`glyphs`](#glyphs) says version 4. A theme that sets
+[`characterMotion`](#character-motion) says version 5.
 
 ```json
 {
@@ -410,6 +412,7 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
 - `character` is optional, one word from [Characters](#characters). It needs version 4.
   See [Characters](#characters).
 - `glyphs` is optional, one word from [Glyphs](#glyphs). It needs version 4. See [Glyphs](#glyphs).
+- `characterMotion` is optional, `moves` or `still`. It needs version 5. See [Character motion](#character-motion).
 - `$schema` is allowed and ignored. The file is at most 64 KiB.
 
 A value is `#rrggbb`, `#rrggbbaa`, or `oklch(L C H)` and `oklch(L C H / A)` in plain numbers. L is 0 to 1, C is
@@ -438,6 +441,7 @@ A file says which version it is, and Collie writes the lowest version that holds
 | 2 | Everything in version 1, and any of `surface`, `fonts.display` and `ansi`. |
 | 3 | Everything in version 2, and the optional tokens `pane-active`, `tab-active` and `find`. |
 | 4 | Everything in version 3, the keys `character` and `glyphs`, and `surface.ground` as an object. |
+| 5 | Everything in version 4, and the key `characterMotion`. |
 
 - A file with a `surface` block, a `fonts.display` face or an `ansi` block must say 2. A file that says 1 and
   has one of them is refused.
@@ -445,18 +449,22 @@ A file says which version it is, and Collie writes the lowest version that holds
   sets one of them is refused. The cause names the token and the version.
 - A file with `character` or `glyphs` must say 4. A file that says 1, 2 or 3 and has one of them is refused:
   "A file with "character" must say version 4. This one says version 3."
+- A file with `characterMotion` must say 5. A file that says 1, 2, 3 or 4 and has it is refused:
+  "A file with "characterMotion" must say version 5. This one says version 4."
 - A file with `surface.ground` as an object must say 4. The word form, such as `"ground": "grain"`, is
   the same in every version from 2.
-- A file without those blocks, without an optional token, without `character` and without `glyphs` may say
-  1 or 2. Collie reads all four
+- A file without those blocks, without an optional token, without `character`, without `glyphs` and without `characterMotion` may say
+  1 or 2. Collie reads all five
   versions, and an export of a theme with colours and `fonts.ui` only says 1.
 - A version 2 file needs Collie 1.22.0 or newer.
 - A version 3 file needs Collie 1.24.0 or newer. An older Collie refuses it and names the version: "The
   file is version 3. This Collie reads version 1 and 2."
 - A version 4 file needs Collie 1.28.0 or newer. An older Collie refuses it and names the version: "The
   file is version 4. This Collie reads version 1, 2 and 3."
+- A version 5 file needs Collie 1.29.0 or newer. An older Collie refuses it and names the version: "The
+  file is version 5. This Collie reads version 1, 2, 3 and 4."
 - From 1.28, a file of a version newer than this Collie reads says so: "This file was made for a newer
-  Collie (version 5). Update Collie to use it."
+  Collie (version 6). Update Collie to use it."
 - A newer word or token also needs a newer Collie, whatever the version says. `zoom` needs 1.26.2.
   `tabs`, `composer` and `tab-active` need Collie 1.27.0 or newer. `find` needs Collie 1.29.0 or newer.
   An older Collie refuses a file that names one of them, because it does not know the key.
@@ -542,7 +550,7 @@ A theme may name the character in the header with the key `character`, at the to
 shows Collie.
 
 A character is the figure in the header of the app. Every character keeps the same states. Beads circle it on
-an orbit and hold still at rest. While Collie works for you they turn fast, in the character's own colours. An
+an orbit and drift slowly at rest while the app is visible. While Collie works for you they turn fast, in the character's own colours. An
 update and a reconnect turn them in the same colours for every character.
 
 A person can also pick a character for one device, in Settings > Appearance > Character. That choice
@@ -587,6 +595,33 @@ These are the characters today. More may follow.
   refuses the whole file with two causes: "The file is version 4. This Collie reads version 1, 2 and 3."
   and "character" is not part of a theme file. To share a theme that an older Collie can read, leave
   `character` out and say version 3 or lower.
+
+### Character motion
+
+A character drifts slowly at rest, at all times while the app is visible. A theme may turn that off with the
+key `characterMotion`, at the top level, which is `moves` or `still`. A theme without it moves.
+
+```json
+{
+  "version": 5,
+  "id": "my-day",
+  "name": "My day",
+  "characterMotion": "still",
+  "light": { "background": "#fdfaf3" }
+}
+```
+
+- **A theme can only switch the drift off.** The character's look never changes. The drift is the one motion
+  a theme may set, and it is only the slow turn at rest.
+- **Working and updating still turn it.** `still` holds the character at rest only. While Collie works, while
+  the app updates and when the link comes back, the beads turn as they do under every theme.
+- **A person's own switch wins.** In Settings > Appearance > Character, "Character moves" is on until you
+  change it. Until you touch it, it follows the worn theme. From the first tap, your choice wins over every
+  theme on that device. It is stored on the device and is never sent to the bridge.
+- **The system setting wins over both.** With reduced motion on in the operating system, the character
+  holds still whatever the theme and the switch say. So does a hidden page.
+- **The file says version 5.** A file that sets `characterMotion` and says 1 to 4 is refused. A file without
+  it is the same text as before.
 
 ### Glyphs
 
@@ -871,9 +906,10 @@ palette of the terminal. It cannot change anything else.
 - **Layout and tap sizes.** A phone layout is easy to break. Radius, shadow, density, weight and border are
   closed words, never free values, and `roomy` never goes below the default.
 - **Type sizes and motion.** A theme picks a typeface and a weight, not a size, and it cannot change how
-  anything moves.
+  anything moves. The one exception is [`characterMotion`](#character-motion), which only switches the
+  character's drift at rest off.
 - **The favicon, the app icon and the splash.** They stay Collie under every theme. A theme may name the
-  [character](#characters) in the header, and no more.
+  [character](#characters) in the header, and whether it drifts at rest, and no more.
 - **Which icon means what.** A theme picks one of five [icon sets](#glyphs), never a single icon or a
   drawing of its own.
 - **What a status means.** Its icon and its word stay as they are, so a red or orange you picked never

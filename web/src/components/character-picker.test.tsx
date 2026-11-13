@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CharacterPicker } from "@/components/character-picker";
-import { __resetDesign, designPrefs, setDesignMark } from "@/lib/design";
+import { __resetDesign, designPrefs, setDesignMark, setDesignMarkMoves } from "@/lib/design";
 import { MARKS } from "@/lib/mark-ids";
 import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 
@@ -116,6 +116,59 @@ describe("CharacterPicker", () => {
     expect(designPrefs().mark).toBeUndefined();
     expect(stored()).toEqual({ font: "atkinson" });
     expect(row("From the theme")).toHaveAttribute("aria-checked", "true");
+  });
+
+  describe("the Character moves switch", () => {
+    const moves = () => screen.getByRole("switch", { name: "Character moves" });
+
+    it("sits under the list, in the same card, with its hint as the description, and is on by default", () => {
+      render(<CharacterPicker />);
+      expect(moves()).toHaveAttribute("aria-checked", "true");
+      expect(moves()).toHaveAccessibleDescription("Turn it off to keep the character still.");
+      const card = document.querySelector('[data-slot="character-picker"]');
+      if (!(card instanceof HTMLElement)) throw new Error("no card");
+      expect(card.contains(moves())).toBe(true);
+      // Directly under the list of characters: the list comes first, then the row, then the note.
+      const list = within(card).getByRole("radiogroup");
+      expect(list.compareDocumentPosition(moves()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      const note = screen.getByText("The app icon, the splash and the push badge stay the Collie mark.");
+      expect(moves().compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("stores the choice on a tap, both ways, and follows a change made elsewhere", async () => {
+      render(<CharacterPicker />);
+      await userEvent.click(moves());
+      expect(moves()).toHaveAttribute("aria-checked", "false");
+      expect(stored()).toEqual({ font: "atkinson", markMoves: false });
+      await userEvent.click(moves());
+      expect(stored()).toEqual({ font: "atkinson", markMoves: true });
+      act(() => setDesignMarkMoves(false));
+      expect(moves()).toHaveAttribute("aria-checked", "false");
+    });
+
+    it("shows what the worn theme says until it is touched, and then its own choice", async () => {
+      localStorage.setItem(
+        LIBRARY_STORAGE_KEY,
+        JSON.stringify({ version: 1, themes: [{ version: 5, id: "calm", name: "Calm", characterMotion: "still", light: { background: "#fdfaf3" } }] }),
+      );
+      __resetThemeStore();
+      act(() => setActiveTheme("calm"));
+      render(<CharacterPicker />);
+      expect(moves()).toHaveAttribute("aria-checked", "false");
+      expect(designPrefs().markMoves).toBeUndefined();
+      await userEvent.click(moves());
+      expect(moves()).toHaveAttribute("aria-checked", "true");
+      expect(designPrefs().markMoves).toBe(true);
+    });
+
+    it("holds the preview still while it is off, and lets it drift while it is on", () => {
+      render(<CharacterPicker />);
+      act(() => FakeObserver.all[0]?.see({ preview: true }));
+      const preview = () => Array.from(document.querySelectorAll('[data-slot="character-preview"] svg[data-mark]'));
+      expect(preview().every((mark) => !mark.hasAttribute("data-still"))).toBe(true);
+      act(() => setDesignMarkMoves(false));
+      expect(preview().every((mark) => mark.hasAttribute("data-still"))).toBe(true);
+    });
   });
 
   it("follows a choice made elsewhere", () => {

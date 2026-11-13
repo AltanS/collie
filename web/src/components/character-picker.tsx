@@ -4,12 +4,14 @@ import type { KeyboardEvent } from "react";
 import { BrandMark, preloadMark } from "@/components/brand-mark";
 import { Icon } from "@/components/icons/icon";
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
-import { setDesignMark, useDesignPrefs } from "@/lib/design";
+import { setDesignMark, setDesignMarkMoves, useDesignPrefs } from "@/lib/design";
 import { t } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/messages/en";
 import { useThemeMarkId } from "@/lib/mark";
 import { MARK_IDS, markName, type MarkId } from "@/lib/mark-ids";
+import { useMarkMoves } from "@/lib/mark-motion";
 import { cn } from "@/lib/utils";
 
 // The Character page: which character the header draws on this device. "From the theme" is the
@@ -32,6 +34,11 @@ import { cn } from "@/lib/utils";
 // read as in front of the head must be the colour it sits on. A selected row therefore cannot be a
 // filled pill: the fill would show as a halo around every bead. Selection is a check in a slot that
 // is always there, so choosing repaints and re-lays-out nothing (DESIGN.md §2).
+//
+// THE SWITCH UNDER THE LIST, "Character moves": whether the character drifts at rest, on this device. It
+// shows what the app does now (`useMarkMoves`: this device's own choice, else the worn theme's
+// `characterMotion`, else on), and a tap stores the choice, which from then on wins over every theme
+// (`lib/mark-motion.ts`). It is a row of the Haptics card's pattern, a title, a line under it and the switch.
 //
 // CHARACTER NAMES ARE PROPER NOUNS and are not translated; "From the theme" and the heads are phrases.
 
@@ -77,11 +84,37 @@ function stepFrom({ index, key }: { index: number; key: string }): number | null
   return null;
 }
 
+/**
+ * The "Character moves" row: a title, a line under it and the switch, the Haptics card's pattern. It takes
+ * the value and the change as props so the design reference can draw both states; the page passes the
+ * device's own.
+ */
+export function CharacterMovesRow({ moves, onChange }: { moves: boolean; onChange: (moves: boolean) => void }) {
+  useLocale();
+  const ids = useId();
+  return (
+    <div data-slot="character-moves" className="flex items-center justify-between gap-4 border-t border-border p-4">
+      <div className="min-w-0">
+        <div id={`${ids}-moves`} className="font-medium">
+          {t("settings.character.moves")}
+        </div>
+        <p id={`${ids}-moves-hint`} className="text-sm text-muted-foreground">
+          {t("settings.character.movesHint")}
+        </p>
+      </div>
+      <div className="flex h-6 w-11 shrink-0 items-center justify-center">
+        <Switch checked={moves} onCheckedChange={onChange} aria-labelledby={`${ids}-moves`} aria-describedby={`${ids}-moves-hint`} />
+      </div>
+    </div>
+  );
+}
+
 /** The page's own list of characters: the card of this page. Device-local, like the typeface. */
 export function CharacterPicker() {
   useLocale();
   const chosen: Choice = useDesignPrefs().mark ?? "theme";
   const fromTheme = useThemeMarkId();
+  const moves = useMarkMoves();
   const listRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -223,6 +256,8 @@ export function CharacterPicker() {
           );
         })}
       </div>
+
+      <CharacterMovesRow moves={moves} onChange={setDesignMarkMoves} />
 
       <p className="border-t border-border p-4 text-sm text-muted-foreground">{t("settings.character.note")}</p>
     </Card>

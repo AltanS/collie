@@ -150,7 +150,7 @@ describe("ThemePickerControl", () => {
     it("lists every refusal of a refused file, names the key, and offers only Close", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);
-      const bad = JSON.stringify({ version: 5, id: "x", name: "X", light: { background: "#ffffff" }, bogus: 1 });
+      const bad = JSON.stringify({ version: 6, id: "x", name: "X", light: { background: "#ffffff" }, bogus: 1 });
       pick(container, fileOf(bad));
       const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
       expect(within(dialog).getAllByRole("listitem")).toHaveLength(2);

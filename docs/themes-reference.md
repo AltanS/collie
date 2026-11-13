@@ -11,7 +11,7 @@ A theme is one JSON file with these keys, and no others. An unknown key anywhere
 | Key | Type | Needed | From version | What it is |
 | --- | --- | --- | --- | --- |
 | `$schema` | text | no | 1 | Allowed and ignored, so an editor can offer help. |
-| `version` | whole number | yes | 1 | The version of the format. This Collie reads 1, 2, 3, 4. Write the lowest version that holds the file. |
+| `version` | whole number | yes | 1 | The version of the format. This Collie reads 1, 2, 3, 4, 5. Write the lowest version that holds the file. |
 | `id` | text | yes | 1 | 1 to 32 of `a-z`, `0-9` and `-`, starting with a letter or a digit. The id of a theme that Collie ships (`collie`, `nightwatch`, `daylight`, `harbour`) is refused. |
 | `name` | text | yes | 1 | 1 to 40 characters, with no control character. |
 | `author` | text | no | 1 | At most 60 characters, with no control character. |
@@ -22,12 +22,13 @@ A theme is one JSON file with these keys, and no others. An unknown key anywhere
 | `ansi` | object of colours | no | 2 | The terminal palette. It holds all 18 keys or none. |
 | `character` | word | no | 4 | The character in the header, one word of the characters table. |
 | `glyphs` | word | no | 4 | The icon set every icon is drawn in, one word of the glyph sets table. |
+| `characterMotion` | word | no | 5 | Whether the header character drifts at rest: `moves`, `still`. Absent is `moves`. A person's own switch in Settings wins over it. |
 
 A complete file that uses every part of the newest version:
 
 ```json
 {
-  "version": 4,
+  "version": 5,
   "id": "my-day",
   "name": "My day",
   "author": "Sam",
@@ -76,7 +77,8 @@ A complete file that uses every part of the newest version:
     "ground": "#1a1612"
   },
   "character": "kawaii",
-  "glyphs": "phosphor"
+  "glyphs": "phosphor",
+  "characterMotion": "still"
 }
 ```
 
@@ -90,6 +92,7 @@ A file says which version it is. Write the lowest version that holds what the fi
 | 2 | Everything in version 1, and any of `surface`, `fonts.display` and `ansi`. |
 | 3 | Everything in version 2, and the optional tokens `pane-active`, `tab-active`, `find`. |
 | 4 | Everything in version 3, the keys `character` and `glyphs`, and `surface.ground` as an object. |
+| 5 | Everything in version 4, and the key `characterMotion`. |
 
 A file at version 1:
 
@@ -144,6 +147,20 @@ A file at version 4:
   "id": "my-day",
   "name": "My day",
   "character": "kawaii",
+  "light": {
+    "background": "oklch(0.985 0 0)"
+  }
+}
+```
+
+A file at version 5:
+
+```json
+{
+  "version": 5,
+  "id": "my-day",
+  "name": "My day",
+  "characterMotion": "still",
   "light": {
     "background": "oklch(0.985 0 0)"
   }
@@ -460,6 +477,15 @@ The header character, set with the key `character` at the top level. A theme wit
 | `glass-front` | Glass Front | The same stained glass, the head from the front. |
 | `sheep` | Sheep | The sheep the collie herds: a charcoal face in cream wool, in profile. |
 | `owl` | Owl | The owl that watches through the night, from the front, with huge amber eyes. |
+
+## Character motion
+
+Whether the header character drifts at rest, set with the key `characterMotion` at the top level. A theme without it moves. A person's own switch in Settings wins over the theme on that device.
+
+| Word | Name | What it is |
+| --- | --- | --- |
+| `moves` | Moves | The character drifts slowly at rest, while the app is visible. The default. |
+| `still` | Still | The character holds still at rest. It still turns while Collie works, and for an update. |
 
 ## Glyph sets
 

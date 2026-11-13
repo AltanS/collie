@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
+import { asJsonBoolean, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 import { OPERATOR_FONT_PREFIX, type OperatorFontFace } from "@/lib/operator-fonts";
 import { SHIPPED_FONTS, isShippedFont, type ShippedFont } from "@/lib/shipped-fonts";
 import { isMarkId, type MarkId } from "@/lib/mark-ids";
@@ -73,6 +73,14 @@ export interface DesignPrefs {
    * stores. Device-local: it is never sent to the bridge. Validated by `isMarkId` on every read.
    */
   mark?: MarkId;
+  /**
+   * Whether the header character moves at rest, as this device chose it (Settings > Appearance >
+   * Character, "Character moves"). Absent means the switch was never touched: the worn theme's
+   * `characterMotion` decides, else it moves (`lib/mark-motion.ts` is the one place that decides).
+   * Unlike `mark`, both values are stored, because `false` and `true` are each a choice that must win
+   * over a theme once made. Device-local: never sent to the bridge.
+   */
+  markMoves?: boolean;
 }
 
 /** The math renderers a device may choose. `off` is the default and is never stored. */
@@ -146,6 +154,7 @@ function load(): DesignPrefs {
     if (parsed.operatorFont !== undefined) kept.operatorFont = parsed.operatorFont;
     if (parsed.math !== undefined) kept.math = parsed.math;
     if (parsed.mark !== undefined) kept.mark = parsed.mark;
+    if (parsed.markMoves !== undefined) kept.markMoves = parsed.markMoves;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(kept));
     return kept;
   } catch {
@@ -180,6 +189,8 @@ export function parseDesignPrefs(raw: string): DesignPrefs {
   if (math !== undefined && isMathEngine(math) && math !== "off") next.math = math;
   const mark = asJsonString(doc.mark);
   if (mark !== undefined && isMarkId(mark)) next.mark = mark;
+  const markMoves = asJsonBoolean(doc.markMoves);
+  if (markMoves !== undefined) next.markMoves = markMoves;
   return next;
 }
 
@@ -240,6 +251,7 @@ export function setDesignFont(font: string, face?: OperatorFontFace): void {
   if (prefs.theme !== undefined) next.theme = prefs.theme;
   if (prefs.math !== undefined) next.math = prefs.math;
   if (prefs.mark !== undefined) next.mark = prefs.mark;
+  if (prefs.markMoves !== undefined) next.markMoves = prefs.markMoves;
   prefs = next;
   persist();
   applyFontClass(prefs.font);
@@ -258,6 +270,7 @@ export function setDesignTheme(id: string): void {
   if (id !== DEFAULT_THEME_ID) next.theme = id;
   if (prefs.math !== undefined) next.math = prefs.math;
   if (prefs.mark !== undefined) next.mark = prefs.mark;
+  if (prefs.markMoves !== undefined) next.markMoves = prefs.markMoves;
   prefs = next;
   persist();
   for (const fn of listeners) fn();
@@ -274,6 +287,7 @@ export function setDesignMath(engine: string): void {
   if (prefs.theme !== undefined) next.theme = prefs.theme;
   if (engine !== "off") next.math = engine;
   if (prefs.mark !== undefined) next.mark = prefs.mark;
+  if (prefs.markMoves !== undefined) next.markMoves = prefs.markMoves;
   prefs = next;
   persist();
   for (const fn of listeners) fn();
@@ -290,7 +304,19 @@ export function setDesignMark(mark: MarkId | null): void {
   if (prefs.theme !== undefined) next.theme = prefs.theme;
   if (prefs.math !== undefined) next.math = prefs.math;
   if (mark !== null) next.mark = mark;
+  if (prefs.markMoves !== undefined) next.markMoves = prefs.markMoves;
   prefs = next;
+  persist();
+  for (const fn of listeners) fn();
+}
+
+/**
+ * Say whether the header character moves at rest. Both values are stored (see
+ * {@link DesignPrefs.markMoves}): from the first touch the device's switch wins over a theme. Every
+ * other field is kept as it is.
+ */
+export function setDesignMarkMoves(moves: boolean): void {
+  prefs = { ...prefs, markMoves: moves };
   persist();
   for (const fn of listeners) fn();
 }
