@@ -135,7 +135,7 @@ export function writePart(deps: HarnessLinkDeps, harness: LinkHarness): PartWrit
     if (there === null && deps.files.exists(dir)) return { kind: "foreign", version: null };
     // Into a sibling folder first, renamed into place whole: an interrupted link leaves only a folder
     // with our temporary name, which the next run removes, never a half part under the real name.
-    const temp = `${dir}${TEMP_SUFFIX}`;
+    const temp = `${dir}.collie-tmp`;
     const old = `${dir}${OLD_SUFFIX}`;
     deps.files.removeTree(temp);
     deps.files.removeTree(old);
