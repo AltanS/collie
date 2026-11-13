@@ -13,7 +13,7 @@ import type { WalkyReceipt } from "../walky/types.ts";
 import { HillStore } from "./store.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HillService } from "./service.ts";
-import { hillSessionName, OneLook, deliveryOf, walkyPlace, walkySend, type WalkySendOptions } from "./walky.ts";
+import { hillCensus, hillSessionName, OneLook, deliveryOf, walkyPlace, walkySend, type HillCensusMember, type WalkySendOptions } from "./walky.ts";
 
 import { spaceOf } from "../walky/space.ts";
 
@@ -224,5 +224,30 @@ describe("agent view heads at the walky doors", () => {
       expect(typed[0]).toContain("(morph x] go");
       expect(typed[0]!.split("\n").slice(1).some((line) => hasViewHead(line))).toBe(false);
     }
+  });
+});
+
+describe("the census the Hill's sweep trusts (M96 spec 10)", () => {
+  const census = (local: { reachable: boolean }[], members: HillCensusMember[] = [], memberId: string | null = "lead") => hillCensus({ memberId, local: () => local, members: () => members });
+
+  test("this machine: known only while it drives a session and every last read answered", () => {
+    expect(census([{ reachable: true }])("local/%1#aaaa")).toBe(true);
+    expect(census([{ reachable: true }])("lead/%1#aaaa")).toBe(true);
+    expect(census([{ reachable: true }, { reachable: false }])("local/%1#aaaa")).toBe(false);
+    // Right after boot every engine reads `disconnected`; a bridge with no session knows nothing.
+    expect(census([{ reachable: false }])("local/%1")).toBe(false);
+    expect(census([])("local/%1")).toBe(false);
+  });
+
+  test("a crew member: known only when the sweep reached it and its own reads answered", () => {
+    const good: HillCensusMember = { memberId: "far", reachable: true, sessions: [{ reachable: true }] };
+    expect(census([], [good])("far/%7#cccc")).toBe(true);
+    expect(census([], [{ ...good, reachable: false }])("far/%7")).toBe(false);
+    expect(census([], [{ ...good, sessions: null }])("far/%7")).toBe(false);
+    expect(census([], [{ ...good, sessions: [] }])("far/%7")).toBe(false);
+    expect(census([], [{ ...good, sessions: [{ reachable: true }, { reachable: false }] }])("far/%7")).toBe(false);
+    // A machine the lead holds no row for, and an address that is not a pane's, are unknown.
+    expect(census([{ reachable: true }], [good])("other/%7")).toBe(false);
+    expect(census([{ reachable: true }], [good])("not an address")).toBe(false);
   });
 });

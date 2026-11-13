@@ -266,10 +266,14 @@ export interface HillServiceDeps {
    */
   readonly look?: <T>(fn: () => T) => T;
   /**
-   * Whether the bridge lists any live session yet. False right after boot, before the first refresh:
-   * then the sweep closes nothing for a target that seems gone. Absent: always true.
+   * Whether this bridge holds a census of the machine `address` is on that was read with success (M96
+   * spec 10): on this machine, every multiplexer it drives answered its last read since the bridge
+   * started; on a crew member, the lead's sweep reached it and that machine's own reads answered. An
+   * EMPTY list from a good census is a fact (every agent left). False is unknown: right after boot, a
+   * read that failed, a multiplexer that does not answer. Then the sweep closes nothing for that
+   * address, and the row of absent sweeps starts again. Absent: always true.
    */
-  readonly sessionsKnown?: () => boolean;
+  readonly censusKnown?: (address: string) => boolean;
   /** The phone push of a `now` decision (push.ts). Absent: no decision pushes. */
   readonly push?: HillPushPort;
   /**
@@ -1443,9 +1447,10 @@ export class HillService {
    * and every one whose target session has ended as `undeliverable` ("target session ended"), so a
    * poster that is gone does not leave its decisions on the hill. Answers how many closed.
    *
-   * A target counts as ended only when it is absent at two sweeps in a row, and never while the bridge
-   * lists no session at all (right after boot, before the first refresh). A trick's decision with no
-   * `replyTo` has no session to end; its runner owns it.
+   * A target counts as ended only when it is absent at two sweeps in a row, each from a census read
+   * with success (`censusKnown`): an empty list from a good read closes the cards of a machine whose
+   * last agent left, and a failed or unknown read closes nothing. A trick's decision with no `replyTo`
+   * has no session to end; its runner owns it.
    */
   sweep(now: number = this.now()): number {
     // A switch the CLI moved is seen here within one sweep, so its notifications close without a phone.
@@ -1464,10 +1469,6 @@ export class HillService {
 
   /** The open decisions whose target was gone at this sweep and the last one. Moves the memory of who was gone. */
   private endedTargets(skip: ReadonlySet<string>): HillDecision[] {
-    if (!(this.deps.sessionsKnown?.() ?? true)) {
-      this.absent.clear();
-      return [];
-    }
     const gone: string[] = [];
     const ended: HillDecision[] = [];
     for (const decision of this.deps.store.all()) {
@@ -1477,6 +1478,9 @@ export class HillService {
       if (decision.target === null || to === null) continue;
       // A crew machine that is not answering ends none of its sessions: the decision waits for it (§22).
       if (this.away(to) !== null) continue;
+      // Not sure is not a fact: absent from a census this bridge could not read with success says nothing,
+      // and leaving it out of `gone` starts its row again.
+      if (!(this.deps.censusKnown?.(to) ?? true)) continue;
       if (this.deps.place(to)?.address === to) continue;
       if (this.absent.has(decision.id)) ended.push(decision);
       else gone.push(decision.id);

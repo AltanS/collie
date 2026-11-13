@@ -76,8 +76,10 @@ interface Rig {
   tapResult: boolean | "throw";
   /** What happened, in order: "receipt", "closed", "send", "tap". */
   readonly events: string[];
-  /** Whether the bridge lists any session yet (false right after boot). */
+  /** Whether this machine's census was read with success (false right after boot, or a failed read). */
   known: boolean;
+  /** Crew machines (the address's member part) whose census is unknown now. */
+  readonly unknownMembers: Set<string>;
 }
 
 function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () => void): Rig {
@@ -97,6 +99,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () =>
     tapResult: true,
     events: [],
     known: true,
+    unknownMembers: new Set<string>(),
   };
   const hill = new HillService({
     store,
@@ -115,7 +118,10 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () =>
     },
     crewMode: () => state.mode,
     walkyOn: () => state.walky,
-    sessionsKnown: () => state.known,
+    censusKnown: (address) => {
+      const member = address.split("/")[0] ?? "";
+      return member === "local" ? state.known : !state.unknownMembers.has(member);
+    },
     memberId: "m_aaaaaaaaaa",
     keepId,
     machine: "desk",
@@ -515,7 +521,7 @@ describe("the sweep closes decisions whose target ended", () => {
     expect(r.store.get(decision.id)?.state).toBe("open");
   });
 
-  test("never while the bridge lists no session (right after boot), and such a sweep breaks the row", () => {
+  test("never while the census is unknown (right after boot, a failed read), and such a sweep breaks the row", () => {
     const r = rig();
     const decision = posted(r.hill.post(POSTER, input(1)));
     r.live = [];
@@ -531,6 +537,46 @@ describe("the sweep closes decisions whose target ended", () => {
     expect(r.hill.sweep(6000)).toBe(0);
     expect(r.store.get(decision.id)?.state).toBe("open");
     expect(r.hill.sweep(7000)).toBe(1);
+  });
+
+  test("the empty census: a machine whose last agent left closes its cards at the second good read", () => {
+    const r = rig();
+    const one = posted(r.hill.post(POSTER, input(1)));
+    const two = posted(r.hill.post(OTHER, input(2)));
+    // Every agent left; the multiplexer was read with success and lists none.
+    r.live = [];
+    expect(r.hill.sweep(2000)).toBe(0);
+    expect(r.hill.sweep(3000)).toBe(2);
+    expect(r.store.get(one.id)).toMatchObject({ state: "undeliverable", closedReason: TARGET_ENDED });
+    expect(r.store.get(two.id)?.state).toBe("undeliverable");
+  });
+
+  test("an empty list from a read that failed closes nothing, however long it lasts", () => {
+    const r = rig();
+    const decision = posted(r.hill.post(POSTER, input(1)));
+    r.live = [];
+    r.known = false;
+    for (let at = 2000; at < 20000; at += 1000) expect(r.hill.sweep(at)).toBe(0);
+    expect(r.store.get(decision.id)?.state).toBe("open");
+  });
+
+  test("the census is judged per machine: an unknown crew machine keeps its cards, a known one ends its own", () => {
+    const r = rig();
+    const lead = posted(r.hill.post(POSTER, input(1)));
+    const remote: HillAgentSender = { kind: "agent", address: "far/%7#cccc", memberId: "far", harness: "agent-x", label: "repo#far", host: "far" };
+    r.live = [...PLACES, { address: "far/%7#cccc", label: "repo#far", host: "far", unattended: false }];
+    const far = posted(r.hill.post(remote, input(2)));
+    r.live = [];
+    r.unknownMembers.add("far");
+    r.hill.sweep(2000);
+    expect(r.hill.sweep(3000)).toBe(1);
+    expect(r.store.get(lead.id)?.state).toBe("undeliverable");
+    expect(r.store.get(far.id)?.state).toBe("open");
+    // Its census read with success once: one more good read ends it.
+    r.unknownMembers.clear();
+    expect(r.hill.sweep(4000)).toBe(0);
+    expect(r.hill.sweep(5000)).toBe(1);
+    expect(r.store.get(far.id)?.state).toBe("undeliverable");
   });
 
   test("the target is replyTo when set: the poster ending does not close it, replyTo ending does", () => {
