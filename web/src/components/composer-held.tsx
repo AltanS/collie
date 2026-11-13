@@ -116,8 +116,10 @@ export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending,
   async function release(row: HeldRow, giveBack = false): Promise<void> {
     try {
       const answer = await cancelHeldSend(row.requestId, paneId, scope);
-      // The row went and nothing was sent: its words go back to the person, never nowhere.
-      if (giveBack && answer.result === "cancelled") onReturn?.(row.text);
+      // The row went and nothing was sent: its words go back to the person, never nowhere. Not the one
+      // typed line of a WalkyTalky message (`walky`): that is another agent's text, and it stays in the
+      // inbox, so putting it in the box would pass it off as the person's own words.
+      if (giveBack && answer.result === "cancelled" && row.walky === undefined) onReturn?.(row.text);
       // A stored receipt means the request already went out; none means it is going out now.
       if (answer.result === "refused") setStatus(t(answer.receipt === undefined ? "composer.held.cancelLate" : "composer.held.wentOut"), "warn");
     } catch (error) {

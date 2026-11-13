@@ -120,6 +120,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A send that lands keeps only the words you typed after the sent text.** When the box still began with the text that went out, the whole box stayed and the next send repeated it to the agent; now the sent part is removed and the rest is your draft. A box you edited inside the sent text keeps everything.
 - **A send that got no answer is not sent twice after you leave the pane or reload.** When the phone got no answer to a send, "Tap Send again: it does not send twice" held only while the pane stayed open: a pane switch, a reload or the system closing the tab dropped the request id, and the next tap on the same text could send it a second time. Collie now keeps the id with the pane for the session, uses it again while the text is the same, and forgets it on any answer from the bridge or when you change the draft.
 - **A held WalkyTalky message says which message it is.** The held row the bridge serves for the one typed line of a message carries the message id in a new optional `walky` field, so the phone can tell it from a send you held yourself. An older phone and an older crew member ignore the field.
+- **Cancelling a held WalkyTalky message never puts its line in your box.** Cancel on a held row gives your own words back to an empty box. The one typed line of a message, `[walky-talky ...] from agent ...`, is another agent's text, and it is no longer returned there as if you had written it. The message stays in the inbox.
 
 ### Docs
 

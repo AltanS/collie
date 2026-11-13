@@ -355,6 +355,19 @@ describe("the held-send card", () => {
     expect(loadDraft(undefined, "w1:p1")).toBe("the words I queued");
   });
 
+  // The one typed line of a WalkyTalky message is another agent's text, never the person's words.
+  it("Cancel of a WalkyTalky message's row returns nothing to the box or the stored draft", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "cancelled" } });
+    const line = "[walky-talky wt_aaaaaaaaaaa1] from agent x. Read it: collie walky inbox wt_aaaaaaaaaaa1";
+    renderComposer({ held: [row("req00001", "held", { text: line, cause: "draft_present", walky: "wt_aaaaaaaaaaa1" })] });
+    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
+    await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel the queued message" })).toBeEnabled());
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
+    expect(loadDraft(undefined, "w1:p1") ?? "").toBe("");
+  });
+
   it("Cancel leaves a composer that holds other text alone", async () => {
     const user = userEvent.setup();
     const calls = fakeDelete({ body: { result: "cancelled" } });
