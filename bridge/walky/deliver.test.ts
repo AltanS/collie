@@ -661,7 +661,8 @@ describe("a draft holds the message (M62 spec 02)", () => {
     const accepted = r.clock;
     await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
     await r.service.deliverer.settled();
-    expect(r.host.holds).toEqual([{ draftHolds: true, holdUntil: accepted + HELD_LIMIT_MS }]);
+    // The hold names its message, so the hold row the phone reads says whose one typed line it is.
+    expect(r.host.holds).toEqual([{ draftHolds: true, holdUntil: accepted + HELD_LIMIT_MS, walky: "wt_aaaaaaaaaaa1" }]);
   });
 
   test("while held the receipt stays `accepted` with what holds it, and moves with it: draft, turn, then typed", async () => {
@@ -890,7 +891,7 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
     const host: WalkyHost = {
       panes: () => [pane("%1", { harness: "claude", instance: state.instance })],
       send: async (target, sendId, text, hold) => {
-        const answer = await protocol.handle(hold === undefined ? { id: sendId, text, mode: "send" } : { id: sendId, text, mode: "send", draftHolds: true, holdUntil: hold.holdUntil }, { session: target.session, paneId: target.paneId, harness: "claude" });
+        const answer = await protocol.handle(hold === undefined ? { id: sendId, text, mode: "send" } : { id: sendId, text, mode: "send", draftHolds: true, holdUntil: hold.holdUntil, walky: hold.walky }, { session: target.session, paneId: target.paneId, harness: "claude" });
         return answer.receipt === undefined ? { outcome: "unknown" } : result(sendId, answer.receipt.outcome, answer.receipt.reason);
       },
       sendState: (sendId) => {
@@ -1117,7 +1118,7 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
     };
     await r.service.send(send(ID, "local/%1"), operator);
     await r.service.deliverer.settled();
-    expect(entry).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: accepted + HELD_LIMIT_MS });
+    expect(entry).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: accepted + HELD_LIMIT_MS, walky: ID });
     expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: "held past 60 minutes" });
     expect(r.box.calls).toEqual([]);
     expect(r.box.box).toBe("a long thought");

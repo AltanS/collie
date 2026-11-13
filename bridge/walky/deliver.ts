@@ -158,6 +158,8 @@ export interface WalkyHold {
   readonly draftHolds: true;
   /** Epoch ms: the message's acceptance plus {@link HELD_LIMIT_MS}. */
   readonly holdUntil: number;
+  /** The message's id: the hold row says it is this message's one typed line, so the phone draws it once. */
+  readonly walky: string;
 }
 
 /** What delivery needs of the bridge. index.ts builds it from the session registry. */
@@ -1090,7 +1092,7 @@ export class WalkyDeliverer {
     this.deps.log.update(this.next(record, "accepted", undefined, sendId));
     let result: SendResult;
     try {
-      result = await this.deps.host.send(pane, sendId, formatEnvelope(message, record.receipt.via), { draftHolds: true, holdUntil: record.acceptedAt + HELD_LIMIT_MS });
+      result = await this.deps.host.send(pane, sendId, formatEnvelope(message, record.receipt.via), { draftHolds: true, holdUntil: record.acceptedAt + HELD_LIMIT_MS, walky: message.id });
     } catch (err) {
       result = { outcome: "unknown", reason: err instanceof Error ? err.message : String(err) };
     }
