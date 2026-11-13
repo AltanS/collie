@@ -266,8 +266,16 @@ describe("detectMenuRegion — the `▔` modal edge of Claude Code 2.1.283", () 
     expect(detectMenu(lines(screen.join("\n")))?.title).toBe("Inner");
   });
 
-  it("a U+2500 box border past the rule window ends the search: the edge above it is not this modal's", () => {
+  // The `─` border window is 60 rows (BORDER_SCAN_WINDOW), twice the rule-glyph window: a tall `/rewind` list
+  // opens under a plain border 48 rows up. Before, the border at 35 rows ended the search and the screen was
+  // raw; now it is the region's top, and its first row under it the title.
+  it("a U+2500 box border between 30 and 60 rows up is the region's top", () => {
     const filler = Array.from({ length: 35 }, (_, i) => `     item ${i}`);
+    expect(detectMenu(lines([EDGE, "   Old", BOX_RULE, "   Rewind", ...filler, TWO_HINTS].join("\n")))?.title).toBe("Rewind");
+  });
+
+  it("a U+2500 box border past the border window ends the search: the edge above it is not this modal's", () => {
+    const filler = Array.from({ length: 65 }, (_, i) => `     item ${i}`);
     expect(detectMenu(lines([EDGE, "   Old", BOX_RULE, ...filler, TWO_HINTS].join("\n")))).toBeNull();
   });
 
