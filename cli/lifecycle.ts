@@ -1190,10 +1190,11 @@ export async function cmdUninstall(deps: LifecycleDeps): Promise<number> {
   // Behind a dynamic import: the parts are embedded as text, and this module sits on the bare-checkout
   // bootstrap path (`cli/main.test.ts`), which must stay plain TypeScript.
   const others = otherInstalledInstances(deps);
-  const { linkedHarnessNames, unlinkAll } = await import("./harness-link.ts");
+  const { installWordsPlural, linkedHarnessNames, unlinkAll } = await import("./harness-link.ts");
   if (others.length === 0) unlinkAll({ ctx: deps.ctx, io: deps.io, files: deps.files, exec: deps.exec });
   else if (linkedHarnessNames(deps.ctx, deps.files).length > 0) {
-    deps.io.out(`  kept the linked harness parts: another Collie instance uses them (${others.join(", ")}). \`collie harness unlink <harness>\` removes them.`);
+    const kept = installWordsPlural(linkedHarnessNames(deps.ctx, deps.files));
+    deps.io.out(`  kept the linked harness ${kept}: another Collie instance uses them (${others.join(", ")}). \`collie harness unlink <harness>\` removes them.`);
   }
   deps.io.out(
     `  kept: ${join(deps.ctx.configDir, ".env")} and the checkout — delete those to remove every trace`,

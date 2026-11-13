@@ -100,9 +100,12 @@ local:
                                     shell
   ✓        link-claude              not linked: `collie harness link claude`
                                     lets Collie send to it by data
-  ✓        link-pi                  not linked: no part for it in this build yet
-  ✓        link-omp                 not linked: no part for it in this build yet
-  ✓        link-opencode            not linked: no part for it in this build yet
+  ✓        link-pi                  not linked: no plugin for it in this build
+                                    yet
+  ✓        link-omp                 not linked: no plugin for it in this build
+                                    yet
+  ✓        link-opencode            not linked: no plugin for it in this build
+                                    yet
   ✓        sends-agy                no sends in the last 7 days
   ✓        sends-claude             no sends in the last 7 days
   ✓        sends-codex              no sends in the last 7 days
@@ -232,9 +235,12 @@ local:
                                     shell
   ✓        link-claude              not linked: `collie harness link claude`
                                     lets Collie send to it by data
-  ✓        link-pi                  not linked: no part for it in this build yet
-  ✓        link-omp                 not linked: no part for it in this build yet
-  ✓        link-opencode            not linked: no part for it in this build yet
+  ✓        link-pi                  not linked: no plugin for it in this build
+                                    yet
+  ✓        link-omp                 not linked: no plugin for it in this build
+                                    yet
+  ✓        link-opencode            not linked: no plugin for it in this build
+                                    yet
   ✓        sends-agy                no sends in the last 7 days
   ✓        sends-claude             no sends in the last 7 days
   ✓        sends-codex              no sends in the last 7 days

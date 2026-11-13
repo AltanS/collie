@@ -104,11 +104,11 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
       "plugin list --json",
       `plugin install ${CLAUDE_PLUGIN_ID} --scope user --json`,
     ]);
-    expect(r.io.stdout.join("\n")).toContain("linked claude: part");
+    expect(r.io.stdout.join("\n")).toContain("linked claude: plugin");
     expect(linkedHarnesses(r.deps.ctx.env, r.home, realFiles)).toEqual(["claude"]);
     const status = capture();
     cmdHarnessStatus({ ...r.deps, io: status });
-    expect(status.stdout[0]).toMatch(/^claude: linked, part \d+\.\d+\.\d+/u);
+    expect(status.stdout[0]).toMatch(/^claude: linked, plugin \d+\.\d+\.\d+/u);
     expect(status.stdout.slice(1)).toEqual(["pi: not linked", "omp: not linked", "opencode: not linked"]);
   });
 
@@ -198,7 +198,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
       r.failNext(words);
       const io = capture();
       expect(cmdHarnessUnlink({ ...r.deps, io }, "claude")).toBe(EXIT.FAIL);
-      expect(io.stderr.join("\n")).toContain("the part's folder is kept");
+      expect(io.stderr.join("\n")).toContain("the plugin's folder is kept");
       expect(existsSync(claudePartDir(r.deps.ctx))).toBe(true);
       // The record went first: the bridge stops sending by data at once.
       expect(isLinkedNow(r)).toBe(false);
@@ -245,7 +245,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(filePartPath(r.deps.ctx, "opencode")).toBe(join(r.home, ".config", "opencode", "plugin", "collie-inside.js"));
     const none = lab();
     expect(cmdHarnessLink(none.deps, "pi")).toBe(EXIT.FAIL);
-    expect(none.io.stderr.join("\n")).toContain("no part for pi yet");
+    expect(none.io.stderr.join("\n")).toContain("no plugin for pi yet");
   });
 
   test("update: harness sync rewrites an older linked part with this build's", () => {
@@ -259,7 +259,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(linkState(newer, "pi")).toMatchObject({ kind: "older", version: "1.28.0" });
     expect(cmdHarnessSync(newer)).toBe(EXIT.OK);
     expect(partOnDisk(newer, "pi")).toBe("1.29.0");
-    expect(io.stdout).toContain("harness sync: pi part 1.29.0");
+    expect(io.stdout).toContain("harness sync: pi plugin 1.29.0");
     // The Claude mod's version is its manifest's: this build's mod.
     expect(partOnDisk(newer, "claude")).toBe(claudeModVersion());
   });
@@ -271,7 +271,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     const older: HarnessLinkDeps = { ...newer.deps, io, version: "1.29.0" };
     expect(cmdHarnessSync(older)).toBe(EXIT.OK);
     expect(partOnDisk(older, "pi")).toBe("9.0.0");
-    expect(io.stdout).toContain("harness sync: pi kept the newer part 9.0.0");
+    expect(io.stdout).toContain("harness sync: pi kept the newer plugin 9.0.0");
     expect(cmdHarnessLink(older, "pi")).toBe(EXIT.OK);
     expect(partOnDisk(older, "pi")).toBe("9.0.0");
   });
@@ -318,7 +318,7 @@ describe("the update and the uninstall take the parts along (M99 spec 09)", () =
     const exec = fakeExec({
       answers: [
         ["/opt/collie/bin/collie --version", { perCall: () => ({ stdout: version }) }],
-        ["/opt/collie/bin/collie harness sync", { stdout: "harness sync: pi part 1.29.0\n" }],
+        ["/opt/collie/bin/collie harness sync", { stdout: "harness sync: pi plugin 1.29.0\n" }],
       ],
     });
     const along: HarnessLinkDeps = { ctx, io, files: realFiles, exec, parts: { pi: "x\n", omp: null, opencode: null }, version: "1.29.0" };
@@ -332,7 +332,7 @@ describe("the update and the uninstall take the parts along (M99 spec 09)", () =
     cmdHarnessLink(r.deps, "pi");
     syncLinks(r.deps, "/opt/collie/bin/collie");
     expect(r.ran).toEqual(["/opt/collie/bin/collie --version", "/opt/collie/bin/collie harness sync"]);
-    expect(r.io.stdout).toContain("harness sync: pi part 1.29.0");
+    expect(r.io.stdout).toContain("harness sync: pi plugin 1.29.0");
     // An older build reads `link` as the PATH name: it is never asked.
     r.ran.length = 0;
     r.setVersion("collie 1.28.3\n");

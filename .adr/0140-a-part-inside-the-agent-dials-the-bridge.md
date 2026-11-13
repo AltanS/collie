@@ -10,6 +10,8 @@
   `inside/claude/` (the Claude Code mod) · `cli/harness-link.ts` (`collie harness link <harness>`) ·
   docs/claude-code-on-your-phone.md, "Send by data"
 
+The protocol says "part"; text a person reads says "plugin".
+
 ## Context
 
 The screen is Collie's contract with each agent program: a send is typed into the input box and proven
