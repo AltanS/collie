@@ -45,7 +45,8 @@ if (wildcardDevHost) {
 }
 const allowedHosts = wildcardDevHost ? true : devHosts.length > 0 ? devHosts : undefined;
 
-// `bun run playground` (COLLIE_PLAYGROUND=1) reuses this same Vite dev server on its own port
+// `bun run playground` / `bun run design` (COLLIE_PLAYGROUND=1, bound to `COLLIE_DEV_HOST`, default
+// 127.0.0.1) reuses this same Vite dev server on its own port
 // (5199), but it must never resolve a real Collie instance: no root app, no bridge. This plugin
 // only exists under that flag — normal `bun run dev` keeps the proxy above untouched — and it does
 // two things: bounce `/` and `/index.html` to `/design.html` (the design reference), and answer every `/api/*` request

@@ -313,9 +313,11 @@ A local page renders every final state of the UI (boot, idle, dashboard, crew, s
 from mock data, without active agents. The tab shows a red icon to mark it as test-only.
 
 ```
-cd web && COLLIE_DEV_HOSTS=bluefin,localhost bun run design
+cd web && bun run design
 ```
 
+It listens on `127.0.0.1` only. To open it from a phone, bind it to this machine's tailnet address
+and allow the machine name: `COLLIE_DEV_HOST=$(tailscale ip -4) COLLIE_DEV_HOSTS=bluefin bun run design`.
 Open `http://<host>:5199/design.html` (`bun run playground` is the same command, and the old address
 `playground.html` forwards to the new one). Port 5199 answers `/api` calls itself, so the page never
 hits a live instance. `bun run playground:build` writes the static pages to `web/dist-playground/`
