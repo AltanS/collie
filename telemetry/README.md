@@ -6,29 +6,39 @@ This contract is the public record of the ping.
 
 ## What it accepts
 
-`POST https://ping.colliepwa.dev/v1/ping` with a JSON body of at most 1 KB:
+`POST https://ping.colliepwa.dev/v1/ping` with a JSON body of at most 8 KB. A typical v3 body is
+under 1 KB; 8 KB is above the largest body the caps below allow (a test in the bridge pins that):
 
 ```json
 {
-  "v": 2,
+  "v": 3,
   "id": "0123456789abcdef0123456789abcdef",
-  "day": "2026-11-06",
+  "day": "2026-11-13",
   "version": "1.27.0",
   "os": "linux",
   "arch": "x64",
   "install": "binary",
   "line": "stable",
   "role": "solo",
-  "trouble": [{ "kind": "dialog", "harness": "codex", "version": "0.46.0", "mux": "herdr", "count": 2 }]
+  "trouble": [{ "kind": "dialog", "harness": "codex", "version": "0.46.0", "mux": "herdr", "count": 2 }],
+  "usage": [
+    { "harness": "claude", "mux": "herdr", "sessions": 3 },
+    { "harness": "codex", "mux": "herdr", "sessions": 1 },
+    { "harness": "omp", "mux": "tmux", "sessions": 2 }
+  ]
 }
 ```
+
+A bridge that counts usage sends this shape, `v: 3`. Bridges up to 1.28.x keep sending `v: 2` (ten
+keys, no `usage`), and a 1.27.0-edge.1 bridge sends `v: 1`. The receiver accepts v2 and v3 side by side, see
+"Versions" below.
 
 Anything that does not match is `400` and is stored nowhere. A good ping is `204`.
 
 | Field     | Rule                                                                              |
 | --------- | --------------------------------------------------------------------------------- |
-| (keys)    | Exactly these ten keys. A missing or extra key is refused.                       |
-| `v`       | The number `2`. A 1.27.0-edge.1 bridge still sends `v: 1` with the first nine keys. |
+| (keys)    | Exactly these eleven keys for `v: 3`. A missing or extra key is refused.         |
+| `v`       | The number `3`. Older bridges send `2` (ten keys) or `1` (nine keys), see "Versions". |
 | `id`      | 32 lowercase hex characters.                                                      |
 | `day`     | A real `YYYY-MM-DD` date, within one day of the server's UTC date.                |
 | `version` | Semver-like (`1.27.0`, `1.27.0-edge.1`), at most 40 characters.                   |
@@ -38,6 +48,52 @@ Anything that does not match is `400` and is stored nowhere. A good ping is `204
 | `line`    | `stable` or `edge`.                                                               |
 | `role`    | `solo`, `lead` or `member`. A deputy or peer that is not the lead is a `member`.  |
 | `trouble` | The trouble tally since the last ping, an array, `[]` when none. See below.       |
+| `usage`   | The usage tally since the last ping, an array, `[]` when none. See below.         |
+
+### Versions
+
+The receiver accepts these side by side. A body is checked against the key set of its own `v`, and a
+body whose keys do not match its `v` is refused.
+
+| `v` | Keys | Sent by |
+| --- | --- | --- |
+| `1` | The first nine, up to and including `role`. | 1.27.0-edge.1 |
+| `2` | The first ten, up to and including `trouble`. | 1.27.0 up to 1.28.x |
+| `3` | All eleven, with `usage`. | A bridge with the usage tally |
+
+A `v: 3` body must carry `usage`, `[]` when no agent ran. A `v: 2` body must not carry it. Old
+bridges stay in service for a long time, so the receiver keeps `v: 2` for as long as any ping of it
+arrives, and stores a v2 ping as one with no usage.
+
+### The usage tally
+
+The ping says how many agent sessions ran, per agent program and multiplexer, since the last ping
+(about a day). It is counts only: no name, path, title, id, prompt, model name or timing. Each row
+holds three keys:
+
+| Key        | Rule                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| `harness`  | The agent program, from a closed list: one of `agy`, `antigravity`, `claude`, `codex`, `dsh-tui`, `grok`, `hermes`, `kiro`, `muse`, `omp`, `openclaw`, `opencode`, `pi` (this build's list), or `other`. |
+| `mux`      | The multiplexer, from a closed list: `durable`, `herdr`, `herdr-core`, `tern`, `tmux`, `tuios`, `zellij` (this build's list), or `other`. |
+| `sessions` | How many sessions, 1 to 999.                                                               |
+
+The receiver treats `harness` and `mux` as text of the shape `^[a-z0-9-]{1,24}$` and does not
+enforce the list: the lists grow with a release, and a new word must not make a ping fail. Rows are
+sorted by `harness`, then `mux`. A pair of words appears once. A bridge sends at most 24 rows, and
+the receiver refuses more.
+
+Where the counts come from. Each bridge samples the panes its multiplexer reports, at most every 30
+seconds per herd session. A pane that holds an agent counts as one session, once per ping window: a
+bare shell and a trick's own session do not count, and the same agent session in the same pane is not
+counted twice. A new agent session in the same pane counts again. A pane that a crew member runs is
+counted by that member's own bridge, which pings as role `member`, so a lead never counts a member's
+panes. A program or multiplexer off the lists counts under `other`. To tell a session from a
+repeat, the bridge keeps a hash of it in its state file, salted with the install ID; the hash never
+leaves the machine and goes with the ID when the count is off.
+
+The window is the time since the last ping, not a calendar day. A session that spans two pings
+counts in both. A bridge that was not running counts nothing for that time. A failed send loses that
+window's counts.
 
 ### The trouble tally
 

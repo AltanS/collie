@@ -339,7 +339,9 @@ on your machine, the day, the version, the OS, the CPU, the install kind, the re
 or Edge) and whether the bridge runs alone, leads a crew or is a member. When a trouble card showed
 ("Cannot read a dialog" or "Send not landing"), it also carries a count: which card, the agent
 program's name and version, the multiplexer and, from 1.27.4, for a dialog a short hash of its
-key-hint row. No IP address is stored. No usage, no content, nothing you type or read.
+key-hint row. It also carries a count of agent sessions per agent program and multiplexer (for example
+`claude` on `tmux`, 3), and nothing else about them. No IP address is stored. No content, nothing you
+type or read.
 
 Turn it off on each machine in Settings, System, **Telemetry**, with `COLLIE_TELEMETRY=0` (in the
 instance's `.env` for a service), `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1`. Blocking

@@ -672,6 +672,13 @@ which card, the name and version of the agent program, the multiplexer it ran on
 row only, never a row with your text, never the screen or what you typed. It is absent unless that
 row is a short list of key hints, such as `enter select · esc back`.
 
+The ping also counts how many agent sessions ran since the last ping, about a day. Each row names an
+agent program, a multiplexer and a number, for example `claude`, `tmux`, 3. The names come from fixed
+lists in Collie, and any other name reads `other`. Collie counts sessions and nothing about them: no
+name, folder, title, prompt, model or time. To count a session once, the bridge keeps a hash of it in
+its own state file, salted with the install ID. The hash is not sent, and it goes with the ID when the
+count is off. A crew member counts its own sessions and pings for itself.
+
 Turning it off is one switch: Settings, System, **Telemetry**. `COLLIE_TELEMETRY=0`,
 `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one
 host it goes to, `ping.colliepwa.dev`, in your firewall. The first ping waits a day after the first
