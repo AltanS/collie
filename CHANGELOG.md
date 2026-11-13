@@ -29,6 +29,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A formula makes no link and loads nothing.** With Math set to MathJax, `\mmlToken` could put a link of any scheme, an image, a style, a class or an id into an agent reply or a Markdown file, and `\color`, `\colorbox` and `mathcolor` could name a `url()` paint. A formula now draws its glyphs and its colours only, with either engine. Thanks @bardrop (#775). Reported by @peter50216 (#773).
 
+- **The background-agents bar shows above the composer on Claude Code for macOS.** On macOS Claude Code draws the header of its background-agents footer as `⏺ main`, where Linux draws `● main`. Collie knew only the Linux mark, so the collapsed agents bar stayed hidden, and while a turn ran a focused `❯ ⏺ main` panel read as something open at the box and refused a send. Both marks now match, in the footer reader, the agents bar and the Claude profile. Thanks @GGGODLIN (#782).
+
 ## [1.28.3] - 2026-11-13
 
 **Urgent.** Claude Code's Remote Control can make Collie hold messages you send from the phone.

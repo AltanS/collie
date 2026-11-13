@@ -24,7 +24,7 @@ import { Icon } from "@/components/icons/icon";
 
 function isHeader(row: StyledLine): boolean {
   const text = row.segments.map((s) => s.text).join("").trim();
-  return text.startsWith("●") || isTasksPopupHeader(text);
+  return /^(?:❯\s+)?[●⏺](?:\s|$)/u.test(text) || isTasksPopupHeader(text);
 }
 
 function Row({ row, className }: { row: StyledLine; className?: string }) {

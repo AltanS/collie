@@ -6545,6 +6545,21 @@
    "version": "2.1.318",
    "state": "dialog"
   },
+  "claude--v2322-macos-agents-panel-focused--w80.txt": {
+   "harness": "claude",
+   "version": "2.1.322",
+   "state": "idle"
+  },
+  "claude--v2322-macos-agents-panel-idle--w80.txt": {
+   "harness": "claude",
+   "version": "2.1.322",
+   "state": "idle"
+  },
+  "claude--v2322-macos-agents-panel-working--w80.txt": {
+   "harness": "claude",
+   "version": "2.1.322",
+   "state": "running"
+  },
   "pi--v130-core-idle--w120.txt": {
    "harness": "pi",
    "version": "1.3.0",

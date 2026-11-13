@@ -4468,6 +4468,10 @@ describe("real screens from the fixture corpus", () => {
     panel.pane.over = [LIVE_ROW];
     panel.pane.status = ["  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents", "", "  ● main", "  ◯ first agent   working   3s · ↓ 1k tokens", "  ◯ second agent   working   9s · ↓ 2k tokens"];
     expect((await panel.send("carry on")).receipt).toMatchObject({ outcome: "sent" });
+    const macPanel = rig({ version: "2.1.322" });
+    macPanel.pane.over = [LIVE_ROW];
+    macPanel.pane.status = ["  ↑/↓ to select                                             ◐ medium · /effort", "", "❯ ⏺ main", "  ◯ first agent   working   3s · ↓ 1k tokens", "  ◯ second agent   working   9s · ↓ 2k tokens"];
+    expect((await macPanel.send("carry on")).receipt).toMatchObject({ outcome: "sent" });
   });
 
   for (const name of ["claude--menu-model-picker.txt", "claude--menu-resume-picker--w120-search.txt"]) {
