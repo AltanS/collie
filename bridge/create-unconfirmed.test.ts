@@ -15,7 +15,7 @@ import {
   type KnownBefore,
 } from "./create-confirm.ts";
 import type { JsonObject } from "./json.ts";
-import { isUnsettled, LAUNCH_RECEIPTS_FILE, LaunchReceiptStore, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import { isUnsettled, LAUNCH_RECEIPTS_FILE, LAUNCH_UNKNOWN_TEXT, LaunchReceiptStore, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
 import { createTab, createWorkspace, launch } from "./server.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type { Launcher } from "./types.ts";
@@ -153,7 +153,7 @@ describe("lookForCreated", () => {
       snapshot: () =>
         Promise.resolve(snap([pane({ paneId: "w9:p1", spaceId: "w9", tabId: "w9:t1" }), pane({ paneId: "w1:p2", spaceId: "w1", tabId: "w1:t2" })])),
     };
-    expect((await runLook(mux, { kind: "tab", spaceId: "w1" })).look).toMatchObject({ kind: "found", pane: { paneId: "w1:p2", tabId: "w1:t2" } });
+    expect((await runLook(mux, { kind: "tab", spaceId: "w1", cwd: "/home/op/app" })).look).toMatchObject({ kind: "found", pane: { paneId: "w1:p2", tabId: "w1:t2" } });
   });
 
   test("two new spaces: it cannot tell which, so it proves nothing", async () => {
@@ -171,7 +171,7 @@ describe("lookForCreated", () => {
         return Promise.resolve(snap(looks < 3 ? [] : [pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1" })]));
       },
     };
-    expect((await runLook(late, { kind: "space" })).look.kind).toBe("found");
+    expect((await runLook(late, { kind: "space", cwd: "/home/op/app" })).look.kind).toBe("found");
     expect(looks).toBe(3);
     let tries = 0;
     const empty = {
@@ -213,8 +213,8 @@ describe("lookForCreated", () => {
     const settles = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1", cwd: ++reads < 3 ? "" : "/home/op/app" })])) };
     expect((await runLook(settles, { kind: "space", cwd: "/home/op/app" })).look.kind).toBe("found");
     expect(reads).toBe(3);
-    // A create that named no folder has nothing to compare, so a blank folder is fine.
-    expect((await runLook(blank, { kind: "space" })).look.kind).toBe("found");
+    // A create that named no folder has no folder to compare; its label (the space's own, "w2") is the property it names.
+    expect((await runLook(blank, { kind: "space", label: "w2" })).look.kind).toBe("found");
   });
 
   test("a label the request gave must be the label the snapshot shows", async () => {
@@ -224,15 +224,29 @@ describe("lookForCreated", () => {
     expect(mismatch.look.kind).toBe("unread");
     const right = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1" })], { spaces: [["w2", "app"]] })) };
     expect((await runLook(right, { kind: "space", label: "app" })).look.kind).toBe("found");
-    // A snapshot that carries no label (an empty one) proves nothing against the request.
+    // A snapshot that carries no label (an empty one) shows nothing against the request, and nothing for it: the label named
+    // no positive property, so with no folder asked either the pane is only "new", which is not enough (see the next test).
     const silent = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1", spaceLabel: "" })])) };
-    expect((await runLook(silent, { kind: "space", label: "app" })).look.kind).toBe("found");
+    expect((await runLook(silent, { kind: "space", label: "app" })).look.kind).toBe("unread");
+    expect((await runLook(silent, { kind: "space", label: "app", cwd: "/home/op/app" })).look.kind).toBe("found");
     // A tab reads the tab's own label.
     const tabs = (label: string) => ({ snapshot: () => Promise.resolve(snap([pane({ paneId: "w1:p2", spaceId: "w1", tabId: "w1:t2" })], { tabs: [["w1:t2", label]] })) });
     expect((await runLook(tabs("other"), { kind: "tab", spaceId: "w1", label: "Claude" })).look.kind).toBe("unread");
     expect((await runLook(tabs("Claude"), { kind: "tab", spaceId: "w1", label: "Claude" })).look.kind).toBe("found");
-    // Nothing asked, nothing compared.
-    expect((await runLook(tabs("other"), { kind: "tab", spaceId: "w1" })).look.kind).toBe("found");
+  });
+
+  test("a bare create, one that named no folder and no label, adopts nothing: a lone new tab or space is doubtful", async () => {
+    const tabs = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w1:p2", spaceId: "w1", tabId: "w1:t2" })], { tabs: [["w1:t2", "2"]] })) };
+    const bareTab = await runLook(tabs, { kind: "tab", spaceId: "w1" });
+    expect(bareTab.look.kind).toBe("unread");
+    expect(bareTab.elapsed).toBeGreaterThanOrEqual(CONFIRM_BOUND_MS);
+    const spaces = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1" })])) };
+    expect((await runLook(spaces, { kind: "space" })).look.kind).toBe("unread");
+    // One property named is enough, and it must hold: the folder.
+    expect((await runLook(tabs, { kind: "tab", spaceId: "w1", cwd: "/home/op/app" })).look.kind).toBe("found");
+    expect((await runLook(tabs, { kind: "tab", spaceId: "w1", cwd: "/elsewhere" })).look.kind).toBe("none");
+    // Or the label, when the snapshot carries it.
+    expect((await runLook(tabs, { kind: "tab", spaceId: "w1", label: "2" })).look.kind).toBe("found");
   });
 
   test("a doubtful pane beside a matching one is two candidates, so it proves nothing", async () => {
@@ -433,14 +447,16 @@ describe("a create that timed out is looked up, not failed", () => {
     expect(mux.spaces).toHaveLength(1);
   });
 
-  test("a launch whose pane is not in the snapshot after the bound is the plain failure, and the id may run again", async () => {
+  test("a launch whose pane is not in the snapshot after the bound is unknown, not a failure, and the receipt stays", async () => {
     const mux = new FakeMux();
     mux.answer = "unconfirmed";
     const receipts = memoryLaunchReceipts();
     const { status, body } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
-    expect(status).toBe(200);
-    expect(body).toMatchObject({ ok: false, code: "workspace.create_failed" });
-    expect(receipts.get(ID)).toBeUndefined();
+    // "No pane seen in 4 s" is a time-out, not a fact.
+    expect(status).toBe(504);
+    expect(body).toMatchObject({ ok: false, code: "write_outcome_unknown" });
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+    expect(mux.texts).toEqual([]);
   });
 
   test("a launch whose snapshot cannot be read is unknown: a 504, the receipt says unknown, and the same id starts nothing", async () => {
@@ -463,21 +479,22 @@ describe("a create that timed out is looked up, not failed", () => {
     mux.answer = "unconfirmed";
     mux.shown = [pane({ paneId: "w1:p5", spaceId: "w1", tabId: "w1:t5" })];
     const receipts = memoryLaunchReceipts();
-    const res = await tab(mux, receipts, { workspaceId: "w1", requestId: ID });
+    const res = await tab(mux, receipts, { workspaceId: "w1", cwd: "/home/op/app", requestId: ID });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, pane: { paneId: "w1:p5", tabId: "w1:t5" } });
-    const again = await tab(mux, receipts, { workspaceId: "w1", requestId: ID });
+    const again = await tab(mux, receipts, { workspaceId: "w1", cwd: "/home/op/app", requestId: ID });
     expect(await again.json()).toMatchObject({ ok: true, replayed: true, pane: { paneId: "w1:p5" } });
     expect(mux.tabs).toHaveLength(1);
   });
 
-  test("a space create: nothing new after the bound is the plain failure", async () => {
+  test("a space create: nothing new after the bound is unknown, and the receipt stays", async () => {
     const mux = new FakeMux();
     mux.answer = "unconfirmed";
     const receipts = memoryLaunchReceipts();
     const res = await space(mux, receipts, { cwd: "/home/op/app", requestId: ID });
-    expect(await res.json()).toMatchObject({ ok: false, code: "workspace.create_failed" });
-    expect(receipts.get(ID)).toBeUndefined();
+    expect(res.status).toBe(504);
+    expect(await res.json()).toMatchObject({ ok: false, code: "write_outcome_unknown" });
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
   });
 });
 
@@ -591,9 +608,10 @@ describe("the look's before is a fresh snapshot, and its answer is checked", () 
     mux.shown = [old];
     const receipts = memoryLaunchReceipts();
     const { body } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
-    expect(body).toMatchObject({ ok: false, code: "workspace.create_failed" });
+    // Not named as ours; and "nothing new in 4 s" is not "nothing made", so the answer is unknown.
+    expect(body).toMatchObject({ ok: false, code: "write_outcome_unknown" });
     expect(mux.texts).toEqual([]);
-    expect(receipts.get(ID)).toBeUndefined();
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
   });
 
   test("a snapshot that cannot be read before the call means no look: unknown, never a guess", async () => {
@@ -839,5 +857,139 @@ describe("a pane that could not be closed, and a throw, never leave the receipt 
       // The pane exists, so the same id must not make another.
       expect(mux.spaces.length + mux.tabs.length).toBe(1);
     }
+  });
+});
+
+describe("a look that found nothing is a time-out, not a fact (M100 spec 04, review point 5)", () => {
+  const HOME_NAME = basename(homedir());
+  /** A create the adapter gave up on at 5 s: the pane lands after the look's bound, so the look sees nothing. */
+  function lateMux(): FakeMux {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [];
+    return mux;
+  }
+  const landed = (mux: FakeMux, over: Partial<MuxPane> = {}) => {
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: HOME_NAME, cwd: homedir(), ...over })];
+  };
+
+  test("a launch: the pane appears after the bound, the same id creates nothing and answers unknown", async () => {
+    const mux = lateMux();
+    const receipts = memoryLaunchReceipts();
+    const first = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(first.status).toBe(504);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+    landed(mux);
+    const retap = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(retap.status).toBe(504);
+    expect(retap.body).toMatchObject({ ok: false, code: "write_outcome_unknown", error: LAUNCH_UNKNOWN_TEXT });
+    expect(mux.spaces).toHaveLength(1);
+    expect(mux.texts).toEqual([]);
+  });
+
+  test("the receipt outlasts the phone's 30 s window by a wide margin: it is kept until the store's own cap pushes it out", async () => {
+    const mux = lateMux();
+    const receipts = memoryLaunchReceipts();
+    await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    await vc.run(vc.sleep(10 * 60_000));
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+  });
+
+  test("a tab create: the same", async () => {
+    const mux = lateMux();
+    const receipts = memoryLaunchReceipts();
+    expect((await tab(mux, receipts, { workspaceId: "w1", cwd: "/home/op/app", requestId: ID })).status).toBe(504);
+    mux.shown = [pane({ paneId: "w1:p5", spaceId: "w1", tabId: "w1:t5" })];
+    const retap = await tab(mux, receipts, { workspaceId: "w1", cwd: "/home/op/app", requestId: ID });
+    expect(retap.status).toBe(504);
+    expect(await retap.json()).toMatchObject({ code: "write_outcome_unknown", error: LAUNCH_UNKNOWN_TEXT });
+    expect(mux.tabs).toHaveLength(1);
+  });
+
+  test("a space create: the same", async () => {
+    const mux = lateMux();
+    const receipts = memoryLaunchReceipts();
+    expect((await space(mux, receipts, { cwd: "/home/op/app", requestId: ID })).status).toBe(504);
+    landed(mux, { cwd: "/home/op/app" });
+    const retap = await space(mux, receipts, { cwd: "/home/op/app", requestId: ID });
+    expect(retap.status).toBe(504);
+    expect(mux.spaces).toHaveLength(1);
+  });
+
+  test("a create with no request id answers unknown too: nothing to guard, but nothing was proven either", async () => {
+    const mux = lateMux();
+    const res = await space(mux, memoryLaunchReceipts(), { cwd: "/home/op/app" });
+    expect(res.status).toBe(504);
+  });
+
+  test("a create the multiplexer REFUSED forgets the id: a retap creates", async () => {
+    const mux = new FakeMux();
+    mux.answer = "refused";
+    const receipts = memoryLaunchReceipts();
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).body).toMatchObject({ ok: false, code: "workspace.create_failed" });
+    expect(receipts.get(ID)).toBeUndefined();
+    mux.answer = "ok";
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).status).toBe(200);
+    expect(mux.spaces).toHaveLength(2);
+  });
+
+  test("a bare tab create (no folder, no label) whose tab shows up is not adopted: unknown, nothing typed, receipt unknown", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [pane({ paneId: "w1:p5", spaceId: "w1", tabId: "w1:t5" })];
+    const receipts = memoryLaunchReceipts();
+    const res = await tab(mux, receipts, { workspaceId: "w1", requestId: ID });
+    expect(res.status).toBe(504);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+    expect((await tab(mux, receipts, { workspaceId: "w1", requestId: ID })).status).toBe(504);
+    expect(mux.tabs).toHaveLength(1);
+  });
+});
+
+describe("a pane the look found is typed into only at a real shell prompt", () => {
+  const HOME_NAME = basename(homedir());
+  function found(screen: (read: number) => string): FakeMux {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: HOME_NAME, cwd: homedir() })];
+    mux.screen = screen;
+    return mux;
+  }
+
+  test("a screen that holds still but ends in output, not a prompt: nothing is typed, unknown", async () => {
+    const mux = found(() => "Last login: today\nbuilding project...");
+    const receipts = memoryLaunchReceipts();
+    const { status } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(status).toBe(504);
+    expect(mux.texts).toEqual([]);
+    expect(mux.closes).toEqual([]);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+  });
+
+  test("a screen that ends in an agent's input box is no prompt either", async () => {
+    const mux = found(() => "\u256d\u2500\u2500\u2500\u2500\u256e\n\u2502 > \u2502\n\u2570\u2500\u2500\u2500\u2500\u256f\n  ? for shortcuts");
+    expect((await launchOnce(mux, memoryLaunchReceipts(), { command: "claude", requestId: ID })).status).toBe(504);
+    expect(mux.texts).toEqual([]);
+  });
+
+  test("a prompt on the last non-blank row, with blank rows under it, is typed into", async () => {
+    const mux = found(() => "Last login: today\nuser@host:~/work$ \n\n\n");
+    const { status } = await launchOnce(mux, memoryLaunchReceipts(), { command: "claude", requestId: ID });
+    expect(status).toBe(200);
+    expect(mux.texts).toEqual([["w7:p1", "claude"]]);
+  });
+
+  test("a prompt that is drawn late is waited for inside the bound", async () => {
+    const mux = found((read) => (read < 6 ? "starting shell..." : "~/work $"));
+    expect((await launchOnce(mux, memoryLaunchReceipts(), { command: "claude", requestId: ID })).status).toBe(200);
+    expect(mux.texts).toHaveLength(1);
+  });
+
+  test("a pane the create call confirmed keeps today's path: no prompt is asked for", async () => {
+    const mux = new FakeMux();
+    mux.screen = () => "welcome to a shell that draws no recognisable prompt";
+    const { status } = await launchOnce(mux, memoryLaunchReceipts(), { command: "claude", requestId: ID });
+    expect(status).toBe(200);
+    expect(mux.texts).toEqual([["w1:p1", "claude"]]);
   });
 });

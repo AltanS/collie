@@ -5,9 +5,11 @@
 // "Sent, and not confirmed in time"), and a route that read it as a failure made a second pane on the
 // retry. So the route looks: it reads the multiplexer's snapshot again and asks whether a pane stands
 // there that was not there before the call. Found, the create worked and the route answers with that pane.
-// Not found after the bound, the create did not happen and the answer is the plain failure. A snapshot
-// that cannot be read, or that shows more than one new space or tab, proves nothing, and the route says the
-// outcome is unknown.
+// Not found after the bound proves nothing either: the bound is a time-out, and a create that landed at 5 s
+// is a pane the look did not see. So the route answers unknown in every case the look does not find the pane
+// (a snapshot that cannot be read, one with more than one candidate, or one with none), and keeps its receipt
+// as `unknown`, so the same id never creates again. Only a create the multiplexer REFUSED, or one that never
+// left the bridge, is a plain failure and forgets its id.
 //
 // WHAT "NEW" MEANS. The ids a FRESH snapshot held right before the call (`knownBefore`), read from the
 // multiplexer and not from the state engine's memory, which may be a poll behind and would then name a pane
@@ -15,8 +17,9 @@
 // space that was not known (a space), is a candidate. It is the new one when its folder is the one asked for
 // (a pane that reports no folder is NOT a match yet: the look goes on) and, when the request named a label
 // and the snapshot carries the tab's or space's own, that label is the one asked for. A candidate that
-// cannot be judged yet, or whose label differs, is doubtful: it is never named, and it keeps the look from
-// saying "not made", because it may be ours under a name the multiplexer changed. The rule reads only the
+// cannot be judged yet, whose label differs, or that is merely new when the request named no folder and no
+// label to be told apart by, is doubtful: it is never named, and it keeps the look from saying "not made",
+// because it may be ours under a name the multiplexer changed. The rule reads only the
 // contract's own snapshot, so it holds for every multiplexer, and each adapter's part is the one thing only
 // it knows: that its own call timed out.
 //
@@ -163,6 +166,14 @@ function newPaneIn(snapshot: MuxSnapshot, known: KnownBefore, wanted: CreateWant
     }
     const label = labelOf(snapshot, pane, wanted);
     if (asked !== null && label !== "" && label !== asked) {
+      doubtful.add(unit);
+      continue;
+    }
+    // "It is new" is not a property of THIS request: a person, or another device, may have opened that tab or
+    // space in the same moment. A match needs one thing the request named, the folder or the label, and the
+    // snapshot must show it. A create that named neither (the phone's "+" on a tab) adopts nothing.
+    const named = folder !== null || (asked !== null && label === asked);
+    if (!named) {
       doubtful.add(unit);
       continue;
     }
