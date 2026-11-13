@@ -444,6 +444,26 @@ describe("a space whose folder is a linked worktree", () => {
     expect(fake.plainCreates).toBe(0);
   });
 
+  test("the retry after a timeout opens no second space on that folder", async () => {
+    // The open happened and the answer was lost: the caller sees a refusal and asks again.
+    class AnswerLost extends FakeHerdr {
+      lose = true;
+      override async openWorktree(opts: { cwd: string; path: string; label?: string }): Promise<CreatedShell> {
+        const opened = await super.openWorktree(opts);
+        if (!this.lose) return opened;
+        throw new Error("herdr worktree.open: timed out after 5000ms");
+      }
+    }
+    const fake = new AnswerLost();
+    const mux = new HerdrMux(fake, () => []);
+    const before = (await mux.snapshot()).spaces.length;
+    expect((await mux.createSpace(ASKED)).ok).toBe(false);
+    fake.lose = false;
+    const retried = await mux.createSpace(ASKED);
+    expect(retried.ok).toBe(true);
+    expect((await mux.snapshot()).spaces.length).toBe(before + 1);
+  });
+
   test("a dropped connection is a refusal too", async () => {
     const fake = new OpenFails(new Error("herdr worktree.open: connection closed before reply"));
     const created = await new HerdrMux(fake, () => []).createSpace(ASKED);

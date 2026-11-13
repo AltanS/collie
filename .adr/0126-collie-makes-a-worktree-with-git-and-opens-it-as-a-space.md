@@ -176,3 +176,10 @@ Probed 2026-11-13 on Herdr 0.9.5 in a scratch session:
 The consequence "The Herdr daemon does not know these worktrees" no longer holds on the Herdr TUI:
 it knows them from the open. Herdr's `worktree.remove` is addressed by workspace and may now work
 for them; Collie still has no removal.
+
+The rule is the contract's, not Herdr's: MUX_CONTRACT.md, *A worktree space*, states it in MUST and
+MAY words for every adapter, and a conformance check holds every adapter to it. `withRepoFacts` sets
+the fact for every caller that opens a folder the disk says is a linked worktree (a launch, a plain
+"New space"), so the worktree route is not the only path that nests. The differences that remain by
+multiplexer are listed in the contract, under *What still differs by multiplexer when a worktree is
+opened*.

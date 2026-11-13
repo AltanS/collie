@@ -9,6 +9,7 @@ import {
   type MuxPane,
   type MuxSnapshot,
   type MuxSpace,
+  type MuxSpaceRequest,
   type MuxSubscription,
 } from "./mux/types.ts";
 import type { RepoFacts } from "./repo-facts.ts";
@@ -43,7 +44,8 @@ class FakeAdapter implements MuxAdapter {
   createTab() { this.calls.push("createTab"); return Promise.resolve(muxOk({ paneId: "%9", spaceId: "s", spaceLabel: "s", tabId: "t", cwd: "/tmp" })); }
   renameTab() { this.calls.push("renameTab"); return Promise.resolve(muxAck()); }
   closeTab() { this.calls.push("closeTab"); return Promise.resolve(muxAck()); }
-  createSpace() { this.calls.push("createSpace"); return Promise.resolve(muxOk({ paneId: "%9", spaceId: "s", spaceLabel: "s", tabId: "t", cwd: "/tmp" })); }
+  readonly spaceRequests: MuxSpaceRequest[] = [];
+  createSpace(request?: MuxSpaceRequest) { this.calls.push("createSpace"); if (request !== undefined) this.spaceRequests.push(request); return Promise.resolve(muxOk({ paneId: "%9", spaceId: "s", spaceLabel: "s", tabId: "t", cwd: "/tmp" })); }
   listSessions() { this.calls.push("listSessions"); return Promise.resolve(muxOk([])); }
   watch() { this.calls.push("watch"); return this.subscription; }
 }
@@ -178,5 +180,41 @@ describe("withRepoFacts", () => {
       "reachable", "refresh", "readGrid", "typeText", "writeKeys", "renamePane", "closePane", "setFocus",
       "createTab", "renameTab", "closeTab", "createSpace", "listSessions", "watch",
     ]);
+  });
+});
+
+describe("withRepoFacts: a space opened on a linked worktree carries the fact (MUX_CONTRACT.md, A worktree space)", () => {
+  const open = async (request: MuxSpaceRequest, table: Record<string, RepoFacts | null>) => {
+    const fake = new FakeAdapter();
+    const source = factsOver(table);
+    await withRepoFacts(fake, source).createSpace(request);
+    return { sent: fake.spaceRequests[0], asked: source.asked };
+  };
+
+  test("a folder the disk says is a linked worktree gets the main repository root", async () => {
+    const { sent } = await open({ cwd: "/r/wt", label: "x" }, { "/r/wt": LINKED });
+    expect(sent).toEqual({ cwd: "/r/wt", label: "x", worktree: { repoRoot: "/r/main" } });
+  });
+
+  test("a main checkout, a plain folder and a relative one go through as they came", async () => {
+    expect((await open({ cwd: "/r/main" }, { "/r/main": MAIN })).sent).toEqual({ cwd: "/r/main" });
+    expect((await open({ cwd: "/tmp/x" }, {})).sent).toEqual({ cwd: "/tmp/x" });
+    const relative = await open({ cwd: "" }, {});
+    expect(relative.sent).toEqual({ cwd: "" });
+    expect(relative.asked).toEqual([]);
+  });
+
+  test("a request that already carries the fact is not read again and not changed", async () => {
+    const stated = { cwd: "/r/wt", worktree: { repoRoot: "/r/stated" } };
+    const { sent, asked } = await open(stated, { "/r/wt": LINKED });
+    expect(sent).toEqual(stated);
+    expect(asked).toEqual([]);
+  });
+
+  test("a facts read that throws leaves the request as it was", async () => {
+    const fake = new FakeAdapter();
+    const w = withRepoFacts(fake, { facts: () => Promise.reject(new Error("disk")) });
+    expect((await w.createSpace({ cwd: "/r/wt" })).ok).toBe(true);
+    expect(fake.spaceRequests).toEqual([{ cwd: "/r/wt" }]);
   });
 });
