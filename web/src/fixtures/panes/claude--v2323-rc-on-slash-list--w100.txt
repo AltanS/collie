@@ -1,0 +1,40 @@
+[38;5;246m[48;5;237m❯ [38;5;231mAsk me one question with the AskUserQuestion tool: tea or coffee?[39m
+
+[38;5;246m[49m● [39mUser declined to answer questions
+[38;5;246m  ⎿  · Which do you prefer, tea or coffee? (Tea / Coffee)[39m
+
+[38;5;246m✻[39m [38;5;246mCogitated for 2s · done 12:14 AM[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231mRun [38;5;153mtouch demo.txt[38;5;231m with the Bash tool[39m
+
+[38;5;114m[49m●[39m [1mBash[0m(touch demo.txt)
+[38;5;246m  ⎿  Done[39m
+
+[38;5;231m●[39m I ran the command. The file [38;5;153mdemo.txt[39m now exists in the project folder, and it is empty.
+
+[38;5;246m✻[39m [38;5;246mChurned for 4s · done 12:15 AM[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m❯ /[7m [0m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;153m❯ /add-dir                    Add a new working directory[39m
+  [38;5;246m [39m [38;5;246m/advisor[39m                    [38;5;246mLet[39m [38;5;246mClaude[39m [38;5;246mconsult[39m [38;5;246ma[39m [38;5;246mstronger[39m [38;5;246mmodel[39m [38;5;246mat[39m [38;5;246mkey[39m [38;5;246mmoments[39m
+  [38;5;246m [39m [38;5;246m/artifacts[39m                  [38;5;246mBrowse[39m [38;5;246myour[39m [38;5;246mpublished[39m [38;5;246mand[39m [38;5;246mshared[39m [38;5;246martifacts[39m
+  [38;5;246m [39m [38;5;246m/auto-mode-setup[39m            [38;5;246mTeach[39m [38;5;246mauto[39m [38;5;246mmode[39m [38;5;246mabout[39m [38;5;246myour[39m [38;5;246menvironment,[39m [38;5;246mplus[39m [38;5;246moptional[39m [38;5;246mrule[39m [38;5;246mtweaks[39m
+  [38;5;246m [39m [38;5;246m/autocompact[39m                [38;5;246mSet[39m [38;5;246mhow[39m [38;5;246mfull[39m [38;5;246mthe[39m [38;5;246mcontext[39m [38;5;246mgets[39m [38;5;246mbefore[39m [38;5;246mauto-summarizing[39m
+  [38;5;246m [39m [38;5;246m/autofix-pr[39m                 [38;5;246mMonitor[39m [38;5;246mand[39m [38;5;246mautofix[39m [38;5;246many[39m [38;5;246missues[39m [38;5;246mwith[39m [38;5;246mthe[39m [38;5;246mcurrent[39m [38;5;246mPR[39m
+  [38;5;246m [39m [38;5;246m/background[39m                 [38;5;246mSend[39m [38;5;246mthis[39m [38;5;246msession[39m [38;5;246mto[39m [38;5;246mthe[39m [38;5;246mbackground[39m [38;5;246mand[39m [38;5;246mfree[39m [38;5;246mthe[39m [38;5;246mterminal[39m
+  [38;5;246m [39m [38;5;246m/branch[39m                     [38;5;246mCreate[39m [38;5;246ma[39m [38;5;246mbranch[39m [38;5;246mof[39m [38;5;246mthe[39m [38;5;246mcurrent[39m [38;5;246mconversation[39m [38;5;246mat[39m [38;5;246mthis[39m [38;5;246mpoint[39m
+  [38;5;246m [39m [38;5;246m/btw[39m                        [38;5;246mAsk[39m [38;5;246ma[39m [38;5;246mquick[39m [38;5;246mside[39m [38;5;246mquestion[39m [38;5;246mwithout[39m [38;5;246minterrupting[39m [38;5;246mthe[39m [38;5;246mmain[39m
+                                [38;5;246mconversation[39m
+  [38;5;246m [39m [38;5;246m/bug[39m                        [38;5;246mReport[39m [38;5;246ma[39m [38;5;246mbug[39m [38;5;246mor[39m [38;5;246mshare[39m [38;5;246myour[39m [38;5;246mconversation[39m
+  [38;5;246m [39m [38;5;246m/cd[39m                         [38;5;246mMove[39m [38;5;246mthis[39m [38;5;246msession[39m [38;5;246mto[39m [38;5;246ma[39m [38;5;246mnew[39m [38;5;246mworking[39m [38;5;246mdirectory[39m
+  [38;5;246m [39m [38;5;246m/chrome[39m                     [38;5;246mOpen[39m [38;5;246mClaude[39m [38;5;246min[39m [38;5;246mChrome[39m [38;5;246msettings[39m
+  [38;5;246m [39m [38;5;246m/clear[39m                      [38;5;246mStart[39m [38;5;246ma[39m [38;5;246mnew[39m [38;5;246msession[39m [38;5;246mwith[39m [38;5;246mempty[39m [38;5;246mcontext;[39m [38;5;246mprevious[39m [38;5;246msession[39m [38;5;246mstays[39m [38;5;246mon[39m
+                                [38;5;246mdisk[39m [38;5;246m(resumable[39m [38;5;246mwith[39m [38;5;246m/resume)[39m
+  [38;5;246m [39m [38;5;246m/color[39m                      [38;5;246mSet[39m [38;5;246mthe[39m [38;5;246mprompt[39m [38;5;246mbar[39m [38;5;246mcolor[39m [38;5;246mfor[39m [38;5;246mthis[39m [38;5;246msession[39m
+  [38;5;246m [39m [38;5;246m/compact[39m                    [38;5;246mFree[39m [38;5;246mup[39m [38;5;246mcontext[39m [38;5;246mby[39m [38;5;246msummarizing[39m [38;5;246mthe[39m [38;5;246mconversation[39m [38;5;246mso[39m [38;5;246mfar[39m
+  [38;5;246m [39m [38;5;246m/config[39m                     [38;5;246mOpen[39m [38;5;246msettings[39m
+  [38;5;246m [39m [38;5;246m/context[39m                    [38;5;246mVisualize[39m [38;5;246mcurrent[39m [38;5;246mcontext[39m [38;5;246musage[39m [38;5;246mas[39m [38;5;246ma[39m [38;5;246mcolored[39m [38;5;246mgrid[39m
+
+
