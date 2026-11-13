@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Segmented } from "@/playground/layout";
 import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { __forgetSendIntentMemory } from "@/lib/send-intent";
-import ROUND from "./send-it-again";
+import ROUND, { CAPTION, STAGE_HEIGHT } from "./send-it-again";
 
 // The round for "Send it again?", drawn the way the design app's round page draws it: one option, ONE Case
 // switch, the real composer with a fake bridge behind it.
@@ -48,6 +48,27 @@ describe("the Send it again? round", () => {
     expect(frame().querySelector('[data-state="send-it-again"]')).not.toBeNull();
     expect(screen.getAllByRole("group", { name: "Case" })).toHaveLength(1);
   });
+
+  it("fits the design app's frame: a stage 458 high inside the 470 frame, and a caption in plain words", () => {
+    expect(STAGE_HEIGHT).toBe(458);
+    expect(ROUND.frameHeight).toBe(470);
+    expect(CAPTION).toBe("The question stays for 3 seconds. In After unknown, tap Send to see it again.");
+    render(<Round />);
+    const stage = frame().querySelector<HTMLElement>('[data-slot="send-it-again-stage"]')!;
+    expect(stage.style.height).toBe("458px");
+    expect(within(stage).getByText(CAPTION)).toBeInTheDocument();
+  });
+
+  it("After unknown: a tap of your own on Send asks, and the next tap sends as sent", async () => {
+    render(<Round />);
+    await waitFor(() => expect(within(frame()).getByText(/cannot tell if this was sent/i)).toBeInTheDocument(), SLOW);
+    const box = within(frame()).getByRole<HTMLTextAreaElement>("textbox");
+    const send = await within(frame()).findByRole("button", { name: "Send" });
+    await waitFor(() => expect(send).toBeEnabled(), SLOW);
+    fireEvent.click(send);
+    fireEvent.click(await within(frame()).findByRole("button", { name: "Send it again?" }, SLOW));
+    await waitFor(() => expect(box.value).toBe(""), SLOW);
+  }, TEST_MS);
 
   it("After unknown: the real composer keeps the text and says it cannot tell", async () => {
     render(<Round />);
