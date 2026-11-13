@@ -2939,7 +2939,6 @@ export const zh: Dictionary = {
   "telemetry.row.off": "关闭",
   "telemetry.row.reading": "正在读取…",
   "telemetry.row.failed": "无法读取",
-  "telemetry.card.description": "匿名：每天一次 ping，附带安装数量和问题信号，使用随机 ID。仅此而已。",
   "telemetry.card.reading": "正在从这台机器读取设置…",
   "telemetry.card.readFailed": "无法从这台机器读取设置。",
   "telemetry.card.saving": "正在保存…",

@@ -2959,7 +2959,6 @@ export const ja: Dictionary = {
   "telemetry.row.off": "オフ",
   "telemetry.row.reading": "読み込み中…",
   "telemetry.row.failed": "読み込めませんでした",
-  "telemetry.card.description": "匿名: ランダムなIDのもと、インストール数とトラブルシグナルを含むpingを1日1回送信します。それ以外は送信しません。",
   "telemetry.card.reading": "このマシンから設定を読み込んでいます…",
   "telemetry.card.readFailed": "このマシンから設定を読み込めませんでした。",
   "telemetry.card.saving": "保存しています…",

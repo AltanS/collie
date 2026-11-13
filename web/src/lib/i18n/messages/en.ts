@@ -3287,7 +3287,9 @@ export const en = {
   "telemetry.row.off": "Off",
   "telemetry.row.reading": "Reading…",
   "telemetry.row.failed": "Could not be read",
-  "telemetry.card.description": "Anonymous: one ping a day with the install count and the trouble signals, under a random ID. Nothing else.",
+  // English only until the translation pass (ping v3 added the usage count): listed in PENDING_TRANSLATION below.
+  "telemetry.card.description":
+    "Anonymous: one ping a day with the install count, how many agent sessions ran per agent program and multiplexer, and the trouble signals, under a random ID. Nothing else.",
   "telemetry.card.reading": "Reading the setting from this machine…",
   "telemetry.card.readFailed": "The setting could not be read from this machine.",
   "telemetry.card.saving": "Saving…",
@@ -4195,6 +4197,7 @@ export const PENDING_TRANSLATION = [
   "settings.usageRow.description",
   "settings.usageRow.option.percent",
   "settings.usageRow.option.dots",
+  "telemetry.card.description",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

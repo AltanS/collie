@@ -198,6 +198,7 @@ import { adoptAtBoot, carriedSeen, holdCopies, holdForTap, readAdoptMarker, writ
 import { TricksCopySync } from "./crew/carry-sync.ts";
 import { tricksStartingAtTap } from "./crew/carry-adopt.ts";
 import { answerCarried, postCarryNotices } from "./crew/carry-notices.ts";
+import { realAgentPanes } from "./tricks/panes.ts";
 import { answerRights, RightsCards } from "./tricks/rights-card.ts";
 import {
   adoptLeadership,
@@ -1791,6 +1792,10 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // declaration and lifts `createWorktree` from `createSpace` plus git (bridge/worktree-capability.ts).
   const herdr = withRepoFacts(withWorktreeCapability(withBeaconsIfBlind(built.adapter, target), { git: worktreeGit }), { facts: (folder) => repoFactsOf(folder, nodeGitHeadDisk, homedir()) });
   const engine = new StateEngine(herdr, cfg.pollMs, { museSessionName: museNames });
+  // The install ping's usage tally (ping v3): this session's agent panes, by this session's multiplexer.
+  // The ping counts them and drops them again; it throttles itself and never throws into the poll.
+  const usageMux = endpoint.kind === "program" ? DURABLE_MUX : cfg.mux;
+  engine.onUpdate((s) => telemetry.sessions({ scope: name, mux: usageMux, panes: realAgentPanes(s.agents) }));
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any
   // herd change, and while it's healthy the interval relaxes to the safety-net cadence. Events are

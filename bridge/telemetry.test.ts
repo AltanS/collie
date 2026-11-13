@@ -43,6 +43,18 @@ import {
   type TelemetryRecord,
   type TelemetryState,
   type TroubleSignal,
+  type UsagePane,
+  type UsageRow,
+  noteSessions,
+  PING_SCHEMA,
+  USAGE_HARNESSES,
+  USAGE_MUXES,
+  USAGE_PANES_MAX,
+  USAGE_ROWS_MAX,
+  USAGE_SAMPLE_MS,
+  USAGE_SEEN_MAX,
+  USAGE_SESSIONS_MAX,
+  usageWord,
 } from "./telemetry.ts";
 
 const RELEASE = "1.26.0+fd5a796587";
@@ -214,17 +226,17 @@ describe("resolveTelemetryUrl: the override rules", () => {
 });
 
 describe("buildPing", () => {
-  const ping = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [] });
+  const ping = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [], usage: [] });
 
-  test("the key set is exactly v, id, day, version, os, arch, install, line, role, trouble (ten keys)", () => {
-    expect(Object.keys(ping)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line", "role", "trouble"]);
+  test("the key set is exactly v, id, day, version, os, arch, install, line, role, trouble, usage (eleven keys)", () => {
+    expect(Object.keys(ping)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line", "role", "trouble", "usage"]);
   });
 
   test("an empty tally is [], and a row carries exactly kind, harness, version, mux, count", () => {
     expect(ping.trouble).toEqual([]);
     // A row read from a record file that grew a stray field still leaves with its five fields only.
     const grown = { kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", count: 2, paneId: "w1:p1" } as const;
-    const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [grown] });
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [grown], usage: [] });
     expect(built.trouble).toEqual([{ kind: "send", harness: "claude", version: "2.1.316", mux: "herdr", count: 2 }]);
     expect(Object.keys(built.trouble[0] ?? {})).toEqual(["kind", "harness", "version", "mux", "count"]);
   });
@@ -232,7 +244,7 @@ describe("buildPing", () => {
   test("a row without a screen is byte for byte a 1.27.3 row; a dialog row with one carries it before count (1.27.4)", () => {
     const plain = { kind: "dialog", harness: "codex", version: "0.167.0", mux: "herdr", count: 13 } as const;
     const hashed = { ...plain, screen: "634c6530" } as const;
-    const built = buildPing({ id: "a".repeat(32), day: "2026-11-08", version: "1.27.4", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [plain, hashed] });
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-08", version: "1.27.4", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [plain, hashed], usage: [] });
     expect(JSON.stringify(built.trouble[0])).toBe('{"kind":"dialog","harness":"codex","version":"0.167.0","mux":"herdr","count":13}');
     expect(JSON.stringify(built.trouble[1])).toBe('{"kind":"dialog","harness":"codex","version":"0.167.0","mux":"herdr","screen":"634c6530","count":13}');
     expect(built.trouble[0]).not.toHaveProperty("screen");
@@ -240,7 +252,7 @@ describe("buildPing", () => {
 
   test("each role value is carried as given", () => {
     for (const role of ["solo", "lead", "member"] as const) {
-      const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role, trouble: [] });
+      const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role, trouble: [], usage: [] });
       expect(built.role).toBe(role);
     }
   });
@@ -251,9 +263,9 @@ describe("buildPing", () => {
     expect(pingRole("peer")).toBe("member");
   });
 
-  test("the values are the ones given, and the schema is 2", () => {
+  test("the values are the ones given, and the schema is 3", () => {
     expect(ping).toEqual({
-      v: 2,
+      v: 3,
       id: "a".repeat(32),
       day: "2026-11-04",
       version: "1.26.0",
@@ -263,6 +275,7 @@ describe("buildPing", () => {
       line: "stable",
       role: "solo",
       trouble: [],
+      usage: [],
     });
   });
 
@@ -421,7 +434,7 @@ describe("createTelemetry", () => {
     expect(call?.init.method).toBe("POST");
     expect(call?.init.headers).toEqual({ "content-type": "application/json", "user-agent": PING_USER_AGENT });
     expect(JSON.parse(String(call?.init.body))).toEqual({
-      v: 2,
+      v: 3,
       id: "1".repeat(32),
       day: utcDay(r.clock.now),
       version: "1.26.0",
@@ -431,6 +444,7 @@ describe("createTelemetry", () => {
       line: "stable",
       role: "solo",
       trouble: [],
+      usage: [],
     });
     expect(call?.init.signal).toBeDefined();
   });
@@ -516,7 +530,7 @@ describe("createTelemetry", () => {
     expect(one.next?.id).toBe("1".repeat(32));
     expect(two.next?.id).toBe("1".repeat(32));
     expect(one.next).toEqual({
-      v: 2,
+      v: 3,
       id: "1".repeat(32),
       day: utcDay(r.clock.now),
       version: "1.26.0",
@@ -526,6 +540,7 @@ describe("createTelemetry", () => {
       line: "stable",
       role: "solo",
       trouble: [],
+      usage: [],
     });
   });
 
@@ -964,5 +979,361 @@ describe("the tally in the shell (M86 spec 05)", () => {
       JSON.stringify({ ...EMPTY_TELEMETRY_RECORD, trouble: [{ ...SIGNAL, count: 3 }, { ...SIGNAL, mux: "Screen", count: 1 }, { ...SIGNAL, count: 0 }] }),
     );
     expect(record.trouble).toEqual([{ ...SIGNAL, count: 3 }]);
+  });
+});
+
+// ── THE USAGE TALLY (ping v3) ─────────────────────────────────────────────────────────────────────
+
+const ON: TelemetryState = { on: true, decidedBy: "default" };
+const OFF: TelemetryState = { on: false, decidedBy: "settings" };
+const WITH_ID: TelemetryRecord = { ...EMPTY_TELEMETRY_RECORD, id: "a".repeat(32) };
+
+const pane = (paneId: string, agent: string, extra: Partial<UsagePane> = {}): UsagePane => ({ paneId, agent, ...extra });
+
+const count = (record: TelemetryRecord, a: { mux: string; panes: readonly UsagePane[]; scope?: string }): TelemetryRecord =>
+  noteSessions(record, { scope: a.scope ?? "default", mux: a.mux, panes: a.panes }, ON);
+
+describe("the closed lists", () => {
+  test("a word on the list stays, any other word is other", () => {
+    expect(usageWord("claude", USAGE_HARNESSES)).toBe("claude");
+    expect(usageWord("omp", USAGE_HARNESSES)).toBe("omp");
+    expect(usageWord("my-private-agent", USAGE_HARNESSES)).toBe("other");
+    expect(usageWord("", USAGE_HARNESSES)).toBe("other");
+    expect(usageWord("tmux", USAGE_MUXES)).toBe("tmux");
+    expect(usageWord("my-mux", USAGE_MUXES)).toBe("other");
+  });
+
+  test("the lists are the code's own: the journal adapters and aliases, the mux registry's ids", () => {
+    for (const word of ["claude", "codex", "pi", "omp"]) expect(USAGE_HARNESSES).toContain(word);
+    for (const word of ["herdr", "herdr-core", "tmux", "zellij", "durable"]) expect(USAGE_MUXES).toContain(word);
+    expect(USAGE_HARNESSES).not.toContain("other");
+    expect(USAGE_MUXES).not.toContain("other");
+    // `shell` is no agent, and a trick's own session is no agent.
+    expect(USAGE_HARNESSES).not.toContain("shell");
+  });
+});
+
+describe("noteSessions: the tally, pure", () => {
+  test("a fake session list counts one session per agent pane, per harness and mux", () => {
+    const next = count(WITH_ID, {
+      mux: "herdr",
+      panes: [pane("w1:p1", "claude"), pane("w1:p2", "claude"), pane("w2:p1", "codex"), pane("w3:p1", "omp")],
+    });
+    expect(next.usage.rows).toEqual([
+      { harness: "claude", mux: "herdr", sessions: 2 },
+      { harness: "codex", mux: "herdr", sessions: 1 },
+      { harness: "omp", mux: "herdr", sessions: 1 },
+    ]);
+  });
+
+  test("the same pane read again is the same session; a new session in it, and a new pane, count", () => {
+    const first = count(WITH_ID, { mux: "tmux", panes: [pane("%1", "claude", { agentSession: { value: "s-1" } })] });
+    const again = count(first, { mux: "tmux", panes: [pane("%1", "claude", { agentSession: { value: "s-1" } })] });
+    expect(again).toBe(first);
+    const fresh = count(again, { mux: "tmux", panes: [pane("%1", "claude", { agentSession: { value: "s-2" } }), pane("%2", "claude")] });
+    expect(fresh.usage.rows).toEqual([{ harness: "claude", mux: "tmux", sessions: 3 }]);
+  });
+
+  test("a pane id in two herd sessions, or on two multiplexers, is two sessions", () => {
+    const a = count(WITH_ID, { scope: "one", mux: "herdr", panes: [pane("w1:p1", "claude")] });
+    const b = count(a, { scope: "two", mux: "herdr", panes: [pane("w1:p1", "claude")] });
+    expect(b.usage.rows).toEqual([{ harness: "claude", mux: "herdr", sessions: 2 }]);
+  });
+
+  test("a bare shell and a pane with no agent are not counted", () => {
+    const next = count(WITH_ID, {
+      mux: "herdr",
+      panes: [pane("a", "shell"), pane("b", "claude", { kind: "shell" }), pane("d", "")],
+    });
+    expect(next).toBe(WITH_ID);
+    expect(next.usage).toEqual({ rows: [], seen: [] });
+  });
+
+  test("a harness off the list is other, and so is a mux off the list; the unknown ones share a row", () => {
+    const next = count(WITH_ID, { mux: "some-mux", panes: [pane("1", "private-agent"), pane("2", "another-agent"), pane("3", "claude")] });
+    expect(next.usage.rows).toEqual([
+      { harness: "other", mux: "other", sessions: 2 },
+      { harness: "claude", mux: "other", sessions: 1 },
+    ]);
+  });
+
+  test("the record keeps no pane id, no session value, no path and no agent word off the lists", () => {
+    const next = count(WITH_ID, {
+      mux: "herdr",
+      panes: [pane("w9:p9", "private-agent", { agentSession: { value: "/home/someone/.pi/agent/sessions/secret-project.jsonl" } })],
+    });
+    const text = JSON.stringify(next.usage);
+    for (const leak of ["w9:p9", "private-agent", "secret-project", "/home", "someone"]) expect(text).not.toContain(leak);
+    expect(next.usage.seen).toHaveLength(1);
+    expect(next.usage.seen[0]).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  test("the hash is salted with the install ID", () => {
+    const panes = [pane("1", "claude")];
+    const a = count(WITH_ID, { mux: "herdr", panes });
+    const b = count({ ...WITH_ID, id: "b".repeat(32) }, { mux: "herdr", panes });
+    expect(a.usage.seen).not.toEqual(b.usage.seen);
+  });
+
+  test("off: nothing is counted, and the tally goes with the ID", () => {
+    const counted = count(WITH_ID, { mux: "herdr", panes: [pane("1", "claude")] });
+    const off = noteSessions(counted, { scope: "default", mux: "herdr", panes: [pane("2", "claude")] }, OFF);
+    expect(off.id).toBeNull();
+    expect(off.usage).toEqual({ rows: [], seen: [] });
+  });
+
+  test("a record with no ID counts nothing", () => {
+    expect(noteSessions(EMPTY_TELEMETRY_RECORD, { scope: "default", mux: "herdr", panes: [pane("1", "claude")] }, ON)).toBe(EMPTY_TELEMETRY_RECORD);
+  });
+
+  test("a count stops at 999, and no more than 1000 sessions are remembered", () => {
+    const many = Array.from({ length: USAGE_SEEN_MAX + 200 }, (_, at) => pane(`p${String(at)}`, "claude"));
+    const next = count(WITH_ID, { mux: "herdr", panes: many });
+    expect(next.usage.rows).toEqual([{ harness: "claude", mux: "herdr", sessions: USAGE_SESSIONS_MAX }]);
+    expect(next.usage.seen).toHaveLength(USAGE_SEEN_MAX);
+    // A full memory takes no new session.
+    expect(count(next, { mux: "herdr", panes: [pane("late", "codex")] })).toBe(next);
+  });
+
+  test("a sample reads at most 2000 panes", () => {
+    const spent = Array.from({ length: USAGE_PANES_MAX }, () => pane("same", "shell"));
+    const late = [...spent, pane("beyond", "claude")];
+    expect(count(WITH_ID, { mux: "herdr", panes: late })).toBe(WITH_ID);
+  });
+
+  test("the rows stop at 24: a pair past the cap is dropped, a pair already there still counts", () => {
+    let record = WITH_ID;
+    const harnesses = [...USAGE_HARNESSES, "other-one"];
+    const pairs = harnesses.flatMap((harness) => USAGE_MUXES.map((mux) => ({ harness, mux })));
+    expect(pairs.length).toBeGreaterThan(USAGE_ROWS_MAX);
+    pairs.forEach(({ harness, mux }, at) => {
+      record = count(record, { mux, panes: [pane(`n${String(at)}`, harness)] });
+    });
+    expect(record.usage.rows).toHaveLength(USAGE_ROWS_MAX);
+    const first = record.usage.rows[0];
+    const again = count(record, { mux: first?.mux ?? "", panes: [pane("extra", first?.harness ?? "")] });
+    expect(again.usage.rows[0]?.sessions).toBe(2);
+    expect(again.usage.rows).toHaveLength(USAGE_ROWS_MAX);
+  });
+});
+
+describe("the record file and the ping carry the tally", () => {
+  const rows: UsageRow[] = [
+    { harness: "codex", mux: "herdr", sessions: 1 },
+    { harness: "claude", mux: "tmux", sessions: 3 },
+  ];
+
+  test("the file round-trips, and a bad row, a repeated pair or a stray hash is dropped", () => {
+    const record = parseTelemetryRecord(
+      JSON.stringify({
+        usage: {
+          rows: [
+            ...rows,
+            { harness: "claude", mux: "tmux", sessions: 9 },
+            { harness: "mine", mux: "tmux", sessions: 1 },
+            { harness: "claude", mux: "mine", sessions: 1 },
+            { harness: "claude", mux: "herdr", sessions: 0 },
+            { harness: "claude", mux: "herdr", sessions: 1.5 },
+            { harness: "claude", mux: "zellij", sessions: 5000 },
+            { harness: "claude", mux: "zellij", extra: 1, sessions: 1 },
+          ],
+          seen: ["0123456789abcdef", "0123456789abcdef", "NOT-A-HASH", 7],
+        },
+      }),
+    );
+    expect(record.usage.rows).toEqual([...rows, { harness: "claude", mux: "zellij", sessions: USAGE_SESSIONS_MAX }]);
+    expect(record.usage.seen).toEqual(["0123456789abcdef"]);
+    expect(parseTelemetryRecord(JSON.stringify({ usage: "x" })).usage).toEqual({ rows: [], seen: [] });
+    expect(parseTelemetryRecord(JSON.stringify({ id: "a".repeat(32) })).usage).toEqual({ rows: [], seen: [] });
+  });
+
+  test("a file with too many rows or hashes is cut to the caps", () => {
+    const flood = Array.from({ length: 3000 }, (_, at) => at.toString(16).padStart(16, "0"));
+    const rowFlood = USAGE_HARNESSES.flatMap((harness) => USAGE_MUXES.map((mux) => ({ harness, mux, sessions: 1 })));
+    const record = parseTelemetryRecord(JSON.stringify({ usage: { rows: rowFlood, seen: flood } }));
+    expect(record.usage.rows).toHaveLength(USAGE_ROWS_MAX);
+    expect(record.usage.seen).toHaveLength(USAGE_SEEN_MAX);
+  });
+
+  test("buildPing leaves each row with exactly harness, mux and sessions, in name order, capped", () => {
+    const grown = { harness: "claude", mux: "tmux", sessions: 5000, paneId: "w1:p1" } as const;
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-13", version: "1.29.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [], usage: [...rows.slice(0, 1), grown] });
+    expect(JSON.stringify(built.usage)).toBe('[{"harness":"claude","mux":"tmux","sessions":999},{"harness":"codex","mux":"herdr","sessions":1}]');
+    const flood = Array.from({ length: 100 }, (_, at) => ({ harness: "claude", mux: `m${String(at)}`, sessions: 1 }));
+    const capped = buildPing({ id: "a".repeat(32), day: "2026-11-13", version: "1.29.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo", trouble: [], usage: flood });
+    expect(capped.usage).toHaveLength(USAGE_ROWS_MAX);
+  });
+
+  test("the worst ping the caps allow stays under 8 KB", () => {
+    const trouble = Array.from({ length: TROUBLE_ROWS_MAX }, (_, at) => ({
+      kind: "dialog" as const,
+      harness: "x".repeat(24),
+      version: "1.2.3-beta.1234567890abcdef0123456789",
+      mux: "y".repeat(24),
+      screen: "634c6530",
+      count: TROUBLE_COUNT_MAX,
+      at,
+    }));
+    const usage = Array.from({ length: USAGE_ROWS_MAX }, (_, at) => ({ harness: `claude-${String(at)}`, mux: "herdr-core", sessions: USAGE_SESSIONS_MAX }));
+    const built = buildPing({ id: "a".repeat(32), day: "2026-11-13", version: "1.29.0-edge.12", os: "freebsd", arch: "arm64", installKind: "detached-checkout", line: "stable", role: "member", trouble, usage });
+    expect(JSON.stringify(built).length).toBeLessThan(8 * 1024);
+  });
+});
+
+describe("the tally in the shell (ping v3)", () => {
+  const DAY1 = Date.UTC(2026, 10, 3, 12, 0, 0);
+
+  test("a day with no sessions sends usage as an empty list, in exactly the v3 shape", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    const body = String(r.sent[0]?.init.body);
+    expect(body).toBe(
+      `{"v":3,"id":"${"1".repeat(32)}","day":"${utcDay(r.clock.now)}","version":"1.26.0","os":"linux","arch":"x64","install":"binary","line":"stable","role":"solo","trouble":[],"usage":[]}`,
+    );
+    expect(PING_SCHEMA).toBe(3);
+  });
+
+  test("the sessions of the window ride the ping, the next view shows them, and the send clears them", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.telemetry.sessions({ scope: "default", mux: "herdr", panes: [pane("w1:p1", "claude"), pane("w1:p2", "codex"), pane("w1:p3", "shell")] });
+    expect(r.telemetry.view().next?.usage).toEqual([
+      { harness: "claude", mux: "herdr", sessions: 1 },
+      { harness: "codex", mux: "herdr", sessions: 1 },
+    ]);
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    const sent = JSON.parse(String(r.sent[0]?.init.body));
+    expect(Object.keys(sent)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line", "role", "trouble", "usage"]);
+    expect(sent.v).toBe(3);
+    expect(sent.usage).toEqual([
+      { harness: "claude", mux: "herdr", sessions: 1 },
+      { harness: "codex", mux: "herdr", sessions: 1 },
+    ]);
+    const after = readTelemetryRecord(r.stateDir);
+    expect(after.usage).toEqual({ rows: [], seen: [] });
+    // The next window counts a session that is still there again, once.
+    r.telemetry.sessions({ scope: "default", mux: "herdr", panes: [pane("w1:p1", "claude")] });
+    expect(readTelemetryRecord(r.stateDir).usage.rows).toEqual([{ harness: "claude", mux: "herdr", sessions: 1 }]);
+  });
+
+  test("a failed send still clears the tally", async () => {
+    const r = rig({ fail: true });
+    r.telemetry.observe();
+    r.telemetry.sessions({ scope: "default", mux: "herdr", panes: [pane("1", "claude")] });
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    expect(r.sent).toHaveLength(1);
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual({ rows: [], seen: [] });
+  });
+
+  test("a bridge restart does not count a running session twice: the hashes survive in the file", () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.telemetry.sessions({ scope: "default", mux: "herdr", panes: [pane("1", "claude")] });
+    const second = createTelemetry({
+      stateDir: r.stateDir,
+      env: {},
+      origin: "env",
+      version: RELEASE,
+      installKind: "binary",
+      line: () => "stable",
+      crewMode: () => "solo",
+      now: () => r.clock.now,
+      fetch: async () => new Response("ok"),
+      os: "linux",
+      arch: "x64",
+    });
+    second.sessions({ scope: "default", mux: "herdr", panes: [pane("1", "claude")] });
+    expect(readTelemetryRecord(r.stateDir).usage.rows).toEqual([{ harness: "claude", mux: "herdr", sessions: 1 }]);
+  });
+
+  test("a scope is sampled at most every 30 seconds, and each scope has its own clock", () => {
+    const r = rig({ start: DAY1 });
+    r.telemetry.observe();
+    r.telemetry.sessions({ scope: "one", mux: "herdr", panes: [pane("1", "claude")] });
+    r.clock.now += 1500;
+    r.telemetry.sessions({ scope: "one", mux: "herdr", panes: [pane("1", "claude"), pane("2", "claude")] });
+    expect(readTelemetryRecord(r.stateDir).usage.rows).toEqual([{ harness: "claude", mux: "herdr", sessions: 1 }]);
+    r.telemetry.sessions({ scope: "two", mux: "herdr", panes: [pane("1", "codex")] });
+    expect(readTelemetryRecord(r.stateDir).usage.rows).toHaveLength(2);
+    r.clock.now += USAGE_SAMPLE_MS;
+    r.telemetry.sessions({ scope: "one", mux: "herdr", panes: [pane("1", "claude"), pane("2", "claude")] });
+    expect(readTelemetryRecord(r.stateDir).usage.rows).toContainEqual({ harness: "claude", mux: "herdr", sessions: 2 });
+  });
+
+  test("the phone's off clears the tally with the ID, and a sample while off stores nothing", () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.telemetry.sessions({ scope: "default", mux: "herdr", panes: [pane("1", "claude")] });
+    expect(readTelemetryRecord(r.stateDir).usage.rows).toHaveLength(1);
+    r.telemetry.choose({ setting: "off", requestId: REQUEST_ID });
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual({ rows: [], seen: [] });
+    r.clock.now += USAGE_SAMPLE_MS;
+    const before = readFileSync(telemetryPath(r.stateDir), "utf8");
+    r.telemetry.sessions({ scope: "default", mux: "herdr", panes: [pane("2", "claude")] });
+    expect(readFileSync(telemetryPath(r.stateDir), "utf8")).toBe(before);
+    expect(r.telemetry.view().next).toBeNull();
+  });
+
+  test("every off switch counts nothing and sends nothing", async () => {
+    const offs: Environment[] = [{ COLLIE_TELEMETRY: "0" }, { DO_NOT_TRACK: "1" }, { CI: "true" }, { COLLIE_TELEMETRY_URL: "ftp://x.test/p" }];
+    for (const env of offs) {
+      const r = rig({ env });
+      r.telemetry.observe();
+      const before = readFileSync(telemetryPath(r.stateDir), "utf8");
+      r.telemetry.sessions({ scope: "default", mux: "herdr", panes: [pane("1", "claude")] });
+      expect(readFileSync(telemetryPath(r.stateDir), "utf8")).toBe(before);
+      r.clock.now += FIRST_PING_DELAY_MS;
+      await r.telemetry.tick();
+      expect(r.sent).toHaveLength(0);
+      expect(readTelemetryRecord(r.stateDir).usage).toEqual({ rows: [], seen: [] });
+    }
+  });
+
+  test("a development build counts nothing", () => {
+    const r = rig({ version: DEV });
+    r.telemetry.observe();
+    r.telemetry.sessions({ scope: "default", mux: "herdr", panes: [pane("1", "claude")] });
+    expect(readTelemetryRecord(r.stateDir).usage).toEqual({ rows: [], seen: [] });
+  });
+
+  test("a write that fails never reaches the poll", () => {
+    const broken = createTelemetry({
+      stateDir: "/nonexistent-collie-state",
+      env: {},
+      origin: "env",
+      version: RELEASE,
+      installKind: "binary",
+      line: () => "stable",
+      crewMode: () => "solo",
+      now: () => DAY1,
+      fetch: async () => new Response("ok"),
+      os: "linux",
+      arch: "x64",
+      files: {
+        mkdirp: () => {
+          throw new Error("read-only");
+        },
+        write: () => {
+          throw new Error("read-only");
+        },
+        rename: () => {
+          throw new Error("read-only");
+        },
+      },
+    });
+    expect(() => broken.sessions({ scope: "default", mux: "herdr", panes: [pane("1", "claude")] })).not.toThrow();
+  });
+});
+
+describe("the bridge feeds the tally (ping v3)", () => {
+  test("each session's engine hands its real agent panes, with its own multiplexer, to the ping", () => {
+    const src = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
+    // A trick's own session is no agent: the one filter drops it before the tally sees it.
+    expect(src).toContain("engine.onUpdate((s) => telemetry.sessions({ scope: name, mux: usageMux, panes: realAgentPanes(s.agents) }));");
+    expect(src).toContain('const usageMux = endpoint.kind === "program" ? DURABLE_MUX : cfg.mux;');
   });
 });

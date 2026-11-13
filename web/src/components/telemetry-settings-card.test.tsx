@@ -15,7 +15,7 @@ import { TelemetrySettingsCard } from "./telemetry-settings-card";
 // next message and the write with a request id. Driven through a memory router and MSW.
 
 const PING: TelemetryPing = {
-  v: 1,
+  v: 3,
   id: "0123456789abcdef0123456789abcdef",
   day: "2026-11-05",
   version: "1.27.0",
@@ -50,7 +50,7 @@ describe("Telemetry card (M86 spec 02)", () => {
     renderCard(view());
     expect(await screen.findByText("Telemetry")).toBeInTheDocument();
     expect(
-      screen.getByText("Anonymous: one ping a day with the install count and the trouble signals, under a random ID. Nothing else."),
+      screen.getByText("Anonymous: one ping a day with the install count, how many agent sessions ran per agent program and multiplexer, and the trouble signals, under a random ID. Nothing else."),
     ).toBeInTheDocument();
   });
 

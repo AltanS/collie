@@ -2802,7 +2802,6 @@ export const fr: Dictionary = {
   "telemetry.row.off": "Désactivée",
   "telemetry.row.reading": "Lecture…",
   "telemetry.row.failed": "Impossible à lire",
-  "telemetry.card.description": "Anonyme : un ping par jour avec le nombre d'installations et les signaux de dysfonctionnement, sous un identifiant aléatoire. Rien d'autre.",
   "telemetry.card.reading": "Lecture du réglage de cette machine…",
   "telemetry.card.readFailed": "Le réglage de cette machine n'a pas pu être lu.",
   "telemetry.card.saving": "Enregistrement…",

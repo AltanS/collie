@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -6,6 +6,8 @@ import type { InstallKind } from "../cli/install-kind.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonObject, type JsonValue } from "../web/src/lib/json.ts";
 import { settingByEnv } from "./config-schema.ts";
 import { sourceOf, type ConfigFileLayer, type Environment } from "./config-source.ts";
+import { AGENT_ALIASES, KNOWN_HARNESS_NAMES } from "./journal/registry.ts";
+import { MUX_ADAPTERS } from "./mux/registry.ts";
 import { UPDATE_MIRROR_ENV } from "./update.ts";
 import { diskWriter, type ReleaseLine, type UpdateLineWriter } from "./update-line.ts";
 import type { CrewMode } from "./types.ts";
@@ -16,7 +18,8 @@ import { isRequestId } from "./worktree-receipts.ts";
 //
 // Once a day, at most, a bridge tells Collie's own endpoint that one install exists: a random ID,
 // the UTC day, the version, the OS, the CPU, the install kind, the release line and the crew role
-// (alone, leading a crew, or a member). Nothing else.
+// (alone, leading a crew, or a member), and, from v3, a count of agent sessions per agent program and
+// multiplexer. Nothing else.
 // No pane, no host name, no path. The ID is made on this machine, lives in `telemetry.json` in the
 // state folder and is deleted the moment the ping is off for any reason.
 //
@@ -28,6 +31,16 @@ import { isRequestId } from "./worktree-receipts.ts";
 // and absent when that row did not look like key hints. Exactly those six fields, never what was said
 // or shown. A row without `screen` leaves byte for byte as before. The tally lives in the same file, is
 // cleared with the ID when the ping is off, and is cleared when it went out.
+//
+// THE USAGE TALLY (ping v3, 1.29.0). The ping also carries `usage`: how many agent sessions of one agent
+// program ran on one multiplexer since the last ping, about a day. Rows of exactly three fields,
+// `{ harness, mux, sessions }`, and counts only: no name, path, title, id, prompt, model or timing.
+// Both words come from closed lists this build already has (the journal registry's agent names and
+// the mux registry's ids); any other word is `other`. The bridge samples each session's panes at most
+// every 30 seconds and counts a session once per ping window, by a salted hash it keeps in the state
+// file (the salt is the install ID, so it goes when the ID goes). The hashes never leave the machine.
+// Each bridge counts its own panes: a crew member pings for itself as role `member`, so a lead never
+// counts a member's panes. The same switches turn it off, and it is cleared with the ID.
 //
 // FUNCTIONAL CORE, IMPERATIVE SHELL. {@link telemetryState}, {@link buildPing}, {@link shouldSend}
 // and {@link resolveTelemetryUrl} are pure and carry the whole contract. {@link createTelemetry} is
@@ -62,8 +75,8 @@ export const TELEMETRY_URL_ENV = "COLLIE_TELEMETRY_URL";
 /** The state file's name inside the state folder. */
 export const TELEMETRY_FILE = "telemetry.json";
 
-/** The ping's schema number, the `v` field. */
-export const PING_SCHEMA = 2;
+/** The ping's schema number, the `v` field. v2 had ten keys, v3 adds `usage`. */
+export const PING_SCHEMA = 3;
 
 /** The wait before an install's first ping. A person has a day to read the notice and say no. */
 export const FIRST_PING_DELAY_MS = 24 * 60 * 60 * 1000;
@@ -267,6 +280,8 @@ export type TelemetryPing = {
   readonly role: PingRole;
   /** A fresh array per ping (mutable only so the ping is a `JsonObject`). */
   readonly trouble: TroubleRow[];
+  /** Agent sessions per agent program and multiplexer since the last ping, `[]` when none. A fresh array per ping. */
+  readonly usage: UsageRow[];
 };
 
 /** Whether this bridge runs alone, leads a crew or is a member. The count tells setups from machines. */
@@ -289,6 +304,7 @@ export function buildPing(a: {
   readonly line: ReleaseLine;
   readonly role: PingRole;
   readonly trouble: readonly TroubleRow[];
+  readonly usage: readonly UsageRow[];
 }): TelemetryPing {
   return {
     v: PING_SCHEMA,
@@ -306,6 +322,7 @@ export function buildPing(a: {
     trouble: a.trouble.map(({ kind, harness, version, mux, screen, count }) =>
       screen === undefined ? { kind, harness, version, mux, count } : { kind, harness, version, mux, screen, count },
     ),
+    usage: usageRowsOf(a.usage),
   };
 }
 
@@ -343,6 +360,8 @@ export interface TelemetryRecord {
   readonly requestId: string | null;
   /** The trouble tally since the last ping (M86 spec 05). Empty when nothing showed, or the ping is off. */
   readonly trouble: readonly TroubleRow[];
+  /** The usage tally since the last ping (ping v3). Empty when no agent ran, or the ping is off. */
+  readonly usage: UsageTally;
 }
 
 /** The reading of a machine with no file. */
@@ -354,6 +373,7 @@ export const EMPTY_TELEMETRY_RECORD: TelemetryRecord = {
   changedAt: null,
   requestId: null,
   trouble: [],
+  usage: { rows: [], seen: [] },
 };
 
 const INSTALL_ID = /^[0-9a-f]{32}$/;
@@ -377,6 +397,7 @@ export function parseTelemetryRecord(text: string | null): TelemetryRecord {
     changedAt: changed !== undefined && Number.isFinite(changed) ? changed : null,
     requestId: requestId !== undefined && requestId !== "" ? requestId : null,
     trouble: parseTroubleRows(doc.trouble),
+    usage: parseUsageTally(doc.usage),
   };
 }
 
@@ -519,6 +540,150 @@ export function noteTrouble(record: TelemetryRecord, signal: TroubleSignal, stat
   return { ...record, trouble: [...record.trouble, row] };
 }
 
+// ── THE USAGE TALLY (ping v3) ───────────────────────────────────────────────────────────────────
+
+/** One row of the ping's `usage`: how many sessions of one agent program ran on one multiplexer. */
+export type UsageRow = {
+  readonly harness: string;
+  readonly mux: string;
+  readonly sessions: number;
+};
+
+/** What the state file keeps of the tally: the rows, and the hashes of the sessions already counted. */
+export interface UsageTally {
+  readonly rows: readonly UsageRow[];
+  /** Salted hashes of the sessions counted since the last ping. Local only: never in the ping. */
+  readonly seen: readonly string[];
+}
+
+/** The word for anything not on a closed list. */
+export const USAGE_OTHER = "other";
+
+/** The most rows a ping carries; a pair of words past this is dropped. */
+export const USAGE_ROWS_MAX = 24;
+
+/** The highest session count a row reaches. */
+export const USAGE_SESSIONS_MAX = 999;
+
+/** The most session hashes the state file keeps, so a malformed pane list cannot grow it. */
+export const USAGE_SEEN_MAX = 1000;
+
+/** The most panes one sample reads. */
+export const USAGE_PANES_MAX = 2000;
+
+/** One session's panes are sampled at most this often. A session shorter than this may pass unseen. */
+export const USAGE_SAMPLE_MS = 30 * 1000;
+
+/** The agent programs a row may name: every journal adapter and every alias (`omp`). Anything else is `other`. */
+export const USAGE_HARNESSES: readonly string[] = [...KNOWN_HARNESS_NAMES, ...Object.keys(AGENT_ALIASES)].toSorted();
+
+/** The multiplexers a row may name: every id in the mux registry. Anything else is `other`. */
+export const USAGE_MUXES: readonly string[] = MUX_ADAPTERS.map((factory) => factory.mux).toSorted();
+
+/** The word if the closed list holds it, else `other`. */
+export const usageWord = (word: string, list: readonly string[]): string => (list.includes(word) ? word : USAGE_OTHER);
+
+const USAGE_HASH = /^[0-9a-f]{16}$/;
+
+const sameUsageWords = (row: UsageRow, other: Pick<UsageRow, "harness" | "mux">): boolean =>
+  row.harness === other.harness && row.mux === other.mux;
+
+/** The rows as the ping sends them: rebuilt with their three fields, capped, counts capped, in name order. */
+function usageRowsOf(rows: readonly UsageRow[]): UsageRow[] {
+  return rows
+    .slice(0, USAGE_ROWS_MAX)
+    .map(({ harness, mux, sessions }) => ({ harness, mux, sessions: Math.min(sessions, USAGE_SESSIONS_MAX) }))
+    .toSorted((a, b) => a.harness.localeCompare(b.harness, "en") || a.mux.localeCompare(b.mux, "en"));
+}
+
+function readUsageRow(raw: JsonValue): UsageRow | null {
+  const rec = asJsonObject(raw);
+  const harness = rec === undefined ? undefined : asJsonString(rec.harness);
+  const mux = rec === undefined ? undefined : asJsonString(rec.mux);
+  const sessions = rec === undefined ? undefined : asJsonNumber(rec.sessions);
+  if (harness === undefined || mux === undefined || sessions === undefined) return null;
+  if (!USAGE_HARNESSES.includes(harness) && harness !== USAGE_OTHER) return null;
+  if (!USAGE_MUXES.includes(mux) && mux !== USAGE_OTHER) return null;
+  if (!Number.isInteger(sessions) || sessions < 1) return null;
+  return { harness, mux, sessions: Math.min(sessions, USAGE_SESSIONS_MAX) };
+}
+
+/** The tally off the record file. A bad row is dropped, a repeated pair is read once, the caps hold. */
+function parseUsageTally(value: JsonValue | undefined): UsageTally {
+  const doc = value === undefined ? undefined : asJsonObject(value);
+  if (doc === undefined) return EMPTY_USAGE_TALLY;
+  const rows: UsageRow[] = [];
+  for (const raw of Array.isArray(doc.rows) ? doc.rows : []) {
+    const row = readUsageRow(raw);
+    if (row === null || rows.some((known) => sameUsageWords(known, row))) continue;
+    rows.push(row);
+  }
+  const seen = new Set<string>();
+  for (const raw of Array.isArray(doc.seen) ? doc.seen : []) {
+    const hash = asJsonString(raw);
+    if (hash !== undefined && USAGE_HASH.test(hash)) seen.add(hash);
+  }
+  return { rows: rows.slice(0, USAGE_ROWS_MAX), seen: [...seen].slice(0, USAGE_SEEN_MAX) };
+}
+
+/** What the tally reads as before any session ran. */
+export const EMPTY_USAGE_TALLY: UsageTally = { rows: [], seen: [] };
+
+/** The part of a pane the tally reads. An `AgentView` satisfies it. Trick sessions are filtered out before. */
+export type UsagePane = {
+  readonly paneId: string;
+  readonly agent: string;
+  readonly kind?: string;
+  /** The session the agent named, when it named one. Hashed into the dedupe key and never stored or sent. */
+  readonly agentSession?: { readonly value: string };
+};
+
+/** One session's dedupe key: a hash salted with the install ID, so it names nothing off this machine. */
+function usageKey(a: { readonly id: string; readonly scope: string; readonly mux: string; readonly pane: UsagePane }): string {
+  const { id, scope, mux, pane } = a;
+  const text = [id, scope, mux, pane.agent, pane.paneId, pane.agentSession?.value ?? ""].join("\0");
+  return createHash("sha256").update(text).digest("hex").slice(0, 16);
+}
+
+/**
+ * A pane that holds an agent: not a bare shell. A trick's own session is no agent either; the caller reads
+ * its panes through `realAgentPanes` (bridge/tricks/panes.ts, the one filter) before they get here.
+ */
+const holdsAgent = (pane: UsagePane): boolean => pane.kind !== "shell" && pane.agent !== "" && pane.agent !== "shell";
+
+/**
+ * The record after one sample of a session's panes. Pure. Off for any reason: nothing is counted, and the
+ * tally goes with the ID. On: each pane that holds an agent and was not counted yet since the last ping
+ * counts one session under its two words, new pairs past {@link USAGE_ROWS_MAX} are dropped, a count stops
+ * at {@link USAGE_SESSIONS_MAX} and no more than {@link USAGE_SEEN_MAX} sessions are remembered.
+ */
+export function noteSessions(
+  record: TelemetryRecord,
+  a: { readonly scope: string; readonly mux: string; readonly panes: readonly UsagePane[] },
+  state: TelemetryState,
+): TelemetryRecord {
+  if (!state.on) return { ...record, id: null, lastSentDay: null, trouble: [], usage: EMPTY_USAGE_TALLY };
+  if (record.id === null) return record;
+  const mux = usageWord(a.mux, USAGE_MUXES);
+  const seen = new Set(record.usage.seen);
+  const rows = new Map(record.usage.rows.map((row) => [`${row.harness}\0${row.mux}`, row]));
+  for (const pane of a.panes.slice(0, USAGE_PANES_MAX)) {
+    if (seen.size >= USAGE_SEEN_MAX) break;
+    if (!holdsAgent(pane)) continue;
+    const key = usageKey({ id: record.id, scope: a.scope, mux: a.mux, pane });
+    if (seen.has(key)) continue;
+    const harness = usageWord(pane.agent, USAGE_HARNESSES);
+    const pair = `${harness}\0${mux}`;
+    const known = rows.get(pair);
+    if (known === undefined && rows.size >= USAGE_ROWS_MAX) continue;
+    const sessions = Math.min((known?.sessions ?? 0) + 1, USAGE_SESSIONS_MAX);
+    rows.set(pair, { harness, mux, sessions });
+    seen.add(key);
+  }
+  if (seen.size === record.usage.seen.length) return record;
+  return { ...record, usage: { rows: [...rows.values()], seen: [...seen] } };
+}
+
 // ── THE ROUTE'S BODY ────────────────────────────────────────────────────────────────────────────
 
 /** The body `POST /api/telemetry` accepts, after parsing. */
@@ -587,6 +752,11 @@ export interface Telemetry {
   tick(): Promise<void>;
   /** One trouble signal from the phone (M86 spec 05). Stored only while the ping is on. */
   trouble(signal: TroubleSignal): void;
+  /**
+   * One session's panes, as its state engine just read them (ping v3). Counted only while the ping is on,
+   * sampled at most every {@link USAGE_SAMPLE_MS} per `scope`, and never throws.
+   */
+  sessions(a: { readonly scope: string; readonly mux: string; readonly panes: readonly UsagePane[] }): void;
 }
 
 /** The record after it was made to agree with the state, and that state. */
@@ -600,6 +770,8 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
   const newId = deps.newId ?? newInstallId;
   const warn = deps.warn ?? (() => {});
   const log = deps.log ?? (() => {});
+  /** When each scope's panes were last sampled, so a poll every 1.5 seconds is not a file read every 1.5 seconds. */
+  const sampledAt = new Map<string, number>();
 
   const stateOf = (record: TelemetryRecord): TelemetryState =>
     telemetryState({ env: deps.env, origin: deps.origin, setting: record.setting, version: deps.version });
@@ -616,12 +788,14 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
     const started = before.firstSeenAt ?? deps.now();
     const wanted: TelemetryRecord = state.on
       ? { ...before, id: before.id ?? newId(), firstSeenAt: started }
-      : { ...before, id: null, lastSentDay: null, firstSeenAt: started, trouble: [] };
+      : { ...before, id: null, lastSentDay: null, firstSeenAt: started, trouble: [], usage: EMPTY_USAGE_TALLY };
     const changed =
       wanted.id !== before.id ||
       wanted.lastSentDay !== before.lastSentDay ||
       wanted.firstSeenAt !== before.firstSeenAt ||
-      wanted.trouble.length !== before.trouble.length;
+      wanted.trouble.length !== before.trouble.length ||
+      wanted.usage.rows.length !== before.usage.rows.length ||
+      wanted.usage.seen.length !== before.usage.seen.length;
     return { record: changed ? save(wanted) : before, state };
   };
 
@@ -637,6 +811,7 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
       line: deps.line(),
       role: pingRole(deps.crewMode()),
       trouble: record.trouble,
+      usage: record.usage.rows,
     });
   };
 
@@ -671,8 +846,8 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
         if (!url.ok || ping === null) return;
         // Written BEFORE the request: a crash or a failure never sends twice in one day. The tally that
         // rides this ping is cleared in the same write, so it is never counted twice either; a failed
-        // send loses at most one day's tally, as it loses the day's ping.
-        save({ ...record, lastSentDay: utcDay(now), trouble: [] });
+        // send loses at most one day's tally, as it loses the day's ping. The usage tally goes the same way.
+        save({ ...record, lastSentDay: utcDay(now), trouble: [], usage: EMPTY_USAGE_TALLY });
         await deps.fetch(url.url, {
           method: "POST",
           headers: { "content-type": "application/json", "user-agent": PING_USER_AGENT },
@@ -691,6 +866,23 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
       if (!state.on) return;
       const next = noteTrouble(record, signal, state);
       if (next !== record) save(next);
+    },
+    sessions(a) {
+      try {
+        const now = deps.now();
+        const last = sampledAt.get(a.scope);
+        if (last !== undefined && now - last < USAGE_SAMPLE_MS) return;
+        sampledAt.set(a.scope, now);
+        if (!a.panes.some(holdsAgent)) return;
+        const { record, state } = settle();
+        // Off: `settle` already cleared the tally with the ID, and nothing is counted.
+        if (!state.on) return;
+        const next = noteSessions(record, a, state);
+        if (next !== record) save(next);
+      } catch {
+        // A poll never waits on, or fails for, the ping.
+        return;
+      }
     },
   };
 }
