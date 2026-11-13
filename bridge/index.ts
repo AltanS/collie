@@ -312,7 +312,7 @@ import { insideGate, insideWanted, INTERVAL_TIMER, linkReader, watchLink } from 
 import { linkedHarnesses, partsRoot } from "./inside/links.ts";
 import { ownerHold } from "./inside/owner.ts";
 import { applyWake, releasesHeld, type WakeSink } from "./inside/wake.ts";
-import { isLinked } from "./surface/path.ts";
+import { paneLinkedReader } from "./surface/path.ts";
 import { InsideHub } from "./inside/hub.ts";
 import { placeHello } from "./inside/place.ts";
 import { CommandQueue } from "./inside/queue.ts";
@@ -1503,8 +1503,9 @@ const telemetry = createTelemetry({
   line: () => readUpdateLineSync(cfg.stateDir).line,
   // Read at ping time. A peer (a member, or a deputy that is not the lead) is a member in the ping.
   crewMode: () => crew.mode,
-  // A trouble signal names a local pane; a part bound to it (`collie harness link`) makes its row `linked`.
-  linked: (where) => (insideHub?.partOf({ session: where.session ?? registry.get()?.name ?? "", paneId: where.paneId }) ?? null) !== null,
+  // A trouble signal names a local pane; its row is `linked` when the pane read would say `linked: true`
+  // (`paneIsLinked`, bridge/surface/path.ts: the one reader for the ping and the pane read).
+  linked: (where) => paneIsLinked(where.session ?? registry.get()?.name ?? "", where.paneId),
   now: Date.now,
   fetch: (url, init) => fetch(url, init),
   os: HOST.platform,
@@ -1811,6 +1812,8 @@ const insideHub =
           return placeHello(hello, [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target), procBeaconLiveness());
         },
       });
+/** Whether a pane is linked: the pane read, the install ping's trouble rows and its tally all read this one function. */
+const paneIsLinked = paneLinkedReader({ enabled: insideOn, hub: insideHub });
 const insideServer = insideHub === null ? null : new InsideServer({ socketPath: insideSocketPath(cfg.stateDir), hub: insideHub });
 /** What the inside hub reaches of each session, set by `makeSession` (M99 specs 03 and 04). */
 interface InsideSession extends PartAskSession {
@@ -1882,7 +1885,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
       scope: name,
       mux: usageMux,
       panes: realAgentPanes(s.agents),
-      linked: (paneId) => (insideHub?.partOf({ session: name, paneId }) ?? null) !== null,
+      linked: (paneId) => paneIsLinked(name, paneId),
     }),
   );
 
@@ -4135,7 +4138,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   gitHeads,
   walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
   // The pane read's `linked` (M99 spec 15): the session half of the send pick, one function.
-  paneLinked: (session, paneId) => insideHub !== null && isLinked({ enabled: insideOn(), part: insideHub.partOf({ session, paneId }) }),
+  paneLinked: paneIsLinked,
   walkyPaneOff: (session, paneId) => {
     const instance = walkyInstances.peek(session, paneId);
     return instance !== null && walkyOff.isOff({ session, paneId, instance });

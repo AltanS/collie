@@ -91,6 +91,19 @@ export function isLinked(session: PathSession): boolean {
   return sessionRoad(session) === null;
 }
 
+/**
+ * The one reader of "is this pane linked" for the whole bridge: the pane read's `linked`, the install
+ * ping's trouble rows and its agent and multiplexer tally all call the function it returns, so none of
+ * them can say linked for a pane the send pick would not send by data. No hub (the wire is not built):
+ * never linked.
+ */
+export function paneLinkedReader(source: {
+  readonly enabled: () => boolean;
+  readonly hub: { partOf(address: { readonly session: string; readonly paneId: string }): PathPart | null } | null;
+}): (session: string, paneId: string) => boolean {
+  return (session, paneId) => source.hub !== null && isLinked({ enabled: source.enabled(), part: source.hub.partOf({ session, paneId }) });
+}
+
 /** The road for one send. Pure. */
 export function pickSendPath(input: PathInput): PathPick {
   const { request } = input;
