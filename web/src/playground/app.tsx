@@ -82,6 +82,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "cache", title: "Cache" }, load: () => import("./sections/cache").then((m) => ({ default: m.CacheSection })) },
   { def: { id: "pane-settings", title: "Pane settings" }, load: () => import("./sections/pane-settings").then((m) => ({ default: m.PaneSettingsSection })) },
   { def: { id: "walky", title: "Walky talky" }, load: () => import("./sections/walky").then((m) => ({ default: m.WalkySection })) },
+  { def: { id: "walky-deliver", title: "Deliver now" }, load: () => import("./sections/walky-deliver").then((m) => ({ default: m.WalkyDeliverSection })) },
   { def: { id: "changes", title: "Changes" }, load: () => import("./sections/changes").then((m) => ({ default: m.ChangesSection })) },
   { def: { id: "markdown-quotes", title: "Blockquotes" }, load: () => import("./sections/markdown-quotes").then((m) => ({ default: m.MarkdownQuotesSection })) },
   { def: { id: "dashboard-nav", title: "Dashboard nav" }, load: () => import("./sections/dashboard-nav").then((m) => ({ default: m.DashboardNavSection })) },

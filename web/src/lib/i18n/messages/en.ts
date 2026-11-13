@@ -3166,6 +3166,11 @@ export const en = {
   "walky.sheet.notHeld": "Not held. Nothing to take back.",
   "walky.sheet.elsewhere": "Held on another machine. Take it back there. It is not cancelled.",
   "walky.sheet.takeBackFailed": "Not taken back: {error}",
+  // Deliver now (prototype): a held message handed to a linked session as data, the draft untouched.
+  "walky.sheet.deliverNow": "Deliver now",
+  "walky.sheet.deliverNowAria": "Deliver the message from {label} now",
+  "walky.sheet.deliverConfirm": "Your draft stays.",
+  "walky.sheet.deliverFailed": "Not delivered: {error}",
   "walky.held.mark.one": "{count} message waits for the box to clear",
   "walky.held.mark.other": "{count} messages wait for the box to clear",
   // The composer's long-press menu, and the strip that says where a message is going.
@@ -4195,6 +4200,10 @@ export const PENDING_TRANSLATION = [
   "settings.usageRow.description",
   "settings.usageRow.option.percent",
   "settings.usageRow.option.dots",
+  "walky.sheet.deliverNow",
+  "walky.sheet.deliverNowAria",
+  "walky.sheet.deliverConfirm",
+  "walky.sheet.deliverFailed",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { WalkyLogProvider, WalkyPanesProvider } from "@/components/walky-log";
@@ -481,5 +481,115 @@ describe("the walky talky switch at the head of the sheet (M89 spec 04)", () => 
     sheet([fixtureWalkyAgent], { canReply: false, walkyOff: true });
     expect(screen.queryByRole("switch")).toBeNull();
     expect(document.querySelector('[data-slot="walky-off"]')).toBeNull();
+  });
+});
+
+// ── DELIVER NOW, FOR A LINKED SESSION (prototype) ─────────────────────────────
+
+describe("Deliver now on a held message of a linked pane", () => {
+  const heldReceipt = (row: WalkyRow): WalkyRow => ({ ...row, receipt: { ...row.receipt, state: "accepted", reason: "draft present" } });
+  const agentHeld = heldReceipt(fixtureWalkyAgent);
+  const operatorHeld = heldReceipt(fixtureWalkyOperator);
+  const sentHeld = heldReceipt(fixtureWalkySent);
+  const deliver = (id: string) => screen.queryAllByRole("button", { name: /^Deliver the message from/ }).filter((el) => el.closest(`[data-id="${id}"]`) !== null);
+  const GATES = { self: fixtureWalkySelf, onDrop: vi.fn(), linked: true };
+
+  it("shows beside Drop on a held received row, and on nothing that is not held, received and linked", () => {
+    sheet([agentHeld, sentHeld, fixtureWalkyOperator], { ...GATES, onDeliverNow: vi.fn(async () => {}) });
+    expect(deliver(agentHeld.id)).toHaveLength(1);
+    expect(deliver(agentHeld.id)[0]).toHaveTextContent("Deliver now");
+    expect(screen.getByRole("button", { name: /^Drop the message/ })).toBeInTheDocument();
+    // A sent row held at the far pane, and a received row that is not held: nothing.
+    expect(screen.queryAllByRole("button", { name: /^Deliver the message from/ })).toHaveLength(1);
+  });
+
+  it("is also offered on the operator's own held message, which keeps its Cancel", () => {
+    sheet([operatorHeld], { ...GATES, onCancel: vi.fn(), onDeliverNow: vi.fn(async () => {}) });
+    expect(deliver(operatorHeld.id)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /^Cancel the message/ })).toBeInTheDocument();
+  });
+
+  it("is hidden when the pane is not linked, without a handler, and without a write", () => {
+    sheet([agentHeld], { ...GATES, linked: false, onDeliverNow: vi.fn(async () => {}) });
+    expect(screen.queryByRole("button", { name: /^Deliver the message from/ })).toBeNull();
+    // Today's row: Reply and Drop, in one line, no wrapping rule added.
+    expect(screen.getByRole("button", { name: /^Drop the message/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Drop the message/ }).parentElement).not.toHaveClass("flex-wrap");
+    cleanup();
+    sheet([agentHeld], { ...GATES });
+    expect(screen.queryByRole("button", { name: /^Deliver the message from/ })).toBeNull();
+    cleanup();
+    sheet([agentHeld], { ...GATES, canReply: false, onDeliverNow: vi.fn(async () => {}) });
+    expect(screen.queryByRole("button", { name: /^Deliver the message from/ })).toBeNull();
+  });
+
+  it("calls back with the message id, and is disabled while the call is in flight", async () => {
+    const user = userEvent.setup();
+    let finish: () => void = () => {};
+    const onDeliverNow = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    sheet([agentHeld], { ...GATES, onDeliverNow });
+    const button = deliver(agentHeld.id)[0]!;
+    await user.click(button);
+    expect(onDeliverNow).toHaveBeenCalledExactlyOnceWith(agentHeld.id);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    // The word stays in the box, hidden under the spinner, so the button keeps its width.
+    expect(button).toHaveTextContent("Deliver now");
+    await user.click(button);
+    expect(onDeliverNow).toHaveBeenCalledTimes(1);
+    finish();
+  });
+
+  it("stays taken after the call answers, until the row stops being held", async () => {
+    const user = userEvent.setup();
+    const onDeliverNow = vi.fn(async () => {});
+    const view = render(
+      <WalkyLogProvider rows={[agentHeld]}>
+        <WalkySheet open onClose={vi.fn()} onReply={vi.fn()} canReply {...GATES} onDeliverNow={onDeliverNow} />
+      </WalkyLogProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /^Deliver the message from/ }));
+    await waitFor(() => expect(onDeliverNow).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: /^Deliver the message from/ })).toBeDisabled();
+    // The list is read again: the receipt moved, the hold is over, and the row says so with no button.
+    const delivered: WalkyRow = { ...fixtureWalkyAgent, receipt: { ...fixtureWalkyAgent.receipt, state: "delivered" } };
+    view.rerender(
+      <WalkyLogProvider rows={[delivered]}>
+        <WalkySheet open onClose={vi.fn()} onReply={vi.fn()} canReply {...GATES} onDeliverNow={onDeliverNow} />
+      </WalkyLogProvider>,
+    );
+    expect(screen.queryByRole("button", { name: /^Deliver the message from/ })).toBeNull();
+  });
+
+  it("shows the failure under the row in the sheet's words, and frees the button", async () => {
+    const user = userEvent.setup();
+    sheet([agentHeld], { ...GATES, onDeliverNow: vi.fn(async () => Promise.reject(new Error("The session did not take it."))) });
+    await user.click(screen.getByRole("button", { name: /^Deliver the message from/ }));
+    expect(await screen.findByText("Not delivered: The session did not take it.")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="walky-deliver-note"]')).toHaveAttribute("role", "status");
+    expect(screen.getByRole("button", { name: /^Deliver the message from/ })).toBeEnabled();
+  });
+
+  it("with deliverConfirm, the first tap sends nothing and says the draft stays; the second sends", async () => {
+    const user = userEvent.setup();
+    const onDeliverNow = vi.fn(async () => {});
+    sheet([agentHeld], { ...GATES, onDeliverNow, deliverConfirm: true });
+    expect(screen.queryByText("Your draft stays.")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /^Deliver the message from/ }));
+    expect(onDeliverNow).not.toHaveBeenCalled();
+    expect(await screen.findByText("Your draft stays.")).toBeInTheDocument();
+    const confirm = document.querySelector<HTMLElement>('[data-slot="walky-deliver-confirm"]')!;
+    await user.click(within(confirm).getByRole("button", { name: /^Deliver the message from/ }));
+    expect(onDeliverNow).toHaveBeenCalledExactlyOnceWith(agentHeld.id);
+  });
+
+  it("with deliverConfirm, Back closes the line without sending", async () => {
+    const user = userEvent.setup();
+    const onDeliverNow = vi.fn(async () => {});
+    sheet([agentHeld], { ...GATES, onDeliverNow, deliverConfirm: true });
+    await user.click(screen.getByRole("button", { name: /^Deliver the message from/ }));
+    await user.click(within(document.querySelector<HTMLElement>('[data-slot="walky-deliver-confirm"]')!).getByRole("button", { name: "Back" }));
+    expect(onDeliverNow).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText("Your draft stays.")).toBeNull());
   });
 });

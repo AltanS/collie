@@ -612,6 +612,16 @@ export function heldForPane(rows: readonly WalkyRow[], self: string | undefined)
   return rows.filter((row) => isHeld(row.receipt) && directionOf(row, self) === "received");
 }
 
+/**
+ * SEAM (deliver-now prototype): the call that hands one held message to the agent as data and leaves the
+ * box as it is. The prototype takes it as a prop (`onDeliverNow`) on `WalkySheet` and `WalkyHeldStrip`; the
+ * playground fills it with a fake. It resolves once the bridge took the message and rejects with the reason
+ * otherwise; the list is read again by the caller. The real call goes beside `dropWalky` in `lib/api.ts`
+ * and is passed where `onDrop` is passed (`agent-chat.tsx`, the `WalkySheet`) and where `WalkyHeldStrip` is
+ * drawn (`composer.tsx`), together with `linked`, which the bridge will send as `linked: true` on the pane read (`AgentView` in lib/types.ts has no such field yet, and `lib/solo-baseline.test.ts` pins its keys). Nothing there calls it yet.
+ */
+export type DeliverNow = (id: string) => Promise<void>;
+
 /** How one target's take-back ended (M62 spec 03), as the bridge's cancel and drop routes answer it. */
 export type TakeBackResult = "taken" | "repeat" | "already typed" | "not held" | "elsewhere";
 
