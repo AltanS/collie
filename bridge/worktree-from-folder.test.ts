@@ -224,6 +224,16 @@ describe("POST /api/worktree", () => {
     expect(await git(folder, "rev-parse", "HEAD")).toBe(await git(repo, "rev-parse", "main"));
   });
 
+  test("a create from inside a linked worktree hands the adapter the MAIN checkout, not the linked one (issue 732)", async () => {
+    const mux = new FakeMux();
+    const inside = join(home, "trees", "side");
+    const { body } = await create(mux, { cwd: inside, branch: "from-side", base: { kind: "default" } });
+    expect(body.ok).toBe(true);
+    expect(mux.spaces).toHaveLength(1);
+    expect(mux.spaces[0]?.worktree).toEqual({ repoRoot: repo });
+    expect(mux.spaces[0]?.worktree?.repoRoot).not.toBe(inside);
+  });
+
   test("Other folder makes the checkout in the checked child of the parent", async () => {
     const mux = new FakeMux();
     await create(mux, { cwd: repo, branch: "feat/x", folder: { kind: "parent", parent: "~/trees" } });
