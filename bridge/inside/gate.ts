@@ -1,6 +1,6 @@
 // Whether this bridge opens the inside socket (M99, decision 12 "opt-in").
 //
-// `collie link <harness>` (spec 09) owns the on and off: the wire is on while at least one harness is
+// `collie harness link <harness>` (spec 09) owns the on and off: the wire is on while at least one harness is
 // linked on this machine (a link record, `bridge/inside/links.ts`). The setting `COLLIE_INSIDE`
 // (`inside` in `[bridge]`) stays as an override: `off` is the kill switch whatever is linked, `on`
 // opens the wire with no link (a test, a leg). Off means: no socket, no `inside` field in the hook

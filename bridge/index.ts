@@ -1785,7 +1785,7 @@ const holdServer =
 // The inside wire (M99 spec 01, bridge/inside/WIRE.md): parts inside an agent program (a Claude Code
 // mod, a pi extension) dial `<stateDir>/inside/sock` and bind to their pane through the same placement
 // as a hook edge. Built with the edges, since it places on the same targets. Opt-in: the socket opens
-// only while a harness is linked (`collie link`, M99 spec 09), or when `COLLIE_INSIDE=on` says so;
+// only while a harness is linked (`collie harness link`, M99 spec 09), or when `COLLIE_INSIDE=on` says so;
 // `COLLIE_INSIDE=off` is the kill switch (`bridge/inside/gate.ts`). Closed, no part can bind and every
 // send, ask and WalkyTalky message keeps the screen path. A link made while the bridge runs opens the
 // socket at the next read of the link records; an unlink turns the data road off at the next read.
@@ -2300,7 +2300,7 @@ const hookTargetFields = (inside: boolean) => ({
   parts: partsRoot(process.env, homedir()),
 });
 hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(insideStarted));
-// A link made while the bridge runs (`collie link`, M99 spec 09) opens the socket at the next read of
+// A link made while the bridge runs (`collie harness link`, M99 spec 09) opens the socket at the next read of
 // the link records (`watchLink`, one folder listing per read) and names it in the hook target file so
 // a part finds it. A start that fails is tried again at the read after; the timer stops once the
 // socket listens, or when the bridge stops.

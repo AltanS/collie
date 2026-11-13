@@ -756,7 +756,7 @@ older one.
 - **A background request waits up to the hold limit, even with no phone watching.** Then Collie
   lets the hook go, and Claude shows the dialog on the screen. Claude 2.1.301 does not deny it.
 - **Questions and plans stay screen cards.** `AskUserQuestion` and `ExitPlanMode` are never held.
-- **A linked Claude Code answers through its plugin.** After `collie link claude`, the plugin holds
+- **A linked Claude Code answers through its plugin.** After `collie harness link claude`, the plugin holds
   the request once it has told the bridge about it, and the hook then lets go of that one dialog.
   Until then the hook holds it, as above. One card shows either way. See
   [Send by data](claude-code-on-your-phone.md#send-by-data-optional-experimental).
@@ -786,7 +786,7 @@ says in how many settings files the hooks hold permissions.
 > The tap must carry the hash of the tool, the input shown and the labels the card showed. The
 > answer is only ever a person's tap: Collie never allows or denies on its own.
 >
-> A linked Claude Code (`collie link claude`, Collie 1.29.0 or later) adds a second control channel,
+> A linked Claude Code (`collie harness link claude`, Collie 1.29.0 or later) adds a second control channel,
 > under the same guards: its socket is yours alone, the bridge answers only a session it places on a
 > pane, and an answer is only ever a person's tap. It carries plain messages, WalkyTalky messages and
 > permission answers, and reads the text in the box, nothing else ([ADR 0140](../.adr/0140-a-part-inside-the-agent-dials-the-bridge.md)).

@@ -169,6 +169,6 @@ the line-break count, the default. Every other rule of the addendum above holds 
 
 ## Note 2026-11-13 (ADR 0140)
 
-This record is about the screen path. A plain send to a session whose harness is linked (`collie link`)
+This record is about the screen path. A plain send to a session whose harness is linked (`collie harness link`)
 goes to a part inside the agent as data and is never typed, so no paste placeholder is read for it.
 Every send that keeps the screen path follows this record as written.

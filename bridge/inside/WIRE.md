@@ -14,8 +14,8 @@ over a Unix socket. The parser is `wire.ts`, the socket `server.ts`, the binding
 One socket per bridge: `<stateDir>/inside/sock`, mode `0600`, in a folder of mode `0700` that the
 bridge's own user owns and that is not a link. The bridge refuses to listen otherwise.
 
-The socket is opt-in. A bridge opens it only while a harness is linked on the machine (`collie link
-<harness>` writes a record beside the parts, `<config home>/collie/inside/<harness>.link.json`;
+The socket is opt-in. A bridge opens it only while a harness is linked on the machine (`collie harness
+link <harness>` writes a record beside the parts, `<config home>/collie/inside/<harness>.link.json`;
 `bridge/inside/links.ts`, `bridge/inside/gate.ts`). A link made while the bridge runs opens the socket
 at the next read of the records (every 15 seconds) and rewrites the hook target file; an unlink turns
 the data road off at the next read. `COLLIE_INSIDE` (`inside` in `[bridge]`) overrides: `off` is the

@@ -455,7 +455,7 @@ export interface Config {
   multiSession: boolean;
   /**
    * The inside wire's switch (`COLLIE_INSIDE`, M99, `bridge/inside/WIRE.md`). Null, the default: the
-   * wire is on while `collie link` has linked a harness on this machine (M99 spec 09). `off` is the
+   * wire is on while `collie harness link` has linked a harness on this machine (M99 spec 09). `off` is the
    * kill switch: no socket, no hook target `inside` field, and every session keeps the screen path
    * exactly as before. `on` opens it with no link (a test, a leg).
    */

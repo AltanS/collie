@@ -1,8 +1,10 @@
-// `collie link <harness>`, `collie unlink <harness>`, `collie link status` (M99 spec 09, README
-// decision 12): the opt-in for the data path. Nothing links by itself.
+// `collie harness link <harness>`, `collie harness unlink <harness>`, `collie harness status` and
+// `collie harness sync` (M99 spec 09, README decision 12): the opt-in for the data path. Nothing links
+// by itself.
 //
-// The bare `collie link` and `collie unlink` keep their meaning (the PATH name, cli/link.ts, ADR 0021);
-// a harness word, or `status`, picks this module.
+// The verbs live in their own tree, `harness`, beside `mux`. The bare `collie link` and `collie unlink`
+// keep their one meaning, the name on PATH (cli/link.ts, ADR 0021), and refuse an argument
+// ({@link bareLinkRefusal}).
 //
 // RULES
 //  - Claude Code: the mod is written to `<config home>/collie/inside/claude/`, a folder marketplace,
@@ -13,7 +15,7 @@
 //  - pi, omp, opencode: one file, whose first line is the Collie marker. A file without the marker is
 //    somebody else's and is refused; unlink removes only a file with it.
 //  - One part per machine user, shared by every instance. A link never replaces a newer part with an
-//    older one; `link sync` (run by `collie update`) rewrites a linked part with this build's.
+//    older one; `harness sync` (run by `collie update`) rewrites a linked part with this build's.
 //  - The link record (`<harness>.link.json` beside the parts) is written last and removed first. The
 //    bridge opens its inside socket while one is there (bridge/inside/links.ts).
 //  - No unit, no bridge and no session is restarted, and no settings file is touched.
@@ -210,7 +212,7 @@ function registerClaude(deps: HarnessLinkDeps): string | null {
   return null;
 }
 
-/** `collie link <harness>`. */
+/** `collie harness link <harness>`. */
 export function cmdHarnessLink(deps: HarnessLinkDeps, harness: LinkHarness): number {
   const { io } = deps;
   // The bridge keeps the screen path on Windows in this version (`bridge/inside/gate.ts`): a link
@@ -220,7 +222,7 @@ export function cmdHarnessLink(deps: HarnessLinkDeps, harness: LinkHarness): num
     return EXIT.FAIL;
   }
   if (harness === "claude" && deps.exec.which("claude") === null) {
-    io.err("error: claude is not on PATH. Install Claude Code first, then run `collie link claude` again.");
+    io.err("error: claude is not on PATH. Install Claude Code first, then run `collie harness link claude` again.");
     return EXIT.FAIL;
   }
   const wrote = writePart(deps, harness);
@@ -238,7 +240,7 @@ export function cmdHarnessLink(deps: HarnessLinkDeps, harness: LinkHarness): num
     const failed = registerClaude(deps);
     if (failed !== null) {
       io.err(`error: Claude Code did not register the part: ${failed}`);
-      io.err("  The part is written but not linked. Run `collie link claude` again.");
+      io.err("  The part is written but not linked. Run `collie harness link claude` again.");
       return EXIT.FAIL;
     }
   }
@@ -262,7 +264,7 @@ function unlinkOne(deps: HarnessLinkDeps, harness: LinkHarness): Unlinked {
     // missing folder is one no verb of ours can see again. A rerun of `unlink` finishes the job.
     if (ours && note === null) deps.files.removeTree(claudePartDir(deps.ctx));
     if (note === null) return { removed: had || ours, note: null };
-    return { removed: had || ours, note: ours ? `${note}; the part's folder is kept, run \`collie unlink claude\` again` : note };
+    return { removed: had || ours, note: ours ? `${note}; the part's folder is kept, run \`collie harness unlink claude\` again` : note };
   }
   const ours = partOnDisk(deps, harness) !== null;
   if (ours) deps.files.remove(filePartPath(deps.ctx, harness));
@@ -287,7 +289,7 @@ function unregisterClaude(deps: HarnessLinkDeps): string | null {
   return null;
 }
 
-/** `collie unlink <harness>`. */
+/** `collie harness unlink <harness>`. */
 export function cmdHarnessUnlink(deps: HarnessLinkDeps, harness: LinkHarness): number {
   const done = unlinkOne(deps, harness);
   if (!done.removed && done.note === null) {
@@ -300,7 +302,7 @@ export function cmdHarnessUnlink(deps: HarnessLinkDeps, harness: LinkHarness): n
   return done.note === null ? EXIT.OK : EXIT.FAIL;
 }
 
-/** One harness's link state, as `link status` and `doctor` read it. Files only; no harness is run. */
+/** One harness's link state, as `harness status` and `doctor` read it. Files only; no harness is run. */
 export type LinkState =
   | { readonly kind: "not-linked" }
   | { readonly kind: "linked"; readonly version: string }
@@ -326,33 +328,33 @@ export function linkStateWords(harness: LinkHarness, state: LinkState): string {
     case "linked":
       return `linked, part ${state.version}`;
     case "older":
-      return `linked, part ${state.version} is older than this Collie (${state.ours}): run \`collie link ${harness}\``;
+      return `linked, part ${state.version} is older than this Collie (${state.ours}): run \`collie harness link ${harness}\``;
     case "missing":
-      return `linked, but the part is gone: run \`collie link ${harness}\``;
+      return `linked, but the part is gone: run \`collie harness link ${harness}\``;
     case "blocked":
       return `linked, part ${state.version}, blocked by policy: a managed setting (allowManagedHooksOnly) stops the hooks of user plugins`;
   }
 }
 
-/** `collie link status`. */
-export function cmdLinkStatus(deps: HarnessLinkDeps): number {
+/** `collie harness status`. */
+export function cmdHarnessStatus(deps: HarnessLinkDeps): number {
   for (const harness of LINK_HARNESSES) deps.io.out(`${harness}: ${linkStateWords(harness, linkState(deps, harness))}`);
   return EXIT.OK;
 }
 
 /**
- * `collie link sync`, run by `collie update` through the new binary: rewrite each linked part with
+ * `collie harness sync`, run by `collie update` through the new binary: rewrite each linked part with
  * this build's, never over a newer one. Registers nothing and runs no harness: a Claude Code
  * folder-marketplace plugin is read from its folder. One line per harness it touched.
  */
-export function cmdLinkSync(deps: HarnessLinkDeps): number {
+export function cmdHarnessSync(deps: HarnessLinkDeps): number {
   for (const harness of LINK_HARNESSES) {
     if (!isLinked(deps, harness)) continue;
     const wrote = writePart(deps, harness);
     if (wrote.kind === "written" && wrote.version !== null) {
       writeRecord(deps, harness, wrote.version);
-      deps.io.out(`link sync: ${harness} part ${wrote.version}`);
-    } else if (wrote.kind === "kept-newer") deps.io.out(`link sync: ${harness} kept the newer part ${wrote.version ?? "?"}`);
+      deps.io.out(`harness sync: ${harness} part ${wrote.version}`);
+    } else if (wrote.kind === "kept-newer") deps.io.out(`harness sync: ${harness} kept the newer part ${wrote.version ?? "?"}`);
   }
   return EXIT.OK;
 }
@@ -370,32 +372,21 @@ export function unlinkAll(deps: HarnessLinkDeps): void {
   }
 }
 
+/** The sub-verbs of `collie harness`, in the order the usage block prints them. */
+export const HARNESS_SUBCOMMANDS = ["link", "unlink", "status", "sync"] as const;
+
 /** The usage line of the harness verbs. */
-export function harnessLinkUsage(): string {
-  return `usage: collie link | collie link <${LINK_HARNESSES.join("|")}> | collie link status | collie unlink | collie unlink <harness>`;
+export function harnessUsage(): string {
+  return `usage: collie harness link <${LINK_HARNESSES.join("|")}> | collie harness unlink <harness> | collie harness status | collie harness sync`;
 }
 
 /**
- * `collie link --help` and `collie unlink --help`: the verb has two meanings, and both are named. With
- * no word it is the PATH name (ADR 0021); with a harness it is the data path (M99 spec 09).
+ * The bare `collie link` and `collie unlink` with an argument: refused. They have one meaning, the name
+ * on PATH (ADR 0021), and take no argument; the harness verbs are `collie harness link` and `unlink`.
  */
-export function harnessLinkHelp(verb: "link" | "unlink"): string[] {
-  const harnesses = LINK_HARNESSES.join("|");
-  if (verb === "link") {
-    return [
-      `usage: collie link [<${harnesses}> | status]`,
-      "",
-      "  collie link            put `collie` on your PATH: ~/.local/bin/collie points at this checkout's binary",
-      "  collie link <harness>  link a harness, so Collie can send to it by data (available: claude)",
-      "  collie link status     say which harnesses are linked",
-    ];
-  }
-  return [
-    `usage: collie unlink [<${harnesses}>]`,
-    "",
-    "  collie unlink            remove ~/.local/bin/collie again, only when it points at this checkout",
-    "  collie unlink <harness>  remove the harness's part; Collie then uses the screen path for it",
-  ];
+export function bareLinkRefusal(verb: "link" | "unlink"): string {
+  const what = verb === "link" ? "puts `collie` on your PATH" : "removes `collie` from your PATH";
+  return `error: \`collie ${verb}\` takes no argument; it ${what}. To ${verb} a harness, run \`collie harness ${verb} <harness>\`.`;
 }
 
 /** The doctor rows, one per harness (`link-<harness>`). Files only; the harness version comes from the harness rows. */
@@ -406,9 +397,9 @@ export function linkFindings(deps: Pick<HarnessLinkDeps, "ctx" | "files" | "mana
     const words = linkStateWords(harness, state);
     if (state.kind === "not-linked") {
       const built = harness === "claude" || (deps.parts ?? BUILT_PARTS)[harness] !== null;
-      return ok(check, built ? `not linked: \`collie link ${harness}\` lets Collie send to it by data` : "not linked: no part for it in this build yet");
+      return ok(check, built ? `not linked: \`collie harness link ${harness}\` lets Collie send to it by data` : "not linked: no part for it in this build yet");
     }
-    if (state.kind === "older" || state.kind === "missing") return warn(check, words, `\`collie link ${harness}\` writes this build's part`);
+    if (state.kind === "older" || state.kind === "missing") return warn(check, words, `\`collie harness link ${harness}\` writes this build's part`);
     if (state.kind === "blocked") return warn(check, words, "ask the administrator to allow the hooks of user plugins, or leave it: Collie uses the screen path");
     const version = harnessVersion(harness);
     if (harness === "claude" && version !== null && compareSemver(version, CLAUDE_DATA_PATH_FROM) < 0) {
