@@ -98,7 +98,7 @@ state, where the answer goes, and the answer when there is one. It works for the
 session the answer goes to, and nobody else. `withdraw` takes an open Decision back, and `list` lists
 your own Decisions, open first. `state` reads the crew state.
 
-`collie hill --help` prints every verb, how to word a card, and the rules. Every verb and flag is in
+`collie hill --help` prints the verbs an agent runs, how to word a card, and the rules. Every verb and flag is in
 [`collie hill`](tricks-reference.md#collie-hill) of the Tricks reference. `clear`, `on`, `off`, and
 `state` with a word are the person's ([Clear](#clear), [Switch the Hill off](#switch-the-hill-off),
 [Here, Quiet and Away](#here-quiet-and-away)).
@@ -153,7 +153,7 @@ The person opens the card cold, between other things.
 
 The skill an agent has installed holds a short Hill section: one example and a pointer to
 `collie hill --help` ([Install the skill](walky-talky.md#install-the-skill)). The rules are in that
-help, in at most 1,400 bytes, so an agent reads them only when it runs it. `collie hill post --help`
+help, in at most 1,500 bytes, so an agent reads them only when it runs it. `collie hill post --help`
 prints the same text.
 
 1. Post only what needs your person. A worker with a lead asks its lead first.

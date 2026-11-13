@@ -406,7 +406,7 @@ describe("clear", () => {
   test("`collie hill clear` is a verb of the program, and `collie hill --help` lists it", async () => {
     const help = capture();
     expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
-    expect(help.stdout).toContain("  clear [--spoken]");
+    expect(help.stdout.join("\n")).toContain("clear [--spoken]");
   });
 });
 
@@ -476,8 +476,9 @@ describe("the Hill's switch", () => {
   test("`collie hill on` and `off` are verbs of the tree", async () => {
     const help = capture();
     expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
-    expect(help.stdout).toContain("  on  off until your operator switches it on");
-    expect(help.stdout).toContain("  off");
+    // The operator's verbs leave the agent's usage lines; one sentence names them and the default.
+    expect(help.stdout[1]).toBe("The Hill is off until your operator switches it on (theirs alone: on, off, clear [--spoken], state <word>).");
+    expect(help.stdout).not.toContain("  on");
     expect(help.stdout.join("\n")).not.toContain("on unless switched off");
   });
 });
@@ -550,7 +551,7 @@ describe("help", () => {
   test("`collie hill --help` prints the usage and the rules and exits 0; a bare `collie hill` exits 2", async () => {
     const help = capture();
     expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
-    expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list|clear|state|on|off} [--json]");
+    expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list|state} [--json]");
     expect(help.stdout.slice(-RULES.length)).toEqual(RULES);
     const bare = capture();
     expect(cmdHill({ io: bare }, [])).toBe(EXIT.USAGE);
@@ -572,9 +573,9 @@ describe("help", () => {
     }
   });
 
-  test("the help is short: at most 1,400 bytes, the text an agent reads each time it runs it", () => {
+  test("the help is short: at most 1,500 bytes, the text an agent reads each time it runs it", () => {
     const bytes = Buffer.byteLength(`${hillHelp().join("\n")}\n`);
-    expect(bytes).toBeLessThanOrEqual(1400);
+    expect(bytes).toBeLessThanOrEqual(1500);
     expect(HILL_RULES.length).toBe(5);
     expect(HILL_WRITING.length).toBe(2);
   });
@@ -906,7 +907,7 @@ describe("post --view", () => {
 
   test("the --view line says it shows facts and has no buttons", () => {
     const help = hillPostHelp().join("\n");
-    expect(help).toContain("--view <file.json>  facts, no buttons");
+    expect(help).toContain("--view <file.json>  facts, no buttons; kinds: collie docs tricks-reference");
   });
 });
 

@@ -76,7 +76,7 @@ const POST_FLAGS = [
   "--expires 2h|3d",
   "--request-id <uuid>  a retry posts once",
   "--image <path>[=<caption>]",
-  "--view <file.json>  facts, no buttons",
+  "--view <file.json>  facts, no buttons; kinds: collie docs tricks-reference",
 ] as const;
 
 /** Each verb as one line of the help, and after `usage: collie hill ` as the line of a usage error. */
@@ -87,7 +87,7 @@ const VERB_LINES = {
   list: "list",
   clear: "clear [--spoken]",
   state: "state [here|quiet|away]",
-  on: "on  off until your operator switches it on",
+  on: "on",
   off: "off",
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], string>;
 
@@ -103,15 +103,21 @@ const USAGE = {
   off: ["usage: collie hill off"],
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
 
+/** The verbs an agent runs. `clear`, `on`, `off` and `state <word>` are the operator's: the help says so in one sentence. */
+const AGENT_VERBS = ["post", "status", "withdraw", "list", "state"] as const;
+
 /**
- * `collie hill --help`, and the same text for `collie hill post --help` and a bare `collie hill`: the verbs
- * one line each, the flags of `post` one line each, then two lines on wording and the rules. At most 1,400
- * bytes (cli/hill.test.ts holds it): an agent reads this text each time it runs the help.
+ * `collie hill --help`, and the same text for `collie hill post --help` and a bare `collie hill`: the
+ * agent's verbs one line each, the flags of `post` one line each, then two lines on wording and the rules.
+ * At most 1,500 bytes (cli/hill.test.ts holds it): an agent reads this text each time it runs the help.
  */
 export function hillHelp(): string[] {
-  const lines: string[] = [`usage: collie hill {${HILL_SUBCOMMANDS.join("|")}} [--json]`];
-  for (const verb of HILL_SUBCOMMANDS) {
-    lines.push(`  ${VERB_LINES[verb]}`);
+  const lines: string[] = [
+    `usage: collie hill {${AGENT_VERBS.join("|")}} [--json]`,
+    "The Hill is off until your operator switches it on (theirs alone: on, off, clear [--spoken], state <word>).",
+  ];
+  for (const verb of AGENT_VERBS) {
+    lines.push(`  ${verb === "state" ? "state" : VERB_LINES[verb]}`);
     if (verb === "post") for (const flag of POST_FLAGS) lines.push(`    ${flag}`);
   }
   return [...lines, "", ...HILL_WRITING, "", ...HILL_RULES];
