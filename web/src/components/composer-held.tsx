@@ -90,13 +90,15 @@ interface HeldCardProps {
   onSend: (row: HeldRow, action: HeldAction) => Promise<boolean>;
   /** An action ended: the caller refreshes the snapshot. */
   onChanged: () => void;
+  /** A Cancel the bridge took: the row's words, so the caller can give them back to the box. */
+  onReturn?: ((words: string) => void) | undefined;
 }
 
 /** Lines of a row's text in the card: a row on its own or in the open list, and the first of several while collapsed. */
 const CLAMP_ONE = "line-clamp-3";
 const CLAMP_COLLAPSED = "line-clamp-2";
 
-export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending, onSend, onChanged }: HeldCardProps) {
+export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending, onSend, onChanged, onReturn }: HeldCardProps) {
   useLocale();
   // The request whose call is in flight: its buttons wait, the others stay live.
   const [busy, setBusy] = useState<string | null>(null);
@@ -111,9 +113,11 @@ export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending,
     if (!several) setShowAll(false);
   }, [several]);
 
-  async function release(row: HeldRow): Promise<void> {
+  async function release(row: HeldRow, giveBack = false): Promise<void> {
     try {
       const answer = await cancelHeldSend(row.requestId, paneId, scope);
+      // The row went and nothing was sent: its words go back to the person, never nowhere.
+      if (giveBack && answer.result === "cancelled") onReturn?.(row.text);
       // A stored receipt means the request already went out; none means it is going out now.
       if (answer.result === "refused") setStatus(t(answer.receipt === undefined ? "composer.held.cancelLate" : "composer.held.wentOut"), "warn");
     } catch (error) {
@@ -148,7 +152,7 @@ export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending,
     if (!canAct) return null;
     if (row.state === "held") {
       return (
-        <Button type="button" variant="outline" size="sm" className={QUEUED_BUTTON} disabled={disabled} aria-label={t("composer.held.cancelAria")} onClick={() => void act(row, () => release(row))}>
+        <Button type="button" variant="outline" size="sm" className={QUEUED_BUTTON} disabled={disabled} aria-label={t("composer.held.cancelAria")} onClick={() => void act(row, () => release(row, true))}>
           {t("composer.held.cancel")}
         </Button>
       );

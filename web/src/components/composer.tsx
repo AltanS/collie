@@ -548,6 +548,12 @@ interface ClearNote {
 /** How long a Clear's floating notice, and its Restore, stand. */
 export const CLEAR_NOTE_MS = 120_000;
 
+/** The text and the chips the box held at one moment (a send's start). */
+interface ComposerDraftNow {
+  text: string;
+  chips: readonly ComposerAttachment[];
+}
+
 interface ClearedDraft {
   text: string;
   /** The chips, preview URLs included: those stay alive until the window ends. */
@@ -1123,8 +1129,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     paneId,
     instance,
     scope,
-    onTaken: () => {
-      clearComposedDraft();
+    stamp: draftNow,
+    onTaken: (sent) => {
+      clearSentDraft(sent);
       revalidator.revalidate();
     },
     onChanged: () => revalidator.revalidate(),
@@ -1467,6 +1474,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         sending={sending}
         onSend={resendHeld}
         onChanged={onSent}
+        onReturn={(words) => returnHeldWords(words, paneId)}
       />
     ) : null;
 
@@ -1682,17 +1690,41 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     focusInputEnd();
   }
 
+  /** What the box holds now: its text and its chips. Read when a send starts, it says what went out. */
+  function draftNow(): ComposerDraftNow {
+    return { text: inputValueRef.current, chips: attachmentsRef.current };
+  }
+
+  /** The draft of a send that landed goes only while the box still holds what went out (as the `unknown`
+   *  path settles it). A box that still begins with the sent text keeps only what came after it (leading
+   *  whitespace trimmed), stored as the draft, with the chips added since; the chips that went out leave
+   *  with their markers. A box edited inside the sent text keeps everything: nothing says what is new.
+   *  No snapshot: the box goes whole. */
+  function clearSentDraft(sent: ComposerDraftNow | undefined) {
+    if (sent === undefined || inputValueRef.current === sent.text) return clearComposedDraft();
+    const wentOut = (a: ComposerAttachment) => sent.chips.some((c) => c.n === a.n && c.path === a.path);
+    const now = inputValueRef.current;
+    let kept = sent.text !== "" && now.startsWith(sent.text) ? now.slice(sent.text.length).trimStart() : now;
+    for (const a of attachmentsRef.current.filter(wentOut)) {
+      revokePreview(a);
+      kept = removeMarker(kept, markerFor(a));
+    }
+    attachmentsRef.current = attachmentsRef.current.filter((a) => !wentOut(a));
+    setAttachments(attachmentsRef.current);
+    updateInput(kept);
+  }
+
   // What a confirmed send (`sent` or `effective`) does to this composer: the draft goes, the check
   // mark flashes, the pill says sent, the preview keeps the text.
   // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
   // bridge's held row above the box (`held`), which is not a send yet and so leaves no "You sent" preview.
-  function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" | "steered" | "queuedInstead" = "sent") {
+  function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" | "steered" | "queuedInstead" = "sent", sent?: ComposerDraftNow) {
     // The bridge has a new line now (a shell pane only: the read is off elsewhere).
     suggestions.refresh();
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
     // draft goes with it (an empty value removes the key).
     // The chips go with the text: their paths were in the line that just went out.
-    if (isDraft) clearComposedDraft();
+    if (isDraft) clearSentDraft(sent);
     // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
     // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
     if (note !== "held") lastSentRef.current = { text: t, at: Date.now() };
@@ -1802,7 +1834,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // so a turn landing while it is in flight still counts as this send's.
     const sentAt = Date.now();
     const seenUserUuids = new Set((chatEntriesRef.current ?? []).map((entry) => entry.uuid));
-    const draftAtSend = inputValueRef.current;
+    const sentFrom = draftNow();
+    const draftAtSend = sentFrom.text;
     // A send ends the belt X's Undo window: the operator has moved on, and an Undo landing after
     // the send would put back a draft the pane has since answered.
     endUndoWindow();
@@ -1848,7 +1881,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       if (reading.clear) {
         setProtocolOffer(null);
-        afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(reading.note, when));
+        afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(reading.note, when), sentFrom);
         return true;
       }
       // Text the bridge typed and left in the box (`typed_not_submitted`) is this send's own, not a draft
@@ -1886,6 +1919,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     } finally {
       setSending(false);
     }
+  }
+
+  // Cancel on a held send gives its words back: into this box when it is empty (text and chips), else into the
+  // stored draft of the pane they came from when that holds nothing. A box with words of its own is left alone.
+  function returnHeldWords(words: string, fromPane: string) {
+    if (draftPaneRef.current.paneId !== fromPane) {
+      const stored = loadDraftEntry(scope, fromPane);
+      if (stored === null || (stored.text.trim() === "" && stored.attachments.length === 0)) saveDraft(scope, fromPane, words);
+      return;
+    }
+    if (inputValueRef.current.trim() !== "" || attachmentsRef.current.length > 0) return;
+    updateInput(words);
   }
 
   // A tap on an ended held row. Resend: a NEW request (a new id) that names the old one in `resendOf`
@@ -1936,7 +1981,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // destructive check and the send read THIS, never the draft with its markers in it.
     const line = composeLine(input, attachments, isShell);
     const reason = isDestructiveInput(line);
-    if (reason && !sendConfirm.confirm("send")) {
+    // The confirm is armed on this line, so a line edited after the first tap asks again.
+    if (reason && !sendConfirm.confirm(line)) {
       armedWhen.current = when;
       // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different
       // sentence depending on whose disk it runs on, and this line is the last thing read before the
@@ -1953,7 +1999,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     armedWhen.current = undefined;
     void send(line, true, when);
   }
-  const confirmingSend = sendConfirm.pending === "send";
+  // Armed on the composed line: an edited line no longer stands armed, and the note goes with it.
+  const confirmingSend = sendConfirm.pending !== null && sendConfirm.pending === composeLine(input, attachments, isShell);
   // A modal ask owns the agent's keyboard: the Send slot and the placeholder say so (spec 10).
   const askOwnsKeys = slot === "answer" && !direct.active;
   // The mic beside Attach, for a box that holds a draft or a chip (issue 573): the round button is Send

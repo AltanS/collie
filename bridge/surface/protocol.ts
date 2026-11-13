@@ -3083,6 +3083,44 @@ export class SendProtocol {
     return outcome;
   }
 
+  /**
+   * The answer to a request whose id the store knows: its stored receipt, or, when the bridge died while
+   * it ran, the `unknown` it ends with now. `handle` answers a replay with this.
+   */
+  private async replayAnswer(request: SendRequest, record: SendRecord, target: SendTarget): Promise<SendAnswer> {
+    const stored = record.receipt;
+    if (stored !== undefined) {
+      // A command's draft refusal offers no Add on a replay either: the same rule, read from the same request.
+      const command = stored.reason === "draft_present" && draftCommand(request, await this.deps.profile(target.harness, target.paneId));
+      const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null, command), replayed: true };
+      // A send a crash cut short: read the pane now and report it beside the stored receipt.
+      if (stored.outcome !== "unknown" || stored.reason !== "crash") return replay;
+      return withLook(replay, await this.lookAfterCrash(request, record, target));
+    }
+    // Unsettled and not running here: the bridge died while it ran, and the start-up recovery has
+    // not seen it. It ends `unknown` now, like recovery would end it, with the pane read as S2.
+    const look = await this.lookAfterCrash(request, record, target);
+    const state = this.bareState(request, record, target, null);
+    state.marks.s2 = look;
+    const receipt = this.receiptOf(state, "unknown", "crash");
+    this.deps.store.settle(request.id, receipt);
+    this.count(state, receipt);
+    return withLook({ receipt, offers: offersFor("unknown", "crash", false), replayed: true }, look);
+  }
+
+  /**
+   * The stored answer of a request id this pane already settled, or null when the store knows no such
+   * settled request here. A Resend or a returned card's Send whose answer was lost is retried under
+   * the same id: the route asks this before it looks for the source row, which that first try may
+   * have taken away (it must not send twice, and it must not answer 404).
+   */
+  async settledAnswer(request: SendRequest, target: SendTarget): Promise<SendAnswer | null> {
+    const record = this.deps.store.get(request.id);
+    if (record === null || record.receipt === undefined) return null;
+    if (record.session !== target.session || record.paneId !== target.paneId) return null;
+    return this.replayAnswer(request, record, target);
+  }
+
   /** One request, start to receipt. Never throws for a pane's state; every end is an answer. */
   async handle(request: SendRequest, target: SendTarget): Promise<SendAnswer> {
     if (request.mode === "prepare") return this.prepare(target);
@@ -3108,26 +3146,7 @@ export class SendProtocol {
       const receipt = this.receiptOf(this.bareState(request, accepted.record, target, null), "refused", "id_reused", undefined, { detail });
       return { receipt, offers: [], detail };
     }
-    if (accepted.kind === "replay") {
-      const stored = accepted.record.receipt;
-      if (stored !== undefined) {
-        // A command's draft refusal offers no Add on a replay either: the same rule, read from the same request.
-        const command = stored.reason === "draft_present" && draftCommand(request, await this.deps.profile(target.harness, target.paneId));
-        const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null, command), replayed: true };
-        // A send a crash cut short: read the pane now and report it beside the stored receipt.
-        if (stored.outcome !== "unknown" || stored.reason !== "crash") return replay;
-        return withLook(replay, await this.lookAfterCrash(request, accepted.record, target));
-      }
-      // Unsettled and not running here: the bridge died while it ran, and the start-up recovery has
-      // not seen it. It ends `unknown` now, like recovery would end it, with the pane read as S2.
-      const look = await this.lookAfterCrash(request, accepted.record, target);
-      const state = this.bareState(request, accepted.record, target, null);
-      state.marks.s2 = look;
-      const receipt = this.receiptOf(state, "unknown", "crash");
-      this.deps.store.settle(request.id, receipt);
-      this.count(state, receipt);
-      return withLook({ receipt, offers: offersFor("unknown", "crash", false), replayed: true }, look);
-    }
+    if (accepted.kind === "replay") return this.replayAnswer(request, accepted.record, target);
     // A pane with held sends: a new message or command joins the end of its queue, it never jumps. A
     // manual send joins too: the screen the person confirmed is not the one its turn will come on.
     // A pane with no profile never holds: its send goes in blind (see the header), so it skips this.

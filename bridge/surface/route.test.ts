@@ -510,6 +510,40 @@ describe("a Resend through sendRoute (M56 spec 15 review, H7)", () => {
     }
   });
 
+  test("a Resend whose answer was lost answers its stored receipt on the retry, sends nothing twice, and an unknown id stays a 404", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { audit } = auditLines();
+      const context = { audit, device: null, redact: true, acceptEncoding: null };
+      const holds = new HoldStore(join(dir, "held"));
+      const { rt, pane, store } = runtime(true, dir, holds);
+      const accepted = store.accept({ id: "route-lost-0001", session: "main", paneId: "%1", paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "the words of the held send" });
+      const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(accepted.record);
+      store.hold("route-lost-0001", { ...receipt, outcome: "held" });
+      holds.add({ id: "route-lost-0001", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "the words of the held send", revision: 0, command: false });
+      holds.end("route-lost-0001", "expired");
+      // The first try goes through and takes the old row away; its answer never reaches the phone.
+      const first = await sendRoute(rt, { id: "route-lost-0002", pane: "%1", text: "", resendOf: "route-lost-0001" }, context);
+      expect(first.status).toBe(200);
+      const firstBody = await first.json();
+      expect(firstBody).toMatchObject({ receipt: { requestId: "route-lost-0002", outcome: "sent" } });
+      expect(holds.get("route-lost-0001")).toBeNull();
+      expect(pane.written).toEqual(["the words of the held send"]);
+      // The retry carries the same id: the stored receipt comes back, not a 404, and nothing is typed again.
+      const retry = await sendRoute(rt, { id: "route-lost-0002", pane: "%1", text: "", resendOf: "route-lost-0001" }, context);
+      expect(retry.status).toBe(200);
+      const retryBody = await retry.json();
+      expect(retryBody).toMatchObject({ replayed: true, receipt: { requestId: "route-lost-0002", outcome: "sent" } });
+      expect(retryBody.receipt).toEqual(firstBody.receipt);
+      expect(pane.written).toEqual(["the words of the held send"]);
+      // A request id the store never saw, naming a row that is gone, is still a 404.
+      expect((await sendRoute(rt, { id: "route-lost-0003", pane: "%1", text: "", resendOf: "route-lost-0001" }, context)).status).toBe(404);
+      expect(pane.written).toEqual(["the words of the held send"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a Resend that asks to steer goes as a plain send: no when and no fromPhone reach the protocol (M69)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {

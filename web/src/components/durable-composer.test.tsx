@@ -1,5 +1,5 @@
 import { createRef, useState } from "react";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -953,5 +953,61 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
     await user.click(sendButton());
     await waitFor(() => expect(old).toHaveLength(1));
     expect(protocol).toHaveLength(0);
+  });
+});
+
+// M100 spec 02, item 2: a failed send puts the old words back only into an empty field.
+describe("a failed send keeps whatever was written since", () => {
+  it("restores the old words into an empty field, as before", async () => {
+    stub("send", () => HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "Name a turn." }, { status: 409 }));
+    draw();
+    const user = await type("hello");
+    await user.click(sendButton());
+    await waitFor(() => expect(field()).toHaveValue("hello"));
+    expect(loadDraft(undefined, "c1")).toBe("hello");
+  });
+
+  it("joins the old words and the new ones with a newline, and saves both as the draft", async () => {
+    let answer: () => void = () => undefined;
+    const gateOpen = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/send$/, async () => {
+        await gateOpen;
+        return HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "Name a turn." }, { status: 409 });
+      }),
+    );
+    draw();
+    const user = await type("old words");
+    await user.click(sendButton());
+    await waitFor(() => expect(screen.getByPlaceholderText("Sending…")).toBeDisabled());
+    // Words written into the field while the send is on its way (a dictation, a restored draft).
+    fireEvent.change(screen.getByPlaceholderText("Sending…"), { target: { value: "new words" } });
+    answer();
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("Name a turn."));
+    expect(field()).toHaveValue("old words\nnew words");
+    expect(loadDraft(undefined, "c1")).toBe("old words\nnew words");
+  });
+
+  it("the Send Protocol path joins them the same way when no answer came", async () => {
+    let answer: () => void = () => undefined;
+    const gateOpen = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    server.use(
+      http.post(/\/api\/send$/, async () => {
+        await gateOpen;
+        return new HttpResponse("down", { status: 502 });
+      }),
+    );
+    draw({ sendProtocol: true });
+    const user = await type("old words");
+    await user.click(sendButton());
+    await waitFor(() => expect(screen.getByPlaceholderText("Sending…")).toBeDisabled());
+    fireEvent.change(screen.getByPlaceholderText("Sending…"), { target: { value: "new words" } });
+    answer();
+    await waitFor(() => expect(field()).toHaveValue("old words\nnew words"));
+    expect(loadDraft(undefined, "c1")).toBe("old words\nnew words");
   });
 });

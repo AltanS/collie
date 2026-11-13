@@ -345,6 +345,46 @@ describe("the held-send card", () => {
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("It already went out."));
   });
 
+  // M100 spec 02, item 3: Cancel on a held send must not destroy the words.
+  it("Cancel returns the row's text to an empty composer, and to the stored draft", async () => {
+    const user = userEvent.setup();
+    fakeDelete({ body: { result: "cancelled" } });
+    renderComposer({ held: [row("req00001", "held", { text: "the words I queued" })] });
+    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
+    await waitFor(() => expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("the words I queued"));
+    expect(loadDraft(undefined, "w1:p1")).toBe("the words I queued");
+  });
+
+  it("Cancel leaves a composer that holds other text alone", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "cancelled" } });
+    renderComposer({ held: [row("req00001", "held", { text: "the words I queued" })] });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "what I am writing now");
+    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel the queued message" })).toBeEnabled());
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("what I am writing now");
+    expect(loadDraft(undefined, "w1:p1")).toBe("what I am writing now");
+  });
+
+  it("a Cancel that finds the request already sent returns nothing to the box", async () => {
+    const user = userEvent.setup();
+    fakeDelete({ status: 409, body: { result: "refused", reason: "busy", receipt: { requestId: "req00001", outcome: "sent", keys: [] } } });
+    renderComposer({ held: [row("req00001", "held", { text: "the words I queued" })] });
+    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("It already went out."));
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
+  });
+
+  it("Dismiss of an ended row returns nothing to the box", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "dismissed" } });
+    renderComposer({ held: [row("req00001", "ended", { outcome: "expired", text: "the words I queued" })] });
+    await user.click(screen.getByRole("button", { name: "Dismiss the message" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
+  });
+
   it("a row whose pane closed offers Dismiss only", () => {
     renderComposer({ held: [row("req00001", "ended", { outcome: "refused", reason: "pane_gone" })] });
     expect(screen.getByText("Not sent. The pane closed.")).toBeInTheDocument();
