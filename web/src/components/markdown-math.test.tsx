@@ -197,6 +197,40 @@ describe("Markdown equations with MathJax", () => {
     }
   });
 
+  // base's `\mmlToken{kind}[attributes]{text}` accepts href, style, class and id. The formula still
+  // draws, but none of the four reaches the page: a link of any scheme there would skip the Markdown
+  // link rule (http, https and mailto only, in a new tab).
+  it.each([
+    String.raw`\mmlToken{mi}[href="https://example.com/landed"]{x}`,
+    String.raw`\mmlToken{mo}[href="intent://scan/#Intent;scheme=zxing;end"]{=}`,
+    String.raw`\mmlToken{mi}[href="javascript:alert(1)"]{y}`,
+    String.raw`\mmlToken{mi}[style="background-image:url(https://example.com/beacon.png)"]{z}`,
+    String.raw`\mmlToken{mi}[class="injected"]{x}`,
+    String.raw`\mmlToken{mi}[id="injected"]{x}`,
+  ])("draws %s without its link, style, class or id", (body) => {
+    const { container } = render(<MarkdownText text={`$${body}$`} />);
+    expect(within(container).getByRole("math")).toHaveAttribute("aria-label", body);
+    expect(container.querySelector("a, [href], [*|href], .injected, #injected")).toBeNull();
+    for (const element of container.querySelectorAll("[style]")) {
+      expect(element.getAttribute("style")).not.toContain("url(");
+    }
+  });
+
+  // An mglyph's `src` would draw an `<image>` that fetches the URL. Without it the glyph has nothing to
+  // draw, so the formula shows its source.
+  it.each([
+    String.raw`\mmlToken{mglyph}[src="https://example.com/beacon.png" alt="g"]{}`,
+    String.raw`\mmlToken{mglyph}[src="https://example.com/beacon.png" width="1em" height="1em"]{}`,
+  ])("does not draw %s as an image", (body) => {
+    const { container } = render(<MarkdownText text={`$${body}$`} />);
+    expect(container.querySelector("image, img, [src], [href], [*|href]")).toBeNull();
+  });
+
+  it("keeps the colour a formula asks for", () => {
+    const { container } = render(<MarkdownText text={String.raw`$\color{red}{x}$`} />);
+    expect(container.querySelector('[fill="red"]')).not.toBeNull();
+  });
+
   // mathtools declares macros on the TeX input it runs in. Each formula gets its own, so a
   // declaration never reaches a later formula, and the same declaration in two formulas works twice.
   it("does not share a mathtools declaration between equations", () => {

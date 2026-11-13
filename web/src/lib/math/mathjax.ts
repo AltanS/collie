@@ -11,6 +11,8 @@ import "@mathjax/src/js/input/tex/braket/BraketConfiguration.js";
 import "@mathjax/src/js/input/tex/cancel/CancelConfiguration.js";
 import "@mathjax/src/js/input/tex/color/ColorConfiguration.js";
 import "@mathjax/src/js/input/tex/mathtools/MathtoolsConfiguration.js";
+import type { MmlNode } from "@mathjax/src/js/core/MmlTree/MmlNode.js";
+import type ParseOptions from "@mathjax/src/js/input/tex/ParseOptions.js";
 import type TexError from "@mathjax/src/js/input/tex/TexError.js";
 import { mathjax } from "@mathjax/src/js/mathjax.js";
 import { SVG } from "@mathjax/src/js/output/svg.js";
@@ -66,7 +68,25 @@ const texInput = (): TeX<LiteElement, LiteText, LiteDocument> =>
     formatError: (_jax: TeX<LiteElement, LiteText, LiteDocument>, err: TexError) => {
       throw err;
     },
+    postFilters: [dropPageAttributes],
   });
+
+// NO FORMULA SETS A LINK, AN IMAGE, A STYLE, A CLASS OR AN ID. base's `\mmlToken{kind}[attributes]{text}`
+// takes them: the SVG output wraps a token with an `href` in `<a href>`, so a formula could make a link
+// of any scheme that skips the Markdown link rule (http, https and mailto, in a new tab), and an
+// `mglyph` with a `src` draws an `<image>`. They are dropped from the MathML tree, before the SVG is
+// made from it: the URL attributes Safe filters (href, src, altimg) and the page ones (style, class,
+// id). Not MathJax's Safe extension itself: it also clamps sizes, so `\Huge` would draw as `\Large`.
+// The SVG output's own attributes are untouched.
+const PAGE_ATTRIBUTES = ["href", "src", "altimg", "style", "class", "id"];
+
+// TeX runs its post-filters with `{ math, document, data }`, `data` being its ParseOptions, whose
+// `root` is the formula's MathML tree once it is parsed.
+function dropPageAttributes({ data }: { data: ParseOptions }): void {
+  data.root.walkTree((node: MmlNode) => {
+    for (const name of PAGE_ATTRIBUTES) node.attributes.unset(name);
+  });
+}
 
 /** The engine, made on the first formula: the adaptor, the handler and the SVG output are shared. */
 function engine(): (text: string, display: boolean) => MathMarkup | Promise<MathMarkup> {
