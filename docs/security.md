@@ -681,9 +681,9 @@ No host name, no folder and nothing you type or read is sent. We need these numb
 spot regressions and slow degradations after a release, and to steer what gets built next. Up to
 1.26.x Collie sent nothing ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md)).
 
-When Collie shows one of its two trouble cards, the next ping also carries how often, in six fields:
-which card, the name and version of the agent program, the multiplexer it ran on, a count and, from
-1.27.4, a screen field on a dialog card. The screen field is a short hash of the dialog's key-hint
+When Collie shows one of its two trouble cards, the next ping also carries how often:
+which card, the name and version of the agent program, the multiplexer it ran on, whether the optional
+data link was on for that pane, a count and, from 1.27.4, a screen field on a dialog card. The screen field is a short hash of the dialog's key-hint
 row only, never a row with your text, never the screen or what you typed. It is absent unless that
 row is a short list of key hints, such as `enter select · esc back`.
 
