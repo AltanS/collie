@@ -54,9 +54,9 @@ describe("a whole round with the fake part", () => {
     expect((await part.event("row", { door: "response", row: "u-1", text: "never kept" })).status).toBe(204);
     expect((await part.event("turn.end", { turn: "t1", reason: "answer" })).status).toBe(204);
     expect(events.filter((event) => ["turn.start", "row", "turn.end"].includes(event.kind))).toEqual([
-      { ok: true, part: part.partId!, kind: "turn.start", turn: "t1" },
+      { ok: true, part: part.partId!, kind: "turn.start", turn: "t1", seq: null },
       { ok: true, part: part.partId!, kind: "row", door: "response", row: "u-1" },
-      { ok: true, part: part.partId!, kind: "turn.end", turn: "t1", reason: "answer" },
+      { ok: true, part: part.partId!, kind: "turn.end", turn: "t1", reason: "answer", seq: null },
     ]);
 
     // A draft question, answered with the box's text.

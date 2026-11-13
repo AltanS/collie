@@ -26,8 +26,12 @@ export const DRAFT_REFUSAL = "draft";
 /** The part side the data road needs: the inside hub, or a test's stand-in. */
 export interface DataDoor {
   partOf(address: PaneAddress): { readonly capabilities: ReadonlySet<Capability> } | null;
-  turnOf(address: PaneAddress): "running" | "idle" | null;
-  /** Whether the box holds a draft, as the part last said; null when it is not known. */
+  /**
+   * The turn as the part last said it; null when it is not known, an old `running` included (M100 spec 05).
+   * `anyAge` reads an old `running` as running, for a caller that never sends on it.
+   */
+  turnOf(address: PaneAddress, options?: { readonly anyAge?: boolean }): "running" | "idle" | null;
+  /** Whether the box holds a draft, as the part last said; null when it is not known, an old "present" included. */
   draftOf(address: PaneAddress): boolean | null;
   /** The reason of a command's `failed`, or null. */
   failReasonOf(id: string): string | null;

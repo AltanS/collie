@@ -20,13 +20,13 @@ function sink() {
 describe("wake from events", () => {
   test("turn.start folds the prompt edge (working) and pokes the read", () => {
     const { s, calls } = sink();
-    expect(applyWake(s, "%1", { ok: true, part: PART, kind: "turn.start", turn: "t1" }, 5)).toBe(true);
+    expect(applyWake(s, "%1", { ok: true, part: PART, kind: "turn.start", turn: "t1", seq: null }, 5)).toBe(true);
     expect(calls).toEqual(["edge %1 prompt 5", "poke"]);
   });
 
   test("turn.end folds the stop edge (idle) and pokes the read", () => {
     const { s, calls } = sink();
-    applyWake(s, "%1", { ok: true, part: PART, kind: "turn.end", turn: "t1", reason: null }, 6);
+    applyWake(s, "%1", { ok: true, part: PART, kind: "turn.end", turn: "t1", reason: null, seq: null }, 6);
     expect(calls).toEqual(["edge %1 stop 6", "poke"]);
   });
 
@@ -60,14 +60,14 @@ describe("wake from events", () => {
 });
 
 describe("what releases a held send (spec 03 and spec 05)", () => {
-  const draft = (present: boolean): WireEvent => ({ ok: true, part: PART, kind: "draft.state", present });
+  const draft = (present: boolean): WireEvent => ({ ok: true, part: PART, kind: "draft.state", present, seq: null });
   test("a turn end always; a draft that went only while the turn is known; a draft that came never", () => {
-    expect(releasesHeld({ ok: true, part: PART, kind: "turn.end", turn: null, reason: null }, null)).toBe(true);
+    expect(releasesHeld({ ok: true, part: PART, kind: "turn.end", turn: null, reason: null, seq: null }, null)).toBe(true);
     expect(releasesHeld(draft(false), "idle")).toBe(true);
     expect(releasesHeld(draft(false), "running")).toBe(true);
     expect(releasesHeld(draft(false), null)).toBe(false);
     expect(releasesHeld(draft(true), "idle")).toBe(false);
-    expect(releasesHeld({ ok: true, part: PART, kind: "turn.start", turn: null }, "running")).toBe(false);
+    expect(releasesHeld({ ok: true, part: PART, kind: "turn.start", turn: null, seq: null }, "running")).toBe(false);
   });
 
   test("a draft.state event wakes nothing and folds no edge", () => {

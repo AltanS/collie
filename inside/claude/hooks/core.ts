@@ -53,6 +53,12 @@ export const RESCAN_MS = 60_000;
 export const POLL_WAIT_MS = 25_000;
 /** The time limit of one hello or event post. A bridge that does not answer in it counts as down. */
 export const REQUEST_MS = 5000;
+/**
+ * After a state word's post failed (no answer in time, a 429, a 5xx), the waits before it is said again,
+ * then no more until the next word, the next edit of the box or the next hello (M100 spec 05). Each wait
+ * is at least the second a 429 asks for, and the whole ladder ends well inside the bridge's word age.
+ */
+export const STATE_RETRY_MS = [1000, 5000, 15_000] as const;
 /** How many command ids the mod remembers having acted on, newest kept. */
 export const TAKEN_KEEP = 64;
 /** The most hook target files read. A machine runs a handful of bridges. */
@@ -248,9 +254,31 @@ export function holdsDraft(text: string): boolean {
   return text.length > 0;
 }
 
-/** The event that says whether the box holds a draft: the boolean only, never the text. */
-export function draftStateEvent(part: string, present: boolean): string {
-  return JSON.stringify({ part, kind: "draft.state", present });
+/** The event that says whether the box holds a draft: the boolean only, never the text, and the word's count. */
+export function draftStateEvent(part: string, present: boolean, seq: number): string {
+  return JSON.stringify({ part, kind: "draft.state", present, seq });
+}
+
+/** The main turn as the part last saw it, with the count of the word that said so. */
+export interface TurnWord {
+  readonly kind: "turn.start" | "turn.end";
+  readonly turn: string | null;
+  /** The engine's reason for a turn end, as the engine gives it. */
+  readonly reason?: unknown;
+  readonly seq: number;
+}
+
+/** The event of a turn word. */
+export function turnEvent(part: string, word: TurnWord): string {
+  return JSON.stringify({ part, ...word });
+}
+
+/**
+ * Whether a state word's post failed and is to be said again: no answer in time, a 429, a 5xx. A 410 is
+ * not: the part says hello again, and the hello says every state word. Any other answer is final.
+ */
+export function stateLost(status: number | null): boolean {
+  return status === null || status === 429 || status >= 500;
 }
 
 /** The ids acted on, with one more, newest kept. A list of anything else starts empty. */
