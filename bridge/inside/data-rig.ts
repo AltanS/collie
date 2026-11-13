@@ -9,16 +9,16 @@ import { join } from "node:path";
 import { muxAck, muxUnreachable, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
-import { fakeEdgeTarget, fakeLiveness, FakePart } from "../inside/fake-part.ts";
-import { InsideHub } from "../inside/hub.ts";
-import { placeHello } from "../inside/place.ts";
-import { CommandQueue } from "../inside/queue.ts";
-import { PartRegistry } from "../inside/registry.ts";
-import { InsideServer, insideSocketPath } from "../inside/server.ts";
-import { HoldStore } from "./holds.ts";
-import { KeyGate } from "./key-gate.ts";
-import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
-import { RequestStore } from "./requests.ts";
+import { fakeEdgeTarget, fakeLiveness, FakePart } from "./fake-part.ts";
+import { InsideHub } from "./hub.ts";
+import { placeHello } from "./place.ts";
+import { CommandQueue } from "./queue.ts";
+import { PartRegistry } from "./registry.ts";
+import { InsideServer, insideSocketPath } from "./server.ts";
+import { HoldStore } from "../surface/holds.ts";
+import { KeyGate } from "../surface/key-gate.ts";
+import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "../surface/protocol.ts";
+import { RequestStore } from "../surface/requests.ts";
 
 export const DATA_PANE = { session: "main", paneId: "w1:p1" };
 const ENV = { HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/herdr.sock" };
@@ -51,16 +51,19 @@ export interface DataRig {
   readonly store: RequestStore;
   readonly holds: HoldStore;
   readonly socket: string;
-  /** A fake part, said hello, bound to {@link DATA_PANE}. */
-  part(fields?: Record<string, string[]>): Promise<FakePart>;
+  /** A fake part, said hello, bound to {@link DATA_PANE}; with `idle: false` it reports no turn yet. */
+  part(fields?: Record<string, string[]>, options?: { idle?: boolean }): Promise<FakePart>;
   send(id: string, text: string, over?: Partial<SendRequest>): Promise<SendAnswer>;
   stop(): void;
 }
 
 let serial = 0;
 
-/** The rig. `enabled` is the kill switch; `limits` shorten the data road's waits for a test. */
-export async function dataRig(options: { enabled?: boolean; takeMs?: number; wordMs?: number; inside?: boolean } = {}): Promise<DataRig> {
+/**
+ * The rig. `harness` and `version` name the profile the Send Protocol reads (a test names one: this
+ * folder names no harness); `enabled` is the kill switch; `limits` shorten the data road's waits.
+ */
+export async function dataRig(options: { harness: string; version: string; enabled?: boolean; takeMs?: number; wordMs?: number; inside?: boolean }): Promise<DataRig> {
   const dir = mkdtempSync(join(tmpdir(), "data-"));
   const mux = new RecordingMux();
   const target = fakeEdgeTarget({ session: "main", panes: ["w1:p1"], foreground: [process.pid] });
@@ -70,14 +73,14 @@ export async function dataRig(options: { enabled?: boolean; takeMs?: number; wor
   if (!(await server.start())) throw new Error("the rig's inside socket did not start");
   const store = new RequestStore(join(dir, "sends"));
   const holds = new HoldStore(join(dir, "held"));
-  const claude = loadProfiles().get("claude");
+  const known = loadProfiles().get(options.harness);
   const protocol = new SendProtocol({
     mux,
     gate: new KeyGate(mux),
     store,
     locks: new SessionLocks(),
     ring: new RowRing(),
-    profile: () => Promise.resolve(claude === undefined ? null : profileFor("claude", "2.1.200", { log: () => undefined })),
+    profile: () => Promise.resolve(known === undefined ? null : profileFor(options.harness, options.version, { log: () => undefined })),
     generation: () => "gen-1",
     holds,
     data:
@@ -92,12 +95,14 @@ export async function dataRig(options: { enabled?: boolean; takeMs?: number; wor
     store,
     holds,
     socket,
-    part: async (fields = {}) => {
+    part: async (fields = {}, how = {}) => {
       const part = new FakePart(socket, { env: ENV, pidStartTime: 7, ...fields });
       await part.hello();
+      // A part that reported its turn idle once: the bridge knows the turn (M99 review item 6).
+      if (how.idle !== false) await part.event("turn.end", { turn: null });
       return part;
     },
-    send: (id, text, over = {}) => protocol.handle({ id, text, mode: "send", fromPhone: true, ...over }, { session: "main", paneId: "w1:p1", harness: "claude" }),
+    send: (id, text, over = {}) => protocol.handle({ id, text, mode: "send", fromPhone: true, ...over }, { session: "main", paneId: "w1:p1", harness: options.harness }),
     stop: () => server.stop(),
   };
 }

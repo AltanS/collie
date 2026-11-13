@@ -125,12 +125,16 @@ describe('the Collie mod', () => {
   })
 
   test('a bridge that says do not wait: the permission goes on as if the mod were not there', async ($, on) => {
-    const { clock } = world(on, { askWait: false })
+    const { clock, wire } = world(on, { askWait: false })
     on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
     await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
     await clock.settle()
     const result = await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'ls' }, permission_suggestions: [] })
     expect(result).toEqual({ decision: { behavior: 'allow' } })
+    // The ask the bridge heard of is closed again, so the bridge holds nothing for it.
+    await clock.settle()
+    const opened = events(wire).find((e) => e?.kind === 'ask.open')
+    expect(events(wire).find((e) => e?.kind === 'ask.close')).toMatchObject({ ask: opened?.ask, how: 'no-wait' })
   })
 
   test('wake events carry the door and the row id, never the text', async ($, on) => {

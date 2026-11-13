@@ -3867,7 +3867,11 @@ export class SendProtocol {
       request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true },
     });
     if (pick.path === "screen") return null;
-    if (data.door.turnOf(address) === "running") {
+    const turn = data.door.turnOf(address);
+    // A part that has not reported a turn since it bound (a bridge restart, a reload mid turn) leaves
+    // the turn unknown: the screen road reads it and runs the send, as today.
+    if (turn === null) return null;
+    if (turn === "running") {
       const end = new Ended("refused", "turn_running");
       if (release) return this.backToQueue(state, end);
       return this.holdsEnd(state, end) ? this.hold(state, end) : this.settle(state, end);

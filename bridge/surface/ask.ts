@@ -108,13 +108,6 @@ export class AskBook {
   /** The session's hook-held permissions (M56 spec 12), when the bridge takes holds. */
   holds: HoldBook | null = null;
 
-  /**
-   * One owner per ask kind (M99 spec 04, `bridge/inside/owner.ts`): true when a part inside the pane's
-   * agent owns permission asks. The screen's permission dialog then mints no keys ask: the part's hold
-   * is the card. Null: the screen reader owns every kind, as before.
-   */
-  ownsPermission: ((paneId: string) => boolean) | null = null;
-
   constructor(
     private readonly now: () => number = () => Date.now(),
     /** Random per book, so a restart never mints an id a stored receipt already holds. */
@@ -151,10 +144,6 @@ export class AskBook {
     }
     const now = this.now();
     const live = this.liveEntry(paneId);
-    if (dialog?.kind === "permission" && this.ownsPermission?.(paneId) === true) {
-      if (live !== null) live.state = "voided";
-      return null;
-    }
     if (dialog === null) {
       if (live !== null && now - live.mintedAt > live.lifetimeMs) live.state = "voided";
       return null;

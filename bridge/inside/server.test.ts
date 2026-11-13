@@ -7,7 +7,7 @@ import { FakePart } from "./fake-part.ts";
 import { InsideHub, type Placer } from "./hub.ts";
 import { CommandQueue } from "./queue.ts";
 import { PartRegistry } from "./registry.ts";
-import { HELLO_RATE_BURST, InsideServer, insideSocketPath } from "./server.ts";
+import { HELLO_RATE_BURST, holderOf, InsideServer, insideSocketPath } from "./server.ts";
 import { BODY_MAX } from "./wire.ts";
 
 const servers: InsideServer[] = [];
@@ -80,6 +80,9 @@ describe("the socket", () => {
     child.kill("SIGKILL");
     await child.exited;
     expect(lstatSync(path).isSocket()).toBe(true);
+    // Bun's unix fetch names a dead holder by the exact codes the probe reads (review item 7).
+    expect(await holderOf(path)).toBe("dead");
+    expect(await holderOf(join(dir, "inside", "missing"))).toBe("dead");
     const { started } = await start(dir);
     expect(started).toBe(true);
     expect(await new FakePart(path).request("GET", "/v1/ping")).toEqual({ status: 200, body: { wire: 1 } });

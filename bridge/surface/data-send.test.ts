@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { dataId, dataRig, type DataRig } from "./data-rig.ts";
+import { dataId, dataRig, type DataRig } from "../inside/data-rig.ts";
 
 const rigs: DataRig[] = [];
 afterEach(() => {
   for (const made of rigs.splice(0)) made.stop();
 });
-async function rig(options: Parameters<typeof dataRig>[0] = {}): Promise<DataRig> {
-  const made = await dataRig(options);
+async function rig(options: Partial<Parameters<typeof dataRig>[0]> = {}): Promise<DataRig> {
+  const made = await dataRig({ harness: "claude", version: "2.1.200", ...options });
   rigs.push(made);
   return made;
 }
@@ -121,5 +121,29 @@ describe("a session with no bound part", () => {
     expect(r.store.get(id)?.path).toBeUndefined();
     expect(r.protocol.pathOf(id)).toBeNull();
     expect(r.mux.calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe("a turn the bridge does not know (M99 review item 6)", () => {
+  test("a part that reported no turn since it bound: the screen road runs the send, the part never sees it", async () => {
+    const r = await rig();
+    const part = await r.part({}, { idle: false });
+    const id = dataId();
+    await r.send(id, "hi");
+    expect(r.hub.stateOf(id)).toBeNull();
+    expect(r.mux.calls.length).toBeGreaterThan(0);
+    expect((await part.next({ waitMs: 1000 })).status).toBe(204);
+  });
+
+  test("its first turn event makes the turn known, and the next send goes by data", async () => {
+    const r = await rig();
+    const part = await r.part({}, { idle: false });
+    await part.event("turn.end", { turn: "t0" });
+    const id = dataId();
+    const served = part.serveOnce();
+    const answer = await r.send(id, "hi");
+    expect((await served)?.id).toBe(id);
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(r.mux.calls).toEqual([]);
   });
 });

@@ -47,6 +47,7 @@ const ELSEWHERE: readonly Elsewhere[] = [
   { file: "cli/codex-hooks.ts", count: 2, why: "an agent's own config file ($CODEX_HOME/config.toml), not Collie's; the same case as cli/hooks.ts" },
   { file: "cli/skill-install.ts", count: 1, why: "the one-time `.collie-backup` copy beside an agent's own instruction file (~/.codex/AGENTS.md and kin), not Collie's; the same case as cli/hooks.ts" },
   { file: "cli/update.ts", count: 1, why: "the staging log is `stagingLogPath(deps.ctx.stateDir, runId)`, set further up the same function" },
+  { file: "bridge/inside/server.ts", count: 3, why: "the inside socket is `insideSocketPath(cfg.stateDir)`, `<stateDir>/inside/sock` (M99): its folder at 0700 and the socket at 0600; the socket path is handed in, so the root is named in index.ts" },
   { file: "bridge/math/store.ts", count: 7, why: "every path is under `mathPackDir(deps.stateDir)`, `<stateDir>/math` (ADR 0132): the folder, a download's part file, and a version's temporary folder with its files and `pack.json`" },
   { file: "bridge/themes/registry.ts", count: 3, why: "every path is under `themesDir(deps.stateDir)`, `<stateDir>/themes` (M59 spec 06): the folder at 0700 and the registry copy's part file at 0600, renamed onto `registry.json`" },
   { file: "bridge/tricks/switches.ts", count: 1, why: "the lock file is `${path}.lock`, a sibling of `<stateDir>/tricks/switches.json`, inside the state folder (M94)" },

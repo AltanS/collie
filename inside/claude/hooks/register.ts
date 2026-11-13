@@ -346,8 +346,13 @@ async function askPhone($: $, tool: string, input: unknown, signal: AbortSignal)
     if (link.state !== 'mine' || link.part === null) continue
     const part = link.part
     const opened = await post($, link, JSON.stringify({ part, kind: 'ask.open', ask, askKind: 'permission', tool, input }), signal)
-    const waitMs = opened === null ? null : waitOf(opened.status, opened.text)
-    if (waitMs === null) continue
+    if (opened === null) continue
+    const waitMs = waitOf(opened.status, opened.text)
+    // Every ask the bridge heard of is closed again, a wait refused too, so it holds nothing for it.
+    if (waitMs === null) {
+      void post($, link, JSON.stringify({ part, kind: 'ask.close', ask, how: 'no-wait' }))
+      continue
+    }
     const decision = await waitForAnswer($, link, part, ask, waitMs, signal)
     const how = decision !== null ? 'phone' : signal.aborted ? 'desk' : 'timeout'
     void post($, link, JSON.stringify({ part, kind: 'ask.close', ask, how }))

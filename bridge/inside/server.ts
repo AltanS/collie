@@ -85,7 +85,7 @@ const PROBE_MS = 2000;
  * left), or `unsure` (no answer in time, or another error). Only `dead` may be removed: a live bridge
  * that is slow to answer must never lose its socket to a second bridge.
  */
-async function holderOf(path: string): Promise<"live" | "dead" | "unsure"> {
+export async function holderOf(path: string): Promise<"live" | "dead" | "unsure"> {
   try {
     const response = await fetch("http://inside/v1/ping", { unix: path, signal: AbortSignal.timeout(PROBE_MS) });
     await response.body?.cancel();

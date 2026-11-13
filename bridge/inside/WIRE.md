@@ -135,24 +135,32 @@ and `wake`, and the send is a plain new message: no steer, no slash command, she
 (`/`, `!`, `@`), no uploaded image (`bridge/surface/path.ts`, `pickSendPath`). Every other send runs
 the Send Protocol on the screen. The bridge, not the part, holds a send while the part reports a turn
 running, and releases it at the part's `turn.end`; the held card, Cancel and Dismiss are the screen
-road's own. The send keeps the phone's request id as the command id, and its receipt: `sent` on the
-part's `sent`; `unknown` (it may have arrived) on `failed` or no word in 15 seconds. The send record
+road's own. A part that has not reported a turn since it bound (a bridge restart, a reload mid turn)
+leaves the turn unknown, and the send takes the screen road until its first turn event. The send
+keeps the phone's request id as the command id, and its receipt: `sent` on the part's `sent`; `unknown` (it may have arrived) on `failed` or no word in 15 seconds. The send record
 and the audit entry carry `path: "data"`, or `path: "screen"` after a data try that no part took.
 
 ## Asks and wake by data
 
-**One owner per ask kind.** While the wire is on and a part that declared `permission` is bound to a
-pane in a session that takes holds, the part owns that pane's permission asks
-(`bridge/inside/owner.ts`). Its `ask.open` becomes the settings hook's own hold request, built with
-the same profile (`bridge/inside/asks.ts`, `partHoldRequest`), and goes through the session's
-`takeHold`. So the card, its hash check, its receipt and its timing are today's: the part is asked to
-wait the hold's limit plus its grace. Only a person's tap writes a decision; it reaches the part as an
-`answer` command for that ask. With no tap, nothing is answered and the desk decides. The screen
-reader makes no keys ask for that pane's permission dialog, and a settings hook's request for the
-pane is let go at once with no decision, so the hook prints nothing. An ask the hold does not take (a
-cut input, a screen-only tool, a pane with no known agent) gets `{"wait": false}`, and while it is
-open the screen reader owns that pane's dialog again, as today. When the part goes away (bye, idle, a
-new bind) the kind falls back to the screen reader on the next read.
+**One owner per dialog.** A part owns a permission dialog only while its own hold for that pane and
+that dialog is live (`bridge/inside/asks.ts`, `ownsDialog`): the same pane, tool and shown input, on
+the main session. A hello alone owns nothing. A part's `ask.open` becomes the settings hook's own hold
+request, built with the same profile (`partHoldRequest`), and goes through the session's `takeHold`,
+so the card, its hash check, its receipt and its timing are today's; the part is asked to wait the
+hold's limit plus its grace. While the part's hold is live, a settings hook's request for the same
+dialog is let go at once with no decision (`bridge/inside/owner.ts`). A hook that came first keeps its
+card until the part's hold opens; the hold book then ends the hook's hold with no decision, so there
+is one card, never none. A subagent's request is never the part's: the Claude mod reports only its
+main session's asks. When the part's hold ends with no decision (the limit, a hash that moved, the
+part's close, the part gone) while the dialog is still open, the screen reader owns it again and makes
+a keys ask, as when a hook lets go early. An ask the hold does not take (a cut input, a screen-only
+tool, a pane with no known agent) gets `{"wait": false}` and leaves the hook and the keys ask as they
+are. A part closes every ask it opened, one refused a wait too (`how: "no-wait"`).
+
+**Only a tap answers, and the part's word settles it.** Only the hold book's `decide`, after a
+person's tap, queues an `answer` command. The hold settles from that command's end: the part's `sent`
+is `phone`; its `failed` with reason `desk` (the desk answered first) is `desk`; any other failure, or
+a withdrawal (the ask closed first), voids the hold.
 
 **Wake and state.** `turn.start` folds the `prompt` edge (working) into the pane's Surface, `turn.end`
 the `stop` edge (idle), and both poke the session's read now; a `row` only pokes
@@ -229,6 +237,10 @@ claims.
   by another process of the same user leaves a trace. This stays on the follow-up list.
 - **A socket file with a holder that does not answer in 2 seconds is left alone.** The bridge then
   starts without a socket; only a socket that refuses the connection (a dead bridge) is removed.
+- **The desk answering while the phone waits is tested only as a pure function.** The test kit of
+  the Claude mod cannot abort a hook's signal, so `phoneAnswerWord` (inside/claude/hooks/core.ts)
+  carries that case. The live case, a desk answer while the phone's poll is open, belongs to M99
+  spec 13 (the legs).
 - **A part limits every request.** The Claude mod gives each hello and event 5 seconds and each poll
   its wait plus 5 seconds; a bridge that does not answer in time counts as down.
 

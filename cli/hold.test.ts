@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ownerHold, ownsAsk } from "../bridge/inside/owner.ts";
+import { ownerHold } from "../bridge/inside/owner.ts";
 import { PartAsks } from "../bridge/inside/asks.ts";
 import { HOST } from "../bridge/host.ts";
 import { AskBook } from "../bridge/surface/ask.ts";
@@ -36,28 +36,25 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 /** One session: its hold book, its screen asks, the part's asks, and the hook's target under the owner rule. */
-function session(owned: { part: boolean }) {
+function session() {
   const holds = new HoldBook({ now: () => 2_000_000, salt: "hold-salt", log: () => undefined, schedule: () => () => undefined });
   const book = new AskBook(() => 2_000_000, "salt");
   book.attachHolds(holds);
   const deps = { book: holds, generation: () => GEN, profile: (harness: string) => loadProfiles().get(harness)?.hold, reread: () => undefined };
-  const declared = { asks: new Set(["permission"] as const) };
-  const owns = (paneId: string) => paneId === PANE && ownsAsk(owned.part ? declared : null, "permission", true);
-  book.ownsPermission = owns;
   const answers: string[] = [];
-  const asks = new PartAsks({
-    sessionOf: () => ({ harnessOf: () => "claude", holdProfile: (harness) => loadProfiles().get(harness)?.hold, takeHold: (paneId, request, conn, onClose) => takeHold(deps, paneId, request, conn, onClose) }),
+  const partAsks = new PartAsks({
+    sessionOf: () => ({ harnessOf: () => "claude", holdProfile: (harness) => loadProfiles().get(harness)?.hold, takeHold: (paneId, request, conn, onClose) => takeHold(deps, paneId, request, conn, onClose), settle: (held, outcome) => (outcome === "void" ? holds.end(held, "void") : holds.settle(held, outcome)) }),
     enqueue: (_address, command) => {
       answers.push(`${command.ask}=${command.decision}`);
       return { ok: true };
     },
   });
   const part = { partId: "p".repeat(22), address: { session: "main", paneId: PANE }, capabilities: new Set(["send", "wake"] as const), asks: new Set(["permission"] as const), boundAt: 0, pid: process.pid, pidStartTime: 7 };
-  const hookHold = ownerHold(owns, (paneId, request, conn, onClose) => {
+  const hookHold = ownerHold((paneId, request) => partAsks.ownsDialog("main", paneId, request), (paneId, request, conn, onClose) => {
     takeHold(deps, paneId, request, conn, onClose);
   }, () => undefined);
   const poll = () => book.publish(PANE, GEN, liftDialog(readerBlocks(splitLines(parseAnsi(BASH)), "claude")));
-  return { holds, book, asks, part, hookHold, poll, answers };
+  return { holds, book, asks: partAsks, part, hookHold, poll, answers };
 }
 
 /**
@@ -65,7 +62,7 @@ function session(owned: { part: boolean }) {
  * (bridge/surface/ask.ts). The full route, with its hash check and receipt, is in holds.test.ts.
  */
 function tap(holds: HoldBook, decision: "allow" | "deny"): boolean {
-  const held = holds.holdsOn(PANE)[0];
+  const held = holds.holdsOn(PANE).find((one) => one.state === "held");
   if (held === undefined) return false;
   held.state = "answering";
   return holds.decide(held, decision);
@@ -111,7 +108,7 @@ async function runHook(path: string): Promise<{ code: number; printed: string[];
 
 describe("two emitters, one card", () => {
   test.skipIf(POSIX_ONLY)("with no owning part the hook's hold is the card, as before", async () => {
-    const s = session({ part: false });
+    const s = session();
     const server = await serve(s.hookHold);
     const run = runHook(server.path);
     // Wait until the hook's request is held, then tap Yes through the book.
@@ -126,7 +123,7 @@ describe("two emitters, one card", () => {
   });
 
   test.skipIf(POSIX_ONLY)("the part owns permissions: one card from the part, the hook returns at once with no decision", async () => {
-    const s = session({ part: true });
+    const s = session();
     // The mod's ask arrives first (its tool.call hook runs before the settings hook fires).
     expect(s.asks.ask(s.part, { id: "perm-1", kind: "permission", tool: "Bash", input: INPUT })).toMatchObject({ wait: true });
     const server = await serve(s.hookHold);
@@ -144,15 +141,20 @@ describe("two emitters, one card", () => {
     server.stop();
   });
 
-  test.skipIf(POSIX_ONLY)("the hook comes first: it is still let go, and the part's ask then opens the one card", async () => {
-    const s = session({ part: true });
+  test.skipIf(POSIX_ONLY)("the hook comes first: its card stays until the part's hold opens, then the hook returns with no decision and the part's hold is the one card", async () => {
+    const s = session();
     const server = await serve(s.hookHold);
-    const done = await runHook(server.path);
-    expect(done.printed).toEqual([]);
-    expect(s.holds.holdsOn(PANE)).toHaveLength(0);
-    s.asks.ask(s.part, { id: "perm-1", kind: "permission", tool: "Bash", input: INPUT });
-    expect(s.holds.holdsOn(PANE)).toHaveLength(1);
+    const run = runHook(server.path);
+    for (let i = 0; i < 100 && s.holds.holdsOn(PANE).length === 0; i++) await Bun.sleep(10);
     expect(s.poll()?.channel).toBe("hook");
+    s.asks.ask(s.part, { id: "perm-1", kind: "permission", tool: "Bash", input: INPUT });
+    const done = await run;
+    expect(done.printed).toEqual([]);
+    expect(done.ms).toBeLessThan(2000);
+    expect(s.holds.holdsOn(PANE).filter((held) => held.state === "held")).toHaveLength(1);
+    expect(s.poll()?.channel).toBe("hook");
+    expect(tap(s.holds, "allow")).toBe(true);
+    expect(s.answers).toEqual(["perm-1=allow"]);
     server.stop();
   });
 });

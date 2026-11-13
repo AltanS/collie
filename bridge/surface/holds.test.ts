@@ -15,11 +15,11 @@ import type { Ask } from "../../web/src/lib/surface/surface.ts";
 import { PartAsks } from "../inside/asks.ts";
 import type { FakePart } from "../inside/fake-part.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
-import { HoldBook, takeHold } from "./hold.ts";
+import { HoldBook, takeHold, type Held } from "./hold.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
-import { dataId, dataRig, type DataRig } from "./data-rig.ts";
+import { dataId, dataRig, type DataRig } from "../inside/data-rig.ts";
 import { HOLD_BRIDGE_MAX, HOLD_COMMAND_MS, HOLD_ENDED_KEEP_MS, HOLD_ENDED_PANE_MAX, HOLD_MS, HOLD_PANE_MAX, HoldStore, heldRow, type HoldInput } from "./holds.ts";
 
 let dir: string;
@@ -192,7 +192,7 @@ describe("a data send while the part's turn runs", () => {
     for (const rig of rigs.splice(0)) rig.stop();
   });
   async function running(): Promise<{ r: DataRig; part: FakePart }> {
-    const r = await dataRig();
+    const r = await dataRig({ harness: "claude", version: "2.1.200" });
     rigs.push(r);
     const part = await r.part();
     // The bridge's wiring: a part's turn end releases its pane's oldest held send (bridge/index.ts).
@@ -289,14 +289,17 @@ describe("a permission hold from the part", () => {
   function partRig() {
     const r = hookRig();
     const answers: { ask: string; decision: string }[] = [];
+    const commandIds: string[] = [];
     const asks = new PartAsks({
       sessionOf: () => ({
         harnessOf: () => "claude",
         holdProfile: (harness) => loadProfiles().get(harness)?.hold,
         takeHold: (paneId, request, conn, onClose) => takeHold(r.deps, paneId, request, conn, onClose),
+        settle: (held, outcome) => (outcome === "void" ? r.holdBook.end(held, "void") : r.holdBook.settle(held, outcome)),
       }),
       enqueue: (_address, command) => {
         answers.push({ ask: command.ask, decision: command.decision });
+        commandIds.push(command.id);
         // The part returns the decision; the desk then shows the hook's line, as after a hook's reply.
         r.screen.text = `⏺ Bash(mkfifo fixture-fifo)\n  ⎿  Allowed by PermissionRequest hook\n${readFileSync(join(FIXTURES, "claude--v2301-idle.txt"), "utf8")}`;
         return { ok: true };
@@ -304,7 +307,7 @@ describe("a permission hold from the part", () => {
       now: () => 1,
     });
     const part = { partId: "p".repeat(22), address: { session: "main", paneId: PANE }, capabilities: new Set(["send", "wake"] as const), asks: new Set(["permission"] as const), boundAt: 0, pid: 4242, pidStartTime: 1234 };
-    return { ...r, asks, part, answers };
+    return { ...r, asks, part, answers, commandIds };
   }
 
   const INPUT = { command: "mkfifo fixture-fifo", description: "Make a fifo" };
@@ -358,26 +361,141 @@ describe("a permission hold from the part", () => {
   test("a screen-only tool or a harness with no hold profile asks the part not to wait", () => {
     const p = partRig();
     expect(p.asks.ask(p.part, { id: "q-1", kind: "permission", tool: "AskUserQuestion", input: {} })).toEqual({ wait: false });
-    const none = new PartAsks({ sessionOf: () => ({ harnessOf: () => "shell", holdProfile: () => undefined, takeHold: () => null }), enqueue: () => ({ ok: true }) });
+    const none = new PartAsks({ sessionOf: () => ({ harnessOf: () => "shell", holdProfile: () => undefined, takeHold: () => null, settle: () => undefined }), enqueue: () => ({ ok: true }) });
     expect(none.ask(p.part, { id: "perm-2", kind: "permission", tool: "Bash", input: INPUT })).toEqual({ wait: false });
+  });
+
+  // ── The hold settles from the answer command (M99 review item 5) ──
+  async function answered() {
+    const p = partRig();
+    p.asks.ask(p.part, { id: "perm-1", kind: "permission", tool: "Bash", input: { command: "mkfifo fixture-fifo", description: "Make a fifo" } });
+    const ask = p.poll()!;
+    await p.answer(ask, "1");
+    const held = p.holdBook.holdsOn("%1")[0]!;
+    return { p, held };
+  }
+  /** The hold as it stands right after the decision went out, before any evidence. */
+  const unsettle = (held: Held): void => {
+    held.outcome = null;
+    held.state = "sent";
+  };
+  const entry = (id: string, state: "sent" | "failed" | "withdrawn", reason: string | null = null) => ({ command: { id, kind: "answer" as const, ask: "perm-1", decision: "allow" as const }, state, reason });
+
+  test("settles from the answer command: the part's sent settles phone", async () => {
+    const { p, held } = await answered();
+    p.asks.command(entry(p.commandIds[0]!, "sent"));
+    expect(held.outcome).toBe("phone");
+  });
+
+  test("settles from the answer command: the part's failed with reason desk settles desk, not phone", async () => {
+    const { p, held } = await answered();
+    // The rig's screen shows the hook's line at once; this run reads the part's word first.
+    unsettle(held);
+    p.asks.command(entry(p.commandIds[0]!, "failed", "desk"));
+    expect(held.outcome).toBe("desk");
+  });
+
+  test("settles from the answer command: a command the part never answered is no settle; a withdrawal voids the hold", async () => {
+    const { p, held } = await answered();
+    unsettle(held);
+    p.asks.command({ ...entry(p.commandIds[0]!, "sent"), state: "taken" });
+    expect(held.outcome).toBeNull();
+    p.asks.command(entry(p.commandIds[0]!, "withdrawn"));
+    expect(held.state).toBe("ended");
   });
 });
 
-describe("a part's ask the hold does not take", () => {
-  test("a cut input or a screen-only tool keeps the pane's dialog with the screen until the ask closes", () => {
+describe("ownership is per dialog (M99 review items 1 to 5)", () => {
+  const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
+  const BASH_DIALOG = readFileSync(join(FIXTURES, "claude--permission-bash.txt"), "utf8");
+  const GEN = "claude:session-1";
+  const PANE = "%1";
+  const INPUT = { command: "mkfifo fixture-fifo", description: "Make a fifo" };
+
+  function rig() {
+    const timers: (() => void)[] = [];
+    const holdBook = new HoldBook({ now: () => 2_000_000, salt: "hold-salt", log: () => undefined, schedule: (run) => (timers.push(run), () => undefined) });
+    const book = new AskBook(() => 2_000_000, "test-salt");
+    book.attachHolds(holdBook);
+    const deps = { book: holdBook, generation: () => GEN, profile: (harness: string) => loadProfiles().get(harness)?.hold, reread: () => undefined };
     const asks = new PartAsks({
-      sessionOf: () => ({ harnessOf: () => "claude", holdProfile: (harness) => loadProfiles().get(harness)?.hold, takeHold: () => null }),
+      sessionOf: () => ({
+        harnessOf: () => "claude",
+        holdProfile: (harness) => loadProfiles().get(harness)?.hold,
+        takeHold: (paneId, request, conn, onClose) => takeHold(deps, paneId, request, conn, onClose),
+        settle: (held, outcome) => (outcome === "void" ? holdBook.end(held, "void") : holdBook.settle(held, outcome)),
+      }),
       enqueue: () => ({ ok: true }),
     });
-    const part = { partId: "q".repeat(22), address: { session: "main", paneId: "%1" }, capabilities: new Set(["send", "wake"] as const), asks: new Set(["permission"] as const), boundAt: 0, pid: 1, pidStartTime: 1 };
-    expect(asks.screenAskOpen("main", "%1")).toBe(false);
-    expect(asks.ask(part, { id: "perm-9", kind: "permission", tool: "Bash", input: { command: "x".repeat(5000) } })).toEqual({ wait: false });
-    expect(asks.screenAskOpen("main", "%1")).toBe(true);
-    expect(asks.screenAskOpen("other", "%1")).toBe(false);
-    asks.closed(part.partId, "perm-9");
-    expect(asks.screenAskOpen("main", "%1")).toBe(false);
-    asks.ask(part, { id: "perm-10", kind: "permission", tool: "AskUserQuestion", input: {} });
-    asks.gone(part.partId);
-    expect(asks.screenAskOpen("main", "%1")).toBe(false);
+    const part = { partId: "q".repeat(22), address: { session: "main", paneId: PANE }, capabilities: new Set(["send", "wake"] as const), asks: new Set(["permission"] as const), boundAt: 0, pid: 1, pidStartTime: 1 };
+    const poll = (): Ask | null => book.publish(PANE, GEN, liftDialog(readerBlocks(splitLines(parseAnsi(BASH_DIALOG)), "claude")));
+    const shown = shownInputOf(INPUT, HOLD.inputShown, HOLD.inputDetails.Bash).text;
+    /** Run every timer the hold book set (the close grace among them). */
+    const elapse = (): void => {
+      for (const run of timers.splice(0)) run();
+    };
+    return { holdBook, asks, part, poll, shown, elapse };
+  }
+  const HOLD = loadProfiles().get("claude")!.hold!;
+
+  test("a bound part with no ask.open owns nothing: the keys ask stays (item 3)", () => {
+    const r = rig();
+    expect(r.poll()?.channel).toBe("keys");
+    expect(r.asks.ownsDialog("main", PANE, { tool: "Bash", input: r.shown, agent: null })).toBe(false);
+  });
+
+  test("a live part hold owns that dialog only: another tool, another input or a subagent's request is not its own (item 1)", () => {
+    const r = rig();
+    r.asks.ask(r.part, { id: "perm-1", kind: "permission", tool: "Bash", input: INPUT });
+    expect(r.asks.ownsDialog("main", PANE, { tool: "Bash", input: r.shown, agent: null })).toBe(true);
+    expect(r.asks.ownsDialog("main", PANE, { tool: "Edit", input: r.shown, agent: null })).toBe(false);
+    expect(r.asks.ownsDialog("main", PANE, { tool: "Bash", input: "other", agent: null })).toBe(false);
+    expect(r.asks.ownsDialog("main", PANE, { tool: "Bash", input: r.shown, agent: "sub-1" })).toBe(false);
+    expect(r.asks.ownsDialog("other", PANE, { tool: "Bash", input: r.shown, agent: null })).toBe(false);
+  });
+
+  test("a part hold that ends with no decision hands the open dialog back: a keys ask is minted (item 2)", () => {
+    const r = rig();
+    r.asks.ask(r.part, { id: "perm-1", kind: "permission", tool: "Bash", input: INPUT });
+    expect(r.poll()?.channel).toBe("hook");
+    r.asks.closed(r.part.partId, "perm-1");
+    expect(r.asks.ownsDialog("main", PANE, { tool: "Bash", input: r.shown, agent: null })).toBe(false);
+    // As for a hook that let go early: the screen judges it for the close grace, then the keys ask.
+    r.elapse();
+    expect(r.poll()?.channel).toBe("keys");
+  });
+
+  test("the part goes away mid hold: the dialog is a keys ask again (item 3)", () => {
+    const r = rig();
+    r.asks.ask(r.part, { id: "perm-1", kind: "permission", tool: "Bash", input: INPUT });
+    r.poll();
+    r.asks.gone(r.part.partId);
+    r.elapse();
+    expect(r.poll()?.channel).toBe("keys");
+  });
+
+  test("an ask the hold does not take (a cut input, a screen-only tool, no tool) leaves the keys ask (item 3)", () => {
+    const r = rig();
+    expect(r.asks.ask(r.part, { id: "perm-9", kind: "permission", tool: "Bash", input: { command: "x".repeat(5000) } })).toEqual({ wait: false });
+    expect(r.asks.ask(r.part, { id: "q-1", kind: "permission", tool: "AskUserQuestion", input: {} })).toEqual({ wait: false });
+    expect(r.asks.ask(r.part, { id: "q-2", kind: "permission", tool: null, input: null })).toBeUndefined();
+    expect(r.poll()?.channel).toBe("keys");
+  });
+
+  test("a hook that came first keeps its card until the part's hold opens; then one card, the part's (one card, never zero)", () => {
+    const r = rig();
+    const hookConn = { replies: 0, released: 0, reply: () => ((hookConn.replies += 1), true), release: () => void (hookConn.released += 1) };
+    takeHold(
+      { book: r.holdBook, generation: () => GEN, profile: (harness) => loadProfiles().get(harness)?.hold, reread: () => undefined },
+      PANE,
+      { v: HOLD_WIRE_VERSION, harness: "claude", pid: 4242, pidStartTime: 1234, markers: [], tool: "Bash", input: r.shown, agent: null, hold: true, at: 1 },
+      hookConn,
+      () => undefined,
+    );
+    expect(r.poll()?.channel).toBe("hook");
+    r.asks.ask(r.part, { id: "perm-1", kind: "permission", tool: "Bash", input: INPUT });
+    expect(hookConn).toMatchObject({ replies: 0, released: 1 });
+    expect(r.holdBook.holdsOn(PANE).filter((held) => held.state === "held")).toHaveLength(1);
+    expect(r.poll()?.channel).toBe("hook");
   });
 });

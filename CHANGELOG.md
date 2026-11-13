@@ -59,6 +59,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The push badge is the head alone again.** With the ring the mark came out too small in the status bar, so the badge is the new head with its ears pinned back, in one colour and as large as the old badge was. The large notification icon keeps its ring.
 - **The usage row shows percentages.** The small line with the model, `ctx`, `5h` and `7d` now writes each gauge as the share used, as a whole number (`ctx 19%  7d 83%`), instead of five dots. In Settings, Appearance, Usage row, "Percent" is the default and "Dots" brings the old look back, on every screen that draws the row. English only until the translation pass.
 - **A usage gauge at 80% or more is red.** In the model tag's row, `ctx`, `5h` and `7d` turn red from 80% used, as the number in Percent and as the lit dots in Dots, where they were the working colour. The tone follows the whole percentage the figure is written as, so the number and the dots turn together.
+- **A linked session's permission card is owned per dialog, not per link (experimental, off by default).** A part owns a dialog only while its own hold for it is live; until then, and after that hold ends with no decision, the settings hook or the screen keeps the card, so a permission never shows no card. The hold settles from the part's own word, and a send to a part that reported no turn yet takes the screen path.
 
 ### Fixed
 

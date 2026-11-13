@@ -304,7 +304,7 @@ import type { HoldRequest } from "../web/src/lib/surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { PartAsks, type PartAskSession } from "./inside/asks.ts";
 import { insideGate } from "./inside/gate.ts";
-import { ownerHold, ownsAsk } from "./inside/owner.ts";
+import { ownerHold } from "./inside/owner.ts";
 import { applyWake, type WakeSink } from "./inside/wake.ts";
 import { InsideHub } from "./inside/hub.ts";
 import { placeHello } from "./inside/place.ts";
@@ -1799,6 +1799,8 @@ insideHub?.listen({
   // A permission of a part is today's hold (spec 04).
   ask: (part, ask) => partAsks?.ask(part, ask),
   gone: (part) => partAsks?.gone(part.partId),
+  // An answer command ended: its hold settles from the part's own word (spec 04, review item 5).
+  command: (entry) => partAsks?.command(entry),
   event: (part, event) => {
     const session = insideSessions.get(part.address.session);
     if (event.kind === "ask.close") partAsks?.closed(part.partId, event.ask);
@@ -1809,14 +1811,7 @@ insideHub?.listen({
   },
 });
 
-/**
- * Whether the pane's part owns its permission asks (bridge/inside/owner.ts). Not while the part has an
- * ask open that the hold did not take (a cut input, a screen-only tool): that dialog stays a keys ask.
- */
-function insideOwnsPermission(session: string, paneId: string, holds: HoldBook | undefined): boolean {
-  if (insideHub === null || !cfg.inside || partAsks?.screenAskOpen(session, paneId) === true) return false;
-  return ownsAsk(insideHub.partOf({ session, paneId }), "permission", holds !== undefined);
-}
+
 const sendVersions = new VersionCache();
 /** The platform the harness profiles pick their keys by: `process.platform`, or `wsl` under WSL. Decided once, here. */
 const SURFACE_PLATFORM = surfacePlatform({
@@ -2159,14 +2154,13 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
             // One owner per ask kind (M99 spec 04): a part that owns the pane's permissions gives the
             // one card; the settings hook is let go at once, with no decision.
             hold: ownerHold(
-              (paneId) => insideOwnsPermission(name, paneId, holdBook),
+              (paneId, request) => partAsks?.ownsDialog(name, paneId, request) === true,
               (paneId, request, conn, onClose) => {
                 takePaneHold(holdBook, paneId, request, conn, onClose);
               },
               (line) => console.log(line),
             ),
           };
-    if (holdBook !== undefined && askBook !== undefined) askBook.ownsPermission = (paneId) => insideOwnsPermission(name, paneId, holdBook);
     // What the inside hub reaches of this session: the holds (spec 04), the wake (spec 04), the send (spec 03).
     insideSessions.set(name, {
       harnessOf: (paneId) => {
@@ -2176,6 +2170,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
       // A session with no hold book holds nothing: a part's permission stays with the desk and the screen.
       holdProfile: (harness) => (holdBook === undefined ? undefined : loadProfiles().get(harness)?.hold),
       takeHold: (paneId, request, conn, onClose) => (holdBook === undefined ? null : takePaneHold(holdBook, paneId, request, conn, onClose)),
+      settle: (held, outcome) => {
+        if (holdBook === undefined) return;
+        if (outcome === "void") holdBook.end(held, "void");
+        else holdBook.settle(held, outcome);
+      },
       wake: { edge: (pane, kind, at) => surface.edge(pane, kind, at), poke: () => engine.pokeNow() },
       send,
     });
