@@ -139,7 +139,7 @@ import {
   taskCapWarning,
 } from "./rig-scope";
 import { startStub, type Stub } from "./replay/stub";
-import { CASSETTE_ROOT, planTiers, readVersions, rigLiterals, tiersFromEnv } from "./replay/tier";
+import { cassetteRoot, planTiers, readVersions, rigLiterals, tiersFromEnv } from "./replay/tier";
 import { cassetteLeg, dataBridgeEnv } from "./rig-data";
 import { coreSocketIn } from "./rig-mux";
 import { socketPathProblem, sunPathLimit } from "./sock-path";
@@ -694,7 +694,7 @@ async function daemon(): Promise<void> {
     const leg = crew ? "crew" : "solo";
     const tiers = tiersFromEnv() ?? planTiers(leg, process.env, readVersions());
     const taken = [run.port, ...(run.member === undefined ? [] : [run.member.port])];
-    stub = await startStub({ root: CASSETTE_ROOT, leg: cassetteLeg(leg), plans: tiers, literals: rigLiterals(STATE_ROOT), speed: Number(process.env.COLLIE_RIG_REPLAY_SPEED ?? "1") || 1, log: (line) => log(`stub: ${line}`) }, await freePort(taken));
+    stub = await startStub({ root: cassetteRoot(), leg: cassetteLeg(leg), plans: tiers, literals: rigLiterals(STATE_ROOT), speed: Number(process.env.COLLIE_RIG_REPLAY_SPEED ?? "1") || 1, log: (line) => log(`stub: ${line}`) }, await freePort(taken));
     run.stub = { port: stub.port, tiers };
     writeRun(run);
     for (const machine of machines) await (muxOf(machine) === "herdr-core" ? startCore(machine) : startHerdr(machine));

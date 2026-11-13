@@ -7,6 +7,7 @@ import { devices, type Locator, type Page } from "@playwright/test";
 
 import { asJsonObject } from "../../src/lib/json";
 import { harnessDirs } from "./harnesses";
+import { RIG_DATA } from "./rig-data";
 import {
   NotReached,
   coldPageHasOlder,
@@ -47,6 +48,8 @@ const REPLY_MS = 120_000;
 /** The note case 4 sends while the long reply streams, and its echo in Claude's transcript. */
 const STREAM_NOTE = "Stream note: reply with only the word PINEAPPLE-OK.";
 const STREAM_NOTE_ECHO = /^❯\s+Stream note: reply with only the word PINEAPPLE-OK\./gmu;
+/** The same echo, for a position (no `g`: `search` reads the first one). */
+const STREAM_NOTE_ECHO_ONE = /^❯\s+Stream note: reply with only the word PINEAPPLE-OK\./mu;
 
 /** The draft case 22 puts in Claude's box: one word of letters, typed through the keys route. */
 const BELT_DRAFT = "beltdraft";
@@ -230,6 +233,20 @@ test.describe("claude", () => {
         const drained = queued && !queuedRow && echoes >= 1;
         if (drained) notes.push("the queue drained before the Chat check: the note landed after the turn");
         const firstTap = (queued && (queuedRow || drained)) || idleSend;
+        // THE DATA ROAD (M99 spec 03, COLLIE_RIG_DATA=1). The bridge, not Claude's queue, holds a send while the
+        // part reports a running turn, and releases it to the part at the turn's end: the hold card is the
+        // promise there, not a defect. What a person relies on is asserted by its own evidence: the first tap
+        // was held, the hold showed, the note went in with no key typed, after the long reply, once.
+        if (RIG_DATA && firstOutcome === "held") {
+          const byData = settled !== null && settled.keys.length === 0;
+          const shown = await rig.screen(pane, 400);
+          const lastItem = Math.max(...[...shown.matchAll(/^\s*(?:⏺|●)?\s*\d{2,3}\.\s+\S/gmu)].map((m) => m.index));
+          const echoAt = shown.search(STREAM_NOTE_ECHO_ONE);
+          const afterReply = lastItem >= 0 && echoAt > lastItem;
+          notes.push(`data road: held while the turn ran${heldCard ? ", the hold card showed" : ", NO hold card"}; ${byData ? "sent with no key typed" : "KEYS WERE TYPED"}; the note went in ${afterReply ? "after the long reply" : "BEFORE the long reply ended"}`);
+          const verdictData = t.worked && heldCard && byData && wentIn && reply && echoes === 1 && afterReply ? "pass" : "fail";
+          return { verdict: verdictData, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: [shot, screen] };
+        }
         const verdict = t.worked && firstTap && !heldCard && wentIn && reply && echoes === 1 ? "pass" : "fail";
         return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: [shot, screen] };
       } finally {

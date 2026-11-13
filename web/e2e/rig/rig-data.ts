@@ -10,8 +10,9 @@
 //
 // The mod is loaded for the session only: nothing is linked, no `claude plugin` runs, and no folder of
 // the operator's is read or written. pi and omp have no part yet and keep the screen path. A data run
-// keeps its own cassettes, under the leg `<leg>-data`, because a prompt handed over by data reaches the
-// model in another shape than a typed one; the default run's cassettes are never read or written.
+// keeps its own cassettes, in `cassettes-data/` under the leg `<leg>-data`, because a prompt handed over
+// by data reaches the model in another shape than a typed one; the default run's cassettes, in
+// `cassettes/`, are never read or written (replay/tier.ts cassetteRoot).
 import { join } from "node:path";
 
 /** Whether this run has the data path on. Throws on a word that is neither on nor off. */

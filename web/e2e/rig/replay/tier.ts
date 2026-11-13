@@ -80,6 +80,18 @@ export const TIERS_ENV = "COLLIE_RIG_TIERS";
 const WORKTREE = resolve(import.meta.dirname, "..", "..", "..", "..");
 /** Where the cassettes live, in the checkout the leg runs from. */
 export const CASSETTE_ROOT = resolve(import.meta.dirname, "..", "cassettes");
+
+/**
+ * Where a data run's cassettes live (M99 spec 13, COLLIE_RIG_DATA=1): a folder of their own. A cassette
+ * file is named by its case alone, so a data run that recorded beside the default run's files would
+ * overwrite them; apart, neither run ever reads or writes the other's.
+ */
+export const DATA_CASSETTE_ROOT = resolve(import.meta.dirname, "..", "cassettes-data");
+
+/** The cassette folder of a run: the data run's own, or the default one. */
+export function cassetteRoot(env: Readonly<Record<string, string | undefined>> = process.env): string {
+  return rigDataFrom(env.COLLIE_RIG_DATA) ? DATA_CASSETTE_ROOT : CASSETTE_ROOT;
+}
 /** The walky talky skill's template: its text goes into pi's prompt, so it keys the cassettes. */
 export const SKILL_TEMPLATE = join(WORKTREE, "cli", "skills", "walky-talky.md");
 
@@ -214,7 +226,7 @@ export function rigLiterals(stateRoot: string, home: string = homedir(), host: s
 }
 
 /** Plan the stub harnesses a leg runs (LEG_HARNESSES in scenarios.ts). A harness the leg does not run needs no cassette. */
-export function planTiers(leg: Leg, env: Readonly<Record<string, string | undefined>>, versions: HarnessVersions, root: string = CASSETTE_ROOT): TierPlans {
+export function planTiers(leg: Leg, env: Readonly<Record<string, string | undefined>>, versions: HarnessVersions, root: string = cassetteRoot(env)): TierPlans {
   const ask = readTierAsk(env);
   const skill = skillHash();
   const plan = (h: StubHarness): TierPlan => {
