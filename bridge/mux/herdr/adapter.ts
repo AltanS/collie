@@ -37,6 +37,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   requestedCwd,
   type MuxAck,
@@ -173,6 +174,18 @@ const WORKTREE_OPEN_ANSWER = /^herdr worktree\.open: [a-z_]+: /;
 function transportRefusal<T>(err: T): MuxRefusalOutcome {
   const detail = reason(err);
   return GONE_CODES.some((code) => detail.includes(code)) ? muxGone(detail) : muxUnreachable(detail);
+}
+
+/** What the client rejects with when Herdr did not answer in time (`herdr <method>: timed out after Nms`). */
+const TIMED_OUT = /^herdr \S+: timed out after \d+ms$/u;
+
+/**
+ * The refusal for a failure of a CREATE call. A call Herdr did not answer in time may still have made the
+ * tab or the workspace, so it is `unconfirmed` and not `unreachable`: the route looks in the snapshot before
+ * it says anything (bridge/create-confirm.ts).
+ */
+function createRefusal<T>(err: T): MuxRefusalOutcome {
+  return TIMED_OUT.test(reason(err)) ? muxUnconfirmed(reason(err)) : transportRefusal(err);
 }
 
 export class HerdrMux implements MuxAdapter {
@@ -433,7 +446,7 @@ export class HerdrMux implements MuxAdapter {
       const created = await this.client.createTab(request.spaceId, opts);
       return muxOk(toCreatedPane(created));
     } catch (err) {
-      return transportRefusal(err);
+      return createRefusal(err);
     }
   }
 
@@ -459,13 +472,13 @@ export class HerdrMux implements MuxAdapter {
       // Only an answer that REFUSED the open falls through (see openAsWorktree). A timeout or a
       // dropped connection may have opened it, and a second space on the folder is worse than a
       // refusal: the retry that follows asks again and Herdr answers `already_open`.
-      return transportRefusal(err);
+      return createRefusal(err);
     }
     try {
       const created = await this.client.createWorkspace(opts);
       return muxOk(toCreatedPane(created));
     } catch (err) {
-      return transportRefusal(err);
+      return createRefusal(err);
     }
   }
 

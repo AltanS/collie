@@ -4859,8 +4859,11 @@ describe("POST /api/workspace — a create that worked records the folder the mu
       return Promise.resolve();
     }
   }
-  const engineStub: Partial<StateEngine> = { pokeNow: () => {} };
-  // SAFETY: after a create, `createWorkspace` asks the engine for exactly one thing — `pokeNow()` —
+  const engineStub: Partial<StateEngine> = {
+    pokeNow: () => {},
+    current: () => ({ agents: [], shellPanes: [], workspaces: [], tabs: [], bridge: "connected" }),
+  };
+  // SAFETY: a `createWorkspace` asks the engine for two things, `current()` (the panes it knew before the create) and `pokeNow()` —
   // and the adapter for exactly the two calls FakeSpaceMux implements. Nothing else is reachable.
   const engine = engineStub as StateEngine;
   function asSpaceMux(fake: Partial<MuxAdapter>): MuxAdapter {
@@ -5167,7 +5170,7 @@ describe("the folder routes — GET /api/folders and POST /api/folders/star", ()
     // Wired once, inside serveSessionRoute, so a crew peer's dispatch reaches it too (§5).
     expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders, folderBrowse\)/g)]).toHaveLength(1);
     // And the create is handed the same store, so a peer records into its OWN list.
-    expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders, await sessionFolderOf(rt.name));");
+    expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders, await sessionFolderOf(rt.name), { receipts: launchReceipts });");
     // A launch reads the same session folder, so both creates from the dashboard open in one place.
     expect(src).toContain("sessionFolder: await sessionFolderOf(rt.name),");
   });

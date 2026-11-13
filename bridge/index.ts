@@ -980,6 +980,10 @@ let profileBinaries: ReadonlyMap<string, string> | null = null;
 const harnessBinaries = (): ReadonlyMap<string, string> =>
   (profileBinaries ??= new Map([...loadProfiles().values()].map((profile) => [profile.identity.binary.toLowerCase(), profile.id])));
 await launchReceipts.load();
+// A launch that was pending when the last run stopped and is older than the launch budget can no longer
+// settle: it reads `unknown`, and nothing is closed or adopted on a guess (M100 spec 04).
+const unsettledLaunches = await launchReceipts.expirePending();
+if (unsettledLaunches > 0) console.log(`[launch] ${String(unsettledLaunches)} launch(es) left pending by the last run now read unknown`);
 
 // One receipt per starter run (ADR 0102, bridge/starter-launch.ts). Loading writes nothing.
 const starterReceipts = new StarterReceiptStore(cfg.stateDir);

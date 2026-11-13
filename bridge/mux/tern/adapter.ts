@@ -8,6 +8,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   muxUnsupported,
   requestedCwd,
@@ -31,6 +32,7 @@ import {
 import {
   resolveTernBinary,
   SpawnTernExec,
+  TIMED_OUT_CODE,
   type TernExec,
   type TernRunResult,
 } from "./exec.ts";
@@ -224,7 +226,7 @@ export class TernMux implements MuxAdapter {
     const cwd = requestedCwd(request.cwd);
     if (cwd) args.push("--cwd", cwd);
 
-    const result = await this.attemptRun(args);
+    const result = await this.attemptCreate(args);
     if (!result.ok) return result;
 
     const afterLook = await this.attemptSnapshot();
@@ -280,7 +282,7 @@ export class TernMux implements MuxAdapter {
     const cwd = requestedCwd(request.cwd);
     if (cwd) args.push("--cwd", cwd);
 
-    const result = await this.attemptRun(args);
+    const result = await this.attemptCreate(args);
     if (!result.ok) return result;
 
     const afterLook = await this.attemptSnapshot();
@@ -305,6 +307,22 @@ export class TernMux implements MuxAdapter {
 
   watch(options: MuxWatchOptions): MuxSubscription {
     return new TernWatch(this.exec, options);
+  }
+
+  /**
+   * A create's own run. One killed on its budget (`TIMED_OUT_CODE`) may still have made the tab or the
+   * session, so it is `unconfirmed` and not `unreachable`: the route looks in the snapshot before it says
+   * anything (bridge/create-confirm.ts).
+   */
+  private async attemptCreate(args: readonly string[]): Promise<MuxOutcome<TernRunResult>> {
+    let result: TernRunResult;
+    try {
+      result = await this.exec.run(args);
+    } catch (err) {
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    if (result.code === TIMED_OUT_CODE) return muxUnconfirmed(result.stderr.trim());
+    return result.code === 0 ? muxOk(result) : refusalFor(result);
   }
 
   private async attemptRun(args: readonly string[], stdin?: string): Promise<MuxOutcome<TernRunResult>> {

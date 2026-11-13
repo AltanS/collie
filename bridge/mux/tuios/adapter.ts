@@ -59,6 +59,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   muxUnsupported,
   requestedCwd,
@@ -180,6 +181,19 @@ function refusalFor<T>(err: T): MuxRefusalOutcome {
     return GONE_CODES.has(err.code) ? muxGone(err.message) : muxRefused(err.message);
   }
   return muxUnreachable(err instanceof Error ? err.message : String(err));
+}
+
+/** What the client rejects with when tuios did not answer in time (`tuios <verb>: timed out after Nms`). */
+const TIMED_OUT = /^tuios \S+: timed out after \d+ms$/u;
+
+/**
+ * The refusal for a failure of a CREATE call. A call that did not answer in time may still have made the
+ * window or the session, so it is `unconfirmed` and not `unreachable`: the route looks in the snapshot
+ * before it says anything (bridge/create-confirm.ts).
+ */
+function createRefusal<T>(err: T): MuxRefusalOutcome {
+  if (err instanceof Error && TIMED_OUT.test(err.message)) return muxUnconfirmed(err.message);
+  return refusalFor(err);
 }
 
 /**
@@ -435,6 +449,7 @@ export class TuiosMux implements MuxAdapter {
     const found = await this.sessionById(request.spaceId);
     if (!found.ok) return found;
     const session = found.value;
+    let creating = false;
     try {
       const workspaces = await this.rpc.listWorkspaces(session.name);
       const empty = workspaces.filter((ws) => ws.windowCount === 0 && !ws.current);
@@ -443,6 +458,8 @@ export class TuiosMux implements MuxAdapter {
         return muxRefused(`Every workspace of session ${session.name} is in use. Close a tab first.`);
       }
       const asked = requestedCwd(request.cwd);
+      // From the first call that makes something, a time-out is `unconfirmed`.
+      creating = true;
       const created = await this.rpc.newWindow(session.name, free.workspace, asked);
       const label = request.label?.trim() ?? "";
       if (label.length > 0) await this.rpc.nameWorkspace(session.name, free.workspace, label);
@@ -454,7 +471,7 @@ export class TuiosMux implements MuxAdapter {
         cwd: asked ?? "",
       });
     } catch (err) {
-      return refusalFor(err);
+      return creating ? createRefusal(err) : refusalFor(err);
     }
   }
 
@@ -497,7 +514,7 @@ export class TuiosMux implements MuxAdapter {
         cwd: asked ?? "",
       });
     } catch (err) {
-      return refusalFor(err);
+      return createRefusal(err);
     }
   }
 

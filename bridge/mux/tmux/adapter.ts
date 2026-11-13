@@ -56,6 +56,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnsupported,
   muxUnreachable,
   requestedCwd,
@@ -79,6 +80,7 @@ import {
 import {
   resolveTmuxBinary,
   SpawnTmuxExec,
+  TIMED_OUT_CODE,
   tmuxServerArgs,
   tmuxServerLabel,
   type TmuxExec,
@@ -623,7 +625,7 @@ export class TmuxMux implements MuxAdapter {
   private async created(args: readonly string[]): Promise<MuxOutcome<MuxCreatedPane>> {
     const guard = await this.refuseFatalSpawn();
     if (guard !== null) return guard;
-    const result = await this.attemptRun(args);
+    const result = await this.attemptCreate(args);
     if (!result.ok) return result;
     const created = parseCreated(result.value.stdout);
     if (created === null) return muxRefused(`tmux created something and reported no pane id: ${result.value.stdout.trim()}`);
@@ -664,6 +666,24 @@ export class TmuxMux implements MuxAdapter {
   }
 
   /** One tmux command, as the contract's outcome-or-refusal. A throw is `unreachable`, never a crash. */
+  /**
+   * A create's own run. One that ran out of its budget and was killed (`TIMED_OUT_CODE`) may still have
+   * made the window or the session, so it is `unconfirmed` and not a refusal, with the same sentence a
+   * refusal gave: the route looks in the snapshot before it says anything (bridge/create-confirm.ts).
+   */
+  private async attemptCreate(args: readonly string[]): Promise<MuxOutcome<TmuxRunResult>> {
+    let result: TmuxRunResult;
+    try {
+      result = await this.exec.run(args);
+    } catch (err) {
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    if (result.code === TIMED_OUT_CODE) {
+      return muxUnconfirmed((result.stderr.trim() || result.stdout.trim()) || `tmux exited ${String(result.code)}`);
+    }
+    return result.code === 0 ? muxOk(result) : refusalFor(result);
+  }
+
   private async attemptRun(args: readonly string[], stdin?: string): Promise<MuxOutcome<TmuxRunResult>> {
     let result: TmuxRunResult;
     try {
