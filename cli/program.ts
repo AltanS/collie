@@ -401,7 +401,7 @@ const HILL_TREE: readonly Subcommand[] = [
   // The Hill's switch: a file in this instance's state folder, read again by the running bridge.
   {
     name: "on",
-    summary: "switch the Hill on for this Collie (it is on unless switched off)",
+    summary: "switch the Hill on for this Collie (it is off until switched on)",
     run: (args, s) => cmdHillSwitch(hillDeps(s.io), "on", args),
   },
   {
