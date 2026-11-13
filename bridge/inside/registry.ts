@@ -34,6 +34,9 @@ export interface PartView {
   readonly capabilities: ReadonlySet<Capability>;
   readonly asks: ReadonlySet<AskKind>;
   readonly boundAt: number;
+  /** The agent program's pid and start time, as the placement checked them. */
+  readonly pid: number;
+  readonly pidStartTime: number | null;
 }
 
 /** A bound part, as the registry keeps it. */
@@ -41,8 +44,6 @@ interface Bound extends PartView {
   readonly harness: string;
   readonly harnessVersion: string | null;
   readonly partVersion: string | null;
-  readonly pid: number;
-  readonly pidStartTime: number | null;
   seenAt: number;
   /** Open long polls: a part with one open is alive whatever its last request time says. */
   polls: number;
@@ -71,6 +72,8 @@ const view = (bound: Bound): PartView => ({
   capabilities: bound.capabilities,
   asks: bound.asks,
   boundAt: bound.boundAt,
+  pid: bound.pid,
+  pidStartTime: bound.pidStartTime,
 });
 
 export class PartRegistry {

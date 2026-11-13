@@ -46,6 +46,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The binary carries the Collie mod for Claude Code, byte for byte.** Its version is Collie's own plain version, and `scripts/check-version.sh` now holds the mod's manifest to it. Writing the mod out is a function for a later verb; no command calls it yet.
 - **A new setting, `COLLIE_INSIDE` (`inside` in `[bridge]`), opens the inside socket.** It is off by default and is the kill switch for the data path of the inside wire.
 - **A phone send can go to a linked session by data (experimental, off by default).** With the inside wire on and a part that declares `send` and `wake`, a plain message goes to the part under its own request id and gets the same receipt, with no key typed. A turn that runs holds it in the bridge as today, and the turn end releases it. A slash command, a shell line, an attachment, a steer and every send to a session with no part keep the screen path unchanged. The send record and the audit entry say which path ran.
+- **A linked Claude Code session shows its permissions as the same hold card (experimental, off by default).** With the inside wire on, the Collie mod gives the hold, answered on the phone or at the desk, first wins; the settings hook then lets go at once. The mod's turn events set working and idle and wake the Chat read; chat rows still come from the session file.
 
 ### Changed
 

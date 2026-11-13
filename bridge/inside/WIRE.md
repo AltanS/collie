@@ -139,6 +139,30 @@ road's own. The send keeps the phone's request id as the command id, and its rec
 part's `sent`; `unknown` (it may have arrived) on `failed` or no word in 15 seconds. The send record
 and the audit entry carry `path: "data"`, or `path: "screen"` after a data try that no part took.
 
+## Asks and wake by data
+
+**One owner per ask kind.** While the wire is on and a part that declared `permission` is bound to a
+pane in a session that takes holds, the part owns that pane's permission asks
+(`bridge/inside/owner.ts`). Its `ask.open` becomes the settings hook's own hold request, built with
+the same profile (`bridge/inside/asks.ts`, `partHoldRequest`), and goes through the session's
+`takeHold`. So the card, its hash check, its receipt and its timing are today's: the part is asked to
+wait the hold's limit plus its grace. Only a person's tap writes a decision; it reaches the part as an
+`answer` command for that ask. With no tap, nothing is answered and the desk decides. The screen
+reader makes no keys ask for that pane's permission dialog, and a settings hook's request for the
+pane is let go at once with no decision, so the hook prints nothing. An ask the hold does not take (a
+cut input, a screen-only tool, a pane with no known agent) gets `{"wait": false}`, and while it is
+open the screen reader owns that pane's dialog again, as today. When the part goes away (bye, idle, a
+new bind) the kind falls back to the screen reader on the next read.
+
+**Wake and state.** `turn.start` folds the `prompt` edge (working) into the pane's Surface, `turn.end`
+the `stop` edge (idle), and both poke the session's read now; a `row` only pokes
+(`bridge/inside/wake.ts`). No event of a part is ever an item: the session file gives the rows.
+
+**Questions (AskUserQuestion) stay on the screen road.** Claude Code's types (2.1.323) say a
+`tool.call` hook's `next(e)` opens the desk dialog, and that a hook which returns `{ result }` while
+`next` is still pending aborts what runs beneath. So a hook could leave the desk dialog open and
+still answer from the phone. This is read from the types and not proven live; no code uses it yet.
+
 ## One id, one path, never twice
 
 A command's life is `queued`, then `taken`, then `sent` or `failed`; or `queued`, then `withdrawn`.

@@ -299,9 +299,13 @@ import { RequestStore } from "./surface/requests.ts";
 import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
-import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
+import { counterWordOf, HoldBook, HoldServer, takeHold, type Held, type HoldConn, type HoldTarget } from "./surface/hold.ts";
+import type { HoldRequest } from "../web/src/lib/surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
+import { PartAsks, type PartAskSession } from "./inside/asks.ts";
 import { insideGate } from "./inside/gate.ts";
+import { ownerHold, ownsAsk } from "./inside/owner.ts";
+import { applyWake, type WakeSink } from "./inside/wake.ts";
 import { InsideHub } from "./inside/hub.ts";
 import { placeHello } from "./inside/place.ts";
 import { CommandQueue } from "./inside/queue.ts";
@@ -1784,14 +1788,35 @@ const insideHub =
         },
       });
 const insideServer = insideHub === null ? null : new InsideServer({ socketPath: insideSocketPath(cfg.stateDir), hub: insideHub });
-/** Each session's Send Protocol by session name, set by `makeSession`: a part's turn end releases its pane's oldest held send. */
-const insideSends = new Map<string, SendProtocol>();
-// The poll's own release rules stay as they are; this one only goes sooner (M99 spec 03).
+/** What the inside hub reaches of each session, set by `makeSession` (M99 specs 03 and 04). */
+interface InsideSession extends PartAskSession {
+  readonly wake: WakeSink;
+  readonly send: SendProtocol | undefined;
+}
+const insideSessions = new Map<string, InsideSession>();
+const partAsks = insideHub === null ? null : new PartAsks({ sessionOf: (session) => insideSessions.get(session), enqueue: (address, command) => insideHub.enqueue(address, command) });
 insideHub?.listen({
+  // A permission of a part is today's hold (spec 04).
+  ask: (part, ask) => partAsks?.ask(part, ask),
+  gone: (part) => partAsks?.gone(part.partId),
   event: (part, event) => {
-    if (event.kind === "turn.end") void insideSends.get(part.address.session)?.releaseOnTurnEnd(part.address.session, part.address.paneId);
+    const session = insideSessions.get(part.address.session);
+    if (event.kind === "ask.close") partAsks?.closed(part.partId, event.ask);
+    // Wake and state, never an item (spec 04).
+    if (session !== undefined) applyWake(session.wake, part.address.paneId, event, Date.now());
+    // The part's turn end releases the pane's oldest held send now; the poll's own rules stay (spec 03).
+    if (event.kind === "turn.end") void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
   },
 });
+
+/**
+ * Whether the pane's part owns its permission asks (bridge/inside/owner.ts). Not while the part has an
+ * ask open that the hold did not take (a cut input, a screen-only tool): that dialog stays a keys ask.
+ */
+function insideOwnsPermission(session: string, paneId: string, holds: HoldBook | undefined): boolean {
+  if (insideHub === null || !cfg.inside || partAsks?.screenAskOpen(session, paneId) === true) return false;
+  return ownsAsk(insideHub.partOf({ session, paneId }), "permission", holds !== undefined);
+}
 const sendVersions = new VersionCache();
 /** The platform the harness profiles pick their keys by: `process.platform`, or `wsl` under WSL. Decided once, here. */
 const SURFACE_PLATFORM = surfacePlatform({
@@ -2045,9 +2070,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           data: insideHub === null ? undefined : { enabled: () => cfg.inside, door: insideHub },
         })
       : undefined;
-  // The session's Send Protocol, for the inside hub's turn-end release (M99 spec 03).
-  if (send !== undefined) insideSends.set(name, send);
-  else insideSends.delete(name);
+  // The session's inside record is rebuilt with its holds below (M99 specs 03 and 04).
+  insideSessions.delete(name);
   // Each poll tells the launch window which panes the multiplexer names an agent on now: a newly named
   // one opens a window, a gone one is forgotten. The poll's Surface ends a window above.
   if (send !== undefined) {
@@ -2112,27 +2136,49 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           edge,
         ),
     };
+    /** The session's hand-off of one placed hold request, from the settings hook or from a part. */
+    const takePaneHold = (book: HoldBook, paneId: string, request: HoldRequest, conn: HoldConn, onClose: (listener: (how: "closed" | "elsewhere") => void) => void): Held | null =>
+      takeHold(
+        {
+          book,
+          generation: generationOf,
+          profile: (harness) => loadProfiles().get(harness)?.hold,
+          reread: (pane) => surface.edge(pane, "dialog", Date.now()),
+          log: (line) => console.log(line),
+        },
+        paneId,
+        request,
+        conn,
+        onClose,
+      );
     const holdTarget: HoldTarget =
       holdBook === undefined
         ? edgeTarget
         : {
             ...edgeTarget,
-            hold: (paneId, request, conn, onClose) => {
-              takeHold(
-                {
-                  book: holdBook,
-                  generation: generationOf,
-                  profile: (harness) => loadProfiles().get(harness)?.hold,
-                  reread: (pane) => surface.edge(pane, "dialog", Date.now()),
-                  log: (line) => console.log(line),
-                },
-                paneId,
-                request,
-                conn,
-                onClose,
-              );
-            },
+            // One owner per ask kind (M99 spec 04): a part that owns the pane's permissions gives the
+            // one card; the settings hook is let go at once, with no decision.
+            hold: ownerHold(
+              (paneId) => insideOwnsPermission(name, paneId, holdBook),
+              (paneId, request, conn, onClose) => {
+                takePaneHold(holdBook, paneId, request, conn, onClose);
+              },
+              (line) => console.log(line),
+            ),
           };
+    if (holdBook !== undefined && askBook !== undefined) askBook.ownsPermission = (paneId) => insideOwnsPermission(name, paneId, holdBook);
+    // What the inside hub reaches of this session: the holds (spec 04), the wake (spec 04), the send (spec 03).
+    insideSessions.set(name, {
+      harnessOf: (paneId) => {
+        const agent = engine.current().agents.find((pane) => pane.paneId === paneId);
+        return agent === undefined || agent.kind === "shell" ? null : agent.agent;
+      },
+      // A session with no hold book holds nothing: a part's permission stays with the desk and the screen.
+      holdProfile: (harness) => (holdBook === undefined ? undefined : loadProfiles().get(harness)?.hold),
+      takeHold: (paneId, request, conn, onClose) => (holdBook === undefined ? null : takePaneHold(holdBook, paneId, request, conn, onClose)),
+      wake: { edge: (pane, kind, at) => surface.edge(pane, kind, at), poke: () => engine.pokeNow() },
+      send,
+    });
     edgeTargets.set(name, foreground === undefined ? holdTarget : { ...holdTarget, foreground });
   } else {
     edgeTargets.delete(name);
