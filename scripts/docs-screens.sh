@@ -2,8 +2,8 @@
 # Regenerate the phone-sized screenshots of the docs: the update flow and the PWA install card
 # under docs/images/updates/, and a durable agent's surfaces under docs/images/programs/.
 #
-# Source: the states playground (web/src/playground/), served by Vite at
-# http://127.0.0.1:5199/playground.html. Uses the `agent-browser` CLI to drive a headless
+# Source: the design reference (web/src/playground/), served by Vite at
+# http://127.0.0.1:5199/design.html. Uses the `agent-browser` CLI to drive a headless
 # Chromium, plus `magick` (ImageMagick) to crop full-page shots down to the phone frame or
 # the update band row — `agent-browser screenshot <selector>` was unreliable against these
 # `overflow-hidden` + `transform` elements (came back blank), so every shot here is: full
@@ -51,7 +51,7 @@ esac
 REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
 OUT_DIR="$REPO_ROOT/docs/images/updates"
 PROGRAMS_DIR="$REPO_ROOT/docs/images/programs"
-PLAYGROUND_URL="http://127.0.0.1:5199/playground.html"
+PLAYGROUND_URL="http://127.0.0.1:5199/design.html"
 
 if ! command -v agent-browser >/dev/null 2>&1; then
   echo "error: agent-browser is not on PATH. Install: npm i -g agent-browser && agent-browser install" >&2
@@ -64,7 +64,7 @@ if ! command -v magick >/dev/null 2>&1; then
 fi
 
 if ! curl -fsS -o /dev/null "$PLAYGROUND_URL"; then
-  echo "error: the playground isn't answering on port 5199." >&2
+  echo "error: the design reference isn't answering on port 5199." >&2
   echo "hint: from collie-workspace/, run 'make playground-up' (or 'make playground' in the foreground)." >&2
   exit 1
 fi

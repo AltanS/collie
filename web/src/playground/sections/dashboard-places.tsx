@@ -11,7 +11,7 @@
 // `?place=<case>#dashboard-places` draws one case over the whole screen, for a phone and for the shots;
 // `&shot=1` hides the close button.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 

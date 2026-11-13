@@ -1,5 +1,6 @@
-// DEV-ONLY entry. Paired with `web/playground.html`, which is not a build input — see that file's
-// header and `playground-entry.test.ts`. No `lib/pwa` import here on purpose: the playground must
+// DEV-ONLY entry of the design reference. Paired with `web/design.html` (and the old address
+// `web/playground.html`, which forwards there), not a build input — see that file's header and
+// `playground-entry.test.ts`. No `lib/pwa` import here on purpose: the page must
 // never register a service worker, or it would start precaching a page that does not ship.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

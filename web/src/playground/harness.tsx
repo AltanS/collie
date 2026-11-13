@@ -1,5 +1,5 @@
 // The router harnesses the playground needs to mount REAL components in a
-// state the page cannot otherwise reach. DEV-ONLY (see `playground.html`).
+// state the page cannot otherwise reach. DEV-ONLY (see `design.html`).
 //
 // Copy is plain English and does not go through `t()`. That is the one deliberate departure from the
 // repo rule, and it is bounded: none of this text ships — the file is unreachable from the app entry

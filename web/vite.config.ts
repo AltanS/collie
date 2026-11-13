@@ -45,10 +45,11 @@ if (wildcardDevHost) {
 }
 const allowedHosts = wildcardDevHost ? true : devHosts.length > 0 ? devHosts : undefined;
 
-// `bun run playground` (COLLIE_PLAYGROUND=1) reuses this same Vite dev server on its own port
+// `bun run playground` / `bun run design` (COLLIE_PLAYGROUND=1, bound to `COLLIE_DEV_HOST`, default
+// 127.0.0.1) reuses this same Vite dev server on its own port
 // (5199), but it must never resolve a real Collie instance: no root app, no bridge. This plugin
 // only exists under that flag — normal `bun run dev` keeps the proxy above untouched — and it does
-// two things: bounce `/` and `/index.html` to `/playground.html`, and answer every `/api/*` request
+// two things: bounce `/` and `/index.html` to `/design.html` (the design reference), and answer every `/api/*` request
 // itself (404, before the proxy above ever sees it) so nothing reaches a bridge.
 const playgroundOnlyPlugin: Plugin | null =
   process.env.COLLIE_PLAYGROUND === "1"
@@ -57,7 +58,7 @@ const playgroundOnlyPlugin: Plugin | null =
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
             if (req.url === "/" || req.url === "/index.html") {
-              res.writeHead(302, { Location: "/playground.html" });
+              res.writeHead(302, { Location: "/design.html" });
               res.end();
               return;
             }
@@ -199,8 +200,8 @@ const buildInfoPlugin: Plugin = {
 };
 
 // A release build must ship index.html byte-for-byte unchanged, so this only rewrites the four
-// icon <link> hrefs, and only for index.html — never playground.html, which carries its own
-// -playground links statically instead (see playground.html itself). vite-icons.ts's
+// icon <link> hrefs, and only for index.html — never the dev pages (design.html, playground.html),
+// which carry their own -playground links statically instead (see design.html itself). vite-icons.ts's
 // transformIndexIcons is a no-op on the release channel, so the `if` here is belt-and-braces: it
 // also means the hook never even inspects a file that isn't index.html.
 const channelIconsPlugin: Plugin = {

@@ -1,16 +1,15 @@
 // Usage row section of the states playground: the model tag above the belt, extended with the
-// session's context use and the subscription's 5-hour and 7-day windows. A DESIGN ROUND, so the three
-// shapes below are proposals drawn here and nowhere else: the shipped tag is `ModelTag`
-// (components/model-tag.tsx), and the one Altan picks is built there, with its own test. See app.tsx's
-// header for the page's own rules.
+// session's context use and the subscription's 5-hour and 7-day windows: the REAL `ModelTag`
+// (components/model-tag.tsx) in both modes of the Usage row setting. The design round of 2026-10-23
+// (bars, dots, text) is decided: dots shipped, then percentages became the default (2026-11-13).
 //
-// Every shape keeps the tag's contract: absolute on the mirror's bottom-right corner, 10px caption on
+// The tag keeps its contract: absolute on the mirror's bottom-right corner, 10px caption on
 // a 12px line box, `pointer-events-none`, on the translucent page ground, absent rather than a
 // placeholder. A gauge Claude Code did not report is not drawn, and with none the tag is the model
 // alone, exactly as today. Nothing here takes a touch.
 //
 // The first phone of each card mounts the REAL composer under the mirror, so the corner can be judged
-// against the belt it floats over; the smaller mirrors under it are the other states of the same shape.
+// against the belt it floats over; the smaller mirrors under it are the other states of the same mode.
 //
 // DEV-ONLY, unreachable from the app entry.
 
@@ -18,7 +17,7 @@ import { useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { Composer } from "@/components/composer";
-import { isHot, ModelTag } from "@/components/model-tag";
+import { ModelTag } from "@/components/model-tag";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import type { Surface } from "@/lib/surface/surface";
 import type { PaneUsage } from "@/lib/types";
@@ -33,7 +32,7 @@ export const DEF: SectionDef = {
   id: "usage-row",
   title: "Usage row",
   intent:
-    "The model tag above the belt, with the session's context use and the 5-hour and 7-day subscription windows beside it. The first two cards are what ships: the real tag as a percentage (the default) and as dots, the Usage row setting. The three shapes below are the design round of 2026-10-23, kept for the record. Each card shows the same four states: a working session, one near every limit, an API-key session with no subscription windows, and a pane whose own statusline already names the model.",
+    "The model tag above the belt, with the session's context use and the 5-hour and 7-day subscription windows beside it. The real tag as a percentage (the default) and as dots, the Usage row setting. Each card shows the same four states: a working session, one near every limit, an API-key session with no subscription windows, and a pane whose own statusline already names the model.",
 };
 
 /** One reading, as Claude Code's statusLine input reports it. A gauge it did not send is absent. */
@@ -58,76 +57,7 @@ const STATES: readonly StateDef[] = [
 ];
 
 
-const GAUGES = [
-  { id: "ctx", word: "ctx", spoken: "Context" },
-  { id: "fiveHour", word: "5h", spoken: "5-hour limit" },
-  { id: "sevenDay", word: "7d", spoken: "7-day limit" },
-] as const;
-
-type GaugeId = (typeof GAUGES)[number]["id"];
-
-function present(usage: Usage): { id: GaugeId; word: string; spoken: string; value: number }[] {
-  return GAUGES.flatMap((g) => {
-    const value = usage[g.id];
-    return value === undefined ? [] : [{ ...g, value }];
-  });
-}
-
-/** The one sentence a screen reader gets for every shape, so the shapes differ in paint only. */
-function spokenOf(usage: Usage): string {
-  const parts = present(usage).map((g) => `${g.spoken} ${Math.round(g.value)}% used`);
-  return [usage.model === undefined ? null : `Model: ${usage.model}`, ...parts].filter((p) => p !== null).join(". ");
-}
-
-/** The tag's own box, copied from model-tag.tsx, with the width the shape needs. */
-function TagBox({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div
-      data-slot="model-tag"
-      className={cn(
-        "pointer-events-none absolute right-3 bottom-1 z-10 rounded-[2px] bg-background/90 px-1 text-[10px]/3 text-muted-foreground",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-// ── Shape 1: small bars ───────────────────────────────────────────────────────────────────────────
-
-/** A 16 by 3px bar, 2px corners, on the muted track. The fill is a width: a new value repaints. */
-function MiniBar({ value }: { value: number }) {
-  const hot = isHot(value);
-  return (
-    <span className="relative inline-block h-[3px] w-4 overflow-hidden rounded-[1px] bg-muted-foreground/25 align-middle">
-      <span
-        className={cn("absolute inset-y-0 left-0", hot ? "bg-status-blocked" : "bg-muted-foreground")}
-        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
-      />
-    </span>
-  );
-}
-
-function BarsTag({ usage }: { usage: Usage }) {
-  const gauges = present(usage);
-  return (
-    <TagBox className="flex items-center gap-1.5 whitespace-nowrap">
-      <span aria-hidden className="flex items-center gap-1.5">
-        {usage.model !== undefined && <span className="truncate">{usage.model}</span>}
-        {gauges.map((g) => (
-          <span key={g.id} className="flex items-center gap-[3px]">
-            <span>{g.word}</span>
-            <MiniBar value={g.value} />
-          </span>
-        ))}
-      </span>
-      <span className="sr-only">{spokenOf(usage)}</span>
-    </TagBox>
-  );
-}
-
-// ── Shape 2: dots (PICKED 2026-10-23, shipped as the real ModelTag) ───────────────────────────────
+// ── The real tag ──────────────────────────────────────────────────────────────────────────────────
 
 /** The fixture's model label, back in the harness's own words the real tag reads. */
 const MODEL_IDS = new Map<string, { model: string; effort?: string }>([
@@ -157,59 +87,6 @@ function RealTag({ usage, mode }: { usage: Usage; mode: UsageRow }) {
   if (limits.length > 0) pane.limits = limits;
   return <ModelTag model={named?.model} effort={named?.effort} usage={pane} usageRow={mode} />;
 }
-
-// ── Shape 3: short text, on a line of its own ─────────────────────────────────────────────────────
-
-function TextTag({ usage }: { usage: Usage }) {
-  const gauges = present(usage);
-  return (
-    <TagBox className="flex flex-col items-end whitespace-nowrap">
-      <span aria-hidden className="flex flex-col items-end">
-        {gauges.length > 0 && (
-          <span className="flex gap-1.5 tabular-nums">
-            {gauges.map((g) => (
-              <span key={g.id}>
-                {g.word} <span className={cn(isHot(g.value) && "text-status-blocked")}>{Math.round(g.value)}%</span>
-              </span>
-            ))}
-          </span>
-        )}
-        {usage.model !== undefined && <span>{usage.model}</span>}
-      </span>
-      <span className="sr-only">{spokenOf(usage)}</span>
-    </TagBox>
-  );
-}
-
-// ── The cards ─────────────────────────────────────────────────────────────────────────────────────
-
-interface VariantDef {
-  n: 1 | 2 | 3;
-  title: string;
-  line: string;
-  Tag: (props: { usage: Usage }) => ReactNode;
-}
-
-const VARIANTS: readonly VariantDef[] = [
-  {
-    n: 1,
-    title: "Small bars",
-    line: "One line. The model, then ctx, 5h and 7d, each a 16px bar with no number. The quietest shape: a glance tells empty, half or full, not the figure.",
-    Tag: BarsTag,
-  },
-  {
-    n: 2,
-    title: "Dots (picked)",
-    line: "Picked 2026-10-23 and shipped: this card mounts the real ModelTag. One line. The same three gauges as five dots each, one dot per fifth. Easier to count than a bar at this size; a step is 20%, so 41% and 59% look alike.",
-    Tag: DotsTag,
-  },
-  {
-    n: 3,
-    title: "Short text, second line",
-    line: "Two lines, right aligned: ctx 42% · 5h 58% · 7d 36% above the model. Exact figures. Taller, so it covers one more mirror row at the corner.",
-    Tag: TextTag,
-  },
-];
 
 const FREE_SURFACE: Surface = { revision: 1, turn: "idle", modal: "none", composer: "empty" };
 
@@ -282,54 +159,6 @@ function WithBelt({ n, children }: { n: number; children: ReactNode }) {
   );
 }
 
-function NumberBadge({ n }: { n: number }) {
-  return (
-    <span
-      aria-hidden
-      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-lg font-bold leading-none text-background"
-    >
-      {n}
-    </span>
-  );
-}
-
-function OptionCard({ def, state }: { def: VariantDef; state: string }) {
-  const { Tag } = def;
-  const [first, ...rest] = STATES;
-  return (
-    <Card state={state} label={`${def.n}: ${def.title}`} reach="Not built yet: a design round. Today's tag is the model alone." note={def.line}>
-      <CardControls className="flex items-center gap-3">
-        <NumberBadge n={def.n} />
-        <p className="text-sm font-semibold text-foreground">
-          {def.n}: {def.title}
-        </p>
-      </CardControls>
-      <div className="flex flex-col gap-3">
-        {first !== undefined && (
-          <div>
-            <p className="mb-1 text-xs text-muted-foreground">{first.title}, over the real belt</p>
-            <WithBelt n={def.n}>
-              <Mirror>
-                <Tag usage={first.usage} />
-              </Mirror>
-            </WithBelt>
-          </div>
-        )}
-        {rest.map((s) => (
-          <div key={s.key}>
-            <p className="mb-1 text-xs text-muted-foreground">{s.title}</p>
-            <PhoneMock>
-              <Mirror rows={MIRROR_ROWS.slice(-3)}>
-                <Tag usage={s.usage} />
-              </Mirror>
-            </PhoneMock>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
 /** One card of the shipped row: the real tag in one mode, over the same four states. */
 function ModeCard({ state, mode, title, line }: { state: string; mode: UsageRow; title: string; line: string }) {
   const [first, ...rest] = STATES;
@@ -381,12 +210,6 @@ export function UsageRowSection() {
           title="Dots"
           line="The same share as five dots, one per full fifth, red from 80%. Chosen in Settings, Appearance, Usage row."
         />
-      </Group>
-      <Group title="The design round: three shapes for the usage gauges">
-        {/* Literal handles, written out: the e2e roll call reads the state props from source. */}
-        <OptionCard state="usage-row-1" def={VARIANTS[0]!} />
-        <OptionCard state="usage-row-2" def={VARIANTS[1]!} />
-        <OptionCard state="usage-row-3" def={VARIANTS[2]!} />
       </Group>
     </Section>
   );

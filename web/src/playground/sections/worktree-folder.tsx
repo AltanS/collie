@@ -1,6 +1,8 @@
-// The Worktree folder round (ADR 0093 note, 2026-11-13): where the operator looks at the one decision, a
-// default folder for new worktrees. Two frames, one case switch. Frame 1 is the Settings card, frame 2 is
-// the New sheet's Branch folder. Every case reads fixed answers, never a bridge.
+// Worktree folder section of the design reference (ADR 0093 note, 2026-11-13): the approved states of the
+// machine's default folder for new worktrees. Card 1 is the Settings card in each of its cases; card 2 is the
+// New sheet's Branch folder, whose first choice reads "Default folder". Both mount the REAL components
+// (`WorktreeFolderControl`, `BranchBlock`) over fixed answers, never a bridge.
+
 import { useMemo, useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
@@ -11,24 +13,22 @@ import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import type { ServerSummary, WorktreeFolderSettingResponse } from "@/lib/types";
 import { BranchBlock } from "@/routes/new";
 
-import { BROWSE_HOME, browseFixture } from "../../playground/folder-browse-fixture";
-import { homeSolo, rosterTrio } from "../../playground/fixtures";
-import type { PickCase, PickRoundDef } from "../pick-page";
+import { homeSolo, rosterTrio } from "../fixtures";
+import { BROWSE_HOME, browseFixture } from "../folder-browse-fixture";
+import { Card, CardControls, Group, PhoneFrame, Section, Segmented, type SectionDef } from "../layout";
 
 type CaseId = "default" | "set" | "broken" | "crew" | "editing" | "readonly";
 
-const CASES: readonly (PickCase & { id: CaseId })[] = [
-  { id: "default", label: "Default" },
-  { id: "set", label: "Set" },
-  { id: "broken", label: "Broken" },
-  { id: "crew", label: "Crew" },
-  { id: "editing", label: "Editing" },
-  { id: "readonly", label: "Read-only" },
+const SETTINGS_CASES: readonly { value: CaseId; label: string }[] = [
+  { value: "default", label: "Default" },
+  { value: "set", label: "Set" },
+  { value: "broken", label: "Broken" },
+  { value: "crew", label: "Crew" },
+  { value: "editing", label: "Editing" },
+  { value: "readonly", label: "Read-only" },
 ];
 
-function isCase(id: string): id is CaseId {
-  return CASES.some((c) => c.id === id);
-}
+const SHEET_CASES = SETTINGS_CASES.filter((c) => c.value === "default" || c.value === "set" || c.value === "broken" || c.value === "crew");
 
 const FALLBACK = `${BROWSE_HOME}/.herdr/worktrees`;
 const MINE = `${BROWSE_HOME}/trees`;
@@ -157,14 +157,46 @@ function SheetFrame({ which }: { which: CaseId }) {
   );
 }
 
-const round: PickRoundDef = {
+export const DEF: SectionDef = {
+  id: "worktree-folder",
   title: "Worktree folder",
-  cases: CASES,
-  frameHeight: 760,
-  options: [
-    { n: 1, label: "Settings card", render: (id) => <SettingsFrame which={isCase(id) ? id : "default"} /> },
-    { n: 2, label: "New sheet, Default folder", render: (id) => <SheetFrame which={isCase(id) ? id : "default"} /> },
-  ],
+  intent:
+    "One folder per machine where new worktrees go by default. Card 1 is the Settings card, one row per machine, in each case: nothing set, a folder saved, a saved folder that fails the rule, a crew with a folder per machine, the editor open with the picker, and a read-only device. Card 2 is the New sheet's Branch folder, whose first choice reads Default folder on every multiplexer.",
 };
 
-export default round;
+export function WorktreeFolderSection() {
+  const [settings, setSettings] = useState<CaseId>("default");
+  const [sheet, setSheet] = useState<CaseId>("default");
+  return (
+    <Section def={DEF}>
+      <Group title="Settings, System">
+        <Card
+          state="worktree-folder-setting"
+          label="1 Worktree folder card"
+          reach="open Settings, System. Each machine of a crew has its own row; a solo collie has one and no machine name."
+          note="Change opens the New page's folder picker. Try a path outside ~ in Editing to see a refusal. Reads fixed answers, not the bridge."
+        >
+          <CardControls>
+            <Segmented name="Worktree folder case" value={settings} options={SETTINGS_CASES} onChange={setSettings} />
+          </CardControls>
+          <PhoneFrame height={760}>
+            <SettingsFrame key={settings} which={settings} />
+          </PhoneFrame>
+        </Card>
+        <Card
+          state="new-sheet-default-folder"
+          label="2 Default folder, New sheet"
+          reach="on the New page, turn on New worktree. The first choice under Branch folder is the machine's Worktree folder, or Herdr's rule while it is unset."
+          note="Crew shows a repo on a member, which reads the member's own folder."
+        >
+          <CardControls>
+            <Segmented name="New sheet case" value={sheet} options={SHEET_CASES} onChange={setSheet} />
+          </CardControls>
+          <PhoneFrame height={760}>
+            <SheetFrame key={sheet} which={sheet} />
+          </PhoneFrame>
+        </Card>
+      </Group>
+    </Section>
+  );
+}

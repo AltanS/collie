@@ -1,7 +1,7 @@
 // Layout primitives, the page's routes and the shared connection clock: the LIGHT half of the
 // playground's harness, split from ./harness.tsx (the routers, which import every app route) so the
 // page chrome and a section that mounts no router load none of the app's routes. DEV-ONLY (see
-// `playground.html`). Plain English copy, as harness.tsx explains.
+// `design.html`). Plain English copy, as harness.tsx explains.
 
 import { Children, createContext, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";

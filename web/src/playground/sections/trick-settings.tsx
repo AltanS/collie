@@ -3,7 +3,7 @@
 // the switches talk to a stand-in that answers after a moment, so a flip shows the held position and
 // stays. The provenance times read against a fixed clock.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
