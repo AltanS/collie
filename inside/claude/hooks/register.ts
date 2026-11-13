@@ -58,6 +58,12 @@ const links = new Map<string, Link>()
 let rescanning = false
 /** Whether this environment runs the rescan timer. A reload is a new environment, with its timers dropped. */
 let ticking = false
+/**
+ * The main turn as this module last saw it: its start or its end, as the wake event that said so. Null
+ * before the first turn. A link that went down and came back binds a new part, and the bridge knows no
+ * turn for it; the last word is said again after each hello, so a send during that turn is still held.
+ */
+let turnWord: { readonly kind: 'turn.start' | 'turn.end'; readonly turn: string | null; readonly reason?: unknown } | null = null
 
 const TAKEN = { plugin: 'collie', key: 'taken' } as const
 /** The read and write of the taken list, one at a time: two commands must not both read it before either writes. */
@@ -191,7 +197,7 @@ async function greet($: $, link: Link, now: number): Promise<void> {
   if (link.loop !== loop) return
   const parsed = answer === null ? null : parseHelloAnswer(answer.status, answer.text)
   if (parsed === null) {
-    down(link, now)
+    down($, link, now)
     return
   }
   if (!parsed.mine) {
@@ -203,14 +209,22 @@ async function greet($: $, link: Link, now: number): Promise<void> {
   link.state = 'mine'
   link.part = parsed.part
   link.failures = 0
+  if (turnWord !== null) void post($, link, JSON.stringify({ part: parsed.part, ...turnWord }))
   $.clock.after(0, () => poll($, link, loop))
 }
 
-function down(link: Link, now: number): void {
+/**
+ * The link is down: no part on it until a hello binds one again, at `retryAt`. The hello is scheduled
+ * for then, not left to the next rescan: while the link is down, turn events do not reach the bridge,
+ * and a rescan can be a minute away. The hello says the turn again (greet).
+ */
+function down($: $, link: Link, now: number): void {
   link.state = 'down'
   link.part = null
-  link.retryAt = now + (DOWN_RETRY_MS[Math.min(link.failures, DOWN_RETRY_MS.length - 1)] ?? 60_000)
+  const wait = DOWN_RETRY_MS[Math.min(link.failures, DOWN_RETRY_MS.length - 1)] ?? 60_000
+  link.retryAt = now + wait
   link.failures += 1
+  $.clock.after(wait, () => hello($, link))
 }
 
 /** One long poll of a link, then the next. A newer hello on the link ends this loop. */
@@ -220,7 +234,7 @@ async function poll($: $, link: Link, loop: number): Promise<void> {
   const answer = await send($, link.socket, `/v1/next?part=${encodeURIComponent(part)}&wait=${String(POLL_WAIT_MS)}`, null, POLL_WAIT_MS + REQUEST_MS)
   if (link.loop !== loop) return
   if (answer === null || answer.status >= 500) {
-    down(link, await $.clock.now())
+    down($, link, await $.clock.now())
     return
   }
   if (answer.status === 410) {
@@ -379,12 +393,20 @@ export const register: Register = (on) => {
   })
 
   on('turn.start', ($, e, next) => {
-    if (e.agentId === undefined) wakeAll($, (part) => JSON.stringify({ part, kind: 'turn.start', turn: turnIdOf(e.turnId) }))
+    if (e.agentId === undefined) {
+      const word = { kind: 'turn.start', turn: turnIdOf(e.turnId) } as const
+      turnWord = word
+      wakeAll($, (part) => JSON.stringify({ part, ...word }))
+    }
     return next(e)
   })
 
   on('turn.complete', ($, e, next) => {
-    if (e.agentId === undefined) wakeAll($, (part) => JSON.stringify({ part, kind: 'turn.end', turn: turnIdOf(e.turnId), reason: e.reason }))
+    if (e.agentId === undefined) {
+      const word = { kind: 'turn.end', turn: turnIdOf(e.turnId), reason: e.reason } as const
+      turnWord = word
+      wakeAll($, (part) => JSON.stringify({ part, ...word }))
+    }
     return next(e)
   })
 
