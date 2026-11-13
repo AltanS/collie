@@ -3,7 +3,7 @@
 // kind, so a field that slips out of the walk is a red test, not a key on a phone. Placeholders only.
 import { describe, expect, test } from "bun:test";
 import type { ToolCall } from "./tool-call.ts";
-import { redactEntry } from "./text.ts";
+import { redactEntry, summarizeToolInput } from "./text.ts";
 import type { TranscriptEntry, TranscriptPart } from "./types.ts";
 
 const key = `sk-test-placeholder-${"0".repeat(40)}`;
@@ -204,5 +204,21 @@ describe("redactEntry — every content field of every call kind is masked", () 
       { kind: "thinking", text: has(masked) },
       { kind: "image", url: `/api/blobs/${masked}`, mimeType: "image/png" },
     ]);
+  });
+});
+
+describe("summarizeToolInput — PascalCase and harness-specific keys", () => {
+  test("picks AGY PascalCase file, command, search and subagent keys in priority order", () => {
+    expect(summarizeToolInput({ Target: "old", Replacement: "new", Path: "/repo/a.ts" })).toBe("/repo/a.ts");
+    expect(summarizeToolInput({ CodeContent: "export {};", TargetFile: "/repo/b.ts" })).toBe("/repo/b.ts");
+    expect(summarizeToolInput({ StartLine: 1, EndLine: 20, AbsolutePath: "/repo/c.ts" })).toBe("/repo/c.ts");
+    expect(summarizeToolInput({ toolSummary: "Run tests", CommandLine: "bun test", WaitMsBeforeAsync: 5000 })).toBe("bun test");
+    expect(summarizeToolInput({ toolSummary: "Run tests" })).toBe("Run tests");
+    expect(summarizeToolInput({ SearchPath: "/repo/bridge", Query: "classifyToolCall" })).toBe("classifyToolCall");
+    expect(summarizeToolInput({ DirectoryPath: "/repo/bridge" })).toBe("/repo/bridge");
+    expect(summarizeToolInput({ Prompt: "Detailed prompt", Role: "Codebase Researcher", TypeName: "research" })).toBe(
+      "Codebase Researcher",
+    );
+    expect(summarizeToolInput({ Prompt: "Fallback prompt" })).toBe("Fallback prompt");
   });
 });

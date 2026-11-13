@@ -123,8 +123,13 @@ test("AGY whole, row and torn-chunk reads agree", () => {
     JSON.stringify({
       step_index: 1,
       type: "PLANNER_RESPONSE",
+      thinking: "Check README first.",
+      truncated_fields: ["thinking"],
       content: "I will check the files.",
-      tool_calls: [{ name: "view_file", args: { path: "/repo/README.md" } }],
+      tool_calls: [
+        { name: "read_file", args: { Path: '"/repo/README.md"', StartLine: "1", EndLine: "25" } },
+        { name: "run_command", args: { CommandLine: '"git status"', toolSummary: '"Git status check"' } },
+      ],
       created_at: "2026-10-22T10:00:02.000Z",
     }),
     JSON.stringify({ step_index: 2, type: "GENERIC", content: "# Repo", created_at: "2026-10-22T10:00:04.000Z" }),
