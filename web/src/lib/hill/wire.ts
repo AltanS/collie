@@ -103,6 +103,13 @@ export const RIGHTS_CLOSED = {
   moved: "Its rights changed again; a new card says so.",
 } as const;
 export type RightsClosed = keyof typeof RIGHTS_CLOSED;
+
+/**
+ * Why an agent's card closed `withdrawn` with nothing typed: the person answered in the session (the
+ * second Clear, or a phone send that started the session's next turn, M96 spec 10). The phone says it in
+ * its own words, never "Withdrawn by the poster".
+ */
+export const HILL_ANSWERED_IN_SESSION = "answered in the session";
 export const RIGHTS_CLOSED_KEYS: readonly RightsClosed[] = ["approved", "off", "removed", "moved"];
 /** The id inside a Collie Decision's `ref`: a trick id for `version`. */
 export const HILL_COLLIE_REF_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;

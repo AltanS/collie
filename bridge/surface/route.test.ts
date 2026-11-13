@@ -100,7 +100,7 @@ function idlePane() {
   };
 }
 
-function runtime(withSend: boolean, dir: string, holds?: HoldStore) {
+function runtime(withSend: boolean, dir: string, holds?: HoldStore, status?: "idle" | "working" | "blocked" | "done" | "unknown") {
   const pane = idlePane();
   let clock = 0;
   const store = new RequestStore(join(dir, "sends"), () => clock);
@@ -123,7 +123,7 @@ function runtime(withSend: boolean, dir: string, holds?: HoldStore) {
     : undefined;
   let pokes = 0;
   const engine = {
-    current: () => ({ agents: [{ paneId: "%1", agent: "claude" }], shellPanes: [{ paneId: "%7" }] }),
+    current: () => ({ agents: [status === undefined ? { paneId: "%1", agent: "claude" } : { paneId: "%1", agent: "claude", status }], shellPanes: [{ paneId: "%7" }] }),
     noteInput: () => undefined,
     pokeNow: () => {
       pokes++;
@@ -152,6 +152,31 @@ function auditLines() {
 }
 
 describe("sendRoute", () => {
+  test("tells the Hill a send that spoke, and whether it started the next turn of a session that waited (M96 spec 10)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      for (const [status, started] of [
+        ["idle", true],
+        ["done", true],
+        ["working", false],
+        ["blocked", false],
+        ["unknown", false],
+        [undefined, false],
+      ] as const) {
+        const { rt } = runtime(true, join(dir, String(status)), undefined, status);
+        const { audit } = auditLines();
+        const told: Array<[string, boolean]> = [];
+        const res = await sendRoute(rt, { id: `route-turn-${String(status).padEnd(4, "x").slice(0, 4)}`, pane: "%1", text: "go ahead" }, { audit, device: "phone", redact: false, acceptEncoding: null, spoke: (paneId, s) => void told.push([paneId, s]) });
+        // SAFETY: the route answers the Send Protocol's answer as JSON; only `receipt.outcome` is read.
+        const body = (await res.json()) as { receipt?: { outcome: string } };
+        expect(body.receipt?.outcome).toBe("sent");
+        expect(told).toEqual([["%1", started]]);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("with the flag off the route is not there: a 404 that says why, and nothing is read", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {

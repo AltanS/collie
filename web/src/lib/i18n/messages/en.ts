@@ -3699,6 +3699,9 @@ export const en = {
   "hill.state.dismissed": "Dismissed",
   "hill.state.expired": "Expired",
   "hill.state.withdrawn": "Withdrawn by the poster",
+  // A card the person answered in its session (M96 spec 10): English only until the translation pass,
+  // listed in PENDING_TRANSLATION below.
+  "hill.state.answeredInSession": "Answered in the session",
   "hill.rightsClosed.approved": "It runs again.",
   "hill.rightsClosed.off": "The trick is off.",
   "hill.rightsClosed.removed": "The trick was removed.",
@@ -4085,6 +4088,8 @@ export const PENDING_TRANSLATION = [
   "hill.state.setFromTerminal",
   // The quiet mark on a card whose session the person wrote to (1.29.0).
   "hill.spoke",
+  // A card the person answered in its session (M96 spec 10).
+  "hill.state.answeredInSession",
   // The Clear menu's two choices (1.29.0).
   "hill.clear.closed.one",
   "hill.clear.closed.other",

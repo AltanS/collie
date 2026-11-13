@@ -76,6 +76,7 @@ import { HILL_DEFAULT_EXPIRY_DAYS, HILL_DEFAULT_EXPIRY_MS, HILL_MAX_EXPIRY_DAYS,
 import type { JsonObject } from "../json.ts";
 import {
   HILL_ANSWER_TEXT_MAX,
+  HILL_ANSWERED_IN_SESSION,
   HILL_BODY_MAX,
   HILL_DEVICE_ID_RE,
   HILL_LINK_HREF_MAX,
@@ -361,8 +362,8 @@ export const HILL_STATE_ON_LEAD = "the crew state lives on the crew's lead; set 
  */
 export const HILL_NOT_TYPED = "it could not be typed into the session now, so the Decision stays open; answer again in a few minutes";
 
-/** The reason a card the person answered in its session closes with, at the second Clear (1.29.0). */
-export const HILL_ANSWERED_IN_SESSION = "answered in the session";
+/** The reason a card the person answered in its session closes with (wire.ts): the second Clear, or a send that started the turn. */
+export { HILL_ANSWERED_IN_SESSION };
 /** What the second Clear answers when the Hill could not be saved: nothing changed. */
 export const HILL_SPOKEN_UNSAVED = "the Hill could not be saved on this machine; nothing was cleared";
 /** The refusal of a crew state set whose file could not be written. */
@@ -740,6 +741,8 @@ export class HillService {
   private crewMoved = 0;
   /** The Collie Decisions whose answer runs now: no withdraw or supersede closes one under its answer. */
   private answering = new Set<string>();
+  /** How many answers to each decision run now, from the tap to the receipt: no quiet close takes one under its answer. */
+  private claiming = new Map<string, number>();
 
   constructor(private readonly deps: HillServiceDeps) {
     this.now = deps.now ?? Date.now;
@@ -771,18 +774,39 @@ export class HillService {
    * The person sent into one of this bridge's sessions from the phone's composer (1.29.0). Every open agent
    * Decision posted from exactly that address before `at`, and not marked yet, gets `spokeAfter: at`: the
    * card says the person wrote to the session after it asked, and sinks below the fresh cards of its
-   * priority. It stays open and answerable; nothing is typed and nothing pushes. Answers how many were marked.
-   * A member's Hill is not here, so a member marks nothing.
+   * priority. It stays open and answerable; nothing is typed and nothing pushes. A member's Hill is not
+   * here, so a member marks nothing.
+   *
+   * `started` (M96 spec 10): the send started the session's next turn, read by the route as a positive
+   * fact (server.ts `sendStartedTurn`: the session waited, and the send was neither a steer nor queued
+   * behind a turn). Then each of those cards whose answer would go into this very session closes
+   * `withdrawn` with {@link HILL_ANSWERED_IN_SESSION}, and NOTHING IS TYPED for it: the person's own
+   * message started the turn the answer would have started. A card whose answer runs now is left to that
+   * answer, as the second Clear leaves it. A card whose answer goes to another session takes the mark only.
+   * One `hill.spoke.closed` audit line with the count. Answers how many cards were marked or closed.
    */
-  noteSpoke(address: string, at: number = this.now()): number {
+  noteSpoke(address: string, at: number = this.now(), started = false): number {
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return 0;
-    const marked: HillDecision[] = [];
+    const changed: HillDecision[] = [];
+    let closed = 0;
     for (const decision of this.deps.store.all()) {
-      if (decision.state !== "open" || decision.from.kind !== "agent" || decision.from.address !== address || decision.at >= at || decision.spokeAfter !== undefined) continue;
-      marked.push({ ...decision, spokeAfter: at });
+      if (decision.state !== "open" || decision.from.kind !== "agent" || decision.from.address !== address || decision.at >= at) continue;
+      if (this.busy(decision.id)) continue;
+      if (started && this.answersThePoster(decision)) {
+        changed.push({ ...decision, state: "withdrawn", closedAt: at, closedReason: HILL_ANSWERED_IN_SESSION });
+        closed += 1;
+        continue;
+      }
+      if (decision.spokeAfter === undefined) changed.push({ ...decision, spokeAfter: at });
     }
-    if (marked.length === 0 || !this.save(...marked)) return 0;
-    return marked.length;
+    if (changed.length === 0 || !this.save(...changed)) return 0;
+    if (closed > 0) this.deps.audit?.({ action: "hill.spoke.closed", detail: { count: closed } });
+    return changed.length;
+  }
+
+  /** Whether an answer to this decision runs now: its claim (any sender), or a Collie Decision's act. */
+  private busy(id: string): boolean {
+    return this.answering.has(id) || this.claiming.has(id);
   }
 
   /** The crew state now (crew-state.ts): `here` when this bridge keeps none. */
@@ -1384,7 +1408,7 @@ export class HillService {
       if (decision.state !== "open" || decision.spokeAfter === undefined) continue;
       if (shown !== null && !shown.has(decision.id)) continue;
       // An answer in flight for it finishes first; the card is left to that answer (C-A7).
-      if (this.answering.has(decision.id)) continue;
+      if (this.busy(decision.id)) continue;
       closed.push({ ...decision, state: "withdrawn", closedAt: now, closedReason: HILL_ANSWERED_IN_SESSION });
     }
     if (closed.length === 0) return { ok: true, cleared: 0 };
@@ -1578,6 +1602,18 @@ export class HillService {
   }
 
   private async run(request: HillAnswerRequest, id: string, by: string, digest: string, deviceId: string | null): Promise<HillAnswerOutcome> {
+    // SYNCHRONOUS up to the first await: the answer counts as running from the tap on.
+    this.claiming.set(id, (this.claiming.get(id) ?? 0) + 1);
+    try {
+      return await this.runClaimed(request, id, by, digest, deviceId);
+    } finally {
+      const left = (this.claiming.get(id) ?? 1) - 1;
+      if (left <= 0) this.claiming.delete(id);
+      else this.claiming.set(id, left);
+    }
+  }
+
+  private async runClaimed(request: HillAnswerRequest, id: string, by: string, digest: string, deviceId: string | null): Promise<HillAnswerOutcome> {
     const claimed = this.lane.then(() => this.guarded(id, () => this.claim(request, id, by, digest, deviceId)));
     this.lane = claimed.then(
       () => undefined,

@@ -3,7 +3,7 @@
 
 import { t } from "@/lib/i18n";
 
-import { RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillPriority, type HillReceipt, type HillState } from "./wire";
+import { HILL_ANSWERED_IN_SESSION, RIGHTS_CLOSED, RIGHTS_CLOSED_KEYS, type HillDecision, type HillPriority, type HillReceipt, type HillState } from "./wire";
 
 export function priorityWord(priority: HillPriority): string {
   return t(`hill.priority.${priority}`);
@@ -21,6 +21,8 @@ export function stateWord(state: Exclude<HillState, "open">): string {
  */
 export function closedWord(decision: Pick<HillDecision, "state" | "from" | "closedReason">): string {
   if (decision.state === "open") return "";
+  // The person answered in the session (M96 spec 10): never "Withdrawn by the poster".
+  if (decision.state === "withdrawn" && decision.from.kind === "agent" && decision.closedReason === HILL_ANSWERED_IN_SESSION) return t("hill.state.answeredInSession");
   if (decision.state !== "withdrawn" || decision.from.kind !== "collie" || decision.from.ref?.type !== "rights") return stateWord(decision.state);
   const why = RIGHTS_CLOSED_KEYS.find((key) => RIGHTS_CLOSED[key] === decision.closedReason);
   return why === undefined ? stateWord(decision.state) : t(`hill.rightsClosed.${why}`);
