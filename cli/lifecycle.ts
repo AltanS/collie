@@ -1185,6 +1185,11 @@ export async function cmdUninstall(deps: LifecycleDeps): Promise<number> {
   deps.io.out(
     "✓ uninstalled: service stopped & disabled, service definition removed, Collie's tailscale serve mapping removed",
   );
+  // The data path's parts go too (M99 spec 09): `collie uninstall` unlinks every linked harness.
+  // Behind a dynamic import: the parts are embedded as text, and this module sits on the bare-checkout
+  // bootstrap path (`cli/main.test.ts`), which must stay plain TypeScript.
+  const { unlinkAll } = await import("./harness-link.ts");
+  unlinkAll({ ctx: deps.ctx, io: deps.io, files: deps.files, exec: deps.exec });
   deps.io.out(
     `  kept: ${join(deps.ctx.configDir, ".env")} and the checkout — delete those to remove every trace`,
   );

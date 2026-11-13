@@ -52,6 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
+import { cmdHarnessLink, cmdHarnessUnlink, cmdLinkStatus, cmdLinkSync, harnessLinkUsage, isLinkHarness, type HarnessLinkDeps } from "./harness-link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrickGuide } from "./trick-guide.ts";
 import { cmdTrickPropose } from "./trick-propose.ts";
@@ -274,6 +275,32 @@ function pushDeps(io: Io): PushDeps {
  */
 function linkDeps(io: Io): LinkDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
+}
+
+/** `link <harness>` and kin (M99 spec 09): the context, the filesystem and the harness CLI. Nothing restarts. */
+function harnessLinkDeps(io: Io): HarnessLinkDeps {
+  const ctx = loadContext(io.err);
+  return { ctx, io, files: realFiles, exec: realExec(ctx.env, ctx.home) };
+}
+
+/**
+ * `link` with no word publishes the PATH name (ADR 0021); `link status`, `link sync` and `link <harness>`
+ * are the data path's opt-in (M99 spec 09). `unlink` reads the same way.
+ */
+function runLink(args: readonly string[], io: Io, unlink: boolean): number {
+  const [word, ...rest] = args;
+  if (word === undefined) return unlink ? cmdUnlink(linkDeps(io)) : cmdLink(linkDeps(io));
+  if (rest.length > 0) {
+    io.err(harnessLinkUsage());
+    return EXIT.USAGE;
+  }
+  if (!unlink && word === "status") return cmdLinkStatus(harnessLinkDeps(io));
+  if (!unlink && word === "sync") return cmdLinkSync(harnessLinkDeps(io));
+  if (!isLinkHarness(word)) {
+    io.err(`error: no part for "${word}". ${harnessLinkUsage()}`);
+    return EXIT.USAGE;
+  }
+  return unlink ? cmdHarnessUnlink(harnessLinkDeps(io), word) : cmdHarnessLink(harnessLinkDeps(io), word);
 }
 
 /**
@@ -821,13 +848,13 @@ export const COMMANDS: readonly Command[] = [
   // the shell dispatcher never had.
   {
     name: "link",
-    summary: "put `collie` on your PATH: ~/.local/bin/collie → this checkout's binary",
-    run: (_args, s) => cmdLink(linkDeps(s.io)),
+    summary: "put `collie` on your PATH: ~/.local/bin/collie → this checkout's binary; `link <harness>` links a harness for the data path, `link status` says which are linked",
+    run: (args, s) => runLink(args, s.io, false),
   },
   {
     name: "unlink",
-    summary: "remove that name again (only when it points at THIS checkout)",
-    run: (_args, s) => cmdUnlink(linkDeps(s.io)),
+    summary: "remove that name again (only when it points at THIS checkout); `unlink <harness>` takes a harness's part away",
+    run: (args, s) => runLink(args, s.io, true),
   },
   // ── Agent beacons (M11) ────────────────────────────────────────────────────
   // Declared beside `link` because they share its subject: `hooks install` writes the published PATH

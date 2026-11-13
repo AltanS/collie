@@ -303,7 +303,8 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type Held, type HoldConn
 import type { HoldRequest } from "../web/src/lib/surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { PartAsks, type PartAskSession } from "./inside/asks.ts";
-import { insideGate } from "./inside/gate.ts";
+import { insideGate, insideWanted, LINK_READ_MS, linkReader } from "./inside/gate.ts";
+import { linkedHarnesses } from "./inside/links.ts";
 import { ownerHold } from "./inside/owner.ts";
 import { applyWake, type WakeSink } from "./inside/wake.ts";
 import { InsideHub } from "./inside/hub.ts";
@@ -1773,11 +1774,16 @@ const holdServer =
 // The inside wire (M99 spec 01, bridge/inside/WIRE.md): parts inside an agent program (a Claude Code
 // mod, a pi extension) dial `<stateDir>/inside/sock` and bind to their pane through the same placement
 // as a hook edge. Built with the edges, since it places on the same targets. Opt-in: the socket opens
-// only when `insideGate` says so (`COLLIE_INSIDE`, off by default; `bridge/inside/gate.ts`). Closed,
-// no part can bind and every send, ask and WalkyTalky message keeps the screen path.
-const insideGateState = insideGate({ setting: cfg.inside, edges: edgeRouter !== null, platform: HOST.platform });
+// only while a harness is linked (`collie link`, M99 spec 09), or when `COLLIE_INSIDE=on` says so;
+// `COLLIE_INSIDE=off` is the kill switch (`bridge/inside/gate.ts`). Closed, no part can bind and every
+// send, ask and WalkyTalky message keeps the screen path. A link made while the bridge runs opens the
+// socket at the next read of the link records; an unlink turns the data road off at the next read.
+const insideLinked = linkReader(() => linkedHarnesses(process.env, homedir(), realFiles).length > 0);
+/** Whether the inside wire is on now: the override, else a link. */
+const insideOn = (): boolean => insideWanted(cfg.inside, insideLinked());
+const insideGateState = insideGate({ setting: cfg.inside, linked: insideLinked(), edges: edgeRouter !== null, platform: HOST.platform });
 const insideHub =
-  insideGateState !== "open" || edgeRouter === null
+  (insideGateState !== "open" && insideGateState !== "unlinked") || edgeRouter === null
     ? null
     : new InsideHub({
         registry: new PartRegistry(),
@@ -1796,8 +1802,8 @@ interface InsideSession extends PartAskSession {
 const insideSessions = new Map<string, InsideSession>();
 const partAsks = insideHub === null ? null : new PartAsks({ sessionOf: (session) => insideSessions.get(session), enqueue: (address, command) => insideHub.enqueue(address, command) });
 insideHub?.listen({
-  // A permission of a part is today's hold (spec 04).
-  ask: (part, ask) => partAsks?.ask(part, ask),
+  // A permission of a part is today's hold (spec 04), while the wire is on.
+  ask: (part, ask) => (insideOn() ? partAsks?.ask(part, ask) : { wait: false }),
   gone: (part) => partAsks?.gone(part.partId),
   // An answer command ended: its hold settles from the part's own word (spec 04, review item 5).
   command: (entry) => partAsks?.command(entry),
@@ -1805,7 +1811,7 @@ insideHub?.listen({
     const session = insideSessions.get(part.address.session);
     if (event.kind === "ask.close") partAsks?.closed(part.partId, event.ask);
     // Wake and state, never an item (spec 04).
-    if (session !== undefined) applyWake(session.wake, part.address.paneId, event, Date.now());
+    if (session !== undefined && insideOn()) applyWake(session.wake, part.address.paneId, event, Date.now());
     // The part's turn end releases the pane's oldest held send now; the poll's own rules stay (spec 03).
     if (event.kind === "turn.end") void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
   },
@@ -2062,7 +2068,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           // A box proven stale (a probe that missed it, and a second read of the same rows): the Surface says so until the rows change.
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
           // The data road (M99 spec 03): only with the inside socket open, and read again per send.
-          data: insideHub === null ? undefined : { enabled: () => cfg.inside, door: insideHub },
+          data: insideHub === null ? undefined : { enabled: insideOn, door: insideHub },
         })
       : undefined;
   // The session's inside record is rebuilt with its holds below (M99 specs 03 and 04).
@@ -2260,18 +2266,33 @@ edgeRouter?.start();
 // or the path is not safe) runs with no holds: every permission stays a screen ask.
 if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
 // And the inside socket (M99 spec 01), also before the target file, which names it in its `inside` field.
-const insideStarted = insideServer !== null && (await insideServer.start());
+let insideStarted = insideServer !== null && insideGateState === "open" && (await insideServer.start());
 if (insideStarted) console.log(`[inside] socket at ${insideSocketPath(cfg.stateDir)}`);
-else if (insideGateState !== "off") console.log(`[inside] socket closed: ${insideGateState === "platform" ? "not on this platform" : insideGateState === "no-edges" ? "no hook edges" : "did not start"}`);
+else if (insideGateState !== "off") console.log(`[inside] socket closed: ${insideGateState === "platform" ? "not on this platform" : insideGateState === "no-edges" ? "no hook edges" : insideGateState === "unlinked" ? "no harness is linked" : "did not start"}`);
 // The target file also says which multiplexer this bridge drives, under which instance, on which port,
 // so `collie mux list` reads the live bridges without dialling them (M76 spec 02).
-hookTarget =
-  edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, {
-        mux: cfg.mux,
-        instance: collieInstance,
-        port: cfg.port,
-        inside: insideStarted ? { wire: WIRE_VERSION, socket: insideSocketPath(cfg.stateDir) } : undefined,
-      });
+/** The hook target file's fields; `inside` names the socket once it listens. */
+const hookTargetFields = (inside: boolean) => ({
+  mux: cfg.mux,
+  instance: collieInstance,
+  port: cfg.port,
+  inside: inside ? { wire: WIRE_VERSION, socket: insideSocketPath(cfg.stateDir) } : undefined,
+});
+hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(insideStarted));
+// A link made while the bridge runs (`collie link`, M99 spec 09): open the socket at the next read of
+// the link records, once, and name it in the hook target file so a part finds it. One folder listing
+// per read; the timer stops once the socket is open or the bridge stops.
+/** Open the socket for a link made while the bridge runs. One try: a socket it cannot own stays closed, as at boot. */
+async function openInsideLate(): Promise<void> {
+  if (insideServer === null || insideStarted || !insideOn()) return;
+  if (insideWatch !== null) clearInterval(insideWatch);
+  if (!(await insideServer.start())) return;
+  insideStarted = true;
+  console.log(`[inside] a harness is linked: socket at ${insideSocketPath(cfg.stateDir)}`);
+  // The write is a rename over the same file: no moment with no target file.
+  if (edgeRouter !== null) hookTarget = registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(true));
+}
+const insideWatch = insideServer === null || insideStarted || insideGateState !== "unlinked" ? null : setInterval(() => void openInsideLate(), LINK_READ_MS);
 
 // Walky talky (M62): messages between agent sessions. The log is `<stateDir>/walky/`, the local
 // socket `<stateDir>/walky/sock` (0600). A message is logged first, then typed through the pane's
@@ -4246,6 +4267,7 @@ const shutdown = async () => {
   edgeRouter?.stop();
   hookTarget?.remove();
   holdServer?.stop();
+  if (insideWatch !== null) clearInterval(insideWatch);
   insideServer?.stop();
   walkyServer.stop();
   registry.disposeAll();

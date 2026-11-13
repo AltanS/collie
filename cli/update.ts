@@ -1,3 +1,4 @@
+import { linkedHarnesses } from "../bridge/inside/links.ts";
 import { basename, dirname, join } from "node:path";
 
 import { binaryName, collieBinary, HOST, type Host } from "../bridge/host.ts";
@@ -1209,6 +1210,26 @@ function syncSkill(deps: UpdateDeps, binary: string, nudgeWhenOff = true): void 
   for (const line of syncLines(result)) deps.io.out(line);
 }
 
+/** The first build that knows `collie link sync` (M99 spec 09). An older one reads `link` as the PATH name. */
+const LINK_SYNC_SINCE = "1.29.0";
+
+/**
+ * THE PARTS FOLLOW THE UPDATE (M99 spec 09). After the skill sync, the NEW binary runs `collie link
+ * sync`: each linked harness's part is rewritten with that build's, never over a newer one. Only when a
+ * harness is linked, and only through a build that knows the verb (its `--version` is read first: an
+ * older one would publish the PATH name instead). A running session keeps its copy until it reloads.
+ * Nothing here fails the update: a failure prints one note.
+ */
+export function syncLinks(deps: Pick<UpdateDeps, "ctx" | "files" | "exec" | "io">, binary: string): void {
+  if (linkedHarnesses(deps.ctx.env, deps.ctx.home, deps.files).length === 0) return;
+  const said = deps.exec.capture(binary, ["--version"], SKILL_SYNC_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
+  const version = /\d+\.\d+\.\d+/u.exec(said.stdout)?.[0];
+  if (!said.found || said.code !== EXIT.OK || version === undefined || compareSemver(version, LINK_SYNC_SINCE) < 0) return;
+  const r = deps.exec.capture(binary, ["link", "sync"], SKILL_SYNC_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
+  for (const line of r.stdout.split("\n")) if (line.trim() !== "") deps.io.out(line);
+  if (!r.found || r.code !== EXIT.OK) deps.io.out("note: link sync did not run; run `collie link sync`.");
+}
+
 /**
  * The second half of `update`, run FROM THE CODE THAT WAS JUST FETCHED. `build` re-runs the version
  * gate (a half-bumped release can't go live) and recompiles both the binary and `web/dist`;
@@ -1240,6 +1261,7 @@ export async function cmdApplyUpdate(deps: UpdateDeps, args: readonly string[] =
   // `build` just wrote this binary from the code we are running, so it is the new list, not ours.
   nudgeHooks(deps, collieBinary(deps.ctx.root, deps.host));
   syncSkill(deps, collieBinary(deps.ctx.root, deps.host));
+  syncLinks(deps, collieBinary(deps.ctx.root, deps.host));
   return EXIT.OK;
 }
 
@@ -3485,6 +3507,7 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
     deps.io.out(`✓ ${verb} to ${a.version === "" ? a.to : a.version}`);
     nudgeHooks(deps, collieBinary(layout.currentLink, deps.host));
     syncSkill(deps, collieBinary(layout.currentLink, deps.host));
+    syncLinks(deps, collieBinary(layout.currentLink, deps.host));
     return EXIT.OK;
   }
   if (run.state === "rolled-back") {

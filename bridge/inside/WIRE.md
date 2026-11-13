@@ -14,10 +14,14 @@ over a Unix socket. The parser is `wire.ts`, the socket `server.ts`, the binding
 One socket per bridge: `<stateDir>/inside/sock`, mode `0600`, in a folder of mode `0700` that the
 bridge's own user owns and that is not a link. The bridge refuses to listen otherwise.
 
-The socket is opt-in. A bridge opens it only when the operator turned the wire on for that instance
-(`COLLIE_INSIDE=1`, or `inside = true` in `[bridge]`; off by default, `bridge/inside/gate.ts`). Off is
-also the kill switch: no socket, no `inside` field in the hook target file, and every session keeps
-the screen path. Windows keeps the screen path in this version.
+The socket is opt-in. A bridge opens it only while a harness is linked on the machine (`collie link
+<harness>` writes a record beside the parts, `<config home>/collie/inside/<harness>.link.json`;
+`bridge/inside/links.ts`, `bridge/inside/gate.ts`). A link made while the bridge runs opens the socket
+at the next read of the records (every 15 seconds) and rewrites the hook target file; an unlink turns
+the data road off at the next read. `COLLIE_INSIDE` (`inside` in `[bridge]`) overrides: `off` is the
+kill switch, a link or not (no socket, no `inside` field in the hook target file, every session keeps
+the screen path), and `on` opens the wire with no link (a test, a leg). Windows keeps the screen path
+in this version.
 
 A part finds every live bridge of the machine through the hook target folder
 (`$XDG_STATE_HOME/collie/hook-targets/`, else `~/.local/state/collie/hook-targets/`). Each bridge that
