@@ -12,7 +12,7 @@ import { memoryHillReceipts } from "../bridge/hill/receipts.ts";
 import { CREW_HILL_MEDIA_ROUTE, CREW_HILL_POST_ROUTE, HILL_CALL_BUDGET_MS, HILL_FORWARD_BUDGET_MS, HILL_MEDIA_BUDGET_MS, HILL_POST_ASK_MS, HillCrewLead, HillHeldMedia, HillMemberForward, type HillLeadLink } from "../bridge/hill/crew.ts";
 import { HillService, type HillServiceDeps } from "../bridge/hill/service.ts";
 import { HillStore } from "../bridge/hill/store.ts";
-import { HillSwitch, readHillSwitch } from "../bridge/hill/switch.ts";
+import { HillSwitch, readHillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
 import { walkyPlace } from "../bridge/hill/walky.ts";
 import type { WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
 import { WalkyLog } from "../bridge/walky/log.ts";
@@ -96,6 +96,8 @@ async function bridge(withHill = true, extra: Partial<HillServiceDeps> = {}): Pr
   const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => ({ outcome: "sent" }), cancelHeld: () => undefined };
   const walky = new WalkyService({ log: new WalkyLog(join(stateDir, "walky")), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
   let n = 0;
+  // The Hill is off until switched on (2026-11-13): this rig is a bridge whose person switched it on.
+  writeHillSwitch(stateDir, true);
   const hill = new HillService({
     store: new HillStore(null, () => 1000),
     receipts: memoryHillReceipts(),
@@ -424,7 +426,7 @@ describe("the Hill's switch", () => {
     const refused = deps(sock, inPane("%1"), { mintRequestId: () => "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e71" });
     expect(await cmdHillPost(refused, POST)).toBe(EXIT.STATE);
     // One line: a retry cannot pass until the person switches the Hill on, so no request id is offered.
-    expect(refused.io.stderr).toEqual(["hill: the Hill is off on this Collie; your person can switch it on in Settings, Alerts, on the phone, or with: collie hill on (hill_off)"]);
+    expect(refused.io.stderr).toEqual(["hill: the Hill is off on this Collie; your person can switch it on in Settings, Experiments, on the phone, or with: collie hill on (hill_off)"]);
     // The open decision is still there, and its poster can read, list and withdraw it while the Hill is off.
     const status = deps(sock);
     expect(await cmdHillStatus(status, ["dc_cli000000001"])).toBe(EXIT.OK);
@@ -448,6 +450,10 @@ describe("the Hill's switch", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "hill-switch-"));
     cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
     const own = { ctx: context({}, { stateDir }), now: () => 1000 };
+    // No file is off (2026-11-13): "on" writes, and only the second "on" finds it in place.
+    const first = { ...own, io: capture() };
+    expect(cmdHillSwitch(first, "on", [])).toBe(EXIT.OK);
+    expect(first.io.stdout).toEqual([HILL_ON_WORDS]);
     const already = { ...own, io: capture() };
     expect(cmdHillSwitch(already, "on", [])).toBe(EXIT.OK);
     expect(already.io.stdout).toEqual(["The Hill is already on."]);

@@ -15,8 +15,12 @@
 // this list has something in it: adding an experiment is a row here plus its card on the section,
 // and removing the last one takes the section off the index with no other edit.
 
-/** Every experiment the section holds today, newest last. Empty since Chat graduated (ADR 0082). */
-export const EXPERIMENTS = [] as const;
+/**
+ * Every experiment the section holds today, newest last. Empty from the day Chat graduated (ADR 0082) to
+ * 2026-11-13, when the Hill became an experiment: off by default, one switch here
+ * (`components/hill-switch-card.tsx`).
+ */
+export const EXPERIMENTS = ["hill"] as const;
 
 /** One experiment's name, so a card naming something nobody built is a compile error. */
 export type ExperimentId = (typeof EXPERIMENTS)[number];

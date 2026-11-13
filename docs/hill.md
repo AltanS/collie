@@ -16,6 +16,10 @@ turn.
 
 "Hill" is the view's name, and it stays the same in every language. "Decision" is a plain word.
 
+The Hill is an experiment. It is off until you switch it on in Settings → Experiments, or with
+`collie hill on`. Until then no agent or trick can post, and the Hill is not in the bottom bar. See
+[Switch the Hill on or off](#switch-the-hill-on-or-off).
+
 ## What the Hill shows
 
 The Hill is the fourth item of the Dashboard's bottom bar. It opens a page of cards, grouped by how
@@ -100,7 +104,7 @@ your own Decisions, open first. `state` reads the crew state.
 
 `collie hill --help` prints the verbs an agent runs, how to word a card, and the rules. Every verb and flag is in
 [`collie hill`](tricks-reference.md#collie-hill) of the Tricks reference. `clear`, `on`, `off`, and
-`state` with a word are the person's ([Clear](#clear), [Switch the Hill off](#switch-the-hill-off),
+`state` with a word are the person's ([Clear](#clear), [Switch the Hill on or off](#switch-the-hill-on-or-off),
 [Here, Quiet and Away](#here-quiet-and-away)).
 
 `status` prints the format below. This is the output on a Decision that is answered, with a test
@@ -209,7 +213,7 @@ the cause. With the Hill off (`hill_off`), or after exit 4, there is no second l
 
 A session holds at most 20 open Decisions. The agents of one machine hold at most 40 together, and the
 Hill at most 200. With the Hill off, every post is refused with: "the Hill is off on this Collie; your
-person can switch it on in Settings, Alerts, on the phone, or with: collie hill on".
+person can switch it on in Settings, Experiments, on the phone, or with: collie hill on".
 
 ## How you answer
 
@@ -282,19 +286,27 @@ it is `collie hill clear --spoken`, which refuses in a pane where an agent works
 each cleared Decision, so a repeated post with the same request id is refused and not posted twice,
 and a late answer still reads as gone.
 
-## Switch the Hill off
+## Switch the Hill on or off
 
 ```sh
-collie hill off
 collie hill on
+collie hill off
 ```
 
-In Settings → Alerts, the first card is the switch **The Hill**: "Agents and tricks ask you here.
-Off: they cannot post, and the Hill leaves the bar." Settings → Tricks shows the Hill too, as its
-first row, tagged "Built in". The row opens an About sheet with the same switch, and it has no Remove.
-If a question waits, the first tap on the switch asks you to tap again before it switches off. The
-commands move the same switch, for every phone of this Collie, and the bridge reads it with no
-restart.
+The Hill is an experiment, and it is off by default. A Collie with no switch file has the Hill off.
+In Settings → Experiments, the card **The Hill** holds the one switch: "Agents and tricks ask you
+here. Off: they cannot post, and the Hill leaves the bar." If a question waits, the first tap on the
+switch asks you to tap again before it switches off. The commands move the same switch, for every
+phone of this Collie, and the bridge reads it with no restart.
+
+A Collie that used the Hill before it became an experiment has the Hill off after the update. Its
+open Decisions stay stored, and their expiry still runs. They show again when you switch the Hill on.
+
+A crew member with no switch file of its own follows the lead. It does not refuse a post or an image
+on its own: it sends them to the lead, and the lead's switch decides. If the lead has the Hill off,
+the post is refused with: "the Hill is off on the lead of this crew; your person can switch it on in
+Settings, Experiments, on the phone". A member whose own switch says off still refuses on its own
+machine. See [Decisions from any machine](crew.md#decisions-from-any-machine).
 
 With the Hill off:
 
@@ -305,9 +317,11 @@ With the Hill off:
 - The open Decisions stay, and their expiry still runs. They show again when you switch it on.
 - An agent can still run `status`, `list` and `withdraw`, so it can clean up.
 - The crew state and "Tell all sessions now" are off too.
+- A trick whose new version waits says on its row in Settings → Tricks: "A new version waits. Switch
+  the Hill on in Settings, Experiments, to read it."
 
 A post is refused with: "the Hill is off on this Collie; your person can switch it on in Settings,
-Alerts, on the phone, or with: collie hill on".
+Experiments, on the phone, or with: collie hill on".
 
 Notifications for Decisions marked `now` are in
 [Voice input and Web Push](voice-and-push.md#web-push-optional).

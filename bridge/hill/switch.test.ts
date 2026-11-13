@@ -97,16 +97,18 @@ function rig(): Rig {
     push: new HillPush({ ready: () => true, send: (message) => state.pushes.push(message), now: () => state.clock }),
     hillSwitch: sw,
   });
+  // The Hill is off until switched on (2026-11-13): this rig is an instance whose person switched it on.
+  sw.set(true);
   return Object.assign(state, { hill, store, sw, dir });
 }
 
 describe("the switch file", () => {
-  test("no file is on; a version 1 file says on or off; anything else reads as on with a reason", () => {
-    expect(parseHillSwitch(null)).toEqual({ on: true, problem: null });
+  test("no file is off; a version 1 file says on or off; anything else reads as off with a reason", () => {
+    expect(parseHillSwitch(null)).toEqual({ on: false, problem: null });
     expect(parseHillSwitch(renderHillSwitch(false, "2026-11-10T09:41:00.000Z"))).toEqual({ on: false, problem: null });
     expect(parseHillSwitch(renderHillSwitch(true, "2026-11-10T09:41:00.000Z"))).toEqual({ on: true, problem: null });
     for (const bad of ["not json", "[]", '{"v":2,"on":false}', '{"v":1,"on":"no"}', '{"v":1}']) {
-      expect(parseHillSwitch(bad)).toEqual({ on: true, problem: `${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as on` });
+      expect(parseHillSwitch(bad)).toEqual({ on: false, problem: `${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as off` });
     }
   });
 
@@ -126,16 +128,33 @@ describe("the switch file", () => {
     const dir = stateDir();
     const warnings: string[] = [];
     const sw = new HillSwitch(dir, (line) => warnings.push(line));
-    expect(sw.on()).toBe(true);
-    writeHillSwitch(dir, false);
+    expect(sw.reading()).toBe("unset");
     expect(sw.on()).toBe(false);
+    writeHillSwitch(dir, true);
+    expect(sw.reading()).toBe("on");
+    writeHillSwitch(dir, false);
+    expect(sw.reading()).toBe("off");
     writeHillSwitch(dir, true);
     expect(sw.on()).toBe(true);
     mkdirSync(hillDir(dir), { recursive: true });
     writeFileSync(hillSwitchPath(dir), "{ torn");
-    expect(sw.on()).toBe(true);
-    expect(sw.on()).toBe(true);
-    expect(warnings).toEqual([`${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as on`]);
+    // A file that does not read is an explicit off, with one warning for the change.
+    expect(sw.reading()).toBe("off");
+    expect(sw.reading()).toBe("off");
+    expect(warnings).toEqual([`${HILL_SWITCH_FILE} is not a version 1 switch file; the Hill reads as off`]);
+  });
+
+  test("three readings: no file is unset and reads as off; a written file is on or off; a removed file is unset again", () => {
+    const dir = stateDir();
+    const sw = new HillSwitch(dir, () => undefined);
+    expect(sw.reading()).toBe("unset");
+    expect(sw.on()).toBe(false);
+    expect(sw.set(true)).toBe(true);
+    expect(sw.reading()).toBe("on");
+    expect(sw.set(false)).toBe(true);
+    expect(sw.reading()).toBe("off");
+    rmSync(hillSwitchPath(dir));
+    expect(sw.reading()).toBe("unset");
   });
 
   test("set writes the value and answers true once the reading follows", () => {
@@ -144,6 +163,33 @@ describe("the switch file", () => {
     expect(sw.set(false)).toBe(true);
     expect(sw.on()).toBe(false);
     expect(readHillSwitch(dir).on).toBe(false);
+  });
+});
+
+describe("the Hill is off by default", () => {
+  test("with no switch file a post is refused hill_off in the words that name Settings, Experiments; switched on, it posts", () => {
+    const r = rig();
+    rmSync(hillSwitchPath(r.dir));
+    expect(r.hill.isOn()).toBe(false);
+    expect(r.hill.post(POSTER, input(1))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
+    expect(HILL_OFF).toBe("the Hill is off on this Collie; your person can switch it on in Settings, Experiments, on the phone, or with: collie hill on");
+    expect(r.store.all()).toEqual([]);
+    expect(r.hill.switchTo(true, "Pixel 9")).toBe(true);
+    posted(r.hill.post(POSTER, input(1)));
+  });
+
+  test("a file that does not parse is off, and an explicit on is on", () => {
+    const r = rig();
+    writeFileSync(hillSwitchPath(r.dir), "{ torn");
+    expect(r.hill.isOn()).toBe(false);
+    writeFileSync(hillSwitchPath(r.dir), '{"v":1,"on":true}');
+    expect(r.hill.isOn()).toBe(true);
+  });
+
+  test("the snapshot of an instance that never switched it says hillOff", () => {
+    const r = rig();
+    rmSync(hillSwitchPath(r.dir));
+    expect(withHill({ bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], sessions: [], ts: 5 }, r.hill)).toMatchObject({ hillOff: true });
   });
 });
 

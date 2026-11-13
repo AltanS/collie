@@ -39,8 +39,9 @@ Collie's own look.
   settings.
 - **The agent view is the seventh.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
-- **The Hill is the eighth, and it is built in.** It is the page of questions that wait for you. A
-  trick posts a question there, a Decision, and does not list the Hill in its `places`.
+- **The Hill is the eighth, and it ships with Collie.** It is the page of questions that wait for you,
+  and an experiment: off until you switch it on in Settings → Experiments. A trick posts a question
+  there, a Decision, and does not list the Hill in its `places`.
 
 The [Places](tricks-reference.md#places) section of the reference describes each place: where it
 shows, what it takes, what a tap does, its limits and an example.
@@ -368,8 +369,8 @@ On the phone, Settings → Tricks is one list. The official tricks come first, i
 release's list, then your other tricks by name. Each row says Official or Community. An official trick
 you have not added shows an Add button in its place. A tap makes one git fetch, then checks the hash of
 what arrived. The added trick stays in the same place, with its switch. Adding a trick or switching it
-changes its row, never its place. The Hill is the first row of that card, tagged "Built
-in": it comes with Collie, it is not a trick, and it cannot be removed.
+changes its row, never its place. The Hill is not a row of that card: it is not a trick, and its
+switch is in Settings → Experiments.
 
 `add` copies the trick into `tricks/` in Collie's config folder. That folder is `~/.config/collie` on
 a binary install, and Herdr's plugin config folder on a Herdr-managed install
@@ -533,13 +534,14 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | No Tricks section in Settings | The config folder has no `tricks/` folder yet. `collie trick add` or `collie trick init <id>` makes it |
 | "Manifest refused: ..." | `trick.toml` has an error. Run `collie trick check <folder>` and fix each line it prints |
 | "A new version waits for your yes." | The folder moved past the approved copy. Open the card on the Hill, or run `collie trick on <id>` |
+| "A new version waits. Switch the Hill on in Settings, Experiments, to read it." | The same, and the Hill is off, so its card cannot be read. Switch the Hill on in Settings → Experiments, or run `collie hill on` |
 | "The approved copy changed on disk, so the trick stopped. ..." | A program edited the approved copy. Read the code, then switch the trick on again |
 | "The approved copy holds a symbolic link, so the trick stopped. ..." | A trick holds regular files only. Replace the link, then switch it on again |
 | "No version of this trick is approved yet. ..." | The switch file has no approved code for the trick. Switch it on again |
 | "Stopped after repeated failures" | The program failed after 1, 5 and 30 minutes. Fix it, then switch it off and on, or tap its mark |
 | "Last run failed" | The phone keeps the last good version. "Why" shows the error, and "Copy for an agent" copies it |
 | "This Collie cannot draw this part" | A crew member's older Collie does not know the kind. Update Collie |
-| "The Hill is off: this trick's Decisions are not shown." | Switch the Hill on in Settings → Alerts, or run `collie hill on` |
+| "The Hill is off: this trick's Decisions are not shown." | Switch the Hill on in Settings → Experiments, or run `collie hill on` |
 | "Tricks run on the lead of this crew. This machine runs none." | You are on a member. Switch tricks on from the lead |
 | "Could not switch <name>. Try again." | The phone could not write the switch. Check that the device may write, and that the bridge answers |
 | "error: collie trick on is a person's yes to the code, ..." | An agent ran the command. Run it in a shell pane, or tap the switch on the phone |

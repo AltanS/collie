@@ -278,8 +278,8 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: Morph's revision, absent until a session's Morph is switched on or a screen
   // is shown on this bridge, so a solo body that never used Morph carries no such key.
   trickViewsRev: true,
-  // Not a crew dimension: the Hill's switch, present only while it is off, so a solo body that never
-  // switched it carries no such key and no golden byte moved.
+  // Not a crew dimension: the Hill's switch, present only while it is off. The Hill is off by default
+  // (2026-11-13), so a body of a bridge built with the Hill carries it until the person switches the Hill on.
   hillOff: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 

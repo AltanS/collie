@@ -56,7 +56,8 @@
 // reads `gone` with the state it closed in, and a trick's answered key stays closed. The answer receipts
 // are a file of their own and are not touched, so a retried answer `rid` still gets its stored receipt.
 //
-// THE SWITCH (switch.ts). With the Hill off, a post from an agent or a trick is refused (`hill_off`) and
+// THE SWITCH (switch.ts). The Hill is an experiment, off until the person switches it on; no file reads off.
+// A crew member with no file follows its lead (`refusesHere`). With the Hill off, a post from an agent or a trick is refused (`hill_off`) and
 // an answer from the phone is refused too (`off`), so nothing pushes, nothing is typed and no tap runs.
 // The open decisions stay as they are: nothing withdraws or closes them, and they show again when the
 // Hill is back on. The sweep still closes an expired one, or one whose target ended. Status, list and
@@ -126,6 +127,7 @@ import { hillAnswerDigest, type HillAnswerOutcome, type HillReceiptRecord, type 
 import type { HillStore, HillTombstone } from "./store.ts";
 import type { HillLeadForward, HillListAnswer } from "./crew.ts";
 import { HILL_CREW_STATE_DEFAULT, type HillCrewStateFile } from "./crew-state.ts";
+import type { HillSwitchReading } from "./switch.ts";
 
 /**
  * A session's or a trick's name, never Collie's own (crew slice 8 review Q1, Q2): a name that reads
@@ -274,9 +276,11 @@ export interface HillServiceDeps {
   readonly push?: HillPushPort;
   /**
    * The Hill's own switch (switch.ts `HillSwitch`), read on each use, and written by the phone's route
-   * (`set`, true when written). Absent: always on, and the switch cannot be moved.
+   * (`set`, true when written). `reading` tells unset (no file) from off; a switch that gives none reads
+   * `on` or `off` by `on()`. Absent: always on, and the switch cannot be moved. That absence is a TEST SEAM
+   * only: the one production construction (bridge/index.ts `new HillService`) always wires the file switch.
    */
-  readonly hillSwitch?: { on(): boolean; set?(on: boolean): boolean };
+  readonly hillSwitch?: { on(): boolean; reading?(): HillSwitchReading; set?(on: boolean): boolean };
   /**
    * The crew state (crew-state.ts `HillCrewStateFile`), read on each use. Absent: always `here`, and it
    * cannot be set.
@@ -423,7 +427,9 @@ export interface HillClearAnswer {
 }
 
 /** The sentence a bridge with the Hill switched off answers a post with: what is off, and the way back on. */
-export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Alerts, on the phone, or with: collie hill on";
+export const HILL_OFF = "the Hill is off on this Collie; your person can switch it on in Settings, Experiments, on the phone, or with: collie hill on";
+/** What the lead of a crew answers a member's post or image with while its own Hill is off (the lead's switch decides). */
+export const HILL_OFF_ON_LEAD = "the Hill is off on the lead of this crew; your person can switch it on in Settings, Experiments, on the phone";
 /** The sentence a bridge with WalkyTalky off answers a post with. */
 export const HILL_WALKY_OFF = "WalkyTalky is off on this machine (COLLIE_WALKY=off), so no answer could reach you";
 /** The closed reason of a withdrawn decision. */
@@ -809,7 +815,7 @@ export class HillService {
    * how many sessions were asked. One `hill.state.told` audit line with the count.
    */
   async tellAll(at: number, by: string, device: string | null = null): Promise<HillTellAnswer> {
-    if (!this.isOn()) return { ok: false, error: HILL_OFF };
+    if (this.refusesHere()) return { ok: false, error: HILL_OFF };
     if (!this.deps.walkyOn()) return { ok: false, error: HILL_WALKY_OFF };
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return { ok: false, error: NOT_ON_LEAD };
     const crew = this.crewState();
@@ -857,7 +863,7 @@ export class HillService {
    * closes the notification of every open decision that holds one. The decisions themselves stay open.
    */
   isOn(): boolean {
-    const on = this.deps.hillSwitch?.on() ?? true;
+    const on = this.reading() === "on";
     if (this.wasOn && !on) {
       const tags = new Set(this.deps.store.all().flatMap((decision) => (decision.state === "open" && decision.pushTag !== undefined ? [decision.pushTag] : [])));
       for (const tag of tags) this.deps.push?.clear(tag);
@@ -865,6 +871,25 @@ export class HillService {
     }
     this.wasOn = on;
     return on;
+  }
+
+  /** What the switch holds now (switch.ts): on, off or unset. With no switch wired (a test seam) it is on. */
+  reading(): HillSwitchReading {
+    const sw = this.deps.hillSwitch;
+    if (sw === undefined) return "on";
+    return sw.reading?.() ?? (sw.on() ? "on" : "off");
+  }
+
+  /**
+   * Whether THIS machine refuses a Hill call on its own switch. A lead, a solo bridge: anything but `on`
+   * (unset is off). A crew MEMBER with no switch file follows its lead: it refuses only on an explicit off,
+   * and otherwise forwards, and the lead's switch decides. Reads the switch through {@link isOn}, so the
+   * move to off still closes the open notifications.
+   */
+  refusesHere(): boolean {
+    const on = this.isOn();
+    if (on) return false;
+    return this.deps.crewMode() !== "peer" || this.reading() === "off";
   }
 
   /**
@@ -930,7 +955,8 @@ export class HillService {
     // The result carries the crew state at this moment; a member's carries its lead's (crew.ts).
     if (forward === null) return this.withCrewState(this.post(from, read.input));
     // This machine's own switches still hold: the person who switched its Hill or WalkyTalky off meant it.
-    if (!this.isOn()) return refuse("hill_off", HILL_OFF);
+    // A member with no switch file of its own follows the lead: the lead's switch answers below.
+    if (this.refusesHere()) return refuse("hill_off", HILL_OFF);
     if (!this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     const images = this.readImages(read.input.images ?? [], null);
     if (!images.ok) return images;
@@ -1053,8 +1079,9 @@ export class HillService {
   }
 
   private postAny(from: AnySender, input: HillPostInput, opts: HillPostOptions): HillPostAnswer {
-    // First: with the Hill off nothing is taken, not even a repeat of a post it once took.
-    if (!this.isOn()) return refuse("hill_off", HILL_OFF);
+    // First: with the Hill off nothing is taken, not even a repeat of a post it once took. A member with
+    // no switch file is not refused here: it answers `not_on_lead` below, as it always did.
+    if (this.refusesHere()) return refuse("hill_off", HILL_OFF);
     // Collie's own answer types nothing, so only a post whose answer is typed needs WalkyTalky.
     if (from.kind !== "collie" && !this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return refuse("not_on_lead", NOT_ON_LEAD);
@@ -1498,7 +1525,7 @@ export class HillService {
    */
   answer(request: HillAnswerRequest, id: string, by: string, deviceId: string | null = null): Promise<HillAnswerOutcome> {
     // With the Hill off nothing is typed and no tap runs; the decision stays open for when it is back.
-    if (!this.isOn()) return Promise.resolve({ kind: "off" });
+    if (this.refusesHere()) return Promise.resolve({ kind: "off" });
     // §25: a deposed lead's Decisions went to the machine that took over, and a peer's Hill is not the
     // crew's; an answer here could be a second one. Refused, nothing typed, nothing closed, nothing stored.
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) {

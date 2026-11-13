@@ -1026,12 +1026,6 @@
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {
-    "screen": "settings-alerts",
-    "selector": "div[data-slot=\"hill-switch\"] > div > button[data-slot=\"switch\"]",
-    "name": "The Hill",
-    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
-  },
-  {
     "screen": "settings-appearance",
     "selector": "div[data-slot=\"card\"] > div > button[data-slot=\"switch\"]",
     "name": "Compaction summaries",
@@ -1089,6 +1083,12 @@
     "screen": "settings-device",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(3) > button[data-slot=\"button\"]",
     "name": "Clear saved copies now",
+    "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
+  },
+  {
+    "screen": "settings-experiments",
+    "selector": "div[data-slot=\"hill-switch\"] > div > button[data-slot=\"switch\"]",
+    "name": "The Hill",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {

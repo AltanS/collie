@@ -2624,8 +2624,9 @@ const hill = new HillService({
     ready: () => push.enabled && notifyPrefs.current().decisions && !snooze.isMuted() && crew.mode !== "peer",
     send: (message) => void push.send(message),
   }),
-  // The Hill's switch (hill/switch.ts): on by default, `<stateDir>/hill/switch.json` once the phone or
-  // `collie hill on|off` moved it. Read behind a stat check, so a switch needs no restart.
+  // The Hill's switch (hill/switch.ts): an experiment, off by default. `<stateDir>/hill/switch.json` exists
+  // once the phone or `collie hill on|off` moved it; with no file a crew member follows its lead. Read
+  // behind a stat check, so a switch needs no restart. This is the one production wiring of the switch.
   hillSwitch: new HillSwitch(cfg.stateDir),
   // The crew state (hill/crew-state.ts, 1.29.0): `here` by default, `<stateDir>/hill/state.json` once the
   // phone or `collie hill state` set it. Read behind a stat check, so a change needs no restart.

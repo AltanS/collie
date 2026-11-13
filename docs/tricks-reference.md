@@ -407,7 +407,7 @@ The agent passes `show` this file:
 
 ## The Hill
 
-A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It is built in. A trick does not list it in `places`. Settings → Tricks shows it as the first row, tagged "Built in", with its one switch.
+A page of Decisions: questions that a program or an agent asks the person, each answered with one tap. It ships with Collie as an experiment, off until the person switches it on in Settings → Experiments. A trick does not list it in `places`.
 
 **From a program.** A program lists Decisions in the `decisions` key of its output (the helper's `t.decide`). The list is declarative: after each run that succeeded, Collie makes the Hill agree with it, as [The list is the truth](#the-list-is-the-truth) says below. A document lists at most 20.
 

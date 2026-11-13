@@ -37,7 +37,7 @@ import { olderThanFloor, type CrewDialAnswer } from "../walky/crew.ts";
 import { headerField, WALKY_HARNESS_MAX, WALKY_LABEL_MAX } from "../walky/types.ts";
 import { hillImageMime, hillImageSize, type HillImageBytes } from "./media.ts";
 import { readDecision, readPostFields, HILL_RAW_MAX } from "./parse.ts";
-import { HILL_OFF, HILL_WALKY_OFF, type HillAgentSender, type HillOneAnswer, type HillPlace, type HillPostAnswer, type HillService } from "./service.ts";
+import { HILL_OFF_ON_LEAD, HILL_WALKY_OFF, type HillAgentSender, type HillOneAnswer, type HillPlace, type HillPostAnswer, type HillService } from "./service.ts";
 
 /**
  * The first release whose lead takes Decisions from its members (§22), and whose crew carries the
@@ -272,7 +272,7 @@ export class HillCrewLead {
   /** `POST /crew/v1/hill/media`: one image, sniffed and held by its hash for the post that names it. */
   media(body: JsonValue | undefined, memberId: string): HillCrewAnswer {
     // First: with the Hill or WalkyTalky off here no post can follow, so nothing is decoded or held.
-    if (!this.deps.hill.isOn()) return refused("hill_off", HILL_OFF);
+    if (!this.deps.hill.isOn()) return refused("hill_off", HILL_OFF_ON_LEAD);
     if (this.deps.walkyOn?.() === false) return refused("walky_off", HILL_WALKY_OFF);
     const row = asJsonObject(body);
     const sha = asJsonString(row?.sha256);
@@ -338,7 +338,8 @@ export class HillCrewLead {
     const sender: HillAgentSender = { kind: "agent", address, memberId, harness, label, host };
     const place: HillPlace = { address, label, host, unattended: false, reachable: true };
     const answer: HillPostAnswer = this.deps.hill.withCrewState(this.deps.hill.postDecision(sender, read.input, { own: place, images }));
-    if (!answer.ok) return refused(answer.code, answer.error);
+    // The member prints the lead's words: its own switch is off, so the sentence names the lead.
+    if (!answer.ok) return refused(answer.code, answer.code === "hill_off" ? HILL_OFF_ON_LEAD : answer.error);
     this.deps.held.drop(
       memberId,
       hashes.map(({ sha }) => sha),

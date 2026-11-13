@@ -493,8 +493,8 @@ most three an hour, and all of them together at most ten. In a crew, the agents 
 most six an hour together ([Decisions from any machine](crew.md#decisions-from-any-machine)). Past
 that the Decision still shows on the Hill, without a notification.
 
-The Hill has its own switch, first on Settings → Alerts, and it is on by default. Off, agents and
-tricks cannot post Decisions, nothing about a Decision is sent, and the Hill leaves the bar. Switching
+The Hill is an experiment with its own switch in Settings → Experiments, and it is off by default.
+Off, agents and tricks cannot post Decisions, nothing about a Decision is sent, and the Hill leaves the bar. Switching
 it off closes the notifications of the open Decisions. Those Decisions stay on the bridge and show
 again when you switch the Hill on. `collie hill off` and `collie hill on` move the same switch.
 

@@ -426,6 +426,12 @@ card stays open, and you can answer again when the machine is back. A Decision i
 because its machine went away. Dismiss still closes the card: the phone then says the session was not
 told.
 
+The Hill is an experiment, off until switched on. A member with no Hill switch file of its own follows
+the lead: it does not refuse the post or the image, it sends them, and the lead's switch decides. A
+lead with the Hill off refuses with "the Hill is off on the lead of this crew; your person can switch
+it on in Settings, Experiments, on the phone". Only a member whose own switch says off refuses on its
+own machine.
+
 When the lead does not answer, `collie hill post` says so, exits 5, and posts nothing. When the answer
 comes late, it says the post is not confirmed, and exits 5. Either way it prints the command to send
 the same post again, with its `--request-id`: the lead keeps one Decision for it.
