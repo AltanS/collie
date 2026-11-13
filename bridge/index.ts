@@ -1784,6 +1784,14 @@ const insideHub =
         },
       });
 const insideServer = insideHub === null ? null : new InsideServer({ socketPath: insideSocketPath(cfg.stateDir), hub: insideHub });
+/** Each session's Send Protocol by session name, set by `makeSession`: a part's turn end releases its pane's oldest held send. */
+const insideSends = new Map<string, SendProtocol>();
+// The poll's own release rules stay as they are; this one only goes sooner (M99 spec 03).
+insideHub?.listen({
+  event: (part, event) => {
+    if (event.kind === "turn.end") void insideSends.get(part.address.session)?.releaseOnTurnEnd(part.address.session, part.address.paneId);
+  },
+});
 const sendVersions = new VersionCache();
 /** The platform the harness profiles pick their keys by: `process.platform`, or `wsl` under WSL. Decided once, here. */
 const SURFACE_PLATFORM = surfacePlatform({
@@ -2033,8 +2041,13 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           blindSent: sentRecorder(sentStore, () => engine.current().shellPanes),
           // A box proven stale (a probe that missed it, and a second read of the same rows): the Surface says so until the rows change.
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
+          // The data road (M99 spec 03): only with the inside socket open, and read again per send.
+          data: insideHub === null ? undefined : { enabled: () => cfg.inside, door: insideHub },
         })
       : undefined;
+  // The session's Send Protocol, for the inside hub's turn-end release (M99 spec 03).
+  if (send !== undefined) insideSends.set(name, send);
+  else insideSends.delete(name);
   // Each poll tells the launch window which panes the multiplexer names an agent on now: a newly named
   // one opens a window, a gone one is forgotten. The poll's Surface ends a window above.
   if (send !== undefined) {

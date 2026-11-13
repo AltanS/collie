@@ -128,6 +128,17 @@ poll takes everything but answers. One poll per part and filter: a newer one end
 
 `id` has the shape of a phone request id (`[A-Za-z0-9_-]{8,64}`). A text is at most 48 KiB.
 
+## What the bridge sends by data
+
+A phone send goes to a part as `prompt` only when the wire is on, the pane's part declared both `send`
+and `wake`, and the send is a plain new message: no steer, no slash command, shell line or mention
+(`/`, `!`, `@`), no uploaded image (`bridge/surface/path.ts`, `pickSendPath`). Every other send runs
+the Send Protocol on the screen. The bridge, not the part, holds a send while the part reports a turn
+running, and releases it at the part's `turn.end`; the held card, Cancel and Dismiss are the screen
+road's own. The send keeps the phone's request id as the command id, and its receipt: `sent` on the
+part's `sent`; `unknown` (it may have arrived) on `failed` or no word in 15 seconds. The send record
+and the audit entry carry `path: "data"`, or `path: "screen"` after a data try that no part took.
+
 ## One id, one path, never twice
 
 A command's life is `queued`, then `taken`, then `sent` or `failed`; or `queued`, then `withdrawn`.

@@ -81,6 +81,8 @@ export class InsideHub {
   private readonly listeners: InsideListener[] = [];
   /** The asks each part holds open, by part id: ask id → kind. */
   private readonly asks = new Map<string, Map<string, AskKind>>();
+  /** The turn each part last reported (`turn.start`, `turn.end`), by part id. Only parts that declared `wake`. */
+  private readonly turns = new Map<string, "running" | "idle">();
   private readonly registry: PartRegistry;
   private readonly queue: CommandQueue;
   private readonly place: Placer;
@@ -93,6 +95,7 @@ export class InsideHub {
       if (change.kind === "bound") this.each((listener) => listener.bound?.(change.part, change.replaced));
       if (change.kind !== "gone") return;
       this.asks.delete(change.part.partId);
+      this.turns.delete(change.part.partId);
       // The gone part's waits end at once, a replaced part's too: a command must never go to a dead part
       // id's open poll (a reloaded module's old fetch has nobody left to read it). Queued commands stay
       // for the pane's next part.
@@ -157,7 +160,9 @@ export class InsideHub {
       case "turn.start":
       case "turn.end":
       case "row":
-        if (part.capabilities.has("wake")) this.tell(part, event);
+        if (!part.capabilities.has("wake")) return empty(204);
+        if (event.kind !== "row") this.turns.set(part.partId, event.kind === "turn.start" ? "running" : "idle");
+        this.tell(part, event);
         return empty(204);
     }
   }
@@ -188,6 +193,15 @@ export class InsideHub {
   /** The part bound to a pane, or null. */
   partOf(address: PaneAddress): PartView | null {
     return this.registry.partOf(address);
+  }
+
+  /**
+   * The turn the pane's part last reported: `running` after `turn.start`, `idle` after `turn.end`, and
+   * null when no part is bound or it reported no turn yet (it bound between turns, or declared no `wake`).
+   */
+  turnOf(address: PaneAddress): "running" | "idle" | null {
+    const part = this.registry.partOf(address);
+    return part === null ? null : (this.turns.get(part.partId) ?? null);
   }
 
   /** Queue a command for a pane's part. Refused when no part is bound or it did not declare the need. */

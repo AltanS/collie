@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { FakePart } from "../inside/fake-part.ts";
+import { dataId, dataRig, type DataRig } from "./data-rig.ts";
 import { HOLD_BRIDGE_MAX, HOLD_COMMAND_MS, HOLD_ENDED_KEEP_MS, HOLD_ENDED_PANE_MAX, HOLD_MS, HOLD_PANE_MAX, HoldStore, heldRow, type HoldInput } from "./holds.ts";
 
 let dir: string;
@@ -166,5 +168,60 @@ describe("HoldStore", () => {
     expect(store.remove("req-000001")).toBe(true);
     expect(store.remove("req-000001")).toBe(false);
     expect(readdirSync(dir)).toEqual([]);
+  });
+});
+
+// ── The data road holds as the screen road does (M99 spec 03) ──
+
+describe("a data send while the part's turn runs", () => {
+  const rigs: DataRig[] = [];
+  afterEach(() => {
+    for (const rig of rigs.splice(0)) rig.stop();
+  });
+  async function running(): Promise<{ r: DataRig; part: FakePart }> {
+    const r = await dataRig();
+    rigs.push(r);
+    const part = await r.part();
+    // The bridge's wiring: a part's turn end releases its pane's oldest held send (bridge/index.ts).
+    r.hub.listen({ event: (bound, event) => void (event.kind === "turn.end" ? r.protocol.releaseOnTurnEnd(bound.address.session, bound.address.paneId) : null) });
+    await part.event("turn.start", { turn: "t1" });
+    return { r, part };
+  }
+
+  test("is held in the bridge's queue, with the held receipt and no hand-over, no key", async () => {
+    const { r, part } = await running();
+    const id = dataId();
+    const answer = await r.send(id, "after the turn");
+    expect(answer.receipt?.outcome).toBe("held");
+    expect(r.protocol.heldOf("main", "w1:p1").map((row) => row.requestId)).toEqual([id]);
+    expect(r.hub.stateOf(id)).toBeNull();
+    expect(r.mux.calls).toEqual([]);
+    expect((await part.next({ waitMs: 1000 })).status).toBe(204);
+  });
+
+  test("goes to the part at the turn-end event, under its own request id, and ends sent", async () => {
+    const { r, part } = await running();
+    const id = dataId();
+    await r.send(id, "after the turn");
+    const served = part.serveOnce();
+    await part.event("turn.end", { turn: "t1", reason: "answer" });
+    expect(await served).toEqual({ id, kind: "prompt", text: "after the turn" });
+    await r.hub.waitFor(id, ["sent"], 2000);
+    for (let i = 0; i < 20 && r.store.get(id)?.receipt?.outcome !== "sent"; i += 1) await Bun.sleep(25);
+    expect(r.store.get(id)?.receipt?.outcome).toBe("sent");
+    expect(r.store.get(id)?.path).toBe("data");
+    expect(r.protocol.heldOf("main", "w1:p1")).toEqual([]);
+    expect(r.mux.calls).toEqual([]);
+  });
+
+  test("Cancel works while it is held, and the turn end then sends nothing", async () => {
+    const { r, part } = await running();
+    const id = dataId();
+    await r.send(id, "never mind");
+    expect(r.protocol.cancelHeld("main", "w1:p1", id)?.result).toBe("cancelled");
+    await part.event("turn.end", { turn: "t1", reason: "answer" });
+    expect((await part.next({ waitMs: 1000 })).status).toBe(204);
+    expect(r.hub.stateOf(id)).toBeNull();
+    expect(r.store.get(id)?.receipt?.outcome).toBe("cancelled");
   });
 });

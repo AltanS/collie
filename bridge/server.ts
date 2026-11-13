@@ -9326,6 +9326,9 @@ export async function sendRoute(
     const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };
     if (resendOf !== undefined) detail.resend = true;
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    // The road the send took (M99 spec 03), only when a data try was made: `data`, or `screen` after one.
+    const path = rt.send.pathOf(sendRequest.id);
+    if (path !== null) detail.path = path;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
     if (sendSpoke(sendRequest.mode, receipt.outcome)) context.spoke?.(paneId);
     if (receipt.keys.length > 0) {
