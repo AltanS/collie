@@ -1,8 +1,6 @@
-// The "Uses agent tokens" section of the states playground (2026-11-12): the label as built, beside today's
-// look without it. The session sheet's agent view switch carries none (no third hint line at 360 px). Every card mounts the REAL components over fixtures, and the label comes from the facts
+// The "Uses agent tokens" section of the states playground (2026-11-12): the label as built. The session sheet's agent view switch carries none (no third hint line at 360 px). Every card mounts the REAL components over fixtures, and the label comes from the facts
 // (lib/tricks/token-use.ts, lib/token-use-features.ts), never from a flag set here per trick. The one hand
-// this section has on it is `TokenUseLookProvider` (components/token-use-label.tsx): off for "0 Today", and
-// the chip's words in another language to try its width before the translation pass. Those words are a
+// this section has on it is `TokenUseLookProvider` (components/token-use-label.tsx): the chip's words in another language to try its width before the translation pass. Those words are a
 // fixture here and reach no message catalogue.
 //
 // The bar: the theme and the half through the app's own store, the width of the column, and the chip's
@@ -31,7 +29,7 @@ import { Card, CardControls, Group, Section, Segmented, type SectionDef } from "
 export const DEF: SectionDef = {
   id: "token-label",
   title: "Uses agent tokens",
-  intent: "The label on tricks and features that make an agent read or write more. 0 is today.",
+  intent: "The label on tricks and features that make an agent read or write more.",
 };
 
 // ── The bar ────────────────────────────────────────────────────────────────────────────────────
@@ -239,7 +237,6 @@ export function TokenLabelSection() {
         <Segmented name="Chip words" value={words} options={WORDS_OPTIONS} onChange={setWords} />
       </div>
       <Group title="Uses agent tokens">
-        <LookCard n="0" title="Today" look={{ shown: false }} store={store} width={width} />
         <LookCard n="1" title="Chip beside the origin" look={word === undefined ? { shown: true } : { shown: true, word }} store={store} width={width} />
       </Group>
     </Section>

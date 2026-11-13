@@ -792,7 +792,7 @@ Stated so nobody reads this document as a description of a clean tree.
    | `file-preview.tsx:374` `bg-white` on the HTML frame | maybe deliberate: an HTML file draws on white, as in a browser; decide, then write it down |
    | `idle-lock.tsx:43` `ring-white/10` | a ring token, or `ring-rule` |
    | `chat-cards.tsx:1035` `border-white/10` | inside `MIRROR_SPACE`, so it is mirror ink (§8), not app chrome; it moves with the native-mirror work, not before |
-   | `playground/` `zinc-*` frames (`layout.tsx`, `sections/dashboard-nav.tsx`, `sections/update-screen.tsx`) | tokens; the playground shows themes too |
+   | `playground/` `zinc-*` frames (`layout.tsx`, `sections/update-screen.tsx`) | tokens; the playground shows themes too |
 
    **The rule for closing one:** replace the literal with a token whose value in the theme
    `collie` gives the same pixel, in light and in dark. If no token gives it, the fix needs a

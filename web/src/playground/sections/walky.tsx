@@ -20,7 +20,7 @@ import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "walky",
-  title: "Walky talky",
+  title: "WalkyTalky",
   intent:
     "A message between agent sessions, or from the operator, as the phone draws it. Chat shows a " +
     "Message from card only when the pane's log holds the id; the terminal mirror tags the header " +
