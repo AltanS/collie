@@ -31,3 +31,12 @@ describe("the data path in the leg (M99 spec 13)", () => {
     expect(planTiers("solo", { COLLIE_RIG_DATA: "1" }, versions).claude?.leg).toBe("solo-data");
   });
 });
+
+describe("the data run's cassettes live apart (M99 spec 13)", () => {
+  test("a data run reads and writes cassettes-data/, the default run cassettes/", async () => {
+    const { CASSETTE_ROOT, DATA_CASSETTE_ROOT, cassetteRoot } = await import("./replay/tier");
+    expect(cassetteRoot({})).toBe(CASSETTE_ROOT);
+    expect(cassetteRoot({ COLLIE_RIG_DATA: "1" })).toBe(DATA_CASSETTE_ROOT);
+    expect(DATA_CASSETTE_ROOT).not.toBe(CASSETTE_ROOT);
+  });
+});

@@ -780,7 +780,7 @@ export async function waitIdle(rig: Rig, paneId: string, ms: number, host?: Host
 }
 
 /** The receipt row of one send request, once it settled. */
-export async function settledReceipt(rig: Rig, paneId: string, requestId: string, ms: number): Promise<{ outcome: string; reason?: string; detail?: string } | null> {
+export async function settledReceipt(rig: Rig, paneId: string, requestId: string, ms: number): Promise<{ outcome: string; reason?: string; detail?: string; keys: readonly string[] } | null> {
   return rig.until(
     async () => {
       const doc = readSendReceipts(await rig.get(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`));

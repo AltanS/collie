@@ -11,12 +11,14 @@ const STAT = `4242 (claude) ${Array.from({ length: 50 }, (_, i) => (i === 0 ? 'S
 type Wire = { path: string; body: Record<string, unknown> | null }
 
 /** The world one test runs in: the env, the target file, a bridge, a prompt box. */
-function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean } = {}) {
+function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500 } = {}) {
   const clock = mock.clock(on)
   mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
   const wire: Wire[] = []
   const submitted: string[] = []
   const commands = [...(opts.commands ?? [])]
+  // A bridge that forgets the part once, on the first poll after a turn started (a link down and back).
+  let forget = false
 
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.cwd', () => ({ value: '/h/project' }))
@@ -45,6 +47,7 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
     if (opts.refuse === true) throw new Error('ECONNREFUSED')
     if (url.pathname === '/v1/hello') return answer(200, { wire: 1, mine: true, part: PART })
     if (url.pathname === '/v1/event') {
+      if (body?.kind === 'turn.start' && opts.forgetAfterTurn !== undefined && !forget) forget = true
       if (body?.kind === 'ask.open' && opts.hangAsk === true) {
         // A frozen bridge: the post never comes back while the clock stands still.
         await clock.sleep(60 * 60_000)
@@ -61,6 +64,12 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
     const next = commands.shift()
     if (next !== undefined) return answer(200, JSON.parse(next))
     await clock.sleep(25_000)
+    if (forget && opts.forgetAfterTurn !== undefined) {
+      const status = opts.forgetAfterTurn
+      forget = false
+      delete opts.forgetAfterTurn
+      return answer(status)
+    }
     return answer(204)
   })
   on('prompt.submit', (_, e) => {
@@ -146,6 +155,36 @@ describe('the Collie mod', () => {
     const wake = events(wire).find((e) => e?.kind === 'turn.start')
     expect(wake).toEqual({ part: PART, kind: 'turn.start', turn: 't-1' })
     expect(JSON.stringify(events(wire))).not.toContain('secret words')
+  })
+
+  test('a part bound again mid turn says the turn again, so the bridge still holds a send until it ends', async ($, on) => {
+    const { clock, wire } = world(on, { forgetAfterTurn: 410 })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    await $.turn.start({ text: 'a long reply', turnId: 't-2' })
+    await clock.settle()
+    await clock.advance(26_000)
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    const hellos = wire.map((row, at) => (row.path === '/v1/hello' ? at : -1)).filter((at) => at >= 0)
+    expect(hellos).toHaveLength(2)
+    const after = wire.slice(hellos[1]).filter((row) => row.path === '/v1/event').map((row) => row.body)
+    expect(after[0]).toEqual({ part: PART, kind: 'turn.start', turn: 't-2' })
+  })
+
+  test('a link that went down mid turn says hello again in a second, not at the next rescan, and says the turn', async ($, on) => {
+    const { clock, wire } = world(on, { forgetAfterTurn: 500 })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    await $.turn.start({ text: 'a long reply', turnId: 't-3' })
+    await clock.settle()
+    await clock.advance(25_000)
+    await clock.settle()
+    expect(wire.filter((row) => row.path === '/v1/hello')).toHaveLength(1)
+    await clock.advance(1000)
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    const hellos = wire.map((row, at) => (row.path === '/v1/hello' ? at : -1)).filter((at) => at >= 0)
+    expect(hellos).toHaveLength(2)
+    expect(wire.slice(hellos[1]).find((row) => row.path === '/v1/event')?.body).toEqual({ part: PART, kind: 'turn.start', turn: 't-3' })
   })
 
   test('a socket that refuses the connection: no binding, and the permission goes on at once', async ($, on) => {

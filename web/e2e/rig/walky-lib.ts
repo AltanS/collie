@@ -12,6 +12,7 @@ import type { Browser, Page } from "@playwright/test";
 import { devices } from "@playwright/test";
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonObject } from "../../src/lib/json";
+import { readSendReceipts } from "../../src/lib/send-protocol";
 import { SETUPS, harnessDirs, type HarnessId } from "./harnesses";
 import {
   NotReached,
@@ -87,6 +88,20 @@ export async function walkyRows(rig: Rig, paneId: string, limit = 50): Promise<J
 
 /** The receipt state of one row, or null. */
 export const stateOf = (row: JsonObject | undefined): string | null => asJsonString(asJsonObject(row?.receipt)?.state) ?? null;
+
+/**
+ * Whether a message's send went in with no key typed: the data road (M99 spec 05). Its receipt names the
+ * Send Protocol request, and that request's receipt says `sent` with an empty key list. A screen send
+ * always types keys, so an empty list is the data road's own evidence.
+ */
+export async function sentWithNoKey(rig: Rig, paneId: string, messageId: string): Promise<boolean> {
+  const row = (await walkyRows(rig, paneId)).find((r) => r.id === messageId);
+  const sendId = asJsonString(asJsonObject(row?.receipt)?.sendId);
+  if (sendId === undefined) return false;
+  const doc = readSendReceipts(await rig.get(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`));
+  const send = doc.receipts.find((r) => r.requestId === sendId);
+  return send !== undefined && send.outcome === "sent" && send.keys.length === 0;
+}
 
 /** The receipt reason of one row, or null. */
 export const reasonOf = (row: JsonObject | undefined): string | null => asJsonString(asJsonObject(row?.receipt)?.reason) ?? null;
