@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { MARKER_ENV_NAMES } from "../../bridge/beacon/env-markers.ts";
-import { CAPABILITIES as WIRE_CAPABILITIES, ASK_KINDS as WIRE_ASKS, commandBody, parseHello, WIRE_VERSION as BRIDGE_WIRE } from "../../bridge/inside/wire.ts";
+import { CAPABILITIES as WIRE_CAPABILITIES, ASK_KINDS as WIRE_ASKS, commandBody, parseEvent, parseHello, WIRE_VERSION as BRIDGE_WIRE } from "../../bridge/inside/wire.ts";
 import {
   actionOf,
   answerResult,
@@ -12,6 +12,8 @@ import {
   CAPABILITIES,
   draftEvent,
   DRAFT_MAX,
+  draftStateEvent,
+  holdsDraft,
   helloBody,
   isTargetFile,
   MARKER_NAMES,
@@ -51,8 +53,17 @@ describe("the mod speaks the bridge's wire", () => {
       env: { HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/h.sock", TMUX: "", HOME: "/home/a" },
     });
     const parsed = parseHello(text);
-    expect(parsed).toMatchObject({ ok: true, harness: "claude", pid: 4242, pidStartTime: 77, capabilities: ["send", "mail", "draft", "wake"], asks: ["permission"] });
+    expect(parsed).toMatchObject({ ok: true, harness: "claude", pid: 4242, pidStartTime: 77, capabilities: ["send", "mail", "draft", "draft.state", "wake"], asks: ["permission"] });
     expect(JSON.parse(text).env).toEqual({ HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/h.sock" });
+  });
+
+  test("its draft.state parses on the bridge and carries the boolean only", () => {
+    expect(parseEvent(draftStateEvent(PART, true))).toEqual({ ok: true, part: PART, kind: "draft.state", present: true });
+    expect(parseEvent(draftStateEvent(PART, false))).toEqual({ ok: true, part: PART, kind: "draft.state", present: false });
+    expect(Object.keys(JSON.parse(draftStateEvent(PART, true)))).toEqual(["part", "kind", "present"]);
+    expect(holdsDraft("")).toBe(false);
+    expect(holdsDraft(" ")).toBe(true);
+    expect(holdsDraft("half")).toBe(true);
   });
 
   test("it reads back every command the bridge writes", () => {

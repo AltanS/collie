@@ -33,3 +33,14 @@ export function applyWake(sink: WakeSink, paneId: string, event: WireEvent, now:
   sink.poke();
   return true;
 }
+
+/**
+ * Whether a part's event should release its pane's oldest held send now: its turn end (spec 03), or its
+ * word that the box holds no draft any more while its turn is known (spec 05, decision of 2026-11-13).
+ * A "no draft" before the part's first turn word releases nothing: the run would meet an unknown turn
+ * and take the screen road. The run asks the turn and the draft again before anything goes.
+ */
+export function releasesHeld(event: WireEvent, turn: "running" | "idle" | null): boolean {
+  if (event.kind === "turn.end") return true;
+  return event.kind === "draft.state" && !event.present && turn !== null;
+}

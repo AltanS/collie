@@ -11,7 +11,7 @@ const STAT = `4242 (claude) ${Array.from({ length: 50 }, (_, i) => (i === 0 ? 'S
 type Wire = { path: string; body: Record<string, unknown> | null }
 
 /** The world one test runs in: the env, the target file, a bridge, a prompt box. */
-function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500 } = {}) {
+function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string } = {}) {
   const clock = mock.clock(on)
   mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
   const wire: Wire[] = []
@@ -25,7 +25,7 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
   on('session.version', () => ({ value: { version: '2.1.323' } }))
   on('prompt.read', () => {
     if (opts.draftFails === true) throw new Error('no box')
-    return { value: { text: 'half a thought', cursor: 4 } }
+    return { value: { text: opts.box ?? 'half a thought', cursor: 4 } }
   })
   on('fs.list', (_, e) => ({ value: e.path === TARGETS ? [{ name: '0123456789abcdef.json', kind: 'file', size: 200, mtimeMs: 0, isLink: false }] : [] }))
   on('fs.read', (_, e) => {
@@ -98,7 +98,7 @@ describe('the Collie mod', () => {
       pid: 4242,
       pidStartTime: 987654,
       env: { HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' },
-      capabilities: ['send', 'mail', 'draft', 'wake'],
+      capabilities: ['send', 'mail', 'draft', 'draft.state', 'wake'],
       asks: ['permission'],
     })
   })
@@ -111,6 +111,46 @@ describe('the Collie mod', () => {
     for (let i = 0; i < 5; i += 1) await clock.settle()
     expect(submitted).toEqual(['Reply with pong.'])
     expect(events(wire).filter((e) => e?.cmd === 'req-00000001').map((e) => e?.kind)).toEqual(['taken', 'sent'])
+  })
+
+  test('a mail over a draft is sent back with nothing submitted', async ($, on) => {
+    const mail = (id: string) => JSON.stringify({ wire: 1, id, kind: 'mail', text: '[walky-talky wt_x] from operator (cli)\nhello' })
+    const held = world(on, { commands: [mail('req-00000021')] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 5; i += 1) await held.clock.settle()
+    expect(held.submitted).toEqual([])
+    expect(events(held.wire).filter((e) => e?.cmd === 'req-00000021').map((e) => [e?.kind, e?.reason])).toEqual([['taken', undefined], ['failed', 'draft']])
+  })
+
+  test('a mail over an empty box goes in as the person\'s words', async ($, on) => {
+    const { clock, wire, submitted } = world(on, { box: '', commands: [JSON.stringify({ wire: 1, id: 'req-00000022', kind: 'mail', text: 'hello' })] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    expect(submitted).toEqual(['hello'])
+    expect(events(wire).filter((e) => e?.cmd === 'req-00000022').map((e) => e?.kind)).toEqual(['taken', 'sent'])
+  })
+
+  test('the box: after hello and on each flip it says only whether a draft stands, never the text', async ($, on) => {
+    const { clock, wire } = world(on, { box: '' })
+    // The engine's own answers: an edit applies its splice, a change is already in the box.
+    on('prompt.edit', (_, e) => ({ text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length }))
+    on('prompt.change', (_, e) => ({ text: e.text }))
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    // The person types: the first key flips it, the next keys say nothing.
+    await $.prompt.edit({ origin: { kind: 'composer' }, text: '', cursor: 0, start: 0, end: 0, inputText: 'secret' })
+    await $.prompt.edit({ origin: { kind: 'composer' }, text: 'secret', cursor: 6, start: 6, end: 6, inputText: ' half sentence' })
+    // A clear empties it; a recalled history entry fills it again.
+    await $.prompt.change({ text: '', cursor: 0, origin: { kind: 'clear' } })
+    await $.prompt.change({ text: 'secret recalled', cursor: 15, origin: { kind: 'history' } })
+    await clock.settle()
+    expect(events(wire).filter((e) => e?.kind === 'draft.state')).toEqual([
+      { part: PART, kind: 'draft.state', present: false },
+      { part: PART, kind: 'draft.state', present: true },
+      { part: PART, kind: 'draft.state', present: false },
+      { part: PART, kind: 'draft.state', present: true },
+    ])
+    expect(JSON.stringify(events(wire))).not.toContain('secret')
   })
 
   test('a draft question is answered with the box and its caret', async ($, on) => {
@@ -168,7 +208,8 @@ describe('the Collie mod', () => {
     const hellos = wire.map((row, at) => (row.path === '/v1/hello' ? at : -1)).filter((at) => at >= 0)
     expect(hellos).toHaveLength(2)
     const after = wire.slice(hellos[1]).filter((row) => row.path === '/v1/event').map((row) => row.body)
-    expect(after[0]).toEqual({ part: PART, kind: 'turn.start', turn: 't-2' })
+    // The box first, then the turn: the turn word may release a held message.
+    expect(after.slice(0, 2)).toEqual([{ part: PART, kind: 'draft.state', present: true }, { part: PART, kind: 'turn.start', turn: 't-2' }])
   })
 
   test('a link that went down mid turn says hello again in a second, not at the next rescan, and says the turn', async ($, on) => {
@@ -184,7 +225,7 @@ describe('the Collie mod', () => {
     for (let i = 0; i < 5; i += 1) await clock.settle()
     const hellos = wire.map((row, at) => (row.path === '/v1/hello' ? at : -1)).filter((at) => at >= 0)
     expect(hellos).toHaveLength(2)
-    expect(wire.slice(hellos[1]).find((row) => row.path === '/v1/event')?.body).toEqual({ part: PART, kind: 'turn.start', turn: 't-3' })
+    expect(wire.slice(hellos[1]).find((row) => row.path === '/v1/event' && row.body?.kind === 'turn.start')?.body).toEqual({ part: PART, kind: 'turn.start', turn: 't-3' })
   })
 
   test('a socket that refuses the connection: no binding, and the permission goes on at once', async ($, on) => {

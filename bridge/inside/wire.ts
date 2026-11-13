@@ -10,7 +10,7 @@
 // its pane markers come as raw environment values the bridge runs through the one marker table
 // (`bridge/beacon/env-markers.ts`).
 
-import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonObject, type JsonValue } from "../../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonObject, type JsonValue } from "../../web/src/lib/json.ts";
 import { MARKER_ENV_NAMES } from "../beacon/env-markers.ts";
 
 /** The wire version this build speaks. A hello with another version is refused with this one named. */
@@ -35,7 +35,11 @@ export const NEXT_WAIT_MS = 25_000;
 export const NEXT_WAIT_MIN_MS = 1000;
 
 /** What a part may declare it can do. Anything else in the list is dropped (fail closed). */
-export const CAPABILITIES = ["send", "steer", "mail", "draft", "wake"] as const;
+/**
+ * `draft.state`: the part tells whether the input box holds a draft, as a boolean, each time that flips
+ * and again after each hello (M99 spec 05, decision of 2026-11-13). Never the draft's text.
+ */
+export const CAPABILITIES = ["send", "steer", "mail", "draft", "draft.state", "wake"] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
 /** The ask kinds a part may declare it answers. */
@@ -43,7 +47,7 @@ export const ASK_KINDS = ["permission", "question"] as const;
 export type AskKind = (typeof ASK_KINDS)[number];
 
 /** What a part reports. */
-export const EVENT_KINDS = ["turn.start", "turn.end", "row", "ask.open", "ask.close", "taken", "sent", "failed", "draft", "bye"] as const;
+export const EVENT_KINDS = ["turn.start", "turn.end", "row", "ask.open", "ask.close", "taken", "sent", "failed", "draft", "draft.state", "bye"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 /** What the bridge hands a part. */
@@ -120,6 +124,8 @@ export type WireEvent =
   | { readonly ok: true; readonly part: string; readonly kind: "taken" | "sent"; readonly cmd: string }
   | { readonly ok: true; readonly part: string; readonly kind: "failed"; readonly cmd: string; readonly reason: string | null }
   | { readonly ok: true; readonly part: string; readonly kind: "draft"; readonly cmd: string; readonly text: string; readonly caret: number | null }
+  /** Whether the box holds a draft now. Only the boolean: a `text` field, if a part sent one, is not read. */
+  | { readonly ok: true; readonly part: string; readonly kind: "draft.state"; readonly present: boolean }
   | { readonly ok: true; readonly part: string; readonly kind: "bye" };
 
 /** A command the bridge hands a part. `text` for prompt, mail and steer; `ask` and `decision` for an answer. */
@@ -280,6 +286,11 @@ function eventOf(row: JsonObject, part: string, kind: EventKind): WireEvent {
       const caret = row.caret === undefined || row.caret === null ? null : asJsonNumber(row.caret);
       if (caret === undefined || (caret !== null && (!Number.isInteger(caret) || caret < 0 || caret > draft.length))) throw new Refused("bad caret");
       return { ok: true, part, kind, cmd, text: draft, caret };
+    }
+    case "draft.state": {
+      const present = asJsonBoolean(row.present);
+      if (present === undefined) throw new Refused("bad present");
+      return { ok: true, part, kind, present };
     }
     case "bye":
       return { ok: true, part, kind };

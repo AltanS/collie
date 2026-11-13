@@ -249,6 +249,8 @@ What linking does:
   start. The bridge sees the link within 15 seconds.
 - A plain message and a WalkyTalky message go in as data. At the desk, Claude Code shows "Prompt from
   the collie plugin" above such a prompt.
+- A WalkyTalky message still waits while you have a draft in the box, as when Collie types, and goes
+  in once the box is empty. The plugin tells Collie only whether a draft is there, never its text.
 - An Allow or Deny tap on a permission card answers the dialog through the plugin. A tap at the desk
   still wins when it comes first.
 - Everything else keeps the screen path: slash commands, shell lines, attachments and steers.

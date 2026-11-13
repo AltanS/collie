@@ -11,8 +11,11 @@
 export const WIRE_VERSION = 1;
 /** How this part names its program on the wire. An open word: the bridge only logs it. */
 export const HARNESS = "claude";
-/** What this part can do. No `steer`: a prompt submitted by a mod never joins a running turn. */
-export const CAPABILITIES = ["send", "mail", "draft", "wake"] as const;
+/**
+ * What this part can do. No `steer`: a prompt submitted by a mod never joins a running turn.
+ * `draft.state`: it says whether the box holds a draft, a boolean, never the text (spec 05).
+ */
+export const CAPABILITIES = ["send", "mail", "draft", "draft.state", "wake"] as const;
 /** The ask kinds this part answers. */
 export const ASK_KINDS = ["permission"] as const;
 
@@ -230,6 +233,19 @@ export function draftEvent(part: string, cmd: string, box: { readonly text: stri
   if (box.text.length > DRAFT_MAX) return JSON.stringify({ part, kind: "failed", cmd, reason: "too-long" });
   const caret = Number.isInteger(box.cursor) && box.cursor >= 0 && box.cursor <= box.text.length ? box.cursor : null;
   return JSON.stringify({ part, kind: "draft", cmd, text: box.text, caret });
+}
+
+/** The reason a `mail` is refused with when the box holds a draft: nothing was submitted (spec 05). */
+export const DRAFT_REFUSAL = "draft";
+
+/** Whether a box text is a draft: any text at all. A box of spaces is the person's too. */
+export function holdsDraft(text: string): boolean {
+  return text.length > 0;
+}
+
+/** The event that says whether the box holds a draft: the boolean only, never the text. */
+export function draftStateEvent(part: string, present: boolean): string {
+  return JSON.stringify({ part, kind: "draft.state", present });
 }
 
 /** The ids acted on, with one more, newest kept. A list of anything else starts empty. */

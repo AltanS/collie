@@ -40,7 +40,7 @@ describe("a whole round with the fake part", () => {
     const part = new FakePart(socket, { env: ENV, pidStartTime: 7 });
 
     const hello = await part.hello();
-    expect(hello.body).toMatchObject({ wire: 1, mine: true, capabilities: ["send", "mail", "draft", "wake"], asks: ["permission"] });
+    expect(hello.body).toMatchObject({ wire: 1, mine: true, capabilities: ["send", "mail", "draft", "draft.state", "wake"], asks: ["permission"] });
     expect(hub.partOf(PANE)?.partId).toBe(part.partId!);
 
     // A prompt: queued by the bridge, taken by the part's poll, reported sent.

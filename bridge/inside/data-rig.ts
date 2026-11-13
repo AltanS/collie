@@ -51,8 +51,12 @@ export interface DataRig {
   readonly store: RequestStore;
   readonly holds: HoldStore;
   readonly socket: string;
-  /** A fake part, said hello, bound to {@link DATA_PANE}; with `idle: false` it reports no turn yet. */
-  part(fields?: Record<string, string[]>, options?: { idle?: boolean }): Promise<FakePart>;
+  /**
+   * A fake part, said hello, bound to {@link DATA_PANE}; with `idle: false` it reports no turn yet, and
+   * with `draft` it says whether the box holds a draft (`draft.state`). With no `draft` the draft stays
+   * unknown, and a WalkyTalky message takes the screen road.
+   */
+  part(fields?: Record<string, string[]>, options?: { idle?: boolean; draft?: boolean }): Promise<FakePart>;
   send(id: string, text: string, over?: Partial<SendRequest>): Promise<SendAnswer>;
   stop(): void;
 }
@@ -100,6 +104,8 @@ export async function dataRig(options: { harness: string; version: string; enabl
       await part.hello();
       // A part that reported its turn idle once: the bridge knows the turn (M99 review item 6).
       if (how.idle !== false) await part.event("turn.end", { turn: null });
+      // And its box once, as a real part does after each hello (spec 05): no draft, unless the test says.
+      if (how.draft !== undefined) await part.event("draft.state", { present: how.draft });
       return part;
     },
     send: (id, text, over = {}) => protocol.handle({ id, text, mode: "send", fromPhone: true, ...over }, { session: "main", paneId: "w1:p1", harness: options.harness }),

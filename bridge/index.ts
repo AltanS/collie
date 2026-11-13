@@ -309,7 +309,7 @@ import { PartAsks, type PartAskSession } from "./inside/asks.ts";
 import { insideGate, insideWanted, INTERVAL_TIMER, linkReader, watchLink } from "./inside/gate.ts";
 import { linkedHarnesses, partsRoot } from "./inside/links.ts";
 import { ownerHold } from "./inside/owner.ts";
-import { applyWake, type WakeSink } from "./inside/wake.ts";
+import { applyWake, releasesHeld, type WakeSink } from "./inside/wake.ts";
 import { InsideHub } from "./inside/hub.ts";
 import { placeHello } from "./inside/place.ts";
 import { CommandQueue } from "./inside/queue.ts";
@@ -1824,7 +1824,9 @@ insideHub?.listen({
     // Wake and state, never an item (spec 04).
     if (session !== undefined && insideOn()) applyWake(session.wake, part.address.paneId, event, Date.now());
     // The part's turn end releases the pane's oldest held send now; the poll's own rules stay (spec 03).
-    if (event.kind === "turn.end") void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
+    // So does its word that the box holds no draft any more: a WalkyTalky message held over the draft
+    // goes now, once, and its run asks the draft state again before anything (spec 05, 2026-11-13).
+    if (releasesHeld(event, insideHub?.turnOf(part.address) ?? null)) void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
   },
 });
 

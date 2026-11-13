@@ -47,6 +47,10 @@ listen. A pi extension could listen, but two shapes of wire for two programs is 
    that pane and that dialog) and the box's text (`draft`). A slash command, a shell line, an
    attachment, a steer and every send to a session with no part keep the screen path. When the part's
    turn state is unknown, the send takes the screen path.
+   A WalkyTalky message also waits for the person's draft, as on the screen (decision of 2026-11-13):
+   the part says whether the box holds a draft (`draft.state`, a boolean, never the text) and reads
+   the box again right before it submits; a draft sends the message back unsubmitted, and it goes once
+   when the box is empty. When the part's draft state is unknown, the message takes the screen path.
 8. **One owner per dialog.** A part owns a permission dialog only while its own hold for that pane and
    that dialog is live. Until then the settings hook hold or the keys ask stays; when a part hold ends
    with no decision while the dialog is still open, the screen reader owns it again. Never zero cards.

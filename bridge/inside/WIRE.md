@@ -55,7 +55,7 @@ short reason and changes nothing. Unknown fields are ignored everywhere, so a ne
   "session": "<the harness's own session id>", "cwd": "/home/a/project",
   "pid": 4242, "pidStartTime": 77,
   "env": { "HERDR_PANE_ID": "w1:p1", "HERDR_SOCKET_PATH": "/run/user/1000/herdr.sock" },
-  "capabilities": ["send", "mail", "draft", "wake"], "asks": ["permission"] }
+  "capabilities": ["send", "mail", "draft", "draft.state", "wake"], "asks": ["permission"] }
 ```
 
 - `harness` is an open lower-case word. Shared code never matches it; it is kept for the log.
@@ -67,7 +67,8 @@ short reason and changes nothing. Unknown fields are ignored everywhere, so a ne
   `HC_TERMINAL_ID` `HC_TERMINAL_SOCKET`. Any other name is dropped unread. A part never shapes a
   marker; the bridge runs the one marker table over these values.
 - `capabilities` lists what the part can do: `send` (a prompt), `steer` (text into a running turn),
-  `mail` (a WalkyTalky message), `draft` (read the input box), `wake` (turn and row events). `asks`
+  `mail` (a WalkyTalky message), `draft` (read the input box), `draft.state` (say whether the input
+  box holds a draft), `wake` (turn and row events). `asks`
   lists the ask kinds it answers: `permission`, `question`. An unknown word is dropped. The bridge takes
   the data path only for a declared word; anything absent keeps the screen path.
 
@@ -76,7 +77,7 @@ exactly one pane of its sessions matches one marker, the pid is alive with that 
 the multiplexer reports the pane's foreground processes, the pid is among them.
 
 ```json
-{ "wire": 1, "mine": true, "part": "<22 url-safe characters>", "capabilities": ["send", "mail", "draft", "wake"], "asks": ["permission"] }
+{ "wire": 1, "mine": true, "part": "<22 url-safe characters>", "capabilities": ["send", "mail", "draft", "draft.state", "wake"], "asks": ["permission"] }
 { "wire": 1, "mine": false, "reason": "no-pane" }
 ```
 
@@ -104,11 +105,16 @@ Every event carries `part` and `kind`.
 | `sent` | `cmd` | the part did what the command asked |
 | `failed` | `cmd`, `reason`? | the part could not |
 | `draft` | `cmd`, `text`, `caret`? | the answer to a `draft` question: the input box as it stands |
+| `draft.state` | `present` | whether the input box holds a draft, a boolean; never the text |
 | `bye` | | the part stops; the pane falls back to the screen path at once |
 
 `turn.start`, `turn.end` and `row` reach the rest of the bridge only from a part that declared `wake`.
 They are a wake and a state, never items: chat rows still come from the session file (README
 decision 10).
+
+`draft.state` reaches the rest of the bridge only from a part that declared `draft.state`. A part says
+it after each `hello`, before its turn word, and again each time the box goes from empty to a draft
+or back. Any text sent with it is not read.
 
 `ask.close` also withdraws an answer still queued for that ask.
 
@@ -177,12 +183,28 @@ still answer from the phone. This is read from the types and not proven live; no
 
 ## WalkyTalky by data
 
-A WalkyTalky delivery to a pane whose part declared `mail` and `wake` goes to the part as `mail`
-(M99 spec 05). Only the last step changes: the off rule, the border, the limits, the resting rule and
-`--wake` run before it as before, and the text handed over is the envelope the screen road would type.
-The bridge holds it while the part reports a turn running and releases it at `turn.end`; a draft in
-the box does not hold it, because a data delivery does not touch the box. A part that took it and
-gave no word leaves the receipt "may have arrived, will not be sent again"; it is never typed after.
+A WalkyTalky delivery to a pane whose part declared `mail`, `draft.state` and `wake` goes to the part
+as `mail` (M99 spec 05). Only the last step changes: the off rule, the border, the limits, the resting
+rule and `--wake` run before it as before, and the text handed over is the envelope the screen road
+would type. A part that took it and gave no word leaves the receipt "may have arrived, will not be sent
+again"; it is never typed after.
+
+**A draft holds it, as on the screen** (decision of 2026-11-13). Another agent's words never go in
+over the person's draft. The bridge holds the message while the part reports a turn running or a
+draft in the box, with the screen road's own held reasons (`turn running`, `draft present`), its mark,
+Cancel and Drop. It goes once, with no key typed, when the part's `turn.end`, or its `draft.state`
+with `present: false` while the turn is known, finds both the turn idle and the box empty; the
+session's poll may release it too, and every release asks the part's state again first. A part that
+did not declare `draft.state`, or has not said it since it bound, leaves the draft unknown, and
+unknown takes the screen road, which reads the box itself. Unknown is never taken for "no draft".
+
+**The window.** The part's word can be late: the person may start to type after the bridge read "no
+draft" and before the `mail` arrives. So the part reads the box again right before it submits; a box
+with any text, or one it cannot read, ends the command `failed` with reason `draft` and nothing
+submitted, and the bridge holds the message again (`draft present`). A later try goes under a new
+command id. What is left is the gap between that read and the submit inside the agent program, one
+step of its own event loop, and the submit does not touch the box: a key the person types in that gap
+stays in the draft, and the message goes in beside it, never over it.
 
 ## One id, one path, never twice
 
