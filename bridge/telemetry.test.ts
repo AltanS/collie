@@ -1372,6 +1372,9 @@ describe("the bridge feeds the tally (ping v3)", () => {
     // A trick's own session is no agent: the one filter drops it before the tally sees it.
     expect(src).toContain("panes: realAgentPanes(s.agents),");
     expect(src).toContain('const usageMux = endpoint.kind === "program" ? DURABLE_MUX : cfg.mux;');
-    expect(src).toContain("linked: (paneId) => (insideHub?.partOf({ session: name, paneId }) ?? null) !== null,");
+    // The link reader is the pane read's own (`paneLinkedReader`, bridge/surface/path.ts), never a second rule.
+    expect(src).toContain("linked: (paneId) => paneIsLinked(name, paneId),");
+    expect(src).toContain("paneLinked: paneIsLinked,");
+    expect(src).not.toContain("insideHub?.partOf(");
   });
 });
