@@ -1,5 +1,5 @@
 // DEV-ONLY entry. Paired with `web/pick.html`, which is not a build input (see that file and
-// `pick-entry.test.ts`). No `lib/pwa` import on purpose: this page must never register a service worker.
+// `pick-page.test.tsx`). No `lib/pwa` import on purpose: this page must never register a service worker.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 

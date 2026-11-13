@@ -307,22 +307,29 @@ the code.
 - **Pull requests:** open them against `main`. [`CONTRIBUTING.md`](./CONTRIBUTING.md) has the CI
   checks and the version rules.
 
-### The states playground
+### The design reference
 
-A local test page renders UI components across mock states (boot, idle, dashboard, crew,
-settings) without active agents. The tab shows a red icon to identify it as test-only.
+A local page renders every final state of the UI (boot, idle, dashboard, crew, settings and the rest)
+from mock data, without active agents. The tab shows a red icon to mark it as test-only.
 
 ```
-cd web && COLLIE_DEV_HOSTS=bluefin,localhost bun run playground
+cd web && COLLIE_DEV_HOSTS=bluefin,localhost bun run design
 ```
 
-Open `http://<host>:5199/playground.html`. Port 5199 disables `/api` calls to ensure it never hits
-a live instance. `bun run playground:build` outputs the test assets to `web/dist-playground/`
-without touching `dist/`. The view shows one section at a time, tracked via the URL hash (`#pane`,
-`#pane/<card-handle>`, `#changes:one-file`). Add states by adding a `<Card>` to a `Group` in
-`web/src/playground/sections/` and mock entries to `web/src/playground/fixtures.ts`. Add sections
-by exporting `DEF` and a component from a new file, then register it in `SECTIONS` inside
-`web/src/playground/app.tsx`. Use `Round` (`web/src/playground/round.tsx`) to evaluate layout variants.
+Open `http://<host>:5199/design.html` (`bun run playground` is the same command, and the old address
+`playground.html` forwards to the new one). Port 5199 answers `/api` calls itself, so the page never
+hits a live instance. `bun run playground:build` writes the static pages to `web/dist-playground/`
+without touching `dist/`.
+
+The search field at the top finds an entry by its title, its id or its keywords (component names
+and feature words). The page shows one entry at a time. The address carries it: `#pane`,
+`#pane/<card-handle>` for one card, `#changes:one-file` for one group, `?q=walky` for a search.
+Add a state by adding a `<Card>` to a `Group` in `web/src/playground/sections/` and mock data to
+`web/src/playground/fixtures.ts`. Add an entry by exporting `DEF` and a component from a new file,
+then registering it in `SECTIONS` in `web/src/playground/app.tsx` with an id, a title and keywords.
+The reference holds only final states. A design round where an option is picked is a one-pager:
+`web/pick.html?round=<id>`, one file under `web/src/pick/rounds/` and one line in
+`web/src/pick/rounds.ts`. `CLAUDE.md` has the rules.
 
 For Herdr adapter development, refer to upstream documentation for the plugin system:
 [authoring](https://herdr.dev/docs/plugins/) ·

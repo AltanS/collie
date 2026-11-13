@@ -10,6 +10,12 @@ restated here. The values live in [`web/src/index.css`](./web/src/index.css) and
 comments are the ground truth for every number; this file holds the rules that span more
 than one file, which a comment cannot.
 
+The rules are seen at work in the design reference (`web/design.html`, `cd web && bun run design`):
+every final state of the UI, mounted from the real components, one entry per state, found with its
+search field. It holds only what ships or what the owner approved. A choice between options is a
+pick page of its own (`web/pick.html?round=<id>`), and only the chosen state moves into the
+reference. [`CLAUDE.md`](./CLAUDE.md) has how to add either.
+
 ---
 
 ## 1. Check `ui/` before you build anything. This is the first rule.
@@ -792,7 +798,7 @@ Stated so nobody reads this document as a description of a clean tree.
    | `file-preview.tsx:374` `bg-white` on the HTML frame | maybe deliberate: an HTML file draws on white, as in a browser; decide, then write it down |
    | `idle-lock.tsx:43` `ring-white/10` | a ring token, or `ring-rule` |
    | `chat-cards.tsx:1035` `border-white/10` | inside `MIRROR_SPACE`, so it is mirror ink (§8), not app chrome; it moves with the native-mirror work, not before |
-   | `playground/` `zinc-*` frames (`layout.tsx`, `sections/update-screen.tsx`) | tokens; the playground shows themes too |
+   | `playground/` `zinc-*` frames (`layout.tsx`, `sections/update-screen.tsx`) | tokens; the design reference shows themes too |
 
    **The rule for closing one:** replace the literal with a token whose value in the theme
    `collie` gives the same pixel, in light and in dark. If no token gives it, the fix needs a
