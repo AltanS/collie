@@ -1851,6 +1851,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(reading.note, when));
         return true;
       }
+      // Text the bridge typed and left in the box (`typed_not_submitted`) is this send's own, not a draft
+      // someone typed in the terminal (field case 2026-11-13): the "Draft in terminal" preview must not
+      // offer it back to Take over, which would put it into the field a second time. A Send of the same
+      // text again finishes it on the bridge (only the submit key goes out).
+      if (reading.note === "typed" && t !== "") {
+        setHandledKey(normalizeDraft(t));
+        setPreviewLatched(false);
+      }
       // A resend makes no offer: an offer would carry the row's text, which may be masked.
       const offered = reading.offers.length > 0 && resend === undefined;
       setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null } : null);
