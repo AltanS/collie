@@ -17,6 +17,8 @@ import {
   type MuxCreatedPane,
   type MuxGrid,
   type MuxOutcome,
+  type MuxPane,
+  type MuxSnapshot,
   type MuxSpaceRequest,
 } from "./mux/types.ts";
 import { memoryWorktreeReceipts, type WorktreeReceiptSurface } from "./worktree-receipts.ts";
@@ -138,8 +140,17 @@ class FakeWorktreeMux {
   readonly texts: Array<[string, string]> = [];
   readonly keys: Array<[string, readonly string[]]> = [];
   readonly closes: string[] = [];
+  /** The panes the fake has opened, which `snapshot()` answers: one space per open. */
+  readonly panes: MuxPane[] = [];
   failSpace: string | null = null;
+  /** Typing into a pane is refused (a launcher that fails after the create). */
   failText = false;
+  /** The space opens and the answer is lost: a refusal, with the space there (a timeout's shape). */
+  lostAnswer = false;
+  /** Herdr's shape: a folder already open answers with its space (`already_open`). Off is tmux's: no memory. */
+  remembers = false;
+  /** What the first pane of every space runs, `shell` for a bare one. */
+  agent = "shell";
   /** Resolves the open when set; the open waits for it. */
   gate: Promise<void> | null = null;
 
@@ -147,13 +158,28 @@ class FakeWorktreeMux {
     this.spaces.push(request);
     if (this.gate) await this.gate;
     if (this.failSpace !== null) return muxRefused(this.failSpace);
-    return muxOk({
-      paneId: "w7:p1",
-      spaceId: "w7",
-      spaceLabel: "repo-brisk-otter",
-      tabId: "w7:t1",
+    const known = this.remembers ? this.panes.find((pane) => pane.cwd === request.cwd) : undefined;
+    const n = this.panes.length + 7;
+    const pane = known ?? this.openPane(n, request);
+    if (this.lostAnswer) return muxRefused("timed out");
+    return muxOk({ paneId: pane.paneId, spaceId: pane.spaceId, spaceLabel: pane.spaceLabel, tabId: pane.tabId, cwd: pane.cwd });
+  }
+  private openPane(n: number, request: MuxSpaceRequest): MuxPane {
+    // SAFETY: the route reads only these fields of a pane (bridge/worktree-reuse.ts).
+    const pane = {
+      paneId: `w${String(n)}:p1`,
+      spaceId: `w${String(n)}`,
+      spaceLabel: request.label ?? "space",
+      tabId: `w${String(n)}:t1`,
       cwd: request.cwd,
-    });
+      alive: true,
+      agent: this.agent,
+    } as MuxPane;
+    this.panes.push(pane);
+    return pane;
+  }
+  snapshot(): Promise<MuxSnapshot> {
+    return Promise.resolve({ panes: this.panes, spaces: [], tabs: [] });
   }
   readGrid(paneId: string): Promise<MuxOutcome<MuxGrid>> {
     return Promise.resolve(muxOk({ paneId, text: "$ ", truncated: false, revision: 1 }));
@@ -280,7 +306,8 @@ describe("POST /api/worktree — a branch alone", () => {
     const { status, answer } = await run(mux, { branch: "feature/new" }, { receipts });
     expect(status).toBe(200);
     expect(answer).toMatchObject({ ok: true, alreadyOpen: false, launcherStarted: false });
-    expect(mux.spaces).toEqual([{ cwd: target("feature-new"), label: "feature-new" }]);
+    // The folder is a linked checkout of this repo, and the adapter is told so (issue 732).
+    expect(mux.spaces).toEqual([{ cwd: target("feature-new"), label: "feature-new", worktree: { repoRoot: REPO } }]);
     expect(await git(target("feature-new"), "symbolic-ref", "--short", "HEAD")).toBe("feature/new");
     expect(answer.ok && answer.pane.cwd).toBe(target("feature-new"));
     expect(mux.texts).toEqual([]);
@@ -358,11 +385,57 @@ describe("POST /api/worktree — request id and receipt", () => {
     const second = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID }, { receipts });
     expect(second.answer).toMatchObject({ ok: true, pane: { cwd: target("worktree-x") } });
     expect(mux.spaces).toEqual([
-      { cwd: target("worktree-x"), label: "worktree-x" },
-      { cwd: target("worktree-x"), label: "worktree-x" },
+      { cwd: target("worktree-x"), label: "worktree-x", worktree: { repoRoot: REPO } },
+      { cwd: target("worktree-x"), label: "worktree-x", worktree: { repoRoot: REPO } },
     ]);
     expect(receipts.get(REQUEST_ID)?.path).toBe(target("worktree-x"));
     expect(await linkedCount()).toBe(1);
+  });
+
+  for (const remembers of [false, true]) {
+    const kind = remembers ? "a multiplexer that answers already_open" : "a multiplexer with no memory of the folder";
+
+    test(`a retry after a lost answer reuses the space that opened: ${kind}`, async () => {
+      const mux = new FakeWorktreeMux();
+      mux.remembers = remembers;
+      mux.lostAnswer = true;
+      const receipts = memoryWorktreeReceipts();
+      const first = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "claude" }, { receipts });
+      expect(first.answer).toMatchObject({ ok: false, code: "worktree.created_not_opened" });
+      expect(mux.panes).toHaveLength(1);
+      mux.lostAnswer = false;
+      const second = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "claude" }, { receipts });
+      expect(second.answer).toMatchObject({ ok: true, launcherStarted: true, pane: { paneId: "w7:p1", cwd: target("worktree-x") } });
+      // One space on the folder, and the multiplexer was asked once: the retry never reached it.
+      expect(mux.panes).toHaveLength(1);
+      expect(mux.spaces).toHaveLength(1);
+      expect(mux.texts).toEqual([["w7:p1", "claude"]]);
+      expect(receipts.get(REQUEST_ID)?.paneId).toBe("w7:p1");
+    });
+  }
+
+  test("a reused space whose pane runs an agent is answered, and nothing is typed into it", async () => {
+    const mux = new FakeWorktreeMux();
+    mux.lostAnswer = true;
+    mux.agent = "claude";
+    await run(mux, { branch: "worktree/x", launcher: "claude" });
+    mux.lostAnswer = false;
+    const { status, answer } = await run(mux, { branch: "worktree/x", launcher: "claude" });
+    expect(status).toBe(200);
+    expect(answer).toMatchObject({ ok: true, launcherStarted: false, pane: { paneId: "w7:p1" } });
+    expect(answer.ok && answer.launcherError).toContain("already open");
+    expect(mux.texts).toEqual([]);
+    expect(mux.panes).toHaveLength(1);
+  });
+
+  test("a retry with no space on the folder opens it, as it always did", async () => {
+    const mux = new FakeWorktreeMux();
+    mux.failSpace = "no";
+    await run(mux, { branch: "worktree/x" });
+    mux.failSpace = null;
+    await run(mux, { branch: "worktree/x" });
+    expect(mux.panes).toHaveLength(1);
+    expect(mux.spaces).toHaveLength(2);
   });
 
   test("a fresh request id after a half-done create opens the same checkout too", async () => {

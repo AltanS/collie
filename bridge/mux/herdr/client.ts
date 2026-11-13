@@ -232,6 +232,7 @@ export type HerdrRpc = Pick<
   | "renameTab"
   | "closeTab"
   | "createWorkspace"
+  | "openWorktree"
   | "subscribeEvents"
 >;
 
@@ -533,6 +534,40 @@ export class HerdrClient {
       workspace: WireWorkspace;
       root_pane: WirePane;
     }>("workspace.create", params);
+    const p = r.root_pane;
+    return {
+      paneId: p.pane_id,
+      workspaceId: p.workspace_id,
+      workspaceLabel: r.workspace.label,
+      tabId: p.tab_id,
+      cwd: p.cwd,
+    };
+  }
+
+  /**
+   * Open a linked worktree that already exists on disk as a workspace, so Herdr records it as a
+   * worktree of its repository (`worktree.open`, herdr 0.9.5, protocol 22; ADR 0126 note).
+   *
+   * Where `workspace.create` makes a plain workspace with no `worktree` block, this one gets
+   * `repo_key`, `is_linked_worktree` and `checkout_path`, and Herdr's sidebar nests it under the
+   * repository's own workspace. Probed 2026-11-13:
+   *   - `cwd` is the REPO ROOT and is required. `path` alone answers `linked_worktree_source`, and a
+   *     `cwd` whose repo is not the checkout's answers `worktree_not_found`.
+   *   - the answer carries the same `workspace` and `root_pane` as `workspace.create`, so the same
+   *     {@link CreatedShell} comes out, plus `already_open`.
+   *   - a checkout that is already open answers `already_open: true` with the space showing it, and
+   *     renames that space to `label`. It never opens a second one.
+   *   - when the repo has no workspace of its own open, Herdr opens one (unfocused) as the parent.
+   *   - a Herdr without the method answers `invalid_request` with "unknown variant `worktree.open`".
+   *
+   * No `trust_repository`: that flag grants Git trust for the request, and the operator gives it in
+   * Herdr, never from the phone (ADR 0089). `focus:false`, as every create here.
+   */
+  async openWorktree(opts: { cwd: string; path: string; label?: string }): Promise<CreatedShell> {
+    // See createTab: an empty label stays omitted.
+    const params: JsonObject = { cwd: opts.cwd, path: opts.path, focus: false };
+    if (opts.label) params.label = opts.label;
+    const r = await this.request<{ workspace: WireWorkspace; root_pane: WirePane }>("worktree.open", params);
     const p = r.root_pane;
     return {
       paneId: p.pane_id,

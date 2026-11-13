@@ -1203,7 +1203,6 @@ export const zh: Dictionary = {
   "newPage.branch.note": "在独立文件夹中新建分支，这样此智能体不会改动另一个的文件。",
   "newPage.branch.name": "分支名",
   "newPage.branch.folder": "分支文件夹",
-  "newPage.branch.folder.default": "Herdr 默认位置",
   "newPage.branch.folder.other": "其他文件夹",
   "newPage.branch.parent": "把分支文件夹放在",
   "newPage.branch.target": "新文件夹：{path}",

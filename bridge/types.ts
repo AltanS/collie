@@ -1771,6 +1771,21 @@ export type WorktreeCreateResponse =
 
 
 /**
+ * GET /api/worktree/folder, and the answer to POST /api/worktree/folder/set: this machine's "Worktree
+ * folder" setting (ADR 0093, note of 2026-11-13). `dir` is the stored string, `null` when unset. `path`
+ * is its real path when it passes the folder rule now, and `problem` is the refusal when it does not;
+ * neither is set when `dir` is `null`. `fallback` is the folder the default uses while the setting is
+ * unset: Herdr's `[worktrees] directory`, else `~/.herdr/worktrees`.
+ */
+export interface WorktreeFolderSettingResponse {
+  ok: true;
+  dir: string | null;
+  path?: string;
+  problem?: { error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+  fallback: string;
+}
+
+/**
  * GET /api/worktree/plan — what a branch from a folder would be, before Start (M48, ADR 0093).
  *
  * `repoRoot` is the repo's main checkout, as a real path. `defaultBranch` is what a create with
@@ -1792,6 +1807,13 @@ export type WorktreePlanResponse =
       remembered?: { base: "default" | "current"; folder: "default" | "parent"; parent?: string };
       branchValid?: boolean;
       defaultTarget?: { path: string; exists: boolean; reason?: string };
+      /**
+       * Where `defaultTarget` comes from: the machine's "Worktree folder" setting, or Herdr's rule
+       * (its config directory, else `~/.herdr/worktrees`). Answered with `defaultTarget`.
+       */
+      defaultSource?: "setting" | "rule";
+      /** The setting is set and fails the folder rule right now, so there is no `defaultTarget`; a create would refuse. */
+      defaultRefusal?: { error: string; code?: ErrorCode; detail?: ApiErrorDetail };
       parentTarget?:
         | { ok: true; path: string }
         | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };

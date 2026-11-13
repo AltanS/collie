@@ -134,3 +134,61 @@ the multiplexer's `createSpace`. No adapter has a worktree verb.**
 - **What would justify revisiting this.** A multiplexer whose space cannot be opened at a folder,
   or a harness that owns its worktrees in a way Collie can read. Removal is its own argument, as it
   was in 0032.
+
+## Note, 2026-11-13: the Herdr adapter opens a linked worktree with `worktree.open`
+
+Issue 732: a worktree made from the header showed in Herdr's sidebar as a new top-level entry, not
+nested under its repository. The cause is the last consequence above, met from the other side.
+`workspace.create` makes a workspace with no `worktree` block (`repo_key`, `is_linked_worktree`,
+`checkout_path`), and Herdr groups by that block.
+
+The decision stands: git makes the checkout in the bridge, and `createSpace` opens it. Two things
+change, both small.
+
+1. **The request carries a fact.** `MuxSpaceRequest` gains an optional `worktree: { repoRoot }`: the
+   folder is a linked git worktree of that repository. `runWorktreeCreate` sets it, on the first
+   attempt and on the retry that only opens. It is a fact about the folder, not a verb. Every
+   adapter may ignore it, and tmux, tuios, tern and the Herdr core do.
+2. **The Herdr adapter uses it.** With the fact present it calls `worktree.open` (`cwd` is the repo
+   root, `path` the checkout, `label` the branch slug, `focus:false`) and maps the answer's
+   `workspace` and `root_pane` to the same `MuxCreatedPane`. Herdr then records the worktree block
+   and nests the space. Without the fact, or when the open does not work, it calls `workspace.create`
+   as before:
+   - a server that does not know the method (`invalid_request`, "unknown variant `worktree.open`")
+     is learned once and not asked again;
+   - an error answer of any other code (`worktree_not_found`, `not_git_worktree`, a trust refusal)
+     opens the plain space, which costs the nesting and nothing else;
+   - a timeout or a dropped connection is a refusal, with no plain space. The open may have
+     happened, and a retry is safe: Herdr answers a checkout that is already open with
+     `already_open: true` and the space showing it.
+
+Probed 2026-11-13 on Herdr 0.9.5 in a scratch session:
+
+- `cwd` must be the repo root. `path` alone is `linked_worktree_source`, and a root that is not the
+  checkout's repo is `worktree_not_found`.
+- The label is honoured on a first open. An open of a checkout that is already open renames that
+  space to the label asked for and opens no second one.
+- When the repo has no workspace of its own open, Herdr opens one, unfocused, as the parent. When one
+  is open (also one made with `workspace.create`, which gets the repo block for a repo root), that
+  one is the parent and nothing is added.
+- `worktree.list` and `worktree.remove` are still unused. Removal stays out (point 7).
+
+The consequence "The Herdr daemon does not know these worktrees" no longer holds on the Herdr TUI:
+it knows them from the open. Herdr's `worktree.remove` is addressed by workspace and may now work
+for them; Collie still has no removal.
+
+The rule is the contract's, not Herdr's: MUX_CONTRACT.md, *A worktree space*, states it in MUST and
+MAY words for every adapter, and a conformance check holds every adapter to it. `withRepoFacts` sets
+the fact for every caller that opens a folder the disk says is a linked worktree (a launch, a plain
+"New space"), so the worktree route is not the only path that nests. The differences that remain by
+multiplexer are listed in the contract, under *What still differs by multiplexer when a worktree is
+opened*.
+
+A retry finds the space first. A create whose checkout already exists (`existed: true`: the half-done
+create, or the same request again after a lost answer) looks in the multiplexer's current snapshot
+for a space whose first pane stands in that folder, as real paths, and answers with it
+(`bridge/worktree-reuse.ts`). No adapter is asked to open the folder twice, so tmux, tuios, tern and
+the Herdr core, which have no `already_open`, behave like Herdr. A launcher row is typed into the
+reused pane only when it is a live bare shell. A pane that runs an agent is left alone and the answer
+carries `launcherStarted: false` with a `launcherError`. The audit line says `reusedSpace`.
+

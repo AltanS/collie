@@ -1088,6 +1088,8 @@ describe("solo zero-tax — routes", () => {
       // create. Two SOLO routes, named here rather than exempted. Session-scoped through the gate and
       // lead-local like the worktree create: neither is forwardable.
       "/api/worktree",
+      "/api/worktree/folder",
+      "/api/worktree/folder/set",
       "/api/worktree/plan",
       "/auth",
       "/auth/*",
@@ -1501,6 +1503,9 @@ const STATE_DIR_ENTRIES = [
   // The New sheet's last branch choices per repo (M48). Written by use and by nothing else: absent
   // until the first branch create from a folder succeeds.
   "worktree-choices.json",
+  // The machine's Worktree folder (ADR 0093 note): one parent directory, written only by the Settings
+  // card's save and absent until a person sets one.
+  "worktree-folder.json",
   // One receipt per worktree create the phone tagged with a request id (ADR 0089), so a retried
   // create replays instead of making a second worktree. Written by use and by nothing else: absent
   // until the first create that carries an id succeeds. Driven in "the worktree receipts appear only

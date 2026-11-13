@@ -427,6 +427,23 @@ export const en = {
   "settings.character.idle": "Idle",
   "settings.character.note": "The app icon, the splash and the push badge stay the Collie mark.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
+  // --- settings.worktreeFolder (ADR 0093 note) ---
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "settings.worktreeFolder.title": "Worktree folder",
+  "settings.worktreeFolder.description":
+    "Where new worktrees go on a machine, in a folder named after the repo and the branch. You can still pick another folder for one worktree when you start it.",
+  "settings.worktreeFolder.loading": "Reading…",
+  "settings.worktreeFolder.unavailable": "This machine did not answer. If it is out of date, update it.",
+  "settings.worktreeFolder.default": "Default",
+  "settings.worktreeFolder.set": "Your folder",
+  "settings.worktreeFolder.change": "Change",
+  "settings.worktreeFolder.readOnly": "This device can look at the folder but not change it.",
+  "settings.worktreeFolder.field": "Folder on this machine",
+  "settings.worktreeFolder.shape": "A worktree goes in <folder>/<repo>/<branch>.",
+  "settings.worktreeFolder.save": "Save",
+  "settings.worktreeFolder.useDefault": "Use the default",
+  "settings.worktreeFolder.cancel": "Cancel",
+  "settings.worktreeFolder.failed": "Could not save. Try again.",
   "settings.math.title": "Math",
   "settings.math.description": "LaTeX in chat and Markdown files, on this device.",
   "settings.math.engine": "Engine",
@@ -1398,7 +1415,9 @@ export const en = {
   "newPage.branch.note": "A new branch in its own folder, so this agent does not change the files of another.",
   "newPage.branch.name": "Branch name",
   "newPage.branch.folder": "Branch folder",
-  "newPage.branch.folder.default": "Herdr's default",
+  // The default is this machine's own folder on every multiplexer, so the label no longer names Herdr.
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "newPage.branch.folder.default": "Default folder",
   "newPage.branch.folder.other": "Other folder",
   "newPage.branch.parent": "Put the branch folder in",
   "newPage.branch.target": "New folder: {path}",
@@ -3782,6 +3801,21 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "newPage.branch.folder.default",
+  "settings.worktreeFolder.title",
+  "settings.worktreeFolder.description",
+  "settings.worktreeFolder.loading",
+  "settings.worktreeFolder.unavailable",
+  "settings.worktreeFolder.default",
+  "settings.worktreeFolder.set",
+  "settings.worktreeFolder.change",
+  "settings.worktreeFolder.readOnly",
+  "settings.worktreeFolder.field",
+  "settings.worktreeFolder.shape",
+  "settings.worktreeFolder.save",
+  "settings.worktreeFolder.useDefault",
+  "settings.worktreeFolder.cancel",
+  "settings.worktreeFolder.failed",
   "settings.character.title",
   "settings.character.description",
   "settings.character.fromTheme",

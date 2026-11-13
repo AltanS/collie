@@ -1188,7 +1188,6 @@ export const ru: Dictionary = {
   "newPage.branch.note": "Новая ветка в своей папке, чтобы этот агент не менял файлы другого.",
   "newPage.branch.name": "Имя ветки",
   "newPage.branch.folder": "Папка ветки",
-  "newPage.branch.folder.default": "По умолчанию Herdr",
   "newPage.branch.folder.other": "Другая папка",
   "newPage.branch.parent": "Создать папку ветки в",
   "newPage.branch.target": "Новая папка: {path}",

@@ -290,6 +290,10 @@ function NewPage({ search }: { search: string }) {
     else if (folderKind === "parent" && current.parentTarget !== undefined) {
       if (current.parentTarget.ok) targetPath = current.parentTarget.path;
       else branchProblem = describeApiError(current.parentTarget);
+    } else if (folderKind === "default" && current.defaultRefusal !== undefined) {
+      // The machine's "Worktree folder" setting broke since it was saved: no folder is promised, and a
+      // create would refuse it with these words.
+      branchProblem = describeApiError(current.defaultRefusal);
     } else if (folderKind === "default" && current.defaultTarget !== undefined) {
       targetPath = current.defaultTarget.path;
       if (current.defaultTarget.exists) {
@@ -883,7 +887,7 @@ function MachineSelect({
   );
 }
 
-interface BranchBlockProps {
+export interface BranchBlockProps {
   on: boolean;
   /** Why the switch cannot be turned on here, or `null`. */
   blocked: Unavailable | null;
@@ -906,7 +910,7 @@ interface BranchBlockProps {
 }
 
 /** "New worktree": the switch, then the name, where it starts, and where its folder goes. */
-function BranchBlock(p: BranchBlockProps) {
+export function BranchBlock(p: BranchBlockProps) {
   const switchId = useId();
   const noteId = useId();
   // The machine's own sentence is said beside the machine select, so it is not said twice here.

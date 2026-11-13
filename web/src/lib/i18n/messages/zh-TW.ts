@@ -1199,7 +1199,6 @@ export const zhTW: Dictionary = {
   "newPage.branch.note": "在獨立資料夾中建立新分支，這樣此代理不會改動另一個的檔案。",
   "newPage.branch.name": "分支名稱",
   "newPage.branch.folder": "分支資料夾",
-  "newPage.branch.folder.default": "Herdr 預設位置",
   "newPage.branch.folder.other": "其他資料夾",
   "newPage.branch.parent": "把分支資料夾放在",
   "newPage.branch.target": "新資料夾：{path}",

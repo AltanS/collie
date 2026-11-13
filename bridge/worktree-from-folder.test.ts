@@ -219,9 +219,19 @@ describe("POST /api/worktree", () => {
     const { body } = await create(mux, { cwd: join(repo, "sub"), branch: "fix-tabs", base: { kind: "default" } });
     expect(body.ok).toBe(true);
     const folder = join(home, ".herdr", "worktrees", "app", "fix-tabs");
-    expect(mux.spaces).toEqual([{ cwd: folder, label: "fix-tabs" }]);
+    expect(mux.spaces).toEqual([{ cwd: folder, label: "fix-tabs", worktree: { repoRoot: repo } }]);
     expect(await git(folder, "symbolic-ref", "--short", "HEAD")).toBe("fix-tabs");
     expect(await git(folder, "rev-parse", "HEAD")).toBe(await git(repo, "rev-parse", "main"));
+  });
+
+  test("a create from inside a linked worktree hands the adapter the MAIN checkout, not the linked one (issue 732)", async () => {
+    const mux = new FakeMux();
+    const inside = join(home, "trees", "side");
+    const { body } = await create(mux, { cwd: inside, branch: "from-side", base: { kind: "default" } });
+    expect(body.ok).toBe(true);
+    expect(mux.spaces).toHaveLength(1);
+    expect(mux.spaces[0]?.worktree).toEqual({ repoRoot: repo });
+    expect(mux.spaces[0]?.worktree?.repoRoot).not.toBe(inside);
   });
 
   test("Other folder makes the checkout in the checked child of the parent", async () => {
@@ -292,8 +302,8 @@ describe("POST /api/worktree", () => {
     // The folder exists now; the rule accepts it because it is this repo's worktree, and git adds nothing.
     expect((await create(mux, body)).body).toMatchObject({ ok: true, pane: { cwd: folder } });
     expect(mux.spaces).toEqual([
-      { cwd: folder, label: "feat-y" },
-      { cwd: folder, label: "feat-y" },
+      { cwd: folder, label: "feat-y", worktree: { repoRoot: repo } },
+      { cwd: folder, label: "feat-y", worktree: { repoRoot: repo } },
     ]);
   });
 

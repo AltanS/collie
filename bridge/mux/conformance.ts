@@ -47,6 +47,7 @@ import {
   type MuxPane,
   type MuxRefusalOutcome,
   type MuxSnapshot,
+  type MuxSpaceRequest,
   type MuxSubscription,
   muxUnsupported,
 } from "./types.ts";
@@ -780,6 +781,64 @@ const declaredCapabilitiesWork: MuxWorldCheck = {
   },
 };
 
+/** What a `createSpace` answered, as far as a caller can tell it apart from another answer. */
+interface SpaceAnswer {
+  readonly outcome: string;
+  readonly valueKeys: readonly string[];
+  readonly cwd: string | null;
+  readonly spaceLabel: string | null;
+  readonly spacesAdded: number;
+}
+
+/** Ask one fresh world for one space, and write down everything about the answer that is not an id. */
+async function spaceAnswerIn(fixture: MuxConformanceFixture, request: MuxSpaceRequest): Promise<SpaceAnswer> {
+  const world = await fixture.create();
+  try {
+    const { adapter } = world;
+    const before = (await adapter.snapshot()).spaces.length;
+    const answer = await adapter.createSpace(request);
+    const after = (await adapter.snapshot()).spaces.length;
+    if (!answer.ok) {
+      return { outcome: `refused:${answer.reason}`, valueKeys: [], cwd: null, spaceLabel: null, spacesAdded: after - before };
+    }
+    return {
+      outcome: "ok",
+      valueKeys: Object.keys(answer.value).toSorted(),
+      cwd: answer.value.cwd,
+      spaceLabel: answer.value.spaceLabel,
+      spacesAdded: after - before,
+    };
+  } finally {
+    await world.close();
+  }
+}
+
+/**
+ * The contract's *A worktree space* rule: `MuxSpaceRequest.worktree` is a fact an adapter MAY use and
+ * MUST NOT be changed by. Run against every adapter, whether it claims `createSpace` or not: the
+ * answer with the fact equals the answer without it, in outcome (ok, or the same refusal reason), in
+ * the shape of the value, in the folder and label it reports, and in how many spaces it added.
+ * Two fresh worlds, so the first call cannot change the second.
+ */
+const aWorktreeFactChangesNothingTheCallerSees: MuxWorldCheck = {
+  name: "a space request that names a worktree is answered like one that does not",
+  async run(fixture) {
+    const plain: MuxSpaceRequest = { cwd: "/tmp/conformance-worktree", label: "conformance-worktree" };
+    const withFact: MuxSpaceRequest = { ...plain, worktree: { repoRoot: "/tmp/conformance-repo" } };
+    const [without, withIt] = [await spaceAnswerIn(fixture, plain), await spaceAnswerIn(fixture, withFact)];
+    const problems: string[] = [];
+    for (const field of ["outcome", "cwd", "spaceLabel", "spacesAdded"] as const) {
+      if (without[field] !== withIt[field]) {
+        problems.push(`${field} is ${String(without[field])} without the worktree fact and ${String(withIt[field])} with it`);
+      }
+    }
+    if (without.valueKeys.join() !== withIt.valueKeys.join()) {
+      problems.push(`the answer carries [${without.valueKeys.join(", ")}] without the fact and [${withIt.valueKeys.join(", ")}] with it`);
+    }
+    return problems;
+  },
+};
+
 const declaredPaneFactsArePopulated: MuxWorldCheck = {
   name: "a declared pane fact is actually populated",
   run(fixture) {
@@ -1188,6 +1247,7 @@ const focusFollowsTheMultiplexer: MuxWorldCheck = {
 export const MUX_WORLD_CHECKS: readonly MuxWorldCheck[] = [
   refreshSeesASilentChange,
   declaredCapabilitiesWork,
+  aWorktreeFactChangesNothingTheCallerSees,
   declaredPaneFactsArePopulated,
   aPrintedTitleIsNeverAnOperatorLabel,
   identitySurvivesPerturbation,

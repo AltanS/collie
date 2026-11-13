@@ -57,7 +57,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/actions-row").then((m) => ({ default: m.ActionsRowSection })),
   },
   {
-    def: { id: "programs", group: "Durable agents", title: "Durable agents home", keywords: ["durables", "agent", "program", "conversation", "DurableHome", "ProgramSection", "AskCard", "ask", "SpaceOverview"] },
+    def: { id: "programs", group: "Durable agents", title: "Durable agents home", keywords: ["durable-agents", "agent", "program", "conversation", "DurableHome", "ProgramSection", "AskCard", "ask", "SpaceOverview"] },
     load: () => import("./sections/programs").then((m) => ({ default: m.DurableSection })),
   },
   {
@@ -87,6 +87,10 @@ export const ENTRIES: readonly SectionEntry[] = [
   {
     def: { id: "brand", group: "Brand and look", title: "Brand", keywords: ["mark", "CollieMark", "logo", "typeface", "font", "face", "header", "prerelease", "AlphaBar", "glyph", "icons", "app-icon"] },
     load: () => import("./sections/brand").then((m) => ({ default: m.BrandSection })),
+  },
+  {
+    def: { id: "worktree-folder", group: "Settings", title: "Worktree folder", keywords: ["worktree", "folder", "settings", "new-sheet", "branch", "WorktreeFolderControl", "BranchBlock", "default-folder", "crew", "read-only"] },
+    load: () => import("./sections/worktree-folder").then((m) => ({ default: m.WorktreeFolderSection })),
   },
   {
     def: { id: "character-picker", group: "Settings", title: "Character picker", keywords: ["character", "head", "mark", "collar", "CharacterPicker", "theme"] },

@@ -1142,7 +1142,6 @@ export const pt: Dictionary = {
   "newPage.branch.note": "Um branch novo na própria pasta, para que este agente não altere os arquivos de outro.",
   "newPage.branch.name": "Nome do branch",
   "newPage.branch.folder": "Pasta do branch",
-  "newPage.branch.folder.default": "Padrão do Herdr",
   "newPage.branch.folder.other": "Outra pasta",
   "newPage.branch.parent": "Criar a pasta do branch em",
   "newPage.branch.target": "Pasta nova: {path}",

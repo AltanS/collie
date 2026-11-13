@@ -1142,7 +1142,6 @@ export const tr: Dictionary = {
   "newPage.branch.note": "Kendi klasöründe yeni bir dal; böylece bu ajan başka bir ajanın dosyalarını değiştirmez.",
   "newPage.branch.name": "Dal adı",
   "newPage.branch.folder": "Dal klasörü",
-  "newPage.branch.folder.default": "Herdr varsayılanı",
   "newPage.branch.folder.other": "Başka klasör",
   "newPage.branch.parent": "Dal klasörünü şuraya koy",
   "newPage.branch.target": "Yeni klasör: {path}",

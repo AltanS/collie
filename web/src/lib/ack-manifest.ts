@@ -248,6 +248,10 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "The row moves between Favourites and Recent and its star fills or empties under the thumb, both on the page the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",
   },
+  setWorktreeFolder: {
+    channel: "inline",
+    why: "The Worktree folder card shows the saved folder once the machine answers, and a refusal names the rule the folder broke. The person is typing that folder, so the sentence sits in the editor beside the field and not on a status line that fades (ADR 0093 note).",
+  },
   createWorktreeAt: {
     channel: "status",
     why: "A branch arrives as a whole new space and the app navigates into its pane, so the eye has already left the New page; hooks/use-spaces.ts `start` names what was created on arrival, exactly as createWorkspace does. An answer that never came is the page's own notice instead (M48, ADR 0091), because the status line cannot say whether the start happened.",

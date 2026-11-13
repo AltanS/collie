@@ -100,3 +100,40 @@ describe("HerdrClient processInfo", () => {
     await expect(client.processInfo("w9:p1")).resolves.toEqual({ pane_id: "w9:p1" });
   });
 });
+
+describe("HerdrClient openWorktree", () => {
+  // The shape of a real `worktree.open` answer, probed on herdr 0.9.5 (2026-11-13): the same
+  // `workspace` and `root_pane` a `workspace.create` gives, the worktree block on the workspace, and
+  // `already_open`.
+  const ANSWER = {
+    type: "worktree_opened",
+    already_open: false,
+    workspace: {
+      workspace_id: "w3",
+      label: "feat-x",
+      worktree: { checkout_path: "/srv/repo-wt/feat-x", is_linked_worktree: true, repo_key: "/srv/repo/.git" },
+    },
+    tab: { tab_id: "w3:t1", workspace_id: "w3" },
+    root_pane: { pane_id: "w3:p1", workspace_id: "w3", tab_id: "w3:t1", cwd: "/srv/repo-wt/feat-x" },
+  };
+
+  test("it sends worktree.open with the repo root as cwd, the checkout as path, and never focuses", async () => {
+    const client = new HerdrClient(await lateHerdr(ANSWER), 1_000);
+    const shell = await client.openWorktree({ cwd: "/srv/repo", path: "/srv/repo-wt/feat-x", label: "feat-x" });
+    expect(lastRequest?.method).toBe("worktree.open");
+    expect(lastRequest?.params).toEqual({ cwd: "/srv/repo", path: "/srv/repo-wt/feat-x", label: "feat-x", focus: false });
+    expect(shell).toEqual({
+      paneId: "w3:p1",
+      workspaceId: "w3",
+      workspaceLabel: "feat-x",
+      tabId: "w3:t1",
+      cwd: "/srv/repo-wt/feat-x",
+    });
+  });
+
+  test("an empty label is left off the wire", async () => {
+    const client = new HerdrClient(await lateHerdr(ANSWER), 1_000);
+    await client.openWorktree({ cwd: "/srv/repo", path: "/srv/repo-wt/feat-x", label: "" });
+    expect(lastRequest?.params).toEqual({ cwd: "/srv/repo", path: "/srv/repo-wt/feat-x", focus: false });
+  });
+});
