@@ -22,7 +22,8 @@
 
 import { createHash } from "node:crypto";
 import type { AgentView, PaneWire } from "../types.ts";
-import { givenName, type NameableP } from "../pane-name.ts";
+import type { NameableP } from "../pane-name.ts";
+import { pushName, stripControlChars } from "../push-name.ts";
 import type { PaneCache } from "./engine.ts";
 
 /** How long an entry whose session is absent from every snapshot survives before it is pruned. */
@@ -84,16 +85,16 @@ export interface CacheWarnPane {
 }
 
 /**
- * What a push says this pane is: its given name (pane-name.ts `givenName`, the one order every surface
- * names a session by), else the harness word. Never the terminal title, as for every push
- * (notifications.ts § pushName).
+ * What a push says this pane is: `pushName` (push-name.ts), the given name cleaned of control and bidi
+ * characters, else the harness word, and never the terminal title. The workspace is cleaned the same
+ * way.
  *
  * The workspace leads, because two agents in two projects otherwise read as the same line on a lock
  * screen. It is display only and is never part of a key.
  */
 export function paneWatchLabel(pane: NameableP & { workspaceLabel?: string }): string {
-  const name = givenName(pane) ?? pane.agent;
-  const space = pane.workspaceLabel ?? "";
+  const name = pushName(pane);
+  const space = stripControlChars(pane.workspaceLabel ?? "").trim();
   return space === "" ? name : `${space} · ${name}`;
 }
 

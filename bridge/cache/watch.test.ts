@@ -96,6 +96,22 @@ describe("CacheWatchStore", () => {
     expect(reloaded.has(watchKeyOf(peer))).toBe(true);
   });
 
+  test("with COLLIE_REDACT on, a label is masked on disk and in the list, also one written with the mask off", async () => {
+    // A key a pane's agent could put in its session title, joined at runtime so no scan flags the file.
+    const key = `sk-or-v1-your-key-here-${"0".repeat(40)}`;
+    const label = `collie · Rotate ${key}`;
+    const stateDir = await tempDir();
+    const plain = new CacheWatchStore({ stateDir }, () => TS);
+    await plain.set(local, label, true);
+    expect(plain.list(() => undefined)[0]!.label).toBe(label);
+    const masked = new CacheWatchStore({ stateDir, redact: true }, () => TS);
+    await masked.load();
+    expect(masked.list(() => undefined)[0]!.label).not.toContain(key);
+    expect(masked.list(() => undefined)[0]!.label.startsWith("collie · Rotate ")).toBe(true);
+    await masked.set(local, label, true);
+    expect(await Bun.file(join(stateDir, "cache-watch.json")).text()).not.toContain(key);
+  });
+
   test("setting the same pane twice keeps one row, with the fresher label", async () => {
     const store = new CacheWatchStore({ stateDir: await tempDir() }, () => TS);
     await store.set(local, "old name", true);

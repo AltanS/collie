@@ -1,4 +1,5 @@
-import { givenName, panePlace, type NameableP } from "./pane-name.ts";
+import { panePlace } from "./pane-name.ts";
+import { pushName, stripControlChars } from "./push-name.ts";
 import { pushTitle, type PushTitleCode, type PushTitleDetail } from "./push-titles.ts";
 import { paneTopic, type PushMessage } from "./push.ts";
 import type { AgentStatus, AgentView, AskPushText } from "./types.ts";
@@ -174,28 +175,7 @@ export function paneClears(herdTag: string, paneIds: Iterable<string>): PushMess
 // neutral harness word, and the digest's collision rule adds its place when two read the same. The
 // body and title are masked on top (`push.ts` § redactPushMessage). Written down in docs/security.md.
 
-const CONTROL_AND_BIDI_CHARS = /[\p{Cc}\p{Bidi_Control}]+/gu;
-
-/**
- * Strip C0/C1 control characters and Unicode bidirectional overrides/isolates from notification
- * strings so embedded RLO/LRO or control bytes in a label, place or description cannot reorder
- * lock-screen text.
- */
-export function stripControlChars(value: string): string {
-  return value.replace(CONTROL_AND_BIDI_CHARS, "");
-}
-
-/**
- * What a push calls a pane: its given name (pane-name.ts `givenName`: Collie's rename, the person's
- * name in the harness, the agent's own session title, a named one-pane tab), cleaned of control and
- * bidi characters; else `shell` or the harness word. Never `terminalTitle`.
- */
-export function pushName(pane: NameableP): string {
-  const given = givenName(pane);
-  const clean = given === null ? "" : stripControlChars(given).trim();
-  if (clean) return clean;
-  return pane.kind === "shell" ? "shell" : stripControlChars(pane.agent);
-}
+export { pushName, stripControlChars } from "./push-name.ts";
 
 function cleanAskText(askText: AskPushText): AskPushText {
   const title = askText.title === undefined ? undefined : stripControlChars(askText.title);

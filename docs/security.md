@@ -581,6 +581,15 @@ strips control and direction characters from it and cuts it to 80 characters. Wi
 on, Collie masks it in the app and in the push, as it masks the terminal title. With the mask off, a
 push can show that title on your lock screen and send it through the browser's push service.
 
+Collie keeps the last names of up to 512 sessions in `session-titles.json` in its state folder, with
+owner-only access, so a name stays after a restart. With `COLLIE_REDACT` on, it keeps only the name you
+set there, never the agent's title.
+
+The prompt cache watch list names a pane the same way, after its workspace. Collie stores that label
+in `cache-watch.json` in its state folder and shows it in the watch list. With `COLLIE_REDACT` on,
+Collie masks the label before it stores it and again when it lists it, so a label stored with the mask
+off is masked in the list too.
+
 ## Sent: the shell lines you sent
 
 Each machine keeps a record of the shell lines you send through Collie, so you can find and send one again.
