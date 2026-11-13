@@ -81,6 +81,7 @@ import {
   PHONE,
   REPLY_MS,
   sentWithNoKey,
+  type PaneHold,
   addressOf,
   addressPattern,
   busyMessage,
@@ -88,7 +89,7 @@ import {
   cliInbox,
   cliReply,
   cliSend,
-  ensureDraft,
+  holdPane,
   escape,
   firstRow,
   mintId,
@@ -625,17 +626,20 @@ test.describe("walky talky", () => {
       const notes = trail.notes;
       const opened: string[] = [];
       let sender: string | null = null;
+      let hold: PaneHold | null = null;
       try {
         // A throwaway Claude in the run's own space sends through the CLI. It takes no prompt. A draft in
-        // the target's box holds what passes (`accepted`, `draft present`), so no message costs a turn.
+        // the target's box holds what passes (`accepted`, `draft present`), so no message costs a turn; the
+        // data run holds it with a turn instead (holdPane).
         sender = await startExtraAgent(rig, H);
         opened.push(sender);
         await resetBox(rig, pane);
-        await ensureDraft(rig, pane);
+        hold = await holdPane(rig, pane, H);
+        const holdReason = hold.reason;
         const mark = mintId().slice(3, 9);
         const plain = await cliSend(sender, addressOf(pane), `Walky space check ${mark}: inside.`);
         const flagged = await cliSend(sender, addressOf(pane), `Walky space check ${mark}: inside, with the flag.`, "lead", { outside: true });
-        const held = async (id: string | null) => (id === null ? null : await firstRow(rig, pane, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000));
+        const held = async (id: string | null) => (id === null ? null : await firstRow(rig, pane, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === holdReason, 15_000));
         const plainRow = await held(plain.id);
         const flaggedRow = await held(flagged.id);
         notes.push(`plain send: exit ${String(plain.code)}, ${plainRow === null ? "NOT held" : `held, via ${viaOf(plainRow) ?? "none"}`}`, `send --outside to the same space: exit ${String(flagged.code)}, ${flaggedRow === null ? "NOT held" : `held, via ${viaOf(flaggedRow) ?? "none"}`}`);
@@ -646,11 +650,11 @@ test.describe("walky talky", () => {
         const noWord = header !== "" && !/\)\s+outside\b/u.test(header) && read.includes(mark);
         notes.push(noWord ? "the inbox header of the --outside message has no `outside` word" : `the inbox header of the --outside message is wrong: ${header === "" ? "none printed" : header}`);
 
-        // Held, so nothing is typed over the draft.
+        // Held, so nothing is typed over the draft (or into the pane whose turn holds it).
         await sleep(1500);
-        const boxText = await rig.tail(pane, 6);
-        const draftKept = /draft\s*$/m.test(boxText) && !boxText.includes(`[walky-talky ${plain.id ?? "-"}]`) && !boxText.includes(`[walky-talky ${flagged.id ?? "-"}]`);
-        notes.push(draftKept ? "the draft is untouched, nothing typed" : "the BOX CHANGED");
+        const boxText = await rig.tail(pane, holdReason === "draft present" ? 6 : 40);
+        const draftKept = (holdReason !== "draft present" || /draft\s*$/m.test(boxText)) && !boxText.includes(`[walky-talky ${plain.id ?? "-"}]`) && !boxText.includes(`[walky-talky ${flagged.id ?? "-"}]`);
+        notes.push(draftKept ? `${holdReason === "draft present" ? "the draft is untouched" : "held by the turn"}, nothing typed` : "the BOX CHANGED");
 
         // Take both back before the draft goes, so clearing it types nothing.
         const taken = [];
@@ -660,6 +664,7 @@ test.describe("walky talky", () => {
         const passed = plain.code === 0 && flagged.code === 0 && plainRow !== null && flaggedRow !== null && viaOf(plainRow) === "in" && viaOf(flaggedRow) === "in";
         return { verdict: passed && noWord && draftKept && taken.length === 2 && taken.every((t) => t.code === 0) ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
+        await hold?.release();
         await resetBox(rig, pane);
         for (const extra of opened) paneClose(extra);
       }
@@ -707,15 +712,23 @@ test.describe("walky talky", () => {
       const notes = trail.notes;
       const opened: string[] = [];
       const taken: Awaited<ReturnType<typeof cliCancel>>[] = [];
+      const holds: PaneHold[] = [];
       try {
-        // Two panes in two spaces, each with a draft: whatever passes is held, so no pane takes a turn.
+        // Two panes in two spaces, each with a draft: whatever passes is held, so no pane takes a turn. The
+        // data run holds each with a turn instead (holdPane).
         const other = await startExtraAgent(rig, H, { space: OTHER_SPACE });
         opened.push(other);
         await resetBox(rig, pane);
-        await ensureDraft(rig, pane);
-        await ensureDraft(rig, other);
+        const holdHere = await holdPane(rig, pane, H);
+        holds.push(holdHere);
+        const holdOther = await holdPane(rig, other, H);
+        holds.push(holdOther);
         const mark = mintId().slice(3, 9);
-        const held = async (target: string, id: string | null) => (id === null ? null : await firstRow(rig, target, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000));
+        const held = async (target: string, id: string | null) => {
+          if (id === null) return null;
+          const reason = target === pane ? holdHere.reason : holdOther.reason;
+          return await firstRow(rig, target, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === reason, 15_000);
+        };
 
         // 1. The session pane writes first, across the border, with --outside (the way an operator lets it).
         const first = await cliSend(pane, addressOf(other), `Walky space check ${mark}: first, across.`, "lead", { outside: true });
@@ -747,6 +760,7 @@ test.describe("walky talky", () => {
         const passed = first.code === 0 && viaOf(firstRow1) === "outside" && reply.code === 0 && viaOf(replyRow ?? undefined) === "reply" && answer !== null && answer.code === 0 && viaOf(answerRow ?? undefined) === "reply";
         return { verdict: passed && strangerRefused && taken.length === 3 && taken.every((t) => t.code === 0) ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
+        for (const hold of holds) await hold.release();
         await resetBox(rig, pane);
         for (const extra of opened) paneClose(extra);
       }

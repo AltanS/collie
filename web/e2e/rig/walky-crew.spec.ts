@@ -77,7 +77,7 @@ import {
   type TapLog,
 } from "./leg";
 import { DEVICE_LABEL, LEAD_ID, MEMBER_ID, askWalky, paneClose, sleep } from "./rig-lib";
-import { OUTSIDE_YOUR_SPACE, PHONE, REPLY_MS, cliCancel, cliSend, ensureDraft, escape, firstRow, mintId, operatorHeader, refusalCount, settledWalky, startExtraAgent, takeBackFor, viaOf, wrapped } from "./walky-lib";
+import { OUTSIDE_YOUR_SPACE, PHONE, REPLY_MS, cliCancel, cliSend, ensureDraft, escape, firstRow, holdPane, mintId, operatorHeader, refusalCount, settledWalky, startExtraAgent, takeBackFor, viaOf, wrapped, type PaneHold } from "./walky-lib";
 
 const RIG_TS = join(import.meta.dirname, "rig.ts");
 
@@ -727,13 +727,15 @@ test.describe("walky talky across a crew", () => {
       if (piPane === null) throw new NotReached(`no pi on the member: ${member.startNote}`);
       const notes = trail.notes;
       let sender: string | null = null;
+      let hold: PaneHold | null = null;
       try {
         // A throwaway Claude on the lead sends, in the rig's space like every harness pane, and takes no prompt.
         // A draft in each target's box holds the message, so neither agent costs a turn. pi's box keeps its
-        // draft after this case, as after case 21: clearing it would type what the draft holds.
+        // draft after this case, as after case 21: clearing it would type what the draft holds. The data run
+        // holds the lead's Claude with a turn instead (holdPane): a draft holds nothing there.
         sender = await startExtraAgent(rig, "claude");
         await resetBox(rig, claudePane);
-        await ensureDraft(rig, claudePane);
+        hold = await holdPane(rig, claudePane, "claude");
         await ensureDraft(rig, piPane, MEMBER_ID);
         const mark = mintId().slice(3, 9);
         const sent = await cliSend(sender, "here", `Walky space check ${mark}: here.`);
@@ -748,9 +750,10 @@ test.describe("walky talky across a crew", () => {
 
         // Held, so nothing is typed over either draft. Then the lead's own hold is taken back; the member's stays.
         await sleep(1500);
-        const leadBox = await rig.tail(claudePane, 6);
+        const byDraft = hold.reason === "draft present";
+        const leadBox = await rig.tail(claudePane, byDraft ? 6 : 40);
         const piBox = await rig.tail(piPane, 6, MEMBER_ID);
-        const untouched = /draft\s*$/m.test(leadBox) && !leadBox.includes(mark) && /draft\s*$/m.test(piBox) && !piBox.includes(mark);
+        const untouched = (!byDraft || /draft\s*$/m.test(leadBox)) && !leadBox.includes(mark) && /draft\s*$/m.test(piBox) && !piBox.includes(mark);
         notes.push(untouched ? "both drafts are untouched, nothing typed" : "a BOX CHANGED");
         const back = sent.id === null ? null : await cliCancel(sender, sent.id);
         const leadBack = takeBackFor(back, (target) => sameTarget(target, LEAD_ID, claudePane));
@@ -759,6 +762,7 @@ test.describe("walky talky across a crew", () => {
         const verdict = sent.id !== null && wasTaken(toLead) && wasTaken(toMember) && toSelf === undefined && memberVia === "in" && untouched && leadBack === "taken" ? "pass" : "fail";
         return { verdict, taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
+        await hold?.release();
         await resetBox(rig, claudePane);
         if (sender !== null) paneClose(sender);
       }
@@ -771,6 +775,7 @@ test.describe("walky talky across a crew", () => {
       if (piPane === null) throw new NotReached(`no pi on the member: ${member.startNote}`);
       const notes = trail.notes;
       const opened: { pane: string; machine: "lead" | "member" }[] = [];
+      let hold: PaneHold | null = null;
       try {
         // A second pi on the member, in a space with no name of its own, and the Claude that sends, in the rig's space.
         const unnamed = await startExtraAgent(rig, "pi", { machine: "member", space: null });
@@ -778,7 +783,8 @@ test.describe("walky talky across a crew", () => {
         const sender = await startExtraAgent(rig, "claude");
         opened.push({ pane: sender, machine: "lead" });
         await resetBox(rig, claudePane);
-        await ensureDraft(rig, claudePane);
+        // The data run holds the lead's Claude with a turn: a draft holds nothing there (holdPane).
+        hold = await holdPane(rig, claudePane, "claude");
         await ensureDraft(rig, piPane, MEMBER_ID);
         const mark = mintId().slice(3, 9);
         const refusedBefore = refusalCount("member", OUTSIDE_YOUR_SPACE);
@@ -813,6 +819,7 @@ test.describe("walky talky across a crew", () => {
         trail.captures.push(await captureScreen(rig, unnamed, "walky-35-unnamed", MEMBER_ID));
         return { verdict: listedUnnamed && reached && skipped && refused && !typed && counted && leadBack === "taken" ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
+        await hold?.release();
         await resetBox(rig, claudePane);
         for (const open of opened) paneClose(open.pane, open.machine);
       }
