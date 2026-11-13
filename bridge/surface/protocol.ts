@@ -287,7 +287,7 @@ import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.
 import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
-import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
+import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldInput, type HoldStore } from "./holds.ts";
 import { QueuedSends, type BoxReading, type ReceiptQueued } from "./queued.ts";
 import { PROBE_MARKER, probeCharOf, probeResidue } from "./probe-marker.ts";
 
@@ -643,6 +643,8 @@ export interface SendRequest {
   readonly draftHolds?: boolean;
   /** With {@link draftHolds}: when the hold ends, epoch ms. It replaces the hold store's own clock. */
   readonly holdUntil?: number;
+  /** With {@link draftHolds}: the id of the WalkyTalky message this send types. Its hold row carries it, so the phone knows the row is a message's. */
+  readonly walky?: string;
   /** `steer` (M69): into the running turn with the profile's steer key, see the header. Absent: as before. */
   readonly when?: SendWhen;
   /**
@@ -3274,7 +3276,10 @@ export class SendProtocol {
     const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause, versionUnread: unread };
     if (request.draftHolds === true) {
       // A marked send keeps its caller's clock.
-      holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true } : { ...input, draftHolds: true, expiresAt: request.holdUntil });
+      let marked: HoldInput = { ...input, draftHolds: true };
+      if (request.walky !== undefined) marked = { ...marked, walky: request.walky };
+      if (request.holdUntil !== undefined) marked = { ...marked, expiresAt: request.holdUntil };
+      holds.add(marked);
     } else {
       holds.add(input);
     }
@@ -3366,7 +3371,9 @@ export class SendProtocol {
       return null;
     }
     const base: SendRequest = { id, text: entry.text, mode: entry.mode, revision: entry.revision };
-    const request: SendRequest = entry.draftHolds === true ? { ...base, draftHolds: true } : base;
+    let request: SendRequest = base;
+    if (entry.draftHolds === true) request = { ...request, draftHolds: true };
+    if (entry.draftHolds === true && entry.walky !== undefined) request = { ...request, walky: entry.walky };
     const target: SendTarget = { session: entry.session, paneId: entry.paneId, harness: entry.harness };
     const work = this.run(request, record, target, true, overDraft);
     this.inFlight.set(id, work);

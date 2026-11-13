@@ -7220,6 +7220,19 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     expect(r.pane.box).toBe("half a thought");
   });
 
+  test("the hold row of a marked send names its WalkyTalky message (a person's own held row, pinned whole above, names none)", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    const until = r.clock.now + HOUR;
+    await r.send("[walky-talky wt_aaaaaaaaaaa1] from agent x", { id: "draft-000001", ...marked(until), walky: "wt_aaaaaaaaaaa1" });
+    // The same ids come back from the file, then the row the snapshot serves.
+    expect(r.holds.get("draft-000001")).toMatchObject({ draftHolds: true, walky: "wt_aaaaaaaaaaa1" });
+    expect(r.protocol.heldOf("main", "%1")).toMatchObject([{ requestId: "draft-000001", state: "held", cause: "draft_present", walky: "wt_aaaaaaaaaaa1" }]);
+    // A marked send with no message id (a caller that is not walky) carries none.
+    await r.send("another", { id: "draft-000002", ...marked(until) });
+    expect(r.protocol.heldOf("main", "%1")[1]).not.toHaveProperty("walky");
+  });
+
   test("a phone send while a marked send waits over the draft does not join its queue: it is refused with its offers", async () => {
     const r = queued();
     r.pane.box = "half a thought";
