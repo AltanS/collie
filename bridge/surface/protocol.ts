@@ -3467,7 +3467,7 @@ export class SendProtocol {
           continue;
         }
         if (now >= entry.expiresAt) {
-          this.endHeld(entry, "expired", undefined);
+          this.endHeldInTick(entry, "expired", undefined);
           continue;
         }
         const record = this.deps.store.get(entry.id);
@@ -3478,7 +3478,7 @@ export class SendProtocol {
         const sameProgram = moved && namesProfile(heldProfile(record), agentOfGeneration(generation));
         const otherAgent = moved && !sameProgram && agentOfGeneration(generation) !== agentOfGeneration(record.paneGeneration);
         if (record === null || otherAgent || watch.missing >= MISSING_POLLS) {
-          this.endHeld(entry, "refused", "pane_gone");
+          this.endHeldInTick(entry, "refused", "pane_gone");
           continue;
         }
         if (sameProgram) {
@@ -3565,7 +3565,7 @@ export class SendProtocol {
       const placeholder = plainDraft !== null && watch.plainDraft != null && now - watch.plainDraft.since >= DRAFT_LEFT_MS && untried;
       if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
-        this.endHeld(next, "refused", "pane_gone");
+        this.endHeldInTick(next, "refused", "pane_gone");
         continue;
       }
       started.push(this.releaseQuietly(next.id));
@@ -3596,6 +3596,25 @@ export class SendProtocol {
     }
   }
 
+  /** Whether the last end of a hold in the poll failed to write, so the warning is given once per run of failures. */
+  private endWriteFailed = false;
+
+  /**
+   * {@link endHeld} for the poll. The request settles first, so a write that throws (a full disk) leaves
+   * the row held and the next poll tries again; it must not stop the poll for the other held requests.
+   * The warning is given once for a run of failures, not once per entry per poll.
+   */
+  private endHeldInTick(entry: HeldEntry, outcome: "expired" | "refused", reason: SendReason | undefined): void {
+    try {
+      this.endHeld(entry, outcome, reason);
+      this.endWriteFailed = false;
+    } catch (err) {
+      if (this.endWriteFailed) return;
+      this.endWriteFailed = true;
+      console.warn(`[surface] a held request could not be ended, the poll goes on: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   /**
    * A held request ends without a run: `expired`, `cancelled`, or `refused(pane_gone)`. Its receipt is
    * the held one with the new outcome; the counters take it. A cancel leaves no file; the others keep
@@ -3605,13 +3624,19 @@ export class SendProtocol {
     const holds = this.deps.holds!;
     const record = this.deps.store.get(entry.id);
     const held = record?.receipt;
+    let receipt: SendReceipt | null = null;
+    // The request settles BEFORE its row changes, so a crash between the two writes leaves a settled
+    // request with a row still held, which `reconcileHolds` finishes on start. The other order left a
+    // request `held` with no row, and nothing ever looked at it again.
+    if (record !== null && held !== undefined && record.phase === "held") {
+      const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
+      receipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
+      if (outcome === "refused" && reason === "pane_gone") receipt = { ...receipt, detail: HELD_PANE_GONE };
+      this.deps.store.settle(entry.id, receipt);
+    }
     if (outcome === "cancelled") holds.remove(entry.id);
     else holds.end(entry.id, outcome, reason);
-    if (record === null || held === undefined || record.phase !== "held") return null;
-    const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
-    let receipt: SendReceipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
-    if (outcome === "refused" && reason === "pane_gone") receipt = { ...receipt, detail: HELD_PANE_GONE };
-    this.deps.store.settle(entry.id, receipt);
+    if (receipt === null || held === undefined) return null;
     const ledger = this.deps.ledger;
     try {
       ledger?.send(
@@ -3746,7 +3771,10 @@ export class SendProtocol {
       }
       const outcome = record.receipt?.outcome;
       if (outcome === "sent" || outcome === "effective" || outcome === "cancelled") holds.remove(entry.id);
-      else holds.end(entry.id, outcome ?? "unknown", record.receipt?.reason ?? "crash");
+      // The request settled and the bridge stopped before the row followed ({@link endHeld} settles
+      // first): the row ends with the request's own word. "crash" is the reason only for a request that
+      // has none, as when the run itself died.
+      else holds.end(entry.id, outcome ?? "unknown", record.receipt?.reason ?? (outcome === undefined || outcome === "unknown" ? "crash" : undefined));
       changed++;
     }
     return changed;

@@ -45,6 +45,7 @@
 import { showBadge } from "@/lib/app-badge";
 import { mounted } from "@/lib/base-path";
 import { forgetAllDiffComments } from "@/lib/diff-comment-store";
+import { forgetAllCreateIntents } from "@/lib/create-intent";
 import { forgetAllUnknownSends, forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent, forgetAllSendIntents } from "@/lib/send-intent";
 import { clearAllDrafts, clearDraft } from "@/lib/drafts";
@@ -184,6 +185,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     (context) => {
       if (context.reason === "password") forgetUnknownSend(context.pane.scope, context.pane.paneId);
       else forgetAllUnknownSends();
+    },
+  ],
+  [
+    // The request id of a quick launch, tab or space create with no answer (lib/create-intent.ts, sessionStorage): its key holds a folder.
+    "create-intents",
+    () => {
+      forgetAllCreateIntents();
     },
   ],
   [

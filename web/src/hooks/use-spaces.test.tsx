@@ -7,6 +7,7 @@ import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import type { Scope } from "@/lib/scope";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { readAgentLaunch } from "@/lib/agent-startup";
+import { __forgetCreateIntentMemory, CREATE_INTENT_WINDOW_MS } from "@/lib/create-intent";
 import { tabCreateKey, useSpaceActions } from "./use-spaces";
 
 // Stub the bridge's create endpoints at the api seam — same idiom launch-strip.test.tsx uses for
@@ -211,7 +212,7 @@ describe("useSpaceActions — newTab addressed to a scope", () => {
     await user.click(await screen.findByRole("button", { name: "new-tab-peer-w1" }));
 
     expect(mockCreateTab).toHaveBeenCalledTimes(1);
-    expect(mockCreateTab).toHaveBeenCalledWith("w1", {}, PEER);
+    expect(mockCreateTab).toHaveBeenCalledWith("w1", { requestId: expect.any(String) }, PEER);
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w1%3Ap1"));
     expect(new URLSearchParams(router.state.location.search).get("h")).toBe("workshop");
   });
@@ -235,7 +236,7 @@ describe("useSpaceActions — newTab addressed to a scope", () => {
     expect(screen.getByTestId("creating-lead-w1")).toHaveTextContent("false");
     await user.click(screen.getByRole("button", { name: "new-tab-lead-w1" }));
     expect(mockCreateTab).toHaveBeenCalledTimes(2);
-    expect(mockCreateTab).toHaveBeenLastCalledWith("w1", {}, {});
+    expect(mockCreateTab).toHaveBeenLastCalledWith("w1", { requestId: expect.any(String) }, {});
     release();
     await waitFor(() => expect(screen.getByTestId("creating-peer-w1")).toHaveTextContent("false"));
   });
@@ -369,7 +370,7 @@ describe("useSpaceActions — start", () => {
   it("a shell on an older machine goes through its plain space create", async () => {
     mockCreateWorkspace.mockResolvedValueOnce(pane("w7"));
     await press({ what: { kind: "shell" }, cwd: "/srv", requestId: REQUEST_ID, legacyShell: true });
-    expect(mockCreateWorkspace).toHaveBeenCalledWith({ cwd: "/srv" }, {});
+    expect(mockCreateWorkspace).toHaveBeenCalledWith({ cwd: "/srv", requestId: REQUEST_ID }, {});
     expect(mockStartLaunch).not.toHaveBeenCalled();
   });
 
@@ -479,5 +480,191 @@ describe("useSpaceActions — a saved copy refuses every structural write", () =
     render(<RouterProvider router={makeRouter(<WritesHarness canWrite={() => true} />)} />);
     await user.click(await screen.findByRole("button", { name: "new-tab" }));
     await waitFor(() => expect(mockCreateTab).toHaveBeenCalledTimes(1));
+  });
+});
+
+// A RETAP OF A CREATE THAT GOT NO ANSWER SENDS THE SAME ID (M100 spec 04). A time-out, a lost
+// connection or a 504 leaves no answer, and a new id on the second tap would create again while the
+// first pane may exist. The bridge replays, joins or says unknown for a known id.
+function noAnswer(status: number | undefined): Error {
+  return Object.assign(new Error(status === undefined ? "network" : `http ${status}`), { status });
+}
+
+function QuickHarness() {
+  const { launch, newTab, newSpace } = useSpaceActions();
+  return (
+    <div>
+      <button onClick={() => void launch("claude", "w1:p1")}>launch-beside</button>
+      <button onClick={() => void launch("claude")}>launch-space</button>
+      <button onClick={() => void launch("pi", "w1:p1")}>launch-other</button>
+      <button onClick={() => void newTab("w1")}>tab-w1</button>
+      <button onClick={() => void newTab("w2")}>tab-w2</button>
+      <button onClick={() => void newSpace({ cwd: "/srv" })}>space-srv</button>
+      <button onClick={() => void newSpace({ cwd: "/tmp" })}>space-tmp</button>
+    </div>
+  );
+}
+
+describe("useSpaceActions: a retap of a create with no answer", () => {
+  beforeEach(() => {
+    for (const mock of [mockLaunch, mockCreateTab, mockCreateWorkspace, mockOutcomeUnknown]) mock.mockReset();
+    mockOutcomeUnknown.mockReturnValue(true);
+    __forgetCreateIntentMemory();
+    sessionStorage.clear();
+    resetPollIntent();
+    vi.useRealTimers();
+  });
+
+  type Answer = ReturnType<typeof pane>;
+  // The ids each call carried, in order. A recording stand-in reads them off the typed arguments.
+  const launchIds: string[] = [];
+  const tabIds: string[] = [];
+  const spaceIds: string[] = [];
+  function recordIds(answers: { launch?: () => Promise<Answer>; tab?: () => Promise<Answer>; space?: () => Promise<Answer> }): void {
+    launchIds.length = 0;
+    tabIds.length = 0;
+    spaceIds.length = 0;
+    mockLaunch.mockImplementation((_command: string, _beside: string | undefined, _scope: Scope | undefined, requestId: string) => {
+      launchIds.push(requestId);
+      return answers.launch?.() ?? Promise.resolve(pane("w1"));
+    });
+    mockCreateTab.mockImplementation((_workspaceId: string, opts: { requestId: string }) => {
+      tabIds.push(opts.requestId);
+      return answers.tab?.() ?? Promise.resolve(pane("w1"));
+    });
+    mockCreateWorkspace.mockImplementation((opts: { requestId: string }) => {
+      spaceIds.push(opts.requestId);
+      return answers.space?.() ?? Promise.resolve(pane("w1"));
+    });
+  }
+  const failing = (status: number | undefined) => (): Promise<Answer> => Promise.reject(noAnswer(status));
+
+  it("a 504 on a launch, then a retap, sends the same id and creates once", async () => {
+    let calls = 0;
+    recordIds({ launch: () => (++calls === 1 ? Promise.reject(noAnswer(504)) : Promise.resolve(pane("w1"))) });
+    const user = userEvent.setup();
+    const router = makeRouter(<QuickHarness />);
+    render(<RouterProvider router={router} />);
+
+    await user.click(await screen.findByRole("button", { name: "launch-beside" }));
+    await waitFor(() => expect(launchIds).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "launch-beside" }));
+    await waitFor(() => expect(launchIds).toHaveLength(2));
+
+    expect(launchIds[1]).toBe(launchIds[0]);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w1%3Ap1"));
+  });
+
+  it("a success then another tap of the same launch sends a new id", async () => {
+    recordIds({});
+    const user = userEvent.setup();
+    // The pane route keeps the buttons, so a tap after the step into the new pane is possible.
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => homeData(),
+          element: <Outlet />,
+          children: [
+            { index: true, element: <QuickHarness /> },
+            { path: "pane/:paneId", element: <QuickHarness /> },
+          ],
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+    render(<RouterProvider router={router} />);
+
+    await user.click(await screen.findByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(1));
+    await user.click(await screen.findByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(2));
+
+    expect(launchIds[1]).not.toBe(launchIds[0]);
+  });
+
+  it("a plain refusal ends the id: the next tap sends a new one", async () => {
+    mockOutcomeUnknown.mockReturnValue(false);
+    recordIds({ launch: failing(400) });
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<QuickHarness />)} />);
+
+    await user.click(await screen.findByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(1));
+    await user.click(await screen.findByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(2));
+
+    expect(launchIds[1]).not.toBe(launchIds[0]);
+  });
+
+  it("another action gets its own id, and the first action still keeps its own", async () => {
+    recordIds({ launch: failing(undefined) });
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<QuickHarness />)} />);
+
+    for (const name of ["launch-beside", "launch-other", "launch-space", "launch-beside"]) {
+      const before = launchIds.length;
+      await user.click(await screen.findByRole("button", { name }));
+      await waitFor(() => expect(launchIds).toHaveLength(before + 1));
+    }
+
+    expect(new Set(launchIds.slice(0, 3)).size).toBe(3);
+    expect(launchIds[3]).toBe(launchIds[0]);
+  });
+
+  it("a later tap, after 30 seconds, sends a new id", async () => {
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValue(1_000_000);
+    recordIds({ launch: failing(504) });
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<QuickHarness />)} />);
+
+    await user.click(await screen.findByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(1));
+    now.mockReturnValue(1_000_000 + CREATE_INTENT_WINDOW_MS - 1);
+    await user.click(screen.getByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(2));
+    now.mockReturnValue(1_000_000 + CREATE_INTENT_WINDOW_MS - 1 + CREATE_INTENT_WINDOW_MS + 1);
+    await user.click(screen.getByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(3));
+    now.mockRestore();
+
+    expect(launchIds[1]).toBe(launchIds[0]);
+    expect(launchIds[2]).not.toBe(launchIds[0]);
+  });
+
+  it("a tab create keeps its id per space, and a space create per folder", async () => {
+    recordIds({ tab: failing(504), space: failing(undefined) });
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(<QuickHarness />)} />);
+
+    for (const name of ["tab-w1", "tab-w1", "tab-w2", "space-srv", "space-srv", "space-tmp"]) {
+      const before = tabIds.length + spaceIds.length;
+      await user.click(await screen.findByRole("button", { name }));
+      await waitFor(() => expect(tabIds.length + spaceIds.length).toBe(before + 1));
+    }
+
+    expect(tabIds[1]).toBe(tabIds[0]);
+    expect(tabIds[2]).not.toBe(tabIds[0]);
+    expect(spaceIds[1]).toBe(spaceIds[0]);
+    expect(spaceIds[2]).not.toBe(spaceIds[0]);
+  });
+
+  it("a held id survives a reload of the page: it is kept in session storage", async () => {
+    let calls = 0;
+    recordIds({ launch: () => (++calls === 1 ? Promise.reject(noAnswer(504)) : Promise.resolve(pane("w1"))) });
+    const user = userEvent.setup();
+    const first = render(<RouterProvider router={makeRouter(<QuickHarness />)} />);
+    await user.click(await screen.findByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(1));
+    first.unmount();
+    __forgetCreateIntentMemory();
+
+    render(<RouterProvider router={makeRouter(<QuickHarness />)} />);
+    await user.click(await screen.findByRole("button", { name: "launch-space" }));
+    await waitFor(() => expect(launchIds).toHaveLength(2));
+
+    expect(launchIds[1]).toBe(launchIds[0]);
   });
 });

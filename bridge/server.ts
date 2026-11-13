@@ -32,7 +32,7 @@ import {
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, supportsCapability, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import { muxOk, muxUnsupported } from "./mux/types.ts";
-import type { MuxAdapter, MuxAck, MuxGrid, MuxGridRequest, MuxHistoryPage, MuxReadHint, MuxReadPurpose, MuxStarters } from "./mux/types.ts";
+import type { MuxAdapter, MuxAck, MuxCreatedPane, MuxOutcome, MuxGrid, MuxGridRequest, MuxHistoryPage, MuxReadHint, MuxReadPurpose, MuxStarters } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
 import type { GitHeadSurface } from "./git-head.ts";
@@ -48,7 +48,15 @@ import { browseFolders, type FolderBrowseContext } from "./folder-browse.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
 import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
-import { launchReplay, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import { isUnsettled, LAUNCH_UNKNOWN_TEXT, launchReplay, memoryLaunchReceipts, type LaunchAnswer, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import {
+  MEMBER_DEADLINE_MS,
+  lookForCreated,
+  snapshotBefore,
+  withinTime,
+  type CreateWanted,
+  type LookClock,
+} from "./create-confirm.ts";
 import type { LaunchWindow } from "./launch-window.ts";
 import { isStarterBody, launchStarter, memoryStarterReceipts, starterItems, type StarterReceiptSurface } from "./starter-launch.ts";
 import { answerPane, memoryAnswerReceipts, type AnswerReceiptSurface } from "./durable/answer.ts";
@@ -196,7 +204,7 @@ import {
   maskTodoList,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
-import type { LeadMerge } from "./crew/forward.ts";
+import { forwardError, type LeadMerge } from "./crew/forward.ts";
 import { CWD_PARAM, folderAnswers, leadRowCarry, leadRowMarked, leadRowsRead, ROW_FIELD, rowFromLead, type LeadWrite } from "./crew/launcher-rows.ts";
 import { withCopyRows, type LauncherCopySeam } from "./crew/standby-launchers.ts";
 import { redactAnsi } from "./redact.ts";
@@ -2220,14 +2228,14 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return createTab(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name);
+      return createTab(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, { receipts: launchReceipts });
     }
     if (pathname === "/api/workspace" && req.method === "POST") {
       const denied = caller.gate("write");
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders, await sessionFolderOf(rt.name));
+      return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders, await sessionFolderOf(rt.name), { receipts: launchReceipts });
     }
     // A launch is a `/api/workspace` create the operator pre-declared: the client names a row in
     // `launchers.toml` and the bridge, never the client, supplies the command line. It sits here
@@ -7025,13 +7033,14 @@ async function closeTab(
 // Create a new tab in a workspace, opening a fresh shell pane (you then launch your own agent in
 // it). Structural — no more privilege than typing into an existing pane (you can already spawn a
 // shell that way). `cwd` omitted => inherits the workspace dir. session.* stays unexposed.
-async function createTab(
+export async function createTab(
   herdr: MuxAdapter,
   engine: StateEngine,
   req: Request,
   audit: AuditLog,
   device: string | null,
   session: string,
+  deps: CreateDeps = {},
 ): Promise<Response> {
   let body: JsonValue;
   try {
@@ -7052,37 +7061,55 @@ async function createTab(
   if (!workspaceId) {
     return json({ ok: false, ...apiError("tab.workspace_required") } satisfies CreateResponse, ae);
   }
-  const outcome = await herdr.createTab({ spaceId: workspaceId, label: tabLabel, cwd });
-  if (!outcome.ok) {
-    return json(
-      { ok: false, ...apiError("tab.create_failed", { reason: outcome.detail }) } satisfies CreateResponse,
-      ae,
-    );
-  }
-  const created = outcome.value;
-  // The adapter answers with the space id when the create call doesn't carry a label back; the
-  // snapshot we already hold knows the real one, and that lookup is cheaper than a round trip.
-  const workspaceLabel =
-    engine.current().workspaces.find((w) => w.workspaceId === created.spaceId)?.label ??
-    created.spaceLabel;
-  audit.record({
-    action: "tab.create",
-    paneId: created.paneId,
-    session,
-    device,
-    detail: { workspaceId, label: tabLabel, cwd },
-  });
-  await settleTopology(herdr, engine);
-  return json({
-    ok: true,
-    pane: {
-      paneId: created.paneId,
-      workspaceId: created.spaceId,
-      workspaceLabel,
-      tabId: created.tabId,
-      cwd: created.cwd,
-    },
-  } satisfies CreateResponse, ae);
+  const receipts = deps.receipts ?? memoryLaunchReceipts();
+  const rawId = fields.requestId;
+  if (rawId !== undefined && !isRequestId(rawId)) return text("bad requestId", 400);
+  const requestId = rawId;
+  const clock = deps.wait ?? {};
+  const deadline = deps.deadline ?? {};
+  const earlier = requestId === undefined ? null : earlierLaunch(receipts, requestId);
+  if (earlier !== null) return launchJson(await withinDeadline(earlier, deadline), ae);
+  const work = (async (): Promise<LaunchAnswer> => {
+    const made = await createRecorded({
+      herdr,
+      receipts,
+      requestId,
+      wanted: { kind: "tab", spaceId: workspaceId, cwd, label: tabLabel },
+      failed: "tab.create_failed",
+      clock,
+      call: () => herdr.createTab({ spaceId: workspaceId, label: tabLabel, cwd }),
+    });
+    if (!made.ok) return made.answer;
+    const created = made.pane;
+    return guardPending(receipts, requestId, async () => {
+      // The adapter answers with the space id when the create call doesn't carry a label back; the
+      // snapshot we already hold knows the real one, and that lookup is cheaper than a round trip.
+      const workspaceLabel =
+        engine.current().workspaces.find((w) => w.workspaceId === created.spaceId)?.label ??
+        created.spaceLabel;
+      audit.record({
+        action: "tab.create",
+        paneId: created.paneId,
+        session,
+        device,
+        detail: { workspaceId, label: tabLabel, cwd, requestId },
+      });
+      await settleTopology(herdr, engine);
+      await settleCreate(receipts, requestId, created, workspaceLabel);
+      return {
+        ok: true,
+        pane: {
+          paneId: created.paneId,
+          workspaceId: created.spaceId,
+          workspaceLabel,
+          tabId: created.tabId,
+          cwd: created.cwd,
+        },
+      } satisfies LaunchAnswer;
+    });
+  })();
+  if (requestId !== undefined) receipts.track(requestId, work);
+  return launchJson(await withinDeadline(work, deadline), ae);
 }
 
 // Create a new workspace ("space") with a fresh shell pane. `cwd` defaults to the session's folder
@@ -7105,6 +7132,7 @@ export async function createWorkspace(
   folders?: Pick<FolderSurface, "recordRecent">,
   // The operator's folder for this session (`spaces.toml` `[folders]`), already checked to exist.
   sessionFolder?: string,
+  deps: CreateDeps = {},
 ): Promise<Response> {
   let body: JsonValue;
   try {
@@ -7121,34 +7149,183 @@ export async function createWorkspace(
   const cwd = typed || sessionFolder || homedir();
   const label = typeof fields.label === "string" ? fields.label : undefined;
   const ae = req.headers.get("accept-encoding");
-  const outcome = await herdr.createSpace({ cwd, label });
-  if (!outcome.ok) {
-    return json(
-      { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) } satisfies CreateResponse,
-      ae,
-    );
+  const receipts = deps.receipts ?? memoryLaunchReceipts();
+  const rawId = fields.requestId;
+  if (rawId !== undefined && !isRequestId(rawId)) return text("bad requestId", 400);
+  const requestId = rawId;
+  const clock = deps.wait ?? {};
+  const deadline = deps.deadline ?? {};
+  const earlier = requestId === undefined ? null : earlierLaunch(receipts, requestId);
+  if (earlier !== null) return launchJson(await withinDeadline(earlier, deadline), ae);
+  const work = (async (): Promise<LaunchAnswer> => {
+    const made = await createRecorded({
+      herdr,
+      receipts,
+      requestId,
+      wanted: { kind: "space", cwd, label },
+      failed: "workspace.create_failed",
+      clock,
+      call: () => herdr.createSpace({ cwd, label }),
+    });
+    if (!made.ok) return made.answer;
+    const created = made.pane;
+    return guardPending(receipts, requestId, async () => {
+      audit.record({
+        action: "workspace.create",
+        paneId: created.paneId,
+        session,
+        device,
+        detail: { label, cwd, requestId },
+      });
+      // Never throws: a list that could not be saved costs a Recent entry, never the space just made.
+      if (typed !== "" && folders !== undefined) await folders.recordRecent(created.cwd);
+      await settleTopology(herdr, engine);
+      await settleCreate(receipts, requestId, created, created.spaceLabel);
+      return {
+        ok: true,
+        pane: {
+          paneId: created.paneId,
+          workspaceId: created.spaceId,
+          workspaceLabel: created.spaceLabel,
+          tabId: created.tabId,
+          cwd: created.cwd,
+        },
+      } satisfies LaunchAnswer;
+    });
+  })();
+  if (requestId !== undefined) receipts.track(requestId, work);
+  return launchJson(await withinDeadline(work, deadline), ae);
+}
+
+/** What a tab or space create reaches beyond its request. Every field defaults for a test. */
+export interface CreateDeps {
+  /** The receipts of launches and creates that carry a request id. Absent: an in-memory store. */
+  receipts?: LaunchReceiptSurface;
+  /** The clock the look at the snapshot runs on (bridge/create-confirm.ts); production passes nothing. */
+  wait?: LookClock;
+  /** The clock the member's one deadline ({@link MEMBER_DEADLINE_MS}) runs on; production passes nothing. */
+  deadline?: LookClock;
+}
+
+/**
+ * How a create that may have timed out came out. `looked` is set when the pane was NOT the create's own
+ * answer but one found in the snapshot, and holds what the snapshot called its agent: a pane found that way
+ * is a guess until the route has read that it is a bare shell.
+ */
+type CreateMade =
+  | { readonly ok: true; readonly pane: MuxCreatedPane; readonly looked: { readonly agent: string } | null }
+  | { readonly ok: false; readonly answer: LaunchAnswer };
+
+/**
+ * The part of a launch, a tab or a space create that asks the multiplexer for the pane (M100 spec 04).
+ * A receipt `pending` is written first when the request carries an id. A fresh snapshot is read right
+ * before the create, as the look's "before". The create then runs; one that timed out (`unconfirmed`) is
+ * looked up in the snapshot (bridge/create-confirm.ts). The result is the pane, or the answer to give: a
+ * plain failure when nothing was made (the receipt is forgotten, so the id may run again), or
+ * `write_outcome_unknown` when nobody can say (the receipt becomes `unknown`). A throw settles the receipt
+ * too: `unknown` once the multiplexer was asked, forgotten before.
+ */
+async function createRecorded(job: {
+  herdr: Pick<MuxAdapter, "snapshot">;
+  receipts: LaunchReceiptSurface;
+  requestId: string | undefined;
+  wanted: CreateWanted;
+  failed: "workspace.create_failed" | "tab.create_failed";
+  clock: LookClock;
+  call: () => Promise<MuxOutcome<MuxCreatedPane>>;
+}): Promise<CreateMade> {
+  const { receipts, requestId } = job;
+  let written = false;
+  let asked = false;
+  let handedOn = false;
+  try {
+    if (requestId !== undefined) {
+      await receipts.record({ requestId, at: Date.now(), state: "pending" });
+      written = true;
+    }
+    const known = await snapshotBefore(job.herdr, job.clock);
+    asked = true;
+    const outcome = await job.call();
+    if (outcome.ok) {
+      handedOn = true;
+      return { ok: true, pane: outcome.value, looked: null };
+    }
+    if (outcome.reason === "unconfirmed") {
+      // Without a "before" nothing can be told apart from what was already there: the look is not run.
+      const look = known === null ? ({ kind: "unread" } as const) : await lookForCreated(job.herdr, known, job.wanted, job.clock);
+      if (look.kind === "found") {
+        handedOn = true;
+        return { ok: true, pane: look.pane, looked: { agent: look.agent } };
+      }
+      if (look.kind === "unread") {
+        if (requestId !== undefined) await receipts.record({ requestId, at: Date.now(), state: "unknown" });
+        handedOn = true;
+        return { ok: false, answer: unknownCreate(outcome.detail) };
+      }
+    }
+    if (requestId !== undefined) await receipts.forget(requestId);
+    handedOn = true;
+    return { ok: false, answer: { ok: false, ...apiError(job.failed, { reason: outcome.detail }) } };
+  } finally {
+    // A throw (an adapter that did not answer, a disk that did not write) must not leave `pending` behind.
+    if (written && !handedOn && requestId !== undefined) {
+      if (asked) await receipts.record({ requestId, at: Date.now(), state: "unknown" });
+      else await receipts.forget(requestId);
+    }
   }
-  const created = outcome.value;
-  audit.record({
-    action: "workspace.create",
+}
+
+/**
+ * Run the steps after a create that made a pane. A throw in one leaves the receipt `pending` for ever:
+ * the pane is there and the id must not run again, so it becomes `unknown` and the throw goes on.
+ */
+async function guardPending<T>(receipts: LaunchReceiptSurface, requestId: string | undefined, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    const held = requestId === undefined ? undefined : receipts.get(requestId);
+    if (requestId !== undefined && held !== undefined && isUnsettled(held) && held.state === "pending") {
+      await receipts.record({ requestId, at: Date.now(), state: "unknown" });
+    }
+    throw err;
+  }
+}
+
+/**
+ * One deadline on the member's whole run of a launch, a tab or a space create ({@link MEMBER_DEADLINE_MS}).
+ * Past it the answer is `write_outcome_unknown` at once, and the run goes on: it settles its own receipt as
+ * the pane or as unknown, and a retap with the same id joins it or replays it.
+ */
+async function withinDeadline(run: Promise<LaunchAnswer>, clock: LookClock): Promise<LaunchAnswer> {
+  const answer = await withinTime(run, MEMBER_DEADLINE_MS, clock);
+  return answer === "timeout" ? unknownCreate(LAUNCH_UNKNOWN_TEXT) : answer;
+}
+
+/** The create that made a pane, settled: the pending receipt becomes the pane it names. */
+async function settleCreate(receipts: LaunchReceiptSurface, requestId: string | undefined, created: MuxCreatedPane, workspaceLabel: string): Promise<void> {
+  if (requestId === undefined) return;
+  await receipts.record({
+    requestId,
+    at: Date.now(),
+    workspaceId: created.spaceId,
+    workspaceLabel,
     paneId: created.paneId,
-    session,
-    device,
-    detail: { label, cwd },
+    tabId: created.tabId,
+    cwd: created.cwd,
   });
-  // Never throws: a list that could not be saved costs a Recent entry, never the space just made.
-  if (typed !== "" && folders !== undefined) await folders.recordRecent(created.cwd);
-  await settleTopology(herdr, engine);
-  return json({
-    ok: true,
-    pane: {
-      paneId: created.paneId,
-      workspaceId: created.spaceId,
-      workspaceLabel: created.spaceLabel,
-      tabId: created.tabId,
-      cwd: created.cwd,
-    },
-  } satisfies CreateResponse, ae);
+}
+
+/** A create nobody could confirm: it says so and carries the multiplexer's own sentence. */
+function unknownCreate(detail: string): LaunchAnswer {
+  return { ok: false, code: "write_outcome_unknown", error: detail };
+}
+
+/** A launch or create answer as a response: `write_outcome_unknown` is the 504 the crew link already uses. */
+function launchJson(answer: LaunchAnswer, acceptEncoding: string | null): Response {
+  if (!answer.ok && "code" in answer && answer.code === "write_outcome_unknown") {
+    return forwardError("write_outcome_unknown", answer.error, 504);
+  }
+  return json(answer, acceptEncoding);
 }
 
 // ── Worktrees ────────────────────────────────────────────────────────────────
@@ -8283,7 +8460,7 @@ export async function launch(
   if (rawId !== undefined && !isRequestId(rawId)) return text("bad requestId", 400);
   const requestId = rawId;
   const replay = requestId === undefined ? null : earlierLaunch(receipts, requestId);
-  if (replay !== null) return json(await replay, ae);
+  if (replay !== null) return launchJson(await withinDeadline(replay, deps.deadline ?? {}), ae);
 
   const picked = await pickLaunch(
     fields,
@@ -8329,7 +8506,7 @@ export async function launch(
   // past the check above cannot both start a launch.
   if (requestId !== undefined) {
     const again = earlierLaunch(receipts, requestId);
-    if (again !== null) return json(await again, ae);
+    if (again !== null) return launchJson(await withinDeadline(again, deps.deadline ?? {}), ae);
   }
   const work = runLaunch(herdr, engine, {
     row,
@@ -8347,32 +8524,42 @@ export async function launch(
     source: picked.source,
   });
   if (requestId !== undefined) receipts.track(requestId, work);
-  const answer = await work;
-  // A folder the sheet named that worked joins Recent, as a space created there does. Never a row's
-  // pinned folder, which the operator already wrote down, and never on a failure.
-  if (answer.ok && asked !== undefined && row?.cwd === undefined && deps.folders !== undefined) {
-    await deps.folders.recordRecent(answer.pane.cwd);
-  }
-  if (!answer.ok || picked.kind !== "run" || row === undefined) return json(answer, ae);
-  // A one-off run that worked joins this machine's history, at the top (ADR 0095). Only here: a
-  // refusal returned above, and a replay or a joined retry never reaches this line. A history that
-  // cannot be written does not undo a run that happened.
-  // A line that seems to carry a secret ran, and is not kept (bridge/recent-runs.ts).
-  if (deps.recentRuns !== undefined && !looksSecret(row.command)) {
-    const where = asked ?? besidePane?.cwd ?? null;
-    try {
-      const recorded = await deps.recentRuns.record({ line: row.command, cwd: where, at: Date.now(), noPrompts: picked.noPrompts === true });
-      if (recorded === "unwritable") console.warn("[launch] the one-off run is not in the history: commands-recent.json cannot be written");
-    } catch (err) {
-      console.warn(`[launch] the one-off run is not in the history: ${errorText(err)}`);
+  // What follows a launch that worked runs when the run ends, also after the deadline below has answered.
+  const afterLaunch = async (answer: LaunchAnswer): Promise<void> => {
+    // A folder the sheet named that worked joins Recent, as a space created there does. Never a row's
+    // pinned folder, which the operator already wrote down, and never on a failure.
+    if (answer.ok && asked !== undefined && row?.cwd === undefined && deps.folders !== undefined) {
+      await deps.folders.recordRecent(answer.pane.cwd);
     }
-  }
-  // The same run joins Sent as kind `run` (ADR 0107), on this machine, after the line was typed and
-  // Enter sent. The skip rules read the line as the phone sent it, before the run's own trim, so a
-  // leading space keeps it out here too. The store never throws and logs no line.
-  if (deps.sent !== undefined) {
-    await deps.sent.record(typeof fields.run === "string" ? fields.run : row.command, asked ?? besidePane?.cwd ?? null, "run");
-  }
+    if (!answer.ok || picked.kind !== "run" || row === undefined) return;
+    // A one-off run that worked joins this machine's history, at the top (ADR 0095). Only here: a
+    // refusal returned above, and a replay or a joined retry never reaches this line. A history that
+    // cannot be written does not undo a run that happened.
+    // A line that seems to carry a secret ran, and is not kept (bridge/recent-runs.ts).
+    if (deps.recentRuns !== undefined && !looksSecret(row.command)) {
+      const where = asked ?? besidePane?.cwd ?? null;
+      try {
+        const recorded = await deps.recentRuns.record({ line: row.command, cwd: where, at: Date.now(), noPrompts: picked.noPrompts === true });
+        if (recorded === "unwritable") console.warn("[launch] the one-off run is not in the history: commands-recent.json cannot be written");
+      } catch (err) {
+        console.warn(`[launch] the one-off run is not in the history: ${errorText(err)}`);
+      }
+    }
+    // The same run joins Sent as kind `run` (ADR 0107), on this machine, after the line was typed and
+    // Enter sent. The skip rules read the line as the phone sent it, before the run's own trim, so a
+    // leading space keeps it out here too. The store never throws and logs no line.
+    if (deps.sent !== undefined) {
+      await deps.sent.record(typeof fields.run === "string" ? fields.run : row.command, asked ?? besidePane?.cwd ?? null, "run");
+    }
+  };
+  const answer = await withinDeadline(
+    work.then(async (made) => {
+      await afterLaunch(made);
+      return made;
+    }),
+    deps.deadline ?? {},
+  );
+  if (!answer.ok || picked.kind !== "run" || row === undefined) return launchJson(answer, ae);
   return json({ ...answer, noPrompts: picked.noPrompts === true } satisfies CreateResponse, ae);
 }
 
@@ -8407,6 +8594,8 @@ export interface LaunchDeps {
   launchWindow?: Pick<LaunchWindow, "mark"> | undefined;
   /** The operator's folder for this session (`spaces.toml` `[folders]`), checked to exist. Absent: home. */
   sessionFolder?: string;
+  /** The clock the member's one deadline ({@link MEMBER_DEADLINE_MS}) runs on; production passes nothing. */
+  deadline?: LookClock;
 }
 
 /**
@@ -8414,12 +8603,16 @@ export interface LaunchDeps {
  * new id. SYNCHRONOUS up to that `null` on purpose: the caller's second check must not yield between
  * the look and its `track`, or two requests with one id could both start a launch.
  */
-function earlierLaunch(receipts: LaunchReceiptSurface, requestId: string): Promise<CreateResponse> | null {
-  const stored = receipts.get(requestId);
-  if (stored) return Promise.resolve(launchReplay(stored));
+function earlierLaunch(receipts: LaunchReceiptSurface, requestId: string): Promise<LaunchAnswer> | null {
+  // The run in flight first: while it goes its receipt is `pending`, and a second request joins it.
   const running = receipts.inflight(requestId);
-  if (running === undefined) return null;
-  return running.then((answer) => (answer.ok ? { ...answer, replayed: true } : answer));
+  if (running !== undefined) return running.then((answer) => (answer.ok ? { ...answer, replayed: true } : answer));
+  const stored = receipts.get(requestId);
+  if (stored === undefined) return null;
+  // No run in flight and no pane to name (the bridge stopped, or the create could not be confirmed): the
+  // pane may exist, and a second create under this id would make a second one.
+  if (isUnsettled(stored)) return Promise.resolve(unknownCreate(LAUNCH_UNKNOWN_TEXT));
+  return Promise.resolve(launchReplay(stored));
 }
 
 /** Which of the four kinds a launch body names, and the line it types. */
@@ -8551,27 +8744,26 @@ export function freeSpaceName(name: string, spaces: readonly { label: string }[]
 }
 
 /** The half of a launch that touches the multiplexer, run at most once per `requestId`. */
-async function runLaunch(
-  herdr: MuxAdapter,
-  engine: StateEngine,
-  job: {
-    row: Launcher | undefined;
-    kind: PickedLaunch["kind"];
-    cwd: string;
-    besidePane: AgentView | undefined;
-    requestId: string | undefined;
-    audit: AuditLog;
-    device: string | null;
-    session: string;
-    receipts: LaunchReceiptSurface;
-    wait: PaneReadyOptions;
-    /** The harness id of a `harness` launch, and where its pane is marked once the line is typed. */
-    harness: string | undefined;
-    launchWindow: Pick<LaunchWindow, "mark"> | undefined;
-    /** `lead` for a row the lead carried (ADR 0127 point 3): the audit line says so. */
-    source?: "lead" | undefined;
-  },
-): Promise<CreateResponse> {
+interface RunLaunchJob {
+  row: Launcher | undefined;
+  kind: PickedLaunch["kind"];
+  cwd: string;
+  besidePane: AgentView | undefined;
+  requestId: string | undefined;
+  audit: AuditLog;
+  device: string | null;
+  session: string;
+  receipts: LaunchReceiptSurface;
+  wait: PaneReadyOptions;
+  /** The harness id of a `harness` launch, and where its pane is marked once the line is typed. */
+  harness: string | undefined;
+  launchWindow: Pick<LaunchWindow, "mark"> | undefined;
+  /** `lead` for a row the lead carried (ADR 0127 point 3): the audit line says so. */
+  source?: "lead" | undefined;
+}
+
+async function runLaunch(herdr: MuxAdapter, engine: StateEngine, job: RunLaunchJob
+): Promise<LaunchAnswer> {
   const { row, besidePane, cwd } = job;
   const label = row?.label;
   // A row or an agent started in a NEW space names the space after its folder, the way Herdr names a
@@ -8582,13 +8774,34 @@ async function runLaunch(
   // from one folder would fail there, and on Herdr two equal names cannot be told apart.
   const folder = basename(cwd);
   const folderNamed = !besidePane && row !== undefined && job.kind !== "run" && folder !== "";
-  const outcome = besidePane
-    ? await herdr.createTab({ spaceId: besidePane.workspaceId, label, cwd })
-    : await herdr.createSpace({ cwd, label: folderNamed ? freeSpaceName(folder, engine.current().workspaces) : label });
-  if (!outcome.ok) {
-    return { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) };
-  }
-  const created = outcome.value;
+  // The receipt goes down `pending` before the create and settles after it (M100 spec 04); a create that
+  // timed out is looked up in the snapshot, never read as a failure.
+  const spaceLabel = folderNamed ? freeSpaceName(folder, engine.current().workspaces) : label;
+  const made = await createRecorded({
+    herdr,
+    receipts: job.receipts,
+    requestId: job.requestId,
+    wanted: besidePane ? { kind: "tab", spaceId: besidePane.workspaceId, cwd, label } : { kind: "space", cwd, label: spaceLabel },
+    failed: "workspace.create_failed",
+    clock: job.wait,
+    call: () => (besidePane ? herdr.createTab({ spaceId: besidePane.workspaceId, label, cwd }) : herdr.createSpace({ cwd, label: spaceLabel })),
+  });
+  if (!made.ok) return made.answer;
+  return guardPending(job.receipts, job.requestId, () => finishLaunch(herdr, engine, job, made));
+}
+
+/** The steps of a launch after its pane exists: the tab's name, the typed line, the audit line, the receipt. */
+async function finishLaunch(
+  herdr: MuxAdapter,
+  engine: StateEngine,
+  job: RunLaunchJob,
+  made: Extract<CreateMade, { ok: true }>,
+): Promise<LaunchAnswer> {
+  const { row, besidePane, cwd } = job;
+  const folder = basename(cwd);
+  const folderNamed = !besidePane && row !== undefined && job.kind !== "run" && folder !== "";
+  const label = row?.label;
+  const created = made.pane;
   if (folderNamed && label !== undefined && supportsCapability(herdr.capabilities, "renameTab")) {
     // Best effort: a tab left with the multiplexer's own name costs a label, never the launch.
     try {
@@ -8598,15 +8811,35 @@ async function runLaunch(
     }
   }
   if (row !== undefined) {
-    const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, job.wait, job.kind === "run" ? "run" : "launch");
+    // A pane the create's own answer named is the one this launch made. A pane found in the snapshot is a
+    // guess, and a line typed into an agent's input box would be a message: it must read as a shell with
+    // no agent in it first, or nothing is typed and the outcome is unknown.
+    if (made.looked !== null) {
+      const shell = made.looked.agent === "shell" && (await awaitPaneReady(herdr, created.paneId, job.wait)).ready;
+      if (!shell) {
+        if (job.requestId !== undefined) await job.receipts.record({ requestId: job.requestId, at: Date.now(), state: "unknown" });
+        return unknownCreate(LAUNCH_UNKNOWN_TEXT);
+      }
+    }
+    const sent =
+      made.looked === null
+        ? await typeIntoFreshShell(herdr, created.paneId, row.command, job.wait, job.kind === "run" ? "run" : "launch")
+        : await sendReplySteps(herdr, created.paneId, row.command, true, ["Enter"]);
     if (!sent.ok) {
       // Best-effort rollback: a half-born pane whose command did not fully start must not linger as
-      // an empty shell nobody asked for. The rollback's own failure is swallowed because the original
-      // send error is the useful result and there is no safe second recovery action to take here.
+      // an empty shell nobody asked for. The rollback's own failure is not the result the client needs:
+      // the original send error is, and there is no safe second recovery action to take here.
+      let closed = false;
       try {
-        await herdr.closePane(created.paneId);
+        closed = (await herdr.closePane(created.paneId)).ok;
       } catch {
         // Swallowed: the failed send is the result the client needs; a second failure only obscures it.
+      }
+      // The pane is closed again, so the id may run again. A pane that could not be closed is still
+      // there, and the id must not make a second one: the receipt stays, as unknown.
+      if (job.requestId !== undefined) {
+        if (closed) await job.receipts.forget(job.requestId);
+        else await job.receipts.record({ requestId: job.requestId, at: Date.now(), state: "unknown" });
       }
       return { ok: false, error: sent.error, code: sent.code, detail: sent.detail };
     }
@@ -8643,17 +8876,7 @@ async function runLaunch(
   const workspaceLabel = besidePane
     ? (engine.current().workspaces.find((w) => w.workspaceId === created.spaceId)?.label ?? created.spaceLabel)
     : created.spaceLabel;
-  if (job.requestId !== undefined) {
-    await job.receipts.record({
-      requestId: job.requestId,
-      at: Date.now(),
-      workspaceId: created.spaceId,
-      workspaceLabel,
-      paneId: created.paneId,
-      tabId: created.tabId,
-      cwd: created.cwd,
-    });
-  }
+  await settleCreate(job.receipts, job.requestId, created, workspaceLabel);
   return {
     ok: true,
     pane: {

@@ -26,6 +26,9 @@
 
 import { existsSync } from "node:fs";
 
+/** The exit code a run killed on its budget reports. 128 + SIGTERM, as zellij's and tern's runs spell it. */
+export const TIMED_OUT_CODE = 143;
+
 /** What one finished `tmux …` invocation said. `code` is 0 on success, non-zero on refusal. */
 export interface TmuxRunResult {
   readonly code: number;
@@ -173,13 +176,20 @@ export class SpawnTmuxExec implements TmuxExec {
     });
     // A hung tmux (a server mid-restart, a full socket) must not hold a request open forever: the
     // budget is the target's, and a kill turns it into the `unreachable` the banner already knows.
-    const timer = setTimeout(() => child.kill(), this.timeoutMs);
+    let killed = false;
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill();
+    }, this.timeoutMs);
     try {
       const [stdout, stderr] = await Promise.all([
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
       ]);
-      return { code: await child.exited, stdout, stderr };
+      const code = await child.exited;
+      // The kill is named, so a create that ran out of budget is told from one tmux refused (the code a
+      // killed child reports was never a promise): the create may still have been made.
+      return { code: killed ? TIMED_OUT_CODE : code, stdout, stderr };
     } finally {
       clearTimeout(timer);
     }
