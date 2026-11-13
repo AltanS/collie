@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.28.3] - 2026-11-13
+
+**Urgent.** Claude Code's Remote Control can make Collie hold messages you send from the phone.
+
 ### Changed
 
 - **The WalkyTalky skill moves out of your instruction files into each agent's skills folder.** Codex, opencode, pi and Gemini CLI got the skill as a block in `AGENTS.md` or `GEMINI.md`, so its whole text rode in every prompt, and its last line changed with every Collie build, which cost each session after an update its prompt cache. Now they get `collie-walky-talky/SKILL.md` in their own skills folder, as Claude Code already did, and keep only its one-line description in the prompt; omp gets the file too, and Antigravity, Grok and Muse read it from a folder Collie already writes. Codex needs 0.150.0 or later and Gemini CLI 0.26.0 or later to read it; an older one keeps working through the message line typed into its pane. `collie update` and `collie skill sync` cut the old block once the file is in place, after a copy of the file as it was, `<file>.collie-pre-skill-move`, and leave every other line as it was; a block with damaged or doubled markers, or edited by hand, stays, and `collie skill status` and `collie doctor` name the file to clean by hand. Thanks @tangentyh (#770).
