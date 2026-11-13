@@ -191,6 +191,68 @@ describe('the Collie mod', () => {
     expect(events(wire).filter((e) => e?.cmd === 'drf-00000002').map((e) => [e?.kind, e?.reason])).toEqual([['taken', undefined], ['failed', 'error']])
   })
 
+  test('several bridges on one machine: it dials only those that speak its wire, and binds only where the bridge says mine', async ($, on) => {
+    const clock = mock.clock(on)
+    mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
+    // Four target files: the bridge that owns this pane, one that does not, a 1.28 bridge (no inside
+    // field: it serves no wire) and a bridge of a later wire.
+    const OWNER = '/h/.local/state/collie-next/inside/sock'
+    const OTHER = '/h/.local/state/collie/inside/sock'
+    const LATER = '/h/.local/state/collie-later/inside/sock'
+    const file = (stateDir: string, inside?: { wire: number; socket: string }) => JSON.stringify({ schemaVersion: 1, stateDir, pid: 1, pidStartTime: 1, bootedAt: 1, ...(inside === undefined ? {} : { inside }) })
+    const targets: Record<string, string> = {
+      'aaaaaaaaaaaaaaaa.json': file('/h/.local/state/collie', { wire: 1, socket: OTHER }),
+      'bbbbbbbbbbbbbbbb.json': file('/h/.local/state/collie-next', { wire: 1, socket: OWNER }),
+      'cccccccccccccccc.json': file('/h/.local/state/collie-old'),
+      'dddddddddddddddd.json': file('/h/.local/state/collie-later', { wire: 2, socket: LATER }),
+    }
+    const dialed: string[] = []
+    const polled: string[] = []
+    const opened: string[] = []
+    on('session.id', () => ({ value: 'sess-1' }))
+    on('session.cwd', () => ({ value: '/h/project' }))
+    on('session.version', () => ({ value: { version: '2.1.323' } }))
+    on('fs.list', (_, e) => ({ value: e.path === TARGETS ? Object.keys(targets).map((name) => ({ name, kind: 'file', size: 200, mtimeMs: 0, isLink: false })) : [] }))
+    on('fs.read', (_, e) => {
+      const name = e.path.startsWith(`${TARGETS}/`) ? e.path.slice(TARGETS.length + 1) : ''
+      if (targets[name] !== undefined) return { value: targets[name] }
+      if (e.path === '/proc/self/stat') return { value: STAT }
+      if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{"name":"collie","version":"1.29.0"}' }
+      return { value: '' }
+    })
+    on('http.fetch', async (_, e) => {
+      const url = new URL(e.url)
+      const socket = String(e.init?.socketPath)
+      const raw = e.init?.body
+      const body = typeof raw === 'string' ? (JSON.parse(raw) as Record<string, unknown>) : null
+      const answer = (status: number, json?: unknown) => ({ value: { status, ok: status < 300, headers: {}, text: json === undefined ? '' : JSON.stringify(json) } })
+      if (url.pathname === '/v1/hello') {
+        dialed.push(socket)
+        // Each bridge places the hello on its own panes: only the owner finds this one.
+        return socket === OWNER ? answer(200, { wire: 1, mine: true, part: PART }) : answer(200, { wire: 1, mine: false, reason: 'no-pane' })
+      }
+      if (url.pathname === '/v1/event' && body?.kind === 'ask.open') {
+        opened.push(socket)
+        return answer(200, { wait: false })
+      }
+      if (url.pathname === '/v1/next') {
+        polled.push(socket)
+        await clock.sleep(25_000)
+        return answer(204)
+      }
+      return answer(204)
+    })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    expect([...new Set(dialed)].sort()).toEqual([OTHER, OWNER].sort())
+    expect(dialed).not.toContain(LATER)
+    expect([...new Set(polled)]).toEqual([OWNER])
+    await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'ls' }, permission_suggestions: [] })
+    expect(opened).toEqual([OWNER])
+  })
+
   // The desk deciding while the phone's poll is open aborts the hook's signal, which this kit cannot
   // raise; the rule it then follows (no decision, the answer reported failed, reason desk) is
   // `phoneAnswerWord` in core.ts, checked by Collie's `core.spec.ts`.

@@ -3,7 +3,8 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { FakePart } from "./fake-part.ts";
+import { FakePart, fakeEdgeTarget, fakeLiveness } from "./fake-part.ts";
+import { placeHello } from "./place.ts";
 import { InsideHub, type Placer } from "./hub.ts";
 import { CommandQueue } from "./queue.ts";
 import { PartRegistry } from "./registry.ts";
@@ -148,6 +149,36 @@ describe("several bridges on one machine", () => {
     expect(toB.body).toMatchObject({ wire: 1, mine: true });
     expect(b.hub.partOf({ session: "main", paneId: "w7:p7" })).not.toBeNull();
     expect(a.hub.partOf({ session: "main", paneId: "w7:p7" })).toBeNull();
+  });
+});
+
+describe("several bridges, the real placement (M99, review of spec 09)", () => {
+  test("a part binds to the bridge whose session holds its pane; the other bridge refuses it", async () => {
+    const dirA = scratch();
+    const dirB = scratch();
+    const place = (session: string, panes: string[], scope = "/run/herdr.sock") => (hello: Parameters<Placer>[0]) => placeHello(hello, [fakeEdgeTarget({ session, panes, scope })], fakeLiveness(new Map([[4242, 7]])));
+    const hubA = new InsideHub({ registry: new PartRegistry({ log: () => undefined }), queue: new CommandQueue(), place: place("release", ["w1:p1"]) });
+    const hubB = new InsideHub({ registry: new PartRegistry({ log: () => undefined }), queue: new CommandQueue(), place: place("next", ["w2:p3"]) });
+    for (const [dir, hub] of [[dirA, hubA], [dirB, hubB]] as const) {
+      const server = new InsideServer({ socketPath: insideSocketPath(dir), hub, log: () => undefined });
+      expect(await server.start()).toBe(true);
+      servers.push(server);
+    }
+    const env = { HERDR_PANE_ID: "w2:p3", HERDR_SOCKET_PATH: "/run/herdr.sock" };
+    const fields = { pid: 4242, pidStartTime: 7, env };
+    expect((await new FakePart(insideSocketPath(dirA), fields).hello()).body).toEqual({ wire: 1, mine: false, reason: "no-pane" });
+    expect((await new FakePart(insideSocketPath(dirB), fields).hello()).body).toMatchObject({ wire: 1, mine: true });
+    expect(hubB.partOf({ session: "next", paneId: "w2:p3" })).not.toBeNull();
+    expect(hubA.partOf({ session: "release", paneId: "w2:p3" })).toBeNull();
+    // The same pane id on another multiplexer server is not this pane: refused too.
+    const elsewhere = new InsideHub({ registry: new PartRegistry({ log: () => undefined }), queue: new CommandQueue(), place: place("next", ["w2:p3"], "/run/other-herdr.sock") });
+    const dirC = scratch();
+    const serverC = new InsideServer({ socketPath: insideSocketPath(dirC), hub: elsewhere, log: () => undefined });
+    expect(await serverC.start()).toBe(true);
+    servers.push(serverC);
+    expect((await new FakePart(insideSocketPath(dirC), fields).hello()).body).toMatchObject({ mine: false });
+    // A part of a later wire is refused by both.
+    expect((await new FakePart(insideSocketPath(dirB), { ...fields, wire: 2 }).hello()).status).not.toBe(200);
   });
 });
 

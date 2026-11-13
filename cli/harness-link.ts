@@ -325,9 +325,13 @@ export function cmdLinkSync(deps: HarnessLinkDeps): number {
 }
 
 /** `collie uninstall`: unlink every linked harness. One line each. */
+/** The harnesses with a link record or a part of ours on disk: what `unlinkAll` would take away. */
+export function linkedHarnessNames(ctx: CliContext, files: HarnessLinkDeps["files"]): LinkHarness[] {
+  return LINK_HARNESSES.filter((harness) => isLinked({ ctx, files }, harness) || partOnDisk({ ctx, files }, harness) !== null);
+}
+
 export function unlinkAll(deps: HarnessLinkDeps): void {
-  for (const harness of LINK_HARNESSES) {
-    if (!isLinked(deps, harness) && partOnDisk(deps, harness) === null) continue;
+  for (const harness of linkedHarnessNames(deps.ctx, deps.files)) {
     const done = unlinkOne(deps, harness);
     deps.io.out(`  unlinked ${harness}${done.note === null ? "" : ` (warning: ${done.note})`}`);
   }
@@ -335,7 +339,30 @@ export function unlinkAll(deps: HarnessLinkDeps): void {
 
 /** The usage line of the harness verbs. */
 export function harnessLinkUsage(): string {
-  return `usage: collie link <${LINK_HARNESSES.join("|")}> | collie unlink <harness> | collie link status`;
+  return `usage: collie link | collie link <${LINK_HARNESSES.join("|")}> | collie link status | collie unlink | collie unlink <harness>`;
+}
+
+/**
+ * `collie link --help` and `collie unlink --help`: the verb has two meanings, and both are named. With
+ * no word it is the PATH name (ADR 0021); with a harness it is the data path (M99 spec 09).
+ */
+export function harnessLinkHelp(verb: "link" | "unlink"): string[] {
+  const harnesses = LINK_HARNESSES.join("|");
+  if (verb === "link") {
+    return [
+      `usage: collie link [<${harnesses}> | status]`,
+      "",
+      "  collie link            put `collie` on your PATH: ~/.local/bin/collie points at this checkout's binary",
+      "  collie link <harness>  link a harness, so Collie can send to it by data (available: claude)",
+      "  collie link status     say which harnesses are linked",
+    ];
+  }
+  return [
+    `usage: collie unlink [<${harnesses}>]`,
+    "",
+    "  collie unlink            remove ~/.local/bin/collie again, only when it points at this checkout",
+    "  collie unlink <harness>  remove the harness's part; Collie then uses the screen path for it",
+  ];
 }
 
 /** The doctor rows, one per harness (`link-<harness>`). Files only; the harness version comes from the harness rows. */

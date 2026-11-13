@@ -7,7 +7,7 @@ import {
 } from "../bridge/systemd-user.ts";
 import type { CrewMode } from "../bridge/types.ts";
 import { ensureBuild } from "./build.ts";
-import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
+import { collieVersion, DEFAULT_INSTANCE, listInstances, type CliContext, type Environment, type EnvVars } from "./context.ts";
 import { binaryLayout, publishedRoot } from "./install-kind.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
@@ -1185,16 +1185,45 @@ export async function cmdUninstall(deps: LifecycleDeps): Promise<number> {
   deps.io.out(
     "✓ uninstalled: service stopped & disabled, service definition removed, Collie's tailscale serve mapping removed",
   );
-  // The data path's parts go too (M99 spec 09): `collie uninstall` unlinks every linked harness.
+  // The data path's parts (M99 spec 09) are one per machine user, shared by every instance: they go
+  // only with the last installed instance, so an uninstall of one lane never breaks another.
   // Behind a dynamic import: the parts are embedded as text, and this module sits on the bare-checkout
   // bootstrap path (`cli/main.test.ts`), which must stay plain TypeScript.
-  const { unlinkAll } = await import("./harness-link.ts");
-  unlinkAll({ ctx: deps.ctx, io: deps.io, files: deps.files, exec: deps.exec });
+  const others = otherInstalledInstances(deps);
+  const { linkedHarnessNames, unlinkAll } = await import("./harness-link.ts");
+  if (others.length === 0) unlinkAll({ ctx: deps.ctx, io: deps.io, files: deps.files, exec: deps.exec });
+  else if (linkedHarnessNames(deps.ctx, deps.files).length > 0) {
+    deps.io.out(`  kept the linked harness parts: another Collie instance uses them (${others.join(", ")}). \`collie unlink <harness>\` removes them.`);
+  }
   deps.io.out(
     `  kept: ${join(deps.ctx.configDir, ".env")} and the checkout — delete those to remove every trace`,
   );
   for (const line of windowsBinaryRemoval(deps)) deps.io.out(line);
   return EXIT.OK;
+}
+
+/**
+ * The other Collie instances of this machine user that are still installed: listed from the config
+ * root (`listInstances`), and each still has its service definition where the supervisor keeps one
+ * (a systemd unit, a launchd agent). Where it keeps none on disk (Task Scheduler, unsupervised), an
+ * instance with a config counts as installed: keeping a shared part too long is a stale file, removing
+ * it too early breaks a running lane.
+ */
+export function otherInstalledInstances(deps: Pick<LifecycleDeps, "ctx" | "files" | "exec" | "host">): string[] {
+  const own = deps.ctx.instance ?? DEFAULT_INSTANCE;
+  const tier = supervisionTier(deps.exec, deps.host, deps.ctx.env);
+  const definition = (name: string): string | null => {
+    const instance = name === DEFAULT_INSTANCE ? null : name;
+    if (tier === "systemd") return unitFilePath(deps.ctx.home, instance);
+    if (tier === "launchd") return agentFilePath(deps.ctx.home, instance);
+    return null;
+  };
+  return listInstances(deps.ctx.home, (path) => deps.files.exists(path), (path) => deps.files.list(path))
+    .filter((name) => name !== own)
+    .filter((name) => {
+      const path = definition(name);
+      return path === null || deps.files.exists(path);
+    });
 }
 
 /**
