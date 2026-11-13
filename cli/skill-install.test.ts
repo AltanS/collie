@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import type { Environment } from "./context.ts";
-import { capture, context, fakeFiles, fakeLinkFs, HOME, ROOT, STATE } from "./fakes.ts";
+import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   BLOCK_BEGIN,
@@ -745,7 +745,9 @@ describe("the move, guarded (#770 review)", () => {
   test("the temp file carries the pid, and a rename that lost the race to the same bytes is success", () => {
     const d = deps();
     cmdSkillInstall(d, ["codex"]);
-    expect(d.files.ops).toContain(`mv ${CODEX_FILE}.collie-tmp.${String(process.pid)} ${CODEX_FILE}`);
+    // The fake logs the folded POSIX spelling of each path, so the expectation folds each path the same
+    // way (on Windows `join` hands back `\home\pat\...`).
+    expect(d.files.ops).toContain(`mv ${posixKey(`${CODEX_FILE}.collie-tmp.${String(process.pid)}`)} ${posixKey(CODEX_FILE)}`);
     const fresh = deps();
     fresh.files.rename = (_from, to) => {
       fresh.files.entries.set(to, { text: rendered(fresh) });
