@@ -108,7 +108,8 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
 }
 
 /**
- * The background-agents footer ("● main" + one "◯ <agent> <task> <elapsed>" row per agent) that the
+ * The background-agents footer ("● main" on Linux or "⏺ main" on macOS, optionally prefixed by "❯ "
+ * when focused, plus one "◯ <agent> <task> <elapsed>" row per agent) that the
  * statusline walk peels off below the blank separator. stripChrome takes it off the mirror and
  * extractStatusLines stops above it, so without this probe the agent list was on no surface at all
  * (issue #242). It gets its own chrome element rather than more rows in the statusline strip: the
@@ -117,9 +118,9 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
  *
  * POSITIONAL, like the strip: the rows from where the frame's walk says the footer starts to the last
  * non-blank line, STYLED, top to bottom. `[]` when there is no box, the tail is not a statusline run,
- * or no footer was peeled. One content check: the block must open with Claude's "●" header. The walk
+ * or no footer was peeled. One content check: the block must open with Claude's `[●⏺] main` header. The walk
  * peels by position, so a custom statusline with a blank row in it also loses its lower rows there;
- * without the header check those rows would show on the phone labelled as agents.
+ * without the header check an ordinary second paragraph would show on the phone labelled as agents.
  */
 export function extractAgentsFooter(lines: StyledLine[]): StyledLine[] {
   const texts = lines.map(lineText);
@@ -135,7 +136,7 @@ export function extractAgentsFooter(lines: StyledLine[]): StyledLine[] {
     if (!isBlank(texts[j]!)) rows.push(lines[j]!);
   }
   // macOS Claude Code draws `⏺ main` (U+23FA) where Linux draws `● main` (U+25CF); focusing the panel
-  // prefixes `❯ `. Reject anything else so a two-paragraph custom statusline never shows as agents.
+  // prefixes `❯ `. Reject anything else so an ordinary two-paragraph custom statusline does not show as agents.
   if (rows.length === 0 || !/^\s*(?:❯\s+)?[●⏺]\s+main(?:\s.*)?$/u.test(lineText(rows[0]!))) return [];
   return rows;
 }
