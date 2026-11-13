@@ -27,6 +27,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Pair** | `collie pair` · `collie pair --expires <duration>` | Print an 8-character code and a QR code, good for 10 minutes; scan the QR code to open Settings → System → Paired devices with the code filled in, or enter the code manually to get it [paired](security.md#pair-a-device--the-write-credential). Without `--expires` the token never expires and the command says so; with it (`12h`, `30d`, `2w`) the command prints the date the token stops working once claimed. A script claims the code with a label of its own, for example `script`, and pairs once ([Give a device an expiry](security.md#give-a-device-an-expiry)). `--json` prints the code as one line of JSON for a program that shows it in its own window: `code`, `expiresAt`, `tokenLifetimeMs`, `replaced`, `url`, and `qr`, the code's modules as rows of `1` (dark) and `0` (light) |
 | **Devices** | `collie devices list` · `collie devices revoke <label>` · `collie devices set-expiry <label> <duration>` · `collie devices clear-expiry <label>` | List / revoke paired devices, or change when one [expires](security.md#give-a-device-an-expiry). `list` shows each device's expiry as `no expiry`, `expires <date>` or `EXPIRED <date>`. `set-expiry` counts a new lifetime from now; `clear-expiry` removes it. A label matches exactly, or without case when only one device fits |
 | **Link** | `collie link` · `collie unlink` | Put `collie` on your PATH ([below](#put-collie-on-your-path)) |
+| **Link a harness** | `collie link claude` · `collie unlink claude` · `collie link status` | Experimental, Collie 1.29.0 or later: let Collie send plain messages to Claude Code as data instead of typing them ([Send by data](claude-code-on-your-phone.md#send-by-data-optional-experimental)) |
 | **Logs** | `collie logs` | Tail the service log |
 | **Config** | `collie config show` · `collie config check` · `collie config init` | Print every setting with its source, validate the file, or write a commented `config.toml` ([the config file](configure.md#the-config-file)) |
 | **Durable agents** | `collie durable attach <name> --socket <path>` · `collie durable attach <name> --url <url> --token-env <VAR>` · `collie durable detach <name>` · `collie durable list` | Add a durable agent to `sources.json`, remove it, or list each durable agent with the state the running bridge gives it. `attach` and `detach` apply at the next restart, or at once with `--restart`. Flags, output and exit codes: [Durable agents](durable-agents.md#the-three-verbs) |
@@ -165,6 +166,12 @@ immediately without extra steps
 links from other Collie checkouts and prints which one it overwrote. It refuses to overwrite
 non-Collie files at that path. `unlink` removes the symlink only if it targets *your* current
 checkout.
+
+With a word after it, `link` means something else: `collie link claude` links Claude Code for
+sending by data, and `collie link status` lists the linked harnesses
+([Send by data](claude-code-on-your-phone.md#send-by-data-optional-experimental)). Those forms need
+Collie 1.29.0 or later. An older `collie` ignores the word, so there `collie unlink claude` removes
+the PATH name.
 
 If `~/.local/bin` is missing from your `PATH`, `link` warns you and exits. It never edits your shell
 profile. Run `collie doctor` to check the `path-link` line and see which checkout the bare `collie`

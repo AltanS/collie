@@ -292,3 +292,9 @@ Trail: `bridge/surface/protocol.ts` (`COMMAND_SETTLE_MS`, `commandSettles`, `set
 `commandSettle`) · `bridge/surface/protocol.test.ts` ("a list drawn after S1's first read") · fixtures
 `omp--v18-6-1-path-like-loop-list--w120.txt`, `omp--v18-12-6-path-like-no-list--w120.txt`,
 `omp--v18-12-6-slash-mo-fuzzy--w120.txt`, `omp--v18-6-1-path-popup--w120.txt`.
+
+## Note 2026-11-13 (ADR 0140)
+
+This record is about the screen path. A plain send, a WalkyTalky message and the box's text of a
+session whose harness is linked go through a part inside the agent as data (ADR 0140), and the input
+box is not read for them. Every send that keeps the screen path follows this record as written.
