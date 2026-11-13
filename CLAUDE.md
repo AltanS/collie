@@ -30,7 +30,9 @@ Collie is **SemVer**ed, and the version is **enforced**, so it never silently dr
 **The version lives in three files that must always agree, plus a matching CHANGELOG entry:**
 `herdr-plugin.toml` (canonical — Herdr reads it) · `package.json` · `web/package.json` ·
 newest *numbered* `## [x.y.z]` heading in `CHANGELOG.md`. `## [Unreleased]` is not numbered and is
-not part of that agreement.
+not part of that agreement. The Collie mod for Claude Code carries the same plain version in
+`inside/claude/.claude-plugin/plugin.json` (never an `-edge.N`): `scripts/check-version.sh` holds it,
+and the release commit bumps it with the three.
 
 **Two kinds of commit. A functional commit records; only the release commit bumps.** Never bump a
 version because you fixed something; the version moves once, when the release is cut.
