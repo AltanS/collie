@@ -49,7 +49,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/pane").then((m) => ({ default: m.PaneSection })),
   },
   {
-    def: { id: "composer-states", group: "Pane", title: "Composer states", keywords: ["composer", "reply", "way-out", "held", "send", "queue", "draft", "steer", "hold"] },
+    def: { id: "composer-states", group: "Pane", title: "Composer states", keywords: ["composer", "reply", "way-out", "held", "send", "queue", "draft", "steer", "hold", "confirm", "really-send", "send-it-again", "unknown", "destructive", "two-tap"] },
     load: () => import("./sections/composer-states").then((m) => ({ default: m.ComposerStatesSection })),
   },
   {
