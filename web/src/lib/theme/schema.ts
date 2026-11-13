@@ -1,11 +1,12 @@
-// A theme file, versions 1, 2, 3 and 4: the schema, the one parser, and the colour arithmetic the contrast
+// A theme file, versions 1, 2, 3, 4 and 5: the schema, the one parser, and the colour arithmetic the contrast
 // report needs (M57, the shared contract in the milestone README).
 //
 // WHAT A THEME IS. One JSON file with an id, a name, two halves of named colour tokens (light and
 // dark), an optional bundled UI face, and from version 2 an optional `surface` block of shape words
 // (`surface.ts`), an optional display face (`fonts.display`) and an optional terminal palette (`ansi`),
 // and from version 4 an optional header character (`character`, one of the fixed ids in `../mark-ids.ts`)
-// and an optional glyph set (`glyphs`, one of the fixed ids in `../glyph-sets.ts`). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
+// and an optional glyph set (`glyphs`, one of the fixed ids in `../glyph-sets.ts`), and from version 5 an optional
+// `characterMotion` (`moves` or `still`: whether the header character drifts at rest). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
 // token list and the word lists are CLOSED, and the parser refuses any key or word it does not name,
 // so a file can never smuggle a property into the page.
 //
@@ -20,15 +21,16 @@
 // colour, every key, the type of a value, a word of any other part, and a decoration word of the
 // wrong shape.
 //
-// VERSIONS. The parser reads 1, 2, 3 and 4 and hands back the LOWEST version that holds the content: 4
-// when the theme sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`, `find`), else 2 when it carries
+// VERSIONS. The parser reads 1, 2, 3, 4 and 5 and hands back the LOWEST version that holds the content: 5
+// when the theme sets a `characterMotion`, else 4 when it sets a `character` or `glyphs`, else 3 when it sets an optional token (`pane-active`, `tab-active`, `find`), else 2 when it carries
 // a surface block, a display face or a palette, else 1. So a colour-only theme is stored and
 // exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
 // `surface` block, a `fonts.display` or an `ansi` block in a file that says version 1 is refused: the
 // file is older than the block. An optional token in a file that says version 1 or 2 is refused the
-// same way, and so is a `character` or `glyphs` in a file that says version 1, 2 or 3. Every file written before
-// version 4 reads and exports exactly as it did.
+// same way, and so is a `character` or `glyphs` in a file that says version 1, 2 or 3, and a
+// `characterMotion` in a file that says version 1 to 4. Every file written before
+// version 5 reads and exports exactly as it did.
 //
 // WHY THE PARSER IS TOTAL AND COLLECTS. A person imports a file someone else wrote. Telling them
 // about the first problem and hiding the next nine makes them fix a file nine more times. So
@@ -64,11 +66,11 @@ import {
   type SurfaceToken,
 } from "./surface";
 
-/** The highest schema version this build reads and writes. Only a theme that sets a `character` or `glyphs` needs it. */
-export const THEME_VERSION = 4;
+/** The highest schema version this build reads and writes. Only a theme that sets a `characterMotion` needs it. */
+export const THEME_VERSION = 5;
 
 /** The schema versions this build reads. A file with any other `version` is refused. */
-export const THEME_VERSIONS_READ = [1, 2, 3, 4] as const;
+export const THEME_VERSIONS_READ = [1, 2, 3, 4, 5] as const;
 
 export type ThemeVersion = (typeof THEME_VERSIONS_READ)[number];
 
@@ -160,7 +162,7 @@ export const DEFAULT_THEME_ID: ShippedThemeId = "collie";
 export interface Half extends Partial<Record<AnyThemeToken, string>> {}
 
 export interface Theme {
-  /** The lowest version that holds the content: 4 with a `character` or `glyphs`, 3 with an optional token, 2 with a `surface` block, 1 without (`versionOf`). */
+  /** The lowest version that holds the content: 5 with a `characterMotion`, 4 with a `character` or `glyphs`, 3 with an optional token, 2 with a `surface` block, 1 without (`versionOf`). */
   version: ThemeVersion;
   id: string;
   name: string;
@@ -180,6 +182,16 @@ export interface Theme {
   character?: string;
   /** Version 4: the glyph set every icon is drawn in, as written: a `GlyphSetId`, or an unknown word drawn as lucide (`knownGlyphs`). Absent is lucide. */
   glyphs?: string;
+  /** Version 5: whether the header character drifts at rest. Absent is `moves`. A device's own switch in Settings wins over it. */
+  characterMotion?: CharacterMotion;
+}
+
+/** The two words of `characterMotion`. `moves` is the default and what an absent key means. */
+export const CHARACTER_MOTIONS = ["moves", "still"] as const;
+export type CharacterMotion = (typeof CHARACTER_MOTIONS)[number];
+
+export function isCharacterMotion(value: string): value is CharacterMotion {
+  return CHARACTER_MOTIONS.some((word) => word === value);
 }
 
 /** A theme's faces, as written: a shipped face or an unknown word (checked by `isShippedFont` where used). Either may be absent; an empty `fonts` object carries no key. */
@@ -243,7 +255,7 @@ export interface ParseThemeOptions {
 export const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 export const NAME_MAX = 40;
 export const AUTHOR_MAX = 60;
-export const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs"] as const;
+export const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs", "characterMotion"] as const;
 const HALVES = ["light", "dark"] as const;
 
 export function isThemeToken(value: string): value is ThemeToken {
@@ -322,6 +334,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const ansi = readAnsi(doc, version, refusals);
   const character = readCharacter(doc, version, refusals);
   const glyphs = readGlyphs(doc, version, refusals);
+  const characterMotion = readCharacterMotion(doc, version, refusals);
 
   if (countTokens(light) + countTokens(dark) === 0 && !hasHalfRefusal(refusals)) {
     refusals.push({
@@ -348,6 +361,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   if (ansi !== undefined) theme.ansi = ansi;
   if (character !== undefined) theme.character = character;
   if (glyphs !== undefined) theme.glyphs = glyphs;
+  if (characterMotion !== undefined) theme.characterMotion = characterMotion;
   theme.version = versionOf(theme);
   return { ok: true, theme };
 }
@@ -429,8 +443,9 @@ function unknownKey(prefix: string, key: string): Refusal {
 
 const READ_TEXT = `${THEME_VERSIONS_READ.slice(0, -1).join(", ")} and ${THEME_VERSIONS_READ.at(-1)}`;
 
-/** The version a theme is written as: 4 with a character or a glyph set, 3 with an optional token, 2 with a shape, a display face or a palette, else 1. */
+/** The version a theme is written as: 5 with a character motion, 4 with a character or a glyph set, 3 with an optional token, 2 with a shape, a display face or a palette, else 1. */
 export function versionOf(theme: Theme): ThemeVersion {
+  if (theme.characterMotion !== undefined) return 5;
   const ground = theme.surface?.ground;
   if (theme.character !== undefined || theme.glyphs !== undefined || (ground !== undefined && !isGroundWord(ground))) return 4;
   if (OPTIONAL_THEME_TOKENS.some((token) => setsOptionalToken(theme, token))) return 3;
@@ -698,6 +713,29 @@ function readGlyphs(doc: JsonObject, version: ThemeVersion | undefined, refusals
   const word = decorationWord(doc.glyphs);
   if (word === undefined) {
     refusals.push({ code: "glyphs", path: "glyphs", detail: `"glyphs" must be one of: ${GLYPH_SET_IDS.join(", ")}.` });
+    return undefined;
+  }
+  return word;
+}
+
+/**
+ * The `characterMotion` key: `moves` or `still`. The closed list, so any other value is refused and
+ * names the list (under the `character` code, whose headline is "The character choice is not valid."),
+ * and a file that says version 1 to 4 is older than the key. The value is still read so its own
+ * fault shows too.
+ */
+function readCharacterMotion(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): CharacterMotion | undefined {
+  if (doc.characterMotion === undefined) return undefined;
+  if (version !== undefined && version < 5) {
+    refusals.push({
+      code: "version",
+      path: "characterMotion",
+      detail: `A file with "characterMotion" must say version 5. This one says version ${version}.`,
+    });
+  }
+  const word = asJsonString(doc.characterMotion);
+  if (word === undefined || !isCharacterMotion(word)) {
+    refusals.push({ code: "character", path: "characterMotion", detail: `"characterMotion" must be one of: ${CHARACTER_MOTIONS.join(", ")}.` });
     return undefined;
   }
   return word;

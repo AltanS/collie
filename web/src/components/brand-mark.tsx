@@ -4,6 +4,7 @@ import type { ComponentType, ReactNode } from "react";
 import { CollieMark } from "@/components/collie-mark";
 import type { MarkProps } from "@/components/mark-contract";
 import { useMarkId } from "@/lib/mark";
+import { useMarkMotion } from "@/lib/mark-motion";
 import type { MarkId } from "@/lib/mark-ids";
 
 // THE HEADER LOGO, which a theme may choose (its `character`). Every mark is generated
@@ -25,6 +26,10 @@ import type { MarkId } from "@/lib/mark-ids";
 // THE TWO COLLIE COAT VARIANTS (`collie-collar`, `collie-blaze`) are the Collie mark with another head:
 // `collieFamilyMark` in `collie-mark.tsx` builds them on the same runtime and the same stylesheet, so
 // they stay lazy chunks like the rest and cost the entry bundle nothing.
+//
+// HOW IT MOVES AT REST. `useMarkMotion` (`lib/mark-motion.ts`) hands a resting mark `drift="always"`, or
+// `turn={0}` when this device or the worn theme says still, the page is hidden or the system asks for
+// reduced motion. A mark that is live, idle or told its `turn` by the caller is drawn as asked.
 //
 // WHAT STAYS THE COLLIE MARK. The boot splash, the idle lock, the agent-start handoff and the tour
 // sheet import `CollieMark` directly and never call this. The favicon, the app icon and the splash
@@ -127,7 +132,10 @@ export interface BrandMarkProps extends MarkProps {
   mark?: MarkId;
 }
 
-export function BrandMark({ mark, ...props }: BrandMarkProps) {
+export function BrandMark({ mark, ...given }: BrandMarkProps) {
+  // A resting mark drifts at all times while the page is visible, unless this device or the worn theme
+  // says still (`lib/mark-motion.ts`). The fallback and every chunk get the props as resolved here.
+  const props = useMarkMotion(given);
   const resolved = useMarkId();
   const id = mark ?? resolved;
   if (id === "collie") return <CollieMark {...props} />;

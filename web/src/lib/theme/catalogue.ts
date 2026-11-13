@@ -20,6 +20,7 @@ import {
   ANSI_SLOT_FLOOR,
   AUTHOR_MAX,
   BLOCKED_DONE_FLOOR,
+  CHARACTER_MOTIONS,
   CHIP_ALPHA,
   COLOUR_MAX,
   HARD_TEXT_FLOOR,
@@ -33,6 +34,7 @@ import {
   THEME_VERSIONS_READ,
   TOP_KEYS,
   type AnyThemeToken,
+  type CharacterMotion,
   type ThemeVersion,
 } from "./schema";
 import {
@@ -171,15 +173,16 @@ const FILE_KEY_WORDS = {
   ansi: { type: "object of colours", needed: "no", version: 2, what: "The terminal palette. It holds all 18 keys or none." },
   character: { type: "word", needed: "no", version: 4, what: "The character in the header, one word of the characters table." },
   glyphs: { type: "word", needed: "no", version: 4, what: "The icon set every icon is drawn in, one word of the glyph sets table." },
+  characterMotion: { type: "word", needed: "no", version: 5, what: `Whether the header character drifts at rest: ${codeList(CHARACTER_MOTIONS)}. Absent is \`moves\`. A person's own switch in Settings wins over it.` },
 } as const satisfies { readonly [K in (typeof TOP_KEYS)[number]]: Omit<FileKeyEntry, "key"> };
 
 /** One entry per key a theme file may have, in the parser's order. */
 export const FILE_KEYS: readonly FileKeyEntry[] = TOP_KEYS.map((key) => Object.assign({ key }, FILE_KEY_WORDS[key]));
 
-/** A complete file that uses every part of version 4. The test holds it to the real parser. */
+/** A complete file that uses every part of version 5. The test holds it to the real parser. */
 export const FILE_EXAMPLE = JSON.stringify(
   {
-    version: 4,
+    version: 5,
     id: "my-day",
     name: "My day",
     author: "Sam",
@@ -209,6 +212,7 @@ export const FILE_EXAMPLE = JSON.stringify(
     },
     character: "kawaii",
     glyphs: "phosphor",
+    characterMotion: "still",
   },
   null,
   2,
@@ -219,6 +223,7 @@ const VERSION_WORDS = {
   2: { holds: "Everything in version 1, and any of `surface`, `fonts.display` and `ansi`.", example: { version: 2, id: "my-day", name: "My day", surface: { radius: "round" }, light: { background: "oklch(0.985 0 0)" } } },
   3: { holds: `Everything in version 2, and the optional tokens ${codeList(OPTIONAL_THEME_TOKENS)}.`, example: { version: 3, id: "my-day", name: "My day", dark: { find: "oklch(0.769 0.188 70.08 / 0.4)" } } },
   4: { holds: "Everything in version 3, the keys `character` and `glyphs`, and `surface.ground` as an object.", example: { version: 4, id: "my-day", name: "My day", character: "kawaii", light: { background: "oklch(0.985 0 0)" } } },
+  5: { holds: "Everything in version 4, and the key `characterMotion`.", example: { version: 5, id: "my-day", name: "My day", characterMotion: "still", light: { background: "oklch(0.985 0 0)" } } },
 } as const satisfies { readonly [V in ThemeVersion]: { readonly holds: string; readonly example: object } };
 
 /** One entry per version the parser reads. */
@@ -504,6 +509,13 @@ const CHARACTER_WORDS = {
 } as const satisfies { readonly [M in MarkId]: string };
 
 export const CHARACTERS: readonly NamedEntry[] = MARKS.map((mark) => ({ word: mark.id, name: mark.name, what: CHARACTER_WORDS[mark.id] }));
+
+const MOTION_WORDS = {
+  moves: { name: "Moves", what: "The character drifts slowly at rest, while the app is visible. The default." },
+  still: { name: "Still", what: "The character holds still at rest. It still turns while Collie works, and for an update." },
+} as const satisfies { readonly [M in CharacterMotion]: { readonly name: string; readonly what: string } };
+
+export const CHARACTER_MOTION_ENTRIES: readonly NamedEntry[] = CHARACTER_MOTIONS.map((word) => Object.assign({ word }, MOTION_WORDS[word]));
 
 const GLYPH_WORDS = {
   lucide: "Round lines of even width. The default.",

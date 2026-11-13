@@ -93,7 +93,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/worktree-folder").then((m) => ({ default: m.WorktreeFolderSection })),
   },
   {
-    def: { id: "character-picker", group: "Settings", title: "Character picker", keywords: ["character", "head", "mark", "collar", "CharacterPicker", "theme"] },
+    def: { id: "character-picker", group: "Settings", title: "Character picker", keywords: ["character", "head", "mark", "collar", "CharacterPicker", "CharacterMovesRow", "theme", "motion", "drift", "moves", "still", "switch", "characterMotion"] },
     load: () => import("./sections/character-picker").then((m) => ({ default: m.CharacterPickerSection })),
   },
   {

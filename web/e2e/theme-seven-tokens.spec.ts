@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext, type Page, type TestInfo } from "@pl
 
 import { installApiStub } from "./fixtures/api";
 import { collieHalves } from "./fixtures/collie-theme";
+import { STILL_MARK, stillMarkState } from "./fixtures/still-mark";
 
 // THE SEVEN MORE TOKENS PAINT (M57 spec 17). The unit tier holds every word's declarations equal to
 // the table and every default equal to index.css; this tier opens the shipped bundle with an imported
@@ -49,7 +50,7 @@ async function openWith(context: BrowserContext, theme: typeof ALL | undefined, 
         localStorage.setItem("collie:design:v1", design);
         localStorage.setItem("collie:themes:v1", library);
       },
-      [JSON.stringify({ font: "aldrich", theme: "seven" }), JSON.stringify({ version: 1, themes: [theme] })] as const,
+      [JSON.stringify({ ...STILL_MARK, font: "aldrich", theme: "seven" }), JSON.stringify({ version: 1, themes: [theme] })] as const,
     );
   }
   await page.goto(path);
@@ -88,7 +89,7 @@ function onlyPhone(testInfo: TestInfo): void {
 
 test("the Collie look fetches only its own face, and draws every default", async ({ browser }, testInfo) => {
   onlyPhone(testInfo);
-  const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: "block" });
+  const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: "block", storageState: stillMarkState(testInfo.project.use.baseURL) });
   const { page, fonts } = await openWith(context, undefined, "/");
   // The UI face is Atkinson since 2026-11-06 and the display face (titles) is Aldrich: two files, no more.
   expect(fonts.filter((f) => !f.startsWith("ui-atkinson") && !f.startsWith("ui-aldrich") && !f.startsWith("nerd"))).toEqual([]);
@@ -127,7 +128,7 @@ test("the Collie look fetches only its own face, and draws every default", async
 
 test("a theme naming all seven paints each one, and its display face costs exactly one file", async ({ browser }, testInfo) => {
   onlyPhone(testInfo);
-  const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: "block" });
+  const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: "block", storageState: stillMarkState(testInfo.project.use.baseURL) });
   const { page, fonts } = await openWith(context, ALL, "/");
   expect(fonts.filter((f) => f.startsWith("ui-geist"))).toHaveLength(1);
   // ui-atkinson is index.html's preload of the default face, fetched whatever the device chose.

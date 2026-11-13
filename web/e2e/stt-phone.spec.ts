@@ -8,6 +8,7 @@ import { ACCEPTED_WHISTLE_SHAS, NEEDLE_WASM_BYTES } from "@/stt/pins";
 
 import { installApiStub } from "./fixtures/api";
 import { serveWithShellCsp, sttWorkerCsp } from "./fixtures/csp";
+import { stillMarkState } from "./fixtures/still-mark";
 
 // SPEECH ON THE PHONE AND ON THE HOST, END TO END (ADR 0096), against a stubbed bridge.
 //
@@ -793,6 +794,7 @@ test.describe("the real engine", () => {
         hasTouch: true,
         serviceWorkers: "block",
         permissions: ["microphone"],
+        storageState: stillMarkState(baseURL),
       });
       await realEngineCase(await context.newPage());
     } finally {

@@ -82,3 +82,50 @@ roll, and only the roll.
 Measured on the comparison page (two marks, 10 s each, 3x): option 11 at rest, in use, 60 frames,
 0 main-thread frames, 0 paints, 0.6 ms a second; rested, 0 frames. Applying, either option, 60 frames,
 0 main-thread frames, 0 paints, about 2 ms a second (no timer, no script call in the trace).
+
+## Amendment 2026-11-13
+
+Altan ordered the character to move at all times, "not just after activity like scrolling", and asked for
+a way to turn it off in a theme and in the app. This takes the choice the 2026-11-09 amendment left open
+(`MARK_DRIFT.mode`, "always" or "in use") and takes it for "always", as a default a device or a theme can
+leave.
+
+- A resting mark drifts for as long as the page is visible, with no input needed. The app passes
+  `drift="always"`, a prop the contract already has, so the sealed contract is unchanged
+  (`web/src/lib/mark-motion.ts`, read by `BrandMark`). A hidden page, `pagehide` and
+  `prefers-reduced-motion` hold it, whatever the switch says.
+- The device's switch, "Character moves", sits under the list on the Character page and is stored in
+  `collie:design:v1` as `markMoves`, both values. A theme may set `characterMotion` (`moves` or `still`,
+  schema version 5). The device's own touched switch wins, an untouched one follows the worn theme, and
+  no key means it moves. A theme may only switch the drift off: the look of the mark never changes.
+- A live state (`loading`, `applying`, `reconnected`) and `idle` are drawn as before. The idle lock, the
+  tour and the thumbnails of a theme list keep the contract's own rule (`in-use`).
+- **The drift is drawn in steps, so "at all times" has a bound.** The first build drew it smooth: 60 frames
+  a second for as long as the page is visible, the load this ADR exists to remove. A stepped timing
+  function asks for a frame only when its value changes, so `index.css` gives a drifting mark `.mark-steps`
+  (put on by `lib/mark-motion.ts`) and a `steps(10)` timing between the keyframe stops of the marks (a stop
+  about every 0.8 s, so 12.5 steps a second; `steps(20)` for the four marks with half the stops; pixel is
+  already stepped). The rule is app CSS, important because the sealed marks set `linear` in the `animation`
+  shorthand, and names no class of a mark except the puppy faces' pearl twinkle, which is 4 steps a half
+  swell. Only a mark that drifts at rest carries it; a live state turns smooth, as it is short. A step is
+  about 0.14 CSS px at the header's 44 px, so it reads as slow motion, not as a stutter; 12 a second needed
+  no second try at 20.
+- Measured on 2026-11-13, headless Chromium 151, 390x844 at 3x, the resting dashboard with the mark in view,
+  10 s, 3 runs (the same harness as 2026-11-09: a trace, `DrawFrame`, `BeginMainThreadFrame`, `Paint`),
+  1-minute load 3.4 to 4.2 on the machine:
+
+  | Mark at rest | Frames | Main-thread frames | Paints |
+  | --- | ---: | ---: | ---: |
+  | Switch off (held) | 0 | 0 | 0 |
+  | Always, smooth (first build) | 597 to 600 | 3 to 4 | 6 |
+  | Always, stepped (shipped) | 126 to 127 | 3 | 6 |
+
+  The 3 main-thread frames and 6 paints are the near/far swaps of the beads (an opacity step on SVG
+  children), the same in both drives. The puppy faces (5 s, load 8 to 10, so a rough figure): smooth 300
+  frames, stepped 94.
+- `web/e2e/idle-repaint.spec.ts` runs a resting dashboard with the default setting and asserts at most 16
+  frames a second (96 in its 6 s window), at most 10 main-thread frames and 15 paints, which the stepped
+  drive meets and the smooth one fails (360 frames); with the switch off it asserts 0 / 0 / 0. Other cases
+  keep the switch off (`web/e2e/fixtures/still-mark.ts`) for speed; `web/e2e/mark-moves.spec.ts` holds the
+  motion itself. The switch and the theme key remain the way out for a device that cannot afford even this
+  (issue #748).

@@ -35,9 +35,10 @@ CSS in it.
 - A colour is `#rrggbb`, `#rrggbbaa` or `oklch(L C H)` with an optional `/ A`. No named colour, no
   `rgb()`, no `var()`.
 - Write the lowest `version` that holds the file: 1 for colours and `fonts.ui` only, 2 with `surface`,
-  `fonts.display` or `ansi`, 3 with `pane-active`, `tab-active` or `find`, 4 with `character` or `glyphs`.
+  `fonts.display` or `ansi`, 3 with `pane-active`, `tab-active` or `find`, 4 with `character` or `glyphs`, 5 with `characterMotion`.
 - `character` is optional. See "Characters" below.
 - `glyphs` is optional. See "Glyphs" below.
+- `characterMotion` is optional: `moves` (the default) or `still`. `still` stops the character's slow drift at rest. Set it only when the operator asks. A file with it is version 5, and a person's own switch in Settings wins over it.
 - A font is one of the six names under "Write a theme". A theme cannot add a font.
 - Give both halves when you change the page colours. A dark half left out takes Collie's dark colours,
   which rarely match a new light half.

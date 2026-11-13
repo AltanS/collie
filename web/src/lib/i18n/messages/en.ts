@@ -426,6 +426,10 @@ export const en = {
   "settings.character.loading": "Loading",
   "settings.character.idle": "Idle",
   "settings.character.note": "The app icon, the splash and the push badge stay the Collie mark.",
+  // The switch under the list: whether the character drifts at rest. On until the device or the worn
+  // theme's `characterMotion` says otherwise (lib/mark-motion.ts).
+  "settings.character.moves": "Character moves",
+  "settings.character.movesHint": "Turn it off to keep the character still.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
   // --- settings.worktreeFolder (ADR 0093 note) ---
   // English only until the translation pass: listed in PENDING_TRANSLATION below.
@@ -3828,6 +3832,8 @@ export const PENDING_TRANSLATION = [
   "settings.character.loading",
   "settings.character.idle",
   "settings.character.note",
+  "settings.character.moves",
+  "settings.character.movesHint",
   "tricks.placeholder",
   "tricks.time.ago",
   "tricks.time.in",

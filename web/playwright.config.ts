@@ -1,5 +1,7 @@
 import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
 
+import { stillMarkState } from "./e2e/fixtures/still-mark";
+
 // The browser tier (M26). Vitest keeps every unit test that jsdom can run; this config owns the ONE
 // runner that opens the app in a real browser engine, and its specs are the ones that need an engine
 // (first paint before JS, real layout, a service worker, a CSP, real transitions). Nothing here
@@ -106,6 +108,14 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: APP_BASE_URL,
+    // THE CHARACTER HOLDS STILL. The header character drifts at rest whenever the page is visible, and a
+    // page that moves asks the engine for a frame at every vsync (WebKit ran multi-page cases 1.5 to 3
+    // times slower for it in 1.28.1). Every case runs with the device's own switch off, on each origin
+    // this config serves (4173 the app, 4174 the swap server, 4175 the mounted bundle). A case that
+    // writes its own design blob spreads `STILL_MARK`; a case that makes its own context passes
+    // `stillMarkState`; `e2e/mark-moves.spec.ts` is the one that turns the motion on. See
+    // `e2e/fixtures/still-mark.ts` for why this is not `reducedMotion`.
+    storageState: stillMarkState(APP_BASE_URL, "http://127.0.0.1:4174", "http://127.0.0.1:4175"),
     // Evidence for a human after a failure, never a baseline to compare against. No pixel is ever
     // asserted in this tier: there are no baseline images and there is not meant to be. A baseline
     // suite would be the flakiest thing in this repo and would fail on a font substitution.

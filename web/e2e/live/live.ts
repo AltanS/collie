@@ -18,6 +18,7 @@ import { expect, test as base, type APIRequestContext } from "@playwright/test";
 
 import { en } from "../../src/lib/i18n/messages/en";
 import { TOKEN_STORAGE_KEY } from "../../src/lib/pairing";
+import { DESIGN_KEY, STILL_MARK } from "../fixtures/still-mark";
 import { TOKEN_ENV } from "./pair";
 
 /** The storage key `src/lib/i18n/index.ts` reads the locale from. The value is the bare code. */
@@ -40,11 +41,13 @@ function deviceToken(): string {
 export const test = base.extend({
   page: async ({ page }, use) => {
     await page.addInitScript(
-      ([localeKey, locale, tokenKey, token]) => {
+      ([localeKey, locale, tokenKey, token, designKey, design]) => {
         window.localStorage.setItem(localeKey, locale);
         window.localStorage.setItem(tokenKey, token);
+        // The character holds still: a page that moves asks for a frame at every vsync (fixtures/still-mark.ts).
+        window.localStorage.setItem(designKey, design);
       },
-      [LOCALE_STORAGE_KEY, "en", TOKEN_STORAGE_KEY, deviceToken()],
+      [LOCALE_STORAGE_KEY, "en", TOKEN_STORAGE_KEY, deviceToken(), DESIGN_KEY, JSON.stringify(STILL_MARK)],
     );
     await use(page);
   },

@@ -6,6 +6,7 @@ import type { MathPackStatus } from "@/lib/types";
 
 import { installApiStub } from "./fixtures/api";
 import { serveWithShellCsp } from "./fixtures/csp";
+import { STILL_MARK } from "./fixtures/still-mark";
 
 const PANE = encodeURIComponent(fixtureAgents[0]!.paneId);
 const FILE = `/pane/${PANE}/changes/files?path=README.md`;
@@ -28,7 +29,7 @@ async function installMathStub(page: Page) {
 
 /** The device's math engine, chosen before the first navigation (lib/design.ts, `collie:design:v1`). */
 async function chooseEngine(page: Page, engine: string) {
-  await page.addInitScript((value) => localStorage.setItem("collie:design:v1", JSON.stringify({ font: "aldrich", math: value })), engine);
+  await page.addInitScript((blob) => localStorage.setItem("collie:design:v1", blob), JSON.stringify({ ...STILL_MARK, font: "aldrich", math: engine }));
 }
 
 test.describe("equations off by default", () => {
