@@ -356,6 +356,7 @@ message never steers, whoever sends it.
 | `grok` | hold | Collie holds it and types it when the pane is free |
 | `hermes` | hold | Collie holds it and types it when the pane is free |
 | `kiro` | hold | Collie holds it and types it when the pane is free |
+| `mcode` | hold | Collie holds it and types it when the pane is free |
 | `muse` | queue key | Tab queues it; Enter would steer, so Collie never presses it there |
 | `omp` | queue key | Ctrl+Q queues it; Enter would steer, so Collie never presses it there |
 | `opencode` | queue | Enter queues it in the harness, and it runs after the turn |

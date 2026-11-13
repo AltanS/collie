@@ -1418,6 +1418,8 @@ export const ko: Dictionary = {
   "harnessBar.effort": "추론 강도",
   "harnessBar.compact": "컨텍스트 압축",
   "harnessBar.resume": "재개",
+  "harnessBar.plan": "플랜",
+  "harnessBar.history": "히스토리",
   "harnessBar.tree": "트리",
   "harnessBar.confirmAria": "{command}을(를) 확인하려면 다시 탭하세요",
   "belt.jobs.label": "잡 {count}",

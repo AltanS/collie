@@ -23,6 +23,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **MiniMax Code (mcode) gains first-class harness support.** Collie can now discover active mcode sessions from live processes using open observability runtime logs, read session transcripts in Chat and History views, launch mcode with recipe option chips (Continue, PTC, mode flags), trigger slash commands from the command palette and harness bar, and display the official purple M brand icon.
+- **DeepSeek and Grok panes open Chat on macOS and match their live process.** DeepSeek sessions on macOS are discovered through open file locks with lsof, and Grok sessions without a known ID are discovered through active_sessions.json or open transcript files.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added

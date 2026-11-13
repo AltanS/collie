@@ -70,6 +70,8 @@ local:
                                     pane's history from the agent's own log
   ✓        integration-kiro         no hook — the adapter finds the session log
                                     itself
+  ✓        integration-mcode        no hook — the adapter finds the session log
+                                    itself
   ✓        integration-muse         no hook — the adapter finds the session log
                                     itself
   ✓        integration-openclaw     no hook — the adapter finds the session log
@@ -83,7 +85,7 @@ local:
   ✓        hook-python3             /fake/python3
   skipped: agent-sessions           the bridge reports no agent panes → start an
                                     agent in a pane, then re-run `collie doctor`
-  ✓        journal-roots            1 of 13 roots present — claude:
+  ✓        journal-roots            1 of 14 roots present — claude:
                                     /home/pat/.claude/projects (resolved from
                                     /home/pat; the BRIDGE resolves them from ITS
                                     OWN user's home)
@@ -101,6 +103,7 @@ local:
   ✓        sends-grok               no sends in the last 7 days
   ✓        sends-hermes             no sends in the last 7 days
   ✓        sends-kiro               no sends in the last 7 days
+  ✓        sends-mcode              no sends in the last 7 days
   ✓        sends-muse               no sends in the last 7 days
   ✓        sends-omp                no sends in the last 7 days
   ✓        sends-opencode           no sends in the last 7 days
@@ -193,6 +196,8 @@ local:
                                     pane's history from the agent's own log
   ✓        integration-kiro         no hook — the adapter finds the session log
                                     itself
+  ✓        integration-mcode        no hook — the adapter finds the session log
+                                    itself
   ✓        integration-muse         no hook — the adapter finds the session log
                                     itself
   ✓        integration-openclaw     no hook — the adapter finds the session log
@@ -206,7 +211,7 @@ local:
   ✓        hook-python3             /fake/python3
   skipped: agent-sessions           the bridge reports no agent panes → start an
                                     agent in a pane, then re-run `collie doctor`
-  ✓        journal-roots            1 of 13 roots present — claude:
+  ✓        journal-roots            1 of 14 roots present — claude:
                                     /home/pat/.claude/projects (resolved from
                                     /home/pat; the BRIDGE resolves them from ITS
                                     OWN user's home)
@@ -224,6 +229,7 @@ local:
   ✓        sends-grok               no sends in the last 7 days
   ✓        sends-hermes             no sends in the last 7 days
   ✓        sends-kiro               no sends in the last 7 days
+  ✓        sends-mcode              no sends in the last 7 days
   ✓        sends-muse               no sends in the last 7 days
   ✓        sends-omp                no sends in the last 7 days
   ✓        sends-opencode           no sends in the last 7 days

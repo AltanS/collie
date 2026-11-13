@@ -99,7 +99,9 @@ export const ICONOIR = {
   "harness-bar": "control-slider", // agent command bar setting · lucide SlidersHorizontal
   "harness-compact": "compress", // compact the context (agent command) · lucide Shrink
   "harness-effort": "dashboard-speed", // set effort (agent command) · lucide Gauge
+  "harness-history": "clock-rotate-right", // branch from an earlier prompt (agent command) · lucide History
   "harness-model": "cpu", // pick the model (agent command) · lucide Cpu
+  "harness-plan": "view-structure-down", // plan mode on, off or read (agent command) · lucide ListTree
   "harness-resume": "clock-rotate-right", // resume an earlier session (agent command) · lucide History
   "harness-tree": "view-structure-down", // session tree (agent command) · lucide ListTree
   "harnesses": "sparks", // harnesses · lucide Bot

@@ -99,7 +99,9 @@ export const PHOSPHOR = {
   "harness-bar": "sliders-horizontal", // agent command bar setting · lucide SlidersHorizontal
   "harness-compact": "arrows-in", // compact the context (agent command) · lucide Shrink
   "harness-effort": "gauge", // set effort (agent command) · lucide Gauge
+  "harness-history": "clock-counter-clockwise", // branch from an earlier prompt (agent command) · lucide History
   "harness-model": "cpu", // pick the model (agent command) · lucide Cpu
+  "harness-plan": "tree-view", // plan mode on, off or read (agent command) · lucide ListTree
   "harness-resume": "clock-counter-clockwise", // resume an earlier session (agent command) · lucide History
   "harness-tree": "tree-view", // session tree (agent command) · lucide ListTree
   "harnesses": "robot", // harnesses · lucide Bot

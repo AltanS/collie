@@ -750,6 +750,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "Where OpenClaw keeps its state. Empty follows OPENCLAW_STATE_DIR, else ~/.openclaw.",
     configField: "journalRoots",
   },
+  {
+    key: "mcode_root",
+    env: "COLLIE_MCODE_ROOT",
+    section: "journal",
+    kind: "roots",
+    default: [],
+    doc: "Where MiniMax Code keeps its dated session folders. Empty follows MINIMAX_HOME, else ~/.minimax/v2/sessions.",
+    configField: "journalRoots",
+  },
 
   // ── crew ───────────────────────────────────────────────────────────────────
   {
