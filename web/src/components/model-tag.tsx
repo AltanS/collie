@@ -36,10 +36,12 @@ import { cn } from "@/lib/utils";
 //
 // PERCENT: the figure rounded to a whole number, in tabular digits so the row does not jitter as the
 // number changes. DOTS: five dots, one per fifth, lit from the left for each FULL fifth, so only 100%
-// lights the fifth and 81% shows four, not five as a full window would. In both, 80% and up takes the
-// working colour (the number, or the lit dots), never red, because red marks harm (DESIGN.md §4). A
-// gauge the harness did not report is not drawn, in either, and the screen reader gets the exact
-// figure either way.
+// lights the fifth and 81% shows four, not five as a full window would. In both, a gauge at 80% and up
+// is RED (`status-blocked`, the notice red of DESIGN.md §4: the operator must act, a window is about to
+// run out): the number, or the lit dots. Altan's call, 2026-11-13, who first had it in the working
+// colour. {@link isHot} is the one rule, on the whole percentage the figure is written as, so the number
+// and the dots turn together. A gauge the harness did not report is not drawn, in either, and the screen
+// reader gets the exact figure either way.
 //
 // THE SESSION COST CLOSES THE ROW (.adr/0115, amended 2026-10-25): dollars after the last gauge, in the
 // gauges' muted colour and the tag's own size. It is a figure, not a gauge: no dots and never the working
@@ -64,8 +66,8 @@ import { cn } from "@/lib/utils";
 // returns the moment there is room. A trick item may take a tap, so it takes touches back the way the
 // notice slot does; the tag itself still takes none.
 
-/** At or above this percentage a gauge takes the working colour. */
-export const USAGE_WARN_AT = 80;
+/** At or above this percentage a gauge turns red. */
+export const USAGE_HOT_AT = 80;
 
 /** The dots per gauge: one per fifth. */
 const DOTS = 5;
@@ -172,6 +174,11 @@ function wholePercent(used: number): number {
   return Math.min(100, Math.max(0, Math.round(used)));
 }
 
+/** Whether a gauge is hot: the whole percentage it is written as is {@link USAGE_HOT_AT} or more. The one rule, for the number and the dots. */
+export function isHot(used: number): boolean {
+  return wholePercent(used) >= USAGE_HOT_AT;
+}
+
 /** The gauges to draw, in order: the context, then each window this build knows. */
 function gaugesOf(usage: PaneUsage | undefined): Gauge[] {
   if (usage === undefined) return [];
@@ -207,15 +214,15 @@ export function hasFigure(usage: PaneUsage | undefined): boolean {
 /** Five 3px dots, lit from the left, one per full fifth. A dot is as wide as it is tall, so it may be round (DESIGN.md §3). */
 function Dots({ used }: { used: number }) {
   const lit = Math.min(DOTS, Math.max(0, Math.floor(used / (100 / DOTS))));
-  const warn = used >= USAGE_WARN_AT;
+  const hot = isHot(used);
   return (
-    <span data-slot="usage-dots" data-lit={lit} data-warn={warn || undefined} className="inline-flex items-center gap-px">
+    <span data-slot="usage-dots" data-lit={lit} data-hot={hot || undefined} className="inline-flex items-center gap-px">
       {Array.from({ length: DOTS }, (_, i) => (
         <span
           key={i}
           className={cn(
             "size-[3px] rounded-full",
-            i < lit ? (warn ? "bg-status-working" : "bg-muted-foreground") : "bg-muted-foreground/25",
+            i < lit ? (hot ? "bg-status-blocked" : "bg-muted-foreground") : "bg-muted-foreground/25",
           )}
         />
       ))}
@@ -223,12 +230,12 @@ function Dots({ used }: { used: number }) {
   );
 }
 
-/** The gauge as a whole percentage, `19%`. The tone follows the number as written: 80 and up is the working colour. */
+/** The gauge as a whole percentage, `19%`. The tone follows the number as written: 80 and up is red. */
 function Percent({ used }: { used: number }) {
   const percent = wholePercent(used);
-  const warn = percent >= USAGE_WARN_AT;
+  const hot = isHot(used);
   return (
-    <span data-slot="usage-percent" data-warn={warn || undefined} className={cn("tabular-nums", warn && "text-status-working")}>
+    <span data-slot="usage-percent" data-hot={hot || undefined} className={cn("tabular-nums", hot && "text-status-blocked")}>
       {percent}%
     </span>
   );

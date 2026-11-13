@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formatCost, hasFigure, hasGauge, MODEL_TAG_ROOM, ModelTag, modelTagShows } from "./model-tag";
+import { formatCost, hasFigure, hasGauge, isHot, MODEL_TAG_ROOM, ModelTag, modelTagShows } from "./model-tag";
 import type { StatusItem } from "./trick-status-item";
 import { UsageRowControl } from "./usage-row-control";
 
@@ -44,6 +44,27 @@ describe("ModelTag", () => {
   });
 });
 
+describe("isHot, the one red rule", () => {
+  it("is the whole percentage as written, 80 or more, for every gauge and both modes", () => {
+    expect([0, 79, 79.4].map(isHot)).toEqual([false, false, false]);
+    expect([79.5, 80, 81, 100, 130].map(isHot)).toEqual([true, true, true, true, true]);
+    expect([-4, Number.NaN].map(isHot)).toEqual([false, false]);
+  });
+
+  it("turns the number and the lit dots red together, in ctx, 5h and 7d", () => {
+    const usage = { context: 79.6, limits: [{ window: "5h" as const, used: 80 }, { window: "7d" as const, used: 79 }] };
+    for (const mode of ["percent", "dots"] as const) {
+      const { container } = render(<ModelTag model={undefined} usage={usage} usageRow={mode} />);
+      const hot = [...container.querySelectorAll("[data-gauge]")].map((g) => g.querySelector("[data-hot]") !== null);
+      expect(hot).toEqual([true, true, false]);
+    }
+    const { container } = render(<ModelTag model={undefined} usage={{ context: 85 }} usageRow="dots" />);
+    const lit = [...container.querySelectorAll("[data-slot='usage-dots'] > span")];
+    expect(lit.filter((d) => d.className.includes("bg-status-blocked"))).toHaveLength(4);
+    expect(lit.some((d) => d.className.includes("bg-status-working"))).toBe(false);
+  });
+});
+
 describe("ModelTag usage dots (the Dots choice)", () => {
   const usage = { context: 42, limits: [{ window: "5h" as const, used: 58 }, { window: "7d" as const, used: 81 }] };
 
@@ -56,8 +77,8 @@ describe("ModelTag usage dots (the Dots choice)", () => {
     const dots = [...container.querySelectorAll("[data-slot='usage-dots']")];
     expect(dots.map((d) => d.getAttribute("data-lit"))).toEqual(["2", "2", "4"]);
     expect(dots.every((d) => d.children.length === 5)).toBe(true);
-    // 80% and up takes the working colour; under it does not.
-    expect(dots.map((d) => d.hasAttribute("data-warn"))).toEqual([false, false, true]);
+    // 80% and up is red; under it is not.
+    expect(dots.map((d) => d.hasAttribute("data-hot"))).toEqual([false, false, true]);
     expect(tag?.querySelector(".sr-only")?.textContent).toBe(
       "Model Opus 5.5 · high. Context 42% used. 5-hour limit 58% used. 7-day limit 81% used",
     );
@@ -122,15 +143,16 @@ describe("ModelTag usage percent (the default)", () => {
     expect(text(-4)).toBe("0%");
   });
 
-  it("takes the working colour from 80% and not before, as the dots do, never red", () => {
+  it("turns red from 80% and not before, on the number as written", () => {
     const tone = (context: number) => {
       const el = render(<ModelTag model={undefined} usage={{ context }} />).container.querySelector("[data-slot='usage-percent']");
-      return [el?.hasAttribute("data-warn"), el?.className.includes("text-status-working")];
+      return [el?.hasAttribute("data-hot"), el?.className.includes("text-status-blocked"), el?.className.includes("text-status-working")];
     };
-    expect(tone(79)).toEqual([false, false]);
-    expect(tone(79.4)).toEqual([false, false]);
-    expect(tone(80)).toEqual([true, true]);
-    expect(tone(100)).toEqual([true, true]);
+    expect(tone(79)).toEqual([false, false, false]);
+    expect(tone(79.4)).toEqual([false, false, false]);
+    expect(tone(79.5)).toEqual([true, true, false]);
+    expect(tone(80)).toEqual([true, true, false]);
+    expect(tone(100)).toEqual([true, true, false]);
   });
 
   it("draws nothing for a gauge that is not reported, and never NaN% or 0% for it", () => {

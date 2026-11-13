@@ -18,7 +18,7 @@ import { useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { Composer } from "@/components/composer";
-import { ModelTag } from "@/components/model-tag";
+import { isHot, ModelTag } from "@/components/model-tag";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import type { Surface } from "@/lib/surface/surface";
 import type { PaneUsage } from "@/lib/types";
@@ -52,13 +52,11 @@ interface StateDef {
 
 const STATES: readonly StateDef[] = [
   { key: "mid", title: "Working session", usage: { model: "Opus 5.5 · high", ctx: 42, fiveHour: 58, sevenDay: 36 } },
-  { key: "high", title: "Near every limit (80% and up turns amber)", usage: { model: "Opus 5.5 · high", ctx: 86, fiveHour: 93, sevenDay: 81 } },
+  { key: "high", title: "Near every limit (80% and up turns red)", usage: { model: "Opus 5.5 · high", ctx: 86, fiveHour: 93, sevenDay: 81 } },
   { key: "api", title: "API key: no subscription windows", usage: { model: "Sonnet 5.5", ctx: 23 } },
   { key: "named", title: "The statusline names the model: gauges only", usage: { ctx: 7, fiveHour: 8, sevenDay: 36 } },
 ];
 
-/** At or above this, a gauge takes the waiting colour. Not red: red marks harm (DESIGN.md §4). */
-const WARN_AT = 80;
 
 const GAUGES = [
   { id: "ctx", word: "ctx", spoken: "Context" },
@@ -100,11 +98,11 @@ function TagBox({ children, className }: { children: ReactNode; className?: stri
 
 /** A 16 by 3px bar, 2px corners, on the muted track. The fill is a width: a new value repaints. */
 function MiniBar({ value }: { value: number }) {
-  const warn = value >= WARN_AT;
+  const hot = isHot(value);
   return (
     <span className="relative inline-block h-[3px] w-4 overflow-hidden rounded-[1px] bg-muted-foreground/25 align-middle">
       <span
-        className={cn("absolute inset-y-0 left-0", warn ? "bg-status-working" : "bg-muted-foreground")}
+        className={cn("absolute inset-y-0 left-0", hot ? "bg-status-blocked" : "bg-muted-foreground")}
         style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
       />
     </span>
@@ -171,7 +169,7 @@ function TextTag({ usage }: { usage: Usage }) {
           <span className="flex gap-1.5 tabular-nums">
             {gauges.map((g) => (
               <span key={g.id}>
-                {g.word} <span className={cn(g.value >= WARN_AT && "text-status-working")}>{Math.round(g.value)}%</span>
+                {g.word} <span className={cn(isHot(g.value) && "text-status-blocked")}>{Math.round(g.value)}%</span>
               </span>
             ))}
           </span>
@@ -375,13 +373,13 @@ export function UsageRowSection() {
           state="usage-row-percent"
           mode="percent"
           title="Percent (the default)"
-          line="The share used, as a whole number: ctx 42%. Exact, and the number takes the working colour from 80%. Tabular digits, so the row does not jitter."
+          line="The share used, as a whole number: ctx 42%. Exact, and the number turns red from 80%. Tabular digits, so the row does not jitter."
         />
         <ModeCard
           state="usage-row-dots"
           mode="dots"
           title="Dots"
-          line="The same share as five dots, one per full fifth. Chosen in Settings, Appearance, Usage row."
+          line="The same share as five dots, one per full fifth, red from 80%. Chosen in Settings, Appearance, Usage row."
         />
       </Group>
       <Group title="The design round: three shapes for the usage gauges">
