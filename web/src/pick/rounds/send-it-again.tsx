@@ -8,10 +8,11 @@
 // slot), "Asking" (a second tap on the same text: the Send slot reads "Send it again?" and nothing was sent),
 // "After the confirm" (the confirming tap: the text goes under a new id, the fake bridge answers sent).
 //
-// The stage is built for the design app's frame, 390 wide and 470 high (378 by 458 inside its border): a caption
-// line, one row of terminal, the real composer and a short keyboard stand-in, with no scroll. The question stays
-// 3 seconds, the real `usePendingConfirm` time, so "Asking" plays its taps when the case opens (and again on the
-// page's Replay, which remounts the option), and a tap of your own in any case arms it afresh.
+// The stage is built for the design app's frame, 390 wide and 400 high (378 by 388 inside its border; its bottom panel
+// leaves about 445 px on a phone, less with the address bar): a caption line, the real composer at the bottom and a thin
+// keyboard strip under it, with no scroll. The question stays 3 seconds, the real `usePendingConfirm` time, so the
+// "Asking" case holds its state by watching the Send button: when the question has run out it taps Send once more, and
+// it never taps while the question shows, because that tap would send. A tap of your own in any case arms it afresh.
 //
 // The question is the existing destructive-send confirm's slot and button (`Really send?`), with other words and
 // no note above the box: no new row, no sheet. After the pick: this file and its line in ../rounds.ts go.
@@ -24,6 +25,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { Composer } from "@/components/composer";
 import { saveDraft } from "@/lib/drafts";
 import { markLive } from "@/lib/liveness";
+import { t } from "@/lib/i18n";
 import { forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent } from "@/lib/send-intent";
 import { ChromeBlock } from "@/playground/sections/shared";
@@ -38,20 +40,10 @@ const CASES: readonly PickCase[] = [
 
 const TEXT = "Run the full test suite, then fix whatever fails.";
 
-/** The taps each case plays, by the name of the button the composer shows at that moment. */
-function tapsOf(caseId: string): readonly string[] {
-  switch (caseId) {
-    case "asking":
-      return ["Send", "Send"];
-    case "confirmed":
-      return ["Send", "Send", "Send it again?"];
-    default:
-      return ["Send"];
-  }
-}
-
-/** Time for the fake bridge's answer to land between two taps. */
-const STEP_MS = 700;
+/** How often the case looks at the buttons. */
+const LOOK_MS = 100;
+/** How long a case waits for the composer to be ready for a tap before it gives up. */
+const READY_MS = 8_000;
 /** How often a live pane's stamp is renewed, so the box is not drawn "offline" (the cap is 90 s). */
 const RENEW_MS = 5_000;
 
@@ -65,14 +57,16 @@ const PREFS = {
   tapToFocus: true,
   expandClippedReply: true,
   stretchText: false,
+  // Each Replay sends one unknown on this pane; three would float the "Sending failed 3 times" card over the stage.
+  reportOffer: false,
 } as const;
 
-const MIRROR = ["● The retry is in. Waiting for your next step."];
-
-/** The design app's frame inside its 6 px border: what the stage must fit, with no scroll. */
-export const STAGE_HEIGHT = 458;
-/** The caption under the round, in plain words: how long the question stays and how to see it again. */
-export const CAPTION = "The question stays for 3 seconds. In After unknown, tap Send to see it again.";
+/** The design app's frame, border box. */
+export const FRAME_HEIGHT = 400;
+/** The frame inside its 6 px border: what the stage must fit, with no scroll. */
+export const STAGE_HEIGHT = FRAME_HEIGHT - 12;
+/** The caption in the round, in plain words: how long the question stays and how to see it again. */
+export const CAPTION = "The question stays 3 seconds. Tap Send to see it again.";
 
 /** The bridge's two answers: no evidence the first time, then a send that went. */
 function fakeSendAnswer(sent: number): object {
@@ -84,29 +78,57 @@ function fakeSendAnswer(sent: number): object {
 /** Stands in for the soft keyboard: the composer sits on top of it, as it does on a phone. */
 function Keyboard() {
   return (
-    <div aria-hidden="true" className="h-[96px] shrink-0 bg-muted/60 pt-2 text-center text-[11px] text-muted-foreground">
+    <div aria-hidden="true" className="flex h-10 shrink-0 items-center justify-center bg-muted/60 text-[11px] text-muted-foreground">
       keyboard
     </div>
   );
 }
 
-/** Press the button with this exact name, once it is there and enabled. Resolves false when it never shows. */
-function pressWhenReady(root: HTMLElement, name: string, cancelled: () => boolean): Promise<boolean> {
+const buttonsOf = (root: HTMLElement) => [...root.querySelectorAll<HTMLButtonElement>("button")];
+const live = (button: HTMLButtonElement) => !button.disabled && button.getAttribute("aria-disabled") !== "true";
+/** The plain Send button, or undefined while the box shows the question, a mic or a send in flight. */
+const plainSend = (root: HTMLElement) => buttonsOf(root).find((b) => b.getAttribute("aria-label") === "Send" && live(b));
+const question = (root: HTMLElement) => buttonsOf(root).find((b) => b.getAttribute("aria-label") === "Send it again?" && live(b));
+/** The box holds the text (the stored draft is back) and nothing is in flight. */
+const holdsText = (root: HTMLElement) => root.querySelector("textarea")?.value === TEXT;
+/** The unknown notice stands at the Send slot. */
+const unknownNoticeShows = (root: HTMLElement) => (root.textContent ?? "").includes(t("composer.protocol.unknown"));
+
+/** Resolve once `ready()` holds, or false when it never does inside READY_MS or the case ends. */
+function until(ready: () => boolean, stopped: () => boolean): Promise<boolean> {
   return new Promise((resolve) => {
-    let tries = 0;
+    const started = Date.now();
     const look = () => {
-      if (cancelled()) return resolve(false);
-      const button = [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.getAttribute("aria-label") === name && !b.disabled && b.getAttribute("aria-disabled") !== "true");
-      if (button !== undefined) {
-        button.click();
-        return resolve(true);
-      }
-      tries += 1;
-      if (tries >= 100) return resolve(false);
-      setTimeout(look, 50);
+      if (stopped()) return resolve(false);
+      if (ready()) return resolve(true);
+      if (Date.now() - started > READY_MS) return resolve(false);
+      setTimeout(look, LOOK_MS);
     };
     look();
   });
+}
+
+/**
+ * Play a case's taps through the composer's own buttons, each only when the composer is ready for it:
+ * the first send once the stored draft is back, the next once the unknown notice stands. "Asking" then
+ * keeps the question on screen by watching: when the plain Send is back (the real 3 seconds ran out)
+ * and the text is still unsent, it taps once more. It never taps while the question shows.
+ */
+async function play(root: HTMLElement, caseId: string, stopped: () => boolean): Promise<void> {
+  if (!(await until(() => holdsText(root) && plainSend(root) !== undefined, stopped))) return;
+  plainSend(root)?.click();
+  if (caseId === "unknown") return;
+  if (!(await until(() => unknownNoticeShows(root) && plainSend(root) !== undefined, stopped))) return;
+  plainSend(root)?.click();
+  if (caseId === "confirmed") {
+    if (await until(() => question(root) !== undefined, stopped)) question(root)?.click();
+    return;
+  }
+  while (!stopped()) {
+    await new Promise((resolve) => setTimeout(resolve, LOOK_MS));
+    if (stopped() || !holdsText(root) || !unknownNoticeShows(root)) continue;
+    plainSend(root)?.click();
+  }
 }
 
 /** One phone: a little terminal, then the real composer on a pane whose box holds the text, the keyboard under it. */
@@ -170,16 +192,11 @@ function SendItAgainPhone({ caseId }: { caseId: string }) {
     };
   }, []);
 
-  // The case's taps, played through the composer's own buttons, one every STEP_MS.
+  // The case's taps (see `play`).
   useEffect(() => {
     if (root === null) return;
     let stop = false;
-    void (async () => {
-      for (const name of tapsOf(caseId)) {
-        await new Promise((resolve) => setTimeout(resolve, STEP_MS));
-        if (stop || !(await pressWhenReady(root, name, () => stop))) return;
-      }
-    })();
+    void play(root, caseId, () => stop);
     return () => {
       stop = true;
     };
@@ -190,9 +207,7 @@ function SendItAgainPhone({ caseId }: { caseId: string }) {
       <p data-slot="send-it-again-caption" className="shrink-0 px-3 py-1.5 text-[11px] leading-snug text-muted-foreground">
         {CAPTION}
       </p>
-      <div className="min-h-0 flex-1 overflow-hidden px-3 font-mono text-[11px] leading-snug text-muted-foreground">
-        <div className="whitespace-pre">{MIRROR.join("\n")}</div>
-      </div>
+      <div className="min-h-0 flex-1" />
       <RouterProvider router={router} />
       <Keyboard />
     </div>
@@ -201,6 +216,6 @@ function SendItAgainPhone({ caseId }: { caseId: string }) {
 
 const OPTIONS: readonly PickOption[] = [{ n: 1, label: "Send it again?", state: "send-it-again", render: (caseId) => <SendItAgainPhone key={caseId} caseId={caseId} /> }];
 
-const ROUND: PickRoundDef = { title: "Send it again?", cases: CASES, options: OPTIONS, frameHeight: STAGE_HEIGHT + 12 };
+const ROUND: PickRoundDef = { title: "Send it again?", cases: CASES, options: OPTIONS, frameHeight: FRAME_HEIGHT };
 
 export default ROUND;
