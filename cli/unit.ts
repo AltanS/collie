@@ -1,5 +1,6 @@
 import { join, win32 } from "node:path";
 
+import { defaultPartsRoot, partsRoot } from "../bridge/inside/links.ts";
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
 import type { CliContext, EnvVars } from "./context.ts";
@@ -64,6 +65,13 @@ export interface ServiceSpec {
    * session the bridge dials, and a unit that dropped them would dial the `default` one.
    */
   core: { session: string; socket: string } | null;
+  /**
+   * The linked parts folder (M99 spec 09) when the CLI's is not the default `~/.config/collie/inside`
+   * (an absolute `XDG_CONFIG_HOME` or `COLLIE_PARTS_DIR` in the shell), else absent. A supervised
+   * bridge does not inherit the shell, so without this line `collie link` would write the record in
+   * one folder and the bridge read another.
+   */
+  partsDir?: string | null;
 }
 
 /**
@@ -83,7 +91,14 @@ export function serviceSpec(ctx: CliContext, tailscaleHosts = "", host: Host = H
     port: ctx.port,
     tailscaleHosts,
     core: coreOf(ctx),
+    partsDir: partsDirOf(ctx),
   };
+}
+
+/** The parts folder to pin in the unit, or null when it is the default one both sides resolve alone. */
+function partsDirOf(ctx: CliContext): string | null {
+  const root = partsRoot(ctx.env, ctx.home);
+  return root === defaultPartsRoot(ctx.home) ? null : root;
 }
 
 /** The core's pass-through, when this install drives herdr-core by name (`COLLIE_MUX`, written by `collie start` for an auto-pick too). */
@@ -140,6 +155,8 @@ export function bridgeEnvironment(spec: ServiceSpec): EnvVars {
   // Assigned, never unconditionally: see {@link ServiceSpec.tailscaleHosts} — an empty value written
   // here is a lockout, not a default, so nothing is written at all.
   if (spec.tailscaleHosts !== "") env.COLLIE_TAILSCALE_HOSTS = spec.tailscaleHosts;
+  // Only when moved: every unit of a default install stays as it was.
+  if (spec.partsDir !== undefined && spec.partsDir !== null) env.COLLIE_PARTS_DIR = spec.partsDir;
   // herdr-core only, so no other install's unit changes by this knob's existence. Each core variable
   // is written only when set, for the same reason the allowlist is: an empty value would replace a
   // session the operator chose with the default one.

@@ -238,6 +238,8 @@
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
 
+import { sendByData, type DataDoor, type DataLimits } from "./data-send.ts";
+import { pickSendPath } from "./path.ts";
 import { statSync } from "node:fs";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
@@ -576,6 +578,20 @@ export interface SendDeps {
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * The data road (M99 spec 03, `bridge/surface/path.ts`): a part inside the agent program takes a
+   * plain send over the inside wire. Absent, or `enabled()` false (the kill switch): every send takes
+   * the screen road exactly as before.
+   */
+  readonly data?: DataRoad;
+}
+
+/** What the Send Protocol needs for the data road. */
+export interface DataRoad {
+  /** The kill switch, read per send. */
+  enabled(): boolean;
+  readonly door: DataDoor;
+  readonly limits?: DataLimits;
 }
 
 /** A request as the route checked it. */
@@ -2885,6 +2901,11 @@ export class SendProtocol {
    * The request files hold receipts and the line Sent would keep (requests.ts), so no row of the screen
    * can come out of here, and of the text only that line.
    */
+  /** The road a request's send took (M99 spec 03): `data`, `screen` after a data try, or null for the screen road with no data try. */
+  pathOf(id: string): "data" | "screen" | null {
+    return this.deps.store.get(id)?.path ?? null;
+  }
+
   recent(paneId: string, limit = 10): SendReceiptRow[] {
     const rows: SendReceiptRow[] = [];
     for (const record of this.deps.store.list().toReversed()) {
@@ -3435,6 +3456,18 @@ export class SendProtocol {
     return started;
   }
 
+  /**
+   * The pane's part reported the end of its turn (M99 spec 03): the oldest held request of that pane
+   * goes now, as the poll's release would take it (its run reads the road and the turn again). Null when
+   * nothing waits or one already goes out. The poll's own rules ({@link tickHolds}) stay as they are.
+   */
+  releaseOnTurnEnd(session: string, paneId: string): Promise<SendAnswer | null> | null {
+    const waiting = this.deps.holds?.waiting(session, paneId) ?? [];
+    if (waiting.some((entry) => entry.state === "running" || this.inFlight.has(entry.id))) return null;
+    const next = waiting.find((entry) => entry.state === "held");
+    return next === undefined ? null : this.releaseQuietly(next.id);
+  }
+
   /** {@link release} for the poll: a throw is a warning in the journal, never an unhandled rejection. */
   private async releaseQuietly(id: string): Promise<SendAnswer | null> {
     try {
@@ -3789,6 +3822,10 @@ export class SendProtocol {
       // under the lock, right before anything is read or typed (agent views SECURITY rule 6).
       const moved = state.request.view?.check() ?? null;
       if (moved !== null) throw new Ended("refused", "stale_view", { detail: moved });
+      // The data road, when the pick says so (bridge/surface/path.ts). It answers, or hands back null
+      // when nothing reached the part: then the screen road below runs the send, once.
+      const byData = await this.runData(state, release);
+      if (byData !== null) return byData;
       await this.steps(state);
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
@@ -3810,6 +3847,44 @@ export class SendProtocol {
     } finally {
       locks.release(state.lockKey, record.id);
     }
+  }
+
+  /**
+   * One send by the data road (M99 spec 03), under the pane lock, or null for the screen road. A turn
+   * the part reports running holds the send as the screen road would (the same queue, card, Cancel
+   * and Dismiss); a release that meets a running turn goes back to its place. The part's `sent` is the
+   * receipt `sent` with no key; `failed` or no word is `unknown(no_evidence)`: it may have arrived, and
+   * nothing sends it again. A send no part took goes to the screen road, once, its record saying so.
+   */
+  private async runData(state: RunState, release: boolean): Promise<SendAnswer | null> {
+    const data = this.deps.data;
+    if (data === undefined) return null;
+    const { request, target, record } = state;
+    const address = { session: target.session, paneId: target.paneId };
+    const pick = pickSendPath({
+      enabled: data.enabled(),
+      part: data.door.partOf(address),
+      request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true },
+    });
+    if (pick.path === "screen") return null;
+    const turn = data.door.turnOf(address);
+    // A part that has not reported a turn since it bound (a bridge restart, a reload mid turn) leaves
+    // the turn unknown: the screen road reads it and runs the send, as today.
+    if (turn === null) return null;
+    if (turn === "running") {
+      const end = new Ended("refused", "turn_running");
+      if (release) return this.backToQueue(state, end);
+      return this.holdsEnd(state, end) ? this.hold(state, end) : this.settle(state, end);
+    }
+    this.deps.store.markPath(record.id, "data");
+    // A WalkyTalky delivery goes as `mail`: the text is the envelope the screen road would type (spec 05).
+    const result = await sendByData(data.door, address, { id: record.id, kind: request.draftHolds === true ? "mail" : "prompt", text: request.text }, data.limits);
+    if (result.kind === "screen") {
+      this.deps.store.markPath(record.id, "screen");
+      return null;
+    }
+    if (result.kind === "sent") return this.settle(state, new Ended("sent", undefined, { framed: false }));
+    return this.settle(state, new Ended("unknown", "no_evidence", { framed: false }));
   }
 
   /** The harness starting in the pane ({@link SendDeps.starting}), or null. A throw reads as null. */

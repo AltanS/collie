@@ -38,6 +38,7 @@ const EXEMPT = {
   // The launcher's statement about this process, not the operator's about this Collie.
   COLLIE_PLUGIN_ROOT: "the checkout this binary runs from, injected by the launcher",
   COLLIE_SUPERVISOR: "which service manager is in front of this process",
+  COLLIE_PARTS_DIR: "the linked parts folder the service pins so the bridge reads the CLI's folder (cli/unit.ts, M99)",
   // Template tokens and test switches, never read from an environment at all.
   COLLIE_VERSION: "a token `collie docs` substitutes into a page",
   COLLIE_DOCS_TABLE: "a token `collie docs` substitutes into a page",

@@ -36,6 +36,12 @@
     "examples/**",
     // The parked Cloudflare example (M55 spec 04): its own package.json, lockfile and tests, in no CI job.
     "experiments/**",
+    // The Collie mod's code (M99 spec 02) runs inside Claude Code, typed against its API and checked by
+    // `claude plugin validate` and `claude plugin test`. It may import nothing, so it cannot use this
+    // codebase's JSON parsers. Its own `*.spec.ts` checks, the guard included, stay under these rules.
+    "inside/claude/hooks/**",
+    "inside/claude/tests/**",
+    "inside/claude/types/**",
     // Vendored byte for byte and pinned by hash (ADR 0096 Decision 6): a lint fix would change the served bytes.
     "web/public/stt/**",
     "assets/**"

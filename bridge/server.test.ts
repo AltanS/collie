@@ -263,6 +263,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     stateDir: "/tmp/state",
     multiSession: true,
     surfaceShadow: false,
+    inside: false,
     sendProtocol: false,
     walky: true,
     walkyPairLimit: 6,

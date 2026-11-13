@@ -229,6 +229,48 @@ Turn notifications on in Collie's Settings on the phone. **Needs input** is enab
 an iPhone, install Collie to your home screen first. Safari restricts Web Push to home-screen web
 apps. See [Web Push](voice-and-push.md#web-push-optional).
 
+## Send by data (optional, experimental)
+
+Collie normally types each message into the pane and reads the box back to prove it arrived. With
+Collie 1.29.0 or later you can link Claude Code instead. A plain message from the phone then goes
+into Claude Code as data, and no key is typed.
+
+```bash
+collie link claude     # needs Claude Code on your PATH
+collie link status     # which harnesses are linked
+collie unlink claude   # back to typing, for every session
+```
+
+What linking does:
+
+- It writes a small Claude Code plugin to `~/.config/collie/inside/claude` and adds it to Claude Code
+  for your user (`claude plugin`, user scope). It changes no settings file and restarts nothing.
+- A running Claude Code session takes the plugin after `/reload-plugins`. A new session takes it at
+  start. The bridge sees the link within 15 seconds.
+- A plain message and a WalkyTalky message go in as data. At the desk, Claude Code shows "Prompt from
+  the collie plugin" above such a prompt.
+- An Allow or Deny tap on a permission card answers the dialog through the plugin. A tap at the desk
+  still wins when it comes first.
+- Everything else keeps the screen path: slash commands, shell lines, attachments and steers.
+- The plugin never calls a model, never reads a key or a password, and writes no file.
+
+What it does not do:
+
+- Nothing goes by data until you run `collie link claude`. Only Claude Code can be linked in this
+  version; the other agents keep the screen path.
+- Windows keeps the screen path. `collie link` refuses there.
+- When an administrator sets `allowManagedHooksOnly`, Claude Code runs no plugin hooks. The plugin
+  then stays idle and Collie types as before. `collie doctor` says so on its `link-claude` line.
+- The link is for your user account, shared by every Collie on the machine. `collie uninstall`
+  removes it only with the last Collie that is installed. `COLLIE_INSIDE=off` in a Collie's `.env`
+  turns sending by data off for that Collie alone.
+
+The forms `collie link <harness>`, `collie unlink <harness>` and `collie link status` need Collie
+1.29.0 or later. Check with `collie version` first. An older `collie` ignores the word after `link`
+and `unlink`: `collie link claude` there puts `collie` on your PATH, and `collie unlink claude`
+removes `~/.local/bin/collie` when it points at that checkout. See
+[Put `collie` on your PATH](commands.md#put-collie-on-your-path).
+
 ## Start an agent or a shell from the phone
 
 You do not need the host to start work. The **+ New** button sits at the bottom right of the

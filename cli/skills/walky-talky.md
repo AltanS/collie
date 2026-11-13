@@ -115,10 +115,10 @@ printf '%s' "$BODY" | {{COLLIE_BIN}} walky send collie-04rj6a/w54:p1J#anx6
 tell your operator the reason and stop. Do not send it again. A send to a pane that closed, whose id
 another pane took, is refused `pane replaced`. Run `who` again.
 
-After `send`, end your turn. Do not poll and do not sleep. The answer is typed into your pane as
+After `send`, end your turn. Do not poll and do not sleep. The answer arrives in your pane as
 your next prompt, with `reply to <your id>` in its header. If your pane is busy, Collie queues or holds it
-until your turn ends. `{{COLLIE_BIN}} walky inbox` shows it too. `status` says only that your message was
-typed. It does not say the other agent read or answered it.
+until your turn ends. `{{COLLIE_BIN}} walky inbox` shows it too. `status` says only that your message went
+in. It does not say the other agent read or answered it.
 
 For one agent, use its pane address and copy it from `who`. Use `here` when every agent in your space should
 get it, on every machine of the crew, and `<repo>` to narrow it to one folder. Use them only when the message
@@ -149,7 +149,8 @@ Read one message by its id. This is how you read the body of a message from anot
 
 `{{COLLIE_BIN}} walky status wt_...` shows what became of a message you sent: "queued", "held", "typed into
 the pane", "waiting in the inbox, not typed", "not sent" or "may have arrived, will not be sent again".
-"held: draft present" or "held: turn running" means Collie types it when the box clears or the turn ends,
+"typed into the pane" means the message went in as a prompt, typed on the screen or handed to the agent
+directly. "held: draft present" or "held: turn running" means Collie puts it in when the box clears or the turn ends,
 up to 60 minutes. Wait. Do not send it again. If a send says "waiting in the inbox", do not send it again:
 it waits there. If it says "may have arrived", do not send it again either: it may already be there. For a
 pane on another machine, "queued (outcome known on the lead)" also means wait.

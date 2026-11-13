@@ -318,6 +318,21 @@ describe("dispatch", () => {
     expect(ran).toEqual(["serve status"]);
   });
 
+  test("`link --help` and `unlink --help` name both meanings, the PATH name and the harness link (M99 spec 09)", async () => {
+    for (const argv of [["link", "--help"], ["link", "claude", "--help"], ["unlink", "-h"]]) {
+      const { table, ran } = spied();
+      const io = capture();
+      expect(await run(argv, io, table)).toBe(EXIT.OK);
+      expect(ran).toEqual([]);
+      const text = io.stdout.join("\n");
+      expect(text).toContain("~/.local/bin/collie");
+      expect(text).toContain("<harness>");
+    }
+    const io = capture();
+    await run(["link", "--help"], io, spied().table);
+    expect(io.stdout).toContain("  collie link status     say which harnesses are linked");
+  });
+
   test("`_apply-update --help` runs nothing and exits non-zero", async () => {
     const { table, ran } = spied();
     const io = capture();

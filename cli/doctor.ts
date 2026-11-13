@@ -68,6 +68,7 @@ import { muxFinding, muxSettings, pathLinkFinding, tailscaleFindings, type MuxSe
 import { cacheFindings } from "./cache-findings.ts";
 import { surfaceFindings } from "./surface-findings.ts";
 import { harnessFindings, harnessReader, type ReadHarness } from "./harness-findings.ts";
+import { linkFindings } from "./harness-link.ts";
 import { sendsSection } from "./send-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { herdrCoreFindings, type HcDial } from "./herdr-core-findings.ts";
@@ -263,6 +264,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // history section reads the panes off it, and `restart-pending` reads the bridge's own verdict on
   // whether it is still running the collie on disk (issue #238). One request, two readers.
   const ownRead = once(() => ownSnapshot(deps));
+  const harnessRows = deps.harnesses === undefined ? [] : await harnessFindings(deps.harnesses);
   const local: Finding[] = [
     identity(deps),
     configFile(deps),
@@ -337,7 +339,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // summary line and one line per row, read from the bridge's own day files. A read, like the rest.
     ...surfaceFindings({ ctx: deps.ctx, files: deps.files, now: deps.now }),
     // The binary and version of every harness with a profile, and what the profile says (1.24.1).
-    ...(deps.harnesses === undefined ? [] : await harnessFindings(deps.harnesses)),
+    ...harnessRows,
+    // Which harnesses are linked for the data path (M99 spec 09): one row each, read from files.
+    ...linkFindings({ ctx: deps.ctx, files: deps.files }, (harness) => harnessRows.find((row) => row.harness === harness)?.version ?? null),
     // Whether sends reach each harness (M71 spec 01): the outcomes of its recent sends, read from the
     // receipts in `<stateDir>/sends/` without a store, and three rules over them. Local: no stamp.
     // Then the held sends still open and how often a send met a screen it could not type into (spec 02).

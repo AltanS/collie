@@ -62,6 +62,12 @@ export interface SendRecord {
   readonly submitSentAt?: number;
   /** When a held request's release started (M56 spec 15): its run is bounded from here, not from accept. */
   readonly runAt?: number;
+  /**
+   * Which road ran the send (M99 spec 03): `data` when the pane's part took it over the inside wire,
+   * `screen` when a data try fell back to the Send Protocol's keys (nothing reached the part). Absent:
+   * the screen road, as on every record before 1.29 and every send with no data try.
+   */
+  readonly path?: "data" | "screen";
   readonly receipt?: SendReceipt;
 }
 
@@ -247,6 +253,8 @@ export function parseSendRecord(raw: JsonValue | undefined): SendRecord | null {
   if (submitSentAt !== undefined) record = { ...record, submitSentAt };
   const runAt = asJsonNumber(node.runAt);
   if (runAt !== undefined) record = { ...record, runAt };
+  const path = asJsonString(node.path);
+  if (path === "data" || path === "screen") record = { ...record, path };
   if (node.receipt !== undefined) {
     const receipt = parseReceipt(node.receipt);
     if (receipt === undefined) return null;
@@ -397,6 +405,13 @@ export class RequestStore {
     if (this.collie !== undefined) record = { ...record, collie: this.collie };
     this.write(record);
     return { kind: "new", record };
+  }
+
+  /** The road the send took (see {@link SendRecord.path}). A settled record keeps the road it settled on. */
+  markPath(id: string, path: "data" | "screen"): void {
+    const known = this.get(id);
+    if (known === null || known.phase === "settled") return;
+    this.write({ ...known, path });
   }
 
   /** Written before the submit key goes out, so a crash after it reads as `unknown`, never as "not sent". */

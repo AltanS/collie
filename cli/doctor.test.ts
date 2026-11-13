@@ -14,6 +14,9 @@ import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { FakeDurableProgram, SOCKET_ONLY_SKIP } from "../bridge/mux/durable/fixture.ts";
 import { SYSTEM_PROBE, type SocketProbe } from "../bridge/mux/durable/client.ts";
+import { hookTargetFileName, hookTargetsDir } from "../bridge/beacon/hook-targets.ts";
+import { linkRecordPath, partsRoot } from "../bridge/inside/links.ts";
+import { claudePartDir, linkFindings, marketplaceText } from "./harness-link.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
 import { durableFindings } from "./durable-findings.ts";
 import type { CliContext } from "./context.ts";
@@ -53,7 +56,7 @@ import type { BinaryRead } from "../bridge/surface/binary-version.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import type { HarnessFinding, ReadHarness } from "./harness-findings.ts";
 import type { PairedDevice } from "../bridge/pairing.ts";
-import { POWERSHELL_UTF8 } from "./sys.ts";
+import { POWERSHELL_UTF8, realFiles } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 import {
   configFilePaths,
@@ -161,6 +164,8 @@ function healthyFiles(): SeededFiles {
 }
 
 /** One `sends-<harness>` row per harness with a profile (M71 spec 01), there whether or not a send ran. */
+/** The link rows (M99 spec 09), one per harness, in the order `collie link status` lists them. */
+const LINK_CHECKS = ["link-claude", "link-pi", "link-omp", "link-opencode"];
 const SENDS_CHECKS = [...loadProfiles().keys()].map((id) => `sends-${id}`);
 
 /** Where the bridge keeps its paired devices, under the fake state dir. */
@@ -459,6 +464,8 @@ describe("collie doctor — the contract", () => {
       "cache-claims",
       "cache-rules",
       "cache-env",
+      // One row per harness for the data path (M99 spec 09); none linked here.
+      ...LINK_CHECKS,
       ...SENDS_CHECKS,
       "holds",
       "restart-pending",
@@ -1970,6 +1977,8 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "cache-claims",
       "cache-rules",
       "cache-env",
+      // One row per harness for the data path (M99 spec 09); none linked here.
+      ...LINK_CHECKS,
       ...SENDS_CHECKS,
       "holds",
       "restart-pending",
@@ -2978,7 +2987,8 @@ describe("plain output parity (M43 spec 04, wrapped at 80 by M71 spec 03)", () =
   // spec 02 (no screen row: a harness with no receipt has none) (the healthy solo fixture, then a config.toml
   // secret the mode rule could not tighten). M71 spec 03 moved it once more: rows wrap at 80 columns, so a
   // long detail continues under the value column. M79 spec 02 turned integration-omp ok: pi's adapter
-  // finds its own session now, so an omp pane needs no Herdr hook. The
+  // finds its own session now, so an omp pane needs no Herdr hook. M99 spec 09 added the four
+  // `link-*` rows, none linked in this fixture. The
   // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all.
   test("the plain doctor output on a POSIX host matches the golden, wrapped at 80 columns", async () => {
     const out = `${await render()}---\n${await render(blocked())}`;
@@ -3553,5 +3563,94 @@ describe("the telemetry row (M86 spec 01)", () => {
     const { byCheck } = await findings(h);
     expect(byCheck.get("telemetry")?.detail).toContain("as this shell sees it");
     expect(byCheck.has("telemetry-switch")).toBe(false);
+  });
+});
+
+// ── link-* (M99 spec 09) ─────────────────────────────────────────────────────
+// One row per harness, read from the parts folder and its link records alone: no harness runs.
+
+describe("the link rows (M99 spec 09)", () => {
+  const made: string[] = [];
+  afterEach(() => {
+    for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  function lab(options: { readonly version?: string; readonly managed?: string } = {}) {
+    const root = mkdtempSync(join(tmpdir(), "collie-doctor-link-"));
+    made.push(root);
+    const home = join(root, "home");
+    const managed = join(root, "managed.json");
+    if (options.managed !== undefined) writeFileSync(managed, options.managed);
+    const ctx = context({ HOME: home }, { home });
+    const deps = { ctx, files: realFiles, managedSettings: managed, version: options.version };
+    /** Write a linked Claude part of `version`, as `collie link claude` leaves it. */
+    const linkClaude = (version: string): void => {
+      const dir = claudePartDir(ctx);
+      mkdirSync(join(dir, ".claude-plugin"), { recursive: true });
+      writeFileSync(join(dir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "collie", version }));
+      writeFileSync(join(dir, ".claude-plugin", "marketplace.json"), marketplaceText());
+      writeFileSync(linkRecordPath(ctx.env, home, "claude"), JSON.stringify({ harness: "claude", version, at: 1 }));
+    };
+    return { deps, linkClaude };
+  }
+  const row = (rows: readonly Finding[], check: string) => rows.find((f) => f.check === check);
+
+  test("not linked: ok, one row per harness", () => {
+    const rows = linkFindings(lab().deps, () => null);
+    expect(rows.map((f) => [f.check, f.status])).toEqual([
+      ["link-claude", "ok"],
+      ["link-pi", "ok"],
+      ["link-omp", "ok"],
+      ["link-opencode", "ok"],
+    ]);
+  });
+
+  test("linked with this build's part: ok, the version named", () => {
+    const r = lab({ version: "1.29.0" });
+    r.linkClaude("1.29.0");
+    expect(row(linkFindings(r.deps, () => "2.1.330"), "link-claude")).toMatchObject({ status: "ok", detail: "linked, part 1.29.0" });
+  });
+
+  test("a part older than the bridge: warn, with the verb that writes this build's", () => {
+    const r = lab({ version: "1.29.0" });
+    r.linkClaude("1.28.0");
+    expect(row(linkFindings(r.deps, () => null), "link-claude")).toMatchObject({ status: "warn", remedy: "`collie link claude` writes this build's part" });
+  });
+
+  test("blocked by policy: warn", () => {
+    const r = lab({ version: "1.29.0", managed: '{"allowManagedHooksOnly":true}' });
+    r.linkClaude("1.29.0");
+    const found = row(linkFindings(r.deps, () => null), "link-claude");
+    expect(found?.status).toBe("warn");
+    expect(found?.detail).toContain("blocked by policy");
+  });
+
+  test("link-folder: only once something is linked; it compares the bridge's folder with this shell's", () => {
+    const r = lab({ version: "1.29.0" });
+    expect(linkFindings(r.deps, () => null).map((f) => f.check)).not.toContain("link-folder");
+    r.linkClaude("1.29.0");
+    const ctx = r.deps.ctx;
+    // No bridge running: skipped.
+    expect(row(linkFindings(r.deps, () => null), "link-folder")?.status).toBe("skipped");
+    const target = join(hookTargetsDir(ctx.env, ctx.home), hookTargetFileName(ctx.stateDir));
+    mkdirSync(join(target, ".."), { recursive: true });
+    const record = (parts?: string) => JSON.stringify({ schemaVersion: 1, stateDir: ctx.stateDir, pid: 1, pidStartTime: null, bootedAt: 1, parts });
+    // An older bridge names no folder.
+    writeFileSync(target, record());
+    expect(row(linkFindings(r.deps, () => null), "link-folder")?.status).toBe("skipped");
+    writeFileSync(target, record(partsRoot(ctx.env, ctx.home)));
+    expect(row(linkFindings(r.deps, () => null), "link-folder")?.status).toBe("ok");
+    // A unit written before the folder moved: the bridge reads the default, this shell another.
+    writeFileSync(target, record("/elsewhere/collie/inside"));
+    const moved = row(linkFindings(r.deps, () => null), "link-folder");
+    expect(moved?.status).toBe("warn");
+    expect(moved?.detail).toContain("the bridge does not see the link");
+  });
+
+  test("a harness version not verified for the data path: warn", () => {
+    const r = lab({ version: "1.29.0" });
+    r.linkClaude("1.29.0");
+    const found = row(linkFindings(r.deps, () => "2.1.300"), "link-claude");
+    expect(found?.status).toBe("warn");
+    expect(found?.detail).toContain("Claude Code 2.1.300 is not verified for the data path");
   });
 });

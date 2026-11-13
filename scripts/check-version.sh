@@ -7,6 +7,10 @@
 #   - web/package.json    (PWA frontend)
 #   - CHANGELOG.md        (newest NUMBERED "## [x.y.z]" heading)
 #
+# and, where the tree has it, the Collie mod's manifest `inside/claude/.claude-plugin/plugin.json`
+# (M99 spec 02: the mod's version is Collie's version). It must name the PLAIN version: an Edge
+# stamp never touches it, so an Edge build's mod says `X.Y.Z`. A release commit bumps it with the three.
+#
 # "## [Unreleased]" is not a numbered heading and is ignored here: unreleased work collects under
 # it and only the release commit renames it to "## [x.y.z] - YYYY-MM-DD".
 #
@@ -62,6 +66,16 @@ if [ -z "$toml_v" ]; then echo "✗ could not read version from herdr-plugin.tom
 
 if [ "$pkg_v" != "$toml_v" ] || [ "$web_v" != "$toml_v" ] || [ "$log_v" != "$base_v" ]; then
   fail=1
+fi
+
+mod_json="$ROOT/inside/claude/.claude-plugin/plugin.json"
+if [ -f "$mod_json" ]; then
+  mod_v="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$mod_json" | head -1)"
+  if [ "$mod_v" != "$base_v" ]; then
+    echo "✗ the Collie mod's manifest says ${mod_v:-<missing>}, and Collie is $base_v:" >&2
+    echo "  set \"version\" in inside/claude/.claude-plugin/plugin.json to $base_v (the plain version, never an -edge.N)." >&2
+    exit 1
+  fi
 fi
 
 if [ "$fail" -ne 0 ]; then

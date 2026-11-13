@@ -13,6 +13,11 @@
 // `collie mux list` reads the live bridges without dialling them. A record without them (a bridge of
 // an older build) still parses and reads as unknown. The emitter ignores all three.
 //
+// `inside` is optional too (M99 spec 01): `{ "wire": 1, "socket": "/abs/<stateDir>/inside/sock" }`, the
+// socket an inside part dials (bridge/inside/WIRE.md) and the wire version it speaks there. A part reads
+// this folder to find every live bridge of the machine, and dials only a socket whose version it speaks.
+// A record without it is a bridge that serves no inside wire. The emitter ignores it.
+//
 // and removes it on a clean stop. The emitter (`collie beacon emit`) reads the folder, deletes the
 // file of a bridge whose pid is gone or was reused, and writes the edge into every live target's
 // spool, hashing a prompt with that target's own salt. No live target: the emitter writes into its
@@ -48,6 +53,18 @@ export interface HookTargetRecord {
   readonly instance: string | null;
   /** The port the bridge listens on, or null for an older record. */
   readonly port: number | null;
+  /** The inside wire's socket and version, or null when the bridge serves none (M99 spec 01). */
+  readonly inside: HookTargetInside | null;
+  /** The linked parts folder the bridge reads (M99 spec 09), or null for an older record. `collie doctor` compares it. */
+  readonly parts?: string | null;
+}
+
+/** Where a bridge serves the inside wire, as its target file says. */
+export interface HookTargetInside {
+  /** The wire version spoken on the socket. */
+  readonly wire: number;
+  /** The socket's absolute path. */
+  readonly socket: string;
 }
 
 /** What a bridge says of itself in its target file, beyond the state dir and the pid. */
@@ -56,6 +73,8 @@ export interface HookTargetIdentity {
   /** `null` is the host's first Collie, written as {@link HOOK_TARGET_DEFAULT_INSTANCE}. */
   readonly instance?: string | null | undefined;
   readonly port?: number | undefined;
+  readonly inside?: HookTargetInside | undefined;
+  readonly parts?: string | undefined;
 }
 
 /** How the host's first, unnamed Collie is written into the `instance` field. */
@@ -99,7 +118,29 @@ export function parseHookTarget(text: string): HookTargetRecord | null {
     mux: identityName(row.mux),
     instance: identityName(row.instance),
     port: identityPort(row.port),
+    inside: insideField(row.inside),
+    parts: partsField(row.parts),
   };
+}
+
+/** The longest socket path a record keeps. A Unix socket path is far shorter on every platform. */
+const INSIDE_SOCKET_MAX = 1024;
+
+/** An optional `inside` field: a whole wire version and an absolute socket path, else null. */
+function insideField(value: JsonValue | undefined): HookTargetInside | null {
+  const row = asJsonObject(value);
+  if (row === undefined) return null;
+  const wire = asJsonNumber(row.wire);
+  const socket = asJsonString(row.socket);
+  if (wire === undefined || !Number.isInteger(wire) || wire < 1 || wire > 999) return null;
+  if (socket === undefined || socket.length === 0 || socket.length > INSIDE_SOCKET_MAX || !isAbsolute(socket)) return null;
+  return { wire, socket };
+}
+
+/** An optional `parts` field: an absolute folder path, else null. */
+function partsField(value: JsonValue | undefined): string | null {
+  const text = asJsonString(value);
+  return text === undefined || text.length === 0 || text.length > 4096 || !isAbsolute(text) ? null : text;
 }
 
 /** An optional name field: a short non-empty string, else null. A wrong type never fails the record. */
@@ -119,6 +160,8 @@ export interface HookTargetIdentityFields {
   mux?: string;
   instance?: string;
   port?: number;
+  inside?: { wire: number; socket: string };
+  parts?: string;
 }
 
 /** The fields of a record's JSON text that name the bridge. Absent ones are left out of the file. */
@@ -127,5 +170,7 @@ export function identityFields(identity: HookTargetIdentity): HookTargetIdentity
   if (identity.mux !== undefined && identity.mux !== "") out.mux = identity.mux;
   if (identity.instance !== undefined) out.instance = identity.instance ?? HOOK_TARGET_DEFAULT_INSTANCE;
   if (identity.port !== undefined) out.port = identity.port;
+  if (identity.inside !== undefined) out.inside = { wire: identity.inside.wire, socket: identity.inside.socket };
+  if (identity.parts !== undefined) out.parts = identity.parts;
   return out;
 }

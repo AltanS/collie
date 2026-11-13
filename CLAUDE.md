@@ -30,7 +30,9 @@ Collie is **SemVer**ed, and the version is **enforced**, so it never silently dr
 **The version lives in three files that must always agree, plus a matching CHANGELOG entry:**
 `herdr-plugin.toml` (canonical — Herdr reads it) · `package.json` · `web/package.json` ·
 newest *numbered* `## [x.y.z]` heading in `CHANGELOG.md`. `## [Unreleased]` is not numbered and is
-not part of that agreement.
+not part of that agreement. The Collie mod for Claude Code carries the same plain version in
+`inside/claude/.claude-plugin/plugin.json` (never an `-edge.N`): `scripts/check-version.sh` holds it,
+and the release commit bumps it with the three.
 
 **Two kinds of commit. A functional commit records; only the release commit bumps.** Never bump a
 version because you fixed something; the version moves once, when the release is cut.
@@ -771,6 +773,15 @@ exemption is granted by POSITION — the peer check sits after the federated dis
 `bridge/server.ts` — so no crew path is ever spelled there. The standby door is its own listener on
 its own `COLLIE_STANDBY_HOST` and neither gate reaches it; don't route it through the front door's
 `fetch` to share them.
+
+**A harness part never calls a model and never reads a secret** (M99, [ADR 0140](./.adr/0140-a-part-inside-the-agent-dials-the-bridge.md)).
+The code `collie link <harness>` puts inside an agent (`inside/claude/`, later the pi, omp and opencode
+parts) dials the bridge's inside socket and does three things only: it submits the person's own words,
+answers what the person tapped, and reports turns. It names no model API (`$.model` in a Claude mod),
+spawns no process (`$.process`), writes no file, and reads no key, token, credential or `.env` (its
+environment reads are the pane marker variables, `HOME` and `XDG_STATE_HOME`). The guard
+(`inside/claude/guard.spec.ts`) fails the build on the model, the process and a file write; the
+secret rule is held in review. A part that needs any of those is a new ADR, not a patch.
 
 **The bridge makes four outbound calls of its own, and spawns no child for content unless
 `stt.json` names a speech provider.** The four calls are the update check, the Whistle

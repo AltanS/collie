@@ -15,3 +15,6 @@ minimumReleaseAge = 604800 # 7 days, in seconds
 # prints its path. See scripts/test-preload.ts.
 [test]
 preload = ["./scripts/test-preload.ts"]
+# The Collie mod's engine tests (`inside/claude/tests/*.test.ts`) import `claude-code/testing`, which
+# only `claude plugin test inside/claude` provides. Bun runs the mod's own `*.spec.ts` checks instead.
+pathIgnorePatterns = ["inside/claude/tests/**"]
