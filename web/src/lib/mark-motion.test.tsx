@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { act, render } from "@testing-library/react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -6,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrandMark } from "@/components/brand-mark";
 import { MARK_DRIFT } from "@/components/mark-contract";
 import { __resetDesign, setDesignMarkMoves } from "@/lib/design";
-import { currentMarkMoves, resolveMarkMoves } from "@/lib/mark-motion";
+import { STEPS_CLASS, currentMarkMoves, resolveMarkMoves } from "@/lib/mark-motion";
 import { parseTheme, type Theme } from "@/lib/theme/schema";
 import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/theme/store";
 import { collieMark } from "@/test/collie-mark";
@@ -66,6 +69,26 @@ describe("a resting mark", () => {
     expect(still(container)).toBe(false);
     act(() => vi.advanceTimersByTime(MARK_DRIFT.windowMs + MARK_DRIFT.easeMs + 1000));
     expect(still(container)).toBe(false);
+  });
+
+  it("wears the steps class while it drifts, so the engine draws about 12 frames a second, and not while it is held", () => {
+    const { container } = render(<BrandMark size={44} weight="header" className="x" />);
+    expect(collieMark(container)?.classList.contains(STEPS_CLASS)).toBe(true);
+    expect(collieMark(container)?.classList.contains("x")).toBe(true);
+    act(() => setDesignMarkMoves(false));
+    expect(collieMark(container)?.classList.contains(STEPS_CLASS)).toBe(false);
+  });
+
+  it("does not step a live state, which turns smooth for a short time", () => {
+    const { container } = render(<BrandMark size={44} weight="header" state="loading" />);
+    expect(collieMark(container)?.classList.contains(STEPS_CLASS)).toBe(false);
+  });
+
+  it("has a stylesheet rule for the steps class: a stepped timing at about 12 a second, and the pearls' twinkle", () => {
+    const css = readFileSync(join(__dirname, "../index.css"), "utf8");
+    expect(css).toMatch(/\.mark-steps \*\s*\{\s*animation-timing-function: steps\(10, end\), step-end !important;/u);
+    expect(css).toContain("steps(20, end), step-end !important");
+    expect(css).toContain(".ck-tw");
   });
 
   it("rests while the page is hidden, and drifts on again when it is visible", () => {

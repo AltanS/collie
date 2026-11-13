@@ -32,12 +32,17 @@ import { currentTrial, useTrial } from "@/lib/theme/trial";
 // jsdom runs no animation. The mark's stylesheet already stops the turn under reduced motion; the hold
 // here makes the attribute agree with the picture.
 //
-// WHAT IT COSTS. See `mark-contract.ts` ("WHAT A FRAME COSTS"): the orbit is a transform animation on
-// the compositor, but a running animation still asks for a frame at every vsync, for as long as the
-// page is visible. That is the price of "always", and the switch and the theme key are the way out.
+// WHAT IT COSTS, AND HOW IT IS BOUNDED. See `mark-contract.ts` ("WHAT A FRAME COSTS"): the orbit is a
+// transform animation on the compositor, but a smooth one asks for a frame at every vsync, 60 a second, for
+// as long as the page is visible. That is what issue 748 is about. So a drifting mark also wears `STEPS_CLASS`,
+// and `index.css` draws its drift in steps, about 12 a second, which asks for a frame only at a step
+// (ADR 0138, amendment 2026-11-13, has the measured table). The switch and the theme key stay the way out.
 //
 // SERVER SNAPSHOT: STILL. The server and the first client render draw a held mark, as the contract's own
 // snapshot of "in use" does, and the client then moves it, so a hydration never sees two different trees.
+
+/** The class a drifting mark wears: `index.css` draws its drift in steps at about 12 a second (ADR 0138). */
+export const STEPS_CLASS = "mark-steps";
 
 export interface MarkMotionSources {
   /** The device's switch (`DesignPrefs.markMoves`), absent while it was never touched. */
@@ -134,5 +139,6 @@ export function useMarkMotion<P extends MarkProps>(props: P): P {
   const drifts = useMarkDrifts();
   const state = props.state ?? (props.loading === true ? "loading" : "rest");
   if (state !== "rest" || props.turn !== undefined || props.drift !== undefined) return props;
-  return drifts ? { ...props, drift: "always" } : { ...props, turn: 0 };
+  if (!drifts) return { ...props, turn: 0 };
+  return { ...props, drift: "always", className: [props.className, STEPS_CLASS].filter(Boolean).join(" ") };
 }

@@ -1508,6 +1508,35 @@
   animation-play-state: paused !important;
 }
 
+/* A RESTING MARK DRIFTS IN STEPS (issue 748, ADR 0138, amendment 2026-11-13). lib/mark-motion.ts puts
+   `.mark-steps` on a mark that drifts at rest with no input, which is for as long as the page is visible. A
+   smooth animation asks the engine for a frame at every vsync, 60 a second, for as long as the page is open.
+   A stepped timing function asks for a frame only when its value changes. The marks' keyframes run a stop
+   about every 0.8 s (every 1.6 s for the four with half the stops), and CSS applies a timing function BETWEEN
+   two stops, so `steps(10)` is 12.5 steps a second and `steps(20)` is 12.5 for the 1.6 s ones.
+   The sealed marks set `linear` (and `ease-in-out` for the twinkle) in the `animation` shorthand, so this
+   is important, and it lists two values: the second is the near/far swap's own `step-end`, which every bead
+   carries beside its orbit. It reaches every animation under the mark and names no class of a mark, so a
+   regenerated mark keeps it. Pixel is left out: its orbit is already `steps(1)`. Only a mark that drifts
+   at rest carries the class; a live state (`loading`, `applying`) turns smooth, as it is short. */
+svg[data-mark]:not([data-mark="pixel"]).mark-steps * {
+  animation-timing-function: steps(10, end), step-end !important;
+}
+svg[data-mark="glass"].mark-steps *,
+svg[data-mark="glass-front"].mark-steps *,
+svg[data-mark="sheep"].mark-steps *,
+svg[data-mark="owl"].mark-steps * {
+  animation-timing-function: steps(20, end), step-end !important;
+}
+
+/* The two puppy faces also twinkle their pearls: an opacity swell on each of 22 pearls, 7 s a swell, every
+   one on its own delay. 10 steps a half swell would still hand the engine a change every few frames, because
+   the 22 pearls are never in step, so each half swell is 4 steps (a step of about an eighth of the swell). */
+svg[data-mark].mark-steps .ck-tw,
+svg[data-mark].mark-steps .ct-tw {
+  animation-timing-function: steps(4, end) !important;
+}
+
 /* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a
    mutation is in flight (components/busy-bar). The `appear` animation holds it fully invisible for
    120ms (delay + `both` fill), so an action that resolves and unmounts within that window never

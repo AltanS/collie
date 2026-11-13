@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 
 import { MARK_DRIFT } from "@/components/mark-contract";
 import { en } from "@/lib/i18n/messages/en";
@@ -7,7 +7,7 @@ import type { AgentView, PaneChatResponse, SnapshotResponse } from "@/lib/types"
 import { FIXTURE_CHAT_GEN, FIXTURE_SEQ_BASE, fixtureAgents, fixtureShellPanes, fixtureSnapshot, fixtureTranscript } from "@/test/handlers";
 import { installApiStub, installPaneWorld, paneCapture, pinLocale } from "./fixtures/api";
 import { collieHalves } from "./fixtures/collie-theme";
-import { STILL_MARK } from "./fixtures/still-mark";
+import { DESIGN_KEY, STILL_MARK } from "./fixtures/still-mark";
 
 // ISSUE 748, ADR 0138: AN APP THAT IS LEFT ALONE ASKS FOR NO FRAME. Three claims only an engine can check,
 // because jsdom runs no CSS animation: the header mark holds still at rest for every character, a
@@ -74,6 +74,62 @@ for (const { id } of MARKS) {
     expect(new Set(states)).toEqual(new Set(["paused"]));
   });
 }
+
+// THE FRAME BUDGET OF A MARK THAT MOVES (ADR 0138, amendment 2026-11-13). The owner wants the character to
+// drift at all times, so a resting dashboard with the DEFAULT setting is not a page that draws nothing. What
+// the rule keeps is a bound: the drift is drawn in steps (`.mark-steps`, index.css), about 12 a second, and an
+// engine counts them. A smooth drift is 60 frames a second for as long as the page is visible, which is what
+// took Chrome's GPU process down on one phone (issue 748). Counted as experiments/fix-748/measure/run.ts counts
+// them: a Chromium trace of a settled page, `DrawFrame` for a frame, `BeginMainThreadFrame` for a frame
+// the main thread took part in, `Paint` for a paint. Measured on 2026-11-13, headless Chromium, 10 s, 3 runs:
+// switch off 0 / 0 / 0, stepped about 127 / 3 / 6, smooth 601 / 3 / 6 (frames, main-thread frames, paints).
+const TRACE_CATEGORIES = ["devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.frame", "cc", "viz", "blink", "gpu", "benchmark"];
+const TRACE_SECONDS = 6;
+
+interface Counts {
+  frames: number;
+  mainThreadFrames: number;
+  paints: number;
+}
+
+/** Trace the page for TRACE_SECONDS, once it has settled, and count what the engine drew. */
+async function trace(browser: Browser, page: Page): Promise<Counts> {
+  await page.waitForTimeout(2000);
+  await browser.startTracing(page, { categories: TRACE_CATEGORIES });
+  await page.waitForTimeout(TRACE_SECONDS * 1000);
+  const buffer = await browser.stopTracing();
+  const events: { name: string }[] = JSON.parse(buffer.toString("utf8")).traceEvents;
+  const count = (name: string) => events.filter((event) => event.name === name).length;
+  return { frames: count("DrawFrame"), mainThreadFrames: count("BeginMainThreadFrame"), paints: count("Paint") };
+}
+
+async function openDashboard(page: Page, design: Readonly<Record<string, boolean>>): Promise<void> {
+  await pinLocale(page, "en");
+  await page.addInitScript(([key, blob]) => localStorage.setItem(key, blob), [DESIGN_KEY, JSON.stringify(design)] as const);
+  await installApiStub(page);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: en["nav.home.aria.default"] }).locator("svg[data-mark]")).toHaveAttribute("data-state", "rest");
+}
+
+test("a resting dashboard whose mark drifts draws at most 16 frames a second, and takes the main thread for next to none", async ({ page, browser, browserName }, testInfo) => {
+  test.skip(browserName !== "chromium" || testInfo.project.name !== "app-phone", "a Chromium trace; one phone project is enough");
+  await openDashboard(page, {});
+  const mark = page.getByRole("button", { name: en["nav.home.aria.default"] }).locator("svg[data-mark]");
+  await expect(mark).not.toHaveAttribute("data-still", "");
+  const counts = await trace(browser, page);
+  // Stepped: about 12.7 a second (76 here). Smooth would be 60 a second (360 here), which fails.
+  expect(counts.frames).toBeLessThanOrEqual(16 * TRACE_SECONDS);
+  // The near/far swaps of the beads are a paint each; the orbit itself is on the compositor.
+  expect(counts.mainThreadFrames).toBeLessThanOrEqual(10);
+  expect(counts.paints).toBeLessThanOrEqual(15);
+});
+
+test("a resting dashboard whose switch is off draws no frame at all", async ({ page, browser, browserName }, testInfo) => {
+  test.skip(browserName !== "chromium" || testInfo.project.name !== "app-phone", "a Chromium trace; one phone project is enough");
+  await openDashboard(page, STILL_MARK);
+  const counts = await trace(browser, page);
+  expect(counts).toEqual({ frames: 0, mainThreadFrames: 0, paints: 0 });
+});
 
 /** The names of the animations running anywhere in the document. */
 function runningOnPage(page: Page): Promise<string[]> {
