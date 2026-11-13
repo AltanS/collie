@@ -183,3 +183,12 @@ the fact for every caller that opens a folder the disk says is a linked worktree
 "New space"), so the worktree route is not the only path that nests. The differences that remain by
 multiplexer are listed in the contract, under *What still differs by multiplexer when a worktree is
 opened*.
+
+A retry finds the space first. A create whose checkout already exists (`existed: true`: the half-done
+create, or the same request again after a lost answer) looks in the multiplexer's current snapshot
+for a space whose first pane stands in that folder, as real paths, and answers with it
+(`bridge/worktree-reuse.ts`). No adapter is asked to open the folder twice, so tmux, tuios, tern and
+the Herdr core, which have no `already_open`, behave like Herdr. A launcher row is typed into the
+reused pane only when it is a live bare shell. A pane that runs an agent is left alone and the answer
+carries `launcherStarted: false` with a `launcherError`. The audit line says `reusedSpace`.
+

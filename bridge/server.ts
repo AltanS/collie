@@ -31,7 +31,7 @@ import {
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, supportsCapability, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
-import { muxUnsupported } from "./mux/types.ts";
+import { muxOk, muxUnsupported } from "./mux/types.ts";
 import type { MuxAdapter, MuxAck, MuxGrid, MuxGridRequest, MuxHistoryPage, MuxReadHint, MuxReadPurpose, MuxStarters } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
@@ -73,6 +73,7 @@ import {
 import { askGit, parseBase, resolveBase, resolveDefaultBranch, type GitAsk } from "./worktree-base.ts";
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
 import { withSpacesContext } from "./space-view.ts";
+import { spaceShowing } from "./worktree-reuse.ts";
 import { addWorktree, targetExistsDetail, type WorktreeAddDeps, type WorktreeAddRequest, worktreeMatchOf } from "./worktree-add.ts";
 import {
   isRequestId,
@@ -7177,7 +7178,13 @@ async function runWorktreeCreate(
   if (!added.ok) return { ok: false, ...apiError(added.code, { reason: added.detail }) };
   // `worktree` tells the adapter the folder is a linked checkout of this repo, so a multiplexer that
   // keeps its own worktree record (Herdr) files the space under it. One that does not ignores it.
-  const opened = await herdr.createSpace({ cwd: added.path, label: branchSlug(branch), worktree: { repoRoot } });
+  // A retry on a finished checkout (`existed`) first looks for the space that already shows it, so a
+  // multiplexer with no memory of the folder is never asked to open it twice (bridge/worktree-reuse.ts).
+  const reused = added.existed ? await spaceShowing(herdr, added.path) : null;
+  const opened =
+    reused !== null
+      ? muxOk(reused.pane)
+      : await herdr.createSpace({ cwd: added.path, label: branchSlug(branch), worktree: { repoRoot } });
   if (!opened.ok) {
     // The half-done case gets its OWN code, because the recovery is the opposite one: the checkout is
     // on disk and only the opening failed. It stays, and a retry finds it (`existed`) and only opens.
@@ -7194,7 +7201,10 @@ async function runWorktreeCreate(
   let launcherStarted = false;
   let launcherError: string | undefined;
   const row = launcher.row;
-  if (row !== undefined) {
+  if (row !== undefined && reused !== null && !reused.fresh) {
+    // The space was open before this request and its pane is not a bare shell: never type into it.
+    launcherError = "this folder was already open and its pane is in use, so the launcher was not started";
+  } else if (row !== undefined) {
     const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, wait, "worktree");
     launcherStarted = sent.ok;
     if (!sent.ok) launcherError = sent.error;
@@ -7215,6 +7225,7 @@ async function runWorktreeCreate(
       launcherStarted: row === undefined ? undefined : String(launcherStarted),
       path,
       source: launcher.source,
+      reusedSpace: reused === null ? undefined : "true",
     },
   });
   if (requestId !== undefined) {
