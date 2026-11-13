@@ -5,12 +5,14 @@ import type { RunShellRequest } from "./herdr-core/client.ts";
 import { HerdrCoreMux } from "./herdr-core/adapter.ts";
 import { FakeHcCore } from "./herdr-core/fake-core.ts";
 import { HerdrMux } from "./herdr/adapter.ts";
+import { HerdrTimeout } from "./herdr/client.ts";
 import { FakeHerdr } from "./herdr/fixture.ts";
 import { TmuxMux } from "./tmux/adapter.ts";
 import { FakeTmux } from "./tmux/fixture.ts";
 import { TernMux } from "./tern/adapter.ts";
 import { FakeTern } from "./tern/fixture.ts";
 import { TuiosMux } from "./tuios/adapter.ts";
+import { TuiosTimeout } from "./tuios/client.ts";
 import { FakeTuios } from "./tuios/fixture.ts";
 import { ZELLIJ_SPACE_ID, ZellijMux } from "./zellij/adapter.ts";
 import { TIMED_OUT_CODE as ZELLIJ_TIMED_OUT } from "./zellij/exec.ts";
@@ -32,11 +34,11 @@ describe("herdr", () => {
   class Slow extends FakeHerdr {
     override async createTab(): Promise<never> {
       await Promise.resolve();
-      throw new Error("herdr tab.create: timed out after 5000ms");
+      throw new HerdrTimeout("tab.create", 5000);
     }
     override async createWorkspace(): Promise<never> {
       await Promise.resolve();
-      throw new Error("herdr workspace.create: timed out after 5000ms");
+      throw new HerdrTimeout("workspace.create", 5000);
     }
   }
 
@@ -226,10 +228,10 @@ describe("tern", () => {
 describe("tuios", () => {
   class Slow extends FakeTuios {
     override newWindow(): Promise<never> {
-      return Promise.reject(new Error("tuios new_window: timed out after 5000ms"));
+      return Promise.reject(new TuiosTimeout("new_window", 5000));
     }
     override newSession(): Promise<never> {
-      return Promise.reject(new Error("tuios new_session: timed out after 5000ms"));
+      return Promise.reject(new TuiosTimeout("new_session", 5000));
     }
   }
 

@@ -184,16 +184,14 @@ function refusalFor<T>(err: T): MuxRefusalOutcome {
   return muxUnreachable(err instanceof Error ? err.message : String(err));
 }
 
-/** What the client rejects with when tuios did not answer in time (`tuios <verb>: timed out after Nms`). */
-const TIMED_OUT = /^tuios \S+: timed out after \d+ms$/u;
-
 /**
  * The refusal for a failure of a CREATE call. A call that did not answer in time may still have made the
  * window or the session, so it is `unconfirmed` and not `unreachable`: the route looks in the snapshot
  * before it says anything (bridge/create-confirm.ts).
  */
 function createRefusal<T>(err: T): MuxRefusalOutcome {
-  if (err instanceof Error && TIMED_OUT.test(err.message)) return muxUnconfirmed(err.message);
+  // {@link TuiosTimeout}: the one time-out marker, read by every write, key and create.
+  if (err instanceof TuiosTimeout) return muxUnconfirmed(err.message);
   return refusalFor(err);
 }
 

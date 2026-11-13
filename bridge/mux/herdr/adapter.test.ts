@@ -437,7 +437,7 @@ describe("a space whose folder is a linked worktree", () => {
   });
 
   test("a timeout is unconfirmed, not a second space: the open may have happened", async () => {
-    const fake = new OpenFails(new Error("herdr worktree.open: timed out after 5000ms"));
+    const fake = new OpenFails(new HerdrTimeout("worktree.open", 5000));
     const created = await new HerdrMux(fake, () => []).createSpace(ASKED);
     expect(created.ok).toBe(false);
     expect(created.ok ? "" : created.reason).toBe("unconfirmed");
@@ -451,7 +451,7 @@ describe("a space whose folder is a linked worktree", () => {
       override async openWorktree(opts: { cwd: string; path: string; label?: string }): Promise<CreatedShell> {
         const opened = await super.openWorktree(opts);
         if (!this.lose) return opened;
-        throw new Error("herdr worktree.open: timed out after 5000ms");
+        throw new HerdrTimeout("worktree.open", 5000);
       }
     }
     const fake = new AnswerLost();
