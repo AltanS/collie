@@ -193,27 +193,14 @@ If a send prints `not sent: off`, or the command cannot find a bridge, tell your
 
 ## Decisions (the hill)
 
-The hill is where you ask your operator one question that needs a person. You post a Decision with
-`{{COLLIE_BIN}} hill post`. Your operator answers it on the phone. The answer comes back as a WalkyTalky message
-from your operator. `{{COLLIE_BIN}} hill post --help` prints every flag. Word the card like this, then follow the rules:
-
-{{HILL_WRITING}}
-
-These are the rules:
-
-{{HILL_RULES}}
+The Hill is off unless your operator switched it on. Use it for a question that can wait: post it, end your turn, and the answer starts your next turn.
 
 ```bash
-{{COLLIE_BIN}} hill post --title "Ship the 1.28.1 fix to Edge first?" \
-  --summary "Edge gets the pill change first, and Stable follows a day later. The tests are green, but the pill moves out of Chat." \
-  --option edge="Ship to Edge first" --option wait="Wait for 1.29.0" \
-  --recommend edge --why "Edge users find a problem in a day."
-{{COLLIE_BIN}} hill status dc_...
-{{COLLIE_BIN}} hill withdraw dc_...
-{{COLLIE_BIN}} hill list
+{{COLLIE_BIN}} hill post --title "Ship it to Edge first?" --summary "Edge gets the fix today." \
+  --option edge="Ship to Edge" --option wait="Hold until CI" --recommend edge --why "Edge users find a problem in a day."
 ```
 
-After `post`, end your turn. Do not poll and do not sleep.
+Rules and flags: {{COLLIE_BIN}} hill --help
 
 ## Tricks
 

@@ -1144,7 +1144,9 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds. \`v\` is the con
 
 ## Wording a Decision
 
-${HILL_WRITING.join("\n")}
+${HILL_WRITING.map((line) => `- ${line}`).join("\n")}
+
+In a trick, \`recommends: { intent, why }\` is what \`--recommend\` and \`--why\` are on the command line.
 
 \`collie trick dev\` and \`collie trick check --run\` warn when a Decision breaks one of these. The
 warnings never refuse it.

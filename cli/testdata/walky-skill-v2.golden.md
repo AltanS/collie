@@ -193,42 +193,14 @@ If a send prints `not sent: off`, or the command cannot find a bridge, tell your
 
 ## Decisions (the hill)
 
-The hill is where you ask your operator one question that needs a person. You post a Decision with
-`/opt/collie/bin/collie hill post`. Your operator answers it on the phone. The answer comes back as a WalkyTalky message
-from your operator. `/opt/collie/bin/collie hill post --help` prints every flag. Word the card like this, then follow the rules:
-
-Word the card for a person who opens it cold, between other things:
-- Title: the decision itself, as a question the options answer. Name the thing and the act, in about 8 words (at most 60 characters). Good: "Ship 1.28.1 to Stable now?" Bad: "Are the new kinds right?"
-- No inner names or ids in the title that the person would not know.
-- Summary: at most two sentences. The first says what the recommended option does, the second gives the one fact that decides it. Put the evidence in the view or the body.
-- Each option starts with a verb and says what happens: "Ship it", "Hold until CI". Never a bare Yes or No.
-- --priority now sends a notification to the person's phone. Use it only for what cannot wait.
-
-These are the rules:
-
-- Post a decision only for what needs the person.
-- Always write the summary in plain words, and recommend one option with a why.
-- One question per decision. To change one, post again with --supersedes; never repost.
-- Do not wait in a loop. The answer arrives as a WalkyTalky message and starts your next turn.
-- If no answer arrived, read it with /opt/collie/bin/collie hill status <id>.
-- An answer typed into your session for a decision you did not post carries only the id and the option word. Read the rest with /opt/collie/bin/collie hill status <id>.
-- A worker with a lead asks its lead first.
-- A --view only shows facts. No buttons: the options are the taps.
-- When your operator settles the question in your session, take the card back: /opt/collie/bin/collie hill withdraw <id>.
-- Before you post, read the crew state: /opt/collie/bin/collie hill state. here: post as usual. quiet: post, but do not wait for a fast answer. away: post nothing that needs an answer now; do work that needs no answer, then end your turn.
-- A typed answer or a post result can end with a line such as "Crew state: away." It is the state at that moment.
+The Hill is off unless your operator switched it on. Use it for a question that can wait: post it, end your turn, and the answer starts your next turn.
 
 ```bash
-/opt/collie/bin/collie hill post --title "Ship the 1.28.1 fix to Edge first?" \
-  --summary "Edge gets the pill change first, and Stable follows a day later. The tests are green, but the pill moves out of Chat." \
-  --option edge="Ship to Edge first" --option wait="Wait for 1.29.0" \
-  --recommend edge --why "Edge users find a problem in a day."
-/opt/collie/bin/collie hill status dc_...
-/opt/collie/bin/collie hill withdraw dc_...
-/opt/collie/bin/collie hill list
+/opt/collie/bin/collie hill post --title "Ship it to Edge first?" --summary "Edge gets the fix today." \
+  --option edge="Ship to Edge" --option wait="Hold until CI" --recommend edge --why "Edge users find a problem in a day."
 ```
 
-After `post`, end your turn. Do not poll and do not sleep.
+Rules and flags: /opt/collie/bin/collie hill --help
 
 ## Tricks
 

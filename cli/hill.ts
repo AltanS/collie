@@ -12,7 +12,7 @@ import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_POST_ASK_MS } from "../bridge/hill/crew.ts";
 import { readDecision } from "../bridge/hill/parse.ts";
-import { HILL_DEFAULT_EXPIRY_DAYS, HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS, HILL_STATE_ON_LEAD } from "../bridge/hill/service.ts";
+import { HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS, HILL_STATE_ON_LEAD } from "../bridge/hill/service.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
 import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { readHillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
@@ -62,46 +62,70 @@ export const HILL_NOT_CONFIRMED = `the bridge took the post and did not answer w
 /** What it prints when a bridge that knows the hill answered, and none of them drives this pane. */
 export const HILL_NOT_HERE = "no Collie bridge on this machine knows this pane";
 
+/** `post`'s flags, one line each. The help prints them under the `post` line; a usage error prints them too. */
+const POST_FLAGS = [
+  "--recommend <intent> --why <reason>",
+  "--confirm <intent>=<word>",
+  "--detail <intent>=<line>",
+  "--priority now|today|later",
+  "--text none|optional|required",
+  "--link <label>=<url>",
+  "--about here|<address>",
+  "--reply-to <address>",
+  "--supersedes <id>",
+  "--expires 2h|3d",
+  "--request-id <uuid>  a retry posts once",
+  "--image <path>[=<caption>]",
+  "--view <file.json>  facts, no buttons; kinds: collie docs tricks-reference",
+] as const;
+
+/** Each verb as one line of the help, and after `usage: collie hill ` as the line of a usage error. */
+const VERB_LINES = {
+  post: "post --title <question> --summary <text> --option <intent>=<label>... [-- <body>]",
+  status: "status <id>",
+  withdraw: "withdraw <id>",
+  list: "list",
+  clear: "clear [--spoken]",
+  state: "state [here|quiet|away]",
+  on: "on",
+  off: "off",
+} as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], string>;
+
+/** What a usage error prints for a verb. */
 const USAGE = {
-  post: [
-    'usage: collie hill post --title "<question>" --summary "<plain words>" \\',
-    '         --option <intent>="<label>" ... --recommend <intent> --why "<reason>" \\',
-    '         [--confirm <intent>="<word>"] [--detail <intent>="<line>"] [--priority now|today|later] \\',
-    '         [--text none|optional|required] [--link "<label>=https://..."] [--about here|<address>] \\',
-    "         [--reply-to <address>] [--supersedes dc_...] [--expires 2h|3d] [--request-id <uuid>] [--json] \\",
-    '         [--image shots/a.png[="<caption>"] ...]   (PNG, JPEG or WebP, up to 4, 2 MB each) \\',
-    "         [--view view.json]   (a small view under the summary, see below) \\",
-    '         [-- "<body in Markdown>"]   (no body after --: read from stdin when it is not a terminal)',
-    `  With no --expires, a decision closes as expired after ${String(HILL_DEFAULT_EXPIRY_DAYS)} days. --expires is at most ${String(HILL_MAX_EXPIRY_DAYS)} days.`,
-    "  To retry a post, send it again with the same --request-id: it posts once. Other content under that id is refused.",
-    "  --view names a JSON file (at most 16 KiB) with a list of nodes, drawn under the summary: group, list, row, bar, chip,",
-    "  para, line, run, code, link, meter, spacer, number, image, compare, table, diff and spark, as a trick writes them,",
-    "  at most 8 KiB, 100 nodes and 4 levels. An image names one of your --image files by its place, from 0:",
-    '  {"kind":"image","attrs":{"ref":"0","focus":"50 20 2"}} crops it on the phone, and a compare holds two such images.',
-    "  It only shows facts. No buttons: the options are the taps, and only a link opens anything, a web page.",
-  ],
-  status: ["usage: collie hill status <dc_id> [--json]   (yours, or one whose answer goes to this session)"],
-  withdraw: ["usage: collie hill withdraw <dc_id> [--json]"],
-  list: ["usage: collie hill list [--json]   (your own decisions, open first)"],
-  clear: [
-    "usage: collie hill clear [--json]   (remove every closed decision from the Hill; open ones stay)",
-    "       collie hill clear --spoken [--json]   (withdraw and clear the open cards you answered in the session; types nothing; not from an agent's pane)",
-  ],
-  state: ["usage: collie hill state [here|quiet|away] [--json]   (read the crew state; with a word, your person sets it)"],
-  on: ["usage: collie hill on    (switch the Hill on for this Collie; it is on unless switched off)"],
-  off: ["usage: collie hill off   (switch the Hill off: every post is refused, the open decisions stay)"],
+  post: [`usage: collie hill ${VERB_LINES.post}`, ...POST_FLAGS.map((flag) => `  ${flag}`)],
+  status: [`usage: collie hill ${VERB_LINES.status} [--json]`],
+  withdraw: [`usage: collie hill ${VERB_LINES.withdraw} [--json]`],
+  list: [`usage: collie hill ${VERB_LINES.list} [--json]`],
+  clear: [`usage: collie hill ${VERB_LINES.clear} [--json]`],
+  state: [`usage: collie hill ${VERB_LINES.state} [--json]`],
+  on: ["usage: collie hill on"],
+  off: ["usage: collie hill off"],
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
 
-/** `collie hill post --help`: the usage, how to word the card, then the rules. */
-export function hillPostHelp(): string[] {
-  return [...USAGE.post, "", ...HILL_WRITING, "", ...HILL_RULES];
+/** The verbs an agent runs. `clear`, `on`, `off` and `state <word>` are the operator's: the help says so in one sentence. */
+const AGENT_VERBS = ["post", "status", "withdraw", "list", "state"] as const;
+
+/**
+ * `collie hill --help`, and the same text for `collie hill post --help` and a bare `collie hill`: the
+ * agent's verbs one line each, the flags of `post` one line each, then two lines on wording and the rules.
+ * At most 1,500 bytes (cli/hill.test.ts holds it): an agent reads this text each time it runs the help.
+ */
+export function hillHelp(): string[] {
+  const lines: string[] = [
+    `usage: collie hill {${AGENT_VERBS.join("|")}} [--json]`,
+    "The Hill is off until your operator switches it on (theirs alone: on, off, clear [--spoken], state <word>).",
+  ];
+  for (const verb of AGENT_VERBS) {
+    lines.push(`  ${verb === "state" ? "state" : VERB_LINES[verb]}`);
+    if (verb === "post") for (const flag of POST_FLAGS) lines.push(`    ${flag}`);
+  }
+  return [...lines, "", ...HILL_WRITING, "", ...HILL_RULES];
 }
 
-/** `collie hill --help` and a bare `collie hill`: every sub-verb's usage, how to word the card, then the rules. */
-export function hillHelp(): string[] {
-  const lines: string[] = [`usage: collie hill {${HILL_SUBCOMMANDS.join("|")}}`];
-  for (const verb of HILL_SUBCOMMANDS) for (const line of USAGE[verb]) lines.push(`  ${line.replace(/^usage: /u, "")}`);
-  return [...lines, "", ...HILL_WRITING, "", ...HILL_RULES];
+/** `collie hill post --help`: the same text as `collie hill --help`. */
+export function hillPostHelp(): string[] {
+  return hillHelp();
 }
 
 /** What `collie hill` needs: walky's own deps (the socket, the markers, stdin), and a request id mint. */
@@ -453,30 +477,6 @@ export const HILL_IMAGES_DROPPED = "the bridge posted the decision without its i
 /** What the CLI says when a bridge took the post without its view: a build from before views. */
 export const HILL_VIEW_DROPPED = "the bridge posted the decision without its view: it is older than views on the hill";
 
-/** One word as a POSIX shell reads it back: bare when it is plain, else single-quoted. */
-function shellWord(word: string): string {
-  return /^[A-Za-z0-9_./:=@%+,-]+$/u.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
-}
-
-/** The `collie hill post` command that sends the same post again: the same flags, with `--request-id` before any body. */
-export function retryCommand(args: readonly string[], requestId: string): string {
-  // Read as `parsePostArgs` reads them: a flag's value is never taken for a flag, nor for the `--` before the body.
-  let end = args.length;
-  let named = false;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--") {
-      end = i;
-      break;
-    }
-    if (!VALUE_FLAGS.has(args[i]!)) continue;
-    if (args[i] === "--request-id") named = true;
-    i += 1;
-  }
-  const flags = args.slice(0, end);
-  const words = [...(named ? flags : [...flags, "--request-id", requestId]), ...args.slice(end)];
-  return ["collie", "hill", "post", ...words.map(shellWord)].join(" ");
-}
-
 /** `hill post ...`: post one decision and print its id. It never waits for the answer. */
 export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
@@ -513,10 +513,11 @@ export async function cmdHillPost(deps: HillDeps, args: readonly string[]): Prom
     staged.cleanup();
   }
   if (!answer.ok) {
-    // A refusal names the picture as the agent typed it, not the copy.
+    // A refusal names the picture as the agent typed it, not the copy. One line: the reason and its code.
     const exit = failed(deps, { ...answer, error: staged.unstage(answer.error) });
-    // Every failure names the request id and the command that sends the same post once.
-    deps.io.err(`hill: request id ${requestId}; to send this post again, it posts once: ${shown(retryCommand(args, requestId))}${parsed.body === null && body !== "" ? " (with the same body on stdin)" : ""}`);
+    // A second line only when the same post can pass on a retry: no bridge answered in time (5), or a state
+    // of the machine that is not the Hill switched off (3). The same --request-id posts once.
+    if (exit === EXIT.UNREACHABLE || (exit === EXIT.STATE && answer.code !== "hill_off")) deps.io.err(`hill: send it again with --request-id ${requestId}`);
     return exit;
   }
   const decision = readDecision(answer.body.decision);

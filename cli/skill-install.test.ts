@@ -80,44 +80,37 @@ describe("the rendered skill", () => {
     expect(WALKY_TALKY_SKILL_TEMPLATE.trimEnd().split("\n").at(-1)).toBe(`<!-- collie-skill walky-talky v${String(SKILL_FORMAT)} collie {{COLLIE_VERSION}} -->`);
   });
 
-  test("teaches the hill with the very lines `collie hill --help` prints: one source, no drift", () => {
+  test("teaches the hill in a few lines: off by default, what it is for, one example, and where the rules are", () => {
     const d = deps();
     const out = rendered(d);
     const bin = collieBinary(ROOT);
     expect(out).toContain("## Decisions (the hill)");
+    expect(out).toContain("The Hill is off unless your operator switched it on.");
+    expect(out).toContain("end your turn, and the answer starts your next turn");
+    expect(out).toContain(`${bin} hill post --title`);
+    expect(out).toContain(`Rules and flags: ${bin} hill --help`);
+    // The rules and the writing guide are the help's, not the skill's: one place to read them.
+    for (const rule of HILL_RULES) expect(out).not.toContain(rule.replaceAll("collie hill", `${bin} hill`));
+    for (const line of HILL_WRITING) expect(out).not.toContain(line);
     for (const rule of HILL_RULES) {
-      // The skill names the pinned binary where the help says `collie`; the words are the same.
-      expect(out).toContain(`- ${rule.replaceAll("collie hill", `${bin} hill`)}`);
       expect(hillHelp()).toContain(rule);
       expect(hillPostHelp()).toContain(rule);
     }
-    expect(HILL_RULES.length).toBe(11);
-    // The parts an agent must find, by the words the brief asks for.
-    expect(out).toContain("only for what needs the person");
-    expect(out).toContain("recommend one option with a why");
-    expect(out).toContain("One question per decision");
-    expect(out).toContain("never repost");
-    expect(out).toContain("Do not wait in a loop");
-    expect(out).toContain("carries only the id and the option word");
-    expect(out).toContain("A worker with a lead asks its lead first.");
-    expect(out).toContain(`${bin} hill status dc_...`);
-    expect(out).toContain(`take the card back: ${bin} hill withdraw <id>.`);
-    expect(out).toContain(`read the crew state: ${bin} hill state. here: post as usual.`);
-    expect(out).toContain('A typed answer or a post result can end with a line such as "Crew state: away."');
+    expect(out).not.toContain("{{");
   });
 
-  test("teaches the wording rules of a Decision from the same list the help prints, right before the rules", () => {
-    const out = rendered(deps());
-    const writing = HILL_WRITING.join("\n");
-    expect(out).toContain(writing);
-    expect(out.split(HILL_WRITING[0]).length).toBe(2);
-    expect(out.indexOf(writing)).toBeLessThan(out.indexOf(`- ${HILL_RULES[0]}`));
-    for (const help of [hillHelp(), hillPostHelp()]) expect(help.filter((line) => line === HILL_WRITING[0]).length).toBe(1);
+  test("the Hill section of the rendered skill is at most 480 bytes, with a short binary path", () => {
+    // The section as an agent reads it, with the binary as the bare word `collie`: the path is the install's.
+    const bare = WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{COLLIE_BIN}}", "collie");
+    const start = bare.indexOf("## Decisions (the hill)");
+    const section = bare.slice(start, bare.indexOf("## Tricks"));
+    expect(start).toBeGreaterThan(0);
+    expect(Buffer.byteLength(section)).toBeLessThanOrEqual(480);
   });
 
-  test("the example Decision obeys the wording rules it sits under", () => {
+  test("the example Decision obeys the wording rules the help prints", () => {
     const example = WALKY_TALKY_SKILL_TEMPLATE.slice(WALKY_TALKY_SKILL_TEMPLATE.indexOf("hill post --title"));
-    const flat = example.slice(0, example.indexOf("hill status")).replaceAll("\\\n", "");
+    const flat = example.slice(0, example.indexOf("```")).replaceAll("\\\n", "");
     const title = /--title "([^"]+)"/u.exec(flat)?.[1] ?? "";
     const summary = /--summary "([^"]+)"/u.exec(flat)?.[1] ?? "";
     const options = [...flat.matchAll(/--option (\w+)="([^"]+)"/gu)].map((m) => ({ intent: m[1] ?? "", label: m[2] ?? "" }));
@@ -125,6 +118,7 @@ describe("the rendered skill", () => {
     expect(options.length).toBe(2);
     expect(hillWordingWarnings({ title, summary, options })).toEqual([]);
     expect(flat).toContain(`--recommend ${options[0]?.intent ?? "?"}`);
+    expect(flat).toContain("--why ");
   });
 
   test("teaches tricks: list, skill <id>, off asks nothing, and where to learn to write one", () => {
@@ -144,7 +138,7 @@ describe("the rendered skill", () => {
       const written = text(d, path) ?? "";
       expect(written).toContain("## Decisions (the hill)");
       expect(written).toContain("## Tricks");
-      expect(written).toContain(HILL_RULES[0]);
+      expect(written).toContain("Rules and flags:");
     }
     expect(text(d, CODEX_FILE)).not.toContain("<!-- collie:walky-talky");
     expect(text(d, CLAUDE_FILE)).toContain(`<!-- collie-skill walky-talky v${String(SKILL_FORMAT)} collie `);
