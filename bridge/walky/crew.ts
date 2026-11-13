@@ -611,7 +611,7 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         // The same holds for the space line and the `outside` line on a member older than 1.29.0 (M98):
         // this lead checked the border for it just above, so the copy drops both.
         const dropWake = message.wake === true && deps.olderThanWake?.(memberId) === true;
-        const dropSpace = olderSpace && carriesSpace(message);
+        const dropSpace = olderSpace && carriesNewLines(message);
         const plain = dropWake || dropSpace;
         const legMessage = plain ? plainCopy(message, { wake: dropWake, space: dropSpace }, signing.keyPem, deps.self) : message;
         const attest = attestFor(legMessage, signing.keyPem, signing.crewId, memberId);
@@ -630,13 +630,20 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
   };
 }
 
+/** Whether a message's canonical string holds the space line or the `outside` line (M98). */
+export function carriesSpace(message: Pick<WalkyMessage, "from" | "outside">): boolean {
+  return (message.from.space !== undefined && message.from.space !== null) || message.outside === true;
+}
+
 /**
  * Whether a message's canonical string holds a line a bridge below 1.29.0 cannot verify: the space line,
- * the `outside` line (M98), or the subject line (M98 spec 07, also first in 1.29.0). 1.29.0-edge.1 counts
- * as below: it has no subject line, and `compareSemver` puts it before 1.29.0.
+ * the `outside` line, or the subject line (M98 spec 07, also first in 1.29.0). 1.29.0-edge.1 counts as
+ * below: it has no subject line, and `compareSemver` puts it before 1.29.0. A lead drops all three for such
+ * a member. A member never refuses for the subject alone: it signs the message without it
+ * (service.ts `leadOlderThanSubject`).
  */
-export function carriesSpace(message: Pick<WalkyMessage, "from" | "outside" | "subject">): boolean {
-  return (message.from.space !== undefined && message.from.space !== null) || message.outside === true || message.subject !== undefined;
+export function carriesNewLines(message: Pick<WalkyMessage, "from" | "outside" | "subject">): boolean {
+  return carriesSpace(message) || message.subject !== undefined;
 }
 
 /**

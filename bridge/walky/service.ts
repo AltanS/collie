@@ -47,6 +47,8 @@ export type SendAnswer =
       readonly receipts: readonly WalkyReceipt[];
       /** The one pane the message went to, as `who` lists it, when this bridge knows it. */
       readonly target?: WalkyTarget;
+      /** True when this bridge signed the message without its subject (M98 spec 07, types.ts `SUBJECT_LEFT_OUT`). */
+      readonly subjectLeftOut?: true;
     }
   | { readonly ok: false; readonly error: string };
 
@@ -67,6 +69,12 @@ export interface WalkyServiceDeps extends DelivererDeps {
   readonly remoteSkipped?: () => readonly WalkySkipped[];
   /** The off flags, `<stateDir>/walky/off.json` (M89). The host's `panes()` reads the same store. Absent: in memory. */
   readonly off?: WalkyOff;
+  /**
+   * On a member (M98 spec 07): whether its lead is KNOWN to run a release below 1.29.0, which cannot verify
+   * a signed subject line. Then a message that may leave this machine is signed without its subject, and
+   * the answer says so. Unknown is not older. Absent: never.
+   */
+  readonly leadOlderThanSubject?: () => boolean;
 }
 
 /** What `who` on a crew member adds below its own panes: the roster is the lead's, and the command to run there. */
@@ -253,12 +261,23 @@ export class WalkyService {
     if ("error" in subject) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, subject.error)] };
     // One head, one door (agent views SECURITY rule 2): a walky message never carries a view's head.
     if (hasViewHead(input.body)) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, WALKY_BAD_HEAD)] };
-    const message = this.compose({ ...input, to }, sender);
+    // A subject never costs a message (M98 spec 07): a member whose lead cannot verify the subject line
+    // signs the message without it when it may leave this machine, and the answer says so.
+    const leftOut = subject.subject !== null && this.deps.leadOlderThanSubject?.() === true && !this.staysHere(to);
+    const message = this.compose(leftOut ? { ...input, to, subject: null } : { ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
     const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId, instance: sender.pane.instance } : null;
     const receipts = await this.deliverer.deliver(message, from, options.budget === undefined ? {} : { budget: options.budget });
     const target = this.targetOf(message.to);
-    return target === null ? { ok: true, receipts } : { ok: true, receipts, target };
+    const answer: SendAnswer = target === null ? { ok: true, receipts } : { ok: true, receipts, target };
+    return leftOut ? { ...answer, subjectLeftOut: true } : answer;
+  }
+
+  /** Whether an address names only this machine: one of its panes, or its own `<member>/all`. */
+  private staysHere(to: string): boolean {
+    const address = parseAddress(to);
+    if (address?.kind === "pane" || address?.kind === "member-all") return isSelf(address.memberId, this.deps.memberId);
+    return false;
   }
 
   /**

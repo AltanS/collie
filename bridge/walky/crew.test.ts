@@ -1930,6 +1930,49 @@ describe("the space border across a crew (M98 spec 03)", () => {
     expect(payloads).toHaveLength(1);
     expect(isPrintableAscii(LEAD_OLDER_THAN_SPACE) && LEAD_OLDER_THAN_SPACE.length <= RECEIPT_REASON_MAX).toBe(true);
   });
+
+  test("a subject alone is never a reason to refuse: a member whose lead is below 1.29.0 still dials an operator's message with one (M98 spec 07)", async () => {
+    const payloads: string[] = [];
+    const route = memberRouteRemote({
+      self: "laptop",
+      post: async (payload) => {
+        payloads.push(payload);
+        return { kind: "answer", status: 200, body: { receipts: [] } };
+      },
+      leadRelease: () => "1.28.3",
+      own: "1.29.0",
+      compare: compareSemver,
+      now: () => AT,
+    });
+    const receipts = await route(signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1", { ...OPERATOR("laptop"), subject: "standup in 5" }), "desk");
+    expect(receipts.some((r) => r.state === "refused")).toBe(false);
+    expect(payloads).toHaveLength(1);
+    // The space rule still refuses what it refused before.
+    expect(await route(signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", { subject: "standup in 5" }), "desk")).toMatchObject([{ state: "refused", reason: LEAD_OLDER_THAN_SPACE }]);
+  });
+
+  test("the sender's bridge signs without the subject when its lead is below 1.29.0 and the message may leave this machine (M98 spec 07)", async () => {
+    const posted: WalkyMessage[] = [];
+    const laptop = service("laptop", [pane("w1:p1")], undefined, {
+      leadOlderThanSubject: () => true,
+      routeRemote: async (message) => {
+        posted.push(message);
+        return [];
+      },
+    });
+    const answer = await laptop.service.send({ id: "wt_aaaaaaaaaaa1", to: "desk/w1:p1", body: "hi", replyTo: null, subject: "standup in 5" }, { kind: "operator", label: "phone" });
+    expect(answer).toMatchObject({ ok: true, subjectLeftOut: true });
+    expect(laptop.service.status("wt_aaaaaaaaaaa1").message).not.toHaveProperty("subject");
+    expect(posted[0]).not.toHaveProperty("subject");
+    // To this machine's own pane the subject stays, and the answer says nothing.
+    const home = await laptop.service.send({ id: "wt_aaaaaaaaaaa2", to: "laptop/w1:p1", body: "hi", replyTo: null, subject: "standup in 5" }, { kind: "operator", label: "phone" });
+    expect(home).not.toHaveProperty("subjectLeftOut");
+    expect(laptop.service.status("wt_aaaaaaaaaaa2").message).toMatchObject({ subject: "standup in 5" });
+    // A lead at this version, or one whose release is not known, gets the subject.
+    const current = service("laptop", [pane("w1:p1")], undefined, { leadOlderThanSubject: () => false, routeRemote: async () => [] });
+    expect(await current.service.send({ id: "wt_aaaaaaaaaaa3", to: "desk/w1:p1", body: "hi", replyTo: null, subject: "standup in 5" }, { kind: "operator", label: "phone" })).not.toHaveProperty("subjectLeftOut");
+    expect(current.service.status("wt_aaaaaaaaaaa3").message).toMatchObject({ subject: "standup in 5" });
+  });
 });
 
 describe("`who` on a member asks the lead (M98 spec 04)", () => {

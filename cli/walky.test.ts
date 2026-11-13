@@ -10,7 +10,7 @@ import type { SendResult, WalkyHost, WalkyPane } from "../bridge/walky/deliver.t
 import { WalkyLog } from "../bridge/walky/log.ts";
 import { WalkyOff } from "../bridge/walky/off.ts";
 import { unknownOp, UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
-import { SENDER_OFF, SUBJECT_TOO_LONG, WALKY_OFF } from "../bridge/walky/types.ts";
+import { SENDER_OFF, SUBJECT_LEFT_OUT, SUBJECT_TOO_LONG, WALKY_OFF } from "../bridge/walky/types.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
@@ -502,6 +502,21 @@ describe("reply, inbox, status, who", () => {
     expect(d.io.stderr[0]).toBe(`error: ${SUBJECT_TOO_LONG}`);
     expect(b.sent).toEqual([]);
     expect(b.service?.status("wt_aaaaaaaaaaa1").receipts).toEqual([]);
+  });
+
+  socketTest("a member whose lead is below 1.29.0 sends without the subject and says so in one sentence; to its own pane the subject stays (M98 spec 07)", async () => {
+    const b = await bridge({ memberId: "laptop", leadOlderThanSubject: () => true });
+    const away = deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa1" });
+    await cmdWalkySend(away, ["desk/w1:p1", "--subject", "export tests are green", "x"]);
+    expect(away.io.stdout).toContain(SUBJECT_LEFT_OUT);
+    expect(b.service?.status("wt_aaaaaaaaaaa1").message).not.toHaveProperty("subject");
+    const json = deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa2" });
+    await cmdWalkySend(json, ["desk/w1:p1", "--json", "--subject", "export tests are green", "x"]);
+    expect(JSON.parse(json.io.stdout[0]!)).toMatchObject({ subjectLeftOut: true });
+    const home = deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa3" });
+    expect(await cmdWalkySend(home, ["laptop/%2", "--subject", "export tests are green", "x"])).toBe(EXIT.OK);
+    expect(home.io.stdout).not.toContain(SUBJECT_LEFT_OUT);
+    expect(b.sent.at(-1)).toContain(' about "export tests are green":');
   });
 
   socketTest("a reply to an operator's message is refused: it has no address", async () => {

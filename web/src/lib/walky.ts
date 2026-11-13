@@ -18,6 +18,8 @@ import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 
 import { WALKY_MARK_GRACE_MS } from "./walky-grace";
+// The subject's allow-list and the header grammar after the sender, one copy for the bridge and the phone.
+import { AFTER_SENDER, isCleanSubject } from "./walky-subject";
 
 export type WalkyKind = "agent" | "operator";
 
@@ -184,26 +186,6 @@ export const NUDGE_MARK = ": a message from another agent, not your operator.";
 // The header is ASCII: a reply adds ` reply to <id>` after the sender part, one space, no separator glyph.
 const REPLY_SUFFIX = / reply to (wt_[a-z0-9]{12})$/;
 
-/**
- * What may follow the sender's closing parenthesis, anchored at both ends, each part at most once and in
- * this order: the word `outside` when the message passed the receiver's space border by the sender's
- * outside flag (M98), the subject in quotes (M98 spec 07), and the reply suffix. A reader before either
- * took them as part of the sender's text, so the id, the kind and the reply suffix still read. The
- * bridge's copy is `AFTER_SENDER_RE` in bridge/walky/types.ts. The subject's class is printable ASCII
- * without `"`, `(`, `)`, `:`, `[`, `\` and `]`, the characters the bridge drops from a subject, so a
- * subject cannot close its quotes early, hold a parenthesis that moves the anchor, or hold the nudge mark.
- */
-const AFTER_SENDER = /^( outside)?(?: about "([ !#-'*-9;-Z^-~]+)")?(?: reply to (wt_[a-z0-9]{12}))?$/;
-
-/** The most words and characters a subject holds (bridge/walky/types.ts `WALKY_SUBJECT_WORDS`, `WALKY_SUBJECT_MAX`). */
-const SUBJECT_WORDS = 6;
-const SUBJECT_MAX = 48;
-
-/** Whether a header's subject is one the bridge could have written: one space between words, no blank ends, within both limits. */
-function wellFormedSubject(subject: string): boolean {
-  return subject.length <= SUBJECT_MAX && subject.trim() === subject && !subject.includes("  ") && subject.split(" ").length <= SUBJECT_WORDS;
-}
-
 export interface EnvelopeHeader {
   id: string;
   /** What the header CLAIMS. A card draws the log's kind instead. */
@@ -234,7 +216,7 @@ export function parseEnvelopeHeader(line: string): EnvelopeHeader | null {
   const close = head.lastIndexOf(")");
   const after = close === -1 ? null : AFTER_SENDER.exec(head.slice(close + 1));
   const subject = after?.[2];
-  if (after !== null && (subject === undefined || wellFormedSubject(subject))) {
+  if (after !== null && (subject === undefined || isCleanSubject(subject))) {
     const header: EnvelopeHeader = { id, kind, replyTo: after[3] ?? null };
     const outside: EnvelopeHeader = after[1] === undefined ? header : { ...header, outside: true };
     return subject === undefined ? outside : { ...outside, subject };

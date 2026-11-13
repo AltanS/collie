@@ -75,9 +75,10 @@ collie walky send collie-7k2m9p/w54:p1G#1adi "Tests are green on fix-login. You 
 `who` lists the agent panes of your space. Pick an address from that list and pass it to `send`.
 
 `--subject "<words>"`, before the text, says what the message is about. The target pane sees it in
-the typed line before it reads the body. It is optional, at most 6 words and 48 characters of
-printable ASCII. Collie turns quotes, colons, backslashes, brackets and parentheses into spaces. A
-longer subject is never cut: the send is refused `subject over 6 words or 48 characters: shorten it`.
+the typed line before it reads the body. It is optional, at most 6 words and 48 characters. It
+keeps ASCII letters, digits, spaces and `. , - _ / # + ' ? % @ =`; Collie turns every other
+character into a space, so nothing in it can run at a shell prompt. A longer subject is never cut:
+the send is refused `subject over 6 words or 48 characters: shorten it`.
 `reply` takes `--subject` too.
 `who --all` lists every agent pane you can reach, in every space. Outside an agent pane, `who` lists
 every pane.
@@ -486,7 +487,9 @@ certificate with its own word for it, so the receiving machine checks the sender
   border itself for a member older than 1.29.0, which cannot. A message from a member older than
   1.29.0 names no space. It passes as before, and its receipt says `legacy`.
 - **A subject across versions.** A member older than 1.29.0 gets the message without its subject:
-  the lead leaves it out, and the typed line there has no `about` part. The body is the same.
+  the lead leaves it out, and the typed line there has no `about` part. The body is the same. A member
+  whose lead is older than 1.29.0 sends the message without its subject and prints
+  `The subject was left out: the lead of this crew runs a Collie older than 1.29.0.`
 - **A Decision goes to the lead's Hill.** `collie hill post` on a member posts on the lead, and the
   answer comes back to the session as a message through the lead. An answer to a session whose
   machine is not answering is not sent, and the card stays open

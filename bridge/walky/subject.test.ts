@@ -11,6 +11,8 @@ import {
   formatHeader,
   formatNudge,
   HEADER_RE,
+  headerField,
+  lineField,
   isCleanSubject,
   NUDGE_MARK,
   parseEnvelopeHeader,
@@ -242,6 +244,55 @@ describe("hostile subjects", () => {
     });
     expect(parseEnvelopeHeader(`${head} about "x" about "y"${NUDGE_MARK}`)).not.toHaveProperty("subject");
     expect(parseEnvelopeHeader(`${head} about "${"z".repeat(49)}"${NUDGE_MARK}`)).not.toHaveProperty("subject");
+  });
+});
+
+describe("the allow-list: nothing a shell would run", () => {
+  test.each([
+    ["backticks", "run `id` now", "run id now"],
+    ["$HOME", "see $HOME first", "see HOME first"],
+    ["${x}", "use ${x} here", "use x here"],
+    ["!!", "again !! please", "again please"],
+    [";", "a; rm x", "a rm x"],
+    ["|", "a | sh", "a sh"],
+    ["&", "a & b && c", "a b c"],
+    [">", "a > /tmp/x", "a /tmp/x"],
+    ["<", "a < b", "a b"],
+    ["*", "all *.ts files", "all .ts files"],
+    ["~", "in ~/src", "in /src"],
+    ["{}", "brace {a,b}", "brace a,b"],
+  ])("%s becomes a space", (_name, raw, clean) => {
+    expect(cleanSubject(raw)).toBe(clean);
+    const line = formatNudge(withSubject(clean));
+    expect(line).not.toMatch(/[`$!;|&<>*~{}]/u);
+    expect(parseEnvelopeHeader(line)?.subject).toBe(clean);
+  });
+
+  test("the allowed punctuation stays: . , - _ / # + ' ? % @ =", () => {
+    const kept = "v1.2, fix-a_b /x #3 +1 it's ?% @me =ok";
+    expect(cleanSubject(kept)).toBe(kept);
+    expect(isCleanSubject(kept)).toBe(false);
+    expect(readSubject("it's #42 ok? 100% @lead a=b")).toEqual({ subject: "it's #42 ok? 100% @lead a=b" });
+    expect(parseEnvelopeHeader(formatNudge(withSubject("it's #42 ok? 100% @lead a=b")))?.subject).toBe("it's #42 ok? 100% @lead a=b");
+  });
+
+  test("a hand-made line with a shell character in the slot reads no subject", () => {
+    const head = "[walky-talky wt_qoo5tvg2ldhj] from agent a/w1:p1 (claude, r)";
+    for (const bad of ["`id`", "$HOME", "a!b", "a;b", "a{b}"]) expect(parseEnvelopeHeader(`${head} about "${bad}"${NUDGE_MARK}`)).not.toHaveProperty("subject");
+  });
+});
+
+describe("the typed line's sender fields (lineField)", () => {
+  test("a backtick, `$` and `!` in a label, harness or address become a space on the line, and nowhere else", () => {
+    const branchy: WalkyMessage = { ...agent, from: { ...agent.from, label: "repo#feat-`id`-$HOME!x" } };
+    const line = formatNudge(branchy);
+    expect(line).toContain("(claude, repo#feat- id - HOME x):");
+    expect(line).not.toMatch(/[`$!]/u);
+    // The stored label keeps the bytes it had; only the line is cleaned, and the parse still reads the line.
+    expect(branchy.from.label).toBe("repo#feat-`id`-$HOME!x");
+    expect(parseEnvelopeHeader(line)).toMatchObject({ id: "wt_qoo5tvg2ldhj", sender: "collie-biyrya/w6X:p2Z#1o2q (claude, repo#feat- id - HOME x)" });
+    expect(lineField("$!`", 48)).toBe("-");
+    expect(lineField("plain#main", 48)).toBe(headerField("plain#main", 48));
   });
 });
 

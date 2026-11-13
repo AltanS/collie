@@ -6,6 +6,7 @@
 // message names its sender's harness as an open string from the adapter registry.
 
 import type { WalkySpace } from "./space.ts";
+import { AFTER_SENDER, cleanSubject, isCleanSubject, WALKY_SUBJECT_MAX, WALKY_SUBJECT_WORDS } from "../../web/src/lib/walky-subject.ts";
 import { randomBytes } from "node:crypto";
 
 /** The wire version of a message. */
@@ -309,17 +310,13 @@ export function headerField(raw: string, max = 80): string {
 export const OUTSIDE_WORD = "outside";
 
 // ── The subject (M98 spec 07) ─────────────────────────────────────────────────────────────────────
-// The subject is the first text of another agent that lands in the receiver's input box, where an agent
-// reads its operator. So it is short, printable ASCII, and holds none of the characters that frame the
-// header: no bracket or parenthesis (they frame the sender), no double quote (it frames the subject), no
-// colon (the nudge mark starts with one, so a subject can never hold or forge it) and no backslash (it
-// reads as an escape of the closing quote). It sits in quotes before the nudge mark, and a reader finds
-// it from the sender's last closing parenthesis, which no field after it can hold.
+// The subject is the first text of another agent that lands in the receiver's input box. Its characters
+// are an allow-list shared with the phone (web/src/lib/walky-subject.ts, which says why each is there).
+// It sits in quotes before the nudge mark, and a reader finds it from the sender's last closing
+// parenthesis, which no field after it can hold.
 
-/** The most words a subject holds, after cleaning. */
-export const WALKY_SUBJECT_WORDS = 6;
-/** The most characters a subject holds, after cleaning. */
-export const WALKY_SUBJECT_MAX = 48;
+export { cleanSubject, isCleanSubject, WALKY_SUBJECT_MAX, WALKY_SUBJECT_WORDS };
+
 /** The longest raw subject read at all: past it the send is refused before any cleaning. */
 export const WALKY_SUBJECT_RAW_MAX = 1024;
 
@@ -329,22 +326,11 @@ export const WALKY_SUBJECT_RAW_MAX = 1024;
  */
 export const SUBJECT_TOO_LONG = "subject over 6 words or 48 characters: shorten it";
 
-/** The characters a subject drops besides everything outside printable ASCII. */
-const SUBJECT_STRIPPED = '()[]":\\';
-
 /**
- * A subject as the header may carry it: every character outside printable ASCII, and each of
- * {@link SUBJECT_STRIPPED}, becomes a space; runs of spaces become one; the ends are trimmed. The empty
- * string when nothing is left. It never cuts: the limits are {@link readSubject}'s.
+ * The reason a member gives when it leaves a subject out (M98 spec 07): its lead runs a release below
+ * 1.29.0, which cannot verify a signed subject line, so the sender's bridge signs the message without it.
  */
-export function cleanSubject(raw: string): string {
-  let out = "";
-  for (const ch of raw) {
-    const code = ch.codePointAt(0) ?? 0;
-    out += code < 0x20 || code > 0x7e || SUBJECT_STRIPPED.includes(ch) ? " " : ch;
-  }
-  return out.replace(/ {2,}/gu, " ").trim();
-}
+export const SUBJECT_LEFT_OUT = "The subject was left out: the lead of this crew runs a Collie older than 1.29.0.";
 
 /** A raw subject read: the clean subject, null for none, or the refusal. */
 export type SubjectRead = { readonly subject: string | null } | { readonly error: string };
@@ -363,10 +349,15 @@ export function readSubject(raw: string | null | undefined): SubjectRead {
   return { subject: clean };
 }
 
-/** Whether a value is a subject exactly as {@link readSubject} leaves one: clean, not empty, within both limits. */
-export function isCleanSubject(value: string): boolean {
-  const read = readSubject(value);
-  return "subject" in read && read.subject === value;
+/**
+ * A header field as the TYPED LINE carries it: {@link headerField}, then the backtick, `$` and `!` become
+ * a space too. A label is a branch name or a pane title, and either may hold them; on a shell prompt they
+ * substitute, expand or recall history. Only the line uses this: the stored label, `who`, an address part
+ * and the hill keep {@link headerField}, and the label is not signed, so nothing compares the two.
+ */
+export function lineField(raw: string, max: number): string {
+  const clean = headerField(raw, max).replace(/[`$!]/gu, " ").replace(/ {2,}/gu, " ").trim();
+  return clean === "" ? "-" : clean;
 }
 
 /**
@@ -379,10 +370,10 @@ export function isCleanSubject(value: string): boolean {
  * that is not clean (a log or a hop that bypassed the reader) is left out, never typed.
  */
 export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "subject">, outside = false): string {
-  const label = headerField(message.from.label, WALKY_LABEL_MAX);
+  const label = lineField(message.from.label, WALKY_LABEL_MAX);
   const who =
     message.kind === "agent"
-      ? `${headerField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${headerField(message.from.harness, WALKY_HARNESS_MAX)}, ${label}`})`
+      ? `${lineField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${lineField(message.from.harness, WALKY_HARNESS_MAX)}, ${label}`})`
       : `(${label})`;
   const mark = outside ? ` ${OUTSIDE_WORD}` : "";
   const about = message.subject !== undefined && isCleanSubject(message.subject) ? ` about "${message.subject}"` : "";
@@ -467,20 +458,12 @@ export interface ParsedHeader {
 }
 
 /**
- * What may follow the sender's closing parenthesis, anchored at both ends: the outside word, the subject
- * in quotes and the reply suffix, each at most once and in this order. The subject's class is printable
- * ASCII without `"`, `(`, `)`, `:`, `[`, `\` and `]`, the characters {@link cleanSubject} drops, so a
- * subject cannot close its quotes early, hold a parenthesis that moves the anchor, or hold the nudge mark.
- */
-const AFTER_SENDER_RE = /^( outside)?(?: about "([ !#-'*-9;-Z^-~]+)")?(?: reply to (wt_[a-z0-9]{12}))?$/u;
-
-/**
  * Read one line as a walky talky header, or null. A row that matches is only a claim: the log has the facts.
  *
  * The header part ends at the LAST {@link NUDGE_MARK}: the text after it is the bridge's fixed tail, and
  * no field before it can hold the mark. Within the header part the anchor is the sender's last closing
- * parenthesis: no field after it can hold one (a subject is cleaned of both parentheses), so a label that
- * reads ` about "x"` stays inside the sender, and only the strict grammar of {@link AFTER_SENDER_RE} reads
+ * parenthesis: no field after it can hold one (a subject's allow-list has no parenthesis), so a label that
+ * reads ` about "x"` stays inside the sender, and only the strict grammar of `AFTER_SENDER` (web/src/lib/walky-subject.ts, shared with the phone) reads
  * a subject. A header part that does not fit that grammar keeps the older rule: the reply suffix at the
  * end, and the rest is the sender.
  */
@@ -493,7 +476,7 @@ export function parseEnvelopeHeader(line: string): ParsedHeader | null {
   const id = match[1]!;
   const kind: WalkyKind = match[2] === "agent" ? "agent" : "operator";
   const close = head.lastIndexOf(")");
-  const after = close < 0 ? null : AFTER_SENDER_RE.exec(head.slice(close + 1));
+  const after = close < 0 ? null : AFTER_SENDER.exec(head.slice(close + 1));
   const subject = after?.[2];
   if (after !== null && (subject === undefined || isCleanSubject(subject))) {
     const parsed: ParsedHeader = { id, kind, sender: head.slice(0, close + 1), replyTo: after[3] ?? null };

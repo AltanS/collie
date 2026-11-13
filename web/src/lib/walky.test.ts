@@ -192,6 +192,10 @@ describe("parseEnvelopeHeader", () => {
       const head = "[walky-talky wt_qoo5tvg2ldhj] from agent a/w1:p1 (claude, r)";
       expect(parseEnvelopeHeader(`${head} about "two  spaces" reply to wt_8ab2k1m4q7zx${NUDGE_MARK}`)).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "agent", replyTo: "wt_8ab2k1m4q7zx" });
       expect(parseEnvelopeHeader(`${head} about "${"z".repeat(49)}"${NUDGE_MARK}`)).not.toHaveProperty("subject");
+      // The allow-list (walky-subject.ts): a shell character in the slot is no subject the bridge could write.
+      for (const bad of ["`id`", "$HOME", "${x}", "a!!", "a;b", "a|b", "a&b", "a>b", "a<b", "a*", "~/x", "{a}"]) {
+        expect(parseEnvelopeHeader(`${head} about "${bad}"${NUDGE_MARK}`)).not.toHaveProperty("subject");
+      }
     });
   });
 

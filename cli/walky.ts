@@ -13,7 +13,7 @@ import { BARE_BAD_REQUEST, UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusa
 import type { WalkyTotals } from "../bridge/walky/service.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
 import type { WalkySpace } from "../bridge/walky/space.ts";
-import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, readSubject, replyLine, RESTING, SENDER_OFF, WALKY_ID, WALKY_OFF, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
+import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, readSubject, replyLine, SUBJECT_LEFT_OUT, RESTING, SENDER_OFF, WALKY_ID, WALKY_OFF, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
 
 // `collie walky`: walky talky from a terminal (M62 spec 02). It talks to the
 // running bridge over its local socket, `<stateDir>/walky/sock`, one JSON request per connection.
@@ -586,8 +586,10 @@ async function sendAndWait(deps: WalkyDeps, to: string | null, replyTo: string |
     elsewhere = elsewhereOf(status.body.elsewhere);
     if (fresh.length > 0) receipts = fresh;
   }
+  // M98 spec 07: the bridge signed the message without its subject, because the crew's lead cannot read one.
+  const leftOut = answer.body.subjectLeftOut === true;
   if (json) {
-    deps.io.out(JSON.stringify({ id, receipts }));
+    deps.io.out(JSON.stringify(leftOut ? { id, receipts, subjectLeftOut: true } : { id, receipts }));
     return exitOf(receipts);
   }
   deps.io.out(id);
@@ -596,6 +598,7 @@ async function sendAndWait(deps: WalkyDeps, to: string | null, replyTo: string |
   else if (receipts.length === 1) deps.io.out(receiptLine(receipts[0]!, false, elsewhere));
   else for (const receipt of receipts) deps.io.out(receiptLine(receipt, true, elsewhere));
   if (receipts.some(isHeld)) deps.io.out(HELD_HINT);
+  if (leftOut) deps.io.out(SUBJECT_LEFT_OUT);
   if (receipts.length === 0 || receipts.some(notTypedYet)) deps.io.out(`check later: collie walky status ${id}`);
   return exitOf(receipts);
 }

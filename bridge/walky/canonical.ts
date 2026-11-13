@@ -40,8 +40,8 @@ export function spaceLine(key: string): string {
 }
 
 /**
- * The subject line (M98 spec 07): `subject ` and the subject as a JSON string. A clean subject holds no
- * quote, backslash or control character, so the JSON form is the subject in quotes, on one line.
+ * The subject line (M98 spec 07): `subject ` and the subject as a JSON string. A clean subject holds only
+ * the allow-list of web/src/lib/walky-subject.ts, so the JSON form is the subject in quotes, on one line.
  */
 export function subjectLine(subject: string): string {
   return `subject ${JSON.stringify(subject)}`;
