@@ -4,7 +4,6 @@ import { dirname, isAbsolute, join } from "node:path";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import { type CliContext, collieVersion } from "./context.ts";
 import { claudeSettingsTargets, realpathVia, resolveHookCommand } from "./hooks.ts";
-import { HILL_RULES, HILL_WRITING } from "./hill.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
 import { recoveryOf, type SyncResult, syncLines } from "./skill-sync-result.ts";
@@ -63,30 +62,11 @@ const STAMP_LINE = /^<!-- collie-skill walky-talky v\d+ .*-->[ \t]*$/mu;
 /** The skill's own name, which is the folder Claude Code reads it from. */
 export const SKILL_NAME = "collie-walky-talky";
 
-/**
- * The hill's rules as a bullet list, from {@link HILL_RULES}, the list `collie hill --help` prints. The
- * command in a rule is written `collie hill`; here it is the placeholder, so it names the same binary the
- * other examples do.
- */
-function hillRulesList(): string {
-  return HILL_RULES.map((rule) => `- ${rule.replaceAll("collie hill", "{{COLLIE_BIN}} hill")}`).join("\n");
-}
-
-/**
- * The wording rules for a Decision, from {@link HILL_WRITING}: its first line, then its bullets, as
- * `collie hill post --help` prints them. Placed right before the rules.
- */
-function hillWritingList(): string {
-  return HILL_WRITING.map((line) => line.replaceAll("collie hill", "{{COLLIE_BIN}} hill")).join("\n");
-}
-
 /** The embedded template with `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved. Front matter included. */
 export function renderWalkySkill(ctx: CliContext, fs: LinkReader): string {
   const binary = resolveHookCommand(ctx, fs).binary;
   const version = collieVersion(ctx.root);
-  return WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{HILL_WRITING}}", hillWritingList())
-    .replaceAll("{{HILL_RULES}}", hillRulesList())
-    .replaceAll("{{COLLIE_BIN}}", binary)
+  return WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{COLLIE_BIN}}", binary)
     .replaceAll("{{COLLIE_VERSION}}", version)
     .replace(/\n+$/u, "\n");
 }

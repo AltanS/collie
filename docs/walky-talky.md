@@ -621,8 +621,8 @@ your agents' own skills folders.
 
 The skill is a short text. It teaches the agent the `collie walky` verbs, how to read the header
 of a message, and when not to send. It also teaches the agent to put a Decision on the hill with
-`collie hill post`, with the same rules `collie hill post --help` prints, and to read what a trick asks of
-it with `collie trick skill <id>`. A copy installed before this text read as stale until the next
+`collie hill post`, with one example and a pointer to `collie hill --help` for the rules, and to read what a
+trick asks of it with `collie trick skill <id>`. A copy installed before this text read as stale until the next
 `collie skill sync`. An agent keeps only the skill's name and its one-line description in its prompt.
 It reads the rest when it opens the skill.
 

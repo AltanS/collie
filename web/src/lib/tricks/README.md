@@ -914,9 +914,9 @@ types into agent sessions only, never into a trick.
 
 ### Wording a Decision
 
-The person opens the card cold, between other things. The words are `HILL_WRITING` in
-`cli/hill-rules.ts`, which `collie hill post --help` prints and `collie trick init` writes into
-AGENTS.md:
+The person opens the card cold, between other things. The short form of these words is `HILL_WRITING`
+in `cli/hill-rules.ts` (two lines), which `collie hill --help` prints and `collie trick init` writes
+into AGENTS.md. The fuller advice:
 
 - **Title**: the decision itself, as a question the options answer, about 8 words, at most 60
   characters, with no inner names the person would not know. "Ship 1.28.1 to Stable now?", not "Are

@@ -4228,8 +4228,8 @@ these routes and keeps answering `not_on_lead`.
   (<lead>) did not confirm the post. Post again with --request-id <id>: it posts once".
 - A 401 from a lead known to run 1.29.0 or later: "the lead refused this machine's signature". From
   any other lead a 401 reads as the older lead above.
-- `collie hill post` prints the request id and the command that sends the same post again on every
-  failure: `hill: request id <id>; to send this post again, it posts once: collie hill post ...
+- `collie hill post` prints one line on a refusal, `hill: <reason> (<code>)`. When a retry can pass
+  (exit 5, and exit 3 that is not `hill_off`) a second line follows: `hill: send it again with
   --request-id <id>`. When its socket took the post and did not answer in time, it says the post "is
   not confirmed and may still reach the Hill", exits 5, and asks no other bridge on the machine.
 - Status and list: "the lead (<lead>) is not answering; try again". A withdraw whose outcome is

@@ -151,25 +151,26 @@ The person opens the card cold, between other things.
 
 ### The rules an agent gets
 
-Every agent that has the Collie skill installed reads these rules, and `collie hill --help` prints
-them ([Install the skill](walky-talky.md#install-the-skill)).
+The skill an agent has installed holds a short Hill section: one example and a pointer to
+`collie hill --help` ([Install the skill](walky-talky.md#install-the-skill)). The rules are in that
+help, in at most 1,400 bytes, so an agent reads them only when it runs it. `collie hill post --help`
+prints the same text.
 
-1. Post a decision only for what needs the person.
-2. Always write the summary in plain words, and recommend one option with a why.
-3. One question per decision. To change one, post again with `--supersedes`. Never repost.
-4. Do not wait in a loop. The answer arrives as a WalkyTalky message and starts your next turn.
-5. If no answer arrived, read it with `collie hill status <id>`.
-6. An answer typed into your session for a decision you did not post carries only the id and the
-   option word. Read the rest with `collie hill status <id>`.
-7. A worker with a lead asks its lead first.
-8. A `--view` only shows facts. No buttons: the options are the taps.
-9. When your operator settles the question in your session, take the card back:
-   `collie hill withdraw <id>`.
-10. Before you post, read the crew state: `collie hill state`. here: post as usual. quiet: post, but
-    do not wait for a fast answer. away: post nothing that needs an answer now; do work that needs no
-    answer, then end your turn.
-11. A typed answer or a post result can end with a line such as "Crew state: away." It is the state
-    at that moment.
+1. Post only what needs your person. A worker with a lead asks its lead first.
+2. One question per post. To change it, post again with `--supersedes <id>`.
+3. Do not wait or poll. The answer starts your next turn. None arrived: `collie hill status <id>`.
+4. Settled in your session: `collie hill withdraw <id>`.
+5. A result that ends "Crew state: quiet." or "Crew state: away.": your person is not there. Ask
+   nothing that needs an answer now.
+
+The help also has two lines on wording. The title is the decision as a question, in about 8 words,
+with no inner ids. The summary is one or two plain sentences, and the first says what the
+recommendation does. Each option starts with a verb, never a bare Yes or No, and the agent
+recommends one with `--recommend <intent> --why "<reason>"`. A `--view` shows facts only. No buttons:
+the options are the taps.
+
+The agent no longer reads the crew state before each post. A post result that ends with "Crew state:
+quiet." or "Crew state: away." tells it. `collie hill state` stays as a verb.
 
 ### Pictures
 
@@ -192,8 +193,10 @@ the facts, and not again in the row above.
 
 ### When a post fails
 
-A refusal prints `hill: <reason> (<code>)` on stderr, then the request id and the command that sends
-the same post once.
+A refusal prints one line on stderr: `hill: <reason> (<code>)`. It does not repeat the command.
+When the same post can pass on a retry, a second line follows:
+`hill: send it again with --request-id <uuid>`. That is exit 5, and exit 3 when the Hill is not
+the cause. With the Hill off (`hill_off`), or after exit 4, there is no second line.
 
 | Exit | Meaning |
 | --- | --- |
