@@ -4041,21 +4041,24 @@ export class SendProtocol {
     const mail = request.draftHolds === true;
     if (over) {
       // Never while a turn runs or a question is open (a dialog), and never on a turn nobody reported:
-      // the message keeps waiting for the draft, its try not counted.
-      const turn = data.door.turnOf(address);
+      // the message keeps waiting for the draft, its try not counted. A `running` word of any age is
+      // busy here: a Deliver now never goes on it, and an old one says why as before (M100 spec 05).
+      const turn = data.door.turnOf(address, { anyAge: true });
       if (turn === null) return this.overDraftMiss(state, "not-linked");
       if (turn === "running" || data.door.askOpen(address)) return this.overDraftMiss(state, "busy");
     }
     // A draft holds a WalkyTalky message by data too (spec 05, decision of 2026-11-13): another agent's
     // words never go in over the person's draft. The part says whether the box holds one; a part that
     // cannot say, or has not said yet, leaves it unknown, and unknown takes the screen road, which reads
-    // the box itself. Unknown is never taken for "no draft". A phone send (spec 03) is not asked.
+    // the box itself. Unknown is never taken for "no draft", and an old "present" is unknown too (M100
+    // spec 05: its "no draft" may have been lost). A phone send (spec 03) is not asked.
     // A Deliver now does not ask: the person chose to deliver over the draft, and the draft is never read.
     const draft = mail && !over ? data.door.draftOf(address) : false;
     if (draft === null) return null;
     const turn = data.door.turnOf(address);
     // A part that has not reported a turn since it bound (a bridge restart, a reload mid turn) leaves
-    // the turn unknown: the screen road reads it and runs the send, as today.
+    // the turn unknown: the screen road reads it and runs the send, as today. So does a `running` word
+    // grown old (M100 spec 05): its `turn.end` may have been lost, and the screen holds a turn it sees.
     if (turn === null) return null;
     if (turn === "running") {
       const end = new Ended("refused", "turn_running");

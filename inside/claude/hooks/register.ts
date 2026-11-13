@@ -23,11 +23,15 @@ import {
   seen,
   selfOfStat,
   socketOfTarget,
+  STATE_RETRY_MS,
+  stateLost,
   TARGETS_MAX,
   targetsDir,
+  turnEvent,
   turnIdOf,
   waitOf,
   type Command,
+  type TurnWord,
 } from './core'
 
 // The Collie mod (M99 spec 02). It speaks Collie's inside wire to every Collie bridge on this machine:
@@ -55,6 +59,14 @@ interface Link {
   loop: number
   /** A hello of this link is on the wire: a second one waits for the next rescan. */
   greeting: boolean
+  /** The count of the last draft word and turn word this link's bridge took, under its current part. */
+  saidDraft: number | null
+  saidTurn: number | null
+  /** The part the state words are being said to now, or null: one saying per part at a time. */
+  sayingFor: string | null
+  /** A retry of the state words is waiting on its timer; how many retries this failure has had. */
+  retryWaiting: boolean
+  retries: number
 }
 
 const links = new Map<string, Link>()
@@ -62,25 +74,107 @@ let rescanning = false
 /** Whether this environment runs the rescan timer. A reload is a new environment, with its timers dropped. */
 let ticking = false
 /**
+ * The count of this module's state words (M100 spec 05): each new turn word or draft word takes the next
+ * number, and a word said again keeps its own, so the bridge can drop a word older than one it took. A
+ * reload starts it over, with a new hello and so a new part id, whose count the bridge starts over too.
+ */
+let wordCount = 0
+
+/**
  * The main turn as this module last saw it: its start or its end, as the wake event that said so. Null
  * before the first turn. A link that went down and came back binds a new part, and the bridge knows no
  * turn for it; the last word is said again after each hello, so a send during that turn is still held.
  */
-let turnWord: { readonly kind: 'turn.start' | 'turn.end'; readonly turn: string | null; readonly reason?: unknown } | null = null
+let turnWord: TurnWord | null = null
 
 /**
  * Whether the prompt box holds a draft, as this module last saw it, or null before it knows. Only the
  * boolean is ever sent (`draft.state`), on each flip and after each hello, so Collie holds a WalkyTalky
  * message while the person writes (M99 spec 05, decision of 2026-11-13).
  */
-let draftWord: boolean | null = null
+let draftWord: { readonly present: boolean; readonly seq: number } | null = null
 
-/** Note the box's text after a change; say `draft.state` to every bridge when it flipped. Never throws. */
+/** The count of a new state word. A new word starts every link's retry ladder over: the bound is per word. */
+function nextWord(): number {
+  wordCount += 1
+  for (const link of links.values()) link.retries = 0
+  return wordCount
+}
+
+/** Take a new draft word when the box flipped; the same word keeps its count. */
+function setDraft(present: boolean): void {
+  if (draftWord?.present !== present) draftWord = { present, seq: nextWord() }
+}
+
+/**
+ * Note the box's text after a change, and say the state words a bridge has not taken yet: a flip, or a
+ * word whose post failed (its dedupe is per bridge, on what the bridge took, never on what was tried).
+ * Never throws.
+ */
 function noteDraft($: $, text: string): void {
-  const present = holdsDraft(text)
-  if (draftWord === present) return
-  draftWord = present
-  wakeAll($, (part) => draftStateEvent(part, present))
+  setDraft(holdsDraft(text))
+  sayAll($)
+}
+
+/** Say the state words each bound link's bridge has not taken yet. */
+function sayAll($: $): void {
+  for (const link of links.values()) if (link.state === 'mine' && link.part !== null) void sayState($, link)
+}
+
+/** The next state word this link's bridge has not taken, the box first (a turn word may release a held message), or null. */
+function unsaid(link: Link, part: string): { readonly body: string; readonly took: () => void } | null {
+  const draft = draftWord
+  if (draft !== null && link.saidDraft !== draft.seq) return { body: draftStateEvent(part, draft.present, draft.seq), took: () => void (link.saidDraft = draft.seq) }
+  const turn = turnWord
+  if (turn !== null && link.saidTurn !== turn.seq) return { body: turnEvent(part, turn), took: () => void (link.saidTurn = turn.seq) }
+  return null
+}
+
+/**
+ * Say the state words this link's bridge has not taken, one post at a time. A post that failed (no answer
+ * in time, a 429, a 5xx) is said again after {@link STATE_RETRY_MS}, then no more until the next word,
+ * the next edit of the box or the next hello: the bridge reads a word it has not heard for a while as
+ * unknown and takes the screen road, so a give-up costs a road, never a stuck send. Never throws.
+ */
+async function sayState($: $, link: Link): Promise<void> {
+  const part = link.part
+  if (part === null || link.sayingFor === part || link.retryWaiting) return
+  link.sayingFor = part
+  try {
+    // Bounded: each round takes one word, and only two can be unsaid; a word that came in between waits for its own call.
+    for (let round = 0; round < 4; round += 1) {
+      if (link.state !== 'mine' || link.part !== part) return
+      const next = unsaid(link, part)
+      if (next === null) {
+        link.retries = 0
+        return
+      }
+      const answer = await post($, link, next.body)
+      // A new hello (a 410 included) said every word again under its own part.
+      if (link.part !== part) return
+      if (stateLost(answer?.status ?? null)) {
+        retryLater($, link)
+        return
+      }
+      next.took()
+    }
+  } catch {
+    // An engine fault: the next word, edit or hello says it again.
+  } finally {
+    if (link.sayingFor === part) link.sayingFor = null
+  }
+}
+
+/** Schedule the next retry of the state words, while the ladder lasts. */
+function retryLater($: $, link: Link): void {
+  const wait = STATE_RETRY_MS[link.retries]
+  if (wait === undefined) return
+  link.retries += 1
+  link.retryWaiting = true
+  $.clock.after(wait, () => {
+    link.retryWaiting = false
+    void sayState($, link)
+  })
 }
 
 const TAKEN = { plugin: 'collie', key: 'taken' } as const
@@ -227,13 +321,15 @@ async function greet($: $, link: Link, now: number): Promise<void> {
   link.state = 'mine'
   link.part = parsed.part
   link.failures = 0
-  // The box first, then the turn: the turn word may release a held message, and the bridge must know the draft by then.
+  // A new part knows no word: every state word is said again, the box first, then the turn (unsaid).
+  link.saidDraft = null
+  link.saidTurn = null
+  link.retries = 0
+  link.retryWaiting = false
   const box = await $.prompt.read().catch(() => null)
-  if (box !== null) {
-    draftWord = holdsDraft(box.text)
-    await post($, link, draftStateEvent(parsed.part, draftWord))
-  }
-  if (turnWord !== null) void post($, link, JSON.stringify({ part: parsed.part, ...turnWord }))
+  if (box !== null) setDraft(holdsDraft(box.text))
+  if (link.loop !== loop) return
+  await sayState($, link)
   $.clock.after(0, () => poll($, link, loop))
 }
 
@@ -355,7 +451,7 @@ async function rescan($: $): Promise<void> {
       links.delete(socket)
     }
     for (const socket of sockets) {
-      const link = links.get(socket) ?? { socket, part: null, state: 'new', retryAt: 0, failures: 0, loop: 0, greeting: false }
+      const link = links.get(socket) ?? { socket, part: null, state: 'new', retryAt: 0, failures: 0, loop: 0, greeting: false, saidDraft: null, saidTurn: null, sayingFor: null, retryWaiting: false, retries: 0 }
       links.set(socket, link)
       if (link.state !== 'mine') await hello($, link)
     }
@@ -442,18 +538,16 @@ export const register: Register = (on) => {
 
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) {
-      const word = { kind: 'turn.start', turn: turnIdOf(e.turnId) } as const
-      turnWord = word
-      wakeAll($, (part) => JSON.stringify({ part, ...word }))
+      turnWord = { kind: 'turn.start', turn: turnIdOf(e.turnId), seq: nextWord() }
+      sayAll($)
     }
     return next(e)
   })
 
   on('turn.complete', ($, e, next) => {
     if (e.agentId === undefined) {
-      const word = { kind: 'turn.end', turn: turnIdOf(e.turnId), reason: e.reason } as const
-      turnWord = word
-      wakeAll($, (part) => JSON.stringify({ part, ...word }))
+      turnWord = { kind: 'turn.end', turn: turnIdOf(e.turnId), reason: e.reason, seq: nextWord() }
+      sayAll($)
     }
     return next(e)
   })

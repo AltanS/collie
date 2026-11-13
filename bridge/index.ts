@@ -1836,7 +1836,7 @@ insideHub?.listen({
     // The part's turn end releases the pane's oldest held send now; the poll's own rules stay (spec 03).
     // So does its word that the box holds no draft any more: a WalkyTalky message held over the draft
     // goes now, once, and its run asks the draft state again before anything (spec 05, 2026-11-13).
-    if (releasesHeld(event, insideHub?.turnOf(part.address) ?? null)) void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
+    if (releasesHeld(event, insideHub?.turnOf(part.address, { anyAge: true }) ?? null)) void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
   },
 });
 

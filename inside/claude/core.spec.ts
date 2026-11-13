@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { MARKER_ENV_NAMES } from "../../bridge/beacon/env-markers.ts";
+import { WORD_FRESH_MS } from "../../bridge/inside/hub.ts";
 import { CAPABILITIES as WIRE_CAPABILITIES, ASK_KINDS as WIRE_ASKS, commandBody, parseEvent, parseHello, WIRE_VERSION as BRIDGE_WIRE } from "../../bridge/inside/wire.ts";
 import {
   actionOf,
@@ -25,8 +26,11 @@ import {
   seen,
   selfOfStat,
   socketOfTarget,
+  STATE_RETRY_MS,
+  stateLost,
   TAKEN_KEEP,
   targetsDir,
+  turnEvent,
   waitOf,
   WIRE_VERSION,
 } from "./hooks/core.ts";
@@ -57,13 +61,26 @@ describe("the mod speaks the bridge's wire", () => {
     expect(JSON.parse(text).env).toEqual({ HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/h.sock" });
   });
 
-  test("its draft.state parses on the bridge and carries the boolean only", () => {
-    expect(parseEvent(draftStateEvent(PART, true))).toEqual({ ok: true, part: PART, kind: "draft.state", present: true });
-    expect(parseEvent(draftStateEvent(PART, false))).toEqual({ ok: true, part: PART, kind: "draft.state", present: false });
-    expect(Object.keys(JSON.parse(draftStateEvent(PART, true)))).toEqual(["part", "kind", "present"]);
+  test("its draft.state parses on the bridge and carries the boolean only, with the word's count", () => {
+    expect(parseEvent(draftStateEvent(PART, true, 3))).toEqual({ ok: true, part: PART, kind: "draft.state", present: true, seq: 3 });
+    expect(parseEvent(draftStateEvent(PART, false, 4))).toEqual({ ok: true, part: PART, kind: "draft.state", present: false, seq: 4 });
+    expect(Object.keys(JSON.parse(draftStateEvent(PART, true, 1)))).toEqual(["part", "kind", "present", "seq"]);
     expect(holdsDraft("")).toBe(false);
     expect(holdsDraft(" ")).toBe(true);
     expect(holdsDraft("half")).toBe(true);
+  });
+
+  test("its turn words parse on the bridge with their count", () => {
+    expect(parseEvent(turnEvent(PART, { kind: "turn.start", turn: "t-1", seq: 5 }))).toEqual({ ok: true, part: PART, kind: "turn.start", turn: "t-1", seq: 5 });
+    expect(parseEvent(turnEvent(PART, { kind: "turn.end", turn: null, reason: "answer", seq: 6 }))).toEqual({ ok: true, part: PART, kind: "turn.end", turn: null, reason: "answer", seq: 6 });
+  });
+
+  test("a state post is said again on no answer, a 429 and a 5xx; a 410 says hello instead, anything else is final", () => {
+    for (const status of [null, 429, 500, 503]) expect(stateLost(status)).toBe(true);
+    for (const status of [204, 200, 400, 404, 410, 413]) expect(stateLost(status)).toBe(false);
+    // The ladder ends inside the bridge's word age, and no wait is below the second a 429 asks for.
+    expect(STATE_RETRY_MS.reduce((sum, ms) => sum + ms, 0)).toBeLessThan(WORD_FRESH_MS);
+    expect(Math.min(...STATE_RETRY_MS)).toBeGreaterThanOrEqual(1000);
   });
 
   test("it reads back every command the bridge writes", () => {

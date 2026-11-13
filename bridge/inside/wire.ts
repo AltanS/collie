@@ -106,10 +106,18 @@ export interface Hello {
   readonly asks: readonly AskKind[];
 }
 
+/**
+ * The part's own count of its state words (`turn.start`, `turn.end`, `draft.state`), rising by one with
+ * each new word and kept by a word it says again (M100 spec 05). The hub drops a word older than the last
+ * one of its kind it took, so a late or re-sent word never undoes a newer one. Null from a part that
+ * sends none (an older part): its words are taken in the order they arrive, as before.
+ */
+export type WordSeq = number | null;
+
 /** One event, parsed. Every event names the part that sends it. */
 export type WireEvent =
-  | { readonly ok: true; readonly part: string; readonly kind: "turn.start"; readonly turn: string | null }
-  | { readonly ok: true; readonly part: string; readonly kind: "turn.end"; readonly turn: string | null; readonly reason: string | null }
+  | { readonly ok: true; readonly part: string; readonly kind: "turn.start"; readonly turn: string | null; readonly seq: WordSeq }
+  | { readonly ok: true; readonly part: string; readonly kind: "turn.end"; readonly turn: string | null; readonly reason: string | null; readonly seq: WordSeq }
   | { readonly ok: true; readonly part: string; readonly kind: "row"; readonly door: string; readonly row: string | null }
   | {
       readonly ok: true;
@@ -125,7 +133,7 @@ export type WireEvent =
   | { readonly ok: true; readonly part: string; readonly kind: "failed"; readonly cmd: string; readonly reason: string | null }
   | { readonly ok: true; readonly part: string; readonly kind: "draft"; readonly cmd: string; readonly text: string; readonly caret: number | null }
   /** Whether the box holds a draft now. Only the boolean: a `text` field, if a part sent one, is not read. */
-  | { readonly ok: true; readonly part: string; readonly kind: "draft.state"; readonly present: boolean }
+  | { readonly ok: true; readonly part: string; readonly kind: "draft.state"; readonly present: boolean; readonly seq: WordSeq }
   | { readonly ok: true; readonly part: string; readonly kind: "bye" };
 
 /** A command the bridge hands a part. `text` for prompt, mail and steer; `ask` and `decision` for an answer. */
@@ -259,13 +267,22 @@ export function parseHello(text: string): Hello | WireRefusal {
   });
 }
 
+/** The optional `seq` of a state word: absent or null is null; present it must be a whole number from 0. */
+function seqOf(row: JsonObject): WordSeq {
+  const value = row.seq;
+  if (value === undefined || value === null) return null;
+  const seq = asJsonNumber(value);
+  if (seq === undefined || !Number.isSafeInteger(seq) || seq < 0) throw new Refused("bad seq");
+  return seq;
+}
+
 /** One event body's fields past `part` and `kind`. */
 function eventOf(row: JsonObject, part: string, kind: EventKind): WireEvent {
   switch (kind) {
     case "turn.start":
-      return { ok: true, part, kind, turn: optionalString(row, "turn", 128, SHORT_ID) };
+      return { ok: true, part, kind, turn: optionalString(row, "turn", 128, SHORT_ID), seq: seqOf(row) };
     case "turn.end":
-      return { ok: true, part, kind, turn: optionalString(row, "turn", 128, SHORT_ID), reason: optionalString(row, "reason", 48, WORD) };
+      return { ok: true, part, kind, turn: optionalString(row, "turn", 128, SHORT_ID), reason: optionalString(row, "reason", 48, WORD), seq: seqOf(row) };
     case "row":
       return { ok: true, part, kind, door: requiredString(row, "door", WORD), row: optionalString(row, "row", 128, SHORT_ID) };
     case "ask.open": {
@@ -295,7 +312,7 @@ function eventOf(row: JsonObject, part: string, kind: EventKind): WireEvent {
     case "draft.state": {
       const present = asJsonBoolean(row.present);
       if (present === undefined) throw new Refused("bad present");
-      return { ok: true, part, kind, present };
+      return { ok: true, part, kind, present, seq: seqOf(row) };
     }
     case "bye":
       return { ok: true, part, kind };

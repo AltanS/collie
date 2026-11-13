@@ -20,6 +20,16 @@ import type { PartRegistry, PartView } from "./registry.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
 import { checkCommand, commandBody, needOf, type AskKind, type Hello, type NextQuery, type WireCommand, type WireEvent } from "./wire.ts";
 
+/**
+ * How long a part's "running" or "draft present" word is believed (M100 spec 05). Past it the word reads
+ * as unknown, and unknown takes the screen road, which reads the turn and the box itself. Every post of a
+ * part can fail (a time-out, a 429 past the burst, a bridge that was busy), and a lost `turn.end` or a lost
+ * "no draft" would otherwise hold every send and every WalkyTalky message to the pane until its hold
+ * expires. "Idle" and "no draft" do not age: they never hold anything, and a send they let through still
+ * meets the part's own box check (a mail) or the screen's. The reason for the length is in ADR 0140.
+ */
+export const WORD_FRESH_MS = 60_000;
+
 /** The longest an ask may wait for the phone, whatever a listener says. */
 export const ASK_WAIT_MAX_MS = 15 * 60_000;
 /** The most asks one part may hold open. */
@@ -75,6 +85,20 @@ export interface InsideHubOptions {
   readonly queue: CommandQueue;
   readonly place: Placer;
   readonly log?: (line: string) => void;
+  /** The bridge's clock, for the age of a part's word. `Date.now` by default. */
+  readonly now?: () => number;
+}
+
+/** A part's last word on one state: the value, when the bridge took it, and the part's count on it. */
+interface Word<T> {
+  readonly value: T;
+  readonly at: number;
+  readonly seq: number | null;
+}
+
+/** Whether a word with `seq` is older than the one kept: then it is dropped. A word with no count is never older. */
+function older(seq: number | null, kept: Word<unknown> | undefined): boolean {
+  return seq !== null && kept !== undefined && kept.seq !== null && seq < kept.seq;
 }
 
 export class InsideHub {
@@ -82,9 +106,10 @@ export class InsideHub {
   /** The asks each part holds open, by part id: ask id → kind. */
   private readonly asks = new Map<string, Map<string, AskKind>>();
   /** The turn each part last reported (`turn.start`, `turn.end`), by part id. Only parts that declared `wake`. */
-  private readonly turns = new Map<string, "running" | "idle">();
+  private readonly turns = new Map<string, Word<"running" | "idle">>();
   /** Whether the box holds a draft, as each part last said (`draft.state`). Only parts that declared `draft.state`. */
-  private readonly drafts = new Map<string, boolean>();
+  private readonly drafts = new Map<string, Word<boolean>>();
+  private readonly now: () => number;
   private readonly registry: PartRegistry;
   private readonly queue: CommandQueue;
   private readonly place: Placer;
@@ -93,6 +118,7 @@ export class InsideHub {
     this.registry = options.registry;
     this.queue = options.queue;
     this.place = options.place;
+    this.now = options.now ?? Date.now;
     this.registry.onChange((change) => {
       if (change.kind === "bound") this.each((listener) => listener.bound?.(change.part, change.replaced));
       if (change.kind !== "gone") return;
@@ -163,16 +189,26 @@ export class InsideHub {
       case "draft.state":
         // A boolean, never the text. From a part that did not declare it, dropped unread.
         if (!part.capabilities.has("draft.state")) return empty(204);
-        this.drafts.set(part.partId, event.present);
+        // An older word than the one kept (a late retry) changes nothing and tells nobody.
+        if (older(event.seq, this.drafts.get(part.partId))) return empty(204);
+        this.drafts.set(part.partId, { value: event.present, at: this.now(), seq: event.seq });
         this.tell(part, event);
         return empty(204);
       case "turn.start":
       case "turn.end":
-      case "row":
         if (!part.capabilities.has("wake")) return empty(204);
-        if (event.kind !== "row") this.turns.set(part.partId, event.kind === "turn.start" ? "running" : "idle");
+        if (older(event.seq, this.turns.get(part.partId))) return empty(204);
+        this.turns.set(part.partId, { value: event.kind === "turn.start" ? "running" : "idle", at: this.now(), seq: event.seq });
         this.tell(part, event);
         return empty(204);
+      case "row": {
+        if (!part.capabilities.has("wake")) return empty(204);
+        // A stored row is the turn at work: it keeps a "running" word fresh, its count unchanged.
+        const turn = this.turns.get(part.partId);
+        if (turn?.value === "running") this.turns.set(part.partId, { ...turn, at: this.now() });
+        this.tell(part, event);
+        return empty(204);
+      }
     }
   }
 
@@ -207,21 +243,31 @@ export class InsideHub {
   /**
    * The turn the pane's part last reported: `running` after `turn.start`, `idle` after `turn.end`, and
    * null when no part is bound or it reported no turn yet (it bound between turns, or declared no `wake`).
+   * A `running` older than {@link WORD_FRESH_MS} (no turn word and no row since) is null too: its
+   * `turn.end` may have been lost, and unknown takes the screen road. `anyAge` reads the word whatever
+   * its age, for a caller that never sends on it.
    */
-  turnOf(address: PaneAddress): "running" | "idle" | null {
+  turnOf(address: PaneAddress, options: { readonly anyAge?: boolean } = {}): "running" | "idle" | null {
     const part = this.registry.partOf(address);
-    return part === null ? null : (this.turns.get(part.partId) ?? null);
+    const word = part === null ? undefined : this.turns.get(part.partId);
+    if (word === undefined) return null;
+    if (word.value === "running" && options.anyAge !== true && this.now() - word.at > WORD_FRESH_MS) return null;
+    return word.value;
   }
 
   /**
    * Whether the pane's box holds a draft, as its part last said: true or false, and null when no part is
    * bound, it did not declare `draft.state`, or it has not said yet since it bound. Null is "unknown":
-   * a caller never takes it for "no draft" (M99 spec 05, decision of 2026-11-13).
+   * a caller never takes it for "no draft" (M99 spec 05, decision of 2026-11-13). A "draft present"
+   * older than {@link WORD_FRESH_MS} is null too: its "no draft" may have been lost (M100 spec 05).
    */
   draftOf(address: PaneAddress): boolean | null {
     const part = this.registry.partOf(address);
     if (part === null || !part.capabilities.has("draft.state")) return null;
-    return this.drafts.get(part.partId) ?? null;
+    const word = this.drafts.get(part.partId);
+    if (word === undefined) return null;
+    if (word.value && this.now() - word.at > WORD_FRESH_MS) return null;
+    return word.value;
   }
 
   /**
