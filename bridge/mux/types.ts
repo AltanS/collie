@@ -512,6 +512,13 @@ export interface MuxTabRequest {
 export interface MuxSpaceRequest {
   readonly cwd: string;
   readonly label?: string;
+  /**
+   * A fact about the folder, not a request: `cwd` is a linked git worktree of the repository at
+   * `repoRoot`. The bridge makes the checkout itself (ADR 0126) and sets this so a multiplexer that
+   * keeps its own record of worktrees can file the space under its repository. An adapter with no
+   * such record ignores it and opens the folder as any other space; absent means a plain folder.
+   */
+  readonly worktree?: { readonly repoRoot: string };
 }
 
 /**

@@ -7175,7 +7175,9 @@ async function runWorktreeCreate(
     return { ok: false, ...apiError(added.code, { path: added.path, reason: added.detail }) };
   }
   if (!added.ok) return { ok: false, ...apiError(added.code, { reason: added.detail }) };
-  const opened = await herdr.createSpace({ cwd: added.path, label: branchSlug(branch) });
+  // `worktree` tells the adapter the folder is a linked checkout of this repo, so a multiplexer that
+  // keeps its own worktree record (Herdr) files the space under it. One that does not ignores it.
+  const opened = await herdr.createSpace({ cwd: added.path, label: branchSlug(branch), worktree: { repoRoot } });
   if (!opened.ok) {
     // The half-done case gets its OWN code, because the recovery is the opposite one: the checkout is
     // on disk and only the opening failed. It stays, and a retry finds it (`existed`) and only opens.

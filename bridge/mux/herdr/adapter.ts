@@ -162,6 +162,13 @@ function reason<T>(err: T): string {
  */
 const GONE_CODES: readonly string[] = ["pane_not_found", "tab_not_found", "workspace_not_found"];
 
+/**
+ * What an error REPLY to `worktree.open` reads like once the client has folded it into an Error:
+ * `herdr worktree.open: <code>: <message>`. A timeout and a closed connection do not match, and
+ * those are the rejections that may have opened the folder anyway.
+ */
+const WORKTREE_OPEN_ANSWER = /^herdr worktree\.open: [a-z_]+: /;
+
 /** Which refusal an exception off the socket is: a dead pane/tab, or a multiplexer that did not answer. */
 function transportRefusal<T>(err: T): MuxRefusalOutcome {
   const detail = reason(err);
@@ -177,6 +184,9 @@ export class HerdrMux implements MuxAdapter {
   // method (see snapshot()), after which every read uses the legacy three-call path. Adapter state
   // rather than engine state: which methods a server has is a fact about this multiplexer.
   private supportsSessionSnapshot = true;
+
+  // `worktree.open` is the second such method: flipped off once a server answers that it does not know it.
+  private supportsWorktreeOpen = true;
 
   /** Per pane, the last `pane.get` scroll answer (in flight or settled) and when it stops standing. */
   private readonly scrollByPane = new Map<string, { until: number; scroll: Promise<NonNullable<WirePane["scroll"]> | null> }>();
@@ -443,10 +453,48 @@ export class HerdrMux implements MuxAdapter {
     const opts: Parameters<HerdrClient["createWorkspace"]>[0] = { cwd: request.cwd };
     if (request.label !== undefined) opts.label = request.label;
     try {
+      const opened = await this.openAsWorktree(request, opts.label);
+      if (opened !== null) return muxOk(toCreatedPane(opened));
+    } catch (err) {
+      // Only an answer that REFUSED the open falls through (see openAsWorktree). A timeout or a
+      // dropped connection may have opened it, and a second space on the folder is worse than a
+      // refusal: the retry that follows asks again and Herdr answers `already_open`.
+      return transportRefusal(err);
+    }
+    try {
       const created = await this.client.createWorkspace(opts);
       return muxOk(toCreatedPane(created));
     } catch (err) {
       return transportRefusal(err);
+    }
+  }
+
+  /**
+   * Open the folder as a linked worktree, so Herdr files it under its repository (`worktree.open`).
+   *
+   * Answers the pane, or `null` for "open it the plain way": the request names no worktree, this
+   * server predates the method (learned once, then never asked again, like `session.snapshot`), or
+   * Herdr refused with an answer of its own (`worktree_not_found`, `not_git_worktree`, a trust
+   * refusal). A plain space is what Collie opened before this call existed, so a refusal costs the
+   * nesting and nothing else. A rejection that is not an answer (timeout, closed connection) is
+   * thrown: the open may have happened.
+   */
+  private async openAsWorktree(request: MuxSpaceRequest, label: string | undefined): Promise<CreatedShell | null> {
+    if (request.worktree === undefined || !this.supportsWorktreeOpen) return null;
+    const opts: Parameters<HerdrClient["openWorktree"]>[0] = { cwd: request.worktree.repoRoot, path: request.cwd };
+    if (label !== undefined) opts.label = label;
+    try {
+      return await this.client.openWorktree(opts);
+    } catch (err) {
+      const detail = reason(err);
+      if (detail.includes("unknown variant") && detail.includes("worktree.open")) {
+        this.supportsWorktreeOpen = false;
+        console.log("[mux] herdr predates worktree.open — worktrees open as plain spaces");
+        return null;
+      }
+      if (!WORKTREE_OPEN_ANSWER.test(detail)) throw err;
+      console.log(`[mux] herdr refused worktree.open, opening a plain space: ${detail}`);
+      return null;
     }
   }
 

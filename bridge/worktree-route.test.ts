@@ -280,7 +280,8 @@ describe("POST /api/worktree — a branch alone", () => {
     const { status, answer } = await run(mux, { branch: "feature/new" }, { receipts });
     expect(status).toBe(200);
     expect(answer).toMatchObject({ ok: true, alreadyOpen: false, launcherStarted: false });
-    expect(mux.spaces).toEqual([{ cwd: target("feature-new"), label: "feature-new" }]);
+    // The folder is a linked checkout of this repo, and the adapter is told so (issue 732).
+    expect(mux.spaces).toEqual([{ cwd: target("feature-new"), label: "feature-new", worktree: { repoRoot: REPO } }]);
     expect(await git(target("feature-new"), "symbolic-ref", "--short", "HEAD")).toBe("feature/new");
     expect(answer.ok && answer.pane.cwd).toBe(target("feature-new"));
     expect(mux.texts).toEqual([]);
@@ -358,8 +359,8 @@ describe("POST /api/worktree — request id and receipt", () => {
     const second = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID }, { receipts });
     expect(second.answer).toMatchObject({ ok: true, pane: { cwd: target("worktree-x") } });
     expect(mux.spaces).toEqual([
-      { cwd: target("worktree-x"), label: "worktree-x" },
-      { cwd: target("worktree-x"), label: "worktree-x" },
+      { cwd: target("worktree-x"), label: "worktree-x", worktree: { repoRoot: REPO } },
+      { cwd: target("worktree-x"), label: "worktree-x", worktree: { repoRoot: REPO } },
     ]);
     expect(receipts.get(REQUEST_ID)?.path).toBe(target("worktree-x"));
     expect(await linkedCount()).toBe(1);

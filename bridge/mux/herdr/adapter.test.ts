@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import type { MuxSpace } from "../types.ts";
 import { HerdrMux, SCROLL_STATE_MEMO_MS } from "./adapter.ts";
-import type { PaneRead, WirePane, WireSnapshot, WireWorkspace } from "./client.ts";
+import type { CreatedShell, PaneRead, WirePane, WireSnapshot, WireWorkspace } from "./client.ts";
 import { FakeHerdr } from "./fixture.ts";
 
 // THE SPACE'S FOLDER, across the two Herdr shapes (ADR 0032, ADR 0126).
@@ -356,5 +356,98 @@ describe("whether a space has a name of its own (M98)", () => {
 
   test("a pane whose workspace the listing does not hold fell back to its id: not named", async () => {
     expect(await spaceNamedBy(new LabelledHerdr((id) => (id === "w1" ? "kept" : null)))).toEqual({ w1: true, w5: false });
+  });
+});
+
+// A WORKTREE OPENED AS A WORKTREE (issue 732, ADR 0126 note of 2026-11-13).
+//
+// The bridge makes a linked checkout with git and asks the adapter for a space. When it says the
+// folder is a worktree, Herdr's `worktree.open` records it, so the sidebar nests it under its
+// repository. Everything else about the space is what `workspace.create` gave.
+
+describe("a space whose folder is a linked worktree", () => {
+  const ASKED = { cwd: "/srv/repo-wt/feat-x", label: "feat-x", worktree: { repoRoot: "/srv/repo" } };
+
+  /** A fake whose `worktree.open` answers as the real client folds an answer or a failure. */
+  class OpenFails extends FakeHerdr {
+    plainCreates = 0;
+    constructor(private readonly failure: Error) {
+      super();
+    }
+
+    override async openWorktree(opts: { cwd: string; path: string; label?: string }): Promise<CreatedShell> {
+      this.worktreeOpens.push(opts);
+      throw this.failure;
+    }
+
+    override async createWorkspace(opts: { cwd: string; label?: string }): Promise<CreatedShell> {
+      this.plainCreates += 1;
+      return super.createWorkspace(opts);
+    }
+  }
+
+  const unknownMethod = () =>
+    new Error("herdr worktree.open: invalid_request: invalid request: unknown variant `worktree.open`, expected one of `ping`");
+
+  test("is opened with worktree.open: repo root as cwd, the checkout as path, the label kept", async () => {
+    const fake = new FakeHerdr();
+    const mux = new HerdrMux(fake, () => []);
+    const created = await mux.createSpace(ASKED);
+    expect(fake.worktreeOpens).toEqual([{ cwd: "/srv/repo", path: "/srv/repo-wt/feat-x", label: "feat-x" }]);
+    if (!created.ok) throw new Error(created.detail);
+    expect(created.value.cwd).toBe("/srv/repo-wt/feat-x");
+    expect(created.value.spaceLabel).toBe("feat-x");
+    // The answer maps to the same record a plain create gives: the new space is in the next snapshot.
+    const { spaces, panes } = await mux.snapshot();
+    expect(spaces.some((space) => space.spaceId === created.value.spaceId)).toBe(true);
+    expect(panes.some((pane) => pane.paneId === created.value.paneId)).toBe(true);
+  });
+
+  test("a label is left off when none is asked for", async () => {
+    const fake = new FakeHerdr();
+    await new HerdrMux(fake, () => []).createSpace({ cwd: "/srv/repo-wt/x", worktree: { repoRoot: "/srv/repo" } });
+    expect(fake.worktreeOpens).toEqual([{ cwd: "/srv/repo", path: "/srv/repo-wt/x" }]);
+  });
+
+  test("a plain request never calls worktree.open", async () => {
+    const fake = new FakeHerdr();
+    const created = await new HerdrMux(fake, () => []).createSpace({ cwd: "/srv/plain", label: "plain" });
+    expect(created.ok).toBe(true);
+    expect(fake.worktreeOpens).toEqual([]);
+  });
+
+  test("a Herdr without the method opens a plain space, and is not asked a second time", async () => {
+    const fake = new OpenFails(unknownMethod());
+    const mux = new HerdrMux(fake, () => []);
+    const first = await mux.createSpace(ASKED);
+    const second = await mux.createSpace({ ...ASKED, label: "feat-y" });
+    expect(first.ok && second.ok).toBe(true);
+    expect(fake.worktreeOpens).toHaveLength(1);
+    expect(fake.plainCreates).toBe(2);
+  });
+
+  test("an answer that refuses the folder falls back to a plain space, and the next one asks again", async () => {
+    const fake = new OpenFails(new Error("herdr worktree.open: worktree_not_found: worktree path not found"));
+    const mux = new HerdrMux(fake, () => []);
+    const first = await mux.createSpace(ASKED);
+    await mux.createSpace(ASKED);
+    expect(first.ok).toBe(true);
+    expect(fake.plainCreates).toBe(2);
+    expect(fake.worktreeOpens).toHaveLength(2);
+  });
+
+  test("a timeout is a refusal, not a second space: the open may have happened", async () => {
+    const fake = new OpenFails(new Error("herdr worktree.open: timed out after 5000ms"));
+    const created = await new HerdrMux(fake, () => []).createSpace(ASKED);
+    expect(created.ok).toBe(false);
+    expect(created.ok ? "" : created.reason).toBe("unreachable");
+    expect(fake.plainCreates).toBe(0);
+  });
+
+  test("a dropped connection is a refusal too", async () => {
+    const fake = new OpenFails(new Error("herdr worktree.open: connection closed before reply"));
+    const created = await new HerdrMux(fake, () => []).createSpace(ASKED);
+    expect(created.ok).toBe(false);
+    expect(fake.plainCreates).toBe(0);
   });
 });
