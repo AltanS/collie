@@ -28,23 +28,33 @@ describe("the cost in the merge", () => {
 });
 
 describe("who gave the window", () => {
-  test("a window set by the beacon carries its family, and a later write keeps both together", () => {
-    const first = mergeBeacon(null, "claude", NOW, { window: 400_000, windowBy: "fable" });
-    expect(first).toMatchObject({ window: 400_000, windowBy: "fable" });
-    expect(mergeBeacon(first, "claude", NOW, { context: 12 })).toMatchObject({ window: 400_000, windowBy: "fable", context: 12 });
-    // A new window with a new family replaces both; the same window and family is no write.
-    expect(mergeBeacon(first, "claude", NOW, { window: 200_000, windowBy: "opus" })).toMatchObject({ window: 200_000, windowBy: "opus" });
-    expect(mergeBeacon(first, "claude", NOW, { window: 400_000, windowBy: "fable" })).toBeNull();
-    // The same window under another family is a change worth a write (the note is what the next reading compares).
-    expect(mergeBeacon(first, "claude", NOW, { window: 400_000, windowBy: "mythos" })).toMatchObject({ windowBy: "mythos" });
+  test("the beacon never sets a window: it keeps the stated one and its note", () => {
+    const stated = record({ window: 1_000_000, windowBy: "statusline" });
+    expect(mergeBeacon(stated, "claude", NOW, { context: 22.2 })).toMatchObject({ window: 1_000_000, windowBy: "statusline", context: 22.2 });
+    expect(mergeBeacon(null, "claude", NOW, { context: null })).toEqual({ schemaVersion: 1, harness: "claude", at: NOW });
   });
 
-  test("the statusLine's size replaces the beacon's window and note; without a size both stay", () => {
-    const beacon = record({ window: 200_000, windowBy: "opus", context: 100 });
-    expect(mergeStatusLine(beacon, record({ at: NOW, context: 59, window: 400_000, windowBy: "statusline" }), NOW)).toMatchObject({ window: 400_000, windowBy: "statusline", context: 59 });
-    expect(mergeStatusLine(beacon, record({ at: NOW, context: 59 }), NOW)).toMatchObject({ window: 200_000, windowBy: "opus", context: 59 });
-    // A window an older build wrote has no note, and the merge invents none.
-    expect(mergeStatusLine(record({ window: 200_000 }), record({ at: NOW, context: 59 }), NOW).windowBy).toBeUndefined();
+  test("the statusLine's size replaces the window on file and its note; without a size both stay", () => {
+    const old = record({ window: 400_000, windowBy: "statusline", context: 55 });
+    expect(mergeStatusLine(old, record({ at: NOW, context: 22, window: 1_000_000, windowBy: "statusline" }), NOW)).toMatchObject({ window: 1_000_000, windowBy: "statusline", context: 22 });
+    expect(mergeStatusLine(old, record({ at: NOW, context: 59 }), NOW)).toMatchObject({ window: 400_000, windowBy: "statusline", context: 59 });
+  });
+});
+
+describe("the token count in the merge", () => {
+  test("the beacon sets, keeps and removes the count; a move inside one drawn step is no write", () => {
+    const first = mergeBeacon(null, "claude", NOW, { tokens: 222_200 });
+    expect(first).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, contextTokens: 222_200 });
+    expect(mergeBeacon(first, "claude", NOW, { tokens: 222_400 })).toBeNull();
+    expect(mergeBeacon(first, "claude", NOW, { tokens: 223_600 })).toMatchObject({ contextTokens: 223_600 });
+    expect(mergeBeacon(first, "claude", NOW, { context: 4 })).toMatchObject({ context: 4, contextTokens: 222_200 });
+    expect(mergeBeacon(first, "claude", NOW, { tokens: null })?.contextTokens).toBeUndefined();
+  });
+
+  test("the wrapper replaces the count it states and keeps the one on file when it states none", () => {
+    const existing = record({ contextTokens: 100_000 });
+    expect(mergeStatusLine(existing, record({ at: NOW, contextTokens: 222_200 }), NOW).contextTokens).toBe(222_200);
+    expect(mergeStatusLine(existing, record({ at: NOW, context: 5 }), NOW).contextTokens).toBe(100_000);
   });
 });
 
@@ -76,13 +86,13 @@ describe("the beacon side of the merge", () => {
   test("is no write when nothing changed in whole percents", () => {
     const existing = record({ context: 15.2, window: 1_000_000 });
     expect(mergeBeacon(existing, "claude", NOW, { context: 15 })).toBeNull();
-    expect(mergeBeacon(existing, "claude", NOW, { window: 1_000_000 })).toBeNull();
+    expect(mergeBeacon(existing, "claude", NOW, {})).toBeNull();
     expect(mergeBeacon(existing, "claude", NOW, { context: 16 })).not.toBeNull();
     expect(mergeBeacon(existing, "claude", NOW, { context: null })).not.toBeNull();
   });
 
   test("starts a file when there is none", () => {
-    expect(mergeBeacon(null, "claude", NOW, { window: 200_000 })).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, window: 200_000 });
+    expect(mergeBeacon(null, "claude", NOW, { context: 4 })).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, context: 4 });
   });
 
   test("tracks configDir across beacon and statusLine merges, clears it on a default reading, and drops limits when it changes", () => {
@@ -136,11 +146,10 @@ describe("both writers through the disk", () => {
     const write = (r: UsageRecord | null): void => {
       if (r !== null) writeUsage(d, STATE, SESSION, r);
     };
-    // The start notes the window; the wrapper reports context and both limits; the transcript reading moves the context.
-    write(mergeBeacon(readUsage(d, STATE, SESSION), "claude", NOW - 20_000, { window: 1_000_000 }));
-    write(mergeStatusLine(readUsage(d, STATE, SESSION), record({ at: NOW - 10_000, context: 42, limits: [FIVE_HOUR, SEVEN_DAY] }), NOW - 10_000));
+    // The wrapper reports context, window size and both limits; the transcript reading moves the context.
+    write(mergeStatusLine(readUsage(d, STATE, SESSION), record({ at: NOW - 10_000, context: 42, window: 1_000_000, windowBy: "statusline", limits: [FIVE_HOUR, SEVEN_DAY] }), NOW - 10_000));
     write(mergeBeacon(readUsage(d, STATE, SESSION), "claude", NOW, { context: 55 }));
-    expect(readUsage(d, STATE, SESSION)).toEqual({ schemaVersion: 1, harness: "claude", at: NOW - 10_000, context: 55, window: 1_000_000, limits: [FIVE_HOUR, SEVEN_DAY] });
+    expect(readUsage(d, STATE, SESSION)).toEqual({ schemaVersion: 1, harness: "claude", at: NOW - 10_000, context: 55, window: 1_000_000, windowBy: "statusline", limits: [FIVE_HOUR, SEVEN_DAY] });
     write(mergeStatusLine(readUsage(d, STATE, SESSION), record({ at: NOW + 1000, context: 56 }), NOW + 1000));
     expect(readUsage(d, STATE, SESSION)).toMatchObject({ context: 56, window: 1_000_000, limits: [FIVE_HOUR, SEVEN_DAY] });
     // What the bridge draws never includes the window.

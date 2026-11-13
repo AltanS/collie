@@ -1134,7 +1134,7 @@ function nudgeHooks(deps: UpdateDeps, binary: string): void {
   if (r.stdout.trim() === STATUSLINE_LAG_WORD) {
     deps.io.out(
       "note: your wrapped statusLine points at an older collie binary;" +
-        " run `collie hooks install claude --statusline` to re-point it.",
+        " run `collie hooks install claude` to re-point it.",
     );
     return;
   }

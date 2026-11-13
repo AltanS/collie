@@ -6,6 +6,7 @@ import type { JsonObject } from "../bridge/json.ts";
 import {
   asCost,
   asPercent,
+  asTokenCount,
   asWindowSize,
   customClaudeConfigDir,
   USAGE_SCHEMA_VERSION,
@@ -24,13 +25,16 @@ import { mergeStatusLine, readUsage, writeUsage } from "./usage-store.ts";
 // the context window's use, and for a Pro or Max account the 5-hour and 7-day rate limit windows. It
 // is the one place the agent tells a local program the two subscription windows, so it is where the
 // phone's 5-hour and 7-day dots come from (.adr/0115). Collie never asks the vendor and never reads a
-// credential. The context dot does not need this verb: the beacon hooks read it from the session
-// transcript (`cli/context-reading.ts`). Since 2026-10-24 the wrap is OPT-IN, `hooks install claude
-// --statusline`, because rewriting an operator's statusLine is the part of the design that bites.
+// credential. It is also the one place Claude Code states the context window's size
+// (`context_window_size`), so a Claude session's context dot needs this verb: the beacon hooks read the
+// tokens from the session transcript (`cli/context-reading.ts`) but divide only by the size stated here.
+// The wrap was opt-in from 2026-10-24 (`--statusline`); since 2026-11-13 `hooks install claude` wraps a
+// plain statusLine by default and `--no-statusline` keeps or restores the operator's own command,
+// because without the wrap nothing states the window and the phone can show only a token count.
 //
 // ── THE OPERATOR'S STATUSLINE IS NEVER REPLACED ───────────────────────────────────────────────────
 //
-// `collie hooks install claude --statusline` rewrites `statusLine.command` to this verb with the operator's command
+// `collie hooks install claude` rewrites `statusLine.command` to this verb with the operator's command
 // carried along, base64url-encoded, in the same string: `<collie> beacon statusline <b64> # collie-
 // statusline v1`. Nothing else in `statusLine` moves (`padding`, `refreshInterval`), and `uninstall`
 // decodes the string and puts the operator's command back exactly. Carrying it in the string, rather
@@ -38,12 +42,14 @@ import { mergeStatusLine, readUsage, writeUsage } from "./usage-store.ts";
 //
 // A settings file with NO statusLine gets none. A statusLine is not free: with one configured, Claude
 // Code stops drawing most of its footer hints (`esc to interrupt` among them), which the phone's
-// screen readers use. So the windows come only to an operator who already chose a statusLine AND asked
-// for the wrap; a pane without one draws the model tag and the context dot.
+// screen readers use. So the context share and the windows from this road come only to an operator who
+// already chose a statusLine; a pane without one shows the context as a token count (and the 5-hour and
+// 7-day windows from the account road, .adr/0118).
 //
-// An install WITHOUT the flag leaves a plain statusLine alone, and re-points one that is already
-// wrapped (an operator who had the wrap keeps it, and a moved binary heals). Only a wrapped statusLine
-// whose command names another binary counts as behind: that one prints nothing until it is re-pointed.
+// An install re-points a statusLine that is already wrapped (a moved binary heals), and with
+// `--no-statusline` gives it its own command back. Only a wrapped statusLine whose command names
+// another binary counts as behind: that one prints nothing until it is re-pointed. A plain one is not
+// behind; `doctor` names it in its `statusline-claude` row.
 //
 // ── THE ORDER, AND WHAT CAN FAIL ──────────────────────────────────────────────────────────────────
 //
@@ -163,7 +169,7 @@ function withCommand(document: JsonObject, command: string): JsonObject {
 /**
  * The document with the operator's statusLine wrapped, or unchanged. A wrapper written by another
  * binary path or marker version is rewritten around the same original, which is how it heals. A plain
- * statusLine is wrapped only with `wrapPlain` (`hooks install claude --statusline`); without it the
+ * statusLine is wrapped only with `wrapPlain` (`hooks install claude`, not `--no-statusline`); without it the
  * plain command stays exactly as the operator wrote it.
  */
 export function wrapStatusLine(document: JsonObject, binary: string, wrapPlain: boolean): JsonObject {
@@ -202,6 +208,24 @@ const WINDOW_KEYS: readonly (readonly [string, UsageWindow])[] = [
 ];
 
 /**
+ * The context's token count the document states: `current_usage`'s input, cache creation and cache read
+ * tokens, the sum `used_percentage` is taken from. Undefined when `current_usage` is null, before the
+ * first answer and after `/compact` until the next one. `total_input_tokens` is not read: 2.1.323 sends
+ * it as 0 then, which would draw an empty context that is not.
+ */
+function statedTokens(contextWindow: JsonObject | undefined): number | undefined {
+  const current = asJsonObject(contextWindow?.current_usage);
+  if (current === undefined) return undefined;
+  let sum = 0;
+  for (const key of ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]) {
+    const part = asJsonNumber(current[key]);
+    if (part === undefined || !Number.isFinite(part) || part < 0) return undefined;
+    sum += part;
+  }
+  return asTokenCount(sum);
+}
+
+/**
  * The numbers in a statusLine document, as the record the bridge reads, plus the session they belong
  * to. Null when there is no session id or no number at all.
  */
@@ -216,6 +240,8 @@ export function usageFromStatusLine(
   const contextWindow = asJsonObject(payload.context_window);
   const context = asPercent(contextWindow?.used_percentage);
   if (context !== undefined) record.context = context;
+  const tokens = statedTokens(contextWindow);
+  if (tokens !== undefined) record.contextTokens = tokens;
   // The size of the window Claude Code itself counts against: exact for every model, 1M and 400k included.
   const size = asWindowSize(contextWindow?.context_window_size);
   if (size !== undefined) {
@@ -235,7 +261,7 @@ export function usageFromStatusLine(
     limits.push(seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? { window, used, resetsAt: seconds * 1000 } : { window, used });
   }
   if (limits.length > 0) record.limits = limits;
-  if (record.context === undefined && record.limits === undefined && record.cost === undefined) return null;
+  if (record.context === undefined && record.contextTokens === undefined && record.limits === undefined && record.cost === undefined) return null;
   if (configDir !== undefined) record.configDir = configDir;
   return { session, record };
 }

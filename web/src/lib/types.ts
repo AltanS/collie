@@ -2840,8 +2840,13 @@ export interface UsageLimit {
 
 /** A pane's usage numbers. Mirrors `PaneUsage` in bridge/usage.ts; every part absent when unreported. */
 export interface PaneUsage {
-  /** Percent of the context window used, 0 to 100. */
+  /** Percent of the context window used, 0 to 100. Only where the harness stated the window. */
   context?: number;
+  /**
+   * The tokens in the context (input, cache creation and cache read of the newest request). Drawn in
+   * place of {@link context} when that is absent, because no window was stated (components/model-tag.tsx).
+   */
+  contextTokens?: number;
   limits?: UsageLimit[];
   /**
    * The session's running cost in US dollars. Claude Code reports it through the wrapped status line;

@@ -2663,6 +2663,9 @@ export const en = {
   "chat.model.aria": "Model {name}",
   "chat.usage.context": "ctx",
   "chat.usage.context.aria": "Context {percent}% used",
+  // The context as a token count, where no window was stated (`222k`). English only until the
+  // translation pass: listed in PENDING_TRANSLATION below.
+  "chat.usage.context.tokens.aria": "Context {tokens} tokens",
   "chat.usage.window.5h": "5h",
   "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
   "chat.usage.window.7d": "7d",
@@ -4090,6 +4093,8 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.repoOpen",
   "settings.tricks.origin.community",
   "tokens.uses",
+  // The context as a token count (.adr/0115, amended 2026-11-13).
+  "chat.usage.context.tokens.aria",
   "settings.tricks.about.tokens.agentView",
   "settings.tricks.about.tokens.rules",
   "settings.tricks.about.tokens.answer",

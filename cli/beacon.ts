@@ -65,8 +65,8 @@ export { privateDir };
 // without either, and `idle_prompt` fires ~60 s after a response in an INTERACTIVE session only.
 // Their field lists are the documented ones (code.claude.com/docs/en/hooks.md, read 2026-08-20), and
 // this verb reads neither: `hook_event_name` and `session_id` are the only fields it touches, plus the
-// context-reading fields below (`transcript_path`, `source`, `model`, `context_tokens`). `model` also
-// rides on the `SessionStart` edge, so the pane names its model before its first turn (below).
+// context-reading fields below (`transcript_path`, `source`, `context_tokens`). `model` rides on the
+// `SessionStart` edge, so the pane names its model before its first turn (below).
 // `agent_id` (present only for a SUBAGENT's events) was absent from every captured payload, which is
 // the case the gate below is for.
 //
@@ -83,10 +83,11 @@ export { privateDir };
 // ── THE CONTEXT READING (.adr/0115, amended 2026-10-24) ───────────────────────────────────────────
 //
 // Besides the beacon and the edge, this verb notes the session's context use for the dots above the
-// belt, with no statusLine (`cli/context-reading.ts` has the whole rule):
+// belt, against the window the wrapped statusLine stated (`cli/context-reading.ts` has the whole rule;
+// with no stated window there is no context dot):
 //
-//  - `SessionStart` reads `source`, `model` and `context_tokens`: the window the model names, a context
-//    that is unknown after a compact or a clear, a context known at once after a resume or a fork.
+//  - `SessionStart` reads `source` and `context_tokens`: a context that is unknown after a compact or
+//    a clear, a context known at once after a resume or a fork.
 //  - `Stop` and the tool event (`PostToolUse`, registered by `--hold-permissions`) read the END of the
 //    transcript, `transcript_path` in the payload, for the token counts of the last assistant line.
 //    The path is a hint to check: an absolute `.jsonl` file under the Claude config root once every
@@ -494,13 +495,13 @@ function takeReading(deps: BeaconEmitDeps, payload: JsonObject, stateDirs: () =>
   takeContextReading(deps, { session, transcriptPath: asJsonString(payload.transcript_path), harness: BEACON_HARNESS }, stateDirs, (deps.now ?? Date.now)());
 }
 
-/** What a `SessionStart` says about the window and the context. Never throws. */
+/** What a `SessionStart` says about the context. Never throws. */
 function takeStart(deps: BeaconEmitDeps, payload: JsonObject, stateDirs: () => string[]): void {
   const session = readField(payload, "session_id", SESSION_ID);
   if (session === null) return;
   takeSessionStart(
     deps,
-    { session, harness: BEACON_HARNESS, source: asJsonString(payload.source), model: asJsonString(payload.model), contextTokens: asJsonNumber(payload.context_tokens) },
+    { session, harness: BEACON_HARNESS, source: asJsonString(payload.source), contextTokens: asJsonNumber(payload.context_tokens) },
     stateDirs,
     (deps.now ?? Date.now)(),
   );

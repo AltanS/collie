@@ -1287,81 +1287,116 @@ describe("hold: the sockets come from the hook target registry", () => {
   });
 });
 
-describe("the statusLine wrap (.adr/0115, opt-in since 2026-10-24)", () => {
+describe("the statusLine wrap (.adr/0115, the default since 2026-11-13)", () => {
   const MINE = "bash /home/pat/.claude/statusline-command.sh";
   const withLine = (line: JsonObject): string => `${JSON.stringify({ model: "opus", statusLine: line }, null, 2)}\n`;
   // Windows keeps the operator's command as it is: the wrapper's shell is not the one Claude Code uses there.
   const wraps = HOST.platform !== "win32";
+  const lineOf = (d: ReturnType<typeof deps>) => asJsonObject(asJsonObject(settingsOf(d))?.statusLine);
 
-  test("install WITHOUT the flag leaves a plain statusLine byte for byte and says nothing about it", () => {
-    const before = withLine({ type: "command", command: MINE, padding: 0 });
-    const d = deps({ files: { [SETTINGS]: before } });
+  test("install wraps a plain statusLine by default, keeps its other keys, and says how to undo it", () => {
+    const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE, padding: 0, refreshInterval: 5 }) } });
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
-    const line = asJsonObject(asJsonObject(settingsOf(d))?.statusLine);
-    expect(line).toEqual({ type: "command", command: MINE, padding: 0 });
-    expect(d.io.stdout.join("\n").toLowerCase()).not.toContain("statusline");
-    expect(d.io.stderr).toEqual([]);
-  });
-
-  test("install WITHOUT the flag on a file with no statusLine adds none and says nothing", () => {
-    const d = deps({ files: { [SETTINGS]: `{"model":"opus"}\n` } });
-    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
-    expect(asJsonObject(settingsOf(d))?.statusLine).toBeUndefined();
-    expect(d.io.stdout.join("\n").toLowerCase()).not.toContain("statusline");
-  });
-
-  test("--statusline wraps the operator's statusLine, keeps its other keys, and says so", () => {
-    const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE, padding: 0 }) } });
-    expect(cmdHooksInstall(d, ["claude", "--statusline"])).toBe(EXIT.OK);
-    const line = asJsonObject(asJsonObject(settingsOf(d))?.statusLine);
+    const line = lineOf(d);
     expect(line?.padding).toBe(0);
+    expect(line?.refreshInterval).toBe(5);
     if (!wraps) {
       expect(line?.command).toBe(MINE);
-      expect(d.io.stdout.join("\n")).toContain("statusLine not wrapped on Windows");
+      expect(d.io.stdout.join("\n")).toContain("statusLine not wrapped on Windows, so the phone shows the context as a token count.");
       return;
     }
     expect(line?.command).toBe(wrapCommand(OWN, MINE));
-    expect(d.io.stdout.join("\n")).toContain("your own command still runs");
+    const out = d.io.stdout.join("\n");
+    expect(out).toContain("your own command still runs and prints exactly as before");
+    expect(out).toContain("To undo it: `collie hooks install claude --no-statusline`.");
+    expect(d.io.stderr).toEqual([]);
   });
 
-  test("--statusline adds no statusLine where there is none, and says so", () => {
+  test("--statusline is still accepted and changes nothing", () => {
+    const a = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE }) } });
+    const b = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE }) } });
+    expect(cmdHooksInstall(a, ["claude"])).toBe(EXIT.OK);
+    expect(cmdHooksInstall(b, ["claude", "--statusline"])).toBe(EXIT.OK);
+    expect(b.files.entries.get(SETTINGS)?.text).toBe(a.files.entries.get(SETTINGS)?.text);
+  });
+
+  test("a second install is a no-op: same bytes, and the wrap is not wrapped twice", () => {
+    const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE }) } });
+    cmdHooksInstall(d, ["claude"]);
+    const once = d.files.entries.get(SETTINGS)?.text;
+    d.io.stdout.length = 0;
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(SETTINGS)?.text).toBe(once);
+    expect(d.io.stdout.join("\n")).toContain("no bytes changed");
+  });
+
+  test("no statusLine configured: none is added, since one would hide Claude Code's footer hints", () => {
     const d = deps({ files: { [SETTINGS]: `{"model":"opus"}\n` } });
-    expect(cmdHooksInstall(d, ["claude", "--statusline"])).toBe(EXIT.OK);
-    expect(asJsonObject(settingsOf(d))?.statusLine).toBeUndefined();
-    if (wraps) expect(d.io.stdout.join("\n")).toContain("Collie never adds a statusLine");
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(lineOf(d)).toBeUndefined();
+    if (wraps) expect(d.io.stdout.join("\n")).toContain("No statusLine configured, and Collie adds none, so the phone shows the context as a token count.");
   });
 
-  test("an install without the flag keeps a wrap that is already there and re-points it to this binary", () => {
+  test("--no-statusline leaves a plain statusLine byte for byte, and gives a wrapped one its own command back", () => {
+    const plain = withLine({ type: "command", command: MINE, padding: 0 });
+    const d = deps({ files: { [SETTINGS]: plain } });
+    expect(cmdHooksInstall(d, ["claude", "--no-statusline"])).toBe(EXIT.OK);
+    expect(lineOf(d)).toEqual({ type: "command", command: MINE, padding: 0 });
+    if (wraps) expect(d.io.stdout.join("\n")).toContain("statusLine left as it is, so the phone shows the context as a token count.");
+    if (!wraps) return;
+    const w = deps({ files: { [SETTINGS]: plain } });
+    cmdHooksInstall(w, ["claude"]);
+    expect(lineOf(w)?.command).toBe(wrapCommand(OWN, MINE));
+    expect(cmdHooksInstall(w, ["claude", "--no-statusline"])).toBe(EXIT.OK);
+    expect(lineOf(w)).toEqual({ type: "command", command: MINE, padding: 0 });
+  });
+
+  test("an install keeps a wrap that is already there and re-points it to this binary", () => {
     if (!wraps) return;
     const old = "/opt/collie-old/bin/collie";
     const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: wrapCommand(old, MINE), padding: 2 }) } });
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
-    const line = asJsonObject(asJsonObject(settingsOf(d))?.statusLine);
+    const line = lineOf(d);
     expect(line?.command).toBe(wrapCommand(OWN, MINE));
     expect(line?.padding).toBe(2);
-    expect(d.io.stdout.join("\n")).toContain("your own command still runs");
   });
 
-  test("the install refuses --statusline for codex, and names both options for an unknown one", () => {
+  test("a statusLine in exec form or with its own shell, and a settings file with comments, are left alone", () => {
+    for (const line of [{ type: "command", command: MINE, shell: "zsh" }, { type: "command", command: MINE, args: ["-x"] }]) {
+      const d = deps({ files: { [SETTINGS]: withLine(line) } });
+      expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+      expect(lineOf(d)).toEqual(line);
+    }
+    const commented = `{\n  // mine\n  "statusLine": { "type": "command", "command": "${MINE}" }\n}\n`;
+    const c = deps({ files: { [SETTINGS]: commented } });
+    expect(cmdHooksInstall(c, ["claude"])).toBe(EXIT.FAIL);
+    expect(c.files.entries.get(SETTINGS)?.text).toBe(commented);
+    expect(c.io.stderr.join("\n")).toContain("is not valid JSON");
+  });
+
+  test("the flags: codex refuses --statusline and takes --no-statusline, both together is a usage error, an unknown one names the options", () => {
     const d = deps({});
     expect(cmdHooksInstall(d, ["codex", "--statusline"])).toBe(EXIT.USAGE);
     expect(d.io.stderr.join("\n")).toContain("no statusLine to wrap");
+    const both = deps({});
+    expect(cmdHooksInstall(both, ["claude", "--statusline", "--no-statusline"])).toBe(EXIT.USAGE);
+    expect(both.io.stderr.join("\n")).toContain("say opposite things");
     const e = deps({});
     expect(cmdHooksInstall(e, ["claude", "--bogus"])).toBe(EXIT.USAGE);
-    expect(e.io.stderr.join("\n")).toContain("`--hold-permissions` and `--statusline`");
+    expect(e.io.stderr.join("\n")).toContain("`--hold-permissions` and `--no-statusline`");
   });
 
   test("uninstall puts the operator's command back byte for byte, with the hooks gone", () => {
     const before = withLine({ type: "command", command: MINE });
     const d = deps({ files: { [SETTINGS]: before } });
-    cmdHooksInstall(d, ["claude", "--statusline"]);
+    cmdHooksInstall(d, ["claude"]);
     expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.OK);
     expect(d.files.entries.get(SETTINGS)?.text).toBe(before);
   });
 
   test("an unwrapped statusLine is NOT behind; a wrapped one that names another binary is", () => {
     const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE }) } });
-    cmdHooksInstall(d, ["claude"]);
+    cmdHooksInstall(d, ["claude", "--no-statusline"]);
     expect(hooksAreBehind(d)).toBe(false);
     d.io.stdout.length = 0;
     expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.OK);
@@ -1375,14 +1410,13 @@ describe("the statusLine wrap (.adr/0115, opt-in since 2026-10-24)", () => {
     // `--check` says which thing is behind in one word, for the updater's nudge, and only then.
     expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.STATE);
     expect(d.io.stdout).toEqual(["statusline"]);
-    // The install re-points it, with no flag.
     cmdHooksInstall(d, ["claude"]);
     expect(hooksAreBehind(d)).toBe(false);
   });
 
   test("status names the wrap when the statusLine is wrapped", () => {
     const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE }) } });
-    cmdHooksInstall(d, ["claude", "--statusline"]);
+    cmdHooksInstall(d, ["claude"]);
     d.io.stdout.length = 0;
     cmdHooksStatus(d);
     if (wraps) expect(d.io.stdout.join("\n")).toContain("wraps the statusLine");

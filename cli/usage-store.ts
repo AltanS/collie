@@ -10,16 +10,18 @@ import {
   type UsageLimit,
   type UsageRecord,
 } from "../bridge/usage.ts";
+import { formatTokens } from "../web/src/lib/token-count.ts";
 import { privateDir } from "./private-dir.ts";
 import type { Files } from "./sys.ts";
 
 // The usage record on disk (.adr/0115). The bridge reads the files (`bridge/usage.ts`); this is the
 // only code that puts one there.
 //
-// ONE FILE, TWO WRITERS. The statusLine wrapper (`cli/statusline.ts`, with `--statusline`) and the beacon
+// ONE FILE, TWO WRITERS. The statusLine wrapper (`cli/statusline.ts`, the default wrap) and the beacon
 // hooks (`cli/context-reading.ts`) both write a session's file, and each knows different things: the
 // wrapper has the context, the two subscription windows and the window size Claude Code states, the
-// beacon has the context and the window size its model table gives. Neither may erase what only the other knows, so each writes through a merge
+// beacon has the context it reads from the transcript against that stated size. Neither may erase what
+// only the other knows, so each writes through a merge
 // here: it reads the file that is there, replaces its own fields and keeps the rest.
 
 /** What a writer needs: the disk, and the uid a folder must belong to (absent off POSIX). */
@@ -47,20 +49,24 @@ function liveLimits(record: UsageRecord | null, now: number): UsageLimit[] {
 /** What the beacon hooks know. `null` removes the context; absent leaves it as it is. */
 export interface BeaconChange {
   readonly context?: number | null | undefined;
-  /** The session's window in tokens. Absent keeps the one on file. */
-  readonly window?: number | undefined;
-  /** Who gave `window` (`UsageRecord.windowBy`). Set with the window; a window on file keeps its own. */
-  readonly windowBy?: string | undefined;
+  /** The context's token count, whatever the window. `null` removes it; absent leaves it as it is. */
+  readonly tokens?: number | null | undefined;
   /** The non-default `CLAUDE_CONFIG_DIR` this session runs under. Absent clears any custom dir on file. */
   readonly configDir?: string | undefined;
 }
 
+/** Whether two token counts draw the same on the phone (`222k`), so a move inside one step is no write. */
+function sameTokensShown(a: number | undefined, b: number | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return formatTokens(a) === formatTokens(b);
+}
+
 /**
  * The record the beacon hooks write, or null when the file is already right. The beacon replaces the
- * context (or removes it), may set the window, and keeps the window and the running limits it did not
- * report. A record keeps its `at` while it carries kept limits: the bridge picks the newest window
+ * context (or removes it), and keeps the window the statusLine stated and the running limits it did
+ * not report. A record keeps its `at` while it carries kept limits: the bridge picks the newest window
  * across sessions by `at`, and limits are not newer for being carried along. An unchanged whole
- * percent is not a change, so the hot path writes nothing.
+ * percent and a token count that draws the same are not a change, so the hot path writes nothing.
  */
 export function mergeBeacon(existing: UsageRecord | null, harness: string, now: number, change: BeaconChange): UsageRecord | null {
   const dirChanged = existing !== null && change.configDir !== existing.configDir;
@@ -72,20 +78,19 @@ export function mergeBeacon(existing: UsageRecord | null, harness: string, now: 
   };
   const context = change.context === undefined ? existing?.context : (change.context ?? undefined);
   if (context !== undefined) record.context = context;
-  const window = change.window ?? existing?.window;
-  if (window !== undefined) record.window = window;
-  const windowBy = change.window === undefined ? existing?.windowBy : change.windowBy;
-  if (window !== undefined && windowBy !== undefined) record.windowBy = windowBy;
+  const tokens = change.tokens === undefined ? existing?.contextTokens : (change.tokens ?? undefined);
+  if (tokens !== undefined) record.contextTokens = tokens;
+  if (existing?.window !== undefined) record.window = existing.window;
+  if (existing?.windowBy !== undefined) record.windowBy = existing.windowBy;
   if (change.configDir !== undefined) record.configDir = change.configDir;
   if (limits.length > 0) record.limits = limits;
   // The cost is the wrapper's alone: the beacon keeps what is on file.
   if (existing?.cost !== undefined) record.cost = existing.cost;
   if (
     existing !== null &&
-    existing.window === record.window &&
-    existing.windowBy === record.windowBy &&
     existing.configDir === record.configDir &&
     (existing.context === undefined ? record.context === undefined : record.context !== undefined && Math.round(existing.context) === Math.round(record.context)) &&
+    sameTokensShown(existing.contextTokens, record.contextTokens) &&
     (existing.limits?.length ?? 0) === limits.length
   ) {
     return null;
@@ -94,17 +99,19 @@ export function mergeBeacon(existing: UsageRecord | null, harness: string, now: 
 }
 
 /**
- * The record the statusLine wrapper writes: its own context and limits, with the window the beacon
- * noted kept. A reading without a context (early in a session) or without limits (an API-key
+ * The record the statusLine wrapper writes: its own context, limits and window size, each kept from
+ * the file when this run states none. A reading without a context (early in a session) or without limits (an API-key
  * session) keeps what is on file for that part, as long as it is still running.
  */
 export function mergeStatusLine(existing: UsageRecord | null, reading: UsageRecord, now: number): UsageRecord {
   const record: UsageRecord = { schemaVersion: USAGE_SCHEMA_VERSION, harness: reading.harness, at: reading.at };
   const context = reading.context ?? existing?.context;
   if (context !== undefined) record.context = context;
+  const tokens = reading.contextTokens ?? existing?.contextTokens;
+  if (tokens !== undefined) record.contextTokens = tokens;
   const window = reading.window ?? existing?.window;
   if (window !== undefined) record.window = window;
-  // A size the statusLine states wins over what a start or a table gave; without one, the note on file stays with its window.
+  // The size this run states; without one, the size an earlier run stated stays.
   const windowBy = reading.window === undefined ? existing?.windowBy : reading.windowBy;
   if (window !== undefined && windowBy !== undefined) record.windowBy = windowBy;
   if (reading.configDir !== undefined) record.configDir = reading.configDir;
