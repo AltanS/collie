@@ -51,6 +51,7 @@ import { join } from "node:path";
 import type { Locator } from "@playwright/test";
 
 import { asJsonObject, asJsonString } from "../../src/lib/json";
+import { WALKY_MARK_GRACE_MS } from "../../src/lib/walky-grace";
 import { harnessDirs } from "./harnesses";
 import { RIG_DATA } from "./rig-data";
 import {
@@ -529,6 +530,72 @@ test.describe("walky talky", () => {
         await resetBox(rig, pane);
         if (phone !== null) await phone.context.close();
         for (const extra of opened) paneClose(extra);
+      }
+    });
+  });
+
+  test("36 walky talky: Deliver now hands a message held by the draft to a linked session, once, and the draft stays", async ({ browser, rig }) => {
+    await runScenario(H, "walky-deliver-now", session, async (pane, trail) => {
+      // The data run (COLLIE_RIG_DATA=1) delivers, one turn. The default run has no part: no Deliver now, no turn.
+      if (RIG_DATA) spendTurn(H, "walky deliver now: the message handed over the draft");
+      const log = trail.log;
+      const notes = trail.notes;
+      let phone: Awaited<ReturnType<typeof phoneOn>> | null = null;
+      try {
+        await rig.keys(pane, ["d", "r", "a", "f", "t"]);
+        await sleep(1500);
+        const id = mintId();
+        const mark = id.slice(3, 9);
+        const posted = await rig.post("/api/walky", { id, to: addressOf(pane), body: `Walky deliver check ${mark}: answer with only the word ZEBRA-36, nothing else.` });
+        const heldRow = await firstRow(rig, pane, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000);
+        notes.push(`POST /api/walky ${String(posted.status)}, receipt ${heldRow === null ? "NOT held: draft present" : "accepted (draft present)"}`);
+        if (heldRow === null) return { verdict: "fail", taps: 0, note: notes.join("; "), taps_log: log, captures: trail.captures };
+        const linked = (await rig.pane(pane))?.linked === true;
+        notes.push(`the pane read says ${linked ? "linked" : "not linked"}`);
+        phone = await phoneOn(browser, rig, pane, PHONE, undefined, { clock: true });
+        const { page, recorder } = phone;
+        const words = page.getByText(message("walky.held.waits.one", { count: 1 }));
+        // The grace, from the app's own constant: the mark stays away before it, and the rig never sleeps it.
+        await sleep(2000);
+        const early = await words.isVisible();
+        await page.clock.fastForward(WALKY_MARK_GRACE_MS + 1000);
+        await expect(words, "no held mark above the box after the grace").toBeVisible({ timeout: 15_000 });
+        const deliver = page.getByRole("button", { name: message("walky.sheet.deliverNow"), exact: true });
+        trail.captures.push(await capture(page, "walky-36-mark"));
+        if (!RIG_DATA) {
+          // The default run: no part, so the pane is not linked and the mark offers no Deliver now. The message is
+          // dropped by the route (no tap, no turn), and nothing is typed.
+          const offered = await deliver.isVisible();
+          const dropped = await rig.post(`/api/pane/${encodeURIComponent(pane)}/walky/${id}/drop`, {});
+          const after = await settledWalky(rig, pane, id, 15_000);
+          const boxText = await rig.tail(pane, 6);
+          const draftKept = /❯\s*draft\s*$/m.test(boxText) && !boxText.includes(`[walky-talky ${id}]`);
+          notes.push(`the mark ${early ? "showed BEFORE the grace" : "waited for the grace"}; Deliver now ${offered ? "OFFERED" : "not offered"}; dropped ${String(dropped.status)}, receipt ${after}; ${draftKept ? "the draft is untouched" : "the BOX CHANGED"}`);
+          const verdict = posted.status === 200 && !linked && !early && !offered && after === "inbox-only" && draftKept ? "pass" : "fail";
+          return { verdict, taps: log.length, minTaps: 0, note: notes.join("; "), taps_log: log, captures: trail.captures };
+        }
+        await expect(deliver, "no Deliver now on the mark of a linked session").toBeVisible({ timeout: 5000 });
+        log.push(await tap(recorder, deliver, "Deliver now", { expectAnswer: false }));
+        const after = await settledWalky(rig, pane, id, 30_000);
+        const row = (await walkyRows(rig, pane)).find((r) => r.id === id);
+        const overDraft = asJsonObject(row?.receipt)?.overDraft === true;
+        const byData = await sentWithNoKey(rig, pane, id);
+        await expect(page.getByText(message("walky.composer.delivered")), "no note that the text stays").toBeVisible({ timeout: 10_000 });
+        trail.captures.push(await capture(page, "walky-36-delivered"));
+        await waitIdle(rig, pane, REPLY_MS);
+        const boxText = await rig.tail(pane, 6);
+        const draftKept = /❯\s*draft\s*$/m.test(boxText) && !boxText.includes(`[walky-talky ${id}]`) && !boxText.includes(mark);
+        // Once: one more Deliver now on the same message sends nothing and answers the stored receipt.
+        const again = await rig.post(`/api/pane/${encodeURIComponent(pane)}/walky/${id}/deliver`, {});
+        const repeat = again.status === 200 && JSON.stringify(again.json).includes('"repeat"');
+        const total = (await rig.screen(pane, 200)).split(mark).length - 1;
+        notes.push(`the mark ${early ? "showed BEFORE the grace" : "waited for the grace"}; after Deliver now the receipt says ${after}${overDraft ? " (over the draft)" : ""}, ${byData ? "no key typed" : "a KEY was typed or no data send"}; ${draftKept ? "the draft stayed in the box" : "the BOX CHANGED"}; a second ask ${repeat ? "answered repeat" : "did NOT answer repeat"}; the mark is on screen ${String(total)} time(s)`);
+        trail.captures.push(await captureScreen(rig, pane, "walky-36-after"));
+        const verdict = posted.status === 200 && linked && !early && after === "delivered" && overDraft && byData && draftKept && repeat && total <= 2 && log.every((l) => l.worked) ? "pass" : "fail";
+        return { verdict, taps: log.length, minTaps: 1, note: notes.join("; "), taps_log: log, captures: trail.captures };
+      } finally {
+        await resetBox(rig, pane);
+        if (phone !== null) await phone.context.close();
       }
     });
   });

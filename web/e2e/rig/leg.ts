@@ -76,7 +76,7 @@ export function record(row: LedgerRow): void {
 // ── model turns ──────────────────────────────────────────────────────────────────────────────────
 
 /** Model turns one full run may spend on one harness. */
-export const TURN_CAP = 25;
+export const TURN_CAP = 26;
 
 /**
  * Count one model turn (a prompt the agent answers with the model). Throws when the harness has no
@@ -151,6 +151,8 @@ export interface RigPane {
   readonly agent: string;
   readonly status: string;
   readonly surface: Surface | null;
+  /** The pane read's `linked: true` (M99 spec 15): a part takes a plain message by data. */
+  readonly linked: boolean;
 }
 
 /** A pane's host on the crew rig: `undefined` for the lead's own panes, the member's id for the member's. */
@@ -209,7 +211,7 @@ export class Rig {
       if (row.paneId !== paneId) continue;
       const rowHost = asJsonString(row.host);
       if (host === undefined ? rowHost !== undefined && rowHost !== this.leadId : rowHost !== host) continue;
-      return { paneId, agent: String(row.agent ?? "shell"), status: String(row.status ?? "unknown"), surface: readSurface(row.surface) };
+      return { paneId, agent: String(row.agent ?? "shell"), status: String(row.status ?? "unknown"), surface: readSurface(row.surface), linked: row.linked === true };
     }
     return null;
   }
@@ -723,8 +725,11 @@ export async function runScenario(harness: HarnessId, id: ScenarioId, session: S
 }
 
 /** A phone on the pane: a fresh context, the recorder on it, the pane open. Close it when done. */
-export async function phoneOn(browser: Browser, rig: Rig, paneId: string, device: Device, host?: Host): Promise<{ context: BrowserContext; page: Page; recorder: TapRecorder }> {
+export async function phoneOn(browser: Browser, rig: Rig, paneId: string, device: Device, host?: Host, options: { clock?: boolean } = {}): Promise<{ context: BrowserContext; page: Page; recorder: TapRecorder }> {
   const context = await phoneContext(browser, rig, device);
+  // A phone whose clock the case moves forward (`page.clock.fastForward`), so it never sleeps a grace in real
+  // time. Time flows as normal until the case moves it; only that context's page has the fake clock.
+  if (options.clock === true) await context.clock.install();
   const page = await context.newPage();
   const recorder = new TapRecorder(page);
   await openPane(page, paneId, host);

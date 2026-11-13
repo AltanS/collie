@@ -13,8 +13,8 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in these places:
 
-- **Before every release tag**, on the release head. All forty-seven cases pass on the first tap:
-  thirty-eight on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, case 29, and the four space cases 30 to 33) and
+- **Before every release tag**, on the release head. All forty-eight cases pass on the first tap:
+  thirty-nine on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, case 29, the four space cases 30 to 33, and Deliver now, case 36) and
   nine on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before every release tag**, patch tags included, also on herdr-core (M79, "On herdr-core" below):
   the solo leg with `make browser-leg DIR=... MUX=herdr-core` (replay, about 30 minutes), and the crew
@@ -151,6 +151,7 @@ last column names. Cases 12 to 15, 19 to 21, 34 and 35 run on the crew leg only 
 | 33 | The space border, `--outside`. A throwaway Claude in another space sends to the idle session pane with `--outside`. The receipt says `delivered` and `outside`. The nudge on the pane has the word `outside` after the sender's parenthesis and no body; the pane reads the body with `collie walky inbox <id>` and answers `OUTSIDE-OK`. One Claude turn | claude | `walky.spec.ts` |
 | 34 | Crew leg. The border across the crew. A throwaway Claude on the lead sends `here`. A named space is one space on every machine, so the receipts name Claude's pane on the lead and pi's pane on the member (the member's pane is in the space of the same name), not the sender. The member's own receipt for pi says `in`. A draft in each box holds the message, the lead's hold is taken back, and pi's draft is left alone. No model turn | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 35 | Crew leg. An unnamed space on the member. A second pi on the member is in a space with no name of its own, so it never joins a space elsewhere. `here` from the same sender does not name it, a message to its address is refused `outside your space` by the member (which owns the pane and counts the refusal), and nothing is typed into it. No model turn | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 36 | Deliver now (M99 spec 05). A draft in the session pane's box holds an operator message (`accepted`, `draft present`). The phone opens with its clock installed and moves it past the mark's grace (`WALKY_MARK_GRACE_MS`, `web/src/lib/walky-grace.ts`), so no case sleeps 20 seconds; the mark must not show before. On the data run (`COLLIE_RIG_DATA=1`) the pane read says `linked`, the mark carries Deliver now, one tap ends the receipt `delivered` with `overDraft`, its send typed no key, the note "Message delivered. Your text stays here." shows, the draft is still in the box after the turn, and a second ask answers `repeat`. One Claude turn. On the default run the pane is not linked, the mark has no Deliver now, and the message is dropped by the route with the draft untouched. No model turn | claude | `walky.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case
@@ -593,7 +594,7 @@ for pi and omp, the subscription for Claude.
   permission request, the message that waited behind it, the draft once sent and the message held behind
   it (9), the broadcast (10), the
   forged header (11, two), the long list and the message sent during it (16), and the question and the
-  message that waited behind it (17), and the nudge of `--outside` (33). The picker and cases 18, 30, 31 and 32 need no turn. A run caps each harness at 25 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
+  message that waited behind it (17), and the nudge of `--outside` (33). The picker and cases 18, 30, 31 and 32 need no turn. A run caps each harness at 26 turns (`TURN_CAP` in `leg.ts`; the data run spends 26 Claude turns with case 36), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
 - pi and omp: 11 turns each, replayed from the recordings (no cost), or on Haiku 4.5 when live. Case 26 adds 1 on pi (the long turn; the steered line is answered inside it). Case 28 adds none. Walky talky adds 6 on pi (case 7,
   the send and the reply nudge of case 8, the broadcast, and the two of case 16) and 4 on omp (case 7, the
