@@ -126,7 +126,7 @@ describe("LaunchStrip", () => {
     // string is an allowlist key, not an arbitrary shell line the client gets to run. The
     // dashboard never names a `beside` pane, so the second argument is undefined and the scope
     // (third) is `{}`, the lead's primary session.
-    expect(mockLaunch).toHaveBeenCalledExactlyOnceWith("rumen-peek", undefined, {});
+    expect(mockLaunch).toHaveBeenCalledExactlyOnceWith("rumen-peek", undefined, {}, expect.any(String));
   });
 
   it("double tap launches once", async () => {
