@@ -350,7 +350,7 @@ or Edge) and whether the bridge runs alone, leads a crew or is a member. When a 
 ("Cannot read a dialog" or "Send not landing"), it also carries a count: which card, the agent
 program's name and version, the multiplexer, whether its pane had the optional data link on and,
 from 1.27.4, for a dialog a short hash of its key-hint row. It also says which agents ran on which multiplexers (for example `claude` on `tmux`) and
-whether the optional data link was on for them, never how many, and nothing else about them. No IP
+whether the optional data link was on for them, never how many. No IP
 address is stored. No content, nothing you type or read.
 
 Turn it off on each machine in Settings, System, **Telemetry**, with `COLLIE_TELEMETRY=0` (in the

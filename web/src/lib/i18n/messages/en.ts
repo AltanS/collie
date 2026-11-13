@@ -3328,7 +3328,7 @@ export const en = {
   "telemetry.row.failed": "Could not be read",
   // English only until the translation pass (ping v3 added the usage pairs): listed in PENDING_TRANSLATION below.
   "telemetry.card.description":
-    "Anonymous: one ping a day with the install count, which agents and multiplexers ran and whether the optional data link was on, and the trouble signals, under a random ID. Nothing else.",
+    "Anonymous: one ping a day with the install count, which agents and multiplexers ran and whether the optional data link was on, and the trouble signals, under a random ID.",
   "telemetry.card.reading": "Reading the setting from this machine…",
   "telemetry.card.readFailed": "The setting could not be read from this machine.",
   "telemetry.card.saving": "Saving…",

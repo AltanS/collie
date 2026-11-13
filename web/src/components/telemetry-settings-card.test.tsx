@@ -50,7 +50,7 @@ describe("Telemetry card (M86 spec 02)", () => {
     renderCard(view());
     expect(await screen.findByText("Telemetry")).toBeInTheDocument();
     expect(
-      screen.getByText("Anonymous: one ping a day with the install count, which agents and multiplexers ran and whether the optional data link was on, and the trouble signals, under a random ID. Nothing else."),
+      screen.getByText("Anonymous: one ping a day with the install count, which agents and multiplexers ran and whether the optional data link was on, and the trouble signals, under a random ID."),
     ).toBeInTheDocument();
   });
 
