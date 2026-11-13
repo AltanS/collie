@@ -301,6 +301,12 @@ import { SurfaceLedger } from "./surface/counters.ts";
 import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
+import { InsideHub } from "./inside/hub.ts";
+import { placeHello } from "./inside/place.ts";
+import { CommandQueue } from "./inside/queue.ts";
+import { PartRegistry } from "./inside/registry.ts";
+import { InsideServer, insideSocketPath } from "./inside/server.ts";
+import { WIRE_VERSION } from "./inside/wire.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
 import { crewFactsWorld, FACTS_CAPS, factsWorldOf, NO_FACTS_CAPS, type FactsWorld } from "./tricks/facts.ts";
@@ -1759,6 +1765,23 @@ const holdServer =
           return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
         },
       });
+// The inside wire (M99 spec 01, bridge/inside/WIRE.md): parts inside an agent program (a Claude Code
+// mod, a pi extension) dial `<stateDir>/inside/sock` and bind to their pane through the same placement
+// as a hook edge. Built with the edges, since it places on the same targets. Nothing acts on a part
+// yet: until specs 03 to 05 add their listeners, every send, ask and WalkyTalky message keeps the
+// screen path, and a part only binds and reports.
+const insideHub =
+  edgeRouter === null
+    ? null
+    : new InsideHub({
+        registry: new PartRegistry(),
+        queue: new CommandQueue(),
+        place: (hello) => {
+          const live = new Set(registry.ordered().map((runtime) => runtime.name));
+          return placeHello(hello, [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target), procBeaconLiveness());
+        },
+      });
+const insideServer = insideHub === null ? null : new InsideServer({ socketPath: insideSocketPath(cfg.stateDir), hub: insideHub });
 const sendVersions = new VersionCache();
 /** The platform the harness profiles pick their keys by: `process.platform`, or `wsl` under WSL. Decided once, here. */
 const SURFACE_PLATFORM = surfacePlatform({
@@ -2176,10 +2199,18 @@ edgeRouter?.start();
 // registry finds the socket listening. A bridge that cannot own the socket (another bridge holds it,
 // or the path is not safe) runs with no holds: every permission stays a screen ask.
 if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
+// And the inside socket (M99 spec 01), also before the target file, which names it in its `inside` field.
+const insideStarted = insideServer !== null && (await insideServer.start());
+if (insideStarted) console.log(`[inside] socket at ${insideSocketPath(cfg.stateDir)}`);
 // The target file also says which multiplexer this bridge drives, under which instance, on which port,
 // so `collie mux list` reads the live bridges without dialling them (M76 spec 02).
 hookTarget =
-  edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, { mux: cfg.mux, instance: collieInstance, port: cfg.port });
+  edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, {
+        mux: cfg.mux,
+        instance: collieInstance,
+        port: cfg.port,
+        inside: insideStarted ? { wire: WIRE_VERSION, socket: insideSocketPath(cfg.stateDir) } : undefined,
+      });
 
 // Walky talky (M62): messages between agent sessions. The log is `<stateDir>/walky/`, the local
 // socket `<stateDir>/walky/sock` (0600). A message is logged first, then typed through the pane's
@@ -4154,6 +4185,7 @@ const shutdown = async () => {
   edgeRouter?.stop();
   hookTarget?.remove();
   holdServer?.stop();
+  insideServer?.stop();
   walkyServer.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).

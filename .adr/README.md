@@ -217,3 +217,4 @@ the pointer, it was a supersede.
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
 the branch you happen to be on.
+| [0140](./0140-a-part-inside-the-agent-dials-the-bridge.md) | **Proposed.** A part inside the agent program dials the bridge: one Unix socket per bridge (`<stateDir>/inside/sock`, 0600 in an owner-only 0700 folder), HTTP with JSON, `hello`, `event` and a long-poll `next` (`bridge/inside/WIRE.md`, experimental until 2.0); every bridge names its socket in its hook target file; a hello is placed on its pane by the hook edge placement; capabilities fail closed; a command handed to a part is never withdrawn or sent again; host-local, nothing on the crew wire. |

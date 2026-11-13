@@ -1,0 +1,194 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { FakePart } from "./fake-part.ts";
+import { InsideHub, type Placer } from "./hub.ts";
+import { CommandQueue } from "./queue.ts";
+import { PartRegistry } from "./registry.ts";
+import { HELLO_RATE_BURST, InsideServer, insideSocketPath } from "./server.ts";
+import { BODY_MAX } from "./wire.ts";
+
+const servers: InsideServer[] = [];
+afterEach(() => {
+  for (const server of servers.splice(0)) server.stop();
+});
+
+/** A placer that owns the panes named, by the raw HERDR_PANE_ID a part sends. */
+const owning =
+  (panes: string[]): Placer =>
+  (hello) => {
+    const pane = hello.env.HERDR_PANE_ID;
+    return Promise.resolve(pane !== undefined && panes.includes(pane) ? { kind: "placed", address: { session: "main", paneId: pane }, pidStartTime: 7 } : { kind: "not-mine", reason: "no-pane" });
+  };
+
+async function start(stateDir: string, panes: string[] = ["w1:p1"]) {
+  const lines: string[] = [];
+  const hub = new InsideHub({ registry: new PartRegistry({ log: (line) => lines.push(line) }), queue: new CommandQueue(), place: owning(panes) });
+  const server = new InsideServer({ socketPath: insideSocketPath(stateDir), hub, log: (line) => lines.push(line) });
+  const started = await server.start();
+  if (started) servers.push(server);
+  return { hub, server, started, lines, socket: insideSocketPath(stateDir) };
+}
+
+const scratch = (): string => mkdtempSync(join(tmpdir(), "in-"));
+
+describe("the socket", () => {
+  test("lives in an owner-only folder, mode 0700, and is itself 0600", async () => {
+    const dir = scratch();
+    const { started, socket } = await start(dir);
+    expect(started).toBe(true);
+    expect(lstatSync(join(dir, "inside")).mode & 0o777).toBe(0o700);
+    expect(lstatSync(socket).isSocket()).toBe(true);
+    expect(lstatSync(socket).mode & 0o777).toBe(0o600);
+  });
+
+  test("an existing folder with a looser mode is tightened", async () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "inside"), { mode: 0o755 });
+    chmodSync(join(dir, "inside"), 0o755);
+    expect((await start(dir)).started).toBe(true);
+    expect(lstatSync(join(dir, "inside")).mode & 0o777).toBe(0o700);
+  });
+
+  test("a folder that is a link is refused: no socket", async () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "elsewhere"));
+    symlinkSync(join(dir, "elsewhere"), join(dir, "inside"));
+    const { started, lines } = await start(dir);
+    expect(started).toBe(false);
+    expect(lines.join("\n")).toContain("not a folder this user owns");
+  });
+
+  test("a folder another user owns is refused", async () => {
+    const dir = scratch();
+    const hub = new InsideHub({ registry: new PartRegistry({ log: () => {} }), queue: new CommandQueue(), place: owning([]) });
+    const lines: string[] = [];
+    const server = new InsideServer({ socketPath: insideSocketPath(dir), hub, log: (line) => lines.push(line), uid: (process.getuid?.() ?? 0) + 1 });
+    expect(await server.start()).toBe(false);
+    expect(lines.join("\n")).toContain("not a folder this user owns");
+  });
+
+  test("a stale socket a dead bridge left is removed on start", async () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "inside"), { mode: 0o700 });
+    const path = insideSocketPath(dir);
+    // A bridge that dies hard leaves its socket file: a child listens, then is killed with SIGKILL.
+    const child = Bun.spawn([process.execPath, "-e", `Bun.serve({ unix: ${JSON.stringify(path)}, fetch: () => new Response("x") }); setInterval(() => {}, 1000);`]);
+    for (let i = 0; i < 100 && !existsSync(path); i += 1) await Bun.sleep(20);
+    child.kill("SIGKILL");
+    await child.exited;
+    expect(lstatSync(path).isSocket()).toBe(true);
+    const { started } = await start(dir);
+    expect(started).toBe(true);
+    expect(await new FakePart(path).request("GET", "/v1/ping")).toEqual({ status: 200, body: { wire: 1 } });
+  });
+
+  test("a socket another live bridge answers on is left alone, and this bridge runs with none", async () => {
+    const dir = scratch();
+    const first = await start(dir);
+    const second = await start(dir);
+    expect(first.started).toBe(true);
+    expect(second.started).toBe(false);
+    expect(second.lines.join("\n")).toContain("another bridge listens");
+    expect((await new FakePart(first.socket).request("GET", "/v1/ping")).status).toBe(200);
+  });
+
+  test("a file that is not a socket is refused and left in place", async () => {
+    const dir = scratch();
+    mkdirSync(join(dir, "inside"), { mode: 0o700 });
+    writeFileSync(insideSocketPath(dir), "not a socket");
+    const { started, lines } = await start(dir);
+    expect(started).toBe(false);
+    expect(lines.join("\n")).toContain("not a socket");
+    expect(existsSync(insideSocketPath(dir))).toBe(true);
+  });
+
+  test("stop closes the socket and removes the file; a second stop is harmless", async () => {
+    const dir = scratch();
+    const { server, socket } = await start(dir);
+    server.stop();
+    server.stop();
+    expect(existsSync(socket)).toBe(false);
+    expect(server.listening).toBe(false);
+  });
+});
+
+describe("several bridges on one machine", () => {
+  test("each owns its own socket; the one that owns the pane says mine, the other says not mine", async () => {
+    const a = await start(scratch(), ["w1:p1"]);
+    const b = await start(scratch(), ["w7:p7"]);
+    expect(a.socket).not.toBe(b.socket);
+    const env = { HERDR_PANE_ID: "w7:p7", HERDR_SOCKET_PATH: "/run/h.sock" };
+    const toA = await new FakePart(a.socket, { env }).hello();
+    const toB = await new FakePart(b.socket, { env }).hello();
+    expect(toA.body).toEqual({ wire: 1, mine: false, reason: "no-pane" });
+    expect(toB.body).toMatchObject({ wire: 1, mine: true });
+    expect(b.hub.partOf({ session: "main", paneId: "w7:p7" })).not.toBeNull();
+    expect(a.hub.partOf({ session: "main", paneId: "w7:p7" })).toBeNull();
+  });
+});
+
+describe("caps", () => {
+  test("a body past the socket's cap is refused with 413, and the server keeps serving", async () => {
+    const { socket } = await start(scratch());
+    const part = new FakePart(socket);
+    const big = await part.request("POST", "/v1/event", "x".repeat(BODY_MAX + 10)).catch(() => ({ status: 413, body: null }));
+    expect(big.status).toBe(413);
+    const hello = await part.request("POST", "/v1/hello", { wire: 1, harness: "fake", pid: 1, pad: "x".repeat(20_000) });
+    expect(hello.status).toBe(413);
+    expect((await part.request("GET", "/v1/ping")).status).toBe(200);
+  });
+
+  test("hellos past the rate cap answer 429", async () => {
+    const { socket } = await start(scratch());
+    const part = new FakePart(socket, { env: { HERDR_PANE_ID: "w1:p1" } });
+    const statuses: number[] = [];
+    for (let i = 0; i < HELLO_RATE_BURST + 5; i += 1) statuses.push((await part.hello()).status);
+    expect(statuses.slice(0, HELLO_RATE_BURST).every((status) => status === 200)).toBe(true);
+    expect(statuses.at(-1)).toBe(429);
+  });
+
+  test("an unknown part id answers 410, so a part knows to say hello again", async () => {
+    const { socket } = await start(scratch());
+    const part = new FakePart(socket);
+    part.partId = "z".repeat(22);
+    expect((await part.event("turn.start")).status).toBe(410);
+    expect((await part.next({ waitMs: 1000 })).status).toBe(410);
+  });
+
+  test("bad input answers 400 and 404, never a crash", async () => {
+    const { socket } = await start(scratch());
+    const part = new FakePart(socket);
+    expect((await part.request("POST", "/v1/hello", "{")).status).toBe(400);
+    expect((await part.request("POST", "/v1/event", { kind: "bye" })).status).toBe(400);
+    expect((await part.request("GET", "/v1/next?part=x")).status).toBe(400);
+    expect((await part.request("GET", "/v1/elsewhere")).status).toBe(404);
+  });
+
+  test("no body text reaches the log", async () => {
+    const { socket, lines, hub } = await start(scratch());
+    const part = new FakePart(socket, { env: { HERDR_PANE_ID: "w1:p1" } });
+    await part.hello();
+    hub.enqueue({ session: "main", paneId: "w1:p1" }, { id: "req-secret01", kind: "prompt", text: "my password is placeholder-hunter2" });
+    await part.serveOnce();
+    await part.event("ask.open", { ask: "a1", askKind: "permission", tool: "Bash", input: { command: "cat placeholder-secret" } });
+    const log = lines.join("\n");
+    expect(log).toContain("cmd=req-secret01 kind=prompt");
+    expect(log).not.toContain("hunter2");
+    expect(log).not.toContain("placeholder-secret");
+  });
+});
+
+describe("the long poll", () => {
+  test("outlives Bun's 10 s default request timeout and ends empty at its own limit", async () => {
+    const { socket } = await start(scratch());
+    const part = new FakePart(socket, { env: { HERDR_PANE_ID: "w1:p1" } });
+    await part.hello();
+    const started = Date.now();
+    const answer = await part.next({ waitMs: 11_500 });
+    expect(answer.status).toBe(204);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(11_000);
+  }, 20_000);
+});

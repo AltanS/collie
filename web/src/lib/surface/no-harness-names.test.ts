@@ -14,6 +14,8 @@ const SURFACE_DIRS = [
   join(import.meta.dirname),
   join(import.meta.dirname, "..", "..", "..", "..", "bridge", "surface"),
   join(import.meta.dirname, "..", "..", "..", "..", "bridge", "walky"),
+  // The inside wire (M99 spec 01): a part names its harness as an open word, and nothing acts on it.
+  join(import.meta.dirname, "..", "..", "..", "..", "bridge", "inside"),
 ];
 const PROFILES_DIR = join(import.meta.dirname, "profiles");
 
