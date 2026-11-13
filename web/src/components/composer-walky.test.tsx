@@ -302,6 +302,19 @@ describe("the held mark (M62 spec 03)", () => {
     expect(onOpenMessages).toHaveBeenCalledOnce();
   });
 
+  it("waits for the grace: a message that began to wait a moment ago draws no mark, and the mark knows the reason", () => {
+    const recent: WalkyRow = { ...heldForThisPane, receipt: { ...heldForThisPane.receipt, at: Date.now() - 2_000 } };
+    renderWithRows([recent], vi.fn());
+    expect(screen.queryByText(/wait(s)?/)).toBeNull();
+    cleanup();
+    const busy: WalkyRow = { ...heldForThisPane, receipt: { ...heldForThisPane.receipt, reason: "turn running" } };
+    renderWithRows([busy], vi.fn());
+    expect(screen.getByText("1 message waits for the agent to finish")).toBeInTheDocument();
+    cleanup();
+    renderWithRows([heldForThisPane, busy], vi.fn());
+    expect(screen.getByText("2 messages wait")).toBeInTheDocument();
+  });
+
   it("reads the plural, and draws nothing with no held message or no sheet to open", () => {
     const second: WalkyRow = { ...heldForThisPane, id: "wt_he1dh01dh02d", receipt: { ...heldForThisPane.receipt, id: "wt_he1dh01dh02d" } };
     renderWithRows([heldForThisPane, second], vi.fn());

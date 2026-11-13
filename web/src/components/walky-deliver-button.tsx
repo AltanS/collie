@@ -18,9 +18,8 @@ export function DeliverNowButton({
   className,
   variant = "outline",
   disabled = false,
-  label,
   ...rest
-}: { busy: boolean; label?: string } & Omit<ComponentProps<typeof Button>, "children" | "size">) {
+}: { busy: boolean } & Omit<ComponentProps<typeof Button>, "children" | "size">) {
   useLocale();
   return (
     <Button
@@ -33,7 +32,7 @@ export function DeliverNowButton({
       aria-busy={busy || undefined}
       {...rest}
     >
-      <span className={cn(busy && "opacity-0")}>{label ?? t("walky.sheet.deliverNow")}</span>
+      <span className={cn(busy && "opacity-0")}>{t("walky.sheet.deliverNow")}</span>
       {busy && <Icon name="busy" aria-hidden="true" className="absolute size-4 animate-spin" />}
     </Button>
   );

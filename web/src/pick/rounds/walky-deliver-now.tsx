@@ -1,21 +1,26 @@
-// "Deliver now", a design round on the pick page: /pick.html?round=walky-deliver-now
+// "Deliver now", the picked design (option 3, "On the mark"), kept on the pick page for one more look at the timing:
+// /pick.html?round=walky-deliver-now
 //
-// A message waits for a pane while its owner has unsent text in the box. When the session has the data
-// transport (it is "linked"), the person may let the message in by their own act: it goes to the agent now,
-// the person's text stays in the box, unsent, and the agent starts on the message. The round is about what the
-// person reads BEFORE the tap and what they see AFTER it.
+// A message waits for a pane while its owner has unsent text in the box (or while the agent runs a turn). The
+// mark above the box tells the owner only after the OLDEST waiting message has waited WALKY_MARK_GRACE_MS (20 s),
+// so a person who sends their line in time never sees it. "Just arrived" starts a message that began to wait
+// now: watch the mark come at 20 s. For a linked session, a wait on the person's text adds "Deliver now" and
+// "Your text stays in the box." to the mark; the Messages sheet lists a waiting message at once and carries the
+// same action under the row. Delivering waits on the call; Delivered and Failed play the tap for you.
 //
-// 1 Line under the buttons: the row always says it, one tap delivers.
-// 2 Confirm says it: one tap opens a question in the row, with Deliver and Back.
-// 3 On the mark: the mark above the box carries the button and a second line; the sheet row works as in 1.
-//
-// ONE Case switch drives all three. Every frame draws the composer with the person's text in it (a real,
-// editable box, above the sheet so the sheet does not hide it), the mark above the box, and the strip
-// that follows a delivery. Delivering waits on the call; Delivered and Failed play the tap for you. In
-// Waiting a tap takes 800 ms to answer. Replay starts every option over.
-//
-// The wording of the waiting row and of the mark is the owner's new wording for EVERY session: Not linked shows
-// it without the data path.
+// HANDOVER, what the bridge must provide (the web half is built and reads exactly these):
+//  1. `linked: true` on the pane read (`AgentView`), for a session that has the data transport. Absent otherwise.
+//     The web passes it as `walkyLinked` to the Composer and `linked` to the WalkySheet (agent-chat.tsx).
+//  2. The held-since time per message: `receipt.at` of the `accepted` receipt that carries the reason, in ms, the
+//     bridge's clock, written when the message BEGAN to wait (rewritten if the reason changes). The 20 s grace
+//     counts from it (`waitingSince`, lib/walky.ts), so a reload or a sleeping tab does not restart it. If the
+//     bridge writes `at` on every read, the grace never ends: it must be the time the hold began.
+//  3. The reason of the wait, `receipt.reason`: "draft present" (the person's text) or "turn running" (a running
+//     turn). Any other reason reads as a plain count on the mark and gets no Deliver now.
+//  4. A "deliver now" call: for one waiting message id of a linked pane, hand it to the agent as data, leave the
+//     box untouched, and answer delivered, or failed with a reason (the web shows the reason). Afterwards the
+//     receipt reads `state: "delivered"` with `via: "data"` (lib/walky.ts, `WalkyReceipt.via`). The web calls it
+//     through `DeliverNow` (lib/walky.ts) from `onDeliverNow`, to be written beside `dropWalky` in lib/api.ts.
 //
 // DEV-ONLY, unreachable from the app entry. The pick shell holds the rules: a number and at most five words per option.
 
@@ -27,7 +32,8 @@ import { WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-stri
 import { WalkyLogProvider } from "@/components/walky-log";
 import { WalkySheet } from "@/components/walky-sheet";
 import { t } from "@/lib/i18n";
-import { heldForPane, type WalkyRow } from "@/lib/walky";
+import { useWalkyMarkGrace } from "@/hooks/use-walky-mark-grace";
+import { heldForPane, waitKindOf, WALKY_MARK_GRACE_MS, type WalkyRow } from "@/lib/walky";
 import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf } from "@/test/handlers";
 
 import type { PickCase, PickOption, PickRoundDef } from "../pick-page";
@@ -39,19 +45,21 @@ const NOTE_MS = 6_000;
 const STEP_MS = 400;
 
 const CASES: readonly PickCase[] = [
-  { id: "waiting", label: "Waiting" },
+  { id: "arrived", label: "Just arrived" },
+  { id: "after", label: "After 20 s" },
   { id: "delivering", label: "Delivering" },
   { id: "delivered", label: "Delivered" },
   { id: "failed", label: "Failed" },
   { id: "three", label: "Three waiting" },
+  { id: "busy", label: "Busy agent" },
   { id: "plain", label: "Not linked" },
   { id: "long", label: "Long names, 360 px" },
   { id: "keyboard", label: "Keyboard up" },
 ];
 
 const DRAFT = "Also check the retry in sync.ts, and whether the empty list reaches the loader";
-const HELD_REASON = "draft present";
-const MINUTE = 60_000;
+/** Older than the grace: the mark shows. */
+const PAST_GRACE_S = WALKY_MARK_GRACE_MS / 1000 + 5;
 
 interface Scenario {
   rows: readonly WalkyRow[];
@@ -62,38 +70,25 @@ interface Scenario {
   /** The fake's answer: after this long, or never. */
   answer: { kind: "after"; ms: number } | { kind: "never" };
   fails: boolean;
-  /** Play the person's taps on mount, so the state after them is on the page without a tap. */
+  /** Play the person's tap on mount, so the state after it is on the page without a tap. */
   autoplay: boolean;
-  /** Keep the note above the box up: the case shows it, so no timer and no tap takes it away. */
+  /** Keep the note above the box up: the case shows it, so no timer takes it away. */
   keepNote: boolean;
 }
 
-function waiting(row: WalkyRow, over: Partial<WalkyRow> & { id: string; minutesAgo: number }): WalkyRow {
-  const { minutesAgo, ...rest } = over;
-  const at = Date.now() - minutesAgo * MINUTE;
-  return { ...row, ...rest, at, receipt: { ...row.receipt, id: over.id, at, state: "accepted", reason: HELD_REASON } };
+/** A message that began to wait `secondsAgo` seconds ago, for `reason`: the bridge's held receipt, with its time. */
+function waiting(row: WalkyRow, over: Partial<WalkyRow> & { id: string }, secondsAgo: number, reason = "draft present"): WalkyRow {
+  const at = Date.now() - secondsAgo * 1000;
+  return { ...row, ...over, at, receipt: { ...row.receipt, id: over.id, at, state: "accepted", reason } };
 }
 
-const FIX: WalkyRow = waiting(fixtureWalkyAgent, { id: "wt_dn0000000001", minutesAgo: 4, body: "Tests are green on fix-465. You can merge." });
-const DOCS: WalkyRow = waiting(fixtureWalkyAgent, {
-  id: "wt_dn0000000002",
-  minutesAgo: 2,
-  from: { memberId: "bluefin", address: "bluefin/w3:p2", harness: "claude", label: "collie-website#docs" },
-  body: "The docs page for the new transport is ready for a read.",
-});
-const OPERATOR: WalkyRow = waiting(fixtureWalkyOperator, { id: "wt_dn0000000003", minutesAgo: 1, body: "Stop and report what you changed." });
-const LONG: WalkyRow = waiting(fixtureWalkyAgent, {
-  id: "wt_dn0000000004",
-  minutesAgo: 3,
-  from: { memberId: "bluefin", address: "bluefin/w6:p3", harness: "claude", label: "collie-workspace#fix-465-retry-the-final-error-in-the-sync-loader" },
-  body:
-    "Review of fix-465 is done. The retry in packages/bridge/src/sync/loader/retry-with-backoff.ts swallows the final error, " +
-    "rethrow it after the last attempt, and the test for the empty list passes for the wrong reason because it never reaches the loader.",
-});
-
 function scenarioOf(caseId: string): Scenario {
-  const base: Scenario = { rows: [FIX], linked: true, keyboard: false, width: null, answer: { kind: "after", ms: FAKE_MS }, fails: false, autoplay: false, keepNote: false };
+  const fix = (secondsAgo: number, reason?: string) =>
+    waiting(fixtureWalkyAgent, { id: "wt_dn0000000001", body: "Tests are green on fix-465. You can merge." }, secondsAgo, reason);
+  const base: Scenario = { rows: [fix(PAST_GRACE_S)], linked: true, keyboard: false, width: null, answer: { kind: "after", ms: FAKE_MS }, fails: false, autoplay: false, keepNote: false };
   switch (caseId) {
+    case "arrived":
+      return { ...base, rows: [fix(0)] };
     case "delivering":
       return { ...base, answer: { kind: "never" }, autoplay: true };
     case "delivered":
@@ -101,11 +96,36 @@ function scenarioOf(caseId: string): Scenario {
     case "failed":
       return { ...base, answer: { kind: "after", ms: 60 }, fails: true, autoplay: true };
     case "three":
-      return { ...base, rows: [FIX, DOCS, OPERATOR] };
+      return {
+        ...base,
+        rows: [
+          fix(PAST_GRACE_S + 30),
+          waiting(fixtureWalkyAgent, { id: "wt_dn0000000002", from: { memberId: "bluefin", address: "bluefin/w3:p2", harness: "claude", label: "collie-website#docs" }, body: "The docs page for the new transport is ready for a read." }, PAST_GRACE_S + 10),
+          waiting(fixtureWalkyOperator, { id: "wt_dn0000000003", body: "Stop and report what you changed." }, PAST_GRACE_S),
+        ],
+      };
+    case "busy":
+      return { ...base, rows: [fix(PAST_GRACE_S, "turn running")] };
     case "plain":
       return { ...base, linked: false };
     case "long":
-      return { ...base, rows: [LONG], width: 360 };
+      return {
+        ...base,
+        width: 360,
+        rows: [
+          waiting(
+            fixtureWalkyAgent,
+            {
+              id: "wt_dn0000000004",
+              from: { memberId: "bluefin", address: "bluefin/w6:p3", harness: "claude", label: "collie-workspace#fix-465-retry-the-final-error-in-the-sync-loader" },
+              body:
+                "Review of fix-465 is done. The retry in packages/bridge/src/sync/loader/retry-with-backoff.ts swallows the final error, " +
+                "rethrow it after the last attempt, and the test for the empty list passes for the wrong reason because it never reaches the loader.",
+            },
+            PAST_GRACE_S,
+          ),
+        ],
+      };
     case "keyboard":
       return { ...base, keyboard: true };
     default:
@@ -125,12 +145,8 @@ function inInbox(row: WalkyRow): WalkyRow {
   return { ...row, receipt: { ...receipt, state: "inbox-only", at: Date.now() } };
 }
 
-/** Where the person's taps land, for the cases that play them: the row's button, then the question's. */
-const TAPS = {
-  1: ['[data-slot="walky-list-row"] [data-slot="walky-deliver"]'],
-  2: ['[data-slot="walky-list-row"] [data-slot="walky-deliver"]', '[data-slot="walky-deliver-ask"] [data-slot="walky-deliver"]'],
-  3: ['[data-slot="notice"] [data-slot="walky-deliver"]'],
-} satisfies Record<1 | 2 | 3, readonly string[]>;
+/** The person's tap, for the cases that play it: the button on the mark. */
+const TAP = '[data-slot="notice"] [data-slot="walky-deliver"]';
 
 /** Stands in for the soft keyboard: the composer sits on top of it, as it does on a phone. */
 function Keyboard() {
@@ -144,15 +160,18 @@ function Keyboard() {
 /**
  * One pane: a little chat, then the composer (the note after a delivery, the mark, the box with the person's
  * text), the Messages sheet over it. The composer stands at the top so the sheet, which takes the bottom of
- * the screen, does not hide the text: the text is what the person worries about. With the keyboard up it
- * stands on the keyboard, as on a phone.
+ * the screen, does not hide the text. With the keyboard up it stands on the keyboard, as on a phone. The mark
+ * is drawn by the same rule as the composer's: only after the oldest message has waited its grace.
  */
-function Pane({ option, scenario }: { option: 1 | 2 | 3; scenario: Scenario }) {
+function Pane({ scenario }: { scenario: Scenario }) {
   const root = useRef<HTMLDivElement | null>(null);
   const [rows, setRows] = useState<readonly WalkyRow[]>(scenario.rows);
-  const [open, setOpen] = useState(option !== 3 && !scenario.keyboard);
+  const [open, setOpen] = useState(false);
   const [noted, setNoted] = useState(false);
-  const heldRows = useMemo(() => heldForPane(rows, fixtureWalkySelf), [rows]);
+  const waitingRows = useMemo(() => heldForPane(rows, fixtureWalkySelf), [rows]);
+  const graced = useWalkyMarkGrace(waitingRows);
+  const kind = waitKindOf(waitingRows);
+  const only = waitingRows.length === 1 && kind === "text" ? waitingRows[0] : undefined;
   const end = useCallback((id: string, to: (row: WalkyRow) => WalkyRow) => setRows((now) => now.map((row) => (row.id === id ? to(row) : row))), []);
 
   // The fake bridge: it answers after a time, never, or with a refusal. A delivery turns the message delivered
@@ -178,35 +197,32 @@ function Pane({ option, scenario }: { option: 1 | 2 | 3; scenario: Scenario }) {
     [end],
   );
 
-  // The note goes after a few seconds, or at the next tap anywhere in the pane.
+  // The note goes after a few seconds (the composer's rule), unless the case shows it.
   useEffect(() => {
     if (!noted || scenario.keepNote) return;
     const timer = setTimeout(() => setNoted(false), NOTE_MS);
     return () => clearTimeout(timer);
   }, [noted, scenario.keepNote]);
 
-  // The cases that play the taps: each lands one step after the other.
+  // The cases that play the tap: it lands once the mark is there.
   useEffect(() => {
     if (!scenario.autoplay) return;
-    const timers = TAPS[option].map((selector, step) =>
-      setTimeout(() => root.current?.querySelector<HTMLButtonElement>(selector)?.click(), STEP_MS * (step + 1)),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [scenario.autoplay, option]);
+    const timer = setTimeout(() => root.current?.querySelector<HTMLButtonElement>(TAP)?.click(), STEP_MS);
+    return () => clearTimeout(timer);
+  }, [scenario.autoplay]);
 
-  const only = heldRows.length === 1 ? heldRows[0] : undefined;
   // `--app-h` is what a sheet sizes itself to; the frame's height stands in for the viewport's, and `transform` makes the frame the sheet's containing block.
   const frame: CSSProperties & { "--app-h"?: string } = { width: scenario.width ?? "100%", height: 728, transform: "translate(0)", "--app-h": "728px" };
   return (
-    <div ref={root} className="relative flex flex-col overflow-hidden bg-background" style={frame} onPointerDownCapture={() => !scenario.keepNote && setNoted(false)}>
+    <div ref={root} className="relative flex flex-col overflow-hidden bg-background" style={frame}>
       <p className="px-4 pt-3 pb-2 text-xs text-muted-foreground">Working on fix-465. Waiting for the review.</p>
       <div className={scenario.keyboard ? "mt-auto px-4 pb-3" : "px-4 pb-3"}>
         <Collapse open={noted}>
           {noted && <WalkyNoteStrip note={{ tone: "success", text: t("walky.composer.delivered") }} onDismiss={() => setNoted(false)} />}
         </Collapse>
-        <Collapse open={heldRows.length > 0}>
-          {heldRows.length > 0 && (
-            <WalkyHeldStrip count={heldRows.length} onOpen={() => setOpen(true)} linked={scenario.linked && option === 3} deliverId={only?.id} onDeliverNow={onDeliverNow} />
+        <Collapse open={graced}>
+          {graced && (
+            <WalkyHeldStrip count={waitingRows.length} kind={kind} onOpen={() => setOpen(true)} linked={scenario.linked} deliverId={only?.id} onDeliverNow={onDeliverNow} />
           )}
         </Collapse>
         {/* The person's own text, in a real box: it is never touched by a delivery, and stays editable. */}
@@ -215,6 +231,7 @@ function Pane({ option, scenario }: { option: 1 | 2 | 3; scenario: Scenario }) {
         </div>
       </div>
       {scenario.keyboard && <Keyboard />}
+      {/* The sheet lists a waiting message at once, grace or not. */}
       <WalkyLogProvider rows={rows} reads={1}>
         <WalkySheet
           open={open}
@@ -226,23 +243,18 @@ function Pane({ option, scenario }: { option: 1 | 2 | 3; scenario: Scenario }) {
           onDrop={take}
           linked={scenario.linked}
           onDeliverNow={onDeliverNow}
-          deliverAsk={option === 2}
         />
       </WalkyLogProvider>
     </div>
   );
 }
 
-function Option({ option, caseId }: { option: 1 | 2 | 3; caseId: string }) {
-  // Keyed by the case: a new case starts every option fresh, with its own list and a closed or open sheet.
-  return <Pane key={caseId} option={option} scenario={scenarioOf(caseId)} />;
+function Option({ caseId }: { caseId: string }) {
+  // Keyed by the case: a new case starts fresh, with its own list and a closed sheet.
+  return <Pane key={caseId} scenario={scenarioOf(caseId)} />;
 }
 
-const OPTIONS: readonly PickOption[] = [
-  { n: 1, label: "Line under the buttons", render: (caseId) => <Option option={1} caseId={caseId} /> },
-  { n: 2, label: "Confirm says it", render: (caseId) => <Option option={2} caseId={caseId} /> },
-  { n: 3, label: "On the mark", render: (caseId) => <Option option={3} caseId={caseId} /> },
-];
+const OPTIONS: readonly PickOption[] = [{ n: 3, label: "On the mark", render: (caseId) => <Option caseId={caseId} /> }];
 
 const ROUND: PickRoundDef = { title: "Deliver now", cases: CASES, options: OPTIONS, frameHeight: 740 };
 

@@ -1,101 +1,96 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PickPage } from "../pick-page";
 import round from "./walky-deliver-now";
 
-// The round for Deliver now, on the pick page: three numbered options, ONE Case switch, the real sheet, mark and note.
+// The round for Deliver now, on the pick page: the picked design, one frame, ONE Case switch, the real sheet, mark and note.
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const SLOW = { timeout: 12_000 } as const;
 const DRAFT = "Also check the retry in sync.ts, and whether the empty list reaches the loader";
-const option = (container: HTMLElement, n: number) => container.querySelector<HTMLElement>(`[data-option="${n}"]`)!;
 const useCase = (name: string) => fireEvent.click(within(screen.getByRole("group", { name: "Case" })).getByRole("button", { name }));
-const rowOf = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-slot="walky-list-row"]')!;
-const draftOf = (el: HTMLElement) => within(el).getByRole<HTMLTextAreaElement>("textbox", { name: "Your message" });
+const frame = () => document.querySelector<HTMLElement>("[data-option]")!;
+const draft = () => within(frame()).getByRole<HTMLTextAreaElement>("textbox", { name: "Your message" });
+const mark = () => within(frame()).queryByRole("button", { name: /^\d+ messages? (waits?|wait)/ });
 
-async function mount(caseName?: string) {
+function mount(caseName?: string) {
   window.history.replaceState(null, "", "/pick.html?round=walky-deliver-now");
-  const view = render(<PickPage {...round} />);
-  await waitFor(() => expect(option(view.container, 3)).not.toBeNull(), SLOW);
+  render(<PickPage {...round} />);
   if (caseName !== undefined) useCase(caseName);
-  return view;
 }
 
 describe("the Deliver now round", () => {
-  it("has three options and one Case switch, and every frame holds the person's text in a box", async () => {
-    const { container } = await mount();
-    expect([...container.querySelectorAll("[data-option]")].map((el) => el.getAttribute("data-option"))).toEqual(["1", "2", "3"]);
+  it("has one frame, one Case switch with the ten cases, and the person's text in a box", () => {
+    mount();
+    expect(document.querySelectorAll("[data-option]")).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Case" })).toHaveLength(1);
-    for (const n of [1, 2, 3]) expect(draftOf(option(container, n)).value).toBe(DRAFT);
+    const names = within(screen.getByRole("group", { name: "Case" })).getAllByRole("button").map((b) => b.textContent);
+    expect(names).toEqual(["Just arrived", "After 20 s", "Delivering", "Delivered", "Failed", "Three waiting", "Busy agent", "Not linked", "Long names, 360 px", "Keyboard up"]);
+    expect(draft().value).toBe(DRAFT);
   });
 
-  it("says before the tap what happens: the row's line under the buttons, the question, the mark's second line", async () => {
-    const { container } = await mount();
-    const one = option(container, 1);
-    expect(within(rowOf(one)).getByText("Waiting, because you have unsent text")).toBeInTheDocument();
-    expect(within(rowOf(one)).getByText("The agent gets it now and starts on it. Your text stays in the box.")).toBeInTheDocument();
-    const two = option(container, 2);
-    expect(within(two).queryByText(/^The agent gets it now/)).toBeNull();
-    fireEvent.click(within(rowOf(two)).getByRole("button", { name: /^Deliver the message from/ }));
-    expect(await within(two).findByText("Send this to the agent now? It starts on it. Your text stays in the box.")).toBeInTheDocument();
-    const three = option(container, 3);
-    expect(within(three).getByRole("button", { name: "1 message waits while you type" })).toBeInTheDocument();
-    expect(within(three).getByRole("button", { name: "Deliver now" })).toBeInTheDocument();
-    expect(within(three).getByText("Your text stays in the box.")).toBeInTheDocument();
+  it("draws no mark for a message that just arrived, and the mark comes by itself at the grace", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    mount();
+    expect(mark()).toBeNull();
+    act(() => vi.advanceTimersByTime(19_990));
+    expect(mark()).toBeNull();
+    act(() => vi.advanceTimersByTime(20));
+    expect(within(frame()).getByRole("button", { name: "1 message waits while you type" })).toBeInTheDocument();
   });
 
-  it("delivers on the tap: the row says delivered, the note stands above the box, and the text is unchanged", async () => {
-    const { container } = await mount();
-    const three = option(container, 3);
-    fireEvent.change(draftOf(three), { target: { value: `${DRAFT} and more` } });
-    fireEvent.click(within(three).getByRole("button", { name: "Deliver now" }));
-    expect(within(three).getByRole("button", { name: "Deliver now" })).toBeDisabled();
-    expect(await within(three).findByText("Message delivered. Your text stays here.", {}, SLOW)).toBeInTheDocument();
-    expect(draftOf(three).value).toBe(`${DRAFT} and more`);
-    // The mark folds away with the hold.
-    await waitFor(() => expect(within(three).queryByRole("button", { name: "Deliver now" })).toBeNull(), SLOW);
+  it("shows the mark with Deliver now and the line that the text stays, after 20 s", () => {
+    mount("After 20 s");
+    expect(within(frame()).getByRole("button", { name: "1 message waits while you type" })).toBeInTheDocument();
+    expect(within(frame()).getByRole("button", { name: "Deliver now" })).toBeInTheDocument();
+    expect(within(frame()).getByText("Your text stays in the box.")).toBeInTheDocument();
   });
 
-  it("plays the taps in the cases Delivering, Delivered and Failed, in every option", async () => {
-    const { container } = await mount("Delivering");
-    for (const n of [1, 2, 3]) {
-      await waitFor(() => expect(within(option(container, n)).getAllByRole("button", { name: /^Deliver / }).some((b) => b.getAttribute("aria-busy") === "true")).toBe(true), SLOW);
-    }
+  it("delivers on the tap: disabled while it runs, the note above the box, the text unchanged", async () => {
+    mount("After 20 s");
+    fireEvent.change(draft(), { target: { value: `${DRAFT} and more` } });
+    fireEvent.click(within(frame()).getByRole("button", { name: "Deliver now" }));
+    expect(within(frame()).getByRole("button", { name: "Deliver now" })).toBeDisabled();
+    expect(await within(frame()).findByText("Message delivered. Your text stays here.", {}, SLOW)).toBeInTheDocument();
+    expect(draft().value).toBe(`${DRAFT} and more`);
+    await waitFor(() => expect(within(frame()).queryByRole("button", { name: "Deliver now" })).toBeNull(), SLOW);
+  });
+
+  it("plays the taps in Delivering, Delivered and Failed", async () => {
+    mount("Delivering");
+    await waitFor(() => expect(within(frame()).getByRole("button", { name: "Deliver now" })).toHaveAttribute("aria-busy", "true"), SLOW);
     useCase("Delivered");
-    for (const n of [1, 2, 3]) {
-      await waitFor(() => expect(within(option(container, n)).getByText("Message delivered. Your text stays here.")).toBeInTheDocument(), SLOW);
-      expect(draftOf(option(container, n)).value).toBe(DRAFT);
-    }
-    expect(await within(rowOf(option(container, 1))).findByText("Delivered. Your text is still in the box.")).toBeInTheDocument();
-    expect(within(rowOf(option(container, 1))).queryByText(/typed into the pane/)).toBeNull();
+    expect(await within(frame()).findByText("Message delivered. Your text stays here.", {}, SLOW)).toBeInTheDocument();
+    expect(draft().value).toBe(DRAFT);
     useCase("Failed");
-    for (const n of [1, 2, 3]) {
-      await waitFor(
-        () => expect(within(option(container, n)).getByText("Not delivered. The message still waits and your text is unchanged. The agent did not take it.")).toBeInTheDocument(),
-        SLOW,
-      );
-      expect(draftOf(option(container, n)).value).toBe(DRAFT);
-      expect(within(option(container, n)).queryByText("Message delivered. Your text stays here.")).toBeNull();
-    }
-    expect(within(rowOf(option(container, 1))).getByText("Waiting, because you have unsent text")).toBeInTheDocument();
-  }, 40_000);
+    expect(await within(frame()).findByText("Not delivered. The message still waits and your text is unchanged. The agent did not take it.", {}, SLOW)).toBeInTheDocument();
+    expect(draft().value).toBe(DRAFT);
+    expect(within(frame()).queryByText("Message delivered. Your text stays here.")).toBeNull();
+  }, 30_000);
 
-  it("with three waiting the mark opens the sheet and carries no button", async () => {
-    const { container } = await mount("Three waiting");
-    expect(within(option(container, 3)).getByRole("button", { name: "3 messages wait while you type" })).toBeInTheDocument();
-    expect(within(option(container, 3)).queryByRole("button", { name: "Deliver now" })).toBeNull();
+  it("counts three waiting with no button, and words a busy agent with no Deliver now", () => {
+    mount("Three waiting");
+    expect(within(frame()).getByRole("button", { name: "3 messages wait while you type" })).toBeInTheDocument();
+    expect(within(frame()).queryByRole("button", { name: "Deliver now" })).toBeNull();
+    useCase("Busy agent");
+    expect(within(frame()).getByRole("button", { name: "1 message waits for the agent to finish" })).toBeInTheDocument();
+    expect(within(frame()).queryByRole("button", { name: "Deliver now" })).toBeNull();
   });
 
-  it("not linked shows today's actions with the rewritten words, and no Deliver now anywhere", async () => {
-    const { container } = await mount("Not linked");
-    for (const n of [1, 2, 3]) expect(container.querySelector(`[data-option="${n}"] [data-slot="walky-deliver"]`)).toBeNull();
-    expect(within(rowOf(option(container, 1))).getByText("Waiting, because you have unsent text")).toBeInTheDocument();
-    expect(within(option(container, 3)).getByRole("button", { name: "1 message waits while you type" })).toBeInTheDocument();
-    expect(draftOf(option(container, 3)).value).toBe(DRAFT);
+  it("not linked: the mark, no Deliver now anywhere, and the sheet lists the message at once without the action", () => {
+    mount("Not linked");
+    expect(within(frame()).getByRole("button", { name: "1 message waits while you type" })).toBeInTheDocument();
+    expect(frame().querySelector('[data-slot="walky-deliver"]')).toBeNull();
+    fireEvent.click(within(frame()).getByRole("button", { name: "1 message waits while you type" }));
+    expect(within(frame()).getByText("Waiting, because you have unsent text")).toBeInTheDocument();
+    expect(within(frame()).getByRole("button", { name: /^Drop the message/ })).toBeInTheDocument();
   });
 });

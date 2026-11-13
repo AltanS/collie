@@ -594,28 +594,13 @@ describe("Deliver now on a held message of a linked pane", () => {
     expect(screen.queryByText(/typed into the pane/)).toBeNull();
   });
 
-  it("with deliverAsk, the first tap sends nothing and asks; the second, on Deliver, sends", async () => {
-    const user = userEvent.setup();
-    const onDeliverNow = vi.fn(async () => {});
-    sheet([agentHeld], { ...GATES, onDeliverNow, deliverAsk: true });
+  it("offers nothing on a message that waits for a running turn, and nothing on one waiting for another reason", () => {
+    const busy: WalkyRow = { ...agentHeld, receipt: { ...agentHeld.receipt, reason: "turn running" } };
+    const other: WalkyRow = { ...agentHeld, id: "wt_he1dh01dh02d", receipt: { ...agentHeld.receipt, id: "wt_he1dh01dh02d", reason: "resting" } };
+    sheet([busy, other], { ...GATES, onDeliverNow: vi.fn(async () => {}) });
+    expect(screen.queryByRole("button", { name: /^Deliver the message from/ })).toBeNull();
     expect(document.querySelector('[data-slot="walky-deliver-help"]')).toBeNull();
-    expect(screen.queryByText(/^Send this to the agent now\?/)).toBeNull();
-    await user.click(screen.getByRole("button", { name: /^Deliver the message from/ }));
-    expect(onDeliverNow).not.toHaveBeenCalled();
-    expect(await screen.findByText("Send this to the agent now? It starts on it. Your text stays in the box.")).toBeInTheDocument();
-    const ask = document.querySelector<HTMLElement>('[data-slot="walky-deliver-ask"]')!;
-    await user.click(within(ask).getByRole("button", { name: /^Deliver the message from/ }));
-    expect(within(ask).getByRole("button", { name: /^Deliver the message from/ })).toHaveTextContent("Deliver");
-    expect(onDeliverNow).toHaveBeenCalledExactlyOnceWith(agentHeld.id);
-  });
-
-  it("with deliverAsk, Back closes the question without sending", async () => {
-    const user = userEvent.setup();
-    const onDeliverNow = vi.fn(async () => {});
-    sheet([agentHeld], { ...GATES, onDeliverNow, deliverAsk: true });
-    await user.click(screen.getByRole("button", { name: /^Deliver the message from/ }));
-    await user.click(within(document.querySelector<HTMLElement>('[data-slot="walky-deliver-ask"]')!).getByRole("button", { name: "Back" }));
-    expect(onDeliverNow).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByText(/^Send this to the agent now\?/)).toBeNull());
+    // Drop stays: the row is as it was.
+    expect(screen.getAllByRole("button", { name: /^Drop the message/ })).toHaveLength(2);
   });
 });

@@ -3,7 +3,6 @@ import { Icon } from "@/components/icons/icon";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { DeliverNowButton } from "@/components/walky-deliver-button";
 import { FeatureTokenChip } from "@/components/token-use-label";
@@ -16,7 +15,7 @@ import { useDeliverNow } from "@/hooks/use-deliver-now";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime, timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { directionOf, isHeld, ownerStateWord, signerOf, stateWord, verifiedWord, type DeliverNow, type WalkyRow } from "@/lib/walky";
+import { directionOf, isHeld, ownerStateWord, signerOf, stateWord, verifiedWord, waitReasonOf, type DeliverNow, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
 import { senderNameOf } from "@/lib/walky-names";
 
@@ -50,10 +49,10 @@ import { senderNameOf } from "@/lib/walky-names";
 // of such a pane gets a third way out beside Drop: "Deliver now" hands the message to the agent as data, at
 // once, and leaves the box and its draft as they are. It is the person's own act, behind the same write gate
 // as Drop and Reply. `onDeliverNow` is the seam (`DeliverNow`, lib/walky.ts); without `linked` the sheet is
-// drawn as it always was. Before the tap the row says where the message goes, what happens to the person's own
-// text and what the agent does ("The agent gets it now and starts on it. Your text stays in the box."), as a
-// line under the buttons; `deliverAsk` puts the same in a question that opens in the row, with Deliver and Back,
-// so one tap does not cost a turn. After the tap the row reads "Delivered. Your text is still in the box."
+// drawn as it always was. Offered only on a message that waits for the person's own unsent text: delivering into a running
+// turn is not this feature. Before the tap the row says where the message goes, what happens to the person's own
+// text and what the agent does, as a line under the buttons ("The agent gets it now and starts on it. Your text
+// stays in the box."). After the tap the row reads "Delivered. Your text is still in the box."
 //
 // ── A FOCUSED MESSAGE ─────────────────────────────────────────────────────────
 // A tap on a Chat card, or on an id chip, opens this sheet on ONE message (`focusId`): the sheet scrolls
@@ -94,8 +93,6 @@ interface WalkySheetProps {
   linked?: boolean | undefined;
   /** Hand a held message to the agent as data, the draft untouched (the seam, `DeliverNow`). Absent: no Deliver now. */
   onDeliverNow?: DeliverNow | undefined;
-  /** Ask first: Deliver now opens a question in the row, with Deliver and Back, instead of a line under the buttons. */
-  deliverAsk?: boolean | undefined;
 }
 
 /**
@@ -114,7 +111,7 @@ function centreInScroller(el: HTMLElement): void {
   box.scrollTop += a.top - b.top - (box.clientHeight - a.height) / 2;
 }
 
-export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self, onCancel, onDrop, walkyOff = false, onWalkyOff, linked = false, onDeliverNow, deliverAsk = false }: WalkySheetProps) {
+export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self, onCancel, onDrop, walkyOff = false, onWalkyOff, linked = false, onDeliverNow }: WalkySheetProps) {
   useLocale();
   const log = useWalkyLog();
   const rows = log === null ? [] : newestFirst(log.rows);
@@ -149,7 +146,6 @@ export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, s
                 onCancel={onCancel}
                 onDrop={onDrop}
                 deliver={linked ? onDeliverNow : undefined}
-                deliverAsk={deliverAsk}
               />
             </li>
           ))}
@@ -235,7 +231,6 @@ function WalkyListRow({
   onCancel,
   onDrop,
   deliver,
-  deliverAsk,
 }: {
   row: WalkyRow;
   self: string | undefined;
@@ -248,7 +243,6 @@ function WalkyListRow({
   onDrop: ((row: WalkyRow) => Promise<string | null>) | undefined;
   /** The seam, given only for a linked pane. */
   deliver: DeliverNow | undefined;
-  deliverAsk: boolean;
 }) {
   const refused = row.receipt.state === "refused" || row.receipt.state === "expired";
   // The person reads names; the address and the id stay on the wire (lib/walky-names.ts).
@@ -268,10 +262,8 @@ function WalkyListRow({
   // A row that left its held state settles the question: the note it earned goes with it.
   if (!held && note !== null) setNote(null);
   // Deliver now: a held received row of a linked pane, behind the same write gate as Drop.
-  const deliverable = held && canReply && deliver !== undefined;
+  const deliverable = held && waitReasonOf(row.receipt) === "text" && canReply && deliver !== undefined;
   const delivery = useDeliverNow(held, deliverable ? deliver : undefined);
-  const [armed, setArmed] = useState(false);
-  if (!deliverable && armed) setArmed(false);
   const deliverAria = t("walky.sheet.deliverNowAria", { label: sender });
   const onTakeBack = async () => {
     if (takeBack === undefined || busy) return;
@@ -355,30 +347,17 @@ function WalkyListRow({
         )}
         {deliverable && (
           <DeliverNowButton
-            className={cn("h-11 shrink-0", armed && "bg-accent")}
-            busy={!deliverAsk && delivery.busy}
-            disabled={deliverAsk && delivery.busy}
+            className="h-11 shrink-0"
+            busy={delivery.busy}
             aria-label={deliverAria}
-            aria-expanded={deliverAsk ? armed : undefined}
-            onClick={() => (deliverAsk ? setArmed(!armed) : void delivery.run(row.id))}
+            onClick={() => void delivery.run(row.id)}
           />
         )}
       </div>
-      {deliverable && !deliverAsk && (
+      {deliverable && (
         <p data-slot="walky-deliver-help" className="mt-1 text-xs text-muted-foreground">
           {t("walky.sheet.deliverHelp")}
         </p>
-      )}
-      {deliverable && deliverAsk && (
-        <Collapse open={armed}>
-          <div data-slot="walky-deliver-ask" className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2">
-            <p className="min-w-[8rem] flex-1 text-xs text-foreground">{t("walky.sheet.deliverAsk")}</p>
-            <Button type="button" variant="outline" size="sm" className="h-11 shrink-0" disabled={delivery.busy} onClick={() => setArmed(false)}>
-              {t("walky.crew.confirmBack")}
-            </Button>
-            <DeliverNowButton className="h-11 shrink-0" label={t("walky.sheet.deliver")} busy={delivery.busy} aria-label={deliverAria} onClick={() => void delivery.run(row.id)} />
-          </div>
-        </Collapse>
       )}
       {delivery.error !== null && (
         <p data-slot="walky-deliver-note" role="status" className="mt-1 text-[11px] text-status-blocked">

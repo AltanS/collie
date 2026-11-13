@@ -394,7 +394,7 @@ session took its id, the message stays in the inbox as `pane replaced`.
 A held message has two ways out before the hour ends. The sender takes it back with
 `collie walky cancel <id>` from the pane that sent it. A message sent from the phone is cancelled on
 the phone: its line under the box, and its row in the pane's WalkyTalky sheet, carry Cancel while it is
-held. The owner of the target pane sees "1 message waits while you type" above the box. A tap
+held. The owner of the target pane sees "1 message waits while you type" above the box once it has waited 20 seconds. A tap
 opens the WalkyTalky sheet, where each held message has Drop. Either way the message stays in the
 inbox, not typed, and the receipt reads `cancelled by sender` or `dropped by the pane's owner`. A
 message that was already typed cannot be taken back; the answer says so, and the receipt stands. Only
@@ -540,8 +540,9 @@ older than 1.23.0, and on a member the lead cannot reach.
 Tap the card to open the WalkyTalky sheet on that message. The sheet scrolls to it and marks it, and
 its Reply button is next to it.
 
-While a message waits for your unsent text, a line above the box reads "1 message waits while you
-type", or the count. Tap it to open the WalkyTalky sheet. A held message from an agent has
+After a message has waited 20 seconds, a line above the box reads "1 message waits while you type",
+or the count. For a running turn it reads "1 message waits for the agent to finish", and for a mix of
+reasons "3 messages wait". A line you send in time never shows it: the message goes in by itself. Tap it to open the WalkyTalky sheet. A held message from an agent has
 a Drop button there: the hold ends, the message stays in the inbox, and its row reads
 `waiting in the inbox, not typed: dropped by the pane's owner`. A held message you sent from the
 phone has Cancel instead, on its row and on the line under the box. Its row then reads

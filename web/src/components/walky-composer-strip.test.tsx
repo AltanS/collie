@@ -43,6 +43,26 @@ describe("the held mark", () => {
     expect(screen.getByText("Your text stays in the box.")).toBeInTheDocument();
   });
 
+  it("words the wait by its reason: the person's text, a running turn, or a mix as a plain count", () => {
+    render(<WalkyHeldStrip count={1} kind="busy" onOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "1 message waits for the agent to finish" })).toBeInTheDocument();
+    cleanup();
+    render(<WalkyHeldStrip count={2} kind="busy" onOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "2 messages wait for the agent to finish" })).toBeInTheDocument();
+    cleanup();
+    render(<WalkyHeldStrip count={3} kind="other" onOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "3 messages wait" })).toBeInTheDocument();
+    cleanup();
+    render(<WalkyHeldStrip count={1} kind="other" onOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "1 message waits" })).toBeInTheDocument();
+  });
+
+  it("offers no Deliver now for a wait on a running turn, even when linked and alone", () => {
+    render(<WalkyHeldStrip count={1} kind="busy" onOpen={vi.fn()} linked deliverId={ID} onDeliverNow={vi.fn(async () => {})} />);
+    expect(screen.queryByRole("button", { name: "Deliver now" })).toBeNull();
+    expect(screen.getByRole("button", { name: "1 message waits for the agent to finish" })).toBeInTheDocument();
+  });
+
   it("is drawn as today with more than one message, linked or not", () => {
     render(<WalkyHeldStrip count={3} onOpen={vi.fn()} linked deliverId={ID} onDeliverNow={vi.fn(async () => {})} />);
     expect(screen.queryByRole("button", { name: "Deliver now" })).toBeNull();
