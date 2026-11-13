@@ -8,7 +8,7 @@
 export const HILL_RULES = [
   "Post only what needs your person. A worker with a lead asks its lead first.",
   "One question per post. To change it, post again with --supersedes <id>.",
-  "Do not wait or poll. The answer starts your next turn. None arrived: collie hill status <id>.",
+  'Do not wait or poll. The answer starts your next turn as "Answer to <id> ...". None arrived: collie hill status <id>.',
   "Settled in your session: collie hill withdraw <id>.",
   'A result that ends "Crew state: quiet." or "Crew state: away.": your person is not there. Ask nothing that needs an answer now.',
 ] as const;
