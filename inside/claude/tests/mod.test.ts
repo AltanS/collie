@@ -1,0 +1,136 @@
+import { describe, expect, mock, test } from 'claude-code/testing'
+
+// The Collie mod against the engine (M99 spec 02), run by `claude plugin test inside/claude`.
+// Each hook here stands for the engine and for one Collie bridge, which answers over its socket.
+
+const SOCKET = '/h/.local/state/collie-next/inside/sock'
+const TARGETS = '/h/.local/state/collie/hook-targets'
+const PART = 'P'.repeat(22)
+const STAT = `4242 (claude) ${Array.from({ length: 50 }, (_, i) => (i === 0 ? 'S' : i === 19 ? '987654' : String(i))).join(' ')}`
+
+type Wire = { path: string; body: Record<string, unknown> | null }
+
+/** The world one test runs in: the env, the target file, a bridge, a prompt box. */
+function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string } = {}) {
+  const clock = mock.clock(on)
+  mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
+  const wire: Wire[] = []
+  const submitted: string[] = []
+  const commands = [...(opts.commands ?? [])]
+
+  on('session.id', () => ({ value: 'sess-1' }))
+  on('session.cwd', () => ({ value: '/h/project' }))
+  on('session.version', () => ({ value: { version: '2.1.323' } }))
+  on('prompt.read', () => ({ value: { text: 'half a thought', cursor: 4 } }))
+  on('fs.list', (_, e) => ({ value: e.path === TARGETS ? [{ name: '0123456789abcdef.json', kind: 'file', size: 200, mtimeMs: 0, isLink: false }] : [] }))
+  on('fs.read', (_, e) => {
+    if (e.path === `${TARGETS}/0123456789abcdef.json`) {
+      return { value: JSON.stringify({ schemaVersion: 1, stateDir: '/h/.local/state/collie-next', pid: 1, pidStartTime: 1, bootedAt: 1, inside: { wire: 1, socket: SOCKET } }) }
+    }
+    if (e.path === '/proc/self/stat') return { value: STAT }
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{"name":"collie","version":"1.29.0"}' }
+    return { value: '' }
+  })
+  on('http.fetch', async (_, e) => {
+    const url = new URL(e.url)
+    const raw = e.init?.body
+    const body = typeof raw === 'string' ? (JSON.parse(raw) as Record<string, unknown>) : null
+    wire.push({ path: `${url.pathname}${url.search}`, body })
+    const answer = (status: number, json?: unknown) => ({ value: { status, ok: status < 300, headers: {}, text: json === undefined ? '' : JSON.stringify(json) } })
+    if (e.init?.socketPath !== SOCKET) return answer(599)
+    if (url.pathname === '/v1/hello') return answer(200, { wire: 1, mine: true, part: PART })
+    if (url.pathname === '/v1/event') {
+      if (body?.kind === 'ask.open') return answer(200, opts.askWait === true ? { wait: true, waitMs: 60_000 } : { wait: false })
+      return answer(204)
+    }
+    if (url.pathname === '/v1/next' && url.searchParams.has('ask')) {
+      return opts.askAnswer === undefined
+        ? answer(204)
+        : answer(200, { wire: 1, id: 'ans-00000001', kind: 'answer', ask: url.searchParams.get('ask'), decision: opts.askAnswer })
+    }
+    const next = commands.shift()
+    if (next !== undefined) return answer(200, JSON.parse(next))
+    await clock.sleep(25_000)
+    return answer(204)
+  })
+  on('prompt.submit', (_, e) => {
+    submitted.push(e.text)
+    return { text: e.text }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  return { clock, wire, submitted }
+}
+
+const events = (wire: Wire[]) => wire.filter((row) => row.path === '/v1/event').map((row) => row.body)
+
+describe('the Collie mod', () => {
+  test('says hello with its pid, its markers and its capabilities', async ($, on) => {
+    const { clock, wire } = world(on)
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    const hello = wire.find((row) => row.path === '/v1/hello')?.body
+    expect(hello).toMatchObject({
+      wire: 1,
+      harness: 'claude',
+      harnessVersion: '2.1.323',
+      partVersion: '1.29.0',
+      session: 'sess-1',
+      pid: 4242,
+      pidStartTime: 987654,
+      env: { HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' },
+      capabilities: ['send', 'mail', 'draft', 'wake'],
+      asks: ['permission'],
+    })
+  })
+
+  test('a prompt goes in as the person\'s words, once, and is reported taken then sent', async ($, on) => {
+    const prompt = JSON.stringify({ wire: 1, id: 'req-00000001', kind: 'prompt', text: 'Reply with pong.' })
+    // The same id twice: a bridge bug. The mod acts on it once.
+    const { clock, wire, submitted } = world(on, { commands: [prompt, prompt] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    expect(submitted).toEqual(['Reply with pong.'])
+    expect(events(wire).filter((e) => e?.cmd === 'req-00000001').map((e) => e?.kind)).toEqual(['taken', 'sent'])
+  })
+
+  test('a draft question is answered with the box and its caret', async ($, on) => {
+    const { clock, wire } = world(on, { commands: [JSON.stringify({ wire: 1, id: 'drf-00000001', kind: 'draft' })] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    expect(events(wire).find((e) => e?.kind === 'draft')).toEqual({ part: PART, kind: 'draft', cmd: 'drf-00000001', text: 'half a thought', caret: 4 })
+  })
+
+  test('the phone\'s answer decides an open permission dialog', async ($, on) => {
+    const { clock, wire } = world(on, { askWait: true, askAnswer: 'deny' })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    const result = await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'touch x' }, permission_suggestions: [] })
+    expect(result).toEqual({ decision: { behavior: 'deny' } })
+    const opened = events(wire).find((e) => e?.kind === 'ask.open')
+    expect(opened).toMatchObject({ part: PART, askKind: 'permission', tool: 'Bash', input: { command: 'touch x' } })
+    await clock.settle()
+    expect(events(wire).find((e) => e?.kind === 'ask.close')).toMatchObject({ ask: opened?.ask, how: 'phone' })
+    expect(events(wire).find((e) => e?.cmd === 'ans-00000001')).toMatchObject({ kind: 'sent' })
+  })
+
+  test('with no bridge that waits, the permission goes on as if the mod were not there', async ($, on) => {
+    const { clock } = world(on, { askWait: false })
+    on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    const result = await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'ls' }, permission_suggestions: [] })
+    expect(result).toEqual({ decision: { behavior: 'allow' } })
+  })
+
+  test('wake events carry the door and the row id, never the text', async ($, on) => {
+    const { clock, wire } = world(on)
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    await $.turn.start({ text: 'secret words', turnId: 't-1' })
+    await clock.settle()
+    const wake = events(wire).find((e) => e?.kind === 'turn.start')
+    expect(wake).toEqual({ part: PART, kind: 'turn.start', turn: 't-1' })
+    expect(JSON.stringify(events(wire))).not.toContain('secret words')
+  })
+})
