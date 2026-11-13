@@ -138,3 +138,35 @@ describe("a text write the daemon does not confirm in time", () => {
     if (!ack.ok) expect(ack.detail).toContain("may still arrive");
   });
 });
+
+// M100 spec 03: a connection the daemon closed after the request went out may follow a write it acted on.
+describe("a write whose connection the daemon closed before the reply", () => {
+  test("typeText and writeKeys answer unconfirmed, and say it may have arrived", async () => {
+    const fake = new FakeTuios();
+    const mux = new TuiosMux(fake);
+    const pane = (await mux.snapshot()).panes[0]!;
+    fake.nextWrite = "closed";
+    const text = await mux.typeText(pane.paneId, "hello");
+    fake.nextKeys = "closed";
+    const keys = await mux.writeKeys(pane.paneId, ["Enter"]);
+    for (const ack of [text, keys]) {
+      expect(ack.ok ? "ok" : ack.reason).toBe("unconfirmed");
+      if (!ack.ok) expect(ack.detail).toContain("tuios closed the connection before it confirmed");
+      if (!ack.ok) expect(ack.detail).not.toContain("in time");
+    }
+    expect(fake.writes()).toEqual([]);
+  });
+
+  test("a dial that never reached the daemon is unreachable", async () => {
+    class DeadTuios extends FakeTuios {
+      override async sendText(): Promise<void> {
+        await Promise.resolve();
+        throw Object.assign(new Error("Failed to connect"), { code: "ECONNREFUSED", errno: -111, syscall: "connect" });
+      }
+    }
+    const mux = new TuiosMux(new DeadTuios());
+    const pane = (await mux.snapshot()).panes[0]!;
+    const ack = await mux.typeText(pane.paneId, "hello");
+    expect(ack.ok ? "ok" : ack.reason).toBe("unreachable");
+  });
+});

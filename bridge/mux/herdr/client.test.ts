@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { toPipeName } from "../../dial.ts";
 import type { JsonObject } from "../../json.ts";
-import { HerdrClient } from "./client.ts";
+import { HerdrClient, HerdrNoReply, HerdrTimeout } from "./client.ts";
 
 // The client's per-call budget. Proved against a real Unix socket (a named pipe on Windows) that
 // answers late: a call gives up at the budget the client was built with.
@@ -76,6 +76,56 @@ describe("HerdrClient per-call timeout", () => {
     await expect(client.listWorkspaces()).rejects.toThrow(
       `herdr workspace.list: timed out after ${CLIENT_BUDGET_MS}ms`,
     );
+  });
+});
+
+/** A Herdr stand-in that reads one request line and closes the connection without a reply. */
+async function droppingHerdr(): Promise<string> {
+  dir = mkdtempSync(join(tmpdir(), "collie-herdr-client-"));
+  const path = join(dir, "herdr.sock");
+  server = net.createServer((conn) => {
+    let buf = "";
+    conn.on("error", () => {});
+    conn.on("data", (chunk) => {
+      buf += chunk.toString();
+      if (buf.includes("\n")) conn.destroy();
+    });
+  });
+  const listening = server;
+  await new Promise<void>((resolve, reject) => {
+    listening.once("error", reject);
+    listening.listen(path, resolve);
+  });
+  return path;
+}
+
+/** What `call` rejects with, as an Error, or null when it resolves. */
+async function rejection(call: () => Promise<void>): Promise<Error | null> {
+  try {
+    await call();
+  } catch (err) {
+    return err instanceof Error ? err : new Error(String(err));
+  }
+  return null;
+}
+
+// M100 spec 03: a connection that closes after the request went out may follow a request Herdr acted
+// on, so it is its own class; a dial that never reached Herdr is not.
+describe.skipIf(process.platform === "win32")("HerdrClient, a connection closed before the reply", () => {
+  test("a close after the request went out rejects with HerdrNoReply and the old words", async () => {
+    const client = new HerdrClient(await droppingHerdr(), 2000);
+    const caught = await rejection(() => client.sendPaneText("w1:p1", "hello"));
+    expect(caught).toBeInstanceOf(HerdrNoReply);
+    expect(caught?.message).toBe("herdr pane.send_text: connection closed before reply");
+  });
+
+  test("a socket with nobody behind it rejects with the dial's own error, not HerdrNoReply", async () => {
+    dir = mkdtempSync(join(tmpdir(), "collie-herdr-client-"));
+    const client = new HerdrClient(join(dir, "none.sock"), 2000);
+    const caught = await rejection(() => client.sendPaneText("w1:p1", "hello"));
+    expect(caught).not.toBeInstanceOf(HerdrNoReply);
+    expect(caught).not.toBeInstanceOf(HerdrTimeout);
+    expect(caught !== null && "code" in caught ? caught.code : null).toBe("ENOENT");
   });
 });
 

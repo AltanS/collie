@@ -85,6 +85,7 @@ import {
   DEFAULT_TUIOS_TIMEOUT_MS,
   TuiosClient,
   TuiosError,
+  TuiosNoReply,
   TuiosTimeout,
   TUIOS_PROTOCOL,
   TUIOS_REQUIRED_EVENT,
@@ -185,13 +186,14 @@ function refusalFor<T>(err: T): MuxRefusalOutcome {
 }
 
 /**
- * The refusal for a failure of a CREATE call. A call that did not answer in time may still have made the
- * window or the session, so it is `unconfirmed` and not `unreachable`: the route looks in the snapshot
- * before it says anything (bridge/create-confirm.ts).
+ * The refusal for a failure of a CREATE call. A call that did not answer in time, or whose connection
+ * closed after it carried the request, may still have made the window or the session, so it is
+ * `unconfirmed` and not `unreachable`: the route looks in the snapshot before it says anything
+ * (bridge/create-confirm.ts).
  */
 function createRefusal<T>(err: T): MuxRefusalOutcome {
-  // {@link TuiosTimeout}: the one time-out marker, read by every write, key and create.
-  if (err instanceof TuiosTimeout) return muxUnconfirmed(err.message);
+  // {@link TuiosTimeout} and {@link TuiosNoReply}: read by every write, key and create.
+  if (err instanceof TuiosTimeout || err instanceof TuiosNoReply) return muxUnconfirmed(err.message);
   return refusalFor(err);
 }
 
@@ -373,13 +375,14 @@ export class TuiosMux implements MuxAdapter {
     const located = await this.locate(paneId);
     if (!located.ok) return located;
     const session = located.value.session.name;
-    // A write the daemon did not answer in time may still have reached the pane: `unconfirmed`, never
-    // `unreachable`, and the caller's next read decides (MuxRefusal).
+    // A write the daemon did not confirm, by a time-out or a closed connection that carried it, may still
+    // have reached the pane: `unconfirmed`, never `unreachable`, and the caller's next read decides.
     try {
       await this.rpc.sendText(session, paneId, text);
       return muxAck();
     } catch (err) {
       if (err instanceof TuiosTimeout) return muxUnconfirmed(`tuios did not confirm the text written to ${paneId} in time (${err.message}). It may still arrive, so it was not written again.`);
+      if (err instanceof TuiosNoReply) return muxUnconfirmed(`tuios closed the connection before it confirmed the text written to ${paneId} (${err.message}). It may have arrived, so it was not written again.`);
       return refusalFor(err);
     }
   }
@@ -408,12 +411,14 @@ export class TuiosMux implements MuxAdapter {
     if (translated.length === 0) return muxAck();
     const located = await this.locate(paneId);
     if (!located.ok) return located;
-    // Keys the daemon did not answer in time may still land: `unconfirmed`, never sent again (M100 spec 03).
+    // Keys the daemon did not confirm, by a time-out or a closed connection, may still land:
+    // `unconfirmed`, never sent again (M100 spec 03).
     try {
       await this.rpc.writeKeys(located.value.session.name, paneId, translated.join(" "));
       return muxAck();
     } catch (err) {
       if (err instanceof TuiosTimeout) return muxUnconfirmed(`tuios did not confirm the keys on ${paneId} in time (${err.message}). They may still arrive, so they were not sent again.`);
+      if (err instanceof TuiosNoReply) return muxUnconfirmed(`tuios closed the connection before it confirmed the keys on ${paneId} (${err.message}). They may have arrived, so they were not sent again.`);
       return refusalFor(err);
     }
   }

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import type { MuxSpace } from "../types.ts";
 import { HerdrMux, SCROLL_STATE_MEMO_MS } from "./adapter.ts";
-import { HerdrTimeout, type CreatedShell, type PaneRead, type WirePane, type WireSnapshot, type WireWorkspace } from "./client.ts";
+import { HerdrNoReply, HerdrTimeout, type CreatedShell, type PaneRead, type WirePane, type WireSnapshot, type WireWorkspace } from "./client.ts";
 import { FakeHerdr } from "./fixture.ts";
 
 // THE SPACE'S FOLDER, across the two Herdr shapes (ADR 0032, ADR 0126).
@@ -465,7 +465,7 @@ describe("a space whose folder is a linked worktree", () => {
   });
 
   test("a dropped connection is a refusal too", async () => {
-    const fake = new OpenFails(new Error("herdr worktree.open: connection closed before reply"));
+    const fake = new OpenFails(new HerdrNoReply("worktree.open"));
     const created = await new HerdrMux(fake, () => []).createSpace(ASKED);
     expect(created.ok).toBe(false);
     expect(fake.plainCreates).toBe(0);
@@ -499,5 +499,48 @@ describe("a text write Herdr does not confirm in time", () => {
     }
     const ack = await new HerdrMux(new DeadHerdr(), () => []).typeText("w1:p1", "hello");
     expect(ack.ok ? "ok" : ack.reason).toBe("unreachable");
+  });
+});
+
+// M100 spec 03: a connection Herdr closed after the request went out may follow a write it acted on, so a
+// text write and a key write answer `unconfirmed`, never `unreachable` ("nothing typed"). A dial that never
+// reached Herdr stays `unreachable`.
+describe("a write whose connection Herdr closed before the reply", () => {
+  test("typeText, pasteBlock and writeKeys answer unconfirmed, and say it may have arrived", async () => {
+    const fake = new FakeHerdr();
+    const mux = new HerdrMux(fake, () => []);
+    const pane = (await mux.snapshot()).panes[0]!;
+    const acks = [];
+    fake.nextWrite = "closed";
+    acks.push(await mux.typeText(pane.paneId, "hello"));
+    fake.nextWrite = "closed";
+    acks.push(await mux.pasteBlock(pane.paneId, "a\nb"));
+    fake.nextKeys = "closed";
+    acks.push(await mux.writeKeys(pane.paneId, ["Enter"]));
+    for (const ack of acks) {
+      expect(ack.ok ? "ok" : ack.reason).toBe("unconfirmed");
+      if (!ack.ok) expect(ack.detail).toContain("Herdr closed the connection before it confirmed");
+      if (!ack.ok) expect(ack.detail).not.toContain("in time");
+    }
+    expect(fake.writes()).toEqual([]);
+  });
+
+  test("a dial that never reached Herdr is unreachable, for text and for keys", async () => {
+    const dead = () => Object.assign(new Error("Failed to connect"), { code: "ECONNREFUSED", errno: -111, syscall: "connect" });
+    class DeadHerdr extends FakeHerdr {
+      override async sendPaneText(): Promise<void> {
+        await Promise.resolve();
+        throw dead();
+      }
+      override async sendPaneKeys(): Promise<void> {
+        await Promise.resolve();
+        throw dead();
+      }
+    }
+    const mux = new HerdrMux(new DeadHerdr(), () => []);
+    const text = await mux.typeText("w1:p1", "hello");
+    const keys = await mux.writeKeys("w1:p1", ["Enter"]);
+    expect(text.ok ? "ok" : text.reason).toBe("unreachable");
+    expect(keys.ok ? "ok" : keys.reason).toBe("unreachable");
   });
 });

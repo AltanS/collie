@@ -18,10 +18,11 @@
 //  • `list-agents` keeps a pane's harness and conversation id after its agent exits, and names
 //    harnesses by tuios's own ids (`claude-code`).
 
-import type { MuxConformanceFixture, MuxConformanceWorld, MuxWrite } from "../conformance.ts";
+import type { MuxConformanceFixture, MuxConformanceWorld, MuxWrite, MuxWriteFailure } from "../conformance.ts";
 import { TuiosMux } from "./adapter.ts";
 import {
   TuiosError,
+  TuiosNoReply,
   TuiosTimeout,
   type CaptureRequest,
   type EventStream,
@@ -87,12 +88,24 @@ function failure(verb: string, code: string, detail: string): TuiosError {
   return new TuiosError(code, `tuios ${verb}: ${code}: ${detail}`);
 }
 
+/**
+ * What the client gives for a dead socket: the dial's own error. The client dials with Bun.connect, which
+ * says "Failed to connect" with the system code (ECONNREFUSED for a socket nobody listens on, ENOENT for
+ * a missing one; read off Bun 2026-11-13). Nothing went out, so the adapter answers `unreachable`.
+ */
+function dialRefused(): Error {
+  return Object.assign(new Error("Failed to connect"), { code: "ECONNREFUSED", errno: -111, syscall: "connect" });
+}
+
 /** A tuios daemon's verb socket, in memory, answering as the real one does. */
 export class FakeTuios implements TuiosRpc {
-  /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
-  nextWrite: "stall" | "refuse" | null = null;
-  /** The next key write fails once, the same two ways (M100 spec 03). */
-  nextKeys: "stall" | "refuse" | null = null;
+  /**
+   * The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no,
+   * `closed` loses its connection after the request went out.
+   */
+  nextWrite: MuxWriteFailure | null = null;
+  /** The next key write fails once, the same three ways (M100 spec 03). */
+  nextKeys: MuxWriteFailure | null = null;
 
   private sessions: FakeSession[] = [];
   private windows: FakeWindow[] = [];
@@ -209,17 +222,17 @@ export class FakeTuios implements TuiosRpc {
   // ── The verbs (TuiosRpc) ───────────────────────────────────────────────────
 
   async hello(): Promise<WireHello> {
-    this.assertConnected("hello");
+    this.assertConnected();
     return { protocol: 1, minProtocol: 1, version: "fake", instance: this.bootId };
   }
 
   async subscribeTypes(): Promise<string[]> {
-    this.assertConnected("list-verbs");
+    this.assertConnected();
     return ["window-created", "window-closed", "workspace-renamed", "agent-state", "gap"];
   }
 
   async listSessions(): Promise<WireSession[]> {
-    this.assertConnected("list-sessions");
+    this.assertConnected();
     return this.sessions.map((session) => ({
       name: session.name,
       id: session.id,
@@ -263,7 +276,7 @@ export class FakeTuios implements TuiosRpc {
   }
 
   async listAgents(): Promise<WireAgent[]> {
-    this.assertConnected("list-agents");
+    this.assertConnected();
     const listed: WireAgent[] = [];
     for (const window of this.windows) {
       const agent = this.agents.get(window.windowId);
@@ -296,6 +309,7 @@ export class FakeTuios implements TuiosRpc {
     const failing = this.nextWrite;
     this.nextWrite = null;
     if (failing === "stall") throw new TuiosTimeout("send-text", 5000);
+    if (failing === "closed") throw new TuiosNoReply("send-text");
     if (failing === "refuse") throw failure("send-text", "internal_error", "the window did not take the input");
     this.recorded.push({ paneId: windowId, kind: "text", payload: [text] });
   }
@@ -305,6 +319,7 @@ export class FakeTuios implements TuiosRpc {
     const failing = this.nextKeys;
     this.nextKeys = null;
     if (failing === "stall") throw new TuiosTimeout("send-keys", 5000);
+    if (failing === "closed") throw new TuiosNoReply("send-keys");
     if (failing === "refuse") throw failure("send-keys", "internal_error", "the window did not take the keys");
     const tokens = keys.split(/[ ,]+/u).filter((token) => token !== "");
     // The daemon parses every token before sending any; a bare separator has no token at all.
@@ -341,7 +356,7 @@ export class FakeTuios implements TuiosRpc {
   }
 
   async newSession(name: string | undefined, cwd: string | undefined): Promise<WireCreatedSession> {
-    this.assertConnected("new-session");
+    this.assertConnected();
     const chosen = name ?? `session-${String(this.minted)}`;
     if (this.sessions.some((session) => session.name === chosen)) {
       throw failure("new-session", "session_exists", `session ${chosen} already exists`);
@@ -365,12 +380,12 @@ export class FakeTuios implements TuiosRpc {
 
   // ── Internals ──────────────────────────────────────────────────────────────
 
-  private assertConnected(verb: string): void {
-    if (!this.connected) throw new Error(`tuios ${verb}: connection closed before reply`);
+  private assertConnected(): void {
+    if (!this.connected) throw dialRefused();
   }
 
   private session(verb: string, name: string): FakeSession {
-    this.assertConnected(verb);
+    this.assertConnected();
     const session = this.sessions.find((candidate) => candidate.name === name);
     if (session === undefined) throw failure(verb, "session_not_found", `session ${name} not found`);
     return session;
@@ -485,12 +500,13 @@ export function tuiosWorld(fake: FakeTuios): MuxConformanceWorld {
   return {
     adapter: new TuiosMux(fake),
     writes: () => fake.writes(),
-    failNextWrite: (how: "stall" | "refuse") => {
+    failNextWrite: (how: MuxWriteFailure) => {
       fake.nextWrite = how;
     },
-    failNextKeys: (how: "stall" | "refuse") => {
+    failNextKeys: (how: MuxWriteFailure) => {
       fake.nextKeys = how;
     },
+    connection: true,
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),
     renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),

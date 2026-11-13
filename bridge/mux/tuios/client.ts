@@ -321,6 +321,19 @@ export class TuiosTimeout extends Error {
   }
 }
 
+/**
+ * A connection tuios closed after the request was handed to the socket and before a reply came. The
+ * message is the one a plain Error carried before. Like {@link TuiosTimeout} it means "not confirmed":
+ * the daemon may have read the request and acted on it (MuxRefusal `unconfirmed`,
+ * bridge/mux/types.ts). A close before the request went out stays a plain Error.
+ */
+export class TuiosNoReply extends Error {
+  constructor(verb: string) {
+    super(`tuios ${verb}: connection closed before reply`);
+    this.name = "TuiosNoReply";
+  }
+}
+
 export class TuiosClient {
   constructor(
     private readonly socketPath: string,
@@ -335,6 +348,8 @@ export class TuiosClient {
       let settled = false;
       let socket: SockHandle | null = null;
       let cancelDial: (() => void) | null = null;
+      // True once the request was handed to the socket; only a close after that is {@link TuiosNoReply}.
+      let sent = false;
       const decoder = new TextDecoder("utf-8");
       // Settle BEFORE closing: end() fires `close` synchronously, which re-enters here as a no-op.
       const finish = (fn: () => void) => {
@@ -384,7 +399,7 @@ export class TuiosClient {
             finish(() => reject(err));
           },
           close() {
-            finish(() => reject(new Error(`tuios ${verb}: connection closed before reply`)));
+            finish(() => reject(sent ? new TuiosNoReply(verb) : new Error(`tuios ${verb}: connection closed before reply`)));
           },
         },
         "bun",
@@ -397,6 +412,7 @@ export class TuiosClient {
             return;
           }
           socket = s;
+          sent = true;
           s.write(JSON.stringify({ id, verb, params }) + "\n");
           s.flush();
         } catch (err) {

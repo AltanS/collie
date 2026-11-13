@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-import { HcTimeout } from "./herdr-core/client.ts";
+import { HcNoReply, HcTimeout } from "./herdr-core/client.ts";
 import type { RunShellRequest } from "./herdr-core/client.ts";
 import { HerdrCoreMux } from "./herdr-core/adapter.ts";
 import { FakeHcCore } from "./herdr-core/fake-core.ts";
 import { HerdrMux } from "./herdr/adapter.ts";
-import { HerdrTimeout } from "./herdr/client.ts";
+import { HerdrNoReply, HerdrTimeout } from "./herdr/client.ts";
 import { FakeHerdr } from "./herdr/fixture.ts";
 import { TmuxMux } from "./tmux/adapter.ts";
 import { FakeTmux } from "./tmux/fixture.ts";
 import { TernMux } from "./tern/adapter.ts";
 import { FakeTern } from "./tern/fixture.ts";
 import { TuiosMux } from "./tuios/adapter.ts";
-import { TuiosTimeout } from "./tuios/client.ts";
+import { TuiosNoReply, TuiosTimeout } from "./tuios/client.ts";
 import { FakeTuios } from "./tuios/fixture.ts";
 import { ZELLIJ_SPACE_ID, ZellijMux } from "./zellij/adapter.ts";
 import { TIMED_OUT_CODE as ZELLIJ_TIMED_OUT } from "./zellij/exec.ts";
@@ -51,15 +51,15 @@ describe("herdr", () => {
     expect(tab.ok ? "" : tab.detail).toBe("herdr tab.create: timed out after 5000ms");
   });
 
-  test("a connection that closed before the reply may have made it: unconfirmed, on a tab and on a space", async () => {
+  test("a connection that closed after the request went out may have made it: unconfirmed, on a tab and on a space", async () => {
     class Dropped extends FakeHerdr {
       override async createTab(): Promise<never> {
         await Promise.resolve();
-        throw new Error("herdr tab.create: connection closed before reply");
+        throw new HerdrNoReply("tab.create");
       }
       override async createWorkspace(): Promise<never> {
         await Promise.resolve();
-        throw new Error("herdr workspace.create: connection closed before reply");
+        throw new HerdrNoReply("workspace.create");
       }
     }
     const mux = new HerdrMux(new Dropped(), () => []);
@@ -67,11 +67,23 @@ describe("herdr", () => {
     expect(reasonOf(await mux.createTab({ spaceId: "w1" }))).toBe("unconfirmed");
   });
 
+  // The class decides, not the words: a close before the request went out carries the same sentence as a
+  // plain Error, and nothing reached Herdr.
+  test("a plain error with the same words is unreachable: the request never went out", async () => {
+    class ClosedEarly extends FakeHerdr {
+      override async createWorkspace(): Promise<never> {
+        await Promise.resolve();
+        throw new Error("herdr workspace.create: connection closed before reply");
+      }
+    }
+    expect(reasonOf(await new HerdrMux(new ClosedEarly(), () => []).createSpace({ cwd: "/tmp" }))).toBe("unreachable");
+  });
+
   test("a dial that never reached Herdr is still unreachable", async () => {
     class NoSocket extends FakeHerdr {
       override async createWorkspace(): Promise<never> {
         await Promise.resolve();
-        throw new Error("connect ENOENT /run/user/1000/herdr.sock");
+        throw Object.assign(new Error("Failed to connect"), { code: "ENOENT", errno: -2, syscall: "connect" });
       }
     }
     expect(reasonOf(await new HerdrMux(new NoSocket(), () => []).createSpace({ cwd: "/tmp" }))).toBe("unreachable");
@@ -92,6 +104,15 @@ describe("herdr-core", () => {
     if (first === undefined) throw new Error("the fake core seeds a space");
     expect(reasonOf(await mux.createTab({ spaceId: first.spaceId }))).toBe("unconfirmed");
     expect(reasonOf(await mux.createSpace({ cwd: "/tmp" }))).toBe("unconfirmed");
+  });
+
+  test("a create whose connection closed after the request went out is unconfirmed", async () => {
+    class Dropped extends FakeHcCore {
+      override runShell(_request: RunShellRequest): Promise<never> {
+        return Promise.reject(new HcNoReply("herdr-core terminal.run: connection closed before the answer"));
+      }
+    }
+    expect(reasonOf(await new HerdrCoreMux(new Dropped(), "/home/dev").createSpace({ cwd: "/tmp" }))).toBe("unconfirmed");
   });
 });
 
@@ -241,5 +262,20 @@ describe("tuios", () => {
     if (spaceId === undefined) throw new Error("the fake daemon seeds a session");
     expect(reasonOf(await mux.createTab({ spaceId }))).toBe("unconfirmed");
     expect(reasonOf(await mux.createSpace({ cwd: "/tmp", label: "x" }))).toBe("unconfirmed");
+  });
+
+  test("a create whose connection closed after the request went out is unconfirmed; a dead socket is not", async () => {
+    class Dropped extends FakeTuios {
+      override newSession(): Promise<never> {
+        return Promise.reject(new TuiosNoReply("new_session"));
+      }
+    }
+    class Dead extends FakeTuios {
+      override newSession(): Promise<never> {
+        return Promise.reject(Object.assign(new Error("Failed to connect"), { code: "ECONNREFUSED", errno: -111, syscall: "connect" }));
+      }
+    }
+    expect(reasonOf(await new TuiosMux(new Dropped()).createSpace({ cwd: "/tmp", label: "x" }))).toBe("unconfirmed");
+    expect(reasonOf(await new TuiosMux(new Dead()).createSpace({ cwd: "/tmp", label: "x" }))).toBe("unreachable");
   });
 });

@@ -6,7 +6,7 @@
 // No `focusOutOfBand`: the core has no focus at all, so the world is held to the opposite promise,
 // no pane focused and `setFocus` unsupported (MuxConformanceWorld.focusOutOfBand).
 
-import type { MuxConformanceFixture, MuxConformanceWorld } from "../conformance.ts";
+import type { MuxConformanceFixture, MuxConformanceWorld, MuxWriteFailure } from "../conformance.ts";
 import { HERDR_CORE_MUX, HerdrCoreMux } from "./adapter.ts";
 import { FakeHcCore } from "./fake-core.ts";
 
@@ -15,12 +15,13 @@ export function herdrCoreWorld(fake: FakeHcCore): MuxConformanceWorld {
   return {
     adapter: new HerdrCoreMux(fake, "/home/dev"),
     writes: () => fake.writes(),
-    failNextWrite: (how: "stall" | "refuse") => {
+    failNextWrite: (how: MuxWriteFailure) => {
       fake.nextWrite = how;
     },
-    failNextKeys: (how: "stall" | "refuse") => {
+    failNextKeys: (how: MuxWriteFailure) => {
       fake.nextKeys = how;
     },
+    connection: true,
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),
     renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),

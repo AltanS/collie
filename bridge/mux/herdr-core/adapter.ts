@@ -59,7 +59,7 @@ import {
   type MuxTabRequest,
   type MuxWatchOptions,
 } from "../types.ts";
-import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, HcTimeout, type HcRpc, type WireForeground, type WireLayout, type WireRead, type WireTerminal } from "./client.ts";
+import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, HcNoReply, HcTimeout, type HcRpc, type WireForeground, type WireLayout, type WireRead, type WireTerminal } from "./client.ts";
 import { routeEvent } from "./events.ts";
 import { herdrCoreMachineCandidates } from "./machine-list.ts";
 import { herdrCoreBeaconMatcher } from "./markers.ts";
@@ -127,12 +127,13 @@ function refusalFor<T>(err: T): MuxRefusalOutcome {
 }
 
 /**
- * The refusal for a failure of a CREATE call. A `runShell` the core did not answer in time may still have
- * started the shell, so it is `unconfirmed` and not `unreachable`: the route looks in the snapshot before it
- * says anything (bridge/create-confirm.ts).
+ * The refusal for a failure of a CREATE call. A `runShell` the core did not answer in time, or whose
+ * connection closed after it carried the request, may still have started the shell, so it is
+ * `unconfirmed` and not `unreachable`: the route looks in the snapshot before it says anything
+ * (bridge/create-confirm.ts).
  */
 function createRefusal<T>(err: T): MuxRefusalOutcome {
-  return err instanceof HcTimeout ? muxUnconfirmed(err.message) : refusalFor(err);
+  return err instanceof HcTimeout || err instanceof HcNoReply ? muxUnconfirmed(err.message) : refusalFor(err);
 }
 
 /** A pane id this adapter may address: a local terminal. Another machine's is `gone` here. */
@@ -423,14 +424,17 @@ export class HerdrCoreMux implements MuxAdapter {
     const remote = remoteRefusal(paneId);
     if (remote !== null) return remote;
     if (text.length === 0) return muxAck();
-    // A write the core did not answer in time may still land: `unconfirmed`, and the caller's next read
-    // decides, as for keys ({@link attemptKeys}).
+    // A write the core did not confirm, by a time-out or a closed connection after the text went out, may
+    // still land: `unconfirmed`, and the caller's next read decides, as for keys ({@link attemptKeys}).
     try {
       await this.writeRaw(paneId, text);
       return muxAck();
     } catch (err) {
       if (err instanceof HcTimeout) {
         return muxUnconfirmed(`herdr-core did not confirm the text written to ${paneId} in time (${err.message}). It may still arrive, so it was not written again.`);
+      }
+      if (err instanceof HcNoReply) {
+        return muxUnconfirmed(`herdr-core closed the connection before it confirmed the text written to ${paneId} (${err.message}). It may have arrived, so it was not written again.`);
       }
       return refusalFor(err);
     }
@@ -630,7 +634,8 @@ export class HerdrCoreMux implements MuxAdapter {
   }
 
   /**
-   * The ack-or-refusal of a key call. A call the core did not answer in time is `unconfirmed`, not a failure:
+   * The ack-or-refusal of a key call. A call the core did not answer in time, or whose connection closed
+   * after it carried the keys, is `unconfirmed`, not a failure:
    * the core may still deliver the key (it did, M78 report 10 case 2). Nothing here sends it again;
    * the next read of the pane shows whether it landed.
    */
@@ -641,6 +646,9 @@ export class HerdrCoreMux implements MuxAdapter {
     } catch (err) {
       if (err instanceof HcTimeout) {
         return muxUnconfirmed(`herdr-core did not confirm the keys on ${paneId} in time (${err.message}). They may still arrive, so they were not sent again.`);
+      }
+      if (err instanceof HcNoReply) {
+        return muxUnconfirmed(`herdr-core closed the connection before it confirmed the keys on ${paneId} (${err.message}). They may have arrived, so they were not sent again.`);
       }
       return refusalFor(err);
     }

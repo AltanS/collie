@@ -531,3 +531,33 @@ describe("the raw key gap (RAW_KEY_GAP_MS)", () => {
     expect(clock.now()).toBe(KEY_HOLD_MS);
   });
 });
+
+// M100 spec 03: a connection the core closed after the request (or the text) went out may follow a write
+// it acted on, so text and keys answer `unconfirmed`. A core that is not running stays `unreachable`.
+describe("a write whose connection the core closed before the answer", () => {
+  test("typeText and writeKeys answer unconfirmed, and say it may have arrived", async () => {
+    const fake = new FakeHcCore();
+    const mux = new HerdrCoreMux(fake, "/home/dev");
+    const pane = (await mux.snapshot()).panes[0]!;
+    fake.nextWrite = "closed";
+    const text = await mux.typeText(pane.paneId, "hello");
+    fake.nextKeys = "closed";
+    const keys = await mux.writeKeys(pane.paneId, ["Escape"]);
+    for (const ack of [text, keys]) {
+      expect(ack.ok ? "ok" : ack.reason).toBe("unconfirmed");
+      if (!ack.ok) expect(ack.detail).toContain("herdr-core closed the connection before it confirmed");
+      if (!ack.ok) expect(ack.detail).not.toContain("in time");
+    }
+    expect(fake.writes()).toEqual([]);
+  });
+
+  test("a core that is not running answers unreachable, with the dial's own words", async () => {
+    const fake = new FakeHcCore();
+    const mux = new HerdrCoreMux(fake, "/home/dev");
+    const pane = (await mux.snapshot()).panes[0]!;
+    fake.stopCore();
+    const ack = await mux.typeText(pane.paneId, "hello");
+    expect(ack.ok ? "ok" : ack.reason).toBe("unreachable");
+    if (!ack.ok) expect(ack.detail).toMatch(/^connect ENOENT \//u);
+  });
+});

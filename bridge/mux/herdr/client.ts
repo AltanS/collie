@@ -253,6 +253,19 @@ export class HerdrTimeout extends Error {
   }
 }
 
+/**
+ * A connection Herdr closed after the request was handed to the socket and before a reply came. The
+ * message is the one a plain Error carried before. Like {@link HerdrTimeout} it means "not confirmed":
+ * Herdr may have read the request and acted on it, so a write must not be told apart from a time-out
+ * (MuxRefusal `unconfirmed`, bridge/mux/types.ts). A close before the request went out stays a plain Error.
+ */
+export class HerdrNoReply extends Error {
+  constructor(method: string) {
+    super(`herdr ${method}: connection closed before reply`);
+    this.name = "HerdrNoReply";
+  }
+}
+
 export class HerdrClient {
   constructor(
     private readonly socketPath: string,
@@ -275,6 +288,9 @@ export class HerdrClient {
       // Aborts a dial that is still connecting — a timeout that fires mid-connect has no socket
       // to end() yet, and without this the pending OS handle lives until the connect settles.
       let cancelDial: (() => void) | null = null;
+      // True once the request was handed to the socket: a close after that may follow a request
+      // Herdr already acted on ({@link HerdrNoReply}); a close before it cannot.
+      let sent = false;
       // Stream-decode so a multi-byte UTF-8 codepoint split across chunk boundaries isn't
       // corrupted into replacement characters.
       const decoder = new TextDecoder("utf-8");
@@ -332,7 +348,7 @@ export class HerdrClient {
           finish(() => reject(err));
         },
         close() {
-          finish(() => reject(new Error(`herdr ${method}: connection closed before reply`)));
+          finish(() => reject(sent ? new HerdrNoReply(method) : new Error(`herdr ${method}: connection closed before reply`)));
         },
       }, this.dialMode);
 
@@ -357,6 +373,7 @@ export class HerdrClient {
           // one go; the dialer owns that continuation, so there is nothing to retry here (dial.ts,
           // write-drain.ts). A connection that dies mid-write lands in close/error above and
           // rejects like any other transport failure.
+          sent = true;
           s.write(JSON.stringify({ id, method, params }) + "\n");
           s.flush();
         } catch (err) {

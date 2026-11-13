@@ -60,6 +60,7 @@ import {
 import {
   DEFAULT_TIMEOUT_MS,
   HerdrClient,
+  HerdrNoReply,
   HerdrTimeout,
   paneAgentSession,
   type CreatedShell,
@@ -178,20 +179,13 @@ function transportRefusal<T>(err: T): MuxRefusalOutcome {
 }
 
 /**
- * The connection closed after a create was written and before its reply (`herdr <method>: connection
- * closed before reply`): Herdr may have acted. A create reads it like a time-out. A write and a key do
- * not (the fixture's dead socket answers the same words, and a write there reads `unreachable`).
- */
-const CLOSED_BEFORE_REPLY = /^herdr \S+: connection closed before reply$/u;
-
-/**
- * The refusal for a failure of a CREATE call. A call Herdr did not answer, in time ({@link HerdrTimeout},
- * the one time-out marker every write, key and create reads) or before the connection dropped, may still
- * have made the tab or the workspace, so it is `unconfirmed` and not `unreachable`: the route looks in the
- * snapshot before it says anything (bridge/create-confirm.ts).
+ * The refusal for a failure of a CREATE call. A call Herdr did not answer, in time ({@link HerdrTimeout})
+ * or before it closed a connection that carried the request ({@link HerdrNoReply}), may still have made
+ * the tab or the workspace, so it is `unconfirmed` and not `unreachable`: the route looks in the snapshot
+ * before it says anything (bridge/create-confirm.ts).
  */
 function createRefusal<T>(err: T): MuxRefusalOutcome {
-  if (err instanceof HerdrTimeout || CLOSED_BEFORE_REPLY.test(reason(err))) return muxUnconfirmed(reason(err));
+  if (err instanceof HerdrTimeout || err instanceof HerdrNoReply) return muxUnconfirmed(reason(err));
   return transportRefusal(err);
 }
 
@@ -418,12 +412,14 @@ export class HerdrMux implements MuxAdapter {
       }
       translated.push(result.key);
     }
-    // Keys Herdr did not answer in time may still land: `unconfirmed`, never sent again (M100 spec 03).
+    // Keys Herdr did not confirm, by a time-out or a closed connection, may still land: `unconfirmed`,
+    // never sent again (M100 spec 03).
     try {
       await this.client.sendPaneKeys(paneId, translated);
       return muxAck();
     } catch (err) {
       if (err instanceof HerdrTimeout) return muxUnconfirmed(`Herdr did not confirm the keys on ${paneId} in time (${err.message}). They may still arrive, so they were not sent again.`);
+      if (err instanceof HerdrNoReply) return muxUnconfirmed(`Herdr closed the connection before it confirmed the keys on ${paneId} (${err.message}). They may have arrived, so they were not sent again.`);
       return transportRefusal(err);
     }
   }
@@ -559,8 +555,9 @@ export class HerdrMux implements MuxAdapter {
   }
 
   /**
-   * {@link attempt} for a text write. A write Herdr did not answer in time may still have reached the
-   * pane: it is `unconfirmed`, never `unreachable`, and the caller's next read decides (MuxRefusal).
+   * {@link attempt} for a text write. A write Herdr did not confirm, by a time-out or a closed connection
+   * that carried it, may still have reached the pane: it is `unconfirmed`, never `unreachable`, and the
+   * caller's next read decides (MuxRefusal).
    */
   private async attemptWrite(paneId: string, call: () => Promise<void>): Promise<MuxAck> {
     try {
@@ -568,6 +565,7 @@ export class HerdrMux implements MuxAdapter {
       return muxAck();
     } catch (err) {
       if (err instanceof HerdrTimeout) return muxUnconfirmed(`Herdr did not confirm the text written to ${paneId} in time (${err.message}). It may still arrive, so it was not written again.`);
+      if (err instanceof HerdrNoReply) return muxUnconfirmed(`Herdr closed the connection before it confirmed the text written to ${paneId} (${err.message}). It may have arrived, so it was not written again.`);
       return transportRefusal(err);
     }
   }

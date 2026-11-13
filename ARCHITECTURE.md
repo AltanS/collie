@@ -336,7 +336,8 @@ graph TD
     disconnected (the UI's connection bar names the multiplexer that went away) and keeps retrying;
     the driver's `watch()` reconnects with backoff and re-subscribes, and since it only pokes the
     poll, a dropped watch costs latency, never correctness. A transport that died mid-call answers
-    `unreachable`, never `refused` — that distinction is the contract's, not each driver's.
+    `unreachable`, never `refused` — that distinction is the contract's, not each driver's. A write,
+    a key or a create whose request already went out answers `unconfirmed` instead (MUX_CONTRACT.md).
   - *browser ↔ bridge*: polling makes reconnect trivial — failed polls surface in the connection bar
     / offline banner, and the next successful poll heals the UI. No socket lifecycle to manage.
 - **Polling moots per-client backpressure.** A push design would need `bufferedAmount` watching so a
