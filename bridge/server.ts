@@ -67,9 +67,12 @@ import {
   herdrDefaultTarget,
   nearestWorkTree,
   resolveParentTarget,
+  resolveSetFolderTarget,
   type FolderFs,
   type HerdrConfigRead,
 } from "./worktree-folder.ts";
+import { memoryWorktreeFolderSetting, type WorktreeFolderSettingSurface } from "./worktree-folder-setting.ts";
+import { parseWorktreeFolderBody, saveWorktreeFolder, worktreeFolderAnswer } from "./worktree-folder-route.ts";
 import { askGit, parseBase, resolveBase, resolveDefaultBranch, type GitAsk } from "./worktree-base.ts";
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
 import { withSpacesContext } from "./space-view.ts";
@@ -1554,6 +1557,11 @@ export function startServer(opts: {
    */
   worktreeChoices?: WorktreeChoiceSurface;
   /**
+   * This machine's "Worktree folder" setting (`bridge/worktree-folder-setting.ts`, ADR 0093 note of
+   * 2026-11-13). Absent means an in-memory, unset one; `bridge/index.ts` passes the file-backed one.
+   */
+  worktreeFolderSetting?: WorktreeFolderSettingSurface;
+  /**
    * Every machine's load, the day of minutes behind it and the alert rules (ADR 0084).
    *
    * Supplied on a lead and on a solo collie, and **absent on a peer**, which answers the three
@@ -1627,6 +1635,7 @@ export function startServer(opts: {
   const controlReceipts = opts.controlReceipts ?? memoryControlReceipts();
   const harnesses = opts.harnesses ?? createHarnessProbe();
   const worktreeChoices = opts.worktreeChoices ?? memoryWorktreeChoices();
+  const worktreeFolderSetting = opts.worktreeFolderSetting ?? memoryWorktreeFolderSetting();
   const machines = opts.machines;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
@@ -2276,6 +2285,10 @@ export function startServer(opts: {
     const folderBrowse: FolderBrowseContext = { home: homedir(), privateFolders: filesPrivateFolders(cfg) };
     const folderAnswer = await serveFolderRoute(req, pathname, caller, folders, folderBrowse);
     if (folderAnswer !== null) return folderAnswer;
+    // This machine's "Worktree folder" setting: session-scoped for the folder list's reason, so a
+    // `?host=` call reads and writes the member's own value, never the lead's.
+    const worktreeFolderAnswerRes = await serveWorktreeFolderRoute(req, pathname, caller, worktreeFolderSetting);
+    if (worktreeFolderAnswerRes !== null) return worktreeFolderAnswerRes;
     // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
     //
     // A READ, and gated as one: it hands back a picture an agent already put in its own log, so a
@@ -2447,7 +2460,7 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return planWorktree(req, worktreeChoices);
+      return planWorktree(req, worktreeChoices, { folderSetting: worktreeFolderSetting });
     }
     if (pathname === "/api/worktree" && req.method === "POST") {
       const denied = caller.gate("write");
@@ -2463,6 +2476,7 @@ export function startServer(opts: {
         receipts: worktreeReceipts,
         bases: worktreeBases,
         choices: worktreeChoices,
+        folderSetting: worktreeFolderSetting,
         harnesses,
         folders,
       });
@@ -7278,6 +7292,8 @@ export interface FolderWorktreeDeps {
   fs?: FolderFs;
   home?: string;
   readHerdrConfig?: HerdrConfigRead;
+  /** The "Worktree folder" setting: when set, it is where the default puts a branch. Absent is unset. */
+  folderSetting?: Pick<WorktreeFolderSettingSurface, "get">;
 }
 
 /** The repo `folder` sits in, or `null` when it is in none (or is not there). */
@@ -7362,8 +7378,26 @@ export async function planWorktree(
   if (branch !== "") {
     answer.branchValid = await gitAcceptsBranch(repo.repoRoot, branch, ask);
     if (answer.branchValid) {
-      const path = await herdrDefaultTarget(repo.repoRoot, branch, home, deps.readHerdrConfig);
-      answer.defaultTarget = await defaultTargetOf(repo.repoRoot, path, branch, deps.fs ?? diskFolderFs);
+      const fs = deps.fs ?? diskFolderFs;
+      const dir = deps.folderSetting?.get();
+      if (dir === undefined) {
+        const path = await herdrDefaultTarget(repo.repoRoot, branch, home, deps.readHerdrConfig);
+        answer.defaultTarget = await defaultTargetOf(repo.repoRoot, path, branch, fs);
+        answer.defaultSource = "herdr";
+      } else {
+        // The setting runs the folder rule here as it does at create, so the sheet never promises a
+        // folder the create would refuse. A folder the child rule refuses is still where the default
+        // WOULD put it: shown as existing, with git's state, the way Herdr's own default is.
+        const set = await resolveSetFolderTarget({ dir, branch, repoRoot: repo.repoRoot, home, fs });
+        answer.defaultSource = "setting";
+        if (set.ok) answer.defaultTarget = await defaultTargetOf(repo.repoRoot, set.path, branch, fs);
+        else if (set.code === "worktree.target_exists" && set.path !== undefined) {
+          answer.defaultTarget = { path: set.path, exists: true };
+          if (set.detail !== undefined) answer.defaultTarget.reason = set.detail;
+        } else {
+          answer.defaultRefusal = apiError(set.code, folderRefusalDetail(set, dir));
+        }
+      }
       const parent = (url.searchParams.get("parent") ?? "").trim();
       if (parent !== "") {
         const outcome = await resolveParentTarget({ parent, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
@@ -7492,6 +7526,16 @@ export async function createWorktreeAt(
     path = outcome.path;
   }
 
+  // The default folder when the machine's "Worktree folder" setting is set: the same rule, run now.
+  // `path` stays the explicit parent only (it is what the sheet remembers); `target` is what is made.
+  let target = path;
+  const settingDir = folder.kind === "default" ? deps.folderSetting?.get() : undefined;
+  if (settingDir !== undefined) {
+    const outcome = await resolveSetFolderTarget({ dir: settingDir, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
+    if (!outcome.ok) return refuse(outcome.code, folderRefusalDetail(outcome, settingDir));
+    target = outcome.path;
+  }
+
   // Checked again with no await between it and `track`, so two requests with one id that both got
   // past the check above cannot both start a create.
   if (requestId !== undefined) {
@@ -7524,7 +7568,7 @@ export async function createWorktreeAt(
     receipts,
     deps.bases ?? memoryWorktreeBases(),
     deps.wait ?? {},
-    path,
+    target,
     { home, readHerdrConfig: deps.readHerdrConfig },
     remember,
   );
@@ -7777,6 +7821,59 @@ export async function serveLaunchCheckRoute(
   if (asked === null) return text("bad body", 400);
   const line = typeof asked.run === "string" ? asked.run : undefined;
   return json(checkRunLine(line) satisfies LaunchCheckResponse, req.headers.get("accept-encoding"));
+}
+
+// ── The "Worktree folder" setting (ADR 0093, note of 2026-11-13) ──────────────────────────────────
+//
+// Two routes: `GET /api/worktree/folder` reads this machine's setting and `POST /api/worktree/folder/set`
+// saves or clears it. The write is gated like every write (a read-only device sees it and cannot change
+// it) and chooses where checkouts land, so it is one audit line, with the act and never the path. Both
+// are session-scoped like the folder list: `caller.resolve()` forwards a `?host=` call to the member
+// whose disk the folder is on. The gate first, then the resolver, then this machine's own store.
+
+/** The setting's routes, or `null` when `pathname` is neither. */
+export async function serveWorktreeFolderRoute(
+  req: Request,
+  pathname: string,
+  caller: Pick<RouteCaller, "gate" | "resolve" | "device" | "audit">,
+  setting: WorktreeFolderSettingSurface,
+  deps: { home?: string; fs?: FolderFs; readHerdrConfig?: HerdrConfigRead } = {},
+): Promise<Response | null> {
+  const ae = req.headers.get("accept-encoding");
+  if (pathname === "/api/worktree/folder" && req.method === "GET") {
+    const denied = caller.gate("read");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    return json(await worktreeFolderAnswer(setting, deps), ae);
+  }
+  if (pathname === "/api/worktree/folder/set" && req.method === "POST") {
+    const denied = caller.gate("write");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    let body: JsonValue;
+    try {
+      // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseWorktreeFolderBody`
+      // accepts one storable string or null and nothing else.
+      body = (await req.json()) as JsonValue;
+    } catch {
+      return text("bad body", 400);
+    }
+    const parsed = parseWorktreeFolderBody(body);
+    if (parsed === undefined) return text("bad body", 400);
+    const { saved, answer } = await saveWorktreeFolder(setting, parsed, deps);
+    if (!answer.ok) return json(answer, ae);
+    if (!saved) return text("could not save", 500);
+    caller.audit.record({
+      action: "worktree.folder",
+      session: rt.name,
+      device: caller.device(),
+      detail: { act: parsed.dir === null ? "clear" : "set" },
+    });
+    return json(answer, ae);
+  }
+  return null;
 }
 
 // ── The new-space folder list (#289, bridge/folders.ts) ──────────────────────────

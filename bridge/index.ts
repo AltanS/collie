@@ -96,6 +96,7 @@ import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
 import { SentStore, sentFileIo, sentRecorder } from "./sent.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
+import { WorktreeFolderSettingStore } from "./worktree-folder-setting.ts";
 import { filePairingIo, type PairedRegistry, PairingStore } from "./pairing.ts";
 import {
   LOCAL_SECRET_FILENAME,
@@ -1003,6 +1004,8 @@ const askPush = new AskPush(askGuard);
 // Loading writes nothing: the file appears on the first branch create that works.
 const worktreeChoices = new WorktreeChoiceStore(cfg.stateDir);
 await worktreeChoices.load();
+const worktreeFolderSetting = new WorktreeFolderSettingStore(cfg.stateDir);
+await worktreeFolderSetting.load();
 
 // The launcher rows phones added on this machine (ADR 0094, bridge/launchers-added.ts). Read by mtime
 // on each use, because `collie devices revoke` edits it from another process. Nothing is written until
@@ -4125,6 +4128,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   answerReceipts,
   controlReceipts,
   worktreeChoices,
+  worktreeFolderSetting,
   addedLaunchers,
   recentRuns,
   sent: sentStore,
