@@ -9450,6 +9450,19 @@ export async function sendRoute(
   let sendRequest: SendRequest = { ...asked, fromPhone: true };
   // A Send or Discard on a queued message that came back to the box (ADR 0122): `resendOf` names the
   // queued request, the mode is `submit` or `discard`, and the text is the bridge's own, unmasked.
+  // A retry of a Resend or of a returned card's Send whose answer was lost: the id is known, so its stored
+  // receipt is the answer, before the source row is looked for (the first try took that row away). Nothing
+  // is sent again. An id the store does not know falls through to the 404 below.
+  if (resendOf !== undefined) {
+    const stored = await rt.send.settledAnswer(sendRequest, { session: rt.name, paneId, harness });
+    if (stored !== null) {
+      if (stored.receipt !== undefined && stored.receipt.outcome !== "refused") {
+        rt.send.dismissReturned(resendOf);
+        rt.send.dismissHeld(rt.name, paneId, resendOf);
+      }
+      return json(context.redact && stored.surface !== undefined ? { ...stored, surface: maskSurface(stored.surface) } : stored, context.acceptEncoding);
+    }
+  }
   const returned = resendOf !== undefined && (asked.mode === "submit" || asked.mode === "discard") ? rt.send.returnedSource(rt.name, paneId, resendOf) : null;
   if (resendOf !== undefined && returned !== null) {
     const { when: _steer, ...plain } = asked;

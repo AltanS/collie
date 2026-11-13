@@ -202,6 +202,15 @@ export function DurableComposer({
     saveDraft(scope, paneId, value);
   }
 
+  // A send that did not land puts its words back, but only into an empty field: words written since
+  // (a dictation, a restored draft) are kept after them, one newline between, and both are the draft.
+  function putBack(words: string) {
+    const since = field.current?.value ?? "";
+    const kept = since.trim() === "" ? words : `${words}\n${since}`;
+    setInput(kept);
+    saveDraft(scope, paneId, kept);
+  }
+
   async function send() {
     const text = input.trim();
     if (text === "" || off || sending) return;
@@ -239,8 +248,7 @@ export function DurableComposer({
       flashSent();
       onSent();
     } else {
-      setInput(text);
-      saveDraft(scope, paneId, text);
+      putBack(text);
       // The answer never came, or the program may have it: only "send again" can tell. Otherwise nothing ran.
       setPendingState(key, id.requestId, reading.keepId || reading.note === "maybe" ? "unconfirmed" : "notSent");
     }
@@ -276,8 +284,7 @@ export function DurableComposer({
     }
     if (reply === null) {
       // No answer: the id stays, so the next tap on the same text asks for the same request.
-      setInput(text);
-      saveDraft(scope, paneId, text);
+      putBack(text);
       setPendingState(key, id.requestId, "unconfirmed");
       setRefusal(phoneRefusal(t("composer.protocol.retry", { error })));
       return;
@@ -294,8 +301,7 @@ export function DurableComposer({
       setStatus(t(reading.note === "queued" ? "composer.protocol.queued" : "durable.composer.sent"), "success");
       return;
     }
-    setInput(text);
-    saveDraft(scope, paneId, text);
+    putBack(text);
     setPendingState(key, id.requestId, reply.outcome === "unknown" ? "unconfirmed" : "notSent");
     setRefusal(programRefusal(reply, reading));
     // The answer says what the bridge saw; the next read draws it.

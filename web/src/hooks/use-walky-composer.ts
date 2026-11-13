@@ -64,10 +64,11 @@ function outcomeNote(label: string, receipt: WalkyReceipt): WalkyNote {
  * with a reason, M62 spec 02) shows "held" with its reason and when it will be typed. A message to
  * another pane is not in this pane's list, so its strip keeps the first word.
  */
-export function useWalkyComposer({
+export function useWalkyComposer<Sent = undefined>({
   paneId,
   instance,
   scope,
+  stamp,
   onTaken,
   onChanged,
 }: {
@@ -75,8 +76,10 @@ export function useWalkyComposer({
   /** The pane's current session instance, when its machine reports one. The address then names it. */
   instance?: string | undefined;
   scope: Scope | undefined;
-  /** The message left. The composer clears its draft and revalidates the pane. */
-  onTaken: () => void;
+  /** What the box held when the send started, read once then and handed to `onTaken`: words typed while the message was on its way are the next message's. */
+  stamp?: (() => Sent) | undefined;
+  /** The message left. The composer clears the draft it sent (not words typed since) and revalidates the pane. */
+  onTaken: (sent: Sent | undefined) => void;
   /** A held message was taken back: the pane's list should be read again. Default: nothing, the poll reads it. */
   onChanged?: (() => void) | undefined;
 }) {
@@ -91,6 +94,7 @@ export function useWalkyComposer({
 
   const sendMessage = useCallback(
     async (line: string): Promise<boolean> => {
+      const sent = stamp?.();
       const body = line.trim();
       if (body === "") {
         setNote({ tone: "caution", text: t("walky.composer.empty") });
@@ -119,10 +123,10 @@ export function useWalkyComposer({
       if (receipt.state === "accepted") setFollowed({ id: receipt.id, label });
       if (!wasTaken(receipt)) return false;
       setAim(null);
-      onTaken();
+      onTaken(sent);
       return true;
     },
-    [aim, address, send, onTaken],
+    [aim, address, send, stamp, onTaken],
   );
 
   // The receipt the pane's list holds now for the followed message, once it has left `accepted` or is held.
