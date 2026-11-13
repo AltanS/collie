@@ -31,7 +31,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { HeldCard, type HeldAction } from "@/components/composer-held";
+import { HeldCard, drawnHeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
@@ -282,7 +282,8 @@ interface ComposerProps {
   onDeliverNow?: DeliverNow | undefined;
   /**
    * The pane's held sends from the snapshot (M56 spec 15), oldest first: a send the harness could not
-   * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box.
+   * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box,
+   * except a WalkyTalky message's row (its `walky` field): the held mark and the Messages sheet carry that.
    */
   held?: readonly HeldRow[] | undefined;
   /**
@@ -1464,13 +1465,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // held send moves nothing (ADR 0061, amended 2026-10-18). It is keyed by pane: the card's Show all
   // is per pane and in memory, and a pane switch starts it collapsed. Rendered only while there is a
   // row, so an empty queue leaves nothing in the slot.
+  // A WalkyTalky message's row is left out (`drawnHeldRows`): its mark and the Messages sheet carry it.
+  const drawnHeld = heldRows === undefined ? undefined : drawnHeldRows(heldRows);
   const heldCard =
-    heldRows !== undefined && heldRows.length > 0 ? (
+    drawnHeld !== undefined && drawnHeld.length > 0 ? (
       <HeldCard
         key={`${scopeId}|${paneId}`}
         paneId={paneId}
         scope={scope}
-        rows={heldRows}
+        rows={drawnHeld}
         canAct={!locked}
         canSend={isLead(scope)}
         sending={sending}

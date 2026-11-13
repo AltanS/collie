@@ -71,6 +71,18 @@ function canResend(row: HeldRow): boolean {
   return !(row.outcome === "refused" && row.reason === "pane_gone");
 }
 
+/**
+ * The rows the card draws. The one typed line of a WalkyTalky message (`walky`) has its own places on the
+ * phone, the held mark above the box and the pane's Messages sheet, so a row of it that waits, or ended
+ * without a person's action to take, is left out: two cards for one message was the fault (2026-11-13).
+ * One mail row stays: `typed_not_submitted`, the line the bridge could not take out of the box again. It
+ * sits in the person's input box, and Submit and Discard on this card are the only way to deal with it
+ * there; the mark does not cover a message that ended. Every row of the person's own sends stays.
+ */
+export function drawnHeldRows(rows: readonly HeldRow[]): readonly HeldRow[] {
+  return rows.filter((row) => row.walky === undefined || (row.state === "ended" && row.outcome === "typed_not_submitted"));
+}
+
 interface HeldCardProps {
   paneId: string;
   scope?: Scope | undefined;
