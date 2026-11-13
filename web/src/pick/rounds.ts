@@ -7,6 +7,8 @@ import type { PickRoundDef } from "./types";
 export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 
 const REGISTRY = {
+  // Deliver now on the held mark: the operator's pick, kept for one more look at the timing.
+  "walky-deliver-now": () => import("./rounds/walky-deliver-now"),
   // M97 spec 05: the four look decisions of the session filter. Waits for the operator's pick.
   "session-filter": () => import("./rounds/session-filter"),
 } satisfies Record<string, PickRoundLoader>;

@@ -2680,8 +2680,6 @@ export const tr: Dictionary = {
   "walky.sheet.notHeld": "Tutulmuyor. Geri alınacak bir şey yok.",
   "walky.sheet.elsewhere": "Başka bir makinede tutuluyor. Oraya geri götürün. İptal edilmedi.",
   "walky.sheet.takeBackFailed": "Geri alınamadı: {error}",
-  "walky.held.mark.one": "Kutunun boşalması için {count} mesaj bekliyor",
-  "walky.held.mark.other": "Kutunun boşalması için {count} mesaj bekliyor",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Gönderme seçenekleri",
   "walky.composer.sendAsMessage": "Mesaj olarak gönder",

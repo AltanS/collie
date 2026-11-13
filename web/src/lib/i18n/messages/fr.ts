@@ -2683,8 +2683,6 @@ export const fr: Dictionary = {
   "walky.sheet.notHeld": "Non retenu. Rien à reprendre.",
   "walky.sheet.elsewhere": "Retenu sur une autre machine. Reprenez-le là-bas. Il n'est pas annulé.",
   "walky.sheet.takeBackFailed": "Non repris : {error}",
-  "walky.held.mark.one": "{count} message attend que la boîte se libère",
-  "walky.held.mark.other": "{count} messages attendent que la boîte se libère",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Options d'envoi",
   "walky.composer.sendAsMessage": "Envoyer sous forme de message",

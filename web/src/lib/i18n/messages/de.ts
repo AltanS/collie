@@ -2871,8 +2871,6 @@ export const de: Dictionary = {
   "walky.sheet.notHeld": "Nicht gehalten. Nichts zurückzunehmen.",
   "walky.sheet.elsewhere": "Wird auf einem anderen Computer gehalten. Nimm es dort wieder auf. Es ist nicht abgebrochen.",
   "walky.sheet.takeBackFailed": "Nicht zurückgenommen: {error}",
-  "walky.held.mark.one": "{count} Nachricht wartet darauf, dass das Feld geleert wird",
-  "walky.held.mark.other": "{count} Nachrichten warten darauf, dass das Feld geleert wird",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Sendeoptionen",
   "walky.composer.sendAsMessage": "Als Nachricht senden",

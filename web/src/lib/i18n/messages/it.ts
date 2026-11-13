@@ -2686,8 +2686,6 @@ export const it: Dictionary = {
   "walky.sheet.notHeld": "Non trattenuto. Nulla da revocare.",
   "walky.sheet.elsewhere": "Trattenuto su un'altra macchina. Lo riprenda da lì. Non è annullato.",
   "walky.sheet.takeBackFailed": "Non revocato: {error}",
-  "walky.held.mark.one": "{count} messaggio in attesa che la casella si svuoti",
-  "walky.held.mark.other": "{count} messaggi in attesa che la casella si svuoti",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Opzioni di invio",
   "walky.composer.sendAsMessage": "Invia come messaggio",

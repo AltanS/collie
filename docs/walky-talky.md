@@ -394,7 +394,7 @@ session took its id, the message stays in the inbox as `pane replaced`.
 A held message has two ways out before the hour ends. The sender takes it back with
 `collie walky cancel <id>` from the pane that sent it. A message sent from the phone is cancelled on
 the phone: its line under the box, and its row in the pane's WalkyTalky sheet, carry Cancel while it is
-held. The owner of the target pane sees "1 message waits for the box to clear" above the box. A tap
+held. The owner of the target pane sees "1 message waits while you type" above the box once it has waited 20 seconds. A tap
 opens the WalkyTalky sheet, where each held message has Drop. Either way the message stays in the
 inbox, not typed, and the receipt reads `cancelled by sender` or `dropped by the pane's owner`. A
 message that was already typed cannot be taken back; the answer says so, and the receipt stands. Only
@@ -540,8 +540,9 @@ older than 1.23.0, and on a member the lead cannot reach.
 Tap the card to open the WalkyTalky sheet on that message. The sheet scrolls to it and marks it, and
 its Reply button is next to it.
 
-While a message waits for the pane's box to clear, a line above the box reads "1 message waits for
-the box to clear", or the count. Tap it to open the WalkyTalky sheet. A held message from an agent has
+After a message has waited 20 seconds, a line above the box reads "1 message waits while you type",
+or the count. For a running turn it reads "1 message waits for the agent to finish", and for a mix of
+reasons "3 messages wait". A line you send in time never shows it: the message goes in by itself. Tap it to open the WalkyTalky sheet. A held message from an agent has
 a Drop button there: the hold ends, the message stays in the inbox, and its row reads
 `waiting in the inbox, not typed: dropped by the pane's owner`. A held message you sent from the
 phone has Cancel instead, on its row and on the line under the box. Its row then reads
@@ -563,8 +564,9 @@ Each receipt state shows the words in the table above, with the reason after "no
 - **WalkyTalky.** Open a pane's menu and tap "WalkyTalky" to see the messages for that pane, newest
   first. The list holds the messages that reached the pane and the ones the pane sent. A sent message
   reads "Sent to" and the session's name, or the name and "on" the machine, with the receipt state
-  in words, and has no "Reply" button. A hold reads in plain words: "that session has unsent text",
-  or "that session is busy". A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
+  in words, and has no "Reply" button. A hold reads in plain words. On a message that reached the pane it is
+  "Waiting, because you have unsent text" or "Waiting, because the agent is busy"; on a sent message it is
+  "held: that session has unsent text" or "held: that session is busy". A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
   address. A pane on a crew member has the row too, and its list comes from that member's own log. A
   reply from it goes through the lead like any message. An empty sheet says "No messages for this pane
   yet." A machine whose log the phone cannot read says "This machine does not keep messages yet."

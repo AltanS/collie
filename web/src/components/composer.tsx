@@ -1,4 +1,4 @@
-import { forwardRef, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
@@ -54,6 +54,7 @@ import { useVisibleHeight } from "@/hooks/use-visible-height";
 import { DRAFT_LINE_HEIGHT, draftCapPx, pastDraftCap } from "@/lib/draft-cap";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
+import type { DeliverNow } from "@/lib/walky";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor, suggestCommands, type AgentCommand } from "@/lib/agent-commands";
@@ -275,6 +276,10 @@ interface ComposerProps {
    * where the pane has no sheet, and then no mark is drawn.
    */
   onOpenMessages?: (() => void) | undefined;
+  /** Whether this session has the data transport (the pane read's `linked`). Deliver now on the held mark needs it. Seam: not passed yet, see `DeliverNow` in lib/walky.ts. */
+  walkyLinked?: boolean | undefined;
+  /** Deliver now (the seam, `DeliverNow`). Absent: the mark has no button. */
+  onDeliverNow?: DeliverNow | undefined;
   /**
    * The pane's held sends from the snapshot (M56 spec 15), oldest first: a send the harness could not
    * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box.
@@ -564,7 +569,7 @@ function moveCaret(from: HTMLTextAreaElement | null, to: HTMLTextAreaElement | n
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1124,6 +1129,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     },
     onChanged: () => revalidator.revalidate(),
   });
+
+  // Deliver now, from the held mark: the call, then the note over the box that the person's text stays.
+  const delivered = walky.delivered;
+  const deliverNow = useMemo(
+    () =>
+      onDeliverNow === undefined
+        ? undefined
+        : async (id: string) => {
+            await onDeliverNow(id);
+            delivered();
+          },
+    [onDeliverNow, delivered],
+  );
 
   const hasDraft = input.trim() !== "" || attachments.length > 0;
   const micIsPrimary = micShown && !direct.active && !hasDraft;
@@ -3190,8 +3208,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </Collapse>
         {/* MESSAGES HELD FOR THIS PANE (M62 spec 03): a draft in the box holds a message up to an hour, and
             the owner of the box should know. One line, a tap opens the Messages sheet with its Drop. */}
-        <Collapse open={walky.held > 0 && onOpenMessages !== undefined}>
-          {walky.held > 0 && onOpenMessages !== undefined && <WalkyHeldStrip count={walky.held} onOpen={onOpenMessages} />}
+        <Collapse open={walky.mark !== null && onOpenMessages !== undefined}>
+          {walky.mark !== null && onOpenMessages !== undefined && (
+            <WalkyHeldStrip
+              count={walky.mark.count}
+              kind={walky.mark.kind}
+              onOpen={onOpenMessages}
+              linked={walkyLinked}
+              deliverId={walky.mark.deliverId}
+              onDeliverNow={deliverNow}
+            />
+          )}
         </Collapse>
         {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
             memory tier holds it whole — but not the app closing, and that difference is invisible
