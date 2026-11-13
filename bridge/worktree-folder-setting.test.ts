@@ -9,7 +9,7 @@ import { harnessLaunch } from "./harness-launch.ts";
 import type { JsonObject } from "./json.ts";
 import { muxAck, muxOk, type MuxAdapter, type MuxCreatedPane, type MuxGrid, type MuxOutcome, type MuxSpaceRequest } from "./mux/types.ts";
 import { createWorktreeAt, planWorktree, serveWorktreeFolderRoute, type FolderRouteCaller } from "./server.ts";
-import type { SessionRuntime } from "./server.ts";
+import type { SessionRuntime } from "./sessions.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type { WorktreeCreateResponse, WorktreeFolderSettingResponse, WorktreePlanResponse } from "./types.ts";
 import { memoryWorktreeChoices } from "./worktree-choices.ts";

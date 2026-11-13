@@ -143,6 +143,8 @@ class FakeWorktreeMux {
   /** The panes the fake has opened, which `snapshot()` answers: one space per open. */
   readonly panes: MuxPane[] = [];
   failSpace: string | null = null;
+  /** Typing into a pane is refused (a launcher that fails after the create). */
+  failText = false;
   /** The space opens and the answer is lost: a refusal, with the space there (a timeout's shape). */
   lostAnswer = false;
   /** Herdr's shape: a folder already open answers with its space (`already_open`). Off is tmux's: no memory. */
