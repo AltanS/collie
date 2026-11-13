@@ -8,11 +8,12 @@
 // slot), "Asking" (a second tap on the same text: the Send slot reads "Send it again?" and nothing was sent),
 // "After the confirm" (the confirming tap: the text goes under a new id, the fake bridge answers sent).
 //
-// The stage is built for the design app's frame, 390 wide and 400 high (378 by 388 inside its border; its bottom panel
-// leaves about 445 px on a phone, less with the address bar): a caption line, the real composer at the bottom and a thin
-// keyboard strip under it, with no scroll. The question stays 3 seconds, the real `usePendingConfirm` time, so the
-// "Asking" case holds its state by watching the Send button: when the question has run out it taps Send once more, and
-// it never taps while the question shows, because that tap would send. A tap of your own in any case arms it afresh.
+// The stage fills the design app's frame, whatever its height (the app gives max(frameHeight, room): 560 on a desktop,
+// 639 to 683 px on a phone): a flex column with no fixed height. The area above the composer grows and holds the
+// caption, the real composer sits directly on a 220 px keyboard stand-in at the bottom, and nothing is blank under it.
+// The question stays 3 seconds, the real `usePendingConfirm` time, so the "Asking" case holds its state by watching the
+// Send button: when the question has run out it taps Send once more, and it never taps while the question shows,
+// because that tap would send. A tap of your own in any case arms it afresh.
 //
 // The question is the existing destructive-send confirm's slot and button (`Really send?`), with other words and
 // no note above the box: no new row, no sheet. After the pick: this file and its line in ../rounds.ts go.
@@ -33,9 +34,9 @@ import { ChromeBlock } from "@/playground/sections/shared";
 import type { PickCase, PickOption, PickRoundDef } from "../types";
 
 const CASES: readonly PickCase[] = [
-  { id: "unknown", label: "After unknown" },
+  { id: "unknown", label: "Unknown" },
   { id: "asking", label: "Asking" },
-  { id: "confirmed", label: "After the confirm" },
+  { id: "confirmed", label: "Sent" },
 ];
 
 const TEXT = "Run the full test suite, then fix whatever fails.";
@@ -61,10 +62,10 @@ const PREFS = {
   reportOffer: false,
 } as const;
 
-/** The design app's frame, border box. */
-export const FRAME_HEIGHT = 400;
-/** The frame inside its 6 px border: what the stage must fit, with no scroll. */
-export const STAGE_HEIGHT = FRAME_HEIGHT - 12;
+/** The frame's own height; the design app gives more on a phone, and the stage grows into it. */
+export const FRAME_HEIGHT = 560;
+/** The keyboard stand-in's height: about a phone's soft keyboard. */
+export const KEYBOARD_HEIGHT = 220;
 /** The caption in the round, in plain words: how long the question stays and how to see it again. */
 export const CAPTION = "The question stays 3 seconds. Tap Send to see it again.";
 
@@ -78,7 +79,7 @@ function fakeSendAnswer(sent: number): object {
 /** Stands in for the soft keyboard: the composer sits on top of it, as it does on a phone. */
 function Keyboard() {
   return (
-    <div aria-hidden="true" className="flex h-10 shrink-0 items-center justify-center bg-muted/60 text-[11px] text-muted-foreground">
+    <div aria-hidden="true" className="flex shrink-0 items-center justify-center bg-muted/60 text-[11px] text-muted-foreground" style={{ height: KEYBOARD_HEIGHT }}>
       keyboard
     </div>
   );
@@ -203,11 +204,12 @@ function SendItAgainPhone({ caseId }: { caseId: string }) {
   }, [root, caseId]);
 
   return (
-    <div ref={setRoot} data-state="send-it-again" data-slot="send-it-again-stage" className="flex flex-col overflow-hidden bg-background" style={{ height: STAGE_HEIGHT }}>
-      <p data-slot="send-it-again-caption" className="shrink-0 px-3 py-1.5 text-[11px] leading-snug text-muted-foreground">
-        {CAPTION}
-      </p>
-      <div className="min-h-0 flex-1" />
+    <div ref={setRoot} data-state="send-it-again" data-slot="send-it-again-stage" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="min-h-0 flex-1">
+        <p data-slot="send-it-again-caption" className="px-3 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          {CAPTION}
+        </p>
+      </div>
       <RouterProvider router={router} />
       <Keyboard />
     </div>

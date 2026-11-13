@@ -3828,21 +3828,37 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               {translate("composer.send.dialogFirst")}
             </Button>
           ) : !direct.active && confirmingSend ? (
-            <Button
-              variant="destructive"
+            // ARMING MOVES NOTHING (Altan, 2026-11-13: "I don't like layout shifts close to buttons that are being used").
+            // The slot keeps exactly the footprint of the round Send button it stands in for: the wrapper is `size-9`
+            // and takes the Send button's grid cell, so the field's width, its wrapping and its height are the same
+            // before the tap, while the word shows, and after. The word button is drawn over the field, anchored to
+            // the slot's outer edge (the end edge, the start edge under `hand="left"`), at the Send button's height,
+            // above the field. It covers the last characters of the draft for the 3 seconds it stays armed, so it
+            // has a solid fill and a shadow. Anchored at the edge and wider than the circle, it always contains the
+            // point where Send was: the second tap lands without the thumb moving.
+            <div
+              data-slot="composer-send-slot"
               className={cn(
-                TOOLBAR_TAP_TARGET,
-                "h-9 shrink-0 rounded-md px-3 text-sm font-semibold",
+                "relative size-9 shrink-0",
                 box && (mirrored ? "col-start-1" : boxOpen ? "col-start-5" : "col-start-3"),
                 box && (boxOpen ? "row-start-3" : "row-start-1"),
               )}
-              onClick={() => onSendClick(armedWhen.current)}
-              disabled={starting || locked || offline || !hasDraft || sending}
-              title={offline ? translate("composer.send.reconnect") : undefined}
-              aria-label={offline ? translate("composer.send.reconnect") : confirmWord}
             >
-              {confirmWord}
-            </Button>
+              <Button
+                variant="destructive"
+                className={cn(
+                  // `absolute`, not TOOLBAR_TAP_TARGET's `relative`: the same 4px reach around the button, kept as the pseudo-element.
+                  "absolute top-0 z-10 h-9 shrink-0 rounded-md px-3 text-sm font-semibold shadow-md before:absolute before:-inset-1 before:content-['']",
+                  mirrored ? "left-0" : "right-0",
+                )}
+                onClick={() => onSendClick(armedWhen.current)}
+                disabled={starting || locked || offline || !hasDraft || sending}
+                title={offline ? translate("composer.send.reconnect") : undefined}
+                aria-label={offline ? translate("composer.send.reconnect") : confirmWord}
+              >
+                {confirmWord}
+              </Button>
+            </div>
           ) : micIsPrimary ? (
             // THE MICROPHONE IS THE PRIMARY ACTION WHILE THE BOX IS EMPTY, and becomes Send the
             // moment there is anything to send. It used to be a second, permanent control tucked

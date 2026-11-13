@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Segmented } from "@/playground/layout";
 import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { __forgetSendIntentMemory } from "@/lib/send-intent";
-import ROUND, { CAPTION, FRAME_HEIGHT, STAGE_HEIGHT } from "./send-it-again";
+import ROUND, { CAPTION, FRAME_HEIGHT, KEYBOARD_HEIGHT } from "./send-it-again";
 
 // The round for "Send it again?", drawn the way the design app's round page draws it: one option, ONE Case
 // switch, the real composer with a fake bridge behind it.
@@ -43,26 +43,33 @@ function Round() {
 describe("the Send it again? round", () => {
   it("declares one option, n 1, with a state and the three cases", () => {
     expect(ROUND.options.map((o) => [o.n, o.label, o.state])).toEqual([[1, "Send it again?", "send-it-again"]]);
-    expect(ROUND.cases.map((c) => c.label)).toEqual(["After unknown", "Asking", "After the confirm"]);
+    expect(ROUND.cases.map((c) => c.label)).toEqual(["Unknown", "Asking", "Sent"]);
     render(<Round />);
     expect(frame().querySelector('[data-state="send-it-again"]')).not.toBeNull();
     expect(screen.getAllByRole("group", { name: "Case" })).toHaveLength(1);
   });
 
-  it("fits a frame 400 high: a stage of at most 400, the caption on one line of words, the send button inside it", async () => {
-    expect(FRAME_HEIGHT).toBe(400);
-    expect(ROUND.frameHeight).toBe(400);
-    expect(STAGE_HEIGHT).toBeLessThanOrEqual(400);
+  it("fills the design app's frame: frameHeight 560, no fixed stage height, a 220 px keyboard at the bottom, three short labels", async () => {
+    expect(FRAME_HEIGHT).toBe(560);
+    expect(ROUND.frameHeight).toBe(560);
+    expect(KEYBOARD_HEIGHT).toBe(220);
     expect(CAPTION).toBe("The question stays 3 seconds. Tap Send to see it again.");
+    expect(ROUND.cases.map((c) => c.id)).toEqual(["unknown", "asking", "confirmed"]);
     render(<Round />);
     const stage = frame().querySelector<HTMLElement>('[data-slot="send-it-again-stage"]')!;
-    expect(Number.parseInt(stage.style.height, 10)).toBe(STAGE_HEIGHT);
+    // No fixed px height (the old 388): the stage is a flex column that takes what the frame gives.
+    expect(stage.style.height).toBe("");
+    expect(stage.className).toContain("flex-1");
+    expect(stage.className).toContain("min-h-0");
     expect(within(stage).getByText(CAPTION)).toBeInTheDocument();
-    // jsdom lays nothing out, so "the bottom edge lies inside the stage" is checked in a browser (the worker's
-    // report); here the send button is a child of the stage and the stage clips: it holds no more than its height.
+    // jsdom lays nothing out; the order is what it can show: the composer's Send, then the keyboard last in the stage.
     const send = await within(stage).findByRole("button", { name: "Send" }, SLOW);
     expect(stage.contains(send)).toBe(true);
-    expect(stage.className).toContain("overflow-hidden");
+    // SAFETY: the stage's last child is the keyboard stand-in, a <div>; the next line checks it by its marks.
+    const keyboard = stage.lastElementChild as HTMLElement;
+    expect(keyboard.getAttribute("aria-hidden")).toBe("true");
+    expect(keyboard.textContent).toBe("keyboard");
+    expect(keyboard.style.height).toBe("220px");
   }, TEST_MS);
 
   it("After unknown: a tap of your own on Send asks, and the next tap sends as sent", async () => {
@@ -101,7 +108,7 @@ describe("the Send it again? round", () => {
 
   it("After the confirm: the text went, the box is empty and the question is gone", async () => {
     render(<Round />);
-    useCase("After the confirm");
+    useCase("Sent");
     await waitFor(() => expect(within(frame()).getByRole<HTMLTextAreaElement>("textbox").value).toBe(""), SLOW);
     expect(within(frame()).queryByRole("button", { name: "Send it again?" })).toBeNull();
   }, TEST_MS);
