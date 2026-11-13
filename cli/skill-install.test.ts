@@ -165,8 +165,9 @@ describe("the rendered skill", () => {
     expect(flat).toContain('If it says "may have arrived", do not send it again either');
     expect(flat).not.toContain("claims to");
     expect(flat).not.toMatch(/`wt` /u);
-    // 185 until the skill taught the hill and tricks (two short parts, about 30 lines), 225 with the wording rules.
-    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(225);
+    // 185 until the skill taught the hill and tricks (two short parts, about 30 lines), 225 with the wording rules,
+    // 230 with the `who` columns and the addressing text (session names) beside the data-path wording (M99).
+    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(230);
     expect(WALKY_TALKY_SKILL_TEMPLATE).not.toContain("—");
     for (const verb of ["who", "send", "reply", "inbox"]) expect(WALKY_TALKY_SKILL_TEMPLATE).toContain(`walky ${verb}`);
   });
