@@ -5,7 +5,9 @@ import type { PickRoundDef } from "./pick-page";
 
 export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 
-const REGISTRY = {} satisfies Record<string, PickRoundLoader>;
+const REGISTRY = {
+  "worktree-folder": () => import("./rounds/worktree-folder"),
+} satisfies Record<string, PickRoundLoader>;
 
 /** Every round, by id. */
 export const ROUNDS: ReadonlyMap<string, PickRoundLoader> = new Map(Object.entries(REGISTRY));

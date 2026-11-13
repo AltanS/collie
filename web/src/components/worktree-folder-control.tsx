@@ -48,6 +48,10 @@ export interface WorktreeFolderIo {
   /** The folder lists and the Browse read the editor draws. */
   folders: FolderList;
   browse: Parameters<typeof FolderBrowse>[0]["read"];
+  /** A device the host would refuse a write from: the card shows the folder and no way to change it. */
+  readOnly?: boolean;
+  /** Open the editor at first paint, for a state that is about the editor. */
+  startEditing?: boolean;
 }
 
 /** One machine the card has a row for: `scope` addresses it, `name` is shown only in a crew. */
@@ -87,10 +91,10 @@ function MachineRow({ target, showName, io }: { target: MachineTarget; showName:
   const host = scope.host;
   const root = useOptionalRootData();
   const { refused } = usePairing();
-  const canWrite = !isReadOnly(root?.device) && !refused;
+  const canWrite = io?.readOnly !== true && !isReadOnly(root?.device) && !refused;
   const [reading, setReading] = useState<Reading>({ state: "loading" });
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState(io?.startEditing === true);
+  const [draft, setDraft] = useState(io?.startEditing === true ? (io.folders.favourites[0] ?? "") : "");
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const fieldId = useId();
