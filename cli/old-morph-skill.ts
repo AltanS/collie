@@ -34,15 +34,19 @@ export interface OldMorphCopy {
 export function oldMorphSkillCopies(deps: { readonly ctx: Pick<CliContext, "home" | "env">; readonly files: Pick<Files, "read"> }): OldMorphCopy[] {
   const out: OldMorphCopy[] = [];
   const seen = new Set<string>();
-  for (const file of skillFiles(deps.ctx)) {
-    const form = file.target.form;
-    // The file form keeps each skill in its own folder: the Morph folder sits beside the WalkyTalky one.
-    const path = form === "file" ? join(dirname(dirname(file.path)), OLD_MORPH_SKILL_NAME, "SKILL.md") : file.path;
-    if (seen.has(path)) continue;
+  const take = (harness: string, path: string, form: OldMorphCopy["form"]): void => {
+    if (seen.has(path)) return;
     seen.add(path);
     const text = deps.files.read(path);
-    if (text === null) continue;
-    if (form === "file" ? text.includes(OLD_MORPH_STAMP) : OLD_MORPH_BEGIN.test(text)) out.push({ harness: file.target.harness, path, form });
+    if (text === null) return;
+    if (form === "file" ? text.includes(OLD_MORPH_STAMP) : OLD_MORPH_BEGIN.test(text)) out.push({ harness, path, form });
+  };
+  for (const file of skillFiles(deps.ctx)) {
+    // The file form keeps each skill in its own folder: the Morph folder sits beside the WalkyTalky one.
+    take(file.target.harness, join(dirname(dirname(file.path)), OLD_MORPH_SKILL_NAME, "SKILL.md"), "file");
+    // The block form sat in the instruction file that held the WalkyTalky block before 1.28.3, which a row
+    // now names as its `legacy` file (Claude has none: it was always a file).
+    if (file.legacy !== null) take(file.target.harness, file.legacy, "block");
   }
   return out;
 }

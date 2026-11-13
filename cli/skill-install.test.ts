@@ -137,17 +137,17 @@ describe("the rendered skill", () => {
     expect(out).toContain(`run \`${bin} trick skill\` with no id`);
   });
 
-  test("every harness gets both parts: the Claude file and each block form", () => {
-    const d = deps({ files: { [CODEX_FILE]: "", [OPENCODE_FILE]: "", [PI_FILE]: "", [GEMINI_FILE]: "" } });
+  test("every harness gets both parts in its own skill file", () => {
+    const d = deps();
     for (const target of SKILL_TARGETS) expect(cmdSkillInstall(d, [target.harness])).toBe(EXIT.OK);
-    for (const path of [CLAUDE_FILE, CODEX_FILE, OPENCODE_FILE, PI_FILE, GEMINI_FILE]) {
+    for (const path of [CLAUDE_FILE, CODEX_FILE, OPENCODE_FILE, PI_FILE, OMP_FILE, GEMINI_FILE]) {
       const written = text(d, path) ?? "";
       expect(written).toContain("## Decisions (the hill)");
       expect(written).toContain("## Tricks");
       expect(written).toContain(HILL_RULES[0]);
     }
-    expect(text(d, CODEX_FILE)).toContain("<!-- collie:walky-talky v2 begin -->");
-    expect(text(d, CLAUDE_FILE)).toContain("<!-- collie-skill walky-talky v2 collie ");
+    expect(text(d, CODEX_FILE)).not.toContain("<!-- collie:walky-talky");
+    expect(text(d, CLAUDE_FILE)).toContain(`<!-- collie-skill walky-talky v${String(SKILL_FORMAT)} collie `);
   });
 
   test("carries the trust lines as the hardening writes them, and stays short", () => {
@@ -183,7 +183,7 @@ describe("the rendered skill", () => {
     const out = rendered(deps());
     const block = blockOf(out);
     const stamp = block.split("\n").at(-2);
-    expect(stamp).toMatch(/^<!-- collie-skill walky-talky v1 text [0-9a-f]{12} -->$/u);
+    expect(stamp).toMatch(new RegExp(`^<!-- collie-skill walky-talky v${String(SKILL_FORMAT)} text [0-9a-f]{12} -->$`, "u"));
     expect(block).not.toMatch(/walky-talky v\d+ collie /u);
     const otherBuild = out.replace(/collie [^ ]+ -->\n$/u, "collie 1.99.0+0123456789 -->\n");
     expect(otherBuild).not.toBe(out);
@@ -194,7 +194,7 @@ describe("the rendered skill", () => {
 
   test("the file form keeps the build in its stamp, outside the prompt, and front matter a skills loader reads", () => {
     const out = rendered(deps());
-    expect(out.trimEnd().split("\n").at(-1)).toMatch(/^<!-- collie-skill walky-talky v1 collie .+ -->$/u);
+    expect(out.trimEnd().split("\n").at(-1)).toMatch(new RegExp(`^<!-- collie-skill walky-talky v${String(SKILL_FORMAT)} collie .+ -->$`, "u"));
     const front = out.slice(4, out.indexOf("\n---\n", 4)).split("\n");
     expect(front[0]).toBe("name: collie-walky-talky");
     expect(front[1]).toMatch(/^description: \S/u);
@@ -207,7 +207,7 @@ describe("the rendered skill", () => {
 });
 
 /** The block 1.28.2 wrote: the markers, the body, and a stamp with the build in it. */
-const OLD_BLOCK = `${BLOCK_BEGIN}\n# WalkyTalky\n\nOld advice.\n<!-- collie-skill walky-talky v1 collie 1.28.2+22f2f81315 -->\n${BLOCK_END}`;
+const OLD_BLOCK = `<!-- collie:walky-talky v1 begin -->\n# WalkyTalky\n\nOld advice.\n<!-- collie-skill walky-talky v1 collie 1.28.2+22f2f81315 -->\n<!-- collie:walky-talky v1 end -->`;
 
 /** What `collie skill install` of 1.28.2 made of an instruction file: the block after a blank line. */
 function installedBy1282(original: string | null): string {
