@@ -369,12 +369,12 @@ function HillOffPhone() {
   );
 }
 
-/** The row in Settings → Alerts, in a 390px column, with a switch that flips in place. */
-function SwitchRow({ initial }: { initial: boolean }) {
+/** The row in Settings → Experiments, in a 390px column, with a switch that flips in place. `waiting`: open Decisions (any arms the first tap off). */
+function SwitchRow({ initial, waiting = 0 }: { initial: boolean; waiting?: number }) {
   const [on, setOn] = useState(initial);
   return (
     <div className="w-[390px] max-w-full bg-background p-4">
-      <HillSwitchCard on={on} disabled={false} onToggle={setOn} />
+      <HillSwitchCard on={on} disabled={false} waiting={waiting} onToggle={setOn} />
     </div>
   );
 }
@@ -891,12 +891,16 @@ export function HillSection() {
 
       <Group title="The switch">
         <Card state="hill-switch-on" label="43: Settings row, on">
-          <CardHead n={43} title="Settings → Alerts: the Hill on" />
+          <CardHead n={43} title="Settings → Experiments: the Hill on" />
           <SwitchRow initial />
         </Card>
         <Card state="hill-switch-off" label="44: Settings row, off">
-          <CardHead n={44} title="Settings → Alerts: the Hill off" />
+          <CardHead n={44} title="Settings → Experiments: the Hill off (the default)" />
           <SwitchRow initial={false} />
+        </Card>
+        <Card state="hill-switch-armed" label="67: Settings row, 3 waiting">
+          <CardHead n={67} title="3 waiting: tap the switch once, it arms; tap again inside four seconds, it goes off" />
+          <SwitchRow initial waiting={3} />
         </Card>
         <Card state="hill-off" label="45: the Hill, switched off">
           <CardHead n={45} title="The Hill switched off: no Hill item in the bar" />

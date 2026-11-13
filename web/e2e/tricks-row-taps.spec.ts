@@ -120,13 +120,6 @@ test("an official entry's lines open its sheet, and Add adds without opening it"
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("the Hill's row opens its sheet from its padding too", async ({ page }) => {
-  await stubTricks(page, []);
-  await page.goto("/settings/tricks");
-  const box = (await page.locator('[data-slot="hill-entry"]').boundingBox())!;
-  expect(await targetAt(page, box.x + box.width - 4, box.y + 3)).toBe("About Hill");
-});
-
 // THE NAME LINE WRAPS (2026-11-12): at 360 px, a row with both labels keeps the whole name and moves the labels
 // under it as one group. Only a name wider than the line alone may truncate. The long German chip words are
 // put in by hand here: the translation pass has not run, and the width is what is checked.

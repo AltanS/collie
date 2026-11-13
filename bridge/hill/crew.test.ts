@@ -32,9 +32,10 @@ import {
 import { deniedFoldersSync, HillMediaStore } from "./media.ts";
 import { HILL_GROUP_NOT_YOURS } from "./parse.ts";
 import { HILL_PUSH_RATE, HillPush } from "./push.ts";
+import type { HillSwitchReading } from "./switch.ts";
 import type { PushMessage } from "../push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
-import { HILL_MAX_EXPIRY_MS, HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
+import { HILL_MAX_EXPIRY_MS, HILL_OFF, HILL_OFF_ON_LEAD, HILL_OPEN_MEMBER_MAX, HillService, NOT_ON_LEAD, notAnswering, type HillAgentSender, type HillCrewMode, type HillPlace } from "./service.ts";
 import { hillDir, HillStore } from "./store.ts";
 
 // The Hill across a crew (CREW_PROTOCOL §22): a member's agent posts on its lead's Hill, the lead holds
@@ -89,7 +90,7 @@ interface Bridge {
 }
 
 /** One bridge's hill, on disk under a fresh folder: a lead, or a member with a forward. */
-function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; push?: HillPush; hillOn?: () => boolean; place?: (address: string) => HillPlace | null } = { memberId: "m_lead000000" }): Bridge {
+function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberId: string; push?: HillPush; hillOn?: () => boolean; hillSwitch?: { on(): boolean; reading(): HillSwitchReading }; place?: (address: string) => HillPlace | null } = { memberId: "m_lead000000" }): Bridge {
   const state = folder("hill-crew-state-");
   const work = folder("hill-crew-work-");
   const media = new HillMediaStore(hillDir(state), deniedFoldersSync([state]), () => undefined);
@@ -122,7 +123,7 @@ function bridge(mode: HillCrewMode, opts: { forward?: HillMemberForward; memberI
     forward: opts.forward,
     offline: mode === "lead" ? () => b.offline : undefined,
     push: opts.push,
-    hillSwitch: opts.hillOn === undefined ? undefined : { on: opts.hillOn },
+    hillSwitch: opts.hillSwitch ?? (opts.hillOn === undefined ? undefined : { on: opts.hillOn }),
   });
   return Object.assign(b, { hill });
 }
@@ -404,6 +405,68 @@ describe("A1: a member's id never stands for the lead's own sessions", () => {
       expect(asJsonObject(parseJson(JSON.stringify(answer.body)))?.code).toBe("bad_target");
     }
     expect(lead2.store.all()).toHaveLength(0);
+  });
+});
+
+describe("the Hill off by default, on a crew", () => {
+  /** A switch that holds one reading; `on()` is true only for `on`. */
+  function held(reading: HillSwitchReading) {
+    return { on: () => reading === "on", reading: () => reading };
+  }
+
+  /** A lead with `leadReading` and a member with `memberReading`, the member's forward dialing the lead. */
+  function pair(leadReading: HillSwitchReading, memberReading: HillSwitchReading) {
+    const lead = bridge("lead", { memberId: "m_lead000000", hillSwitch: held(leadReading) });
+    const crewLead = new HillCrewLead({ hill: lead.hill, held: new HillHeldMedia(() => lead.clock), machineOf: (memberId) => memberId });
+    const link = wire(crewLead);
+    lead.live = [{ address: LAPTOP_PANE, label: "repo#main", host: "laptop", unattended: false }];
+    const member = bridge("peer", { forward: new HillMemberForward(link), memberId: "m_laptop0000", hillSwitch: held(memberReading) });
+    return { lead, member, link };
+  }
+
+  test("a member with no switch file forwards, and the lead's switch decides: lead on takes the post", async () => {
+    const { lead, member, link } = pair("on", "unset");
+    const answer = await member.hill.postFields(SENDER, fields());
+    expect(answer.ok).toBe(true);
+    expect(link.calls).toEqual([CREW_HILL_POST_ROUTE]);
+    expect(lead.store.all()).toHaveLength(1);
+  });
+
+  test("a member with no switch file forwards, and a lead that is off refuses in the lead's words, the member prints them", async () => {
+    for (const leadReading of ["off", "unset"] as const) {
+      const { lead, member, link } = pair(leadReading, "unset");
+      const answer = await member.hill.postFields(SENDER, fields());
+      expect(answer).toEqual({ ok: false, code: "hill_off", error: HILL_OFF_ON_LEAD });
+      expect(HILL_OFF_ON_LEAD).toBe("the Hill is off on the lead of this crew; your person can switch it on in Settings, Experiments, on the phone");
+      expect(link.calls).toEqual([CREW_HILL_POST_ROUTE]);
+      expect(lead.store.all()).toEqual([]);
+    }
+  });
+
+  test("a member with no switch file uploads its image to the lead; a lead that is off refuses it in the lead's words", async () => {
+    const { member, link } = pair("off", "unset");
+    const file = join(folder("hill-crew-img-"), "shot.png");
+    writeFileSync(file, png());
+    const answer = await member.hill.postFields(SENDER, fields({ images: [{ path: file }] }));
+    expect(answer).toMatchObject({ ok: false, code: "hill_off", error: HILL_OFF_ON_LEAD });
+    expect(link.calls[0]).toBe(CREW_HILL_MEDIA_ROUTE);
+  });
+
+  test("a member whose own switch says off refuses on its own machine, in this machine's words, and dials nothing", async () => {
+    const { member, link } = pair("on", "off");
+    expect(await member.hill.postFields(SENDER, fields())).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
+    expect(link.calls).toEqual([]);
+  });
+
+  test("a member with no switch file and no forward is not refused as off: it answers not_on_lead, as before", async () => {
+    const member = bridge("peer", { memberId: "m_laptop0000", hillSwitch: held("unset") });
+    expect(await member.hill.postFields(SENDER, fields())).toMatchObject({ ok: false, code: "not_on_lead" });
+    expect(member.hill.post(SENDER, { requestId: uuid(), title: "t", summary: "s", options: [{ intent: "yes", label: "Yes" }] })).toMatchObject({ ok: false, code: "not_on_lead" });
+  });
+
+  test("a lead with no switch file is off, and says so in this Collie's words to its own agents", () => {
+    const lead = bridge("lead", { memberId: "m_lead000000", hillSwitch: held("unset") });
+    expect(lead.hill.post(SENDER, { requestId: uuid(), title: "t", summary: "s", options: [{ intent: "yes", label: "Yes" }] })).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
   });
 });
 

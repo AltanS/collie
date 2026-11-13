@@ -3508,6 +3508,9 @@ export const en = {
   "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
   "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
   "settings.tricks.pending": "A new version waits for your yes.",
+  // The same row with the Hill off (2026-11-13): the new version's card is a Decision on the Hill. English only
+  // until the translation pass: listed in PENDING_TRANSLATION below.
+  "settings.tricks.pendingHillOff": "A new version waits. Switch the Hill on in Settings, Experiments, to read it.",
   // Fault B: the trick stopped because its code asks for a right the person's yes did not hold.
   "settings.tricks.rightsMoved": "Its rights changed. Switch it on again.",
   // Take changes without asking, and the undo of an automatic change (crew slice 3). English only until
@@ -3683,16 +3686,8 @@ export const en = {
   "settings.hill.label": "The Hill",
   "settings.hill.hint": "Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar.",
   "settings.hill.switchFailed": "Could not switch the Hill. Try again.",
-  // The Hill as a built-in entry on the Tricks card, its About sheet and the armed second tap on its switch:
-  // English only until the translation pass, listed in PENDING_TRANSLATION below.
-  "settings.tricks.hill.name": "Hill",
-  "settings.tricks.hill.description": "Questions from your agents and tricks that wait for your tap.",
-  "settings.tricks.hill.badge": "Built in",
-  "settings.tricks.hill.about.what": "The Hill is where Collie keeps the questions that wait for your tap.",
-  "settings.tricks.hill.about.post": "Agents and tricks post a question there, with options and a recommendation.",
-  "settings.tricks.hill.about.nothing": "Nothing is chosen for you, and your tap goes back to the one that asked.",
-  "settings.tricks.hill.about.collie": "Collie itself asks there before a trick's code changes or a proposed trick is switched on.",
-  "settings.tricks.hill.builtIn": "Built in. It comes with Collie and cannot be removed.",
+  // The armed second tap on the Hill's switch in Settings, Experiments (it had been the Tricks card's About
+  // sheet until 2026-11-13): English only until the translation pass, listed in PENDING_TRANSLATION below.
   "settings.tricks.hill.waits.one": "{count} question waits on the Hill. You cannot answer it while it is off.",
   "settings.tricks.hill.waits.other": "{count} questions wait on the Hill. You cannot answer them while it is off.",
   "hill.state.answered": "Answered",
@@ -3893,6 +3888,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.refused",
   "settings.tricks.refusedBare",
   "settings.tricks.pending",
+  "settings.tricks.pendingHillOff",
   "hill.title",
   "hill.back",
   "hill.open.one",
@@ -4052,14 +4048,6 @@ export const PENDING_TRANSLATION = [
   "settings.hill.label",
   "settings.hill.hint",
   "settings.hill.switchFailed",
-  "settings.tricks.hill.name",
-  "settings.tricks.hill.description",
-  "settings.tricks.hill.badge",
-  "settings.tricks.hill.about.what",
-  "settings.tricks.hill.about.post",
-  "settings.tricks.hill.about.nothing",
-  "settings.tricks.hill.about.collie",
-  "settings.tricks.hill.builtIn",
   "settings.tricks.hill.waits.one",
   "settings.tricks.hill.waits.other",
   "settings.tricks.hillOff",

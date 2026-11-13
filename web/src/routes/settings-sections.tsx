@@ -226,10 +226,6 @@ export function SettingsAlertsRoute() {
   const availability = usePushAvailability();
   return (
     <SettingsPage title="settings.section.alerts.title">
-      {/* The Hill's switch (bridge/hill/switch.ts): first, because it decides whether agents and tricks
-          may ask at all, and drawn from the snapshot, so it never waits on push state like the cards
-          below. Bridge-wide, like the notification switches. */}
-      <HillSwitchControl />
       <PushControl />
       {/* Mounted while push state is still UNKNOWN, and only removed once we positively learn the
           bridge has no VAPID keys. Gating on truthiness instead inserted ~400px into the middle of
@@ -278,12 +274,15 @@ function ExperimentsContract() {
  * The section renders even when `lib/experiments.ts` is empty, because the route stays; the
  * SETTINGS INDEX is what hides the row (routes/settings.tsx). A bookmark then lands on a page
  * carrying its contract and nothing else, which is the honest answer to "where did it go".
+ * Today it holds the Hill's one switch.
  */
 export function SettingsExperimentsRoute() {
   return (
     <SettingsPage title="settings.section.experiments.title">
       <ExperimentsContract />
-      {/* Nothing is filed here since Chat graduated (ADR 0082). The next experiment is a card here. */}
+      {/* The Hill (bridge/hill/switch.ts): an experiment, off by default, and this is its one switch. Drawn from
+          the snapshot, so it never waits on a reading of its own. Bridge-wide, like the notification switches. */}
+      <HillSwitchControl />
     </SettingsPage>
   );
 }

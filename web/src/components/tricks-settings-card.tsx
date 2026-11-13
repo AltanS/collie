@@ -8,7 +8,6 @@ import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
 import { ROW_OPEN_BUTTON, ROW_OPEN_CONTROL, ROW_OPEN_ROW, ROW_OPEN_SWITCH } from "@/components/ui/row-open";
 import { Switch } from "@/components/ui/switch";
-import { HillAboutSheetControl, HillEntryRow } from "@/components/hill-entry";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TokenUseChip } from "@/components/token-use-label";
 import { useArm } from "@/hooks/use-arm";
@@ -92,9 +91,9 @@ import { cn } from "@/lib/utils";
 // by name and labels none. The list is read when the card mounts and again when the installed tricks change;
 // it costs the bridge a read of its own folder, never a fetch.
 //
-// THE HILL, FIRST (2026-11-11). One built-in row sits above the person's tricks and opens its own About sheet
-// with the Hill's one switch (components/hill-entry.tsx). It is the Hill's own switch, not a trick's: no row
-// switch, no Remove, no version line. A crew member draws no such row, as it runs no tricks (`runsOn`).
+// THE HILL IS NOT HERE. It had a built-in row above the person's tricks from 2026-11-11 to 2026-11-13; the Hill
+// is an experiment now, and its one switch is on Settings, Experiments (components/hill-switch-card.tsx). A row
+// here says only that a trick's Decisions wait for the Hill (`hillOff`).
 //
 // NO PROSE but the one muted line at the foot. What a trick may do is the docs' to say.
 
@@ -137,7 +136,8 @@ export interface SlotLine {
 /**
  * The third line: the reason a trick is not well (a trick stopped for its rights in the phone's own words,
  * fault B), else that a new version waits for a yes (`pending`,
- * from a bridge since crew slice 2), else the one note that the Hill is off for a trick that is on and
+ * from a bridge since crew slice 2; with the Hill off, the line says to switch the Hill on in Settings,
+ * Experiments, to read it), else the one note that the Hill is off for a trick that is on and
  * asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts: they are not posted, the trick keeps
  * running), else where it came from.
  */
@@ -151,7 +151,8 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): Sl
   if (trick.rightsMoved === true) return { text: t("settings.tricks.rightsMoved"), trouble: true };
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
-  if (trick.on && trick.pending !== undefined) return { text: t("settings.tricks.pending"), trouble: false };
+  // The new version's card is a Decision on the Hill: with the Hill off nobody can read it, so the row says where to switch it on.
+  if (trick.on && trick.pending !== undefined) return { text: t(hillOff ? "settings.tricks.pendingHillOff" : "settings.tricks.pending"), trouble: false };
   if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };
   return { text: provenanceLine(trick, now), trouble: false };
 }
@@ -189,22 +190,15 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} />;
 }
 
-/** The card of a gated bridge: the one line, then the Hill's own row and its sheet. */
+/** The card of a gated bridge: the one line. */
 function TricksGatedCard() {
   useLocale();
-  const [hillAbout, setHillAbout] = useState(false);
   return (
-    <>
-      <Card className="gap-0 py-0" data-testid="tricks-settings">
-        <p data-line="windows-gate" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
-          {t("settings.tricks.windows")}
-        </p>
-        <div data-slot="list-group">
-          <HillEntryRow onAbout={() => setHillAbout(true)} />
-        </div>
-      </Card>
-      {hillAbout && <HillAboutSheetControl onClose={() => setHillAbout(false)} />}
-    </>
+    <Card className="gap-0 py-0" data-testid="tricks-settings">
+      <p data-line="windows-gate" className="px-4 py-3 text-sm text-muted-foreground">
+        {t("settings.tricks.windows")}
+      </p>
+    </Card>
   );
 }
 
@@ -550,8 +544,6 @@ function TricksList({
   const [adding, setAdding] = useState<ReadonlyMap<string, "add" | "update">>(new Map());
   // The official entry whose About sheet is open, by id.
   const [officialAboutId, setOfficialAboutId] = useState<string | null>(null);
-  // The Hill's About sheet (components/hill-entry.tsx): open or not. The Hill is no trick, so it has no key.
-  const [hillAbout, setHillAbout] = useState(false);
 
   useEffect(() => {
     const open = timers.current;
@@ -721,8 +713,6 @@ function TricksList({
           </p>
         )}
         <div data-slot="list-group">
-          {/* The Hill, shown as the first, built-in entry. A crew member draws none: the Hill lives on the lead. */}
-          {runsOn === undefined && <HillEntryRow onAbout={() => setHillAbout(true)} />}
           {/* No trick and no official entry: the empty line and the command. */}
           {official.settled && rows.length === 0 && (
             <div className="px-4 py-3">
@@ -785,8 +775,6 @@ function TricksList({
           />
         </TrickBoundary>
       )}
-      {/* Collie's own sheet, not a trick's: no boundary. It reads the Hill's switch and the list the phone holds. */}
-      {hillAbout && runsOn === undefined && <HillAboutSheetControl onClose={() => setHillAbout(false)} />}
       {officialAbout !== undefined && (
         <TrickBoundary fallback="none" resetKey={officialAbout}>
           <OfficialTrickAboutSheet

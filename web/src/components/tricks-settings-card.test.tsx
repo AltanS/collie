@@ -123,7 +123,7 @@ describe("B7: TricksSettingsCard on a machine that runs no tricks", () => {
 });
 
 describe("TricksSettingsCard: a gated bridge", () => {
-  it("windows gate: the card shows the one line, the Hill row, and no switch", async () => {
+  it("windows gate: the card shows the one line, no Hill row, and no switch", async () => {
     const reply: TricksReply = { rev: 5, tricks: [], parts: [], present: [], gate: "windows" };
     const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
     await store.syncTricks(5);
@@ -135,7 +135,7 @@ describe("TricksSettingsCard: a gated bridge", () => {
     render(<RouterProvider router={router} />);
     const card = await screen.findByTestId("tricks-settings");
     expect(card.querySelector('[data-line="windows-gate"]')?.textContent).toBe(TRICKS_WINDOWS_LINE);
-    expect(card.querySelector('[data-slot="hill-entry"]')).not.toBeNull();
+    expect(card.querySelector('[data-slot="hill-entry"]')).toBeNull();
     expect(within(card).queryByRole("switch")).toBeNull();
     expect(card.querySelector('[data-section="official"]')).toBeNull();
     expect(within(card).queryByText("No tricks yet")).toBeNull();
@@ -278,8 +278,8 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
     expect(onSwitch).toHaveBeenCalledTimes(1);
     expect(onSwitch).toHaveBeenCalledWith("lodge", "tracker", true);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeChecked();
-    // The buttons on the card are the names, which open an About sheet: the Hill's row first, then the trick's.
-    expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["hill-about", "trick-about"]);
+    // The buttons on the card are the names, which open an About sheet. The Hill has no row here any more.
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
   });
 
   it("shows them for a changed trick that is on, and the bridge's own words for a kind it does not know", async () => {
@@ -546,9 +546,22 @@ describe("a new version waits", () => {
 
   it("slotLine: the note for a trick that is on, after any trouble and before the Hill note", () => {
     expect(slotLine(WAITING, NOW)).toEqual({ text: "A new version waits for your yes.", trouble: false });
-    expect(slotLine({ ...WAITING, decides: true }, NOW, true).text).toBe("A new version waits for your yes.");
+    // With the Hill off the new version's card cannot be read: the row says where to switch the Hill on, trick that asks or not.
+    const hillOffLine = "A new version waits. Switch the Hill on in Settings, Experiments, to read it.";
+    expect(slotLine({ ...WAITING, decides: true }, NOW, true)).toEqual({ text: hillOffLine, trouble: false });
+    expect(slotLine(WAITING, NOW, true).text).toBe(hillOffLine);
+    // A trick that is off keeps its provenance line, and one in trouble its trouble.
+    expect(slotLine({ ...WAITING, on: false, state: "off" }, NOW, true).text).toBe("Added by agent · 2 h ago");
     expect(slotLine({ ...WAITING, on: false, state: "off" }, NOW).text).toBe("Added by agent · 2 h ago");
     expect(slotLine({ ...WAITING, state: "failing", error: "exit 2" }, NOW)).toEqual({ text: "exit 2", trouble: true });
+  });
+
+  it("the row says where to switch the Hill on while the Hill is off", async () => {
+    const store = await storeWith([WAITING, TRACKER]);
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} hillOff /> }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    await screen.findByText("Browser leg");
+    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("A new version waits. Switch the Hill on in Settings, Experiments, to read it.");
   });
 
   it("the row shows the note and adds no button", async () => {

@@ -93,8 +93,11 @@ export async function adoptCarriedHill(opts: AdoptHillOptions): Promise<AdoptHil
   const stored = new Set(opts.hill.adoptCarried(out, media));
   const startedWithDecisions = new Set(out.flatMap((d) => (d.state === "open" && stored.has(d.id) && d.from.trickId !== null ? [d.from.trickId] : [])));
   mergeCarriedMap(opts.stateDir, index.tricks, startedWithDecisions);
-  // The switch moves with the crown; a machine that already chose for itself keeps its own choice.
-  if (!existsSync(hillSwitchPath(opts.stateDir))) writeHillSwitch(opts.stateDir, index.on, at);
+  // The switch moves with the crown; a machine that already chose for itself keeps its own choice. The
+  // carried value is a plain boolean: a lead with no switch file (unset, off by default) carries off. A
+  // carried off writes nothing, because a lead with no file reads off already, and a file would turn the
+  // deputy's "follow the lead" (the unset reading of a crew member) into an explicit off.
+  if (index.on && !existsSync(hillSwitchPath(opts.stateDir))) writeHillSwitch(opts.stateDir, true, at);
   // The crew state too (1.29.0), with the lead's time and setter, so "Tell all sessions now" is offered
   // again here for a quiet or away the sessions of this machine were never told of. The newer one wins:
   // a file this machine kept from its own days as a lead is stale beside the lead's (C-N2, review 8).

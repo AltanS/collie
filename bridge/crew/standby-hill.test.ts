@@ -197,7 +197,7 @@ describe("the lead's open Decisions reach its deputy (§25)", () => {
 });
 
 describe("the takeover tap brings the open Decisions along (§25)", () => {
-  async function carried(decisions: HillDecision[], opts: { tricks?: JsonObject } = {}) {
+  async function carried(decisions: HillDecision[], opts: { tricks?: JsonObject; on?: boolean } = {}) {
     const lead = await hillOn("desk");
     lead.store.put(...decisions);
     for (const d of decisions) if (d.media.length > 0) lead.media.save(d.id, [{ id: MEDIA.id, bytes: PNG }]);
@@ -206,7 +206,7 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
     const routes = hillCarryRoutes(copy);
     const view = lead.hill.carryView(500);
     // SAFETY: a JSON round trip.
-    const body = { seq: 1, on: view.on, decisions: JSON.parse(JSON.stringify(view.open)) as JsonValue, closed: view.closed, tricks: opts.tricks ?? {} };
+    const body = { seq: 1, on: opts.on ?? view.on, decisions: JSON.parse(JSON.stringify(view.open)) as JsonValue, closed: view.closed, tricks: opts.tricks ?? {} };
     await routes.handle(CREW_HILL_COPY_PATH, { from: "desk", crewId: "crew-1" }, body);
     for (const d of view.open) for (const m of d.media) await routes.handle(CREW_HILL_COPY_MEDIA_PATH, { from: "desk", crewId: "crew-1" }, { decisionId: d.id, mediaId: m.id, b64: Buffer.from(PNG).toString("base64") });
     return { lead, deputy, copy };
@@ -249,6 +249,14 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
     const map = JSON.parse(await readFile(join(hillDir(deputy.m.stateDir), TRICKS_MAP_FILE), "utf8"));
     expect(map.tricks.legs.keys.k.decisionId).toBe(trickCard("legs", 3).id);
     expect(existsSync(hillSwitchPath(deputy.m.stateDir))).toBe(true);
+  });
+
+  test("a lead with no switch file carries off: the Decisions still move, and no switch file is written on the deputy", async () => {
+    const { deputy, copy } = await carried([agent(1)], { on: false });
+    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    expect(result).toEqual({ open: 1, closed: 0, dropped: 0 });
+    expect(deputy.store.get(agent(1).id)?.state).toBe("open");
+    expect(existsSync(hillSwitchPath(deputy.m.stateDir))).toBe(false);
   });
 
   test("an id this Hill already holds is left as it is here", async () => {

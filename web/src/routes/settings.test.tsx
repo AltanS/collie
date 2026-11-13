@@ -223,12 +223,12 @@ describe("SettingsRoute — the index", () => {
   });
 
   // The fifth row, and the only one that can be absent: it renders while `lib/experiments.ts` holds
-  // something, because a row that opens an empty page is noise. Chat was the last thing filed
-  // there and left in 1.17.0 (ADR 0082), so the index shows four rows.
-  it("shows no Experiments row while nothing is filed under it", async () => {
+  // something, because a row that opens an empty page is noise. Chat left in 1.17.0 (ADR 0082); the Hill
+  // moved in on 2026-11-13, so the index shows the row again.
+  it("shows the Experiments row while the Hill is filed under it", async () => {
     renderSettings();
     await screen.findByRole("button", { name: /Appearance/ });
-    expect(screen.queryByRole("button", { name: /Experiments/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Experiments/ })).toBeInTheDocument();
   });
 
   // Machines is a page of its own and not a section, so its row is the one that opens `/machines`. It is
@@ -239,9 +239,8 @@ describe("SettingsRoute — the index", () => {
     const all = screen.getAllByRole("button").map((b) => b.textContent ?? "");
     const at = (word: string) => all.findIndex((text) => text.includes(word));
     expect(at("System")).toBeLessThan(at("Machines"));
-    // No Experiments row exists while the list is empty (ADR 0082), so Machines closes the index. When
-    // one returns it sits after Machines, which is where its section is placed.
-    expect(at("Experiments")).toBe(-1);
+    // The Experiments row sits after Machines, which is where its section is placed.
+    expect(at("Experiments")).toBeGreaterThan(at("Machines"));
     await userEvent.click(row);
     await waitFor(() => expect(router.state.location.pathname).toBe("/machines"));
     expect(router.state.location.state).toMatchObject({ from: "/settings" });
