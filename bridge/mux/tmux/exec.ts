@@ -31,6 +31,11 @@ export interface TmuxRunResult {
   readonly code: number;
   readonly stdout: string;
   readonly stderr: string;
+  /**
+   * The run was killed on its time budget: tmux never answered, so its exit code says nothing about
+   * what it did. A write it was carrying may still have reached the pane (M100 spec 03).
+   */
+  readonly timedOut?: true;
 }
 
 /** What a long-lived control-mode client reports back. */
@@ -172,14 +177,21 @@ export class SpawnTmuxExec implements TmuxExec {
       stderr: "pipe",
     });
     // A hung tmux (a server mid-restart, a full socket) must not hold a request open forever: the
-    // budget is the target's, and a kill turns it into the `unreachable` the banner already knows.
-    const timer = setTimeout(() => child.kill(), this.timeoutMs);
+    // budget is the target's, and a kill turns it into the `unreachable` the banner already knows (a
+    // write that timed out answers `unconfirmed` instead, the adapter's `attemptWrite`).
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, this.timeoutMs);
     try {
       const [stdout, stderr] = await Promise.all([
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
       ]);
-      return { code: await child.exited, stdout, stderr };
+      const code = await child.exited;
+      if (timedOut) return { code, stdout, stderr: `${stderr.trim()} timed out after ${String(this.timeoutMs)}ms`.trim(), timedOut: true };
+      return { code, stdout, stderr };
     } finally {
       clearTimeout(timer);
     }

@@ -333,28 +333,76 @@ const NO_ECHO_REFUSAL = "A password prompt is waiting on the last row. Collie do
 /** The blind road refuses (M100 spec 06, item 1): the pane's last rows look like an agent's, not a shell's. */
 const BLIND_ROAD_REFUSAL = "Collie cannot tell which agent runs in this pane, and its last rows show an input box, a dialog or an agent's footer, so nothing was typed. Use Type to answer it.";
 
-/** How many of the last non-blank rows the blind road reads for a footer the profiles name. */
-const BLIND_FOOTER_ROWS = 8;
+/**
+ * A shell's prompt with nothing typed after it, as the last thing on its row: `$`, `#` or `%` alone or
+ * after a user, host or path (`user@host:~/work$`; never after a digit, so a footer's `37%` is none),
+ * `❯`, `➜` or `λ` alone or after a space, or `>` after a path (`C:\work>`). A shell draws its prompt
+ * from the row's first column, so a row that starts blank is none (an agent's own `❯` stands indented in
+ * its box or list). The blind road reads it as proof that a sign above it is an agent's leftover (M100
+ * spec 06, item 1, lead review of 9d61e5b41): an agent that exited leaves its last frame on screen, and
+ * the shell draws its prompt under it.
+ */
+const SHELL_PROMPT = /^(?=\S)(?:[$#%]|.*[\s\p{L}_~/\])][$#%]|(?:.*\s)?[❯➜λ]|.*\S>)$/u;
+
+/** The rows a profile names under its box: its footer rows (chrome rows included) and its hint rows. */
+function namedBelow(profile: Profile): readonly RegExp[] {
+  const below = profile.idle.volatile.below;
+  return [...(below.footerRows ?? []).map((row) => row.pattern), ...(below.hints ?? [])].map((source) => new RegExp(source, "u"));
+}
+
+/** Whether a row from `from` on is a shell prompt (SHELL_PROMPT). */
+function promptAfter(texts: readonly string[], from: number): boolean {
+  return texts.slice(from + 1).some((text) => text.trim().length > 0 && SHELL_PROMPT.test(text.trimEnd()));
+}
+
+/**
+ * Whether a box a profile's frame found is live (lead review of 9d61e5b41). The frame walk already holds
+ * the rows under the box to what that same profile allows there: its statusline and footer, its named
+ * footer and hint rows, a widget or a popup, at most `maxTailRows` of them. What marks the box as a
+ * leftover is the shell's own row: a shell prompt after the box's prompt row (inside an open box, which
+ * runs to the screen's end, or under the box), or the box's prompt row itself when it is the screen's
+ * last filled row and reads as a bare shell prompt.
+ *
+ * Measured on the fixtures on 2026-11-13: holding the rows under the box to the profile's named rows
+ * alone, as first asked, let 31 more live agent screens (statuslines, widgets and popups under the box)
+ * through to a blind Enter; this rule refuses every live screen the old one did.
+ */
+function liveFrame(texts: readonly string[], frame: Frame): boolean {
+  if (promptAfter(texts, frame.interior.prompt)) return false;
+  const last = texts.findLastIndex((text) => text.trim().length > 0);
+  return !(last === frame.interior.prompt && SHELL_PROMPT.test(texts[last]!));
+}
 
 /**
  * Why a pane the multiplexer cannot name (no profile, the blind road: a shell, ADR 0107) must not take a
  * blind send, or null when it may (M100 spec 06, item 1, approved 2026-11-13). Its rows are read under
- * every profile Collie ships, as data: an input box any profile's frame finds (`frame`), a strong modal
- * cue in the last rows or a lifted ask (`cue`), or a row near the bottom that a profile names as a footer
- * or hint row under its box (`footer`, `idle.volatile.below.footerRows` and `hints`). A shell prompt and
- * its output show none of these, so a shell keeps its one-tap send.
+ * every profile Collie ships, as data, and only a live sign counts (lead review of 9d61e5b41): an agent
+ * that exited leaves its last frame, footer and hints on screen with a shell prompt under them, and
+ * that pane is a shell.
+ *
+ * - `frame`: an input box a profile's frame finds, with no shell prompt in it or under it ({@link liveFrame}).
+ * - `cue`: a strong modal cue, or a lifted ask, with no shell prompt under its first row.
+ * - `footer`: the last filled rows are footer or hint rows one profile names
+ *   (`idle.volatile.below.footerRows` and `hints`), with nothing after them.
+ *
+ * The multiplexers' screen reads carry no cursor row (MuxGrid), so a cursor under the sign is not read.
  */
 export function blindRoadSign(rows: readonly FrameRow[], surface: Surface, profiles: Iterable<Profile> = loadProfiles().values()): "frame" | "cue" | "footer" | null {
   const all = [...profiles];
-  if (all.some((profile) => findInputFrame(rows, profile.idle) !== null)) return "frame";
-  if (askOf(surface.modal) !== null || readCuesFor(rows, null, null).strength === "strong") return "cue";
   const texts = rows.map((row) => rowText(row).trimEnd());
-  const filled = texts.filter((text) => text.trim().length > 0).slice(-BLIND_FOOTER_ROWS);
-  const footers = all.flatMap((profile) => {
-    const below = profile.idle.volatile.below;
-    return [...(below.footerRows ?? []).map((row) => row.pattern), ...(below.hints ?? [])].map((source) => new RegExp(source, "u"));
-  });
-  return filled.some((text) => footers.some((footer) => footer.test(text))) ? "footer" : null;
+  if (
+    all.some((profile) => {
+      const frame = findInputFrame(rows, profile.idle);
+      return frame !== null && liveFrame(texts, frame);
+    })
+  )
+    return "frame";
+  const cues = readCuesFor(rows, null, null);
+  const last = texts.findLastIndex((text) => text.trim().length > 0);
+  const cueFrom = cues.cues.length > 0 ? Math.min(...cues.cues.map((cue) => cue.row)) : last - 1;
+  if ((askOf(surface.modal) !== null || cues.strength === "strong") && !promptAfter(texts, cueFrom)) return "cue";
+  if (last < 0) return null;
+  return all.some((profile) => namedBelow(profile).some((row) => row.test(texts[last]!))) ? "footer" : null;
 }
 
 /** The refusal of a box that does not take keys, after its second S0 read (2026-10-25); the phone reads the same words. */
@@ -1260,24 +1308,56 @@ function modalAtBox(snap: Snap): boolean {
 
 /**
  * One bad frame per guard (M100 spec 03): the first read that shows a cue, a modal claim or rows under
- * the box that changed answers `wait`, and the guard's next read decides; it passes only on the whole
- * test against the stable read. A second such read answers `fail`, as the guard did before. A lifted ask
- * and a box that went away (S0 had one) answer `fail` at once: they are no single frame.
+ * the box that changed answers `wait`. After it the guard passes only on two reads in a row that pass
+ * the whole test against the stable read (lead review of 9d61e5b41): the first clean read answers
+ * `wait`, the second passes. A second bad read answers `fail`, as the guard did before. A lifted ask
+ * and a box that went away (S0 had one) answer `fail` at once: they are no single frame. A guard that
+ * never struck passes on its first passing read, with no read added.
  */
 interface Strike {
+  /** The guard's bad read: the one wait, or `fail`. */
   (snap: Snap): Verdict;
   /** Whether the one wait is spent. */
   readonly used: () => boolean;
+  /** Each read's verdict passes through here, last: after the strike, a pass needs a second pass in a row. */
+  readonly settle: (verdict: Verdict) => Verdict;
+  /** The last read answered `wait` for the strike or for its second clean read: a bound that ends on it ends as a failed read. */
+  readonly holding: () => boolean;
+  /** While holding: the clean reads still owed before a pass, two right after the strike, then one. */
+  readonly owed: () => number;
 }
 
 function oneStrike(s0: Snap): Strike {
   let spent = false;
+  let hitNow = false;
+  let clean = 0;
+  let held = false;
   const hit = (snap: Snap): Verdict => {
     if (spent || askOf(snap.surface.modal) !== null || (s0.frame !== null && snap.frame === null)) return "fail";
     spent = true;
+    hitNow = true;
     return "wait";
   };
-  return Object.assign(hit, { used: () => spent });
+  const settle = (verdict: Verdict): Verdict => {
+    const struck = hitNow;
+    hitNow = false;
+    held = false;
+    if (struck) {
+      clean = 0;
+      held = verdict === "wait";
+      return verdict;
+    }
+    if (!spent) return verdict;
+    if (verdict !== "pass") {
+      clean = 0;
+      return verdict;
+    }
+    clean += 1;
+    if (clean >= 2) return "pass";
+    held = true;
+    return "wait";
+  };
+  return Object.assign(hit, { used: () => spent, settle, holding: () => held, owed: () => (held ? 2 - clean : 0) });
 }
 
 /** Whether the framed cue read found cues and every one stands on a row of the frame itself: the box's own rows, not a list drawn under or over it. */
@@ -5720,8 +5800,6 @@ export class SendProtocol {
     // rows under the box is one frame (M100 spec 03): it waits for one more read, which must pass the
     // whole test. A second such read fails as before; a lifted ask or a box that went away fails at once.
     const strike = oneStrike(s0);
-    // The last verdict was such a wait: a bound that ends on it ends as the failed read it was.
-    let struckLast = false;
     // A message probe on a harness that takes a message during a turn: only the box and the rows under
     // it decide, as at S1 (2026-10-17). Commands and manual sends keep the full compare below.
     const boxOnly = s0.frame !== null && !state.command && !state.manual && queuesInTurn(state.match);
@@ -5761,16 +5839,19 @@ export class SendProtocol {
       if (landing === null) return "fail";
       return cueAppeared(s0, snap) ? strike(snap) : "pass";
     };
-    const shows = (snap: Snap): Verdict => {
-      const before = strike.used();
-      const verdict = judge(snap);
-      struckLast = verdict === "wait" && !before && strike.used();
-      return verdict;
-    };
-    // The bound ended on the read that waited for one more: that read failed, and fails the probe as before.
+    const shows = (snap: Snap): Verdict => strike.settle(judge(snap));
+    // The bound ended on the read that waited for one more (the strike, or the first clean read after
+    // it): the strike's read failed, and fails the probe as before.
     const struckEnd = (got: { snap: Snap | null; verdict: Verdict; reads: number }): { snap: Snap | null; verdict: Verdict; reads: number } =>
-      got.verdict === "wait" && struckLast ? { ...got, verdict: "fail" } : got;
-    let typed = struckEnd(await this.poll(state, "probe", { reads: budget.reads - 1, ms: budget.ms }, shows));
+      got.verdict === "wait" && strike.holding() ? { ...got, verdict: "fail" } : got;
+    let typed = await this.poll(state, "probe", { reads: budget.reads - 1, ms: budget.ms }, shows);
+    // The strike took one of this half's reads: the clean reads it still owes come out of the probe's
+    // time left, never past it. A probe with no strike reads exactly as before.
+    if (typed.verdict === "wait" && strike.holding()) {
+      const owed = await this.poll(state, "probe", { reads: strike.owed(), ms: budget.ms - (this.now() - typedFrom) }, shows);
+      typed = { snap: owed.snap ?? typed.snap, verdict: owed.verdict, reads: typed.reads + owed.reads };
+    }
+    typed = struckEnd(typed);
     let shownLate = false;
     if (!again && this.lateWindowOpens(state, s0, typed, probe)) {
       // The late-probe window (the header): a busy agent draws a typed key seconds late (#623).
@@ -5971,8 +6052,8 @@ export class SendProtocol {
     // The last read showed a command typed and a typeahead popup open under the box.
     let popupOpen = false;
     let earlier: Snap | null = null;
-    // One read that shows a cue is one frame, not yet a dialog (M100 spec 03): it waits for the next read,
-    // which must be clean and pass the whole test against S0 for Enter to go. A second cue read ends S1 as
+    // One read that shows a cue is one frame, not yet a dialog (M100 spec 03): after it, two reads in a
+    // row must be clean and pass the whole test against S0 for Enter to go. A second cue read ends S1 as
     // before, and so does a lifted ask or a box that went away, at once.
     const strike = oneStrike(s0);
     // A message into a framed box on a harness that takes one in a turn: only the box and what is under
@@ -6091,7 +6172,7 @@ export class SendProtocol {
       "s1",
       BOUNDS.s1,
       (snap) => {
-        const verdict = judge(snap);
+        const verdict = strike.settle(judge(snap));
         pending = settles && verdict === "pass";
         if (!pending) {
           candidate = null;
@@ -6113,6 +6194,8 @@ export class SendProtocol {
       this.turnAtS1(state, s0, result.snap);
       return result.snap;
     }
+    // The bound ended on the strike's read or on the first clean read after it: it ends as the cue read it was.
+    if (strike.holding()) why = "modal_cue";
     // S1's bound ran out on a read that passed but had no agreeing read after it: the rows under the box
     // moved, or no read was left. Enter is never pressed on a list that has not held still.
     const unsettled: boolean = pending; // set inside the poll's callback

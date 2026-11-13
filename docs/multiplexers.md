@@ -853,8 +853,10 @@ It says how a draft looks, which key sends, and which text the agent draws for a
 A plain shell and an agent with no profile still take sends. Collie cannot read their input box,
 so it types the text and presses Enter without a check, one line at a time. A password prompt
 on the last rows stops it: Collie types nothing there, and the phone offers Type. So do last rows
-that look like an agent's: an input box, a dialog's choices, or a footer row that an agent's
-profile names. Collie then cannot tell which agent runs there, so it types nothing either.
+that look like a live agent's: an input box, a dialog's choices, or a footer row that an agent's
+profile names as the last row. Collie then cannot tell which agent runs there, so it types nothing
+either. An agent that exited leaves its last screen behind with a shell prompt under it; that pane is
+a shell again, and the send goes through.
 
 | Agent | Enter during a turn | Send key | Probe | Checked against |
 | ----- | ------------------- | -------- | ----------------- | --------------- |

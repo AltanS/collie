@@ -8,10 +8,11 @@
 //  2. A text write that timed out is not "nothing typed": the box is read before the refusal.
 //  3. One frame with a cue does not end S1 or the probe; two do.
 //  4. S0 takes one more read when the multiplexer marks a read partial.
-//  7. The blind road (spec 06, item 1): a pane with no name whose last rows look like an agent's is refused.
+//  7. The blind road (spec 06, item 1): a pane with no name whose last rows look like a live agent's is
+//     refused; an agent's leftover screen with a shell prompt under it is not.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxUnconfirmed, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
@@ -21,7 +22,7 @@ import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
-import { blindRoadSign, RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
+import { blindRoadSign, BOUNDS, RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures");
@@ -36,6 +37,8 @@ const DIALOG_ROWS = ["", "❯ 1. Yes", "  2. Yes, and don't ask again this sessi
 
 interface Clock {
   now: number;
+  /** Added to the next sleep only: a test that runs a step's bound out between two reads. */
+  skip?: number;
 }
 
 /** How the pane answers one text write: `ok` lands it; `late` lands it and is not confirmed; `lost` and `half` are not confirmed and land none or half of it. */
@@ -157,7 +160,8 @@ function rig(harness = "claude") {
     generation: () => "gen-1",
     now,
     sleep: (ms: number) => {
-      clock.now += ms;
+      clock.now += ms + (clock.skip ?? 0);
+      clock.skip = 0;
       return Promise.resolve();
     },
   });
@@ -297,6 +301,91 @@ describe("3. one frame with a cue waits for one more read", () => {
   });
 });
 
+describe("3b. after a strike the guard passes only on two clean reads in a row (lead review of 9d61e5b41)", () => {
+  /** The guard's reads in order: `cue` draws the dialog, `clean` the screen as it is, `end` the screen as it is, and the guard's bound runs out before its next read. */
+  type Step = "cue" | "clean" | "end";
+  const script = (pane: ClaudePane, clock: Clock, at: (box: string) => boolean, steps: readonly Step[], boundMs = 0) => {
+    let n = 0;
+    pane.readHook = (_n, rows) => {
+      if (!at(pane.box)) return { rows };
+      const step = steps[n++] ?? "clean";
+      // The read itself is clean and judged; the wait before the next one runs past the guard's bound.
+      if (step === "end") clock.skip = boundMs;
+      return { rows: step === "cue" ? pane.withDialog() : rows };
+    };
+    return () => n;
+  };
+  const atS1 = (box: string): boolean => box === "hello there";
+  const atProbe = (box: string): boolean => box.length === 1;
+
+  const rigWithClock = () => {
+    const made = rig();
+    return { ...made, clock: made.pane.clock! };
+  };
+
+  test("S1 [cue, clean, clean]: sent, on the third read", async () => {
+    const { pane, send, clock } = rigWithClock();
+    const reads = script(pane, clock, atS1, ["cue", "clean", "clean"]);
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(reads()).toBe(3);
+  });
+
+  test("S1 [cue, clean, cue]: typed, not submitted (modal_cue), no Enter", async () => {
+    const { pane, send, clock } = rigWithClock();
+    script(pane, clock, atS1, ["cue", "clean", "cue"]);
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(enters(pane)).toBe(0);
+  });
+
+  test("S1 [cue, clean, bound ends]: typed, not submitted (modal_cue), no Enter", async () => {
+    const { pane, send, clock } = rigWithClock();
+    script(pane, clock, atS1, ["cue", "end"], BOUNDS.s1.ms);
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(enters(pane)).toBe(0);
+  });
+
+  test("the probe [cue, clean, clean]: sent", async () => {
+    const { pane, send, clock } = rigWithClock();
+    const reads = script(pane, clock, atProbe, ["cue", "clean", "clean"]);
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(reads()).toBe(3);
+  });
+
+  test("the probe [cue, clean, cue]: refused probe_failed, no Enter", async () => {
+    const { pane, send, clock } = rigWithClock();
+    script(pane, clock, atProbe, ["cue", "clean", "cue"]);
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(enters(pane)).toBe(0);
+  });
+
+  test("the probe [cue, clean, bound ends]: refused probe_failed, no Enter", async () => {
+    const { pane, send, clock } = rigWithClock();
+    script(pane, clock, atProbe, ["cue", "end"], BOUNDS.probe.ms);
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    // It ends on the probe's own read (the strike's frame), not later on the Backspace half's.
+    expect(answer.receipt?.detail).toStartWith("The probe character changed more than the box.");
+    expect(enters(pane)).toBe(0);
+  });
+
+  test("no strike: the probe and S1 each pass on their first passing read, the same read count as before the change", async () => {
+    const { pane, send, clock } = rigWithClock();
+    const probeReads = script(pane, clock, atProbe, []);
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(probeReads()).toBe(1);
+    expect(pane.reads).toBe(NO_STRIKE_READS);
+  });
+});
+
+/** The pane's reads for one clean send on this screen, on 9d61e5b41 (before two clean reads were asked): S0's two, the probe's one, Backspace's one, S1's one, S2's one. */
+const NO_STRIKE_READS = 6;
+
 describe("4. a partial read at S0 is read again", () => {
   test("the first read is partial, the next whole: sent", async () => {
     const { pane, send } = rig();
@@ -342,5 +431,67 @@ describe("7. the blind road: a pane with no name whose last rows look like an ag
     expect(blindRoadSign(shell.rows, shell.surface)).toBeNull();
     const prompts = read(["❯ cd project", "❯ ls", "notes.txt  src", "❯ git status", "On branch main", "❯ "].join("\n"));
     expect(blindRoadSign(prompts.rows, prompts.surface)).toBeNull();
+  });
+
+  // Only a live sign counts (lead review of 9d61e5b41): an agent that exited leaves its last frame, its
+  // footer and its hints on screen, and the shell draws its prompt under them.
+  const pane = (name: string): string => readFileSync(join(FIXTURES, "panes", name), "utf8");
+  const trimmed = (text: string): string => {
+    const rows = text.replace(/\r/gu, "").split("\n");
+    // A row of colour escapes alone is blank too.
+    const plain = (row: string): string => row.split(String.fromCharCode(27)).map((part) => part.replace(/^\[[0-9;]*m/u, "")).join("");
+    while (rows.length > 0 && plain(rows.at(-1)!).trim() === "") rows.pop();
+    return rows.join("\n");
+  };
+  /** Three shells' prompts, under an exit line or a blank row, as an agent's leftover screen gets them. */
+  const exited = (screen: string) => ({
+    bash: `${trimmed(screen)}\n\nuser@host:~/project$ `,
+    starship: `${trimmed(screen)}\nGoodbye.\n\n~/project on main\n❯ `,
+    fish: `${trimmed(screen)}\n\nuser@host ~/project> `,
+  });
+
+  test("real screens of an exited agent with the shell's prompt under them: none refuses", () => {
+    // pi's stock dialog as its last rows, then `$ ` (refused as a `cue` before); hermes's exit summary; Claude Code's resume line.
+    for (const name of ["pi--prose-quoted-dialog-then-shell.txt", "hermes--exited.txt", "claude--v2283-shell-after-exit.txt", "claude--v2283-shell-before-first-frame.txt"]) {
+      const screen = read(pane(name));
+      expect([name, blindRoadSign(screen.rows, screen.surface)]).toEqual([name, null]);
+    }
+  });
+
+  test("the reporter's Claude Code screen left on exit, its box, mode row and agents footer, with a prompt under it: no sign", () => {
+    const live = new ClaudePane(CAPTURE).rows().join("\n");
+    const left = read(`${live}\nResume this session with:\nclaude --resume 00000000-0000-4000-8000-000000000000\n\n~/project on main\n❯ `);
+    expect(blindRoadSign(left.rows, left.surface)).toBeNull();
+    const dialog = read([...new ClaudePane(CAPTURE).withDialog(), "", "user@host:~/project$ "].join("\n"));
+    expect(blindRoadSign(dialog.rows, dialog.surface)).toBeNull();
+  });
+
+  test("every idle screen of every shipped profile refuses, and the same screen with a shell prompt under it does not", () => {
+    const harnesses = new Set(["agy", "claude", "claude-lab", "codex", "cursor", "grok", "hermes", "kiro", "muse", "oc", "omp", "pi"]);
+    const idle = readdirSync(join(FIXTURES, "panes")).filter((name) => name.includes("idle") && harnesses.has(name.split("--")[0]!));
+    expect(idle.length).toBeGreaterThan(100);
+    const live: string[] = [];
+    const left: string[] = [];
+    for (const name of idle) {
+      const screen = read(pane(name));
+      if (blindRoadSign(screen.rows, screen.surface) === null) live.push(name);
+      for (const [shell, text] of Object.entries(exited(pane(name)))) {
+        const after = read(text);
+        const sign = blindRoadSign(after.rows, after.surface);
+        if (sign !== null) left.push(`${name} + ${shell}: ${sign}`);
+      }
+    }
+    expect(live).toEqual([]);
+    expect(left).toEqual([]);
+  });
+
+  test("a footer counts only as the last filled rows, a dialog only with no prompt under it", () => {
+    const footer = read(["$ make", "done", "", "  ● main", "  ◯ general-purpose  Loading", "", "user@host:~/project$ "].join("\n"));
+    expect(blindRoadSign(footer.rows, footer.surface)).toBeNull();
+    const dialog = read(["$ make", "Proceed?", ...DIALOG_ROWS.slice(1), "user@host:~/project$ "].join("\n"));
+    expect(blindRoadSign(dialog.rows, dialog.surface)).toBeNull();
+    // A footer's `37%` and an agent's indented `❯` are no prompt: the signs above them still count.
+    const percent = read(["$ make", "Proceed?", ...DIALOG_ROWS.slice(1), "context 37%"].join("\n"));
+    expect(blindRoadSign(percent.rows, percent.surface)).toBe("cue");
   });
 });

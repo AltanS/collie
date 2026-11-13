@@ -151,6 +151,15 @@ export interface MuxConformanceWorld {
    */
   pokeTopology?(): void;
   pokePane?(paneId: string): void;
+  /**
+   * The multiplexer's NEXT text write fails, once (M100 spec 03): `stall` is a call that gets no
+   * answer in time (a hung server, a full socket: what the adapter's own time budget turns into a
+   * time-out), `refuse` is the multiplexer answering no. The write after it goes through as usual.
+   *
+   * Optional only for a world whose adapter declares no `typeText`: there is no text write to fail.
+   * Every other world owes it, and {@link aWriteTimeOutIsNotARefusal} fails one that has none.
+   */
+  failNextWrite?(how: "stall" | "refuse"): void;
   /** Tear the world down. Idempotent. */
   close(): Promise<void>;
 }
@@ -1031,6 +1040,38 @@ const unsupportedKeysAreRefused: MuxWorldCheck = {
   },
 };
 
+/**
+ * A text write whose call timed out answers `unconfirmed`, never a refusal (M100 spec 03): the text may
+ * have reached the pane before the multiplexer stopped answering, and a refusal tells the Send Protocol
+ * that nothing was typed, so a person's Resend would type it twice. A write the multiplexer answered
+ * with a no stays a refusal, and is never `unconfirmed`: nothing landed, and a retry is safe.
+ */
+const aWriteTimeOutIsNotARefusal: MuxWorldCheck = {
+  name: "a text write whose call times out answers `unconfirmed`; one the multiplexer refuses answers a refusal",
+  run(fixture) {
+    return inWorld(fixture, async (world) => {
+      const { adapter } = world;
+      if (!declares(adapter, "typeText")) return [];
+      const fail = world.failNextWrite?.bind(world);
+      if (fail === undefined) return ["the adapter declares typeText, and the fixture's world cannot make a write time out or be refused (failNextWrite)"];
+      const pane = livePanes(await adapter.snapshot()).at(0);
+      if (pane === undefined) return ["the fixture's world has no pane to write to"];
+      const problems: string[] = [];
+      fail("stall");
+      const stalled = await adapter.typeText(pane.paneId, "stalled");
+      if (stalled.ok) problems.push("a text write whose call timed out answered ok");
+      if (!stalled.ok && stalled.reason !== "unconfirmed") problems.push(`a text write whose call timed out answered ${describeRefusal(stalled)}, not \`unconfirmed\``);
+      fail("refuse");
+      const refused = await adapter.typeText(pane.paneId, "refused");
+      if (refused.ok) problems.push("a text write the multiplexer refused answered ok");
+      if (!refused.ok && refused.reason === "unconfirmed") problems.push("a text write the multiplexer refused answered `unconfirmed`, as if it may have landed");
+      const after = await adapter.typeText(pane.paneId, "after");
+      if (!after.ok) problems.push(`the write after a failed one answered ${describeRefusal(after)}: the failure is one write's, not the pane's`);
+      return problems;
+    });
+  },
+};
+
 const aGonePaneAnswersGone: MuxWorldCheck = {
   name: "a call aimed at a pane that has gone away answers `gone`",
   run(fixture) {
@@ -1255,6 +1296,7 @@ export const MUX_WORLD_CHECKS: readonly MuxWorldCheck[] = [
   sendsKeepTheirOrder,
   unsupportedKeysAreRefused,
   aGonePaneAnswersGone,
+  aWriteTimeOutIsNotARefusal,
   revisionMovesWithContent,
   scrollbackReachesFurther,
   watchKeepsItsPromise,

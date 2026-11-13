@@ -39,6 +39,7 @@ import type {
   WireTab,
   WireWorkspace,
 } from "./client.ts";
+import { HerdrTimeout } from "./client.ts";
 
 const IDLE: AgentStatus = "idle";
 
@@ -73,6 +74,9 @@ function notFound(method: string, code: string, id: string): Error {
  * the real one, unmodified.
  */
 export class FakeHerdr implements HerdrRpc {
+  /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
+  nextWrite: "stall" | "refuse" | null = null;
+
   private workspaces: WireWorkspace[] = [];
   private tabs: WireTab[] = [];
   private panes: WirePane[] = [];
@@ -272,6 +276,10 @@ export class FakeHerdr implements HerdrRpc {
 
   async sendPaneText(paneId: string, text: string): Promise<void> {
     this.pane("pane.send_text", paneId);
+    const failing = this.nextWrite;
+    this.nextWrite = null;
+    if (failing === "stall") throw new HerdrTimeout("pane.send_text", 5000);
+    if (failing === "refuse") throw new Error("herdr pane.send_text: internal_error: the pane did not take the input");
     this.recorded.push({ paneId, kind: "text", payload: [text] });
   }
 
@@ -506,6 +514,9 @@ export const herdrConformanceFixture: MuxConformanceFixture = {
     return Promise.resolve({
       adapter,
       writes: () => fake.writes(),
+      failNextWrite: (how: "stall" | "refuse") => {
+        fake.nextWrite = how;
+      },
       reconnect: () => fake.reconnect(),
       restartMux: () => fake.restartMux(),
       renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),

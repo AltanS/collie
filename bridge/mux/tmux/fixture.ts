@@ -123,6 +123,9 @@ function said(stdout: string): TmuxRunResult {
  * the real one, unmodified.
  */
 export class FakeTmux implements TmuxExec {
+  /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
+  nextWrite: "stall" | "refuse" | null = null;
+
   private sessions: FakeSession[] = [];
   private windows: FakeWindow[] = [];
   private panes: FakePane[] = [];
@@ -349,6 +352,13 @@ export class FakeTmux implements TmuxExec {
     await Promise.resolve();
     if (!this.connected) return { code: 1, stdout: "", stderr: "error connecting to /fake/tmux-socket\n" };
     if (this.crashed) return { code: 1, stdout: "", stderr: "server exited unexpectedly\n" };
+    const failing = this.nextWrite;
+    if (failing !== null && args.includes("paste-buffer")) {
+      this.nextWrite = null;
+      // A stall is what SpawnTmuxExec reports when it kills a tmux on its budget; a refusal is tmux's own no.
+      if (failing === "stall") return { code: 143, stdout: "", stderr: "timed out after 5000ms", timedOut: true };
+      return { code: 1, stdout: "", stderr: "no space for new buffer\n" };
+    }
     let stdout = "";
     for (const group of splitCommands(args)) {
       this.ran.push([...group]);
@@ -801,6 +811,9 @@ export function tmuxWorld(fake: FakeTmux): MuxConformanceWorld {
   return {
     adapter,
     writes: () => fake.writes(),
+    failNextWrite: (how: "stall" | "refuse") => {
+      fake.nextWrite = how;
+    },
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),
     renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),

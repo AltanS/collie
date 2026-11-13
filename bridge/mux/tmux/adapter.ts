@@ -57,6 +57,7 @@ import {
   muxOk,
   muxRefused,
   muxUnsupported,
+  muxUnconfirmed,
   muxUnreachable,
   requestedCwd,
   type MuxAck,
@@ -397,7 +398,7 @@ export class TmuxMux implements MuxAdapter {
       "-s",
       "\n",
     ];
-    const result = await this.attemptRun(args, text);
+    const result = await this.attemptWrite(args, text, (detail) => textUnconfirmed(paneId, detail));
     return result.ok ? muxAck() : result;
   }
 
@@ -409,7 +410,7 @@ export class TmuxMux implements MuxAdapter {
   async pasteText(paneId: string, text: string): Promise<MuxAck> {
     if (text.length === 0) return muxAck();
     const args = ["load-buffer", "-b", TYPE_BUFFER, "-", ";", "paste-buffer", "-d", "-p", "-b", TYPE_BUFFER, "-t", paneId];
-    const result = await this.attemptRun(args, text);
+    const result = await this.attemptWrite(args, text, (detail) => textUnconfirmed(paneId, detail));
     return result.ok ? muxAck() : result;
   }
 
@@ -438,12 +439,14 @@ export class TmuxMux implements MuxAdapter {
       translated.push(result.key);
     }
     if (translated.length === 0) return muxAck();
-    const result = await this.attemptRun(sendKeysArgs(paneId, translated, false));
+    const unconfirmed = (detail: string): MuxRefusalOutcome => keysUnconfirmed(paneId, detail);
+    const result = await this.attemptWrite(sendKeysArgs(paneId, translated, false), undefined, unconfirmed);
     if (result.ok) return muxAck();
     if (result.reason !== "refused" || !saysReadOnlyClient(result.detail)) return result;
     // tmux 3.7 picked a read-only client (Collie's own watcher) as the target client and sent
-    // nothing, so asking again with no client named cannot double-send.
-    const retry = await this.attemptRun(sendKeysArgs(paneId, translated, true));
+    // nothing, so asking again with no client named cannot double-send. A send that timed out never
+    // gets here: it may have landed, and asking again could press the keys twice.
+    const retry = await this.attemptWrite(sendKeysArgs(paneId, translated, true), undefined, unconfirmed);
     return retry.ok ? muxAck() : retry;
   }
 
@@ -671,6 +674,24 @@ export class TmuxMux implements MuxAdapter {
     } catch (err) {
       return muxUnreachable(err instanceof Error ? err.message : String(err));
     }
+    if (result.timedOut === true) return muxUnreachable(`tmux ${args[0] ?? ""}: ${result.stderr}`);
+    return result.code === 0 ? muxOk(result) : refusalFor(result);
+  }
+
+  /**
+   * One run that writes into a pane (M100 spec 03). A run killed on its time budget is no refusal:
+   * tmux may have taken the text or the keys before it hung, so it answers `unconfirmed` with the
+   * caller's sentence, and the Send Protocol's next read decides. Every other answer is
+   * {@link attemptRun}'s.
+   */
+  private async attemptWrite(args: readonly string[], stdin: string | undefined, unconfirmed: (detail: string) => MuxRefusalOutcome): Promise<MuxOutcome<TmuxRunResult>> {
+    let result: TmuxRunResult;
+    try {
+      result = await this.exec.run(args, stdin);
+    } catch (err) {
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    if (result.timedOut === true) return unconfirmed(`tmux ${args[0] ?? ""}: ${result.stderr}`);
     return result.code === 0 ? muxOk(result) : refusalFor(result);
   }
 
@@ -703,6 +724,16 @@ export class TmuxMux implements MuxAdapter {
  * that has gone away, `no server running on …` for a tmux that is not there, and anything else —
  * `duplicate session: other` — is tmux understanding and saying no.
  */
+/** A text write tmux did not answer in time (M100 spec 03): it may still land. */
+function textUnconfirmed(paneId: string, detail: string): MuxRefusalOutcome {
+  return muxUnconfirmed(`tmux did not confirm the text written to ${paneId} in time (${detail}). It may still arrive, so it was not written again.`);
+}
+
+/** Keys tmux did not answer in time (M100 spec 03): they may still land. */
+function keysUnconfirmed(paneId: string, detail: string): MuxRefusalOutcome {
+  return muxUnconfirmed(`tmux did not confirm the keys on ${paneId} in time (${detail}). They may still arrive, so they were not sent again.`);
+}
+
 function refusalFor(result: TmuxRunResult): MuxRefusalOutcome {
   const detail = (result.stderr.trim() || result.stdout.trim()) || `tmux exited ${String(result.code)}`;
   if (saysMissing(detail)) return muxGone(detail);

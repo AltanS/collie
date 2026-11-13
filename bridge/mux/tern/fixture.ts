@@ -2,7 +2,7 @@
 
 import type { MuxConformanceFixture, MuxConformanceWorld, MuxWrite } from "../conformance.ts";
 import { TernMux } from "./adapter.ts";
-import type { TernExec, TernRunResult, TernStreamClient, TernStreamHandlers } from "./exec.ts";
+import { TIMED_OUT_CODE, timedOutMessage, type TernExec, type TernRunResult, type TernStreamClient, type TernStreamHandlers } from "./exec.ts";
 import type { TernBlock, TernLsResult, TernSession, TernTab } from "./protocol.ts";
 
 const GREEN = "\u001b[32m";
@@ -44,6 +44,9 @@ interface FakeListener {
 }
 
 export class FakeTern implements TernExec {
+  /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
+  nextWrite: "stall" | "refuse" | null = null;
+
   private sessions = new Map<number, FakeSession>();
   private tabs = new Map<number, FakeTab>();
   private panes = new Map<number, FakePane>();
@@ -149,6 +152,13 @@ export class FakeTern implements TernExec {
       return { code: 1, stdout: "", stderr: "the session daemon did not answer" };
     }
     const verb = args[0];
+    const failing = this.nextWrite;
+    if (failing !== null && verb === "send" && (args[2] === "text" || args[2] === "paste")) {
+      this.nextWrite = null;
+      // A stall is what SpawnTernExec reports when it kills a tern on its budget; a refusal is tern's own no.
+      if (failing === "stall") return { code: TIMED_OUT_CODE, stdout: "", stderr: timedOutMessage(args, 5000) };
+      return { code: 1, stdout: "", stderr: "tern send: the session daemon refused the input" };
+    }
 
     if (verb === "ls") {
       return { code: 0, stdout: JSON.stringify(this.buildLsResult()), stderr: "" };
@@ -504,6 +514,9 @@ export function ternWorld(fake: FakeTern): MuxConformanceWorld {
   return {
     adapter,
     writes: () => fake.writes(),
+    failNextWrite: (how: "stall" | "refuse") => {
+      fake.nextWrite = how;
+    },
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),
     renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),

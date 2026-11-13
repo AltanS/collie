@@ -190,6 +190,8 @@ function notFound(address: string): HcError {
 
 /** A herdr-core socket, in memory, answering as the real one does. */
 export class FakeHcCore implements HcRpc {
+  /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
+  nextWrite: "stall" | "refuse" | null = null;
   private terminals: FakeTerminal[] = [];
   private layout: WireLayoutSpace[] = [];
   private readonly subscribers = new Set<Subscriber>();
@@ -576,6 +578,10 @@ export class FakeHcCore implements HcRpc {
     this.deliverDueKeys();
     const terminal = this.known(address);
     this.assertTakesInput(terminal, "terminal.attach");
+    const failing = this.nextWrite;
+    this.nextWrite = null;
+    if (failing === "stall") throw new HcTimeout("terminal.attach", 5000);
+    if (failing === "refuse") throw new HcError("internal", "terminal.attach: the terminal did not take the input");
     if (this.hold !== null) this.hold.lastWriteAt = this.hold.clock.now();
     this.recorded.push({ paneId: address, kind: "text", payload: [text] });
     // Raw LF and DC1 are the Ctrl+J/Ctrl+Q inputs whose real OMP and Claude encodings were verified.

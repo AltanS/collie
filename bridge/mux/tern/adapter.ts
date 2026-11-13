@@ -8,6 +8,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   muxUnsupported,
   requestedCwd,
@@ -31,6 +32,7 @@ import {
 import {
   resolveTernBinary,
   SpawnTernExec,
+  TIMED_OUT_CODE,
   type TernExec,
   type TernRunResult,
 } from "./exec.ts";
@@ -169,7 +171,9 @@ export class TernMux implements MuxAdapter {
     // Probed on 0.4.5 for `text`: without it `--help` printed Tern's help, and with it `--help` and
     // `- item` were typed as written (PR 356). `paste` takes the same form.
     const args = ["send", paneId, text.includes("\n") ? "paste" : "text", "--", text];
-    const res = await this.attemptRun(args);
+    const res = await this.attemptWrite(args, (detail) =>
+      muxUnconfirmed(`Tern did not confirm the text written to ${paneId} in time (${detail}). It may still arrive, so it was not written again.`),
+    );
     if (!res.ok) return res;
     return muxAck();
   }
@@ -189,7 +193,9 @@ export class TernMux implements MuxAdapter {
       }
       translated.push(res.key);
     }
-    const res = await this.attemptRun(["send", paneId, "keys", ...translated]);
+    const res = await this.attemptWrite(["send", paneId, "keys", ...translated], (detail) =>
+      muxUnconfirmed(`Tern did not confirm the keys on ${paneId} in time (${detail}). They may still arrive, so they were not sent again.`),
+    );
     if (!res.ok) return res;
     return muxAck();
   }
@@ -314,6 +320,23 @@ export class TernMux implements MuxAdapter {
     } catch (err) {
       return muxUnreachable(err instanceof Error ? err.message : String(err));
     }
+    return result.code === 0 ? muxOk(result) : refusalFor(result);
+  }
+
+  /**
+   * One run that writes into a pane (M100 spec 03). A tern killed on its time budget
+   * ({@link TIMED_OUT_CODE}) is no refusal: it may have taken the text or the keys before it hung, so it
+   * answers `unconfirmed` with the caller's sentence, and the Send Protocol's next read decides. Every
+   * other answer is {@link attemptRun}'s.
+   */
+  private async attemptWrite(args: readonly string[], unconfirmed: (detail: string) => MuxRefusalOutcome): Promise<MuxOutcome<TernRunResult>> {
+    let result: TernRunResult;
+    try {
+      result = await this.exec.run(args);
+    } catch (err) {
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    if (result.code === TIMED_OUT_CODE) return unconfirmed(result.stderr.trim() || `tern exited ${String(result.code)}`);
     return result.code === 0 ? muxOk(result) : refusalFor(result);
   }
 

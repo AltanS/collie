@@ -521,3 +521,34 @@ describe("whether a space has a name of its own (M98)", () => {
     expect((await paneOf(adapter, created.value.paneId)).spaceNamed).toBe(true);
   });
 });
+
+// M100 spec 03: a tmux killed on its time budget (SpawnTmuxExec marks the run `timedOut`) may have taken
+// the text or the keys before it hung, so a write answers `unconfirmed` and is never asked again; a read
+// answers unreachable. A read-only-client refusal is still asked once more, a time-out never.
+describe("TmuxMux when a run is killed on its budget", () => {
+  const hung = (calls: string[][]): TmuxExec => ({
+    run: (args) => {
+      calls.push([...args]);
+      return Promise.resolve({ code: 143, stdout: "", stderr: "timed out after 5000ms", timedOut: true });
+    },
+    control: () => ({ kill: () => undefined }),
+  });
+
+  test("text, a paste and keys answer unconfirmed, and the keys are sent once", async () => {
+    const calls: string[][] = [];
+    const adapter = new TmuxMux(hung(calls));
+    const typed = await adapter.typeText("%3", "hello");
+    expect(typed).toMatchObject({ ok: false, reason: "unconfirmed" });
+    if (!typed.ok) expect(typed.detail).toContain("It may still arrive, so it was not written again.");
+    expect(await adapter.pasteText("%3", "hello")).toMatchObject({ ok: false, reason: "unconfirmed" });
+    const before = calls.length;
+    const keyed = await adapter.writeKeys("%3", ["Enter"]);
+    expect(keyed).toMatchObject({ ok: false, reason: "unconfirmed" });
+    if (!keyed.ok) expect(keyed.detail).toContain("They may still arrive, so they were not sent again.");
+    expect(calls.length - before).toBe(1);
+  });
+
+  test("a read answers unreachable", async () => {
+    expect(await new TmuxMux(hung([])).readGrid("%3", { scope: "viewport", lines: 10, styling: "strip" })).toMatchObject({ ok: false, reason: "unreachable" });
+  });
+});

@@ -131,14 +131,27 @@ describe("TernMux when tern does not answer", () => {
     for (const answer of answers) expect(answer).toMatchObject({ ok: false, reason: "unreachable" });
   });
 
-  test("a call killed on its budget, and a missing binary, are unreachable", async () => {
-    for (const code of [143, 127]) {
-      const gone: TernExec = {
-        run: () => Promise.resolve({ code, stdout: "", stderr: "tern did not answer `send` within 5000ms and was killed" }),
-        events: () => ({ kill: () => undefined }),
-      };
-      expect(await new TernMux(gone).typeText("101", "hi")).toMatchObject({ ok: false, reason: "unreachable" });
-    }
+  const answering = (code: number): TernExec => ({
+    run: () => Promise.resolve({ code, stdout: "", stderr: "tern did not answer `send` within 5000ms and was killed" }),
+    events: () => ({ kill: () => undefined }),
+  });
+
+  test("a missing binary is unreachable, for a write too", async () => {
+    expect(await new TernMux(answering(127)).typeText("101", "hi")).toMatchObject({ ok: false, reason: "unreachable" });
+    expect(await new TernMux(answering(127)).writeKeys("101", ["Enter"])).toMatchObject({ ok: false, reason: "unreachable" });
+  });
+
+  // M100 spec 03: tern may have taken the text or the keys before it hung, so a write killed on its
+  // budget is `unconfirmed` (the Send Protocol's next read decides), never a refusal; a read stays unreachable.
+  test("a write killed on its budget is unconfirmed, text and keys alike; a read is unreachable", async () => {
+    const hung = new TernMux(answering(143));
+    const typed = await hung.typeText("101", "hi");
+    expect(typed).toMatchObject({ ok: false, reason: "unconfirmed" });
+    if (!typed.ok) expect(typed.detail).toContain("It may still arrive, so it was not written again.");
+    const keyed = await hung.writeKeys("101", ["Enter"]);
+    expect(keyed).toMatchObject({ ok: false, reason: "unconfirmed" });
+    if (!keyed.ok) expect(keyed.detail).toContain("They may still arrive, so they were not sent again.");
+    expect(await hung.readLogicalText("101", 10)).toMatchObject({ ok: false, reason: "unreachable" });
   });
 });
 

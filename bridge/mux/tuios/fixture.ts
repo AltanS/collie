@@ -22,6 +22,7 @@ import type { MuxConformanceFixture, MuxConformanceWorld, MuxWrite } from "../co
 import { TuiosMux } from "./adapter.ts";
 import {
   TuiosError,
+  TuiosTimeout,
   type CaptureRequest,
   type EventStream,
   type SubscribeOptions,
@@ -88,6 +89,9 @@ function failure(verb: string, code: string, detail: string): TuiosError {
 
 /** A tuios daemon's verb socket, in memory, answering as the real one does. */
 export class FakeTuios implements TuiosRpc {
+  /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
+  nextWrite: "stall" | "refuse" | null = null;
+
   private sessions: FakeSession[] = [];
   private windows: FakeWindow[] = [];
   private readonly agents = new Map<string, FakeAgent>();
@@ -287,6 +291,10 @@ export class FakeTuios implements TuiosRpc {
 
   async sendText(sessionName: string, windowId: string, text: string): Promise<void> {
     this.window("send-text", sessionName, windowId);
+    const failing = this.nextWrite;
+    this.nextWrite = null;
+    if (failing === "stall") throw new TuiosTimeout("send-text", 5000);
+    if (failing === "refuse") throw failure("send-text", "internal_error", "the window did not take the input");
     this.recorded.push({ paneId: windowId, kind: "text", payload: [text] });
   }
 
@@ -471,6 +479,9 @@ export function tuiosWorld(fake: FakeTuios): MuxConformanceWorld {
   return {
     adapter: new TuiosMux(fake),
     writes: () => fake.writes(),
+    failNextWrite: (how: "stall" | "refuse") => {
+      fake.nextWrite = how;
+    },
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),
     renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),

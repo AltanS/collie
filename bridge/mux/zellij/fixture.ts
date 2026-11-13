@@ -33,7 +33,7 @@
 import type { JsonObject } from "../../json.ts";
 import type { MuxConformanceFixture, MuxConformanceWorld, MuxWrite } from "../conformance.ts";
 import { ZellijMux } from "./adapter.ts";
-import type { ZellijExec, ZellijRunResult, ZellijStreamClient, ZellijStreamHandlers } from "./exec.ts";
+import { TIMED_OUT_CODE, timedOutMessage, type ZellijExec, type ZellijRunResult, type ZellijStreamClient, type ZellijStreamHandlers } from "./exec.ts";
 import { terminalPaneId } from "./protocol.ts";
 import { ZellijSessionBinding } from "./session.ts";
 
@@ -98,6 +98,9 @@ function said(stdout: string): ZellijRunResult {
  * adapter under test is the real one, unmodified.
  */
 export class FakeZellij implements ZellijExec {
+  /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
+  nextWrite: "stall" | "refuse" | null = null;
+
   private tabs: FakeTab[] = [];
   private panes: FakePane[] = [];
   private readonly streams = new Set<FakeStream>();
@@ -303,6 +306,13 @@ export class FakeZellij implements ZellijExec {
     const paneId = flagValue(args, "--pane-id") ?? "";
     const pane = this.paneAt(paneId);
     if (pane === undefined) return said("");
+    const failing = this.nextWrite;
+    if (failing !== null) {
+      this.nextWrite = null;
+      // A stall is what SpawnZellijExec reports when it kills a zellij on its budget; a refusal is zellij's own no.
+      if (failing === "stall") return { code: TIMED_OUT_CODE, stdout: "", stderr: timedOutMessage(args, 5000) };
+      return { code: 1, stdout: "", stderr: "Error: the pane did not take the input\n" };
+    }
     this.recorded.push({ paneId, kind: "text", payload: [afterDoubleDash(args).join(" ")] });
     return said("");
   }
@@ -516,6 +526,9 @@ export function zellijWorld(fake: FakeZellij): ZellijFixtureWorld {
     world: {
       adapter,
       writes: () => fake.writes(),
+      failNextWrite: (how: "stall" | "refuse") => {
+        fake.nextWrite = how;
+      },
       reconnect: () => fake.reconnect(),
       restartMux: () => fake.restartMux(),
       renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
