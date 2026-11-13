@@ -522,14 +522,14 @@ describe("whether a space has a name of its own (M98)", () => {
   });
 });
 
-// M100 spec 03: a tmux killed on its time budget (SpawnTmuxExec marks the run `timedOut`) may have taken
+// M100 spec 03: a tmux killed on its time budget (SpawnTmuxExec names the kill with TIMED_OUT_CODE) may have taken
 // the text or the keys before it hung, so a write answers `unconfirmed` and is never asked again; a read
 // answers unreachable. A read-only-client refusal is still asked once more, a time-out never.
 describe("TmuxMux when a run is killed on its budget", () => {
   const hung = (calls: string[][]): TmuxExec => ({
     run: (args) => {
       calls.push([...args]);
-      return Promise.resolve({ code: 143, stdout: "", stderr: "timed out after 5000ms", timedOut: true });
+      return Promise.resolve({ code: 143, stdout: "", stderr: "timed out after 5000ms" });
     },
     control: () => ({ kill: () => undefined }),
   });

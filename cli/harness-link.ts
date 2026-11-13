@@ -43,6 +43,35 @@ export function isLinkHarness(word: string): word is LinkHarness {
   return LINK_HARNESSES.some((harness) => harness === word);
 }
 
+/**
+ * The word a person reads for the piece Collie installs into a harness. All four are a plugin today.
+ * Protocol and code say "part" (`bridge/inside/WIRE.md`); a sentence for a person never does. A harness
+ * whose own word differs sets it here when its piece ships, and no sentence changes.
+ */
+export const INSTALL_WORD = {
+  claude: "plugin",
+  pi: "plugin",
+  omp: "plugin",
+  opencode: "plugin",
+} satisfies Readonly<Record<LinkHarness, string>>;
+
+/** The distinct install words of some harnesses, in order, for a sentence about several at once. */
+function installWords(harnesses: readonly LinkHarness[]): string[] {
+  return [...new Set(harnesses.map((harness) => INSTALL_WORD[harness]))];
+}
+
+/** The words for a sentence about every harness: "plugin", or "plugin or extension" once two differ. */
+export function installWordAny(harnesses: readonly LinkHarness[] = LINK_HARNESSES): string {
+  return installWords(harnesses).join(" or ");
+}
+
+/** The same, plural: "plugins", or "plugins and extensions". */
+export function installWordsPlural(harnesses: readonly LinkHarness[] = LINK_HARNESSES): string {
+  return installWords(harnesses)
+    .map((word) => `${word}s`)
+    .join(" and ");
+}
+
 /** The marketplace the Claude mod is registered from, and the plugin id Claude Code lists. */
 export const CLAUDE_MARKETPLACE = "collie-inside";
 export const CLAUDE_PLUGIN_ID = `${CLAUDE_MOD_NAME}@${CLAUDE_MARKETPLACE}`;
@@ -227,28 +256,28 @@ export function cmdHarnessLink(deps: HarnessLinkDeps, harness: LinkHarness): num
   }
   const wrote = writePart(deps, harness);
   if (wrote.kind === "no-part") {
-    io.err(`error: this Collie has no part for ${harness} yet.`);
+    io.err(`error: this Collie has no ${INSTALL_WORD[harness]} for ${harness} yet.`);
     return EXIT.FAIL;
   }
   if (wrote.kind === "foreign") {
     const where = harness === "claude" ? claudePartDir(deps.ctx) : filePartPath(deps.ctx, harness);
-    io.err(`error: ${where} is not a Collie part. Leaving it alone.`);
+    io.err(`error: ${where} is not a Collie ${INSTALL_WORD[harness]}. Leaving it alone.`);
     return EXIT.FAIL;
   }
-  if (wrote.kind === "kept-newer") io.out(`kept the part ${wrote.version ?? "?"} that is there: it is newer than this Collie (${ourVersion(deps)}).`);
+  if (wrote.kind === "kept-newer") io.out(`kept the ${INSTALL_WORD[harness]} ${wrote.version ?? "?"} that is there: it is newer than this Collie (${ourVersion(deps)}).`);
   if (harness === "claude") {
     const failed = registerClaude(deps);
     if (failed !== null) {
-      io.err(`error: Claude Code did not register the part: ${failed}`);
-      io.err("  The part is written but not linked. Run `collie harness link claude` again.");
+      io.err(`error: Claude Code did not register the ${INSTALL_WORD[harness]}: ${failed}`);
+      io.err(`  The ${INSTALL_WORD[harness]} is written but not linked. Run \`collie harness link claude\` again.`);
       return EXIT.FAIL;
     }
   }
   const version = wrote.version ?? ourVersion(deps);
   writeRecord(deps, harness, version);
-  io.out(`linked ${harness}: part ${version}.`);
+  io.out(`linked ${harness}: ${INSTALL_WORD[harness]} ${version}.`);
   if (harness === "claude") io.out("  A running Claude Code session takes it after /reload-plugins; a new session takes it at start.");
-  if (blockedByPolicy(deps, harness)) io.out("  note: a managed setting (allowManagedHooksOnly) stops the hooks of user plugins here, so the part stays idle.");
+  if (blockedByPolicy(deps, harness)) io.out(`  note: a managed setting (allowManagedHooksOnly) stops the hooks of user plugins here, so the ${INSTALL_WORD[harness]} stays idle.`);
   return EXIT.OK;
 }
 
@@ -264,7 +293,7 @@ function unlinkOne(deps: HarnessLinkDeps, harness: LinkHarness): Unlinked {
     // missing folder is one no verb of ours can see again. A rerun of `unlink` finishes the job.
     if (ours && note === null) deps.files.removeTree(claudePartDir(deps.ctx));
     if (note === null) return { removed: had || ours, note: null };
-    return { removed: had || ours, note: ours ? `${note}; the part's folder is kept, run \`collie harness unlink claude\` again` : note };
+    return { removed: had || ours, note: ours ? `${note}; the ${INSTALL_WORD[harness]}'s folder is kept, run \`collie harness unlink claude\` again` : note };
   }
   const ours = partOnDisk(deps, harness) !== null;
   if (ours) deps.files.remove(filePartPath(deps.ctx, harness));
@@ -273,12 +302,12 @@ function unlinkOne(deps: HarnessLinkDeps, harness: LinkHarness): Unlinked {
 
 /** Take the mod's registration away; a warning when any step failed or could not be checked. */
 function unregisterClaude(deps: HarnessLinkDeps): string | null {
-  if (deps.exec.which("claude") === null) return "claude is not on PATH, so its plugin list still names the part";
+  if (deps.exec.which("claude") === null) return `claude is not on PATH, so its plugin list still names the ${INSTALL_WORD.claude}`;
   const plugins = claude(deps, ["list", "--json"]);
   if (!plugins.ok) return `Claude Code did not list its plugins: ${plugins.why}`;
   if (plugins.out.includes(CLAUDE_PLUGIN_ID)) {
     const gone = claude(deps, ["uninstall", CLAUDE_PLUGIN_ID, "--scope", "user", "--json"]);
-    if (!gone.ok) return `Claude Code did not uninstall the part: ${gone.why}`;
+    if (!gone.ok) return `Claude Code did not uninstall the ${INSTALL_WORD.claude}: ${gone.why}`;
   }
   const markets = claude(deps, ["marketplace", "list", "--json"]);
   if (!markets.ok) return `Claude Code did not list its marketplaces: ${markets.why}`;
@@ -326,13 +355,13 @@ export function linkStateWords(harness: LinkHarness, state: LinkState): string {
     case "not-linked":
       return "not linked";
     case "linked":
-      return `linked, part ${state.version}`;
+      return `linked, ${INSTALL_WORD[harness]} ${state.version}`;
     case "older":
-      return `linked, part ${state.version} is older than this Collie (${state.ours}): run \`collie harness link ${harness}\``;
+      return `linked, ${INSTALL_WORD[harness]} ${state.version} is older than this Collie (${state.ours}): run \`collie harness link ${harness}\``;
     case "missing":
-      return `linked, but the part is gone: run \`collie harness link ${harness}\``;
+      return `linked, but the ${INSTALL_WORD[harness]} is gone: run \`collie harness link ${harness}\``;
     case "blocked":
-      return `linked, part ${state.version}, blocked by policy: a managed setting (allowManagedHooksOnly) stops the hooks of user plugins`;
+      return `linked, ${INSTALL_WORD[harness]} ${state.version}, blocked by policy: a managed setting (allowManagedHooksOnly) stops the hooks of user plugins`;
   }
 }
 
@@ -353,8 +382,8 @@ export function cmdHarnessSync(deps: HarnessLinkDeps): number {
     const wrote = writePart(deps, harness);
     if (wrote.kind === "written" && wrote.version !== null) {
       writeRecord(deps, harness, wrote.version);
-      deps.io.out(`harness sync: ${harness} part ${wrote.version}`);
-    } else if (wrote.kind === "kept-newer") deps.io.out(`harness sync: ${harness} kept the newer part ${wrote.version ?? "?"}`);
+      deps.io.out(`harness sync: ${harness} ${INSTALL_WORD[harness]} ${wrote.version}`);
+    } else if (wrote.kind === "kept-newer") deps.io.out(`harness sync: ${harness} kept the newer ${INSTALL_WORD[harness]} ${wrote.version ?? "?"}`);
   }
   return EXIT.OK;
 }
@@ -397,9 +426,9 @@ export function linkFindings(deps: Pick<HarnessLinkDeps, "ctx" | "files" | "mana
     const words = linkStateWords(harness, state);
     if (state.kind === "not-linked") {
       const built = harness === "claude" || (deps.parts ?? BUILT_PARTS)[harness] !== null;
-      return ok(check, built ? `not linked: \`collie harness link ${harness}\` lets Collie send to it by data` : "not linked: no part for it in this build yet");
+      return ok(check, built ? `not linked: \`collie harness link ${harness}\` lets Collie send to it by data` : `not linked: no ${INSTALL_WORD[harness]} for it in this build yet`);
     }
-    if (state.kind === "older" || state.kind === "missing") return warn(check, words, `\`collie harness link ${harness}\` writes this build's part`);
+    if (state.kind === "older" || state.kind === "missing") return warn(check, words, `\`collie harness link ${harness}\` writes this build's ${INSTALL_WORD[harness]}`);
     if (state.kind === "blocked") return warn(check, words, "ask the administrator to allow the hooks of user plugins, or leave it: Collie uses the screen path");
     const version = harnessVersion(harness);
     if (harness === "claude" && version !== null && compareSemver(version, CLAUDE_DATA_PATH_FROM) < 0) {
@@ -424,8 +453,8 @@ function folderFinding(deps: Pick<HarnessLinkDeps, "ctx" | "files">): Finding {
   const mine = partsRoot(deps.ctx.env, deps.ctx.home);
   const text = deps.files.read(join(hookTargetsDir(deps.ctx.env, deps.ctx.home), hookTargetFileName(deps.ctx.stateDir)));
   const record = text === null ? null : parseHookTarget(text);
-  if (record === null) return skipped("link-folder", "the bridge is not running: it reads the parts folder at its start", "`collie start`");
-  if (record.parts === undefined || record.parts === null) return skipped("link-folder", "the running bridge does not name its parts folder (an older build)", "`collie restart` after the update");
-  if (record.parts === mine) return ok("link-folder", `the bridge reads the same parts folder: ${mine}`);
+  if (record === null) return skipped("link-folder", "the bridge is not running: it reads the plugins folder at its start", "`collie start`");
+  if (record.parts === undefined || record.parts === null) return skipped("link-folder", "the running bridge does not name its plugins folder (an older build)", "`collie restart` after the update");
+  if (record.parts === mine) return ok("link-folder", `the bridge reads the same plugins folder: ${mine}`);
   return warn("link-folder", `the bridge reads ${record.parts}, this shell links into ${mine}: the bridge does not see the link`, "`collie restart` writes the folder into the service and restarts the bridge");
 }

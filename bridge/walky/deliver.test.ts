@@ -14,7 +14,9 @@ import { RowRing, SendProtocol, SessionLocks } from "../surface/protocol.ts";
 import { SurfaceShadow } from "../surface/shadow.ts";
 import type { AgentView } from "../types.ts";
 import { RequestStore } from "../surface/requests.ts";
+import { readFileSync } from "node:fs";
 import { DATA_PANE, dataRig } from "../inside/data-rig.ts";
+import { WORD_FRESH_MS } from "../inside/hub.ts";
 import { releasesHeld } from "../inside/wake.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, HELD_LIMIT_MS, HELD_POLL_MS, isResting, REST_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
@@ -125,7 +127,7 @@ describe("one message to one pane", () => {
     expect(r.host.sends).toHaveLength(1);
     expect(r.host.sends[0]!.text.includes("\n")).toBe(false);
     expect(r.host.sends[0]!.text.includes("the body")).toBe(false);
-    expect(r.host.sends[0]!.text).toContain("Read it: collie walky inbox wt_aaaaaaaaaaa1.");
+    expect(r.host.sends[0]!.text).toContain("Read it: collie walky inbox wt_aaaaaaaaaaa1");
     expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]?.state).toBe("delivered");
     expect(r.service.inbox("main", "w1:p2", "aaaa", false).map((entry) => entry.body)).toEqual(["the body"]);
   });
@@ -661,7 +663,8 @@ describe("a draft holds the message (M62 spec 02)", () => {
     const accepted = r.clock;
     await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
     await r.service.deliverer.settled();
-    expect(r.host.holds).toEqual([{ draftHolds: true, holdUntil: accepted + HELD_LIMIT_MS }]);
+    // The hold names its message, so the hold row the phone reads says whose one typed line it is.
+    expect(r.host.holds).toEqual([{ draftHolds: true, holdUntil: accepted + HELD_LIMIT_MS, walky: "wt_aaaaaaaaaaa1" }]);
   });
 
   test("while held the receipt stays `accepted` with what holds it, and moves with it: draft, turn, then typed", async () => {
@@ -890,7 +893,7 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
     const host: WalkyHost = {
       panes: () => [pane("%1", { harness: "claude", instance: state.instance })],
       send: async (target, sendId, text, hold) => {
-        const answer = await protocol.handle(hold === undefined ? { id: sendId, text, mode: "send" } : { id: sendId, text, mode: "send", draftHolds: true, holdUntil: hold.holdUntil }, { session: target.session, paneId: target.paneId, harness: "claude" });
+        const answer = await protocol.handle(hold === undefined ? { id: sendId, text, mode: "send" } : { id: sendId, text, mode: "send", draftHolds: true, holdUntil: hold.holdUntil, walky: hold.walky }, { session: target.session, paneId: target.paneId, harness: "claude" });
         return answer.receipt === undefined ? { outcome: "unknown" } : result(sendId, answer.receipt.outcome, answer.receipt.reason);
       },
       sendState: (sendId) => {
@@ -1117,7 +1120,7 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
     };
     await r.service.send(send(ID, "local/%1"), operator);
     await r.service.deliverer.settled();
-    expect(entry).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: accepted + HELD_LIMIT_MS });
+    expect(entry).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: accepted + HELD_LIMIT_MS, walky: ID });
     expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: "held past 60 minutes" });
     expect(r.box.calls).toEqual([]);
     expect(r.box.box).toBe("a long thought");
@@ -2221,9 +2224,12 @@ describe("the space border (M98 spec 03)", () => {
 // fake part bound to the pane, and walky over it as index.ts wires it. Only the last step changes: the
 // envelope goes to the part as `mail`, and the mux is never asked to type.
 
+/** A captured Claude Code screen whose box holds the person's draft: the screen road reads `composer: draft`. */
+const DRAFT_SCREEN = readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", "claude--draft-footer-single.txt"), "utf8");
+
 describe("WalkyTalky by data (M99 spec 05)", () => {
-  async function linked(options: { readonly capabilities?: string[]; readonly wordMs?: number; readonly draft?: boolean | null } = {}) {
-    const data = await dataRig({ harness: "claude", version: "2.1.200", wordMs: options.wordMs ?? 800 });
+  async function linked(options: { readonly capabilities?: string[]; readonly wordMs?: number; readonly draft?: boolean | null; readonly hubNow?: () => number } = {}) {
+    const data = await dataRig({ harness: "claude", version: "2.1.200", wordMs: options.wordMs ?? 800, now: options.hubNow ?? Date.now });
     roots.push(join(data.socket, "..", ".."));
     // The part says its box once after hello, as the Claude mod does: no draft unless the test says. `null`: it says nothing.
     const draft = options.draft === undefined ? false : options.draft === null ? undefined : options.draft;
@@ -2570,6 +2576,35 @@ describe("WalkyTalky by data (M99 spec 05)", () => {
       expect(r.data.holds.get(sendId)).toMatchObject({ state: "held", cause: "draft_present", tries: 0 });
       expect(r.service.status("wt_aaaaaaaaaa69").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
       expect(r.data.hub.stateOf(sendId)).toBeNull();
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now after the draft word grew old: held by the screen's own read of the box, it still says it waits for your text, and still delivers over the draft", async () => {
+    // M100 spec 05, the lead's case: a draft that sits in the box for minutes. The message is held first
+    // on the part's fresh "draft present"; once that word is older than WORD_FRESH_MS the release takes
+    // the screen road, which reads the box itself and holds it again over the same draft.
+    const hub = { at: 1_000_000 };
+    const r = await linked({ draft: true, hubNow: () => hub.at });
+    try {
+      r.data.mux.screen = DRAFT_SCREEN;
+      const sendId = await heldForDraft(r, "wt_aaaaaaaaaa71");
+      expect(r.data.mux.calls).toEqual([]);
+      hub.at += WORD_FRESH_MS + 1;
+      // The poll's release (or any other): the screen road reads the draft and puts it back, nothing typed.
+      await r.data.protocol.releaseOnTurnEnd(DATA_PANE.session, DATA_PANE.paneId);
+      expect(r.data.mux.calls.length).toBeGreaterThan(0);
+      expect(r.data.mux.calls.every((call) => call === "readGrid")).toBe(true);
+      expect(r.data.holds.get(sendId)).toMatchObject({ state: "held", draftHolds: true, cause: "draft_present" });
+      // (b) The receipt still carries the reason the web reads as "waits while you type" (waitReasonOf: "text").
+      expect(r.service.status("wt_aaaaaaaaaa71").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+      // (a) Deliver now still goes by data, as mail marked overDraft; the box is not typed into.
+      const served = r.part.serveOnce({ waitMs: 3000 });
+      expect(await deliverNow(r, "wt_aaaaaaaaaa71")).toMatchObject({ result: "delivered", receipt: { state: "delivered", overDraft: true } });
+      expect(await served).toMatchObject({ id: sendId, kind: "mail", overDraft: true });
+      expect(r.service.status("wt_aaaaaaaaaa71").receipts[0]).toMatchObject({ state: "delivered", overDraft: true });
+      expect(r.data.mux.calls.every((call) => call === "readGrid")).toBe(true);
     } finally {
       r.data.stop();
     }

@@ -56,8 +56,8 @@ import {
   muxGone,
   muxOk,
   muxRefused,
-  muxUnsupported,
   muxUnconfirmed,
+  muxUnsupported,
   muxUnreachable,
   requestedCwd,
   type MuxAck,
@@ -80,6 +80,7 @@ import {
 import {
   resolveTmuxBinary,
   SpawnTmuxExec,
+  TIMED_OUT_CODE,
   tmuxServerArgs,
   tmuxServerLabel,
   type TmuxExec,
@@ -626,10 +627,11 @@ export class TmuxMux implements MuxAdapter {
   private async created(args: readonly string[]): Promise<MuxOutcome<MuxCreatedPane>> {
     const guard = await this.refuseFatalSpawn();
     if (guard !== null) return guard;
-    const result = await this.attemptRun(args);
+    const result = await this.attemptCreate(args);
     if (!result.ok) return result;
     const created = parseCreated(result.value.stdout);
-    if (created === null) return muxRefused(`tmux created something and reported no pane id: ${result.value.stdout.trim()}`);
+    // Something was made and its identity is unknown: not a failure, the route looks (bridge/create-confirm.ts).
+    if (created === null) return muxUnconfirmed(`tmux created something and reported no pane id: ${result.value.stdout.trim()}`);
     return muxOk({
       paneId: created.paneId,
       spaceId: created.sessionId,
@@ -666,7 +668,27 @@ export class TmuxMux implements MuxAdapter {
     return muxRefused(fatalWindowSizeDetail(version));
   }
 
-  /** One tmux command, as the contract's outcome-or-refusal. A throw is `unreachable`, never a crash. */
+  /**
+   * A create's own run. One that ran out of its budget and was killed (`TIMED_OUT_CODE`) may still have
+   * made the window or the session, so it is `unconfirmed` and not a refusal, with the same sentence a
+   * refusal gave: the route looks in the snapshot before it says anything (bridge/create-confirm.ts).
+   */
+  private async attemptCreate(args: readonly string[]): Promise<MuxOutcome<TmuxRunResult>> {
+    let result: TmuxRunResult;
+    try {
+      result = await this.exec.run(args);
+    } catch (err) {
+      return muxUnreachable(err instanceof Error ? err.message : String(err));
+    }
+    const late = ranOutOfTime(result);
+    if (late !== null) return muxUnconfirmed(late);
+    return result.code === 0 ? muxOk(result) : refusalFor(result);
+  }
+
+  /**
+   * One tmux command, as the contract's outcome-or-refusal. A throw is `unreachable`, never a crash,
+   * and so is a run killed on its budget: a read or a rename that timed out changed nothing to look for.
+   */
   private async attemptRun(args: readonly string[], stdin?: string): Promise<MuxOutcome<TmuxRunResult>> {
     let result: TmuxRunResult;
     try {
@@ -674,7 +696,8 @@ export class TmuxMux implements MuxAdapter {
     } catch (err) {
       return muxUnreachable(err instanceof Error ? err.message : String(err));
     }
-    if (result.timedOut === true) return muxUnreachable(`tmux ${args[0] ?? ""}: ${result.stderr}`);
+    const late = ranOutOfTime(result);
+    if (late !== null) return muxUnreachable(late);
     return result.code === 0 ? muxOk(result) : refusalFor(result);
   }
 
@@ -691,7 +714,8 @@ export class TmuxMux implements MuxAdapter {
     } catch (err) {
       return muxUnreachable(err instanceof Error ? err.message : String(err));
     }
-    if (result.timedOut === true) return unconfirmed(`tmux ${args[0] ?? ""}: ${result.stderr}`);
+    const late = ranOutOfTime(result);
+    if (late !== null) return unconfirmed(late);
     return result.code === 0 ? muxOk(result) : refusalFor(result);
   }
 
@@ -724,6 +748,16 @@ export class TmuxMux implements MuxAdapter {
  * that has gone away, `no server running on …` for a tmux that is not there, and anything else —
  * `duplicate session: other` — is tmux understanding and saying no.
  */
+/**
+ * The one way a tmux run is read as killed on its time budget: the exec names the kill with
+ * {@link TIMED_OUT_CODE}. The detail is what tmux printed, or its exit. Null for a run that ended on its
+ * own. Every caller reads this: a create and a write answer `unconfirmed` with it, a read `unreachable`.
+ */
+function ranOutOfTime(result: TmuxRunResult): string | null {
+  if (result.code !== TIMED_OUT_CODE) return null;
+  return (result.stderr.trim() || result.stdout.trim()) || `tmux exited ${String(result.code)}`;
+}
+
 /** A text write tmux did not answer in time (M100 spec 03): it may still land. */
 function textUnconfirmed(paneId: string, detail: string): MuxRefusalOutcome {
   return muxUnconfirmed(`tmux did not confirm the text written to ${paneId} in time (${detail}). It may still arrive, so it was not written again.`);

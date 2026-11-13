@@ -31,7 +31,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { HeldCard, type HeldAction } from "@/components/composer-held";
+import { HeldCard, drawnHeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
@@ -81,6 +81,7 @@ import {
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { useKeyBoard } from "@/lib/key-board-store";
 import { isDestructiveInput } from "@/lib/destructive";
+import { asksSendAgain, forgetUnknownSend, rememberUnknownSend, sendAgainId } from "@/lib/send-again";
 import { useHostLabel } from "@/components/crew-provider";
 import { fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
 import { clearIntent, clearIntentIfDraftChanged, loadIntent, saveIntent } from "@/lib/send-intent";
@@ -282,7 +283,8 @@ interface ComposerProps {
   onDeliverNow?: DeliverNow | undefined;
   /**
    * The pane's held sends from the snapshot (M56 spec 15), oldest first: a send the harness could not
-   * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box.
+   * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box,
+   * except a WalkyTalky message's row (its `walky` field): the held mark and the Messages sheet carry that.
    */
   held?: readonly HeldRow[] | undefined;
   /**
@@ -1403,6 +1405,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (pendingUnknown === null || chatEntries === undefined) return;
     if (findUnknownSendMatch(pendingUnknown, chatEntries) === undefined) return;
     setPendingUnknown(null);
+    forgetUnknownSend(scope, paneId, pendingUnknown.sentText); // it went: nothing is left to ask about
     setProtocolOffer(null);
     setSendRefusal(null);
     if (
@@ -1416,7 +1419,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setHandledKey(normalizeDraft(effectiveRaw));
       setPreviewLatched(false);
     }
-  }, [pendingUnknown, chatEntries, effectiveRaw, isShell]);
+  }, [pendingUnknown, chatEntries, effectiveRaw, isShell, scope, paneId]);
 
   // Show the preview while it's latched, the host line still carries a (non-echo) draft, and the user
   // hasn't already handled this exact text. Its displayed text is the LIVE raw line — host typing
@@ -1464,13 +1467,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // held send moves nothing (ADR 0061, amended 2026-10-18). It is keyed by pane: the card's Show all
   // is per pane and in memory, and a pane switch starts it collapsed. Rendered only while there is a
   // row, so an empty queue leaves nothing in the slot.
+  // A WalkyTalky message's row is left out (`drawnHeldRows`): its mark and the Messages sheet carry it.
+  const drawnHeld = heldRows === undefined ? undefined : drawnHeldRows(heldRows);
   const heldCard =
-    heldRows !== undefined && heldRows.length > 0 ? (
+    drawnHeld !== undefined && drawnHeld.length > 0 ? (
       <HeldCard
         key={`${scopeId}|${paneId}`}
         paneId={paneId}
         scope={scope}
-        rows={heldRows}
+        rows={drawnHeld}
         canAct={!locked}
         canSend={isLead(scope)}
         sending={sending}
@@ -1884,6 +1889,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         const settledAt = Date.now();
         noteSend(reportKey, paneId, { requestId: res.requestId, outcome: reply.outcome, reason: reply.reason, cap: reply.cap !== null, at: settledAt }, settledAt, scope);
       }
+      // A known answer, gone or not gone, ends the question about this text.
+      if (reading.note !== "unknown" && t !== "") forgetUnknownSend(scope, paneId, t);
       if (reading.clear) {
         setProtocolOffer(null);
         afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(reading.note, when), sentFrom);
@@ -1911,6 +1918,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // carries no text of its own to recognise, so it is never remembered.
       if (reading.note === "unknown" && resend === undefined) {
         setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
+        // The next tap on this same text asks "Send it again?" first (lib/send-again.ts).
+        if (isDraft && t !== "") rememberUnknownSend(scope, paneId, t);
       }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
@@ -1999,19 +2008,34 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       );
       return;
     }
+    // A second tap on the text of a send that ended unknown, moments ago, on this pane: ask once. A
+    // destructive line has had its own confirm by now; this one is about a message that may have gone.
+    // The memory holds the text as `send` types it (trimmed), so the tap compares that form.
+    const typed = isShell ? line.trimEnd() : line.trim();
+    if (asksSendAgain(scope, paneId, typed) && !sendConfirm.confirm(sendAgainId(line))) {
+      armedWhen.current = when;
+      setDestructiveNote(null);
+      return;
+    }
     sendConfirm.reset();
     setDestructiveNote(null);
     armedWhen.current = undefined;
+    forgetUnknownSend(scope, paneId, typed); // the confirming tap ends it; an unknown answer arms it afresh
     void send(line, true, when);
   }
   // Armed on the composed line: an edited line no longer stands armed, and the note goes with it.
-  const confirmingSend = sendConfirm.pending !== null && sendConfirm.pending === composeLine(input, attachments, isShell);
+  const confirmLine = composeLine(input, attachments, isShell);
+  const confirmingDestructive = sendConfirm.pending !== null && sendConfirm.pending === confirmLine;
+  // The same slot and the same word-in-the-Send-button, asked of a line whose last send ended unknown.
+  const confirmingAgain = sendConfirm.pending !== null && sendConfirm.pending === sendAgainId(confirmLine);
+  const confirmingSend = confirmingDestructive || confirmingAgain;
   // A modal ask owns the agent's keyboard: the Send slot and the placeholder say so (spec 10).
   const askOwnsKeys = slot === "answer" && !direct.active;
   // The mic beside Attach, for a box that holds a draft or a chip (issue 573): the round button is Send
   // then, and a second clip is how a person adds to what is already written. Two mics never show at
   // once. It stays away while the round slot holds a word ("Answer the dialog" / "Really send?"), where
   // the row is already tight.
+  const confirmWord = translate(confirmingAgain ? "composer.send.sendAgain" : "composer.send.reallySend");
   const draftMicShown = micShown && !direct.active && hasDraft && !askOwnsKeys && !confirmingSend;
   const micAriaLabel = !micAvailable
     ? (stt?.reason ?? translate("composer.mic.unavailable"))
@@ -3336,7 +3360,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* Why a destructive line waits for a second tap: said here, beside the "Really send?" word, and
             only while that word is armed. It was a header line, and the header holds nothing a person must
             act on (M56 spec 07). */}
-        <Collapse open={confirmingSend && destructiveNote !== null && !direct.active}>
+        <Collapse open={confirmingDestructive && destructiveNote !== null && !direct.active}>
           {destructiveNote !== null && (
             <Notice tone="danger" variant="box" className="mb-2" icon={<Icon name="error" />}>
               <span data-slot="composer-destructive">{destructiveNote}</span>
@@ -3815,9 +3839,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onClick={() => onSendClick(armedWhen.current)}
               disabled={starting || locked || offline || !hasDraft || sending}
               title={offline ? translate("composer.send.reconnect") : undefined}
-              aria-label={offline ? translate("composer.send.reconnect") : translate("composer.send.reallySend")}
+              aria-label={offline ? translate("composer.send.reconnect") : confirmWord}
             >
-              {translate("composer.send.reallySend")}
+              {confirmWord}
             </Button>
           ) : micIsPrimary ? (
             // THE MICROPHONE IS THE PRIMARY ACTION WHILE THE BOX IS EMPTY, and becomes Send the

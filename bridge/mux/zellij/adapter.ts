@@ -447,16 +447,21 @@ export class ZellijMux implements MuxAdapter {
     if (request.spaceId !== ZELLIJ_SPACE_ID) return muxGone(`no such space: ${request.spaceId}`);
     const created = await this.session.run(newTabArgs(request.label, request.cwd));
     if (!created.ok) return muxUnreachable(created.detail);
+    // A `new-tab` killed on its budget may have made the tab: not a failure, so the route looks (bridge/create-confirm.ts).
+    if (created.result.code === TIMED_OUT_CODE) return muxUnconfirmed(created.result.stderr.trim());
     const tabNumber = Number.parseInt(created.result.stdout.trim(), 10);
     if (!Number.isInteger(tabNumber)) {
-      return muxRefused(`zellij created a tab and reported no id: ${created.result.stdout.trim() || created.result.stderr.trim()}`);
+      return muxUnconfirmed(`zellij created a tab and reported no id: ${created.result.stdout.trim() || created.result.stderr.trim()}`);
     }
+    // The tab is made; only its pane is not yet known. The route finds it in the snapshot, so a listing that
+    // fails here is `unconfirmed` and not a failure of a create that worked.
     const listing = await this.session.run(ZELLIJ_LIST_PANES_ARGS);
-    if (!listing.ok) return muxUnreachable(listing.detail);
+    if (!listing.ok) return muxUnconfirmed(listing.detail);
     const panes = parsePaneList(listing.result.stdout);
-    if (panes === null) return muxUnreachable("zellij's pane listing was not readable after the tab was created");
+    if (panes === null) return muxUnconfirmed("zellij's pane listing was not readable after the tab was created");
     const fresh = panes.find((pane) => pane.tabNumber === tabNumber && !pane.exited);
-    if (fresh === undefined) return muxRefused(`zellij created tab ${String(tabNumber)} and it holds no pane`);
+    // The tab is made and no pane is in it yet: not a failure, the route looks (bridge/create-confirm.ts).
+    if (fresh === undefined) return muxUnconfirmed(`zellij created tab ${String(tabNumber)} and it holds no pane`);
     return muxOk({
       paneId: fresh.paneId,
       spaceId: ZELLIJ_SPACE_ID,

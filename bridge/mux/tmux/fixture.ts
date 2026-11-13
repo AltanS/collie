@@ -357,14 +357,14 @@ export class FakeTmux implements TmuxExec {
     const keysFailing = this.nextKeys;
     if (keysFailing !== null && args.includes("send-keys")) {
       this.nextKeys = null;
-      if (keysFailing === "stall") return { code: 143, stdout: "", stderr: "timed out after 5000ms", timedOut: true };
+      if (keysFailing === "stall") return { code: 143, stdout: "", stderr: "timed out after 5000ms" };
       return { code: 1, stdout: "", stderr: "unknown key: Enter\n" };
     }
     const failing = this.nextWrite;
     if (failing !== null && args.includes("paste-buffer")) {
       this.nextWrite = null;
       // A stall is what SpawnTmuxExec reports when it kills a tmux on its budget; a refusal is tmux's own no.
-      if (failing === "stall") return { code: 143, stdout: "", stderr: "timed out after 5000ms", timedOut: true };
+      if (failing === "stall") return { code: 143, stdout: "", stderr: "timed out after 5000ms" };
       return { code: 1, stdout: "", stderr: "no space for new buffer\n" };
     }
     let stdout = "";

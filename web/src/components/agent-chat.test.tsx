@@ -3180,7 +3180,11 @@ describe("AgentChat — folding the tab and pane rows", () => {
 interface LaunchPostedBody {
   command?: string;
   paneId?: string;
+  requestId?: string;
 }
+
+/** A request id as the phone mints it: a UUID, one per tap (M100 spec 04). */
+const A_REQUEST_ID = expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
 
 describe("AgentChat: Launch section in the switcher", () => {
   function declareLaunchers() {
@@ -3253,7 +3257,7 @@ describe("AgentChat: Launch section in the switcher", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: "Switch pane" }));
     await user.click(await screen.findByText("Runs & quota"));
-    await waitFor(() => expect(posted).toEqual({ command: "rumen-peek", paneId: agent.paneId }));
+    await waitFor(() => expect(posted).toEqual({ command: "rumen-peek", paneId: agent.paneId, requestId: A_REQUEST_ID }));
   });
 
   // THE NO PROMPTS CONFIRM (ADR 0094) in the switcher: a row that skips permission prompts asks first.
@@ -3304,7 +3308,7 @@ describe("AgentChat: Launch section in the switcher", () => {
       await user.click(screen.getByRole("button", { name: "Switch pane" }));
       await user.click(await screen.findByText("Claude, no prompts"));
       await user.click(within(await screen.findByRole("dialog", { name: "Start without prompts?" })).getByRole("button", { name: "Start" }));
-      await waitFor(() => expect(posted).toEqual([{ command: "claude --yolo", paneId: agent.paneId }]));
+      await waitFor(() => expect(posted).toEqual([{ command: "claude --yolo", paneId: agent.paneId, requestId: A_REQUEST_ID }]));
       expect(noPromptsConfirmed("", "claude --yolo")).toBe(true);
     });
 

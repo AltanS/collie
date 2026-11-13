@@ -6,7 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { muxAck, muxUnreachable, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
+import { muxAck, muxOk, muxUnreachable, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { fakeEdgeTarget, fakeLiveness, FakePart } from "./fake-part.ts";
@@ -26,9 +26,12 @@ const ENV = { HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/herdr.sock" };
 /** Every mux call the Send Protocol made, by name. The data road makes none. */
 export class RecordingMux {
   readonly calls: string[] = [];
-  readGrid = (): Promise<MuxOutcome<MuxGrid>> => {
+  /** The screen every read answers, a captured pane's text; null for a pane that cannot be read. Nothing typed changes it. */
+  screen: string | null = null;
+  readGrid = (paneId: string): Promise<MuxOutcome<MuxGrid>> => {
     this.calls.push("readGrid");
-    return Promise.resolve(muxUnreachable("the rig has no screen"));
+    if (this.screen === null) return Promise.resolve(muxUnreachable("the rig has no screen"));
+    return Promise.resolve(muxOk({ paneId, text: this.screen, truncated: false, revision: 1 }));
   };
   typeText = (): Promise<MuxAck> => {
     this.calls.push("typeText");
@@ -65,13 +68,19 @@ let serial = 0;
 
 /**
  * The rig. `harness` and `version` name the profile the Send Protocol reads (a test names one: this
- * folder names no harness); `enabled` is the kill switch; `limits` shorten the data road's waits.
+ * folder names no harness); `enabled` is the kill switch; `limits` shorten the data road's waits; `now`
+ * is the hub's clock, for the age of a part's word.
  */
-export async function dataRig(options: { harness: string; version: string; enabled?: boolean; takeMs?: number; wordMs?: number; inside?: boolean }): Promise<DataRig> {
+export async function dataRig(options: { harness: string; version: string; enabled?: boolean; takeMs?: number; wordMs?: number; inside?: boolean; now?: () => number }): Promise<DataRig> {
   const dir = mkdtempSync(join(tmpdir(), "data-"));
   const mux = new RecordingMux();
   const target = fakeEdgeTarget({ session: "main", panes: ["w1:p1"], foreground: [process.pid] });
-  const hub = new InsideHub({ registry: new PartRegistry({ log: () => {} }), queue: new CommandQueue(), place: (hello) => placeHello(hello, [target], fakeLiveness(new Map([[process.pid, 7]]))) });
+  const hub = new InsideHub({
+    registry: new PartRegistry({ log: () => {} }),
+    queue: new CommandQueue(),
+    place: (hello) => placeHello(hello, [target], fakeLiveness(new Map([[process.pid, 7]]))),
+    now: options.now ?? Date.now,
+  });
   const socket = insideSocketPath(dir);
   const server = new InsideServer({ socketPath: socket, hub, log: () => {} });
   if (!(await server.start())) throw new Error("the rig's inside socket did not start");

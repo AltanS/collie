@@ -177,6 +177,23 @@ function transportRefusal<T>(err: T): MuxRefusalOutcome {
   return GONE_CODES.some((code) => detail.includes(code)) ? muxGone(detail) : muxUnreachable(detail);
 }
 
+/**
+ * What the client rejects with when a request that WAS written got no answer: Herdr did not answer in time
+ * (`herdr <method>: timed out after Nms`), or the connection closed before the reply
+ * (`herdr <method>: connection closed before reply`). Either may come after Herdr acted. A dial that
+ * failed, a socket error and Herdr's own refusals read otherwise.
+ */
+const NO_ANSWER = /^herdr \S+: (?:timed out after \d+ms|connection closed before reply)$/u;
+
+/**
+ * The refusal for a failure of a CREATE call. A call Herdr did not answer, in time or before the connection
+ * dropped, may still have made the tab or the workspace, so it is `unconfirmed` and not `unreachable`: the
+ * route looks in the snapshot before it says anything (bridge/create-confirm.ts).
+ */
+function createRefusal<T>(err: T): MuxRefusalOutcome {
+  return NO_ANSWER.test(reason(err)) ? muxUnconfirmed(reason(err)) : transportRefusal(err);
+}
+
 export class HerdrMux implements MuxAdapter {
   readonly mux = HERDR_MUX;
   readonly capabilities = HERDR_CAPABILITIES;
@@ -442,7 +459,7 @@ export class HerdrMux implements MuxAdapter {
       const created = await this.client.createTab(request.spaceId, opts);
       return muxOk(toCreatedPane(created));
     } catch (err) {
-      return transportRefusal(err);
+      return createRefusal(err);
     }
   }
 
@@ -468,13 +485,13 @@ export class HerdrMux implements MuxAdapter {
       // Only an answer that REFUSED the open falls through (see openAsWorktree). A timeout or a
       // dropped connection may have opened it, and a second space on the folder is worse than a
       // refusal: the retry that follows asks again and Herdr answers `already_open`.
-      return transportRefusal(err);
+      return createRefusal(err);
     }
     try {
       const created = await this.client.createWorkspace(opts);
       return muxOk(toCreatedPane(created));
     } catch (err) {
-      return transportRefusal(err);
+      return createRefusal(err);
     }
   }
 

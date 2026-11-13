@@ -46,6 +46,28 @@ describe("HoldStore", () => {
     expect(store.setCause("req-000009", "turn_running")).toBeNull();
   });
 
+  test("a WalkyTalky message's hold keeps its id across a restart and an end, and the phone's row carries it; a person's own hold has none", () => {
+    const store = new HoldStore(dir, () => 5_000);
+    store.add({ ...input("req-000001"), draftHolds: true, cause: "draft_present", walky: "wt_aaaaaaaaaaa1" });
+    store.add(input("req-000002"));
+    const again = new HoldStore(dir, () => 5_000);
+    expect(again.get("req-000001")?.walky).toBe("wt_aaaaaaaaaaa1");
+    expect(heldRow(again.get("req-000001")!)).toMatchObject({ requestId: "req-000001", walky: "wt_aaaaaaaaaaa1" });
+    expect(heldRow(again.get("req-000002")!)).not.toHaveProperty("walky");
+    expect(again.get("req-000002")).not.toHaveProperty("walky");
+    // The row keeps it when it ends, so the phone can tell an ended mail row from an ended send of the person's.
+    expect(heldRow(again.end("req-000001", "typed_not_submitted")!)).toMatchObject({ state: "ended", outcome: "typed_not_submitted", walky: "wt_aaaaaaaaaaa1" });
+  });
+
+  test("a file whose walky field is not a message id reads back without it", () => {
+    const store = new HoldStore(dir, () => 5_000);
+    store.add({ ...input("req-000001"), draftHolds: true, walky: "wt_aaaaaaaaaaa1" });
+    const path = join(dir, "req-000001.json");
+    const entry = JSON.parse(readFileSync(path, "utf8"));
+    writeFileSync(path, `${JSON.stringify({ ...entry, walky: "not a message id" })}\n`);
+    expect(new HoldStore(dir, () => 5_000).get("req-000001")).not.toHaveProperty("walky");
+  });
+
   test("every cause a refusal holds from comes back from its file and rides on the phone's row", () => {
     const store = new HoldStore(dir, () => 5_000);
     const causes = ["turn_running", "not_free", "bound", "draft_present", "probe_failed"] as const;

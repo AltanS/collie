@@ -11,6 +11,7 @@ import { clearStatus, useStatus } from "@/lib/status";
 import type { HeldRow } from "@/lib/surface/send";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
+import { HeldCard, drawnHeldRows } from "./composer-held";
 
 // M56 spec 15 on the composer: the sends the bridge holds for a pane show as ONE card that floats over
 // the mirror's bottom edge (ADR 0061, amended 2026-10-18), each row with the control its state allows.
@@ -179,6 +180,67 @@ describe("the held-send card", () => {
     expect(card).toHaveAttribute("data-mode", "collapsed");
     expect(document.querySelectorAll('[data-slot="held-row"]')).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Cancel the queued message" })).toBeNull();
+  });
+
+  // One card for one message (2026-11-13): a WalkyTalky message waiting for the pane has its held mark above
+  // the box and its row in the Messages sheet, so the held list does not draw its typed line a second time.
+  describe("a WalkyTalky message's row (the walky field)", () => {
+    const MAIL = "wt_aaaaaaaaaaa1";
+    const mail = (requestId: string, state: HeldRow["state"], extra: Partial<HeldRow> = {}) =>
+      row(requestId, state, { text: `[walky-talky ${MAIL}] from agent x. Read it: collie walky inbox ${MAIL}`, walky: MAIL, ...extra });
+
+    it("a message that waits for the draft draws no card at all", () => {
+      renderComposer({ held: [mail("req00001", "held", { cause: "draft_present" })] });
+      expect(document.querySelector('[data-slot="held-card"]')).toBeNull();
+      expect(screen.queryByText(/Held\. Sends when the box is empty/)).toBeNull();
+      expect(screen.queryByText(/walky-talky/)).toBeNull();
+    });
+
+    it("a message that waits for a turn, and one going out now, draw no card either", () => {
+      renderComposer({ held: [mail("req00001", "held", { cause: "turn_running" }), mail("req00002", "running")] });
+      expect(document.querySelector('[data-slot="held-card"]')).toBeNull();
+    });
+
+    it("the person's own held sends stay, and the count and the rows leave the message out", async () => {
+      const user = userEvent.setup();
+      renderComposer({ held: [row("req00001", "held"), mail("req00002", "held", { cause: "draft_present" }), row("req00003", "held")] });
+      const card = document.querySelector('[data-slot="held-card"]')!;
+      expect(card).toHaveTextContent("2 queued. Sends when the turn ends.");
+      await user.click(showAll());
+      const found = document.querySelectorAll('[data-slot="held-row"]');
+      expect(found).toHaveLength(2);
+      expect(card).not.toHaveTextContent("walky-talky");
+    });
+
+    it("one own row and one message: the card is the single row of the person's own", () => {
+      renderComposer({ held: [mail("req00001", "held", { cause: "draft_present" }), row("req00002", "held")] });
+      const card = document.querySelector('[data-slot="held-card"]')!;
+      expect(card).toHaveAttribute("data-mode", "single");
+      expect(card).toHaveTextContent("text of req00002");
+      expect(card).not.toHaveTextContent("walky-talky");
+    });
+
+    it("an ended message (expired, refused, unknown) draws no row: the Messages sheet tells how it ended", () => {
+      renderComposer({ held: [mail("req00001", "ended", { outcome: "expired" }), mail("req00002", "ended", { outcome: "refused", reason: "changed" }), mail("req00003", "ended", { outcome: "unknown" })] });
+      expect(document.querySelector('[data-slot="held-card"]')).toBeNull();
+    });
+
+    it("a message left typed in the box keeps its row, with Submit, Discard and Dismiss, and no Resend", () => {
+      renderComposer({ held: [mail("req00001", "ended", { outcome: "typed_not_submitted" })] });
+      const card = document.querySelector('[data-slot="held-card"]')!;
+      expect(card).toHaveTextContent("Typed, not sent. The text is still in the box.");
+      expect(screen.getByRole("button", { name: "Submit the text in the box" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Discard the text in the box" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Dismiss the message" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Resend the message" })).toBeNull();
+    });
+
+    it("drawnHeldRows keeps every row of the person's own and only a typed-not-submitted message", () => {
+      const own = [row("req00001", "held"), row("req00002", "ended", { outcome: "expired" })];
+      const typed = mail("req00003", "ended", { outcome: "typed_not_submitted" });
+      const rows = [own[0]!, mail("req00004", "held"), own[1]!, mail("req00005", "running"), mail("req00006", "ended", { outcome: "expired" }), typed];
+      expect(drawnHeldRows(rows).map((r) => r.requestId)).toEqual(["req00001", "req00002", "req00003"]);
+    });
   });
 
   it("a Cancel in the open list calls DELETE for that row only", async () => {
@@ -353,6 +415,26 @@ describe("the held-send card", () => {
     await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
     await waitFor(() => expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("the words I queued"));
     expect(loadDraft(undefined, "w1:p1")).toBe("the words I queued");
+  });
+
+  // The one typed line of a WalkyTalky message is another agent's text, never the person's words. The
+  // composer draws no such row while it waits (drawnHeldRows), so the card is mounted by itself here:
+  // the guard holds under the card, whatever rows a caller hands it.
+  it("the card's Cancel on a WalkyTalky message's row gives no text back, and one on the person's own row does", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "cancelled" } });
+    const onReturn = vi.fn();
+    const line = "[walky-talky wt_aaaaaaaaaaa1] from agent x. Read it: collie walky inbox wt_aaaaaaaaaaa1";
+    const { rerender } = render(
+      <HeldCard paneId="w1:p1" rows={[row("req00001", "held", { text: line, cause: "draft_present", walky: "wt_aaaaaaaaaaa1" })]} canAct sending={false} onSend={async () => true} onChanged={vi.fn()} onReturn={onReturn} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
+    await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel the queued message" })).toBeEnabled());
+    expect(onReturn).not.toHaveBeenCalled();
+    rerender(<HeldCard paneId="w1:p1" rows={[row("req00002", "held", { text: "the words I queued" })]} canAct sending={false} onSend={async () => true} onChanged={vi.fn()} onReturn={onReturn} />);
+    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
+    await waitFor(() => expect(onReturn).toHaveBeenCalledWith("the words I queued"));
   });
 
   it("Cancel leaves a composer that holds other text alone", async () => {

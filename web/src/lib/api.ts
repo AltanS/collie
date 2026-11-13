@@ -2116,26 +2116,36 @@ export function closeTab(tabId: string, scope?: Scope): Promise<ActionResponse> 
   });
 }
 
-/** Create a new tab in a space, opening a fresh shell pane. `cwd` omitted = inherits the space dir. */
+/**
+ * Create a new tab in a space, opening a fresh shell pane. `cwd` omitted = inherits the space dir. Every
+ * call carries a request id, minted per tap unless the caller names one (the same mint the New page and the
+ * send path use): the bridge answers a repeat of the id with the first request's pane and never makes a second
+ * (M100 spec 04).
+ */
 export function createTab(
   workspaceId: string,
-  opts: { label?: string; cwd?: string } = {},
+  opts: { label?: string; cwd?: string; requestId?: string } = {},
   scope?: Scope,
 ): Promise<CreateResponse> {
+  const { requestId = mintRequestId(), ...rest } = opts;
   return req<CreateResponse>(withScope("/api/tab", scope), {
     method: "POST",
-    body: JSON.stringify({ workspaceId, ...opts }),
+    body: JSON.stringify({ workspaceId, ...rest, requestId }),
   });
 }
 
-/** Create a new space (workspace) with a fresh shell pane. `cwd` omitted = the host's home dir. */
+/**
+ * Create a new space (workspace) with a fresh shell pane. `cwd` omitted = the host's home dir. A request id
+ * rides with it, as {@link createTab} sends one.
+ */
 export function createWorkspace(
-  opts: { label?: string; cwd?: string } = {},
+  opts: { label?: string; cwd?: string; requestId?: string } = {},
   scope?: Scope,
 ): Promise<CreateResponse> {
+  const { requestId = mintRequestId(), ...rest } = opts;
   return req<CreateResponse>(withScope("/api/workspace", scope), {
     method: "POST",
-    body: JSON.stringify(opts),
+    body: JSON.stringify({ ...rest, requestId }),
   });
 }
 
@@ -2149,10 +2159,15 @@ export function createWorkspace(
 interface LaunchRequestBody {
   command: string;
   paneId?: string;
+  requestId: string;
 }
 
-export function launch(command: string, besidePaneId?: string, scope?: Scope): Promise<CreateResponse> {
-  const body: LaunchRequestBody = { command };
+/**
+ * A quick launch of a row. The request id is minted per tap unless the caller names one, so the bridge
+ * answers a repeat of it with the first pane and never starts a second agent (M100 spec 04).
+ */
+export function launch(command: string, besidePaneId?: string, scope?: Scope, requestId: string = mintRequestId()): Promise<CreateResponse> {
+  const body: LaunchRequestBody = { command, requestId };
   if (besidePaneId !== undefined) body.paneId = besidePaneId;
   return req<CreateResponse>(withScope("/api/launch", scope), {
     method: "POST",

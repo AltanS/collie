@@ -117,11 +117,19 @@ describe("parseEvent", () => {
 
   test("draft.state carries a boolean only: a text a part sends with it is never kept", () => {
     const parsed = ok({ kind: "draft.state", present: true, text: "the person's half sentence" });
-    expect(parsed).toEqual({ ok: true, part: PART, kind: "draft.state", present: true });
+    expect(parsed).toEqual({ ok: true, part: PART, kind: "draft.state", present: true, seq: null });
     expect(JSON.stringify(parsed)).not.toContain("half sentence");
-    expect(ok({ kind: "draft.state", present: false })).toEqual({ ok: true, part: PART, kind: "draft.state", present: false });
+    expect(ok({ kind: "draft.state", present: false })).toEqual({ ok: true, part: PART, kind: "draft.state", present: false, seq: null });
     expect(ok({ kind: "draft.state" }).ok).toBe(false);
     for (const present of [null, "true", 1]) expect(ok({ kind: "draft.state", present }).ok).toBe(false);
+  });
+
+  test("a state word may carry its count (seq), a whole number from 0; an older part sends none", () => {
+    expect(ok({ kind: "turn.start", turn: "t1", seq: 7 })).toMatchObject({ kind: "turn.start", seq: 7 });
+    expect(ok({ kind: "turn.end", seq: 0 })).toMatchObject({ kind: "turn.end", seq: 0 });
+    expect(ok({ kind: "draft.state", present: false, seq: 12 })).toMatchObject({ kind: "draft.state", seq: 12 });
+    expect(ok({ kind: "turn.end" })).toMatchObject({ seq: null });
+    for (const seq of [-1, 1.5, "3", true]) expect(ok({ kind: "turn.end", seq }).ok).toBe(false);
   });
 
   test("a hello may declare draft.state", () => {

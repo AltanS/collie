@@ -389,6 +389,14 @@ export interface HeldRow {
    * profile would take a message in a turn, but not on a version it cannot name. `collie doctor` says why.
    */
   readonly versionUnread?: true;
+  /**
+   * Set when the request is the one typed line of a WalkyTalky message: the message's id (`wt_` and 12
+   * characters). The message has its own places on the phone (the held mark above the box and the
+   * pane's Messages sheet), so the held list does not draw this row, and never gives its text back to
+   * the box as the person's words. Absent on a person's own send and on a row a bridge before this
+   * field held.
+   */
+  readonly walky?: string;
 }
 
 /** What `DELETE /api/send/<id>` answers (M56 spec 15): a held request cancelled, or an ended row dismissed. */
@@ -467,6 +475,9 @@ export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, 
 
 /** A request id the bridge accepts: letters, digits, `-` and `_`, 8 to 64 of them. It names a file. */
 export const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
+
+/** A WalkyTalky message id as {@link HeldRow.walky} carries it: `wt_` and 12 characters of [a-z0-9] (bridge/walky/types.ts `WALKY_ID` is the same shape). */
+export const WALKY_MESSAGE_ID = /^wt_[a-z0-9]{12}$/u;
 
 /** The paste-end sequence a pasted chunk must never carry. */
 const PASTE_END = "\u001b[201~";

@@ -41,7 +41,7 @@ describe("the envelope", () => {
   test("an agent's message types one nudge line and no body", () => {
     const line = formatEnvelope(agent);
     expect(line).toBe(
-      '[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"',
+      '[walky-talky wt_k3f9x2m8q1a0] from agent lodge/w6:p3 (claude, collie-workspace#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0',
     );
     expect(line.includes("\n")).toBe(false);
     expect(line.includes(agent.body)).toBe(false);

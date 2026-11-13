@@ -52,7 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
-import { HARNESS_SUBCOMMANDS, bareLinkRefusal, cmdHarnessLink, cmdHarnessStatus, cmdHarnessSync, cmdHarnessUnlink, harnessUsage, isLinkHarness, type HarnessLinkDeps } from "./harness-link.ts";
+import { HARNESS_SUBCOMMANDS, bareLinkRefusal, cmdHarnessLink, cmdHarnessStatus, cmdHarnessSync, cmdHarnessUnlink, harnessUsage, installWordAny, isLinkHarness, type HarnessLinkDeps } from "./harness-link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrickGuide } from "./trick-guide.ts";
 import { cmdTrickPropose } from "./trick-propose.ts";
@@ -306,7 +306,7 @@ function runHarnessLink(args: readonly string[], io: Io, unlink: boolean): numbe
     return EXIT.USAGE;
   }
   if (!isLinkHarness(word)) {
-    io.err(`error: no part for "${word}". ${harnessUsage()}`);
+    io.err(`error: no ${installWordAny()} for "${word}". ${harnessUsage()}`);
     return EXIT.USAGE;
   }
   return unlink ? cmdHarnessUnlink(harnessLinkDeps(io), word) : cmdHarnessLink(harnessLinkDeps(io), word);
@@ -1197,12 +1197,12 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       {
         name: "link",
-        summary: "link a harness: write its part, so Collie can send to it by data (available: claude)",
+        summary: `link a harness: write its ${installWordAny()}, so Collie can send to it by data (available: claude)`,
         run: (args, s) => runHarnessLink(args, s.io, false),
       },
       {
         name: "unlink",
-        summary: "remove a harness's part; Collie then uses the screen path for it",
+        summary: `remove a harness's ${installWordAny()}; Collie then uses the screen path for it`,
         run: (args, s) => runHarnessLink(args, s.io, true),
       },
       {
@@ -1212,7 +1212,7 @@ export const COMMANDS: readonly Command[] = [
       },
       {
         name: "sync",
-        summary: "rewrite each linked part with this build's (`collie update` runs it); never a newer one",
+        summary: `rewrite each linked ${installWordAny()} with this build's (\`collie update\` runs it); never a newer one`,
         run: (args, s) => runHarnessBare(args, s.io, cmdHarnessSync),
       },
     ],

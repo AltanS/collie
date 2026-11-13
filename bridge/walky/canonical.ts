@@ -27,7 +27,7 @@ function field(value: string | null): string {
 }
 
 /** The fields a signature covers. */
-export type SignedFields = Pick<WalkyMessage, "id" | "kind" | "from" | "to" | "replyTo" | "at" | "body" | "wake" | "outside">;
+export type SignedFields = Pick<WalkyMessage, "id" | "kind" | "from" | "to" | "replyTo" | "at" | "body" | "wake" | "outside" | "subject">;
 
 /**
  * The space line (M98): `space ` and the key as a JSON string. JSON spells every control character as an
@@ -40,10 +40,18 @@ export function spaceLine(key: string): string {
 }
 
 /**
+ * The subject line (M98 spec 07): `subject ` and the subject as a JSON string. A clean subject holds only
+ * the allow-list of web/src/lib/walky-subject.ts, so the JSON form is the subject in quotes, on one line.
+ */
+export function subjectLine(subject: string): string {
+  return `subject ${JSON.stringify(subject)}`;
+}
+
+/**
  * The canonical string of a message. Each optional line is there only when it is set, after the ten
- * fields and in this order: `wake` (M85), the space line and `outside` (M98). Every message without them
- * keeps the string it always had, so an older bridge still verifies it. Each line has its own first
- * word, so no optional line can pass for another.
+ * fields and in this order: `wake` (M85), the space line and `outside` (M98), the subject line (M98 spec
+ * 07). Every message without them keeps the string it always had, so an older bridge still verifies it.
+ * Each line has its own first word, so no optional line can pass for another.
  */
 export function canonicalMessage(message: SignedFields): string {
   const fields = [
@@ -62,6 +70,7 @@ export function canonicalMessage(message: SignedFields): string {
   const space = message.from.space;
   if (space !== undefined && space !== null) fields.push(spaceLine(space.key));
   if (message.outside === true) fields.push("outside");
+  if (message.subject !== undefined) fields.push(subjectLine(message.subject));
   return fields.join("\n");
 }
 

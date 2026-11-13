@@ -1553,6 +1553,21 @@ never crosses a crew link.
   gets §10.3's legible answer rather than a dead socket. Lead-local, never on the wire, so it is not
   a version-negotiated value (§7.1).
 
+  **A launch, a tab and a space create dial longer: `CREATE_WRITE_BUDGET_MS`, 18 s** *(added
+  2026-11-13, M100 spec 04)*. The member does more on these than one call: the multiplexer's own
+  create (5 s), a look in its snapshot when that call timed out (4 s), and for a launch its wait for
+  the new shell to draw (5 s) before it types. The 5 s write budget made the lead give up inside the
+  member's own wait, read `write_outcome_unknown` over a pane the member then made, and the next tap
+  made a second agent. The budget is the member's own bound (`LAUNCH_BUDGET_MS`,
+  `bridge/create-confirm.ts`), still inside the phone's 20 s. The member holds one deadline of its
+  own on the whole run (`MEMBER_DEADLINE_MS`, 15 s, below the lead's 18 s): past it the member answers
+  `write_outcome_unknown` at once and the run goes on, settling its receipt as the pane or as unknown,
+  so a repeat with the same id replays, joins or answers unknown. The three routes now take an optional
+  `requestId` in the body, like `launch` since 1.19.0 (additive-optional, §7.1; the member keeps a
+  receipt per id and answers a repeat with the first pane), and an unknown outcome on the member
+  itself is the same 504 `write_outcome_unknown` the lead gives. Lead-local budget, so no version
+  negotiation.
+
 ### 10.2 Four distinct states, never conflated *(a fourth added 2026-08-20)*
 
 | State | Meaning | Retried on the poll? | Presented as |
@@ -3642,6 +3657,7 @@ without them keeps the string above and every older bridge still verifies it:
 wake
 space "<from.space.key as a JSON string>"
 outside
+subject "<subject as a JSON string>"
 ```
 
 - `wake` (added 2026-11-04, M85): the message has `wake: true`.
@@ -3651,6 +3667,8 @@ outside
   message is read, and the label is display data like `from.label`.
 - `outside` (added 2026-11-10, M98): the message has `outside: true`, the sender's word that it may
   leave its space.
+- `subject` (added 2026-11-13, M98 spec 07): the message has a `subject`. A subject holds only ASCII
+  letters, digits, the space and `. , - _ / # + ' ? % @ =`, so its JSON form is the subject in quotes.
 
 The lead's attestation, signed by the lead's key, beside a message it routes to one member:
 
@@ -3701,6 +3719,30 @@ Both receiving sides run ONE shape check on the message as it arrived, before th
 
 A malformed field is a 400 that says why, because the caller passed both factors. A sender or a pane
 that does not match the signer is the uniform 401.
+
+### The subject of a message *(added 2026-11-13, M98 spec 07)*
+
+A walky message may carry the sender's subject, additive-optional (§7.1):
+
+- **`subject`**: a string, or absent. It is the sender's words for what the message is about, already
+  cleaned (`readSubject` in `bridge/walky/types.ts`, the allow-list in `web/src/lib/walky-subject.ts`):
+  only ASCII letters, digits, the space and `. , - _ / # + ' ? % @ =`, one space between words, no
+  blank at either end, at most 6 words and 48 characters. Any other
+  value fails the message. The sender's bridge refuses a longer one with the receipt reason
+  `subject over 6 words or 48 characters: shorten it`, and never cuts it.
+
+It is signed (the `subject` line above), so a hop cannot add, change or drop it. A bridge below 1.29.0
+drops the field when it reads a message, and cannot verify a canonical string that holds the line. So
+it rides the space's skew rule below: a lead routes a member below 1.29.0 a copy without the `subject`
+line, as it drops the space and `outside` lines, attested over that copy. A member that knows its lead
+is below 1.29.0 never refuses for the subject: its bridge, the signer, signs a message that may leave
+the machine without the subject, and the sender's answer carries `subjectLeftOut: true`. The space
+rule's own refusal is unchanged. 1.29.0-edge.1
+counts as below 1.29.0: a prerelease sorts before its release.
+
+The header a receiving bridge types carries `about "<subject>"` after the sender's parenthesis and
+the word `outside`, before any ` reply to <id>`. A reader that predates it takes it as part of the
+sender's text and still finds the id, the kind and the reply suffix.
 
 ### The space of a message *(added 2026-11-10, M98)*
 

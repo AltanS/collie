@@ -16,7 +16,7 @@ import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import { withNames } from "./names.ts";
 import { WalkyOff, type WalkyOffBy } from "./off.ts";
 import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
-import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { headerField, readSubject, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** The receipt's reason for a walky body with a line that starts with an agent view's head (`bad_head`). */
 export const WALKY_BAD_HEAD = "bad_head: a line starts with an agent view's head, which only that view sends; rewrite the line";
@@ -34,6 +34,11 @@ export interface SendInput {
   readonly wake?: boolean;
   /** M98: the message may leave the sender's space. Signed on the message as `outside: true`. */
   readonly outside?: boolean;
+  /**
+   * M98 spec 07: the sender's subject as sent. {@link WalkyService.send} cleans it and refuses it past a
+   * limit (`readSubject`, types.ts); `compose` takes it clean. Absent, null or empty after cleaning: none.
+   */
+  readonly subject?: string | null;
 }
 
 export type SendAnswer =
@@ -42,6 +47,8 @@ export type SendAnswer =
       readonly receipts: readonly WalkyReceipt[];
       /** The one pane the message went to, as `who` lists it, when this bridge knows it. */
       readonly target?: WalkyTarget;
+      /** True when this bridge signed the message without its subject (M98 spec 07, types.ts `SUBJECT_LEFT_OUT`). */
+      readonly subjectLeftOut?: true;
     }
   | { readonly ok: false; readonly error: string };
 
@@ -62,6 +69,12 @@ export interface WalkyServiceDeps extends DelivererDeps {
   readonly remoteSkipped?: () => readonly WalkySkipped[];
   /** The off flags, `<stateDir>/walky/off.json` (M89). The host's `panes()` reads the same store. Absent: in memory. */
   readonly off?: WalkyOff;
+  /**
+   * On a member (M98 spec 07): whether its lead is KNOWN to run a release below 1.29.0, which cannot verify
+   * a signed subject line. Then a message that may leave this machine is signed without its subject, and
+   * the answer says so. Unknown is not older. Absent: never.
+   */
+  readonly leadOlderThanSubject?: () => boolean;
 }
 
 /** What `who` on a crew member adds below its own panes: the roster is the lead's, and the command to run there. */
@@ -225,7 +238,9 @@ export class WalkyService {
         : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX), space: null };
     const base: WalkyMessage = { v: 1, id: input.id, kind: sender.kind, from, to: input.to, replyTo: input.replyTo, at: this.now(), body: clean.body, signer: null, signature: null };
     const woken: WalkyMessage = input.wake === true ? { ...base, wake: true } : base;
-    const message: WalkyMessage = input.outside === true ? { ...woken, outside: true } : woken;
+    const outside: WalkyMessage = input.outside === true ? { ...woken, outside: true } : woken;
+    const subject = readSubject(input.subject);
+    const message: WalkyMessage = "subject" in subject && subject.subject !== null ? { ...outside, subject: subject.subject } : outside;
     const key = this.deps.keyPem();
     return key === null || memberId === null ? message : signMessage(message, key, memberId);
   }
@@ -241,14 +256,28 @@ export class WalkyService {
     if (to === null) return { ok: false, error: NO_ADDRESS };
     // Past the cap the send is refused, never cut: the receipt says why, and the count keeps it.
     if (cleanBody(input.body).cut) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, BODY_TOO_LONG)] };
+    // The subject too (M98 spec 07): past a limit it is refused, never cut.
+    const subject = readSubject(input.subject);
+    if ("error" in subject) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, subject.error)] };
     // One head, one door (agent views SECURITY rule 2): a walky message never carries a view's head.
     if (hasViewHead(input.body)) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, WALKY_BAD_HEAD)] };
-    const message = this.compose({ ...input, to }, sender);
+    // A subject never costs a message (M98 spec 07): a member whose lead cannot verify the subject line
+    // signs the message without it when it may leave this machine, and the answer says so.
+    const leftOut = subject.subject !== null && this.deps.leadOlderThanSubject?.() === true && !this.staysHere(to);
+    const message = this.compose(leftOut ? { ...input, to, subject: null } : { ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
     const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId, instance: sender.pane.instance } : null;
     const receipts = await this.deliverer.deliver(message, from, options.budget === undefined ? {} : { budget: options.budget });
     const target = this.targetOf(message.to);
-    return target === null ? { ok: true, receipts } : { ok: true, receipts, target };
+    const answer: SendAnswer = target === null ? { ok: true, receipts } : { ok: true, receipts, target };
+    return leftOut ? { ...answer, subjectLeftOut: true } : answer;
+  }
+
+  /** Whether an address names only this machine: one of its panes, or its own `<member>/all`. */
+  private staysHere(to: string): boolean {
+    const address = parseAddress(to);
+    if (address?.kind === "pane" || address?.kind === "member-all") return isSelf(address.memberId, this.deps.memberId);
+    return false;
   }
 
   /**

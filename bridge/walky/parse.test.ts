@@ -169,6 +169,13 @@ describe("the space and the outside flag on the wire (M98 spec 02)", () => {
     expect(parseWalkyRequest(JSON.stringify(base))).toMatchObject({ outside: false });
   });
 
+  test("a send line carries the raw subject to the service, which cleans and checks it; a subject that is not text is unread (M98 spec 07)", () => {
+    expect(parseWalkyRequest(JSON.stringify({ ...base, subject: ' ci: "red" ' }))).toMatchObject({ op: "send", subject: ' ci: "red" ' });
+    expect(parseWalkyRequest(JSON.stringify(base))).toMatchObject({ subject: null });
+    expect(parseWalkyRequest(JSON.stringify({ ...base, subject: null }))).toMatchObject({ subject: null });
+    for (const subject of [7, true, ["a"], { a: 1 }]) expect(parseWalkyRequest(JSON.stringify({ ...base, subject }))).toBeNull();
+  });
+
   test("a message keeps `outside: true` and no other value", () => {
     expect(readMessage({ ...agent, outside: true })).toMatchObject({ outside: true });
     expect(readMessage(agent)).not.toHaveProperty("outside");

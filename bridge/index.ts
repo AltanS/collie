@@ -980,6 +980,10 @@ let profileBinaries: ReadonlyMap<string, string> | null = null;
 const harnessBinaries = (): ReadonlyMap<string, string> =>
   (profileBinaries ??= new Map([...loadProfiles().values()].map((profile) => [profile.identity.binary.toLowerCase(), profile.id])));
 await launchReceipts.load();
+// A launch that was pending when the last run stopped and is older than the launch budget can no longer
+// settle: it reads `unknown`, and nothing is closed or adopted on a guess (M100 spec 04).
+const unsettledLaunches = await launchReceipts.expirePending();
+if (unsettledLaunches > 0) console.log(`[launch] ${String(unsettledLaunches)} launch(es) left pending by the last run now read unknown`);
 
 // One receipt per starter run (ADR 0102, bridge/starter-launch.ts). Loading writes nothing.
 const starterReceipts = new StarterReceiptStore(cfg.stateDir);
@@ -1836,7 +1840,7 @@ insideHub?.listen({
     // The part's turn end releases the pane's oldest held send now; the poll's own rules stay (spec 03).
     // So does its word that the box holds no draft any more: a WalkyTalky message held over the draft
     // goes now, once, and its run asks the draft state again before anything (spec 05, 2026-11-13).
-    if (releasesHeld(event, insideHub?.turnOf(part.address) ?? null)) void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
+    if (releasesHeld(event, insideHub?.turnOf(part.address, { anyAge: true }) ?? null)) void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
   },
 });
 
@@ -2388,7 +2392,7 @@ const walkyHost: WalkyHost = {
   send: async (pane, sendId, text, hold): Promise<SendResult> => {
     const protocol = registry.get(pane.session)?.send;
     if (protocol === undefined) return { outcome: "refused", reason: "no terminal" };
-    const request = hold === undefined ? { id: sendId, text, mode: "send" as const } : { id: sendId, text, mode: "send" as const, draftHolds: true, holdUntil: hold.holdUntil };
+    const request = hold === undefined ? { id: sendId, text, mode: "send" as const } : { id: sendId, text, mode: "send" as const, draftHolds: true, holdUntil: hold.holdUntil, walky: hold.walky };
     const answer = await protocol.handle(request, { session: pane.session, paneId: pane.paneId, harness: pane.harness ?? "" });
     const receipt = answer.receipt;
     if (receipt === undefined) return { outcome: "unknown" };
@@ -2486,6 +2490,9 @@ const walky = new WalkyService({
   // (M98, README decision 9b and 9c). A lead knows each member's reported version; a member knows its
   // lead's stated release, and takes its lead's word for any other member's message: the lead refused
   // such a message before routing it unless it knew that member to be older. Unknown is not older.
+  // A member whose lead is known to be below 1.29.0 signs a message that may leave this machine without its
+  // subject (M98 spec 07): that lead cannot verify the subject line, and a subject must never cost a send.
+  leadOlderThanSubject: crew.mode === "peer" ? () => olderThanSpace(heardLeadRelease, crewVersion, compareSemver) : undefined,
   signerOlderThanSpace: (signer) => {
     if (signer === null || signer === walkyMemberId) return false;
     if (crew.mode === "lead") return olderThanSpace(walkyMemberVersion(signer), crewVersion, compareSemver);

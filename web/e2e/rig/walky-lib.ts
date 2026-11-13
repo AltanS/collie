@@ -61,6 +61,12 @@ export function wrapped(text: string): string {
   return text.split(/\s+/u).map(escape).join("\\s+");
 }
 
+/**
+ * A RegExp source for the optional subject after the sender's parenthesis (M98 spec 07): ` about "<words>"`,
+ * any white space standing for a space, since the terminal may wrap inside it. A subject holds no `"`.
+ */
+export const ABOUT = '(?:\\s+about\\s+"[^"]*")?';
+
 /** The single-pane address of a pane on a solo install, which is what the rig's bridge is. */
 export const addressOf = (paneId: string): string => `local/${paneId}`;
 

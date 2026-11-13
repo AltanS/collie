@@ -25,12 +25,14 @@ import {
   ASK_BODY_READ_MAX,
 } from "./forward.ts";
 import type { JsonObject } from "../json.ts";
+import { MEMBER_DEADLINE_MS } from "../create-confirm.ts";
 import { LEAD_ROW_HEADER, LEAD_ROW_MARK, leadRowCarry } from "./launcher-rows.ts";
 import { crewDeviceOf } from "./peer-gate.ts";
 import { HISTORY_READ_BUDGET_MS } from "../mux/herdr-core/adapter.ts";
 import {
   crewTimeoutBudget,
   PANE_READ_BUDGET_MS,
+  CREATE_WRITE_BUDGET_MS,
   PANE_WRITE_BUDGET_MS,
   WORKTREE_WRITE_BUDGET_MS,
   WRITE_BUDGET_MS,
@@ -1076,7 +1078,7 @@ function budgeted(workMs: number) {
 }
 
 describe("a forwarded write carries its own budget (§10.1)", () => {
-  test("every write route dials on its budget: a pane's on PANE_WRITE_BUDGET_MS, the rest on WRITE_BUDGET_MS", async () => {
+  test("every write route dials on its budget: a pane's on PANE_WRITE_BUDGET_MS, a create's on CREATE_WRITE_BUDGET_MS, the rest on WRITE_BUDGET_MS", async () => {
     // §5's write routes, one of each shape `forwardKind` decides on.
     const writes = [
       "/api/pane/w1:p1/reply",
@@ -1098,8 +1100,31 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
       const [req, url] = post(`${path}?host=laptop`, "{}");
       await forward(req, url, { transport });
       expect(calls).toHaveLength(1);
-      expect(calls[0]!.budgetMs).toBe(path.startsWith("/api/pane/") ? PANE_WRITE_BUDGET_MS : WRITE_BUDGET_MS);
+      const creates = ["/api/tab", "/api/workspace", "/api/launch"];
+      const expected = path.startsWith("/api/pane/") ? PANE_WRITE_BUDGET_MS : creates.includes(path) ? CREATE_WRITE_BUDGET_MS : WRITE_BUDGET_MS;
+      expect(calls[0]!.budgetMs).toBe(expected);
     }
+  });
+
+  test("a create's budget sits above the member's own deadline, which answers first (M100 spec 04)", () => {
+    // The member's steps add up to more than any budget; the member's one deadline is what ends its wait,
+    // and the lead gives it room for the link on top. The run itself is driven in create-unconfirmed.test.ts.
+    expect(CREATE_WRITE_BUDGET_MS).toBeGreaterThan(MEMBER_DEADLINE_MS);
+    // And inside the phone's own 20 s mutation budget, so the lead's deadline still fires first.
+    expect(CREATE_WRITE_BUDGET_MS).toBeLessThan(20_000);
+    expect(budgetOf("write", "launch")).toBe(CREATE_WRITE_BUDGET_MS);
+    expect(budgetOf("write", "tab")).toBe(CREATE_WRITE_BUDGET_MS);
+    expect(budgetOf("write", "workspace")).toBe(CREATE_WRITE_BUDGET_MS);
+    // A tab's rename and close, and every other route, keep the plain write budget.
+    expect(budgetOf("write", "tab/w1/rename")).toBe(WRITE_BUDGET_MS);
+  });
+
+  test("a launch the member answers after 7 s (its own wait for the shell) is delivered, not a 504", async () => {
+    const dial = budgeted(7000);
+    const [req, url] = post("/api/launch?host=laptop", `{"command":"claude","requestId":"0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c"}`);
+    const res = await forward(req, url, { transport: dial.transport });
+    expect(res.status).toBe(200);
+    expect(dial.calls).toEqual([CREATE_WRITE_BUDGET_MS]);
   });
 
   test("a reply that the member answers after 7 s (a send on a herdr-core member) is delivered, not a 504", async () => {
@@ -1155,7 +1180,7 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
     const [req, url] = post("/api/launch?host=laptop", `{"id":"claude"}`);
     const res = await forward(req, url, { transport: dial.transport });
     expect(res.status).toBe(200);
-    expect(dial.calls).toEqual([WRITE_BUDGET_MS]);
+    expect(dial.calls).toEqual([CREATE_WRITE_BUDGET_MS]);
   });
 
   test("…and on the poll budget it did NOT — the regression this closes", async () => {

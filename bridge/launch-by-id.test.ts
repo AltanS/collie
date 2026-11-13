@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { AuditLog } from "./audit.ts";
 import { harnessLaunch } from "./harness-launch.ts";
-import { LAUNCH_RECEIPTS_FILE, LaunchReceiptStore, coerceLaunchReceipt, memoryLaunchReceipts } from "./launch-receipts.ts";
+import { LAUNCH_RECEIPTS_FILE, LaunchReceiptStore, coerceLaunchReceipt, isUnsettled, memoryLaunchReceipts } from "./launch-receipts.ts";
 import type { JsonObject } from "./json.ts";
 import { LEAD_ROW_HEADER, LEAD_ROW_MARK } from "./crew/launcher-rows.ts";
 import { LaunchWindow } from "./launch-window.ts";
@@ -517,7 +517,8 @@ describe("LaunchReceiptStore — the file", () => {
     expect(await readdir(dir)).toEqual([LAUNCH_RECEIPTS_FILE]);
     const again = new LaunchReceiptStore(dir, () => {});
     await again.load();
-    expect(again.get(ID)?.paneId).toBe("w1:p1");
+    const got = again.get(ID);
+    expect(got !== undefined && !isUnsettled(got) ? got.paneId : null).toBe("w1:p1");
     const mode = (await Bun.file(join(dir, LAUNCH_RECEIPTS_FILE)).stat()).mode & 0o777;
     // NTFS has no 0600 mode bits; on Windows the state folder's access list keeps the file private.
     if (process.platform !== "win32") expect(mode).toBe(0o600);

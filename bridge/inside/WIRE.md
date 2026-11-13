@@ -2,6 +2,8 @@
 
 > **Experimental.** This wire may change in any release until Collie 2.0. A part and a bridge agree on
 > the version in `hello`; there is no other compatibility promise yet.
+>
+> The protocol says "part"; text a person reads says "plugin".
 
 The inside wire is the one local protocol between an **inside part** (a small piece that runs inside an
 agent program through the vendor's own extension point: a Claude Code mod, a pi extension) and the
@@ -96,8 +98,8 @@ Every event carries `part` and `kind`.
 
 | kind | fields | meaning |
 | --- | --- | --- |
-| `turn.start` | `turn`? | a turn started (wake, state working) |
-| `turn.end` | `turn`?, `reason`? | a turn ended (wake, state idle) |
+| `turn.start` | `turn`?, `seq`? | a turn started (wake, state working) |
+| `turn.end` | `turn`?, `reason`?, `seq`? | a turn ended (wake, state idle) |
 | `row` | `door`, `row`? | the session stored a row: its door and id, never its text |
 | `ask.open` | `ask`, `askKind`, `tool`?, `input`? | an ask opened; the answer says whether to wait |
 | `ask.close` | `ask`, `how`? | the ask ended on the part's side |
@@ -105,7 +107,7 @@ Every event carries `part` and `kind`.
 | `sent` | `cmd` | the part did what the command asked |
 | `failed` | `cmd`, `reason`? | the part could not |
 | `draft` | `cmd`, `text`, `caret`? | the answer to a `draft` question: the input box as it stands |
-| `draft.state` | `present` | whether the input box holds a draft, a boolean; never the text |
+| `draft.state` | `present`, `seq`? | whether the input box holds a draft, a boolean; never the text |
 | `bye` | | the part stops; the pane falls back to the screen path at once |
 
 `turn.start`, `turn.end` and `row` reach the rest of the bridge only from a part that declared `wake`.
@@ -115,6 +117,28 @@ decision 10).
 `draft.state` reaches the rest of the bridge only from a part that declared `draft.state`. A part says
 it after each `hello`, before its turn word, and again each time the box goes from empty to a draft
 or back. Any text sent with it is not read.
+
+**State words: their count, their age, and saying them again** (M100 spec 05). `turn.start`,
+`turn.end` and `draft.state` are the part's state words, and any one post of them can be lost: no
+answer in time, a `429` past the burst, a `5xx`. Three rules cover that.
+
+- **`seq`, the count.** A whole number from 0. The part takes the next number for each new state word
+  (one count for all three kinds) and keeps that number when it says the same word again. The bridge
+  keeps the count of the last word of each kind it took, per part id, and drops a word with a lower
+  count, unread and unpassed: a late retry never undoes a newer word. A word with no `seq` (a part from
+  before this field) is taken in arrival order, as before. A new hello is a new part id, so a reloaded
+  part's count may start over. A `seq` that is not a whole number from 0 refuses the event (`400`).
+- **The age.** The bridge believes a `running` turn or a `present: true` box for 60 seconds from the
+  word that said it (`WORD_FRESH_MS` in `hub.ts`); a stored `row` keeps a running turn fresh. Past that,
+  the word reads as unknown, and unknown takes the screen road, which reads the turn and the box
+  itself. `idle` and `present: false` do not age. A Deliver now, which never sends on an unknown turn,
+  reads a running turn of any age as busy.
+- **Saying it again.** The part says every state word again after each hello, the box first. A post
+  that got no answer, a `429` or a `5xx` is said again after 1, 5 and 15 seconds, then no more until
+  the next state word, the next change of the box, or the next hello; a new word starts the waits over.
+  The part posts at most four words in a row; a word still unsaid after them goes through the same waits.
+  The part keeps per bridge which words that bridge took, so a word whose post failed is never
+  deduplicated away. A `410` says hello instead, and the hello says the words.
 
 `ask.close` also withdraws an answer still queued for that ask.
 
@@ -146,7 +170,8 @@ and `wake`, and the send is a plain new message: no steer, no slash command, she
 the Send Protocol on the screen. The bridge, not the part, holds a send while the part reports a turn
 running, and releases it at the part's `turn.end`; the held card, Cancel and Dismiss are the screen
 road's own. A part that has not reported a turn since it bound (a bridge restart, a reload mid turn)
-leaves the turn unknown, and the send takes the screen road until its first turn event. The send
+leaves the turn unknown, and the send takes the screen road until its first turn event; so does a
+`running` word grown old (*State words* above), whose `turn.end` may have been lost. The send
 keeps the phone's request id as the command id, and its receipt: `sent` on the part's `sent`; `unknown` (it may have arrived) on `failed` or no word in 15 seconds. The send record
 and the audit entry carry `path: "data"`, or `path: "screen"` after a data try that no part took.
 
@@ -196,7 +221,8 @@ Cancel and Drop. It goes once, with no key typed, when the part's `turn.end`, or
 with `present: false` while the turn is known, finds both the turn idle and the box empty; the
 session's poll may release it too, and every release asks the part's state again first. A part that
 did not declare `draft.state`, or has not said it since it bound, leaves the draft unknown, and
-unknown takes the screen road, which reads the box itself. Unknown is never taken for "no draft".
+unknown takes the screen road, which reads the box itself. Unknown is never taken for "no draft". A
+`present: true` grown old is unknown too (*State words* above): its "no draft" may have been lost.
 
 **The window.** The part's word can be late: the person may start to type after the bridge read "no
 draft" and before the `mail` arrives. So the part reads the box again right before it submits; a box
@@ -290,6 +316,10 @@ claims.
   the Claude mod cannot abort a hook's signal, so `phoneAnswerWord` (inside/claude/hooks/core.ts)
   carries that case. The live case, a desk answer while the phone's poll is open, belongs to M99
   spec 13 (the legs).
+- **A lost `turn.start` is not aged.** When every retry of a `turn.start` fails, the bridge keeps
+  the turn `idle` until the part's next word, and a phone send in that turn goes to the part, which
+  submits it as the engine takes a prompt during a turn. Only `running` and a draft age, because only
+  they hold a send (M100 spec 05).
 - **A part limits every request.** The Claude mod gives each hello and event 5 seconds and each poll
   its wait plus 5 seconds; a bridge that does not answer in time counts as down.
 

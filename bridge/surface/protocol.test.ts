@@ -5346,6 +5346,88 @@ describe("the held send (M56 spec 15)", () => {
     ]);
   });
 
+  test("a crash between a cancel's two writes never leaves a request held with no row", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-000095" });
+    // The process dies when the request is about to settle: whatever the cancel wrote first is all there is.
+    r.deps.store.settle = () => {
+      throw new Error("crash");
+    };
+    expect(() => r.protocol.cancelHeld("main", "%1", "held-000095")).toThrow("crash");
+    const store = new RequestStore(join(dir, "sends"), () => 2_000_000);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => 2_000_000);
+    SendProtocol.reconcileHolds(holds, store);
+    const stranded = store.get("held-000095")?.phase === "held" && holds.get("held-000095") === null;
+    expect(stranded).toBe(false);
+  });
+
+  test("a crash between an expiry's two writes never leaves a request held with no row", async () => {
+    const clock = { now: 1_000_000 };
+    const r = untrusted({ clock });
+    await r.send("then give it a title", { id: "held-000096" });
+    clock.now += 31 * 60 * 1000;
+    r.deps.store.settle = () => {
+      throw new Error("crash");
+    };
+    await tick(r).catch(() => undefined);
+    const store = new RequestStore(join(dir, "sends"), () => clock.now);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    SendProtocol.reconcileHolds(holds, store);
+    const stranded = store.get("held-000096")?.phase === "held" && holds.get("held-000096")?.state !== "held";
+    expect(stranded).toBe(false);
+  });
+
+  test("a settle that throws for one held request does not stop the poll for the others, and the next poll ends it", async () => {
+    const clock = { now: 1_000_000 };
+    const r = untrusted({ clock });
+    await r.send("then give it a title", { id: "held-000091" });
+    await r.send("and a second one", { id: "held-000092" });
+    await r.send("and a third one", { id: "held-000093" });
+    clock.now += 31 * 60 * 1000;
+    const settle = r.deps.store.settle.bind(r.deps.store);
+    let full = true;
+    r.deps.store.settle = (id, receipt) => {
+      if (full && id === "held-000091") throw new Error("ENOSPC: no space left on device");
+      return settle(id, receipt);
+    };
+    const warnings: string[] = [];
+    const warn = console.warn;
+    console.warn = (line: string) => void warnings.push(line);
+    try {
+      await tick(r);
+      // The two others ended, the failing one is still held, and one warning said so.
+      expect(r.deps.holds!.get("held-000092")).toMatchObject({ state: "ended", outcome: "expired" });
+      expect(r.deps.holds!.get("held-000093")).toMatchObject({ state: "ended", outcome: "expired" });
+      expect(r.deps.holds!.get("held-000091")).toMatchObject({ state: "held" });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("ENOSPC");
+      // The disk has room again: the next poll ends it.
+      full = false;
+      await tick(r);
+      expect(r.deps.holds!.get("held-000091")).toMatchObject({ state: "ended", outcome: "expired" });
+    } finally {
+      console.warn = warn;
+    }
+  });
+
+  test("a request settled before its row was removed finishes the row on start: a cancel drops it, an expiry ends it with no crash reason", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-000097" });
+    await r.send("and a second one", { id: "held-000098" });
+    const held = (id: string) => r.deps.store.get(id)!.receipt!;
+    r.deps.store.settle("held-000097", { ...held("held-000097"), outcome: "cancelled" });
+    r.deps.store.settle("held-000098", { ...held("held-000098"), outcome: "expired" });
+    const store = new RequestStore(join(dir, "sends"), () => 2_000_000);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => 2_000_000);
+    expect(SendProtocol.reconcileHolds(holds, store)).toBe(2);
+    expect(holds.get("held-000097")).toBeNull();
+    expect(holds.get("held-000098")).toMatchObject({ state: "ended", outcome: "expired" });
+    expect(holds.get("held-000098")?.reason).toBeUndefined();
+  });
+
   test("a release the bridge died in ends unknown(crash) on boot, its text kept, and is never sent again", async () => {
     const first = untrusted();
     await first.send("then give it a title", { id: "held-000017" });
@@ -7229,6 +7311,19 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     expect(r.pane.calls.slice(calls)).toEqual([]);
     expect(r.pane.keysSeen.slice(keys)).toEqual([]);
     expect(r.pane.box).toBe("half a thought");
+  });
+
+  test("the hold row of a marked send names its WalkyTalky message (a person's own held row, pinned whole above, names none)", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    const until = r.clock.now + HOUR;
+    await r.send("[walky-talky wt_aaaaaaaaaaa1] from agent x", { id: "draft-000001", ...marked(until), walky: "wt_aaaaaaaaaaa1" });
+    // The same ids come back from the file, then the row the snapshot serves.
+    expect(r.holds.get("draft-000001")).toMatchObject({ draftHolds: true, walky: "wt_aaaaaaaaaaa1" });
+    expect(r.protocol.heldOf("main", "%1")).toMatchObject([{ requestId: "draft-000001", state: "held", cause: "draft_present", walky: "wt_aaaaaaaaaaa1" }]);
+    // A marked send with no message id (a caller that is not walky) carries none.
+    await r.send("another", { id: "draft-000002", ...marked(until) });
+    expect(r.protocol.heldOf("main", "%1")[1]).not.toHaveProperty("walky");
   });
 
   test("a phone send while a marked send waits over the draft does not join its queue: it is refused with its offers", async () => {

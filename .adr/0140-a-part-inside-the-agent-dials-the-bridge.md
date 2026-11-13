@@ -10,6 +10,8 @@
   `inside/claude/` (the Claude Code mod) · `cli/harness-link.ts` (`collie harness link <harness>`) ·
   docs/claude-code-on-your-phone.md, "Send by data"
 
+The protocol says "part"; text a person reads says "plugin".
+
 ## Context
 
 The screen is Collie's contract with each agent program: a send is typed into the input box and proven
@@ -68,6 +70,24 @@ listen. A pi extension could listen, but two shapes of wire for two programs is 
 10. **No model, no secret.** A part never calls a model, never reads a key or a credential, and never
     writes a file. It submits the person's own words, answers what the person tapped, and reports
     turns. Collie still holds no model key.
+11. **A lost state word costs a road, never a held send** (M100 spec 05, 2026-11-13). The part's
+    `turn.start`, `turn.end` and `draft.state` carry a count (`seq`), and the bridge drops a word older
+    than one it took. The bridge believes a "running" turn or a "draft present" for 60 seconds from the
+    word that said it, a stored row keeping a running turn fresh; an older one reads as unknown, and
+    unknown takes the screen road. The part says its state words again after each hello and after a
+    failed post (1, 5 and 15 seconds, then until the next word, box change or hello).
+    Why 60 seconds: the age only picks the road, it never lets a send through. An unknown turn goes to
+    the screen road, which reads the turn itself and holds a send the screen shows running, so a real
+    turn of hours with no hook event is held there just as an unlinked session's is; and an unknown box
+    goes to the screen road, which reads the box and holds a WalkyTalky message over a draft. So a short
+    age is safe, and it bounds what a lost `turn.end` or "no draft" costs: at most a minute of a send
+    held on a word nobody will correct, then the screen's own release rules. It is longer than the
+    part's whole retry ladder (21 seconds) and a long poll (25 seconds), so a word that is only late
+    still lands before it ages, and a linked session in a quiet turn shorter than a minute keeps the
+    data road. "Idle" and "no draft" do not age: neither holds a send, a phone send to an idle pane is
+    what the data road is for, and a `mail` is read against the box once more by the part before it
+    submits. A count, not a turn id: a turn id names only turns, while the box word needs ordering too,
+    and an older part's word with no count is still taken in arrival order.
 
 ## Consequences
 

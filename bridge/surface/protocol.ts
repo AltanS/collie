@@ -287,7 +287,7 @@ import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.
 import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
-import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
+import { HOLD_BRIDGE_MAX, HOLD_ENDED_KEEP_MS, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldInput, type HoldStore } from "./holds.ts";
 import { QueuedSends, type BoxReading, type ReceiptQueued } from "./queued.ts";
 import { PROBE_MARKER, probeCharOf, probeResidue } from "./probe-marker.ts";
 
@@ -738,6 +738,8 @@ export interface SendRequest {
   readonly draftHolds?: boolean;
   /** With {@link draftHolds}: when the hold ends, epoch ms. It replaces the hold store's own clock. */
   readonly holdUntil?: number;
+  /** With {@link draftHolds}: the id of the WalkyTalky message this send types. Its hold row carries it, so the phone knows the row is a message's. */
+  readonly walky?: string;
   /** `steer` (M69): into the running turn with the profile's steer key, see the header. Absent: as before. */
   readonly when?: SendWhen;
   /**
@@ -3429,7 +3431,10 @@ export class SendProtocol {
     const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause, versionUnread: unread };
     if (request.draftHolds === true) {
       // A marked send keeps its caller's clock.
-      holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true } : { ...input, draftHolds: true, expiresAt: request.holdUntil });
+      let marked: HoldInput = { ...input, draftHolds: true };
+      if (request.walky !== undefined) marked = { ...marked, walky: request.walky };
+      if (request.holdUntil !== undefined) marked = { ...marked, expiresAt: request.holdUntil };
+      holds.add(marked);
     } else {
       holds.add(input);
     }
@@ -3521,7 +3526,9 @@ export class SendProtocol {
       return null;
     }
     const base: SendRequest = { id, text: entry.text, mode: entry.mode, revision: entry.revision };
-    const request: SendRequest = entry.draftHolds === true ? { ...base, draftHolds: true } : base;
+    let request: SendRequest = base;
+    if (entry.draftHolds === true) request = { ...request, draftHolds: true };
+    if (entry.draftHolds === true && entry.walky !== undefined) request = { ...request, walky: entry.walky };
     const target: SendTarget = { session: entry.session, paneId: entry.paneId, harness: entry.harness };
     const work = this.run(request, record, target, true, overDraft);
     this.inFlight.set(id, work);
@@ -3615,7 +3622,7 @@ export class SendProtocol {
           continue;
         }
         if (now >= entry.expiresAt) {
-          this.endHeld(entry, "expired", undefined);
+          this.endHeldInTick(entry, "expired", undefined);
           continue;
         }
         const record = this.deps.store.get(entry.id);
@@ -3626,7 +3633,7 @@ export class SendProtocol {
         const sameProgram = moved && namesProfile(heldProfile(record), agentOfGeneration(generation));
         const otherAgent = moved && !sameProgram && agentOfGeneration(generation) !== agentOfGeneration(record.paneGeneration);
         if (record === null || otherAgent || watch.missing >= MISSING_POLLS) {
-          this.endHeld(entry, "refused", "pane_gone");
+          this.endHeldInTick(entry, "refused", "pane_gone");
           continue;
         }
         if (sameProgram) {
@@ -3713,7 +3720,7 @@ export class SendProtocol {
       const placeholder = plainDraft !== null && watch.plainDraft != null && now - watch.plainDraft.since >= DRAFT_LEFT_MS && untried;
       if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
-        this.endHeld(next, "refused", "pane_gone");
+        this.endHeldInTick(next, "refused", "pane_gone");
         continue;
       }
       started.push(this.releaseQuietly(next.id));
@@ -3744,6 +3751,25 @@ export class SendProtocol {
     }
   }
 
+  /** Whether the last end of a hold in the poll failed to write, so the warning is given once per run of failures. */
+  private endWriteFailed = false;
+
+  /**
+   * {@link endHeld} for the poll. The request settles first, so a write that throws (a full disk) leaves
+   * the row held and the next poll tries again; it must not stop the poll for the other held requests.
+   * The warning is given once for a run of failures, not once per entry per poll.
+   */
+  private endHeldInTick(entry: HeldEntry, outcome: "expired" | "refused", reason: SendReason | undefined): void {
+    try {
+      this.endHeld(entry, outcome, reason);
+      this.endWriteFailed = false;
+    } catch (err) {
+      if (this.endWriteFailed) return;
+      this.endWriteFailed = true;
+      console.warn(`[surface] a held request could not be ended, the poll goes on: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   /**
    * A held request ends without a run: `expired`, `cancelled`, or `refused(pane_gone)`. Its receipt is
    * the held one with the new outcome; the counters take it. A cancel leaves no file; the others keep
@@ -3753,13 +3779,19 @@ export class SendProtocol {
     const holds = this.deps.holds!;
     const record = this.deps.store.get(entry.id);
     const held = record?.receipt;
+    let receipt: SendReceipt | null = null;
+    // The request settles BEFORE its row changes, so a crash between the two writes leaves a settled
+    // request with a row still held, which `reconcileHolds` finishes on start. The other order left a
+    // request `held` with no row, and nothing ever looked at it again.
+    if (record !== null && held !== undefined && record.phase === "held") {
+      const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
+      receipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
+      if (outcome === "refused" && reason === "pane_gone") receipt = { ...receipt, detail: HELD_PANE_GONE };
+      this.deps.store.settle(entry.id, receipt);
+    }
     if (outcome === "cancelled") holds.remove(entry.id);
     else holds.end(entry.id, outcome, reason);
-    if (record === null || held === undefined || record.phase !== "held") return null;
-    const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
-    let receipt: SendReceipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
-    if (outcome === "refused" && reason === "pane_gone") receipt = { ...receipt, detail: HELD_PANE_GONE };
-    this.deps.store.settle(entry.id, receipt);
+    if (receipt === null || held === undefined) return null;
     const ledger = this.deps.ledger;
     try {
       ledger?.send(
@@ -3894,7 +3926,10 @@ export class SendProtocol {
       }
       const outcome = record.receipt?.outcome;
       if (outcome === "sent" || outcome === "effective" || outcome === "cancelled") holds.remove(entry.id);
-      else holds.end(entry.id, outcome ?? "unknown", record.receipt?.reason ?? "crash");
+      // The request settled and the bridge stopped before the row followed ({@link endHeld} settles
+      // first): the row ends with the request's own word. "crash" is the reason only for a request that
+      // has none, as when the run itself died.
+      else holds.end(entry.id, outcome ?? "unknown", record.receipt?.reason ?? (outcome === undefined || outcome === "unknown" ? "crash" : undefined));
       changed++;
     }
     return changed;
@@ -4197,21 +4232,24 @@ export class SendProtocol {
     const mail = request.draftHolds === true;
     if (over) {
       // Never while a turn runs or a question is open (a dialog), and never on a turn nobody reported:
-      // the message keeps waiting for the draft, its try not counted.
-      const turn = data.door.turnOf(address);
+      // the message keeps waiting for the draft, its try not counted. A `running` word of any age is
+      // busy here: a Deliver now never goes on it, and an old one says why as before (M100 spec 05).
+      const turn = data.door.turnOf(address, { anyAge: true });
       if (turn === null) return this.overDraftMiss(state, "not-linked");
       if (turn === "running" || data.door.askOpen(address)) return this.overDraftMiss(state, "busy");
     }
     // A draft holds a WalkyTalky message by data too (spec 05, decision of 2026-11-13): another agent's
     // words never go in over the person's draft. The part says whether the box holds one; a part that
     // cannot say, or has not said yet, leaves it unknown, and unknown takes the screen road, which reads
-    // the box itself. Unknown is never taken for "no draft". A phone send (spec 03) is not asked.
+    // the box itself. Unknown is never taken for "no draft", and an old "present" is unknown too (M100
+    // spec 05: its "no draft" may have been lost). A phone send (spec 03) is not asked.
     // A Deliver now does not ask: the person chose to deliver over the draft, and the draft is never read.
     const draft = mail && !over ? data.door.draftOf(address) : false;
     if (draft === null) return null;
     const turn = data.door.turnOf(address);
     // A part that has not reported a turn since it bound (a bridge restart, a reload mid turn) leaves
-    // the turn unknown: the screen road reads it and runs the send, as today.
+    // the turn unknown: the screen road reads it and runs the send, as today. So does a `running` word
+    // grown old (M100 spec 05): its `turn.end` may have been lost, and the screen holds a turn it sees.
     if (turn === null) return null;
     if (turn === "running") {
       const end = new Ended("refused", "turn_running");

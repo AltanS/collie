@@ -10,7 +10,7 @@ import type { SendResult, WalkyHost, WalkyPane } from "../bridge/walky/deliver.t
 import { WalkyLog } from "../bridge/walky/log.ts";
 import { WalkyOff } from "../bridge/walky/off.ts";
 import { unknownOp, UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
-import { SENDER_OFF, WALKY_OFF } from "../bridge/walky/types.ts";
+import { SENDER_OFF, SUBJECT_LEFT_OUT, SUBJECT_TOO_LONG, WALKY_OFF } from "../bridge/walky/types.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
@@ -217,7 +217,7 @@ describe("send", () => {
     expect(await cmdWalkySend(d, ["local/%2", "Tests", "are", "green."])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to local/%2#bbbb, agent-y, repo#two", "typed into the pane"]);
     // An agent's message types one nudge line; the body waits for `inbox <id>`.
-    expect(b.sent).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one): a message from another agent, not your operator. Read it: collie walky inbox wt_aaaaaaaaaaa1. Reply: collie walky reply wt_aaaaaaaaaaa1 \"<text>\""]);
+    expect(b.sent).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one): a message from another agent, not your operator. Read it: collie walky inbox wt_aaaaaaaaaaa1"]);
   });
 
   socketTest("`--to` is an alias, `--` keeps a text that starts with a dash, and an address may carry the token `who` prints", async () => {
@@ -471,7 +471,52 @@ describe("reply, inbox, status, who", () => {
     await cmdWalkySend(deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa1" }), ["local/%2", "question?"]);
     const d = deps(b, inPane("%2"), { mintId: () => "wt_bbbbbbbbbbb2" });
     expect(await cmdWalkyReply(d, ["wt_aaaaaaaaaaa1", "answer."])).toBe(EXIT.OK);
-    expect(b.sent[1]).toBe("[walky-talky wt_bbbbbbbbbbb2] from agent local/%2#bbbb (agent-y, repo#two) reply to wt_aaaaaaaaaaa1: a message from another agent, not your operator. Read it: collie walky inbox wt_bbbbbbbbbbb2. Reply: collie walky reply wt_bbbbbbbbbbb2 \"<text>\"");
+    expect(b.sent[1]).toBe("[walky-talky wt_bbbbbbbbbbb2] from agent local/%2#bbbb (agent-y, repo#two) reply to wt_aaaaaaaaaaa1: a message from another agent, not your operator. Read it: collie walky inbox wt_bbbbbbbbbbb2");
+  });
+
+  socketTest("--subject rides the send and the reply: the typed line says what it is about, and so does the inbox (M98 spec 07)", async () => {
+    const b = await bridge();
+    expect(await cmdWalkySend(deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa1" }), ["local/%2", "--subject", "export tests are green", "all 41 pass"])).toBe(EXIT.OK);
+    expect(b.sent[0]).toBe(
+      '[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one) about "export tests are green": a message from another agent, not your operator. Read it: collie walky inbox wt_aaaaaaaaaaa1',
+    );
+    expect(b.service?.status("wt_aaaaaaaaaaa1").message).toMatchObject({ subject: "export tests are green", body: "all 41 pass" });
+    const d = deps(b, inPane("%2"), { mintId: () => "wt_bbbbbbbbbbb2" });
+    expect(await cmdWalkyReply(d, ["wt_aaaaaaaaaaa1", "--subject", "merge it", "thanks"])).toBe(EXIT.OK);
+    expect(b.sent[1]).toBe(
+      '[walky-talky wt_bbbbbbbbbbb2] from agent local/%2#bbbb (agent-y, repo#two) about "merge it" reply to wt_aaaaaaaaaaa1: a message from another agent, not your operator. Read it: collie walky inbox wt_bbbbbbbbbbb2',
+    );
+    const read = deps(b, inPane("%2"));
+    expect(await cmdWalkyInbox(read, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(read.io.stdout).toEqual([
+      '[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one) about "export tests are green"',
+      "all 41 pass",
+      'Reply: collie walky reply wt_aaaaaaaaaaa1 "<text>"',
+    ]);
+  });
+
+  socketTest("a subject past a limit is refused at the CLI with the limit named, and nothing is sent (M98 spec 07)", async () => {
+    const b = await bridge();
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkySend(d, ["local/%2", "--subject", "one two three four five six seven", "x"])).toBe(EXIT.USAGE);
+    expect(d.io.stderr[0]).toBe(`error: ${SUBJECT_TOO_LONG}`);
+    expect(b.sent).toEqual([]);
+    expect(b.service?.status("wt_aaaaaaaaaaa1").receipts).toEqual([]);
+  });
+
+  socketTest("a member whose lead is below 1.29.0 sends without the subject and says so in one sentence; to its own pane the subject stays (M98 spec 07)", async () => {
+    const b = await bridge({ memberId: "laptop", leadOlderThanSubject: () => true });
+    const away = deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa1" });
+    await cmdWalkySend(away, ["desk/w1:p1", "--subject", "export tests are green", "x"]);
+    expect(away.io.stdout).toContain(SUBJECT_LEFT_OUT);
+    expect(b.service?.status("wt_aaaaaaaaaaa1").message).not.toHaveProperty("subject");
+    const json = deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa2" });
+    await cmdWalkySend(json, ["desk/w1:p1", "--json", "--subject", "export tests are green", "x"]);
+    expect(JSON.parse(json.io.stdout[0]!)).toMatchObject({ subjectLeftOut: true });
+    const home = deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa3" });
+    expect(await cmdWalkySend(home, ["laptop/%2", "--subject", "export tests are green", "x"])).toBe(EXIT.OK);
+    expect(home.io.stdout).not.toContain(SUBJECT_LEFT_OUT);
+    expect(b.sent.at(-1)).toContain(' about "export tests are green":');
   });
 
   socketTest("a reply to an operator's message is refused: it has no address", async () => {
@@ -488,7 +533,7 @@ describe("reply, inbox, status, who", () => {
     await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "while you were busy"]);
     const keep = deps(b, inPane("%2"));
     expect(await cmdWalkyInbox(keep, ["--keep"])).toBe(EXIT.OK);
-    expect(keep.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "while you were busy"]);
+    expect(keep.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "while you were busy", 'Reply: collie walky reply wt_aaaaaaaaaaa1 "<text>"']);
     const d = deps(b, inPane("%2"));
     expect(await cmdWalkyInbox(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(keep.io.stdout);
@@ -502,7 +547,7 @@ describe("reply, inbox, status, who", () => {
     await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "Tests are green."]);
     const d = deps(b, inPane("%2"));
     expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "Tests are green."]);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "Tests are green.", 'Reply: collie walky reply wt_aaaaaaaaaaa1 "<text>"']);
     // Read: the unread list is empty now.
     const after = deps(b, inPane("%2"));
     await cmdWalkyInbox(after, []);
@@ -559,7 +604,7 @@ describe("reply, inbox, status, who", () => {
     expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
     expect(older.lines).toHaveLength(1);
     expect(d.io.stderr).toEqual([]);
-    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "Tests are green."]);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "Tests are green.", 'Reply: collie walky reply wt_aaaaaaaaaaa1 "<text>"']);
   });
 
   socketTest("when every bridge knows the pane and none holds the message, `inbox <id>` prints the sentence and exits STATE, as before (2026-10-30)", async () => {
@@ -584,7 +629,7 @@ describe("reply, inbox, status, who", () => {
     const first = await bridge();
     const d = deps(first, inPane("%2"), { sockets: () => [walkySocketPath(first.stateDir), walkySocketPath(holder.stateDir)] });
     expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "held by the second"]);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "held by the second", 'Reply: collie walky reply wt_aaaaaaaaaaa1 "<text>"']);
   });
 
   socketTest("`status <id>` asks past a bridge that holds no receipt, and prints the sentence only when none does (2026-10-30)", async () => {
@@ -1065,16 +1110,28 @@ describe("reply, inbox, status, who", () => {
 
 describe("the send arguments", () => {
   test("flags before the text, the text after the address", () => {
-    expect(parseSendArgs(["local/%2", "a", "--b"])).toEqual({ to: "local/%2", replyTo: null, text: "a --b", json: false, wake: false, outside: false });
-    expect(parseSendArgs(["--json", "--to", "all", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: true, wake: false, outside: false });
-    expect(parseSendArgs(["here", "--wake", "x"])).toEqual({ to: "here", replyTo: null, text: "x", json: false, wake: true, outside: false });
-    expect(parseSendArgs(["all", "--outside", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: false, wake: false, outside: true });
-    expect(parseSendArgs(["--outside", "--reply-to", "wt_aaaaaaaaaaa1", "--", "x"])).toEqual({ to: null, replyTo: "wt_aaaaaaaaaaa1", text: "x", json: false, wake: false, outside: true });
+    expect(parseSendArgs(["local/%2", "a", "--b"])).toEqual({ to: "local/%2", replyTo: null, text: "a --b", json: false, wake: false, outside: false, subject: null });
+    expect(parseSendArgs(["--json", "--to", "all", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: true, wake: false, outside: false, subject: null });
+    expect(parseSendArgs(["here", "--wake", "x"])).toEqual({ to: "here", replyTo: null, text: "x", json: false, wake: true, outside: false, subject: null });
+    expect(parseSendArgs(["all", "--outside", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: false, wake: false, outside: true, subject: null });
+    expect(parseSendArgs(["--outside", "--reply-to", "wt_aaaaaaaaaaa1", "--", "x"])).toEqual({ to: null, replyTo: "wt_aaaaaaaaaaa1", text: "x", json: false, wake: false, outside: true, subject: null });
     // After the text starts, a flag is part of the text.
-    expect(parseSendArgs(["here", "x", "--wake"])).toEqual({ to: "here", replyTo: null, text: "x --wake", json: false, wake: false, outside: false });
-    expect(parseSendArgs(["here", "x", "--outside"])).toEqual({ to: "here", replyTo: null, text: "x --outside", json: false, wake: false, outside: false });
+    expect(parseSendArgs(["here", "x", "--wake"])).toEqual({ to: "here", replyTo: null, text: "x --wake", json: false, wake: false, outside: false, subject: null });
+    expect(parseSendArgs(["here", "x", "--outside"])).toEqual({ to: "here", replyTo: null, text: "x --outside", json: false, wake: false, outside: false, subject: null });
     expect(parseSendArgs(["--reply-to", "bad"])).toEqual({ error: "`bad` is not a message id" });
     expect(parseSendArgs(["--nope"])).toEqual({ error: "unknown flag `--nope`" });
+  });
+
+  test("--subject takes one value, cleaned, and refuses one past a limit before any bridge is asked (M98 spec 07)", () => {
+    expect(parseSendArgs(["local/%2", "--subject", "  export  tests are green ", "x"])).toEqual({ to: "local/%2", replyTo: null, text: "x", json: false, wake: false, outside: false, subject: "export tests are green" });
+    expect(parseSendArgs(["--subject", "ci: \"red\" (again)", "--reply-to", "wt_aaaaaaaaaaa1", "x"])).toMatchObject({ replyTo: "wt_aaaaaaaaaaa1", subject: "ci red again" });
+    // Only stripped characters: no subject, and the send goes on.
+    expect(parseSendArgs(["here", "--subject", '"::()"', "x"])).toMatchObject({ subject: null });
+    expect(parseSendArgs(["here", "--subject", "one two three four five six seven", "x"])).toEqual({ error: SUBJECT_TOO_LONG });
+    expect(parseSendArgs(["here", "--subject", "a".repeat(49), "x"])).toEqual({ error: SUBJECT_TOO_LONG });
+    expect(parseSendArgs(["here", "--subject"])).toEqual({ error: "`--subject` needs a value" });
+    // After the text starts, it is part of the text.
+    expect(parseSendArgs(["here", "x", "--subject", "y"])).toMatchObject({ text: "x --subject y", subject: null });
   });
 });
 

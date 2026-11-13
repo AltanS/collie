@@ -126,6 +126,15 @@ function refusalFor<T>(err: T): MuxRefusalOutcome {
   return muxUnreachable(err instanceof Error ? err.message : String(err));
 }
 
+/**
+ * The refusal for a failure of a CREATE call. A `runShell` the core did not answer in time may still have
+ * started the shell, so it is `unconfirmed` and not `unreachable`: the route looks in the snapshot before it
+ * says anything (bridge/create-confirm.ts).
+ */
+function createRefusal<T>(err: T): MuxRefusalOutcome {
+  return err instanceof HcTimeout ? muxUnconfirmed(err.message) : refusalFor(err);
+}
+
 /** A pane id this adapter may address: a local terminal. Another machine's is `gone` here. */
 function remoteRefusal(paneId: string): MuxRefusalOutcome | null {
   return isLocalAddress(paneId) ? null : muxGone(`${paneId} is a terminal on another machine; its own Collie shows it`);
@@ -532,7 +541,7 @@ export class HerdrCoreMux implements MuxAdapter {
       this.foregrounds.set(created.address, created.foreground);
       return muxOk({ paneId: created.address, spaceId: space.spaceId, spaceLabel: space.label, tabId, cwd: created.cwd });
     } catch (err) {
-      return refusalFor(err);
+      return createRefusal(err);
     }
   }
 
@@ -556,7 +565,7 @@ export class HerdrCoreMux implements MuxAdapter {
       const spaceLabel = folderName(created.foreground?.cwd || created.cwd, this.home) || spaceId;
       return muxOk({ paneId: created.address, spaceId, spaceLabel, tabId, cwd: created.cwd });
     } catch (err) {
-      return refusalFor(err);
+      return createRefusal(err);
     }
   }
 
