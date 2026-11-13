@@ -185,6 +185,10 @@ const NEUTRAL = new Set([
   "claude--v2301-lab-agents-panel-more.txt",
   "claude--v2301-lab-agents-panel-tasks-pill.txt",
   "claude--v2301-lab-agents-panel-focused.txt",
+  // Stock Claude Code 2.1.322 on macOS draws `⏺ main` (U+23FA) instead of Linux's `● main` (U+25CF).
+  "claude--v2322-macos-agents-panel-idle--w80.txt",
+  "claude--v2322-macos-agents-panel-focused--w80.txt",
+  "claude--v2322-macos-agents-panel-working--w80.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

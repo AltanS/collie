@@ -129,6 +129,9 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2301-lab-agents-panel-more.txt",
     "claude--v2301-lab-agents-panel-tasks-pill.txt",
     "claude--v2301-lab-agents-panel-focused.txt",
+    "claude--v2322-macos-agents-panel-idle--w80.txt",
+    "claude--v2322-macos-agents-panel-focused--w80.txt",
+    "claude--v2322-macos-agents-panel-working--w80.txt",
     "claude--v2301-idle.txt",
     "claude--v2301-done-shell-running--w100.txt",
     "claude--v2301-idle-after-turn--w100.txt",
@@ -437,6 +440,7 @@ describe("invariant: rows appended below a box never change the box or its draft
   const POINTER_TAILS = {
     "claude--footer-pointed-agent.txt": true,
     "claude--v2301-lab-agents-panel-focused.txt": true,
+    "claude--v2322-macos-agents-panel-focused--w80.txt": true,
     "claude--v2302-slash-model-list--w119.txt": true,
     "claude--v2302-slash-effort-list--w120--h40.txt": true,
     "claude--v2302-slash-model-list--w120--h40.txt": true,

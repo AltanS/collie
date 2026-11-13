@@ -1,0 +1,45 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.322[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mSonnet[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mAPI[39m [38;5;246mUsage[39m [38;5;246mBilling[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m/…/00000000-0000-0000-0000-000000000000/sample-lab/demo-project[39m
+
+
+[38;5;246m[48;5;237m❯ [38;5;231mCall the Agent tool twice in parallel in this single response, both with [39m
+  [38;5;231mrun_in_background: true. Agent 1 description: "audit responsive layout [39m
+  [38;5;231mmetrics and overflow bounds across narrow phone and tablet viewports", [39m
+  [38;5;231mprompt: "Run node -e \"setTimeout(()=>{}, 45000)\" via Bash and then say [39m
+  [38;5;231mdone." Agent 2 description: "verify build types", prompt: "Run node -e [39m
+  [38;5;231m\"setTimeout(()=>{}, 45000)\" via Bash and then say done." As soon as both [39m
+  [38;5;231mbackground agents are launched, reply with the single word READY and stop.[39m
+[49m
+[38;5;114m⏺[39m [1m2[0m background agents launched [38;5;246m(↓ to manage)[39m
+   [38;5;246m├[39m [1maudit responsive layout metrics and overflow bounds across narrow phone and
+[0m     [1mtablet viewports[0m
+   [38;5;246m└[39m [1mverify build types[0m
+
+[38;5;231m⏺[39m READY
+
+[38;5;246m✻[39m [38;5;246mWaiting for [1m2[0m[38;5;246m background agents to finish[39m
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────
+[39m❯ 
+[38;5;244m────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246m↑/↓ to select[39m                                             [38;5;246m◐ medium · /effort[39m
+
+[1m❯ ⏺ main[0m
+[38;5;246m [39m [38;5;246m◯[39m [38;5;246mgeneral-purpose[39m  [38;5;246maudit[39m [38;5;246mresponsive[39m [38;5;246mlayout[39m [38;5;246mmetrics[39m [38;5;246mand[39m [38;5;246move…[39m [38;5;246m2s[39m [38;5;246m·[39m [38;5;246m↓[39m [38;5;246m29[39m [38;5;246mtokens[39m
+[38;5;246m [39m [38;5;246m◯[39m [38;5;246mgeneral-purpose[39m  [38;5;246mverify[39m [38;5;246mbuild[39m [38;5;246mtypes[39m                       [38;5;246m1s · ↓ 31[39m [38;5;246mtokens[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

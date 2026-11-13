@@ -134,7 +134,9 @@ export function extractAgentsFooter(lines: StyledLine[]): StyledLine[] {
   for (let j = box.agentsStart; j < end; j++) {
     if (!isBlank(texts[j]!)) rows.push(lines[j]!);
   }
-  if (rows.length === 0 || !lineText(rows[0]!).trimStart().startsWith("●")) return [];
+  // macOS Claude Code draws `⏺ main` (U+23FA) where Linux draws `● main` (U+25CF); focusing the panel
+  // prefixes `❯ `. Reject anything else so a two-paragraph custom statusline never shows as agents.
+  if (rows.length === 0 || !/^\s*(?:❯\s+)?[●⏺]\s+main(?:\s.*)?$/u.test(lineText(rows[0]!))) return [];
   return rows;
 }
 

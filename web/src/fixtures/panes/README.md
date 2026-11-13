@@ -3948,3 +3948,18 @@ running turn read (composer found, no card); these screens did not. Privacy: the
 | `codex--v0167-resume-tall--w120.txt` | `/resume` with one session: the title on row 1, the footer on rows 59 and 60 | menu (the title used to be out of reach) |
 | `codex--v0167-working--w120.txt` | A turn running: `• Working (4s • esc to interrupt) · 1 background terminal running`, the box, the status row, `← for agents · ? for shortcuts` | raw, composer found, no card |
 | `codex--v0167-command-center--w120.txt` | The agent command center, one task, a detail pane, `? help  esc back  ↑/↓ move  enter open  n new` | the unread-dialog card, by design |
+
+## Claude Code 2.1.322 on macOS: `⏺ main` background-agents footer (captured 2026-11-11)
+
+On macOS, stock Claude Code 2.1.322 draws the background-agents footer header with `⏺` (`U+23FA`,
+`  ⏺ main` and `❯ ⏺ main`) where Linux draws `●` (`U+25CF`, `  ● main` and `❯ ● main`). Captured in a
+disposable 80 x 45 tmux server (`tmux -f /dev/null`) running stock `claude --setting-sources ""` with an
+empty `CLAUDE_CONFIG_DIR` (`{"hasCompletedOnboarding":true}` only; no hooks, plugins or statusline), read
+with `tmux capture-pane -e -p`. Privacy: the scratch folder prefix on row 3 was replaced with neutral text
+of the exact same length (`00000000-0000-0000-0000-000000000000/sample-lab`); nothing else was changed.
+
+| Fixture | Source | What's in it |
+| --- | --- | --- |
+| `claude--v2322-macos-agents-panel-working--w80.txt` | Captured during the turn that started two background `Agent` calls (`tmux capture-pane -e -p`) | Running turn (`✽ Sprouting… (5s · ↓ 267 tokens)`), empty box, two status rows (`⏸ manual mode on · esc to interrupt · ← for agents · ↓ to manage`, `◐ medium · /effort`), blank row, `  ⏺ main`, two `◯ general-purpose` rows truncated with `…`. Reads `running` |
+| `claude--v2322-macos-agents-panel-focused--w80.txt` | Same tmux pane after the turn finished, after pressing `Down` (`tmux send-keys Down`) | `✻ Waiting for 2 background agents to finish`, empty box, `↑/↓ to select` + `◐ medium · /effort`, blank row, `❯ ⏺ main`, two `◯ general-purpose` rows. Reads `idle` |
+| `claude--v2322-macos-agents-panel-idle--w80.txt` | Second disposable 80 x 45 tmux lab run (`demo-project3`), captured idle after READY | `✻ Waiting for 2 background agents to finish`, empty box, two status rows, blank row, `  ⏺ main` (rendered as three bold spans) and two `◯ general-purpose` rows. Reads `idle` |

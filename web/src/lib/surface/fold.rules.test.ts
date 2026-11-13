@@ -338,6 +338,25 @@ describe("the agents panel under the box (incident 2026-10-16)", () => {
       expect(read.cues?.cues).toEqual([]);
     }
   });
+
+  // Stock Claude Code 2.1.322 on macOS draws `⏺ main` (U+23FA) instead of Linux's `● main` (U+25CF).
+  it("macOS 2.1.322 ⏺ main captures read free on idle and focused, and running during a turn", () => {
+    for (const [name, turn, state] of [
+      ["claude--v2322-macos-agents-panel-idle--w80.txt", "idle", "idle"],
+      ["claude--v2322-macos-agents-panel-focused--w80.txt", "idle", "idle"],
+      ["claude--v2322-macos-agents-panel-working--w80.txt", "running", "running"],
+    ] as const) {
+      expect(LABELS.fixtures[name]?.state).toBe(state);
+      const read = readScreen(fixtureRows(name), "claude", CLAUDE);
+      expect(read.surface).toEqual({ revision: 1, turn, modal: "none", composer: "empty" });
+      expect(read.frame?.volatile.named.map((hit) => hit.name)).toEqual([
+        "agents-panel-main",
+        "agents-panel-agent",
+        "agents-panel-agent",
+      ]);
+      expect(read.cues?.cues).toEqual([]);
+    }
+  });
 });
 
 describe("rows around an idle box that 1.21.3 sent to (1.22.1 audit)", () => {
