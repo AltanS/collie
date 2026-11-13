@@ -234,13 +234,16 @@ describe("caps", () => {
 });
 
 describe("the long poll", () => {
+  // Bun checks its idle limit on a coarse timer: a request past its 10 s default is cut after 10 to 12 s. A
+  // wait of 11.5 s passed inside that window while every real 25 s poll was cut (`server.timeout()` does
+  // nothing on a Unix socket in Bun 1.4), so the wait here is well past it.
   test("outlives Bun's 10 s default request timeout and ends empty at its own limit", async () => {
     const { socket } = await start(scratch());
     const part = new FakePart(socket, { env: { HERDR_PANE_ID: "w1:p1" } });
     await part.hello();
     const started = Date.now();
-    const answer = await part.next({ waitMs: 11_500 });
+    const answer = await part.next({ waitMs: 20_000 });
     expect(answer.status).toBe(204);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(11_000);
-  }, 20_000);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(19_500);
+  }, 30_000);
 });

@@ -44,6 +44,16 @@ export const ALL_RATE_BURST = 400;
 export const SWEEP_MS = 10_000;
 /** Bun's idle limit for one request, in seconds (its default is 10). Above the longest `next` wait (25 s). */
 const IDLE_TIMEOUT_S = 60;
+/**
+ * Server options with the idle limit added. Bun's types refuse `idleTimeout` beside `unix`, but Bun 1.4
+ * honours it there, and `server.timeout(request, s)`, what the types allow, does nothing on a Unix socket:
+ * with it alone Bun cut every long poll at its 10 s default, the part saw ECONNRESET, marked its link
+ * down and said hello again, a new part id each time (M99, the browser leg). The long-poll test in
+ * server.test.ts fails if Bun stops honouring it.
+ */
+function withIdleLimit<T extends object>(options: T): T {
+  return Object.assign(options, { idleTimeout: IDLE_TIMEOUT_S });
+}
 
 /** A token bucket: `take()` is false past the rate. */
 export class Bucket {
@@ -152,15 +162,13 @@ export class InsideServer {
         }
         unlinkSync(path);
       }
-      this.server = Bun.serve({
-        unix: path,
-        maxRequestBodySize: BODY_MAX,
-        // A Unix socket takes no `idleTimeout` option; each request sets its own limit (`server.timeout`).
-        fetch: (request, server) => {
-          server.timeout(request, IDLE_TIMEOUT_S);
-          return this.handle(request);
-        },
-      });
+      this.server = Bun.serve(
+        withIdleLimit({
+          unix: path,
+          maxRequestBodySize: BODY_MAX,
+          fetch: (request: Request) => this.handle(request),
+        }),
+      );
       chmodSync(path, 0o600);
       this.sweeper = setInterval(() => this.deps.hub.sweep(), SWEEP_MS);
       this.sweeper.unref?.();
