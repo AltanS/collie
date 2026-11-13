@@ -4507,7 +4507,8 @@ export class SendProtocol {
       try {
         await this.keysThroughGate(state, Array.from({ length: [...boxText(frame)].length }, () => key), "typed_not_submitted");
       } catch (err) {
-        if (err instanceof Ended) return end;
+        // Backspaces not confirmed in time may still land: the box is no longer what `end` says.
+        if (err instanceof Ended) return err.outcome === "unknown" ? err : end;
         throw err;
       }
       await this.sleep(FIRST_GAP_MS);
@@ -5761,7 +5762,12 @@ export class SendProtocol {
     if (seen.verdict !== "pass") throw new Ended("refused", "write_failed", { detail });
   }
 
-  /** Keys through the gate on the newest revision. `outcome` is what a refusal turns into. */
+  /**
+   * Keys through the gate on the newest revision. `outcome` is what a refusal turns into. Keys the
+   * multiplexer took and did not confirm in time (`unconfirmed`) may still land: they are counted as
+   * sent, never sent again, and the request ends `unknown` with the multiplexer's sentence, never a
+   * refusal that would say nothing was pressed (M100 spec 03).
+   */
   private async keysThroughGate(state: RunState, keys: readonly string[], outcome: "typed_not_submitted" | "refused" | "unknown"): Promise<void> {
     this.guard(state);
     const { gate } = this.deps;
@@ -5770,6 +5776,10 @@ export class SendProtocol {
     if (result.ok) {
       state.keys.push(...keys);
       return;
+    }
+    if (result.reason === "mux" && result.refusal.reason === "unconfirmed") {
+      state.keys.push(...keys);
+      throw new Ended("unknown", "no_evidence", { detail: result.refusal.detail });
     }
     const reason: SendReason = result.reason === "mux" ? (outcome === "refused" ? "write_failed" : "submit_failed") : result.reason;
     throw new Ended(outcome === "refused" ? "refused" : outcome, outcome === "unknown" ? "no_evidence" : reason, {

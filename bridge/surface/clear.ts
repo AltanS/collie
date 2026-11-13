@@ -245,7 +245,10 @@ export class ClearService {
       const count = Math.min(CLEAR_BATCH, length + clearKey.slack);
       const keys = residue > 0 ? Array.from({ length: residue }, () => "Backspace") : unmoved ? [clearAll!.key] : Array.from({ length: count }, () => clearKey.key);
       const sent: MuxAck = await this.deps.gate.press(paneId, keys, "person_tap");
-      if (!sent.ok) return refusal(requestId, "press_failed", pressed);
+      // Keys not confirmed in time may still land (M100 spec 03): they count as pressed, the read-backs
+      // below decide, and no key follows them in a later round.
+      const unconfirmed = !sent.ok && sent.reason === "unconfirmed";
+      if (!sent.ok && !unconfirmed) return refusal(requestId, "press_failed", pressed);
       pressed = true;
       if (unmoved) allPressed = true;
       // A draft longer than one batch is not cleared by this press alone: once the box shrank, the next round reads it fresh.
@@ -260,6 +263,7 @@ export class ClearService {
         }
         if (capped && after.frame !== null && draftLength(after.frame) < length) break;
       }
+      if (unconfirmed) return refusal(requestId, "press_failed", pressed);
     }
     return refusal(requestId, "press_failed", pressed);
   }

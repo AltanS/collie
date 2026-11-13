@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
-import { muxAck, muxGone, muxOk, muxRefused, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
+import { muxAck, muxGone, muxOk, muxRefused, muxUnconfirmed, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { crewRouteFor } from "../crew/forward.ts";
 import { stopRoute, type StopRouteRuntime } from "../server.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
@@ -33,6 +33,8 @@ class ScriptPane {
   /** What a press does to the screen. The default does nothing: a turn that ignores the key. */
   onKeys: (keys: readonly string[], pane: ScriptPane) => void = () => undefined;
   refuseKeys = false;
+  /** The keys go in and the multiplexer does not confirm them in time (`unconfirmed`). */
+  lateKeys = false;
   unreadable = false;
 
   constructor(public screen: string) {}
@@ -49,7 +51,7 @@ class ScriptPane {
     if (this.refuseKeys) return Promise.resolve(muxRefused("refused"));
     this.keysSeen.push([...keys]);
     this.onKeys(keys, this);
-    return Promise.resolve(muxAck());
+    return Promise.resolve(this.lateKeys ? muxUnconfirmed("the keys may still arrive") : muxAck());
   };
 }
 
@@ -265,6 +267,23 @@ describe("a Stop on a pane with a screen", () => {
     const refused = rig(PI_RUNNING);
     refused.pane.refuseKeys = true;
     expect(await receipt(await refused.stop("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "press_failed" });
+  });
+});
+
+describe("a Stop key the multiplexer did not confirm in time (M100 spec 03)", () => {
+  test("it landed: the read-backs say stopped, and the key went once", async () => {
+    const { pane, stop } = rig(PI_RUNNING);
+    pane.lateKeys = true;
+    pane.onKeys = (_keys, p) => void (p.screen = PI_IDLE);
+    expect(await receipt(await stop("%1", { requestId: ID }))).toMatchObject({ outcome: "stopped" });
+    expect(pane.keysSeen).toHaveLength(1);
+  });
+
+  test("no read shows it: pressed, never press_failed, and never pressed again", async () => {
+    const { pane, stop } = rig(PI_RUNNING);
+    pane.lateKeys = true;
+    expect(await receipt(await stop("%1", { requestId: ID }))).toMatchObject({ outcome: "pressed" });
+    expect(pane.keysSeen).toHaveLength(1);
   });
 });
 

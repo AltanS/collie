@@ -46,6 +46,8 @@ interface FakeListener {
 export class FakeTern implements TernExec {
   /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
   nextWrite: "stall" | "refuse" | null = null;
+  /** The next key write fails once, the same two ways (M100 spec 03). */
+  nextKeys: "stall" | "refuse" | null = null;
 
   private sessions = new Map<number, FakeSession>();
   private tabs = new Map<number, FakeTab>();
@@ -152,6 +154,12 @@ export class FakeTern implements TernExec {
       return { code: 1, stdout: "", stderr: "the session daemon did not answer" };
     }
     const verb = args[0];
+    const keysFailing = this.nextKeys;
+    if (keysFailing !== null && verb === "send" && args[2] === "keys") {
+      this.nextKeys = null;
+      if (keysFailing === "stall") return { code: TIMED_OUT_CODE, stdout: "", stderr: timedOutMessage(args, 5000) };
+      return { code: 1, stdout: "", stderr: "tern send: the session daemon refused the keys" };
+    }
     const failing = this.nextWrite;
     if (failing !== null && verb === "send" && (args[2] === "text" || args[2] === "paste")) {
       this.nextWrite = null;
@@ -516,6 +524,9 @@ export function ternWorld(fake: FakeTern): MuxConformanceWorld {
     writes: () => fake.writes(),
     failNextWrite: (how: "stall" | "refuse") => {
       fake.nextWrite = how;
+    },
+    failNextKeys: (how: "stall" | "refuse") => {
+      fake.nextKeys = how;
     },
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),

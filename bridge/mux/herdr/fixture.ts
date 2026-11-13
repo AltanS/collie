@@ -76,6 +76,8 @@ function notFound(method: string, code: string, id: string): Error {
 export class FakeHerdr implements HerdrRpc {
   /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
   nextWrite: "stall" | "refuse" | null = null;
+  /** The next key write fails once, the same two ways (M100 spec 03). */
+  nextKeys: "stall" | "refuse" | null = null;
 
   private workspaces: WireWorkspace[] = [];
   private tabs: WireTab[] = [];
@@ -285,6 +287,10 @@ export class FakeHerdr implements HerdrRpc {
 
   async sendPaneKeys(paneId: string, keys: string[]): Promise<void> {
     this.pane("pane.send_keys", paneId);
+    const failing = this.nextKeys;
+    this.nextKeys = null;
+    if (failing === "stall") throw new HerdrTimeout("pane.send_keys", 5000);
+    if (failing === "refuse") throw new Error("herdr pane.send_keys: internal_error: the pane did not take the keys");
     this.recorded.push({ paneId, kind: "keys", payload: [...keys] });
   }
 
@@ -516,6 +522,9 @@ export const herdrConformanceFixture: MuxConformanceFixture = {
       writes: () => fake.writes(),
       failNextWrite: (how: "stall" | "refuse") => {
         fake.nextWrite = how;
+      },
+      failNextKeys: (how: "stall" | "refuse") => {
+        fake.nextKeys = how;
       },
       reconnect: () => fake.reconnect(),
       restartMux: () => fake.restartMux(),

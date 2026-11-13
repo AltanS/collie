@@ -554,13 +554,15 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
   // A fake client that records calls and can be told to fail either step.
   class FakeClient implements ReplySender {
     readonly calls: string[] = [];
-    constructor(private readonly failOn?: "text" | "keys") {}
+    constructor(private readonly failOn?: "text" | "keys" | "text-late" | "keys-late") {}
     typeText(_paneId: string, _text: string): Promise<MuxAck> {
       this.calls.push("text");
+      if (this.failOn === "text-late") return Promise.resolve(muxUnconfirmed("the text may still arrive"));
       return this.failOn === "text" ? Promise.reject(new Error("text rejected")) : Promise.resolve(muxAck());
     }
     writeKeys(_paneId: string, _keys: readonly string[]): Promise<MuxAck> {
       this.calls.push("keys");
+      if (this.failOn === "keys-late") return Promise.resolve(muxUnconfirmed("the keys may still arrive"));
       return this.failOn === "keys" ? Promise.reject(new Error("keys rejected")) : Promise.resolve(muxAck());
     }
   }
@@ -597,6 +599,22 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
       detail: { reason: "text rejected" },
     });
     expect(client.calls).toEqual(["text"]); // never reached the keys step
+  });
+
+  // M100 spec 03: a write not confirmed in time may still land. Never "not submitted" (which asks for a
+  // second submit by hand), never "nothing delivered" (which lets a screen resend), and never a second key.
+  test("a submit not confirmed in time answers keys.unconfirmed, the text delivered, the key pressed once", async () => {
+    const client = new FakeClient("keys-late");
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"]);
+    expect(out).toMatchObject({ ok: false, textDelivered: true, code: "keys.unconfirmed", detail: { reason: "the keys may still arrive" } });
+    expect(client.calls).toEqual(["text", "keys"]);
+  });
+
+  test("text not confirmed in time: no submit follows, and it is flagged delivered", async () => {
+    const client = new FakeClient("text-late");
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"]);
+    expect(out).toMatchObject({ ok: false, textDelivered: true, code: "reply.send_failed", detail: { reason: "the text may still arrive" } });
+    expect(client.calls).toEqual(["text"]);
   });
 
   test("submit-only (empty text) failure is a plain failure, not the partial-delivery message", async () => {

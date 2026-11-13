@@ -125,6 +125,8 @@ function said(stdout: string): TmuxRunResult {
 export class FakeTmux implements TmuxExec {
   /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
   nextWrite: "stall" | "refuse" | null = null;
+  /** The next key write fails once, the same two ways (M100 spec 03). */
+  nextKeys: "stall" | "refuse" | null = null;
 
   private sessions: FakeSession[] = [];
   private windows: FakeWindow[] = [];
@@ -352,6 +354,12 @@ export class FakeTmux implements TmuxExec {
     await Promise.resolve();
     if (!this.connected) return { code: 1, stdout: "", stderr: "error connecting to /fake/tmux-socket\n" };
     if (this.crashed) return { code: 1, stdout: "", stderr: "server exited unexpectedly\n" };
+    const keysFailing = this.nextKeys;
+    if (keysFailing !== null && args.includes("send-keys")) {
+      this.nextKeys = null;
+      if (keysFailing === "stall") return { code: 143, stdout: "", stderr: "timed out after 5000ms", timedOut: true };
+      return { code: 1, stdout: "", stderr: "unknown key: Enter\n" };
+    }
     const failing = this.nextWrite;
     if (failing !== null && args.includes("paste-buffer")) {
       this.nextWrite = null;
@@ -813,6 +821,9 @@ export function tmuxWorld(fake: FakeTmux): MuxConformanceWorld {
     writes: () => fake.writes(),
     failNextWrite: (how: "stall" | "refuse") => {
       fake.nextWrite = how;
+    },
+    failNextKeys: (how: "stall" | "refuse") => {
+      fake.nextKeys = how;
     },
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),

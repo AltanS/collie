@@ -6096,6 +6096,9 @@ export async function sendReplySteps(
   try {
     if (txt) {
       const typed = await client.typeText(paneId, txt);
+      // Text not confirmed in time may still land (M100 spec 03): no submit follows, and the answer
+      // flags it delivered, so a resend-on-error screen holds off.
+      if (!typed.ok && typed.reason === "unconfirmed") return { ok: false, textDelivered: true, ...apiError("reply.send_failed", { reason: typed.detail }) };
       if (!typed.ok) return failed(typed.detail);
       textDelivered = true;
     }
@@ -6103,6 +6106,9 @@ export async function sendReplySteps(
       // Through the key gate, like every key the bridge sends (M56 spec 05). This route keeps its
       // own guard: no revision check, the adapter's answer unchanged.
       const sent = await gateFor(client).press(paneId, submitKeys, "legacy_reply");
+      // A submit not confirmed in time may still land: "not confirmed", never "not submitted", so nobody
+      // submits it a second time by hand (the keys route's answer, M100 spec 03).
+      if (!sent.ok && sent.reason === "unconfirmed") return { ok: false, textDelivered, ...apiError("keys.unconfirmed", { reason: sent.detail }) };
       if (!sent.ok) return failed(sent.detail);
     }
     return { ok: true, textDelivered };

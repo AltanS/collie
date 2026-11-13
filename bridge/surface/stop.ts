@@ -159,7 +159,9 @@ export class StopService {
     }
     const pressed = [...keys.interrupt];
     const sent: MuxAck = await this.deps.gate.press(paneId, pressed, "person_tap");
-    if (!sent.ok) return refusal(requestId, "press_failed");
+    // A key not confirmed in time may still land (M100 spec 03): it counts as pressed, and the read-backs
+    // below decide `stopped` or `pressed`. It is never pressed again.
+    if (!sent.ok && sent.reason !== "unconfirmed") return refusal(requestId, "press_failed");
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     let opened = false;
     let idleBefore = false;

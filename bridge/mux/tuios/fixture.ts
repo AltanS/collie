@@ -91,6 +91,8 @@ function failure(verb: string, code: string, detail: string): TuiosError {
 export class FakeTuios implements TuiosRpc {
   /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
   nextWrite: "stall" | "refuse" | null = null;
+  /** The next key write fails once, the same two ways (M100 spec 03). */
+  nextKeys: "stall" | "refuse" | null = null;
 
   private sessions: FakeSession[] = [];
   private windows: FakeWindow[] = [];
@@ -300,6 +302,10 @@ export class FakeTuios implements TuiosRpc {
 
   async writeKeys(sessionName: string, windowId: string, keys: string): Promise<void> {
     this.window("send-keys", sessionName, windowId);
+    const failing = this.nextKeys;
+    this.nextKeys = null;
+    if (failing === "stall") throw new TuiosTimeout("send-keys", 5000);
+    if (failing === "refuse") throw failure("send-keys", "internal_error", "the window did not take the keys");
     const tokens = keys.split(/[ ,]+/u).filter((token) => token !== "");
     // The daemon parses every token before sending any; a bare separator has no token at all.
     if (tokens.length === 0) throw failure("send-keys", "invalid_params", "no keys to send");
@@ -481,6 +487,9 @@ export function tuiosWorld(fake: FakeTuios): MuxConformanceWorld {
     writes: () => fake.writes(),
     failNextWrite: (how: "stall" | "refuse") => {
       fake.nextWrite = how;
+    },
+    failNextKeys: (how: "stall" | "refuse") => {
+      fake.nextKeys = how;
     },
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),

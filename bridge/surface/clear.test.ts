@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
-import { muxAck, muxGone, muxOk, muxRefused, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
+import { muxAck, muxGone, muxOk, muxRefused, muxUnconfirmed, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { crewRouteFor } from "../crew/forward.ts";
 import { clearRoute, type ClearRouteRuntime } from "../server.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
@@ -91,6 +91,9 @@ class ScriptPane {
   };
 
   /** The one Backspace that took each probe character out again, apart from the clear's own presses. */
+  /** The clear's own presses go in and the multiplexer does not confirm them in time (`unconfirmed`). */
+  lateKeys = false;
+
   probeKeys: string[][] = [];
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
     void paneId;
@@ -112,7 +115,7 @@ class ScriptPane {
     this.keysSeen.push([...keys]);
     if (this.afterPress !== null) this.override = this.afterPress;
     else if (!this.deaf) this.draft = this.draft.slice(0, Math.max(0, this.draft.length - Math.min(keys.length, this.perPress)));
-    return Promise.resolve(muxAck());
+    return Promise.resolve(this.lateKeys ? muxUnconfirmed("the keys may still arrive") : muxAck());
   };
 }
 
@@ -331,6 +334,25 @@ describe("a Clear on a pane with a screen", () => {
     expect(await receipt(await refused.clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "press_failed" });
     // The probe character went in and its Backspace was refused: a key left, so the engine looks again.
     expect(refused.pokes()).toBe(1);
+  });
+
+  // M100 spec 03: keys not confirmed in time may still land. They count as pressed (the engine looks
+  // again), the read-backs decide, and no later round presses on top of them.
+  test("clear keys not confirmed in time that landed: cleared, one press", async () => {
+    const { pane, clear } = rig(DRAFT);
+    pane.lateKeys = true;
+    pane.perPress = 1000;
+    expect(await receipt(await clear("%1", { requestId: ID }))).toMatchObject({ outcome: "cleared" });
+    expect(pane.keysSeen).toHaveLength(1);
+  });
+
+  test("clear keys not confirmed in time that did not show: press_failed after the read-backs, a key counted as left, no second press", async () => {
+    const { pane, clear, pokes } = rig(DRAFT);
+    pane.lateKeys = true;
+    pane.deaf = true;
+    expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "press_failed" });
+    expect(pane.keysSeen).toHaveLength(1);
+    expect(pokes()).toBe(1);
   });
 
   test("a box that ignores the key: press_failed after the read-back, and the key is NOT pressed a second time", async () => {

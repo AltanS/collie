@@ -160,6 +160,12 @@ export interface MuxConformanceWorld {
    * Every other world owes it, and {@link aWriteTimeOutIsNotARefusal} fails one that has none.
    */
   failNextWrite?(how: "stall" | "refuse"): void;
+  /**
+   * The multiplexer's NEXT key write fails, once, the same two ways as {@link failNextWrite}. Optional
+   * only for a world whose adapter declares no `sendKeys`; {@link aKeyTimeOutIsNotARefusal} fails any
+   * other world that has none.
+   */
+  failNextKeys?(how: "stall" | "refuse"): void;
   /** Tear the world down. Idempotent. */
   close(): Promise<void>;
 }
@@ -1072,6 +1078,37 @@ const aWriteTimeOutIsNotARefusal: MuxWorldCheck = {
   },
 };
 
+/**
+ * The same rule for keys (M100 spec 03): keys whose call timed out may still land, so the write answers
+ * `unconfirmed`. A submit key that answered a refusal here would end a send as "typed, not submitted"
+ * with a Resend offer, and the Resend would press it twice. Keys the multiplexer refused stay a refusal.
+ */
+const aKeyTimeOutIsNotARefusal: MuxWorldCheck = {
+  name: "a key write whose call times out answers `unconfirmed`; one the multiplexer refuses answers a refusal",
+  run(fixture) {
+    return inWorld(fixture, async (world) => {
+      const { adapter } = world;
+      if (!declares(adapter, "sendKeys")) return [];
+      const fail = world.failNextKeys?.bind(world);
+      if (fail === undefined) return ["the adapter declares sendKeys, and the fixture's world cannot make a key write time out or be refused (failNextKeys)"];
+      const pane = livePanes(await adapter.snapshot()).at(0);
+      if (pane === undefined) return ["the fixture's world has no pane to press keys in"];
+      const problems: string[] = [];
+      fail("stall");
+      const stalled = await adapter.writeKeys(pane.paneId, ["Enter"]);
+      if (stalled.ok) problems.push("a key write whose call timed out answered ok");
+      if (!stalled.ok && stalled.reason !== "unconfirmed") problems.push(`a key write whose call timed out answered ${describeRefusal(stalled)}, not \`unconfirmed\``);
+      fail("refuse");
+      const refused = await adapter.writeKeys(pane.paneId, ["Enter"]);
+      if (refused.ok) problems.push("a key write the multiplexer refused answered ok");
+      if (!refused.ok && refused.reason === "unconfirmed") problems.push("a key write the multiplexer refused answered `unconfirmed`, as if it may have landed");
+      const after = await adapter.writeKeys(pane.paneId, ["Enter"]);
+      if (!after.ok) problems.push(`the key write after a failed one answered ${describeRefusal(after)}: the failure is one write's, not the pane's`);
+      return problems;
+    });
+  },
+};
+
 const aGonePaneAnswersGone: MuxWorldCheck = {
   name: "a call aimed at a pane that has gone away answers `gone`",
   run(fixture) {
@@ -1297,6 +1334,7 @@ export const MUX_WORLD_CHECKS: readonly MuxWorldCheck[] = [
   unsupportedKeysAreRefused,
   aGonePaneAnswersGone,
   aWriteTimeOutIsNotARefusal,
+  aKeyTimeOutIsNotARefusal,
   revisionMovesWithContent,
   scrollbackReachesFurther,
   watchKeepsItsPromise,

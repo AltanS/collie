@@ -400,7 +400,13 @@ export class ZellijMux implements MuxAdapter {
     if (translated.length === 0) return muxAck();
     const gone = await this.livePane(paneId);
     if (gone !== null) return gone;
-    return this.ack(sendKeysArgs(paneId, translated));
+    const call: ZellijCall = await this.session.run(sendKeysArgs(paneId, translated));
+    // A `send-keys` that ran out of budget was killed, maybe after the keys went: `unconfirmed`, never
+    // sent again, and the caller's next read decides (M100 spec 03).
+    if (call.ok && call.result.code === TIMED_OUT_CODE) {
+      return muxUnconfirmed(`zellij did not confirm the keys on ${paneId} in time (${call.result.stderr.trim()}). They may still arrive, so they were not sent again.`);
+    }
+    return this.ackOf(call);
   }
 
   /**

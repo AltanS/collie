@@ -18,6 +18,9 @@ export function herdrCoreWorld(fake: FakeHcCore): MuxConformanceWorld {
     failNextWrite: (how: "stall" | "refuse") => {
       fake.nextWrite = how;
     },
+    failNextKeys: (how: "stall" | "refuse") => {
+      fake.nextKeys = how;
+    },
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),
     renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),

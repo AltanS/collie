@@ -192,6 +192,8 @@ function notFound(address: string): HcError {
 export class FakeHcCore implements HcRpc {
   /** The next text write fails once (M100 spec 03): `stall` gets no answer in time, `refuse` is told no. */
   nextWrite: "stall" | "refuse" | null = null;
+  /** The next key write fails once, the same two ways (M100 spec 03). */
+  nextKeys: "stall" | "refuse" | null = null;
   private terminals: FakeTerminal[] = [];
   private layout: WireLayoutSpace[] = [];
   private readonly subscribers = new Set<Subscriber>();
@@ -555,6 +557,10 @@ export class FakeHcCore implements HcRpc {
     this.deliverDueKeys();
     const terminal = this.known(address);
     this.assertTakesInput(terminal, "terminal.keys");
+    const failing = this.nextKeys;
+    this.nextKeys = null;
+    if (failing === "stall") throw new HcTimeout("terminal.keys", 5000);
+    if (failing === "refuse") throw new HcError("internal", "terminal.keys: the terminal did not take the keys");
     const unknown = keys.find((key) => !coreKnowsKey(key));
     if (unknown !== undefined) {
       throw new HcError("invalid_params", `herdr-core terminal.keys: invalid_params: unknown key "${unknown}" (try enter, esc, up, ctrl+c, alt+x, f5, a)`);
@@ -578,8 +584,10 @@ export class FakeHcCore implements HcRpc {
     this.deliverDueKeys();
     const terminal = this.known(address);
     this.assertTakesInput(terminal, "terminal.attach");
-    const failing = this.nextWrite;
+    // The core takes Enter and other raw key bytes on this same write, so a key failure lands here too.
+    const failing = this.nextWrite ?? this.nextKeys;
     this.nextWrite = null;
+    this.nextKeys = null;
     if (failing === "stall") throw new HcTimeout("terminal.attach", 5000);
     if (failing === "refuse") throw new HcError("internal", "terminal.attach: the terminal did not take the input");
     if (this.hold !== null) this.hold.lastWriteAt = this.hold.clock.now();

@@ -54,6 +54,8 @@ class ClaudePane {
   writes: WriteAnswer[] = [];
   /** How Enter is answered: confirmed, or not confirmed and it landed, or not confirmed and it did not. */
   enter: "ok" | "late-landed" | "late-lost" | "late-delayed" = "ok";
+  /** Backspace lands and the multiplexer does not confirm it in time (`late`). */
+  backspace: "ok" | "late" = "ok";
   /** With `late-delayed`: the rig's clock, and when the held Enter reaches the box. */
   clock: Clock | null = null;
   private enterAt: number | null = null;
@@ -120,7 +122,10 @@ class ClaudePane {
     void paneId;
     for (const key of keys) {
       this.keysSeen.push(key);
-      if (key === "Backspace") this.box = [...this.box].slice(0, -1).join("");
+      if (key === "Backspace") {
+        this.box = [...this.box].slice(0, -1).join("");
+        if (this.backspace === "late") return Promise.resolve(muxUnconfirmed(LATE));
+      }
       if (key === "Enter") {
         if (this.enter === "late-lost") return Promise.resolve(muxUnconfirmed(LATE));
         if (this.enter === "late-delayed") {
@@ -214,6 +219,18 @@ describe("1. an Enter the multiplexer did not confirm: the S2 read decides", () 
     expect(answer.detail).toContain("They may still arrive");
     expect(answer.offers ?? []).not.toContain("submit");
     expect(enters(pane)).toBe(1);
+  });
+});
+
+describe("1b. a key outside the commit the multiplexer did not confirm (the probe's Backspace)", () => {
+  test("unknown, with the multiplexer's sentence; never refused, and Backspace is not pressed again", async () => {
+    const { pane, send } = rig();
+    pane.backspace = "late";
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", keys: ["probe", "Backspace"] });
+    expect(answer.detail).toContain("They may still arrive");
+    expect(pane.keysSeen.filter((key) => key === "Backspace")).toHaveLength(1);
+    expect(enters(pane)).toBe(0);
   });
 });
 

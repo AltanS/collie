@@ -400,7 +400,14 @@ export class HerdrMux implements MuxAdapter {
       }
       translated.push(result.key);
     }
-    return this.attempt(() => this.client.sendPaneKeys(paneId, translated));
+    // Keys Herdr did not answer in time may still land: `unconfirmed`, never sent again (M100 spec 03).
+    try {
+      await this.client.sendPaneKeys(paneId, translated);
+      return muxAck();
+    } catch (err) {
+      if (err instanceof HerdrTimeout) return muxUnconfirmed(`Herdr did not confirm the keys on ${paneId} in time (${err.message}). They may still arrive, so they were not sent again.`);
+      return transportRefusal(err);
+    }
   }
 
   async renamePane(paneId: string, label: string | null): Promise<MuxAck> {

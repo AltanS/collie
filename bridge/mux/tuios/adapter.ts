@@ -395,7 +395,16 @@ export class TuiosMux implements MuxAdapter {
       translated.push(result.key);
     }
     if (translated.length === 0) return muxAck();
-    return this.onPane(paneId, (session) => this.rpc.writeKeys(session, paneId, translated.join(" ")));
+    const located = await this.locate(paneId);
+    if (!located.ok) return located;
+    // Keys the daemon did not answer in time may still land: `unconfirmed`, never sent again (M100 spec 03).
+    try {
+      await this.rpc.writeKeys(located.value.session.name, paneId, translated.join(" "));
+      return muxAck();
+    } catch (err) {
+      if (err instanceof TuiosTimeout) return muxUnconfirmed(`tuios did not confirm the keys on ${paneId} in time (${err.message}). They may still arrive, so they were not sent again.`);
+      return refusalFor(err);
+    }
   }
 
   /**
