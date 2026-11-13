@@ -1,0 +1,14 @@
+
+● The two options are written up above. Decision 1 keeps the sentence short.
+
+* Wibbling… (4s · ↓ 304 tokens)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  CTX:19% CACHE:100% LIMITS 7d:0%/4d:07h
+  [Model·high] ~/projects/sample-workspace on main*
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agents
+
+  ● main
+  ◯ general-purpose  Waiting on the gate result                                                 12m 15s · ↓ 231.4k tokens

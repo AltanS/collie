@@ -255,7 +255,7 @@ import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, readIsUnstyled, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
-import type { CommandListRows, OtherScreenRow, Profile, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
+import type { CommandListRows, FooterRow, OtherScreenRow, Profile, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
   RECEIPT_DETAIL_MAX,
@@ -381,6 +381,37 @@ const WRITE_FAILED = "Collie could not type into the pane.";
 
 /** The detail after a Submit that went out on a box holding another text than the request named. */
 const HELD_OTHER = "The box held a different text than the request when Enter went out.";
+
+/** The detail of a WalkyTalky message that stopped before its submit key and took its own text out of the box again. */
+const MAIL_TAKEN_BACK = "Enter was not pressed, so the typed message was taken out of the box again. It waits in the inbox.";
+
+/** The detail of a send that found its own text, left typed by an earlier send, in the box and pressed only the submit key. */
+const FINISHED_OWN = "The box already held this text, typed by an earlier send, so only the submit key was pressed.";
+
+/**
+ * How long a text an earlier send left typed may be finished by a send of the same text
+ * ({@link SendProtocol.finishesOwnText}). Past it the send reads the box as a draft again.
+ */
+export const LEFT_TYPED_MS = 30 * 60 * 1000;
+
+/** A text a send typed into a pane's box and left there (`typed_not_submitted`), with the pane's generation then. */
+interface LeftTyped {
+  readonly generation: string;
+  /** The text's lines as written, joined by a line break. */
+  readonly text: string;
+  readonly at: number;
+}
+
+/**
+ * Whether a request's typed text may be remembered as left in the box, and finished by a later send: a
+ * send, a command or a Replace someone asked for now. A release from the hold queue, a WalkyTalky
+ * message (`draftHolds`), an agent view's send, a steer, a blind send and a notice's digit are not.
+ */
+function ownTextKind(state: RunState): boolean {
+  const { request } = state;
+  if (request.mode !== "send" && request.mode !== "command" && request.mode !== "replace") return false;
+  return request.view === undefined && request.when === undefined && request.draftHolds !== true && state.released !== true && !state.blind && !state.noticeKey && !state.steer;
+}
 
 /** Rows one protocol read asks for. A viewport read never moves the screen. */
 export const SEND_READ_LINES = 120;
@@ -740,6 +771,8 @@ interface Snap {
   readonly notice: AboveNotice | null;
   /** The rows under the frame that count, the profile's hint rows left out ({@link countBelow}); 0 with no frame. */
   readonly below: number;
+  /** The chrome rows of the accepted named footer run ({@link chromeRows}): no count, no settle key and no rows hash reads them. Empty with no frame. */
+  readonly chrome: ReadonlySet<number>;
   /** The name of the other screen whose own row stands under the frame ({@link otherScreenOf}); null with no frame. */
   readonly otherScreen: string | null;
   /** The typeahead popup the box's text opened ({@link popupAt}), its rows left out of every count and cue read; null with none. */
@@ -1196,12 +1229,16 @@ function rowsBelow(snap: Snap, frame: Frame): number {
  * moved screen. The rows of a list under the box are left out the same way (`list`): a stale list under
  * an empty box (`commandList.staleWhenEmpty`), which the harness drops at the next key, and the list the
  * box's own text opened ({@link ownCommandList}), which comes and goes with that text. A probe typed
- * after `/s` in pi's box closes pi's fuzzy list, and that is no moved screen (issue 638).
+ * after `/s` in pi's box closes pi's fuzzy list, and that is no moved screen (issue 638). The rows
+ * of the named footer run that the profile marks as chrome ({@link chromeRows}) are left out too:
+ * Claude Code's agents panel gains a row when a background agent starts or resumes, on its own.
  */
-function countBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[], list: CommandListRead | null = null, popup: PopupRead | null = null): number {
+function countBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[], list: CommandListRead | null = null, popup: PopupRead | null = null, chrome: ReadonlySet<number> = new Set()): number {
   if (frame === null) return 0;
   let n = 0;
   for (let i = frame.bottom + 1; i < texts.length; i++) {
+    // A chrome row of the accepted named footer run (`footerRows[].chrome`) comes and goes on its own.
+    if (chrome.has(i)) continue;
     // The rows of a stale list or of the box's own list under it go with the text that opened them.
     if (list !== null && i >= list.first && i <= list.last) continue;
     // A typeahead popup (`volatile.below.popups`) comes and goes with the text: its rows are not a screen that moved.
@@ -1210,6 +1247,22 @@ function countBelow(texts: readonly string[], frame: Frame | null, hints: readon
     if (text.trim().length > 0 && !hints.some((hint) => hint.test(text))) n++;
   }
   return n;
+}
+
+/**
+ * The rows under the box that the profile marks as chrome (`idle.volatile.below.footerRows[].chrome`),
+ * taken only from the rows the frame walk accepted as the named footer run (`frame.volatile.named`).
+ * That walk names nothing when anything else stands in the run (a popup, a dialog, a row no entry
+ * matches, a run taller than `footerMaxRows`), so a row that only looks like chrome there still counts.
+ */
+function chromeRows(frame: Frame | null, rows: readonly FooterRow[] | undefined): ReadonlySet<number> {
+  const footer = frame?.volatile.footer ?? null;
+  if (frame === null || footer === null || rows === undefined) return new Set();
+  const names = new Set(rows.filter((row) => row.chrome === true).map((row) => row.name));
+  if (names.size === 0) return new Set();
+  // Only the rows of the footer run itself: a row the walk names on the statusline's last row (a hint
+  // on the mode row) stays counted, whatever entry it matches.
+  return new Set(frame.volatile.named.filter((hit) => names.has(hit.name) && hit.row >= footer.first && hit.row <= footer.last).map((hit) => hit.row));
 }
 
 /**
@@ -1862,7 +1915,10 @@ function settleKey(snap: Snap): string {
   if (noListAtBox(snap)) return "none";
   const above = [snap.commandList, snap.listAnyText, snap.ownList].flatMap((list) => (list !== null && list.side === "above" ? [list.first] : []));
   const from = above.length === 0 ? snap.frame.top : Math.min(...above);
-  return `list:${shortHash([...snap.plain.slice(from, snap.frame.top), "--", belowRows(snap) ?? ""].join("\n"))}`;
+  // The chrome rows under the box (an agents panel) tick on their own and are never the list: left out.
+  const under = snap.frame.bottom + 1;
+  const below = snap.plain.slice(under).map((row, i) => (snap.chrome.has(under + i) ? "" : row));
+  return `list:${shortHash([...snap.plain.slice(from, snap.frame.top), "--", ...below].join("\n"))}`;
 }
 
 /** The detail of a typed send whose box turned out to be another screen's (the agents screen): Enter was held back. */
@@ -2506,6 +2562,8 @@ interface RunState {
   noticeKey: boolean;
   /** A Submit or Discard found the box holding another text than the request names (the person's own Backspace shortened it). */
   heldOther: boolean;
+  /** A send found the text an earlier send left typed in the box and pressed only the submit key ({@link SendProtocol.finishesOwnText}). */
+  finishedOwn?: boolean;
   /**
    * The box stood at its scroll height and showed only the end of the text: S1 (or Submit and
    * Discard's own check) compared those rows with the end of the text (boxHolds). The receipt says so.
@@ -2803,6 +2861,8 @@ export class SendProtocol {
   private readonly typedEmpty = new Map<string, { count: number; at: number }>();
   /** Releases that went back because their box was still starting ({@link RunState.startWait}): no turn can come from them. */
   private readonly startWaits = new Set<string>();
+  /** The text a send of this phone or client typed and left in the box, per pane ({@link LeftTyped}, {@link finishesOwnText}). */
+  private readonly leftTyped = new Map<string, LeftTyped>();
   /** A serial for {@link retryCommandId}: two tries of one send never share a command id. */
   private dataRetries = 0;
 
@@ -3852,6 +3912,8 @@ export class SendProtocol {
     }
     // Whatever the end, a box that showed only the end of the text was compared by those rows alone.
     if (state.tailOnly && receipt.detail === undefined) receipt.detail = TAIL_ONLY;
+    // A send that found its own earlier text in the box pressed only the submit key: the receipt says why no text went.
+    if (state.finishedOwn === true && receipt.detail === undefined) receipt.detail = FINISHED_OWN;
     if (state.blind) receipt.saw = BLIND_SAW;
     return receipt;
   }
@@ -3920,8 +3982,10 @@ export class SendProtocol {
       const answer = this.settle(state, new Ended(record.mode === "discard" ? "discarded" : state.steered ? "steered" : "sent", undefined, note));
       if (state.blind && answer.receipt?.outcome === "sent") this.noteBlindSent(state);
       return answer;
-    } catch (err) {
-      if (!(err instanceof Ended)) throw err;
+    } catch (thrown) {
+      if (!(thrown instanceof Ended)) throw thrown;
+      // A WalkyTalky message left typed takes its own text out of the box again (takeMailBack).
+      const err = thrown.outcome === "typed_not_submitted" && state.request.draftHolds === true ? await this.takeMailBack(state, thrown) : thrown;
       // A released send that met a box still starting waits for it, whatever its probe left: the
       // character is counted as pending, and the hold goes once the box shows it (tickHolds).
       if (release && err.outcome === "refused" && state.startWait === true) return this.backToQueue(state, err);
@@ -4141,6 +4205,7 @@ export class SendProtocol {
     }
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
     this.deps.store.settle(state.record.id, receipt);
+    this.noteLeftTyped(state, receipt.outcome);
     // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
     // A steer is kept too, with no card of its own: a Stop may give it back together with the queue.
     if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered") {
@@ -4158,6 +4223,121 @@ export class SendProtocol {
     this.count(state, receipt, end.extra.surface);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
     return answerWith({ receipt, offers: end.extra.offers ?? offersOf(outcome, receipt.reason, framed, end.extra.surface) }, end.extra);
+  }
+
+  /**
+   * Keeps or forgets the text a send left typed in the box (2026-11-13). A `typed_not_submitted` of a
+   * send, a command or a Replace that someone asked for now (not a release from the hold queue, not a
+   * WalkyTalky message, not a view's send, not a steer) is remembered with the pane's generation. Any
+   * other end that pressed a submit or clear key (sent, steered, discarded, unknown) forgets it; a
+   * refusal leaves it, because a refusal typed nothing that stayed.
+   */
+  private noteLeftTyped(state: RunState, outcome: SendOutcome): void {
+    const key = state.lockKey;
+    if (outcome === "typed_not_submitted") {
+      if (!ownTextKind(state)) {
+        this.leftTyped.delete(key);
+        return;
+      }
+      this.leftTyped.set(key, { generation: state.generation, text: sendLines(state.request.text).join("\n"), at: this.now() });
+      return;
+    }
+    if (outcome !== "refused" && outcome !== "held") this.leftTyped.delete(key);
+  }
+
+  /**
+   * Whether this send finishes a text an earlier send typed and left in the box, instead of being
+   * refused as a draft (2026-11-13). Memory alone never decides it: the earlier send must have left
+   * this exact text on this pane, in this generation, inside {@link LEFT_TYPED_MS}, AND the settled
+   * S0 read must show it: a frame that is the conversation's (no other screen, no notice over it, not
+   * scrolled), no modal, the composer a draft, and the box holding exactly the text ({@link boxHolds},
+   * the rule S1 uses). A box that may show its placeholder as a draft (an unstyled read,
+   * `idle.placeholders.anyText`) is left to the probe as before. Text a person typed in the terminal
+   * was never remembered, and text edited there no longer matches, so both refuse `draft_present`.
+   */
+  private finishesOwnText(state: RunState, s0: Snap, lines: readonly string[]): boolean {
+    const { request } = state;
+    if (request.mode !== "send" && request.mode !== "command") return false;
+    if (!ownTextKind(state)) return false;
+    const { frame, surface } = s0;
+    if (frame === null || frame.scrolled === true || s0.otherScreen !== null || s0.notice !== null || s0.popup !== null) return false;
+    if (surface.modal !== "none" || surface.composer !== "draft" || mayHoldPlaceholder(state.match, s0)) return false;
+    // In memory since this bridge started; after a restart, the request files (leftInStore).
+    const left = this.leftTyped.get(state.lockKey) ?? this.leftInStore(state);
+    if (left === null || left.generation !== state.generation || left.text !== lines.join("\n")) return false;
+    if (this.now() - left.at > LEFT_TYPED_MS) return false;
+    if (state.command) return commandBoxMatches(boxText(frame), "", lines, collapseOf(state.match));
+    const whole = this.deps.mux.pasteBlock !== undefined ? wholePaste(state.match, lines, this.deps.imageFile) : uploadAlone(state.match, lines, this.deps.imageFile);
+    return boxHolds(frame, "", whole?.lines ?? lines, collapseOf(state.match), whole) === "all";
+  }
+
+  /**
+   * The text an earlier send left typed, read back from the request files after a bridge restart or crash
+   * (2026-11-13): the newest settled request on this pane that did not end refused or held, inside
+   * {@link LEFT_TYPED_MS}. It counts only when it is a send, a command or a Replace that ended
+   * `typed_not_submitted`, or `unknown(crash)` before its submit key went out, in this pane generation, and
+   * its salted text hash is this request's text's. The files keep no text, so the text is this request's
+   * own, and the S0 read must still show it in the box ({@link finishesOwnText}). Read only on that path:
+   * a draft in the box that reads exactly as this request's text.
+   */
+  private leftInStore(state: RunState): LeftTyped | null {
+    const since = this.now() - LEFT_TYPED_MS;
+    const { session, paneId } = state.target;
+    const ended = this.deps.store
+      .list()
+      .filter((record) => record.id !== state.record.id && record.session === session && record.paneId === paneId && record.acceptedAt >= since && record.receipt !== undefined)
+      .filter((record) => record.receipt!.outcome !== "refused" && record.receipt!.outcome !== "held");
+    const last = ended.at(-1);
+    if (last === undefined || last.paneGeneration !== state.generation) return null;
+    if (last.mode !== "send" && last.mode !== "command" && last.mode !== "replace") return null;
+    const { outcome, reason } = last.receipt!;
+    const typed = outcome === "typed_not_submitted" || (outcome === "unknown" && reason === "crash" && last.submitSentAt === undefined);
+    if (!typed || last.textHash !== this.deps.store.hashText(state.request.text)) return null;
+    return { generation: last.paneGeneration, text: sendLines(state.request.text).join("\n"), at: last.acceptedAt };
+  }
+
+  /**
+   * A WalkyTalky message (`draftHolds`) that stopped before its submit key takes its own text out of the
+   * box again (2026-11-13): another agent's words must not sit in the person's input box, where every
+   * later delivery is held behind them as a draft and a person's Enter would send them as their own.
+   * Only text the read proves is the message's: a fresh read must show the box, the conversation's,
+   * with no modal and no cue, holding exactly the typed text, unfolded (a collapsed paste is left). Then
+   * Backspace goes, as many as the box shows characters, and each later read must show what is left as
+   * the start of the typed text and shorter than before. Any other read stops it at once, with what it
+   * did so far. A dialog that ended the send (`modal_cue`) gets no key. An empty box ends the send
+   * `refused` (`changed`): nothing of it stayed, and the message waits in the inbox.
+   */
+  private async takeMailBack(state: RunState, end: Ended): Promise<Ended> {
+    if (end.reason === "modal_cue" || state.match === null) return end;
+    const typed = wsFree(sendLines(state.request.text).join(""));
+    const key = state.match.profile.keys.clear.key;
+    this.stretch(state, CLEAR_BOUND.ms);
+    const until = Math.min(this.now() + CLEAR_BOUND.ms, state.deadline);
+    let before: number | null = null;
+    for (let i = 0; i < CLEAR_BOUND.reads; i++) {
+      let snap: Snap | null;
+      try {
+        snap = await this.read(state, "clear", until);
+      } catch (err) {
+        if (err instanceof StepLate || err instanceof Ended) return end;
+        throw err;
+      }
+      const frame = snap?.frame ?? null;
+      if (snap === null || frame === null || frame.scrolled === true || snap.otherScreen !== null || snap.surface.modal !== "none" || snap.cueStrength !== "none") return end;
+      const shown = wsFree(boxText(frame));
+      if (shown.length === 0) return before === null ? end : new Ended("refused", "changed", sawNote(snap, { framed: true, detail: MAIL_TAKEN_BACK }));
+      // The first read: exactly the typed text. Each later one: what is left of it, shorter than before.
+      if (before === null ? shown !== typed : !typed.startsWith(shown) || shown.length >= before) return end;
+      before = shown.length;
+      try {
+        await this.keysThroughGate(state, Array.from({ length: [...boxText(frame)].length }, () => key), "typed_not_submitted");
+      } catch (err) {
+        if (err instanceof Ended) return end;
+        throw err;
+      }
+      await this.sleep(FIRST_GAP_MS);
+    }
+    return end;
   }
 
   /** The counters key of a request: harness, binary version, profile id and status, `-` where there is none. */
@@ -4288,6 +4468,14 @@ export class SendProtocol {
       if (state.released === true) state.startWait = true;
       throw new Ended("refused", "probe_failed", { surface: s0.surface, framed: s0.frame !== null, detail: pendingDetail(match, probeCharOf(match)) });
     }
+    // The same text again onto the box an earlier send typed it into and left (2026-11-13): S0 read the box
+    // holding exactly it, so this send presses only the submit key, as a Submit does. Nothing is typed.
+    if (this.finishesOwnText(state, s0, lines)) {
+      state.finishedOwn = true;
+      if (!state.command) state.whole = this.deps.mux.pasteBlock !== undefined ? wholePaste(match, lines, this.deps.imageFile) : uploadAlone(match, lines, this.deps.imageFile);
+      await this.submitTyped(state, s0, holds, lines);
+      return;
+    }
     // A box whose whole text is Collie's own probe characters (a box that was drawn before it read keys
     // kept them, probe-marker.ts) is proven like a draft, then emptied of exactly them.
     const residue = this.residueOf(state, s0) > 0;
@@ -4335,23 +4523,7 @@ export class SendProtocol {
       case "submit": {
         // A returned card's Send goes only on an idle turn: a busy one means the text may be on its way.
         if (request.returnedCard === true && s0.surface.turn !== "idle") throw new Ended("refused", "not_free", { surface: s0.surface, detail: RETURNED_BUSY });
-        const located = this.typedBox(state, s0, holds, lines);
-        // A popup first, as at the end of the typing: the command key is Enter, and Enter acts on the popup. A popup is no command list.
-        if (state.command && s0.popup !== null) {
-          throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: POPUP_AT_ENTER });
-        }
-        // Enter on a command whose list points at another one runs that one: the person picks it with the keys or discards the text.
-        if (state.command && listPointsElsewhere(s0, "", lines, collapseOf(match), match?.profile.idle.volatile.below.commandList)) {
-          throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: SUBMIT_ELSEWHERE });
-        }
-        this.lap(state, "s0");
-        state.marks.s1 = s0;
-        await this.commit(state, s0);
-        this.lap(state, "commit");
-        if (s0.frame !== null) await this.awaitSent(state, s0, null, lines);
-        else await this.awaitBareEmpty(state, located);
-        this.lap(state, "s2");
-        await this.lateWitness(state, lines);
+        await this.submitTyped(state, s0, holds, lines);
         return;
       }
       case "discard": {
@@ -4879,6 +5051,33 @@ export class SendProtocol {
    * the bottom window, so S2 and the clear know the box; null when it stands nowhere there, or with a
    * frame.
    */
+  /**
+   * The submit key onto text that is already in the box (a Submit, or a send that finishes its own
+   * earlier text, {@link finishesOwnText}): the box proven by {@link typedBox} on S0, no popup and no
+   * command list pointing elsewhere at a command, then the commit bound to S0's revision, S2 and the
+   * late witness. Nothing is typed.
+   */
+  private async submitTyped(state: RunState, s0: Snap, holds: (frame: Frame) => boolean, lines: readonly string[]): Promise<void> {
+    const { match } = state;
+    const located = this.typedBox(state, s0, holds, lines);
+    // A popup first, as at the end of the typing: the command key is Enter, and Enter acts on the popup. A popup is no command list.
+    if (state.command && s0.popup !== null) {
+      throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: POPUP_AT_ENTER });
+    }
+    // Enter on a command whose list points at another one runs that one: the person picks it with the keys or discards the text.
+    if (state.command && listPointsElsewhere(s0, "", lines, collapseOf(match), match?.profile.idle.volatile.below.commandList)) {
+      throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: SUBMIT_ELSEWHERE });
+    }
+    this.lap(state, "s0");
+    state.marks.s1 = s0;
+    await this.commit(state, s0);
+    this.lap(state, "commit");
+    if (s0.frame !== null) await this.awaitSent(state, s0, null, lines);
+    else await this.awaitBareEmpty(state, located);
+    this.lap(state, "s2");
+    await this.lateWitness(state, lines);
+  }
+
   private typedBox(state: RunState, s0: Snap, holds: (frame: Frame) => boolean, lines: readonly string[]): Located | null {
     const { surface, frame } = s0;
     if (frame !== null) {
@@ -5142,7 +5341,10 @@ export class SendProtocol {
     const ticks = idle?.volatile.above.ticks === true;
     // The rows a person checks, with the rows above the box read as the compares read them: a counter
     // that ticked over the box between the look and the tap is no screen the person did not see.
-    const checked = ticks && frame !== null ? plain.map((row, i) => (i < frame.top ? tickMarked(row) : row)) : plain;
+    // The chrome rows under the box (an agents panel whose timers tick each second) are no screen the person
+    // must see again either; they exist only on a framed read whose walk accepted them (chromeRows).
+    const chrome = chromeRows(frame, idle?.volatile.below.footerRows);
+    const checked = (ticks && frame !== null ? plain.map((row, i) => (i < frame.top ? tickMarked(row) : row)) : plain).map((row, i) => (chrome.has(i) ? "" : row));
     const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     const framed = readCuesFor(rows, frame, idle);
@@ -5190,7 +5392,9 @@ export class SendProtocol {
         (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u")),
         frame === null ? null : (staleListUnder(texts, frame.bottom, frame.interior.text, idle?.volatile.below.commandList) ?? (ownList?.side === "under" ? ownList : null)),
         popup,
+        chrome,
       ),
+      chrome,
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
       popup,
       commandList: frame === null ? null : commandListAt(texts, frame, idle?.volatile.below.commandList, rows),

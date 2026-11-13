@@ -230,6 +230,12 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(nameOf("  [Fable·medium] ~/projects/sample-workspace on main*")).toBeNull();
   });
 
+  it("claude: the agents panel's rows are chrome, the mode row's hint is not (field case 2026-11-13)", () => {
+    const rows = parseProfile(rawClaude()).idle.volatile.below.footerRows!;
+    const chrome = rows.filter((row) => row.chrome === true).map((row) => row.name);
+    expect(chrome).toEqual(["agents-panel-main", "agents-panel-agent", "agents-panel-more", "agents-panel-manage-hint"]);
+  });
+
   it("claude: the agents screen's key-hint row under its own box is another screen's, no conversation footer is (claude-lab--agents-screen)", () => {
     const screens = parseProfile(rawClaude()).idle.volatile.below.otherScreens!;
     const nameOf = (text: string): string | null => screens.find((row) => new RegExp(row.pattern, "u").test(text))?.name ?? null;
@@ -1053,6 +1059,7 @@ describe("parseProfile names the failing field", () => {
     ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],
     ["a footer row that is no expression", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "[unclosed", "idle.volatile.below.footerRows[0].pattern"],
     ["a footer row that matches a blank row", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "^\\s*$", "idle.volatile.below.footerRows[0].pattern"],
+    ["a footer row's chrome mark that is not true", ["idle", "volatile", "below", "footerRows", 0, "chrome"], false, "idle.volatile.below.footerRows[0].chrome"],
     ["other screens that are no list", ["idle", "volatile", "below", "otherScreens"], "enter to return", "idle.volatile.below.otherScreens"],
     ["an other screen with no name", ["idle", "volatile", "below", "otherScreens", 0, "name"], undefined, "idle.volatile.below.otherScreens[0].name"],
     ["an other screen row that is no expression", ["idle", "volatile", "below", "otherScreens", 0, "pattern"], "[unclosed", "idle.volatile.below.otherScreens[0].pattern"],

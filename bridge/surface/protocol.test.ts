@@ -17,7 +17,7 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { BOUNDS, BOX_CHANGED, LATE_PROBE, VIEW_AT_DRAFT, VIEW_AT_QUESTION, VIEW_NO_PROFILE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendLedger, type SendRequest } from "./protocol.ts";
+import { BOUNDS, BOX_CHANGED, LATE_PROBE, LEFT_TYPED_MS, VIEW_AT_DRAFT, VIEW_AT_QUESTION, VIEW_NO_PROFILE, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendLedger, type SendRequest } from "./protocol.ts";
 import { HEAD_CASES, NOT_HEAD_CASES } from "../agent-view/testdata/head-cases.ts";
 import { AgentViewService } from "../agent-view/service.ts";
 import { AgentViewStore } from "../agent-view/store.ts";
@@ -11525,5 +11525,463 @@ describe("review 9 rule 5: a view send never answers and never joins a draft", (
     expect(answer.detail).toBe(VIEW_AT_DRAFT);
     expect(pane.box).toBe("my half-written note");
     expect(pane.keysSeen).toEqual([]);
+  });
+});
+
+// ── the agents panel under the box redraws while Collie types (2026-11-13, field: lane 8788) ──
+
+describe("the agents panel under the box is chrome: its rows come and go on their own (2026-11-13)", () => {
+  /** The field screen's rows under the box (Claude Code 2.1.323, field case): two statusline rows, the mode row, a blank row, the agents panel. */
+  const STATUS = ["  CTX:19% CACHE:100% LIMITS 7d:0%/4d:07h", "  [Fable·xhigh] ~/projects/sample on main*", "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 11 agents"];
+  const MAIN = "  ● main";
+  const agent = (task: string): string => `  ◯ general-purpose  ${task}                    1m 3s · ↓ 88.8k tokens`;
+  const panel = (...tasks: string[]): string[] => [...STATUS, "", MAIN, ...tasks.map(agent)];
+  const TEXT_IN = "decision 1 is good";
+
+  test("field repro: a background agent resumes as the text goes in, in a running turn: sent (was typed_not_submitted, changed)", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.over = [LIVE_ROW];
+    pane.status = panel("Waiting on the gate result");
+    pane.afterInput = (p, what) => {
+      if (what.includes(TEXT_IN)) p.status = panel("Waiting on the gate result", "Resumed: card sentence");
+    };
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.box).toBe("");
+  });
+
+  test("an agent ends, the panel goes, or the panel first appears while the text goes in, idle or running: sent", async () => {
+    const cases: [string[], string[]][] = [
+      [panel("one", "two"), panel("one")],
+      [panel("one"), STATUS],
+      [STATUS, panel("one")],
+    ];
+    for (const [before, after] of cases) {
+      for (const over of [[], [LIVE_ROW]]) {
+        const { pane, send } = rig({ version: "2.1.302" });
+        pane.over = over;
+        pane.status = before;
+        pane.afterInput = (p, what) => {
+          if (what.includes(TEXT_IN)) p.status = after;
+        };
+        const answer = await send(TEXT_IN);
+        expect(answer.receipt, `${String(before.length)}→${String(after.length)} ${String(over.length)}`).toMatchObject({ outcome: "sent" });
+      }
+    }
+  });
+
+  test("without the profile's chrome mark the same redraw stops as before: the mark is the only excuse", async () => {
+    const unmarked = (profile: Profile): Profile => ({
+      ...profile,
+      idle: {
+        ...profile.idle,
+        volatile: {
+          ...profile.idle.volatile,
+          below: { ...profile.idle.volatile.below, footerRows: (profile.idle.volatile.below.footerRows ?? []).map(({ name, pattern }) => ({ name, pattern })) },
+        },
+      },
+    });
+    const { pane, send } = rig({ version: "2.1.302", edit: unmarked });
+    pane.over = [LIVE_ROW];
+    pane.status = panel("one");
+    pane.afterInput = (p, what) => {
+      if (what.includes(TEXT_IN)) p.status = panel("one", "two");
+    };
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a dialog drawn under the box in the panel's place as the text goes in: no Enter", async () => {
+    for (const over of [[], [LIVE_ROW]]) {
+      const { pane, send } = rig({ version: "2.1.302" });
+      pane.over = over;
+      pane.status = panel("one");
+      pane.afterInput = (p, what) => {
+        if (what.includes(TEXT_IN)) p.status = [...STATUS, "", ...DIALOG];
+      };
+      const answer = await send(TEXT_IN);
+      expect(answer.receipt?.outcome, String(over.length)).toBe("typed_not_submitted");
+      expect(pane.keysSeen, String(over.length)).not.toContain("Enter");
+      expect(pane.box).toBe(TEXT_IN);
+    }
+  });
+
+  test("an agent row that only looks like one, outside an accepted panel (no blank row, no main row): it still counts, no Enter", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.over = [LIVE_ROW];
+    pane.status = panel("one");
+    pane.afterInput = (p, what) => {
+      // Straight under the statusline, with no blank row and no main row over it: no named run.
+      if (what.includes(TEXT_IN)) p.status = [...STATUS, agent("two"), "", MAIN, agent("one")];
+    };
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("the panel moves and the box holds one character less than was typed: no Enter (mismatch)", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.over = [LIVE_ROW];
+    pane.status = panel("one");
+    pane.dropLastChar = true;
+    pane.afterInput = (p, what) => {
+      if (what.includes(TEXT_IN.slice(0, -1))) p.status = panel("one", "two");
+    };
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("the panel moves and the frame with the text goes: no Enter (changed)", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.over = [LIVE_ROW];
+    pane.status = panel("one");
+    pane.afterInput = (p, what) => {
+      if (what.includes(TEXT_IN)) p.fixed = ["", "  Your conversation moved to the background.", "", "  Nothing is selected."].join("\n");
+    };
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// ── a send of the same text finishes what an earlier send left typed (2026-11-13) ──
+
+describe("the same text again onto the box an earlier send left it in: Enter only, nothing typed (2026-11-13)", () => {
+  const TEXT_IN = "decision 1 is good";
+  const SCREEN_GONE = ["", "  Your conversation moved to the background.", "", "  Nothing is selected."].join("\n");
+
+  /** A rig whose first send ends typed_not_submitted with the text in the box: the screen goes for every S1 read, then comes back. */
+  async function leftTyped(options: Parameters<typeof rig>[0] = {}): Promise<Rig> {
+    const r = rig({ version: "2.1.302", ...options });
+    let gone = false;
+    r.pane.afterInput = (_pane, what) => {
+      if (what.includes(TEXT_IN)) gone = true;
+    };
+    r.pane.beforeRead = (p) => {
+      p.fixed = gone ? SCREEN_GONE : null;
+    };
+    const first = await r.send(TEXT_IN);
+    expect(first.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(r.pane.box).toBe(TEXT_IN);
+    gone = false;
+    r.pane.afterInput = null;
+    r.pane.beforeRead = null;
+    r.pane.fixed = null;
+    r.pane.calls = [];
+    r.pane.keysSeen = [];
+    return r;
+  }
+
+  test("the retry submits it: sent, only Enter pressed, nothing typed, and the receipt says why", async () => {
+    const { pane, send } = await leftTyped();
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(answer.receipt?.detail).toBe("The box already held this text, typed by an earlier send, so only the submit key was pressed.");
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual(["Enter"]);
+    expect(pane.box).toBe("");
+  });
+
+  test("the retry in a running turn queues it the same way: sent and queued, only Enter", async () => {
+    const { pane, send } = await leftTyped();
+    pane.over = [LIVE_ROW];
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a person's own draft of the same words, never typed by a send: refused draft_present, no Enter", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.box = TEXT_IN;
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe(TEXT_IN);
+  });
+
+  test("the left text edited in the terminal by one character: refused draft_present, no Enter", async () => {
+    const { pane, send } = await leftTyped();
+    pane.box = `${TEXT_IN}!`;
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe(`${TEXT_IN}!`);
+  });
+
+  test("another text onto the left text: refused draft_present, as before", async () => {
+    const { pane, send } = await leftTyped();
+    const answer = await send("something else");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe(TEXT_IN);
+  });
+
+  test("a dialog over the left text: no Enter", async () => {
+    const { pane, send } = await leftTyped();
+    pane.dialog = DIALOG;
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt?.outcome).toBe("refused");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a new pane generation (another program in the pane): the left text is no longer the send's, refused draft_present", async () => {
+    let generation = "gen-1";
+    const { pane, send } = await leftTyped({ generation: () => generation });
+    generation = "gen-2";
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt?.outcome).toBe("refused");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("after the time limit: refused draft_present, as before", async () => {
+    const { pane, send, clock } = await leftTyped();
+    clock.now += LEFT_TYPED_MS + 1;
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a WalkyTalky message (draftHolds) of the same text is not finished: it is never typed onto the box", async () => {
+    const { pane, send } = await leftTyped();
+    const answer = await send(TEXT_IN, { draftHolds: true });
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe(TEXT_IN);
+  });
+
+  test("after a bridge restart the request files say the text was the send's: the retry submits it, nothing typed", async () => {
+    const storeDir = join(dir, "kept-sends");
+    const clock = { now: 1_000_000 };
+    const before = await leftTyped({ storeDir, clock });
+    // A new protocol over the same files: nothing in memory, the same pane, box and generation.
+    const after = rig({ version: "2.1.302", storeDir, clock, pane: before.pane });
+    const answer = await after.send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(before.pane.calls).toEqual([]);
+  });
+
+  test("after a crash mid-send (unknown, crash, no submit key yet) the request files still prove it: the retry submits it", async () => {
+    const storeDir = join(dir, "crashed-sends");
+    const clock = { now: 1_000_000 };
+    const first = rig({ version: "2.1.302", storeDir, clock });
+    // The bridge died after the text went in: the record is accepted and never settled.
+    first.deps.store.accept({ id: "crash-000001", session: "main", paneId: "%1", paneGeneration: "gen-1", surfaceRevision: 0, mode: "send", text: TEXT_IN });
+    first.deps.store.recover(SendProtocol.crashReceipt);
+    first.pane.box = TEXT_IN;
+    const answer = await first.send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(first.pane.calls).toEqual([]);
+  });
+
+  test("after a crash once the submit key had gone out, the request files prove nothing: refused draft_present", async () => {
+    const storeDir = join(dir, "crashed-late");
+    const first = rig({ version: "2.1.302", storeDir });
+    first.deps.store.accept({ id: "crash-000002", session: "main", paneId: "%1", paneGeneration: "gen-1", surfaceRevision: 0, mode: "send", text: TEXT_IN });
+    first.deps.store.markSubmitSent("crash-000002");
+    first.deps.store.recover(SendProtocol.crashReceipt);
+    first.pane.box = TEXT_IN;
+    const answer = await first.send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(first.pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("once the left text was sent by Submit, the same words typed again by a person are a draft again", async () => {
+    const { pane, send } = await leftTyped();
+    const submitted = await send(TEXT_IN, { mode: "submit" });
+    expect(submitted.receipt?.outcome).toBe("sent");
+    pane.box = TEXT_IN;
+    pane.keysSeen = [];
+    const answer = await send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// ── a WalkyTalky message that stops before Enter takes its own text out of the box (2026-11-13) ──
+
+describe("a WalkyTalky message left typed takes its own text back out of the person's box (2026-11-13)", () => {
+  const MAIL = "[walky-talky wt_0001] from sample: please rebase";
+  const GONE = ["", "  Your conversation moved to the background.", "", "  Nothing is selected."].join("\n");
+
+  /** A send whose S1 never passes (the screen goes for S1's reads), then the box comes back holding the text. */
+  function stopsAtS1(pane: FakePane, back: (p: FakePane) => void): void {
+    let typed = false;
+    let s1Reads = 0;
+    pane.afterInput = (_pane, what) => {
+      if (what.includes(MAIL)) typed = true;
+    };
+    pane.beforeRead = (p) => {
+      if (!typed) return;
+      s1Reads++;
+      p.fixed = s1Reads <= BOUNDS.s1.reads ? GONE : null;
+      if (s1Reads === BOUNDS.s1.reads + 1) back(p);
+    };
+  }
+
+  test("the box holds exactly the message: it is taken out, nothing pressed but Backspace, and the send ends refused", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    stopsAtS1(pane, () => undefined);
+    const answer = await send(MAIL, { draftHolds: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "changed" });
+    expect(answer.receipt?.detail).toBe("Enter was not pressed, so the typed message was taken out of the box again. It waits in the inbox.");
+    expect(pane.box).toBe("");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a person typed after it: nothing is taken out, the send ends typed_not_submitted as before", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    stopsAtS1(pane, (p) => {
+      p.box = `${MAIL} and mine`;
+    });
+    const answer = await send(MAIL, { draftHolds: true });
+    expect(answer.receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.box).toBe(`${MAIL} and mine`);
+    expect(pane.keysSeen.filter((key) => key === "Backspace").length).toBe(1);
+  });
+
+  test("a dialog stopped it (modal_cue): no key at all, the text stays", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.afterInput = (p, what) => {
+      if (what.includes(MAIL)) p.dialog = DIALOG;
+    };
+    const answer = await send(MAIL, { draftHolds: true });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen.filter((key) => key === "Backspace").length).toBe(1);
+  });
+
+  test("a person's own send that stops is left typed, as before: only WalkyTalky mail is taken back", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    stopsAtS1(pane, () => undefined);
+    const answer = await send(MAIL);
+    expect(answer.receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.box).toBe(MAIL);
+  });
+});
+
+// ── the audit's siblings: the command settle key and the rows hash leave chrome rows out (2026-11-13) ──
+
+describe("chrome rows under the box tick on their own: the command settle key and the rows hash leave them out (2026-11-13)", () => {
+  const STATUS = ["  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 2 agents"];
+  const panelAt = (n: number): string[] => ["", "  ● main", `  ◯ general-purpose  Reading the profile                    ${String(n)}s · ↓ 88.8k tokens`];
+  const LIST = ["  ❯ /model   Set the AI model", "    /mcp     Manage MCP servers"];
+
+  test("a command with its own list open and an agent timer ticking under it on every read: sent, not 'list moving'", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    let ticks = 0;
+    let typed = false;
+    pane.status = [...STATUS, ...panelAt(0)];
+    pane.afterInput = (_pane, what) => {
+      if (what.includes("/model")) typed = true;
+    };
+    pane.beforeRead = (p) => {
+      ticks++;
+      p.popup = typed ? [...LIST, ...STATUS, ...panelAt(ticks)] : null;
+      p.status = [...STATUS, ...panelAt(ticks)];
+    };
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
+
+  test("the list itself changes on every read while the timer ticks: still no Enter", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    let ticks = 0;
+    let typed = false;
+    pane.status = [...STATUS, ...panelAt(0)];
+    pane.afterInput = (_pane, what) => {
+      if (what.includes("/model")) typed = true;
+    };
+    pane.beforeRead = (p) => {
+      ticks++;
+      const list = ["  ❯ /model   Set the AI model", `    /mcp     Manage MCP servers ${ticks % 2 === 0 ? "(on)" : "(off)"}`];
+      p.popup = typed ? [...list, ...STATUS, ...panelAt(ticks)] : null;
+    };
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("the rows hash a person confirmed holds while an agent timer ticks under the box: Submit of an edited box is not stale", async () => {
+    const { pane, protocol, send } = rig({ version: "2.1.302" });
+    let ticks = 0;
+    pane.box = "decision 1 is goo";
+    pane.beforeRead = (p) => {
+      ticks++;
+      p.status = [...STATUS, ...panelAt(ticks)];
+    };
+    const prepared = await protocol.handle({ id: "chrome-prep-01", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.rowsHash).toBeDefined();
+    const answer = await send("decision 1 is good", { mode: "submit", rowsHash: prepared.rowsHash! });
+    expect(answer.receipt?.reason).not.toBe("stale_surface");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+  });
+
+  test("the rows hash still moves when a row that is no chrome changes under the box: stale_surface", async () => {
+    const { pane, protocol, send } = rig({ version: "2.1.302" });
+    let ticks = 0;
+    pane.box = "decision 1 is goo";
+    pane.beforeRead = (p) => {
+      ticks++;
+      p.status = [`  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← ${String(ticks)} agents`, ...panelAt(0)];
+    };
+    const prepared = await protocol.handle({ id: "chrome-prep-02", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    const answer = await send("decision 1 is good", { mode: "submit", rowsHash: prepared.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// Field case 2026-11-13 (request e86fd78e), as frame fixtures: Claude Code 2.1.323 in a running turn, the agents
+// panel under the box. The session resumed a background agent inside S1's window, and the panel gained a row
+// between the probe's read and S1's reads. Hand-built from the field screen's layout (its rows under the box
+// read from the pane the same evening; the transcript, model and path replaced), plain text.
+describe("Claude Code 2.1.323, the agents panel gains a row while the text goes in (field case 2026-11-13, frame fixtures)", () => {
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const capture = (name: string): string => readFileSync(join(FIXTURES, `claude--v2323-agents-panel-${name}--w120.txt`), "utf8");
+  const TEXT_IN = "decision 1 is good";
+  const replay = (typed: string): FakePane => {
+    const pane = new FakePane("claude");
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) p.fixed = capture("running");
+      else if (p.box === "") p.fixed = capture("running");
+      else if (p.box === PROBE) p.fixed = capture("probe");
+      else if (p.box === TEXT_IN) p.fixed = typed;
+      else throw new Error(`the field never showed the box holding ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+  /** The Claude profile as shipped before the fix: the agents panel's rows carry no chrome mark. */
+  const unmarked = (profile: Profile): Profile => ({
+    ...profile,
+    idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, footerRows: (profile.idle.volatile.below.footerRows ?? []).map(({ name, pattern }) => ({ name, pattern })) } } },
+  });
+
+  test("the cause: without the chrome mark the grown panel ends the send exactly as the field receipt did", async () => {
+    const pane = replay(capture("grown"));
+    const answer = await rig({ pane, version: "2.1.302", edit: unmarked }).send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed", keys: ["probe", "Backspace"], s2: null, saw: { turn: "running", modal: "none", composer: "draft" } });
+    expect(answer.receipt?.detail).toBe("The frame with the typed text was gone, or the rows under the box changed, so Enter was not pressed.");
+    // The same send with the panel unchanged went out before the fix too: the panel's one new row is the whole cause.
+    const unchanged = replay(capture("typed"));
+    expect((await rig({ pane: unchanged, version: "2.1.302", edit: unmarked }).send(TEXT_IN)).receipt?.outcome).toBe("sent");
+  });
+
+  test("the fix: the grown panel is chrome, the box holds the text, one Enter", async () => {
+    const pane = replay(capture("grown"));
+    const answer = await rig({ pane, version: "2.1.302" }).send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("the grown panel with one character off in the box: no Enter", async () => {
+    const pane = replay(capture("grown").replace("❯ decision 1 is good", "❯ decision 1 is goo"));
+    const answer = await rig({ pane, version: "2.1.302" }).send(TEXT_IN);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+    expect(pane.keysSeen).not.toContain("Enter");
   });
 });

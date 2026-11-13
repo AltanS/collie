@@ -161,6 +161,15 @@ export interface FooterRow {
   readonly name: string;
   /** A regular expression source, matched on the row with its trailing space cut. */
   readonly pattern: string;
+  /**
+   * True for a row the harness adds, drops or redraws on its own while the box keeps the keys
+   * (Claude Code's agents panel gains a row when a background agent starts or resumes, and loses it
+   * when one ends). The Send Protocol leaves such a row out of its count of the rows under the box,
+   * but only on a read whose frame walk accepted it inside the named footer run
+   * (`Frame.volatile.named`): a row that only looks like one, outside an accepted run, still counts.
+   * Optional.
+   */
+  readonly chrome?: true;
 }
 
 /**
@@ -1188,7 +1197,8 @@ function footerRows(value: JsonValue | undefined): FooterRow[] {
     names.add(name);
     const compiled = pattern(field(node, "pattern", at), `${at}.pattern`);
     if (compiled.test("")) fail(`${at}.pattern`, "must not match a blank row");
-    return { name, pattern: compiled.source };
+    if (node.chrome !== undefined && node.chrome !== true) fail(`${at}.chrome`, "must be true when it is set");
+    return node.chrome === true ? { name, pattern: compiled.source, chrome: true as const } : { name, pattern: compiled.source };
   });
 }
 

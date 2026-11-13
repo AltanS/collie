@@ -2030,6 +2030,24 @@ describe("Composer — terminal-draft preview", () => {
     expect(recordedSends().map((r) => r.mode)).toEqual(["send", "replace"]);
   });
 
+  // Field case 2026-11-13: the bridge typed the text and did not press Enter. The box now shows the
+  // person's own message; the preview must not offer it back as somebody's draft to Take over.
+  it("after typed_not_submitted the text the bridge left in the box is no terminal draft: no preview, no Take over", async () => {
+    const user = userEvent.setup();
+    server.use(...sendHandler((request) => sendAnswer(request.id, "typed_not_submitted", "changed", { offers: ["submit", "discard", "keys"] })));
+    renderDraftHarness();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "decision 1 is good");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByRole("button", { name: "Submit" });
+    strandDraft("decision 1 is good");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /take over/i })).not.toBeInTheDocument();
+    // Another text in the box is a real draft again: the preview shows it.
+    strandDraft("someone else typed this");
+    expect(await screen.findByText(/draft in terminal/i)).toBeInTheDocument();
+  });
+
   it("read-only device: shows the preview and allows Take over (local copy), writing nothing to the terminal", async () => {
     const user = userEvent.setup();
     const keyCalls: string[] = [];
@@ -4986,6 +5004,28 @@ describe("outcome at the thumb", () => {
     await waitFor(() => expect(refusalText()).toMatch(/Your text is in the box, but Enter was not pressed\. Submit it or discard it\./u));
     expect(refusalText()).not.toMatch(/held a draft/iu);
     expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
+  });
+
+  // Field case 2026-11-13 ("the input froze"): after typed_not_submitted the person tapped Send again. Nothing
+  // on the phone locks: the field takes keys, Send is live, and a second Send is a new send request.
+  it("typed_not_submitted changed in a running turn: the field and Send stay live, and Send again is a new send of the same text", async () => {
+    let n = 0;
+    const user = await send(
+      () => (++n === 1 ? sendAnswer("x", "typed_not_submitted", "changed", { offers: ["submit", "discard", "keys"], surface: wayOutCase("draft").surface }) : sendAnswer("y", "sent")),
+      { surface: SURFACES.running },
+      "decision 1 is good",
+    );
+    await screen.findByRole("button", { name: "Submit" });
+    const field = screen.getByRole("textbox");
+    expect(field).toHaveValue("decision 1 is good");
+    expect(field).not.toBeDisabled();
+    const sendButton = screen.getByRole("button", { name: "Send" });
+    expect(sendButton).not.toHaveAttribute("aria-disabled", "true");
+    await user.click(sendButton);
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ mode: "send", text: "decision 1 is good" });
+    expect(recordedSends()[1]!.id).not.toBe(recordedSends()[0]!.id);
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
   });
 
   it("refused probe_failed: names the Surface and points to the Keys dock and the Screen", async () => {
