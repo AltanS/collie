@@ -9,6 +9,8 @@ export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 const REGISTRY = {
   // M97 spec 05: the four look decisions of the session filter. Waits for the operator's pick.
   "session-filter": () => import("./rounds/session-filter"),
+  // M100 spec 06, item 2: the question after a send that ended unknown. Approved; the operator looks at the window and the row.
+  "send-it-again": () => import("./rounds/send-it-again"),
 } satisfies Record<string, PickRoundLoader>;
 
 /** Every round, by id. */

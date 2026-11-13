@@ -569,6 +569,7 @@ export const en = {
   "composer.paste.expandToInput": "Expand into input",
   "composer.paste.editAria": "Edit pasted text #{n}",
   "composer.send.reallySend": "Really send?",
+  "composer.send.sendAgain": "Send it again?",
   "composer.send.dialogFirst": "Answer the dialog",
   "composer.send.stopTypingAria": "Stop typing into terminal",
   "composer.send.sendAria": "Send",
@@ -4281,6 +4282,7 @@ export const PENDING_TRANSLATION = [
   "walky.sheet.deliverGone",
   "walky.held.deliverStays",
   "walky.composer.delivered",
+  "composer.send.sendAgain",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

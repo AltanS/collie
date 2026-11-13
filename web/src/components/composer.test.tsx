@@ -24,6 +24,7 @@ import { SubagentSheetCtx, type SubagentSheetHandle, type SubagentTarget } from 
 import type { Surface } from "@/lib/surface/surface";
 import { asJsonObject } from "@/lib/json";
 import { markLive } from "@/lib/liveness";
+import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { beginCatchUp, endCatchUp, setLocked } from "@/lib/idle";
 import { offersFor, SEND_REASONS, type SendReason } from "@/lib/surface/send";
 import { WAY_OUT_STATES, type WayOutState } from "@/lib/way-out";
@@ -169,6 +170,9 @@ beforeAll(() => {
 });
 beforeEach(() => {
   clearStatus();
+  // An unknown send arms "Send it again?" for the same text on the same pane; no test inherits another's.
+  sessionStorage.removeItem("collie:send-again:default:w1:p1");
+  __forgetSendAgainMemory();
   imageEditHarness.mode = "auto";
   imageEditHarness.lastConfirm = null;
   imageEditHarness.mounts = 0;
@@ -5047,13 +5051,15 @@ describe("outcome at the thumb", () => {
     expect(header()).toBe("");
   });
 
-  it("unknown: says to read the screen, then send again, keeps the draft, and the next tap is accepted as a new request", async () => {
+  it("unknown: says to read the screen, then send again, keeps the draft, and the next tap asks once before it sends a new request", async () => {
     const user = await send(() => sendAnswer("x", "unknown", "no_evidence", { offers: ["keys"] }));
     await waitFor(() => expect(refusalText()).toMatch(/read the screen, then send again/i));
     expect(screen.getByRole("button", { name: "Screen" })).toBeInTheDocument();
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
     expect(header()).toBe("");
+    // The same text on the same pane, moments after an unknown result: the Send slot asks (M100 spec 06).
     await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Send it again?" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]!.id).not.toBe(recordedSends()[0]!.id);
   });
