@@ -364,6 +364,11 @@ function WalkyListRow({
           {delivery.error}
         </p>
       )}
+      {delivery.gone !== null && (
+        <p data-slot="walky-deliver-gone" role="status" className="mt-1 text-[11px] text-muted-foreground">
+          {delivery.gone}
+        </p>
+      )}
       {note !== null && (
         <p data-slot="walky-takeback-note" role="status" className="mt-1 text-[11px] text-muted-foreground">
           {note}

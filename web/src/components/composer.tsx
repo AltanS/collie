@@ -1131,16 +1131,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   });
 
   // Deliver now, from the held mark: the call, then the note over the box that the person's text stays.
-  const delivered = walky.delivered;
+  const { delivered, tooLate } = walky;
   const deliverNow = useMemo(
     () =>
       onDeliverNow === undefined
         ? undefined
         : async (id: string) => {
+            const end = await onDeliverNow(id);
+            // "gone": it no longer waited at the tap, so no note says delivered or still waiting.
+            if (end === "gone") tooLate();
             // "unknown": it may have arrived, so no note says delivered; the row says the rest.
-            if ((await onDeliverNow(id)) !== "unknown") delivered();
+            else if (end !== "unknown") delivered();
+            return end;
           },
-    [onDeliverNow, delivered],
+    [onDeliverNow, delivered, tooLate],
   );
 
   const hasDraft = input.trim() !== "" || attachments.length > 0;

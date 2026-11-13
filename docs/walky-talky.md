@@ -555,7 +555,9 @@ also has Deliver now: on the line above the box when it is the only one, with "Y
 box.", and on its row in the sheet. A tap hands that message to the agent at once, and your text stays
 in the box as you left it. Its row then reads "Delivered. Your text is still in the box." Deliver now
 does not go while the agent works or asks you something; the message keeps waiting, and the line says
-why. On a crew, Deliver now is on the machine that owns the pane.
+why. When the message stopped waiting a moment before your tap (it went in by itself, or was dropped,
+cancelled or expired), the line reads "This message no longer waits for your text." and the list is read
+again, so the row says what became of it. On a crew, Deliver now is on the machine that owns the pane.
 
 When an agent runs `collie walky` in a tool card, the card wears a small "WalkyTalky" badge. After
 `send` or `reply`, one line under it reads "Message to" the pane and the receipt state, for example

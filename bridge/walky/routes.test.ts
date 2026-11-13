@@ -339,6 +339,15 @@ describe("POST /api/pane/<pane>/walky/<id>/deliver, Deliver now (M99 spec 05)", 
     expect(calls).toHaveLength(1);
   });
 
+  test("a message that no longer waits answers 410, not 409: it did not stay waiting", async () => {
+    // The hold ended a moment before the tap (it went in, was dropped, cancelled or expired): the Send Protocol finds nothing held.
+    const { walky, calls } = await held("not-held");
+    const res = await walkyDeliverRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context([]));
+    expect(res.status).toBe(410);
+    expect(await res.text()).toBe(DELIVER_NOW_WORDS["not held"]);
+    expect(calls).toHaveLength(1);
+  });
+
   test("may have arrived answers 200 with the unknown receipt, and a repeat sends nothing", async () => {
     const { walky, calls } = await held("unknown");
     const res = await walkyDeliverRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context([]));

@@ -83,4 +83,14 @@ describe("the held mark", () => {
     expect(await screen.findByText("Not delivered. The message still waits and your text is unchanged. The agent did not take it.")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Deliver now" })).toBeEnabled());
   });
+
+  it("a message that no longer waited at the tap is no failure: the button frees and no failure line shows", async () => {
+    const user = userEvent.setup();
+    const onDeliverNow = vi.fn(async () => "gone" as const);
+    render(<WalkyHeldStrip count={1} onOpen={vi.fn()} linked deliverId={ID} onDeliverNow={onDeliverNow} />);
+    await user.click(screen.getByRole("button", { name: "Deliver now" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Deliver now" })).toBeEnabled());
+    expect(onDeliverNow).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Not delivered/)).toBeNull();
+  });
 });

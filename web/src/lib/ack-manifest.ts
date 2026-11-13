@@ -94,7 +94,7 @@ export const ACK_MANIFEST = {
   },
   deliverWalky: {
     channel: "inline",
-    why: "The pane owner's Deliver now on a message held for their draft (M99 spec 05): the button spins while the call runs, a delivery shows the note \"Message delivered. Your text stays here.\" over the box and the row's receipt reads delivered with the text kept; a refusal lands as a line on the mark or under the row, because the message still waits.",
+    why: "The pane owner's Deliver now on a message held for their draft (M99 spec 05): the button spins while the call runs, a delivery shows the note \"Message delivered. Your text stays here.\" over the box and the row's receipt reads delivered with the text kept; a refusal lands as a line on the mark or under the row, because the message still waits; a message that no longer waited at the tap (the bridge's 410) is no refusal, so one neutral line says so over the box or under the row and the list is read again.",
   },
   setWalkyOff: {
     channel: "inline",

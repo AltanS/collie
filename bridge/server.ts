@@ -10064,8 +10064,9 @@ export const WALKY_DROP_LOCAL_TEXT = "a message held on a crew member is dropped
 export const WALKY_DELIVER_LOCAL_TEXT = "a message held on a crew member is delivered on that machine";
 
 /**
- * What a person reads when Deliver now did not deliver (spec 05). The phone puts it after "Not delivered.
- * The message still waits and your text is unchanged." `may have arrived` is the one end that is no
+ * What a person reads when Deliver now did not deliver (spec 05). The phone puts a 409 line after "Not delivered.
+ * The message still waits and your text is unchanged." `not held` is a 410 and the phone prints its own line, for
+ * the message no longer waits and "still waits" would be untrue. `may have arrived` is the one end that is no
  * refusal and no delivery: it answers 200 like a delivery, and the row says the rest.
  */
 export const DELIVER_NOW_WORDS = {
@@ -10080,8 +10081,9 @@ export const DELIVER_NOW_WORDS = {
  * `POST /api/pane/<pane>/walky/<id>/deliver` (M99 spec 05, decision of 2026-11-13): the pane's owner hands
  * one message held for their draft to the agent by data; the draft stays in the box. 200 with the result
  * and the newest receipt when it went (`delivered`, `repeat`) or may have (`may have arrived`); 409 with
- * the reason in words when it still waits or waits no more; 404 for a pane or message this bridge does not
- * have. One audit line, never the body and never the draft.
+ * the reason in words when it still waits (`busy`, `not linked`, `not taken`, `elsewhere`); 410 when it
+ * waits no more (`not held`: it went in by itself, or was dropped, cancelled or expired a moment before the
+ * tap); 404 for a pane or message this bridge does not have. One audit line, never the body and never the draft.
  */
 export async function walkyDeliverRoute(
   walky: WalkyService | undefined,
@@ -10100,7 +10102,7 @@ export async function walkyDeliverRoute(
   if (!answer.ok) return text(answer.error, 404);
   const { result } = answer.result;
   if (result === "delivered" || result === "repeat" || result === "may have arrived") return json({ result: answer.result }, context.acceptEncoding);
-  return text(DELIVER_NOW_WORDS[result], 409);
+  return text(DELIVER_NOW_WORDS[result], result === "not held" ? 410 : 409);
 }
 
 /** A take-back's answer as the phone reads it: `{ results }` (200), or the reason in a 404 or 403. */

@@ -624,6 +624,8 @@ export function ownerStateWord(receipt: WalkyReceipt): string {
         return t("walky.owner.waitDraft");
       case "turn running":
         return t("walky.owner.waitBusy");
+      case "box not free":
+        return t("walky.owner.waitBox");
       default:
         return t("walky.owner.wait", { reason: reasonWord(receipt.reason ?? "") });
     }
@@ -685,11 +687,13 @@ export function graceLeftMs(since: number, now: number): number {
  * Deliver now (M99 spec 05): the call that hands one waiting message to the agent as data and leaves the
  * person's text in the box (`deliverWalky` in lib/api.ts). It resolves once the bridge delivered it, or with
  * `"unknown"` when the agent took it and said nothing: it may have arrived, it is not sent again, and the row
- * says so. It rejects with the reason when the message still waits. The UI takes it as `onDeliverNow` on
+ * says so, or with `"gone"` when the message no longer waits for the person's text (it went in by itself, or was
+ * dropped, cancelled or expired a moment before the tap: the bridge's 410), which is no failure and says nothing
+ * of "still waits". It rejects with the reason when the message still waits. The UI takes it as `onDeliverNow` on
  * `WalkySheet` and on the `Composer` (which hands it to the held mark and shows the note "Message delivered.
  * Your text stays here." after a delivery), together with `linked`, the pane read's `linked: true`.
  */
-export type DeliverNow = (id: string) => Promise<void | "unknown">;
+export type DeliverNow = (id: string) => Promise<void | "unknown" | "gone">;
 
 /** How one target's take-back ended (M62 spec 03), as the bridge's cancel and drop routes answer it. */
 export type TakeBackResult = "taken" | "repeat" | "already typed" | "not held" | "elsewhere";

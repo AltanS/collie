@@ -16,10 +16,13 @@ export type DeliverPhase = "idle" | "sending" | "sent";
  * still reads as held, so the button stays taken and a second tap cannot hand it over twice. The phase ends
  * when the message stops being held (the row's receipt moved), or after {@link DELIVER_SETTLE_MS} at most, so a
  * receipt that never moves cannot lock the button for good. A failed call frees the button and leaves a line.
+ * A message that no longer waited at the tap (`"gone"`) is no failure: the button frees, and `gone` carries one
+ * neutral line that stays after the row stops being held, for the row's receipt now tells what became of it.
  */
 export function useDeliverNow(held: boolean, onDeliverNow: DeliverNow | undefined) {
   const [phase, setPhase] = useState<DeliverPhase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [gone, setGone] = useState<string | null>(null);
   // A message that left its held state settles the question: the call's phase and its failure go with it.
   if (!held && (phase !== "idle" || error !== null)) {
     setPhase("idle");
@@ -35,8 +38,14 @@ export function useDeliverNow(held: boolean, onDeliverNow: DeliverNow | undefine
       if (onDeliverNow === undefined || phase !== "idle") return;
       setPhase("sending");
       setError(null);
+      setGone(null);
       try {
-        await onDeliverNow(id);
+        const end = await onDeliverNow(id);
+        if (end === "gone") {
+          setPhase("idle");
+          setGone(t("walky.sheet.deliverGone"));
+          return;
+        }
         setPhase("sent");
       } catch (thrown) {
         setPhase("idle");
@@ -45,5 +54,5 @@ export function useDeliverNow(held: boolean, onDeliverNow: DeliverNow | undefine
     },
     [onDeliverNow, phase],
   );
-  return { phase, busy: phase !== "idle", error, run };
+  return { phase, busy: phase !== "idle", error, gone, run };
 }

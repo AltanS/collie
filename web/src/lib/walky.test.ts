@@ -264,6 +264,7 @@ describe("the words", () => {
   it("reads a message that reached this pane in the owner's words: waiting for what, and delivered with the text kept", () => {
     expect(ownerStateWord({ ...receipt, state: "accepted", reason: "draft present" })).toBe("Waiting, because you have unsent text");
     expect(ownerStateWord({ ...receipt, state: "accepted", reason: "turn running" })).toBe("Waiting, because the agent is busy");
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "box not free" })).toBe("Waiting, because the box is not free");
     expect(ownerStateWord({ ...receipt, state: "accepted", reason: "resting" })).toBe("Waiting: that session rests");
     expect(ownerStateWord({ ...receipt, state: "delivered", overDraft: true })).toBe("Delivered. Your text is still in the box.");
     // The border verdict is no delivery word: a typed message that crossed in its space reads as typed.

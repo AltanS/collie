@@ -572,6 +572,18 @@ describe("Deliver now on a held message of a linked pane", () => {
     expect(screen.getByRole("button", { name: /^Deliver the message from/ })).toBeEnabled();
   });
 
+  it("a message that no longer waited at the tap gets one neutral line, no failure words, and a free button", async () => {
+    const user = userEvent.setup();
+    const onDeliverNow = vi.fn(async () => "gone" as const);
+    sheet([agentHeld], { ...GATES, onDeliverNow });
+    await user.click(screen.getByRole("button", { name: /^Deliver the message from/ }));
+    expect(await screen.findByText("This message no longer waits for your text.")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="walky-deliver-gone"]')).toHaveAttribute("role", "status");
+    expect(screen.queryByText(/Not delivered/)).toBeNull();
+    expect(screen.queryByText(/still waits/)).toBeNull();
+    expect(screen.getByRole("button", { name: /^Deliver the message from/ })).toBeEnabled();
+  });
+
   it("says before the tap where the message goes, what happens to the person's text and what the agent does", () => {
     sheet([agentHeld], { ...GATES, onDeliverNow: vi.fn(async () => {}) });
     const row = document.querySelector<HTMLElement>(`[data-id="${agentHeld.id}"]`)!;
