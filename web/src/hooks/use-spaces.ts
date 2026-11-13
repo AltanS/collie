@@ -8,6 +8,7 @@ import { setStatus } from "@/lib/status";
 import { stampTopology } from "@/lib/poll-intent";
 import { panePath, type NavExtras } from "@/lib/nav";
 import { mintRequestId } from "@/lib/worktree-name";
+import { createRequestId, holdCreateId, releaseCreateId, type CreateAction } from "@/lib/create-intent";
 import { startupHarness } from "@/lib/agent-startup";
 import { useNav } from "@/hooks/use-nav";
 import {
@@ -20,6 +21,29 @@ import {
 import { usePairing } from "@/lib/pairing";
 import { paneScopeKey, scopeKey, type Scope } from "@/lib/scope";
 import { useOptionalRootData } from "@/lib/route-data";
+
+/**
+ * Run a quick create under the id of its action (lib/create-intent.ts). An answer, a success or a
+ * plain refusal, ends the id. No answer (no reply, a network error, a 504) keeps it for 30 seconds,
+ * so a retap of the same action sends the same id and the bridge replays the first pane, joins the
+ * run in flight or says it is unknown, never a second create.
+ */
+async function withCreateId<TAnswer>(
+  scope: Scope | undefined,
+  action: CreateAction,
+  run: (requestId: string) => Promise<TAnswer>,
+): Promise<TAnswer> {
+  const requestId = createRequestId(scope, action);
+  try {
+    const answer = await run(requestId);
+    releaseCreateId(scope, action);
+    return answer;
+  } catch (e) {
+    if (api.outcomeUnknown(e)) holdCreateId(scope, action, requestId);
+    else releaseCreateId(scope, action);
+    throw e;
+  }
+}
 
 /** What the New page asks `start` to do. Exactly one `what`; `branch` makes it a new branch first. */
 export interface StartAsk {
@@ -192,7 +216,8 @@ export function useSpaceActions(canWrite?: () => boolean) {
       creatingTabRef.current.add(key);
       setCreatingTab(new Set(creatingTabRef.current));
       try {
-        open(await api.createTab(workspaceId, {}, scope), "tab", scope);
+        const action: CreateAction = { kind: "tab", workspaceId, cwd: undefined, label: undefined };
+        open(await withCreateId(scope, action, (requestId) => api.createTab(workspaceId, { requestId }, scope)), "tab", scope);
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       } finally {
@@ -221,7 +246,8 @@ export function useSpaceActions(canWrite?: () => boolean) {
       setCreatingSpace(true);
       const scope = at ?? scopeRef.current;
       try {
-        open(await api.createWorkspace(opts, scope), "space", scope);
+        const action: CreateAction = { kind: "space", cwd: opts.cwd, label: opts.label };
+        open(await withCreateId(scope, action, (requestId) => api.createWorkspace({ ...opts, requestId }, scope)), "space", scope);
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       } finally {
@@ -269,7 +295,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
         // A machine older than 1.19.0 starts no plain shell by id: its own space create opens one.
         // A starter makes no tab by hand and ignores the pane, so it is a space whatever was asked.
         const beside = ask.what.kind === "starter" ? undefined : ask.beside;
-        const cwd = ask.cwd === undefined ? {} : { cwd: ask.cwd };
+        const cwd = ask.cwd === undefined ? { requestId: ask.requestId } : { cwd: ask.cwd, requestId: ask.requestId };
         const res =
           ask.what.kind === "shell" && ask.legacyShell === true
             ? beside === undefined
@@ -313,7 +339,9 @@ export function useSpaceActions(canWrite?: () => boolean) {
       setLaunching(new Set(launchingRef.current));
       const scope = scopeRef.current;
       try {
-        open(await api.launch(command, beside, scope), beside !== undefined ? "tab" : "space", scope, rowHarness);
+        const action: CreateAction = { kind: "launch", command, beside };
+        const created = await withCreateId(scope, action, (requestId) => api.launch(command, beside, scope, requestId));
+        open(created, beside !== undefined ? "tab" : "space", scope, rowHarness);
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       } finally {
