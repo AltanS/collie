@@ -45,11 +45,18 @@ export interface AgentView {
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
-   * Claude's OWN session name (set in-agent via `/rename`), derived bridge-side from the pane text.
-   * Claude-only; absent for unnamed sessions and non-claude panes. Shown below an explicit `paneLabel`
-   * — see `paneName` in lib/pane-name.ts. Render as text only (never markup) — same XSS boundary as paneLabel.
+   * The harness's OWN session name, set in-agent by the person (Claude's `/rename`, pi's `/name`, an
+   * Oh My Pi title the person set, Muse's name), derived bridge-side from the harness's journal or its
+   * screen. Absent for an unnamed session. Shown below an explicit `paneLabel`, see `paneName` in
+   * lib/pane-name.ts. Render as text only (never markup), the same XSS boundary as paneLabel.
    */
   sessionName?: string;
+  /**
+   * The title the agent gave its session itself (Claude's own title, Oh My Pi's automatic title,
+   * OpenCode's session title), from the harness's journal. Names the pane after the two hand-set names
+   * and before a sole tab's name (lib/pane-name.ts). Absent from an older bridge. Text only.
+   */
+  agentTitle?: string;
   /**
    * True when the agent named a session, so a journal may exist for this pane — what the History
    * affordance keys off, without a speculative fetch.

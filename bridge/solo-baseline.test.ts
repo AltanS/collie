@@ -416,6 +416,10 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: a trick session's part key (M94 slice 03). Present only on a pane of
   // `kind: "trick"`, and this harness has no tricks folder, so no golden byte moved.
   view: true,
+  // Not a crew dimension: the title the agent gave its session, from its journal (bridge/session-titles.ts,
+  // added 2026-11-13). Present only when the harness wrote one, and this harness builds its engine with no
+  // title tracker, so no golden byte moved.
+  agentTitle: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -557,6 +561,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
       "actions",
       "agent",
+      "agentTitle",
       "asks",
       "badge",
       "cache",

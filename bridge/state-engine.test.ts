@@ -11,7 +11,7 @@ import {
   StateEngine,
   terminalTitleIsStale,
   type EngineSnapshot,
-  type MuseSessionNameProbe,
+  type ArgvNameProbe,
 } from "./state-engine.ts";
 import { HerdrMux } from "./mux/herdr/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
@@ -703,6 +703,36 @@ describe("StateEngine — session name enrichment", () => {
     return { herdr, engine, poll, agent };
   }
 
+  function makeTitledEngine(titles: Record<string, { person?: string; agent?: string }>) {
+    const herdr = new NameHerdr();
+    const engine = new StateEngine(asMux(herdr), 1500, { titles: (a) => titles[a.paneId] });
+    const poll = () => engine["poll"]();
+    const agent = (id: string) => engine.current().agents.find((a) => a.paneId === id)!;
+    return { herdr, poll, agent };
+  }
+
+  test("the journal's names win: the person's name is sessionName and the agent's title is agentTitle", async () => {
+    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { person: "migrate bluefin", agent: "Bluefin migration" }, "w1:p2": { agent: "Colour prompt" } });
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude"), pane("w1:p2", "w1", "idle", "opencode")];
+    herdr.texts.set("w1:p1", named("screen-name"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("migrate bluefin");
+    expect(agent("w1:p1").agentTitle).toBe("Bluefin migration");
+    expect(agent("w1:p2").agentTitle).toBe("Colour prompt");
+    expect("sessionName" in agent("w1:p2")).toBe(false);
+    // A pane the journal named spends no screen read on a name.
+    expect(herdr.reads.some(([id]) => id === "w1:p1")).toBe(false);
+  });
+
+  test("the screen read stays the fallback while the journal names no person, and the agent's title still rides", async () => {
+    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { agent: "Bluefin migration" } });
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", named("screen-name"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("screen-name");
+    expect(agent("w1:p1").agentTitle).toBe("Bluefin migration");
+  });
+
   test("threads a claude pane's /rename session name onto the view — claude-only", async () => {
     const { herdr, poll, agent } = makeNameEngine();
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude"), pane("w1:p2", "w1", "idle", "codex")];
@@ -910,7 +940,7 @@ describe("StateEngine — muse session names", () => {
   };
 
   function makeMuseEngine(
-    probe: MuseSessionNameProbe,
+    probe: ArgvNameProbe,
     panes: MuxPane[] = [musePane],
     foreground: () => MuxOutcome<readonly ForegroundProcess[]> = () =>
       muxOk([{ argv: ["muse", "resume", "some-uuid"] }]),
@@ -926,7 +956,7 @@ describe("StateEngine — muse session names", () => {
       },
     };
     // SAFETY: see above — every member this poll can reach is present on `stub`.
-    const engine = new StateEngine(stub as MuxAdapter, 1500, { museSessionName: probe });
+    const engine = new StateEngine(stub as MuxAdapter, 1500, { argvNames: { muse: probe } });
     const poll = () => engine["poll"]();
     const agent = () => engine.current().agents[0]!;
     return { engine, poll, agent, processReads: () => processReads };
@@ -1383,12 +1413,13 @@ describe("terminalTitleIsStale", () => {
     return stub as MuxAdapter;
   }
 
-  test("the mark reaches the view, and the title itself goes on the wire untouched", async () => {
+  test("the mark reaches the view, and the title goes on the wire through the one normalizer", async () => {
     const stale = muxPane({ foregroundCommand: "bash", terminalTitle: "✳ waiting for soak time" });
     const engine = new StateEngine(muxOf([stale]), 1500);
     await engine["poll"]();
     const view = engine.current().shellPanes[0]!;
-    expect(view.terminalTitle).toBe("✳ waiting for soak time");
+    // The spinner glyph goes on every multiplexer now (session-title.ts); the stale check read the raw title.
+    expect(view.terminalTitle).toBe("waiting for soak time");
     expect(view.terminalTitleStale).toBe(true);
   });
 
@@ -1397,7 +1428,8 @@ describe("terminalTitleIsStale", () => {
     const engine = new StateEngine(muxOf([live]), 1500);
     await engine["poll"]();
     const view = engine.current().shellPanes[0]!;
-    expect(view.terminalTitle).toBe("✳ waiting for soak time");
+    // The spinner glyph goes on every multiplexer now (session-title.ts); the stale check read the raw title.
+    expect(view.terminalTitle).toBe("waiting for soak time");
     // Absent, exactly as every other optional field on the wire is when it has nothing to say.
     expect("terminalTitleStale" in view).toBe(false);
   });

@@ -14,6 +14,8 @@ import { collieBinary as collieBinaryOf, HOST, surfacePlatform } from "./host.ts
 import { ActivityLedger } from "./activity.ts";
 import { trackActivity } from "./activity-tracking.ts";
 import { CacheTracker } from "./cache/tracker.ts";
+import { ARGV_NAMED_AGENT } from "./harness-name-sources.ts";
+import { SessionTitleTracker } from "./session-titles.ts";
 import { CacheWarden } from "./cache/warden.ts";
 import { CacheWatchStore } from "./cache/watch.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
@@ -889,6 +891,11 @@ const journals = cfg.transcript
 // before. One reader for the whole bridge — its per-session scans are keyed by session id, so
 // two collie sessions watching one herd share the fold instead of re-walking the log.
 const museNames = cfg.transcript ? museSessionNameReader(cfg.journalRoots.muse) : undefined;
+// What each harness session is called in its own journal (bridge/session-titles.ts): a name the person
+// set in the harness, and the agent's own title. One tracker for the whole bridge, keyed by session id,
+// read by every engine from memory and refreshed on each session's poll. Null with transcripts off, and
+// every pane then keeps the screen read and its fallbacks exactly as before.
+const sessionTitles = journals === null ? null : new SessionTitleTracker(journals, () => Date.now());
 const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
 const paneCache =
   journals === null
@@ -1790,7 +1797,10 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // The worktree capability sits just inside it, outside the beacon and hint wrappers: it reads their
   // declaration and lifts `createWorktree` from `createSpace` plus git (bridge/worktree-capability.ts).
   const herdr = withRepoFacts(withWorktreeCapability(withBeaconsIfBlind(built.adapter, target), { git: worktreeGit }), { facts: (folder) => repoFactsOf(folder, nodeGitHeadDisk, homedir()) });
-  const engine = new StateEngine(herdr, cfg.pollMs, { museSessionName: museNames });
+  const engine = new StateEngine(herdr, cfg.pollMs, {
+    argvNames: museNames === undefined ? {} : { [ARGV_NAMED_AGENT]: museNames },
+    titles: sessionTitles === null ? undefined : (pane) => sessionTitles.forPane(pane),
+  });
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any
   // herd change, and while it's healthy the interval relaxes to the safety-net cadence. Events are
@@ -1842,6 +1852,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
       );
     };
     engine.onUpdate((s) => void probeThenWarn(s.agents));
+  }
+  // The session names ride the same poll, fired and not awaited; the engine reads them from memory on
+  // the next one (bridge/session-titles.ts). `refresh` never throws.
+  if (sessionTitles !== null) {
+    engine.onUpdate((s) => void sessionTitles.refresh(s.agents, { session: name }));
   }
   if (todos !== null) {
     engine.onUpdate((s) => void todos.refresh(s.agents, { session: name }).catch(() => {}));

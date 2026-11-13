@@ -25,7 +25,7 @@
 //
 // Pure and React-free: the card, the sheets and the tests all call these functions.
 import { paneGitHead } from "./git-head";
-import { soleTabName } from "./pane-name";
+import { givenName } from "./pane-name";
 import type { AgentView } from "./types";
 import { SOLO_MEMBER, type WalkyRow } from "./walky";
 
@@ -36,16 +36,15 @@ export interface WalkyLivePanes {
 }
 
 /**
- * The name a walky surface gives a live pane, in the order of `paneName` minus the terminal title:
- * the operator's pane label, Claude's own session name, the name of a one-pane tab the operator named,
- * `<folder>#<branch>` when the pane's folder is on a branch, the folder's name, and last the agent word
- * ("shell" for a shell). The folder is the last part of the pane's cwd; a detached head names no branch.
+ * The name a walky surface gives a live pane, in the order of `paneName` minus the terminal title: the
+ * given name (`givenName`: Collie's rename, the person's name in the harness, the agent's own session
+ * title, a named one-pane tab), then `<folder>#<branch>` when the pane's folder is on a branch, the
+ * folder's name, and last the agent word ("shell" for a shell). The folder is the last part of the
+ * pane's cwd; a detached head names no branch.
  */
 export function walkyPaneName(pane: AgentView): string {
-  if (pane.paneLabel) return pane.paneLabel;
-  if (pane.sessionName) return pane.sessionName;
-  const tab = soleTabName(pane);
-  if (tab !== null) return tab;
+  const given = givenName(pane);
+  if (given !== null) return given;
   const folder = pane.cwd.split(/[\\/]/u).findLast((part) => part.length > 0) ?? "";
   if (folder !== "") {
     const head = paneGitHead(pane);

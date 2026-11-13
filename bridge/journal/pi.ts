@@ -27,6 +27,8 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { asRecord, asText, FileSum, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
 import { harnessProcessOf } from "../launch-window.ts";
+import { newestOf, probeHeadLine, rowOf, stringField } from "./name-probe.ts";
+import type { NameReading } from "../session-title.ts";
 import { processStartMs } from "./process-start.ts";
 import { type MeasuredContext, piAgentDirLookups, WindowCatalog } from "./model-window.ts";
 import { HOST, isInside } from "../host.ts";
@@ -1494,6 +1496,42 @@ export class PiTranscriptSource implements TranscriptSource {
   readSince = readSinceFile;
 }
 
+/**
+ * What a pi or Oh My Pi log calls the session (JournalAdapter.nameProbe): the head row and the cache
+ * probe's tail.
+ *
+ * Oh My Pi 18.10 keeps the session's CURRENT title in a padded `title` row at the top of the file and
+ * rewrites it in place (measured 2026-11-13: line 1 of every session that has one), and logs each
+ * change as a `title_change` row. Both carry `source`: `auto` is the title Oh My Pi gave the session, any
+ * other source is a title the person set. pi 1.1.0 appends a `session_info` row with the `name` the
+ * person gave (`/name`). An empty title or name clears it.
+ */
+async function piNameProbe(source: PiTranscriptSource, ref: AgentSessionRef): Promise<NameReading | null> {
+  const head = rowOf(await probeHeadLine(source, ref));
+  const tail = await probeTail(source, ref);
+  if (head === null && tail === null) return null;
+  return piNamesOf(head, tail?.lines ?? []);
+}
+
+/** Which of the two names a pi title row sets: the agent's own on `auto` or no source, else the person's. */
+function titleSide(row: JsonObject): "person" | "agent" {
+  const from = stringField(row, "source");
+  return from === undefined || from === "auto" ? "agent" : "person";
+}
+
+/** The names in a pi log's head row and tail window, newest wins (see {@link piNameProbe}). Pure. */
+export function piNamesOf(head: JsonObject | null, lines: readonly string[]): NameReading {
+  const reading: NameReading = {};
+  // The header is the current title; a `title_change` in the tail stands in only for a log without one.
+  const header = head !== null && head.type === "title" ? head : null;
+  const titled = header ?? newestOf(lines, (row) => (row.type === "title_change" ? row : undefined)) ?? null;
+  const title = titled === null ? undefined : stringField(titled, "title");
+  if (titled !== null && title !== undefined) reading[titleSide(titled)] = title.trim() === "" ? null : title;
+  const named = newestOf(lines, (row) => (row.type === "session_info" ? stringField(row, "name") : undefined));
+  if (named !== undefined) reading.person = named.trim() === "" ? null : named;
+  return reading;
+}
+
 /** pi's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
 export function piJournal(roots: string | readonly string[]): JournalAdapter {
   const source = new PiTranscriptSource(roots);
@@ -1508,6 +1546,7 @@ export function piJournal(roots: string | readonly string[]): JournalAdapter {
     discover: (cwd: string, hints?: DiscoverHints) => source.discoverSession(cwd, hints),
     sharedFolderBlind: true,
     cacheProbe: (ref) => piCacheProbe(source, ref, catalog, costs),
+    nameProbe: (ref) => piNameProbe(source, ref),
   };
 }
 

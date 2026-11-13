@@ -94,6 +94,62 @@
         "paneLabel": "logs"
       },
       "name": "logs"
+    },
+    {
+      "case": "precedence 1: a Collie rename outranks the person's harness name and the agent's title",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "paneLabel": "release notes",
+        "sessionName": "migrate bluefin",
+        "agentTitle": "Bluefin Silverblue to NixOS migration",
+        "soleTabName": "work",
+        "terminalTitle": "Reviewing the diff"
+      },
+      "name": "release notes"
+    },
+    {
+      "case": "precedence 2: a name the person set in the harness outranks the agent's own title",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "sessionName": "migrate bluefin",
+        "agentTitle": "Bluefin Silverblue to NixOS migration",
+        "soleTabName": "work",
+        "terminalTitle": "Reviewing the diff"
+      },
+      "name": "migrate bluefin"
+    },
+    {
+      "case": "precedence 3: the agent's own title outranks a one-pane tab's name",
+      "pane": {
+        "agent": "omp",
+        "kind": "agent",
+        "agentTitle": "Clarify Explanation Input and Output Languages",
+        "soleTabName": "work",
+        "terminalTitle": "omp"
+      },
+      "name": "Clarify Explanation Input and Output Languages"
+    },
+    {
+      "case": "precedence 4: with no harness name, the one-pane tab's name outranks the terminal title",
+      "pane": {
+        "agent": "codex",
+        "kind": "agent",
+        "soleTabName": "work",
+        "terminalTitle": "Reviewing the diff"
+      },
+      "name": "work"
+    },
+    {
+      "case": "precedence 5: the agent's own title outranks the terminal title",
+      "pane": {
+        "agent": "opencode",
+        "kind": "agent",
+        "agentTitle": "Colour selection prompt setup",
+        "terminalTitle": "OpenCode"
+      },
+      "name": "Colour selection prompt setup"
     }
   ],
   "tabs": [
