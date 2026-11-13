@@ -8,10 +8,16 @@
 // word never undoes a newer one.
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { DATA_PANE, dataId, dataRig, type DataRig } from "./data-rig.ts";
 import { WORD_FRESH_MS } from "./hub.ts";
 import { PART_RATE_BURST } from "./server.ts";
+import { paneLinkedReader } from "../surface/path.ts";
+
+/** A captured Claude Code screen whose box holds the person's draft: the screen road reads `composer: draft`. */
+const DRAFT_SCREEN = readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", "claude--draft-footer-single.txt"), "utf8");
 
 const rigs: DataRig[] = [];
 afterEach(() => {
@@ -131,6 +137,26 @@ describe("a lost draft cleared", () => {
     expect((await mail(r, id, "[walky-talky wt_z] hello")).receipt?.outcome).toBe("sent");
     expect((await served)?.kind).toBe("mail");
     expect(r.mux.calls).toEqual([]);
+  });
+});
+
+describe("a draft that stays in the box past the word's age", () => {
+  test("a message sent then is held by the screen's read of the box; the pane stays linked, and Deliver now still goes by data", async () => {
+    const { r, clock } = await rig();
+    r.mux.screen = DRAFT_SCREEN;
+    const part = await r.part({}, { idle: true });
+    await part.event("draft.state", { present: true, seq: 1 });
+    clock.at += WORD_FRESH_MS + 1;
+    // (c) The age picks a road; it never unlinks the pane.
+    expect(paneLinkedReader({ enabled: () => true, hub: r.hub })(DATA_PANE.session, DATA_PANE.paneId)).toBe(true);
+    const id = dataId();
+    expect((await mail(r, id, "[walky-talky wt_x] hello")).receipt?.outcome).toBe("held");
+    expect(r.holds.get(id)).toMatchObject({ state: "held", draftHolds: true, cause: "draft_present" });
+    expect(r.mux.calls.every((call) => call === "readGrid")).toBe(true);
+    const served = part.serveOnce({ waitMs: 3000 });
+    expect((await r.protocol.deliverOverDraft(DATA_PANE.session, DATA_PANE.paneId, id)).result).toBe("sent");
+    expect(await served).toMatchObject({ id, kind: "mail", overDraft: true });
+    expect(r.mux.calls.every((call) => call === "readGrid")).toBe(true);
   });
 });
 

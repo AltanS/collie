@@ -134,6 +134,7 @@ answer in time, a `429` past the burst, a `5xx`. Three rules cover that.
 - **Saying it again.** The part says every state word again after each hello, the box first. A post
   that got no answer, a `429` or a `5xx` is said again after 1, 5 and 15 seconds, then no more until
   the next state word, the next change of the box, or the next hello; a new word starts the waits over.
+  The part posts at most four words in a row; a word still unsaid after them goes through the same waits.
   The part keeps per bridge which words that bridge took, so a word whose post failed is never
   deduplicated away. A `410` says hello instead, and the hello says the words.
 

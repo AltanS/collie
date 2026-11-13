@@ -130,6 +130,9 @@ function unsaid(link: Link, part: string): { readonly body: string; readonly too
   return null
 }
 
+/** The most posts one saying makes before it hands the rest to the retry ladder. */
+const SAY_ROUNDS = 4
+
 /**
  * Say the state words this link's bridge has not taken, one post at a time. A post that failed (no answer
  * in time, a 429, a 5xx) is said again after {@link STATE_RETRY_MS}, then no more until the next word,
@@ -141,8 +144,10 @@ async function sayState($: $, link: Link): Promise<void> {
   if (part === null || link.sayingFor === part || link.retryWaiting) return
   link.sayingFor = part
   try {
-    // Bounded: each round takes one word, and only two can be unsaid; a word that came in between waits for its own call.
-    for (let round = 0; round < 4; round += 1) {
+    // Bounded: each round takes one word. Words that keep coming during slow posts can outlast the
+    // rounds; a call made meanwhile returned at once (`sayingFor`), so the exit schedules one follow-up
+    // through the same ladder, and the word is said without waiting for another event.
+    for (let round = 0; round < SAY_ROUNDS; round += 1) {
       if (link.state !== 'mine' || link.part !== part) return
       const next = unsaid(link, part)
       if (next === null) {
@@ -158,6 +163,7 @@ async function sayState($: $, link: Link): Promise<void> {
       }
       next.took()
     }
+    if (link.state === 'mine' && link.part === part && unsaid(link, part) !== null) retryLater($, link)
   } catch {
     // An engine fault: the next word, edit or hello says it again.
   } finally {

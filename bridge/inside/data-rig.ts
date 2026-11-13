@@ -6,7 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { muxAck, muxUnreachable, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
+import { muxAck, muxOk, muxUnreachable, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { fakeEdgeTarget, fakeLiveness, FakePart } from "./fake-part.ts";
@@ -26,9 +26,12 @@ const ENV = { HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/herdr.sock" };
 /** Every mux call the Send Protocol made, by name. The data road makes none. */
 export class RecordingMux {
   readonly calls: string[] = [];
-  readGrid = (): Promise<MuxOutcome<MuxGrid>> => {
+  /** The screen every read answers, a captured pane's text; null for a pane that cannot be read. Nothing typed changes it. */
+  screen: string | null = null;
+  readGrid = (paneId: string): Promise<MuxOutcome<MuxGrid>> => {
     this.calls.push("readGrid");
-    return Promise.resolve(muxUnreachable("the rig has no screen"));
+    if (this.screen === null) return Promise.resolve(muxUnreachable("the rig has no screen"));
+    return Promise.resolve(muxOk({ paneId, text: this.screen, truncated: false, revision: 1 }));
   };
   typeText = (): Promise<MuxAck> => {
     this.calls.push("typeText");

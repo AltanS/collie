@@ -14,7 +14,7 @@ type Wire = { path: string; body: Record<string, unknown> | null }
 /** Event posts the bridge loses: of this kind (and this count, when given), `times` of them, by a time-out or a status. */
 type Lose = { kind: string; seq?: number; how: 'timeout' | number; times: number }
 
-function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose } = {}) {
+function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose; slow?: { ms: number } } = {}) {
   const clock = mock.clock(on)
   mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
   const wire: Wire[] = []
@@ -50,6 +50,8 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
     if (opts.refuse === true) throw new Error('ECONNREFUSED')
     if (url.pathname === '/v1/hello') return answer(200, { wire: 1, mine: true, part: PART })
     if (url.pathname === '/v1/event') {
+      // A slow bridge: each event post answers after this long, still inside the part's time limit.
+      if (opts.slow !== undefined && opts.slow.ms > 0) await clock.sleep(opts.slow.ms)
       const lose = opts.lose
       if (lose !== undefined && lose.times > 0 && body?.kind === lose.kind && (lose.seq === undefined || body.seq === lose.seq)) {
         lose.times -= 1
@@ -311,6 +313,37 @@ describe('the Collie mod', () => {
     for (let i = 0; i < 3; i += 1) await clock.settle()
     expect(ends()).toHaveLength(5)
     expect(ends()[4]).toEqual({ part: PART, kind: 'turn.end', turn: 't-5', reason: 'answer', seq: 3 })
+  })
+
+  test('a turn end that comes during the last post of a long saying is still said, with no further event', async ($, on) => {
+    const slow = { ms: 0 }
+    const { clock, wire } = world(on, { box: '', slow })
+    on('prompt.change', (_, e) => ({ text: e.text }))
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    slow.ms = 1000
+    const step = async () => {
+      await clock.advance(1000)
+      for (let i = 0; i < 3; i += 1) await clock.settle()
+    }
+    // Each word comes while the post of the one before is on the wire: one saying, four posts.
+    await $.turn.start({ text: 'one', turnId: 't-6' })
+    await $.prompt.change({ text: 'typed', cursor: 5, origin: { kind: 'history' } })
+    await step()
+    await $.turn.start({ text: 'two', turnId: 't-7' })
+    await step()
+    await $.prompt.change({ text: '', cursor: 0, origin: { kind: 'clear' } })
+    await step()
+    // During the fourth post.
+    await $.turn.complete({ turnId: 't-7', reason: 'answer', text: 'done' })
+    await step()
+    expect(events(wire).filter((e) => e?.kind === 'turn.end')).toEqual([])
+    // No event from here on: the follow-up a second later says it.
+    await step()
+    await step()
+    expect(events(wire).filter((e) => e?.kind === 'turn.end')).toEqual([{ part: PART, kind: 'turn.end', turn: 't-7', reason: 'answer', seq: 6 }])
+    const said = events(wire).filter((e) => e?.kind === 'turn.start' || e?.kind === 'draft.state').map((e) => e?.seq)
+    expect(said).toEqual([1, 2, 3, 4, 5])
   })
 
   test('a socket that refuses the connection: no binding, and the permission goes on at once', async ($, on) => {
