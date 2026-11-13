@@ -2792,13 +2792,31 @@ export type WorktreePlanResponse =
       remembered?: { base: "default" | "current"; folder: "default" | "parent"; parent?: string };
       branchValid?: boolean;
       defaultTarget?: { path: string; exists: boolean; reason?: string };
+      /** Where `defaultTarget` comes from: this machine's "Worktree folder" setting, or Herdr's rule. */
+      defaultSource?: "setting" | "herdr";
+      /** The setting fails the folder rule now, so there is no `defaultTarget` and a create would refuse. */
+      defaultRefusal?: { error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
       parentTarget?:
         | { ok: true; path: string }
         | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
     }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
-/** Where a new branch's folder goes (ADR 0093): Herdr's own place, or a child of a parent folder. */
+/**
+ * GET /api/worktree/folder, and the answer to POST /api/worktree/folder/set: one machine's "Worktree
+ * folder" setting (ADR 0093 note). Mirrors `WorktreeFolderSettingResponse` in bridge/types.ts. `dir` is
+ * `null` when unset; `path` is its real path when it passes the folder rule now, `problem` the refusal
+ * when it does not; `fallback` is the folder the default uses while it is unset.
+ */
+export interface WorktreeFolderSettingResponse {
+  ok: true;
+  dir: string | null;
+  path?: string;
+  problem?: { error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+  fallback: string;
+}
+
+/** Where a new branch's folder goes (ADR 0093): the machine's default place, or a child of a parent folder. */
 export type WorktreeFolderChoice = { kind: "default" } | { kind: "parent"; parent: string };
 
 /**

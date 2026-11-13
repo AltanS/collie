@@ -1233,7 +1233,6 @@ export const es: Dictionary = {
   "newPage.branch.note": "Una rama nueva en su propia carpeta, para que este agente no cambie los archivos de otro.",
   "newPage.branch.name": "Nombre de la rama",
   "newPage.branch.folder": "Carpeta de la rama",
-  "newPage.branch.folder.default": "Predeterminada de Herdr",
   "newPage.branch.folder.other": "Otra carpeta",
   "newPage.branch.parent": "Crear la carpeta de la rama en",
   "newPage.branch.target": "Carpeta nueva: {path}",

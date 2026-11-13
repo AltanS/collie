@@ -1147,7 +1147,6 @@ export const it: Dictionary = {
   "newPage.branch.note": "Un nuovo branch nella sua cartella, così questo agente non modifica i file di un altro.",
   "newPage.branch.name": "Nome del branch",
   "newPage.branch.folder": "Cartella del branch",
-  "newPage.branch.folder.default": "Predefinita di Herdr",
   "newPage.branch.folder.other": "Altra cartella",
   "newPage.branch.parent": "Crea la cartella del branch in",
   "newPage.branch.target": "Nuova cartella: {path}",

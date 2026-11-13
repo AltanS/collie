@@ -1212,7 +1212,6 @@ export const ko: Dictionary = {
   "newPage.branch.note": "자체 폴더에 새 브랜치를 만들어 이 에이전트가 다른 에이전트의 파일을 바꾸지 않게 합니다.",
   "newPage.branch.name": "브랜치 이름",
   "newPage.branch.folder": "브랜치 폴더",
-  "newPage.branch.folder.default": "Herdr 기본값",
   "newPage.branch.folder.other": "다른 폴더",
   "newPage.branch.parent": "브랜치 폴더를 만들 위치",
   "newPage.branch.target": "새 폴더: {path}",

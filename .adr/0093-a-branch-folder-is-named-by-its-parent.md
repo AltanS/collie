@@ -118,3 +118,12 @@ saves or clears it (`{ "dir": string | null }`); the write is write-gated and is
 across the crew link by `?host=`, so each machine has its own value and the sheet for a member's repo
 reads the member's. (Point 9 above is outdated since ADR 0126 point 6: the worktree routes are
 forwarded.)
+
+The phone shows it in two places, both English-only until the translation pass. Settings, System has
+one **Worktree folder** card with a row per machine (the machine's name only in a crew): "Default" and
+the folder Herdr's rule gives, or "Your folder" and the saved one, with the rule it breaks if it broke
+since. **Change** opens the New sheet's folder picker (typed field, Favourites, Recent, Browse);
+**Use the default** clears it. In the New sheet the first choice under Branch folder changes from
+"Herdr's default" to "Default folder", because it is the machine's folder on every multiplexer, and the
+line under it names the resolved path, or the rule a broken setting fails. The change of look waits for
+the operator's yes (UI changes ship only on his word).

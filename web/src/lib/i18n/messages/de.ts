@@ -1234,7 +1234,6 @@ export const de: Dictionary = {
   "newPage.branch.note": "Ein neuer Branch in einem eigenen Ordner, damit dieser Agent nicht die Dateien eines anderen ändert.",
   "newPage.branch.name": "Branch-Name",
   "newPage.branch.folder": "Branch-Ordner",
-  "newPage.branch.folder.default": "Herdrs Standard",
   "newPage.branch.folder.other": "Anderer Ordner",
   "newPage.branch.parent": "Branch-Ordner anlegen in",
   "newPage.branch.target": "Neuer Ordner: {path}",

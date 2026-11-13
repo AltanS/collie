@@ -1,11 +1,16 @@
 // Settings section of the states playground. Split out of app.tsx; see that file's header comment
 // for the whole page's rules.
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 import { LauncherHowSheet } from "@/components/launcher-how-sheet";
 import { CommandPicker } from "@/components/new-command-picker";
 import { FolderBrowse } from "@/components/new-space-browse";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { ROOT_ROUTE_ID } from "@/lib/loaders";
+import { CrewProvider } from "@/components/crew-provider";
+import { WorktreeFolderControl, type WorktreeFolderIo } from "@/components/worktree-folder-control";
+import { BranchBlock, type BranchBlockProps } from "@/routes/new";
 import { NoPromptsSheet } from "@/components/no-prompts-sheet";
 import { NotifyPrefsCard } from "@/components/notify-prefs-control";
 import { SpaceOverview } from "@/components/space-overview";
@@ -15,6 +20,8 @@ import { CodexConsentSheet, SpeechCards, type SpeechCardsProps } from "@/compone
 import { DEFAULT_THEME_ID, type Theme } from "@/lib/theme/schema";
 import { addImported, removeImported, shippedThemes } from "@/lib/theme/store";
 import { commandChoice, commandKey, commandOptions, offerFor, pickOfKey } from "@/lib/new-page";
+import { describeApiError } from "@/lib/api-error-message";
+import type { WorktreeFolderSettingResponse } from "@/lib/types";
 import type { FolderBrowseResponse, LauncherItem, RecentRun, SttCapability, SttHostStatus, WhistleStatus } from "@/lib/types";
 import {
   devicesPaired,
@@ -25,7 +32,7 @@ import {
   watchedPanes,
 } from "../fixtures";
 import { NewRouter, SettingsRouter } from "../harness";
-import { Card, Group, Section, Stage, type SectionDef } from "../layout";
+import { Card, CardControls, Group, Section, Segmented, Stage, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {
@@ -143,6 +150,132 @@ function BrowseDemo({ initial }: { initial: string }) {
         className="h-11 rounded-md border border-border bg-background px-3 font-mono text-sm"
       />
       <FolderBrowse value={value} home={BROWSE_HOME} scope={undefined} onNavigate={setValue} onUse={setValue} read={browseFixture} />
+    </div>
+  );
+}
+
+// ── Settings, Worktree folder, and the New sheet's folder choice (ADR 0093 note) ───────────────────
+
+type FolderCase = "unset" | "set" | "refused" | "crew";
+
+const FOLDER_CASES: readonly { value: FolderCase; label: string }[] = [
+  { value: "unset", label: "Default" },
+  { value: "set", label: "Set" },
+  { value: "refused", label: "Broken" },
+  { value: "crew", label: "Crew" },
+];
+
+/** What one machine holds, by case. Unset shows Herdr's rule; a broken value shows the rule it breaks. */
+function folderAnswer(which: FolderCase, host: string | undefined): WorktreeFolderSettingResponse {
+  const fallback = `${BROWSE_HOME}/.herdr/worktrees`;
+  if (which === "set") return { ok: true, dir: `${BROWSE_HOME}/trees`, path: `${BROWSE_HOME}/trees`, fallback };
+  if (which === "refused") {
+    return {
+      ok: true,
+      dir: `${BROWSE_HOME}/gone`,
+      problem: { error: "", code: "worktree.folder_missing" },
+      fallback,
+    };
+  }
+  if (which === "crew" && host === undefined) return { ok: true, dir: `${BROWSE_HOME}/trees`, path: `${BROWSE_HOME}/trees`, fallback };
+  return { ok: true, dir: null, fallback };
+}
+
+/** A save in the card: a folder outside home is the bridge's refusal, anything else is stored. */
+const folderIo = (which: FolderCase): WorktreeFolderIo => ({
+  read: ({ host }) => Promise.resolve(folderAnswer(which, host)),
+  write: (dir) =>
+    Promise.resolve(
+      dir !== null && !dir.startsWith("~") && !dir.startsWith(BROWSE_HOME)
+        ? { ok: false as const, error: "", code: "worktree.folder_outside_home" as const }
+        : { ok: true as const, dir: dir === null ? null : dir.replace(/^~/u, BROWSE_HOME), fallback: `${BROWSE_HOME}/.herdr/worktrees` },
+    ),
+  folders: { recent: [`${BROWSE_HOME}/src`, `${BROWSE_HOME}/docs`], favourites: [`${BROWSE_HOME}/trees`], home: BROWSE_HOME },
+  browse: browseFixture,
+});
+
+/** The card over one case. A fresh key remounts it, so the case reads again. */
+function WorktreeFolderDemo() {
+  const [which, setWhich] = useState<FolderCase>("unset");
+  const io = useMemo(() => folderIo(which), [which]);
+  // The card reads the root route's data, so it mounts under a root of its own; a case remounts it.
+  const router = useMemo(
+    () =>
+      createMemoryRouter([
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => homeSolo,
+          element: (
+            <CrewProvider
+              servers={which === "crew" ? homeCrew.servers : homeSolo.servers}
+              sessions={homeSolo.sessions}
+              ts={homeSolo.ts}
+              pollMs={3_000}
+            >
+              <WorktreeFolderControl io={io} />
+            </CrewProvider>
+          ),
+        },
+      ]),
+    [which, io],
+  );
+  return (
+    <div className="flex flex-col gap-2 p-4">
+      <CardControls>
+        <Segmented name="Worktree folder case" value={which} options={FOLDER_CASES} onChange={setWhich} />
+      </CardControls>
+      <RouterProvider router={router} />
+    </div>
+  );
+}
+
+const NO_OP = (): void => {};
+
+/** The New sheet's branch block, open, with the folder choice on its default. */
+function NewSheetFolderDemo() {
+  const [which, setWhich] = useState<"unset" | "set" | "refused">("unset");
+  const [name, setName] = useState("fix-login");
+  const [kind, setKind] = useState<BranchBlockProps["folderKind"]>("default");
+  const [parent, setParent] = useState("");
+  const shown: Pick<BranchBlockProps, "targetPath" | "problem"> =
+    which === "refused"
+      ? { targetPath: null, problem: describeApiError({ error: "", code: "worktree.folder_missing" }) }
+      : { targetPath: which === "set" ? "~/trees/collie/fix-login" : "~/.herdr/worktrees/collie/fix-login", problem: null };
+  return (
+    <div className="flex flex-col gap-2 p-4">
+      <CardControls>
+        <Segmented
+          name="New sheet folder case"
+          value={which}
+          options={[
+            { value: "unset", label: "Default" },
+            { value: "set", label: "Set" },
+            { value: "refused", label: "Broken" },
+          ]}
+          onChange={setWhich}
+        />
+      </CardControls>
+      <BranchBlock
+        on
+        blocked={null}
+        onToggle={NO_OP}
+        name={name}
+        onName={setName}
+        startChoices={null}
+        baseShown="default"
+        onBase={NO_OP}
+        folderKind={kind}
+        onFolderKind={setKind}
+        parent={parent}
+        onParent={setParent}
+        folders={{ recent: [], favourites: [], home: BROWSE_HOME }}
+        onStar={NO_OP}
+        checking={false}
+        {...shown}
+        targetPath={kind === "parent" ? "~/src/collie/fix-login" : shown.targetPath}
+        problem={kind === "parent" ? null : shown.problem}
+      />
     </div>
   );
 }
@@ -855,6 +988,29 @@ export function SettingsSection() {
         >
           <Stage height={560}>
             <BrowseDemo initial="~/src" />
+          </Stage>
+        </Card>
+
+        <Card
+          state="worktree-folder-setting"
+          label="1 Worktree folder, per machine"
+          reach="open Settings, System. Each machine of a crew has its own row; a solo collie has one and no machine name."
+          note="Default shows the folder Herdr's rule gives; Set shows yours; Broken shows the folder rule it fails now. Change opens the New page's folder picker (typed, Favourites, Recent, Browse). Try a path outside ~ to see a refusal. This card reads fixed answers, not the bridge."
+          span={2}
+        >
+          <Stage height={640}>
+            <WorktreeFolderDemo />
+          </Stage>
+        </Card>
+
+        <Card
+          state="new-sheet-default-folder"
+          label="2 Branch folder, Default folder"
+          reach="on the New page, turn on New worktree. The first choice under Branch folder is the machine's Worktree folder, or Herdr's rule while it is unset."
+          note="The label no longer names Herdr, because the folder is the same rule on every multiplexer. The line under the choice says where the folder goes; a Broken setting says why there is none."
+        >
+          <Stage height={420}>
+            <NewSheetFolderDemo />
           </Stage>
         </Card>
 

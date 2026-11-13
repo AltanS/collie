@@ -1145,7 +1145,6 @@ export const fr: Dictionary = {
   "newPage.branch.note": "Une nouvelle branche dans son propre dossier, pour que cet agent ne modifie pas les fichiers d’un autre.",
   "newPage.branch.name": "Nom de la branche",
   "newPage.branch.folder": "Dossier de la branche",
-  "newPage.branch.folder.default": "Par défaut de Herdr",
   "newPage.branch.folder.other": "Autre dossier",
   "newPage.branch.parent": "Créer le dossier de la branche dans",
   "newPage.branch.target": "Nouveau dossier : {path}",

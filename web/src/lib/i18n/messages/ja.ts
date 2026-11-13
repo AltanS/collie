@@ -1214,7 +1214,6 @@ export const ja: Dictionary = {
   "newPage.branch.note": "専用フォルダーに新しいブランチを作り、このエージェントが他のファイルを変更しないようにします。",
   "newPage.branch.name": "ブランチ名",
   "newPage.branch.folder": "ブランチのフォルダー",
-  "newPage.branch.folder.default": "Herdr の既定",
   "newPage.branch.folder.other": "別のフォルダー",
   "newPage.branch.parent": "ブランチのフォルダーを作る場所",
   "newPage.branch.target": "新しいフォルダー: {path}",
