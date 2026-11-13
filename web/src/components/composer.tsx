@@ -3849,6 +3849,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 className={cn(
                   // `absolute`, not TOOLBAR_TAP_TARGET's `relative`: the same 4px reach around the button, kept as the pseudo-element.
                   "absolute top-0 z-10 h-9 shrink-0 rounded-md px-3 text-sm font-semibold shadow-md before:absolute before:-inset-1 before:content-['']",
+                  // A 4px margin in the box's own fill (`bg-card` in the box layout, `bg-background` in the field one),
+                  // so the word never cuts a covered word of the draft in half. A ring is a box-shadow: no layout.
+                  box ? "ring-4 ring-card" : "ring-4 ring-background",
                   mirrored ? "left-0" : "right-0",
                 )}
                 onClick={() => onSendClick(armedWhen.current)}
