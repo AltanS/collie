@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -396,11 +396,22 @@ describe("durable: the starter receipt file", () => {
     await store.record({ requestId: id(0), at: now - 8 * 24 * 60 * 60 * 1000, starterId: STARTER, digest, pane: { paneId: "p", workspaceId: "w", workspaceLabel: "w", tabId: "t", cwd: "" } });
     expect(store.get(id(0))).toBeUndefined();
     // The oldest receipt is unfinished and an hour old: the thousand newer ones do not push it out.
-    await store.record({ requestId: id(1), at: now - 60 * 60 * 1000, starterId: STARTER, digest, pane: null });
-    for (let n = 2; n <= 1001; n += 1) {
+    // The first thousand arrive as a file an earlier bridge wrote, because every `record` rewrites the whole
+    // file: a thousand of them are a thousand full rewrites, which takes seconds under load and hit the 5 s time-out.
+    const done = { paneId: "p", workspaceId: "w", workspaceLabel: "w", tabId: "t", cwd: "" };
+    const earlier: { requestId: string; at: number; starterId: string; digest: string; pane: typeof done | null }[] = [
+      { requestId: id(1), at: now - 60 * 60 * 1000, starterId: STARTER, digest, pane: null },
+    ];
+    for (let n = 2; n <= 1000; n += 1) {
       now += 1;
-      await store.record({ requestId: id(n), at: now, starterId: STARTER, digest, pane: { paneId: "p", workspaceId: "w", workspaceLabel: "w", tabId: "t", cwd: "" } });
+      earlier.push({ requestId: id(n), at: now, starterId: STARTER, digest, pane: done });
     }
+    await writeFile(join(dir, STARTER_RECEIPTS_FILE), JSON.stringify({ receipts: earlier }));
+    await store.load();
+    expect(store.get(id(2))).toBeDefined();
+    // The thousand and first goes through `record`: the count cap drops the oldest finished one, not the unfinished one.
+    now += 1;
+    await store.record({ requestId: id(1001), at: now, starterId: STARTER, digest, pane: done });
     expect(store.get(id(1))).toBeDefined();
     expect(store.get(id(2))).toBeUndefined();
     expect(store.get(id(1001))).toBeDefined();
