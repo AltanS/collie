@@ -90,6 +90,9 @@ describe("the Send slot while a confirm word is armed", () => {
         // Solid fill (the destructive variant's) and a shadow, so covered text does not shine through.
         expect(word.className).toContain("bg-destructive");
         expect(word.classList.contains("shadow-md")).toBe(true);
+        // A clean 4px margin in the box's own fill: bg-card in the box layout, bg-background in the field layout.
+        expect(word.classList.contains("ring-4")).toBe(true);
+        expect(word.classList.contains(c.layout === "box" ? "ring-card" : "ring-background")).toBe(true);
         // The word button no longer carries a cell or a width of the layout's own: nothing in flow changed size.
         expect(placement(word)).toEqual([]);
       });
