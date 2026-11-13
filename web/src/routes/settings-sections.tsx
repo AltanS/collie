@@ -33,6 +33,7 @@ import { WideLayoutControl } from "@/components/wide-layout-control";
 import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
 import { ReportControl } from "@/components/report-control";
+import { WorktreeFolderControl } from "@/components/worktree-folder-control";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { ThemePickerControl } from "@/components/theme-picker-control";
@@ -318,6 +319,8 @@ export function SettingsSystemRoute() {
       <PairedDevices data={devices} />
       {/* Renders NOTHING on a solo install — the card owns that gate itself (useCrew().multi). */}
       <CrewSettingsCard />
+      {/* Where this machine's new worktrees go by default (ADR 0093 note): one row per machine. */}
+      <WorktreeFolderControl />
       <ConnectionInfo
         bridge={root?.bridge}
         device={root?.device}

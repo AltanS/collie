@@ -1000,6 +1000,20 @@ describe("`who` on a lead", () => {
     ]);
   });
 
+  test("carries a member pane's names from the census; the agent's title only while titles are shown", () => {
+    const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
+      // SAFETY: a test fixture carrying the fields `crewTargets` reads; the rest of the wire shape is irrelevant here.
+      ({ paneId, agent: "agent-x", status: "idle", cwd: "/home/a/collie", ...over }) as PaneWire;
+    const members = [{ memberId: "laptop", name: "laptop", reachable: true, body: { sessions: [], agents: [paneOf("w1:p1", { sessionName: "dialog pings", agentTitle: "Dialog ping sounds" }), paneOf("w1:p2")], shellPanes: [], workspaces: [], tabs: [] } }];
+    const shown = crewTargets(members, true);
+    expect(shown[0]).toMatchObject({ name: "dialog pings", nameBy: "harness", title: "Dialog ping sounds" });
+    // A member before 1.29.0 sends neither field, and its row carries none.
+    expect("name" in shown[1]! || "title" in shown[1]!).toBe(false);
+    const masked = crewTargets(members, false);
+    expect(masked[0]).toMatchObject({ name: "dialog pings", nameBy: "harness" });
+    expect("title" in masked[0]!).toBe(false);
+  });
+
   test("names a member's pane by its instance token when the member sends one, bare when it does not", () => {
     const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
       // SAFETY: a test fixture carrying the fields `crewTargets` reads; the rest of the wire shape is irrelevant here.

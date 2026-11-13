@@ -238,6 +238,8 @@
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
 
+import { sendByData, type DataDoor, type DataLimits } from "./data-send.ts";
+import { pickSendPath } from "./path.ts";
 import { statSync } from "node:fs";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
@@ -576,6 +578,20 @@ export interface SendDeps {
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * The data road (M99 spec 03, `bridge/surface/path.ts`): a part inside the agent program takes a
+   * plain send over the inside wire. Absent, or `enabled()` false (the kill switch): every send takes
+   * the screen road exactly as before.
+   */
+  readonly data?: DataRoad;
+}
+
+/** What the Send Protocol needs for the data road. */
+export interface DataRoad {
+  /** The kill switch, read per send. */
+  enabled(): boolean;
+  readonly door: DataDoor;
+  readonly limits?: DataLimits;
 }
 
 /** A request as the route checked it. */
@@ -1863,6 +1879,14 @@ const HELD_BEHIND = "Earlier messages wait for this pane. Collie sends this afte
  * The modes a hold takes: a new text. Submit and Discard name a box that holds text, which a free pane
  * never has, and Add to it names the draft in the box now, which a later free pane does not hold.
  */
+/**
+ * The command id of a later data try of one send: the record id with a time mark, at most 64 characters
+ * (the wire's id shape). Only a WalkyTalky message that its part sent back over a draft is tried again.
+ */
+export function retryCommandId(recordId: string, now: number, serial: number): string {
+  return `${recordId.slice(0, 44)}-d${Math.max(0, Math.floor(now)).toString(36)}${(serial % 46656).toString(36)}`;
+}
+
 const HOLDABLE: ReadonlySet<SendMode> = new Set<SendMode>(["send", "command", "replace"]);
 /** The modes that join the end of a pane's queue: a new message or command the person typed. */
 const JOINS: ReadonlySet<SendMode> = new Set<SendMode>(["send", "command"]);
@@ -2758,6 +2782,8 @@ export class SendProtocol {
   private readonly typedEmpty = new Map<string, { count: number; at: number }>();
   /** Releases that went back because their box was still starting ({@link RunState.startWait}): no turn can come from them. */
   private readonly startWaits = new Set<string>();
+  /** A serial for {@link retryCommandId}: two tries of one send never share a command id. */
+  private dataRetries = 0;
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -2885,6 +2911,11 @@ export class SendProtocol {
    * The request files hold receipts and the line Sent would keep (requests.ts), so no row of the screen
    * can come out of here, and of the text only that line.
    */
+  /** The road a request's send took (M99 spec 03): `data`, `screen` after a data try, or null for the screen road with no data try. */
+  pathOf(id: string): "data" | "screen" | null {
+    return this.deps.store.get(id)?.path ?? null;
+  }
+
   recent(paneId: string, limit = 10): SendReceiptRow[] {
     const rows: SendReceiptRow[] = [];
     for (const record of this.deps.store.list().toReversed()) {
@@ -3435,6 +3466,19 @@ export class SendProtocol {
     return started;
   }
 
+  /**
+   * The pane's part reported the end of its turn (M99 spec 03), or that the box holds no draft any more
+   * (spec 05, decision of 2026-11-13): the oldest held request of that pane
+   * goes now, as the poll's release would take it (its run reads the road and the turn again). Null when
+   * nothing waits or one already goes out. The poll's own rules ({@link tickHolds}) stay as they are.
+   */
+  releaseOnTurnEnd(session: string, paneId: string): Promise<SendAnswer | null> | null {
+    const waiting = this.deps.holds?.waiting(session, paneId) ?? [];
+    if (waiting.some((entry) => entry.state === "running" || this.inFlight.has(entry.id))) return null;
+    const next = waiting.find((entry) => entry.state === "held");
+    return next === undefined ? null : this.releaseQuietly(next.id);
+  }
+
   /** {@link release} for the poll: a throw is a warning in the journal, never an unhandled rejection. */
   private async releaseQuietly(id: string): Promise<SendAnswer | null> {
     try {
@@ -3789,6 +3833,10 @@ export class SendProtocol {
       // under the lock, right before anything is read or typed (agent views SECURITY rule 6).
       const moved = state.request.view?.check() ?? null;
       if (moved !== null) throw new Ended("refused", "stale_view", { detail: moved });
+      // The data road, when the pick says so (bridge/surface/path.ts). It answers, or hands back null
+      // when nothing reached the part: then the screen road below runs the send, once.
+      const byData = await this.runData(state, release);
+      if (byData !== null) return byData;
       await this.steps(state);
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
@@ -3810,6 +3858,71 @@ export class SendProtocol {
     } finally {
       locks.release(state.lockKey, record.id);
     }
+  }
+
+  /**
+   * One send by the data road (M99 spec 03), under the pane lock, or null for the screen road. A turn
+   * the part reports running holds the send as the screen road would (the same queue, card, Cancel
+   * and Dismiss); a release that meets a running turn goes back to its place. The part's `sent` is the
+   * receipt `sent` with no key; `failed` or no word is `unknown(no_evidence)`: it may have arrived, and
+   * nothing sends it again. A send no part took goes to the screen road, once, its record saying so.
+   */
+  private async runData(state: RunState, release: boolean): Promise<SendAnswer | null> {
+    const data = this.deps.data;
+    if (data === undefined) return null;
+    const { request, target, record } = state;
+    const address = { session: target.session, paneId: target.paneId };
+    const pick = pickSendPath({
+      enabled: data.enabled(),
+      part: data.door.partOf(address),
+      request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true },
+    });
+    if (pick.path === "screen") return null;
+    const mail = request.draftHolds === true;
+    // A draft holds a WalkyTalky message by data too (spec 05, decision of 2026-11-13): another agent's
+    // words never go in over the person's draft. The part says whether the box holds one; a part that
+    // cannot say, or has not said yet, leaves it unknown, and unknown takes the screen road, which reads
+    // the box itself. Unknown is never taken for "no draft". A phone send (spec 03) is not asked.
+    const draft = mail ? data.door.draftOf(address) : false;
+    if (draft === null) return null;
+    const turn = data.door.turnOf(address);
+    // A part that has not reported a turn since it bound (a bridge restart, a reload mid turn) leaves
+    // the turn unknown: the screen road reads it and runs the send, as today.
+    if (turn === null) return null;
+    if (turn === "running") {
+      const end = new Ended("refused", "turn_running");
+      if (release) return this.backToQueue(state, end);
+      return this.holdsEnd(state, end) ? this.hold(state, end) : this.settle(state, end);
+    }
+    if (draft) return this.dataDraftHold(state, release);
+    // A message tried by data before, sent back by its part over a draft, goes under a new command id:
+    // the queue and the part keep every id they saw, and the part submitted nothing under the old one.
+    const commandId = this.deps.store.get(record.id)?.path === undefined ? record.id : retryCommandId(record.id, this.now(), ++this.dataRetries);
+    this.deps.store.markPath(record.id, "data");
+    // A WalkyTalky delivery goes as `mail`: the text is the envelope the screen road would type (spec 05).
+    const result = await sendByData(data.door, address, { id: commandId, kind: mail ? "mail" : "prompt", text: request.text }, data.limits);
+    if (result.kind === "screen") {
+      this.deps.store.markPath(record.id, "screen");
+      return null;
+    }
+    // The part found a draft in the box as it was about to submit, and submitted nothing: held again.
+    if (result.kind === "draft") return this.dataDraftHold(state, release);
+    if (result.kind === "sent") return this.settle(state, new Ended("sent", undefined, { framed: false }));
+    return this.settle(state, new Ended("unknown", "no_evidence", { framed: false }));
+  }
+
+  /**
+   * A WalkyTalky message held by data over the person's draft (spec 05, decision of 2026-11-13): the
+   * screen road's own `draft_present` hold, with its mark, Cancel and Drop, and nothing typed. A
+   * release that meets the draft again goes back to its place without counting a try: the message's own
+   * clock bounds the wait. It goes when the part says the draft is gone, at the turn's end, or on the
+   * poll's release; each of those runs this road again, which asks the part's draft state first.
+   */
+  private dataDraftHold(state: RunState, release: boolean): SendAnswer {
+    const end = new Ended("refused", "draft_present", { detail: "The box holds a draft." });
+    if (release) return this.backToQueue(state, end);
+    if (this.deps.holds === undefined || state.request.view !== undefined || state.request.when === "steer" || !HOLDABLE.has(state.request.mode)) return this.settle(state, end);
+    return this.hold(state, end);
   }
 
   /** The harness starting in the pane ({@link SendDeps.starting}), or null. A throw reads as null. */

@@ -19,10 +19,10 @@ tell that agent to run them.
    ```
 
    ```text
-   ADDRESS           MACHINE  HARNESS  LABEL             SPACE  STATE
-   local/w1:p1#a1b2  desk     claude   my-app#main       work   working  (you)
-   local/w1:p2#c3d4  desk     codex    my-app#fix-login  work   idle
-   local/w1:p3#e5f6  desk     claude   api               work   done
+   ADDRESS           MACHINE  HARNESS  SPACE  FOLDER            NAME       TITLE                  STATE
+   local/w1:p1#a1b2  desk     claude   work   my-app#main       -          Fix the login form     working  (you)
+   local/w1:p2#c3d4  desk     codex    work   my-app#fix-login  login fix  Login form validation  idle
+   local/w1:p3#e5f6  desk     claude   work   api               -          -                      done
    ```
 
 2. Send a message to a pane, with an address copied from the ADDRESS column.
@@ -81,12 +81,12 @@ On a machine with only your own agent pane, `who` says
 ### Read the who table
 
 ```text
-ADDRESS                     MACHINE  HARNESS  LABEL             SPACE  STATE
-collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       work   working  (you)
-collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  work   done
-collie-7k2m9p/w54:p1J#anx6  desk     claude   api               work   done
-laptop/w11:p4#8h9h          laptop   claude   api               work   idle
-server/t1#9m3x              server   claude   my-app#main       work   idle
+ADDRESS                     MACHINE  HARNESS  SPACE  FOLDER            NAME       TITLE                  STATE
+collie-7k2m9p/w54:p1B#sx56  desk     claude   work   my-app#main       -          Fix the login form     working  (you)
+collie-7k2m9p/w54:p1G#1adi  desk     claude   work   my-app#fix-login  login fix  Login form validation  done
+collie-7k2m9p/w54:p1J#anx6  desk     claude   work   api               api docs   API reference pass     done
+laptop/w11:p4#8h9h          laptop   claude   work   api               -          -                      idle
+server/t1#9m3x              server   claude   work   my-app#main       -          Release notes draft    idle
 2 panes are outside your space. List every pane: collie walky who --all
 ```
 
@@ -96,12 +96,21 @@ pane has no space, so it lists every pane and prints no such line.
 
 - **Copy ADDRESS as printed.** Its first part is the member id, not the machine. On a lead it is the
   crew id (`collie-7k2m9p`) for the lead's own panes, on a member it is the member's name
-  (`laptop`), and with no crew it is `local`. Pick the row by MACHINE and LABEL.
+  (`laptop`), and with no crew it is `local`.
+- **Pick the row by what the session is.** SPACE is its workspace, FOLDER its `<repo>#<branch>`, NAME
+  the name a person gave it, and TITLE the title its agent gave it. Several sessions can share one
+  FOLDER; NAME and TITLE tell them apart. To reach "the session that fixes the login in `work`", keep the
+  rows whose SPACE is `work` and pick the one whose NAME or TITLE says so.
+- **NAME** is the name a person gave the session: a rename in Collie, a name set in its harness (Claude
+  Code's `/rename`, pi's `/name`, an Oh My Pi title you set), or the name of a tab that holds only that
+  pane. **TITLE** is the title the agent wrote for the session itself (Claude Code's own title, Oh My Pi's
+  automatic title, OpenCode's session title). Either prints `-` when there is none. With
+  `COLLIE_REDACT` on, TITLE is left out, as the terminal title is.
 - **SPACE** is the workspace or session the pane runs in ([Your space](#your-space)). A space with no
   name of its own prints its label and `(this machine)`.
 - **`(you)` marks your own pane.** A message to it is refused `that is your own pane`.
-- **Labels can repeat.** Two rows above are called `api`, one on each machine. MACHINE tells
-  them apart. If two rows still match, ask the operator which one is meant.
+- **Folders can repeat.** Two rows above are in `api`, one on each machine. MACHINE, NAME and TITLE
+  tell them apart. If two rows still match, ask the operator which one is meant.
 - **STATE** is the pane's own status: `idle`, `working`, `blocked`, `done` or `unknown`. A crew
   member the lead cannot reach shows `unreachable`. A pane that is `working` or `blocked` still
   takes a message. Collie queues it or holds it, as in [Into a busy pane](#into-a-busy-pane).
@@ -147,7 +156,7 @@ An address names one pane, one machine's panes, every pane, the panes of one fol
 | `<member>/<pane>` | Whatever pane holds that id now. On a machine with no crew the member is `local` |
 | `<member>/all` | Every agent pane on that machine. From the phone, or from an agent with `--outside` |
 | `all` | Every agent pane you can reach. From the phone, or from an agent with `--outside` |
-| `<repo>` | Every agent pane in a folder of that name, in the sender's space, on every machine of the crew, on any branch. With `--outside`, in every space. `<repo>` is the last part of the folder path, as `who` shows it before the `#` in the LABEL column, for example `my-app` |
+| `<repo>` | Every agent pane in a folder of that name, in the sender's space, on every machine of the crew, on any branch. With `--outside`, in every space. `<repo>` is the last part of the folder path, as `who` shows it before the `#` in the FOLDER column, for example `my-app` |
 | `<repo>#<branch>` | The same, on one branch, for example `my-app#main` |
 | `here` | The sender's own space, on every machine of the crew, without the sender's own pane |
 
@@ -191,7 +200,7 @@ crew. `who` prints an unnamed space with `(this machine)` after its label.
 
 `here` is your whole space. A word such as `my-app` is a folder, the last part of a pane's folder
 path, and it narrows a send to the panes of that folder inside your space. The same folder name on two
-machines is one folder. The lead reads the LABEL column of its merged `who` list, picks every agent
+machines is one folder. The lead reads the FOLDER column of its merged `who` list, picks every agent
 pane in your space whose `<repo>` matches, and makes one delivery per pane. The sender's own pane is
 never one of them. Each delivery has its own receipt.
 
@@ -206,10 +215,10 @@ collie walky who --workspace my-app
 ```
 
 ```text
-ADDRESS                     MACHINE  HARNESS  LABEL             SPACE  STATE
-collie-7k2m9p/w54:p1B#sx56  desk     claude   my-app#main       work   working  (you)
-collie-7k2m9p/w54:p1G#1adi  desk     claude   my-app#fix-login  work   done
-server/t1#9m3x              server   claude   my-app#main       work   idle
+ADDRESS                     MACHINE  HARNESS  SPACE  FOLDER            NAME       TITLE                  STATE
+collie-7k2m9p/w54:p1B#sx56  desk     claude   work   my-app#main       -          Fix the login form     working  (you)
+collie-7k2m9p/w54:p1G#1adi  desk     claude   work   my-app#fix-login  login fix  Login form validation  done
+server/t1#9m3x              server   claude   work   my-app#main       -          Release notes draft    idle
 ```
 
 `who --workspace my-app#main` keeps one branch. A folder with no agent pane prints
@@ -385,7 +394,7 @@ session took its id, the message stays in the inbox as `pane replaced`.
 A held message has two ways out before the hour ends. The sender takes it back with
 `collie walky cancel <id>` from the pane that sent it. A message sent from the phone is cancelled on
 the phone: its line under the box, and its row in the pane's WalkyTalky sheet, carry Cancel while it is
-held. The owner of the target pane sees "1 message waits for the box to clear" above the box. A tap
+held. The owner of the target pane sees "1 message waits while you type" above the box once it has waited 20 seconds. A tap
 opens the WalkyTalky sheet, where each held message has Drop. Either way the message stays in the
 inbox, not typed, and the receipt reads `cancelled by sender` or `dropped by the pane's owner`. A
 message that was already typed cannot be taken back; the answer says so, and the receipt stands. Only
@@ -531,8 +540,9 @@ older than 1.23.0, and on a member the lead cannot reach.
 Tap the card to open the WalkyTalky sheet on that message. The sheet scrolls to it and marks it, and
 its Reply button is next to it.
 
-While a message waits for the pane's box to clear, a line above the box reads "1 message waits for
-the box to clear", or the count. Tap it to open the WalkyTalky sheet. A held message from an agent has
+After a message has waited 20 seconds, a line above the box reads "1 message waits while you type",
+or the count. For a running turn it reads "1 message waits for the agent to finish", and for a mix of
+reasons "3 messages wait". A line you send in time never shows it: the message goes in by itself. Tap it to open the WalkyTalky sheet. A held message from an agent has
 a Drop button there: the hold ends, the message stays in the inbox, and its row reads
 `waiting in the inbox, not typed: dropped by the pane's owner`. A held message you sent from the
 phone has Cancel instead, on its row and on the line under the box. Its row then reads
@@ -554,8 +564,9 @@ Each receipt state shows the words in the table above, with the reason after "no
 - **WalkyTalky.** Open a pane's menu and tap "WalkyTalky" to see the messages for that pane, newest
   first. The list holds the messages that reached the pane and the ones the pane sent. A sent message
   reads "Sent to" and the session's name, or the name and "on" the machine, with the receipt state
-  in words, and has no "Reply" button. A hold reads in plain words: "that session has unsent text",
-  or "that session is busy". A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
+  in words, and has no "Reply" button. A hold reads in plain words. On a message that reached the pane it is
+  "Waiting, because you have unsent text" or "Waiting, because the agent is busy"; on a sent message it is
+  "held: that session has unsent text" or "held: that session is busy". A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
   address. A pane on a crew member has the row too, and its list comes from that member's own log. A
   reply from it goes through the lead like any message. An empty sheet says "No messages for this pane
   yet." A machine whose log the phone cannot read says "This machine does not keep messages yet."

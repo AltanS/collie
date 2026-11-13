@@ -31,7 +31,7 @@ import {
 } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, supportsCapability, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
-import { muxUnsupported } from "./mux/types.ts";
+import { muxOk, muxUnsupported } from "./mux/types.ts";
 import type { MuxAdapter, MuxAck, MuxGrid, MuxGridRequest, MuxHistoryPage, MuxReadHint, MuxReadPurpose, MuxStarters } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
@@ -67,12 +67,16 @@ import {
   herdrDefaultTarget,
   nearestWorkTree,
   resolveParentTarget,
+  resolveSetFolderTarget,
   type FolderFs,
   type HerdrConfigRead,
 } from "./worktree-folder.ts";
+import { memoryWorktreeFolderSetting, type WorktreeFolderSettingSurface } from "./worktree-folder-setting.ts";
+import { parseWorktreeFolderBody, saveWorktreeFolder, worktreeFolderAnswer } from "./worktree-folder-route.ts";
 import { askGit, parseBase, resolveBase, resolveDefaultBranch, type GitAsk } from "./worktree-base.ts";
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
 import { withSpacesContext } from "./space-view.ts";
+import { spaceShowing } from "./worktree-reuse.ts";
 import { addWorktree, targetExistsDetail, type WorktreeAddDeps, type WorktreeAddRequest, worktreeMatchOf } from "./worktree-add.ts";
 import {
   isRequestId,
@@ -1553,6 +1557,11 @@ export function startServer(opts: {
    */
   worktreeChoices?: WorktreeChoiceSurface;
   /**
+   * This machine's "Worktree folder" setting (`bridge/worktree-folder-setting.ts`, ADR 0093 note of
+   * 2026-11-13). Absent means an in-memory, unset one; `bridge/index.ts` passes the file-backed one.
+   */
+  worktreeFolderSetting?: WorktreeFolderSettingSurface;
+  /**
    * Every machine's load, the day of minutes behind it and the alert rules (ADR 0084).
    *
    * Supplied on a lead and on a solo collie, and **absent on a peer**, which answers the three
@@ -1626,6 +1635,7 @@ export function startServer(opts: {
   const controlReceipts = opts.controlReceipts ?? memoryControlReceipts();
   const harnesses = opts.harnesses ?? createHarnessProbe();
   const worktreeChoices = opts.worktreeChoices ?? memoryWorktreeChoices();
+  const worktreeFolderSetting = opts.worktreeFolderSetting ?? memoryWorktreeFolderSetting();
   const machines = opts.machines;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
@@ -2275,6 +2285,10 @@ export function startServer(opts: {
     const folderBrowse: FolderBrowseContext = { home: homedir(), privateFolders: filesPrivateFolders(cfg) };
     const folderAnswer = await serveFolderRoute(req, pathname, caller, folders, folderBrowse);
     if (folderAnswer !== null) return folderAnswer;
+    // This machine's "Worktree folder" setting: session-scoped for the folder list's reason, so a
+    // `?host=` call reads and writes the member's own value, never the lead's.
+    const worktreeFolderAnswerRes = await serveWorktreeFolderRoute(req, pathname, caller, worktreeFolderSetting);
+    if (worktreeFolderAnswerRes !== null) return worktreeFolderAnswerRes;
     // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
     //
     // A READ, and gated as one: it hands back a picture an agent already put in its own log, so a
@@ -2446,7 +2460,7 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return planWorktree(req, worktreeChoices);
+      return planWorktree(req, worktreeChoices, { folderSetting: worktreeFolderSetting });
     }
     if (pathname === "/api/worktree" && req.method === "POST") {
       const denied = caller.gate("write");
@@ -2462,6 +2476,7 @@ export function startServer(opts: {
         receipts: worktreeReceipts,
         bases: worktreeBases,
         choices: worktreeChoices,
+        folderSetting: worktreeFolderSetting,
         harnesses,
         folders,
       });
@@ -5010,6 +5025,14 @@ function recentRead(lines: number, hint: MuxReadHint | undefined, purpose: MuxRe
  */
 export const PANE_READ_PURPOSE_PARAM = "purpose";
 
+/**
+ * The query word with which a narrow client opts in to `logicalText` (soft wraps undone, SGR styling
+ * kept) on every read when the multiplexer implements `readLogicalText`:
+ * `GET /api/pane/:id?logical=1`. Without it, `logicalText` is sent (SGR-stripped) only when the grid
+ * shows a split URL (`hasSplitUrl`).
+ */
+export const PANE_READ_LOGICAL_PARAM = "logical";
+
 export async function readPane(
   herdr: MuxAdapter,
   cfg: Config,
@@ -5035,21 +5058,23 @@ export async function readPane(
     // is the phone's Load older; every other read is the mirror's poll, which herdr-core answers from
     // the screen alone.
     const purpose: MuxReadPurpose = url.searchParams.get(PANE_READ_PURPOSE_PARAM) === "older" ? "older" : "poll";
+    const wantLogical = url.searchParams.get(PANE_READ_LOGICAL_PARAM) === "1";
     const read = await herdr.readGrid(paneId, recentRead(lines, hint, purpose));
     if (!read.ok) return text(`${herdr.mux} read failed: ${read.detail}`, 502);
     // A URL the pane's column edge cut in two is the one thing the mirror cannot repair on its own,
-    // and the repair needs the same rows with soft wraps undone. Ask for them only when the grid
-    // shows such a URL — this is a second round trip, and a multiplexer without the source has
-    // nothing to give. Same `lines` and the same escape-carrying form as the grid read above, so a
-    // read that would move the operator's screen here is the one `readGrid` already refuses.
+    // and the repair needs the same rows with soft wraps undone. Ask for them when the grid shows
+    // such a URL, or when a narrow client explicitly opted in (`?logical=1`) — this is a second
+    // round trip, and a multiplexer without the source has nothing to give. Same `lines` and the
+    // same escape-carrying form as the grid read above, so a read that would move the operator's
+    // screen here is the one `readGrid` already refuses.
     const logical =
-      herdr.readLogicalText !== undefined && hasSplitUrl(read.value.text)
+      herdr.readLogicalText !== undefined && (wantLogical || hasSplitUrl(read.value.text))
         ? await herdr.readLogicalText(paneId, lines)
         : undefined;
     const data = paneReadResponse(
       paneId,
       read.value,
-      logical?.ok ? stripSgr(logical.value) : undefined,
+      logical?.ok ? (wantLogical ? logical.value : stripSgr(logical.value)) : undefined,
       cfg.redact,
     );
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
@@ -5595,7 +5620,7 @@ export async function paneChat(
     const read =
       params.before === undefined
         ? await live.window(adapter, ref, params, queuedOf?.(paneId) ?? [])
-        : await live.older(adapter, ref, params.before, params.limit);
+        : await live.older(adapter, ref, params.before, params.limit, params.turns);
     if (read === null) return unavailable("no-log");
     // Masked before the ETag is hashed, so the tag describes what was actually sent (bridge/redact.ts).
     const body = chatBodyForMux(cfg.redact ? maskChatBody(read) : read, mux.capabilities);
@@ -7165,7 +7190,15 @@ async function runWorktreeCreate(
     return { ok: false, ...apiError(added.code, { path: added.path, reason: added.detail }) };
   }
   if (!added.ok) return { ok: false, ...apiError(added.code, { reason: added.detail }) };
-  const opened = await herdr.createSpace({ cwd: added.path, label: branchSlug(branch) });
+  // `worktree` tells the adapter the folder is a linked checkout of this repo, so a multiplexer that
+  // keeps its own worktree record (Herdr) files the space under it. One that does not ignores it.
+  // A retry on a finished checkout (`existed`) first looks for the space that already shows it, so a
+  // multiplexer with no memory of the folder is never asked to open it twice (bridge/worktree-reuse.ts).
+  const reused = added.existed ? await spaceShowing(herdr, added.path) : null;
+  const opened =
+    reused !== null
+      ? muxOk(reused.pane)
+      : await herdr.createSpace({ cwd: added.path, label: branchSlug(branch), worktree: { repoRoot } });
   if (!opened.ok) {
     // The half-done case gets its OWN code, because the recovery is the opposite one: the checkout is
     // on disk and only the opening failed. It stays, and a retry finds it (`existed`) and only opens.
@@ -7182,7 +7215,10 @@ async function runWorktreeCreate(
   let launcherStarted = false;
   let launcherError: string | undefined;
   const row = launcher.row;
-  if (row !== undefined) {
+  if (row !== undefined && reused !== null && !reused.fresh) {
+    // The space was open before this request and its pane is not a bare shell: never type into it.
+    launcherError = "this folder was already open and its pane is in use, so the launcher was not started";
+  } else if (row !== undefined) {
     const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, wait, "worktree");
     launcherStarted = sent.ok;
     if (!sent.ok) launcherError = sent.error;
@@ -7203,6 +7239,7 @@ async function runWorktreeCreate(
       launcherStarted: row === undefined ? undefined : String(launcherStarted),
       path,
       source: launcher.source,
+      reusedSpace: reused === null ? undefined : "true",
     },
   });
   if (requestId !== undefined) {
@@ -7255,6 +7292,8 @@ export interface FolderWorktreeDeps {
   fs?: FolderFs;
   home?: string;
   readHerdrConfig?: HerdrConfigRead;
+  /** The "Worktree folder" setting: when set, it is where the default puts a branch. Absent is unset. */
+  folderSetting?: Pick<WorktreeFolderSettingSurface, "get">;
 }
 
 /** The repo `folder` sits in, or `null` when it is in none (or is not there). */
@@ -7339,8 +7378,26 @@ export async function planWorktree(
   if (branch !== "") {
     answer.branchValid = await gitAcceptsBranch(repo.repoRoot, branch, ask);
     if (answer.branchValid) {
-      const path = await herdrDefaultTarget(repo.repoRoot, branch, home, deps.readHerdrConfig);
-      answer.defaultTarget = await defaultTargetOf(repo.repoRoot, path, branch, deps.fs ?? diskFolderFs);
+      const fs = deps.fs ?? diskFolderFs;
+      const dir = deps.folderSetting?.get();
+      if (dir === undefined) {
+        const path = await herdrDefaultTarget(repo.repoRoot, branch, home, deps.readHerdrConfig);
+        answer.defaultTarget = await defaultTargetOf(repo.repoRoot, path, branch, fs);
+        answer.defaultSource = "rule";
+      } else {
+        // The setting runs the folder rule here as it does at create, so the sheet never promises a
+        // folder the create would refuse. A folder the child rule refuses is still where the default
+        // WOULD put it: shown as existing, with git's state, the way Herdr's own default is.
+        const set = await resolveSetFolderTarget({ dir, branch, repoRoot: repo.repoRoot, home, fs });
+        answer.defaultSource = "setting";
+        if (set.ok) answer.defaultTarget = await defaultTargetOf(repo.repoRoot, set.path, branch, fs);
+        else if (set.code === "worktree.target_exists" && set.path !== undefined) {
+          answer.defaultTarget = { path: set.path, exists: true };
+          if (set.detail !== undefined) answer.defaultTarget.reason = set.detail;
+        } else {
+          answer.defaultRefusal = apiError(set.code, folderRefusalDetail(set, dir));
+        }
+      }
       const parent = (url.searchParams.get("parent") ?? "").trim();
       if (parent !== "") {
         const outcome = await resolveParentTarget({ parent, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
@@ -7469,6 +7526,16 @@ export async function createWorktreeAt(
     path = outcome.path;
   }
 
+  // The default folder when the machine's "Worktree folder" setting is set: the same rule, run now.
+  // `path` stays the explicit parent only (it is what the sheet remembers); `target` is what is made.
+  let target = path;
+  const settingDir = folder.kind === "default" ? deps.folderSetting?.get() : undefined;
+  if (settingDir !== undefined) {
+    const outcome = await resolveSetFolderTarget({ dir: settingDir, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
+    if (!outcome.ok) return refuse(outcome.code, folderRefusalDetail(outcome, settingDir));
+    target = outcome.path;
+  }
+
   // Checked again with no await between it and `track`, so two requests with one id that both got
   // past the check above cannot both start a create.
   if (requestId !== undefined) {
@@ -7501,7 +7568,7 @@ export async function createWorktreeAt(
     receipts,
     deps.bases ?? memoryWorktreeBases(),
     deps.wait ?? {},
-    path,
+    target,
     { home, readHerdrConfig: deps.readHerdrConfig },
     remember,
   );
@@ -7754,6 +7821,59 @@ export async function serveLaunchCheckRoute(
   if (asked === null) return text("bad body", 400);
   const line = typeof asked.run === "string" ? asked.run : undefined;
   return json(checkRunLine(line) satisfies LaunchCheckResponse, req.headers.get("accept-encoding"));
+}
+
+// ── The "Worktree folder" setting (ADR 0093, note of 2026-11-13) ──────────────────────────────────
+//
+// Two routes: `GET /api/worktree/folder` reads this machine's setting and `POST /api/worktree/folder/set`
+// saves or clears it. The write is gated like every write (a read-only device sees it and cannot change
+// it) and chooses where checkouts land, so it is one audit line, with the act and never the path. Both
+// are session-scoped like the folder list: `caller.resolve()` forwards a `?host=` call to the member
+// whose disk the folder is on. The gate first, then the resolver, then this machine's own store.
+
+/** The setting's routes, or `null` when `pathname` is neither. */
+export async function serveWorktreeFolderRoute(
+  req: Request,
+  pathname: string,
+  caller: Pick<RouteCaller, "gate" | "resolve" | "device" | "audit">,
+  setting: WorktreeFolderSettingSurface,
+  deps: { home?: string; fs?: FolderFs; readHerdrConfig?: HerdrConfigRead } = {},
+): Promise<Response | null> {
+  const ae = req.headers.get("accept-encoding");
+  if (pathname === "/api/worktree/folder" && req.method === "GET") {
+    const denied = caller.gate("read");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    return json(await worktreeFolderAnswer(setting, deps), ae);
+  }
+  if (pathname === "/api/worktree/folder/set" && req.method === "POST") {
+    const denied = caller.gate("write");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    let body: JsonValue;
+    try {
+      // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseWorktreeFolderBody`
+      // accepts one storable string or null and nothing else.
+      body = (await req.json()) as JsonValue;
+    } catch {
+      return text("bad body", 400);
+    }
+    const parsed = parseWorktreeFolderBody(body);
+    if (parsed === undefined) return text("bad body", 400);
+    const { saved, answer } = await saveWorktreeFolder(setting, parsed, deps);
+    if (!answer.ok) return json(answer, ae);
+    if (!saved) return text("could not save", 500);
+    caller.audit.record({
+      action: "worktree.folder",
+      session: rt.name,
+      device: caller.device(),
+      detail: { act: parsed.dir === null ? "clear" : "set" },
+    });
+    return json(answer, ae);
+  }
+  return null;
 }
 
 // ── The new-space folder list (#289, bridge/folders.ts) ──────────────────────────
@@ -9326,6 +9446,9 @@ export async function sendRoute(
     const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };
     if (resendOf !== undefined) detail.resend = true;
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    // The road the send took (M99 spec 03), only when a data try was made: `data`, or `screen` after one.
+    const path = rt.send.pathOf(sendRequest.id);
+    if (path !== null) detail.path = path;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
     if (sendSpoke(sendRequest.mode, receipt.outcome)) context.spoke?.(paneId);
     if (receipt.keys.length > 0) {

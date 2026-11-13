@@ -1142,7 +1142,6 @@ export const pt: Dictionary = {
   "newPage.branch.note": "Um branch novo na própria pasta, para que este agente não altere os arquivos de outro.",
   "newPage.branch.name": "Nome do branch",
   "newPage.branch.folder": "Pasta do branch",
-  "newPage.branch.folder.default": "Padrão do Herdr",
   "newPage.branch.folder.other": "Outra pasta",
   "newPage.branch.parent": "Criar a pasta do branch em",
   "newPage.branch.target": "Pasta nova: {path}",
@@ -2680,8 +2679,6 @@ export const pt: Dictionary = {
   "walky.sheet.notHeld": "Não retido. Nada para recuperar.",
   "walky.sheet.elsewhere": "Retido em outra máquina. Retome-o lá. Ele não foi cancelado.",
   "walky.sheet.takeBackFailed": "Não recuperado: {error}",
-  "walky.held.mark.one": "{count} mensagem aguarda a caixa esvaziar",
-  "walky.held.mark.other": "{count} mensagens aguardam a caixa esvaziar",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Opções de envio",
   "walky.composer.sendAsMessage": "Enviar como mensagem",

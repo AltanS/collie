@@ -50,7 +50,7 @@ const SECTION_BUDGET = 20_000;
 /** The handles every section case collected, by section. */
 const handlesBySection = new Map<string, string[]>();
 
-describe("the states playground", () => {
+describe("the design reference", () => {
   // Each section's module (and what it imports) is loaded and transformed once, up front, so a case times
   // its section's render and not the cold import that the first section to use a module would pay.
   beforeAll(async () => {
@@ -288,7 +288,7 @@ describe("the playground's pages", () => {
       // SAFETY: every file under sections/ that the registry names exports `DEF: SectionDef`; a file
       // without one fails the toEqual below on `undefined`, which is the failure this test wants.
       const mod = (await import(`./sections/${entry.def.id}.tsx`)) as { DEF: SectionDef };
-      expect({ id: mod.DEF.id, title: mod.DEF.title }).toEqual(entry.def);
+      expect({ id: mod.DEF.id, title: mod.DEF.title }).toEqual({ id: entry.def.id, title: entry.def.title });
     }
   });
 

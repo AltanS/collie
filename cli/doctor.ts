@@ -62,12 +62,14 @@ import { collieVersionBare, type CliContext } from "./context.ts";
 import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { crewDelta, deltaLines } from "./crew-delta.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
+import { statusLineState } from "./statusline.ts";
 import { parseAccountWindowsSetting } from "../bridge/account-windows-setting.ts";
 import { accountWindowsDoctorLine, grokAuthPath, hasOpencodeGoEntry, opencodeAuthPath } from "../bridge/account-windows.ts";
 import { muxFinding, muxSettings, pathLinkFinding, tailscaleFindings, type MuxSettings } from "./setup-findings.ts";
 import { cacheFindings } from "./cache-findings.ts";
 import { surfaceFindings } from "./surface-findings.ts";
 import { harnessFindings, harnessReader, type ReadHarness } from "./harness-findings.ts";
+import { linkFindings } from "./harness-link.ts";
 import { sendsSection } from "./send-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { herdrCoreFindings, type HcDial } from "./herdr-core-findings.ts";
@@ -263,6 +265,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // history section reads the panes off it, and `restart-pending` reads the bridge's own verdict on
   // whether it is still running the collie on disk (issue #238). One request, two readers.
   const ownRead = once(() => ownSnapshot(deps));
+  const harnessRows = deps.harnesses === undefined ? [] : await harnessFindings(deps.harnesses);
   const local: Finding[] = [
     identity(deps),
     configFile(deps),
@@ -305,6 +308,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // on POSIX the mode bits are checked where the files are read, as before.
     ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps), secretsPrivate(deps)] : []),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true, sessionsFromHooks),
+    ...statusLineWrap(deps, hookEntries.length > 0),
     await beacons(deps, hookEntries.length > 0),
     skillWalkyTalky(deps),
     ...skillOldMorph(deps),
@@ -337,7 +341,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // summary line and one line per row, read from the bridge's own day files. A read, like the rest.
     ...surfaceFindings({ ctx: deps.ctx, files: deps.files, now: deps.now }),
     // The binary and version of every harness with a profile, and what the profile says (1.24.1).
-    ...(deps.harnesses === undefined ? [] : await harnessFindings(deps.harnesses)),
+    ...harnessRows,
+    // Which harnesses are linked for the data path (M99 spec 09): one row each, read from files.
+    ...linkFindings({ ctx: deps.ctx, files: deps.files }, (harness) => harnessRows.find((row) => row.harness === harness)?.version ?? null),
     // Whether sends reach each harness (M71 spec 01): the outcomes of its recent sends, read from the
     // receipts in `<stateDir>/sends/` without a store, and three rules over them. Local: no stamp.
     // Then the held sends still open and how often a send met a screen it could not type into (spec 02).
@@ -1803,6 +1809,43 @@ function installedEntries(deps: DoctorDeps): InstalledEntry[] {
     }
   }
   return found;
+}
+
+/**
+ * `statusline-claude`: does Claude Code tell Collie the context window's size? Only a wrapped
+ * statusLine does (.adr/0115, amended 2026-11-13), and without it the phone shows the context as a
+ * token count, not a percent. `collie update` writes no settings, so an install from before the wrap
+ * became the default keeps a plain statusLine until `hooks install claude` runs again: this row names
+ * it, as a hint, never an error. No row where the beacon hooks are not installed (`beacon-hooks-claude`
+ * speaks for that).
+ */
+export function statusLineWrap(deps: Pick<DoctorDeps, "ctx" | "files" | "host">, hooksInstalled: boolean): Finding[] {
+  if (!hooksInstalled) return [];
+  const check = "statusline-claude";
+  if (deps.host.platform === "win32") return [ok(check, "not wrapped on Windows, so the phone shows the context as a token count")];
+  const plain: string[] = [];
+  let wrapped = 0;
+  for (const target of claudeSettingsTargets(deps.ctx)) {
+    const text = deps.files.read(target.path);
+    if (text === null || text.trim() === "") continue;
+    // A file that does not parse is `hooks install`'s refusal to speak of, not this row's.
+    const document = asJsonObject(parseJson(text));
+    if (document === undefined) continue;
+    const state = statusLineState(document).kind;
+    if (state === "plain") plain.push(target.path);
+    if (state === "wrapped") wrapped += 1;
+  }
+  if (plain.length > 0) {
+    return [
+      warn(
+        check,
+        `your statusLine in ${plain.join(", ")} is not wrapped, so Claude Code does not tell Collie the context window's size and the phone shows the context as a token count, not a percent`,
+        "`collie hooks install claude` wraps it; your command still prints exactly as before. To undo it: `collie hooks install claude --no-statusline`",
+      ),
+    ];
+  }
+  if (wrapped > 0) return [ok(check, "wrapped: the phone shows the context in percent of the window Claude Code states")];
+  return [ok(check, "no statusLine configured, and Collie adds none (one would hide Claude Code's footer hints), so the phone shows the context as a token count")];
 }
 
 /**

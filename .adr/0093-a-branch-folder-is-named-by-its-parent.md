@@ -86,3 +86,44 @@ every use, and always shows the absolute target before Start.**
 - The state dir gains one file, written only by a branch create that worked.
 - If Herdr changes its default folder rule, the shown default path is wrong until Collie follows;
   the create itself is not affected, because no path is sent.
+
+## Note, 2026-11-13: a "Worktree folder" setting, one parent directory per machine
+
+The default folder was Herdr's rule on every multiplexer (`[worktrees] directory` in Herdr's
+`config.toml`, else `~/.herdr/worktrees`), and a person could only leave it per create. A person who
+wants every worktree under one folder had to pick it each time. Two decisions:
+
+1. **One setting per machine, "Worktree folder": a parent directory.** Unset is the rule above, so
+   nothing changes for anyone who does not set it. Set, the default target is
+   `<dir>/<repo folder name>/<slug>`, Herdr's shape, so two repos never collide, on every multiplexer.
+   Bridge-side `resolveSetFolderTarget` makes it. The per-create pick (this ADR, points 1 to 7) is
+   unchanged and wins over the setting.
+2. **The order at the New sheet:** the repo's remembered choice (point 8), then the setting, then
+   Herdr's config directory, then `~/.herdr/worktrees`. A create with the default kind and a set
+   value sends no choice to remember: the sheet still remembers the kind `default`, and the last
+   parent stays what it was.
+
+The value is checked like a parent (points 1 to 5) when it is saved, and again on every plan and
+every create, never from a cache. The repo's folder under it (`<dir>/<repo folder name>`) may not exist
+yet, and when it does it must be a real directory with no link; rule 6 and the child rule 7 run per
+create. A setting that broke since it was saved is refused by the create with the folder's code, and
+the plan answers `defaultRefusal` and no `defaultTarget`, so the sheet never promises a folder the
+create would refuse. `defaultTarget` keeps one meaning, where the default will put it; the new
+`defaultSource` (`setting`, or `rule` for Herdr's config and `~/.herdr/worktrees`) says which rule made it.
+
+It is stored in `<stateDir>/worktree-folder.json` (`{ "version": 1, "dir": "~/trees" }`, 0600), a
+string, with a leading `~` kept. `GET /api/worktree/folder` reads it and `POST /api/worktree/folder/set`
+saves or clears it (`{ "dir": string | null }`); the write is write-gated and is one audit line,
+`worktree.folder`, with the act and never the path. Both routes are session-scoped and forwarded
+across the crew link by `?host=`, so each machine has its own value and the sheet for a member's repo
+reads the member's. (Point 9 above is outdated since ADR 0126 point 6: the worktree routes are
+forwarded.)
+
+The phone shows it in two places, both English-only until the translation pass. Settings, System has
+one **Worktree folder** card with a row per machine (the machine's name only in a crew): "Default" and
+the folder Herdr's rule gives, or "Your folder" and the saved one, with the rule it breaks if it broke
+since. **Change** opens the New sheet's folder picker (typed field, Favourites, Recent, Browse);
+**Use the default** clears it. In the New sheet the first choice under Branch folder changes from
+"Herdr's default" to "Default folder", because it is the machine's folder on every multiplexer, and the
+line under it names the resolved path, or the rule a broken setting fails. The change of look waits for
+the operator's yes (UI changes ship only on his word).

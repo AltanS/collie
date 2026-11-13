@@ -52,6 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
+import { HARNESS_SUBCOMMANDS, bareLinkRefusal, cmdHarnessLink, cmdHarnessStatus, cmdHarnessSync, cmdHarnessUnlink, harnessUsage, isLinkHarness, type HarnessLinkDeps } from "./harness-link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrickGuide } from "./trick-guide.ts";
 import { cmdTrickPropose } from "./trick-propose.ts";
@@ -192,6 +193,8 @@ export interface Command {
    * and an unknown subcommand, with the usage block those two have always printed.
    */
   readonly subcommands?: readonly Subcommand[];
+  /** The lines `collie <verb> --help` prints in place of the one-line summary, for a verb with two meanings (`link`). */
+  readonly usage?: () => readonly string[];
   run(args: readonly string[], session: Session): number | Promise<number>;
 }
 
@@ -274,6 +277,48 @@ function pushDeps(io: Io): PushDeps {
  */
 function linkDeps(io: Io): LinkDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
+}
+
+/** `harness link` and kin (M99 spec 09): the context, the filesystem and the harness CLI. Nothing restarts. */
+function harnessLinkDeps(io: Io): HarnessLinkDeps {
+  const ctx = loadContext(io.err);
+  return { ctx, io, files: realFiles, exec: realExec(ctx.env, ctx.home) };
+}
+
+/**
+ * The bare `link` and `unlink`: the name on PATH (ADR 0021), with no argument. An argument is refused with
+ * the line that names `collie harness link` (M99 spec 09): an older build read `unlink claude` as the
+ * PATH verb and removed the name.
+ */
+function runLink(args: readonly string[], io: Io, unlink: boolean): number {
+  if (args.length > 0) {
+    io.err(bareLinkRefusal(unlink ? "unlink" : "link"));
+    return EXIT.USAGE;
+  }
+  return unlink ? cmdUnlink(linkDeps(io)) : cmdLink(linkDeps(io));
+}
+
+/** `harness link <harness>` and `harness unlink <harness>`: one harness word, nothing else. */
+function runHarnessLink(args: readonly string[], io: Io, unlink: boolean): number {
+  const [word, ...rest] = args;
+  if (word === undefined || rest.length > 0) {
+    io.err(harnessUsage());
+    return EXIT.USAGE;
+  }
+  if (!isLinkHarness(word)) {
+    io.err(`error: no part for "${word}". ${harnessUsage()}`);
+    return EXIT.USAGE;
+  }
+  return unlink ? cmdHarnessUnlink(harnessLinkDeps(io), word) : cmdHarnessLink(harnessLinkDeps(io), word);
+}
+
+/** `harness status` and `harness sync` take no argument. */
+function runHarnessBare(args: readonly string[], io: Io, verb: (deps: HarnessLinkDeps) => number): number {
+  if (args.length > 0) {
+    io.err(harnessUsage());
+    return EXIT.USAGE;
+  }
+  return verb(harnessLinkDeps(io));
 }
 
 /**
@@ -822,12 +867,12 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "link",
     summary: "put `collie` on your PATH: ~/.local/bin/collie → this checkout's binary",
-    run: (_args, s) => cmdLink(linkDeps(s.io)),
+    run: (args, s) => runLink(args, s.io, false),
   },
   {
     name: "unlink",
     summary: "remove that name again (only when it points at THIS checkout)",
-    run: (_args, s) => cmdUnlink(linkDeps(s.io)),
+    run: (args, s) => runLink(args, s.io, true),
   },
   // ── Agent beacons (M11) ────────────────────────────────────────────────────
   // Declared beside `link` because they share its subject: `hooks install` writes the published PATH
@@ -841,8 +886,8 @@ export const COMMANDS: readonly Command[] = [
       {
         name: "install",
         summary:
-          "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions, and `--statusline` to also wrap your statusLine" +
-          " so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`",
+          "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions; it also wraps your statusLine, if you have one," +
+          " so the phone shows the context in percent and the 5-hour and 7-day windows, and your command still prints exactly as before; `--no-statusline` keeps it as it is), or `hooks install codex`",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {
@@ -1142,6 +1187,39 @@ export const COMMANDS: readonly Command[] = [
       },
     ],
     run: async (args, s) => await cmdMux(muxListDeps(s.io), args),
+  },
+  // ── Harness parts (M99 spec 09) ────────────────────────────────────────────
+  // The opt-in for the data path: a part of Collie inside the agent program. Declared beside `mux`: both
+  // are about the programs Collie drives. Nothing links by itself, and nothing restarts.
+  {
+    name: "harness",
+    summary: `link a harness so Collie can send to it by data: ${HARNESS_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "link",
+        summary: "link a harness: write its part, so Collie can send to it by data (available: claude)",
+        run: (args, s) => runHarnessLink(args, s.io, false),
+      },
+      {
+        name: "unlink",
+        summary: "remove a harness's part; Collie then uses the screen path for it",
+        run: (args, s) => runHarnessLink(args, s.io, true),
+      },
+      {
+        name: "status",
+        summary: "say which harnesses are linked",
+        run: (args, s) => runHarnessBare(args, s.io, cmdHarnessStatus),
+      },
+      {
+        name: "sync",
+        summary: "rewrite each linked part with this build's (`collie update` runs it); never a newer one",
+        run: (args, s) => runHarnessBare(args, s.io, cmdHarnessSync),
+      },
+    ],
+    run: (_args, s) => {
+      s.io.err(harnessUsage());
+      return EXIT.USAGE;
+    },
   },
   // ── Agent sessions (M76 spec 03) ───────────────────────────────────────────
   // One read of this bridge's own snapshot, printed as a table. The name is `SESSIONS_VERB`, in one place.
@@ -1447,7 +1525,7 @@ function buildProgram(
       .helpOption(false)
       .argument("[args...]");
     if (c.subcommands === undefined) {
-      leaf.action(async (args: string[]) => setCode(await helpGuard(session, helpAsked, c.name, c.summary, c.name.startsWith("_"), args, c.run)));
+      leaf.action(async (args: string[]) => setCode(await helpGuard(session, helpAsked, c.name, c.summary, c.name.startsWith("_"), args, c.run, c.usage)));
       continue;
     }
     // A parent with children: commander matches a child by name, and anything else — including

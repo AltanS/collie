@@ -137,19 +137,34 @@ text above stays as written.
   `window`. A kept limit keeps the `at` of the record that reported it, so the bridge's choice of the
   newest window across sessions does not move. A record without `limits` borrows no account windows,
   as before.
-- **2026-11-13: the window comes from a table of known models, and the transcript's model corrects it.**
-  The 2026-10-24 rule above (1M for `[1m]`, 200k for every other model) read a 400k Fable session as 100%.
-  A window now comes from `context_window.context_window_size` when the wrapped statusLine states it
-  (`windowBy: "statusline"` in the record, and it wins), else from the `[1m]` suffix, else from
-  `MODEL_FAMILIES` in `cli/context-reading.ts` (`fable` and `mythos` 400k, `opus`, `sonnet`, `haiku` and the
-  `claude-3-` ids 200k). A model no row names has no window, so no context, never a guess. The newest
-  assistant line's model corrects the window on file at every reading: the family the window came from keeps
-  it (the `[1m]` the transcript cannot see), another family takes its table window, an unknown one has no
-  context. That follows `/model` mid-session and corrects a record an older build wrote. Known limit, now
-  narrower: a switch from `opus` to `opus[1m]` is unseen. The context is still the last writer's, the
-  wrapper's or the transcript's; both count against the same window when the statusLine gave one.
+- **2026-11-13: only a window the statusLine states.** A first fix the same day took the window from
+  a table of model families (Fable and Mythos 400k, Opus, Sonnet, Haiku 200k, `[1m]` 1M). It was wrong
+  within the day: a Fable session at 222,200 tokens read 55.5% in Collie and 22% in Claude Code, which
+  counted against 1,000,000 (222,200 / 400,000 against 222,200 / 1,000,000), and Opus and Sonnet
+  sessions on 1M windows sat at 100% past 200k tokens. Claude Code 2.1.323 picks the window per model
+  capability, account, opt-in and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`; no hook input, no transcript line
+  and no model id names it. Only the statusLine document states it (`context_window_size`, beside
+  `used_percentage`, whose numerator is input plus cache creation plus cache read tokens, as the
+  transcript reading counts). So the table, the `[1m]` rule and the start's window are gone: the
+  transcript reading divides only by a size the wrapped statusLine stated (`windowBy: "statusline"`),
+  and a session without the wrap shows no context. The bridge drops a stored window that the
+  statusLine did not state, and the context counted against it. After `/model` the transcript reading
+  divides by the old size until the statusLine runs again: Claude Code runs it on every assistant
+  message, 300 ms debounced, so the stale share lasts well under a second and the statusLine's own
+  `used_percentage` replaces it.
+- **2026-11-13, later: the token count where no window is stated, and the wrap by default.** The owner's
+  call, both. (1) Every reading also keeps the context's token count (`contextTokens`, the same
+  numerator), and where no window was stated the phone draws it in the percentage's place, `ctx 222k`,
+  never red; in Dots there is no context dot then, because a dot is a fifth of a window. The journal
+  harnesses follow the same rule: a model no catalog names shows its count. (2) `hooks install claude`
+  wraps a plain statusLine by default; `--no-statusline` keeps or restores the operator's command, and
+  `--statusline` is accepted and changes nothing. Still no statusLine is ever added: a configured one
+  hides Claude Code's footer hints (code.claude.com/docs/en/statusline), so a person with none keeps
+  their footer and sees the token count. Windows stays unwrapped. `collie update` writes no settings,
+  so an older install keeps its plain statusLine until `hooks install claude` runs; `doctor` names it
+  in a `statusline-claude` row (warn, with the install and its undo as the remedy).
 - **The 5-hour and 7-day windows still come only from a wrapped statusLine.** Until another source is
-  decided, an operator without `--statusline` sees the context dot and no windows. Altan's call.
+  decided, an operator without `--statusline` sees no windows (since 2026-11-13 the wrap is the default, below). Altan's call.
   Candidate, explicitly not built: Claude Code's own `/api/oauth/usage` endpoint with the operator's
   token, which is the credential road the Context above declined.
 - **2026-10-24, later: the windows now come from [ADR 0118](./0118-account-windows-come-from-the-vendors-usage-endpoint-with-the-operators-own-login.md)'s

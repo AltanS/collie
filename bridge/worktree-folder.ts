@@ -140,13 +140,41 @@ export interface ParentRequest {
  */
 export async function resolveParentTarget(req: ParentRequest): Promise<FolderOutcome> {
   const fs = req.fs ?? diskFolderFs;
-  const home = req.home ?? homedir();
-  const raw = req.parent.trim();
-  // 1, 2: the string itself.
-  if (raw === "" || raw.length > MAX_PARENT_CHARS || hasControlChar(raw)) return { ok: false, code: "worktree.folder_invalid" };
   if (!isValidWorktreeBranch(req.branch)) return { ok: false, code: "worktree.invalid_branch" };
   const slug = branchSlug(req.branch);
   if (slug === "") return { ok: false, code: "worktree.invalid_branch" };
+  // 1 to 5: the parent itself. The string check comes first, so a bad string is named before a bad branch.
+  const parent = await checkedParentDir(req.parent, req.home, fs);
+  if (!parent.ok) return parent;
+  const real = parent.path;
+
+  // 6: not inside the repo it branches from.
+  if (isWithin(real, req.repoRoot)) return { ok: false, code: "worktree.folder_in_repo" };
+
+  // 7: the child must not be there yet, unless it is the same worktree of THIS repo, finished, that a
+  // half-done create left behind (the checkout was made, the space did not open). That one is no
+  // link, git's own list names it on the branch asked for, and the create then only opens it
+  // (bridge/worktree-add.ts, `existed`).
+  const target = join(real, slug);
+  if (await fs.exists(target)) return ownWorktreeVerdict(target, req.repoRoot, req.branch, fs);
+  return { ok: true, path: target };
+}
+
+/**
+ * Rules 1 to 5 on a parent folder alone, no branch and no repo: the real path of a folder that is a
+ * string with no control character, absolute with no `..`, there and a directory, with no link
+ * below home, under home, and no hidden segment. The setting "Worktree folder" is checked with
+ * exactly this when it is saved and again on every create and plan that uses it.
+ */
+export async function checkedParentDir(
+  parent: string,
+  homeDir?: string,
+  fs: FolderFs = diskFolderFs,
+): Promise<{ ok: true; path: string } | { ok: false; code: FolderRefusal }> {
+  const home = homeDir ?? homedir();
+  const raw = parent.trim();
+  // 1, 2: the string itself.
+  if (raw === "" || raw.length > MAX_PARENT_CHARS || hasControlChar(raw)) return { ok: false, code: "worktree.folder_invalid" };
   // On the string as SENT: `join` inside `expandHome` would quietly resolve a `..` away.
   if (raw.split(/[\\/]+/u).includes("..")) return { ok: false, code: "worktree.folder_invalid" };
   const expanded = expandHome(raw, home);
@@ -174,15 +202,42 @@ export async function resolveParentTarget(req: ParentRequest): Promise<FolderOut
   if (below !== "" && below.split(sep).some((segment) => segment.startsWith("."))) {
     return { ok: false, code: "worktree.folder_hidden" };
   }
+  return { ok: true, path: real };
+}
 
-  // 6: not inside the repo it branches from.
-  if (isWithin(real, req.repoRoot)) return { ok: false, code: "worktree.folder_in_repo" };
+export interface SetFolderRequest {
+  /** The setting's value as stored: the parent directory, a leading `~` allowed. */
+  dir: string;
+  branch: string;
+  /** The repo's main folder, as a real path. */
+  repoRoot: string;
+  home?: string;
+  fs?: FolderFs;
+}
 
-  // 7: the child must not be there yet, unless it is the same worktree of THIS repo, finished, that a
-  // half-done create left behind (the checkout was made, the space did not open). That one is no
-  // link, git's own list names it on the branch asked for, and the create then only opens it
-  // (bridge/worktree-add.ts, `existed`).
-  const target = join(real, slug);
+/**
+ * Where the setting "Worktree folder" puts a branch: `<dir>/<repo folder name>/<slug>`, Herdr's own
+ * shape, so two repos never collide (ADR 0093, note of 2026-11-13). The directory passes rules 1 to 5
+ * and 6 (not inside the repo); the repo's folder under it may not exist yet, and if it does it must be
+ * a real directory, no link, because git creates it otherwise; the child is rule 7. Reads only.
+ */
+export async function resolveSetFolderTarget(req: SetFolderRequest): Promise<FolderOutcome> {
+  const fs = req.fs ?? diskFolderFs;
+  if (!isValidWorktreeBranch(req.branch)) return { ok: false, code: "worktree.invalid_branch" };
+  const slug = branchSlug(req.branch);
+  if (slug === "") return { ok: false, code: "worktree.invalid_branch" };
+  const dir = await checkedParentDir(req.dir, req.home, fs);
+  if (!dir.ok) return dir;
+  if (isWithin(dir.path, req.repoRoot)) return { ok: false, code: "worktree.folder_in_repo" };
+  const repoDir = join(dir.path, basename(req.repoRoot));
+  if (await fs.exists(repoDir)) {
+    try {
+      if ((await fs.realpath(repoDir)) !== repoDir || !(await fs.isDirectory(repoDir))) return { ok: false, code: "worktree.folder_link", path: repoDir };
+    } catch {
+      return { ok: false, code: "worktree.folder_link", path: repoDir };
+    }
+  }
+  const target = join(repoDir, slug);
   if (await fs.exists(target)) return ownWorktreeVerdict(target, req.repoRoot, req.branch, fs);
   return { ok: true, path: target };
 }

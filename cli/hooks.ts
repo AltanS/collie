@@ -351,10 +351,17 @@ function mergeGroups(groups: readonly JsonValue[], ours: JsonObject): JsonValue[
 // ── The permission hold (M56 spec 12) ────────────────────────────────────────
 
 /**
- * The flag that wraps the operator's statusLine: `collie hooks install claude --statusline`. Without
- * it a plain statusLine is left alone (.adr/0115, amended 2026-10-24).
+ * The flag that wrapped the operator's statusLine before the wrap became the default (.adr/0115,
+ * amended 2026-11-13). Still accepted, and it changes nothing.
  */
 export const STATUSLINE_FLAG = "--statusline";
+
+/**
+ * The flag that keeps the operator's statusLine as it is: `collie hooks install claude --no-statusline`.
+ * A statusLine that is already wrapped gets its own command back, so this is also the way to undo the
+ * wrap and keep the hooks.
+ */
+export const NO_STATUSLINE_FLAG = "--no-statusline";
 
 /** The flag that adds the permission hold: `collie hooks install claude --hold-permissions`. */
 export const HOLD_FLAG = "--hold-permissions";
@@ -622,16 +629,20 @@ function readHarness(deps: HooksDeps, args: readonly string[], verb: string): st
 export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): number {
   const harness = readHarness(deps, args, "install");
   if (harness === null) return EXIT.USAGE;
-  const unknown = args.slice(1).filter((arg) => arg !== HOLD_FLAG && arg !== STATUSLINE_FLAG);
+  const unknown = args.slice(1).filter((arg) => arg !== HOLD_FLAG && arg !== STATUSLINE_FLAG && arg !== NO_STATUSLINE_FLAG);
   if (unknown.length > 0) {
-    deps.io.err(`error: unknown option \`${unknown[0]!}\`. The options are \`${HOLD_FLAG}\` and \`${STATUSLINE_FLAG}\`.`);
+    deps.io.err(`error: unknown option \`${unknown[0]!}\`. The options are \`${HOLD_FLAG}\` and \`${NO_STATUSLINE_FLAG}\`.`);
+    return EXIT.USAGE;
+  }
+  if (args.includes(STATUSLINE_FLAG) && args.includes(NO_STATUSLINE_FLAG)) {
+    deps.io.err(`error: \`${STATUSLINE_FLAG}\` and \`${NO_STATUSLINE_FLAG}\` say opposite things. The wrap is the default; pass \`${NO_STATUSLINE_FLAG}\` alone to keep your statusLine as it is.`);
     return EXIT.USAGE;
   }
   const { command, binary, source } = resolveHookCommand(deps.ctx, deps.fs);
   const wantsHold = args.includes(HOLD_FLAG);
-  const wantsStatusLine = args.includes(STATUSLINE_FLAG);
+  const wantsStatusLine = !args.includes(NO_STATUSLINE_FLAG);
   if (harness === "codex") {
-    if (wantsStatusLine) {
+    if (args.includes(STATUSLINE_FLAG)) {
       deps.io.err(`error: \`codex\` has no statusLine to wrap. Run \`collie hooks install codex\` without \`${STATUSLINE_FLAG}\`.`);
       return EXIT.USAGE;
     }
@@ -681,12 +692,13 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
       failed = true;
       continue;
     }
-    // The operator's own statusLine, wrapped so the 5h and 7d dots can read it (cli/statusline.ts), but
-    // only when asked for (`--statusline`). A statusLine that is already wrapped is re-pointed at this
-    // binary without the flag, so an operator who had the wrap keeps it. None is added where there is
-    // none, and none is wrapped on Windows, where the wrapper's shell is not the one Claude Code runs
-    // the command in.
-    const document = wrapsStatusLine() ? wrapStatusLine(outcome.document, binary, wantsStatusLine) : outcome.document;
+    // The operator's own statusLine, wrapped so Collie reads the window size and the limits Claude Code
+    // hands it (cli/statusline.ts). By default since 2026-11-13; `--no-statusline` keeps a plain one as
+    // it is and gives a wrapped one its own command back. A wrapped one is re-pointed at this binary.
+    // None is added where there is none: a configured statusLine hides most of Claude Code's footer
+    // hints (`esc to interrupt` among them), so adding one would change what the person sees. None is
+    // wrapped on Windows, where the wrapper's shell is not the one Claude Code runs the command in.
+    const document = !wrapsStatusLine() ? outcome.document : wantsStatusLine ? wrapStatusLine(outcome.document, binary, true) : unwrapStatusLine(outcome.document);
     const line = statusLineState(document).kind;
     if (line === "wrapped") wrappedLines += 1;
     if (line === "plain") plainLines += 1;
@@ -721,16 +733,17 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
     deps.io.out(`  No permission hold. Add \`${HOLD_FLAG}\` to hold permissions for the phone.`);
   }
   if (wrappedLines > 0) {
-    deps.io.out(`  statusLine → \`${binary} beacon statusline\`: your own command still runs and prints as before.`);
-    deps.io.out("  The wrapper passes on the 5h and 7d limits, for the dots above the belt.");
-  } else if (wantsStatusLine) {
-    if (!wrapsStatusLine()) {
-      deps.io.out("  statusLine not wrapped on Windows, so the phone shows no 5h and 7d limits.");
-    } else if (noLines > 0 && plainLines === 0) {
-      deps.io.out("  No statusLine to wrap, so the phone shows no 5h and 7d limits. Collie never adds a statusLine.");
-    } else {
-      deps.io.out("  Your statusLine is not a plain command Collie can wrap, so it was left alone and the phone shows no 5h and 7d limits.");
-    }
+    deps.io.out(`  statusLine → \`${binary} beacon statusline\`: your own command still runs and prints exactly as before.`);
+    deps.io.out("  The wrapper passes on the context window's size and the 5h and 7d limits, so the phone shows the context in percent.");
+    deps.io.out(`  To undo it: \`collie hooks install claude ${NO_STATUSLINE_FLAG}\`.`);
+  } else if (!wrapsStatusLine()) {
+    deps.io.out("  statusLine not wrapped on Windows, so the phone shows the context as a token count.");
+  } else if (!wantsStatusLine) {
+    deps.io.out("  statusLine left as it is, so the phone shows the context as a token count.");
+  } else if (noLines > 0 && plainLines === 0) {
+    deps.io.out("  No statusLine configured, and Collie adds none, so the phone shows the context as a token count.");
+  } else {
+    deps.io.out("  Your statusLine is not a plain command Collie can wrap, so it was left alone and the phone shows the context as a token count.");
   }
   return EXIT.OK;
 }
@@ -911,7 +924,7 @@ function describeBeacons(deps: HooksDeps, target: HookTarget): string {
     case "stale":
       return `installed at ${state.at} — re-run install to heal it to v${HOOK_MARKER_VERSION}`;
     case "statusline":
-      return `installed (${state.at}), wrapped statusLine points at another collie binary — re-run \`install claude --statusline\` to re-point it`;
+      return `installed (${state.at}), wrapped statusLine points at another collie binary — re-run \`install claude\` to re-point it`;
     case "installed":
       return `installed (${state.at})`;
   }
@@ -936,8 +949,9 @@ export function cmdHooks(deps: HooksDeps, args: readonly string[]): number {
         deps.io.err(`error: unknown hooks subcommand \`${sub}\``);
       }
       deps.io.err(hooksUsage());
-      deps.io.err("  install     register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions, and `--statusline` to also wrap your statusLine");
-      deps.io.err("              so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`");
+      deps.io.err("  install     register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions; it also wraps your statusLine,");
+      deps.io.err("              if you have one, so the phone shows the context in percent and the 5-hour and 7-day windows, and your command still");
+      deps.io.err("              prints exactly as before; `--no-statusline` keeps it as it is), or `hooks install codex`");
       deps.io.err("  uninstall   remove only the entries collie owns: `hooks uninstall claude`, or `hooks uninstall codex`");
       deps.io.err("  status      what each settings file carries right now (reads only)");
       return EXIT.USAGE;

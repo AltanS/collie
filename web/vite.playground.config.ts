@@ -7,7 +7,8 @@ import { glyphSetsPlugin } from "./vite-glyphs";
 
 import { mathEnginesPlugin } from "./vite.math";
 
-// `bun run playground:build`: the states playground alone, as static files in `dist-playground/`.
+// `bun run playground:build`: the design reference (design.html, with playground.html forwarding to
+// it) as static files in `dist-playground/`.
 // DEV-ONLY, like the page itself. It is a second config on purpose: vite.config.ts stays the app's
 // build (its input is index.html alone, pinned by playground-entry.test.ts), and this one never
 // touches `dist/`, so a playground build cannot overwrite the live dev lane.
@@ -32,8 +33,8 @@ const BUILD_INFO = {
   channel: "release",
 };
 
-/** Drop what the page never loads from the copied `public/` folder, and leave an index.html that
- *  points at the page so the bare address works. */
+/** Drop what the pages never load from the copied `public/` folder, and leave an index.html that
+ *  points at the design reference so the bare address works. */
 const trimPublicPlugin: Plugin = {
   name: "collie-playground-trim",
   apply: "build",
@@ -41,7 +42,7 @@ const trimPublicPlugin: Plugin = {
     rmSync(resolve(OUT, "stt"), { recursive: true, force: true });
     writeFileSync(
       resolve(OUT, "index.html"),
-      '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=playground.html"><a href="playground.html">playground</a>\n',
+      '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=design.html"><a href="design.html">design reference</a>\n',
     );
   },
 };
@@ -61,7 +62,7 @@ export default defineConfig({
     emptyOutDir: true,
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
-      input: resolve(WEB, "playground.html"),
+      input: [resolve(WEB, "design.html"), resolve(WEB, "playground.html")],
     },
   },
 });

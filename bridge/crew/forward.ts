@@ -114,6 +114,11 @@ const FORWARDABLE: readonly RegExp[] = [
   // `unsupported` through its own route, as a launch does.
   /^worktree$/,
   /^worktree\/plan$/,
+  // The "Worktree folder" setting (ADR 0093, note of 2026-11-13): one per machine, so a `?host=` read or
+  // write reaches the member whose disk the folder is on. Additive-optional (§7.1): a member that
+  // predates it answers 404.
+  /^worktree\/folder$/,
+  /^worktree\/folder\/set$/,
   // The Changes view asked by workspace (ADR 0065): read-only git over the folder of a space that
   // lives on ONE member, so a `?host=` call is proxied like `pane/:id/changes`. Mirrors
   // `WORKSPACE_CHANGES_ROUTE` in bridge/server.ts one-for-one.
@@ -295,6 +300,9 @@ export function forwardKind(route: string, method?: string): ForwardKind {
   if (route === "folders/browse") return "read";
   // The worktree plan reads git on the member and creates nothing (ADR 0126): a read, like the browser.
   if (route === "worktree/plan") return "read";
+  // The setting's read changes nothing; its set writes that member's file.
+  if (route === "worktree/folder") return "read";
+  if (route === "worktree/folder/set") return "write";
   // A blob read serves a file off the owning member's disk and changes nothing there — the same
   // shape as `pane/:id/history`, and attempted against a stale member for the same reason (§10.3).
   if (route.startsWith("blobs/")) return "read";
@@ -359,6 +367,9 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   // The member's own create writes `worktree.create`; its plan is a read.
   if (route === "worktree") return "worktree.create";
   if (route === "worktree/plan") return null;
+  // The member writes the same line for the setting's write; its read is a read.
+  if (route === "worktree/folder") return null;
+  if (route === "worktree/folder/set") return "worktree.folder";
   // `launch` writes either `workspace.launch` or `tab.launch`, decided by the body a route string
   // alone can't see — this generic name is the LEAD's own line about the forward (§12's "plus the
   // target host"), and the peer's own audit line is the accurate record of which one ran.

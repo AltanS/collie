@@ -35,15 +35,25 @@ export function startsTurn(entry: TranscriptEntry): boolean {
  * everything up to `end`. The result is then held to at least `floor` rows and at most
  * {@link MAX_PAGE_ROWS}, and never more than `end`. The cap wins over the turn rule, and the walk
  * stops at the cap, so a page costs at most {@link MAX_PAGE_ROWS} reads however long the list is.
+ *
+ * `turns` replaces the six when a caller wants a smaller page (a client on a slow link asks for one
+ * prompt first and loads the rest as the reader scrolls). It is held to 1..{@link LIVE_TURNS}: a
+ * value above the default is no smaller page, and zero would be a page of nothing.
  */
-export function pageStart(end: number, floor: number, at: (index: number) => TranscriptEntry): number {
+export function pageStart(
+  end: number,
+  floor: number,
+  at: (index: number) => TranscriptEntry,
+  turns: number = LIVE_TURNS,
+): number {
+  const wanted = Math.min(Math.max(Math.trunc(turns), 1), LIVE_TURNS);
   const reach = Math.min(end, MAX_PAGE_ROWS);
   let seen = 0;
   let start = end - reach;
   for (let i = end - 1; i >= end - reach; i--) {
     if (!startsTurn(at(i))) continue;
     seen++;
-    if (seen === LIVE_TURNS) {
+    if (seen === wanted) {
       start = i;
       break;
     }

@@ -81,6 +81,10 @@ export class FakeHerdr implements HerdrRpc {
   private readonly processes = new Map<string, WireForegroundProcess[]>();
   private readonly subscribers = new Set<Subscriber>();
   private readonly recorded: MuxWrite[] = [];
+  /** Every `worktree.open` the adapter asked for, in order. */
+  readonly worktreeOpens: { cwd: string; path: string; label?: string }[] = [];
+  /** The space `worktree.open` made for each checkout path, so a second open finds it. */
+  private readonly openedWorktrees = new Map<string, CreatedShell>();
   /** Never decreases, and never reused — so a fresh pane can never land on a dead pane's id. */
   private minted = 0;
   /** False while the adapter's connection is down: every RPC rejects, as a closed socket does. */
@@ -333,6 +337,23 @@ export class FakeHerdr implements HerdrRpc {
       tabId: tab.tab_id,
       cwd: pane.cwd,
     };
+  }
+
+  /**
+   * `worktree.open`: the same space a `workspace.create` makes, and the call recorded so a test can
+   * see that the adapter asked for it. A checkout that is already open answers with the space that
+   * shows it, as Herdr does (`already_open: true`), and opens no second one. The fixture keeps no
+   * other worktree record.
+   */
+  async openWorktree(opts: { cwd: string; path: string; label?: string }): Promise<CreatedShell> {
+    this.worktreeOpens.push(opts);
+    const open = this.openedWorktrees.get(opts.path);
+    if (open !== undefined) return open;
+    const created = opts.label === undefined
+      ? await this.createWorkspace({ cwd: opts.path })
+      : await this.createWorkspace({ cwd: opts.path, label: opts.label });
+    this.openedWorktrees.set(opts.path, created);
+    return created;
   }
 
   subscribeEvents(opts: SubscribeOptions): EventStream {

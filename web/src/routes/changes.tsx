@@ -71,6 +71,7 @@ import {
 } from "@/lib/changes-tree";
 import { keepChangesList, keptChangesList } from "@/lib/changes-list-cache";
 import { unavailableKey } from "@/lib/changes-reason";
+import { givenName } from "@/lib/pane-name";
 import {
   captureDiffLines,
   diffCommentRowKey,
@@ -1511,7 +1512,7 @@ function ChangesScreen() {
                 </span>
                 <div className="flex flex-col gap-1.5">
                   {spaceAgentPanes.map((p) => {
-                    const sub = p.paneLabel ?? p.sessionName ?? p.paneId;
+                    const sub = givenName(p) ?? p.paneId;
                     const label = p.agent ? `${p.agent} · ${sub}` : sub;
                     const rowKey = paneRowKey(p);
                     const active = targetPane !== undefined && rowKey === paneRowKey(targetPane);

@@ -13,6 +13,7 @@ import {
   opencodeKey,
   opencodeResets,
   opencodeResetsV2,
+  opencodeTitleOf,
   parseOpencodeTranscript,
   splitOpencodeKey,
 } from "./opencode.ts";
@@ -883,6 +884,41 @@ describe("OpencodeTranscriptSource — the 2.1 upgrade layout", () => {
     const entries = parseOpencodeTranscript((await src.load(key)).text);
     expect(entries.map((e) => [e.uuid, e.role])).toEqual([["msg_new", "user"]]);
     expect(entries[0]!.parts).toEqual([{ kind: "text", text: "copied to v2" }]);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("nameProbe reads the session row's title as the agent's, and a placeholder title as none", async () => {
+    const { base, root, db } = await fixture();
+    const fresh = "ses_freshV2session00002";
+    db.run("insert into session_v2 values (?, null, 'New session - 2026-11-13T09:00:00.000Z', 5, 6)", [fresh]);
+    db.close();
+    const journal = opencodeJournal(root);
+    expect(await journal.nameProbe?.({ kind: "id", value: LEGACY_SID })).toEqual({ agent: "legacy session" });
+    expect(await journal.nameProbe?.({ kind: "id", value: fresh })).toEqual({ agent: null });
+    expect(await journal.nameProbe?.({ kind: "id", value: "ses_nobodyHere000000001" })).toBeNull();
+    expect(opencodeTitleOf("  Colour selection prompt setup ")).toBe("Colour selection prompt setup");
+    expect(opencodeTitleOf("Child session - 2026-11-13T09:00:00.000Z")).toBeNull();
+    expect(opencodeTitleOf("")).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("nameProbe on a database another process holds locked says nothing and never waits on it", async () => {
+    const { base, root, db } = await fixture();
+    db.close();
+    const journal = opencodeJournal(root);
+    const sessionKey = (await new OpencodeTranscriptSource(root).resolve({ kind: "id", value: LEGACY_SID }))!;
+    expect(sessionKey).not.toBeNull();
+    // OpenCode mid-write: an exclusive lock in rollback journal mode keeps every reader out.
+    const writer = new Database(join(root, "opencode.db"));
+    writer.run("pragma journal_mode = delete");
+    writer.run("begin exclusive");
+    writer.run("update session_v2 set title = 'mid write' where id = ?", [LEGACY_SID]);
+    const started = performance.now();
+    expect(await journal.nameProbe?.({ kind: "id", value: LEGACY_SID })).toBeNull();
+    expect(performance.now() - started).toBeLessThan(2000);
+    writer.run("rollback");
+    writer.close();
+    expect(await journal.nameProbe?.({ kind: "id", value: LEGACY_SID })).toEqual({ agent: "legacy session" });
     await rm(base, { recursive: true, force: true });
   });
 

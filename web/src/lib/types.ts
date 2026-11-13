@@ -45,11 +45,18 @@ export interface AgentView {
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
-   * Claude's OWN session name (set in-agent via `/rename`), derived bridge-side from the pane text.
-   * Claude-only; absent for unnamed sessions and non-claude panes. Shown below an explicit `paneLabel`
-   * — see `paneName` in lib/pane-name.ts. Render as text only (never markup) — same XSS boundary as paneLabel.
+   * The harness's OWN session name, set in-agent by the person (Claude's `/rename`, pi's `/name`, an
+   * Oh My Pi title the person set, Muse's name), derived bridge-side from the harness's journal or its
+   * screen. Absent for an unnamed session. Shown below an explicit `paneLabel`, see `paneName` in
+   * lib/pane-name.ts. Render as text only (never markup), the same XSS boundary as paneLabel.
    */
   sessionName?: string;
+  /**
+   * The title the agent gave its session itself (Claude's own title, Oh My Pi's automatic title,
+   * OpenCode's session title), from the harness's journal. Names the pane after the two hand-set names
+   * and before a sole tab's name (lib/pane-name.ts). Absent from an older bridge. Text only.
+   */
+  agentTitle?: string;
   /**
    * True when the agent named a session, so a journal may exist for this pane — what the History
    * affordance keys off, without a speculative fetch.
@@ -1455,9 +1462,11 @@ export interface PaneReadResponse {
   /** Herdr's monotonic pane revision — the prompt-select race guard checks a tapped menu against it. */
   revision: number;
   /**
-   * The same rows with soft wraps undone, sent only when {@link text} shows a URL the pane's column
-   * edge cut in two. `lib/links.ts` uses it to give every fragment of that URL the href of the whole
-   * URL; absent for every other pane.
+   * The same rows with soft wraps undone. By default, sent (with SGR stripped) only when {@link text}
+   * shows a URL the pane's column edge cut in two: `lib/links.ts` uses it to give every fragment of
+   * that URL the href of the whole URL, and it is absent for every other pane. With `?logical=1`,
+   * always sent on a multiplexer that implements `readLogicalText` (Herdr, Tern) with SGR styling
+   * preserved; still absent when the multiplexer has no logical read.
    */
   logicalText?: string;
   /**
@@ -2783,13 +2792,31 @@ export type WorktreePlanResponse =
       remembered?: { base: "default" | "current"; folder: "default" | "parent"; parent?: string };
       branchValid?: boolean;
       defaultTarget?: { path: string; exists: boolean; reason?: string };
+      /** Where `defaultTarget` comes from: this machine's "Worktree folder" setting, or Herdr's rule. */
+      defaultSource?: "setting" | "rule";
+      /** The setting fails the folder rule now, so there is no `defaultTarget` and a create would refuse. */
+      defaultRefusal?: { error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
       parentTarget?:
         | { ok: true; path: string }
         | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
     }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
-/** Where a new branch's folder goes (ADR 0093): Herdr's own place, or a child of a parent folder. */
+/**
+ * GET /api/worktree/folder, and the answer to POST /api/worktree/folder/set: one machine's "Worktree
+ * folder" setting (ADR 0093 note). Mirrors `WorktreeFolderSettingResponse` in bridge/types.ts. `dir` is
+ * `null` when unset; `path` is its real path when it passes the folder rule now, `problem` the refusal
+ * when it does not; `fallback` is the folder the default uses while it is unset.
+ */
+export interface WorktreeFolderSettingResponse {
+  ok: true;
+  dir: string | null;
+  path?: string;
+  problem?: { error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+  fallback: string;
+}
+
+/** Where a new branch's folder goes (ADR 0093): the machine's default place, or a child of a parent folder. */
 export type WorktreeFolderChoice = { kind: "default" } | { kind: "parent"; parent: string };
 
 /**
@@ -2831,8 +2858,13 @@ export interface UsageLimit {
 
 /** A pane's usage numbers. Mirrors `PaneUsage` in bridge/usage.ts; every part absent when unreported. */
 export interface PaneUsage {
-  /** Percent of the context window used, 0 to 100. */
+  /** Percent of the context window used, 0 to 100. Only where the harness stated the window. */
   context?: number;
+  /**
+   * The tokens in the context (input, cache creation and cache read of the newest request). Drawn in
+   * place of {@link context} when that is absent, because no window was stated (components/model-tag.tsx).
+   */
+  contextTokens?: number;
   limits?: UsageLimit[];
   /**
    * The session's running cost in US dollars. Claude Code reports it through the wrapped status line;

@@ -89,6 +89,23 @@ export function withRepoFacts(adapter: MuxAdapter, deps: RepoFactsDeps): MuxAdap
     return facts;
   }
 
+  /**
+   * `request`, with the worktree fact the caller did not state (MUX_CONTRACT.md, *A worktree space*).
+   *
+   * The one place that fills it for every caller and every multiplexer: a launch, a plain "New space"
+   * and a create from the New sheet all reach the adapter through here, so a folder that is a linked
+   * worktree is opened as one however the request began. A request that already carries the fact (the
+   * worktree route, which knows the main repository) is passed on untouched. Read fresh, never from
+   * the snapshot cache: the checkout may be seconds old. A folder with no facts, or any failure to
+   * read them, leaves the request as it was.
+   */
+  async function withWorktreeFact(request: MuxSpaceRequest): Promise<MuxSpaceRequest> {
+    if (request.worktree !== undefined || !isAbsolute(request.cwd)) return request;
+    const facts = await deps.facts(request.cwd).catch(() => null);
+    if (facts === null || !facts.isWorktree) return request;
+    return { ...request, worktree: { repoRoot: facts.repoRoot } };
+  }
+
   async function fill(space: MuxSpace, folder: string | undefined, at: number): Promise<MuxSpace> {
     if (folder === undefined) return space;
     const facts = await factsFor(folder, at);
@@ -130,7 +147,9 @@ export function withRepoFacts(adapter: MuxAdapter, deps: RepoFactsDeps): MuxAdap
     createTab: (request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> => adapter.createTab(request),
     renameTab: (tabId: string, label: string): Promise<MuxAck> => adapter.renameTab(tabId, label),
     closeTab: (tabId: string): Promise<MuxAck> => adapter.closeTab(tabId),
-    createSpace: (request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> => adapter.createSpace(request),
+    async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+      return adapter.createSpace(await withWorktreeFact(request));
+    },
     listSessions: (): Promise<MuxOutcome<readonly MuxSession[]>> => adapter.listSessions(),
     watch: (options: MuxWatchOptions): MuxSubscription => adapter.watch(options),
   };

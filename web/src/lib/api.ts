@@ -1,7 +1,7 @@
 // Thin REST client for the bridge. Everything is same-origin, so credentials/headers are
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
-import { apiErrorFieldsOf, parseApiErrorFields, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
+import { apiErrorFieldsOf, parseApiErrorFields, type ApiErrorCode, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
 import {
   beginLongUpload,
@@ -105,6 +105,7 @@ import type {
   WorktreeBaseChoice,
   WorktreeCreateResponse,
   WorktreeFolderChoice,
+  WorktreeFolderSettingResponse,
   WhistleStatus,
   WorktreePlanResponse,
   MathPackStatus,
@@ -852,8 +853,8 @@ export function reopenDurableConversation(id: string, scope?: Scope): Promise<Re
  * the one caller a type cannot reach.
  */
 export type ChatRequest =
-  | { limit?: number; after?: ChatAfter; before?: never }
-  | { limit?: number; after?: never; before: ChatBefore };
+  | { limit?: number; turns?: number; after?: ChatAfter; before?: never }
+  | { limit?: number; turns?: number; after?: never; before: ChatBefore };
 
 // The last ETag per (host, session, pane), for the LIVE page only. Same key as the pane cache, and
 // for the same reason: a pane id is unique only inside one session on one machine.
@@ -899,6 +900,9 @@ export async function fetchChat(
 ): Promise<ChatAnswer> {
   const q = new URLSearchParams();
   if (opts.limit) q.set("limit", String(opts.limit));
+  // A page that reaches back over fewer prompts than the default (six): a first paint over a slow
+  // link asks for one and loads more as the reader scrolls. Zero is left off, as `limit` is.
+  if (opts.turns) q.set("turns", String(opts.turns));
   // The bridge's own precedence, restated rather than assumed: `before` wins and `after` is not read.
   if (opts.before) q.set("before", `${opts.before.seq}:${opts.before.uuid}`);
   else if (opts.after) q.set("after", `${opts.after.gen}:${opts.after.rev}`);
@@ -2304,6 +2308,31 @@ export function planWorktree(query: { cwd: string; branch?: string; parent?: str
   if (query.branch !== undefined && query.branch !== "") params.set("branch", query.branch);
   if (query.parent !== undefined && query.parent !== "") params.set("parent", query.parent);
   return req<WorktreePlanResponse>(withScope(`/api/worktree/plan?${params.toString()}`, scope));
+}
+
+/**
+ * GET /api/worktree/folder — this machine's "Worktree folder" setting (ADR 0093 note). A read answered
+ * by the machine the scope names: a crew forwards it, so each machine has its own value.
+ */
+export function fetchWorktreeFolder(scope?: Scope): Promise<WorktreeFolderSettingResponse> {
+  return req<WorktreeFolderSettingResponse>(withScope("/api/worktree/folder", scope));
+}
+
+/** POST /api/worktree/folder/set's body. `null` clears the setting. */
+interface WorktreeFolderBody {
+  dir: string | null;
+}
+
+/**
+ * POST /api/worktree/folder/set — save the folder (or clear it with `null`) on the machine the scope
+ * names. A folder the bridge's rule refuses answers `{ ok: false, code }` with nothing stored.
+ */
+export function setWorktreeFolder(
+  dir: string | null,
+  scope?: Scope,
+): Promise<WorktreeFolderSettingResponse | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail }> {
+  const body: WorktreeFolderBody = { dir };
+  return req(withScope("/api/worktree/folder/set", scope), { method: "POST", body: JSON.stringify(body) });
 }
 
 /** POST /api/worktree's body. A named contract so `createWorktreeAt` infers against it. */

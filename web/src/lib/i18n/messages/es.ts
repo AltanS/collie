@@ -1233,7 +1233,6 @@ export const es: Dictionary = {
   "newPage.branch.note": "Una rama nueva en su propia carpeta, para que este agente no cambie los archivos de otro.",
   "newPage.branch.name": "Nombre de la rama",
   "newPage.branch.folder": "Carpeta de la rama",
-  "newPage.branch.folder.default": "Predeterminada de Herdr",
   "newPage.branch.folder.other": "Otra carpeta",
   "newPage.branch.parent": "Crear la carpeta de la rama en",
   "newPage.branch.target": "Carpeta nueva: {path}",
@@ -2867,8 +2866,6 @@ export const es: Dictionary = {
   "walky.sheet.notHeld": "No retenido. Nada que retirar.",
   "walky.sheet.elsewhere": "Retenido en otra máquina. Recupérelo allí. No está cancelado.",
   "walky.sheet.takeBackFailed": "No se retiró: {error}",
-  "walky.held.mark.one": "{count} mensaje espera a que se vacíe el buzón",
-  "walky.held.mark.other": "{count} mensajes esperan a que se vacíe el buzón",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Opciones de envío",
   "walky.composer.sendAsMessage": "Enviar como mensaje",

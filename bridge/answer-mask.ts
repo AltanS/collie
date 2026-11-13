@@ -19,12 +19,13 @@ import { redactAnsi, redactText } from "./redact.ts";
 
 /**
  * A mirror read with its text masked. The grid keeps its escapes and its columns (`redactAnsi`), and
- * the unwrapped rows a split URL needs are masked as plain text. Key order is the body's own, so the
- * ETag hashed over it is stable.
+ * the unwrapped rows (`logicalText`, plain on a split-URL repair or SGR-styled under `?logical=1`)
+ * are masked on their plain text before any colour is kept (`redactAnsi(..., false)`). Key order is
+ * the body's own, so the ETag hashed over it is stable.
  */
 export function maskPaneRead<T extends PaneReadResponse>(body: T): T {
   const masked = { ...body, text: redactAnsi(body.text) };
-  if (body.logicalText !== undefined) masked.logicalText = redactText(body.logicalText);
+  if (body.logicalText !== undefined) masked.logicalText = redactAnsi(body.logicalText, false);
   return masked;
 }
 
@@ -53,11 +54,13 @@ export function maskFileBody<TAnswer extends FilesListing | FileReadAnswer>(answ
 }
 
 /**
- * A pane with the title a program in it set masked. Any program can write that title, so it can
- * hold a path, a command or a key; the operator's own label is not touched.
+ * A pane with the titles a program set masked: the terminal title a program in the pane wrote, and the
+ * title the agent gave its session in its journal (`agentTitle`). Either can hold a path, a command or
+ * a key; the operator's own label and the person's own name in the harness are not touched.
  */
-export function maskTerminalTitle<P extends { terminalTitle?: string }>(pane: P): P {
-  return pane.terminalTitle === undefined ? pane : { ...pane, terminalTitle: redactText(pane.terminalTitle) };
+export function maskTerminalTitle<P extends { terminalTitle?: string; agentTitle?: string }>(pane: P): P {
+  const titled = pane.terminalTitle === undefined ? pane : { ...pane, terminalTitle: redactText(pane.terminalTitle) };
+  return titled.agentTitle === undefined ? titled : { ...titled, agentTitle: redactText(titled.agentTitle) };
 }
 
 /**
@@ -100,6 +103,7 @@ export function maskJobList<T extends { id: string; label: string; command: stri
 /** The pane fields an agent or a program wrote, which the mask reaches. */
 interface PaneWords {
   terminalTitle?: string;
+  agentTitle?: string;
   todos?: readonly { text: string; activeForm?: string }[];
   subagents?: readonly { description: string }[];
   jobs?: readonly { id: string; label: string; command: string }[];
@@ -121,7 +125,7 @@ function maskPaneWords<P extends PaneWords>(pane: P): P {
 export function maskSnapshotTitles<
   S extends {
     agents: readonly PaneWords[];
-    shellPanes: readonly { terminalTitle?: string }[];
+    shellPanes: readonly { terminalTitle?: string; agentTitle?: string }[];
   },
 >(snapshot: S): S {
   return { ...snapshot, agents: snapshot.agents.map(maskPaneWords), shellPanes: snapshot.shellPanes.map(maskTerminalTitle) };

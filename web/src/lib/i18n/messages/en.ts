@@ -427,6 +427,23 @@ export const en = {
   "settings.character.idle": "Idle",
   "settings.character.note": "The app icon, the splash and the push badge stay the Collie mark.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
+  // --- settings.worktreeFolder (ADR 0093 note) ---
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "settings.worktreeFolder.title": "Worktree folder",
+  "settings.worktreeFolder.description":
+    "Where new worktrees go on a machine, in a folder named after the repo and the branch. You can still pick another folder for one worktree when you start it.",
+  "settings.worktreeFolder.loading": "Reading…",
+  "settings.worktreeFolder.unavailable": "This machine did not answer. If it is out of date, update it.",
+  "settings.worktreeFolder.default": "Default",
+  "settings.worktreeFolder.set": "Your folder",
+  "settings.worktreeFolder.change": "Change",
+  "settings.worktreeFolder.readOnly": "This device can look at the folder but not change it.",
+  "settings.worktreeFolder.field": "Folder on this machine",
+  "settings.worktreeFolder.shape": "A worktree goes in <folder>/<repo>/<branch>.",
+  "settings.worktreeFolder.save": "Save",
+  "settings.worktreeFolder.useDefault": "Use the default",
+  "settings.worktreeFolder.cancel": "Cancel",
+  "settings.worktreeFolder.failed": "Could not save. Try again.",
   "settings.math.title": "Math",
   "settings.math.description": "LaTeX in chat and Markdown files, on this device.",
   "settings.math.engine": "Engine",
@@ -1398,7 +1415,9 @@ export const en = {
   "newPage.branch.note": "A new branch in its own folder, so this agent does not change the files of another.",
   "newPage.branch.name": "Branch name",
   "newPage.branch.folder": "Branch folder",
-  "newPage.branch.folder.default": "Herdr's default",
+  // The default is this machine's own folder on every multiplexer, so the label no longer names Herdr.
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "newPage.branch.folder.default": "Default folder",
   "newPage.branch.folder.other": "Other folder",
   "newPage.branch.parent": "Put the branch folder in",
   "newPage.branch.target": "New folder: {path}",
@@ -2663,6 +2682,9 @@ export const en = {
   "chat.model.aria": "Model {name}",
   "chat.usage.context": "ctx",
   "chat.usage.context.aria": "Context {percent}% used",
+  // The context as a token count, where no window was stated (`222k`). English only until the
+  // translation pass: listed in PENDING_TRANSLATION below.
+  "chat.usage.context.tokens.aria": "Context {tokens} tokens",
   "chat.usage.window.5h": "5h",
   "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
   "chat.usage.window.7d": "7d",
@@ -3166,8 +3188,25 @@ export const en = {
   "walky.sheet.notHeld": "Not held. Nothing to take back.",
   "walky.sheet.elsewhere": "Held on another machine. Take it back there. It is not cancelled.",
   "walky.sheet.takeBackFailed": "Not taken back: {error}",
-  "walky.held.mark.one": "{count} message waits for the box to clear",
-  "walky.held.mark.other": "{count} messages wait for the box to clear",
+  // The owner's view of a message waiting for this pane (second person: the person owns the box).
+  "walky.owner.waitDraft": "Waiting, because you have unsent text",
+  "walky.owner.waitBusy": "Waiting, because the agent is busy",
+  "walky.owner.wait": "Waiting: {reason}",
+  "walky.owner.deliveredData": "Delivered. Your text is still in the box.",
+  "walky.held.waits.one": "{count} message waits while you type",
+  "walky.held.waits.other": "{count} messages wait while you type",
+  // What a message waits for: the person's text (above), a running turn, or a mix of reasons (the sheet says which).
+  "walky.held.waitsBusy.one": "{count} message waits for the agent to finish",
+  "walky.held.waitsBusy.other": "{count} messages wait for the agent to finish",
+  "walky.held.waitsPlain.one": "{count} message waits",
+  "walky.held.waitsPlain.other": "{count} messages wait",
+  // Deliver now (prototype): a waiting message handed to a linked session as data, the person's text untouched.
+  "walky.sheet.deliverNow": "Deliver now",
+  "walky.sheet.deliverNowAria": "Deliver the message from {label} now",
+  "walky.sheet.deliverHelp": "The agent gets it now and starts on it. Your text stays in the box.",
+  "walky.sheet.deliverFailed": "Not delivered. The message still waits and your text is unchanged. {error}",
+  "walky.held.deliverStays": "Your text stays in the box.",
+  "walky.composer.delivered": "Message delivered. Your text stays here.",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Send options",
   "walky.composer.sendAsMessage": "Send as message",
@@ -3764,6 +3803,21 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "newPage.branch.folder.default",
+  "settings.worktreeFolder.title",
+  "settings.worktreeFolder.description",
+  "settings.worktreeFolder.loading",
+  "settings.worktreeFolder.unavailable",
+  "settings.worktreeFolder.default",
+  "settings.worktreeFolder.set",
+  "settings.worktreeFolder.change",
+  "settings.worktreeFolder.readOnly",
+  "settings.worktreeFolder.field",
+  "settings.worktreeFolder.shape",
+  "settings.worktreeFolder.save",
+  "settings.worktreeFolder.useDefault",
+  "settings.worktreeFolder.cancel",
+  "settings.worktreeFolder.failed",
   "settings.character.title",
   "settings.character.description",
   "settings.character.fromTheme",
@@ -4075,6 +4129,8 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.repoOpen",
   "settings.tricks.origin.community",
   "tokens.uses",
+  // The context as a token count (.adr/0115, amended 2026-11-13).
+  "chat.usage.context.tokens.aria",
   "settings.tricks.about.tokens.agentView",
   "settings.tricks.about.tokens.rules",
   "settings.tricks.about.tokens.answer",
@@ -4198,6 +4254,22 @@ export const PENDING_TRANSLATION = [
   "settings.usageRow.option.percent",
   "settings.usageRow.option.dots",
   "telemetry.card.description",
+  "walky.owner.waitDraft",
+  "walky.owner.waitBusy",
+  "walky.owner.wait",
+  "walky.owner.deliveredData",
+  "walky.held.waits.one",
+  "walky.held.waits.other",
+  "walky.held.waitsBusy.one",
+  "walky.held.waitsBusy.other",
+  "walky.held.waitsPlain.one",
+  "walky.held.waitsPlain.other",
+  "walky.sheet.deliverNow",
+  "walky.sheet.deliverNowAria",
+  "walky.sheet.deliverHelp",
+  "walky.sheet.deliverFailed",
+  "walky.held.deliverStays",
+  "walky.composer.delivered",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

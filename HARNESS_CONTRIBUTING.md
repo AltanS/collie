@@ -292,6 +292,31 @@ window with `bindTail` from `tailLinesFor` in `web/src/lib/tail-lines.ts`. The p
 ([ADR 0108](./.adr/0108-a-dialog-over-live-chrome-declares-its-tail.md)). The conformance suite
 checks both that the declared window binds and that the default one would not.
 
+## Session names: `nameProbe`
+
+When your harness writes a session's name into its own log, Collie can show that name. Declare
+`nameProbe(ref)` on the harness's journal adapter (`JournalAdapter` in
+[`bridge/journal/types.ts`](./bridge/journal/types.ts)). The title tracker
+(`bridge/session-titles.ts`) calls it with the pane's harness session ref. A floor and a stat
+gate keep it from reading a log that did not change.
+
+- **Return** a `NameReading` (`bridge/session-title.ts`): `person` is a name the person set in the
+  harness, such as a `/rename`. `agent` is the title the agent gave the session. For each field, a
+  string is the name, `null` means the log proves there is none (a title cleared), and an absent
+  field means the read found nothing, so the last name stays. Return `null` when the log cannot be read.
+- **Read the least you can.** Use `probeTail` (`bridge/journal/cache-probe.ts`) for rows near the end,
+  and `probeHeadLine` (`bridge/journal/name-probe.ts`) for a header row. Drop a placeholder title
+  that the harness writes for every new session, as OpenCode's "New session - <date>".
+- **Do not clean the text.** Give back the raw strings. `normalizeTitle` strips glyphs and control
+  characters and caps the length, the same way for every harness.
+- **No special case in shared code.** The name rule, the tracker, the state engine, push and `who`
+  name no harness, and `bridge/session-title-no-harness.test.ts` fails on an `if (agent === "x")`
+  there. Which rows name a session belongs in your adapter. A name that only the screen or the argv
+  shows goes in `bridge/harness-name-sources.ts`, as data keyed by the harness word.
+- **Test** the probe with a pure reader of lines, as `claudeNamesOf` and `piNamesOf` in
+  `bridge/journal/name-probes.test.ts`: the newest row wins, an empty name clears, a placeholder is
+  ignored. Copy row shapes from a real log of the version you support.
+
 ## The two gates
 
 - **CI gate — the conformance suite.**

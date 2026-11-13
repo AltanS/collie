@@ -1,13 +1,14 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCrew } from "@/components/crew-provider";
 import { cancelWalky } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { useWalkyLog } from "@/components/walky-log";
+import { useWalkyMarkGrace } from "@/hooks/use-walky-mark-grace";
 import { useWalkySend } from "@/hooks/use-walky-send";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
-import { heldForPane, isHeld, paneAddress, stateWord, takeBackNote, WALKY_BODY_MAX, wasTaken, type WalkyReceipt } from "@/lib/walky";
+import { heldForPane, isHeld, paneAddress, stateWord, takeBackNote, waitKindOf, WALKY_BODY_MAX, wasTaken, type WalkyReceipt, type WalkyWaitReason } from "@/lib/walky";
 import type { NoticeTone } from "@/components/ui/notice";
 
 /** Who a message in the composer is addressed to, when it is not simply this pane. */
@@ -19,6 +20,17 @@ export interface WalkyAim {
   /** The words the strip names the target with: the sender's own label. */
   label: string;
 }
+
+/** The mark above the box (M62 spec 03, with its grace): how many messages wait, for what, and the one that Deliver now could hand over. */
+export interface WalkyMark {
+  count: number;
+  kind: WalkyWaitReason;
+  /** The id of the one waiting message, when exactly one waits and it waits on the person's text. */
+  deliverId: string | undefined;
+}
+
+/** How long the note after a delivery stays above the box. */
+export const DELIVERED_NOTE_MS = 6_000;
 
 /** What the composer says about the last message: a tone and a sentence, until it is dismissed. */
 export interface WalkyNote {
@@ -135,14 +147,33 @@ export function useWalkyComposer({
 
   // The messages held for THIS pane (M62 spec 03): what the mark above the box counts. Read from the same
   // list as everything else, so it adds no request of its own, and it goes when the hold ends either way.
-  const held = useMemo(() => (log === null ? 0 : heldForPane(log.rows, address).length), [log, address]);
+  // The mark waits for its grace (`WALKY_MARK_GRACE_MS`, counted from when the oldest began to wait): a line the
+  // person sends in time goes in by itself and the mark never shows.
+  const waiting = useMemo(() => (log === null ? [] : heldForPane(log.rows, address)), [log, address]);
+  const graced = useWalkyMarkGrace(waiting);
+  const mark = useMemo<WalkyMark | null>(() => {
+    if (!graced) return null;
+    const kind = waitKindOf(waiting);
+    const only = waiting.length === 1 && kind === "text" ? waiting[0] : undefined;
+    return { count: waiting.length, kind, deliverId: only?.id };
+  }, [graced, waiting]);
+  // After Deliver now: "Message delivered. Your text stays here." for a few seconds, over the box.
+  const delivered = useCallback(() => setNote({ tone: "success", text: t("walky.composer.delivered") }), []);
+  const deliveredShown = note?.text === t("walky.composer.delivered");
+  useEffect(() => {
+    if (!deliveredShown) return;
+    const timer = setTimeout(() => setNote(null), DELIVERED_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [deliveredShown]);
 
   return {
     aim,
     note: shown,
     sending,
-    /** How many messages wait for this pane's box to clear (M62 spec 03). */
-    held,
+    /** The mark above the box, or null: nothing waits, or nothing has waited its grace yet (M62 spec 03). */
+    mark,
+    /** Deliver now went through: say so above the box, and that the person's text stays. */
+    delivered,
     /** Take the followed message back while it is held (M62 spec 03), or null when nothing of the operator's is held. */
     cancelFollowed: heldId === null ? null : cancelFollowed,
     /** Open the box for a message to `to`: a reply to an agent's message. */

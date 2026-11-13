@@ -14,6 +14,9 @@ import { collieBinary as collieBinaryOf, HOST, surfacePlatform } from "./host.ts
 import { ActivityLedger } from "./activity.ts";
 import { trackActivity } from "./activity-tracking.ts";
 import { CacheTracker } from "./cache/tracker.ts";
+import { ARGV_NAMED_AGENT } from "./harness-name-sources.ts";
+import { SessionTitleTracker } from "./session-titles.ts";
+import { SessionTitleStore } from "./session-titles-store.ts";
 import { CacheWarden } from "./cache/warden.ts";
 import { CacheWatchStore } from "./cache/watch.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
@@ -93,6 +96,7 @@ import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
 import { SentStore, sentFileIo, sentRecorder } from "./sent.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
+import { WorktreeFolderSettingStore } from "./worktree-folder-setting.ts";
 import { filePairingIo, type PairedRegistry, PairingStore } from "./pairing.ts";
 import {
   LOCAL_SECRET_FILENAME,
@@ -300,8 +304,20 @@ import { RequestStore } from "./surface/requests.ts";
 import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
-import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
+import { counterWordOf, HoldBook, HoldServer, takeHold, type Held, type HoldConn, type HoldTarget } from "./surface/hold.ts";
+import type { HoldRequest } from "../web/src/lib/surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
+import { PartAsks, type PartAskSession } from "./inside/asks.ts";
+import { insideGate, insideWanted, INTERVAL_TIMER, linkReader, watchLink } from "./inside/gate.ts";
+import { linkedHarnesses, partsRoot } from "./inside/links.ts";
+import { ownerHold } from "./inside/owner.ts";
+import { applyWake, releasesHeld, type WakeSink } from "./inside/wake.ts";
+import { InsideHub } from "./inside/hub.ts";
+import { placeHello } from "./inside/place.ts";
+import { CommandQueue } from "./inside/queue.ts";
+import { PartRegistry } from "./inside/registry.ts";
+import { InsideServer, insideSocketPath } from "./inside/server.ts";
+import { WIRE_VERSION } from "./inside/wire.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
 import { crewFactsWorld, FACTS_CAPS, factsWorldOf, NO_FACTS_CAPS, type FactsWorld } from "./tricks/facts.ts";
@@ -315,6 +331,7 @@ import { TricksService } from "./tricks/service.ts";
 import { VersionCards } from "./tricks/version-card.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
 import { INSTANCE_TOKEN, labelOf, LOCAL_MEMBER, parseAddress } from "./walky/address.ts";
+import { namesOfPane, withNames } from "./walky/names.ts";
 import {
   crewSkipped,
   crewTargets,
@@ -890,6 +907,13 @@ const journals = cfg.transcript
 // before. One reader for the whole bridge — its per-session scans are keyed by session id, so
 // two collie sessions watching one herd share the fold instead of re-walking the log.
 const museNames = cfg.transcript ? museSessionNameReader(cfg.journalRoots.muse) : undefined;
+// What each harness session is called in its own journal (bridge/session-titles.ts): a name the person
+// set in the harness, and the agent's own title. One tracker for the whole bridge, keyed by session id,
+// read by every engine from memory and refreshed on each session's poll. Null with transcripts off, and
+// every pane then keeps the screen read and its fallbacks exactly as before. The last names outlive a
+// restart in the state folder (bridge/session-titles-store.ts), loaded once here before any poll.
+const sessionTitles = journals === null ? null : new SessionTitleTracker(journals, () => Date.now(), { store: new SessionTitleStore(cfg) });
+await sessionTitles?.restore();
 const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
 const paneCache =
   journals === null
@@ -981,6 +1005,8 @@ const askPush = new AskPush(askGuard);
 // Loading writes nothing: the file appears on the first branch create that works.
 const worktreeChoices = new WorktreeChoiceStore(cfg.stateDir);
 await worktreeChoices.load();
+const worktreeFolderSetting = new WorktreeFolderSettingStore(cfg.stateDir);
+await worktreeFolderSetting.load();
 
 // The launcher rows phones added on this machine (ADR 0094, bridge/launchers-added.ts). Read by mtime
 // on each use, because `collie devices revoke` edits it from another process. Nothing is written until
@@ -1760,6 +1786,55 @@ const holdServer =
           return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
         },
       });
+// The inside wire (M99 spec 01, bridge/inside/WIRE.md): parts inside an agent program (a Claude Code
+// mod, a pi extension) dial `<stateDir>/inside/sock` and bind to their pane through the same placement
+// as a hook edge. Built with the edges, since it places on the same targets. Opt-in: the socket opens
+// only while a harness is linked (`collie harness link`, M99 spec 09), or when `COLLIE_INSIDE=on` says so;
+// `COLLIE_INSIDE=off` is the kill switch (`bridge/inside/gate.ts`). Closed, no part can bind and every
+// send, ask and WalkyTalky message keeps the screen path. A link made while the bridge runs opens the
+// socket at the next read of the link records; an unlink turns the data road off at the next read.
+const insideLinked = linkReader(() => linkedHarnesses(process.env, homedir(), realFiles).length > 0);
+/** Whether the inside wire is on now: the override, else a link. */
+const insideOn = (): boolean => insideWanted(cfg.inside, insideLinked());
+const insideGateState = insideGate({ setting: cfg.inside, linked: insideLinked(), edges: edgeRouter !== null, platform: HOST.platform });
+const insideHub =
+  (insideGateState !== "open" && insideGateState !== "unlinked") || edgeRouter === null
+    ? null
+    : new InsideHub({
+        registry: new PartRegistry(),
+        queue: new CommandQueue(),
+        place: (hello) => {
+          const live = new Set(registry.ordered().map((runtime) => runtime.name));
+          return placeHello(hello, [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target), procBeaconLiveness());
+        },
+      });
+const insideServer = insideHub === null ? null : new InsideServer({ socketPath: insideSocketPath(cfg.stateDir), hub: insideHub });
+/** What the inside hub reaches of each session, set by `makeSession` (M99 specs 03 and 04). */
+interface InsideSession extends PartAskSession {
+  readonly wake: WakeSink;
+  readonly send: SendProtocol | undefined;
+}
+const insideSessions = new Map<string, InsideSession>();
+const partAsks = insideHub === null ? null : new PartAsks({ sessionOf: (session) => insideSessions.get(session), enqueue: (address, command) => insideHub.enqueue(address, command) });
+insideHub?.listen({
+  // A permission of a part is today's hold (spec 04), while the wire is on.
+  ask: (part, ask) => (insideOn() ? partAsks?.ask(part, ask) : { wait: false }),
+  gone: (part) => partAsks?.gone(part.partId),
+  // An answer command ended: its hold settles from the part's own word (spec 04, review item 5).
+  command: (entry) => partAsks?.command(entry),
+  event: (part, event) => {
+    const session = insideSessions.get(part.address.session);
+    if (event.kind === "ask.close") partAsks?.closed(part.partId, event.ask);
+    // Wake and state, never an item (spec 04).
+    if (session !== undefined && insideOn()) applyWake(session.wake, part.address.paneId, event, Date.now());
+    // The part's turn end releases the pane's oldest held send now; the poll's own rules stay (spec 03).
+    // So does its word that the box holds no draft any more: a WalkyTalky message held over the draft
+    // goes now, once, and its run asks the draft state again before anything (spec 05, 2026-11-13).
+    if (releasesHeld(event, insideHub?.turnOf(part.address) ?? null)) void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
+  },
+});
+
+
 const sendVersions = new VersionCache();
 /** The platform the harness profiles pick their keys by: `process.platform`, or `wsl` under WSL. Decided once, here. */
 const SURFACE_PLATFORM = surfacePlatform({
@@ -1791,9 +1866,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // The worktree capability sits just inside it, outside the beacon and hint wrappers: it reads their
   // declaration and lifts `createWorktree` from `createSpace` plus git (bridge/worktree-capability.ts).
   const herdr = withRepoFacts(withWorktreeCapability(withBeaconsIfBlind(built.adapter, target), { git: worktreeGit }), { facts: (folder) => repoFactsOf(folder, nodeGitHeadDisk, homedir()) });
-  const engine = new StateEngine(herdr, cfg.pollMs, { museSessionName: museNames });
-  // The install ping's usage tally (ping v3): this session's agent panes, by this session's multiplexer.
-  // The ping counts them and drops them again; it throttles itself and never throws into the poll.
+  const engine = new StateEngine(herdr, cfg.pollMs, {
+    argvNames: museNames === undefined ? {} : { [ARGV_NAMED_AGENT]: museNames },
+    titles: sessionTitles === null ? undefined : (pane) => sessionTitles.forPane(pane),
+  });
+  // The install ping's usage tally (ping v3): which agent and multiplexer pairs ran in this session.
+  // The ping keeps the pairs and drops the panes again; it throttles itself and never throws into the poll.
   const usageMux = endpoint.kind === "program" ? DURABLE_MUX : cfg.mux;
   engine.onUpdate((s) => telemetry.sessions({ scope: name, mux: usageMux, panes: realAgentPanes(s.agents) }));
 
@@ -1847,6 +1925,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
       );
     };
     engine.onUpdate((s) => void probeThenWarn(s.agents));
+  }
+  // The session names ride the same poll, fired and not awaited; the engine reads them from memory on
+  // the next one (bridge/session-titles.ts). `refresh` never throws.
+  if (sessionTitles !== null) {
+    engine.onUpdate((s) => void sessionTitles.refresh(s.agents, { session: name }));
   }
   if (todos !== null) {
     engine.onUpdate((s) => void todos.refresh(s.agents, { session: name }).catch(() => {}));
@@ -2013,8 +2096,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           blindSent: sentRecorder(sentStore, () => engine.current().shellPanes),
           // A box proven stale (a probe that missed it, and a second read of the same rows): the Surface says so until the rows change.
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
+          // The data road (M99 spec 03): only with the inside socket open, and read again per send.
+          data: insideHub === null ? undefined : { enabled: insideOn, door: insideHub },
         })
       : undefined;
+  // The session's inside record is rebuilt with its holds below (M99 specs 03 and 04).
+  insideSessions.delete(name);
   // Each poll tells the launch window which panes the multiplexer names an agent on now: a newly named
   // one opens a window, a gone one is forgotten. The poll's Surface ends a window above.
   if (send !== undefined) {
@@ -2079,27 +2166,53 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           edge,
         ),
     };
+    /** The session's hand-off of one placed hold request, from the settings hook or from a part. */
+    const takePaneHold = (book: HoldBook, paneId: string, request: HoldRequest, conn: HoldConn, onClose: (listener: (how: "closed" | "elsewhere") => void) => void): Held | null =>
+      takeHold(
+        {
+          book,
+          generation: generationOf,
+          profile: (harness) => loadProfiles().get(harness)?.hold,
+          reread: (pane) => surface.edge(pane, "dialog", Date.now()),
+          log: (line) => console.log(line),
+        },
+        paneId,
+        request,
+        conn,
+        onClose,
+      );
     const holdTarget: HoldTarget =
       holdBook === undefined
         ? edgeTarget
         : {
             ...edgeTarget,
-            hold: (paneId, request, conn, onClose) => {
-              takeHold(
-                {
-                  book: holdBook,
-                  generation: generationOf,
-                  profile: (harness) => loadProfiles().get(harness)?.hold,
-                  reread: (pane) => surface.edge(pane, "dialog", Date.now()),
-                  log: (line) => console.log(line),
-                },
-                paneId,
-                request,
-                conn,
-                onClose,
-              );
-            },
+            // One owner per ask kind (M99 spec 04): a part that owns the pane's permissions gives the
+            // one card; the settings hook is let go at once, with no decision.
+            hold: ownerHold(
+              (paneId, request) => partAsks?.ownsDialog(name, paneId, request) === true,
+              (paneId, request, conn, onClose) => {
+                takePaneHold(holdBook, paneId, request, conn, onClose);
+              },
+              (line) => console.log(line),
+            ),
           };
+    // What the inside hub reaches of this session: the holds (spec 04), the wake (spec 04), the send (spec 03).
+    insideSessions.set(name, {
+      harnessOf: (paneId) => {
+        const agent = engine.current().agents.find((pane) => pane.paneId === paneId);
+        return agent === undefined || agent.kind === "shell" ? null : agent.agent;
+      },
+      // A session with no hold book holds nothing: a part's permission stays with the desk and the screen.
+      holdProfile: (harness) => (holdBook === undefined ? undefined : loadProfiles().get(harness)?.hold),
+      takeHold: (paneId, request, conn, onClose) => (holdBook === undefined ? null : takePaneHold(holdBook, paneId, request, conn, onClose)),
+      settle: (held, outcome) => {
+        if (holdBook === undefined) return;
+        if (outcome === "void") holdBook.end(held, "void");
+        else holdBook.settle(held, outcome);
+      },
+      wake: { edge: (pane, kind, at) => surface.edge(pane, kind, at), poke: () => engine.pokeNow() },
+      send,
+    });
     edgeTargets.set(name, foreground === undefined ? holdTarget : { ...holdTarget, foreground });
   } else {
     edgeTargets.delete(name);
@@ -2181,10 +2294,40 @@ edgeRouter?.start();
 // registry finds the socket listening. A bridge that cannot own the socket (another bridge holds it,
 // or the path is not safe) runs with no holds: every permission stays a screen ask.
 if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
+// And the inside socket (M99 spec 01), also before the target file, which names it in its `inside` field.
+let insideStarted = insideServer !== null && insideGateState === "open" && (await insideServer.start());
+if (insideStarted) console.log(`[inside] socket at ${insideSocketPath(cfg.stateDir)}`);
+else if (insideGateState !== "off") console.log(`[inside] socket closed: ${insideGateState === "platform" ? "not on this platform" : insideGateState === "no-edges" ? "no hook edges" : insideGateState === "unlinked" ? "no harness is linked" : "did not start"}`);
 // The target file also says which multiplexer this bridge drives, under which instance, on which port,
 // so `collie mux list` reads the live bridges without dialling them (M76 spec 02).
-hookTarget =
-  edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, { mux: cfg.mux, instance: collieInstance, port: cfg.port });
+/** The hook target file's fields; `inside` names the socket once it listens. */
+const hookTargetFields = (inside: boolean) => ({
+  mux: cfg.mux,
+  instance: collieInstance,
+  port: cfg.port,
+  inside: inside ? { wire: WIRE_VERSION, socket: insideSocketPath(cfg.stateDir) } : undefined,
+  // The parts folder this bridge reads the link records from; `collie doctor` compares it with its own.
+  parts: partsRoot(process.env, homedir()),
+});
+hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(insideStarted));
+// A link made while the bridge runs (`collie harness link`, M99 spec 09) opens the socket at the next read of
+// the link records (`watchLink`, one folder listing per read) and names it in the hook target file so
+// a part finds it. A start that fails is tried again at the read after; the timer stops once the
+// socket listens, or when the bridge stops.
+const stopInsideWatch =
+  insideServer === null || insideStarted || insideGateState !== "unlinked"
+    ? null
+    : watchLink({
+        ...INTERVAL_TIMER,
+        on: insideOn,
+        start: () => insideServer.start(),
+        opened: () => {
+          insideStarted = true;
+          console.log(`[inside] a harness is linked: socket at ${insideSocketPath(cfg.stateDir)}`);
+          // The write is a rename over the same file: no moment with no target file.
+          if (edgeRouter !== null) hookTarget = registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(true));
+        },
+      });
 
 // Walky talky (M62): messages between agent sessions. The log is `<stateDir>/walky/`, the local
 // socket `<stateDir>/walky/sock` (0600). A message is logged first, then typed through the pane's
@@ -2211,7 +2354,9 @@ const walkyRawPanes = (): Omit<WalkyPane, "instance" | "off">[] =>
       // The last status change comes from the activity ledger: the engine's views carry no time (it rides the wire at serialise time).
       const activeAt = activity.get(rt.name, view.paneId)?.activeAt ?? null;
       const space = spaceOfPane(walkyMemberId ?? LOCAL_MEMBER, view);
-      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined, space };
+      const row = { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined, space };
+      // The session's names ride for `who` (walky/names.ts): the person's name and the agent's own title.
+      return withNames(row, namesOfPane(view, !cfg.redact));
     };
     const out = agents.map((view) => of(view, true));
     for (const view of shellPanes) out.push(of(view, false));
@@ -3990,6 +4135,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   answerReceipts,
   controlReceipts,
   worktreeChoices,
+  worktreeFolderSetting,
   addedLaunchers,
   recentRuns,
   sent: sentStore,
@@ -4159,6 +4305,8 @@ const shutdown = async () => {
   edgeRouter?.stop();
   hookTarget?.remove();
   holdServer?.stop();
+  stopInsideWatch?.();
+  insideServer?.stop();
   walkyServer.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).

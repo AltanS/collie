@@ -1,21 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { delimiter, join, resolve } from "node:path";
-
 import { hostFor } from "../bridge/host.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
-import {
-  classifyLink,
-  classifyUnlink,
-  cmdLink,
-  cmdUnlink,
-  isCollieBinaryPath,
-  type LinkDeps,
-  linkDir,
-  linkPath,
-  onPath,
-  resolveLinkTarget,
-} from "./link.ts";
+import { classifyLink, classifyUnlink, cmdLink, cmdUnlink, isCollieBinaryPath, type LinkDeps, linkDir, linkPath, onPath, resolveLinkTarget } from "./link.ts";
 import { collieBinary } from "./unit.ts";
 
 // `collie link` / `collie unlink`. The decisions are pure functions of what is at the destination
@@ -260,5 +248,19 @@ describe("collie unlink", () => {
     const d = deps({ built: false, seed: { [AT]: { kind: "other", what: "a regular file" } } });
     expect(cmdUnlink(d)).toBe(EXIT.FAIL);
     expect(d.fs.ops).toEqual([]);
+  });
+});
+
+describe("the bare verbs keep one meaning (M99 spec 09)", () => {
+  test("`collie link` and `collie unlink` refuse an argument with exit 2 and name `collie harness link`", async () => {
+    // The real verb table: the refusal comes before any seam is built, so nothing on this machine is read.
+    const { run } = await import("./program.ts");
+    for (const verb of ["link", "unlink"] as const) {
+      const io = capture();
+      expect(await run([verb, "claude"], io)).toBe(EXIT.USAGE);
+      expect(io.stdout).toEqual([]);
+      expect(io.stderr).toHaveLength(1);
+      expect(io.stderr[0]).toContain(`\`collie harness ${verb} <harness>\``);
+    }
   });
 });

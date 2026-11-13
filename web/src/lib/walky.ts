@@ -71,6 +71,12 @@ export interface WalkyReceipt {
   /** The Send Protocol request id, when a send was made. */
   sendId?: string;
   /**
+   * How a `delivered` message reached the agent: `data` is the linked transport (Deliver now), handed over
+   * as data with the input box untouched. Absent: typed into the pane, as always. SEAM: the bridge does not
+   * send it yet (deliver-now prototype), the owner's row words read it in {@link ownerStateWord}.
+   */
+  via?: "data";
+  /**
    * The pane address this receipt is about. A message to `all` or `<memberId>/all` yields one receipt
    * per target under the same message `id`, and this is what tells them apart.
    */
@@ -603,6 +609,27 @@ export function stateWord(receipt: WalkyReceipt): string {
 }
 
 /**
+ * Where a message that reached THIS pane stands, in the owner's words (second person: the person owns the
+ * box). A waiting message says what it waits for ("Waiting, because you have unsent text"), and one handed
+ * over as data says that the person's text is still in the box. Every other state reads as {@link stateWord}.
+ * A row this pane SENT keeps `stateWord`: the sender reads about "that session".
+ */
+export function ownerStateWord(receipt: WalkyReceipt): string {
+  if (isHeld(receipt) && receipt.reason !== OUTCOME_ON_LEAD) {
+    switch (receipt.reason) {
+      case "draft present":
+        return t("walky.owner.waitDraft");
+      case "turn running":
+        return t("walky.owner.waitBusy");
+      default:
+        return t("walky.owner.wait", { reason: reasonWord(receipt.reason ?? "") });
+    }
+  }
+  if (receipt.state === "delivered" && receipt.via === "data") return t("walky.owner.deliveredData");
+  return stateWord(receipt);
+}
+
+/**
  * The messages held for the pane at `self` (M62 spec 03): received, and `accepted` with the reason that
  * holds them. What the held mark above the box counts, and what the Messages sheet offers Drop on. With
  * no `self` nothing is held: a mount that cannot name its pane cannot tell a sent row from a received one.
@@ -611,6 +638,60 @@ export function heldForPane(rows: readonly WalkyRow[], self: string | undefined)
   if (self === undefined) return [];
   return rows.filter((row) => isHeld(row.receipt) && directionOf(row, self) === "received");
 }
+
+/**
+ * How long a message must have waited before the mark above the box tells the owner about it. A person who
+ * types a line and sends it inside this time never sees the mark: the message goes in by itself when the
+ * box clears. ONE constant, for every session, linked or not, and for both reasons a message waits.
+ */
+export const WALKY_MARK_GRACE_MS = 20_000;
+
+/** What a message waits for: the person's own unsent text, a running turn, or anything else the bridge names. */
+export type WalkyWaitReason = "text" | "busy" | "other";
+
+export function waitReasonOf(receipt: WalkyReceipt): WalkyWaitReason {
+  if (receipt.reason === "draft present") return "text";
+  if (receipt.reason === "turn running") return "busy";
+  return "other";
+}
+
+/** The one reason all of `rows` wait for, or "other" for a mix (and for a reason the mark has no words for). */
+export function waitKindOf(rows: readonly WalkyRow[]): WalkyWaitReason {
+  const first = rows[0];
+  if (first === undefined) return "other";
+  const reason = waitReasonOf(first.receipt);
+  return rows.every((row) => waitReasonOf(row.receipt) === reason) ? reason : "other";
+}
+
+/**
+ * When a waiting message began to wait: the `at` of its held receipt, the time the bridge wrote the
+ * `accepted` state with a reason. It is the bridge's clock, so it survives a reload and a background tab. (A
+ * message that changes its reason, a draft that ends while a turn runs, is written again and starts over.)
+ */
+export function waitingSince(row: WalkyRow): number {
+  return row.receipt.at;
+}
+
+/** When the oldest of these waiting messages began to wait, or null when none waits. */
+export function oldestWaitingSince(waiting: readonly WalkyRow[]): number | null {
+  return waiting.length === 0 ? null : Math.min(...waiting.map(waitingSince));
+}
+
+/** Milliseconds until a message that began to wait at `since` has waited its grace. Zero or less: it has. */
+export function graceLeftMs(since: number, now: number): number {
+  return since + WALKY_MARK_GRACE_MS - now;
+}
+
+/**
+ * SEAM (deliver-now): the call that hands one waiting message to the agent as data and leaves the person's
+ * text in the box. It resolves once the bridge took the message and rejects with the reason otherwise. The
+ * UI takes it as `onDeliverNow` on `WalkySheet` and on the `Composer` (which hands it to the held mark and
+ * shows the note "Message delivered. Your text stays here." after it resolves), together with `linked`, the
+ * pane read's `linked: true`. `agent-chat.tsx` passes none of them yet, so no session shows Deliver now: the
+ * real call goes beside `dropWalky` in `lib/api.ts` and is passed where `onDrop` and `onOpenMessages` are
+ * passed. `AgentView` in lib/types.ts has no `linked` field yet (`lib/solo-baseline.test.ts` pins its keys).
+ */
+export type DeliverNow = (id: string) => Promise<void>;
 
 /** How one target's take-back ended (M62 spec 03), as the bridge's cancel and drop routes answer it. */
 export type TakeBackResult = "taken" | "repeat" | "already typed" | "not held" | "elsewhere";

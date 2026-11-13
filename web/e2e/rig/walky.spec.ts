@@ -27,7 +27,7 @@
 //      held; Cancel in the pane's WalkyTalky sheet ends it as `inbox-only: cancelled by sender`, the
 //      draft is untouched, and nothing is typed after the draft clears.
 //   23 a held message dropped from the held mark (M62 spec 03): an agent's message over a draft is
-//      held; the phone shows "1 message waits for the box to clear", a tap opens the sheet, Drop ends
+//      held; the phone shows "1 message waits while you type", a tap opens the sheet, Drop ends
 //      it as `inbox-only: dropped by the pane's owner`, the mark goes, and nothing is typed.
 //
 //   30 the space border, inside (M98 spec 06): a throwaway Claude in the run's own space sends to the
@@ -52,6 +52,7 @@ import type { Locator } from "@playwright/test";
 
 import { asJsonObject, asJsonString } from "../../src/lib/json";
 import { harnessDirs } from "./harnesses";
+import { RIG_DATA } from "./rig-data";
 import {
   NotReached,
   capture,
@@ -77,6 +78,7 @@ import {
   OUTSIDE_YOUR_SPACE,
   PHONE,
   REPLY_MS,
+  sentWithNoKey,
   addressOf,
   addressPattern,
   busyMessage,
@@ -207,7 +209,12 @@ test.describe("walky talky", () => {
         trail.captures.push(await captureScreen(rig, pane, "walky-9-after-draft"));
 
         const partA = posted.status === 200 && !typedDuring && cardStill && yes.worked && ran && afterState === "delivered" && typedOnce && total === 1;
-        const partB = postedB.status === 200 && heldRow !== null && draftKept && stillHeld && keptState === "delivered" && typedAfter && keptTotal === 1;
+        // THE DATA ROAD (M99 spec 05, COLLIE_RIG_DATA=1). A draft holds the message there too (decision of
+        // 2026-11-13): the part says the box holds one, and the bridge holds it as the screen road does. Once the
+        // draft is gone it goes in by data: the extra evidence is that its send typed no key.
+        const byData = RIG_DATA ? await sentWithNoKey(rig, pane, kept) : true;
+        if (RIG_DATA) notes.push(`B: data road: ${byData ? "the message went in with no key typed" : "the message did NOT go in by data"}`);
+        const partB = postedB.status === 200 && heldRow !== null && draftKept && stillHeld && keptState === "delivered" && typedAfter && keptTotal === 1 && byData;
         const verdict = partA && partB && log.every((l) => l.worked) ? "pass" : "fail";
         return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: trail.captures };
       } finally {
@@ -423,7 +430,8 @@ test.describe("walky talky", () => {
       const log = trail.log;
       const notes = trail.notes;
       try {
-        // A draft in the box holds the message (M62 spec 02, case 9 part B).
+        // A draft in the box holds the message (M62 spec 02, case 9 part B), on the data road too (M99 spec 05,
+        // decision of 2026-11-13: the part says the box holds a draft, and the bridge holds the message).
         await rig.keys(pane, ["d", "r", "a", "f", "t"]);
         await sleep(1500);
         const id = mintId();
@@ -448,6 +456,7 @@ test.describe("walky talky", () => {
         await expect(row.getByText("waiting in the inbox, not typed: cancelled by sender"), "the row did not read cancelled by sender").toBeVisible({ timeout: 15_000 });
         trail.captures.push(await capture(page, "walky-22-cancelled"));
         // The draft is untouched, and once it is cleared outside the phone nothing is typed: the hold is gone.
+        // On the data road nothing is handed to the part after the draft goes either (no command for it).
         const boxText = await rig.tail(pane, 6);
         const draftKept = /❯\s*draft\s*$/m.test(boxText) && !boxText.includes(`[walky-talky ${id}]`) && !boxText.includes(mark);
         const reset = await resetBox(rig, pane);
@@ -477,6 +486,7 @@ test.describe("walky talky", () => {
         // message is an agent's: the phone cannot cancel it, only the pane's owner can drop it.
         const sender = await startExtraAgent(rig, H);
         opened.push(sender);
+        // A draft holds it, on the data road too (M99 spec 05, decision of 2026-11-13).
         await rig.keys(pane, ["d", "r", "a", "f", "t"]);
         await sleep(1500);
         const body = "Walky drop check: answer with only the word NEVER-TYPED, nothing else.";
@@ -488,7 +498,7 @@ test.describe("walky talky", () => {
         phone = await phoneOn(browser, rig, pane, PHONE);
         const { page, recorder } = phone;
         // The owner's mark above the box, and the tap that opens the sheet on it.
-        const markOnPhone = page.getByRole("button", { name: message("walky.held.mark.one", { count: 1 }) });
+        const markOnPhone = page.getByRole("button", { name: message("walky.held.waits.one", { count: 1 }) });
         await expect(markOnPhone, "no held mark above the box").toBeVisible({ timeout: 20_000 });
         trail.captures.push(await capture(page, "walky-23-held-mark"));
         log.push(await tap(recorder, markOnPhone, "the held mark", { expectAnswer: false }));

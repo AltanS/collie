@@ -1145,7 +1145,6 @@ export const fr: Dictionary = {
   "newPage.branch.note": "Une nouvelle branche dans son propre dossier, pour que cet agent ne modifie pas les fichiers d’un autre.",
   "newPage.branch.name": "Nom de la branche",
   "newPage.branch.folder": "Dossier de la branche",
-  "newPage.branch.folder.default": "Par défaut de Herdr",
   "newPage.branch.folder.other": "Autre dossier",
   "newPage.branch.parent": "Créer le dossier de la branche dans",
   "newPage.branch.target": "Nouveau dossier : {path}",
@@ -2683,8 +2682,6 @@ export const fr: Dictionary = {
   "walky.sheet.notHeld": "Non retenu. Rien à reprendre.",
   "walky.sheet.elsewhere": "Retenu sur une autre machine. Reprenez-le là-bas. Il n'est pas annulé.",
   "walky.sheet.takeBackFailed": "Non repris : {error}",
-  "walky.held.mark.one": "{count} message attend que la boîte se libère",
-  "walky.held.mark.other": "{count} messages attendent que la boîte se libère",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Options d'envoi",
   "walky.composer.sendAsMessage": "Envoyer sous forme de message",

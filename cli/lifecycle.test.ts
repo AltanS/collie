@@ -61,6 +61,8 @@ import {
   systemdUserReachable,
   writeUnit,
 } from "./lifecycle.ts";
+import { linkRecordPath } from "../bridge/inside/links.ts";
+import { PART_MARKER } from "./harness-link.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import { cmdServe } from "./serve.ts";
 import { formatTaskRecord, taskRecordPath, taskRestartPath } from "./task-scheduler.ts";
@@ -2445,6 +2447,55 @@ describe("uninstall", () => {
     expect(h.files.exists(`${CONFIG}/.env`)).toBe(true);
     expect(h.io.stdout.join("\n")).toContain("✓ uninstalled:");
     expect(h.io.stdout.join("\n")).toContain(`kept: ${join(CONFIG, ".env")} and the checkout`);
+  });
+
+  describe("the shared harness parts (M99 spec 09)", () => {
+    const PI_RECORD = linkRecordPath({}, HOME, "pi");
+    const PI_PART = `${HOME}/.pi/agent/extensions/collie-inside.ts`;
+    const linked = {
+      [UNIT_FILE]: "[Unit]\n",
+      [PI_RECORD]: JSON.stringify({ harness: "pi", version: "1.29.0", at: 1 }),
+      [PI_PART]: `${PART_MARKER} pi 1.29.0\nexport default function collie() {}\n`,
+    };
+    const NEXT_ENV = `${HOME}/.config/herdr/plugins/config/herdr.collie-next/.env`;
+    const NEXT_UNIT = `${HOME}/.config/systemd/user/collie-next.service`;
+
+    test("the last installed instance takes the parts along", async () => {
+      // `next` left a config behind but no unit: it is not installed any more.
+      const h = harness({ answers: [["tailscale serve status --json", { stdout: OWNED }]], files: { ...linked, [NEXT_ENV]: "COLLIE_PORT=8788\n" } });
+      expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
+      expect(h.files.exists(PI_RECORD)).toBe(false);
+      expect(h.files.exists(PI_PART)).toBe(false);
+      expect(h.io.stdout).toContain("  unlinked pi");
+    });
+
+    test("another installed instance keeps them, and one line says so", async () => {
+      const h = harness({ answers: [["tailscale serve status --json", { stdout: OWNED }]], files: { ...linked, [NEXT_ENV]: "COLLIE_PORT=8788\n", [NEXT_UNIT]: "[Unit]\n" } });
+      expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
+      expect(h.files.exists(PI_RECORD)).toBe(true);
+      expect(h.files.exists(PI_PART)).toBe(true);
+      expect(h.io.stdout.filter((line) => line.includes("kept the linked harness parts"))).toEqual([
+        "  kept the linked harness parts: another Collie instance uses them (next). `collie harness unlink <harness>` removes them.",
+      ]);
+      expect(h.io.stdout.join("\n")).not.toContain("unlinked pi");
+    });
+
+    test("an uninstall of a named lane counts the default instance as another", async () => {
+      const h = harness({
+        instance: "next",
+        answers: [["tailscale serve status --json", { stdout: OWNED }]],
+        files: { ...linked, [NEXT_ENV]: "COLLIE_PORT=8788\n", [NEXT_UNIT]: "[Unit]\n", [`${HOME}/.config/herdr/plugins/config/herdr.collie/.env`]: "COLLIE_PORT=8787\n" },
+      });
+      expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
+      expect(h.files.exists(PI_PART)).toBe(true);
+      expect(h.io.stdout.join("\n")).toContain("another Collie instance uses them (default)");
+    });
+
+    test("nothing linked: no line about parts at all", async () => {
+      const h = harness({ answers: [["tailscale serve status --json", { stdout: OWNED }]], files: { [UNIT_FILE]: "[Unit]\n", [NEXT_ENV]: "x\n", [NEXT_UNIT]: "[Unit]\n" } });
+      expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.join("\n")).not.toContain("linked harness");
+    });
   });
 
   test("on Linux and macOS a binary install's uninstall output is exactly what it was", async () => {

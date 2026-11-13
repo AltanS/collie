@@ -287,6 +287,16 @@ describe("HerdrCoreMux over a fake core", () => {
     expect(panes.map((pane) => pane.paneId)).toEqual([created.value.paneId]);
   });
 
+  test("a space whose folder is a linked worktree opens like any other: the core keeps no worktree record (issue 732)", async () => {
+    const { fake, adapter } = build();
+    const asked = recordShells(fake);
+    const created = await adapter.createSpace({ cwd: "/home/dev/lab-wt", label: "wt", worktree: { repoRoot: "/home/dev/lab" } });
+    if (!created.ok) throw new Error(created.detail);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.cwd).toBe("/home/dev/lab-wt");
+    expect(created.value.cwd).toBe("/home/dev/lab-wt");
+  });
+
   test("two new spaces get different ids, and a blank cwd sends no cwd to the core", async () => {
     const { fake, adapter } = build();
     const asked = recordShells(fake);

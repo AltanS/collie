@@ -65,18 +65,23 @@ List who you can reach. When you pick an address yourself, copy it from this lis
 ```
 
 ```text
-ADDRESS                     MACHINE   HARNESS  LABEL                  SPACE   STATE
-collie-04rj6a/w54:p1B#sx56  bluefin   claude   collie-workspace#main  collie  working  (you)
-collie-04rj6a/w54:p1J#anx6  bluefin   claude   walky-live             collie  done
-minibuch/w11:p4#8h9h        minibuch  claude   walky-live             collie  idle
+ADDRESS                     MACHINE   HARNESS  SPACE   FOLDER                 NAME          TITLE                       STATE
+collie-04rj6a/w54:p1B#sx56  bluefin   claude   collie  collie-workspace#main  lead          Release train for 1.29      working  (you)
+collie-04rj6a/w54:p1J#anx6  bluefin   claude   collie  collie-workspace#main  dialog pings  Dialog ping sounds          done
+minibuch/w11:p4#8h9h        minibuch  omp      collie  walky-live             -             Walky live leg on the core  idle
 2 panes are outside your space. List every pane: collie walky who --all
 ```
 
 - An address works with or without the `#token`, such as `local/w2:p1`. The token pins the
   session, so a pane that was replaced is refused with it. Use the address your operator gives you
   as given. When you pick one from `who`, copy ADDRESS as printed. Its first part is the member id,
-  not the machine. Pick the row by MACHINE and LABEL.
-- Labels repeat, as `walky-live` does above. MACHINE tells them apart. Still unsure: ask your operator.
+  not the machine.
+- Pick the row by what the session is. SPACE is its workspace, FOLDER its `<repo>#<branch>`, NAME the
+  name a person gave it (in Collie, in its harness, or its tab), TITLE the title its agent gave it.
+  Several sessions share one FOLDER, as above; NAME and TITLE tell them apart.
+- To reach "the session that does X in workspace Y": keep the rows whose SPACE is Y, then pick the one
+  whose NAME or TITLE says X. No row or more than one: ask your operator. Do not guess.
+- `who --json` rows carry `space.label`, `label` (the folder), `name`, `nameBy` and `title`, each absent when there is none.
 - When a message body names another session, write its full address as `who` prints it, such as
   `collie-04rj6a/w54:p1J#anx6`. Never write a bare pane id (`w54:p1J`), a window id (`w54`) or a label
   alone. A label repeats, and your operator's phone draws the session's name in place of the address.
@@ -84,7 +89,7 @@ minibuch/w11:p4#8h9h        minibuch  claude   walky-live             collie  id
   machine is the same space. `who` lists it and counts the panes outside. `who --all` lists every pane.
 - A word with no `/` is a folder inside your space. `<repo>` is every agent pane in that folder, on any branch.
   `<repo>#<branch>` is one branch. `here` is your whole space on every machine, without your own pane. `<repo>`
-  is the first part of LABEL, such as `collie-workspace` in `collie-workspace#main`.
+  is the first part of FOLDER, such as `collie-workspace` in `collie-workspace#main`.
 - `(you)` marks your own pane. A message to it is refused.
 - STATE is `idle`, `working`, `blocked`, `done` or `unknown`, or `unreachable` for a crew member out
   of reach. A message to a `working` or `blocked` pane is not lost: Collie queues or holds it. A
@@ -110,10 +115,10 @@ printf '%s' "$BODY" | /opt/collie/bin/collie walky send collie-04rj6a/w54:p1J#an
 tell your operator the reason and stop. Do not send it again. A send to a pane that closed, whose id
 another pane took, is refused `pane replaced`. Run `who` again.
 
-After `send`, end your turn. Do not poll and do not sleep. The answer is typed into your pane as
+After `send`, end your turn. Do not poll and do not sleep. The answer arrives in your pane as
 your next prompt, with `reply to <your id>` in its header. If your pane is busy, Collie queues or holds it
-until your turn ends. `/opt/collie/bin/collie walky inbox` shows it too. `status` says only that your message was
-typed. It does not say the other agent read or answered it.
+until your turn ends. `/opt/collie/bin/collie walky inbox` shows it too. `status` says only that your message went
+in. It does not say the other agent read or answered it.
 
 For one agent, use its pane address and copy it from `who`. Use `here` when every agent in your space should
 get it, on every machine of the crew, and `<repo>` to narrow it to one folder. Use them only when the message
@@ -144,7 +149,8 @@ Read one message by its id. This is how you read the body of a message from anot
 
 `/opt/collie/bin/collie walky status wt_...` shows what became of a message you sent: "queued", "held", "typed into
 the pane", "waiting in the inbox, not typed", "not sent" or "may have arrived, will not be sent again".
-"held: draft present" or "held: turn running" means Collie types it when the box clears or the turn ends,
+"typed into the pane" means the message went in as a prompt, typed on the screen or handed to the agent
+directly. "held: draft present" or "held: turn running" means Collie puts it in when the box clears or the turn ends,
 up to 60 minutes. Wait. Do not send it again. If a send says "waiting in the inbox", do not send it again:
 it waits there. If it says "may have arrived", do not send it again either: it may already be there. For a
 pane on another machine, "queued (outcome known on the lead)" also means wait.

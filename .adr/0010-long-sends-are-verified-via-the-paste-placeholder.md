@@ -166,3 +166,9 @@ folds instead. opencode counts its fold `[Pasted ~N lines]` by lines, not by lin
 2026-11-09, opencode 1.19.5 and 2.2.6: one line folds to `~1`, 30 lines to `~30`). The profile says
 so in `paste.foldLines: "lines"`, and S1 reads the count that way for that profile only. Claude keeps
 the line-break count, the default. Every other rule of the addendum above holds as written.
+
+## Note 2026-11-13 (ADR 0140)
+
+This record is about the screen path. A plain send to a session whose harness is linked (`collie harness link`)
+goes to a part inside the agent as data and is never typed, so no paste placeholder is read for it.
+Every send that keeps the screen path follows this record as written.

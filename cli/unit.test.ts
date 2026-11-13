@@ -22,10 +22,12 @@ import {
   taskWorkingDirectory,
   unitDirectives,
   unitFilePath,
+  serviceSpec,
   windowsArg,
   xmlAscii,
   xmlEscape,
 } from "./unit.ts";
+import { context } from "./fakes.ts";
 import { parseSuperviseArgs, parseWindowsArgs } from "./task-scheduler.ts";
 
 // The service definition is the one artifact an operator never sees us write and can't easily
@@ -516,5 +518,18 @@ describe("the Task Scheduler task (Windows)", () => {
     const win = hostFor("win32");
     expect(taskFilePath("C:\\cfg", null, win)).toBe("C:\\cfg\\herdr.collie.task.xml");
     expect(taskFilePath("C:\\cfg", "v1", win)).toBe("C:\\cfg\\herdr.collie-v1.task.xml");
+  });
+});
+
+describe("the parts folder in the service (M99 spec 09)", () => {
+  test("a default folder writes no line; a moved one is pinned in the unit and the plist", () => {
+    expect(serviceSpec(context({})).partsDir).toBeNull();
+    expect(bridgeEnvironment(serviceSpec(context({}))).COLLIE_PARTS_DIR).toBeUndefined();
+    const moved = serviceSpec(context({ XDG_CONFIG_HOME: "/data/cfg" }));
+    expect(moved.partsDir).toBe(join("/data/cfg", "collie", "inside"));
+    expect(systemdUnit(moved)).toContain(`Environment=COLLIE_PARTS_DIR=${join("/data/cfg", "collie", "inside")}`);
+    expect(launchAgentPlist(moved)).toContain("<key>COLLIE_PARTS_DIR</key>");
+    // A relative XDG value is ignored on both sides: nothing to pin.
+    expect(serviceSpec(context({ XDG_CONFIG_HOME: "cfg" })).partsDir).toBeNull();
   });
 });

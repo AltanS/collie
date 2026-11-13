@@ -86,6 +86,15 @@ describe("the lead's pane list for a member's `who` (M98 spec 04)", () => {
     expect(readWhoAnswer(wire({ targets: [{ ...row, walky: "yes" }] }))).toEqual([row]);
   });
 
+  test("carries a row's name, who set it and the agent's title; drops a field that is not one", () => {
+    const named = { ...row, name: "dialog pings", nameBy: "harness" as const, title: "Dialog ping sounds" };
+    expect(readWhoAnswer(wire({ targets: [named] }))).toEqual([named]);
+    expect(readWhoAnswer(wire({ targets: [{ ...row, name: 3, nameBy: "robot", title: "" }] }))).toEqual([row]);
+    expect(readWhoAnswer(wire({ targets: [{ ...row, name: "lead", nameBy: "robot" }] }))).toEqual([{ ...row, name: "lead" }]);
+    const long = "x".repeat(500);
+    expect(readWhoAnswer(wire({ targets: [{ ...row, title: long }] }))![0]!.title!.length).toBe(120);
+  });
+
   test("a body that is no list is null, never a throw", () => {
     for (const body of [{}, { targets: "x" }, [row], null, "x"]) expect(readWhoAnswer(wire(body))).toBeNull();
     expect(readWhoAnswer(undefined)).toBeNull();

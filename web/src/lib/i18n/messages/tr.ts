@@ -1142,7 +1142,6 @@ export const tr: Dictionary = {
   "newPage.branch.note": "Kendi klasöründe yeni bir dal; böylece bu ajan başka bir ajanın dosyalarını değiştirmez.",
   "newPage.branch.name": "Dal adı",
   "newPage.branch.folder": "Dal klasörü",
-  "newPage.branch.folder.default": "Herdr varsayılanı",
   "newPage.branch.folder.other": "Başka klasör",
   "newPage.branch.parent": "Dal klasörünü şuraya koy",
   "newPage.branch.target": "Yeni klasör: {path}",
@@ -2680,8 +2679,6 @@ export const tr: Dictionary = {
   "walky.sheet.notHeld": "Tutulmuyor. Geri alınacak bir şey yok.",
   "walky.sheet.elsewhere": "Başka bir makinede tutuluyor. Oraya geri götürün. İptal edilmedi.",
   "walky.sheet.takeBackFailed": "Geri alınamadı: {error}",
-  "walky.held.mark.one": "Kutunun boşalması için {count} mesaj bekliyor",
-  "walky.held.mark.other": "Kutunun boşalması için {count} mesaj bekliyor",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Gönderme seçenekleri",
   "walky.composer.sendAsMessage": "Mesaj olarak gönder",

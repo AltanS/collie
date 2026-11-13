@@ -570,10 +570,25 @@ member runs 1.18.0.
 If the lead cannot read a member's answer to mask it, it does not pass the answer on. The phone then
 shows that read as failed, as it does for a member it cannot reach.
 
-A push notification also names a pane only by the name you gave it: the pane's label, Claude's
-`/rename` name, or a one-pane tab's name. It never uses the title a program in the pane set, because
-any program can set that title, and a title can hold a path, a command or a secret. A pane with no
-such name is called by its harness, for example `claude`.
+A push notification names a pane by its session name, in this order: the pane's label in Collie, a
+name you set in the harness (Claude Code's `/rename`, pi's `/name`), the title the agent gave its
+session in its own log, or a one-pane tab's name. A pane with none of these is called by its harness,
+for example `claude`. A push never uses the terminal title, which any program in the pane can set
+with an escape sequence.
+
+The agent's own title is text the agent wrote, so it can hold a path, a command or a secret. Collie
+strips control and direction characters from it and cuts it to 80 characters. With `COLLIE_REDACT`
+on, Collie masks it in the app and in the push, as it masks the terminal title. With the mask off, a
+push can show that title on your lock screen and send it through the browser's push service.
+
+Collie keeps the last names of up to 512 sessions in `session-titles.json` in its state folder, with
+owner-only access, so a name stays after a restart. With `COLLIE_REDACT` on, it keeps only the name you
+set there, never the agent's title.
+
+The prompt cache watch list names a pane the same way, after its workspace. Collie stores that label
+in `cache-watch.json` in its state folder and shows it in the watch list. With `COLLIE_REDACT` on,
+Collie masks the label before it stores it and again when it lists it, so a label stored with the mask
+off is masked in the list too.
 
 ## Sent: the shell lines you sent
 

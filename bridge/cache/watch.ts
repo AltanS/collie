@@ -26,6 +26,7 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
+import { redactText } from "../redact.ts";
 import { sentMarkOf, UNSEEN_GRACE_MS, watchIdOf, watchKeyOf, type WatchIdentity } from "./watch-key.ts";
 
 export { sentMarkOf, UNSEEN_GRACE_MS, watchIdOf, watchKeyOf, type WatchIdentity };
@@ -126,8 +127,13 @@ export class CacheWatchStore implements CacheWatchLedger {
 
   private readonly file: string;
 
+  /**
+   * `redact` is `COLLIE_REDACT`. A label can hold the title the agent gave its session (pane-name.ts
+   * `givenName`), which is agent text, so with the mask on it is masked before it is stored and again
+   * when it is listed: a file written with the mask off lists masked once the mask is on.
+   */
   constructor(
-    private readonly cfg: { stateDir: string },
+    private readonly cfg: { stateDir: string; redact?: boolean },
     private readonly now: () => number = () => Date.now(),
   ) {
     this.file = join(cfg.stateDir, "cache-watch.json");
@@ -171,7 +177,7 @@ export class CacheWatchStore implements CacheWatchLedger {
     const key = watchKeyOf(identity);
     this.entries = this.entries.filter((e) => watchKeyOf(e) !== key);
     if (on) {
-      const entry: CacheWatchEntry = { ref: identity.ref, label, lastSeenAt: this.now() };
+      const entry: CacheWatchEntry = { ref: identity.ref, label: this.shown(label), lastSeenAt: this.now() };
       if (identity.host !== undefined) entry.host = identity.host;
       if (identity.session !== undefined) entry.session = identity.session;
       this.entries.push(entry);
@@ -201,13 +207,18 @@ export class CacheWatchStore implements CacheWatchLedger {
    */
   list(paneIdFor: (entry: CacheWatchEntry) => string | undefined): CacheWatchListEntry[] {
     return this.entries.map((entry) => {
-      const row: CacheWatchListEntry = { id: watchIdOf(watchKeyOf(entry)), label: entry.label };
+      const row: CacheWatchListEntry = { id: watchIdOf(watchKeyOf(entry)), label: this.shown(entry.label) };
       if (entry.host !== undefined) row.host = entry.host;
       if (entry.session !== undefined) row.session = entry.session;
       const paneId = paneIdFor(entry);
       if (paneId !== undefined) row.paneId = paneId;
       return row;
     });
+  }
+
+  /** A label as it may be stored and read: masked while `COLLIE_REDACT` is on. The mask is idempotent. */
+  private shown(label: string): string {
+    return this.cfg.redact === true ? redactText(label) : label;
   }
 
   /**

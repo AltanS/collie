@@ -19,6 +19,12 @@ import {
   parseEnvelopeHeader,
   signerOf,
   standingOf,
+  graceLeftMs,
+  oldestWaitingSince,
+  ownerStateWord,
+  waitKindOf,
+  waitReasonOf,
+  WALKY_MARK_GRACE_MS,
   stateWord,
   targetWord,
   verifiedWord,
@@ -253,6 +259,32 @@ describe("the words", () => {
     expect(stateWord({ ...receipt, state: "accepted", reason: "draft present" })).toBe("held: that session has unsent text");
     expect(stateWord({ ...receipt, state: "accepted", reason: "turn running" })).toBe("held: that session is busy");
     expect(stateWord({ ...receipt, state: "accepted", reason: "" })).toBe("queued");
+  });
+
+  it("reads a message that reached this pane in the owner's words: waiting for what, and delivered with the text kept", () => {
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "draft present" })).toBe("Waiting, because you have unsent text");
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "turn running" })).toBe("Waiting, because the agent is busy");
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "resting" })).toBe("Waiting: that session rests");
+    expect(ownerStateWord({ ...receipt, state: "delivered", via: "data" })).toBe("Delivered. Your text is still in the box.");
+    // Every other state reads as it always did: a typed message is "typed into the pane".
+    expect(ownerStateWord({ ...receipt, state: "delivered" })).toBe("typed into the pane");
+    expect(ownerStateWord({ ...receipt, state: "inbox-only" })).toBe("waiting in the inbox, not typed");
+    expect(ownerStateWord({ ...receipt, state: "accepted", reason: "outcome known on the lead" })).toBe(stateWord({ ...receipt, state: "accepted", reason: "outcome known on the lead" }));
+  });
+
+  it("tells what a message waits for, one reason or a mix, and when the oldest began to wait", () => {
+    const row = (reason: string, at: number): WalkyRow => ({ ...fixtureWalkyAgent, receipt: { ...receipt, state: "accepted", reason, at } });
+    expect(waitReasonOf({ ...receipt, state: "accepted", reason: "draft present" })).toBe("text");
+    expect(waitReasonOf({ ...receipt, state: "accepted", reason: "turn running" })).toBe("busy");
+    expect(waitReasonOf({ ...receipt, state: "accepted", reason: "resting" })).toBe("other");
+    expect(waitKindOf([row("draft present", 1), row("draft present", 2)])).toBe("text");
+    expect(waitKindOf([row("turn running", 1)])).toBe("busy");
+    expect(waitKindOf([row("draft present", 1), row("turn running", 2)])).toBe("other");
+    expect(waitKindOf([])).toBe("other");
+    expect(oldestWaitingSince([row("draft present", 500), row("turn running", 300)])).toBe(300);
+    expect(oldestWaitingSince([])).toBeNull();
+    expect(graceLeftMs(1_000, 1_000 + WALKY_MARK_GRACE_MS)).toBe(0);
+    expect(graceLeftMs(1_000, 1_000)).toBe(WALKY_MARK_GRACE_MS);
   });
 
   it("words the bridge's known reasons for a person and leaves an unknown reason as the bridge wrote it (M80 spec 12)", () => {

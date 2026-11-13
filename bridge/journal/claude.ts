@@ -46,6 +46,8 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount } from "./cache-probe.ts";
+import { newestOf, stringField } from "./name-probe.ts";
+import type { NameReading } from "../session-title.ts";
 import { choicesBeforeFirstTurn, claudeResets, effortChosenAfter, lastTwoTurns, modelChoiceAfter } from "./claude-resets.ts";
 // The shared guard on what an image block may become. It lives in pi's adapter because it also
 // resolves pi's `blob:sha256:` refs against pi's own store, and `bridge/server.ts` reaches for it
@@ -1395,6 +1397,7 @@ export function claudeJournal(roots: string | readonly string[]): JournalAdapter
     reducer: () => createClaudeReducer(),
     cacheProbe: (ref) => claudeCacheProbe(source, ref),
     choiceProbe: (ref) => claudeChoiceProbe(source, ref),
+    nameProbe: (ref) => claudeNameProbe(source, ref),
     // Proven 2026-10-07 on a throwaway pane under Herdr 0.9.3: with two messages queued behind a
     // running tool, `ctrl+Enter` through `POST /api/pane/:id/keys` made Claude Code write a `remove`
     // row for BOTH (`absorbed_mid_turn`) and the "ctrl+enter to send now" hint went away. NOT on tmux
@@ -1469,6 +1472,35 @@ async function claudeChoiceProbe(source: ClaudeTranscriptSource, ref: AgentSessi
   }
   if (effort !== undefined) choices.effort = effort;
   return choices;
+}
+
+/**
+ * What Claude Code's log calls the session (JournalAdapter.nameProbe), off the cache probe's 128 KB tail.
+ *
+ * Three bookkeeping rows carry a name, and Claude Code writes them again every few turns, so the tail
+ * holds the newest of each (measured 2026-11-13 on 2.1.3xx: one set per turn in a 1,050-row log).
+ * `custom-title` (`customTitle`) is the `/rename` name and `agent-name` (`agentName`) repeats it: both are
+ * the person's. `ai-title` (`aiTitle`) is the title Claude Code wrote itself. An empty string clears
+ * one. A tail with neither row says nothing, and the tracker keeps the last name it knew.
+ */
+async function claudeNameProbe(source: ClaudeTranscriptSource, ref: AgentSessionRef): Promise<NameReading | null> {
+  const tail = await probeTail(source, ref);
+  if (tail === null) return null;
+  return claudeNamesOf(tail.lines);
+}
+
+/** The names in a window of Claude Code rows, newest wins (see {@link claudeNameProbe}). Pure. */
+export function claudeNamesOf(lines: readonly string[]): NameReading {
+  const reading: NameReading = {};
+  const person = newestOf(lines, (row) => {
+    if (row.type === "custom-title") return stringField(row, "customTitle");
+    if (row.type === "agent-name") return stringField(row, "agentName");
+    return undefined;
+  });
+  if (person !== undefined) reading.person = person.trim() === "" ? null : person;
+  const agent = newestOf(lines, (row) => (row.type === "ai-title" ? stringField(row, "aiTitle") : undefined));
+  if (agent !== undefined) reading.agent = agent.trim() === "" ? null : agent;
+  return reading;
 }
 
 /**

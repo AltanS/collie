@@ -40,6 +40,7 @@ import { attestationString, signMessage, verifyMessage, voucherString } from "./
 import { cleanBody } from "./clean.ts";
 import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
+import { namesOfPane, withNames } from "./names.ts";
 import { readCrewDelivery, readErrorText, readMessage, readOutcomesPush, readReceiptsAnswer, readWalkyCursor, readWhoAnswer, type CrewSenderBlock, type WalkyReportBody } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
 import { spaceOfPane } from "./space.ts";
@@ -781,7 +782,9 @@ export function crewTargets(members: readonly CrewMemberView[], titles: boolean)
         state: member.reachable ? pane.status : "unreachable",
         space: spaceOfPane(member.memberId, pane),
       };
-      out.push(pane.walkyOff === true ? { ...target, walky: "off" } : target);
+      // The names ride the census: a member before 1.29.0 sends no agentTitle, and its rows carry none.
+      const named = withNames(target, namesOfPane(pane, titles));
+      out.push(pane.walkyOff === true ? { ...named, walky: "off" } : named);
     }
   }
   return out;

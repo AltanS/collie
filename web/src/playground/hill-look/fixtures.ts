@@ -1,5 +1,6 @@
-// The fixtures of the "Hill look" section (M96 design round, 2026-11-09): four cases every option
-// draws, so the options compare on the same data. DEV-ONLY, like the rest of `src/playground/`.
+// The fixtures of the "Hill look" round (M96, 2026-11-09): four cases every option drew, so the options
+// compared on the same data. The round is decided and gone; the Hill entry (sections/hill.tsx) draws the
+// chosen look on these cases. DEV-ONLY, like the rest of `src/playground/`.
 //
 // The senders are "collie lead" (Claude, lodge), "m96-hill" (Codex, workshop) and the "Browser leg"
 // trick; the tricks are the ones the trick sections already use, plus a few more for the busy strip.

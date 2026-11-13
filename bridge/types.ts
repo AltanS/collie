@@ -71,14 +71,23 @@ export interface AgentView {
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
-   * The harness's OWN session name, set in-agent by the operator: Claude's via `/rename`, read
-   * out of the pane's rendered text (see `extractClaudeSessionName` in state-engine.ts), and
-   * Muse's user-given name, read out of its journal's `session.name.changed` rows (see
-   * `museSessionNameReader` in journal/muse.ts) — never Muse's automatic session name, which
-   * every session carries and the operator never chose. Derived, not a wire field — absent for
-   * unnamed sessions and every other harness. Display priority is `paneLabel` first.
+   * The harness's OWN session name, set in-agent by the person: read from the harness's journal by
+   * its adapter (journal/*.ts `nameProbe`: Claude's `/rename` rows, pi's `/name`, an Oh My Pi title the
+   * person set), else off the screen where a harness paints it and the journal is out of reach
+   * (Claude's `/rename` name, `extractClaudeSessionName` in state-engine.ts), else Muse's user-given
+   * name from its journal (`museSessionNameReader` in journal/muse.ts). Cleaned by the one normalizer
+   * (session-title.ts). Absent for an unnamed session. Display priority is `paneLabel` first
+   * (pane-name.ts).
    */
   sessionName?: string;
+  /**
+   * The title the agent gave its session itself, from the harness's journal (journal/*.ts `nameProbe`):
+   * Claude's `ai-title`, Oh My Pi's automatic title, OpenCode's session title. Cleaned by the one
+   * normalizer (session-title.ts) and, with COLLIE_REDACT on, masked like the terminal title, because
+   * the agent wrote it. It names the pane after the two hand-set names and before a sole tab's name
+   * (pane-name.ts). Absent when the harness keeps none, and from an older peer.
+   */
+  agentTitle?: string;
   /**
    * How the agent named its session (Herdr `agent_session`), when it named one at all.
    *
@@ -1379,10 +1388,12 @@ export interface PaneReadResponse {
   /** Herdr's monotonic pane revision — passed through for the client's prompt-select race guard. */
   revision: number;
   /**
-   * The same rows with soft wraps undone, present only when the grid shows a URL the pane's width
-   * cut in two (`hasSplitUrl`). The mirror keeps rendering `text`; the client uses this to give the
-   * fragments of one URL the href of the whole URL. ABSENT rather than empty when there is nothing
-   * to repair — the payload stays byte-identical to what it was for every other pane.
+   * The same rows with soft wraps undone. By default, present (with SGR stripped) only when the grid
+   * shows a URL the pane's width cut in two (`hasSplitUrl`): the mirror keeps rendering `text`, and
+   * the client uses this to give the fragments of one URL the href of the whole URL, while the
+   * payload stays byte-identical for every other pane. With `?logical=1`, always present on a
+   * multiplexer that implements `readLogicalText` (Herdr, Tern) with SGR styling preserved; still
+   * absent when the multiplexer has no logical read.
    */
   logicalText?: string;
   /**
@@ -1760,6 +1771,21 @@ export type WorktreeCreateResponse =
 
 
 /**
+ * GET /api/worktree/folder, and the answer to POST /api/worktree/folder/set: this machine's "Worktree
+ * folder" setting (ADR 0093, note of 2026-11-13). `dir` is the stored string, `null` when unset. `path`
+ * is its real path when it passes the folder rule now, and `problem` is the refusal when it does not;
+ * neither is set when `dir` is `null`. `fallback` is the folder the default uses while the setting is
+ * unset: Herdr's `[worktrees] directory`, else `~/.herdr/worktrees`.
+ */
+export interface WorktreeFolderSettingResponse {
+  ok: true;
+  dir: string | null;
+  path?: string;
+  problem?: { error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+  fallback: string;
+}
+
+/**
  * GET /api/worktree/plan — what a branch from a folder would be, before Start (M48, ADR 0093).
  *
  * `repoRoot` is the repo's main checkout, as a real path. `defaultBranch` is what a create with
@@ -1781,6 +1807,13 @@ export type WorktreePlanResponse =
       remembered?: { base: "default" | "current"; folder: "default" | "parent"; parent?: string };
       branchValid?: boolean;
       defaultTarget?: { path: string; exists: boolean; reason?: string };
+      /**
+       * Where `defaultTarget` comes from: the machine's "Worktree folder" setting, or Herdr's rule
+       * (its config directory, else `~/.herdr/worktrees`). Answered with `defaultTarget`.
+       */
+      defaultSource?: "setting" | "rule";
+      /** The setting is set and fails the folder rule right now, so there is no `defaultTarget`; a create would refuse. */
+      defaultRefusal?: { error: string; code?: ErrorCode; detail?: ApiErrorDetail };
       parentTarget?:
         | { ok: true; path: string }
         | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };

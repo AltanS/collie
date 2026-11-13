@@ -11,6 +11,7 @@ import { fetchHistory } from "@/lib/api";
 import { HISTORY_PAGE_SIZE, type HistoryData } from "@/lib/loaders";
 import { paneSessionLog, useMuxCapability } from "@/lib/mux-capability";
 import { panePath } from "@/lib/nav";
+import { givenName } from "@/lib/pane-name";
 import { setStatus } from "@/lib/status";
 import { matchingIndexed, searchIndex, step, userTurnIndices } from "@/lib/transcript-search";
 import type { TranscriptEntry } from "@/lib/types";
@@ -217,7 +218,7 @@ export function HistoryRoute() {
     listRef.current?.scrollToBottom();
   }, []);
 
-  const title = agent?.paneLabel ?? agent?.sessionName ?? agent?.workspaceLabel ?? paneId;
+  const title = (agent === undefined ? null : givenName(agent)) ?? agent?.workspaceLabel ?? paneId;
   const matchCursor = matches.indexOf(cursor);
 
   return (

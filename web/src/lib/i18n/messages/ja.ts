@@ -1214,7 +1214,6 @@ export const ja: Dictionary = {
   "newPage.branch.note": "専用フォルダーに新しいブランチを作り、このエージェントが他のファイルを変更しないようにします。",
   "newPage.branch.name": "ブランチ名",
   "newPage.branch.folder": "ブランチのフォルダー",
-  "newPage.branch.folder.default": "Herdr の既定",
   "newPage.branch.folder.other": "別のフォルダー",
   "newPage.branch.parent": "ブランチのフォルダーを作る場所",
   "newPage.branch.target": "新しいフォルダー: {path}",
@@ -2840,8 +2839,6 @@ export const ja: Dictionary = {
   "walky.sheet.notHeld": "保留されていません。取り消すものはありません。",
   "walky.sheet.elsewhere": "別のマシンで保持されています。そのマシンに戻してください。キャンセルされていません。",
   "walky.sheet.takeBackFailed": "取り消されませんでした: {error}",
-  "walky.held.mark.one": "{count} 件のメッセージがボックスのクリアを待機しています",
-  "walky.held.mark.other": "{count} 件のメッセージがボックスのクリアを待機しています",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "送信オプション",
   "walky.composer.sendAsMessage": "メッセージとして送信",

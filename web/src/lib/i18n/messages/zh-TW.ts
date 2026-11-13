@@ -1199,7 +1199,6 @@ export const zhTW: Dictionary = {
   "newPage.branch.note": "在獨立資料夾中建立新分支，這樣此代理不會改動另一個的檔案。",
   "newPage.branch.name": "分支名稱",
   "newPage.branch.folder": "分支資料夾",
-  "newPage.branch.folder.default": "Herdr 預設位置",
   "newPage.branch.folder.other": "其他資料夾",
   "newPage.branch.parent": "把分支資料夾放在",
   "newPage.branch.target": "新資料夾：{path}",
@@ -2814,8 +2813,6 @@ export const zhTW: Dictionary = {
   "walky.sheet.notHeld": "未暫留，無法收回。",
   "walky.sheet.elsewhere": "已暫留在另一台機器上。請到那台機器上收回。並未取消。",
   "walky.sheet.takeBackFailed": "未收回：{error}",
-  "walky.held.mark.one": "有 {count} 則訊息正在等待對話框清空",
-  "walky.held.mark.other": "有 {count} 則訊息正在等待對話框清空",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "傳送選項",
   "walky.composer.sendAsMessage": "以訊息傳送",

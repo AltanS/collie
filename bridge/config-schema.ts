@@ -245,6 +245,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "sendProtocol",
   },
   {
+    key: "inside",
+    env: "COLLIE_INSIDE",
+    section: "bridge",
+    kind: "bool",
+    default: false,
+    doc: "Experimental (M99): the inside wire's switch. Unset, it is on while `collie harness link` has linked a harness on this machine, so a linked agent part can take sends, asks and wake events as data. Off keeps the screen path for every session; on opens the socket with no link.",
+    configField: "inside",
+  },
+  {
     key: "walky",
     env: "COLLIE_WALKY",
     section: "bridge",

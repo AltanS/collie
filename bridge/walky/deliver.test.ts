@@ -14,6 +14,8 @@ import { RowRing, SendProtocol, SessionLocks } from "../surface/protocol.ts";
 import { SurfaceShadow } from "../surface/shadow.ts";
 import type { AgentView } from "../types.ts";
 import { RequestStore } from "../surface/requests.ts";
+import { DATA_PANE, dataRig } from "../inside/data-rig.ts";
+import { releasesHeld } from "../inside/wake.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, HELD_LIMIT_MS, HELD_POLL_MS, isResting, REST_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { RateLimiter } from "./rate.ts";
@@ -2210,5 +2212,266 @@ describe("the space border (M98 spec 03)", () => {
       expect(await r.service.receive(message("wt_aaaaaaaaaaa1"), "lead", true, undefined, "w1:p8")).toMatchObject([{ target: "laptop/w1:p8", state: "accepted" }]);
       expect(await r.service.receive(message("wt_aaaaaaaaaaa2"), "lead", true, undefined, "w2:p9")).toMatchObject([{ target: "laptop/w2:p9", state: "refused", reason: OUT_OF_SCOPE }]);
     });
+  });
+});
+
+// ── WalkyTalky by data (M99 spec 05) ──
+//
+// The real Send Protocol of the data rig (bridge/surface/data-rig.ts), a real inside hub and socket, a
+// fake part bound to the pane, and walky over it as index.ts wires it. Only the last step changes: the
+// envelope goes to the part as `mail`, and the mux is never asked to type.
+
+describe("WalkyTalky by data (M99 spec 05)", () => {
+  async function linked(options: { readonly capabilities?: string[]; readonly wordMs?: number; readonly draft?: boolean | null } = {}) {
+    const data = await dataRig({ harness: "claude", version: "2.1.200", wordMs: options.wordMs ?? 800 });
+    roots.push(join(data.socket, "..", ".."));
+    // The part says its box once after hello, as the Claude mod does: no draft unless the test says. `null`: it says nothing.
+    const draft = options.draft === undefined ? false : options.draft === null ? undefined : options.draft;
+    const part = await data.part(options.capabilities === undefined ? {} : { capabilities: options.capabilities }, draft === undefined ? {} : { draft });
+    const host: WalkyHost = {
+      panes: () => [pane(DATA_PANE.paneId, { harness: "claude" })],
+      send: async (target, sendId, text, hold) => {
+        const answer = await data.protocol.handle(hold === undefined ? { id: sendId, text, mode: "send", fromPhone: false } : { id: sendId, text, mode: "send", fromPhone: false, draftHolds: true, holdUntil: hold.holdUntil }, {
+          session: target.session,
+          paneId: target.paneId,
+          harness: "claude",
+        });
+        return answer.receipt === undefined ? { outcome: "unknown" } : answer.receipt.reason === undefined ? { outcome: answer.receipt.outcome } : { outcome: answer.receipt.outcome, reason: answer.receipt.reason };
+      },
+      sendState: (sendId) => {
+        const receipt = data.store.get(sendId)?.receipt;
+        if (receipt === undefined) return null;
+        const why = receipt.outcome === "held" ? (data.holds.get(sendId)?.cause ?? receipt.reason) : receipt.reason;
+        return why === undefined ? { outcome: receipt.outcome } : { outcome: receipt.outcome, reason: why };
+      },
+      cancelHeld: (session, paneId, sendId) => void data.protocol.cancelHeld(session, paneId, sendId),
+    };
+    const root = mkdtempSync(join(tmpdir(), "walky-data-"));
+    roots.push(root);
+    const clock = { now: Date.now() };
+    const log = new WalkyLog(join(root, "walky"), () => clock.now);
+    const service = new WalkyService({
+      log,
+      host,
+      memberId: null,
+      enabled: () => true,
+      machine: "desk",
+      keyPem: () => null,
+      now: () => clock.now,
+      // A walky poll waits a real moment, so the part's events land between polls.
+      sleep: async (ms) => {
+        clock.now += ms;
+        await Bun.sleep(5);
+      },
+    });
+    return { data, part, service, log, clock };
+  }
+
+  test("by data: a message to a linked idle session goes to the part as mail; the mux is not asked to type", async () => {
+    const r = await linked();
+    try {
+      const served = r.part.serveOnce();
+      await r.service.send(send("wt_aaaaaaaaaaa1", `local/${DATA_PANE.paneId}`), operator);
+      const command = await served;
+      await r.service.deliverer.settled();
+      const sendId = sendIdOf("wt_aaaaaaaaaaa1", `local/${DATA_PANE.paneId}`);
+      // The text handed over is the text that would have been typed.
+      expect(command).toEqual({ id: sendId, kind: "mail", text: "[walky-talky wt_aaaaaaaaaaa1] from operator (cli)\nhello" });
+      expect(r.data.mux.calls).toEqual([]);
+      expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "delivered", sendId });
+      expect(r.data.store.get(sendId)?.path).toBe("data");
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("by data: a part that declares no mail keeps the screen road", async () => {
+    const r = await linked({ capabilities: ["send", "wake"] });
+    try {
+      await r.service.send(send("wt_aaaaaaaaaaa2", `local/${DATA_PANE.paneId}`), operator);
+      await r.service.deliverer.settled();
+      expect(r.data.mux.calls.length).toBeGreaterThan(0);
+      expect(r.data.hub.stateOf(sendIdOf("wt_aaaaaaaaaaa2", `local/${DATA_PANE.paneId}`))).toBeNull();
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("held by data: a running turn holds the message, and the turn-end event releases it", async () => {
+    const r = await linked();
+    try {
+      r.data.hub.listen({ event: (bound, event) => void (event.kind === "turn.end" ? r.data.protocol.releaseOnTurnEnd(bound.address.session, bound.address.paneId) : null) });
+      await r.part.event("turn.start", { turn: "t1" });
+      await r.service.send(send("wt_aaaaaaaaaaa3", `local/${DATA_PANE.paneId}`), operator);
+      const sendId = sendIdOf("wt_aaaaaaaaaaa3", `local/${DATA_PANE.paneId}`);
+      for (let i = 0; i < 200 && r.service.status("wt_aaaaaaaaaaa3").receipts[0]?.reason !== "turn running"; i++) await Bun.sleep(5);
+      expect(r.service.status("wt_aaaaaaaaaaa3").receipts[0]).toMatchObject({ state: "accepted", reason: "turn running" });
+      expect(r.data.hub.stateOf(sendId)).toBeNull();
+      const served = r.part.serveOnce({ waitMs: 3000 });
+      await r.part.event("turn.end", { turn: "t1" });
+      expect((await served)?.kind).toBe("mail");
+      await r.service.deliverer.settled();
+      expect(r.service.status("wt_aaaaaaaaaaa3").receipts[0]?.state).toBe("delivered");
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  /** The pane's oldest held send goes at the part's turn end or its "no draft any more", as index.ts wires it. */
+  function releaseLikeIndex(r: Awaited<ReturnType<typeof linked>>): void {
+    r.data.hub.listen({
+      event: (bound, event) => {
+        if (releasesHeld(event, r.data.hub.turnOf(bound.address))) void r.data.protocol.releaseOnTurnEnd(bound.address.session, bound.address.paneId);
+      },
+    });
+  }
+
+  async function receiptReason(r: Awaited<ReturnType<typeof linked>>, id: string, reason: string): Promise<void> {
+    for (let i = 0; i < 200 && r.service.status(id).receipts[0]?.reason !== reason; i++) await Bun.sleep(5);
+  }
+
+  test("held by data: a draft in the box holds the message; nothing goes to the part while it stands", async () => {
+    // Decision of 2026-11-13: another agent's words never go in over the person's draft.
+    const r = await linked({ draft: true });
+    try {
+      await r.service.send(send("wt_aaaaaaaaaaa4", `local/${DATA_PANE.paneId}`), operator);
+      const sendId = sendIdOf("wt_aaaaaaaaaaa4", `local/${DATA_PANE.paneId}`);
+      await receiptReason(r, "wt_aaaaaaaaaaa4", "draft present");
+      expect(r.service.status("wt_aaaaaaaaaaa4").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+      // Held by the bridge: nothing queued for the part, and no key typed.
+      expect(r.data.hub.stateOf(sendId)).toBeNull();
+      expect((await r.part.next({ waitMs: 1000 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+      expect(r.data.holds.get(sendId)?.cause).toBe("draft_present");
+      // A turn end with the draft still there does not let it go.
+      releaseLikeIndex(r);
+      await r.part.event("turn.end", { turn: "t9" });
+      expect((await r.part.next({ waitMs: 1000 })).status).toBe(204);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("held by data: the draft clears and the message goes once, as mail, with no key typed", async () => {
+    const r = await linked({ draft: true });
+    try {
+      releaseLikeIndex(r);
+      await r.service.send(send("wt_aaaaaaaaaa41", `local/${DATA_PANE.paneId}`), operator);
+      const sendId = sendIdOf("wt_aaaaaaaaaa41", `local/${DATA_PANE.paneId}`);
+      await receiptReason(r, "wt_aaaaaaaaaa41", "draft present");
+      const served = r.part.serveOnce({ waitMs: 3000 });
+      await r.part.event("draft.state", { present: false });
+      expect(await served).toEqual({ id: sendId, kind: "mail", text: "[walky-talky wt_aaaaaaaaaa41] from operator (cli)\nhello" });
+      await r.service.deliverer.settled();
+      expect(r.service.status("wt_aaaaaaaaaa41").receipts[0]?.state).toBe("delivered");
+      // Exactly once: more "no draft" words and a turn end hand out nothing more.
+      await r.part.event("draft.state", { present: false });
+      await r.part.event("turn.end", { turn: "t10" });
+      expect((await r.part.next({ waitMs: 1000 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("held by data: the part finds a draft as it submits, submits nothing, and the message waits, then goes once under a new id", async () => {
+    // The race: the person starts typing after the bridge read "no draft" and before the part submits.
+    // The part reads the box right before its submit and answers `failed` with reason `draft`.
+    const r = await linked();
+    try {
+      releaseLikeIndex(r);
+      const first = r.part.serveOnce({ failReason: "draft" });
+      await r.service.send(send("wt_aaaaaaaaaa42", `local/${DATA_PANE.paneId}`), operator);
+      const sendId = sendIdOf("wt_aaaaaaaaaa42", `local/${DATA_PANE.paneId}`);
+      expect((await first)?.id).toBe(sendId);
+      await r.part.event("draft.state", { present: true });
+      await receiptReason(r, "wt_aaaaaaaaaa42", "draft present");
+      expect(r.service.status("wt_aaaaaaaaaa42").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+      const second = r.part.serveOnce({ waitMs: 3000 });
+      await r.part.event("draft.state", { present: false });
+      const again = await second;
+      expect(again?.kind).toBe("mail");
+      expect(again?.id).not.toBe(sendId);
+      await r.service.deliverer.settled();
+      expect(r.service.status("wt_aaaaaaaaaa42").receipts[0]?.state).toBe("delivered");
+      expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("by data: a part that cannot say whether the box holds a draft keeps the screen road for mail", async () => {
+    // No `draft.state` declared, and declared but not said yet: unknown is never "no draft".
+    const cases: { readonly capabilities?: string[]; readonly draft?: null }[] = [{ capabilities: ["send", "mail", "draft", "wake"] }, { draft: null }];
+    for (const options of cases) {
+      const r = await linked(options);
+      try {
+        await r.service.send(send("wt_aaaaaaaaaa43", `local/${DATA_PANE.paneId}`), operator);
+        await r.service.deliverer.settled();
+        expect(r.data.hub.stateOf(sendIdOf("wt_aaaaaaaaaa43", `local/${DATA_PANE.paneId}`))).toBeNull();
+        expect(r.data.mux.calls.length).toBeGreaterThan(0);
+      } finally {
+        r.data.stop();
+      }
+    }
+  });
+
+  test("held by data: the part is replaced while the message waits; the new part's word releases it once", async () => {
+    const r = await linked({ draft: true });
+    try {
+      releaseLikeIndex(r);
+      await r.service.send(send("wt_aaaaaaaaaa44", `local/${DATA_PANE.paneId}`), operator);
+      const sendId = sendIdOf("wt_aaaaaaaaaa44", `local/${DATA_PANE.paneId}`);
+      await receiptReason(r, "wt_aaaaaaaaaa44", "draft present");
+      // A reload: a new part for the same pane. It has not said its box yet, and the message stays held.
+      const fresh = await r.data.part({}, { idle: false });
+      expect((await r.part.next({ waitMs: 1000 })).status).toBe(410);
+      expect(r.data.hub.draftOf(DATA_PANE)).toBeNull();
+      expect(r.service.status("wt_aaaaaaaaaa44").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+      // The new part says its box, then its turn, as the Claude mod does after a hello: the turn word releases it.
+      await fresh.event("draft.state", { present: false });
+      expect(r.data.holds.get(sendId)?.state).toBe("held");
+      const served = fresh.serveOnce({ waitMs: 3000 });
+      await fresh.event("turn.end", { turn: null });
+      expect((await served)?.id).toBe(sendId);
+      await r.service.deliverer.settled();
+      expect(r.service.status("wt_aaaaaaaaaa44").receipts[0]?.state).toBe("delivered");
+      expect((await fresh.next({ waitMs: 800 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("by data: a phone send is not held by the draft state (spec 03 unchanged)", async () => {
+    const r = await linked({ draft: true });
+    try {
+      const served = r.part.serveOnce();
+      const answer = await r.data.send("req-phone0001", "Reply with pong.");
+      expect((await served)?.kind).toBe("prompt");
+      expect(answer.receipt?.outcome).toBe("sent");
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("may have arrived: taken with no word ends unknown, and nothing is typed after", async () => {
+    const r = await linked({ wordMs: 300 });
+    try {
+      const served = r.part.serveOnce({ silent: true });
+      await r.service.send(send("wt_aaaaaaaaaaa5", `local/${DATA_PANE.paneId}`), operator);
+      await served;
+      await r.part.event("taken", { cmd: sendIdOf("wt_aaaaaaaaaaa5", `local/${DATA_PANE.paneId}`) });
+      await r.service.deliverer.settled();
+      expect(r.service.status("wt_aaaaaaaaaaa5").receipts[0]).toMatchObject({ state: "unknown", reason: "no evidence" });
+      // A replay of the same message is the stored receipt, never a typed second try.
+      await r.service.send(send("wt_aaaaaaaaaaa5", `local/${DATA_PANE.paneId}`), operator);
+      await r.service.deliverer.settled();
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
   });
 });

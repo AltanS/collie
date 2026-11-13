@@ -120,6 +120,11 @@ export interface WalkyPane {
   readonly off: boolean;
   /** The pane's space and its key (space.ts), under this bridge's member id: the border of an agent's message (M98, border.ts). */
   readonly space: WalkySpace;
+  /** The name a person gave the session and where, for `who` (types.ts `WalkyTarget.name`). Absent when none. */
+  readonly name?: string;
+  readonly nameBy?: "collie" | "harness" | "tab";
+  /** The agent's own title for the session, for `who` (types.ts `WalkyTarget.title`). Absent when none or masked. */
+  readonly title?: string;
 }
 
 /**

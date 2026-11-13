@@ -416,6 +416,10 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: a trick session's part key (M94 slice 03). Present only on a pane of
   // `kind: "trick"`, and this harness has no tricks folder, so no golden byte moved.
   view: true,
+  // Not a crew dimension: the title the agent gave its session, from its journal (bridge/session-titles.ts,
+  // added 2026-11-13). Present only when the harness wrote one, and this harness builds its engine with no
+  // title tracker, so no golden byte moved.
+  agentTitle: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -557,6 +561,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
       "actions",
       "agent",
+      "agentTitle",
       "asks",
       "badge",
       "cache",
@@ -1083,6 +1088,8 @@ describe("solo zero-tax — routes", () => {
       // create. Two SOLO routes, named here rather than exempted. Session-scoped through the gate and
       // lead-local like the worktree create: neither is forwardable.
       "/api/worktree",
+      "/api/worktree/folder",
+      "/api/worktree/folder/set",
       "/api/worktree/plan",
       "/auth",
       "/auth/*",
@@ -1160,6 +1167,7 @@ const CONFIG_KEYS = {
   stateDir: true,
   multiSession: true,
   surfaceShadow: true,
+  inside: true,
   sendProtocol: true,
   walky: true,
   walkyPairLimit: true,
@@ -1192,6 +1200,7 @@ describe("solo zero-tax — config", () => {
       "dialMode",
       "fontsDir",
       "host",
+      "inside",
       "journalRoots",
       "keysFile",
       "launchersFile",
@@ -1258,7 +1267,7 @@ describe("solo zero-tax — config", () => {
   // Read from `bridge/config-schema.ts` rather than by grepping `config.ts`'s source, because the
   // schema is now the single declaration of what every setting is (ADR 0040). The rows that carry a
   // `configField` are exactly the settings `loadConfig` resolves, which is the list §11 pins. A
-  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401), `COLLIE_KIRO_ROOT`, `COLLIE_DSH_ROOT`, the two `COLLIE_ACCESS_*` keys (ADR 0081) `COLLIE_SENT` (ADR 0107) and `COLLIE_ACCOUNT_WINDOWS` (ADR 0118) — the two
+  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401), `COLLIE_KIRO_ROOT`, `COLLIE_DSH_ROOT`, the two `COLLIE_ACCESS_*` keys (ADR 0081) `COLLIE_SENT` (ADR 0107) `COLLIE_ACCOUNT_WINDOWS` (ADR 0118) and `COLLIE_INSIDE` (M99) — the two
   // `COLLIE_MUX_ENDPOINT_<NAME>` rows collapse back to the prefix the old grep saw, because the env
   // name is built at the call site and the file key must not be.
   test("the schema names exactly today's COLLIE_* env keys — no crew enrollment key", () => {
@@ -1288,6 +1297,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_HERDR_DIAL",
       "COLLIE_HERMES_ROOT",
       "COLLIE_HOST",
+      "COLLIE_INSIDE",
       "COLLIE_KIRO_ROOT",
       "COLLIE_MAX_UPLOAD_MB",
       "COLLIE_MULTI_SESSION",
@@ -1430,6 +1440,10 @@ const STATE_DIR_ENTRIES = [
   // line. Written by use and by nothing else: absent until the first line sent to a shell pane, or the
   // first one-off run, that the skip rules keep. `COLLIE_SENT=off` never writes it.
   "sent.jsonl",
+  // The last names of each harness session (bridge/session-titles-store.ts), so a `/rename` name stays
+  // after a restart. Written by use and by nothing else: absent until a harness log first names a
+  // session. Transcripts off never builds the tracker, so it never writes it.
+  "session-titles.json",
   "snooze.json",
   // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
   // else: absent until the first starter run, which only a peer on `COLLIE_MUX=durable` can offer.
@@ -1489,6 +1503,9 @@ const STATE_DIR_ENTRIES = [
   // The New sheet's last branch choices per repo (M48). Written by use and by nothing else: absent
   // until the first branch create from a folder succeeds.
   "worktree-choices.json",
+  // The machine's Worktree folder (ADR 0093 note): one parent directory, written only by the Settings
+  // card's save and absent until a person sets one.
+  "worktree-folder.json",
   // One receipt per worktree create the phone tagged with a request id (ADR 0089), so a retried
   // create replays instead of making a second worktree. Written by use and by nothing else: absent
   // until the first create that carries an id succeeds. Driven in "the worktree receipts appear only

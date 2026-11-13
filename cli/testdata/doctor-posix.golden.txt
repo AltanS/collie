@@ -38,6 +38,10 @@ local:
                                     `/opt/collie/bin/collie`; herdr names agents
                                     itself and does not need them for that, so
                                     they give hook edges only
+  ✓        statusline-claude        no statusLine configured, and Collie adds
+                                    none (one would hide Claude Code's footer
+                                    hints), so the phone shows the context as a
+                                    token count
   skipped: beacons                  no agent has written one yet — the emitter
                                     is installed, and a beacon appears at an
                                     agent's first hook event → start (or prompt)
@@ -94,6 +98,11 @@ local:
                                     shipped rule
   ✓        cache-env                no Claude Code cache variable is set in this
                                     shell
+  ✓        link-claude              not linked: `collie harness link claude`
+                                    lets Collie send to it by data
+  ✓        link-pi                  not linked: no part for it in this build yet
+  ✓        link-omp                 not linked: no part for it in this build yet
+  ✓        link-opencode            not linked: no part for it in this build yet
   ✓        sends-agy                no sends in the last 7 days
   ✓        sends-claude             no sends in the last 7 days
   ✓        sends-codex              no sends in the last 7 days
@@ -161,6 +170,10 @@ local:
                                     `/opt/collie/bin/collie`; herdr names agents
                                     itself and does not need them for that, so
                                     they give hook edges only
+  ✓        statusline-claude        no statusLine configured, and Collie adds
+                                    none (one would hide Claude Code's footer
+                                    hints), so the phone shows the context as a
+                                    token count
   skipped: beacons                  no agent has written one yet — the emitter
                                     is installed, and a beacon appears at an
                                     agent's first hook event → start (or prompt)
@@ -217,6 +230,11 @@ local:
                                     shipped rule
   ✓        cache-env                no Claude Code cache variable is set in this
                                     shell
+  ✓        link-claude              not linked: `collie harness link claude`
+                                    lets Collie send to it by data
+  ✓        link-pi                  not linked: no part for it in this build yet
+  ✓        link-omp                 not linked: no part for it in this build yet
+  ✓        link-opencode            not linked: no part for it in this build yet
   ✓        sends-agy                no sends in the last 7 days
   ✓        sends-claude             no sends in the last 7 days
   ✓        sends-codex              no sends in the last 7 days

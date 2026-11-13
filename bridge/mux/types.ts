@@ -512,6 +512,21 @@ export interface MuxTabRequest {
 export interface MuxSpaceRequest {
   readonly cwd: string;
   readonly label?: string;
+  /**
+   * A fact about the folder, not a request: `cwd` is a linked git worktree of the repository at
+   * `repoRoot`, which is the MAIN repository root, never a linked checkout's top level. The bridge
+   * guarantees it (the worktree route reads it from git; `withRepoFacts` fills it from disk for any
+   * other caller), on the machine that owns the folder. MUX_CONTRACT.md, *A worktree space*:
+   *
+   *  - an adapter MUST open the folder and answer the same {@link MuxCreatedPane} shape with the fact
+   *    as without it, and MUST NOT refuse or answer differently because it is present;
+   *  - it MAY use the fact to file the space under its repository in its own record (Herdr's
+   *    `worktree.open`), and an adapter with no such record ignores it;
+   *  - when its own worktree call is missing or refuses, it MUST fall back to its plain open;
+   *  - a rejection that may have opened the folder (timeout, dropped connection) is a refusal the
+   *    caller can retry, and the adapter MUST NOT follow it with a plain open in the same call.
+   */
+  readonly worktree?: { readonly repoRoot: string };
 }
 
 /**
