@@ -57,7 +57,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/actions-row").then((m) => ({ default: m.ActionsRowSection })),
   },
   {
-    def: { id: "programs", group: "Durable agents", title: "Durable agents home", keywords: ["durable", "agent", "program", "conversation", "DurableHome", "ProgramSection", "AskCard", "ask", "SpaceOverview"] },
+    def: { id: "programs", group: "Durable agents", title: "Durable agents home", keywords: ["durable-agents", "agent", "program", "conversation", "DurableHome", "ProgramSection", "AskCard", "ask", "SpaceOverview"] },
     load: () => import("./sections/programs").then((m) => ({ default: m.DurableSection })),
   },
   {

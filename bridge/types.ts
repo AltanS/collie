@@ -1811,7 +1811,7 @@ export type WorktreePlanResponse =
        * Where `defaultTarget` comes from: the machine's "Worktree folder" setting, or Herdr's rule
        * (its config directory, else `~/.herdr/worktrees`). Answered with `defaultTarget`.
        */
-      defaultSource?: "setting" | "herdr";
+      defaultSource?: "setting" | "rule";
       /** The setting is set and fails the folder rule right now, so there is no `defaultTarget`; a create would refuse. */
       defaultRefusal?: { error: string; code?: ErrorCode; detail?: ApiErrorDetail };
       parentTarget?:

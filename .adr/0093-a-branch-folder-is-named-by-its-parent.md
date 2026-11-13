@@ -109,7 +109,7 @@ yet, and when it does it must be a real directory with no link; rule 6 and the c
 create. A setting that broke since it was saved is refused by the create with the folder's code, and
 the plan answers `defaultRefusal` and no `defaultTarget`, so the sheet never promises a folder the
 create would refuse. `defaultTarget` keeps one meaning, where the default will put it; the new
-`defaultSource` (`setting` or `herdr`) says which rule made it.
+`defaultSource` (`setting`, or `rule` for Herdr's config and `~/.herdr/worktrees`) says which rule made it.
 
 It is stored in `<stateDir>/worktree-folder.json` (`{ "version": 1, "dir": "~/trees" }`, 0600), a
 string, with a leading `~` kept. `GET /api/worktree/folder` reads it and `POST /api/worktree/folder/set`

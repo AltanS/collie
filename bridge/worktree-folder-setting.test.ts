@@ -233,9 +233,9 @@ const HERDR_CONFIG = (dir: string) => () => Promise.resolve(`[worktrees]\ndirect
 describe("the order of the default: the setting, then Herdr's config, then ~/.herdr/worktrees", () => {
   test("unset is Herdr's rule: its config directory, else ~/.herdr/worktrees", async () => {
     const bare = await plan({ cwd: repo, branch: "feat/x" }, undefined);
-    expect(bare).toMatchObject({ defaultSource: "herdr", defaultTarget: { path: join(home, ".herdr", "worktrees", "app", "feat-x"), exists: false } });
+    expect(bare).toMatchObject({ defaultSource: "rule", defaultTarget: { path: join(home, ".herdr", "worktrees", "app", "feat-x"), exists: false } });
     const configured = await plan({ cwd: repo, branch: "feat/x" }, undefined, HERDR_CONFIG("~/from-herdr"));
-    expect(configured).toMatchObject({ defaultSource: "herdr", defaultTarget: { path: join(home, "from-herdr", "app", "feat-x") } });
+    expect(configured).toMatchObject({ defaultSource: "rule", defaultTarget: { path: join(home, "from-herdr", "app", "feat-x") } });
   });
 
   test("set wins over Herdr's config, in Herdr's shape", async () => {

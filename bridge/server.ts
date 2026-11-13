@@ -7383,7 +7383,7 @@ export async function planWorktree(
       if (dir === undefined) {
         const path = await herdrDefaultTarget(repo.repoRoot, branch, home, deps.readHerdrConfig);
         answer.defaultTarget = await defaultTargetOf(repo.repoRoot, path, branch, fs);
-        answer.defaultSource = "herdr";
+        answer.defaultSource = "rule";
       } else {
         // The setting runs the folder rule here as it does at create, so the sheet never promises a
         // folder the create would refuse. A folder the child rule refuses is still where the default

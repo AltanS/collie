@@ -2793,7 +2793,7 @@ export type WorktreePlanResponse =
       branchValid?: boolean;
       defaultTarget?: { path: string; exists: boolean; reason?: string };
       /** Where `defaultTarget` comes from: this machine's "Worktree folder" setting, or Herdr's rule. */
-      defaultSource?: "setting" | "herdr";
+      defaultSource?: "setting" | "rule";
       /** The setting fails the folder rule now, so there is no `defaultTarget` and a create would refuse. */
       defaultRefusal?: { error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
       parentTarget?:
