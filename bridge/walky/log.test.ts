@@ -78,6 +78,21 @@ describe("the log", () => {
     expect(new WalkyLog(dir, () => 1000).all(message(1).id)).toHaveLength(1);
   });
 
+  test("a torn last line stays unread, and the next append starts on its own line", () => {
+    const dir = fresh();
+    const first = message(1);
+    new WalkyLog(dir, () => 1000).record(first, "local/w1:p1", here, receipt(first, "accepted"));
+    const path = join(dir, "log.jsonl");
+    writeFileSync(path, `${readFileSync(path, "utf8")}{"t":"message","at":1000,"target":"local/w1:p1","mes`);
+    const log = new WalkyLog(dir, () => 1000);
+    const second = message(2);
+    log.record(second, "local/w1:p1", here, receipt(second, "accepted"));
+    const again = new WalkyLog(dir, () => 1000);
+    expect(again.get(first.id, "local/w1:p1")).not.toBeNull();
+    expect(again.get(second.id, "local/w1:p1")?.receipt.state).toBe("accepted");
+    expect(readFileSync(path, "utf8").endsWith("\n")).toBe(true);
+  });
+
   test("drops what is older than 7 days", () => {
     const dir = fresh();
     let now = 1000;

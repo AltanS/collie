@@ -17,7 +17,7 @@
 // The folder is 0700 and every file 0600: the log holds message bodies.
 
 import { createHash } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
@@ -273,9 +273,31 @@ export class WalkyLog {
     indexLine(this.records, line);
   }
 
+  /**
+   * The file holds bytes and its last byte is not a newline: a write died half way. Absent or empty is
+   * not torn. The check reads the real file each time, so a tear made by this process's own failed
+   * append is found as well as one left by an earlier run.
+   */
+  private tornTail(): boolean {
+    if (!existsSync(this.path)) return false;
+    const fd = openSync(this.path, "r");
+    try {
+      const size = fstatSync(fd).size;
+      if (size === 0) return false;
+      const last = Buffer.alloc(1);
+      readSync(fd, last, 0, 1, size - 1);
+      return last[0] !== 0x0a;
+    } finally {
+      closeSync(fd);
+    }
+  }
+
   private append(line: LogLine): void {
     this.ensureDirs();
-    appendFileSync(this.path, `${JSON.stringify(line)}\n`, { mode: 0o600 });
+    // A torn last line stays unread, but the next record must not be glued onto it: end it first, so
+    // the torn text is a line of its own that `readLine` skips, as it does on load.
+    const lead = this.tornTail() ? "\n" : "";
+    appendFileSync(this.path, `${lead}${JSON.stringify(line)}\n`, { mode: 0o600 });
     this.lines.push(line);
     this.index(line);
     if (line.t === "receipt") {
