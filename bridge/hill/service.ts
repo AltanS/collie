@@ -275,6 +275,13 @@ export interface HillServiceDeps {
    * address, and the row of absent sweeps starts again. Absent: always true.
    */
   readonly censusKnown?: (address: string) => boolean;
+  /**
+   * Whether `address` is on a crew machine that this bridge's roster, read with success, no longer lists
+   * (M96 spec 10): the member was removed (`collie crew remove`, or its own `collie leave`). Never this
+   * machine, never a machine that merely does not answer, and false when the roster could not be read.
+   * Then the sweep closes every open card whose answer would go there. Absent: never.
+   */
+  readonly removed?: (address: string) => boolean;
   /** The phone push of a `now` decision (push.ts). Absent: no decision pushes. */
   readonly push?: HillPushPort;
   /**
@@ -441,6 +448,8 @@ export const TRICK_OFF = "the trick is off";
 export const TARGET_ENDED = "target session ended";
 /** The closed reason of an expired decision. */
 export const EXPIRED = "expired";
+/** The closed reason of a decision whose answer would go to a crew machine the roster no longer lists. */
+export const LEFT_THE_CREW = "its machine left the crew";
 /**
  * How long a card that closed without the person stays on the Hill with its closing line (M96 spec 10):
  * then the sweep clears it as Clear does. The sweep runs every 15 seconds, so it leaves 60 to 75 s after.
@@ -1485,6 +1494,9 @@ export class HillService {
    * and every one whose target session has ended as `undeliverable` ("target session ended"), so a
    * poster that is gone does not leave its decisions on the hill. Answers how many closed.
    *
+   * A decision whose answer would go to a crew machine the roster no longer lists closes `undeliverable`
+   * ({@link LEFT_THE_CREW}) at once: a removal is a fact of the roster, not a reading of a census.
+   *
    * A target counts as ended only when it is absent at two sweeps in a row, each from a census read
    * with success (`censusKnown`): an empty list from a good read closes the cards of a machine whose
    * last agent left, and a failed or unknown read closes nothing. A trick's decision with no `replyTo`
@@ -1497,8 +1509,13 @@ export class HillService {
     this.selfClear(now);
     const due = this.deps.store.all().filter((decision) => decision.state === "open" && decision.expiresAt !== null && decision.expiresAt <= now);
     const expired = due.map((decision): HillDecision => Object.assign({}, decision, { state: "expired" as const, closedAt: now, closedReason: EXPIRED }));
-    const ended = this.look(() => this.endedTargets(new Set(due.map((decision) => decision.id))));
-    const closed = [...expired, ...ended.map((decision): HillDecision => Object.assign({}, decision, { state: "undeliverable" as const, closedAt: now, closedReason: TARGET_ENDED }))];
+    const left = this.leftTheCrew(new Set(due.map((decision) => decision.id)));
+    const ended = this.look(() => this.endedTargets(new Set([...due, ...left].map((decision) => decision.id))));
+    const closed = [
+      ...expired,
+      ...left.map((decision): HillDecision => Object.assign({}, decision, { state: "undeliverable" as const, closedAt: now, closedReason: LEFT_THE_CREW })),
+      ...ended.map((decision): HillDecision => Object.assign({}, decision, { state: "undeliverable" as const, closedAt: now, closedReason: TARGET_ENDED })),
+    ];
     if (closed.length === 0) return 0;
     if (this.save(...closed)) return closed.length;
     // Not saved: the ended ones are still absent, and the next sweep tries them again.
@@ -1532,6 +1549,21 @@ export class HillService {
       closedAt: decision.closedAt ?? decision.at,
     }));
     return this.deps.store.forget(stones);
+  }
+
+  /**
+   * The open decisions whose answer would go to a crew machine the roster no longer lists (`removed`). A
+   * fact of the roster, not of a census, so one sweep is enough. Only on the bridge that holds the crew's
+   * Hill (a lead, or a lead whose last member went and is solo now); never on a peer or a deposed lead.
+   */
+  private leftTheCrew(skip: ReadonlySet<string>): HillDecision[] {
+    const removed = this.deps.removed;
+    if (removed === undefined || this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return [];
+    return this.deps.store.all().filter((decision) => {
+      if (decision.state !== "open" || skip.has(decision.id) || decision.target === null) return false;
+      const to = decision.replyTo ?? decision.from.address;
+      return to !== null && removed(to);
+    });
   }
 
   /** The open decisions whose target was gone at this sweep and the last one. Moves the memory of who was gone. */

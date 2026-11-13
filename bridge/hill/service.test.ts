@@ -16,6 +16,7 @@ import {
   mintDecisionId,
   NOT_ON_LEAD,
   TARGET_ENDED,
+  LEFT_THE_CREW,
   type HillAgentSender,
   type HillCrewMode,
   type HillDelivery,
@@ -81,6 +82,8 @@ interface Rig {
   known: boolean;
   /** Crew machines (the address's member part) whose census is unknown now. */
   readonly unknownMembers: Set<string>;
+  /** Crew machines the roster, read with success, no longer lists. */
+  readonly removedMembers: Set<string>;
 }
 
 function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () => void): Rig {
@@ -101,6 +104,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () =>
     events: [],
     known: true,
     unknownMembers: new Set<string>(),
+    removedMembers: new Set<string>(),
   };
   const hill = new HillService({
     store,
@@ -119,6 +123,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () =>
     },
     crewMode: () => state.mode,
     walkyOn: () => state.walky,
+    removed: (address) => state.removedMembers.has(address.split("/")[0] ?? ""),
     censusKnown: (address) => {
       const member = address.split("/")[0] ?? "";
       return member === "local" ? state.known : !state.unknownMembers.has(member);
@@ -610,6 +615,58 @@ describe("the sweep closes decisions whose target ended", () => {
     r.hill.sweep(2000);
     expect(r.hill.sweep(3000)).toBe(1);
     expect(r.store.get(decision.id)?.state).toBe("undeliverable");
+  });
+});
+
+describe("a member that left the crew (M96 spec 10)", () => {
+  const FAR: HillAgentSender = { kind: "agent", address: "far/%7#cccc", memberId: "far", harness: "agent-x", label: "repo#far", host: "far" };
+  const FAR_PLACE: HillPlace = { address: "far/%7#cccc", label: "repo#far", host: "far", unattended: false };
+
+  test("its open cards close `undeliverable` at the first sweep after the roster drops it, with nothing typed", () => {
+    const r = rig();
+    r.mode = "lead";
+    r.live = [...PLACES, FAR_PLACE];
+    const far = posted(r.hill.post(FAR, input(1)));
+    const own = posted(r.hill.post(POSTER, input(2)));
+    r.removedMembers.add("far");
+    expect(r.hill.sweep(2000)).toBe(1);
+    expect(r.store.get(far.id)).toMatchObject({ state: "undeliverable", closedAt: 2000, closedReason: LEFT_THE_CREW });
+    expect(r.store.get(own.id)?.state).toBe("open");
+    expect(r.sent).toEqual([]);
+  });
+
+  test("a member that does not answer keeps its cards: not removed, its census unknown", () => {
+    const r = rig();
+    r.mode = "lead";
+    r.live = [...PLACES, FAR_PLACE];
+    const far = posted(r.hill.post(FAR, input(1)));
+    r.live = [...PLACES];
+    r.unknownMembers.add("far");
+    for (let at = 2000; at < 10000; at += 1000) expect(r.hill.sweep(at)).toBe(0);
+    expect(r.store.get(far.id)?.state).toBe("open");
+  });
+
+  test("a card from a removed member whose answer goes to a session here stays: it can still be typed", () => {
+    const r = rig();
+    r.mode = "lead";
+    r.live = [...PLACES, FAR_PLACE];
+    const routed = posted(r.hill.post(FAR, input(1, { replyTo: POSTER.address })));
+    r.removedMembers.add("far");
+    r.hill.sweep(2000);
+    r.hill.sweep(3000);
+    expect(r.store.get(routed.id)?.state).toBe("open");
+  });
+
+  test("a peer and a deposed lead close nothing for a removed member: they hold no Hill", () => {
+    const r = rig();
+    r.mode = "lead";
+    r.live = [...PLACES, FAR_PLACE];
+    const far = posted(r.hill.post(FAR, input(1)));
+    r.removedMembers.add("far");
+    r.unknownMembers.add("far");
+    r.mode = "peer";
+    expect(r.hill.sweep(2000)).toBe(0);
+    expect(r.store.get(far.id)?.state).toBe("open");
   });
 });
 

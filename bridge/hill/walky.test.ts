@@ -13,7 +13,7 @@ import type { WalkyReceipt } from "../walky/types.ts";
 import { HillStore } from "./store.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HillService } from "./service.ts";
-import { hillCensus, hillSessionName, OneLook, deliveryOf, walkyPlace, walkySend, type HillCensusMember, type WalkySendOptions } from "./walky.ts";
+import { hillCensus, hillLeftTheCrew, hillSessionName, OneLook, deliveryOf, walkyPlace, walkySend, type HillCensusMember, type WalkySendOptions } from "./walky.ts";
 
 import { spaceOf } from "../walky/space.ts";
 
@@ -249,5 +249,22 @@ describe("the census the Hill's sweep trusts (M96 spec 10)", () => {
     // A machine the lead holds no row for, and an address that is not a pane's, are unknown.
     expect(census([{ reachable: true }], [good])("other/%7")).toBe(false);
     expect(census([{ reachable: true }], [good])("not an address")).toBe(false);
+  });
+});
+
+describe("a member that left the crew (M96 spec 10)", () => {
+  const left = (roster: readonly string[] | null) => hillLeftTheCrew({ memberId: "lead", ownIds: ["lead", "oldsolo"], roster: () => roster });
+
+  test("a machine the roster read with success no longer lists is removed", () => {
+    expect(left(["lead", "near"])("far/%7#cccc")).toBe(true);
+    expect(left(["lead", "far"])("far/%7#cccc")).toBe(false);
+  });
+
+  test("this machine, under any of its names, is never removed, and an unknown roster removes nothing", () => {
+    expect(left([])("local/%1")).toBe(false);
+    expect(left([])("lead/%1")).toBe(false);
+    expect(left([])("oldsolo/%1")).toBe(false);
+    expect(left(null)("far/%7")).toBe(false);
+    expect(left([])("not an address")).toBe(false);
   });
 });

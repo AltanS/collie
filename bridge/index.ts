@@ -374,7 +374,7 @@ import { ProposeDoor } from "./tricks/propose-door.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
 import { HillCrewStateFile } from "./hill/crew-state.ts";
-import { hillCensus, hillSessionName, OneLook, walkyPlace, walkySend, type HillCensusMember } from "./hill/walky.ts";
+import { hillCensus, hillLeftTheCrew, hillSessionName, OneLook, walkyPlace, walkySend, type HillCensusMember } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -2606,6 +2606,18 @@ const hill = new HillService({
     memberId: walkyMemberId,
     local: () => registry.ordered().map((rt) => ({ reachable: rt.engine.current().bridge === "connected" })),
     members: () => hillMembers(),
+  }),
+  // A card whose answer would go to a machine the roster no longer lists closes (M96 spec 10): the roster
+  // is the trust store as this bridge read it (a `leave` the lead's router takes updates it live, and
+  // `crew remove` restarts the bridge). No store, or one that did not read, removes nobody.
+  removed: hillLeftTheCrew({
+    memberId: walkyMemberId,
+    ownIds: [bridgeId.id, bridgeId.previous],
+    roster: () => {
+      const held = trustStore.current();
+      if (held === null) return null;
+      return [held.self.memberId, ...(held.lead === null ? [] : [held.lead.memberId]), ...held.peers.map((member) => member.memberId)];
+    },
   }),
   crewMode: () => crew.mode,
   // §25: a deposed lead's Hill is nobody's; the crown and its Decisions moved to the deputy. So is the

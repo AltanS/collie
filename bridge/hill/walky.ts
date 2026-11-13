@@ -107,6 +107,26 @@ export function hillCensus(opts: {
   };
 }
 
+/**
+ * Whether a walky address is on a crew machine that the roster no longer lists (M96 spec 10), the Hill
+ * sweep's `removed`. `roster` answers every member id the trust store lists now, whatever its status (the
+ * lead, the peers, this machine), or null when there is no roster this bridge read with success. An
+ * address on this machine (`local`, this bridge's walky member, or one of `ownIds`, its bridge ids now
+ * and before) is never removed; neither is anything when the roster is unknown.
+ */
+export function hillLeftTheCrew(opts: {
+  readonly memberId: string | null;
+  readonly ownIds: readonly (string | null)[];
+  readonly roster: () => readonly string[] | null;
+}): (address: string) => boolean {
+  return (raw) => {
+    const at = parseAddress(raw);
+    if (at === null || at.kind !== "pane" || isSelf(at.memberId, opts.memberId) || opts.ownIds.includes(at.memberId)) return false;
+    const roster = opts.roster();
+    return roster !== null && !roster.includes(at.memberId);
+  };
+}
+
 /** A pane as the snapshot holds it, as far as the Dashboard's name rule reads it. */
 export type HillNameablePane = NameableP & { readonly paneId: string };
 
