@@ -3598,13 +3598,19 @@ export class SendProtocol {
     const holds = this.deps.holds!;
     const record = this.deps.store.get(entry.id);
     const held = record?.receipt;
+    let receipt: SendReceipt | null = null;
+    // The request settles BEFORE its row changes, so a crash between the two writes leaves a settled
+    // request with a row still held, which `reconcileHolds` finishes on start. The other order left a
+    // request `held` with no row, and nothing ever looked at it again.
+    if (record !== null && held !== undefined && record.phase === "held") {
+      const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
+      receipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
+      if (outcome === "refused" && reason === "pane_gone") receipt = { ...receipt, detail: HELD_PANE_GONE };
+      this.deps.store.settle(entry.id, receipt);
+    }
     if (outcome === "cancelled") holds.remove(entry.id);
     else holds.end(entry.id, outcome, reason);
-    if (record === null || held === undefined || record.phase !== "held") return null;
-    const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
-    let receipt: SendReceipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
-    if (outcome === "refused" && reason === "pane_gone") receipt = { ...receipt, detail: HELD_PANE_GONE };
-    this.deps.store.settle(entry.id, receipt);
+    if (receipt === null || held === undefined) return null;
     const ledger = this.deps.ledger;
     try {
       ledger?.send(
@@ -3739,7 +3745,10 @@ export class SendProtocol {
       }
       const outcome = record.receipt?.outcome;
       if (outcome === "sent" || outcome === "effective" || outcome === "cancelled") holds.remove(entry.id);
-      else holds.end(entry.id, outcome ?? "unknown", record.receipt?.reason ?? "crash");
+      // The request settled and the bridge stopped before the row followed ({@link endHeld} settles
+      // first): the row ends with the request's own word. "crash" is the reason only for a request that
+      // has none, as when the run itself died.
+      else holds.end(entry.id, outcome ?? "unknown", record.receipt?.reason ?? (outcome === undefined || outcome === "unknown" ? "crash" : undefined));
       changed++;
     }
     return changed;

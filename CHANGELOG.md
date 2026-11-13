@@ -120,6 +120,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A send that lands keeps only the words you typed after the sent text.** When the box still began with the text that went out, the whole box stayed and the next send repeated it to the agent; now the sent part is removed and the rest is your draft. A box you edited inside the sent text keeps everything.
 - **A send that got no answer is not sent twice after you leave the pane or reload.** When the phone got no answer to a send, "Tap Send again: it does not send twice" held only while the pane stayed open: a pane switch, a reload or the system closing the tab dropped the request id, and the next tap on the same text could send it a second time. Collie now keeps the id with the pane for the session, uses it again while the text is the same, and forgets it on any answer from the bridge or when you change the draft.
 - **A torn last line in the WalkyTalky log no longer swallows the next message.** When the log file does not end in a newline, Collie ends that line before it writes the next record, so the new record reads back as its own line. The torn line itself stays unread.
+- **A held send is never left waiting with no row after a crash.** A cancel or an expiry settles the request first and then changes its row, and on start Collie finishes a row whose request already settled. A request that stayed held after its row went no longer sits unread.
 
 ### Docs
 

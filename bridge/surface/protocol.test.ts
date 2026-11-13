@@ -5336,6 +5336,55 @@ describe("the held send (M56 spec 15)", () => {
     ]);
   });
 
+  test("a crash between a cancel's two writes never leaves a request held with no row", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-000095" });
+    // The process dies when the request is about to settle: whatever the cancel wrote first is all there is.
+    r.deps.store.settle = () => {
+      throw new Error("crash");
+    };
+    expect(() => r.protocol.cancelHeld("main", "%1", "held-000095")).toThrow("crash");
+    const store = new RequestStore(join(dir, "sends"), () => 2_000_000);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => 2_000_000);
+    SendProtocol.reconcileHolds(holds, store);
+    const stranded = store.get("held-000095")?.phase === "held" && holds.get("held-000095") === null;
+    expect(stranded).toBe(false);
+  });
+
+  test("a crash between an expiry's two writes never leaves a request held with no row", async () => {
+    const clock = { now: 1_000_000 };
+    const r = untrusted({ clock });
+    await r.send("then give it a title", { id: "held-000096" });
+    clock.now += 31 * 60 * 1000;
+    r.deps.store.settle = () => {
+      throw new Error("crash");
+    };
+    await tick(r).catch(() => undefined);
+    const store = new RequestStore(join(dir, "sends"), () => clock.now);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    SendProtocol.reconcileHolds(holds, store);
+    const stranded = store.get("held-000096")?.phase === "held" && holds.get("held-000096")?.state !== "held";
+    expect(stranded).toBe(false);
+  });
+
+  test("a request settled before its row was removed finishes the row on start: a cancel drops it, an expiry ends it with no crash reason", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-000097" });
+    await r.send("and a second one", { id: "held-000098" });
+    const held = (id: string) => r.deps.store.get(id)!.receipt!;
+    r.deps.store.settle("held-000097", { ...held("held-000097"), outcome: "cancelled" });
+    r.deps.store.settle("held-000098", { ...held("held-000098"), outcome: "expired" });
+    const store = new RequestStore(join(dir, "sends"), () => 2_000_000);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => 2_000_000);
+    expect(SendProtocol.reconcileHolds(holds, store)).toBe(2);
+    expect(holds.get("held-000097")).toBeNull();
+    expect(holds.get("held-000098")).toMatchObject({ state: "ended", outcome: "expired" });
+    expect(holds.get("held-000098")?.reason).toBeUndefined();
+  });
+
   test("a release the bridge died in ends unknown(crash) on boot, its text kept, and is never sent again", async () => {
     const first = untrusted();
     await first.send("then give it a title", { id: "held-000017" });
