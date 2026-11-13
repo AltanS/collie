@@ -3460,7 +3460,7 @@ export class SendProtocol {
           continue;
         }
         if (now >= entry.expiresAt) {
-          this.endHeld(entry, "expired", undefined);
+          this.endHeldInTick(entry, "expired", undefined);
           continue;
         }
         const record = this.deps.store.get(entry.id);
@@ -3471,7 +3471,7 @@ export class SendProtocol {
         const sameProgram = moved && namesProfile(heldProfile(record), agentOfGeneration(generation));
         const otherAgent = moved && !sameProgram && agentOfGeneration(generation) !== agentOfGeneration(record.paneGeneration);
         if (record === null || otherAgent || watch.missing >= MISSING_POLLS) {
-          this.endHeld(entry, "refused", "pane_gone");
+          this.endHeldInTick(entry, "refused", "pane_gone");
           continue;
         }
         if (sameProgram) {
@@ -3558,7 +3558,7 @@ export class SendProtocol {
       const placeholder = plainDraft !== null && watch.plainDraft != null && now - watch.plainDraft.since >= DRAFT_LEFT_MS && untried;
       if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
-        this.endHeld(next, "refused", "pane_gone");
+        this.endHeldInTick(next, "refused", "pane_gone");
         continue;
       }
       started.push(this.releaseQuietly(next.id));
@@ -3586,6 +3586,25 @@ export class SendProtocol {
     } catch (err) {
       console.warn(`[send] release of ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
       return null;
+    }
+  }
+
+  /** Whether the last end of a hold in the poll failed to write, so the warning is given once per run of failures. */
+  private endWriteFailed = false;
+
+  /**
+   * {@link endHeld} for the poll. The request settles first, so a write that throws (a full disk) leaves
+   * the row held and the next poll tries again; it must not stop the poll for the other held requests.
+   * The warning is given once for a run of failures, not once per entry per poll.
+   */
+  private endHeldInTick(entry: HeldEntry, outcome: "expired" | "refused", reason: SendReason | undefined): void {
+    try {
+      this.endHeld(entry, outcome, reason);
+      this.endWriteFailed = false;
+    } catch (err) {
+      if (this.endWriteFailed) return;
+      this.endWriteFailed = true;
+      console.warn(`[surface] a held request could not be ended, the poll goes on: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

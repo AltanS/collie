@@ -5369,6 +5369,39 @@ describe("the held send (M56 spec 15)", () => {
     expect(stranded).toBe(false);
   });
 
+  test("a settle that throws for one held request does not stop the poll for the others, and the next poll ends it", async () => {
+    const clock = { now: 1_000_000 };
+    const r = untrusted({ clock });
+    await r.send("then give it a title", { id: "held-000091" });
+    await r.send("and a second one", { id: "held-000092" });
+    await r.send("and a third one", { id: "held-000093" });
+    clock.now += 31 * 60 * 1000;
+    const settle = r.deps.store.settle.bind(r.deps.store);
+    let full = true;
+    r.deps.store.settle = (id, receipt) => {
+      if (full && id === "held-000091") throw new Error("ENOSPC: no space left on device");
+      return settle(id, receipt);
+    };
+    const warnings: string[] = [];
+    const warn = console.warn;
+    console.warn = (line: string) => void warnings.push(line);
+    try {
+      await tick(r);
+      // The two others ended, the failing one is still held, and one warning said so.
+      expect(r.deps.holds!.get("held-000092")).toMatchObject({ state: "ended", outcome: "expired" });
+      expect(r.deps.holds!.get("held-000093")).toMatchObject({ state: "ended", outcome: "expired" });
+      expect(r.deps.holds!.get("held-000091")).toMatchObject({ state: "held" });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("ENOSPC");
+      // The disk has room again: the next poll ends it.
+      full = false;
+      await tick(r);
+      expect(r.deps.holds!.get("held-000091")).toMatchObject({ state: "ended", outcome: "expired" });
+    } finally {
+      console.warn = warn;
+    }
+  });
+
   test("a request settled before its row was removed finishes the row on start: a cancel drops it, an expiry ends it with no crash reason", async () => {
     const r = untrusted();
     await r.send("then give it a title", { id: "held-000097" });
