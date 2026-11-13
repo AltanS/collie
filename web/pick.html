@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- DEV-ONLY one-pager for a design round where the operator picks. It is NOT part of the production
+     bundle: Vite's default `build.rollupOptions.input` is the root `index.html` alone, so `vite build`
+     never sees this file (`src/pick/pick-entry.test.ts` pins that). One entry serves every round:
+     http://<host>:<port>/pick.html?round=<id>&case=<id> while `vite dev` (or `bun run playground`) runs. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <script src="/theme-init.js"></script>
+    <title>Collie — pick page</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon-playground.svg" />
+    <link rel="shortcut icon" href="/favicon-playground.ico" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/pick/main.tsx"></script>
+  </body>
+</html>
