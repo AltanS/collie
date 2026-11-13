@@ -22,6 +22,8 @@ import { t } from "@/lib/i18n";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
 import { markLive } from "@/lib/liveness";
 import { saveDraft } from "@/lib/drafts";
+import { forgetUnknownSend } from "@/lib/send-again";
+import { clearIntent } from "@/lib/send-intent";
 import type { HeldRow } from "@/lib/surface/send";
 import type { Scope } from "@/lib/scope";
 import { wayOutCase, type WayOutCase } from "@/test/way-out-states";
@@ -30,6 +32,7 @@ import type { WayOutState } from "@/lib/way-out";
 import { cn } from "@/lib/utils";
 
 import { Card, CardControls, Group } from "./layout";
+import { fakeSendBridge, playSendConfirm, type SendConfirmKind } from "./send-confirm-play";
 import { ChromeBlock, PhoneMock } from "./sections/shared";
 
 /** The same prefs `composer.test.tsx` mounts the real composer with. */
@@ -378,6 +381,101 @@ function BeltListsCase({ n, state, title, reach, note, paneId, agents = true, dr
   );
 }
 
+// ── THE SEND QUESTIONS (24 and 25) ──────────────────────────────────────────────────────────────────
+// The word that replaces Send for one more tap: "Really send?" on a destructive line, and "Send it again?" for
+// the same text after a send that ended unknown (M100 spec 06, approved by Altan 2026-11-13). Arming moves
+// nothing: the word is drawn over the field, at the Send button's own spot, with a cover that fades the draft's
+// line ends under it. The real Composer, the keyboard stood up under it. A fake bridge answers `/api/send`
+// (`unknown` the first time for card 25), and the taps that arm the question are played through the composer's
+// own buttons. In the product the question stays 3 seconds; here the card taps again when it has run out,
+// so it is always on screen. A tap of your own on the word sends, and the box empties.
+
+const SEND_CONFIRM_TEXT = {
+  really: "rm -rf build && bun install, then run the full test suite",
+  again: "Run the full test suite, then fix whatever fails.",
+} satisfies Record<SendConfirmKind, string>;
+
+/** The prefs of these cards: the composer's own, with the report offer off (each reload of a card sends once). */
+const SEND_CONFIRM_PREFS = { ...PREFS, reportOffer: false } as const;
+
+export function SendConfirmPhone({ kind }: { kind: SendConfirmKind }) {
+  const paneId = `send-confirm:${kind}`;
+  const text = SEND_CONFIRM_TEXT[kind];
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [router] = useState(() => {
+    // The draft is stored before the composer mounts, so it opens holding the text; nothing is left of an earlier visit.
+    forgetUnknownSend(undefined, paneId);
+    clearIntent(undefined, paneId);
+    saveDraft(undefined, paneId, text);
+    return createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: (
+            <ChromeBlock>
+              <Composer
+                paneId={paneId}
+                agent="claude"
+                isShell={false}
+                gone={false}
+                readOnly={false}
+                surface={{ revision: 1, turn: "idle", modal: "none", composer: "empty" }}
+                text="pane output"
+                terminalDraft={null}
+                rawTerminalDraft={null}
+                prefs={SEND_CONFIRM_PREFS}
+                display={{ open: false, onToggle: () => {} }}
+                onSent={() => {}}
+              />
+            </ChromeBlock>
+          ),
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+  });
+  useEffect(() => {
+    const stamp = () => markLive(paneId);
+    stamp();
+    const timer = setInterval(stamp, RENEW_MS);
+    return () => clearInterval(timer);
+  }, [paneId]);
+  useEffect(() => fakeSendBridge(paneId, kind === "again"), [paneId, kind]);
+  useEffect(() => {
+    if (root === null) return;
+    let stop = false;
+    void playSendConfirm(root, kind, text, () => stop);
+    return () => {
+      stop = true;
+    };
+  }, [root, kind, text]);
+  return (
+    <PhoneMock>
+      <div ref={setRoot}>
+        <div className="h-10 bg-background px-3 pt-2 font-mono text-[11px] text-muted-foreground">terminal output above the belt</div>
+        <RouterProvider router={router} />
+        <div aria-hidden="true" className="flex h-24 items-center justify-center bg-muted/60 text-[11px] text-muted-foreground">
+          keyboard
+        </div>
+      </div>
+    </PhoneMock>
+  );
+}
+
+function SendConfirmCase({ n, state, title, reach, note, kind }: { n: number; state: string; title: string; reach: string; note: string; kind: SendConfirmKind }) {
+  return (
+    <Card state={state} label={`${String(n)}: ${title}`} reach={reach} note={note}>
+      <CardControls className="flex items-center gap-3">
+        <NumberBadge n={n} />
+        <p className="text-sm font-semibold text-foreground">
+          {n}: {title}
+        </p>
+      </CardControls>
+      <SendConfirmPhone kind={kind} />
+    </Card>
+  );
+}
+
 /**
  * The section's groups, as elements for `Section` to take as direct children (a group is a sub-page of
  * its section, and the bar reads them off the children). The section itself is `sections/composer-states.tsx`
@@ -491,6 +589,24 @@ export function wayOutGroups(): ReactNode[] {
         reach="Type in the box while two subagents run. The fixed block reads X, the agents mark, Files, the Switch mark."
         paneId="belt:agents-clear"
         draft="Check the belt at 390px"
+      />
+    </Group>,
+    <Group key="send-questions" title="The send questions">
+      <SendConfirmCase
+        n={24}
+        state="send-confirm-really"
+        title="Really send?"
+        reach="Type a destructive line (rm -rf, a force-push) and tap Send. The Send button's spot reads Really send? in red for 3 seconds; a second tap sends."
+        note="The product keeps the word 3 seconds. This card taps Send again when it runs out, so the word is always on screen. A tap of your own on the word sends to a fake bridge."
+        kind="really"
+      />
+      <SendConfirmCase
+        n={25}
+        state="send-confirm-again"
+        title="Send it again?"
+        reach="Send a text whose result is unknown (Collie cannot tell if it was sent), then tap Send on the same text within two minutes. The Send button's spot reads Send it again? in red for 3 seconds; a second tap sends."
+        note="The card sends once to a fake bridge that answers unknown, then arms the question and taps again whenever the 3 seconds run out. A tap of your own on the word sends, and the fake bridge answers sent."
+        kind="again"
       />
     </Group>,
   ];
