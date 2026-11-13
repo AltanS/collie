@@ -41,11 +41,11 @@ its completion reports to its parent rather than to the phone; a blocked child s
    the parent exits, is missing or sits on another machine, `parentPaneId` is omitted and the orphan
    behaves like any top-level pane, including unread marks and completion pushes.
 2. **Shared place without crowding the in-pane strip (`unpaned`).** An unlabelled child terminal
-   inherits its nearest labelled live ancestor's `spaceId` and `tabId` instead of falling into the
-   implicit `herdr-core` space, and carries `unpaned: true` so it neither strips its parent's
+   inherits its nearest labelled live ancestor's `spaceId` and `tabId` (or joins the implicit space
+   alongside an unlabelled parent), and carries `unpaned: true` so it neither strips its parent's
    `soleTabName` (`bridge/state-engine.ts`) nor crowds `PaneStrip` while viewing the parent
-   (`web/src/lib/pane-ordinal.ts`). Opening the child itself shows the parent beside it in
-   `PaneStrip` for one-tap return.
+   (`web/src/lib/pane-ordinal.ts`). Opening the child itself shows its live ancestors in that tab
+   beside it in `PaneStrip` for one-tap return.
 3. **No unread mark and no `done` push while the parent lives (`web/src/lib/triage.ts`,
    `bridge/notifications.ts`).** `isUnseen` returns `false` when `parentPaneId !== undefined`, which
    also rests `shownStatus("done")` and `StatusCounts` as `idle`. `NotificationCoordinator.onTransition`
@@ -62,6 +62,7 @@ its completion reports to its parent rather than to the phone; a blocked child s
 - **Opening a finished child worker is optional.** You do not have to tap each sub-agent merely to
   clear unread squares; the parent's own completion carries the unread square and push.
 - **A child whose parent was killed first is never silenced.** Once the parent leaves `live`,
-  `parentPaneId` disappears on the next snapshot and the surviving worker notifies on its own.
+  `parentPaneId` disappears on the next snapshot: an unread finished worker shows its unread mark
+  at once, and subsequent status transitions notify on their own.
 - **Revisit if `hc` gains detached background jobs that never report back to their starter**, where
   an explicit label or `no_parent` flag does not already distinguish them.

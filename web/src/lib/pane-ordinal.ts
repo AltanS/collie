@@ -22,10 +22,13 @@ export function panesOfTab(
   // list a bare id match pulled the peer's panes into the lead's strip, and a widened body does the
   // same across sessions. `workspaceGroupKey` is (host, session, workspace), the dashboard's identity.
   const tab = workspaceGroupKey(agent);
-  const here = (p: AgentView) =>
-    p.tabId === agent.tabId &&
-    workspaceGroupKey(p) === tab &&
-    (!p.unpaned || p.paneId === agent.paneId);
+  const inTab = (p: AgentView) => p.tabId === agent.tabId && workspaceGroupKey(p) === tab;
+  const byId = new Map(agents.filter(inTab).map((p) => [p.paneId, p]));
+  const ancestors = new Set<string>();
+  for (let cur = agent.parentPaneId; cur !== undefined && !ancestors.has(cur); cur = byId.get(cur)?.parentPaneId) {
+    ancestors.add(cur);
+  }
+  const here = (p: AgentView) => inTab(p) && (!p.unpaned || p.paneId === agent.paneId || ancestors.has(p.paneId));
   return [...agents.filter(here).toSorted(byPlaceInTab), ...shellPanes.filter(here).toSorted(byPlaceInTab)];
 }
 

@@ -128,13 +128,10 @@ function rootAncestorKey(
   parentByKey: ReadonlyMap<string, string>,
 ): string {
   let cur = key;
-  const seen = new Set<string>([cur]);
-  for (;;) {
-    const up = parentByKey.get(cur);
-    if (up === undefined || seen.has(up)) return cur;
-    seen.add(up);
+  for (let up = parentByKey.get(cur); up !== undefined; up = parentByKey.get(cur)) {
     cur = up;
   }
+  return cur;
 }
 
 interface SubtreeSummary {
