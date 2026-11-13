@@ -64,7 +64,7 @@ export function WalkyHeldStrip({
   onDeliverNow?: DeliverNow | undefined;
 }) {
   useLocale();
-  // `data-state` names the mark for a design round's pick record (pick/rounds/walky-deliver-now.tsx).
+  // `data-state` names the mark for a design round's pick record.
   if (linked && count === 1 && kind === "text" && deliverId !== undefined && onDeliverNow !== undefined) {
     return (
       <div data-state="walky-deliver-mark">

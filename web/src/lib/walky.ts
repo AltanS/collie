@@ -690,7 +690,6 @@ export function graceLeftMs(since: number, now: number): number {
  * pane read's `linked: true`. `agent-chat.tsx` passes none of them yet, so no session shows Deliver now: the
  * real call goes beside `dropWalky` in `lib/api.ts` and is passed where `onDrop` and `onOpenMessages` are
  * passed. `AgentView` in lib/types.ts has no `linked` field yet (`lib/solo-baseline.test.ts` pins its keys).
- * The round (`pick/rounds/walky-deliver-now.tsx`) fills it with a fake and lists what the bridge must give.
  */
 export type DeliverNow = (id: string) => Promise<void>;
 
