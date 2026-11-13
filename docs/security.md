@@ -687,12 +687,13 @@ which card, the name and version of the agent program, the multiplexer it ran on
 row only, never a row with your text, never the screen or what you typed. It is absent unless that
 row is a short list of key hints, such as `enter select · esc back`.
 
-The ping also counts how many agent sessions ran since the last ping, about a day. Each row names an
-agent program, a multiplexer and a number, for example `claude`, `tmux`, 3. The names come from fixed
-lists in Collie, and any other name reads `other`. Collie counts sessions and nothing about them: no
-name, folder, title, prompt, model or time. To count a session once, the bridge keeps a hash of it in
-its own state file, salted with the install ID. The hash is not sent, and it goes with the ID when the
-count is off. A crew member counts its own sessions and pings for itself.
+The ping also says which agents ran on which multiplexers since the last ping, about a day, one row per
+pair, for example `claude` on `tmux`. Each row has one more fact: whether the optional data link was on
+for at least one session of that pair (`collie harness link`). A row of the trouble count above carries
+the same fact for its own pane. The names come from fixed lists in Collie, and any other name reads
+`other`. It is never how many sessions ran, and never a name, folder, title, prompt or model. The bridge
+keeps only the pairs it has seen, in its state file, and the list goes with the install ID when the count
+is off. A crew member reports its own agents and pings for itself.
 
 Turning it off is one switch: Settings, System, **Telemetry**. `COLLIE_TELEMETRY=0`,
 `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one

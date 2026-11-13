@@ -1502,6 +1502,8 @@ const telemetry = createTelemetry({
   line: () => readUpdateLineSync(cfg.stateDir).line,
   // Read at ping time. A peer (a member, or a deputy that is not the lead) is a member in the ping.
   crewMode: () => crew.mode,
+  // A trouble signal names a local pane; a part bound to it (`collie harness link`) makes its row `linked`.
+  linked: (where) => (insideHub?.partOf({ session: where.session ?? registry.get()?.name ?? "", paneId: where.paneId }) ?? null) !== null,
   now: Date.now,
   fetch: (url, init) => fetch(url, init),
   os: HOST.platform,
@@ -1870,10 +1872,18 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     argvNames: museNames === undefined ? {} : { [ARGV_NAMED_AGENT]: museNames },
     titles: sessionTitles === null ? undefined : (pane) => sessionTitles.forPane(pane),
   });
-  // The install ping's usage tally (ping v3): which agent and multiplexer pairs ran in this session.
-  // The ping keeps the pairs and drops the panes again; it throttles itself and never throws into the poll.
+  // The install ping's usage tally (ping v3): which agent and multiplexer pairs ran in this session, and
+  // whether a pane of the pair had a part bound (the data link). The ping keeps the pairs and drops the
+  // panes again; it throttles itself and never throws into the poll.
   const usageMux = endpoint.kind === "program" ? DURABLE_MUX : cfg.mux;
-  engine.onUpdate((s) => telemetry.sessions({ scope: name, mux: usageMux, panes: realAgentPanes(s.agents) }));
+  engine.onUpdate((s) =>
+    telemetry.sessions({
+      scope: name,
+      mux: usageMux,
+      panes: realAgentPanes(s.agents),
+      linked: (paneId) => (insideHub?.partOf({ session: name, paneId }) ?? null) !== null,
+    }),
+  );
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any
   // herd change, and while it's healthy the interval relaxes to the safety-net cadence. Events are
