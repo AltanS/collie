@@ -1696,12 +1696,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   /** The draft of a send that landed goes only while the box still holds what went out (as the `unknown`
-   *  path settles it). Words typed or dictated since stay, stored as the draft, with the chips added since;
-   *  the chips that went out leave with their markers. No snapshot: the box goes whole. */
+   *  path settles it). A box that still begins with the sent text keeps only what came after it (leading
+   *  whitespace trimmed), stored as the draft, with the chips added since; the chips that went out leave
+   *  with their markers. A box edited inside the sent text keeps everything: nothing says what is new.
+   *  No snapshot: the box goes whole. */
   function clearSentDraft(sent: ComposerDraftNow | undefined) {
     if (sent === undefined || inputValueRef.current === sent.text) return clearComposedDraft();
     const wentOut = (a: ComposerAttachment) => sent.chips.some((c) => c.n === a.n && c.path === a.path);
-    let kept = inputValueRef.current;
+    const now = inputValueRef.current;
+    let kept = sent.text !== "" && now.startsWith(sent.text) ? now.slice(sent.text.length).trimStart() : now;
     for (const a of attachmentsRef.current.filter(wentOut)) {
       revokePreview(a);
       kept = removeMarker(kept, markerFor(a));

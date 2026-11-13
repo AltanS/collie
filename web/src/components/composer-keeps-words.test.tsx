@@ -71,7 +71,7 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     expect(loadDraft(undefined, "w1:p1") ?? "").toBe("");
   });
 
-  it("keeps words typed after the tap, and stores them as the draft, not as an empty one", async () => {
+  it("keeps only the words typed after the sent text, and stores them as the draft, not as an empty one", async () => {
     const user = userEvent.setup();
     const held = gate();
     const posted: string[] = [];
@@ -90,8 +90,39 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     await user.type(field(), " and the next one");
     held.open();
     await screen.findByText("You sent:");
-    expect(field().value).toBe("first message and the next one");
-    expect(loadDraft(undefined, "w1:p1")).toBe("first message and the next one");
+    expect(field().value).toBe("and the next one");
+    expect(loadDraft(undefined, "w1:p1")).toBe("and the next one");
+  });
+
+  // The field is changed while the send is on its way, the way typing or a mic transcript appended after the sent text does.
+  it.each([
+    ["A B", "B", "typed after it"],
+    ["A\nB", "B", "after a newline"],
+    ["A\n\nB", "B", "after a blank line"],
+    ["A transcript of the mic", "transcript of the mic", "a transcript appended"],
+    ["xA", "xA", "edited inside the sent text: everything stays"],
+    ["A", "", "unchanged: the box goes"],
+  ])("the box %j after a send of A keeps %j (%s)", async (typed, kept) => {
+    const user = userEvent.setup();
+    const held = gate();
+    const posted: string[] = [];
+    server.use(
+      http.post(/\/api\/send$/, async ({ request }) => {
+        // SAFETY: the composer posts a SendRequestBody, which has a text.
+        posted.push(((await request.json()) as { text: string }).text);
+        await held.opened;
+        return HttpResponse.json({ receipt: { outcome: "sent", keys: [] }, offers: [] });
+      }),
+    );
+    renderComposer();
+    await user.type(field(), "A");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(posted).toEqual(["A"]));
+    fireEvent.change(field(), { target: { value: typed } });
+    held.open();
+    await screen.findByText("You sent:");
+    expect(field().value).toBe(kept);
+    expect(loadDraft(undefined, "w1:p1") ?? "").toBe(kept);
   });
 
   it("keeps the chip the person added after the tap and drops the one that went out", async () => {
@@ -120,7 +151,7 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     expect(left?.text).not.toContain("#1]");
   });
 
-  it("message mode: words typed while the message was on its way stay", async () => {
+  it("message mode: only the words typed after the sent text stay", async () => {
     const user = userEvent.setup();
     const held = gate();
     const posts: string[] = [];
@@ -142,8 +173,8 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     held.open();
     await screen.findByText(/Message to this pane: /);
     await waitFor(() => expect(screen.queryByText("Message to this pane: sending")).toBeNull());
-    expect(field().value).toBe("Stop and report then wait");
-    expect(loadDraft(undefined, "w1:p1")).toBe("Stop and report then wait");
+    expect(field().value).toBe("then wait");
+    expect(loadDraft(undefined, "w1:p1")).toBe("then wait");
   });
 });
 
