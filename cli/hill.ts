@@ -103,8 +103,8 @@ const USAGE = {
   off: ["usage: collie hill off"],
 } as const satisfies Record<(typeof HILL_SUBCOMMANDS)[number], readonly string[]>;
 
-/** The verbs an agent runs. `clear`, `on`, `off` and `state <word>` are the operator's: the help says so in one sentence. */
-const AGENT_VERBS = ["post", "status", "withdraw", "list", "state"] as const;
+/** The verbs an agent runs. `clear`, `on`, `off` and `state` are the operator's: the help says so in one sentence. */
+const AGENT_VERBS = ["post", "status", "withdraw", "list"] as const;
 
 /**
  * `collie hill --help`, and the same text for `collie hill post --help` and a bare `collie hill`: the
@@ -114,10 +114,10 @@ const AGENT_VERBS = ["post", "status", "withdraw", "list", "state"] as const;
 export function hillHelp(): string[] {
   const lines: string[] = [
     `usage: collie hill {${AGENT_VERBS.join("|")}} [--json]`,
-    "The Hill is off until your operator switches it on (theirs alone: on, off, clear [--spoken], state <word>).",
+    "The Hill is off until your operator switches it on (theirs alone: on, off, clear [--spoken], state).",
   ];
   for (const verb of AGENT_VERBS) {
-    lines.push(`  ${verb === "state" ? "state" : VERB_LINES[verb]}`);
+    lines.push(`  ${VERB_LINES[verb]}`);
     if (verb === "post") for (const flag of POST_FLAGS) lines.push(`    ${flag}`);
   }
   return [...lines, "", ...HILL_WRITING, "", ...HILL_RULES];

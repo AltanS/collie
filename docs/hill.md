@@ -168,7 +168,8 @@ prints the same text.
 
 1. Post only what needs your person. A worker with a lead asks its lead first.
 2. One question per post. To change it, post again with `--supersedes <id>`.
-3. Do not wait or poll. The answer starts your next turn. None arrived: `collie hill status <id>`.
+3. Do not wait or poll. The answer starts your next turn as "Answer to <id> ...". None arrived:
+   `collie hill status <id>`.
 4. Settled in your session: `collie hill withdraw <id>`.
 5. A result that ends "Crew state: quiet." or "Crew state: away.": your person is not there. Ask
    nothing that needs an answer now.

@@ -483,7 +483,7 @@ describe("the Hill's switch", () => {
     const help = capture();
     expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
     // The operator's verbs leave the agent's usage lines; one sentence names them and the default.
-    expect(help.stdout[1]).toBe("The Hill is off until your operator switches it on (theirs alone: on, off, clear [--spoken], state <word>).");
+    expect(help.stdout[1]).toBe("The Hill is off until your operator switches it on (theirs alone: on, off, clear [--spoken], state).");
     expect(help.stdout).not.toContain("  on");
     expect(help.stdout.join("\n")).not.toContain("on unless switched off");
   });
@@ -545,7 +545,7 @@ describe("help", () => {
   const RULES = [
     "Post only what needs your person. A worker with a lead asks its lead first.",
     "One question per post. To change it, post again with --supersedes <id>.",
-    "Do not wait or poll. The answer starts your next turn. None arrived: collie hill status <id>.",
+    'Do not wait or poll. The answer starts your next turn as "Answer to <id> ...". None arrived: collie hill status <id>.',
     "Settled in your session: collie hill withdraw <id>.",
     'A result that ends "Crew state: quiet." or "Crew state: away.": your person is not there. Ask nothing that needs an answer now.',
   ];
@@ -557,7 +557,7 @@ describe("help", () => {
   test("`collie hill --help` prints the usage and the rules and exits 0; a bare `collie hill` exits 2", async () => {
     const help = capture();
     expect(await run(["hill", "--help"], help)).toBe(EXIT.OK);
-    expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list|state} [--json]");
+    expect(help.stdout[0]).toBe("usage: collie hill {post|status|withdraw|list} [--json]");
     expect(help.stdout.slice(-RULES.length)).toEqual(RULES);
     const bare = capture();
     expect(cmdHill({ io: bare }, [])).toBe(EXIT.USAGE);
