@@ -21,6 +21,7 @@
 import { HOST } from "../bridge/host.ts";
 import { join } from "node:path";
 
+import { hookTargetFileName, hookTargetsDir, parseHookTarget } from "../bridge/beacon/hook-targets.ts";
 import { linkRecordPath, parseLinkRecord, partsRoot, configHome } from "../bridge/inside/links.ts";
 import { parseJsonObject } from "../web/src/lib/json.ts";
 import { compareSemver } from "../web/src/lib/semver.ts";
@@ -28,7 +29,7 @@ import type { CliContext } from "./context.ts";
 import { collieVersionBare } from "./context.ts";
 import { managedSettingsPath } from "./hold-entry.ts";
 import { CLAUDE_MOD_FILES, CLAUDE_MOD_NAME, claudeModVersion } from "./inside-embed.ts";
-import { ok, warn, type Finding } from "./finding.ts";
+import { ok, skipped, warn, type Finding } from "./finding.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 
@@ -68,7 +69,14 @@ export interface HarnessLinkDeps {
   readonly managedSettings?: string;
   /** This build's part version. Defaults to the embedded mod's version. */
   readonly version?: string;
+  /** `process.platform`, through the host. Defaults to {@link HOST}'s. */
+  readonly platform?: string;
 }
+
+/** The name a half-written part carries until it is renamed into place. Ours by name alone. */
+const TEMP_SUFFIX = ".collie-tmp";
+/** The name the old part folder carries for the moment between the two renames. */
+const OLD_SUFFIX = ".collie-old";
 
 /** Where a file part goes. */
 export function filePartPath(ctx: Pick<CliContext, "env" | "home">, harness: "pi" | "omp" | "opencode"): string {
@@ -125,12 +133,21 @@ export function writePart(deps: HarnessLinkDeps, harness: LinkHarness): PartWrit
   if (harness === "claude") {
     const dir = claudePartDir(deps.ctx);
     if (there === null && deps.files.exists(dir)) return { kind: "foreign", version: null };
+    // Into a sibling folder first, renamed into place whole: an interrupted link leaves only a folder
+    // with our temporary name, which the next run removes, never a half part under the real name.
+    const temp = `${dir}${TEMP_SUFFIX}`;
+    const old = `${dir}${OLD_SUFFIX}`;
+    deps.files.removeTree(temp);
+    deps.files.removeTree(old);
     for (const file of CLAUDE_MOD_FILES) {
-      const target = join(dir, file.path);
+      const target = join(temp, file.path);
       deps.files.mkdirp(join(target, ".."), 0o755);
       deps.files.write(target, file.text, 0o644);
     }
-    deps.files.write(join(dir, ".claude-plugin", "marketplace.json"), marketplaceText(), 0o644);
+    deps.files.write(join(temp, ".claude-plugin", "marketplace.json"), marketplaceText(), 0o644);
+    if (deps.files.exists(dir)) deps.files.rename(dir, old);
+    deps.files.rename(temp, dir);
+    deps.files.removeTree(old);
     return { kind: "written", version: ours };
   }
   const text = (deps.parts ?? BUILT_PARTS)[harness];
@@ -138,7 +155,9 @@ export function writePart(deps: HarnessLinkDeps, harness: LinkHarness): PartWrit
   const path = filePartPath(deps.ctx, harness);
   if (there === null && deps.files.exists(path)) return { kind: "foreign", version: null };
   deps.files.mkdirp(join(path, ".."), 0o755);
-  deps.files.write(path, `${markerLine(harness, ours)}\n${text}`, 0o644);
+  // The same for a file part: a whole file or none, under the real name.
+  deps.files.write(`${path}${TEMP_SUFFIX}`, `${markerLine(harness, ours)}\n${text}`, 0o644);
+  deps.files.rename(`${path}${TEMP_SUFFIX}`, path);
   return { kind: "written", version: ours };
 }
 
@@ -194,6 +213,12 @@ function registerClaude(deps: HarnessLinkDeps): string | null {
 /** `collie link <harness>`. */
 export function cmdHarnessLink(deps: HarnessLinkDeps, harness: LinkHarness): number {
   const { io } = deps;
+  // The bridge keeps the screen path on Windows in this version (`bridge/inside/gate.ts`): a link
+  // there would say "linked" and change nothing.
+  if ((deps.platform ?? HOST.platform) === "win32") {
+    io.err("error: sending by data is not available on Windows yet. Collie keeps the screen path there.");
+    return EXIT.FAIL;
+  }
   if (harness === "claude" && deps.exec.which("claude") === null) {
     io.err("error: claude is not on PATH. Install Claude Code first, then run `collie link claude` again.");
     return EXIT.FAIL;
@@ -230,28 +255,36 @@ function unlinkOne(deps: HarnessLinkDeps, harness: LinkHarness): Unlinked {
   const record = linkRecordPath(deps.ctx.env, deps.ctx.home, harness);
   const had = deps.files.exists(record);
   if (had) deps.files.remove(record);
-  let note: string | null = null;
   if (harness === "claude") {
-    if (deps.exec.which("claude") === null) note = "claude is not on PATH, so its plugin list still names the part";
-    else {
-      const plugins = claude(deps, ["list", "--json"]);
-      if (plugins.ok && plugins.out.includes(CLAUDE_PLUGIN_ID)) {
-        const gone = claude(deps, ["uninstall", CLAUDE_PLUGIN_ID, "--scope", "user", "--json"]);
-        if (!gone.ok) note = `Claude Code did not uninstall the part: ${gone.why}`;
-      }
-      const markets = claude(deps, ["marketplace", "list", "--json"]);
-      if (markets.ok && markets.out.includes(`"${CLAUDE_MARKETPLACE}"`)) {
-        const gone = claude(deps, ["marketplace", "remove", CLAUDE_MARKETPLACE, "--scope", "user", "--json"]);
-        if (!gone.ok) note ??= `Claude Code did not remove the marketplace: ${gone.why}`;
-      }
-    }
+    const note = unregisterClaude(deps);
     const ours = partOnDisk(deps, harness) !== null;
-    if (ours) deps.files.removeTree(claudePartDir(deps.ctx));
-    return { removed: had || ours, note };
+    // The folder goes only once Claude Code no longer names it: a registration left pointing at a
+    // missing folder is one no verb of ours can see again. A rerun of `unlink` finishes the job.
+    if (ours && note === null) deps.files.removeTree(claudePartDir(deps.ctx));
+    if (note === null) return { removed: had || ours, note: null };
+    return { removed: had || ours, note: ours ? `${note}; the part's folder is kept, run \`collie unlink claude\` again` : note };
   }
   const ours = partOnDisk(deps, harness) !== null;
   if (ours) deps.files.remove(filePartPath(deps.ctx, harness));
-  return { removed: had || ours, note };
+  return { removed: had || ours, note: null };
+}
+
+/** Take the mod's registration away; a warning when any step failed or could not be checked. */
+function unregisterClaude(deps: HarnessLinkDeps): string | null {
+  if (deps.exec.which("claude") === null) return "claude is not on PATH, so its plugin list still names the part";
+  const plugins = claude(deps, ["list", "--json"]);
+  if (!plugins.ok) return `Claude Code did not list its plugins: ${plugins.why}`;
+  if (plugins.out.includes(CLAUDE_PLUGIN_ID)) {
+    const gone = claude(deps, ["uninstall", CLAUDE_PLUGIN_ID, "--scope", "user", "--json"]);
+    if (!gone.ok) return `Claude Code did not uninstall the part: ${gone.why}`;
+  }
+  const markets = claude(deps, ["marketplace", "list", "--json"]);
+  if (!markets.ok) return `Claude Code did not list its marketplaces: ${markets.why}`;
+  if (markets.out.includes(`"${CLAUDE_MARKETPLACE}"`)) {
+    const gone = claude(deps, ["marketplace", "remove", CLAUDE_MARKETPLACE, "--scope", "user", "--json"]);
+    if (!gone.ok) return `Claude Code did not remove the marketplace: ${gone.why}`;
+  }
+  return null;
 }
 
 /** `collie unlink <harness>`. */
@@ -367,7 +400,7 @@ export function harnessLinkHelp(verb: "link" | "unlink"): string[] {
 
 /** The doctor rows, one per harness (`link-<harness>`). Files only; the harness version comes from the harness rows. */
 export function linkFindings(deps: Pick<HarnessLinkDeps, "ctx" | "files" | "managedSettings" | "version" | "parts">, harnessVersion: (harness: string) => string | null): Finding[] {
-  return LINK_HARNESSES.map((harness) => {
+  const rows = LINK_HARNESSES.map((harness) => {
     const check = `link-${harness}`;
     const state = linkState(deps, harness);
     const words = linkStateWords(harness, state);
@@ -383,4 +416,25 @@ export function linkFindings(deps: Pick<HarnessLinkDeps, "ctx" | "files" | "mana
     }
     return ok(check, words);
   });
+  return linked(deps) ? [...rows, folderFinding(deps)] : rows;
+}
+
+/** Whether any harness is linked: only then does the folder row speak. */
+function linked(deps: Pick<HarnessLinkDeps, "ctx" | "files">): boolean {
+  return LINK_HARNESSES.some((harness) => isLinked(deps, harness));
+}
+
+/**
+ * `link-folder`: the parts folder this shell links into against the one this instance's running bridge
+ * reads, from its hook target file. A unit written before the folder moved does not carry it, and the
+ * bridge then never sees the link: `collie restart` writes the unit again with the folder.
+ */
+function folderFinding(deps: Pick<HarnessLinkDeps, "ctx" | "files">): Finding {
+  const mine = partsRoot(deps.ctx.env, deps.ctx.home);
+  const text = deps.files.read(join(hookTargetsDir(deps.ctx.env, deps.ctx.home), hookTargetFileName(deps.ctx.stateDir)));
+  const record = text === null ? null : parseHookTarget(text);
+  if (record === null) return skipped("link-folder", "the bridge is not running: it reads the parts folder at its start", "`collie start`");
+  if (record.parts === undefined || record.parts === null) return skipped("link-folder", "the running bridge does not name its parts folder (an older build)", "`collie restart` after the update");
+  if (record.parts === mine) return ok("link-folder", `the bridge reads the same parts folder: ${mine}`);
+  return warn("link-folder", `the bridge reads ${record.parts}, this shell links into ${mine}: the bridge does not see the link`, "`collie restart` writes the folder into the service and restarts the bridge");
 }

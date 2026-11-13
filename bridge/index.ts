@@ -303,8 +303,8 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type Held, type HoldConn
 import type { HoldRequest } from "../web/src/lib/surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { PartAsks, type PartAskSession } from "./inside/asks.ts";
-import { insideGate, insideWanted, LINK_READ_MS, linkReader } from "./inside/gate.ts";
-import { linkedHarnesses } from "./inside/links.ts";
+import { insideGate, insideWanted, INTERVAL_TIMER, linkReader, watchLink } from "./inside/gate.ts";
+import { linkedHarnesses, partsRoot } from "./inside/links.ts";
 import { ownerHold } from "./inside/owner.ts";
 import { applyWake, type WakeSink } from "./inside/wake.ts";
 import { InsideHub } from "./inside/hub.ts";
@@ -2277,22 +2277,28 @@ const hookTargetFields = (inside: boolean) => ({
   instance: collieInstance,
   port: cfg.port,
   inside: inside ? { wire: WIRE_VERSION, socket: insideSocketPath(cfg.stateDir) } : undefined,
+  // The parts folder this bridge reads the link records from; `collie doctor` compares it with its own.
+  parts: partsRoot(process.env, homedir()),
 });
 hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(insideStarted));
-// A link made while the bridge runs (`collie link`, M99 spec 09): open the socket at the next read of
-// the link records, once, and name it in the hook target file so a part finds it. One folder listing
-// per read; the timer stops once the socket is open or the bridge stops.
-/** Open the socket for a link made while the bridge runs. One try: a socket it cannot own stays closed, as at boot. */
-async function openInsideLate(): Promise<void> {
-  if (insideServer === null || insideStarted || !insideOn()) return;
-  if (insideWatch !== null) clearInterval(insideWatch);
-  if (!(await insideServer.start())) return;
-  insideStarted = true;
-  console.log(`[inside] a harness is linked: socket at ${insideSocketPath(cfg.stateDir)}`);
-  // The write is a rename over the same file: no moment with no target file.
-  if (edgeRouter !== null) hookTarget = registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(true));
-}
-const insideWatch = insideServer === null || insideStarted || insideGateState !== "unlinked" ? null : setInterval(() => void openInsideLate(), LINK_READ_MS);
+// A link made while the bridge runs (`collie link`, M99 spec 09) opens the socket at the next read of
+// the link records (`watchLink`, one folder listing per read) and names it in the hook target file so
+// a part finds it. A start that fails is tried again at the read after; the timer stops once the
+// socket listens, or when the bridge stops.
+const stopInsideWatch =
+  insideServer === null || insideStarted || insideGateState !== "unlinked"
+    ? null
+    : watchLink({
+        ...INTERVAL_TIMER,
+        on: insideOn,
+        start: () => insideServer.start(),
+        opened: () => {
+          insideStarted = true;
+          console.log(`[inside] a harness is linked: socket at ${insideSocketPath(cfg.stateDir)}`);
+          // The write is a rename over the same file: no moment with no target file.
+          if (edgeRouter !== null) hookTarget = registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(true));
+        },
+      });
 
 // Walky talky (M62): messages between agent sessions. The log is `<stateDir>/walky/`, the local
 // socket `<stateDir>/walky/sock` (0600). A message is logged first, then typed through the pane's
@@ -4267,7 +4273,7 @@ const shutdown = async () => {
   edgeRouter?.stop();
   hookTarget?.remove();
   holdServer?.stop();
-  if (insideWatch !== null) clearInterval(insideWatch);
+  stopInsideWatch?.();
   insideServer?.stop();
   walkyServer.stop();
   registry.disposeAll();

@@ -14,7 +14,8 @@ import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { FakeDurableProgram, SOCKET_ONLY_SKIP } from "../bridge/mux/durable/fixture.ts";
 import { SYSTEM_PROBE, type SocketProbe } from "../bridge/mux/durable/client.ts";
-import { linkRecordPath } from "../bridge/inside/links.ts";
+import { hookTargetFileName, hookTargetsDir } from "../bridge/beacon/hook-targets.ts";
+import { linkRecordPath, partsRoot } from "../bridge/inside/links.ts";
 import { claudePartDir, linkFindings, marketplaceText } from "./harness-link.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
 import { durableFindings } from "./durable-findings.ts";
@@ -3621,6 +3622,28 @@ describe("the link rows (M99 spec 09)", () => {
     const found = row(linkFindings(r.deps, () => null), "link-claude");
     expect(found?.status).toBe("warn");
     expect(found?.detail).toContain("blocked by policy");
+  });
+
+  test("link-folder: only once something is linked; it compares the bridge's folder with this shell's", () => {
+    const r = lab({ version: "1.29.0" });
+    expect(linkFindings(r.deps, () => null).map((f) => f.check)).not.toContain("link-folder");
+    r.linkClaude("1.29.0");
+    const ctx = r.deps.ctx;
+    // No bridge running: skipped.
+    expect(row(linkFindings(r.deps, () => null), "link-folder")?.status).toBe("skipped");
+    const target = join(hookTargetsDir(ctx.env, ctx.home), hookTargetFileName(ctx.stateDir));
+    mkdirSync(join(target, ".."), { recursive: true });
+    const record = (parts?: string) => JSON.stringify({ schemaVersion: 1, stateDir: ctx.stateDir, pid: 1, pidStartTime: null, bootedAt: 1, parts });
+    // An older bridge names no folder.
+    writeFileSync(target, record());
+    expect(row(linkFindings(r.deps, () => null), "link-folder")?.status).toBe("skipped");
+    writeFileSync(target, record(partsRoot(ctx.env, ctx.home)));
+    expect(row(linkFindings(r.deps, () => null), "link-folder")?.status).toBe("ok");
+    // A unit written before the folder moved: the bridge reads the default, this shell another.
+    writeFileSync(target, record("/elsewhere/collie/inside"));
+    const moved = row(linkFindings(r.deps, () => null), "link-folder");
+    expect(moved?.status).toBe("warn");
+    expect(moved?.detail).toContain("the bridge does not see the link");
   });
 
   test("a harness version not verified for the data path: warn", () => {

@@ -8,20 +8,33 @@
 //
 // Pure paths and one read; nothing here writes.
 
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { asJsonNumber, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
 
 const LINK_SUFFIX = ".link.json";
 
-/** `$XDG_CONFIG_HOME`, else `~/.config`. */
+/** `$XDG_CONFIG_HOME` when it is absolute (the spec ignores a relative one), else `~/.config`. */
 export function configHome(env: Readonly<Record<string, string | undefined>>, home: string): string {
-  const declared = env.XDG_CONFIG_HOME?.trim();
-  return declared !== undefined && declared !== "" ? declared : join(home, ".config");
+  const declared = env.XDG_CONFIG_HOME?.trim() ?? "";
+  return declared !== "" && isAbsolute(declared) ? declared : join(home, ".config");
 }
 
-/** The machine's parts folder: `<config home>/collie/inside`. */
+/** The parts folder when nothing moves it: `~/.config/collie/inside`. */
+export function defaultPartsRoot(home: string): string {
+  return join(home, ".config", "collie", "inside");
+}
+
+/**
+ * The machine's parts folder: `COLLIE_PARTS_DIR` when absolute, else `<config home>/collie/inside`.
+ * The CLI and the bridge must read the same one, and a supervised bridge does not inherit the shell:
+ * the service definition carries `COLLIE_PARTS_DIR` whenever the CLI's folder is not the default
+ * (`cli/unit.ts` bridgeEnvironment), and the bridge names its folder in its hook target file so
+ * `collie doctor` can compare (`link-folder`).
+ */
 export function partsRoot(env: Readonly<Record<string, string | undefined>>, home: string): string {
+  const pinned = env.COLLIE_PARTS_DIR?.trim() ?? "";
+  if (pinned !== "" && isAbsolute(pinned)) return pinned;
   return join(configHome(env, home), "collie", "inside");
 }
 

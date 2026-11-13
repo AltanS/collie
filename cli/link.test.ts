@@ -305,6 +305,8 @@ describe("link verbs for the data path (M99 spec 09)", () => {
     'state="${0%/*}"',
     'printf "%s\\n" "$*" >> "$state/calls.log"',
     'has() { [[ -f "$state/$1" && "$(<"$state/$1")" == yes ]]; }',
+    // A test makes one call fail by writing its leading words into `fail`.
+    'if [[ -f "$state/fail" && "$*" == "$(<"$state/fail")"* ]]; then echo "it failed" >&2; exit 1; fi',
     'case "$*" in',
     '  "plugin marketplace list --json") if has market; then printf \'[{"name":"collie-inside"}]\\n\'; else printf "[]\\n"; fi ;;',
     '  "plugin marketplace add "*) printf yes > "$state/market" ;;',
@@ -352,8 +354,14 @@ describe("link verbs for the data path (M99 spec 09)", () => {
       parts: options.parts,
     };
     const calls = (): string[] => (existsSync(join(bin, "calls.log")) ? readFileSync(join(bin, "calls.log"), "utf8").trim().split("\n") : []);
-    return { root, home, bin, claudeDir, deps: linkDeps, io, calls, tools };
+    const failNext = (words: string | null): void => {
+      if (words === null) rmSync(join(bin, "fail"), { force: true });
+      else writeFileSync(join(bin, "fail"), words);
+    };
+    return { root, home, bin, claudeDir, deps: linkDeps, io, calls, tools, failNext };
   }
+
+  const isLinkedNow = (r: { deps: HarnessLinkDeps }): boolean => linkedHarnesses(r.deps.ctx.env, r.deps.ctx.home, realFiles).includes("claude");
 
   const PARTS: PartTexts = { pi: "export default function collie() {}\n", omp: "export default function collie() {}\n", opencode: "export const Collie = async () => ({})\n" };
 
@@ -425,6 +433,63 @@ describe("link verbs for the data path (M99 spec 09)", () => {
     writeFileSync(join(dir, "notes.txt"), "mine");
     expect(cmdHarnessLink(r.deps, "claude")).toBe(EXIT.FAIL);
     expect(readFileSync(join(dir, "notes.txt"), "utf8")).toBe("mine");
+    expect(r.calls()).toEqual([]);
+  });
+
+  test("an interrupted first link leaves only our temporary folder, and the next link repairs it", () => {
+    const r = lab();
+    const dir = claudePartDir(r.deps.ctx);
+    // The kill came between the files and the rename: a half folder under our temporary name.
+    mkdirSync(join(`${dir}.collie-tmp`, ".claude-plugin"), { recursive: true });
+    writeFileSync(join(`${dir}.collie-tmp`, ".claude-plugin", "plugin.json"), "{");
+    let renames = 0;
+    const broken: HarnessLinkDeps = {
+      ...r.deps,
+      files: {
+        ...realFiles,
+        rename: () => {
+          renames += 1;
+          throw new Error("killed");
+        },
+      },
+    };
+    expect(() => cmdHarnessLink(broken, "claude")).toThrow("killed");
+    expect(renames).toBe(1);
+    expect(existsSync(dir)).toBe(false);
+    expect(linkState(r.deps, "claude")).toEqual({ kind: "not-linked" });
+    // A rerun: the temporary folder is ours by its name, so it goes, and the part lands whole.
+    expect(cmdHarnessLink(r.deps, "claude")).toBe(EXIT.OK);
+    expect(existsSync(`${dir}.collie-tmp`)).toBe(false);
+    expect(partOnDisk(r.deps, "claude")).toBe(claudeModVersion());
+    // A relink replaces the folder by rename too, and leaves no old copy behind.
+    expect(cmdHarnessLink(r.deps, "claude")).toBe(EXIT.OK);
+    expect(readdirSync(join(dir, "..")).filter((name) => name.startsWith("claude.collie"))).toEqual([]);
+  });
+
+  test("unlink while `claude plugin list` fails: a warning, exit 1, and the folder is kept; a rerun finishes", () => {
+    const r = lab();
+    cmdHarnessLink(r.deps, "claude");
+    for (const words of ["plugin list", "plugin marketplace list"]) {
+      if (words === "plugin marketplace list") cmdHarnessLink(r.deps, "claude");
+      r.failNext(words);
+      const io = capture();
+      expect(cmdHarnessUnlink({ ...r.deps, io }, "claude")).toBe(EXIT.FAIL);
+      expect(io.stderr.join("\n")).toContain("the part's folder is kept");
+      expect(existsSync(claudePartDir(r.deps.ctx))).toBe(true);
+      // The record went first: the bridge stops sending by data at once.
+      expect(isLinkedNow(r)).toBe(false);
+      r.failNext(null);
+    }
+    expect(cmdHarnessUnlink(r.deps, "claude")).toBe(EXIT.OK);
+    expect(existsSync(claudePartDir(r.deps.ctx))).toBe(false);
+  });
+
+  test("on Windows link refuses with one plain line and writes nothing", () => {
+    const r = lab();
+    const io = capture();
+    expect(cmdHarnessLink({ ...r.deps, io, platform: "win32" }, "claude")).toBe(EXIT.FAIL);
+    expect(io.stderr).toEqual(["error: sending by data is not available on Windows yet. Collie keeps the screen path there."]);
+    expect(existsSync(join(r.home, ".config"))).toBe(false);
     expect(r.calls()).toEqual([]);
   });
 

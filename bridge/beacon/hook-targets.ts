@@ -55,6 +55,8 @@ export interface HookTargetRecord {
   readonly port: number | null;
   /** The inside wire's socket and version, or null when the bridge serves none (M99 spec 01). */
   readonly inside: HookTargetInside | null;
+  /** The linked parts folder the bridge reads (M99 spec 09), or null for an older record. `collie doctor` compares it. */
+  readonly parts?: string | null;
 }
 
 /** Where a bridge serves the inside wire, as its target file says. */
@@ -72,6 +74,7 @@ export interface HookTargetIdentity {
   readonly instance?: string | null | undefined;
   readonly port?: number | undefined;
   readonly inside?: HookTargetInside | undefined;
+  readonly parts?: string | undefined;
 }
 
 /** How the host's first, unnamed Collie is written into the `instance` field. */
@@ -116,6 +119,7 @@ export function parseHookTarget(text: string): HookTargetRecord | null {
     instance: identityName(row.instance),
     port: identityPort(row.port),
     inside: insideField(row.inside),
+    parts: partsField(row.parts),
   };
 }
 
@@ -131,6 +135,12 @@ function insideField(value: JsonValue | undefined): HookTargetInside | null {
   if (wire === undefined || !Number.isInteger(wire) || wire < 1 || wire > 999) return null;
   if (socket === undefined || socket.length === 0 || socket.length > INSIDE_SOCKET_MAX || !isAbsolute(socket)) return null;
   return { wire, socket };
+}
+
+/** An optional `parts` field: an absolute folder path, else null. */
+function partsField(value: JsonValue | undefined): string | null {
+  const text = asJsonString(value);
+  return text === undefined || text.length === 0 || text.length > 4096 || !isAbsolute(text) ? null : text;
 }
 
 /** An optional name field: a short non-empty string, else null. A wrong type never fails the record. */
@@ -151,6 +161,7 @@ export interface HookTargetIdentityFields {
   instance?: string;
   port?: number;
   inside?: { wire: number; socket: string };
+  parts?: string;
 }
 
 /** The fields of a record's JSON text that name the bridge. Absent ones are left out of the file. */
@@ -160,5 +171,6 @@ export function identityFields(identity: HookTargetIdentity): HookTargetIdentity
   if (identity.instance !== undefined) out.instance = identity.instance ?? HOOK_TARGET_DEFAULT_INSTANCE;
   if (identity.port !== undefined) out.port = identity.port;
   if (identity.inside !== undefined) out.inside = { wire: identity.inside.wire, socket: identity.inside.socket };
+  if (identity.parts !== undefined) out.parts = identity.parts;
   return out;
 }

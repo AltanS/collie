@@ -79,7 +79,7 @@ describe("parseHookTarget, the optional identity fields (M76 spec 02)", () => {
   const base = { schemaVersion: 1, stateDir: "/srv/a", pid: 4242, pidStartTime: 7, bootedAt: 1 };
 
   test("a record without mux, instance and port still parses, and reads them as unknown", () => {
-    expect(parseHookTarget(JSON.stringify(base))).toEqual({ ...base, mux: null, instance: null, port: null, inside: null });
+    expect(parseHookTarget(JSON.stringify(base))).toEqual({ ...base, mux: null, instance: null, port: null, inside: null, parts: null });
   });
 
   test("a record with all three carries them", () => {
@@ -88,8 +88,11 @@ describe("parseHookTarget, the optional identity fields (M76 spec 02)", () => {
 
   test("a field of the wrong type or range is dropped, never a reason to refuse the record", () => {
     const wrong = { ...base, mux: 7, instance: "", port: 70000 };
-    expect(parseHookTarget(JSON.stringify(wrong))).toEqual({ ...base, mux: null, instance: null, port: null, inside: null });
+    expect(parseHookTarget(JSON.stringify(wrong))).toEqual({ ...base, mux: null, instance: null, port: null, inside: null, parts: null });
     expect(parseHookTarget(JSON.stringify({ ...base, mux: "x".repeat(200), port: 1.5 }))).toMatchObject({ mux: null, port: null });
+    // The parts folder (M99 spec 09): absolute, else dropped.
+    expect(parseHookTarget(JSON.stringify({ ...base, parts: "/home/a/.config/collie/inside" }))?.parts).toBe("/home/a/.config/collie/inside");
+    expect(parseHookTarget(JSON.stringify({ ...base, parts: "rel/inside" }))?.parts).toBeNull();
     expect(parseHookTarget(JSON.stringify({ ...base, mux: ["herdr"], instance: {}, port: "8788" }))).toMatchObject({ mux: null, instance: null, port: null });
   });
 
