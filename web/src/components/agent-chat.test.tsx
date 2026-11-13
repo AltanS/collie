@@ -4181,7 +4181,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
 
   /** One recorded frame: which body is drawn, and which phase the layer is in (or none). */
   type Frame = { body: "chat" | "terminal"; phase: string };
-  function renderShell() {
+  function renderShell(truncated = false) {
     let setAgent: (a: AgentView) => void = () => {};
     let revalidate: () => void = () => {};
     function Host() {
@@ -4197,6 +4197,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
           shellPanes={agent.kind === "shell" ? [agent] : []}
           tabs={[]}
           text={paneTextWithDraft("recent pane output")}
+          truncated={truncated}
           onBack={vi.fn()}
           onSelect={vi.fn()}
         />
@@ -4372,7 +4373,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
 
   it("(d) a log that never appears: the terminal says so after the read that follows the turn's end", async () => {
     chatAnswer = "no-log";
-    const view = renderShell();
+    const view = renderShell(true);
     await handOver(view, agentOf("pi", "idle", true));
     view.set(agentOf("pi", "working", true));
     await advance(view, 120_000);
@@ -4389,11 +4390,14 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     await advance(view, 100);
     expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
     expect(screen.getByText("No transcript file was found for this pane's session yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /load older/i })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /show entire history/i })).toBeNull();
 
     chatAnswer = "live";
     view.poll();
     await advance(view, 300);
     expect(screen.getByText("what changed today?")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /load older/i })).toBeNull();
     expect(bodies(view.frames)).toEqual(["terminal", "chat", "terminal", "chat"]);
     swapsOnlyUnderCover(view.frames);
   });
@@ -4405,7 +4409,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     ["a 404 from an older member", () => new HttpResponse(null, { status: 404 })],
   ])("(g) a server that cannot read (%s) draws the terminal, not an empty Chat", async (_name, answer) => {
     server.use(http.get(/\/api\/pane\/[^/]+\/chat/, answer));
-    const view = renderShell();
+    const view = renderShell(true);
     await handOver(view, agentOf("claude", "idle", true));
     await advance(view, 500);
     view.poll();
@@ -4413,6 +4417,8 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     expect(view.container.querySelector('[data-slot="session-stream"]')).toBeNull();
     expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
     expect(startLine()).toBeNull();
+    expect(screen.getByRole("button", { name: /load older/i })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /show entire history/i })).toBeNull();
   });
 
   it("(f) a question with nothing to read: the terminal at once, so the dialog is on screen", async () => {
