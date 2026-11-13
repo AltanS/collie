@@ -525,6 +525,21 @@ describe("a write whose connection Herdr closed before the reply", () => {
     expect(fake.writes()).toEqual([]);
   });
 
+  test("a socket error after the request went out reads the same, with the error's words in brackets", async () => {
+    class ResetHerdr extends FakeHerdr {
+      override async sendPaneText(): Promise<void> {
+        await Promise.resolve();
+        throw new HerdrNoReply("pane.send_text", Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }));
+      }
+    }
+    const fake = new ResetHerdr();
+    const mux = new HerdrMux(fake, () => []);
+    const pane = (await mux.snapshot()).panes[0]!;
+    const ack = await mux.typeText(pane.paneId, "hello");
+    expect(ack.ok ? "ok" : ack.reason).toBe("unconfirmed");
+    if (!ack.ok) expect(ack.detail).toBe(`Herdr closed the connection before it confirmed the text written to ${pane.paneId} (herdr pane.send_text: read ECONNRESET). It may have arrived, so it was not written again.`);
+  });
+
   test("a dial that never reached Herdr is unreachable, for text and for keys", async () => {
     const dead = () => Object.assign(new Error("Failed to connect"), { code: "ECONNREFUSED", errno: -111, syscall: "connect" });
     class DeadHerdr extends FakeHerdr {

@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from "../../json.ts";
-import { dialHerdr, type SockHandle } from "../../dial.ts";
+import { dialHerdr, mayHaveReachedPeer, type SockHandle } from "../../dial.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The tuios daemon's JSON verb socket — the TRANSPORT. This is the only file that knows tuios's
@@ -322,14 +322,15 @@ export class TuiosTimeout extends Error {
 }
 
 /**
- * A connection tuios closed after the request was handed to the socket and before a reply came. The
- * message is the one a plain Error carried before. Like {@link TuiosTimeout} it means "not confirmed":
- * the daemon may have read the request and acted on it (MuxRefusal `unconfirmed`,
- * bridge/mux/types.ts). A close before the request went out stays a plain Error.
+ * A connection that closed, or failed with a socket error, after the request was handed to the socket
+ * and before a reply came. A close keeps the message a plain Error carried before; an error carries its
+ * own message after the verb. Like {@link TuiosTimeout} it means "not confirmed": the daemon may have
+ * read the request and acted on it (MuxRefusal `unconfirmed`, bridge/mux/types.ts). A close or an error
+ * before the request went out (a failed dial) stays the plain error.
  */
 export class TuiosNoReply extends Error {
-  constructor(verb: string) {
-    super(`tuios ${verb}: connection closed before reply`);
+  constructor(verb: string, cause?: Error) {
+    super(cause === undefined ? `tuios ${verb}: connection closed before reply` : `tuios ${verb}: ${cause.message}`, { cause });
     this.name = "TuiosNoReply";
   }
 }
@@ -348,7 +349,8 @@ export class TuiosClient {
       let settled = false;
       let socket: SockHandle | null = null;
       let cancelDial: (() => void) | null = null;
-      // True once the request was handed to the socket; only a close after that is {@link TuiosNoReply}.
+      // True once the request was handed to the socket; only a close or an error after that is
+      // {@link TuiosNoReply}.
       let sent = false;
       const decoder = new TextDecoder("utf-8");
       // Settle BEFORE closing: end() fires `close` synchronously, which re-enters here as a no-op.
@@ -396,7 +398,7 @@ export class TuiosClient {
             });
           },
           error(_s, err) {
-            finish(() => reject(err));
+            finish(() => reject(sent && mayHaveReachedPeer(err) ? new TuiosNoReply(verb, err) : err));
           },
           close() {
             finish(() => reject(sent ? new TuiosNoReply(verb) : new Error(`tuios ${verb}: connection closed before reply`)));

@@ -1,6 +1,6 @@
 import type { JsonObject } from "../../json.ts";
 import type { AgentStatus } from "../../types.ts";
-import { dialHerdr, type DialMode, type SockHandle } from "../../dial.ts";
+import { dialHerdr, mayHaveReachedPeer, type DialMode, type SockHandle } from "../../dial.ts";
 import { decodeReplyLine, decodeStreamLine, type EventData } from "../../wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,14 +254,15 @@ export class HerdrTimeout extends Error {
 }
 
 /**
- * A connection Herdr closed after the request was handed to the socket and before a reply came. The
- * message is the one a plain Error carried before. Like {@link HerdrTimeout} it means "not confirmed":
- * Herdr may have read the request and acted on it, so a write must not be told apart from a time-out
- * (MuxRefusal `unconfirmed`, bridge/mux/types.ts). A close before the request went out stays a plain Error.
+ * A connection that closed, or failed with a socket error, after the request was handed to the socket
+ * and before a reply came. A close keeps the message a plain Error carried before; an error carries its
+ * own message after the method. Like {@link HerdrTimeout} it means "not confirmed": Herdr may have read
+ * the request and acted on it (MuxRefusal `unconfirmed`, bridge/mux/types.ts). A close or an error
+ * before the request went out (a failed dial) stays the plain error.
  */
 export class HerdrNoReply extends Error {
-  constructor(method: string) {
-    super(`herdr ${method}: connection closed before reply`);
+  constructor(method: string, cause?: Error) {
+    super(cause === undefined ? `herdr ${method}: connection closed before reply` : `herdr ${method}: ${cause.message}`, { cause });
     this.name = "HerdrNoReply";
   }
 }
@@ -288,8 +289,8 @@ export class HerdrClient {
       // Aborts a dial that is still connecting — a timeout that fires mid-connect has no socket
       // to end() yet, and without this the pending OS handle lives until the connect settles.
       let cancelDial: (() => void) | null = null;
-      // True once the request was handed to the socket: a close after that may follow a request
-      // Herdr already acted on ({@link HerdrNoReply}); a close before it cannot.
+      // True once the request was handed to the socket: a close or an error after that may follow a
+      // request Herdr already acted on ({@link HerdrNoReply}); one before it cannot.
       let sent = false;
       // Stream-decode so a multi-byte UTF-8 codepoint split across chunk boundaries isn't
       // corrupted into replacement characters.
@@ -345,7 +346,7 @@ export class HerdrClient {
           });
         },
         error(_s, err) {
-          finish(() => reject(err));
+          finish(() => reject(sent && mayHaveReachedPeer(err) ? new HerdrNoReply(method, err) : err));
         },
         close() {
           finish(() => reject(sent ? new HerdrNoReply(method) : new Error(`herdr ${method}: connection closed before reply`)));

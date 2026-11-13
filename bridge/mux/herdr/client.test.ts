@@ -4,7 +4,8 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { toPipeName } from "../../dial.ts";
+import { SocketWriteFailed, toPipeName } from "../../dial.ts";
+import { bunWritesAnswer } from "../../dial.write-fails.ts";
 import type { JsonObject } from "../../json.ts";
 import { HerdrClient, HerdrNoReply, HerdrTimeout } from "./client.ts";
 
@@ -99,6 +100,22 @@ async function droppingHerdr(): Promise<string> {
   return path;
 }
 
+/** A stand-in that never reads: it closes with the request unread, which resets the connection. */
+async function resettingServer(name: string): Promise<string> {
+  dir = mkdtempSync(join(tmpdir(), "collie-herdr-client-"));
+  const path = join(dir, name);
+  server = net.createServer({ pauseOnConnect: true }, (conn) => {
+    conn.on("error", () => {});
+    setTimeout(() => conn.destroy(), 50);
+  });
+  const listening = server;
+  await new Promise<void>((resolve, reject) => {
+    listening.once("error", reject);
+    listening.listen(path, resolve);
+  });
+  return path;
+}
+
 /** What `call` rejects with, as an Error, or null when it resolves. */
 async function rejection(call: () => Promise<void>): Promise<Error | null> {
   try {
@@ -117,6 +134,34 @@ describe.skipIf(process.platform === "win32")("HerdrClient, a connection closed 
     const caught = await rejection(() => client.sendPaneText("w1:p1", "hello"));
     expect(caught).toBeInstanceOf(HerdrNoReply);
     expect(caught?.message).toBe("herdr pane.send_text: connection closed before reply");
+  });
+
+  test("a connection reset after the request went out rejects with HerdrNoReply", async () => {
+    const client = new HerdrClient(await resettingServer("herdr.sock"), 2000);
+    const caught = await rejection(() => client.sendPaneText("w1:p1", "hello"));
+    expect(caught).toBeInstanceOf(HerdrNoReply);
+  });
+
+  test("a write the socket refused after it took part of the request rejects with HerdrNoReply", async () => {
+    const restore = bunWritesAnswer([4, -1]);
+    try {
+      const caught = await rejection(() => new HerdrClient("/nowhere/herdr.sock", 2000).sendPaneText("w1:p1", "hello"));
+      expect(caught).toBeInstanceOf(HerdrNoReply);
+      expect(caught?.message).toBe("herdr pane.send_text: socket write failed");
+    } finally {
+      restore();
+    }
+  });
+
+  test("a write the socket refused before it took a byte rejects with the plain error", async () => {
+    const restore = bunWritesAnswer([-1]);
+    try {
+      const caught = await rejection(() => new HerdrClient("/nowhere/herdr.sock", 2000).sendPaneText("w1:p1", "hello"));
+      expect(caught).toBeInstanceOf(SocketWriteFailed);
+      expect(caught).not.toBeInstanceOf(HerdrNoReply);
+    } finally {
+      restore();
+    }
   });
 
   test("a socket with nobody behind it rejects with the dial's own error, not HerdrNoReply", async () => {

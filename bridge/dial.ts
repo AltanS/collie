@@ -70,6 +70,27 @@ export type DialHandlers = {
 export type DialMode = "auto" | "net" | "bun";
 
 /**
+ * Bun refused a write on the socket (a negative count). `accepted` is how many bytes of the payload the
+ * socket took before that, so a caller can tell a request that never reached the socket (0) from one
+ * that may have (M100 spec 03).
+ */
+export class SocketWriteFailed extends Error {
+  constructor(readonly accepted: number) {
+    super("socket write failed");
+    this.name = "SocketWriteFailed";
+  }
+}
+
+/**
+ * Whether a socket error after the request was handed over may follow bytes the other end read. Only a
+ * {@link SocketWriteFailed} with no byte accepted proves that nothing went out; any other error (a reset,
+ * a close, a write that failed half way) cannot.
+ */
+export function mayHaveReachedPeer<T>(err: T): boolean {
+  return !(err instanceof SocketWriteFailed && err.accepted === 0);
+}
+
+/**
  * herdr for Windows names its pipe after the full socket path. Pass through a value that is
  * already a pipe name (either slash direction) so an explicit HERDR_SOCKET_PATH=\\.\pipe\… works.
  */
@@ -107,9 +128,11 @@ export function dialHerdr(
         pending = { bytes: pending.bytes, cursor: advanceWrite(pending.cursor, accepted) };
         if (accepted < 0) {
           // Bun signals a failed write with a negative count. Report it as the transport error it
-          // is instead of leaving the request to time out with no explanation.
+          // is instead of leaving the request to time out with no explanation, with the bytes the
+          // socket took before it: none means the request never went out.
+          const taken = pending.cursor.sent;
           pending = null;
-          handlers.error?.(handle, new Error("socket write failed"));
+          handlers.error?.(handle, new SocketWriteFailed(taken));
           return;
         }
         if (accepted === 0) return; // full — resume on drain

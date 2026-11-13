@@ -184,6 +184,31 @@ describe("HcClient over a unix socket", () => {
     expect(caught).toBe("transport");
   });
 
+  // M100 spec 03: a reset after the request went out is the same "not sure" as a close. A stand-in that
+  // never reads and closes resets the connection; node:net reports it as an ECONNRESET error.
+  test("a connection reset after the request went out rejects with HcNoReply, with the error's words", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hc-client-"));
+    const path = join(dir, "core.sock");
+    const server = createServer({ pauseOnConnect: true }, (socket) => {
+      socket.on("error", () => {});
+      setTimeout(() => socket.destroy(), 50);
+    });
+    await new Promise<void>((resolve) => server.listen(path, resolve));
+    try {
+      let caught: Error | null = null;
+      try {
+        await new HcClient(path, 2000).pressKeys("t1", ["enter"]);
+      } catch (err) {
+        if (err instanceof Error) caught = err;
+      }
+      expect(caught).toBeInstanceOf(HcNoReply);
+      expect(caught?.message).toStartWith("herdr-core terminal.keys: ");
+    } finally {
+      server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   // M100 spec 03: the request went out, so the core may have acted on it.
   test("a connection the core closes after the request went out rejects with HcNoReply and the old words", async () => {
     const core = stand((socket) => socket.destroy());

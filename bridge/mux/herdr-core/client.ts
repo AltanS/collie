@@ -189,14 +189,16 @@ export class HcTimeout extends Error {
 }
 
 /**
- * A connection the core closed after the request (or, for typing, the text) was handed to the socket
- * and before the answer came. The message is the one a plain Error carried before. Like
- * {@link HcTimeout} it means "not confirmed": the core may have acted on it. A close before the request
- * went out stays a plain Error.
+ * A connection that closed, or failed with a socket error, after the request (or, for typing, the text)
+ * was handed to the socket and before the answer came. A close keeps the message a plain Error carried
+ * before; an error carries its own message after the method. Like {@link HcTimeout} it means "not
+ * confirmed": the core may have acted on it. A close or an error before the request went out (a failed
+ * dial) stays the plain error. node:net queues a write whole, so nothing here can prove that no byte
+ * left once the request was handed over.
  */
 export class HcNoReply extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, cause?: Error) {
+    super(message, { cause });
     this.name = "HcNoReply";
   }
 }
@@ -422,7 +424,8 @@ export class HcClient {
         () => finish(() => reject(new HcTimeout(method, this.timeoutMs))),
         this.timeoutMs,
       );
-      // True once the request was handed to the socket; only a close after that is {@link HcNoReply}.
+      // True once the request was handed to the socket; only a close or an error after that is
+      // {@link HcNoReply}.
       let sent = false;
       socket.setEncoding("utf8");
       socket.on("connect", () => {
@@ -452,7 +455,7 @@ export class HcClient {
           nl = buf.indexOf("\n");
         }
       });
-      socket.on("error", (err) => finish(() => reject(err)));
+      socket.on("error", (err) => finish(() => reject(sent ? new HcNoReply(`herdr-core ${method}: ${err.message}`, err) : err)));
       socket.on("close", () => {
         const closed = `herdr-core ${method}: connection closed before the answer`;
         finish(() => reject(sent ? new HcNoReply(closed) : new Error(closed)));
@@ -627,7 +630,7 @@ export class HcClient {
         sendRpc(getId, "terminal.get", { terminal: address });
         if (rest.length > 0) onFrames(rest);
       });
-      socket.on("error", (err) => finish(() => reject(err)));
+      socket.on("error", (err) => finish(() => reject(textSent ? new HcNoReply(`herdr-core terminal.attach: ${err.message}`, err) : err)));
       socket.on("close", () => {
         const closed = "herdr-core terminal.attach: connection closed before the core closed the stream";
         finish(() => reject(textSent ? new HcNoReply(closed) : new Error(closed)));

@@ -4,7 +4,8 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { dialHerdr, toPipeName } from "./dial.ts";
+import { dialHerdr, mayHaveReachedPeer, SocketWriteFailed, toPipeName } from "./dial.ts";
+import { bunWritesAnswer } from "./dial.write-fails.ts";
 
 // toPipeName is pure and runs everywhere.
 //
@@ -232,5 +233,39 @@ describe("dialHerdr over a live endpoint (node:net dialer, both platforms)", () 
     // Whether the abort lands as "closed before connect" or the connect error races first,
     // the promise must settle — a caller that already timed out must not leak a pending dial.
     await expect(p).rejects.toBeDefined();
+  });
+});
+
+// M100 spec 03: a write Bun refuses says how many bytes the socket took first, so the caller can tell a
+// request that never went out (still `unreachable`) from one that may have reached the other end.
+describe("a write Bun refuses (bun dialer)", () => {
+  async function failedWrite(answers: readonly number[]): Promise<Error | null> {
+    const restore = bunWritesAnswer(answers);
+    try {
+      let seen: Error | null = null;
+      const handle = await dialHerdr("/nowhere/collie-dial-fake.sock", { error: (_s, err) => (seen = err) }, "bun");
+      handle.write("a request line\n");
+      return seen;
+    } finally {
+      restore();
+    }
+  }
+
+  test("a refusal on the first write took no byte: it never reached the other end", async () => {
+    const seen = await failedWrite([-1]);
+    expect(seen).toBeInstanceOf(SocketWriteFailed);
+    expect(seen instanceof SocketWriteFailed ? seen.accepted : null).toBe(0);
+    expect(seen?.message).toBe("socket write failed");
+    expect(mayHaveReachedPeer(seen)).toBe(false);
+  });
+
+  test("a refusal after a short write took bytes: it may have reached the other end", async () => {
+    const seen = await failedWrite([3, -1]);
+    expect(seen instanceof SocketWriteFailed ? seen.accepted : null).toBe(3);
+    expect(mayHaveReachedPeer(seen)).toBe(true);
+  });
+
+  test("any other socket error may have reached the other end", () => {
+    expect(mayHaveReachedPeer(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }))).toBe(true);
   });
 });

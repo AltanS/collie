@@ -170,7 +170,8 @@ export interface MuxConformanceWorld {
   failNextKeys?(how: MuxWriteFailure): void;
   /**
    * True when the adapter sends each request over a connection to the multiplexer, which can close
-   * after the request went out and before the answer. Such a world owes `closed` in
+   * (or fail with a socket error, which the clients read the same way) after the request went out and
+   * before the answer. Such a world owes `closed` in
    * {@link failNextWrite} and {@link failNextKeys}. A world whose adapter runs one process per call
    * leaves it out: a process that exits answers, and a process that hangs is a time-out.
    */
