@@ -6,6 +6,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { markLive, resetLiveness } from "@/lib/liveness";
+import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { useReportTarget } from "@/lib/report/store";
 import type { Scope } from "@/lib/scope";
 import { clearStatus } from "@/lib/status";
@@ -23,6 +24,9 @@ beforeEach(() => {
   clearStatus();
   resetLiveness();
   markLive("w1:p1");
+  // An unknown send arms "Send it again?" for the same text on the same pane; no test inherits another's.
+  sessionStorage.clear();
+  __forgetSendAgainMemory();
 });
 afterEach(() => cleanup());
 
