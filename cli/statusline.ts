@@ -6,8 +6,10 @@ import type { JsonObject } from "../bridge/json.ts";
 import {
   asCost,
   asPercent,
+  asWindowSize,
   customClaudeConfigDir,
   USAGE_SCHEMA_VERSION,
+  WINDOW_BY_STATUSLINE,
   type UsageLimit,
   type UsageRecord,
   type UsageWindow,
@@ -211,8 +213,15 @@ export function usageFromStatusLine(
   const session = asJsonString(payload.session_id);
   if (session === undefined || !SESSION_ID.test(session)) return null;
   const record: UsageRecord = { schemaVersion: USAGE_SCHEMA_VERSION, harness: BEACON_HARNESS, at: now };
-  const context = asPercent(asJsonObject(payload.context_window)?.used_percentage);
+  const contextWindow = asJsonObject(payload.context_window);
+  const context = asPercent(contextWindow?.used_percentage);
   if (context !== undefined) record.context = context;
+  // The size of the window Claude Code itself counts against: exact for every model, 1M and 400k included.
+  const size = asWindowSize(contextWindow?.context_window_size);
+  if (size !== undefined) {
+    record.window = size;
+    record.windowBy = WINDOW_BY_STATUSLINE;
+  }
   const cost = asCost(asJsonObject(payload.cost)?.total_cost_usd);
   if (cost !== undefined) record.cost = cost;
   const limitsRoot = asJsonObject(payload.rate_limits);

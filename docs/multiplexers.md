@@ -479,7 +479,11 @@ Behavior details for Claude configuration changes:
   preserved. `hooks uninstall claude` removes only Collie entries.
 - **Leaves your statusLine alone unless you ask.** Without a flag the install does not touch
   `statusLine`. You still get the context figure beside the model above the belt: the hooks read the
-  session transcript, and the window size from the session start.
+  token count from the end of the session transcript, and the window size comes from the model. The
+  `[1m]` variants have 1,000,000 tokens, Fable and Mythos 400,000, Opus, Sonnet and Haiku 200,000. A model
+  Collie does not know has no figure, never a guess. The model named in the transcript wins over the one
+  at the session start, so `/model` is followed. With `--statusline` the window size Claude Code states
+  wins over all of these.
 - **The 5-hour and 7-day windows show on their own.** They need no hook and no statusLine. While a
   Claude pane is open, the bridge reads your Claude login on this machine
   (`~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`; the Keychain on a Mac

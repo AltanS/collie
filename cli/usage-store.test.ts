@@ -27,6 +27,27 @@ describe("the cost in the merge", () => {
   });
 });
 
+describe("who gave the window", () => {
+  test("a window set by the beacon carries its family, and a later write keeps both together", () => {
+    const first = mergeBeacon(null, "claude", NOW, { window: 400_000, windowBy: "fable" });
+    expect(first).toMatchObject({ window: 400_000, windowBy: "fable" });
+    expect(mergeBeacon(first, "claude", NOW, { context: 12 })).toMatchObject({ window: 400_000, windowBy: "fable", context: 12 });
+    // A new window with a new family replaces both; the same window and family is no write.
+    expect(mergeBeacon(first, "claude", NOW, { window: 200_000, windowBy: "opus" })).toMatchObject({ window: 200_000, windowBy: "opus" });
+    expect(mergeBeacon(first, "claude", NOW, { window: 400_000, windowBy: "fable" })).toBeNull();
+    // The same window under another family is a change worth a write (the note is what the next reading compares).
+    expect(mergeBeacon(first, "claude", NOW, { window: 400_000, windowBy: "mythos" })).toMatchObject({ windowBy: "mythos" });
+  });
+
+  test("the statusLine's size replaces the beacon's window and note; without a size both stay", () => {
+    const beacon = record({ window: 200_000, windowBy: "opus", context: 100 });
+    expect(mergeStatusLine(beacon, record({ at: NOW, context: 59, window: 400_000, windowBy: "statusline" }), NOW)).toMatchObject({ window: 400_000, windowBy: "statusline", context: 59 });
+    expect(mergeStatusLine(beacon, record({ at: NOW, context: 59 }), NOW)).toMatchObject({ window: 200_000, windowBy: "opus", context: 59 });
+    // A window an older build wrote has no note, and the merge invents none.
+    expect(mergeStatusLine(record({ window: 200_000 }), record({ at: NOW, context: 59 }), NOW).windowBy).toBeUndefined();
+  });
+});
+
 describe("the beacon side of the merge", () => {
   test("replaces the context and keeps the window and the running limits", () => {
     const existing = record({ context: 3, window: 1_000_000, limits: [FIVE_HOUR, SEVEN_DAY] });

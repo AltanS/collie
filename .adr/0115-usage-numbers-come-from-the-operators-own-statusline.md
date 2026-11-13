@@ -137,6 +137,17 @@ text above stays as written.
   `window`. A kept limit keeps the `at` of the record that reported it, so the bridge's choice of the
   newest window across sessions does not move. A record without `limits` borrows no account windows,
   as before.
+- **2026-11-13: the window comes from a table of known models, and the transcript's model corrects it.**
+  The 2026-10-24 rule above (1M for `[1m]`, 200k for every other model) read a 400k Fable session as 100%.
+  A window now comes from `context_window.context_window_size` when the wrapped statusLine states it
+  (`windowBy: "statusline"` in the record, and it wins), else from the `[1m]` suffix, else from
+  `MODEL_FAMILIES` in `cli/context-reading.ts` (`fable` and `mythos` 400k, `opus`, `sonnet`, `haiku` and the
+  `claude-3-` ids 200k). A model no row names has no window, so no context, never a guess. The newest
+  assistant line's model corrects the window on file at every reading: the family the window came from keeps
+  it (the `[1m]` the transcript cannot see), another family takes its table window, an unknown one has no
+  context. That follows `/model` mid-session and corrects a record an older build wrote. Known limit, now
+  narrower: a switch from `opus` to `opus[1m]` is unseen. The context is still the last writer's, the
+  wrapper's or the transcript's; both count against the same window when the statusLine gave one.
 - **The 5-hour and 7-day windows still come only from a wrapped statusLine.** Until another source is
   decided, an operator without `--statusline` sees the context dot and no windows. Altan's call.
   Candidate, explicitly not built: Claude Code's own `/api/oauth/usage` endpoint with the operator's

@@ -41,6 +41,7 @@ describe("context-reading configDir tracking", () => {
       harness: "claude",
       at: NOW,
       window: 200_000,
+      windowBy: "opus",
     });
 
     // A default SessionStart on a session that previously had a custom configDir clears it even without a model.
@@ -67,6 +68,7 @@ describe("context-reading configDir tracking", () => {
       harness: "claude",
       at: NOW,
       window: 200_000,
+      windowBy: "opus",
       context: 25,
       configDir: CUSTOM_ROOT,
     });

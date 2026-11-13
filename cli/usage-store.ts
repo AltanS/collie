@@ -18,8 +18,8 @@ import type { Files } from "./sys.ts";
 //
 // ONE FILE, TWO WRITERS. The statusLine wrapper (`cli/statusline.ts`, with `--statusline`) and the beacon
 // hooks (`cli/context-reading.ts`) both write a session's file, and each knows different things: the
-// wrapper has the context and the two subscription windows, the beacon has the context and the
-// session's window size. Neither may erase what only the other knows, so each writes through a merge
+// wrapper has the context, the two subscription windows and the window size Claude Code states, the
+// beacon has the context and the window size its model table gives. Neither may erase what only the other knows, so each writes through a merge
 // here: it reads the file that is there, replaces its own fields and keeps the rest.
 
 /** What a writer needs: the disk, and the uid a folder must belong to (absent off POSIX). */
@@ -49,6 +49,8 @@ export interface BeaconChange {
   readonly context?: number | null | undefined;
   /** The session's window in tokens. Absent keeps the one on file. */
   readonly window?: number | undefined;
+  /** Who gave `window` (`UsageRecord.windowBy`). Set with the window; a window on file keeps its own. */
+  readonly windowBy?: string | undefined;
   /** The non-default `CLAUDE_CONFIG_DIR` this session runs under. Absent clears any custom dir on file. */
   readonly configDir?: string | undefined;
 }
@@ -72,6 +74,8 @@ export function mergeBeacon(existing: UsageRecord | null, harness: string, now: 
   if (context !== undefined) record.context = context;
   const window = change.window ?? existing?.window;
   if (window !== undefined) record.window = window;
+  const windowBy = change.window === undefined ? existing?.windowBy : change.windowBy;
+  if (window !== undefined && windowBy !== undefined) record.windowBy = windowBy;
   if (change.configDir !== undefined) record.configDir = change.configDir;
   if (limits.length > 0) record.limits = limits;
   // The cost is the wrapper's alone: the beacon keeps what is on file.
@@ -79,6 +83,7 @@ export function mergeBeacon(existing: UsageRecord | null, harness: string, now: 
   if (
     existing !== null &&
     existing.window === record.window &&
+    existing.windowBy === record.windowBy &&
     existing.configDir === record.configDir &&
     (existing.context === undefined ? record.context === undefined : record.context !== undefined && Math.round(existing.context) === Math.round(record.context)) &&
     (existing.limits?.length ?? 0) === limits.length
@@ -99,6 +104,9 @@ export function mergeStatusLine(existing: UsageRecord | null, reading: UsageReco
   if (context !== undefined) record.context = context;
   const window = reading.window ?? existing?.window;
   if (window !== undefined) record.window = window;
+  // A size the statusLine states wins over what a start or a table gave; without one, the note on file stays with its window.
+  const windowBy = reading.window === undefined ? existing?.windowBy : reading.windowBy;
+  if (window !== undefined && windowBy !== undefined) record.windowBy = windowBy;
   if (reading.configDir !== undefined) record.configDir = reading.configDir;
   const cost = reading.cost ?? existing?.cost;
   if (cost !== undefined) record.cost = cost;

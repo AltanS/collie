@@ -7,8 +7,8 @@ import { HOST } from "../bridge/host.ts";
 import { managedSettingsPath } from "./hold-entry.ts";
 
 import { parseBeacon, parseEdge } from "../bridge/beacon/parse.ts";
-import { parseUsageRecord, usageFileName } from "../bridge/usage.ts";
-import { readTail, TAIL_BYTES, windowFromModel } from "./context-reading.ts";
+import { parseUsageRecord, usageFileName, type UsageRecord } from "../bridge/usage.ts";
+import { modelWindow, readTail, TAIL_BYTES, windowFromModel, windowForReading } from "./context-reading.ts";
 import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
@@ -761,17 +761,43 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
   const USED = lines(userLine, assistant({ input_tokens: 10, cache_creation_input_tokens: 20_000, cache_read_input_tokens: 130_000, output_tokens: 900 }), tail);
 
   describe("the window comes from SessionStart", () => {
-    test("the window of a model: the [1m] suffix is one million tokens, any other model two hundred thousand", async () => {
+    test("the window of a model: the [1m] suffix is one million tokens, a known family its own window, any other model none", async () => {
       expect(windowFromModel("claude-opus-5-5[1m]")).toBe(1_000_000);
       expect(windowFromModel("opus[1m]")).toBe(1_000_000);
-      expect(windowFromModel("claude-opus-5-5")).toBe(200_000);
+      expect(windowFromModel("some-gateway-model[1m]")).toBe(1_000_000);
+      expect(modelWindow("some-gateway-model[1m]")).toEqual({ window: 1_000_000, by: "other" });
+      for (const id of ["fable", "claude-fable-5-2", "claude-fable-5-1", "claude-fable-5", "mythos", "claude-mythos-1", "Claude-Fable-5-2"]) {
+        expect(windowFromModel(id)).toBe(400_000);
+      }
+      for (const id of [
+        "opus", "sonnet", "haiku", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-4-8",
+        "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-5-20251101", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "anthropic.claude-opus-5-5",
+      ]) {
+        expect(windowFromModel(id)).toBe(200_000);
+      }
+      expect(modelWindow("claude-fable-5-2")).toEqual({ window: 400_000, by: "fable" });
+      expect(modelWindow("claude-fable-5-2[1m]")).toEqual({ window: 1_000_000, by: "fable" });
+      for (const id of ["glm-5", "gpt-5", "opusplan", "default", "claude-instant-1", "fablet", "my-opus", "<synthetic>"]) {
+        expect(windowFromModel(id)).toBeUndefined();
+      }
       expect(windowFromModel(undefined)).toBeUndefined();
       expect(windowFromModel("")).toBeUndefined();
+      expect(windowFromModel("  ")).toBeUndefined();
       const big = await run("SessionStart", { source: "startup", model: "claude-opus-5-5[1m]" });
-      expect(record(big)).toMatchObject({ window: 1_000_000 });
+      expect(record(big)).toMatchObject({ window: 1_000_000, windowBy: "opus" });
       expect(record(big)?.context).toBeUndefined();
       const small = await run("SessionStart", { source: "startup", model: "claude-opus-5-5" });
-      expect(record(small)).toMatchObject({ window: 200_000 });
+      expect(record(small)).toMatchObject({ window: 200_000, windowBy: "opus" });
+      const fable = await run("SessionStart", { source: "startup", model: "claude-fable-5-2" });
+      expect(record(fable)).toMatchObject({ window: 400_000, windowBy: "fable" });
+    });
+
+    test("a start that names a model the table does not know writes no window", async () => {
+      expect(record(await run("SessionStart", { source: "startup", model: "glm-5" }))).toBeNull();
+      // And it does not take the window on file from another model: that one stays until the transcript says otherwise.
+      const d = await run("SessionStart", { source: "startup", model: "glm-5" }, null, (x) => seed(x, { window: 400_000, windowBy: "fable" }));
+      expect(record(d)).toMatchObject({ window: 400_000, windowBy: "fable" });
     });
 
     test("a start that names no model (claude -p) records no window, and the transcript then writes no context", async () => {
@@ -826,6 +852,84 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
       expect(d.files.read(USAGE)?.length ?? 0).toBeLessThan(4096);
       const small = await run("Stop", {}, USED, (x) => seed(x, { window: 200_000 }));
       expect(record(small)?.context).toBe(75);
+    });
+
+    describe("the transcript's model corrects the window", () => {
+      const FABLE = assistant({ input_tokens: 5, cache_creation_input_tokens: 4_995, cache_read_input_tokens: 230_000, output_tokens: 700 }, "claude-fable-5-2");
+
+      test("a Fable session of 235k tokens reads 58.7 of 400k, not 100", async () => {
+        const start = await run("SessionStart", { source: "startup", model: "fable" });
+        const d = await run("Stop", {}, lines(userLine, FABLE, tail), (x) => x.files.write(USAGE, start.files.read(USAGE) ?? ""));
+        expect(record(d)).toMatchObject({ window: 400_000, windowBy: "fable", context: 58.7 });
+      });
+
+      test("an old record with a guessed window of 200000 is corrected at the next reading", async () => {
+        const d = await run("Stop", {}, lines(userLine, FABLE, tail), (x) => seed(x, { window: 200_000, context: 100 }));
+        expect(record(d)).toMatchObject({ window: 400_000, windowBy: "fable", context: 58.7 });
+        // And the same file again is a no-op: a second reading finds nothing to change.
+        const again = await run("Stop", {}, lines(userLine, FABLE, tail), (x) => x.files.write(USAGE, d.files.read(USAGE) ?? ""));
+        expect(again.files.read(USAGE)).toBe(d.files.read(USAGE));
+      });
+
+      test("an old record with an unknown guessed window and a Sonnet or Opus line keeps 200000", async () => {
+        const d = await run("Stop", {}, USED, (x) => seed(x, { window: 200_000 }));
+        expect(record(d)).toMatchObject({ window: 200_000, windowBy: "opus", context: 75 });
+      });
+
+      test("a /model switch mid-session: the newest line's family takes its own window", async () => {
+        // Started on opus[1m] (1M), then /model fable: no SessionStart fired.
+        const toFable = await run("Stop", {}, lines(userLine, FABLE, tail), (x) => seed(x, { window: 1_000_000, windowBy: "opus", context: 15 }));
+        expect(record(toFable)).toMatchObject({ window: 400_000, windowBy: "fable", context: 58.7 });
+        // Then /model sonnet: the 200k window, and the same tokens read as more than a half too full.
+        const back = lines(userLine, assistant({ input_tokens: 150_000 }, "claude-sonnet-5-5"), tail);
+        const toSonnet = await run("Stop", {}, back, (x) => x.files.write(USAGE, toFable.files.read(USAGE) ?? ""));
+        expect(record(toSonnet)).toMatchObject({ window: 200_000, windowBy: "sonnet", context: 75 });
+      });
+
+      test("the same family keeps what only the start knows: opus[1m] stays 1M under an opus transcript", async () => {
+        const d = await run("Stop", {}, USED, (x) => seed(x, { window: 1_000_000, windowBy: "opus" }));
+        expect(record(d)).toMatchObject({ window: 1_000_000, windowBy: "opus", context: 15 });
+        // A record an older build wrote with exactly 1M can only have had a [1m] start: it stands too.
+        const old = await run("Stop", {}, USED, (x) => seed(x, {}));
+        expect(record(old)).toMatchObject({ window: 1_000_000, context: 15 });
+        expect(record(old)?.windowBy).toBeUndefined();
+      });
+
+      test("a model the table does not know: no context, and the window of the other model is not used", async () => {
+        const text = lines(userLine, assistant({ input_tokens: 100_000 }, "glm-5"), tail);
+        const d = await run("Stop", {}, text, (x) => seed(x, { window: 400_000, windowBy: "fable", context: 25 }));
+        expect(record(d)?.context).toBeUndefined();
+        // The window stays on file, so a switch back to a known model of that family reads again.
+        expect(record(d)).toMatchObject({ window: 400_000, windowBy: "fable" });
+        const old = await run("Stop", {}, text, (x) => seed(x, { window: 200_000, context: 50 }));
+        expect(record(old)?.context).toBeUndefined();
+      });
+
+      test("a window the statusLine stated stands, whatever the table says", async () => {
+        // Opus with a statusLine size of 400k (an account that has such a window): the table's 200k does not apply.
+        const text = lines(userLine, assistant({ input_tokens: 200_000 }, "claude-opus-5-5"), tail);
+        const d = await run("Stop", {}, text, (x) => seed(x, { window: 400_000, windowBy: "statusline" }));
+        expect(record(d)).toMatchObject({ window: 400_000, windowBy: "statusline", context: 50 });
+        // Even for a model the table does not know.
+        const unknown = lines(userLine, assistant({ input_tokens: 100_000 }, "glm-5"), tail);
+        const u = await run("Stop", {}, unknown, (x) => seed(x, { window: 128_000, windowBy: "statusline" }));
+        expect(record(u)?.context).toBe(78.1);
+      });
+
+      test("a transcript line with no model keeps the window on file", async () => {
+        const text = lines(userLine, JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 100_000 } } }), tail);
+        const d = await run("Stop", {}, text, (x) => seed(x, { window: 400_000, windowBy: "fable" }));
+        expect(record(d)).toMatchObject({ window: 400_000, context: 25 });
+      });
+
+      test("windowForReading, as a rule", () => {
+        const rec = (over: Partial<UsageRecord>): UsageRecord => ({ schemaVersion: 1, harness: "claude", at: 1, ...over });
+        expect(windowForReading(rec({}), "claude-opus-5-5")).toEqual({ kind: "none" });
+        expect(windowForReading(rec({ window: 400_000, windowBy: "statusline" }), "claude-opus-5-5")).toEqual({ kind: "keep", window: 400_000 });
+        expect(windowForReading(rec({ window: 1_000_000, windowBy: "other" }), "gateway-x")).toEqual({ kind: "keep", window: 1_000_000 });
+        expect(windowForReading(rec({ window: 200_000, windowBy: "opus" }), "claude-fable-5")).toEqual({ kind: "set", window: 400_000, by: "fable" });
+        expect(windowForReading(rec({ window: 200_000, windowBy: "opus" }), "gateway-x")).toEqual({ kind: "none" });
+      });
     });
 
     test("no window on file, no context: honest beats guessed", async () => {
@@ -908,7 +1012,7 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
       const filler = JSON.stringify({ type: "user", message: { content: "y".repeat(TAIL_BYTES - piece.length - 2 - empty) } });
       const text = `${"z".repeat(5000)}${piece}\n${filler}\n`;
       expect(Buffer.byteLength(text) - TAIL_BYTES).toBe(5000);
-      expect(readTail(`${piece}\n${filler}\n`, false)).toEqual({ kind: "used", tokens: 900_000 });
+      expect(readTail(`${piece}\n${filler}\n`, false)).toEqual({ kind: "used", tokens: 900_000, model: "claude-opus-5-5" });
       expect(readTail(`${piece}\n${filler}\n`, true)).toBeNull();
       const d = await run("Stop", {}, text, (x) => seed(x, { context: 20 }));
       expect(record(d)?.context).toBeUndefined();

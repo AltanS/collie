@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { parseUsageRecord, usageFileName } from "../bridge/usage.ts";
-import type { JsonObject } from "../bridge/json.ts";
+import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { Environment } from "./context.ts";
 import { context, fakeFiles, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
@@ -142,12 +142,27 @@ describe("usageFromStatusLine", () => {
         harness: "claude",
         at: NOW,
         context: 42,
+        window: 200_000,
+        windowBy: "statusline",
         limits: [
           { window: "5h", used: 23.5, resetsAt: 1_800_003_600_000 },
           { window: "7d", used: 41.2, resetsAt: 1_800_500_000_000 },
         ],
       },
     });
+  });
+
+  test("takes the size of the context window the document states, and nothing for a size that is not a whole positive number", () => {
+    const sized = (context_window_size: JsonValue) => usageFromStatusLine(payload({ context_window: { used_percentage: 59, context_window_size } }), NOW)?.record;
+    expect(sized(400_000)).toMatchObject({ context: 59, window: 400_000, windowBy: "statusline" });
+    expect(sized(1_000_000)).toMatchObject({ window: 1_000_000, windowBy: "statusline" });
+    for (const bad of [0, -5, 1.5, "400000", null, Number.MAX_SAFE_INTEGER]) {
+      const record = sized(bad);
+      expect(record?.window).toBeUndefined();
+      expect(record?.windowBy).toBeUndefined();
+    }
+    const none = usageFromStatusLine(payload({ context_window: { used_percentage: 59 } }), NOW)?.record;
+    expect(none?.window).toBeUndefined();
   });
 
   test("an API-key session has no windows; a null early percentage is no number", () => {
@@ -227,7 +242,7 @@ describe("collie beacon statusline", () => {
     expect(parseUsageRecord(custom.files.entries.get(usagePath)?.text ?? "")?.configDir).toBeUndefined();
   });
 
-  test("merges into a file the beacon wrote: the window it noted and the context stay unless this reading has its own", async () => {
+  test("merges into a file the beacon wrote: the window it noted stays unless this reading states its own size, and the context stays unless it has its own", async () => {
     const { d, files } = deps({ stdin: JSON.stringify(payload({ context_window: { used_percentage: null } })) });
     files.write(usagePath, JSON.stringify({ schemaVersion: 1, harness: "claude", at: NOW - 1, context: 17, window: 1_000_000 }));
     await cmdBeaconStatusline(d, [token]);
@@ -235,7 +250,7 @@ describe("collie beacon statusline", () => {
     expect(merged).toMatchObject({ context: 17, window: 1_000_000, at: NOW });
     expect(merged?.limits).toHaveLength(2);
     await cmdBeaconStatusline({ ...d, readStdin: () => Promise.resolve(JSON.stringify(payload())) }, [token]);
-    expect(parseUsageRecord(files.entries.get(usagePath)?.text ?? "")).toMatchObject({ context: 42, window: 1_000_000 });
+    expect(parseUsageRecord(files.entries.get(usagePath)?.text ?? "")).toMatchObject({ context: 42, window: 200_000, windowBy: "statusline" });
   });
 
   test("outside a multiplexer it writes nothing and still runs the command", async () => {

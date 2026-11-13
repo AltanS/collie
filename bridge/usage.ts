@@ -107,11 +107,21 @@ export interface UsageRecord extends PaneUsage {
   /** Epoch ms of the write; with kept `limits`, of the write that reported them. */
   at: number;
   /**
-   * The session's context window in tokens, as its SessionStart hook said (`cli/context-reading.ts`).
-   * A writer's note to the next writer, never drawn: {@link usageAt} leaves it out. Absent when the
-   * start named no model, and then the transcript reading writes no context.
+   * The session's context window in tokens: the size the statusLine states, else what the model's `[1m]`
+   * suffix or the table of known models gives (`cli/context-reading.ts`), set by the SessionStart hook
+   * and corrected by the transcript's model. A writer's note to the next writer, never drawn:
+   * {@link usageAt} leaves it out. Absent when no start named a known model, and then the transcript
+   * reading writes no context.
    */
   window?: number;
+  /**
+   * Who gave {@link window}: `statusline` for the size Claude Code's statusLine document states
+   * (exact, and it wins), or the key of the model family that `windowFromModel`'s table matched
+   * (`opus`, `fable`, `other` for a `[1m]` start on a model the table does not know). Absent on a record an
+   * older build wrote, whose window was a guess for every model but the `[1m]` ones. A writer's note,
+   * never drawn: {@link usageAt} leaves it out.
+   */
+  windowBy?: string;
   /**
    * The non-default `CLAUDE_CONFIG_DIR` this session runs under, as its hooks or statusLine reported.
    * A note for the bridge to align account windows and statusLine limits per account; {@link usageAt}
@@ -122,6 +132,18 @@ export interface UsageRecord extends PaneUsage {
 
 /** The largest window a record may name. A bound on a strange file, not a model's window. */
 const WINDOW_MAX = 100_000_000;
+
+/** What a `windowBy` may look like: a short lowercase key, never free text. */
+const WINDOW_BY = /^[a-z0-9-]{1,32}$/u;
+
+/** `windowBy` of a window the statusLine document stated. */
+export const WINDOW_BY_STATUSLINE = "statusline";
+
+/** A window size as a record may hold it: a whole positive number of tokens within the bound. */
+export function asWindowSize(value: JsonValue | undefined): number | undefined {
+  const n = asJsonNumber(value);
+  return n !== undefined && Number.isInteger(n) && n > 0 && n <= WINDOW_MAX ? n : undefined;
+}
 
 function hasControlChar(text: string): boolean {
   for (let i = 0; i < text.length; i++) {
@@ -197,8 +219,10 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   if (context !== undefined) record.context = context;
   const cost = asCost(root.cost);
   if (cost !== undefined) record.cost = cost;
-  const size = asJsonNumber(root.window);
-  if (size !== undefined && Number.isInteger(size) && size > 0 && size <= WINDOW_MAX) record.window = size;
+  const size = asWindowSize(root.window);
+  if (size !== undefined) record.window = size;
+  const by = asJsonString(root.windowBy);
+  if (record.window !== undefined && by !== undefined && WINDOW_BY.test(by)) record.windowBy = by;
   const dir = asJsonString(root.configDir);
   if (dir !== undefined && dir.length <= 4096 && !hasControlChar(dir) && isAbsolute(dir)) {
     record.configDir = dir;

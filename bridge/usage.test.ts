@@ -60,6 +60,18 @@ describe("parseUsageRecord", () => {
   });
 });
 
+describe("who gave the window", () => {
+  it("keeps a short lowercase key beside a window, and nothing else", () => {
+    expect(parseUsageRecord(record({ window: 400_000, windowBy: "fable" }))?.windowBy).toBe("fable");
+    expect(parseUsageRecord(record({ window: 400_000, windowBy: "statusline" }))?.windowBy).toBe("statusline");
+    for (const bad of ["Fable", "a b", "", "x".repeat(33), "<b>", 4]) {
+      expect(parseUsageRecord(record({ window: 400_000, windowBy: bad }))?.windowBy).toBeUndefined();
+    }
+    expect(parseUsageRecord(record({ windowBy: "fable" }))?.windowBy).toBeUndefined();
+    expect(usageAt({ schemaVersion: 1, harness: "claude", at: NOW, context: 4, window: 400_000, windowBy: "fable" }, NOW)).toEqual({ context: 4 });
+  });
+});
+
 describe("the window note", () => {
   it("round-trips as a positive integer, a record without it still parses, and junk is dropped", () => {
     expect(parseUsageRecord(record({ context: 4, window: 1_000_000 }))).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, context: 4, window: 1_000_000 });
