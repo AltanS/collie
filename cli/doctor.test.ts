@@ -164,7 +164,7 @@ function healthyFiles(): SeededFiles {
 }
 
 /** One `sends-<harness>` row per harness with a profile (M71 spec 01), there whether or not a send ran. */
-/** The link rows (M99 spec 09), one per harness, in the order `collie link status` lists them. */
+/** The link rows (M99 spec 09), one per harness, in the order `collie harness status` lists them. */
 const LINK_CHECKS = ["link-claude", "link-pi", "link-omp", "link-opencode"];
 const SENDS_CHECKS = [...loadProfiles().keys()].map((id) => `sends-${id}`);
 
@@ -3582,7 +3582,7 @@ describe("the link rows (M99 spec 09)", () => {
     if (options.managed !== undefined) writeFileSync(managed, options.managed);
     const ctx = context({ HOME: home }, { home });
     const deps = { ctx, files: realFiles, managedSettings: managed, version: options.version };
-    /** Write a linked Claude part of `version`, as `collie link claude` leaves it. */
+    /** Write a linked Claude part of `version`, as `collie harness link claude` leaves it. */
     const linkClaude = (version: string): void => {
       const dir = claudePartDir(ctx);
       mkdirSync(join(dir, ".claude-plugin"), { recursive: true });
@@ -3613,7 +3613,7 @@ describe("the link rows (M99 spec 09)", () => {
   test("a part older than the bridge: warn, with the verb that writes this build's", () => {
     const r = lab({ version: "1.29.0" });
     r.linkClaude("1.28.0");
-    expect(row(linkFindings(r.deps, () => null), "link-claude")).toMatchObject({ status: "warn", remedy: "`collie link claude` writes this build's part" });
+    expect(row(linkFindings(r.deps, () => null), "link-claude")).toMatchObject({ status: "warn", remedy: "`collie harness link claude` writes this build's part" });
   });
 
   test("blocked by policy: warn", () => {

@@ -57,7 +57,7 @@ export class FakePart {
       pid: process.pid,
       pidStartTime: null,
       env: {},
-      capabilities: ["send", "mail", "draft", "wake"],
+      capabilities: ["send", "mail", "draft", "draft.state", "wake"],
       asks: ["permission"],
       ...this.helloFields,
     };

@@ -94,8 +94,8 @@ local:
                                     shipped rule
   ✓        cache-env                no Claude Code cache variable is set in this
                                     shell
-  ✓        link-claude              not linked: `collie link claude` lets Collie
-                                    send to it by data
+  ✓        link-claude              not linked: `collie harness link claude`
+                                    lets Collie send to it by data
   ✓        link-pi                  not linked: no part for it in this build yet
   ✓        link-omp                 not linked: no part for it in this build yet
   ✓        link-opencode            not linked: no part for it in this build yet
@@ -222,8 +222,8 @@ local:
                                     shipped rule
   ✓        cache-env                no Claude Code cache variable is set in this
                                     shell
-  ✓        link-claude              not linked: `collie link claude` lets Collie
-                                    send to it by data
+  ✓        link-claude              not linked: `collie harness link claude`
+                                    lets Collie send to it by data
   ✓        link-pi                  not linked: no part for it in this build yet
   ✓        link-omp                 not linked: no part for it in this build yet
   ✓        link-opencode            not linked: no part for it in this build yet

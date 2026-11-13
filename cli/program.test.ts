@@ -11,6 +11,7 @@ import { VIEW_SUBCOMMANDS, viewTopLines } from "./trick-view.ts";
 import { WALKY_SUBCOMMANDS } from "./walky.ts";
 import { DURABLE_SUBCOMMANDS } from "./durable-attach.ts";
 import { MUX_SUBCOMMANDS } from "./mux-list.ts";
+import { HARNESS_SUBCOMMANDS } from "./harness-link.ts";
 import { TRICK_SUBCOMMANDS } from "./trick.ts";
 import { SESSIONS_VERB } from "./sessions.ts";
 import {
@@ -104,6 +105,8 @@ const TRICK_VERBS = ["trick"];
 const DURABLE_VERBS = ["durable"];
 // `mux list` (M76 spec 02). Declared after `durable`: it reads the multiplexers the durable adapter is one of.
 const MUX_VERBS = ["mux"];
+// The harness parts (M99 spec 09), declared right after `mux`: both are about the programs Collie drives.
+const HARNESS_VERBS = ["harness"];
 // The agent-session list (M76 spec 03), declared right after `mux`. The name is `SESSIONS_VERB`.
 const SESSIONS_VERBS = [SESSIONS_VERB];
 // Walky talky (M62). Declared after `sessions`. One spelling: the `wt` alias was dropped before
@@ -137,6 +140,7 @@ describe("the verb table", () => {
       ...TRICK_VERBS,
       ...DURABLE_VERBS,
       ...MUX_VERBS,
+      ...HARNESS_VERBS,
       ...SESSIONS_VERBS,
       ...WALKY_VERBS,
       ...HILL_VERBS,
@@ -318,19 +322,28 @@ describe("dispatch", () => {
     expect(ran).toEqual(["serve status"]);
   });
 
-  test("`link --help` and `unlink --help` name both meanings, the PATH name and the harness link (M99 spec 09)", async () => {
-    for (const argv of [["link", "--help"], ["link", "claude", "--help"], ["unlink", "-h"]]) {
-      const { table, ran } = spied();
-      const io = capture();
-      expect(await run(argv, io, table)).toBe(EXIT.OK);
-      expect(ran).toEqual([]);
-      const text = io.stdout.join("\n");
-      expect(text).toContain("~/.local/bin/collie");
-      expect(text).toContain("<harness>");
+  test("the bare `link` and `unlink` refuse an argument with exit 2 and name `collie harness link` (M99 spec 09)", async () => {
+    for (const verb of ["link", "unlink"]) {
+      for (const argv of [[verb, "claude"], [verb, "status"], [verb, "sync"]]) {
+        // The real table: the refusal comes before any seam is built, so nothing on this machine is read.
+        const io = capture();
+        expect(await run(argv, io)).toBe(EXIT.USAGE);
+        expect(io.stdout).toEqual([]);
+        expect(io.stderr).toEqual([`error: \`collie ${verb}\` takes no argument; it ${verb === "link" ? "puts `collie` on your PATH" : "removes `collie` from your PATH"}. To ${verb} a harness, run \`collie harness ${verb} <harness>\`.`]);
+      }
     }
+  });
+
+  test("`link --help` names only the PATH name; a bare `harness` names the harness verbs", async () => {
     const io = capture();
-    await run(["link", "--help"], io, spied().table);
-    expect(io.stdout).toContain("  collie link status     say which harnesses are linked");
+    expect(await run(["link", "--help"], io, spied().table)).toBe(EXIT.OK);
+    expect(io.stdout.join("\n")).toContain("~/.local/bin/collie");
+    expect(io.stdout.join("\n")).not.toContain("<harness>");
+    // The bare tree, as `mux`: its usage on stderr, exit 2. The real table: it reads nothing.
+    const tree = capture();
+    expect(await run(["harness"], tree)).toBe(EXIT.USAGE);
+    const words = tree.stderr.join("\n");
+    for (const sub of ["link", "unlink", "status", "sync"]) expect(words).toContain(`harness ${sub}`);
   });
 
   test("`_apply-update --help` runs nothing and exits non-zero", async () => {
@@ -481,6 +494,10 @@ describe("the subcommand trees", () => {
     expect(findCommand("mux")?.subcommands?.map((s) => s.name)).toEqual([...MUX_SUBCOMMANDS]);
   });
 
+  test("`harness` declares exactly `cli/harness-link.ts`'s sub-verbs, in its order", () => {
+    expect(findCommand("harness")?.subcommands?.map((s) => s.name)).toEqual([...HARNESS_SUBCOMMANDS]);
+  });
+
   test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
     expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual([
       // `serve` publishes; `serve status` reads what tailscale serve publishes (M76).
@@ -494,6 +511,7 @@ describe("the subcommand trees", () => {
       "trick",
       "durable",
       "mux",
+      "harness",
       "walky",
       "hill",
       "theme",
@@ -633,6 +651,9 @@ describe("exit codes", () => {
       // `mux list` resolves the real context and reads the real hook target registry, and removes the
       // record of a dead bridge there. cli/mux-list.test.ts drives it against fakes.
       ...MUX_VERBS,
+      // `harness link` and `unlink` run the harness's own CLI and write a part into the config dir; `status`
+      // and `sync` read and rewrite it. cli/harness-link.test.ts drives every sub-verb against temp dirs.
+      ...HARNESS_VERBS,
       // `walky` talks to this host's running bridges over their local sockets, and a `send`
       // would type into a real pane. cli/walky.test.ts drives every sub-verb against a temp socket.
       ...WALKY_VERBS,

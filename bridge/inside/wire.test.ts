@@ -115,6 +115,20 @@ describe("parseEvent", () => {
     expect(ok({ kind: "bye" })).toMatchObject({ ok: true, kind: "bye" });
   });
 
+  test("draft.state carries a boolean only: a text a part sends with it is never kept", () => {
+    const parsed = ok({ kind: "draft.state", present: true, text: "the person's half sentence" });
+    expect(parsed).toEqual({ ok: true, part: PART, kind: "draft.state", present: true });
+    expect(JSON.stringify(parsed)).not.toContain("half sentence");
+    expect(ok({ kind: "draft.state", present: false })).toEqual({ ok: true, part: PART, kind: "draft.state", present: false });
+    expect(ok({ kind: "draft.state" }).ok).toBe(false);
+    for (const present of [null, "true", 1]) expect(ok({ kind: "draft.state", present }).ok).toBe(false);
+  });
+
+  test("a hello may declare draft.state", () => {
+    const parsed = parseHello(JSON.stringify({ ...hello, capabilities: ["mail", "draft.state", "wake"] }));
+    expect(parsed.ok && parsed.capabilities).toEqual(["mail", "draft.state", "wake"]);
+  });
+
   test("unknown fields are ignored; a row carries no text even when a part sends one", () => {
     const parsed = ok({ kind: "row", door: "prompt", text: "the whole prompt", extra: [1, 2] });
     expect(parsed).toEqual({ ok: true, part: PART, kind: "row", door: "prompt", row: null });

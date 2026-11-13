@@ -309,7 +309,7 @@ import { PartAsks, type PartAskSession } from "./inside/asks.ts";
 import { insideGate, insideWanted, INTERVAL_TIMER, linkReader, watchLink } from "./inside/gate.ts";
 import { linkedHarnesses, partsRoot } from "./inside/links.ts";
 import { ownerHold } from "./inside/owner.ts";
-import { applyWake, type WakeSink } from "./inside/wake.ts";
+import { applyWake, releasesHeld, type WakeSink } from "./inside/wake.ts";
 import { InsideHub } from "./inside/hub.ts";
 import { placeHello } from "./inside/place.ts";
 import { CommandQueue } from "./inside/queue.ts";
@@ -1785,7 +1785,7 @@ const holdServer =
 // The inside wire (M99 spec 01, bridge/inside/WIRE.md): parts inside an agent program (a Claude Code
 // mod, a pi extension) dial `<stateDir>/inside/sock` and bind to their pane through the same placement
 // as a hook edge. Built with the edges, since it places on the same targets. Opt-in: the socket opens
-// only while a harness is linked (`collie link`, M99 spec 09), or when `COLLIE_INSIDE=on` says so;
+// only while a harness is linked (`collie harness link`, M99 spec 09), or when `COLLIE_INSIDE=on` says so;
 // `COLLIE_INSIDE=off` is the kill switch (`bridge/inside/gate.ts`). Closed, no part can bind and every
 // send, ask and WalkyTalky message keeps the screen path. A link made while the bridge runs opens the
 // socket at the next read of the link records; an unlink turns the data road off at the next read.
@@ -1824,7 +1824,9 @@ insideHub?.listen({
     // Wake and state, never an item (spec 04).
     if (session !== undefined && insideOn()) applyWake(session.wake, part.address.paneId, event, Date.now());
     // The part's turn end releases the pane's oldest held send now; the poll's own rules stay (spec 03).
-    if (event.kind === "turn.end") void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
+    // So does its word that the box holds no draft any more: a WalkyTalky message held over the draft
+    // goes now, once, and its run asks the draft state again before anything (spec 05, 2026-11-13).
+    if (releasesHeld(event, insideHub?.turnOf(part.address) ?? null)) void session?.send?.releaseOnTurnEnd(part.address.session, part.address.paneId);
   },
 });
 
@@ -2300,7 +2302,7 @@ const hookTargetFields = (inside: boolean) => ({
   parts: partsRoot(process.env, homedir()),
 });
 hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, hookTargetFields(insideStarted));
-// A link made while the bridge runs (`collie link`, M99 spec 09) opens the socket at the next read of
+// A link made while the bridge runs (`collie harness link`, M99 spec 09) opens the socket at the next read of
 // the link records (`watchLink`, one folder listing per read) and names it in the hook target file so
 // a part finds it. A start that fails is tried again at the read after; the timer stops once the
 // socket listens, or when the bridge stops.

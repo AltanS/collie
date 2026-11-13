@@ -29,5 +29,5 @@ M62 shipped the walky talky skill with one rule: only `collie skill install` wri
 ## Note 2026-11-13 (ADR 0140)
 
 The same step now also refreshes a linked harness part: after the skill sync, the new binary runs
-`collie link sync` when a harness is linked and the binary reports 1.29.0 or later. It never replaces a
+`collie harness sync` when a harness is linked and the binary reports 1.29.0 or later. It never replaces a
 newer part, and it never fails the update.

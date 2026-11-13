@@ -83,6 +83,8 @@ export class InsideHub {
   private readonly asks = new Map<string, Map<string, AskKind>>();
   /** The turn each part last reported (`turn.start`, `turn.end`), by part id. Only parts that declared `wake`. */
   private readonly turns = new Map<string, "running" | "idle">();
+  /** Whether the box holds a draft, as each part last said (`draft.state`). Only parts that declared `draft.state`. */
+  private readonly drafts = new Map<string, boolean>();
   private readonly registry: PartRegistry;
   private readonly queue: CommandQueue;
   private readonly place: Placer;
@@ -96,6 +98,7 @@ export class InsideHub {
       if (change.kind !== "gone") return;
       this.asks.delete(change.part.partId);
       this.turns.delete(change.part.partId);
+      this.drafts.delete(change.part.partId);
       // The gone part's waits end at once, a replaced part's too: a command must never go to a dead part
       // id's open poll (a reloaded module's old fetch has nobody left to read it). Queued commands stay
       // for the pane's next part.
@@ -157,6 +160,12 @@ export class InsideHub {
         }
         this.tell(part, event);
         return empty(204);
+      case "draft.state":
+        // A boolean, never the text. From a part that did not declare it, dropped unread.
+        if (!part.capabilities.has("draft.state")) return empty(204);
+        this.drafts.set(part.partId, event.present);
+        this.tell(part, event);
+        return empty(204);
       case "turn.start":
       case "turn.end":
       case "row":
@@ -202,6 +211,23 @@ export class InsideHub {
   turnOf(address: PaneAddress): "running" | "idle" | null {
     const part = this.registry.partOf(address);
     return part === null ? null : (this.turns.get(part.partId) ?? null);
+  }
+
+  /**
+   * Whether the pane's box holds a draft, as its part last said: true or false, and null when no part is
+   * bound, it did not declare `draft.state`, or it has not said yet since it bound. Null is "unknown":
+   * a caller never takes it for "no draft" (M99 spec 05, decision of 2026-11-13).
+   */
+  draftOf(address: PaneAddress): boolean | null {
+    const part = this.registry.partOf(address);
+    if (part === null || !part.capabilities.has("draft.state")) return null;
+    return this.drafts.get(part.partId) ?? null;
+  }
+
+  /** The reason a part gave with `failed`, or null. */
+  failReasonOf(id: string): string | null {
+    const entry = this.queue.get(id);
+    return entry?.state === "failed" ? entry.reason : null;
   }
 
   /** Queue a command for a pane's part. Refused when no part is bound or it did not declare the need. */

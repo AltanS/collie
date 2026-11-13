@@ -1,6 +1,6 @@
 // Where the linked parts live, and which are linked (M99 spec 09, README decision 12).
 //
-// `collie link <harness>` writes the part and a record; `collie unlink <harness>` removes both. The
+// `collie harness link <harness>` writes the part and a record; `collie harness unlink <harness>` removes both. The
 // bridge reads the records to open the inside socket only when at least one harness is linked, so a
 // link needs no restart of anything the verb does not own. One folder per machine user, shared by every
 // Collie instance on it: an instance never keeps a part of its own, and a link never replaces a newer

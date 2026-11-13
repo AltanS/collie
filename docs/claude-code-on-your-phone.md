@@ -236,9 +236,9 @@ Collie 1.29.0 or later you can link Claude Code instead. A plain message from th
 into Claude Code as data, and no key is typed.
 
 ```bash
-collie link claude     # needs Claude Code on your PATH
-collie link status     # which harnesses are linked
-collie unlink claude   # back to typing, for every session
+collie harness link claude     # needs Claude Code on your PATH
+collie harness status          # which harnesses are linked
+collie harness unlink claude   # back to typing, for every session
 ```
 
 What linking does:
@@ -249,6 +249,8 @@ What linking does:
   start. The bridge sees the link within 15 seconds.
 - A plain message and a WalkyTalky message go in as data. At the desk, Claude Code shows "Prompt from
   the collie plugin" above such a prompt.
+- A WalkyTalky message still waits while you have a draft in the box, as when Collie types, and goes
+  in once the box is empty. The plugin tells Collie only whether a draft is there, never its text.
 - An Allow or Deny tap on a permission card answers the dialog through the plugin. A tap at the desk
   still wins when it comes first.
 - Everything else keeps the screen path: slash commands, shell lines, attachments and steers.
@@ -256,19 +258,18 @@ What linking does:
 
 What it does not do:
 
-- Nothing goes by data until you run `collie link claude`. Only Claude Code can be linked in this
+- Nothing goes by data until you run `collie harness link claude`. Only Claude Code can be linked in this
   version; the other agents keep the screen path.
-- Windows keeps the screen path. `collie link` refuses there.
+- Windows keeps the screen path. `collie harness link` refuses there.
 - When an administrator sets `allowManagedHooksOnly`, Claude Code runs no plugin hooks. The plugin
   then stays idle and Collie types as before. `collie doctor` says so on its `link-claude` line.
 - The link is for your user account, shared by every Collie on the machine. `collie uninstall`
   removes it only with the last Collie that is installed. `COLLIE_INSIDE=off` in a Collie's `.env`
   turns sending by data off for that Collie alone.
 
-The forms `collie link <harness>`, `collie unlink <harness>` and `collie link status` need Collie
-1.29.0 or later. Check with `collie version` first. An older `collie` ignores the word after `link`
-and `unlink`: `collie link claude` there puts `collie` on your PATH, and `collie unlink claude`
-removes `~/.local/bin/collie` when it points at that checkout. See
+The `collie harness` verbs need Collie 1.29.0 or later. An older Collie does not know `collie
+harness` and prints its usage error. `collie link` and `collie unlink` with a word after them were
+never the way: they put `collie` on your PATH and take it off again, and they now refuse a word. See
 [Put `collie` on your PATH](commands.md#put-collie-on-your-path).
 
 ## Start an agent or a shell from the phone

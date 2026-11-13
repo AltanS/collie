@@ -7,7 +7,7 @@
   Code 2.1.323, 2026-11-13 (a mod took a prompt over a Unix socket and started a turn in 181 ms) ·
   `bridge/inside/WIRE.md` · `bridge/inside/` · `bridge/beacon/hook-targets.ts` (fields `inside`,
   `parts`) · `bridge/surface/edges.ts` (`placeEdge`) · `bridge/surface/path.ts` (the pick) ·
-  `inside/claude/` (the Claude Code mod) · `cli/harness-link.ts` (`collie link <harness>`) ·
+  `inside/claude/` (the Claude Code mod) · `cli/harness-link.ts` (`collie harness link <harness>`) ·
   docs/claude-code-on-your-phone.md, "Send by data"
 
 ## Context
@@ -47,13 +47,17 @@ listen. A pi extension could listen, but two shapes of wire for two programs is 
    that pane and that dialog) and the box's text (`draft`). A slash command, a shell line, an
    attachment, a steer and every send to a session with no part keep the screen path. When the part's
    turn state is unknown, the send takes the screen path.
+   A WalkyTalky message also waits for the person's draft, as on the screen (decision of 2026-11-13):
+   the part says whether the box holds a draft (`draft.state`, a boolean, never the text) and reads
+   the box again right before it submits; a draft sends the message back unsubmitted, and it goes once
+   when the box is empty. When the part's draft state is unknown, the message takes the screen path.
 8. **One owner per dialog.** A part owns a permission dialog only while its own hold for that pane and
    that dialog is live. Until then the settings hook hold or the keys ask stays; when a part hold ends
    with no decision while the dialog is still open, the screen reader owns it again. Never zero cards.
-9. **The operator turns it on.** `collie link <harness>` writes the part and a link record in one
+9. **The operator turns it on.** `collie harness link <harness>` writes the part and a link record in one
    folder per machine user (`~/.config/collie/inside`, moved by an absolute `XDG_CONFIG_HOME` and then
    pinned in the service as `COLLIE_PARTS_DIR`). A bridge opens its socket while a harness is linked,
-   with no restart. `collie unlink <harness>` takes it away; `collie update` rewrites a linked part,
+   with no restart. `collie harness unlink <harness>` takes it away; `collie update` rewrites a linked part,
    never over a newer one; the last `collie uninstall` on the machine removes the parts.
 10. **No model, no secret.** A part never calls a model, never reads a key or a credential, and never
     writes a file. It submits the person's own words, answers what the person tapped, and reports
@@ -67,19 +71,21 @@ listen. A pi extension could listen, but two shapes of wire for two programs is 
   checked, because Bun's server does not expose them; that is the first thing to revisit.
 - Every send path now has two roads, and every caller must pick one per request id. The pick lives in
   one pure function (M99 spec 03), so the rule is read in one place.
-- The socket is opt-in: it opens while `collie link <harness>` has linked a harness on the machine
+- The socket is opt-in: it opens while `collie harness link <harness>` has linked a harness on the machine
   (M99 spec 09). `COLLIE_INSIDE` stays as the override: `off` is the kill switch, `on` opens the
   socket with no link, for tests and legs.
 - In this version only Claude Code has a part. pi, omp and opencode keep the screen path, and so do
-  Windows hosts. `collie link` refuses each of them in plain words.
+  Windows hosts. `collie harness link` refuses each of them in plain words.
 - The parts are shared by every Collie instance of the user. Several bridges can serve one machine;
   each places a part's hello on its own panes, so a part binds only where a bridge owns its pane. A
   1.28 bridge writes no `inside` field and is never dialed.
-- A binary older than 1.29.0 reads `collie link <word>` and `collie unlink <word>` as its PATH verbs
-  (ADR 0021): `collie unlink claude` there removes `~/.local/bin/collie` when it points at that
-  checkout. The docs say the harness verbs need 1.29.0, and `collie update` runs `link sync` only
-  through a new binary that reports 1.29.0 or later.
+- The verbs live in their own tree, `collie harness` (link, unlink, status, sync), beside `mux`. The
+  bare `collie link` and `collie unlink` keep one meaning, the name on PATH (ADR 0021), and refuse a
+  word with exit 2 and a line that names `collie harness link`: a binary older than 1.29.0 ignored the
+  word, so there `collie unlink claude` removed `~/.local/bin/collie`. An older binary does not know
+  `collie harness` and prints its usage error, and `collie update` runs `harness sync` only through a
+  new binary that reports 1.29.0 or later.
 - Amends in scope: ADR 0010 and ADR 0048 hold for the screen path only; ADR 0111's update step now also
-  refreshes a linked part (`collie link sync`).
+  refreshes a linked part (`collie harness sync`).
 - Revisit when a vendor ships a supported local service that does the same job (then the bridge may
   dial it, as M99 spec 07 does for Codex), or when the wire needs a second transport off the machine.

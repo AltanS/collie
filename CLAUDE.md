@@ -775,7 +775,7 @@ its own `COLLIE_STANDBY_HOST` and neither gate reaches it; don't route it throug
 `fetch` to share them.
 
 **A harness part never calls a model and never reads a secret** (M99, [ADR 0140](./.adr/0140-a-part-inside-the-agent-dials-the-bridge.md)).
-The code `collie link <harness>` puts inside an agent (`inside/claude/`, later the pi, omp and opencode
+The code `collie harness link <harness>` puts inside an agent (`inside/claude/`, later the pi, omp and opencode
 parts) dials the bridge's inside socket and does three things only: it submits the person's own words,
 answers what the person tapped, and reports turns. It names no model API (`$.model` in a Claude mod),
 spawns no process (`$.process`), writes no file, and reads no key, token, credential or `.env` (its

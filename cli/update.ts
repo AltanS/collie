@@ -1210,24 +1210,24 @@ function syncSkill(deps: UpdateDeps, binary: string, nudgeWhenOff = true): void 
   for (const line of syncLines(result)) deps.io.out(line);
 }
 
-/** The first build that knows `collie link sync` (M99 spec 09). An older one reads `link` as the PATH name. */
-const LINK_SYNC_SINCE = "1.29.0";
+/** The first build that knows `collie harness sync` (M99 spec 09). An older one has no `harness` verb. */
+const HARNESS_SYNC_SINCE = "1.29.0";
 
 /**
- * THE PARTS FOLLOW THE UPDATE (M99 spec 09). After the skill sync, the NEW binary runs `collie link
+ * THE PARTS FOLLOW THE UPDATE (M99 spec 09). After the skill sync, the NEW binary runs `collie harness
  * sync`: each linked harness's part is rewritten with that build's, never over a newer one. Only when a
  * harness is linked, and only through a build that knows the verb (its `--version` is read first: an
- * older one would publish the PATH name instead). A running session keeps its copy until it reloads.
+ * older one does not know `harness` and would print its usage error). A running session keeps its copy until it reloads.
  * Nothing here fails the update: a failure prints one note.
  */
 export function syncLinks(deps: Pick<UpdateDeps, "ctx" | "files" | "exec" | "io">, binary: string): void {
   if (linkedHarnesses(deps.ctx.env, deps.ctx.home, deps.files).length === 0) return;
   const said = deps.exec.capture(binary, ["--version"], SKILL_SYNC_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
   const version = /\d+\.\d+\.\d+/u.exec(said.stdout)?.[0];
-  if (!said.found || said.code !== EXIT.OK || version === undefined || compareSemver(version, LINK_SYNC_SINCE) < 0) return;
-  const r = deps.exec.capture(binary, ["link", "sync"], SKILL_SYNC_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
+  if (!said.found || said.code !== EXIT.OK || version === undefined || compareSemver(version, HARNESS_SYNC_SINCE) < 0) return;
+  const r = deps.exec.capture(binary, ["harness", "sync"], SKILL_SYNC_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
   for (const line of r.stdout.split("\n")) if (line.trim() !== "") deps.io.out(line);
-  if (!r.found || r.code !== EXIT.OK) deps.io.out("note: link sync did not run; run `collie link sync`.");
+  if (!r.found || r.code !== EXIT.OK) deps.io.out("note: harness sync did not run; run `collie harness sync`.");
 }
 
 /**

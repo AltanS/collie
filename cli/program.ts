@@ -52,7 +52,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
-import { cmdHarnessLink, cmdHarnessUnlink, cmdLinkStatus, cmdLinkSync, harnessLinkHelp, harnessLinkUsage, isLinkHarness, type HarnessLinkDeps } from "./harness-link.ts";
+import { HARNESS_SUBCOMMANDS, bareLinkRefusal, cmdHarnessLink, cmdHarnessStatus, cmdHarnessSync, cmdHarnessUnlink, harnessUsage, isLinkHarness, type HarnessLinkDeps } from "./harness-link.ts";
 import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrickGuide } from "./trick-guide.ts";
 import { cmdTrickPropose } from "./trick-propose.ts";
@@ -279,30 +279,46 @@ function linkDeps(io: Io): LinkDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
 }
 
-/** `link <harness>` and kin (M99 spec 09): the context, the filesystem and the harness CLI. Nothing restarts. */
+/** `harness link` and kin (M99 spec 09): the context, the filesystem and the harness CLI. Nothing restarts. */
 function harnessLinkDeps(io: Io): HarnessLinkDeps {
   const ctx = loadContext(io.err);
   return { ctx, io, files: realFiles, exec: realExec(ctx.env, ctx.home) };
 }
 
 /**
- * `link` with no word publishes the PATH name (ADR 0021); `link status`, `link sync` and `link <harness>`
- * are the data path's opt-in (M99 spec 09). `unlink` reads the same way.
+ * The bare `link` and `unlink`: the name on PATH (ADR 0021), with no argument. An argument is refused with
+ * the line that names `collie harness link` (M99 spec 09): an older build read `unlink claude` as the
+ * PATH verb and removed the name.
  */
 function runLink(args: readonly string[], io: Io, unlink: boolean): number {
-  const [word, ...rest] = args;
-  if (word === undefined) return unlink ? cmdUnlink(linkDeps(io)) : cmdLink(linkDeps(io));
-  if (rest.length > 0) {
-    io.err(harnessLinkUsage());
+  if (args.length > 0) {
+    io.err(bareLinkRefusal(unlink ? "unlink" : "link"));
     return EXIT.USAGE;
   }
-  if (!unlink && word === "status") return cmdLinkStatus(harnessLinkDeps(io));
-  if (!unlink && word === "sync") return cmdLinkSync(harnessLinkDeps(io));
+  return unlink ? cmdUnlink(linkDeps(io)) : cmdLink(linkDeps(io));
+}
+
+/** `harness link <harness>` and `harness unlink <harness>`: one harness word, nothing else. */
+function runHarnessLink(args: readonly string[], io: Io, unlink: boolean): number {
+  const [word, ...rest] = args;
+  if (word === undefined || rest.length > 0) {
+    io.err(harnessUsage());
+    return EXIT.USAGE;
+  }
   if (!isLinkHarness(word)) {
-    io.err(`error: no part for "${word}". ${harnessLinkUsage()}`);
+    io.err(`error: no part for "${word}". ${harnessUsage()}`);
     return EXIT.USAGE;
   }
   return unlink ? cmdHarnessUnlink(harnessLinkDeps(io), word) : cmdHarnessLink(harnessLinkDeps(io), word);
+}
+
+/** `harness status` and `harness sync` take no argument. */
+function runHarnessBare(args: readonly string[], io: Io, verb: (deps: HarnessLinkDeps) => number): number {
+  if (args.length > 0) {
+    io.err(harnessUsage());
+    return EXIT.USAGE;
+  }
+  return verb(harnessLinkDeps(io));
 }
 
 /**
@@ -850,14 +866,12 @@ export const COMMANDS: readonly Command[] = [
   // the shell dispatcher never had.
   {
     name: "link",
-    summary: "put `collie` on your PATH: ~/.local/bin/collie → this checkout's binary; `link <harness>` links a harness for the data path, `link status` says which are linked",
-    usage: () => harnessLinkHelp("link"),
+    summary: "put `collie` on your PATH: ~/.local/bin/collie → this checkout's binary",
     run: (args, s) => runLink(args, s.io, false),
   },
   {
     name: "unlink",
-    summary: "remove that name again (only when it points at THIS checkout); `unlink <harness>` takes a harness's part away",
-    usage: () => harnessLinkHelp("unlink"),
+    summary: "remove that name again (only when it points at THIS checkout)",
     run: (args, s) => runLink(args, s.io, true),
   },
   // ── Agent beacons (M11) ────────────────────────────────────────────────────
@@ -1173,6 +1187,39 @@ export const COMMANDS: readonly Command[] = [
       },
     ],
     run: async (args, s) => await cmdMux(muxListDeps(s.io), args),
+  },
+  // ── Harness parts (M99 spec 09) ────────────────────────────────────────────
+  // The opt-in for the data path: a part of Collie inside the agent program. Declared beside `mux`: both
+  // are about the programs Collie drives. Nothing links by itself, and nothing restarts.
+  {
+    name: "harness",
+    summary: `link a harness so Collie can send to it by data: ${HARNESS_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "link",
+        summary: "link a harness: write its part, so Collie can send to it by data (available: claude)",
+        run: (args, s) => runHarnessLink(args, s.io, false),
+      },
+      {
+        name: "unlink",
+        summary: "remove a harness's part; Collie then uses the screen path for it",
+        run: (args, s) => runHarnessLink(args, s.io, true),
+      },
+      {
+        name: "status",
+        summary: "say which harnesses are linked",
+        run: (args, s) => runHarnessBare(args, s.io, cmdHarnessStatus),
+      },
+      {
+        name: "sync",
+        summary: "rewrite each linked part with this build's (`collie update` runs it); never a newer one",
+        run: (args, s) => runHarnessBare(args, s.io, cmdHarnessSync),
+      },
+    ],
+    run: (_args, s) => {
+      s.io.err(harnessUsage());
+      return EXIT.USAGE;
+    },
   },
   // ── Agent sessions (M76 spec 03) ───────────────────────────────────────────
   // One read of this bridge's own snapshot, printed as a table. The name is `SESSIONS_VERB`, in one place.

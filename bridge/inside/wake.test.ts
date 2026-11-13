@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { applyWake, wakeEdgeOf, type WakeSink } from "./wake.ts";
+import { applyWake, releasesHeld, wakeEdgeOf, type WakeSink } from "./wake.ts";
 import type { WireEvent } from "./wire.ts";
 
 const PART = "p".repeat(22);
@@ -56,5 +56,23 @@ describe("wake from events", () => {
   test("the sink has no door for an item: only a state edge and a poke", () => {
     const { s } = sink();
     expect(Object.keys(s).toSorted()).toEqual(["edge", "poke"]);
+  });
+});
+
+describe("what releases a held send (spec 03 and spec 05)", () => {
+  const draft = (present: boolean): WireEvent => ({ ok: true, part: PART, kind: "draft.state", present });
+  test("a turn end always; a draft that went only while the turn is known; a draft that came never", () => {
+    expect(releasesHeld({ ok: true, part: PART, kind: "turn.end", turn: null, reason: null }, null)).toBe(true);
+    expect(releasesHeld(draft(false), "idle")).toBe(true);
+    expect(releasesHeld(draft(false), "running")).toBe(true);
+    expect(releasesHeld(draft(false), null)).toBe(false);
+    expect(releasesHeld(draft(true), "idle")).toBe(false);
+    expect(releasesHeld({ ok: true, part: PART, kind: "turn.start", turn: null }, "running")).toBe(false);
+  });
+
+  test("a draft.state event wakes nothing and folds no edge", () => {
+    const { s, calls } = sink();
+    expect(applyWake(s, "w1:p1", draft(true), 1)).toBe(false);
+    expect(calls).toEqual([]);
   });
 });

@@ -6,6 +6,9 @@ import {
   askIdOf,
   DOWN_RETRY_MS,
   draftEvent,
+  draftStateEvent,
+  DRAFT_REFUSAL,
+  holdsDraft,
   helloBody,
   isTargetFile,
   NOT_MINE_RETRY_MS,
@@ -64,6 +67,21 @@ let ticking = false
  * turn for it; the last word is said again after each hello, so a send during that turn is still held.
  */
 let turnWord: { readonly kind: 'turn.start' | 'turn.end'; readonly turn: string | null; readonly reason?: unknown } | null = null
+
+/**
+ * Whether the prompt box holds a draft, as this module last saw it, or null before it knows. Only the
+ * boolean is ever sent (`draft.state`), on each flip and after each hello, so Collie holds a WalkyTalky
+ * message while the person writes (M99 spec 05, decision of 2026-11-13).
+ */
+let draftWord: boolean | null = null
+
+/** Note the box's text after a change; say `draft.state` to every bridge when it flipped. Never throws. */
+function noteDraft($: $, text: string): void {
+  const present = holdsDraft(text)
+  if (draftWord === present) return
+  draftWord = present
+  wakeAll($, (part) => draftStateEvent(part, present))
+}
 
 const TAKEN = { plugin: 'collie', key: 'taken' } as const
 /** The read and write of the taken list, one at a time: two commands must not both read it before either writes. */
@@ -209,6 +227,12 @@ async function greet($: $, link: Link, now: number): Promise<void> {
   link.state = 'mine'
   link.part = parsed.part
   link.failures = 0
+  // The box first, then the turn: the turn word may release a held message, and the bridge must know the draft by then.
+  const box = await $.prompt.read().catch(() => null)
+  if (box !== null) {
+    draftWord = holdsDraft(box.text)
+    await post($, link, draftStateEvent(parsed.part, draftWord))
+  }
   if (turnWord !== null) void post($, link, JSON.stringify({ part: parsed.part, ...turnWord }))
   $.clock.after(0, () => poll($, link, loop))
 }
@@ -286,6 +310,16 @@ async function handle($: $, link: Link, part: string, command: Command): Promise
     const box = await $.prompt.read()
     await post($, link, draftEvent(part, command.id, box))
     return
+  }
+  if (command.kind === 'mail') {
+    // Another agent's words never go in over the person's draft (spec 05): the box is read right before
+    // the submit, and a draft, or a box that cannot be read, sends the message back with nothing submitted.
+    const box = await $.prompt.read().catch(() => null)
+    if (box === null || holdsDraft(box.text)) {
+      if (box !== null) noteDraft($, box.text)
+      await post($, link, JSON.stringify({ part, kind: 'failed', cmd: command.id, reason: DRAFT_REFUSAL }))
+      return
+    }
   }
   try {
     // As the person's own words (decision 7). It resolves when the turn starts, not when it ends.
@@ -389,6 +423,19 @@ export const register: Register = (on) => {
   on('session.end', async ($, e, next) => {
     // A /clear ends the conversation, not the program: the pane keeps its part.
     if (e.reason !== 'clear') wakeAll($, (part) => JSON.stringify({ part, kind: 'bye' }))
+    return next(e)
+  })
+
+  // The person's edits and every other change of the box (a clear, a submit, a recalled entry): only
+  // whether it holds a draft is kept, and only a flip is said. The edit goes through untouched.
+  on('prompt.edit', async ($, e, next) => {
+    const box = await next(e)
+    noteDraft($, box.text)
+    return box
+  })
+
+  on('prompt.change', ($, e, next) => {
+    noteDraft($, e.text)
     return next(e)
   })
 

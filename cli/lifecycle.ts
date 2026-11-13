@@ -1193,7 +1193,7 @@ export async function cmdUninstall(deps: LifecycleDeps): Promise<number> {
   const { linkedHarnessNames, unlinkAll } = await import("./harness-link.ts");
   if (others.length === 0) unlinkAll({ ctx: deps.ctx, io: deps.io, files: deps.files, exec: deps.exec });
   else if (linkedHarnessNames(deps.ctx, deps.files).length > 0) {
-    deps.io.out(`  kept the linked harness parts: another Collie instance uses them (${others.join(", ")}). \`collie unlink <harness>\` removes them.`);
+    deps.io.out(`  kept the linked harness parts: another Collie instance uses them (${others.join(", ")}). \`collie harness unlink <harness>\` removes them.`);
   }
   deps.io.out(
     `  kept: ${join(deps.ctx.configDir, ".env")} and the checkout — delete those to remove every trace`,

@@ -2475,7 +2475,7 @@ describe("uninstall", () => {
       expect(h.files.exists(PI_RECORD)).toBe(true);
       expect(h.files.exists(PI_PART)).toBe(true);
       expect(h.io.stdout.filter((line) => line.includes("kept the linked harness parts"))).toEqual([
-        "  kept the linked harness parts: another Collie instance uses them (next). `collie unlink <harness>` removes them.",
+        "  kept the linked harness parts: another Collie instance uses them (next). `collie harness unlink <harness>` removes them.",
       ]);
       expect(h.io.stdout.join("\n")).not.toContain("unlinked pi");
     });
