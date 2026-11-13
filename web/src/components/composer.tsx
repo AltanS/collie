@@ -42,7 +42,6 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
-import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
@@ -84,6 +83,7 @@ import { useKeyBoard } from "@/lib/key-board-store";
 import { isDestructiveInput } from "@/lib/destructive";
 import { useHostLabel } from "@/components/crew-provider";
 import { fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
+import { clearIntent, clearIntentIfDraftChanged, loadIntent, saveIntent } from "@/lib/send-intent";
 import { wipeDevice } from "@/lib/wipe";
 import { AttachmentChip, type ComposerAttachment } from "@/components/attachment-chip";
 import { ImageEditor } from "@/components/image-editor";
@@ -757,6 +757,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     inputValueRef.current = value;
     setInput(value);
     persistDraft();
+    // A draft that changed is no longer the text a send left without an answer: its request id goes.
+    clearIntentIfDraftChanged(scope, paneId, composeLine(value, attachmentsRef.current, isShell));
   }
 
   /** The write-through, text and chips together. The chip writers (addAttachment, removeAttachment,
@@ -802,8 +804,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     noticeNoEchoRef.current(null); // it described the pane we just left
   }, [scope, scopeId, paneId]);
   const [sending, setSending] = useState(false);
-  // The Send Protocol's held intent (its request id) and the offers its last answer made (M56 spec 05).
-  const protocolIntent = useRef<IntentId | null>(null);
+  // The Send Protocol's held intent (its request id) lives in lib/send-intent.ts, per pane, so a pane
+  // switch, a reload or a killed tab keeps it with the draft; the offers its last answer made sit below (M56 spec 05).
   // A send that ended `unknown`, remembered until the journal settles it (#511, lib/unknown-send.ts):
   // the person may submit the stranded text by hand, and the user turn landing in Chat is then the
   // proof it went through. Memory only, like the notice it retires; a new send replaces it.
@@ -1836,21 +1838,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const seenUserUuids = new Set((chatEntriesRef.current ?? []).map((entry) => entry.uuid));
     const sentFrom = draftNow();
     const draftAtSend = sentFrom.text;
+    // The draft's own text when this send carries it, for the stored request id to follow the draft (lib/send-intent.ts).
+    const draftLine = isDraft && t === composeLine(draftAtSend, sentFrom.chips, isShell) ? t : null;
     // A send ends the belt X's Undo window: the operator has moved on, and an Undo landing after
     // the send would put back a draft the pane has since answered.
     endUndoWindow();
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: protocolIntent.current };
+      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: loadIntent(scope, paneId) };
       const res = await sendText(view === undefined ? base : { ...base, view });
       if (res.status === "noAnswer") {
         // No answer: the id stays, so the next tap on the same text asks for the same request.
-        protocolIntent.current = res.intent;
+        saveIntent(scope, paneId, res.intent, draftLine);
         setSendRefusal(phoneRefusal(translate("composer.protocol.retry", { error: res.error })));
         return false;
       }
-      protocolIntent.current = null;
+      // Any answer ends the intent. A refusal from the phone itself (offline) asked nothing, so an earlier id stays.
+      if (res.status !== "refused" || res.reason !== "offline") clearIntent(scope, paneId);
       if (res.status === "refused") {
         if (res.reason === "view") {
           // A refusal of a send from a view, before the protocol: Collie's words for its code, never the code.
