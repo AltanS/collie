@@ -90,14 +90,39 @@ describe("the Send slot while a confirm word is armed", () => {
         // Solid fill (the destructive variant's) and a shadow, so covered text does not shine through.
         expect(word.className).toContain("bg-destructive");
         expect(word.classList.contains("shadow-md")).toBe(true);
-        // A clean 4px margin in the box's own fill: bg-card in the box layout, bg-background in the field layout.
-        expect(word.classList.contains("ring-4")).toBe(true);
-        expect(word.classList.contains(c.layout === "box" ? "ring-card" : "ring-background")).toBe(true);
+        // The ring is gone: a cover does the hiding now.
+        expect(word.className).not.toMatch(/\bring-/);
+        // The cover: one extra element in the composer's own frame, only while armed, out of flow and out of reach.
+        const cover = document.querySelector<HTMLElement>('[data-slot="composer-confirm-cover"]')!;
+        expect(cover.getAttribute("aria-hidden")).toBe("true");
+        for (const token of ["pointer-events-none", "absolute", "inset-y-0", "z-[5]", "w-40", c.edge])
+          expect(cover.classList.contains(token), token).toBe(true);
+        expect(cover.classList.contains(c.other)).toBe(false);
+        expect(cover.classList.contains(c.hand === "left" ? "rounded-l-xl" : "rounded-r-xl")).toBe(true);
+        // Its fill is the box's own, fading toward the text: card in the box layout, background in the field layout.
+        const fill = c.layout === "box" ? "--color-card" : "--color-background";
+        expect(cover.className).toContain(`linear-gradient(to_${c.hand === "left" ? "right" : "left"},var(${fill})_calc(100%-24px),transparent)`);
+        // Its positioned parent is the composer's frame, which is `relative`, and the word's slot is a sibling of it.
+        expect(cover.parentElement).toBe(slot.parentElement);
+        expect(cover.parentElement!.classList.contains("relative")).toBe(true);
+        expect(cover.parentElement!.contains(screen.getByPlaceholderText(/type a reply/i))).toBe(true);
         // The word button no longer carries a cell or a width of the layout's own: nothing in flow changed size.
         expect(placement(word)).toEqual([]);
       });
     }
   }
+
+  it("the cover exists only while the word is armed", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box", hand: "right" });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "rm -rf build");
+    expect(document.querySelector('[data-slot="composer-confirm-cover"]')).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Send" }));
+    await screen.findByRole("button", { name: "Really send?" });
+    expect(document.querySelector('[data-slot="composer-confirm-cover"]')).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "Really send?" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-confirm-cover"]')).toBeNull());
+  });
 
   it("the field's classes are the same before the tap, while armed, and after the second tap", async () => {
     const user = userEvent.setup();

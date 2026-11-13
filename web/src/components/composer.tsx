@@ -3833,32 +3833,54 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // above the field. It covers the last characters of the draft for the 3 seconds it stays armed, so it
             // has a solid fill and a shadow. Anchored at the edge and wider than the circle, it always contains the
             // point where Send was: the second tap lands without the thumb moving.
-            <div
-              data-slot="composer-send-slot"
-              className={cn(
-                "relative size-9 shrink-0",
-                box && (mirrored ? "col-start-1" : boxOpen ? "col-start-5" : "col-start-3"),
-                box && (boxOpen ? "row-start-3" : "row-start-1"),
-              )}
-            >
-              <Button
-                variant="destructive"
+            //
+            // THE COVER. A button-high word over a field of two lines always cuts one line in half. So, while the word is
+            // armed, one more element is drawn inside the box (this element's positioned parent is the box's own
+            // `relative` frame, in both layouts): the full inner height, on the Send side, solid in the box's fill under
+            // the word and fading to nothing over the last 24px toward the text, so whole line ends go clean. It is
+            // absolute, `pointer-events-none` and `aria-hidden`: nothing in flow moves, no tap lands on it. It is above the
+            // field and the small buttons it covers (z-5) and below the word (z-10), and it takes the box's corners.
+            <>
+              <div
+                aria-hidden="true"
+                data-slot="composer-confirm-cover"
                 className={cn(
-                  // `absolute`, not TOOLBAR_TAP_TARGET's `relative`: the same 4px reach around the button, kept as the pseudo-element.
-                  "absolute top-0 z-10 h-9 shrink-0 rounded-md px-3 text-sm font-semibold shadow-md before:absolute before:-inset-1 before:content-['']",
-                  // A 4px margin in the box's own fill (`bg-card` in the box layout, `bg-background` in the field one),
-                  // so the word never cuts a covered word of the draft in half. A ring is a box-shadow: no layout.
-                  box ? "ring-4 ring-card" : "ring-4 ring-background",
-                  mirrored ? "left-0" : "right-0",
+                  "pointer-events-none absolute inset-y-0 z-[5] w-40",
+                  mirrored ? "left-0 rounded-l-xl" : "right-0 rounded-r-xl",
+                  // The box's own fill: `bg-card` in the box layout, `bg-background` in the field one.
+                  box
+                    ? mirrored
+                      ? "bg-[linear-gradient(to_right,var(--color-card)_calc(100%-24px),transparent)]"
+                      : "bg-[linear-gradient(to_left,var(--color-card)_calc(100%-24px),transparent)]"
+                    : mirrored
+                      ? "bg-[linear-gradient(to_right,var(--color-background)_calc(100%-24px),transparent)]"
+                      : "bg-[linear-gradient(to_left,var(--color-background)_calc(100%-24px),transparent)]",
                 )}
-                onClick={() => onSendClick(armedWhen.current)}
-                disabled={starting || locked || offline || !hasDraft || sending}
-                title={offline ? translate("composer.send.reconnect") : undefined}
-                aria-label={offline ? translate("composer.send.reconnect") : confirmWord}
+              />
+              <div
+                data-slot="composer-send-slot"
+                className={cn(
+                  "relative size-9 shrink-0",
+                  box && (mirrored ? "col-start-1" : boxOpen ? "col-start-5" : "col-start-3"),
+                  box && (boxOpen ? "row-start-3" : "row-start-1"),
+                )}
               >
-                {confirmWord}
-              </Button>
-            </div>
+                <Button
+                  variant="destructive"
+                  className={cn(
+                    // `absolute`, not TOOLBAR_TAP_TARGET's `relative`: the same 4px reach around the button, kept as the pseudo-element.
+                    "absolute top-0 z-10 h-9 shrink-0 rounded-md px-3 text-sm font-semibold shadow-md before:absolute before:-inset-1 before:content-['']",
+                    mirrored ? "left-0" : "right-0",
+                  )}
+                  onClick={() => onSendClick(armedWhen.current)}
+                  disabled={starting || locked || offline || !hasDraft || sending}
+                  title={offline ? translate("composer.send.reconnect") : undefined}
+                  aria-label={offline ? translate("composer.send.reconnect") : confirmWord}
+                >
+                  {confirmWord}
+                </Button>
+              </div>
+            </>
           ) : micIsPrimary ? (
             // THE MICROPHONE IS THE PRIMARY ACTION WHILE THE BOX IS EMPTY, and becomes Send the
             // moment there is anything to send. It used to be a second, permanent control tucked
