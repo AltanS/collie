@@ -107,6 +107,20 @@ describe("a whole round with the fake part", () => {
     expect((await part.next({ ask: "never-opened", waitMs: 1000 })).status).toBe(404);
   });
 
+  test("ask.close withdraws an answer still queued for that ask, and only that one", async () => {
+    const { hub, socket } = await rig();
+    const part = new FakePart(socket, { env: ENV, pidStartTime: 7 });
+    await part.hello();
+    hub.listen({ ask: () => ({ wait: true, waitMs: 60_000 }) });
+    await part.event("ask.open", { ask: "a1", askKind: "permission", tool: "Bash" });
+    await part.event("ask.open", { ask: "a2", askKind: "permission", tool: "Bash" });
+    hub.enqueue(PANE, { id: "ans-close001", kind: "answer", ask: "a1", decision: "allow" });
+    hub.enqueue(PANE, { id: "ans-close002", kind: "answer", ask: "a2", decision: "deny" });
+    expect((await part.event("ask.close", { ask: "a1", how: "desk" })).status).toBe(204);
+    expect(hub.stateOf("ans-close001")).toBe("withdrawn");
+    expect(hub.stateOf("ans-close002")).toBe("queued");
+  });
+
   test("withdraw before take: the part never sees it; after take: withdraw is refused", async () => {
     const { hub, socket } = await rig();
     const part = new FakePart(socket, { env: ENV, pidStartTime: 7 });

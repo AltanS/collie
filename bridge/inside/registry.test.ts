@@ -73,6 +73,16 @@ describe("the registry", () => {
     expect(changes.map((change) => change.kind === "gone" ? `gone:${change.reason}` : "bound")).toEqual(["bound", "gone:replaced", "bound"]);
   });
 
+  test("a replacement by the same pid is logged, with no text; one by another pid is not", () => {
+    const { registry, lines } = rig();
+    registry.bind(helloOf(), PANE, 7);
+    registry.bind(helloOf(), PANE, 7);
+    expect(lines.filter((line) => line.includes("replaced by the same pid"))).toHaveLength(1);
+    expect(lines.find((line) => line.includes("replaced by the same pid"))).toMatch(/^\[inside\] replaced by the same pid part=\S+ new=\S+ pane=w1:p1 pid=4242$/u);
+    registry.bind(helloOf({ pid: 5151 }), PANE, 9);
+    expect(lines.filter((line) => line.includes("replaced by the same pid"))).toHaveLength(1);
+  });
+
   test("a part that stops polling loses its capabilities: the pane reads as having no part", () => {
     const { registry, advance, changes } = rig();
     const part = registry.bind(helloOf(), PANE, 7);

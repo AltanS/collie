@@ -147,6 +147,11 @@ export class InsideHub {
         return json(200, this.openAsk(part, event));
       case "ask.close":
         this.asks.get(part.partId)?.delete(event.ask);
+        // An answer still queued for the closed ask would wait in the pane's queue for nobody.
+        for (const id of this.queue.queued(part.address)) {
+          const command = this.queue.get(id)?.command;
+          if (command?.kind === "answer" && command.ask === event.ask) this.queue.withdraw(id, "ask-closed");
+        }
         this.tell(part, event);
         return empty(204);
       case "turn.start":

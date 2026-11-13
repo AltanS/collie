@@ -11,7 +11,7 @@ const STAT = `4242 (claude) ${Array.from({ length: 50 }, (_, i) => (i === 0 ? 'S
 type Wire = { path: string; body: Record<string, unknown> | null }
 
 /** The world one test runs in: the env, the target file, a bridge, a prompt box. */
-function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string } = {}) {
+function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean } = {}) {
   const clock = mock.clock(on)
   mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
   const wire: Wire[] = []
@@ -21,7 +21,10 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.cwd', () => ({ value: '/h/project' }))
   on('session.version', () => ({ value: { version: '2.1.323' } }))
-  on('prompt.read', () => ({ value: { text: 'half a thought', cursor: 4 } }))
+  on('prompt.read', () => {
+    if (opts.draftFails === true) throw new Error('no box')
+    return { value: { text: 'half a thought', cursor: 4 } }
+  })
   on('fs.list', (_, e) => ({ value: e.path === TARGETS ? [{ name: '0123456789abcdef.json', kind: 'file', size: 200, mtimeMs: 0, isLink: false }] : [] }))
   on('fs.read', (_, e) => {
     if (e.path === `${TARGETS}/0123456789abcdef.json`) {
@@ -38,8 +41,15 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
     wire.push({ path: `${url.pathname}${url.search}`, body })
     const answer = (status: number, json?: unknown) => ({ value: { status, ok: status < 300, headers: {}, text: json === undefined ? '' : JSON.stringify(json) } })
     if (e.init?.socketPath !== SOCKET) return answer(599)
+    // A bridge whose socket refuses the connection.
+    if (opts.refuse === true) throw new Error('ECONNREFUSED')
     if (url.pathname === '/v1/hello') return answer(200, { wire: 1, mine: true, part: PART })
     if (url.pathname === '/v1/event') {
+      if (body?.kind === 'ask.open' && opts.hangAsk === true) {
+        // A frozen bridge: the post never comes back while the clock stands still.
+        await clock.sleep(60 * 60_000)
+        return answer(200, { wait: false })
+      }
       if (body?.kind === 'ask.open') return answer(200, opts.askWait === true ? { wait: true, waitMs: 60_000 } : { wait: false })
       return answer(204)
     }
@@ -114,7 +124,7 @@ describe('the Collie mod', () => {
     expect(events(wire).find((e) => e?.cmd === 'ans-00000001')).toMatchObject({ kind: 'sent' })
   })
 
-  test('with no bridge that waits, the permission goes on as if the mod were not there', async ($, on) => {
+  test('a bridge that says do not wait: the permission goes on as if the mod were not there', async ($, on) => {
     const { clock } = world(on, { askWait: false })
     on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
     await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
@@ -133,4 +143,51 @@ describe('the Collie mod', () => {
     expect(wake).toEqual({ part: PART, kind: 'turn.start', turn: 't-1' })
     expect(JSON.stringify(events(wire))).not.toContain('secret words')
   })
+
+  test('a socket that refuses the connection: no binding, and the permission goes on at once', async ($, on) => {
+    const { clock, wire } = world(on, { refuse: true })
+    on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    expect(wire.filter((row) => row.path === '/v1/hello')).toHaveLength(1)
+    const result = await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'ls' }, permission_suggestions: [] })
+    expect(result).toEqual({ decision: { behavior: 'allow' } })
+    expect(events(wire).filter((e) => e?.kind === 'ask.open')).toEqual([])
+  })
+
+  test('a bridge that hangs: the permission hook gives up at the time limit and the desk decides', async ($, on) => {
+    const { clock } = world(on, { hangAsk: true })
+    on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+    let result: unknown = 'pending'
+    const asked = $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'ls' }, permission_suggestions: [] }).then((r) => {
+      result = r
+    })
+    await clock.advance(4000)
+    expect(result).toBe('pending')
+    await clock.advance(1500)
+    await asked
+    expect(result).toEqual({ decision: { behavior: 'allow' } })
+  })
+
+  test('commands one after another: each id acts once, a repeat of the first does nothing', async ($, on) => {
+    const one = JSON.stringify({ wire: 1, id: 'req-00000011', kind: 'prompt', text: 'one' })
+    const two = JSON.stringify({ wire: 1, id: 'req-00000012', kind: 'prompt', text: 'two' })
+    const { clock, submitted } = world(on, { commands: [one, two, one] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 8; i += 1) await clock.settle()
+    expect(submitted).toEqual(['one', 'two'])
+  })
+
+  test('a command whose work throws is reported failed, never lost', async ($, on) => {
+    const { clock, wire } = world(on, { draftFails: true, commands: [JSON.stringify({ wire: 1, id: 'drf-00000002', kind: 'draft' })] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    expect(events(wire).filter((e) => e?.cmd === 'drf-00000002').map((e) => [e?.kind, e?.reason])).toEqual([['taken', undefined], ['failed', 'error']])
+  })
+
+  // The desk deciding while the phone's poll is open aborts the hook's signal, which this kit cannot
+  // raise; the rule it then follows (no decision, the answer reported failed, reason desk) is
+  // `phoneAnswerWord` in core.ts, checked by Collie's `core.spec.ts`.
 })

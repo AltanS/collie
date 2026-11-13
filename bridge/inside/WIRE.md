@@ -106,6 +106,8 @@ Every event carries `part` and `kind`.
 They are a wake and a state, never items: chat rows still come from the session file (README
 decision 10).
 
+`ask.close` also withdraws an answer still queued for that ask.
+
 `ask.open` answers `{"wait": false}`, or `{"wait": true, "waitMs": <ms>}` when the bridge wants the
 part's hook to wait for the phone's answer (at most 15 minutes). With no answer in time, the part lets
 the desk dialog decide, as if it were not there.
@@ -187,7 +189,13 @@ claims.
 - **Claude Code marks a data prompt at the desk.** A prompt the Claude mod submits, also with
   `asUser`, shows "Prompt from the collie plugin" above it in the desk transcript. That is Claude
   Code's own mark; the mod cannot remove it.
-- **Peer credentials are not checked** (see the threat model).
+- **Peer credentials are not checked** (see the threat model). Each replacement of a part by a hello
+  that names the same pid and start time is logged (`[inside] replaced by the same pid`), so a claim
+  by another process of the same user leaves a trace. This stays on the follow-up list.
+- **A socket file with a holder that does not answer in 2 seconds is left alone.** The bridge then
+  starts without a socket; only a socket that refuses the connection (a dead bridge) is removed.
+- **A part limits every request.** The Claude mod gives each hello and event 5 seconds and each poll
+  its wait plus 5 seconds; a bridge that does not answer in time counts as down.
 
 ## Versions
 

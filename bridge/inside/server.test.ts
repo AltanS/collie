@@ -95,6 +95,24 @@ describe("the socket", () => {
     expect((await new FakePart(first.socket).request("GET", "/v1/ping")).status).toBe(200);
   });
 
+  test("a socket whose holder accepts but does not answer in time is left alone: no start, no delete", async () => {
+    const dir = scratch();
+    const path = insideSocketPath(dir);
+    mkdirSync(join(dir, "inside"), { recursive: true, mode: 0o700 });
+    // A frozen bridge: the kernel accepts the connection, nothing answers.
+    const { createServer } = await import("node:net");
+    const frozen = createServer(() => {});
+    await new Promise<void>((done) => frozen.listen(path, done));
+    try {
+      const second = await start(dir);
+      expect(second.started).toBe(false);
+      expect(second.lines.join("\n")).toContain("no clear answer from");
+      expect(lstatSync(path).isSocket()).toBe(true);
+    } finally {
+      frozen.close();
+    }
+  });
+
   test("a file that is not a socket is refused and left in place", async () => {
     const dir = scratch();
     mkdirSync(join(dir, "inside"), { mode: 0o700 });

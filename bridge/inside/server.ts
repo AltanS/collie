@@ -77,14 +77,23 @@ export interface InsideServerDeps {
   readonly uid?: number;
 }
 
-/** Whether a live server answers on a socket path. */
-async function answers(path: string): Promise<boolean> {
+/** How long the start-up probe waits for a bridge that may already hold the socket. */
+const PROBE_MS = 2000;
+
+/**
+ * Who holds a socket path: `live` (it answered), `dead` (nothing accepts: a socket file a dead bridge
+ * left), or `unsure` (no answer in time, or another error). Only `dead` may be removed: a live bridge
+ * that is slow to answer must never lose its socket to a second bridge.
+ */
+async function holderOf(path: string): Promise<"live" | "dead" | "unsure"> {
   try {
-    const response = await fetch("http://inside/v1/ping", { unix: path, signal: AbortSignal.timeout(500) });
+    const response = await fetch("http://inside/v1/ping", { unix: path, signal: AbortSignal.timeout(PROBE_MS) });
     await response.body?.cancel();
-    return true;
-  } catch {
-    return false;
+    return "live";
+  } catch (err) {
+    // SAFETY: Bun's fetch rejects with an Error that carries the socket error code, when there is one.
+    const code = err instanceof Error ? (err as Error & { code?: unknown }).code : undefined;
+    return code === "ECONNREFUSED" || code === "ENOENT" ? "dead" : "unsure";
   }
 }
 
@@ -136,8 +145,9 @@ export class InsideServer {
           this.log(`[inside] no socket: ${path} exists and is not a socket`);
           return false;
         }
-        if (await answers(path)) {
-          this.log(`[inside] no socket: another bridge listens on ${path}`);
+        const holder = await holderOf(path);
+        if (holder !== "dead") {
+          this.log(`[inside] no socket: ${holder === "live" ? "another bridge listens on" : "no clear answer from"} ${path}`);
           return false;
         }
         unlinkSync(path);

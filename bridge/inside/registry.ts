@@ -122,6 +122,11 @@ export class PartRegistry {
       `[inside] bound part=${short(bound.partId)} session=${address.session} pane=${address.paneId} harness=${bound.harness} ` +
         `version=${bound.harnessVersion ?? "-"} part-version=${bound.partVersion ?? "-"} pid=${String(bound.pid)} caps=${caps}`,
     );
+    // The same pid claiming its pane again is a reload, or another process of this user naming that
+    // pid: the socket cannot tell them apart (no peer credentials), so each such replacement is logged.
+    if (old !== undefined && old.pid === bound.pid && old.pidStartTime === bound.pidStartTime) {
+      this.log(`[inside] replaced by the same pid part=${short(old.partId)} new=${short(bound.partId)} pane=${address.paneId} pid=${String(bound.pid)}`);
+    }
     const part = view(bound);
     this.emit({ kind: "bound", part, replaced: old === undefined ? null : view(old) });
     return part;

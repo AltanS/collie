@@ -17,6 +17,7 @@ import {
   MARKER_NAMES,
   parseCommand,
   parseHelloAnswer,
+  phoneAnswerWord,
   remember,
   rowEvent,
   seen,
@@ -146,6 +147,11 @@ describe("the permission answer", () => {
     expect(waitOf(200, '{"wait":true,"waitMs":99999999}')).toBe(15 * 60_000);
     expect(waitOf(200, '{"wait":false}')).toBeNull();
     expect(waitOf(410, '{"wait":true,"waitMs":5}')).toBeNull();
+  });
+
+  test("a phone answer decides only while the desk has not; else it is reported failed, reason desk", () => {
+    expect(phoneAnswerWord(PART, "ans-00000001", false)).toEqual({ decides: true, event: JSON.stringify({ part: PART, kind: "sent", cmd: "ans-00000001" }) });
+    expect(phoneAnswerWord(PART, "ans-00000001", true)).toEqual({ decides: false, event: JSON.stringify({ part: PART, kind: "failed", cmd: "ans-00000001", reason: "desk" }) });
   });
 
   test("an ask id is a wire id", () => {

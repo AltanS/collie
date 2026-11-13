@@ -11,8 +11,10 @@ import {
   NOT_MINE_RETRY_MS,
   parseCommand,
   parseHelloAnswer,
+  phoneAnswerWord,
   POLL_WAIT_MS,
   remember,
+  REQUEST_MS,
   RESCAN_MS,
   rowEvent,
   seen,
@@ -48,6 +50,8 @@ interface Link {
   failures: number
   /** Bumped on every hello, so an old poll loop of this link stops when a new one starts. */
   loop: number
+  /** A hello of this link is on the wire: a second one waits for the next rescan. */
+  greeting: boolean
 }
 
 const links = new Map<string, Link>()
@@ -56,22 +60,44 @@ let rescanning = false
 let ticking = false
 
 const TAKEN = { plugin: 'collie', key: 'taken' } as const
+/** The read and write of the taken list, one at a time: two commands must not both read it before either writes. */
+let marking: Promise<unknown> = Promise.resolve()
 
-async function send($: $, socket: string, path: string, body: string | null): Promise<{ status: number; text: string } | null> {
+type Answer = { status: number; text: string }
+
+/**
+ * One request to a bridge, with a time limit: a bridge that stopped answering (a frozen process) must
+ * never hang a poll loop or a hook. Null for no answer in time, a refused connection, or an abort.
+ * `$.http.fetch` takes no signal, so the call is raced against a timer and the signal; a late answer is dropped.
+ */
+async function send($: $, socket: string, path: string, body: string | null, limitMs: number, signal?: AbortSignal): Promise<Answer | null> {
+  if (signal?.aborted === true) return null
+  const init = body === null
+    ? { method: 'GET', socketPath: socket }
+    : { method: 'POST', headers: { 'content-type': 'application/json' }, body, socketPath: socket }
+  const call = $.http.fetch(`${BASE}${path}`, init).then(
+    (response): Answer | null => ({ status: response.status, text: response.text }),
+    () => null,
+  )
+  // A timer, not a `$.clock.sleep`: a sleep would spend the hook's own budget while it waits.
+  let end: (value: null) => void = () => undefined
+  const stopped = new Promise<null>((resolve) => {
+    end = resolve
+  })
+  const timer = $.clock.after(limitMs, () => end(null))
+  const onAbort = (): void => end(null)
+  signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    const init = body === null
-      ? { method: 'GET', socketPath: socket }
-      : { method: 'POST', headers: { 'content-type': 'application/json' }, body, socketPath: socket }
-    const response = await $.http.fetch(`${BASE}${path}`, init)
-    return { status: response.status, text: response.text }
-  } catch {
-    return null
+    return await Promise.race([call, stopped])
+  } finally {
+    timer.cancel()
+    signal?.removeEventListener('abort', onAbort)
   }
 }
 
 /** Post one event to a link; a 410 means the bridge forgot the part, so the link says hello again. */
-async function post($: $, link: Link, body: string): Promise<{ status: number; text: string } | null> {
-  const answer = await send($, link.socket, '/v1/event', body)
+async function post($: $, link: Link, body: string, signal?: AbortSignal): Promise<Answer | null> {
+  const answer = await send($, link.socket, '/v1/event', body, REQUEST_MS, signal)
   if (answer?.status === 410) {
     link.part = null
     link.state = 'down'
@@ -141,16 +167,28 @@ async function helloText($: $): Promise<string | null> {
 /** Say hello on one link; on "mine" start its poll loop. */
 async function hello($: $, link: Link): Promise<void> {
   const now = await $.clock.now()
-  if (link.state === 'gone' || now < link.retryAt) return
+  if (link.state === 'gone' || link.greeting || now < link.retryAt) return
+  link.greeting = true
+  try {
+    await greet($, link, now)
+  } finally {
+    link.greeting = false
+  }
+}
+
+async function greet($: $, link: Link, now: number): Promise<void> {
   link.loop += 1
   const loop = link.loop
   const body = await helloText($)
+  if (link.loop !== loop) return
   if (body === null) {
     link.state = 'not-mine'
     link.retryAt = now + NOT_MINE_RETRY_MS
     return
   }
-  const answer = await send($, link.socket, '/v1/hello', body)
+  const answer = await send($, link.socket, '/v1/hello', body, REQUEST_MS)
+  // A newer hello (or the link's end) came while this one was on the wire: its answer is stale.
+  if (link.loop !== loop) return
   const parsed = answer === null ? null : parseHelloAnswer(answer.status, answer.text)
   if (parsed === null) {
     down(link, now)
@@ -179,7 +217,7 @@ function down(link: Link, now: number): void {
 async function poll($: $, link: Link, loop: number): Promise<void> {
   if (link.loop !== loop || link.state !== 'mine' || link.part === null) return
   const part = link.part
-  const answer = await send($, link.socket, `/v1/next?part=${encodeURIComponent(part)}&wait=${String(POLL_WAIT_MS)}`, null)
+  const answer = await send($, link.socket, `/v1/next?part=${encodeURIComponent(part)}&wait=${String(POLL_WAIT_MS)}`, null, POLL_WAIT_MS + REQUEST_MS)
   if (link.loop !== loop) return
   if (answer === null || answer.status >= 500) {
     down(link, await $.clock.now())
@@ -194,17 +232,36 @@ async function poll($: $, link: Link, loop: number): Promise<void> {
   }
   if (answer.status === 200) {
     const command = parseCommand(answer.text)
-    if (command !== null) void handle($, link, part, command)
+    if (command !== null) void handleSafely($, link, part, command)
   }
   // A 429 waits a second; everything else polls again at once.
   $.clock.after(answer.status === 429 ? 1000 : 0, () => poll($, link, loop))
 }
 
+/** {@link handle}, where a throw is reported as the command's failure, never lost. */
+async function handleSafely($: $, link: Link, part: string, command: Command): Promise<void> {
+  try {
+    await handle($, link, part, command)
+  } catch {
+    await post($, link, JSON.stringify({ part, kind: 'failed', cmd: command.id, reason: 'error' }))
+  }
+}
+
+/** Whether the id is new; it is remembered in the same step. One step at a time across all links. */
+async function firstTime($: $, id: string): Promise<boolean> {
+  const step = marking.then(async () => {
+    const held = await $.state.get(TAKEN)
+    if (seen(held.value, id)) return false
+    await $.state.set(TAKEN, remember(held.value, id))
+    return true
+  })
+  marking = step.catch(() => undefined)
+  return step
+}
+
 /** Act on one command, once. The id is remembered in `$.state`, which a reload keeps. */
 async function handle($: $, link: Link, part: string, command: Command): Promise<void> {
-  const held = await $.state.get(TAKEN)
-  if (seen(held.value, command.id)) return
-  await $.state.set(TAKEN, remember(held.value, command.id))
+  if (!(await firstTime($, command.id))) return
   await post($, link, JSON.stringify({ part, kind: 'taken', cmd: command.id }))
   const action = actionOf(command)
   if (action.do === 'refuse') {
@@ -249,7 +306,7 @@ async function rescan($: $): Promise<void> {
       links.delete(socket)
     }
     for (const socket of sockets) {
-      const link = links.get(socket) ?? { socket, part: null, state: 'new', retryAt: 0, failures: 0, loop: 0 }
+      const link = links.get(socket) ?? { socket, part: null, state: 'new', retryAt: 0, failures: 0, loop: 0, greeting: false }
       links.set(socket, link)
       if (link.state !== 'mine') await hello($, link)
     }
@@ -270,14 +327,15 @@ async function waitForAnswer($: $, link: Link, part: string, ask: string, waitMs
     const left = deadline - (await $.clock.now())
     if (left < 1000 || signal.aborted) return null
     const wait = Math.min(POLL_WAIT_MS, left)
-    const answer = await send($, link.socket, `/v1/next?part=${encodeURIComponent(part)}&ask=${encodeURIComponent(ask)}&wait=${String(wait)}`, null)
+    const answer = await send($, link.socket, `/v1/next?part=${encodeURIComponent(part)}&ask=${encodeURIComponent(ask)}&wait=${String(wait)}`, null, wait + REQUEST_MS, signal)
     if (answer === null || (answer.status !== 200 && answer.status !== 204)) return null
     if (answer.status === 204) continue
     const command = parseCommand(answer.text)
     if (command?.kind !== 'answer' || command.ask !== ask) continue
-    // The answer is acted on by returning it from the hook: report it done, so its receipt says so.
-    void post($, link, JSON.stringify({ part, kind: 'sent', cmd: command.id }))
-    return command.decision
+    // The desk may have decided while this answer was on its way: then the phone's answer did nothing.
+    const word = phoneAnswerWord(part, command.id, signal.aborted)
+    void post($, link, word.event)
+    return word.decides ? command.decision : null
   }
   return null
 }
@@ -287,7 +345,7 @@ async function askPhone($: $, tool: string, input: unknown, signal: AbortSignal)
   for (const link of links.values()) {
     if (link.state !== 'mine' || link.part === null) continue
     const part = link.part
-    const opened = await post($, link, JSON.stringify({ part, kind: 'ask.open', ask, askKind: 'permission', tool, input }))
+    const opened = await post($, link, JSON.stringify({ part, kind: 'ask.open', ask, askKind: 'permission', tool, input }), signal)
     const waitMs = opened === null ? null : waitOf(opened.status, opened.text)
     if (waitMs === null) continue
     const decision = await waitForAnswer($, link, part, ask, waitMs, signal)

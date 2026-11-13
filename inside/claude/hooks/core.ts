@@ -48,6 +48,8 @@ export const DOWN_RETRY_MS = [1000, 5000, 30_000, 60_000] as const;
 export const RESCAN_MS = 60_000;
 /** How long one poll asks the bridge to wait. The bridge's own limit is 25 s. */
 export const POLL_WAIT_MS = 25_000;
+/** The time limit of one hello or event post. A bridge that does not answer in it counts as down. */
+export const REQUEST_MS = 5000;
 /** How many command ids the mod remembers having acted on, newest kept. */
 export const TAKEN_KEEP = 64;
 /** The most hook target files read. A machine runs a handful of bridges. */
@@ -271,6 +273,17 @@ export function waitOf(status: number, text: string): number | null {
 export function answerResult(decision: "allow" | "deny"): { decision: { behavior: "allow" } } | { decision: { behavior: "deny" } } {
   // No message on a deny: the desk shows the engine's own words, and Collie adds none (decision 16).
   return decision === "allow" ? { decision: { behavior: "allow" } } : { decision: { behavior: "deny" } };
+}
+
+/**
+ * What a phone answer that reached the hook does: it decides only while the desk has not (the hook's
+ * signal not aborted), and the bridge is told which: `sent` when it decided, `failed` with reason
+ * `desk` when the desk was first and the phone's answer did nothing.
+ */
+export function phoneAnswerWord(part: string, cmd: string, deskFirst: boolean): { decides: boolean; event: string } {
+  return deskFirst
+    ? { decides: false, event: JSON.stringify({ part, kind: "failed", cmd, reason: "desk" }) }
+    : { decides: true, event: JSON.stringify({ part, kind: "sent", cmd }) };
 }
 
 /** An ask id: short, unique enough for one session. */
