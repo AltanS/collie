@@ -19,6 +19,7 @@ const RULE_FILES = [
   "web/src/lib/pane-name.ts",
   "bridge/session-title.ts",
   "bridge/session-titles.ts",
+  "bridge/walky/names.ts",
   "web/src/lib/walky-names.ts",
   "bridge/cache/watch-key.ts",
 ];

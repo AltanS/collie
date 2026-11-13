@@ -11,6 +11,7 @@ import { HILL_ID_RE, isHillCrewState, type HillCrewState } from "../../web/src/l
 import { HILL_BAD_ID } from "../hill/parse.ts";
 import { isTrickId } from "../../web/src/lib/tricks/schema.ts";
 import { LOCAL_MEMBER, parseAddress } from "./address.ts";
+import { bounded, withNames, type WalkyNames } from "./names.ts";
 import type { WalkySpace } from "./space.ts";
 import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
 import {
@@ -402,9 +403,29 @@ export function readWhoAnswer(value: JsonValue | undefined): WalkyTarget[] | nul
     const space = readSpace(target.space);
     if (address === null || memberId === null || machine === null || label === null || state === null || harness === undefined) continue;
     if (space === undefined || space === null || space === false || parseAddress(address)?.kind !== "pane") continue;
-    const base: WalkyTarget = { address, memberId, machine, harness, label, state, space };
+    const plain: WalkyTarget = { address, memberId, machine, harness, label, state, space };
+    const base = withNames(plain, readNames(target));
     out.push(target.walky === "off" ? { ...base, walky: "off" } : base);
   }
+  return out;
+}
+
+/**
+ * The names a `who` row carries, as display data, optional on the wire (CREW_PROTOCOL §21, added
+ * 2026-11-13): a field that is not a bounded string, or a `nameBy` that is not one of the three words,
+ * is left off. A row from a bridge before 1.29.0 carries none.
+ */
+function readNames(target: JsonObject): WalkyNames {
+  const name = bounded(asJsonString(target.name));
+  const title = bounded(asJsonString(target.title));
+  const by = target.nameBy;
+  const nameBy = by === "collie" || by === "harness" || by === "tab" ? by : undefined;
+  const out: WalkyNames = {};
+  if (name !== undefined) {
+    out.name = name;
+    if (nameBy !== undefined) out.nameBy = nameBy;
+  }
+  if (title !== undefined) out.title = title;
   return out;
 }
 

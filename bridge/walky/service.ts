@@ -13,6 +13,7 @@ import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, isResting, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type DeliverOptions, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
 import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
+import { withNames } from "./names.ts";
 import { WalkyOff, type WalkyOffBy } from "./off.ts";
 import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
@@ -331,7 +332,8 @@ export class WalkyService {
 
   /** One pane of this bridge as `who` lists it. `walky` is there only while the session is off (M89). */
   private targetRow(pane: WalkyPane, memberId: string): WalkyTarget {
-    const target: WalkyTarget = { address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state, space: pane.space };
+    const base: WalkyTarget = { address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state, space: pane.space };
+    const target = withNames(base, pane);
     return pane.off ? { ...target, walky: "off" } : target;
   }
 

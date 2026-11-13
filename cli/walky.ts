@@ -380,6 +380,28 @@ export function outsideLine(count: number): string {
 }
 
 /**
+ * The columns of `who`'s table. SPACE is the workspace, FOLDER the pane's `<repo>#<branch>` (the row's
+ * `label`), NAME the name a person gave the session, TITLE the title the agent gave it. An agent
+ * addresses "the session in workspace X" by matching any of the four. A bridge before 1.29.0 sends no
+ * name and no title, and those cells read `-`.
+ */
+export const WHO_HEAD = ["ADDRESS", "MACHINE", "HARNESS", "SPACE", "FOLDER", "NAME", "TITLE", "STATE"] as const;
+
+/** One row's cells, in {@link WHO_HEAD}'s order. A missing cell is undefined. */
+export function whoCells(row: JsonObject): (string | undefined)[] {
+  return [
+    asJsonString(row.address),
+    asJsonString(row.machine),
+    asJsonString(row.harness),
+    spaceCell(row),
+    asJsonString(row.label),
+    asJsonString(row.name),
+    asJsonString(row.title),
+    stateCell(row),
+  ];
+}
+
+/**
  * `walky who [--all] [--workspace <repo>[#<branch>]] [--json]` (M98): from an agent pane, the panes of
  * its own space, with a last line for the ones outside it; `--all` lists every pane. A shell that is no
  * agent pane lists every pane. On a crew member the bridge lists the crew as its lead does.
@@ -424,8 +446,8 @@ export async function cmdWalkyWho(deps: WalkyDeps, args: readonly string[]): Pro
     if (answer.body.selfOff === true) deps.io.out(YOU_ARE_OFF_WORDS);
     return EXIT.OK;
   }
-  const rows = targets.map((row) => [asJsonString(row.address), asJsonString(row.machine), asJsonString(row.harness), asJsonString(row.label), spaceCell(row), stateCell(row)].map((cell) => shown(cell ?? "-")));
-  const head = ["ADDRESS", "MACHINE", "HARNESS", "LABEL", "SPACE", "STATE"];
+  const rows = targets.map((row) => whoCells(row).map((cell) => shown(cell ?? "-")));
+  const head = WHO_HEAD;
   const widths = head.map((title, column) => Math.max(title.length, ...rows.map((row) => row[column]!.length)));
   const line = (cells: readonly string[]): string => cells.map((cell, column) => cell.padEnd(widths[column]!)).join("  ").trimEnd();
   deps.io.out(line(head));

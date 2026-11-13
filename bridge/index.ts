@@ -316,6 +316,7 @@ import { TricksService } from "./tricks/service.ts";
 import { VersionCards } from "./tricks/version-card.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
 import { INSTANCE_TOKEN, labelOf, LOCAL_MEMBER, parseAddress } from "./walky/address.ts";
+import { namesOfPane, withNames } from "./walky/names.ts";
 import {
   crewSkipped,
   crewTargets,
@@ -2221,7 +2222,9 @@ const walkyRawPanes = (): Omit<WalkyPane, "instance" | "off">[] =>
       // The last status change comes from the activity ledger: the engine's views carry no time (it rides the wire at serialise time).
       const activeAt = activity.get(rt.name, view.paneId)?.activeAt ?? null;
       const space = spaceOfPane(walkyMemberId ?? LOCAL_MEMBER, view);
-      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined, space };
+      const row = { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined, space };
+      // The session's names ride for `who` (walky/names.ts): the person's name and the agent's own title.
+      return withNames(row, namesOfPane(view, !cfg.redact));
     };
     const out = agents.map((view) => of(view, true));
     for (const view of shellPanes) out.push(of(view, false));

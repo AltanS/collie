@@ -3576,7 +3576,13 @@ is two hops, A to the lead and the lead to B.
   `{}`; the lead answers `{ targets }`, the rows its own `collie walky who` prints: its own agent panes
   and every member's from its last sweep, each with `address`, `memberId`, `machine`, `harness`,
   `label`, `state`, `space` (the space of the message section below) and `walky: "off"` when the
-  session turned it off. It is a read for display. The member keeps its own panes as they are now and
+  session turned it off. Since 1.29.0 a row may also carry `name` (the name a person gave the session,
+  at most 120 characters), `nameBy` (`collie`, `harness` or `tab`: where that name was set) and `title`
+  (the title the agent gave its session, left out while the lead's `COLLIE_REDACT` is on), each
+  additive-optional (§7.1) and absent when there is none. A reader drops a field of the wrong shape and
+  keeps the row. The lead takes a member's `name` and `title` from the `sessionName`, `paneLabel`,
+  `soleTabName` and `agentTitle` of that member's panes in its sweep; a member before 1.29.0 sends no
+  `agentTitle`, and its rows carry no `title`. It is a read for display. The member keeps its own panes as they are now and
   takes only the other machines' rows from the answer; a row that is not a pane address or has no well
   formed space is dropped. Every send is still decided by the bridge that owns the target pane. A
   member that gets no usable answer (a lead before 1.29.0 answers 404, a refused or unknown dial, no
