@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 389 in all, each one named, with its reason:
+#              Today, 391 in all, each one named, with its reason:
 #              bridge 173. 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
@@ -129,7 +129,7 @@
 #                "updating an added trick to the list's commit" and "a git run killed at its time cap", and its 4 `test.if(posix)`
 #                cases. The fixture repository is reached as `file://` plus a temp path, which is no file URL on Windows; its
 #                programs are `#!/bin/sh` with an executable bit; the time cap kills a POSIX process group.
-#              cli 181 in all: 21 in the next paragraph, then 3 of the statusLine wrapper, 51 of walky talky, 21 of the agent view,
+#              cli 183 in all: 21 in the next paragraph, then 3 of the statusLine wrapper, 53 of walky talky, 21 of the agent view,
 #                69 of the Hill verbs and the tricks (see "The Hill verbs and the tricks, cli" below), and 16 gated on Windows (b)
 #                (see "The helper's output, cli" below). Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
@@ -151,9 +151,9 @@
 #                `describe.skipIf` off Linux: it signals a POSIX process group, and the wrapper is not on Windows by design
 #                (the usage row, .adr/0115). Its 3 tests are "a SIGTERM to the wrapper stops a compound command's grandchild"
 #                (2, one per group layout) and "passes the command's output and exit code through".
-#              Walky talky, cli (51). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
+#              Walky talky, cli (53). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
 #                dir, and Windows cannot bind it (the same reason as the hold socket). Each of those tests is
-#                `socketTest`, 13 in "send" (M98 added the outside flag and the broadcast refusal), 34 in "reply, inbox, status, who" (two of them, from M85, are the resting-session sends and the `--wake` refusal on a reply; three, from M89, are `off` and `on`, the who marks and the two off refusals; M98 added the who space cases; the pairing fix added one; the session names added the who name and title case) and 4 in "on a crew member". The
+#                `socketTest`, 13 in "send" (M98 added the outside flag and the broadcast refusal), 36 in "reply, inbox, status, who" (two of them, from M85, are the resting-session sends and the `--wake` refusal on a reply; three, from M89, are `off` and `on`, the who marks and the two off refusals; M98 added the who space cases; the pairing fix added one; the session names added the who name and title case; the subject added the `--subject` send and its refusal) and 4 in "on a crew member". The
 #                tests that never reach the socket run on Windows: the usage errors, "no bridge at all is
 #                UNREACHABLE" and "on Windows it says why and exits STATE".
 #              Agent view, cli (21). cli/trick-view.test.ts drives the `trick view` verbs against a real bridge socket, as
@@ -189,7 +189,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 173,
-  [int]$MaxSkipsCli = 181,
+  [int]$MaxSkipsCli = 183,
   [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

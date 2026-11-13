@@ -4,7 +4,7 @@
 // token: the socket's mode is the credential, as the hold socket's is.
 //
 // Requests (`v: 1`, plus `markers`: the raw multiplexer markers the CLI read from its environment):
-//   send    { id, to, body, replyTo, wake?, outside? }   → { ok, receipts, target? }
+//   send    { id, to, body, replyTo, wake?, outside?, subject? }   → { ok, receipts, target? }
 //   inbox   { all, ack, id? }           → { ok, pane, messages }   (`id`: that one message)
 //   who     {}                          → { ok, self, ownSpace?, targets, note?, selfOff? }   (`ownSpace`: the asking pane's space, M98)
 //   status  { id }                      → { ok, receipts, message, elsewhere, deliveries?, totals? }
@@ -237,7 +237,7 @@ export async function answerRequest(
         service.noteRefusal("no pane");
         return { ok: false, error: SEND_NEEDS_A_PANE };
       }
-      const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo, wake: request.wake, outside: request.outside }, { kind: "agent", pane });
+      const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo, wake: request.wake, outside: request.outside, subject: request.subject }, { kind: "agent", pane });
       if (!answer.ok) return answer;
       return answer.target === undefined ? { ok: true, receipts: answer.receipts } : { ok: true, receipts: answer.receipts, target: answer.target };
     }

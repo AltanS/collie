@@ -1858,6 +1858,25 @@ describe("the space border across a crew (M98 spec 03)", () => {
       expect(checked.get("old w1:p1")).toBe("lead");
     });
 
+    test("a subject still reaches an older member: the copy drops the subject line, and a member at this version gets it signed (M98 spec 07)", async () => {
+      const { route, bodies, checked } = rig();
+      const message = fromApi("wt_aaaaaaaaaaa1", "old/w1:p1", { subject: "export tests are green" });
+      expect(await route(message, "old")).toMatchObject([{ target: "old/w1:p1", state: "accepted" }]);
+      const leg = bodies.get("old w1:p1")!.message;
+      expect(leg).not.toHaveProperty("subject");
+      expect(leg.body).toBe(message.body);
+      // The older member checks the lead's attestation over the copy it reads, and takes it as the lead's word.
+      expect(checked.get("old w1:p1")).toBe("lead");
+      // The operator's message with a subject goes the same way: the subject line is one an older bridge cannot verify.
+      await route(signed("wt_aaaaaaaaaaa2", "sender", "old/w1:p2", { ...OPERATOR("sender"), subject: "standup in 5" }), "old");
+      expect(bodies.get("old w1:p2")!.message).not.toHaveProperty("subject");
+      expect(checked.get("old w1:p2")).toBe("lead");
+      const current = fromApi("wt_aaaaaaaaaaa3", "new/w1:p1", { outside: true, subject: "export tests are green" });
+      await route(current, "new");
+      expect(bodies.get("new w1:p1")!.message).toEqual(current);
+      expect(checked.get("new w1:p1")).toBe("origin");
+    });
+
     test("a crossing message is refused `outside your space` at the lead, and nothing is dialled", async () => {
       const { route, bodies } = rig();
       const message = signed("wt_aaaaaaaaaaa1", "sender", "old/w1:p1", { from: { memberId: "sender", address: "sender/w1:p1#ssss", harness: "agent-x", label: "repo#s", space: spaceOf({ memberId: "sender", spaceId: "w5", spaceLabel: "w5" }) } });

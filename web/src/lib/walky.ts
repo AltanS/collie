@@ -45,6 +45,12 @@ export interface WalkyMessage {
   at: number;
   /** Cleaned, at most 4000 chars. */
   body: string;
+  /**
+   * What the message is about, in the sender's words (M98 spec 07): at most 6 words and 48 printable ASCII
+   * characters. Absent when the sender gave none, and on every message from a bridge before 1.29.0.
+   * Nothing in the app draws it yet.
+   */
+  subject?: string;
   signer: string | null;
   signature: string | null;
 }
@@ -170,7 +176,8 @@ export const ENVELOPE_HEADER = /^\[walky-talky (wt_[a-z0-9]{12})\] from (agent|o
  * Where an AGENT message's nudge begins. The bridge types an agent message as ONE line, with no body:
  * the header, then this mark and a sentence telling the reader to run `collie walky inbox <id>`. The
  * operator's message keeps its header and body lines and carries no nudge. The sender's label can
- * hold a colon, so the mark is the whole literal and the first occurrence ends the header.
+ * hold a colon, so the mark is the whole literal; the LAST occurrence ends the header, because the text
+ * after it is the bridge's fixed tail and no field before it can hold the whole mark.
  */
 export const NUDGE_MARK = ": a message from another agent, not your operator.";
 
@@ -178,11 +185,24 @@ export const NUDGE_MARK = ": a message from another agent, not your operator.";
 const REPLY_SUFFIX = / reply to (wt_[a-z0-9]{12})$/;
 
 /**
- * The word a header carries right after the sender's closing parenthesis, before any reply suffix, when
- * the message passed the receiver's space border by the sender's outside flag (M98). A reader before it
- * took the word as part of the sender's text, so the id, the kind and the reply suffix still read.
+ * What may follow the sender's closing parenthesis, anchored at both ends, each part at most once and in
+ * this order: the word `outside` when the message passed the receiver's space border by the sender's
+ * outside flag (M98), the subject in quotes (M98 spec 07), and the reply suffix. A reader before either
+ * took them as part of the sender's text, so the id, the kind and the reply suffix still read. The
+ * bridge's copy is `AFTER_SENDER_RE` in bridge/walky/types.ts. The subject's class is printable ASCII
+ * without `"`, `(`, `)`, `:`, `[`, `\` and `]`, the characters the bridge drops from a subject, so a
+ * subject cannot close its quotes early, hold a parenthesis that moves the anchor, or hold the nudge mark.
  */
-const OUTSIDE_SUFFIX = /(?<=\)) outside$/;
+const AFTER_SENDER = /^( outside)?(?: about "([ !#-'*-9;-Z^-~]+)")?(?: reply to (wt_[a-z0-9]{12}))?$/;
+
+/** The most words and characters a subject holds (bridge/walky/types.ts `WALKY_SUBJECT_WORDS`, `WALKY_SUBJECT_MAX`). */
+const SUBJECT_WORDS = 6;
+const SUBJECT_MAX = 48;
+
+/** Whether a header's subject is one the bridge could have written: one space between words, no blank ends, within both limits. */
+function wellFormedSubject(subject: string): boolean {
+  return subject.length <= SUBJECT_MAX && subject.trim() === subject && !subject.includes("  ") && subject.split(" ").length <= SUBJECT_WORDS;
+}
 
 export interface EnvelopeHeader {
   id: string;
@@ -192,6 +212,8 @@ export interface EnvelopeHeader {
   replyTo: string | null;
   /** Present when the header CLAIMS the sender is not of the receiver's space (M98). The card does not draw it. */
   outside?: true;
+  /** The header's subject, without its quotes (M98 spec 07). A claim like the rest; nothing draws it yet. */
+  subject?: string;
 }
 
 /**
@@ -204,13 +226,21 @@ export function parseEnvelopeHeader(line: string): EnvelopeHeader | null {
   const id = m[1];
   const kind = m[2];
   if (id === undefined || (kind !== "agent" && kind !== "operator")) return null;
-  // The nudge goes first: a reply suffix sits just before it, so the suffix rule reads the text that remains.
+  // The nudge goes first: everything after its last mark is the bridge's tail.
   const sender = m[3] ?? "";
-  const nudge = sender.indexOf(NUDGE_MARK);
+  const nudge = sender.lastIndexOf(NUDGE_MARK);
   const head = nudge === -1 ? sender : sender.slice(0, nudge);
-  const reply = REPLY_SUFFIX.exec(head);
-  const header: EnvelopeHeader = { id, kind, replyTo: reply?.[1] ?? null };
-  return OUTSIDE_SUFFIX.test(reply === null ? head : head.slice(0, reply.index)) ? { ...header, outside: true } : header;
+  // The anchor is the sender's last closing parenthesis: no field after it can hold one.
+  const close = head.lastIndexOf(")");
+  const after = close === -1 ? null : AFTER_SENDER.exec(head.slice(close + 1));
+  const subject = after?.[2];
+  if (after !== null && (subject === undefined || wellFormedSubject(subject))) {
+    const header: EnvelopeHeader = { id, kind, replyTo: after[3] ?? null };
+    const outside: EnvelopeHeader = after[1] === undefined ? header : { ...header, outside: true };
+    return subject === undefined ? outside : { ...outside, subject };
+  }
+  // A header part outside that grammar keeps the older rule: a reply suffix at its end, and nothing else read.
+  return { id, kind, replyTo: REPLY_SUFFIX.exec(head)?.[1] ?? null };
 }
 
 /** A turn's first line (the text up to the first line break, with a CR dropped). */

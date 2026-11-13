@@ -16,7 +16,7 @@ import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import { withNames } from "./names.ts";
 import { WalkyOff, type WalkyOffBy } from "./off.ts";
 import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
-import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { headerField, readSubject, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** The receipt's reason for a walky body with a line that starts with an agent view's head (`bad_head`). */
 export const WALKY_BAD_HEAD = "bad_head: a line starts with an agent view's head, which only that view sends; rewrite the line";
@@ -34,6 +34,11 @@ export interface SendInput {
   readonly wake?: boolean;
   /** M98: the message may leave the sender's space. Signed on the message as `outside: true`. */
   readonly outside?: boolean;
+  /**
+   * M98 spec 07: the sender's subject as sent. {@link WalkyService.send} cleans it and refuses it past a
+   * limit (`readSubject`, types.ts); `compose` takes it clean. Absent, null or empty after cleaning: none.
+   */
+  readonly subject?: string | null;
 }
 
 export type SendAnswer =
@@ -225,7 +230,9 @@ export class WalkyService {
         : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX), space: null };
     const base: WalkyMessage = { v: 1, id: input.id, kind: sender.kind, from, to: input.to, replyTo: input.replyTo, at: this.now(), body: clean.body, signer: null, signature: null };
     const woken: WalkyMessage = input.wake === true ? { ...base, wake: true } : base;
-    const message: WalkyMessage = input.outside === true ? { ...woken, outside: true } : woken;
+    const outside: WalkyMessage = input.outside === true ? { ...woken, outside: true } : woken;
+    const subject = readSubject(input.subject);
+    const message: WalkyMessage = "subject" in subject && subject.subject !== null ? { ...outside, subject: subject.subject } : outside;
     const key = this.deps.keyPem();
     return key === null || memberId === null ? message : signMessage(message, key, memberId);
   }
@@ -241,6 +248,9 @@ export class WalkyService {
     if (to === null) return { ok: false, error: NO_ADDRESS };
     // Past the cap the send is refused, never cut: the receipt says why, and the count keeps it.
     if (cleanBody(input.body).cut) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, BODY_TOO_LONG)] };
+    // The subject too (M98 spec 07): past a limit it is refused, never cut.
+    const subject = readSubject(input.subject);
+    if ("error" in subject) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, subject.error)] };
     // One head, one door (agent views SECURITY rule 2): a walky message never carries a view's head.
     if (hasViewHead(input.body)) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, WALKY_BAD_HEAD)] };
     const message = this.compose({ ...input, to }, sender);

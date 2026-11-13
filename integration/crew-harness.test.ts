@@ -2767,7 +2767,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     const line = lines[0];
     // Hardening A: ONE line, the header and the nudge. The body reaches the agent as `collie walky inbox <id>`.
     expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wl)}#[a-z0-9]{4} \\(claude, `, "u"));
-    expect(line).toContain(`${NUDGE_MARK} Read it: collie walky inbox ${id}. Reply: collie walky reply ${id} "<text>"`);
+    expect(line.endsWith(`${NUDGE_MARK} Read it: collie walky inbox ${id}`)).toBe(true);
     expect(line).not.toContain(body);
     expect(line).not.toContain("\n");
     expect(JSON.stringify(wa.herdr!.writes)).not.toContain(body);

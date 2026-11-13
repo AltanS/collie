@@ -125,7 +125,7 @@ describe("one message to one pane", () => {
     expect(r.host.sends).toHaveLength(1);
     expect(r.host.sends[0]!.text.includes("\n")).toBe(false);
     expect(r.host.sends[0]!.text.includes("the body")).toBe(false);
-    expect(r.host.sends[0]!.text).toContain("Read it: collie walky inbox wt_aaaaaaaaaaa1.");
+    expect(r.host.sends[0]!.text).toContain("Read it: collie walky inbox wt_aaaaaaaaaaa1");
     expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]?.state).toBe("delivered");
     expect(r.service.inbox("main", "w1:p2", "aaaa", false).map((entry) => entry.body)).toEqual(["the body"]);
   });
