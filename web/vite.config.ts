@@ -200,8 +200,8 @@ const buildInfoPlugin: Plugin = {
 };
 
 // A release build must ship index.html byte-for-byte unchanged, so this only rewrites the four
-// icon <link> hrefs, and only for index.html — never the dev pages (design.html, playground.html,
-// pick.html), which carry their own -playground links statically instead (see design.html itself). vite-icons.ts's
+// icon <link> hrefs, and only for index.html — never the dev pages (design.html, playground.html),
+// which carry their own -playground links statically instead (see design.html itself). vite-icons.ts's
 // transformIndexIcons is a no-op on the release channel, so the `if` here is belt-and-braces: it
 // also means the hook never even inspects a file that isn't index.html.
 const channelIconsPlugin: Plugin = {

@@ -1,16 +1,17 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { PickPage } from "../pick-page";
+import { Segmented } from "@/playground/layout";
 import ROUND from "./session-filter";
 
-// The round for the look (M97 spec 05) on the pick page: eight numbered options, ONE Case switch, the
+// The round for the look (M97 spec 05), drawn the way the design app's round page draws it: eight numbered options, ONE Case switch, the
 // real components. Moved from the design reference's "Session filter" entry with its cases.
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 });
-beforeEach(() => window.history.replaceState(null, "", "/pick.html?round=session-filter"));
+beforeEach(() => window.history.replaceState(null, "", "/"));
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
@@ -23,8 +24,23 @@ const field = (el: HTMLElement) => within(el).queryByRole("textbox", { name: "Fi
 const rows = (el: HTMLElement) => el.querySelectorAll("button[data-pane-key], button[id^='pane-row-']").length;
 const useCase = (name: string) => fireEvent.click(within(screen.getByRole("group", { name: "Case" })).getByRole("button", { name }));
 
+/** The least of a round page: one Case switch over every option, as the design app draws it. */
+function Round() {
+  const [caseId, setCaseId] = useState(ROUND.cases[0]!.id);
+  return (
+    <>
+      <Segmented name="Case" value={caseId} options={ROUND.cases.map((c) => ({ value: c.id, label: c.label }))} onChange={setCaseId} />
+      {ROUND.options.map((o) => (
+        <section key={o.n} data-option={o.n}>
+          <div key={caseId}>{o.render(caseId)}</div>
+        </section>
+      ))}
+    </>
+  );
+}
+
 function mount() {
-  return render(<PickPage {...ROUND} />);
+  return render(<Round />);
 }
 
 describe("the session filter's round", () => {

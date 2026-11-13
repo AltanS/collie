@@ -9,8 +9,7 @@ import viteConfig from "../../vite.config";
 // `playground.html` forwarding to it), and it stays out of the shipped app by the one mechanism that
 // needs no maintenance: Vite's default `build.rollupOptions.input` is the root `index.html` alone, so
 // `vite build` never walks either page and the PWA precache manifest — which is injected from what
-// actually landed in `dist` — can never list them either. The pick page (`pick.html`) rides on the
-// same fact; `src/pick/pick-page.test.tsx` checks it for that page.
+// actually landed in `dist` — can never list them either.
 //
 // The failure this pins is a one-line one: somebody adds a multi-page `input` (for a preview page, a
 // second shell, anything) and quietly ships the reference, its fixtures, and MSW with it. So the

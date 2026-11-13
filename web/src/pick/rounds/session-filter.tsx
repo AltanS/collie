@@ -1,7 +1,8 @@
 // "Session filter", the round for the look (M97 spec 05): the four LOOK decisions of the filter, side
 // by side, on the real components and the fourteen-row crew of two machines (`switcherCrew`). Moved
-// from the design reference to the pick page on 2026-11-13: it waits for the operator's pick, and a
-// pick round is a one-pager (`pick.html?round=session-filter`), never a reference entry.
+// from the design reference on 2026-11-13: it waits for the operator's pick, and a pick round is a
+// proposal in the workspace's design app (`design propose <worktree> session-filter`), never a
+// reference entry.
 //
 // One case sets the typed query in every option: the options render the real `ThreadSidebar`
 // (1 to 6, the Switch pane sheet's list) and the real `AgentList` (7 and 8, the Dashboard's top)
@@ -29,7 +30,7 @@ import { PackedRootRouter } from "@/playground/harness";
 import { useCardFilter } from "@/playground/sections/shared";
 import { SwitcherList } from "@/playground/sections/switcher";
 
-import type { PickCase, PickOption, PickRoundDef } from "../pick-page";
+import type { PickCase, PickOption, PickRoundDef } from "../types";
 
 /** The typed query of each case. `none` is the empty field, where the two Dashboard entries differ most. */
 const CASES: readonly PickCase[] = [

@@ -126,7 +126,7 @@ export function manifestFor(channel: Channel): ChannelManifest {
   return channel === "dev" ? DEV_MANIFEST : RELEASE_MANIFEST;
 }
 
-/** The dev pages (the design reference and the pick page) wear their own red set — no manifest, no
+/** The dev pages (the design reference) wear their own red set — no manifest, no
  *  service worker, so just the three direct `<link>` tags design.html carries. */
 export const PLAYGROUND_ICON_LINKS: readonly IconLink[] = [
   { rel: "icon", type: "image/svg+xml", href: "/favicon-playground.svg" },
@@ -152,7 +152,6 @@ function playgroundFiles(): string[] {
     ...PLAYGROUND_ICON_LINKS.map((link) => link.href.replace(/^\//, "")),
     "playground.html",
     "design.html",
-    "pick.html",
     "playground-*",
   ];
 }

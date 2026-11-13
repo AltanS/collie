@@ -1,6 +1,6 @@
-/* Presentation-only rules for the design reference and the pick page. Nothing here is imported by the
-   app: the file is reachable from `src/playground/main.tsx` (design.html) and `src/pick/main.tsx`
-   (pick.html) alone, and neither page is a build input. */
+/* Presentation-only rules for the design reference. Nothing here is imported by the app: the file is
+   reachable from `src/playground/main.tsx` (design.html, not a build input) and from the workspace's
+   design app, which builds its own pages from this checkout. */
 
 /* Orbitron, Audiowide and Nova Round — three dev-only auditions for the typeface switcher, loaded
    straight from the Google Fonts CDN. They stay here, never in index.css: index.css names exactly
@@ -112,7 +112,7 @@
    audition gets its @font-face pair here again until it ships. */
 
 /* One line that scrolls sideways instead of wrapping: the narrow page header's entry list and
-   controls, and the pick page's control bar (src/pick/). Its direct children keep their size. */
+   controls. Its direct children keep their size. */
 .pg-scroll-row {
   display: flex;
   flex-wrap: nowrap;

@@ -8,7 +8,7 @@ import { glyphSetsPlugin } from "./vite-glyphs";
 import { mathEnginesPlugin } from "./vite.math";
 
 // `bun run playground:build`: the design reference (design.html, with playground.html forwarding to
-// it) and the pick page (pick.html), as static files in `dist-playground/`.
+// it) as static files in `dist-playground/`.
 // DEV-ONLY, like the page itself. It is a second config on purpose: vite.config.ts stays the app's
 // build (its input is index.html alone, pinned by playground-entry.test.ts), and this one never
 // touches `dist/`, so a playground build cannot overwrite the live dev lane.
@@ -62,7 +62,7 @@ export default defineConfig({
     emptyOutDir: true,
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
-      input: [resolve(WEB, "design.html"), resolve(WEB, "playground.html"), resolve(WEB, "pick.html")],
+      input: [resolve(WEB, "design.html"), resolve(WEB, "playground.html")],
     },
   },
 });

@@ -13,8 +13,7 @@ than one file, which a comment cannot.
 The rules are seen at work in the design reference (`web/design.html`, `cd web && bun run design`):
 every final state of the UI, mounted from the real components, one entry per state, found with its
 search field. It holds only what ships or what the owner approved. A choice between options is a
-pick page of its own (`web/pick.html?round=<id>`), and only the chosen state moves into the
-reference. [`CLAUDE.md`](./CLAUDE.md) has how to add either.
+round declared under `web/src/pick/rounds/`, and only the chosen state moves into the reference. [`CLAUDE.md`](./CLAUDE.md) has how to add either.
 
 ---
 

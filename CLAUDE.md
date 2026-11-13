@@ -531,8 +531,9 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   One entry per state, no option rounds, no "today" beside a proposal, no measuring or explainer
   pages. When a feature changes, its entry changes in the same branch; when it is gone, the entry
   goes too.
-  - **Add an entry:** one row in `SECTIONS` (`web/src/playground/app.tsx`) with an `id` (flat
-    kebab-case, its address `design.html#<id>`), a `title`, and `keywords`: the component names it
+  - **Add an entry:** one row in `ENTRIES` (`web/src/playground/registry.tsx`) with an `id` (flat
+    kebab-case, its address `design.html#<id>`), a `title`, a `group` (the product area), and
+    `keywords`: the component names it
     mounts and the words a person types to find it ("walky", "worktree", "permission"). Then a file
     under `web/src/playground/sections/` exporting `DEF` (same id and title) and the section.
     `registry.test.ts` fails on a missing id, a repeated id or no keywords.
@@ -540,14 +541,13 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
     on the page. `reach` and `note` are optional and hidden by default (the page's Notes switch).
   - Links: `design.html#<id>` opens an entry, `#<id>/<card-handle>` scrolls to a card,
     `?q=<words>` carries a search. Both survive a cold load.
-- **A pick round is a one-pager, never a design reference entry.** When Altan picks between
-  options, the round is its own page on the feature branch: `web/pick.html?round=<id>`, shell in
-  `web/src/pick/pick-page.tsx`. Add one with a file under `web/src/pick/rounds/<id>.tsx` (default
-  export a `PickRoundDef`: a title, numbered options of at most five words, the cases) and one line
-  in `web/src/pick/rounds.ts`. One case switch drives every option; each option draws in a phone
-  frame. Put the direct URL in the report. After the pick, the chosen state becomes a design
-  reference entry and the round's file and its line are deleted. Like the reference, the page is
-  not a build input and never ships.
+- **A pick round is a proposal, never a design reference entry.** When Altan picks between
+  options, the feature branch declares the round: a file `web/src/pick/rounds/<id>.tsx` (default
+  export a `PickRoundDef` from `web/src/pick/types.ts`: a title, numbered options of at most five
+  words, the cases) and one line in `web/src/pick/rounds.ts`; `rounds.test.ts` holds the contract.
+  The page that draws it (one case switch, phone frames, the Pick controls) is the maintainers'
+  design app, outside this repo. After the pick, the chosen state becomes a design reference entry
+  and the round's file and its line are deleted before the branch merges.
 - Data flows through **React Router** (`createBrowserRouter`, data mode): route **loaders**
   (`web/src/lib/loaders.ts`) fetch the snapshot + pane; **polling is `useRevalidator()` on an
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls

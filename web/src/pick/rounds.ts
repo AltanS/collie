@@ -1,7 +1,8 @@
-// The registry of rounds, keyed by id: one HTML entry (`pick.html`) serves any of them through
-// `?round=<id>`. A round's module has a default export, a `PickRoundDef`, and is loaded only when its page
-// is opened. Add a round with one line here and one file under `rounds/`.
-import type { PickRoundDef } from "./pick-page";
+// The registry of rounds, keyed by id. The workspace's design app reads it to build a round into a
+// proposal (`design propose <worktree> <round id>`). A round's module has a default export, a
+// `PickRoundDef` (./types.ts), and is loaded only when its page is opened. Add a round with one line
+// here and one file under `rounds/`; delete both before the branch merges.
+import type { PickRoundDef } from "./types";
 
 export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 

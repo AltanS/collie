@@ -328,10 +328,11 @@ and feature words). The page shows one entry at a time. The address carries it: 
 `#pane/<card-handle>` for one card, `#changes:one-file` for one group, `?q=walky` for a search.
 Add a state by adding a `<Card>` to a `Group` in `web/src/playground/sections/` and mock data to
 `web/src/playground/fixtures.ts`. Add an entry by exporting `DEF` and a component from a new file,
-then registering it in `SECTIONS` in `web/src/playground/app.tsx` with an id, a title and keywords.
-The reference holds only final states. A design round where an option is picked is a one-pager:
-`web/pick.html?round=<id>`, one file under `web/src/pick/rounds/` and one line in
-`web/src/pick/rounds.ts`. `CLAUDE.md` has the rules.
+then registering it in `ENTRIES` in `web/src/playground/registry.tsx` with an id, a title, a group
+and keywords.
+The reference holds only final states. A design round where an option is picked is declared as
+one file under `web/src/pick/rounds/` and one line in `web/src/pick/rounds.ts`, to the contract in
+`web/src/pick/types.ts`. `CLAUDE.md` has the rules.
 
 For Herdr adapter development, refer to upstream documentation for the plugin system:
 [authoring](https://herdr.dev/docs/plugins/) ·
