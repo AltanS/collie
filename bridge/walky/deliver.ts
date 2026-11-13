@@ -109,7 +109,7 @@ export interface DeliverNow {
 }
 
 /** The Send Protocol's answer to a Deliver now (`SendProtocol.deliverOverDraft`), as walky reads it. */
-export type OverDraftResult = "sent" | "unknown" | "going" | "not-held" | "busy" | "not-linked" | "not-taken" | "ended";
+export type OverDraftResult = "sent" | "unknown" | "went" | "went-unknown" | "going" | "not-held" | "busy" | "not-linked" | "not-taken" | "ended";
 
 /** One pane of this bridge, as walky talky sees it. */
 export interface WalkyPane {
@@ -411,6 +411,8 @@ export class WalkyDeliverer {
   private readonly lanes = new Map<string, Promise<void>>();
   /** The send ids a Deliver now runs right now: their end is written with `overDraft` (spec 05). */
   private readonly overDraftSends = new Set<string>();
+  /** The Deliver now that runs per send id: a second ask (a lost answer, a second device) waits for it. */
+  private readonly deliveringNow = new Map<string, Promise<DeliverNow>>();
 
   constructor(private readonly deps: DelivererDeps) {
     this.now = deps.now ?? Date.now;
@@ -1259,6 +1261,25 @@ export class WalkyDeliverer {
     const { session, paneId } = record;
     if (session === null || paneId === null) return answer("elsewhere");
     const sendId = receipt.sendId ?? sendIdOf(record.message.id, target);
+    // A second ask while one runs answers the first one's end: one delivery, and a delivery reads `repeat`.
+    const first = this.deliveringNow.get(sendId);
+    if (first !== undefined) {
+      const end = await first;
+      return { ...end, result: end.result === "delivered" ? "repeat" : end.result };
+    }
+    const run = this.deliverOnce(record, session, paneId, sendId);
+    this.deliveringNow.set(sendId, run);
+    try {
+      return await run;
+    } finally {
+      this.deliveringNow.delete(sendId);
+    }
+  }
+
+  /** One Deliver now of a held record, under {@link deliverNow}'s one-run-per-send-id rule. */
+  private async deliverOnce(record: LogRecord, session: string, paneId: string, sendId: string): Promise<DeliverNow> {
+    const { receipt, target } = record;
+    const answer = (result: DeliverNow["result"], newer: WalkyReceipt = receipt): DeliverNow => ({ target, result, receipt: newer });
     this.overDraftSends.add(sendId);
     try {
       let result: OverDraftResult;
@@ -1267,6 +1288,13 @@ export class WalkyDeliverer {
       } catch (err) {
         console.warn(`[walky] deliver now of ${record.message.id} failed: ${err instanceof Error ? err.message : String(err)}`);
         result = "unknown";
+      }
+      // A run already going took it (the box cleared at that moment): it went the usual way, not over a draft.
+      if (result === "went" || result === "went-unknown") {
+        this.overDraftSends.delete(sendId);
+        if (!this.ended(record)) await this.settle(record, session, paneId, record.instance, sendId, result === "went" ? { outcome: "sent" } : { outcome: "unknown", reason: "no_evidence" });
+        const newest = this.deps.log.get(record.message.id, target)?.receipt ?? receipt;
+        return answer(result === "went" ? "delivered" : "may have arrived", newest);
       }
       if (result === "sent" || result === "unknown") {
         // The hold watcher may have read the end already; else it is written now, once (one synchronous step).

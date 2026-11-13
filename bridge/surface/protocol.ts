@@ -2783,7 +2783,8 @@ export type OverDraftMiss = "busy" | "not-linked" | "not-taken";
  * `not-held` (no such request held for a draft on this pane), `ended` (its run ended it another way).
  */
 export type OverDraftAnswer =
-  | { readonly result: "sent" | "unknown" | "going" | "not-held" | OverDraftMiss }
+  /** `went` and `went-unknown`: a run already going (a release, or another ask) ended so; this ask ran nothing. */
+  | { readonly result: "sent" | "unknown" | "went" | "went-unknown" | "going" | "not-held" | OverDraftMiss }
   | { readonly result: "ended"; readonly outcome: string };
 
 export class SendProtocol {
@@ -3550,7 +3551,11 @@ export class SendProtocol {
   async deliverOverDraft(session: string, paneId: string, id: string): Promise<OverDraftAnswer> {
     const entry = this.deps.holds?.get(id) ?? null;
     if (entry === null || entry.session !== session || entry.paneId !== paneId) return { result: "not-held" };
-    if (entry.state === "running" || this.inFlight.has(id)) return { result: "going" };
+    // A second ask while a run of this request goes (a retry after a lost answer, a second device): its
+    // answer is that run's end, read when it ends. The run is bounded by its own deadline.
+    const running = this.inFlight.get(id);
+    if (running !== undefined) return this.endOfRun(id, running);
+    if (entry.state === "running") return { result: "going" };
     if (entry.state !== "held" || entry.draftHolds !== true || entry.cause !== "draft_present") return { result: "not-held" };
     this.overDraftMisses.delete(id);
     let answer: SendAnswer | null;
@@ -3558,9 +3563,8 @@ export class SendProtocol {
     try {
       answer = await this.release(id, true);
     } finally {
-      // Read once, never left for a later run of the same id.
+      // Kept for a second ask that waited on this run (`endOfRun`); the next Deliver now writes it afresh.
       miss = this.overDraftMisses.get(id);
-      this.overDraftMisses.delete(id);
     }
     if (answer === null) return { result: "going" };
     const outcome = answer.receipt?.outcome;
@@ -3569,6 +3573,19 @@ export class SendProtocol {
     // Back in its place with no miss named: another send held the pane's lock.
     if (outcome === "held") return { result: miss ?? "busy" };
     return { result: "ended", outcome: outcome ?? "unknown" };
+  }
+
+  /**
+   * What a run that was already going when a Deliver now came ended in: `went` or `went-unknown` as it ended,
+   * else a miss (`not-taken` when no miss was named, the request still held), else `ended`. Nothing is run.
+   */
+  private async endOfRun(id: string, running: Promise<SendAnswer>): Promise<OverDraftAnswer> {
+    const answer = await running.catch(() => null);
+    const outcome = answer?.receipt?.outcome;
+    if (outcome === "sent") return { result: "went" };
+    if (outcome === undefined || outcome === "unknown") return { result: "went-unknown" };
+    if (outcome === "held") return { result: this.overDraftMisses.get(id) ?? "not-taken" };
+    return { result: "ended", outcome };
   }
 
   /**
@@ -3892,6 +3909,9 @@ export class SendProtocol {
       // when nothing reached the part: then the screen road below runs the send, once.
       const byData = await this.runData(state, release);
       if (byData !== null) return byData;
+      // A Deliver now never takes the screen road, whatever `runData` answers: another agent's words are
+      // never typed over the person's draft. It goes back to its place, held for the draft.
+      if (state.overDraft === true) return this.overDraftMiss(state, "not-taken");
       await this.steps(state);
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;

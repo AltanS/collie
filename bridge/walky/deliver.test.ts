@@ -2532,11 +2532,44 @@ describe("WalkyTalky by data (M99 spec 05)", () => {
       // The tap and the part's "no draft" in the same moment: the hold queue's release takes it once.
       const [tap] = await Promise.all([deliverNow(r, "wt_aaaaaaaaaa62"), r.part.event("draft.state", { present: false })]);
       expect((await served)?.kind).toBe("mail");
-      expect(["delivered", "not held"]).toContain(tap.result);
+      // Whichever run took it, the tap answers the delivery; the one that ran first decides overDraft.
+      expect(tap.result).toBe("delivered");
       await r.service.deliverer.settled();
       expect(r.service.status("wt_aaaaaaaaaa62").receipts[0]?.state).toBe("delivered");
       expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
       expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now: two asks at once (a lost answer, a second device) deliver once, and both answers say it went", async () => {
+    const r = await linked({ draft: true });
+    try {
+      const sendId = await heldForDraft(r, "wt_aaaaaaaaaa68");
+      const served = r.part.serveOnce({ waitMs: 3000 });
+      const [one, two] = await Promise.all([deliverNow(r, "wt_aaaaaaaaaa68"), deliverNow(r, "wt_aaaaaaaaaa68")]);
+      expect((await served)?.id).toBe(sendId);
+      expect(one).toMatchObject({ result: "delivered", receipt: { state: "delivered", overDraft: true } });
+      expect(two).toMatchObject({ result: "repeat", receipt: { state: "delivered", overDraft: true } });
+      expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now never takes the screen road: a data road that hands back nothing leaves the message held for the draft", async () => {
+    const r = await linked({ draft: true });
+    try {
+      const sendId = await heldForDraft(r, "wt_aaaaaaaaaa69");
+      // A future change that lets the data road answer "not mine" for a Deliver now: the guard in `run` holds.
+      Reflect.set(r.data.protocol, "runData", async () => null);
+      expect((await deliverNow(r, "wt_aaaaaaaaaa69")).result).toBe("not taken");
+      expect(r.data.mux.calls).toEqual([]);
+      expect(r.data.holds.get(sendId)).toMatchObject({ state: "held", cause: "draft_present", tries: 0 });
+      expect(r.service.status("wt_aaaaaaaaaa69").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+      expect(r.data.hub.stateOf(sendId)).toBeNull();
     } finally {
       r.data.stop();
     }
