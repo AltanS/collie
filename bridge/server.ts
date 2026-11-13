@@ -48,6 +48,7 @@ import { browseFolders, type FolderBrowseContext } from "./folder-browse.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
 import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
+import { endsInShellPrompt } from "./surface/shell-prompt.ts";
 import { isUnsettled, LAUNCH_UNKNOWN_TEXT, launchReplay, memoryLaunchReceipts, type LaunchAnswer, type LaunchReceiptSurface } from "./launch-receipts.ts";
 import {
   MEMBER_DEADLINE_MS,
@@ -6141,6 +6142,11 @@ export interface PaneReadyOptions {
   readonly pollMs?: number;
   readonly floorMs?: number;
   readonly ceilingMs?: number;
+  /**
+   * A screen is ready only when this also holds for its text. The launch into a pane it FOUND (not one the
+   * create call answered with) asks for a shell prompt on the last row; absent, a settled non-blank screen is enough.
+   */
+  readonly accepts?: (screen: string) => boolean;
 }
 
 /** One poll of the new pane's screen. Small: a prompt is one short line at the top of a fresh shell. */
@@ -6197,7 +6203,7 @@ export async function awaitPaneReady(
       // Swallowed on purpose: an unreadable brand-new pane is "not ready yet", not a failure.
     }
     const elapsed = now() - started;
-    if (current !== null && current.trim() !== "" && current === previous && elapsed >= floorMs) {
+    if (current !== null && current.trim() !== "" && current === previous && elapsed >= floorMs && (opts.accepts?.(current) ?? true)) {
       return { ready: true, ms: elapsed };
     }
     previous = current;
@@ -7227,9 +7233,10 @@ type CreateMade =
  * A receipt `pending` is written first when the request carries an id. A fresh snapshot is read right
  * before the create, as the look's "before". The create then runs; one that timed out (`unconfirmed`) is
  * looked up in the snapshot (bridge/create-confirm.ts). The result is the pane, or the answer to give: a
- * plain failure when nothing was made (the receipt is forgotten, so the id may run again), or
- * `write_outcome_unknown` when nobody can say (the receipt becomes `unknown`). A throw settles the receipt
- * too: `unknown` once the multiplexer was asked, forgotten before.
+ * plain failure only when the multiplexer REFUSED the create (the receipt is forgotten, so the id may run
+ * again), or `write_outcome_unknown` when it did not answer and the look did not find the pane (the receipt
+ * becomes `unknown` and stays: "not seen in 4 s" is a time-out, and the create may land after it). A throw
+ * settles the receipt too: `unknown` once the multiplexer was asked, forgotten before.
  */
 async function createRecorded(job: {
   herdr: Pick<MuxAdapter, "snapshot">;
@@ -7263,11 +7270,11 @@ async function createRecorded(job: {
         handedOn = true;
         return { ok: true, pane: look.pane, looked: { agent: look.agent } };
       }
-      if (look.kind === "unread") {
-        if (requestId !== undefined) await receipts.record({ requestId, at: Date.now(), state: "unknown" });
-        handedOn = true;
-        return { ok: false, answer: unknownCreate(outcome.detail) };
-      }
+      // Nothing found is not nothing made: the look ended at its bound, and the adapter's own call may land
+      // after it. The receipt is kept as `unknown`, so the same id answers unknown and never creates again.
+      if (requestId !== undefined) await receipts.record({ requestId, at: Date.now(), state: "unknown" });
+      handedOn = true;
+      return { ok: false, answer: unknownCreate(outcome.detail) };
     }
     if (requestId !== undefined) await receipts.forget(requestId);
     handedOn = true;
@@ -8821,7 +8828,8 @@ async function finishLaunch(
     // guess, and a line typed into an agent's input box would be a message: it must read as a shell with
     // no agent in it first, or nothing is typed and the outcome is unknown.
     if (made.looked !== null) {
-      const shell = made.looked.agent === "shell" && (await awaitPaneReady(herdr, created.paneId, job.wait)).ready;
+      const shell =
+        made.looked.agent === "shell" && (await awaitPaneReady(herdr, created.paneId, { ...job.wait, accepts: endsInShellPrompt })).ready;
       if (!shell) {
         if (job.requestId !== undefined) await job.receipts.record({ requestId: job.requestId, at: Date.now(), state: "unknown" });
         return unknownCreate(LAUNCH_UNKNOWN_TEXT);

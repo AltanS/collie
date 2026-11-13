@@ -240,6 +240,7 @@
 
 import { sendByData, type DataDoor, type DataLimits } from "./data-send.ts";
 import { pickSendPath } from "./path.ts";
+import { SHELL_PROMPT } from "./shell-prompt.ts";
 import { statSync } from "node:fs";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
@@ -333,16 +334,6 @@ const NO_ECHO_REFUSAL = "A password prompt is waiting on the last row. Collie do
 /** The blind road refuses (M100 spec 06, item 1): the pane's last rows look like an agent's, not a shell's. */
 const BLIND_ROAD_REFUSAL = "Collie cannot tell which agent runs in this pane, and its last rows show an input box, a dialog or an agent's footer, so nothing was typed. Use Type to answer it.";
 
-/**
- * A shell's prompt with nothing typed after it, as the last thing on its row: `$`, `#` or `%` alone or
- * after a user, host or path (`user@host:~/work$`; never after a digit, so a footer's `37%` is none),
- * `❯`, `➜` or `λ` alone or after a space, or `>` after a path (`C:\work>`). A shell draws its prompt
- * from the row's first column, so a row that starts blank is none (an agent's own `❯` stands indented in
- * its box or list). The blind road reads it as proof that a sign above it is an agent's leftover (M100
- * spec 06, item 1, lead review of 9d61e5b41): an agent that exited leaves its last frame on screen, and
- * the shell draws its prompt under it.
- */
-const SHELL_PROMPT = /^(?=\S)(?:[$#%]|.*[\s\p{L}_~/\])][$#%]|(?:.*\s)?[❯➜λ]|.*\S>)$/u;
 
 /** The rows a profile names under its box: its footer rows (chrome rows included) and its hint rows. */
 function namedBelow(profile: Profile): readonly RegExp[] {

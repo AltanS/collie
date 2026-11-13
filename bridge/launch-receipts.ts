@@ -75,9 +75,8 @@ export interface LaunchUnknown {
 /** What a launch, a tab create or a space create answers. */
 export type LaunchAnswer = CreateResponse | LaunchUnknown;
 
-/** The sentence a retry of an unsettled id answers. */
-export const LAUNCH_UNKNOWN_TEXT =
-  "an earlier request with this id may have made the pane, so Collie did not make it again; look at the dashboard before you start it anew";
+/** The sentence a retry of an unsettled id answers, and the member's answer past its deadline. For a person on a phone. */
+export const LAUNCH_UNKNOWN_TEXT = "Collie started this once and cannot tell if it worked. Check your panes before you start it again.";
 
 /** What the launch route needs of the store. */
 export type LaunchReceiptSurface = ForgettingReceiptSurface<LaunchEntry, LaunchAnswer>;
