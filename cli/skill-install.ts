@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join } from "node:path";
 
-import { codexHome } from "./codex-hooks.ts";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import { type CliContext, collieVersion } from "./context.ts";
 import { claudeSettingsTargets, realpathVia, resolveHookCommand } from "./hooks.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
-import { type SyncResult, syncLines } from "./skill-sync-result.ts";
+import { recoveryOf, type SyncResult, syncLines } from "./skill-sync-result.ts";
 import type { Files } from "./sys.ts";
 
 // `collie skill install|uninstall|sync|status [--check]|print` — putting the walky talky skill into the
@@ -54,8 +53,8 @@ export const BLOCK_END = `<!-- collie:walky-talky v${String(SKILL_FORMAT)} end -
 
 /** What makes a file or block ours, at any text version. */
 const STAMP_PREFIX = "<!-- collie-skill walky-talky v";
-const BEGIN_ANY = /^<!-- collie:walky-talky v\d+ begin -->[ \t]*$/gmu;
-const END_ANY = /^<!-- collie:walky-talky v\d+ end -->[ \t]*$/gmu;
+const BEGIN_ANY = /^<!-- collie:walky-talky v\d+ begin -->[ \t]*\r?$/gmu;
+const END_ANY = /^<!-- collie:walky-talky v\d+ end -->[ \t]*\r?$/gmu;
 const STAMP_VERSION = /^(<!-- collie-skill walky-talky v\d+ collie ).*( -->)[ \t]*$/mu;
 /** The stamp line in either spelling, the build's or the hash's. */
 const STAMP_LINE = /^<!-- collie-skill walky-talky v\d+ .*-->[ \t]*$/mu;
@@ -134,14 +133,19 @@ const skillIn = (skills: string): string => join(skills, SKILL_NAME, "SKILL.md")
 /** The harness folder that holds `skills/collie-walky-talky/SKILL.md`. */
 const threeUp = (path: string): string => dirname(dirname(dirname(path)));
 /** `$XDG_CONFIG_HOME`, else `~/.config`: the base opencode reads, as `bridge/agent-skills.ts` spells it. */
-const configBase = (ctx: Pick<CliContext, "home" | "env">): string => {
-  const set = (ctx.env.XDG_CONFIG_HOME ?? "").trim();
-  return set === "" ? join(ctx.home, ".config") : set;
-};
-const piAgentDir = (ctx: Pick<CliContext, "home" | "env">): string => {
-  const set = (ctx.env.PI_CODING_AGENT_DIR ?? "").trim();
-  return set === "" ? join(ctx.home, ".pi", "agent") : set;
-};
+const configBase = (ctx: Pick<CliContext, "home" | "env">): string => absoluteOr(ctx.env.XDG_CONFIG_HOME, join(ctx.home, ".config"));
+/**
+ * A folder variable's value when it is an absolute path, else the default. A relative value names no
+ * folder Collie could find again, as in {@link claudeProfileDirs}, and the old block must never be cut
+ * from a file a relative path happens to reach from this shell's folder.
+ */
+function absoluteOr(raw: string | undefined, fallback: string): string {
+  const set = (raw ?? "").trim();
+  return set !== "" && isAbsolute(set) ? set : fallback;
+}
+const piAgentDir = (ctx: Pick<CliContext, "home" | "env">): string => absoluteOr(ctx.env.PI_CODING_AGENT_DIR, join(ctx.home, ".pi", "agent"));
+/** `$CODEX_HOME` when it is absolute, else `~/.codex`. */
+const codexDir = (ctx: Pick<CliContext, "home" | "env">): string => absoluteOr(ctx.env.CODEX_HOME, join(ctx.home, ".codex"));
 
 /**
  * Where each harness reads the skill from (#770). Every row is a skills folder the harness loads at
@@ -174,8 +178,8 @@ export const SKILL_TARGETS: readonly SkillTarget[] = [
     // `AGENTS.md` of the Codex home.
     harness: "codex",
     home: threeUp,
-    paths: (ctx) => [skillIn(join(codexHome(ctx), "skills"))],
-    legacy: (ctx) => join(codexHome(ctx), "AGENTS.md"),
+    paths: (ctx) => [skillIn(join(codexDir(ctx), "skills"))],
+    legacy: (ctx) => join(codexDir(ctx), "AGENTS.md"),
   },
   {
     // opencode 1.19.5 globs `{skill,skills}/**/SKILL.md` in its config folder; the palette read the same
@@ -326,6 +330,12 @@ export type LegacyState =
 
 const NO_LEGACY: LegacyState = { kind: "none" };
 
+/** What to do about an old block Collie may not cut. `status`, `install`, `sync` and `doctor` say it. */
+export const BY_HAND =
+  "Remove the WalkyTalky block there by hand, from the first `collie:walky-talky` begin marker to the last end marker; every other line is yours.";
+
+export { recoveryOf };
+
 /**
  * Does the row's old instruction file still carry our block? A file with no marker is none of our
  * business. Damaged or doubled markers, and a symlinked file, are refused: the cut would have to guess,
@@ -333,22 +343,56 @@ const NO_LEGACY: LegacyState = { kind: "none" };
  */
 export function legacyState(deps: SkillReadDeps, file: SkillFile): LegacyState {
   if (file.legacy === null) return NO_LEGACY;
-  const text = deps.files.read(file.legacy);
-  if (text === null) return NO_LEGACY;
+  const path = file.legacy;
+  if (!deps.files.exists(path)) return NO_LEGACY;
+  const leave = (why: string): LegacyState => ({ kind: "refused", path, reason: `${why}, so the old block there was left alone` });
+  const text = deps.files.read(path);
+  if (text === null) return leave(`${path} cannot be read`);
   const found = findBlock(text);
   if (found.kind === "none") return NO_LEGACY;
-  if (found.kind === "damaged") return { kind: "refused", path: file.legacy, reason: `${found.reason}, so the old block there was left alone` };
-  const resolved = resolveFile(deps, file.legacy);
-  if ("reason" in resolved) return { kind: "refused", path: file.legacy, reason: `${resolved.reason}, so the old block there was left alone` };
+  if (found.kind === "damaged") return leave(found.reason);
+  // A file read with bytes that are not UTF-8 comes back with U+FFFD in their place; a rewrite would
+  // turn the operator's bytes into that character for good.
+  if (text.includes("�")) return leave("it is not valid UTF-8");
+  if (blockEditedByHand(text.slice(found.start, found.end))) return leave("the block was edited by hand");
+  // Cut only beside the skill: a skill written into another folder (opencode under XDG_CONFIG_HOME, while
+  // the old block sits in ~/.config/opencode) may not be the one this harness reads.
+  if (file.target.home(file.path) !== dirname(path)) return leave(`the skill went to ${file.path}, not beside this file`);
+  const resolved = resolveFile(deps, path);
+  if ("reason" in resolved) return leave(resolved.reason);
   return { kind: "block", path: resolved.path };
 }
 
-/** Cut the old block out of a legacy file. A file left blank is removed, as `uninstall` does. */
+const BUILD_STAMP = /^<!-- collie-skill walky-talky v\d+ collie \S+ -->[ \t]*$/u;
+const HASH_STAMP = /^<!-- collie-skill walky-talky v\d+ text ([0-9a-f]{12}) -->[ \t]*$/u;
+
+/**
+ * Is the text between the markers something no Collie build wrote? Its last line must be a stamp. A
+ * hash stamp is checked against the text above it. A build stamp (1.28.2 and before) carries no hash, so
+ * its text cannot be checked; the recovery copy {@link recoveryOf} is the guard for that one.
+ */
+function blockEditedByHand(span: string): boolean {
+  const lines = withLf(span).split("\n").slice(1, -1);
+  while (lines.at(-1)?.trim() === "") lines.pop();
+  const stamp = lines.pop() ?? "";
+  if (BUILD_STAMP.test(stamp)) return false;
+  const hashed = HASH_STAMP.exec(stamp);
+  if (hashed === null) return true;
+  const body = lines.join("\n").replace(/\n+$/u, "");
+  return createHash("sha256").update(body).digest("hex").slice(0, 12) !== hashed[1];
+}
+
+/**
+ * Cut the old block out of a legacy file, after one copy of the whole file as it was,
+ * `<file>.collie-pre-skill-move`, whatever `.collie-backup` holds. A file left blank is removed, as
+ * `uninstall` does.
+ */
 function cutLegacy(deps: Pick<SkillReadDeps, "files">, path: string): void {
   const text = deps.files.read(path);
-  if (text === null) return;
+  if (text === null) throw new Error(`${path} cannot be read`);
   const next = removeBlock(text);
   if (next === text) return;
+  if (!deps.files.exists(recoveryOf(path))) writePrivateCopy(deps.files, recoveryOf(path), text);
   if (next.trim() === "") deps.files.remove(path);
   else writeAtomic(deps, path, text, next);
 }
@@ -380,15 +424,24 @@ const backupOf = (path: string): string => `${path}.collie-backup`;
 
 /** Temp file plus rename, with the one-time backup. New files are 0644, an existing file keeps its mode. */
 function writeAtomic(deps: Pick<SkillReadDeps, "files">, path: string, previous: string | null, text: string): void {
-  if (previous !== null && !deps.files.exists(backupOf(path))) deps.files.write(backupOf(path), previous, 0o600);
-  const temp = `${path}.collie-tmp`;
+  if (previous !== null && !deps.files.exists(backupOf(path))) writePrivateCopy(deps.files, backupOf(path), previous);
+  // The pid in the name: two instances that sync at once must not rename each other's temp file away.
+  const temp = `${path}.collie-tmp.${String(process.pid)}`;
   try {
     deps.files.write(temp, text, deps.files.mode(path) ?? 0o644);
     deps.files.rename(temp, path);
   } catch (err) {
     deps.files.remove(temp);
+    // Another instance won the race (its rename took our temp file, an ENOENT here) with the same bytes:
+    // the file holds what this write wanted, which is success.
+    if (deps.files.read(path) === text) return;
     throw err;
   }
+}
+
+/** A copy only the operator reads: the one-time backup and the recovery copy. */
+function writePrivateCopy(files: Files, path: string, text: string): void {
+  files.write(path, text, 0o600);
 }
 
 /**
@@ -398,10 +451,14 @@ function writeAtomic(deps: Pick<SkillReadDeps, "files">, path: string, previous:
 export function removeBlock(existing: string): string {
   const found = findBlock(existing);
   if (found.kind !== "span") return existing;
+  // CRLF files too: an editor may have saved the whole file with CRLF after the old install, or the old
+  // install appended an LF block to a CRLF file. Each line end is cut as the file spells it.
   let before = existing.slice(0, found.start);
   let after = existing.slice(found.end);
-  if (after.startsWith("\n")) after = after.slice(1);
-  if (before.endsWith("\n\n")) before = before.slice(0, -1);
+  if (after.startsWith("\r\n")) after = after.slice(2);
+  else if (after.startsWith("\n")) after = after.slice(1);
+  if (before.endsWith("\r\n\r\n")) before = before.slice(0, -2);
+  else if (before.endsWith("\n\n")) before = before.slice(0, -1);
   return `${before}${after}`;
 }
 
@@ -413,7 +470,7 @@ function configDirExists(deps: SkillReadDeps, file: SkillFile, path: string): bo
 /** The status line for a row's old block (#770), or null when there is none. */
 function legacyNote(legacy: LegacyState): string | null {
   if (legacy.kind === "none") return null;
-  if (legacy.kind === "refused") return `note: ${legacy.path}: ${legacy.reason}. Remove the WalkyTalky lines there by hand.`;
+  if (legacy.kind === "refused") return `note: ${legacy.path}: ${legacy.reason}. ${BY_HAND}`;
   return `note: ${legacy.path} still carries the old WalkyTalky block. \`collie skill sync\` cuts it out.`;
 }
 
@@ -540,7 +597,7 @@ function syncOne(deps: SkillReadDeps, step: SyncStep, result: SyncResult & { fai
 function syncLegacy(deps: SkillReadDeps, harness: string, legacy: LegacyState, dryRun: boolean, result: SyncResult & { failed: boolean }): void {
   if (legacy.kind === "none") return;
   if (legacy.kind === "refused") {
-    result.refused.push({ harness, path: legacy.path, reason: legacy.reason });
+    result.refused.push({ harness, path: legacy.path, reason: `${legacy.reason}. ${BY_HAND}` });
     return;
   }
   if (!dryRun) {
@@ -658,7 +715,7 @@ export function cmdSkillInstall(deps: SkillDeps, args: readonly string[]): numbe
       wrote += 1;
     }
     // The file is in place, so the old block of a row that moved (#770) can go.
-    if (!cutLegacyLoud(deps, file.target.harness, legacy)) failed = true;
+    if (!cutLegacyLoud(deps, file.target.harness, legacy, false)) failed = true;
   }
   if (failed) return EXIT.FAIL;
   if (wrote > 0) deps.io.out("  A running agent reads its instructions at start. Restart it to pick the skill up.");
@@ -666,14 +723,16 @@ export function cmdSkillInstall(deps: SkillDeps, args: readonly string[]): numbe
 }
 
 /**
- * Cut a row's old block (#770) and say so, or say why it stays. False on a refusal or an error, which
- * fails the verb: the operator has a line to act on.
+ * Cut a row's old block (#770) and say so, or say why it stays. False when the verb must fail: an I/O
+ * error always, and a block Collie may not cut only when `refusalFails`. `install` passes false, so it
+ * exits as `sync` does: the skill is in place, the note names the file, and the operator acts on it.
+ * `uninstall` passes true: the skill it was asked to remove is still in that file.
  */
-function cutLegacyLoud(deps: SkillDeps, harness: string, legacy: LegacyState): boolean {
+function cutLegacyLoud(deps: SkillDeps, harness: string, legacy: LegacyState, refusalFails: boolean): boolean {
   if (legacy.kind === "none") return true;
   if (legacy.kind === "refused") {
-    deps.io.err(`error: ${harness}: ${legacy.path}: ${legacy.reason}. Remove the WalkyTalky lines there by hand.`);
-    return false;
+    deps.io.err(`${refusalFails ? "error" : "note"}: ${harness}: ${legacy.path}: ${legacy.reason}. ${BY_HAND}`);
+    return !refusalFails;
   }
   try {
     cutLegacy(deps, legacy.path);
@@ -681,7 +740,7 @@ function cutLegacyLoud(deps: SkillDeps, harness: string, legacy: LegacyState): b
     deps.io.err(`error: could not cut the old WalkyTalky block from ${legacy.path} — ${err instanceof Error ? err.message : String(err)}`);
     return false;
   }
-  deps.io.out(`✓ ${harness}: cut the old WalkyTalky block from ${legacy.path}; every other line is untouched.`);
+  deps.io.out(`✓ ${harness}: cut the old WalkyTalky block from ${legacy.path}; every other line is untouched. The file as it was is ${recoveryOf(legacy.path)}.`);
   return true;
 }
 
@@ -697,11 +756,11 @@ export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): num
     // The old block of a row that moved (#770) goes too, whatever the file says.
     const legacy = legacyState(deps, file);
     if (legacy.kind === "block") removed += 1;
-    if (!cutLegacyLoud(deps, file.target.harness, legacy)) failed = true;
+    if (!cutLegacyLoud(deps, file.target.harness, legacy, true)) failed = true;
     const outcome = uninstallOne(deps, file);
     if (outcome === "failed") failed = true;
     if (outcome === "removed") removed += 1;
-    if (outcome !== "failed" && outcome !== "foreign") without.push(file.path);
+    if (outcome !== "failed" && outcome !== "foreign") without.push(...markerPaths([file]));
   }
   try {
     updateUninstalled(deps.files, deps.ctx.stateDir, without, []);

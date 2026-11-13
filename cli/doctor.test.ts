@@ -2216,6 +2216,17 @@ describe("skill-walky-talky", () => {
     expect(finding.status).toBe("warn");
     expect(finding.detail).toContain(file);
     expect(finding.detail).toContain("not one begin and one end");
+    expect(finding.remedy).toContain("by hand, from the first `collie:walky-talky` begin marker to the last end marker");
+  });
+
+  test("an old block Collie may not cut does not hide a stale copy in another harness", async () => {
+    const pi = join(HOME, ".pi", "agent", "AGENTS.md");
+    const h = harness(null, [], { files: { ...healthyFiles(), [SKILL]: `# older advice\n${STAMP}\n`, [pi]: "# Mine\n<!-- collie:walky-talky v1 begin -->\nhalf\n" } });
+    const finding = (await findings(h)).byCheck.get("skill-walky-talky")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.detail).toContain("behind this build (claude)");
+    expect(finding.detail).toContain(pi);
+    expect(finding.remedy).toContain("collie skill install all");
     expect(finding.remedy).toContain("by hand");
   });
 });

@@ -47,6 +47,12 @@ export function parseSyncResult(stdout: string): SyncResult | null {
   return { changed: doc.changed, refused: doc.refused, skipped: doc.skipped };
 }
 
+/**
+ * The copy of an instruction file as it was before Collie cut the old WalkyTalky block out of it (#770),
+ * written once, beside it. Here rather than in `cli/skill-install.ts` so the printed line can name it.
+ */
+export const recoveryOf = (path: string): string => `${path}.collie-pre-skill-move`;
+
 /** The lines `sync` prints: one per change, one per refusal, none for a skip. `collie update` prints the same. */
 export function syncLines(result: SyncResult, dryRun = false): string[] {
   // An action this build does not know (a newer binary's) prints as it came: the update reads that JSON.
@@ -56,7 +62,7 @@ export function syncLines(result: SyncResult, dryRun = false): string[] {
     return action === "installed" ? "would install" : "would update";
   };
   return [
-    ...result.changed.map((c) => `${verb(c.action)} ${c.harness} ${c.path}`),
+    ...result.changed.map((c) => `${verb(c.action)} ${c.harness} ${c.path}${c.action === "cut" ? `; the file as it was is ${recoveryOf(c.path)}` : ""}`),
     ...result.refused.map((r) => `refused ${r.harness} ${r.path}: ${r.reason}`),
   ];
 }

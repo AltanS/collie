@@ -550,11 +550,18 @@ that file and replaces it as a whole.
 | Harness | Skills folder |
 | --- | --- |
 | Claude Code | `~/.claude/skills`. Every Claude profile that Collie reads gets the same folder. So does the folder that `CLAUDE_CONFIG_DIR` names, when it is an absolute path where you run the install. |
-| Codex | `$CODEX_HOME/skills`, else `~/.codex/skills` |
+| Codex | `$CODEX_HOME/skills`, else `~/.codex/skills`. Codex reads it from version 0.150.0. |
 | opencode | `$XDG_CONFIG_HOME/opencode/skills`, else `~/.config/opencode/skills` |
 | pi | `$PI_CODING_AGENT_DIR/skills`, else `~/.pi/agent/skills` |
 | omp | `~/.omp/agent/skills` |
 | Gemini CLI | `~/.gemini/skills`. Gemini CLI reads it from version 0.26.0. |
+
+Codex needs version 0.150.0 or later and Gemini CLI needs 0.26.0 or later to read the skill. An
+older one still gets each message: the line typed into its pane names the command that reads the
+message and the command that answers it. Update the agent to give it the whole skill.
+
+A folder variable such as `CODEX_HOME`, `PI_CODING_AGENT_DIR` or `XDG_CONFIG_HOME` counts only
+when it is an absolute path. Otherwise Collie uses the default folder.
 | Antigravity | none of its own. It reads `~/.gemini/skills`, so `collie skill install gemini` covers it. |
 | Grok | none of its own. It reads `~/.claude/skills`, so `collie skill install claude` covers it. |
 | Muse | none of its own. It reads `~/.claude/skills` and `$CODEX_HOME/skills`, so the Claude or the Codex install covers it. |
@@ -568,8 +575,12 @@ Collie 1.28.2 and earlier put the skill as a block into a shared instruction fil
 `AGENTS.md` for Codex, opencode and pi, and `~/.gemini/GEMINI.md` for Gemini CLI. The block was
 part of every prompt. `collie skill sync` and `collie skill install` now cut that block out, but
 only after the skill file is in place. They remove only the text between these two lines, and the
-blank line that the old install put before it. Every other line stays as you wrote it. A file
-that held nothing but the block is removed.
+blank line that the old install put before it. Every other line stays as you wrote it, CRLF line
+ends too. A file that held nothing but the block is removed.
+
+Before the first cut, Collie keeps a copy of the whole file as it was:
+`<file>.collie-pre-skill-move`, for example `~/.codex/AGENTS.md.collie-pre-skill-move`. It writes
+that copy once and never replaces it. The output line of the cut names it.
 
 ```
 <!-- collie:walky-talky v1 begin -->
@@ -577,10 +588,20 @@ that held nothing but the block is removed.
 ```
 
 Collie keeps a copy of a file as `<file>.collie-backup` before its first change. It refuses a
-symlinked file, a file it cannot read, and a skill file that Collie did not write. When the old
-block has damaged markers, or the markers appear more than once, Collie leaves that file as it
-is. `collie skill sync`, `collie skill status` and `collie doctor` then name the file, and you
-remove the block by hand. A second install changes no bytes.
+symlinked file, a file it cannot read, and a skill file that Collie did not write. It leaves the
+file with the old block as it is in these cases:
+
+- the markers are damaged, or appear more than once
+- the text between the markers was edited by hand
+- the file is a symlink, cannot be read, or is not valid UTF-8
+- the skill went to another folder than the one the file is in. This is opencode with
+  `XDG_CONFIG_HOME` set: the skill goes under that folder, and the block in
+  `~/.config/opencode/AGENTS.md` stays.
+
+`collie skill sync`, `collie skill install`, `collie skill status` and `collie doctor` then name
+the file. Remove the block by hand, from the first begin marker to the last end marker. Such a
+file does not make `sync` or `install` fail, because the skill file is in place. Only an error
+while Collie writes makes them exit with code 1. A second install changes no bytes.
 
 ### Check the skill
 

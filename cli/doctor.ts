@@ -11,7 +11,7 @@ import {
   resolveHookCommand,
   type HookTarget,
 } from "./hooks.ts";
-import { skillReport } from "./skill-install.ts";
+import { BY_HAND, skillReport } from "./skill-install.ts";
 import { HOST, type Host } from "../bridge/host.ts";
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
@@ -1916,22 +1916,19 @@ function skillWalkyTalky(deps: DoctorDeps): Finding {
   const check = "skill-walky-talky";
   const report = skillReport({ ctx: deps.ctx, files: deps.files, fs: deps.link });
   const stuck = report.flatMap((r) => (r.legacy.kind === "refused" ? [r.legacy] : []));
-  if (stuck.length > 0) {
-    return warn(
-      check,
-      `an old WalkyTalky block Collie may not cut: ${stuck.map((l) => `${l.path} (${l.reason})`).join("; ")}`,
-      "remove the lines between the `collie:walky-talky` markers in that file by hand; every other line there is yours",
-    );
-  }
+  const stuckLine = stuck.length === 0 ? null : `an old WalkyTalky block Collie may not cut: ${stuck.map((l) => `${l.path} (${l.reason})`).join("; ")}`;
   const stale = report.filter((r) => r.state.kind === "stale" || r.legacy.kind === "block");
   const installed = report.filter((r) => r.state.kind === "installed");
   if (stale.length > 0) {
+    // A stuck block does not hide a stale copy elsewhere: one row names both.
+    const install = "`collie skill install all` — it replaces our own skill file and cuts an old block, and leaves every other line alone";
     return warn(
       check,
-      `${String(stale.length)} installed copy behind this build (${stale.map((r) => r.file.target.harness).join(", ")}) — the agent reads old advice`,
-      "`collie skill install all` — it replaces our own file or block in place and leaves every other line alone",
+      `${String(stale.length)} installed copy behind this build (${stale.map((r) => r.file.target.harness).join(", ")}) — the agent reads old advice${stuckLine === null ? "" : `; ${stuckLine}`}`,
+      stuckLine === null ? install : `${install}. ${BY_HAND}`,
     );
   }
+  if (stuckLine !== null) return warn(check, stuckLine, BY_HAND);
   if (installed.length === 0) return ok(check, "not installed — `collie skill install all` teaches agents to message each other");
   const refused = report.filter((r) => r.state.kind === "refused").length;
   const left = refused > 0 ? `; ${String(refused)} target${refused === 1 ? "" : "s"} refused, see \`collie skill status\`` : "";

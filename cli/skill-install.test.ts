@@ -8,6 +8,7 @@ import { EXIT } from "./io.ts";
 import {
   BLOCK_BEGIN,
   BLOCK_END,
+  BY_HAND,
   blockOf,
   cmdSkillInstall,
   cmdSkillPrint,
@@ -313,7 +314,7 @@ describe("the move from the old block (#770)", () => {
   test("the printed lines name the cut", () => {
     const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL) } });
     cmdSkillSync(d, []);
-    expect(d.io.stdout).toEqual([`installed codex ${CODEX_FILE}`, `cut the old block from codex ${CODEX_OLD}`]);
+    expect(d.io.stdout).toEqual([`installed codex ${CODEX_FILE}`, `cut the old block from codex ${CODEX_OLD}; the file as it was is ${CODEX_OLD}.collie-pre-skill-move`]);
   });
 
   test("an old file that held nothing but the block is removed, as uninstall does", () => {
@@ -335,9 +336,10 @@ describe("the move from the old block (#770)", () => {
     const d = deps({ files: { [CODEX_OLD]: damaged, [OPENCODE_OLD]: doubled } });
     expect(cmdSkillSync(d, ["--json"])).toBe(EXIT.OK);
     const result = JSON.parse(d.io.stdout[0]!);
+    const left = `its WalkyTalky markers are not one begin and one end, so the old block there was left alone. ${BY_HAND}`;
     expect(result.refused).toEqual([
-      { harness: "codex", path: CODEX_OLD, reason: "its WalkyTalky markers are not one begin and one end, so the old block there was left alone" },
-      { harness: "opencode", path: OPENCODE_OLD, reason: "its WalkyTalky markers are not one begin and one end, so the old block there was left alone" },
+      { harness: "codex", path: CODEX_OLD, reason: left },
+      { harness: "opencode", path: OPENCODE_OLD, reason: left },
     ]);
     expect(text(d, CODEX_OLD)).toBe(damaged);
     expect(text(d, OPENCODE_OLD)).toBe(doubled);
@@ -349,10 +351,11 @@ describe("the move from the old block (#770)", () => {
     cmdSkillSync(d, []);
     expect(d.files.ops).toEqual([]);
     expect(d.io.stdout).toHaveLength(2);
-    // install names it and fails, so a script sees it; status notes it.
+    // install exits as sync does, with the skill in place, and names the file; status notes it.
     d.io.stdout.length = 0;
-    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.FAIL);
-    expect(d.io.stderr.join("\n")).toContain("Remove the WalkyTalky lines there by hand");
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.io.stderr.join("\n")).toContain(`note: codex: ${CODEX_OLD}`);
+    expect(d.io.stderr.join("\n")).toContain("from the first `collie:walky-talky` begin marker to the last end marker");
     expect(text(d, CODEX_OLD)).toBe(damaged);
     cmdSkillStatus(d, []);
     expect(d.io.stdout.join("\n")).toContain(`note: ${CODEX_OLD}: its WalkyTalky markers`);
@@ -362,7 +365,7 @@ describe("the move from the old block (#770)", () => {
     const d = deps({ files: { [PI_OLD]: installedBy1282(ORIGINAL) } });
     d.fs.entries.set(PI_OLD, { kind: "symlink", target: "/nix/store/z-AGENTS.md" });
     cmdSkillSync(d, ["--json"]);
-    expect(JSON.parse(d.io.stdout[0]!).refused).toEqual([{ harness: "pi", path: PI_OLD, reason: `${PI_OLD} is a symlink, so the old block there was left alone` }]);
+    expect(JSON.parse(d.io.stdout[0]!).refused).toEqual([{ harness: "pi", path: PI_OLD, reason: `${PI_OLD} is a symlink, so the old block there was left alone. ${BY_HAND}` }]);
     expect(text(d, PI_OLD)).toBe(installedBy1282(ORIGINAL));
   });
 
@@ -378,7 +381,7 @@ describe("the move from the old block (#770)", () => {
   test("--dry-run says it would install and cut, and writes nothing", () => {
     const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL) } });
     cmdSkillSync(d, ["--dry-run"]);
-    expect(d.io.stdout).toEqual([`would install codex ${CODEX_FILE}`, `would cut the old block from codex ${CODEX_OLD}`]);
+    expect(d.io.stdout).toEqual([`would install codex ${CODEX_FILE}`, `would cut the old block from codex ${CODEX_OLD}; the file as it was is ${CODEX_OLD}.collie-pre-skill-move`]);
     expect(d.files.ops).toEqual([]);
   });
 
@@ -491,7 +494,8 @@ describe("uninstall", () => {
     expect(cmdSkillUninstall(d, ["codex"])).toBe(EXIT.OK);
     expect(text(d, CODEX_FILE)).toBeUndefined();
     expect(text(d, CODEX_OLD)).toBe(original);
-    expect(text(d, uninstalledFile(STATE))).toBe(`${CODEX_FILE}\n`);
+    // Both spellings, so a rollback to 1.28.2, which knows only the old path, keeps the skill out too.
+    expect(text(d, uninstalledFile(STATE))).toBe(`${[CODEX_FILE, CODEX_OLD].toSorted().join("\n")}\n`);
   });
 
   test("cuts an old block where no skill file was ever written, and removes a file that held nothing else", () => {
@@ -636,7 +640,7 @@ describe("sync", () => {
     cmdSkillInstall(d, ["codex"]);
     expect(cmdSkillUninstall(d, ["codex"])).toBe(EXIT.OK);
     expect(d.io.stdout.join("\n")).toContain("leave it out from now on");
-    expect(text(d, uninstalledFile(STATE))).toBe(`${CODEX_FILE}\n`);
+    expect(text(d, uninstalledFile(STATE))).toBe(`${[CODEX_FILE, CODEX_OLD].toSorted().join("\n")}\n`);
     d.io.stdout.length = 0;
     expect(cmdSkillSync(d, ["--json"])).toBe(EXIT.OK);
     expect(JSON.parse(d.io.stdout[0]!).skipped).toContainEqual({ harness: "codex", path: CODEX_FILE, reason: "uninstalled" });
@@ -645,7 +649,7 @@ describe("sync", () => {
     expect(d.io.stdout.join("\n")).toContain("you uninstalled it");
     // An uninstall of a harness that never had it is the same no.
     cmdSkillUninstall(d, ["gemini"]);
-    expect(text(d, uninstalledFile(STATE))).toBe(`${[CODEX_FILE, GEMINI_FILE].toSorted().join("\n")}\n`);
+    expect(text(d, uninstalledFile(STATE))).toBe(`${[CODEX_FILE, CODEX_OLD, GEMINI_FILE, GEMINI_OLD].toSorted().join("\n")}\n`);
     // Install by name takes the marker off, and sync follows the harness again.
     cmdSkillInstall(d, ["codex"]);
     cmdSkillInstall(d, ["gemini"]);
@@ -672,5 +676,132 @@ describe("sync", () => {
     const d = deps();
     expect(cmdSkillVerb(d, "sync", ["--json"])).toBe(EXIT.OK);
     expect(JSON.parse(d.io.stdout[0]!)).toMatchObject({ changed: [], refused: [] });
+  });
+});
+
+describe("the move, guarded (#770 review)", () => {
+  const ORIGINAL = "# My rules\nBe brief.\n";
+  const recovery = (path: string): string => `${path}.collie-pre-skill-move`;
+
+  test("a recovery copy of the whole file is written once before the cut, whatever .collie-backup holds", () => {
+    const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL), [`${CODEX_OLD}.collie-backup`]: "an older backup\n" } });
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(text(d, recovery(CODEX_OLD))).toBe(installedBy1282(ORIGINAL));
+    expect(d.files.entries.get(recovery(CODEX_OLD))?.mode).toBe(0o600);
+    expect(text(d, `${CODEX_OLD}.collie-backup`)).toBe("an older backup\n");
+    expect(d.io.stdout.join("\n")).toContain(`The file as it was is ${recovery(CODEX_OLD)}.`);
+    // A second old block later (a rollback put it back) does not overwrite the first copy.
+    d.files.entries.set(CODEX_OLD, { text: installedBy1282("# Changed since\n") });
+    cmdSkillSync(d, []);
+    expect(text(d, CODEX_OLD)).toBe("# Changed since\n");
+    expect(text(d, recovery(CODEX_OLD))).toBe(installedBy1282(ORIGINAL));
+  });
+
+  test("the recovery copy is written also when the cut leaves the file blank and removes it", () => {
+    const d = deps({ files: { [GEMINI_OLD]: installedBy1282(null) } });
+    cmdSkillSync(d, []);
+    expect(text(d, GEMINI_OLD)).toBeUndefined();
+    expect(text(d, recovery(GEMINI_OLD))).toBe(installedBy1282(null));
+  });
+
+  test("a block edited by hand is left alone: no stamp line, or a hash that does not match", () => {
+    const noStamp = `${ORIGINAL}\n${BLOCK_BEGIN}\n# WalkyTalky\nmy own words\n${BLOCK_END}\n`;
+    const hashed = blockOf(rendered(deps()));
+    const badHash = `${ORIGINAL}\n${hashed.replace("# WalkyTalky", "# WalkyTalky, edited")}\n`;
+    const d = deps({ files: { [CODEX_OLD]: noStamp, [PI_OLD]: badHash } });
+    cmdSkillSync(d, ["--json"]);
+    // SAFETY: `--json` prints a SyncResult, whose `refused` entries carry a path and a reason.
+    const refused = JSON.parse(d.io.stdout[0]!).refused as { path: string; reason: string }[];
+    expect(refused.map((r) => r.path)).toEqual([CODEX_OLD, PI_OLD]);
+    for (const r of refused) expect(r.reason).toStartWith("the block was edited by hand, so the old block there was left alone");
+    expect(text(d, CODEX_OLD)).toBe(noStamp);
+    expect(text(d, PI_OLD)).toBe(badHash);
+    expect(text(d, recovery(CODEX_OLD))).toBeUndefined();
+  });
+
+  test("a hash-stamped block whose hash matches is a Collie block, and is cut", () => {
+    const d = deps();
+    d.files.entries.set(PI_OLD, { text: `${ORIGINAL}\n${blockOf(rendered(d))}\n` });
+    cmdSkillSync(d, []);
+    expect(text(d, PI_OLD)).toBe(ORIGINAL);
+  });
+
+  test("opencode under XDG_CONFIG_HOME: the skill goes there, and the block in ~/.config/opencode stays and is named", () => {
+    const d = deps({ env: { XDG_CONFIG_HOME: "/srv/xdg" }, files: { [OPENCODE_OLD]: installedBy1282(ORIGINAL), [join("/srv/xdg", "opencode", "opencode.json")]: "{}" } });
+    cmdSkillSync(d, ["--json"]);
+    const result = JSON.parse(d.io.stdout[0]!);
+    expect(result.changed).toEqual([{ harness: "opencode", path: skill("/srv/xdg", "opencode"), action: "installed" }]);
+    expect(result.refused[0].path).toBe(OPENCODE_OLD);
+    expect(result.refused[0].reason).toContain("not beside this file");
+    expect(text(d, OPENCODE_OLD)).toBe(installedBy1282(ORIGINAL));
+  });
+
+  test("a relative CODEX_HOME, PI_CODING_AGENT_DIR or XDG_CONFIG_HOME names no folder: the default is used", () => {
+    const paths = skillFiles(context({ CODEX_HOME: "codex", PI_CODING_AGENT_DIR: "./pi", XDG_CONFIG_HOME: "cfg" }));
+    expect(paths.map((f) => f.path)).toEqual([CLAUDE_FILE, CODEX_FILE, OPENCODE_FILE, PI_FILE, OMP_FILE, GEMINI_FILE]);
+    expect(paths.map((f) => f.legacy)).toEqual([null, CODEX_OLD, OPENCODE_OLD, PI_OLD, null, GEMINI_OLD]);
+  });
+
+  test("the temp file carries the pid, and a rename that lost the race to the same bytes is success", () => {
+    const d = deps();
+    cmdSkillInstall(d, ["codex"]);
+    expect(d.files.ops).toContain(`mv ${CODEX_FILE}.collie-tmp.${String(process.pid)} ${CODEX_FILE}`);
+    const fresh = deps();
+    fresh.files.rename = (_from, to) => {
+      fresh.files.entries.set(to, { text: rendered(fresh) });
+      throw Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+    };
+    expect(cmdSkillInstall(fresh, ["codex"])).toBe(EXIT.OK);
+    expect(text(fresh, CODEX_FILE)).toBe(rendered(fresh));
+  });
+
+  test("a CRLF instruction file comes back byte for byte, both when the old install appended LF and when an editor saved it all as CRLF", () => {
+    const crlf = "# My rules\r\nBe brief.\r\n";
+    const appended = installedBy1282(crlf);
+    const resaved = appended.replaceAll("\r\n", "\n").replaceAll("\n", "\r\n");
+    for (const start of [appended, resaved]) {
+      const d = deps({ files: { [CODEX_OLD]: start } });
+      cmdSkillSync(d, []);
+      expect(text(d, CODEX_OLD)).toBe(crlf);
+    }
+  });
+
+  test("a file that is not valid UTF-8 is not rewritten", () => {
+    const broken = `caf�\n${installedBy1282(ORIGINAL)}`;
+    const d = deps({ files: { [CODEX_OLD]: broken } });
+    cmdSkillSync(d, ["--json"]);
+    expect(JSON.parse(d.io.stdout[0]!).refused[0].reason).toStartWith("it is not valid UTF-8");
+    expect(text(d, CODEX_OLD)).toBe(broken);
+  });
+
+  test("an old file that cannot be read is reported, not taken for empty", () => {
+    const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL) } });
+    d.files.read = (p) => (p === CODEX_OLD ? null : (d.files.entries.get(p)?.text ?? null));
+    cmdSkillSync(d, ["--json"]);
+    expect(JSON.parse(d.io.stdout[0]!).refused).toEqual([{ harness: "codex", path: CODEX_OLD, reason: `${CODEX_OLD} cannot be read, so the old block there was left alone. ${BY_HAND}` }]);
+  });
+
+  test("a cut that fails is reported and exits 1, the skill file stays and so does the old file", () => {
+    const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL) } });
+    const rename = d.files.rename.bind(d.files);
+    d.files.rename = (from, to) => {
+      if (to === CODEX_OLD) throw new Error("EIO");
+      rename(from, to);
+    };
+    expect(cmdSkillSync(d, [])).toBe(EXIT.FAIL);
+    expect(d.io.stdout).toContain(`refused codex ${CODEX_OLD}: could not cut the old block: EIO`);
+    expect(text(d, CODEX_FILE)).toBe(rendered(d));
+    expect(text(d, CODEX_OLD)).toBe(installedBy1282(ORIGINAL));
+    expect(cmdSkillInstall(d, ["codex"])).toBe(EXIT.FAIL);
+  });
+
+  test("an uninstall marker under the old path with the block still there: sync skips, and cuts nothing", () => {
+    const d = deps({ files: { [CODEX_OLD]: installedBy1282(ORIGINAL), [uninstalledFile(STATE)]: `${CODEX_OLD}\n` } });
+    cmdSkillSync(d, ["--json"]);
+    const result = JSON.parse(d.io.stdout[0]!);
+    expect(result.skipped).toContainEqual({ harness: "codex", path: CODEX_FILE, reason: "uninstalled" });
+    expect(result.changed).toEqual([]);
+    expect(text(d, CODEX_OLD)).toBe(installedBy1282(ORIGINAL));
+    expect(text(d, CODEX_FILE)).toBeUndefined();
   });
 });

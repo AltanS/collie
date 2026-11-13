@@ -257,7 +257,11 @@ behind, so your agents know the build you now run. It prints one line per file i
 never fails the update: if it cannot run, `update` prints one note and you run `collie skill sync`
 by hand. It leaves out a harness where you ran `collie skill uninstall`. An update from 1.28.2 or
 earlier also moves the skill out of `AGENTS.md` and `GEMINI.md` into each harness's skills folder,
-and cuts the old block from those files. Set `COLLIE_SKILL_SYNC=off` to keep your agents' files as
+and cuts the old block from those files. Before the cut it keeps a copy of each file as it was,
+`<file>.collie-pre-skill-move` beside it, for example `~/.codex/AGENTS.md.collie-pre-skill-move`.
+Codex needs 0.150.0 or later and Gemini CLI 0.26.0 or later to read the skill from its folder; an
+older one still reads each message, through the line typed into its pane. Set
+`COLLIE_SKILL_SYNC=off` to keep your agents' files as
 they are; the update then prints only a note when the skill is behind
 ([Install the skill](walky-talky.md#install-the-skill)).
 
