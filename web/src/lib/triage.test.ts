@@ -96,6 +96,20 @@ describe("isUnseen", () => {
   it("is false when the bridge reports no timestamps", () => {
     expect(isUnseen(agent("p", "done"))).toBe(false);
   });
+
+  it("suppresses unseen and rests done as idle for a child with a live parent, while keeping blocked (ADR 0140)", () => {
+    const childDone = { ...agent("c1", "done", { active: 300, seen: 100 }), parentPaneId: "p1" };
+    const childIdle = { ...agent("c2", "idle", { active: 300, seen: 100 }), parentPaneId: "p1" };
+    const childBlocked = { ...agent("c3", "blocked", { active: 300, seen: 100 }), parentPaneId: "p1" };
+    expect(isUnseen(childDone)).toBe(false);
+    expect(isUnseen(childIdle)).toBe(false);
+    expect(shownStatus(childDone)).toBe("idle");
+    expect(hasReady([childDone, childIdle])).toBe(false);
+    expect(countAlerting([childDone, childBlocked], { blocked: true, done: true })).toBe(1);
+    const sections = triage([childDone, childBlocked]);
+    expect(sectionOf(sections, "c1")).toBe("recent");
+    expect(sectionOf(sections, "c3")).toBe("needs");
+  });
 });
 
 describe("triage — bucketing", () => {

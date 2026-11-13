@@ -1163,6 +1163,8 @@ export const zh: Dictionary = {
   "home.workspaceFilter.count.other": "{count} 个工作区",
   "home.sidebar.shells": "终端实例",
   "home.pinned.title": "已置顶",
+  "home.subagents.collapse": "收起子代理（{count}）",
+  "home.subagents.expand": "展开子代理（{count}）",
   "home.pinHint.hold": "按住窗格可将其固定在此处。",
   "home.pinHint.rightClick": "右键点击窗格可将其固定在此处。",
   "home.pinHint.dismiss": "关闭提示",

@@ -261,6 +261,10 @@ export interface AgentView {
    * what they were. The phone shows the Pins mark from it. An older bridge never sends it.
    */
   pins?: number;
+  /** Live local parent pane on the same machine and session (ADR 0140). Absent when none is live. */
+  parentPaneId?: string;
+  /** Unlabelled child terminal sharing its ancestor's tab without a split pane of its own. */
+  unpaned?: true;
 }
 
 /**

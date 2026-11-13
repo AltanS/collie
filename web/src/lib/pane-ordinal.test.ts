@@ -1,4 +1,4 @@
-import { paneOrdinals } from "./pane-ordinal";
+import { paneOrdinals, panesOfTab } from "./pane-ordinal";
 import type { AgentView } from "@/lib/types";
 
 const pane = (paneId: string, over: Partial<AgentView> = {}): AgentView => ({
@@ -50,3 +50,15 @@ describe("which pill needs a number", () => {
     expect([...out.values()]).toEqual([1, 2, 3]);
   });
 });
+
+describe("panesOfTab with unpaned child terminals", () => {
+  it("leaves unpaned children out while viewing the parent, and shows the parent beside an open unpaned child", () => {
+    const parent = pane("t1", { tabPosition: 0 });
+    const workerA = pane("t2", { parentPaneId: "t1", unpaned: true, tabPosition: 1 });
+    const workerB = pane("t3", { parentPaneId: "t1", unpaned: true, tabPosition: 2 });
+    const all = [parent, workerA, workerB];
+    expect(panesOfTab(parent, all, []).map((p) => p.paneId)).toEqual(["t1"]);
+    expect(panesOfTab(workerA, all, []).map((p) => p.paneId)).toEqual(["t1", "t2"]);
+  });
+});
+

@@ -97,6 +97,8 @@ export interface WireTerminal {
   readonly title: string;
   readonly status: WireStatus | null;
   readonly foreground: WireForeground | null;
+  /** Starter terminal address (`t1` or `machine/t1`), or `""` when none was recorded. */
+  readonly parent?: string;
 }
 
 /** What `terminal.read` hands back. Plain text: the core gives no colour. */
@@ -279,6 +281,7 @@ export function parseTerminal(value: JsonValue | undefined): WireTerminal {
     title: str(record, "title"),
     status: parseStatus(record.status),
     foreground: parseForeground(record.foreground),
+    parent: str(record, "parent"),
   };
 }
 

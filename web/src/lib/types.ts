@@ -297,6 +297,10 @@ export interface AgentView {
    * `PaneWire.view` in bridge/types.ts. Present only on a pane of `kind: "trick"`.
    */
   view?: string;
+  /** Live local parent pane on the same machine and session (ADR 0140). Absent when none is live. */
+  parentPaneId?: string;
+  /** Unlabelled child terminal sharing its ancestor's tab without a split pane of its own. */
+  unpaned?: true;
 }
 
 /** The icon names a program may give a belt action. Mirrors `PANE_ACTION_ICONS` in bridge/types.ts. */

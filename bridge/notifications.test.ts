@@ -580,6 +580,26 @@ describe("NotificationCoordinator — type preferences", () => {
     expect(sink.last?.title).toBe("claude is done");
   });
 
+  test("a child pane with a live parent suppresses done pushes, retracts prior blocked, and still pushes blocked (ADR 0140)", () => {
+    const { clock, sink, coord } = setup({ blocked: true, done: true });
+    const childDone = { ...agent("t2", "done"), parentPaneId: "t1" };
+    const childIdle = { ...agent("t2", "idle"), parentPaneId: "t1" };
+    const childBlocked = { ...agent("t2", "blocked"), parentPaneId: "t1" };
+
+    coord.onTransition(childDone, "working", "done");
+    coord.onTransition(childIdle, "working", "idle");
+    clock.fireAll();
+    expect(sink.events).toEqual([]);
+
+    coord.onTransition(childBlocked, "working", "blocked");
+    clock.fireAll();
+    expect(sink.last?.title).toBe("claude needs you");
+
+    coord.onTransition(childDone, "blocked", "done");
+    clock.fireAll();
+    expect(sink.events.at(-1)).toEqual({ kind: "clear" });
+  });
+
   test("with blocked disabled, a blocked transition doesn't push", () => {
     const { clock, sink, coord } = setup({ blocked: false, done: true });
     coord.onTransition(agent("p1", "blocked"), "working", "blocked");

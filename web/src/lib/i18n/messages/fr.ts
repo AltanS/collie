@@ -1105,6 +1105,8 @@ export const fr: Dictionary = {
   "home.workspaceFilter.count.other": "{count} espaces de travail",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Épinglés",
+  "home.subagents.collapse": "Réduire les sous-agents ({count})",
+  "home.subagents.expand": "Développer les sous-agents ({count})",
   "home.pinHint.hold": "Maintenez un volet enfoncé pour l'épingler ici.",
   "home.pinHint.rightClick": "Clic droit sur un volet pour l'épingler ici.",
   "home.pinHint.dismiss": "Ignorer l'astuce",

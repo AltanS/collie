@@ -69,6 +69,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:zen-enabled:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:auto-zen-enabled:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:pins:v1", { area: "local", prefix: false, fate: "kept", why: "pinned pane ids, no content" }],
+  ["collie:folded-parents:v1", { area: "local", prefix: false, fate: "kept", why: "folded parent pane keys in agent trees, no content" }],
   ["collie:report-episodes:v1", { area: "local", prefix: false, fate: "kept", why: "failed-send episodes for a report: pane ids, request ids, outcome and reason codes, no content (ADR 0123)" }],
   ["collie:trouble-signalled:v1", { area: "local", prefix: false, fate: "wiped", why: "which trouble cards already signalled today: kind, crew host, pane id and day, no content (lib/report/once.ts)" }],
   ["collie:wide-layout:v1", { area: "local", prefix: false, fate: "kept", why: "large-screen columns per space: pane addresses and widths, no content (ADR 0120)" }],

@@ -416,6 +416,10 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: a trick session's part key (M94 slice 03). Present only on a pane of
   // `kind: "trick"`, and this harness has no tricks folder, so no golden byte moved.
   view: true,
+  // Not crew dimensions: herdr-core parent-child terminal link and unpaned flag (ADR 0140). Present
+  // only when a live local parent exists, so no solo golden byte moved.
+  parentPaneId: true,
+  unpaned: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -580,6 +584,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "model",
       "paneId",
       "paneLabel",
+      "parentPaneId",
       "pins",
       "progress",
       "readableLines",
@@ -598,6 +603,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "terminalTitleStale",
       "todos",
       "turnId",
+      "unpaned",
       "usage",
       "view",
       "walkyOff",
