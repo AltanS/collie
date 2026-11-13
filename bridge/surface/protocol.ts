@@ -80,10 +80,11 @@
 // S2 that ends with the text still in the box ends `unknown(dialog_after_enter)`: a dialog that drew
 // before Enter took it and closed.
 //
-// A pane whose harness has a profile is read through its input frame. A pane with no profile (a bare
-// shell, a program, an agent Collie has no profile for) has no input box to prove free, so a send or
-// a command on it is typed and Entered blind, as before the protocol: no probe, no S1, no S2, never
-// held. Its one S0 read only looks for a password prompt on the last rows, which refuses the send
+// A pane whose harness has a profile is read through its input frame. A shell pane (the multiplexer
+// names no agent, so `harness` is empty) has no input box to prove free, so a send or a command on it
+// is typed and Entered blind, as before the protocol: no probe, no S1, no S2, never held. A pane the
+// multiplexer names as an agent Collie has no profile for is never typed into blind: S0 finds no
+// box there, so it takes the manual Send below, probed and confirmed by a tap. Its one S0 read only looks for a password prompt on the last rows, which refuses the send
 // before any key (#103). Its receipt says `sent` once Enter went out, and its `saw` says `no-profile`. A pane that
 // has a profile but whose frame S0 cannot find reads unknown(no-match): every send on it is probed,
 // and the probe's own landing spot (the row and column where the probe character appeared) is what S1
@@ -240,11 +241,12 @@
 
 import { statSync } from "node:fs";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
-import { parseAnsi } from "../../web/src/lib/ansi.ts";
-import { splitLines } from "../../web/src/lib/blocks.ts";
+import type { AgentStatus } from "../types.ts";
+import { FOREGROUND_UNREAD, type ForegroundUnread } from "../launch-window.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { BAD_HEAD, hasViewHead, VIEW_NO_PROFILE } from "../../web/src/lib/agent-view/wire.ts";
+import { readRows } from "../../web/src/lib/surface/split.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
@@ -327,6 +329,11 @@ export const BLIND_SETTLE_MS = 350;
 const BLIND_SAW: SurfaceWords = { turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" };
 /** The refusal of a blind send at a password prompt. Never the prompt's row: it may name a user or a key file. */
 const NO_ECHO_REFUSAL = "A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.";
+/**
+ * The first tap of a blind send whose foreground read gave no answer: an agent the multiplexer
+ * has not named yet may run there, so the person confirms the screen before any key.
+ */
+const FOREGROUND_UNREAD_DETAIL = "Collie could not tell what runs in this pane. Check the pane, then tap Type here.";
 
 /** The refusal of a box that does not take keys, after its second S0 read (2026-10-25); the phone reads the same words. */
 export { STALE_SCREEN };
@@ -523,8 +530,10 @@ export interface SendDeps {
    * `named` is the agent the multiplexer names, for a pane with a profile of its own, and null for a
    * pane with none. A pane that has one takes no key until that harness's input box is on screen
    * ({@link SendProtocol}, the launch window). A throw reads as null. Absent: no pane is starting.
+   * {@link FOREGROUND_UNREAD}: the pane's foreground read gave no answer, so a blind send asks the
+   * person to confirm the screen first.
    */
-  readonly starting?: ((paneId: string, named: string | null) => Promise<string | null> | string | null) | undefined;
+  readonly starting?: ((paneId: string, named: string | null) => Promise<string | null | ForegroundUnread> | string | null | ForegroundUnread) | undefined;
   /** The box of `harness` took a key on the pane while it was starting: its window ends. Never throws into a send. */
   readonly framed?: ((paneId: string, harness: string) => void) | undefined;
   /**
@@ -572,6 +581,12 @@ export interface SendDeps {
    * reads that show the same rows `staleFrame` until one differs. Called inside a try.
    */
   readonly staleFrame?: (paneId: string, frame: string) => void;
+  /**
+   * The status the multiplexer reports for the pane's agent now, or undefined for none. `blocked`
+   * refuses a send Collie cannot prove on the screen before any key (ADR 0140 point 4): the manual
+   * Send and a Submit or Discard confirmed on the rows hash. A throw reads as no report. Absent: none.
+   */
+  readonly muxStatus?: ((paneId: string) => AgentStatus | undefined) | undefined;
   /** Whether an upload path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
@@ -736,7 +751,9 @@ interface Snap {
   readonly ownList: CommandListRead | null;
   /** A short hash of the whole read. */
   readonly hash: string;
-  /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
+  /** {@link plain} as the rows hash reads it: the rows above the box tick-marked when the profile says they tick. */
+  readonly checked: readonly string[];
+  /** The rows token of the bottom window, the rows a person checks before a two-tap send: raw hash, then digit-masked hash ({@link rowsTokenOf}). */
   readonly rowsHash: string;
 }
 
@@ -835,6 +852,66 @@ export function steadyRow(row: string, signs: readonly RegExp[] = []): string {
  */
 function tickMarked(row: string): string {
   return row.replace(/[\u2800-\u28ff]/gu, "*").replace(/\d+/gu, "0");
+}
+
+/** A row with each digit run read as one fixed mark and each run of blanks as one: `9s  │` and `10s │` agree. */
+function digitsMarked(row: string): string {
+  return row.replace(/\d+/gu, "0").replace(/ +/gu, " ");
+}
+
+/** A row's digit runs alone. */
+function digitsOf(row: string): string {
+  return (row.match(/\d+/gu) ?? []).join(" ");
+}
+
+/**
+ * The rows S0's two reads show differently in their digits alone (ADR 0140 pt 2): a clock or a
+ * counter seen ticking, on any row, named by no profile. Rows pair by index, so two reads of a
+ * different row count share none. `box` rows (the input box's own, top and bottom included) are never
+ * ticking: a draft that changed is a change, digits or not.
+ */
+export function tickingRows(first: readonly string[], second: readonly string[], box: { readonly top: number; readonly bottom: number } | null = null): ReadonlySet<number> {
+  const rows = new Set<number>();
+  if (first.length !== second.length) return rows;
+  for (let i = 0; i < first.length; i++) {
+    if (box !== null && i >= box.top && i <= box.bottom) continue;
+    const a = first[i]!;
+    const b = second[i]!;
+    if (digitsOf(a) !== digitsOf(b) && digitsMarked(a) === digitsMarked(b)) rows.add(i);
+  }
+  return rows;
+}
+
+/** The length of each half of a rows token: one {@link shortHash}. */
+const ROWS_HALF = 14;
+
+/**
+ * The rows token of a read's checked rows, the bottom window of its texts: the raw hash, then the hash
+ * with every digit run read as a fixed mark ({@link digitsMarked}) on each row but the box's own (ADR
+ * 0140 pt 2). The two taps of a send are two reads too: a clock that ticked between them moves the
+ * raw half alone, so {@link rowsAgree} still holds. A draft that changed is a change, digits or not.
+ */
+export function rowsTokenOf(checked: readonly string[], texts: readonly string[], box: { readonly top: number; readonly bottom: number } | null): string {
+  const win = bottomWindow(texts);
+  const rows = checked.slice(win.first, win.end);
+  const masked = rows.map((row, i) => (box !== null && win.first + i >= box.top && win.first + i <= box.bottom ? row : digitsMarked(row)));
+  return `${shortHash(rows.join("\n"))}${shortHash(masked.join("\n"))}`;
+}
+
+/** The raw half of a rows token: what the lab's frame clusters key on. */
+function rawRows(token: string): string {
+  return token.slice(0, ROWS_HALF);
+}
+
+/**
+ * Whether the rows token the person confirmed agrees with this read's: raw half to raw half, or, with
+ * `masked`, masked half to masked half. The masked half may confirm only where nothing it hid can be
+ * the person's own text: a framed box, whose rows it never masks, or a send that is probed and
+ * read back. A Submit or Discard with no frame acts on a draft found nowhere, so the raw half alone.
+ */
+export function rowsAgree(asked: string, token: string, masked = true): boolean {
+  if (asked.length !== 2 * ROWS_HALF || token.length !== 2 * ROWS_HALF) return false;
+  return asked.slice(0, ROWS_HALF) === token.slice(0, ROWS_HALF) || (masked && asked.slice(ROWS_HALF) === token.slice(ROWS_HALF));
 }
 
 function mark(snap: Snap | null): ReadMark | null {
@@ -1634,6 +1711,8 @@ const NOTICE_DIGIT_LEFT = "The key is still in the box: the notice did not take 
 const NOTICE_NOT_TAKEN = "The notice did not take the number. Check the pane.";
 /** The {@link SendAnswer.cause} of every send the notice digit rule decides. */
 const NOTICE_KEY: SendCause = "notice_key";
+/** The detail of a send the multiplexer's `blocked` refused: the phone shows it under its sentence. */
+const MUX_BLOCKED = "The multiplexer says the agent is waiting on you. Answer it on the screen, then send again.";
 /** The cause of a refusal on a screen whose input box does not take keys (2026-10-25). */
 const STALE_CAUSE: SendCause = "stale_screen";
 /** The cause of that refusal when the box held only Collie's probe characters: they showed late (#623). */
@@ -2458,6 +2537,8 @@ interface RunState {
   manual: boolean;
   /** The pane has no profile: the text went in blind, with no read ({@link SendProtocol.blindSend}). */
   blind: boolean;
+  /** The pane's foreground read gave no answer ({@link FOREGROUND_UNREAD}): a blind send needs the person's rows hash. */
+  unread: boolean;
   /**
    * A harness is starting in the pane ({@link SendDeps.starting}): `match` is its profile (the pane's
    * own, or the starting harness's on a pane with none), and nothing is typed or pressed until S0 finds
@@ -3671,6 +3752,7 @@ export class SendProtocol {
       probed: false,
       manual: false,
       blind: false,
+      unread: false,
       starting: false,
       startingNamed: false,
       generation: record.paneGeneration,
@@ -3746,8 +3828,9 @@ export class SendProtocol {
     const state = this.bareState({ id: "prepare", text: "", mode: "prepare" }, prepareRecord(target, this.now()), target, match);
     try {
       const snap = await this.stableRead(state, "prepare");
-      // A pane with no profile offers nothing: its next tap is a plain send, typed blind.
-      return { surface: snap.surface, rowsHash: snap.rowsHash, offers: match === null ? [] : prepareOffers(snap) };
+      // A shell pane offers nothing: its next tap is a plain send, typed blind. A named agent with no
+      // profile is read like any screen Collie cannot read.
+      return { surface: snap.surface, rowsHash: snap.rowsHash, offers: match === null && target.harness === "" ? [] : prepareOffers(snap) };
     } catch (err) {
       if (err instanceof Ended) return answerWith({ offers: ["keys"] }, { ...err.extra, detail: err.extra.detail ?? err.message });
       throw err;
@@ -3762,11 +3845,13 @@ export class SendProtocol {
     const own = await this.deps.profile(target.harness, target.paneId);
     // A pane where a harness is starting is that harness's pane in waiting: its shell is not the place
     // for the text, and its input box is not there yet (the launch window).
-    const starting = await this.startingOf(target, own);
+    const read = await this.startingOf(target, own);
+    const starting = read === FOREGROUND_UNREAD ? null : read;
     const expected = own !== null || starting === null ? null : await this.deps.profile(starting, target.paneId);
     const match = own ?? expected;
     const state: RunState = {
       ...this.bareState(request, record, target, match),
+      unread: read === FOREGROUND_UNREAD,
       released: release,
       starting: own === null ? expected !== null : starting !== null,
       startingNamed: own !== null && starting !== null,
@@ -3812,8 +3897,8 @@ export class SendProtocol {
     }
   }
 
-  /** The harness starting in the pane ({@link SendDeps.starting}), or null. A throw reads as null. */
-  private async startingOf(target: SendTarget, own: ProfileMatch | null): Promise<string | null> {
+  /** The harness starting in the pane ({@link SendDeps.starting}), null, or {@link FOREGROUND_UNREAD}. A throw reads as null. */
+  private async startingOf(target: SendTarget, own: ProfileMatch | null): Promise<string | null | ForegroundUnread> {
     if (this.deps.starting === undefined) return null;
     try {
       const harness = await this.deps.starting(target.paneId, own === null ? null : target.harness);
@@ -3974,7 +4059,7 @@ export class SendProtocol {
           ...key,
           outcome: receipt.outcome,
           cluster: s0.plainRaw.slice(win.first, win.end),
-          frame: s0.rowsHash,
+          frame: rawRows(s0.rowsHash),
           textLength: receipt.textLength,
         });
       }
@@ -4007,7 +4092,7 @@ export class SendProtocol {
         row: snap.texts[cue.row] ?? "",
       })),
       cluster: snap.plainRaw.slice(win.first, win.end),
-      frame: snap.rowsHash,
+      frame: rawRows(snap.rowsHash),
       textLength: receipt.textLength,
     });
   }
@@ -4053,7 +4138,10 @@ export class SendProtocol {
 
     // A send with a view's head goes only where S0 can prove the session free (rule 5): never blind.
     if (match === null && request.view?.head === true) throw new Ended("refused", "not_free", { detail: VIEW_NO_PROFILE });
-    if (match === null && (request.mode === "send" || request.mode === "command")) {
+    // Only a pane the multiplexer reports as a shell (no agent named, `harness` empty) takes the blind
+    // road. An agent Collie has no profile for gets the manual Send: S0 reads no box there, so the first
+    // tap is refused `unconfirmed`, and the confirm is probed and read back before Enter.
+    if (match === null && state.target.harness === "" && (request.mode === "send" || request.mode === "command")) {
       await this.blindSend(state, lines);
       return;
     }
@@ -4293,6 +4381,12 @@ export class SendProtocol {
     this.checkGeneration(state, "refused");
     if (noEchoPromptIn(snap.texts) !== null) {
       throw new Ended("refused", "not_free", { surface: snap.surface, framed: false, offers: ["keys"], detail: NO_ECHO_REFUSAL });
+    }
+    // A foreground read with no answer may hide an agent the multiplexer has not named: the person
+    // confirms the screen, and the confirm goes only on the rows they saw.
+    if (state.unread) {
+      if (state.request.rowsHash === undefined) throw new Ended("refused", "unconfirmed", { surface: snap.surface, framed: false, rowsHash: snap.rowsHash, detail: FOREGROUND_UNREAD_DETAIL });
+      if (!rowsAgree(state.request.rowsHash, snap.rowsHash)) throw new Ended("refused", "stale_surface", { surface: snap.surface, framed: false, rowsHash: snap.rowsHash, detail: "The screen moved since you looked." });
     }
     this.lap(state, "s0");
     await this.write(state, lines);
@@ -4598,16 +4692,34 @@ export class SendProtocol {
    *  on the same rows, and the cap may ask for one more confirm. */
   private gateManual(state: RunState, s0: Snap, unconfirmed: string, cause?: SendCause): void {
     const { surface } = s0;
+    // A notice's key answers a screen Collie reads, as the cap below says: the multiplexer's word does not decide it.
+    if (cause !== NOTICE_KEY) this.gateBlocked(state, s0);
     if (state.request.rowsHash === undefined) {
       const note: EndNote = { surface, rowsHash: s0.rowsHash, detail: unconfirmed };
       if (cause !== undefined) note.cause = cause;
       throw new Ended("refused", "unconfirmed", note);
     }
-    if (state.request.rowsHash !== s0.rowsHash) {
+    if (!rowsAgree(state.request.rowsHash, s0.rowsHash)) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
     }
     // The cap counts sends typed past a screen Collie cannot read; a notice's digit is no such screen.
     if (cause !== NOTICE_KEY) this.gateCap(state, s0);
+  }
+
+  /**
+   * The multiplexer's `blocked` (ADR 0140 point 4): a send Collie cannot prove on the screen (the
+   * manual Send, a Submit or Discard confirmed on the rows hash) is refused before any key, on either
+   * tap, as the multiplexer's own agent prompt refuses. The agent waits on the person, and Enter may answer it.
+   * Collie's own reading decides every other send. A throw reads as no report.
+   */
+  private gateBlocked(state: RunState, s0: Snap): void {
+    let status: AgentStatus | undefined;
+    try {
+      status = this.deps.muxStatus?.(state.target.paneId);
+    } catch {
+      status = undefined;
+    }
+    if (status === "blocked") throw new Ended("refused", "not_free", { surface: s0.surface, detail: MUX_BLOCKED });
   }
 
   /**
@@ -4644,7 +4756,7 @@ export class SendProtocol {
     try {
       const cap = ledger.capState(key.harness, key.version);
       if (cap.reached && state.request.capAck !== true) {
-        ledger.inbox({ harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, frame: s0.rowsHash, count: cap.count });
+        ledger.inbox({ harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, frame: rawRows(s0.rowsHash), count: cap.count });
         throw new Ended("refused", "unconfirmed", {
           surface: s0.surface,
           rowsHash: s0.rowsHash,
@@ -4674,9 +4786,10 @@ export class SendProtocol {
       state.heldOther = true;
     }
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
+    this.gateBlocked(state, s0);
     const hash = state.request.rowsHash;
     if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: BOX_CHANGED });
-    if (hash !== s0.rowsHash) {
+    if (!rowsAgree(hash, s0.rowsHash, frame !== null)) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, offers: ["submit", "discard", "keys"], detail: "The screen moved since you looked. Check it, then tap Submit or Discard again." });
     }
     if (frame !== null) return null;
@@ -4914,7 +5027,7 @@ export class SendProtocol {
       state.partialRead = true;
       return null;
     }
-    const rows = splitLines(parseAnsi(grid.value.text));
+    const rows = readRows(grid.value.text);
     const idle = state.match?.profile.idle ?? null;
     const frame = idle === null ? null : findInputFrame(rows, idle);
     const blocks = readerBlocks(rows, harness);
@@ -4931,7 +5044,6 @@ export class SendProtocol {
     // The rows a person checks, with the rows above the box read as the compares read them: a counter
     // that ticked over the box between the look and the tap is no screen the person did not see.
     const checked = ticks && frame !== null ? plain.map((row, i) => (i < frame.top ? tickMarked(row) : row)) : plain;
-    const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     const framed = readCuesFor(rows, frame, idle);
     // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
@@ -4985,8 +5097,9 @@ export class SendProtocol {
       listAnyText: frame === null ? null : commandListAnyText(texts, frame, idle?.volatile.below.commandList, rows),
       ownList,
       hash: shortHash(texts.join("\n")),
+      checked,
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
-      rowsHash: shortHash(checked.slice(win.first, win.end).join("\n")),
+      rowsHash: rowsTokenOf(checked, texts, frame),
     };
     const snap = ghostView(state.ghost, read);
     state.previousRead = state.lastRead;
@@ -5023,19 +5136,27 @@ export class SendProtocol {
     // by its two edges alone: its placeholder may appear, go or change between the reads (Claude
     // Code's "Press up to edit queued messages" going as the queue is taken, a prompt suggestion
     // painted in the placeholder's own colour) without the box having moved. With no frame the
-    // bottom window is compared with its running rows masked, for the same reason.
+    // bottom window is compared with its running rows masked, for the same reason. A row the two reads
+    // show differently in its digits alone is a clock seen ticking (ADR 0140 pt 2): its digits are a
+    // fixed mark here and in the rows hash, whether or not a profile names it.
+    const ticking = tickingRows(first.plain, second.plain, second.frame);
+    const steady = (rows: readonly string[]): readonly string[] => (ticking.size === 0 ? rows : rows.map((row, i) => (ticking.has(i) ? digitsMarked(row) : row)));
     const key = (snap: Snap): string => {
-      if (snap.frame !== null && boxText(snap.frame) === "") return `${snap.plain[snap.frame.top] ?? ""}\n${snap.plain[snap.frame.bottom] ?? ""}`;
-      if (snap.frame !== null) return snap.plain.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
-      const win = bottomWindow(snap.plain);
-      return snap.plain.slice(win.first, win.end).join("\n");
+      const plain = steady(snap.plain);
+      if (snap.frame !== null && boxText(snap.frame) === "") return `${plain[snap.frame.top] ?? ""}\n${plain[snap.frame.bottom] ?? ""}`;
+      if (snap.frame !== null) return plain.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
+      const win = bottomWindow(plain);
+      return plain.slice(win.first, win.end).join("\n");
     };
     if ((first.frame === null) !== (second.frame === null) || key(first) !== key(second)) {
       const moved = new Ended("refused", "not_free", { surface: second.surface, detail: "The input box moved between two reads." });
       if (inFlux(first, second)) moved.extra.inFlux = true;
       throw moved;
     }
-    return second;
+    if (ticking.size === 0) return second;
+    const held: Snap = { ...second, rowsHash: rowsTokenOf(steady(second.checked), second.texts, second.frame) };
+    if (state.lastRead === second) state.lastRead = held;
+    return held;
   }
 
   /**

@@ -16,7 +16,9 @@ import {
 } from "../web/src/lib/styled-region.ts";
 import { cropRawColumns, type ColumnRange } from "../web/src/lib/column-range.ts";
 import { parseAnsi } from "../web/src/lib/ansi.ts";
-import { splitLines } from "../web/src/lib/blocks.ts";
+import { lineText, splitLines } from "../web/src/lib/blocks.ts";
+import { buildBlocks } from "../web/src/lib/harness/index.ts";
+import { displayWidth } from "../web/src/lib/text-width.ts";
 import { findInputFrame } from "../web/src/lib/surface/frame.ts";
 import { requireProfile } from "../web/src/lib/surface/profile.ts";
 import { detectQuestion as detectMuseQuestion } from "../web/src/lib/harness/muse/question.ts";
@@ -824,5 +826,33 @@ describe("the declared tail window", () => {
     expect(verifyExpectedPrompt(screen(6), region, tailWindow)).toEqual({ ok: true });
     expect(verifyExpectedPrompt(screen(7), region, tailWindow)).toEqual({ ok: true });
     expect(verifyExpectedPrompt(screen(8), region, tailWindow)).toEqual({ ok: false, reason: "not_in_tail" });
+  });
+});
+
+// .adr/0140 point 1: a question read beside a split screen binds to the columns left of the cut, so
+// the panel's clock ticking beside it does not refuse the tap, and a change in the question does.
+describe("a question read from a split screen's cut rows", () => {
+  const text = readFileSync(join(FIXTURE_DIR, "claude--permission-bash.txt"), "utf8");
+  const width = Math.max(...splitLines(parseAnsi(text)).map((row) => displayWidth(lineText(row)))) + 1;
+  const beside = (screen: string, second: number): string =>
+    screen
+      .split(/\r?\n/)
+      .map((row) => `${row}\u001b[0m${" ".repeat(Math.max(0, width - displayWidth(lineText(splitLines(parseAnsi(row))[0] ?? { segments: [] }))))}│ panel 12:00:0${second}`)
+      .join("\n");
+  const lifted = buildBlocks(splitLines(parseAnsi(beside(text, 1))), { agent: "claude" }).find((block) => block.kind === "prompt-select");
+  const prompt = lifted?.kind === "prompt-select" ? lifted.prompt : null;
+
+  test("binds to columns 0 to the cut, and a tick in the panel passes", () => {
+    expect(prompt?.bindColumns).toEqual({ start: 0, end: width });
+    expect(verifyPromptBinding(beside(text, 2), prompt!.signature, undefined, prompt!.bindColumns)).toEqual({ ok: true });
+  });
+
+  test("whole rows would refuse the same tick", () => {
+    expect(verifyPromptBinding(beside(text, 2), prompt!.signature).ok).toBe(false);
+  });
+
+  test("a change in the question still refuses", () => {
+    const changed = beside(text.replace("Do you want to proceed?", "Do you want to proceeD?"), 2);
+    expect(verifyPromptBinding(changed, prompt!.signature, undefined, prompt!.bindColumns).ok).toBe(false);
   });
 });

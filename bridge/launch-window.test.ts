@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { FOREGROUND_READ_MS, LAUNCH_WINDOW_MS, LaunchWindow, PENDING_PROBE_MS, foregroundHarnessOf, harnessOfProcesses, type ForegroundHarness } from "./launch-window.ts";
+import { FOREGROUND_READ_MS, FOREGROUND_UNREAD, LAUNCH_WINDOW_MS, LaunchWindow, PENDING_PROBE_MS, foregroundHarnessOf, harnessOfProcesses, type ForegroundHarness, type ForegroundUnread } from "./launch-window.ts";
 
 /** The profiles' binaries as `bridge/index.ts` builds them: program name to harness id. */
 const BINARIES: ReadonlyMap<string, string> = new Map([
@@ -9,9 +9,9 @@ const BINARIES: ReadonlyMap<string, string> = new Map([
   ["kiro-cli", "kiro"],
 ]);
 
-/** What a fake foreground read answers now: a harness id, null for a plain shell, undefined for no read. */
+/** What a fake foreground read answers now: a harness id, null for a plain shell, or a read with no answer. */
 interface Seen {
-  now: string | null | undefined;
+  now: string | null | ForegroundUnread;
 }
 
 /** A foreground read that answers what `seen` holds now. */
@@ -92,12 +92,20 @@ describe("the launch window: the pane's foreground process", () => {
     expect(await window.starting("main", "%2", null, reader(seen))).toBe("omp");
   });
 
-  test("no foreground read (an adapter without one, a failed or slow read) keeps whatever stands: a shell pane stays a shell", async () => {
+  test("an adapter with no foreground read keeps whatever stands: a shell pane stays a shell", async () => {
     const window = new LaunchWindow();
     expect(await window.starting("main", "%3", null)).toBeNull();
-    expect(await window.starting("main", "%3", null, reader({ now: undefined }))).toBeNull();
     window.mark("main", "%3", "omp");
-    expect(await window.starting("main", "%3", null, reader({ now: undefined }))).toBe("omp");
+    expect(await window.starting("main", "%3", null)).toBe("omp");
+  });
+
+  test("a read with no answer (failed or slow) is no shell: unread with no window, the window's harness with one", async () => {
+    const window = new LaunchWindow();
+    expect(await window.starting("main", "%3", null, reader({ now: FOREGROUND_UNREAD }))).toBe(FOREGROUND_UNREAD);
+    window.mark("main", "%3", "omp");
+    expect(await window.starting("main", "%3", null, reader({ now: FOREGROUND_UNREAD }))).toBe("omp");
+    // A pane with a profile of its own is never read.
+    expect(await window.starting("main", "%4", "omp", reader({ now: FOREGROUND_UNREAD }))).toBeNull();
   });
 
   test("another harness in the foreground replaces the window", async () => {
@@ -210,11 +218,11 @@ describe("foregroundHarnessOf", () => {
     expect(await of("%2")()).toBeNull();
   });
 
-  test("a refusal, a throw and a slow read are no read", async () => {
-    expect(await foregroundHarnessOf(() => Promise.resolve({ ok: false as const }), binaries)!("%1")()).toBeUndefined();
-    expect(await foregroundHarnessOf(() => Promise.reject(new Error("socket gone")), binaries)!("%1")()).toBeUndefined();
+  test("a refusal, a throw and a slow read each answer unread, never a shell", async () => {
+    expect(await foregroundHarnessOf(() => Promise.resolve({ ok: false as const }), binaries)!("%1")()).toBe(FOREGROUND_UNREAD);
+    expect(await foregroundHarnessOf(() => Promise.reject(new Error("socket gone")), binaries)!("%1")()).toBe(FOREGROUND_UNREAD);
     const slow = foregroundHarnessOf(() => new Promise<never>(() => undefined), binaries, 5)!;
-    expect(await slow("%1")()).toBeUndefined();
+    expect(await slow("%1")()).toBe(FOREGROUND_UNREAD);
     expect(FOREGROUND_READ_MS).toBeLessThan(LAUNCH_WINDOW_MS);
   });
 });
@@ -279,5 +287,68 @@ describe("the launch window: a drawn box that reads no keys (gang three, 2026-10
     expect(window.deaf("main", "%3", "omp")).toBe(0);
     expect(window.expecting("main", "%1")).toBeNull();
     expect(window.expecting("main", "%3")).toBeNull();
+  });
+});
+
+describe("the launch window: the multiplexer's word ends it", () => {
+  /** A window opened by the multiplexer naming `omp` on %1 on the second poll, the baseline before it a shell. */
+  function opened(): LaunchWindow {
+    const window = new LaunchWindow(() => 1_000);
+    window.observe("main", [{ paneId: "%1", agent: null }]);
+    window.observe("main", [{ paneId: "%1", agent: "omp", status: "unknown" }]);
+    expect(window.expecting("main", "%1")).toBe("omp");
+    return window;
+  }
+
+  test.each(["idle", "working"] as const)("%s on the window's harness ends it, and the next poll does not open it again", (status) => {
+    const window = opened();
+    // The same name as the poll before: the status alone changed.
+    window.observe("main", [{ paneId: "%1", agent: "omp", status }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+    window.observe("main", [{ paneId: "%1", agent: "omp", status }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+  });
+
+  test.each(["blocked", "done", "unknown"] as const)("%s keeps the window open", (status) => {
+    const window = opened();
+    window.observe("main", [{ paneId: "%1", agent: "omp", status }]);
+    expect(window.expecting("main", "%1")).toBe("omp");
+  });
+
+  test("a report on the poll that first names the agent ends its window at once", () => {
+    const window = new LaunchWindow(() => 1_000);
+    window.observe("main", [{ paneId: "%1", agent: null }]);
+    window.observe("main", [{ paneId: "%1", agent: "pi", status: "idle" }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+  });
+
+  test("a launch's mark on a pane still listed as a shell is not ended by the shell's status", () => {
+    const window = new LaunchWindow(() => 1_000);
+    window.observe("main", [{ paneId: "%1", agent: null, status: "idle" }]);
+    window.mark("main", "%1", "omp");
+    window.observe("main", [{ paneId: "%1", agent: null, status: "idle" }]);
+    expect(window.expecting("main", "%1")).toBe("omp");
+  });
+
+  test("a launch's mark ends on the first poll's report: no baseline is needed for the word", () => {
+    const window = new LaunchWindow(() => 1_000);
+    window.mark("main", "%1", "omp");
+    window.observe("main", [{ paneId: "%1", agent: "omp", status: "working" }]);
+    expect(window.expecting("main", "%1")).toBeNull();
+  });
+
+  test("a probe that went unseen keeps the window open through the report, as a drawn box does", () => {
+    const window = opened();
+    expect(window.deaf("main", "%1", "omp")).toBe(1);
+    window.observe("main", [{ paneId: "%1", agent: "omp", status: "idle" }]);
+    expect(window.expecting("main", "%1")).toBe("omp");
+  });
+
+  test("the multiplexer's name and the window's harness compare canonically", () => {
+    const window = new LaunchWindow(() => 1_000, (name) => (name === "oh-my-pi" ? "omp" : name));
+    window.observe("main", [{ paneId: "%1", agent: null }]);
+    window.mark("main", "%1", "omp");
+    window.observe("main", [{ paneId: "%1", agent: "oh-my-pi", status: "idle" }]);
+    expect(window.expecting("main", "%1")).toBeNull();
   });
 });

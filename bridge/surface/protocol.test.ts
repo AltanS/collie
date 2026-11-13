@@ -407,6 +407,8 @@ function rig(
     holds?: HoldStore;
     generation?: () => string | null;
     clock?: { now: number };
+    /** The status the multiplexer reports for the pane's agent. */
+    muxStatus?: SendDeps["muxStatus"];
   } = {},
 ): Rig {
   const pane = options.pane ?? new FakePane(options.mode ?? "claude");
@@ -442,6 +444,7 @@ function rig(
       return Promise.resolve(status === undefined ? match : { ...match, status });
     },
     generation: options.generation ?? (() => "gen-1"),
+    muxStatus: options.muxStatus,
     ledger: options.ledger,
     holds: options.holds,
     imageFile: (path: string) => (options.imageFiles ?? []).includes(path),
@@ -934,14 +937,13 @@ describe("a command whose own screen draws late (the browser leg, omp /model, 20
 /** A plain shell pane as the dev lane read it on v1.22.4 (Herdr agent `shell`): the Bluefin motd, then a starship prompt. */
 const SHELL_SCREEN = "shell--starship-bluefin-motd--w117.txt";
 
-describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-10-17 field case)", () => {
+describe("a shell pane (no agent named, no profile) is typed and Entered blind (a bare shell, 2026-10-17 field case)", () => {
   // On v1.22.4 both a send and a command on a plain shell were refused `unconfirmed` with `no-match`:
   // a pane with no profile took the two-tap manual Send. It takes the send the way 1.21.3 did.
+  // A pane the multiplexer names as an agent with no profile does not: see the describe after this one.
   test.each([
     ["send", "claude-danger", ""],
     ["command", "/usr/bin/true", ""],
-    ["send", "claude-danger", NO_PROFILE],
-    ["command", "!ls", NO_PROFILE],
   ] as const)("%s %p on harness %p: no read, the text, Enter, sent, and the receipt says no-profile", async (mode, text, harness) => {
     const pane = new FakePane("generic");
     pane.fixed = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${SHELL_SCREEN}`), "utf8");
@@ -1042,12 +1044,152 @@ describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-
   });
 });
 
+describe("a pane the multiplexer names as an agent Collie has no profile for takes the manual Send, never the blind one", () => {
+  test.each([
+    ["send", "claude-danger"],
+    ["command", "!ls"],
+  ] as const)("%s %p: the first tap is refused unconfirmed with the rows hash, before any key", async (mode, text) => {
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE });
+    const answer = await send(text, { mode });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", harness: NO_PROFILE, profileId: null, keys: [] });
+    expect(answer.rowsHash).toMatch(/^[0-9a-f]{28}$/u);
+    expect(answer.offers).toEqual(["commit", "keys"]);
+    expect(answer.receipt?.saw?.reason).not.toBe("no-profile");
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("the confirm on the same rows is probed, the text read back, then Enter", async () => {
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE });
+    const first = await send("claude-danger");
+    const answer = await send("claude-danger", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", harness: NO_PROFILE, profileId: null });
+    expect(answer.receipt?.keys).toContain("probe");
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(answer.receipt?.s1).not.toBeNull();
+    expect(pane.calls).toContain("type:claude-danger");
+    neverEscape(pane);
+  });
+
+  test("a confirmed command is probed, the probe taken out, the line typed exactly, then Enter", async () => {
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE });
+    const first = await send("!ls", { mode: "command" });
+    const answer = await send("!ls", { mode: "command", rowsHash: first.rowsHash! });
+    // As on a profiled pane whose box S0 cannot find: S2 cannot witness a command there, so the
+    // receipt says unknown(no_evidence) after Enter, never a blind `sent`.
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", profileId: null, keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt?.s1).not.toBeNull();
+    expect(pane.calls.filter((call) => call.startsWith("type:") && call !== `type:${GENERIC_PROBE}`)).toEqual(["type:!ls"]);
+    neverEscape(pane);
+  });
+
+  test("prepare offers the manual Send, as on any screen Collie cannot read, not a plain blind tap", async () => {
+    const { pane, protocol } = rig({ mode: "generic", harness: NO_PROFILE });
+    const prepared = await protocol.handle({ id: "unused-prepare", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: NO_PROFILE });
+    expect(prepared.offers).toEqual(["commit", "keys"]);
+    expect(prepared.rowsHash).toMatch(/^[0-9a-f]{28}$/u);
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a confirm on rows that moved since the person looked types nothing", async () => {
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE });
+    const first = await send("claude-danger");
+    pane.transcript.push("a row that came in");
+    const answer = await send("claude-danger", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+});
+
+describe("the multiplexer's blocked refuses a send Collie cannot prove on the screen, before any key (ADR 0140 point 4)", () => {
+  const BLOCKED = "The multiplexer says the agent is waiting on you. Answer it on the screen, then send again.";
+
+  test("the first tap of the manual Send on a blocked pane is refused not_free with the key pad, no rows hash to confirm, nothing held", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE, holds, muxStatus: () => "blocked" });
+    const answer = await send("claude-danger");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(answer.detail).toBe(BLOCKED);
+    expect(answer.offers).toEqual(["keys"]);
+    expect(holds.waitingCount()).toBe(0);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a confirm on the rows the person saw is refused once the multiplexer says blocked: no probe, no text, no Enter", async () => {
+    let status: "idle" | "blocked" = "idle";
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE, muxStatus: () => status });
+    const first = await send("claude-danger");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed" });
+    status = "blocked";
+    const answer = await send("claude-danger", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(pane.calls.filter((call) => call.startsWith("type:"))).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a frameless Submit after typed_not_submitted is refused on a blocked pane: Enter may answer what the agent waits on", async () => {
+    let status: "working" | "blocked" = "working";
+    const pane = new HerdrCodexPane();
+    const render = pane.render.bind(pane);
+    pane.render = () => (pane.box.length > 1 ? render().replace("  GPT-6-Luna medium", "  ❯ hello-world.ts") : render());
+    const r = rig({ pane, harness: FRAMELESS, muxStatus: () => status });
+    const look = await r.send("hello there");
+    const typed = await r.send("hello there", { rowsHash: look.rowsHash! });
+    expect(typed.receipt).toMatchObject({ outcome: "typed_not_submitted" });
+    status = "blocked";
+    pane.keysSeen = [];
+    for (const mode of ["submit", "discard"] as const) {
+      const answer = await r.send("hello there", { mode, rowsHash: typed.rowsHash! });
+      expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+      expect(answer.detail, mode).toBe(BLOCKED);
+    }
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a notice's key over an idle box is a screen Collie reads: blocked leaves its confirm as it was", async () => {
+    const { pane, send } = rig({ muxStatus: () => "blocked" });
+    pane.over = ["✦ Heads up · With GitHub triggers, anyone who files an issue can put text in front of a session", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+    const answer = await send("1");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+  });
+
+  test("a free box Collie reads goes ahead whatever the multiplexer says: its own reading decides", async () => {
+    const { pane, send } = rig({ muxStatus: () => "blocked" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
+
+  const reports: readonly (readonly [string, NonNullable<SendDeps["muxStatus"]>])[] = [
+    ["idle", () => "idle"],
+    ["no report", () => undefined],
+    ["a throw", () => {
+      throw new Error("engine gone");
+    }],
+  ];
+  test.each(reports)("%s keeps the manual Send as it was: the first tap is refused unconfirmed with the rows hash", async (_name, muxStatus) => {
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: NO_PROFILE, muxStatus });
+    const answer = await send("claude-danger");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.offers).toEqual(["commit", "keys"]);
+  });
+});
+
 describe("a profile whose frame S0 cannot find", () => {
   test("the screen is unknown(no-match): the first tap is refused unconfirmed with the rows hash", async () => {
     const { pane, send } = rig({ mode: "generic" });
     const answer = await send("hello from the phone");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", profileId: FRAMELESS, keys: [] });
-    expect(answer.rowsHash).toMatch(/^[0-9a-f]{14}$/u);
+    expect(answer.rowsHash).toMatch(/^[0-9a-f]{28}$/u);
     expect(answer.surface).toMatchObject({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" });
     expect(answer.offers).toEqual(["commit", "keys"]);
     expect(pane.calls).toEqual([]);
@@ -1057,7 +1199,7 @@ describe("a profile whose frame S0 cannot find", () => {
     const { pane, protocol } = rig({ mode: "generic" });
     const prepared = await protocol.handle({ id: "unused-prepare", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: FRAMELESS });
     expect(prepared.receipt).toBeUndefined();
-    expect(prepared.rowsHash).toMatch(/^[0-9a-f]{14}$/u);
+    expect(prepared.rowsHash).toMatch(/^[0-9a-f]{28}$/u);
     expect(prepared.offers).toEqual(["commit", "keys"]);
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
@@ -3416,6 +3558,18 @@ describe("the offers as new requests", () => {
     expect((await r.send("hello there", { mode: "submit", rowsHash: moved.rowsHash! })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
   });
 
+  test("submit and discard with no frame: a draft whose digits alone changed since the person looked is a moved screen", async () => {
+    for (const mode of ["submit", "discard"] as const) {
+      const { r, pane } = stuckCodex();
+      const typed = await typedNotSubmitted(r, "pay 100 now");
+      pane.box = "pay 900 now";
+      pane.keysSeen = [];
+      const moved = await r.send("pay 100 now", { mode, rowsHash: typed.rowsHash! });
+      expect(moved.receipt, mode).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
+      expect(pane.keysSeen, mode).toEqual([]);
+    }
+  });
+
   test("submit on a framed box that shows other text goes on the rows hash the person saw; without it, it is refused", async () => {
     const { pane, send } = rig();
     pane.dropLastChar = true;
@@ -4530,11 +4684,19 @@ describe("counters, the cap and the examples", () => {
     expect(rowOf(ledger, FRAMELESS)).toMatchObject({ manual: 1, sent: 1, probed: 1, status: "provisional", profileId: FRAMELESS });
   });
 
-  test("a blind send on a pane with no profile counts sent, never manual and never probed, and the cap never asks", async () => {
+  test("a blind send on a shell pane counts sent, never manual and never probed, and the cap never asks", async () => {
     const ledger = ledgerFor({ cap: 0 });
-    const { send } = rig({ mode: "generic", ledger, harness: NO_PROFILE });
+    const { send } = rig({ mode: "generic", ledger, harness: "" });
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
-    expect(rowOf(ledger, NO_PROFILE)).toMatchObject({ manual: 0, sent: 1, probed: 0, status: "-", profileId: "-" });
+    expect(rowOf(ledger, "-")).toMatchObject({ manual: 0, sent: 1, probed: 0, status: "-", profileId: "-" });
+  });
+
+  test("a confirmed send on a named agent with no profile counts manual and probed", async () => {
+    const ledger = ledgerFor();
+    const { send } = rig({ mode: "generic", ledger, harness: NO_PROFILE });
+    const first = await send("ls -la");
+    expect((await send("ls -la", { rowsHash: first.rowsHash! })).receipt).toMatchObject({ outcome: "sent" });
+    expect(rowOf(ledger, NO_PROFILE)).toMatchObject({ manual: 1, sent: 1, probed: 1, status: "-", profileId: "-" });
   });
 
   // The cap counts sends typed past a screen Collie cannot read. A notice's digit is a screen it reads,
@@ -4584,7 +4746,7 @@ describe("counters, the cap and the examples", () => {
     // One line in the inbox: the version and the frame hash, never the rows or the text.
     const lines = readFileSync(join(dir, "state", "surface", "inbox.jsonl"), "utf8").trim().split("\n");
     expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0]!)).toMatchObject({ harness: FRAMELESS, version: "2.1.200", frame: first.rowsHash, count: 2 });
+    expect(JSON.parse(lines[0]!)).toMatchObject({ harness: FRAMELESS, version: "2.1.200", frame: first.rowsHash!.slice(0, 14), count: 2 });
     expect(lines[0]).not.toContain("one more");
     // The extra confirm goes through, probed, and counts.
     const acked = await send("one more please", { rowsHash: first.rowsHash!, capAck: true });
@@ -7144,15 +7306,28 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     expect(holds.list()).toEqual([]);
   });
 
-  test("a pane with no profile never holds: its send goes in blind, with no read for a hold to wait on", async () => {
+  test("a pane with no profile never holds: a shell's send goes in blind, with no read for a hold to wait on", async () => {
     const holds = new HoldStore(join(dir, "held"));
-    const r = rig({ harness: NO_PROFILE, holds });
+    const r = rig({ harness: "", holds });
     // The screen would move between the two S0 reads (not_free, the reason a profiled pane holds); no read is taken.
     r.pane.beforeRead = (p, n) => {
       if (n === 2) p.transcript.push("a row that came in");
     };
     const answer = await r.send("hello");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(holds.list()).toEqual([]);
+  });
+
+  test("a named agent with no profile never holds either: a screen that will not hold still is refused, no key, nothing held", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const r = rig({ harness: NO_PROFILE, holds });
+    r.pane.beforeRead = (p, n) => {
+      if (n === 2) p.transcript.push("a row that came in");
+    };
+    const answer = await r.send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", keys: [] });
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
     expect(holds.list()).toEqual([]);
   });
 
@@ -11432,12 +11607,17 @@ describe("review 9 M1: a view send to a pane with no profile", () => {
     }
   });
 
-  test("the person's own plain send from the view still goes to a pane with no profile, as any send does", async () => {
-    const pane = new FakePane("generic");
-    pane.fixed = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${SHELL_SCREEN}`), "utf8");
-    const { send } = rig({ pane, harness: NO_PROFILE });
-    const answer = await send("ls", { fromPhone: true, view: { head: false, check: () => null } });
-    expect(answer.receipt?.outcome).toBe("sent");
+  test("the person's own plain send from the view goes to a pane with no profile as any send does: the manual Send, never blind", async () => {
+    const plainSend = async (view: boolean) => {
+      const pane = new FakePane("generic");
+      pane.fixed = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${SHELL_SCREEN}`), "utf8");
+      const { send } = rig({ pane, harness: NO_PROFILE });
+      const answer = await send("ls", view ? { fromPhone: true, view: { head: false, check: () => null } } : { fromPhone: true });
+      return { outcome: answer.receipt?.outcome, reason: answer.receipt?.reason, keys: pane.keysSeen };
+    };
+    const fromView = await plainSend(true);
+    expect(fromView).toEqual(await plainSend(false));
+    expect(fromView.keys).not.toContain("Enter");
   });
 });
 

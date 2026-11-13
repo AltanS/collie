@@ -11,9 +11,9 @@ import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type Mux
 import { loadProfiles, profileFor, type Profile } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
-import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
+import { RowRing, rowsAgree, rowsTokenOf, SendProtocol, SessionLocks, tickingRows, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
-import { LaunchWindow, harnessOfProcesses } from "../launch-window.ts";
+import { FOREGROUND_UNREAD, LaunchWindow, harnessOfProcesses, type ForegroundUnread } from "../launch-window.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures");
 /** The omp captures of the gang live in `surface/`, outside the phone's omp adapter corpus; the shell one is a pane fixture. */
@@ -113,7 +113,7 @@ let ids = 0;
 function rig(
   pane: OmpPane,
   extra: {
-    starting?: (paneId: string, named: string | null) => Promise<string | null> | string | null;
+    starting?: (paneId: string, named: string | null) => Promise<string | null | ForegroundUnread> | string | null | ForegroundUnread;
     framed?: (paneId: string, harness: string) => void;
     harness?: string;
     /** The profile as edited for this test, matched as the bridge would match it. */
@@ -235,7 +235,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("a shell screen is refused before any key: no text, no probe, no Enter", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { starting: () => "omp", harness: "shell" });
+    const { send } = rig(pane, { starting: () => "omp", harness: "" });
     const answer = await send("hello");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [], profileId: "omp" });
     expect(answer.receipt?.detail).toBe("The pane shows no omp input box yet; it may still be starting. Nothing was typed.");
@@ -246,7 +246,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("a command is refused the same way", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { starting: () => "omp", harness: "shell" });
+    const { send } = rig(pane, { starting: () => "omp", harness: "" });
     const answer = await send("/wx", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [] });
     expect(pane.calls).toEqual([]);
@@ -255,7 +255,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("the same pane once omp's input box is on screen takes the send", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { starting: () => "omp", harness: "shell" });
+    const { send } = rig(pane, { starting: () => "omp", harness: "" });
     expect((await send("hello")).receipt?.outcome).toBe("refused");
     pane.load(OMP_UP);
     const answer = await send("hello");
@@ -265,7 +265,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("a pane the bridge did not start anything in is still a shell that takes a blind send", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { harness: "shell" });
+    const { send } = rig(pane, { harness: "" });
     const answer = await send("ls -la");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
     expect(pane.calls).toEqual(["type:ls -la"]);
@@ -273,7 +273,7 @@ describe("a send in the launch window: the bridge started omp in this pane and t
 
   test("a started harness with no profile of its own leaves the pane a blind shell", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { starting: () => "nothing-known", harness: "shell" });
+    const { send } = rig(pane, { starting: () => "nothing-known", harness: "" });
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
   });
 });
@@ -295,14 +295,22 @@ describe("a pane where omp is starting that the bridge did not launch (gang thre
     return pane;
   };
 
-  /** The bridge's wiring of the launch window for one session, over a foreground that runs `argv`. */
-  function windowed(pane: OmpPane, foreground: { argv: string[] | null }, harness = "shell") {
+  /**
+   * The bridge's wiring of the launch window for one session, over a foreground that runs `argv`:
+   * `null` is a multiplexer with no foreground read, `unread` a read that gave no answer.
+   */
+  function windowed(pane: OmpPane, foreground: { argv: string[] | null | "unread" }, harness = "") {
     const window = new LaunchWindow();
     const framed: string[] = [];
     const { send } = rig(pane, {
       harness,
       starting: (paneId, named) =>
-        window.starting("main", paneId, named, () => Promise.resolve(foreground.argv === null ? undefined : harnessOfProcesses([{ argv: foreground.argv }], BINARIES))),
+        window.starting(
+          "main",
+          paneId,
+          named,
+          foreground.argv === null ? undefined : () => Promise.resolve(foreground.argv === "unread" ? FOREGROUND_UNREAD : harnessOfProcesses([{ argv: foreground.argv ?? [] }], BINARIES)),
+        ),
       framed: (paneId, name) => {
         framed.push(`${paneId}:${name}`);
         window.framed("main", paneId, name);
@@ -347,9 +355,44 @@ describe("a pane where omp is starting that the bridge did not launch (gang thre
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
   });
 
+  test("a foreground read with no answer is no shell: refused before any key, and the confirm on the same rows sends", async () => {
+    const pane = startingPane();
+    const { send } = windowed(pane, { argv: "unread" });
+    const first = await send("ls -la");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [], profileId: null });
+    expect(first.receipt?.detail).toBe("Collie could not tell what runs in this pane. Check the pane, then tap Type here.");
+    expect(first.offers).toEqual(["commit", "keys"]);
+    expect(first.rowsHash).toBeString();
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+    const confirmed = await send("ls -la", { rowsHash: first.rowsHash });
+    expect(confirmed.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
+    expect(pane.calls).toEqual(["type:ls -la"]);
+  });
+
+  test("a confirm on rows that moved since the person looked types nothing", async () => {
+    const pane = startingPane();
+    const { send } = windowed(pane, { argv: "unread" });
+    const first = await send("ls -la");
+    pane.load(OMP_UP);
+    const confirmed = await send("ls -la", { rowsHash: first.rowsHash });
+    expect(confirmed.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a launch's open window outlives a foreground read with no answer: its harness's path, not the confirm", async () => {
+    const pane = startingPane();
+    const { send, window } = windowed(pane, { argv: "unread" });
+    window.mark("main", "%1", "omp");
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [], profileId: "omp" });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
   test("a starting read that throws is no evidence: the shell takes the blind send", async () => {
     const pane = startingPane();
-    const { send } = rig(pane, { harness: "shell", starting: () => Promise.reject(new Error("socket gone")) });
+    const { send } = rig(pane, { harness: "", starting: () => Promise.reject(new Error("socket gone")) });
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
   });
 
@@ -461,5 +504,127 @@ describe("a live band taller than the volatile band over the box (omp 18.13.1, r
     expect(second).toBe(first);
     const [before, after] = await hashes(noTicks);
     expect(after).not.toBe(before);
+  });
+});
+
+describe("a clock seen ticking between S0's two reads (ADR 0140 pt 2)", () => {
+  /** An agent with no profile whose status row's seconds tick on every read, as Hermes Ink's does. */
+  function clocked(status: (n: number) => string = (n) => `─ ready │ sonnet │ 20m ${String(40 + n)}s │ ✓ 21m ${String(50 + n)}s`): OmpPane {
+    // The capture is never drawn: every read answers the clocked screen.
+    const pane = new OmpPane("╰─");
+    let n = 0;
+    pane.readGrid = (paneId) => {
+      n++;
+      return Promise.resolve(muxOk({ paneId, text: ["● the reply so far", "", status(n), " ❯"].join("\n"), truncated: false, revision: n }));
+    };
+    return pane;
+  }
+
+  test("a status row whose digits alone changed holds S0 still: the manual Send's confirm, not `not_free`", async () => {
+    const pane = clocked();
+    const { send } = rig(pane, { harness: "inkling" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [], profileId: null });
+    expect(answer.rowsHash).toBeString();
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a row that changed in anything but digits still moves the screen", async () => {
+    const pane = clocked((n) => (n % 2 === 0 ? "─ busy │ sonnet │ 20m 41s" : "─ ready │ sonnet │ 20m 41s"));
+    const { send } = rig(pane, { harness: "inkling" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", detail: "The input box moved between two reads.", keys: [] });
+  });
+
+  test("the rows hash reads the ticking row's digits as a fixed mark", async () => {
+    const { send } = rig(clocked(), { harness: "inkling" });
+    const first = (await send("", { mode: "prepare" })).rowsHash;
+    const second = (await send("", { mode: "prepare" })).rowsHash;
+    expect(first).toBeString();
+    expect(second).toBe(first);
+  });
+});
+
+describe("two taps are two reads too: a clock that ticked between them holds the confirm (ADR 0140 pt 2)", () => {
+  /** A 1 Hz clock on a frameless agent screen, as Hermes Ink draws it: S0's two reads 120 ms apart rarely see it tick. */
+  function wallClock(word: () => string = () => "ready") {
+    const pane = new OmpPane("╰─");
+    const at = { now: (): number => 0 };
+    let n = 0;
+    pane.readGrid = (paneId) => {
+      const s = Math.floor(at.now() / 1000);
+      const status = `─ ${word()} │ sonnet │ ${String(Math.floor(s / 60) % 60)}m ${String(s % 60)}s │ ✓ ${String(s % 97)} tok`;
+      return Promise.resolve(muxOk({ paneId, text: ["● the reply so far", "", status, ` ❯ ${pane.box}`.trimEnd()].join("\n"), truncated: false, revision: ++n }));
+    };
+    return { pane, at };
+  }
+
+  test.each([0, 340, 999, 58_500, 59_950])("the confirm 3 s after the first tap is probed and sent, clock phase %d ms", async (phase) => {
+    const { pane, at } = wallClock();
+    const { send, clock } = rig(pane, { harness: "inkling" });
+    clock.now += phase;
+    at.now = () => clock.now;
+    const first = await send("hello");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    clock.now += 3_000;
+    const confirmed = await send("hello", { rowsHash: first.rowsHash });
+    expect(confirmed.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"], profileId: null });
+    expect(pane.submitted).toEqual(["hello"]);
+  });
+
+  test("a word that changed between the taps still moves the screen", async () => {
+    let word = "ready";
+    const { pane, at } = wallClock(() => word);
+    const { send, clock } = rig(pane, { harness: "inkling" });
+    at.now = () => clock.now;
+    const first = await send("hello");
+    clock.now += 3_000;
+    word = "busy";
+    const confirmed = await send("hello", { rowsHash: first.rowsHash });
+    expect(confirmed.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+});
+
+describe("rowsTokenOf / rowsAgree", () => {
+  const before = ["title", "─ ready │ 20m 9s", "│ draft 1 │", "13:04"];
+  const after = ["title", "─ ready │ 20m 10s", "│ draft 1 │", "13:05"];
+  const box = { top: 2, bottom: 2 };
+
+  test("the token is opaque hex the route takes: raw half, then masked half", () => {
+    const token = rowsTokenOf(before, before, box);
+    expect(token).toMatch(/^[0-9a-f]{28}$/u);
+    expect(rowsAgree(token, token)).toBe(true);
+  });
+
+  test("rows that changed in their digits alone agree on the masked half", () => {
+    const a = rowsTokenOf(before, before, box);
+    const b = rowsTokenOf(after, after, box);
+    expect(a.slice(0, 14)).not.toBe(b.slice(0, 14));
+    expect(rowsAgree(a, b)).toBe(true);
+  });
+
+  test("a digit that changed in the box's own rows is a change; so is a word anywhere", () => {
+    const draft = after.map((row, i) => (i === 2 ? "│ draft 2 │" : row));
+    expect(rowsAgree(rowsTokenOf(before, before, box), rowsTokenOf(draft, draft, box))).toBe(false);
+    const worded = after.map((row, i) => (i === 1 ? "─ busy │ 20m 10s" : row));
+    expect(rowsAgree(rowsTokenOf(before, before, box), rowsTokenOf(worded, worded, box))).toBe(false);
+  });
+
+  test("a token of another shape never agrees", () => {
+    const token = rowsTokenOf(before, before, box);
+    expect(rowsAgree(token.slice(0, 14), token)).toBe(false);
+    expect(rowsAgree(`${token}00`, token)).toBe(false);
+  });
+});
+
+describe("tickingRows", () => {
+  test("only rows that differ in their digits alone, padding included; box rows never", () => {
+    const before = ["title", "20m 9s  │ x", "ready", "box 1", "13:04"];
+    const after = ["title", "20m 10s │ x", "busy", "box 12", "13:05"];
+    expect([...tickingRows(before, after)]).toEqual([1, 3, 4]);
+    expect([...tickingRows(before, after, { top: 3, bottom: 3 })]).toEqual([1, 4]);
+    expect(tickingRows(before, after.slice(1)).size).toBe(0);
+    expect(tickingRows(before, before).size).toBe(0);
   });
 });

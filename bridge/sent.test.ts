@@ -388,10 +388,11 @@ describe("record points: the Send Protocol's blind send on a shell pane", () => 
     const agent = await (await sendRoute(rt, { id: "sent-agent-0001", pane: "%1", text: "please run the tests" }, context(log))).json();
     expect(agent.receipt).toMatchObject({ outcome: "sent" });
     const unprofiled = await (await sendRoute(rt, { id: "sent-agent-0002", pane: "%3", text: "hello there" }, context(log))).json();
-    expect(unprofiled.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
+    // A named agent with no profile is never typed into blind: the first tap asks for the confirm.
+    expect(unprofiled.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [], profileId: null });
     const spaced = await (await sendRoute(rt, { id: "sent-shell-0004", pane: "%7", text: " export TOKEN=abc" }, context(log))).json();
     expect(spaced.receipt).toMatchObject({ outcome: "sent" });
-    expect(pane.written.map(([id]) => id)).toEqual(["%1", "%3", "%7"]);
+    expect(pane.written.map(([id]) => id)).toEqual(["%1", "%7"]);
     await settle();
     expect(io.text).toBeNull();
   });

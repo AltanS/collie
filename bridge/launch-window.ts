@@ -23,7 +23,9 @@
 // While the window is open the Send Protocol reads the screen with that harness's profile and presses
 // no key until the harness's input box is on screen (`SendDeps.starting`). The window ends when that
 // box takes a key ({@link LaunchWindow.framed}: a send's probe showed in it), when the poll's Surface
-// reads the box ({@link LaunchWindow.drawn}), after {@link LAUNCH_WINDOW_MS}, or when the harness is gone
+// reads the box ({@link LaunchWindow.drawn}), when the multiplexer reports that harness `idle` or `working`
+// on the pane (a report from the harness, such as Herdr's pi extension or a beacon hook; read as a drawn
+// box), after {@link LAUNCH_WINDOW_MS}, or when the harness is gone
 // from the pane: the foreground is a plain shell again, or the multiplexer stops naming it. A window
 // that ended is not opened again by the same harness on the same pane (`settled`) until that harness
 // leaves the pane: a started agent goes back to what the pane did before this module existed.
@@ -38,14 +40,17 @@
 // flushes its input when it starts) must not keep the pane from a send for two minutes, and the next
 // probe is how Collie learns the box reads keys now (2026-10-26).
 //
-// It fails open on missing evidence. A multiplexer with no foreground read (tmux, zellij and tuios
-// today) gets no `process` window, a read that fails or takes longer than {@link FOREGROUND_READ_MS}
-// counts as no read, and a plain shell in the foreground keeps the blind send.
+// A multiplexer with no foreground read (tmux, zellij and tuios today) gets no `process` window, and a
+// plain shell in the foreground keeps the blind send. A read that was tried and gave no answer (it
+// threw, the multiplexer refused it, or it took longer than {@link FOREGROUND_READ_MS}) is not a shell:
+// an agent the multiplexer has not named yet may run there. It answers {@link FOREGROUND_UNREAD}, and
+// the Send Protocol asks the person to confirm the screen before it types (2026-11-10).
 //
 // No harness is named here: the binaries come from the profiles (`identity.binary`), passed in.
 // Memory only, per bridge: a restart forgets the windows, and the first poll after it is a baseline.
 
 import type { ForegroundProcess } from "./journal/types.ts";
+import type { AgentStatus } from "./types.ts";
 
 /** How long a pane may take to show its agent's input box: omp 18.12.6 takes about 20 s. */
 export const LAUNCH_WINDOW_MS = 120_000;
@@ -143,17 +148,25 @@ export function harnessOfProcesses(processes: readonly ForegroundProcess[], bina
   return harnessProcessOf(processes, binaries)?.harness ?? null;
 }
 
+/** A foreground read that was tried and gave no answer: it threw, the multiplexer refused it, or it was too slow. */
+export const FOREGROUND_UNREAD: unique symbol = Symbol("foreground unread");
+export type ForegroundUnread = typeof FOREGROUND_UNREAD;
+
 /**
  * What a foreground read found: a harness id, `null` for a read that found no harness (a plain shell),
- * `undefined` for no read at all (the multiplexer has none, it refused, threw, or was too slow).
+ * {@link FOREGROUND_UNREAD} for a read that gave no answer. A multiplexer with no such read has none.
  */
-export type ForegroundHarness = () => Promise<string | null | undefined>;
+export type ForegroundHarness = () => Promise<string | null | ForegroundUnread>;
 
-/** One pane as a poll lists it: the agent the multiplexer names, or null for a shell. */
+/** One pane as a poll lists it: the agent the multiplexer names, or null for a shell, and the status it reports. */
 export interface ObservedPane {
   readonly paneId: string;
   readonly agent: string | null;
+  readonly status?: AgentStatus;
 }
+
+/** The multiplexer's words that say a harness is up: its start is over. `blocked`, `done` and `unknown` say nothing of it. */
+const STARTED: ReadonlySet<AgentStatus> = new Set(["idle", "working"]);
 
 export class LaunchWindow {
   private readonly windows = new Map<string, Window>();
@@ -236,8 +249,10 @@ export class LaunchWindow {
    * One poll's panes of a session (agent panes and shells). A pane whose agent the multiplexer names now
    * and did not name on the poll before opens an `agent` window, unless a window for that harness is
    * open (a launch's mark keeps its earlier start) or the harness already settled there. A pane whose
-   * agent went (a shell now) and a pane the poll no longer lists are forgotten. The first call per
-   * session only records the panes.
+   * agent went (a shell now) and a pane the poll no longer lists are forgotten. A pane the multiplexer
+   * reports `idle` or `working` as the harness of its open window ends that window as a drawn box does
+   * ({@link drawn}): unless a probe went unseen there. That holds for a window this poll opened too. The
+   * first call per session opens no window, and ends windows on the multiplexer's word all the same.
    */
   observe(session: string, panes: readonly ObservedPane[]): void {
     const next = new Map<string, string>(panes.map((pane) => [pane.paneId, pane.agent === null || pane.agent === "" ? "" : this.canonical(pane.agent)]));
@@ -247,17 +262,24 @@ export class LaunchWindow {
     for (const map of [this.windows, this.settled]) {
       for (const key of map.keys()) if (key.startsWith(prefix) && !next.has(key.slice(prefix.length))) map.delete(key);
     }
-    if (before === undefined) return;
-    for (const [paneId, agent] of next) {
-      const was = before.get(paneId);
-      if (agent === was) continue;
-      const key = LaunchWindow.keyOf(session, paneId);
-      if (agent === "") {
-        if (was !== undefined) this.left(key);
-        continue;
+    if (before !== undefined) {
+      for (const [paneId, agent] of next) {
+        const was = before.get(paneId);
+        if (agent === was) continue;
+        const key = LaunchWindow.keyOf(session, paneId);
+        if (agent === "") {
+          if (was !== undefined) this.left(key);
+          continue;
+        }
+        if (this.open(key)?.harness === agent || this.settledAs(key) === agent) continue;
+        this.openWindow(key, agent, "agent");
       }
-      if (this.open(key)?.harness === agent || this.settledAs(key) === agent) continue;
-      this.openWindow(key, agent, "agent");
+    }
+    for (const pane of panes) {
+      if (pane.status === undefined || !STARTED.has(pane.status)) continue;
+      const agent = next.get(pane.paneId);
+      if (agent === undefined || agent === "") continue;
+      if (this.open(LaunchWindow.keyOf(session, pane.paneId))?.harness === agent) this.drawn(session, pane.paneId, agent);
     }
   }
 
@@ -329,15 +351,18 @@ export class LaunchWindow {
    * profile of its own (`named` null), `foreground` reads its foreground processes first: a harness
    * there opens a `process` window (unless it settled), and a plain shell there ends a window the
    * process had confirmed and any settled mark. A launch's mark outlives a shell foreground until its
-   * process has been seen, since the line typed may not have run yet.
+   * process has been seen, since the line typed may not have run yet. A read that gave no answer
+   * changes nothing: an open window still names its harness, and with none the answer is
+   * {@link FOREGROUND_UNREAD}, never null, so the send does not take the pane for a shell.
    */
-  async starting(session: string, paneId: string, named: string | null, foreground?: ForegroundHarness): Promise<string | null> {
+  async starting(session: string, paneId: string, named: string | null, foreground?: ForegroundHarness): Promise<string | null | ForegroundUnread> {
     const key = LaunchWindow.keyOf(session, paneId);
     if (named !== null) {
       const harness = this.canonical(named);
       return this.open(key)?.harness === harness ? harness : null;
     }
     const seen = foreground === undefined ? undefined : await foreground();
+    if (seen === FOREGROUND_UNREAD) return this.open(key)?.harness ?? FOREGROUND_UNREAD;
     if (seen === null) {
       const window = this.open(key);
       if (window !== null && (window.source !== "launch" || window.processSeen)) this.windows.delete(key);
@@ -354,7 +379,7 @@ export class LaunchWindow {
 
 /**
  * A {@link ForegroundHarness} over a multiplexer's foreground read, bounded by {@link FOREGROUND_READ_MS}.
- * Undefined when the multiplexer has no such read. A refusal, a throw or a slow read answer `undefined`.
+ * Undefined when the multiplexer has no such read. A refusal, a throw or a slow read answer {@link FOREGROUND_UNREAD}.
  */
 export function foregroundHarnessOf(
   read: ((paneId: string) => Promise<{ readonly ok: true; readonly value: readonly ForegroundProcess[] } | { readonly ok: false }>) | undefined,
@@ -364,12 +389,12 @@ export function foregroundHarnessOf(
   if (read === undefined) return undefined;
   return (paneId) => async () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<undefined>((resolve) => {
-      timer = setTimeout(() => resolve(undefined), bound);
+    const late = new Promise<ForegroundUnread>((resolve) => {
+      timer = setTimeout(() => resolve(FOREGROUND_UNREAD), bound);
     });
     try {
-      const result = await Promise.race([read(paneId).catch(() => undefined), late]);
-      if (result === undefined || !result.ok) return undefined;
+      const result = await Promise.race([read(paneId).catch((): ForegroundUnread => FOREGROUND_UNREAD), late]);
+      if (result === FOREGROUND_UNREAD || !result.ok) return FOREGROUND_UNREAD;
       return harnessOfProcesses(result.value, binaries());
     } finally {
       clearTimeout(timer);

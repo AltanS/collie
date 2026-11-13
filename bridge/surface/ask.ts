@@ -20,10 +20,9 @@
 
 import { randomUUID } from "node:crypto";
 import type { MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
-import { parseAnsi } from "../../web/src/lib/ansi.ts";
-import { splitLines } from "../../web/src/lib/blocks.ts";
 import { DIALOG_CONTRACT, dialogModelOf } from "../../web/src/lib/harness/dialog-contract.ts";
 import { commitKeysFor, splitWalk } from "../../web/src/lib/harness/prompt-model.ts";
+import { readRows } from "../../web/src/lib/surface/split.ts";
 import type { AskReason, AskReceipt, AskReply, Answer, AskOutcome } from "../../web/src/lib/surface/ask.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { rowText } from "../../web/src/lib/surface/frame.ts";
@@ -858,7 +857,7 @@ export class AskAnswerer {
     try {
       const grid = await Promise.race([this.deps.mux.readGrid(target.paneId, { scope: "viewport", lines: ASK_READ_LINES, styling: "preserve" }), late]);
       if (grid === null || !grid.ok) return null;
-      const dialog = liftDialog(readerBlocks(splitLines(parseAnsi(grid.value.text)), target.harness));
+      const dialog = liftDialog(readerBlocks(readRows(grid.value.text), target.harness));
       const match = await this.deps.profile(target.harness, target.paneId);
       return this.deps.book.publish(target.paneId, generation, dialog, askLifetimeOf(match));
     } catch {
@@ -926,7 +925,7 @@ export class AskAnswerer {
     const grid = await this.within(state, this.deps.mux.readGrid(paneId, { scope: "viewport", lines: ASK_READ_LINES, styling: "preserve" }), until, outcome);
     const gateRevision = this.deps.gate.noteRead(paneId);
     if (!grid.ok) return null;
-    const rows = splitLines(parseAnsi(grid.value.text));
+    const rows = readRows(grid.value.text);
     const texts = rows.map((row) => rowText(row).trimEnd());
     this.deps.ring?.push({ requestId: state.answer.askId, step, at: this.now(), rows: texts });
     const dialog = liftDialog(readerBlocks(rows, harness));

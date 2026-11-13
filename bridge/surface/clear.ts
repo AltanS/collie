@@ -46,10 +46,9 @@
 // replay), never logged, never on the audit line.
 
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
+import { readRows } from "../../web/src/lib/surface/split.ts";
 import { wsFree } from "../../web/src/lib/surface/send.ts";
 import { frameImageKey } from "../../web/src/lib/surface/surface.ts";
-import { parseAnsi } from "../../web/src/lib/ansi.ts";
-import { splitLines } from "../../web/src/lib/blocks.ts";
 import { boundedDraft, type ClearReason, type ClearReceipt } from "../../web/src/lib/surface/clear.ts";
 import { findInputFrame, rowText, type Frame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
@@ -354,7 +353,7 @@ export class ClearService {
   private async look(paneId: string, harness: string, match: ProfileMatch): Promise<Look | null> {
     const grid = await this.deps.mux.readGrid(paneId, { scope: "viewport", lines: CLEAR_READ_LINES, styling: "preserve" });
     if (!grid.ok) return null;
-    const rows = splitLines(parseAnsi(grid.value.text));
+    const rows = readRows(grid.value.text);
     const ask = liftAsk(readerBlocks(rows, harness), grid.value.revision);
     const read = surfaceOfScreen({ seq: 0, source: "screen", at: Date.now(), revision: grid.value.revision, rows, ask }, match.profile.idle);
     // The Surface drops the box of a profile whose dialogs draw in it once a strong cue stands (`dialogsInBox`),

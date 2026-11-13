@@ -6,8 +6,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parseAnsi } from "../lib/ansi";
-import { lineText, splitLines, type StyledLine } from "../lib/blocks";
+import { lineText, type StyledLine } from "../lib/blocks";
+import { readRows } from "../lib/surface/split";
 import { displayWidth } from "../lib/text-width";
 import type { IdleProfile } from "../lib/surface/frame";
 import { surfaceOfScreen, type SurfaceRead } from "../lib/surface/fold";
@@ -101,7 +101,7 @@ const rowsCache = new Map<string, StyledLine[]>();
 
 /** A screen's rows from its raw text. */
 export function rowsOf(raw: string): StyledLine[] {
-  return splitLines(parseAnsi(raw));
+  return readRows(raw);
 }
 
 /** A pane fixture's rows, parsed once. */

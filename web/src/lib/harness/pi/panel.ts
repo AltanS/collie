@@ -41,7 +41,7 @@
 //
 // Pure, no harness imports beyond the pi readers.
 import { lineText, type StyledLine } from "../../blocks";
-import { graphemeSegmenter } from "../../env";
+import { cropLine, cropText } from "../../column-range";
 import { displayWidth } from "../../text-width";
 import { openFrameTop } from "./ask";
 import { locateComposer, MAX_PICKER_HEADER_ROWS, ruleAbove, tailRule } from "./composer";
@@ -182,37 +182,6 @@ function mayBeOpenFrame(lines: StyledLine[], texts: string[], r: number, end: nu
 }
 
 /** The first `columns` display columns of `text`. */
-function cropText(text: string, columns: number): string {
-  let out = "";
-  let used = 0;
-  for (const cluster of clusters(text)) {
-    const width = displayWidth(cluster);
-    if (used + width > columns) break;
-    out += cluster;
-    used += width;
-  }
-  return out;
-}
-
-function clusters(text: string): string[] {
-  const segmenter = graphemeSegmenter();
-  return segmenter === null ? Array.from(text) : Array.from(segmenter.segment(text), (s) => s.segment);
-}
-
-/** One row cut at `columns` display columns, its styles kept. */
-export function cropLine(line: StyledLine, columns: number): StyledLine {
-  const segments: StyledLine["segments"] = [];
-  let used = 0;
-  for (const segment of line.segments) {
-    if (used >= columns) break;
-    const kept = cropText(segment.text, columns - used);
-    if (kept.length > 0) segments.push(kept.length === segment.text.length ? segment : { ...segment, text: kept });
-    used += displayWidth(kept);
-    if (kept.length < segment.text.length) break;
-  }
-  return { ...line, segments };
-}
-
 /** What the pi readers read: the screen, or the screen cropped at OmO's side panel. Row indices are
  *  the screen's either way. */
 export function piView(lines: StyledLine[]): PiView {

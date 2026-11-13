@@ -198,7 +198,7 @@ function rig(pane: OmpPane, options: { harness?: string; generation?: { now: str
 
 /** A pane omp was launched in a moment ago (`POST /api/launch`): the multiplexer still names a shell. */
 function launched(pane: OmpPane, held = false) {
-  const wired = rig(pane, { harness: "shell", generation: { now: "shell:-" }, held });
+  const wired = rig(pane, { harness: "", generation: { now: "shell:-" }, held });
   wired.window.mark("main", "%1", "omp");
   return wired;
 }
@@ -436,7 +436,7 @@ describe("a send that straddles the moment the multiplexer names the agent (head
 
   test("a pane with no profile to name keeps the strict check: shell to omp under a blind send is refused", async () => {
     const pane = new OmpPane(OMP_UP);
-    const wired = rig(pane, { harness: "shell", generation: { now: "shell:-" } });
+    const wired = rig(pane, { harness: "", generation: { now: "shell:-" } });
     const first = wired.send("ls -la");
     wired.generation.now = "omp:-";
     const answer = await first;
@@ -478,7 +478,7 @@ describe("a held send on a starting pane meets the multiplexer naming the agent 
   test("the entry takes the agent too: a release after the launch window ran out reads omp's profile, not the blind road", async () => {
     const pane = new OmpPane(OMP_UP);
     const held = await heldOnStartingPane(pane);
-    expect(held.holds.get(held.id)?.harness).toBe("shell");
+    expect(held.holds.get(held.id)?.harness).toBe("");
     held.generation.now = "omp:019a-session";
     expect(await held.tick()).toEqual([]);
     expect(held.holds.get(held.id)?.harness).toBe("omp");
@@ -880,7 +880,7 @@ describe("the counsel review of 1.24.1: a pending probe's life, the truthful ref
     r.generation.now = "shell:-";
     await r.tick();
     expect(r.store.get(r.id)?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
-    const fresh = await r.send("to the shell", {}, "shell");
+    const fresh = await r.send("to the shell", {}, "");
     expect(fresh.receipt?.profileId ?? null).toBeNull();
     expect(fresh.receipt?.outcome).not.toBe("held");
   });
@@ -889,7 +889,7 @@ describe("the counsel review of 1.24.1: a pending probe's life, the truthful ref
     const pane = new OmpPane(OMP_UP);
     const r = await heldOnOmp(pane);
     r.generation.now = "shell:-";
-    const fresh = await r.send("to the shell", {}, "shell");
+    const fresh = await r.send("to the shell", {}, "");
     expect(fresh.receipt?.profileId ?? null).toBeNull();
     expect(fresh.receipt?.outcome).not.toBe("held");
   });

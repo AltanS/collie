@@ -5,7 +5,8 @@ import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, trimTrailingBlank, type StyledLine } from "../../blocks";
 import { buildBlocks } from "../index";
 import { piAdapter } from "./index";
-import { cropLine, panelColumn, piView } from "./panel";
+import { cropLine } from "../../column-range";
+import { panelColumn, piView } from "./panel";
 
 const PANES = join(import.meta.dirname, "../../../fixtures/panes");
 const raw = (name: string) => readFileSync(join(PANES, name), "utf8");
