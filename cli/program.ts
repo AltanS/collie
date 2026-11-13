@@ -872,8 +872,8 @@ export const COMMANDS: readonly Command[] = [
       {
         name: "install",
         summary:
-          "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions, and `--statusline` to also wrap your statusLine" +
-          " so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`",
+          "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions; it also wraps your statusLine, if you have one," +
+          " so the phone shows the context in percent and the 5-hour and 7-day windows, and your command still prints exactly as before; `--no-statusline` keeps it as it is), or `hooks install codex`",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {

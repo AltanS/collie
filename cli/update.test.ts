@@ -2501,7 +2501,7 @@ describe("the hooks nudge", () => {
     const h = binaryHarness({ hooksCheck: { code: EXIT.STATE, stdout: `${STATUSLINE_BEHIND_WORD}\n` } });
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     const out = h.io.stdout.join("\n");
-    expect(out).toContain("your wrapped statusLine points at an older collie binary; run `collie hooks install claude --statusline` to re-point it.");
+    expect(out).toContain("your wrapped statusLine points at an older collie binary; run `collie hooks install claude` to re-point it.");
     expect(out).not.toContain(NUDGE);
   });
 

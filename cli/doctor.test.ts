@@ -22,6 +22,7 @@ import { durableFindings } from "./durable-findings.ts";
 import type { CliContext } from "./context.ts";
 import {
   accountWindowsFinding,
+  statusLineWrap,
   cmdDoctor,
   type DoctorDeps,
   type Finding,
@@ -3652,5 +3653,37 @@ describe("the link rows (M99 spec 09)", () => {
     const found = row(linkFindings(r.deps, () => "2.1.300"), "link-claude");
     expect(found?.status).toBe("warn");
     expect(found?.detail).toContain("Claude Code 2.1.300 is not verified for the data path");
+  });
+});
+
+describe("statusline-claude: does Claude Code state the context window (.adr/0115, amended 2026-11-13)", () => {
+  const posix = hostFor("linux");
+  const own = "bash /home/pat/.claude/statusline-command.sh";
+  const wrapped = `/opt/collie/bin/collie beacon statusline ${Buffer.from(own, "utf8").toString("base64url")} # collie-statusline v1`;
+  /** The row for a settings file's TEXT (null: no file). */
+  const rowFor = (text: string | null, platform: "linux" | "win32" = "linux", installed = true) => {
+    const files = fakeFiles(text === null ? {} : { [SETTINGS]: text });
+    return statusLineWrap({ ctx: context({}, {}), files, host: platform === "linux" ? posix : hostFor("win32") }, installed);
+  };
+  const row = (settings: JsonObject, platform: "linux" | "win32" = "linux", installed = true) => rowFor(JSON.stringify(settings), platform, installed);
+
+  test("a plain statusLine is a hint, with the install and its undo; never an error", () => {
+    const [finding] = row({ statusLine: { type: "command", command: own } });
+    expect(finding?.status).toBe("warn");
+    expect(finding?.detail).toContain("token count, not a percent");
+    expect(finding?.remedy).toContain("`collie hooks install claude`");
+    expect(finding?.remedy).toContain("--no-statusline");
+  });
+
+  test("a wrapped statusLine, none at all, and Windows are ok, and say what the phone shows", () => {
+    expect(row({ statusLine: { type: "command", command: wrapped } })[0]).toMatchObject({ status: "ok", remedy: null });
+    expect(row({})[0]?.detail).toContain("no statusLine configured, and Collie adds none");
+    expect(row({ statusLine: { type: "command", command: own } }, "win32")[0]).toMatchObject({ status: "ok" });
+    expect(row({ statusLine: { type: "command", command: own } }, "win32")[0]?.detail).toContain("token count");
+  });
+
+  test("no row without the hooks, and a file that does not parse is not this row's to judge", () => {
+    expect(row({ statusLine: { type: "command", command: own } }, "linux", false)).toEqual([]);
+    expect(rowFor("{ // a comment\n }")[0]?.status).toBe("ok");
   });
 });

@@ -60,6 +60,7 @@ describe("context-reading configDir tracking", () => {
       window: 200_000,
       windowBy: "statusline",
       context: 25,
+      contextTokens: 50_000,
       configDir: CUSTOM_ROOT,
     });
 

@@ -41,6 +41,23 @@ describe("who gave the window", () => {
   });
 });
 
+describe("the token count in the merge", () => {
+  test("the beacon sets, keeps and removes the count; a move inside one drawn step is no write", () => {
+    const first = mergeBeacon(null, "claude", NOW, { tokens: 222_200 });
+    expect(first).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, contextTokens: 222_200 });
+    expect(mergeBeacon(first, "claude", NOW, { tokens: 222_400 })).toBeNull();
+    expect(mergeBeacon(first, "claude", NOW, { tokens: 223_600 })).toMatchObject({ contextTokens: 223_600 });
+    expect(mergeBeacon(first, "claude", NOW, { context: 4 })).toMatchObject({ context: 4, contextTokens: 222_200 });
+    expect(mergeBeacon(first, "claude", NOW, { tokens: null })?.contextTokens).toBeUndefined();
+  });
+
+  test("the wrapper replaces the count it states and keeps the one on file when it states none", () => {
+    const existing = record({ contextTokens: 100_000 });
+    expect(mergeStatusLine(existing, record({ at: NOW, contextTokens: 222_200 }), NOW).contextTokens).toBe(222_200);
+    expect(mergeStatusLine(existing, record({ at: NOW, context: 5 }), NOW).contextTokens).toBe(100_000);
+  });
+});
+
 describe("the beacon side of the merge", () => {
   test("replaces the context and keeps the window and the running limits", () => {
     const existing = record({ context: 3, window: 1_000_000, limits: [FIVE_HOUR, SEVEN_DAY] });

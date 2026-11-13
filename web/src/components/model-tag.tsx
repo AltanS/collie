@@ -6,6 +6,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
 import { hasResizeObserver } from "@/lib/env";
 import { effortLabel, modelLabel } from "@/lib/model-label";
+import { formatTokens } from "@/lib/token-count";
 import { visibleStatusCount } from "@/lib/tricks/status";
 import type { PaneUsage } from "@/lib/types";
 import type { UsageRow } from "@/lib/usage-row";
@@ -42,6 +43,12 @@ import { cn } from "@/lib/utils";
 // colour. {@link isHot} is the one rule, on the whole percentage the figure is written as, so the number
 // and the dots turn together. A gauge the harness did not report is not drawn, in either, and the screen
 // reader gets the exact figure either way.
+//
+// NO WINDOW, THE COUNT (.adr/0115, amended 2026-11-13). A context whose window the harness did not state
+// has no share to draw, so in Percent the context's place holds its token count instead, `ctx 222k`, in
+// the same type and tabular digits (lib/token-count.ts writes it). It is a count, not a share: never red.
+// In Dots it draws nothing: a dot is a fifth of a window, and there is no window to take a fifth of. The
+// screen reader hears the count in both.
 //
 // THE SESSION COST CLOSES THE ROW (.adr/0115, amended 2026-10-25): dollars after the last gauge, in the
 // gauges' muted colour and the tag's own size. It is a figure, not a gauge: no dots and never the working
@@ -164,6 +171,21 @@ interface Gauge {
   used: number;
 }
 
+/** The context's token count, drawn where its share would be when no window was stated. */
+interface TokenFigure {
+  short: string;
+  spoken: string;
+  text: string;
+}
+
+/** The token count to draw in the context's place, or null: a share is there to draw, or no count is. */
+function tokensOf(usage: PaneUsage | undefined): TokenFigure | null {
+  if (usage === undefined || isReading(usage.context) || usage.contextTokens === undefined) return null;
+  const text = formatTokens(usage.contextTokens);
+  if (text === null) return null;
+  return { short: t("chat.usage.context"), spoken: t("chat.usage.context.tokens.aria", { tokens: text }), text };
+}
+
 /** A reading a gauge can draw: a finite number. Anything else is "not reported", so no `NaN%` is ever drawn. */
 function isReading(value: number | undefined): value is number {
   return value !== undefined && Number.isFinite(value);
@@ -208,7 +230,7 @@ export function hasGauge(usage: PaneUsage | undefined): boolean {
  * cost never floats without it.
  */
 export function hasFigure(usage: PaneUsage | undefined): boolean {
-  return hasGauge(usage) || costOf(usage) !== null;
+  return hasGauge(usage) || tokensOf(usage) !== null || costOf(usage) !== null;
 }
 
 /** Five 3px dots, lit from the left, one per full fifth. A dot is as wide as it is tall, so it may be round (DESIGN.md §3). */
@@ -287,14 +309,17 @@ export function ModelTag({
   const shown = useStatusFit(items.map((item) => item.id).join(" "), ITEM_GAPS[usageRow].px, items.length, tagRef, ownRef, itemsRef);
   const name = modelLabel(model);
   const gauges = gaugesOf(usage);
+  const tokens = tokensOf(usage);
+  // A dot is a fifth of a window: with no window there is no dot to draw, so Dots leaves the count out.
+  const drawnTokens = usageRow === "percent" ? tokens : null;
   const cost = costOf(usage);
-  if (name === null && gauges.length === 0 && cost === null && items.length === 0) return null;
+  if (name === null && gauges.length === 0 && drawnTokens === null && cost === null && items.length === 0) return null;
   // THE EFFORT FOLLOWS THE MODEL, in the harness's own word (#463): "Opus 5.5 · high". It never draws
   // alone, and it goes with the model when the screen already names it, because the caller passes
   // neither then. The same model at `high` and at `low` is a different trade-off in time and cost.
   const level = name === null ? null : effortLabel(effort);
   const label = name === null ? null : level === null ? name : `${name} · ${level}`;
-  const spoken = [label === null ? null : t("chat.model.aria", { name: label }), ...gauges.map((g) => g.spoken),
+  const spoken = [label === null ? null : t("chat.model.aria", { name: label }), tokens?.spoken ?? null, ...gauges.map((g) => g.spoken),
     cost === null ? null : t("chat.usage.cost.aria", { amount: formatCost(cost) }),
   ].filter(
     (part): part is string => part !== null,
@@ -306,9 +331,15 @@ export function ModelTag({
       className="pointer-events-none absolute right-3 bottom-1 z-10 max-w-[70%] rounded-[2px] bg-background/90 px-1 text-[10px]/3 text-muted-foreground"
     >
       <span className={cn("flex min-w-0 items-center whitespace-nowrap", ITEM_GAPS[usageRow].className)}>
-        {(label !== null || gauges.length > 0 || cost !== null) && (
+        {(label !== null || gauges.length > 0 || drawnTokens !== null || cost !== null) && (
           <span ref={ownRef} aria-hidden data-slot="usage-own" className={cn("flex min-w-0 items-center", ITEM_GAPS[usageRow].className)}>
             {label !== null && <span className="min-w-0 truncate">{label}</span>}
+            {drawnTokens !== null && (
+              <span data-gauge="context" data-slot="usage-tokens" className="flex shrink-0 items-center gap-0.5">
+                <span>{drawnTokens.short}</span>
+                <span className="tabular-nums">{drawnTokens.text}</span>
+              </span>
+            )}
             {gauges.map((g) => (
               <span key={g.id} data-gauge={g.id} className={cn("flex shrink-0 items-center", usageRow === "percent" ? "gap-0.5" : "gap-[3px]")}>
                 <span>{g.short}</span>

@@ -6,22 +6,23 @@
 // Claude Code hands its statusLine command a JSON document on every assistant message: the context
 // window's `used_percentage`, and for a Pro or Max account the 5-hour and 7-day `rate_limits`. Collie
 // holds no model key and reads no credential, so it does not ask the vendor for these. It asks the
-// agent: `collie hooks install claude` wraps the operator's OWN statusLine command, and the wrapper
-// (`collie beacon statusline`, cli/statusline.ts) writes the three numbers to one small file here
-// before it runs the operator's command and passes its output through untouched. Since 2026-10-24 the
-// context number also comes from the session transcript through the beacon hooks
+// agent: `collie hooks install claude` wraps the operator's OWN statusLine command (by default since
+// 2026-11-13), and the wrapper (`collie beacon statusline`, cli/statusline.ts) writes the numbers to
+// one small file here before it runs the operator's command and passes its output through untouched.
+// Since 2026-10-24 the context number also comes from the session transcript through the beacon hooks
 // (`cli/context-reading.ts`), and since 2026-11-13 always against the window size the wrapped
-// statusLine stated: with the wrap off (it is opt-in) a Claude session has no context dot, because
-// nothing else states its window. Since 2026-10-24 the 5-hour and 7-day windows come first from the
-// vendor's usage endpoint with the operator's own login (bridge/account-windows.ts, .adr/0118); a
-// wrapped statusLine is the second road.
+// statusLine stated. With no wrap (none on Windows, none where no statusLine is configured, or the
+// operator said `--no-statusline`) nothing states the window, and the session shows its token count.
+// Since 2026-10-24 the 5-hour and 7-day windows come first from the vendor's usage endpoint with the
+// operator's own login (bridge/account-windows.ts, .adr/0118); a wrapped statusLine is the second road.
 //
 // OTHER HARNESSES WRITE NO FILE, so since 2026-10-25 their context comes from the journal: the cache
 // probe that already reads the session log for the prompt-cache chip also names the tokens the last
 // turn carried and, where it can, the model's window (bridge/cache/tracker.ts § context). Codex's log
 // names the window itself; pi, Oh My Pi and OpenCode take it from the harness's own model catalog on
-// disk (bridge/journal/model-window.ts). No window, no context: a model no catalog names has no
-// context dot, and the model label still draws. A usage file's context, where one exists, wins.
+// disk (bridge/journal/model-window.ts). No window, no percentage: since 2026-11-13 a model no catalog
+// names shows the token count alone (`contextTokens`), as a Claude session with no stated window does.
+// A usage file's context, where one exists, wins.
 //
 // ONE FILE PER SESSION, named by a digest of the harness session id, never by the pane: the pane
 // already knows its session (`agentSession`, from Herdr or the beacon), and a session id cannot be
@@ -84,8 +85,15 @@ export interface UsageLimit {
  * when the harness did not report it. A pane whose harness reports nothing carries no `usage` key.
  */
 export interface PaneUsage {
-  /** Percent of the context window used, 0 to 100. */
+  /** Percent of the context window used, 0 to 100. Only where the harness stated the window. */
   context?: number;
+  /**
+   * The tokens in the context: input, cache creation and cache read of the newest request, as the
+   * harness counts its own context share. The phone draws it in place of {@link context} when that is
+   * absent, because no window was stated to divide by (.adr/0115, amended 2026-11-13). Absent when
+   * unknown, never a placeholder.
+   */
+  contextTokens?: number;
   /** The windows still running, in {@link USAGE_WINDOWS} order. Absent rather than empty. */
   limits?: UsageLimit[];
   /**
@@ -135,6 +143,12 @@ const WINDOW_MAX = 100_000_000;
 
 /** `windowBy` of a window the statusLine document stated. */
 export const WINDOW_BY_STATUSLINE = "statusline";
+
+/** A token count as a record may hold it: a whole number of tokens, zero or more, within the window bound. */
+export function asTokenCount(value: JsonValue | undefined): number | undefined {
+  const n = asJsonNumber(value);
+  return n !== undefined && Number.isInteger(n) && n >= 0 && n <= WINDOW_MAX ? n : undefined;
+}
 
 /** A window size as a record may hold it: a whole positive number of tokens within the bound. */
 export function asWindowSize(value: JsonValue | undefined): number | undefined {
@@ -217,6 +231,9 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   const guessed = root.window !== undefined && asJsonString(root.windowBy) !== WINDOW_BY_STATUSLINE;
   const context = asPercent(root.context);
   if (context !== undefined && !guessed) record.context = context;
+  // The count stands on its own: no window was needed to take it.
+  const tokens = asTokenCount(root.contextTokens);
+  if (tokens !== undefined) record.contextTokens = tokens;
   const cost = asCost(root.cost);
   if (cost !== undefined) record.cost = cost;
   const size = asWindowSize(root.window);
@@ -248,10 +265,16 @@ export function parseUsageRecord(text: string): UsageRecord | null {
 export function usageAt(record: UsageRecord, now: number): PaneUsage | undefined {
   const usage: PaneUsage = {};
   if (record.context !== undefined) usage.context = record.context;
+  if (record.contextTokens !== undefined) usage.contextTokens = record.contextTokens;
   const limits = (record.limits ?? []).filter((limit) => limit.resetsAt === undefined || limit.resetsAt > now);
   if (limits.length > 0) usage.limits = limits;
   if (record.cost !== undefined) usage.cost = record.cost;
-  return usage.context === undefined && usage.limits === undefined && usage.cost === undefined ? undefined : usage;
+  return hasReading(usage) ? usage : undefined;
+}
+
+/** Whether a reading holds anything the phone draws. */
+function hasReading(usage: PaneUsage): boolean {
+  return usage.context !== undefined || usage.contextTokens !== undefined || usage.limits !== undefined || usage.cost !== undefined;
 }
 
 /** The disk, as the tracker needs it. A seam, so the rules are testable with no temp files. */
@@ -406,9 +429,7 @@ export class UsageTracker {
     const now = this.now();
     const harness = pane.kind === "shell" ? undefined : pane.agent || record?.harness;
     // The journal fills what the usage file leaves out: the file's own context and cost win.
-    const overlay: PaneUsage = {};
-    const journalContext = record?.context === undefined ? this.journalContext(pane) : undefined;
-    if (journalContext !== undefined) overlay.context = journalContext;
+    const overlay: PaneUsage = record?.context === undefined && record?.contextTokens === undefined ? this.journalContext(pane) : {};
     const journalCost = record?.cost === undefined ? this.journalCost(pane) : undefined;
     if (journalCost !== undefined) overlay.cost = journalCost;
     const configDir = record?.configDir;
@@ -417,22 +438,26 @@ export class UsageTracker {
       const base: UsageRecord = record ?? { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness ?? "", at: now };
       return usageAt({ ...base, ...overlay, limits: account }, now);
     }
-    if (record === null) return overlay.context === undefined && overlay.cost === undefined ? undefined : overlay;
+    if (record === null) return hasReading(overlay) ? overlay : undefined;
     const held = record.limits === undefined ? record : { ...record, limits: this.newestLimits(record.harness, now, configDir) };
     return usageAt({ ...held, ...overlay }, now);
   }
 
   /**
-   * The pane's context from the journal, as a percentage, or undefined: no reading, no window, or a
-   * shell pane. Keyed by the session ref's value of either kind, as the cache chip is.
+   * The pane's context from the journal: a percentage when the log or the catalog named the window,
+   * else the token count alone; nothing with no reading or for a shell pane. Keyed by the session
+   * ref's value of either kind, as the cache chip is.
    */
-  private journalContext(pane: AgentView): number | undefined {
-    if (this.journal === undefined || pane.kind === "shell") return undefined;
+  private journalContext(pane: AgentView): PaneUsage {
+    if (this.journal === undefined || pane.kind === "shell") return {};
     const key = pane.agentSession?.value;
-    if (key === undefined || key === "") return undefined;
+    if (key === undefined || key === "") return {};
     const reading = this.journal.context(key);
-    if (reading?.window === undefined || reading.window <= 0) return undefined;
-    return contextPercent(reading.tokens, reading.window);
+    if (reading === undefined) return {};
+    const tokens = asTokenCount(Math.round(reading.tokens));
+    const overlay: PaneUsage = tokens === undefined ? {} : { contextTokens: tokens };
+    if (reading.window !== undefined && reading.window > 0) overlay.context = contextPercent(reading.tokens, reading.window);
+    return overlay;
   }
 
   /** The pane's session cost from the journal, in dollars, or undefined: none summed, or a shell pane. */

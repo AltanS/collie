@@ -782,12 +782,19 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
       const fable = assistant({ input_tokens: 2, cache_creation_input_tokens: 1_913, cache_read_input_tokens: 220_285, output_tokens: 277 }, "claude-fable-5-2");
       const d = await run("Stop", {}, lines(userLine, fable, tail), (x) => seed(x, {}));
       // 2 + 1_913 + 220_285 = 222_200 of 1_000_000.
-      expect(record(d)).toMatchObject({ window: 1_000_000, windowBy: "statusline", context: 22.2 });
+      expect(record(d)).toMatchObject({ window: 1_000_000, windowBy: "statusline", context: 22.2, contextTokens: 222_200 });
     });
 
-    test("with no statusLine the transcript writes no context, and the start then has none to forget", async () => {
+    test("with no statusLine the transcript writes the count and no share; compact and clear remove the count", async () => {
       expect(record(await run("SessionStart", { source: "startup", model: "fable" }))).toBeNull();
-      expect(record(await run("Stop", {}, USED))).toBeNull();
+      const stop = await run("Stop", {}, USED);
+      expect(record(stop)?.contextTokens).toBe(150_010);
+      expect(record(stop)?.context).toBeUndefined();
+      for (const source of ["compact", "clear"]) {
+        const d = await run("SessionStart", { source }, null, (x) => x.files.write(USAGE, stop.files.read(USAGE) ?? ""));
+        expect(record(d)?.contextTokens).toBeUndefined();
+      }
+      // Nothing on file: nothing to forget, no file.
       expect(record(await run("SessionStart", { source: "compact", model: "fable" }))).toBeNull();
     });
 
@@ -837,8 +844,9 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
       expect(record(small)?.context).toBe(25);
     });
 
-    test("resume with no stated window has no context to write", async () => {
-      expect(record(await run("SessionStart", { source: "resume", model: "opus[1m]", context_tokens: 50_000 }))).toBeNull();
+    test("resume with no stated window writes the count and no share", async () => {
+      const d = await run("SessionStart", { source: "resume", model: "opus[1m]", context_tokens: 50_000 });
+      expect(record(d)).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, contextTokens: 50_000 });
     });
   });
 
@@ -852,8 +860,9 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
       expect(record(small)?.context).toBe(75);
     });
 
-    test("no window on file, no context: honest beats guessed", async () => {
-      expect(record(await run("Stop", {}, USED))).toBeNull();
+    test("no window on file, no share: the token count alone, honest beats guessed", async () => {
+      const d = await run("Stop", {}, USED);
+      expect(record(d)).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, contextTokens: 150_010 });
     });
 
     test("PostToolUse reads it too, and still writes its tool edge", async () => {
@@ -940,11 +949,15 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
 
     test("an unchanged whole percent writes nothing", async () => {
       // On file: 15.2. The transcript says 15.0. Both round to 15, so the file is not touched.
-      const d = await run("Stop", {}, USED, (x) => seed(x, { context: 15.2 }));
+      // The count on file draws as 150k, as the transcript's 150,010 does.
+      const d = await run("Stop", {}, USED, (x) => seed(x, { context: 15.2, contextTokens: 150_400 }));
       expect(JSON.parse(d.files.read(USAGE) ?? "{}").context).toBe(15.2);
       expect(JSON.parse(d.files.read(USAGE) ?? "{}").at).toBe(NOW - 5000);
-      const moved = await run("Stop", {}, USED, (x) => seed(x, { context: 17 }));
+      const moved = await run("Stop", {}, USED, (x) => seed(x, { context: 17, contextTokens: 150_400 }));
       expect(JSON.parse(moved.files.read(USAGE) ?? "{}").context).toBe(15);
+      // A count that draws another figure is a write, even with the share unchanged.
+      const grown = await run("Stop", {}, USED, (x) => seed(x, { context: 15.2, contextTokens: 149_000 }));
+      expect(JSON.parse(grown.files.read(USAGE) ?? "{}").contextTokens).toBe(150_010);
     });
 
     test("keeps an existing file's running limits and drops the expired ones, and the file's own time", async () => {

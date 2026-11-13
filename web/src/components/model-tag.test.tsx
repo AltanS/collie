@@ -165,6 +165,48 @@ describe("ModelTag usage percent (the default)", () => {
   });
 });
 
+describe("ModelTag context with no stated window: the token count", () => {
+  const usage = { contextTokens: 222_200, limits: [{ window: "5h" as const, used: 58 }] };
+
+  it("draws the count in the context's place in Percent, in the same label and type, and says it", () => {
+    const { container } = render(<ModelTag model="claude-fable-5-2" usage={usage} usageRow="percent" />);
+    const tag = container.querySelector("[data-slot='model-tag']");
+    expect(tag?.querySelector("[aria-hidden]")?.textContent).toBe("Fable 5.2ctx222k5h58%");
+    expect([...container.querySelectorAll("[data-gauge]")].map((g) => g.getAttribute("data-gauge"))).toEqual(["context", "5h"]);
+    const count = container.querySelector("[data-slot='usage-tokens'] .tabular-nums");
+    expect(count?.textContent).toBe("222k");
+    expect(tag?.querySelector(".sr-only")?.textContent).toBe("Model Fable 5.2. Context 222k tokens. 5-hour limit 58% used");
+  });
+
+  it("is never red, whatever the count", () => {
+    const { container } = render(<ModelTag model={undefined} usage={{ contextTokens: 950_000 }} usageRow="percent" />);
+    expect(container.querySelector("[data-slot='usage-tokens']")?.textContent).toBe("ctx950k");
+    expect(container.querySelector("[data-hot]")).toBeNull();
+    expect(container.innerHTML).not.toContain("text-status-blocked");
+  });
+
+  it("draws no dot in Dots, since there is no window to take a fifth of, and still says the count", () => {
+    const { container } = render(<ModelTag model="claude-fable-5-2" usage={usage} usageRow="dots" />);
+    expect([...container.querySelectorAll("[data-gauge]")].map((g) => g.getAttribute("data-gauge"))).toEqual(["5h"]);
+    expect(container.querySelector("[data-slot='usage-tokens']")).toBeNull();
+    expect(container.querySelector(".sr-only")?.textContent).toContain("Context 222k tokens");
+    expect(render(<ModelTag model={undefined} usage={{ contextTokens: 5 }} usageRow="dots" />).container.innerHTML).toBe("");
+  });
+
+  it("a share wins over the count, and a count that is no number draws nothing", () => {
+    const { container } = render(<ModelTag model={undefined} usage={{ context: 22.2, contextTokens: 222_200 }} usageRow="percent" />);
+    expect(container.querySelector("[data-slot='usage-percent']")?.textContent).toBe("22%");
+    expect(container.querySelector("[data-slot='usage-tokens']")).toBeNull();
+    expect(render(<ModelTag model={undefined} usage={{ contextTokens: Number.NaN }} usageRow="percent" />).container.innerHTML).toBe("");
+  });
+
+  it("counts as a figure for the caller, so the model name stays beside it", () => {
+    expect(hasFigure({ contextTokens: 222_200 })).toBe(true);
+    expect(hasGauge({ contextTokens: 222_200 })).toBe(false);
+    expect(modelTagShows({ model: undefined, usage: { contextTokens: 222_200 } })).toBe(true);
+  });
+});
+
 describe("The Usage row setting reaches the tag", () => {
   const usage = { context: 42, limits: [{ window: "7d" as const, used: 81 }] };
   const stored = () => JSON.parse(localStorage.getItem("collie:dash-prefs:v1") ?? "{}");

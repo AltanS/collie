@@ -163,7 +163,17 @@ describe("usageFromStatusLine", () => {
       current_usage: { input_tokens: 2, cache_creation_input_tokens: 1_913, cache_read_input_tokens: 220_285, output_tokens: 277 },
     };
     const model = { id: "claude-fable-5-2", display_name: "Fable 5.2" };
-    expect(usageFromStatusLine(payload({ model, context_window }), NOW)?.record).toMatchObject({ context: 22, window: 1_000_000, windowBy: "statusline" });
+    expect(usageFromStatusLine(payload({ model, context_window }), NOW)?.record).toMatchObject({ context: 22, contextTokens: 222_200, window: 1_000_000, windowBy: "statusline" });
+  });
+
+  test("the count is current_usage's input, cache creation and cache read; none while current_usage is null", () => {
+    const counted = (context_window: JsonObject) => usageFromStatusLine(payload({ context_window }), NOW)?.record.contextTokens;
+    // Before the first answer and after /compact, 2.1.323 sends `current_usage: null` and `total_input_tokens: 0`.
+    expect(counted({ total_input_tokens: 0, context_window_size: 1_000_000, used_percentage: null, current_usage: null })).toBeUndefined();
+    expect(counted({ total_input_tokens: 150_010, context_window_size: 200_000 })).toBeUndefined();
+    expect(counted({ current_usage: { input_tokens: 10, cache_creation_input_tokens: 20_000, cache_read_input_tokens: 130_000, output_tokens: 900 } })).toBe(150_010);
+    expect(counted({ current_usage: { input_tokens: 10, cache_read_input_tokens: 130_000 } })).toBeUndefined();
+    expect(counted({ current_usage: { input_tokens: -1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } })).toBeUndefined();
   });
 
   test("takes the size of the context window the document states, and nothing for a size that is not a whole positive number", () => {

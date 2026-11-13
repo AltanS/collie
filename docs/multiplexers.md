@@ -477,13 +477,23 @@ Behavior details for Claude configuration changes:
   Project-level `.claude/settings.json` files are untouched.
 - Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
   preserved. `hooks uninstall claude` removes only Collie entries.
-- **Leaves your statusLine alone unless you ask.** Without a flag the install does not touch
-  `statusLine`. The context figure beside the model above the belt needs the wrap
-  (`--statusline`, below): the statusLine is the only place Claude Code states the size of a session's
-  context window, and the same model can have a different window on another account or setup. With
-  the wrap, the figure is Claude Code's own, and between two statusLine runs the hooks read the token
-  count from the end of the session transcript and divide it by that stated size. Without the wrap a
-  Claude session shows no context figure, never a guess.
+- **Wraps your statusLine, if you have one.** The install points `statusLine.command` at
+  `collie beacon statusline …`, which reads what Claude Code hands it and then runs your own command
+  with the same input. Your status line prints exactly what it printed before and exits the same way;
+  each run takes about 0.13 s longer, for Collie to start. Other keys of `statusLine` (`padding`,
+  `refreshInterval`) stay. `--no-statusline` keeps a plain statusLine as it is and gives a wrapped one
+  its own command back; `hooks uninstall claude` does the same and removes the hooks. A second install
+  changes nothing. A statusLine with its own `shell` or `args`, and a settings file that is not plain
+  JSON (comments included), are left alone. Collie never adds a statusLine: with one configured,
+  Claude Code hides most of its footer hints, `esc to interrupt` among them. Not on Windows.
+- **The context figure beside the model.** The statusLine is the only place Claude Code states the
+  size of a session's context window, and the same model can have a different window on another
+  account or setup. With the wrap, the figure is Claude Code's own percent, and between two statusLine
+  runs the hooks read the token count from the end of the session transcript and divide it by that
+  stated size. Without the wrap (no statusLine, `--no-statusline`, or Windows) the figure is the
+  token count itself, `ctx 222k`, never a guessed percent; with the Usage row on Dots there is no
+  context dot then. `collie update` does not change your settings; `collie doctor` says in its
+  `statusline-claude` row when a statusLine could be wrapped and is not.
 - **The 5-hour and 7-day windows show on their own.** They need no hook and no statusLine. While a
   Claude pane is open, the bridge reads your Claude login on this machine
   (`~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`; the Keychain on a Mac
@@ -497,17 +507,11 @@ Behavior details for Claude configuration changes:
   `COLLIE_ACCOUNT_WINDOWS=all` or a list (see [Usage windows](configure.md#usage-windows)).
   `COLLIE_ACCOUNT_WINDOWS=0` (or `[bridge] account_windows = false`) turns all of it off, and
   `collie doctor` says which in its `account-windows` row.
-- **Wrapping your statusLine is the second road.** With
-  `collie hooks install claude --statusline` Collie also wraps your own statusLine, and the windows
-  come from what Claude Code hands it. Take it if you prefer that to the login read, with
-  `COLLIE_ACCOUNT_WINDOWS=0`. Its command becomes `collie beacon statusline …`, and your script
-  still runs and prints as before. Collie never adds a statusLine, and `hooks uninstall claude`
-  puts your command back exactly. An install without the flag keeps a wrap you already have and
-  points it at the current binary. To drop a wrap you no longer want, run
-  `collie hooks uninstall claude` and then `collie hooks install claude` without `--statusline`.
-  Not on Windows.
+- **The wrap is also the second road for the windows.** The 5-hour and 7-day windows come from
+  what Claude Code hands the wrapper too. Take that road instead of the login read with
+  `COLLIE_ACCOUNT_WINDOWS=0`.
 - **To change a wrapped statusLine, unwrap it first.** Run `collie hooks uninstall claude`, edit
-  `statusLine.command`, then run `collie hooks install claude --statusline` again. The wrapped
+  `statusLine.command`, then run `collie hooks install claude` again. The wrapped
   command names the collie binary by its path, so if that binary moves, the statusLine prints
   nothing until you run the install again. `collie update` reminds you when a wrapped statusLine
   points at an older binary. To try the wrapper by hand, run it outside the multiplexer

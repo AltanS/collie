@@ -25,14 +25,23 @@ import { mergeBeacon, readUsage, writeUsage, type BeaconChange, type UsageStoreD
 // `CLAUDE_CODE_MAX_CONTEXT_TOKENS` (read in its bundle on 2026-11-13). A table of model windows was
 // tried and was wrong within a day: it read a 1M Fable session against 400k (222,200 tokens showed 55%
 // where Claude Code showed 22%) and 1M Opus and Sonnet sessions against 200k (pinned at 100% from
-// 200k tokens up). So the beacon writes a context only to a record whose window the statusLine stated,
-// and a session with no wrapped statusLine has no context dot. Honest beats guessed.
+// 200k tokens up). So the beacon writes a context share only to a record whose window the statusLine
+// stated. Honest beats guessed.
+//
+// THE COUNT NEEDS NO WINDOW. Every reading also writes the token count itself (`contextTokens`), and a
+// session whose window nobody stated shows that, `222k`, in place of the share: no wrap on Windows,
+// none where the operator has no statusLine (Collie adds none: a configured statusLine hides Claude
+// Code's footer hints), or `hooks install claude --no-statusline`. A compaction or a clear removes
+// both, and the next answer measures them again.
 //
 // THE NUMBER MATCHES CLAUDE CODE'S. Same numerator, same denominator: the statusLine's own
 // `used_percentage` lands when the wrapper runs, and between two runs the transcript reading divides
 // the newest line's tokens by the stated size. Claude Code rounds to a whole percent, Collie floors to
-// one decimal (22.2 against 22). KNOWN LIMIT: after a `/model` switch the transcript reading divides by
-// the old size until the statusLine runs again, on the next assistant message.
+// one decimal (22.2 against 22). After a `/model` switch the transcript reading divides by the old
+// size until the statusLine runs again. That is the first answer on the new model: Claude Code runs the
+// statusLine on every assistant message, 300 ms debounced (code.claude.com/docs/en/statusline, "When the
+// status line updates"), and the wrapper writes before it runs the operator's command, so the stale
+// share lasts well under a second and the statusLine's own `used_percentage` replaces it.
 //
 // ── WHAT IT COSTS ─────────────────────────────────────────────────────────────────────────────────
 //
@@ -186,12 +195,12 @@ export function takeContextReading(
     writeChange(deps, stateDirs(), input.session, input.harness, now, (existing) => {
       const dirChanged = existing?.configDir !== configDir;
       if (reading === null && !cut) return dirChanged ? { configDir } : null;
-      if (reading === null || reading.kind === "compacted") return { context: null, configDir };
-      // No stated window, no derived context. A context on file without one is the statusLine's own
-      // percent (an older Claude Code that states no size), and it stays; a configDir change is still recorded.
+      if (reading === null || reading.kind === "compacted") return { context: null, tokens: null, configDir };
+      // The count always; the share only against a stated window. With none, a context on file is the
+      // statusLine's own percent (an older Claude Code that states no size), and it stays.
       const window = statedWindow(existing);
-      if (window === undefined) return dirChanged ? { configDir } : null;
-      return { context: contextPercent(reading.tokens, window), configDir };
+      if (window === undefined) return { tokens: reading.tokens, configDir };
+      return { context: contextPercent(reading.tokens, window), tokens: reading.tokens, configDir };
     });
   } catch {
     // Same: no reading.
@@ -203,8 +212,9 @@ const SESSION_SOURCES = ["startup", "resume", "clear", "compact", "fork"] as con
 
 /**
  * Take what `SessionStart` says: a context that is unknown after a `compact` or a `clear`, and a context
- * known at once on `resume` and `fork` when the input carries `context_tokens` and the statusLine
- * stated the window before. The start's `model` names no window, so it is not read. NEVER THROWS.
+ * known at once on `resume` and `fork` when the input carries `context_tokens`: the count, and the
+ * share too when the statusLine stated the window before. The start's `model` names no window, so it
+ * is not read. NEVER THROWS.
  */
 export function takeSessionStart(
   deps: ContextReadingDeps,
@@ -215,16 +225,19 @@ export function takeSessionStart(
   try {
     const source = SESSION_SOURCES.find((name) => name === input.source);
     if (source === undefined) return;
-    const tokens = input.contextTokens !== undefined && Number.isFinite(input.contextTokens) && input.contextTokens >= 0 ? input.contextTokens : undefined;
+    const tokens = input.contextTokens !== undefined && Number.isFinite(input.contextTokens) && input.contextTokens >= 0 ? Math.round(input.contextTokens) : undefined;
     const configDir = customClaudeConfigDir(deps.ctx.env, deps.ctx.home);
     writeChange(deps, stateDirs(), input.session, input.harness, now, (existing) => {
       const window = statedWindow(existing);
-      // The context is unknown until the next assistant message measures it.
-      const forgotten = (source === "compact" || source === "clear") && existing?.context !== undefined;
-      const resumed = (source === "resume" || source === "fork") && tokens !== undefined && window !== undefined;
-      const context = forgotten ? null : resumed ? contextPercent(tokens, window) : undefined;
       const dirChanged = existing?.configDir !== configDir;
-      return context === undefined && !dirChanged ? null : { context, configDir };
+      // The context is unknown until the next assistant message measures it.
+      if (source === "compact" || source === "clear") {
+        const held = existing?.context !== undefined || existing?.contextTokens !== undefined;
+        return held || dirChanged ? { context: null, tokens: null, configDir } : null;
+      }
+      const resumed = (source === "resume" || source === "fork") && tokens !== undefined;
+      if (!resumed) return dirChanged ? { configDir } : null;
+      return window === undefined ? { tokens, configDir } : { context: contextPercent(tokens, window), tokens, configDir };
     });
   } catch {
     // No reading.

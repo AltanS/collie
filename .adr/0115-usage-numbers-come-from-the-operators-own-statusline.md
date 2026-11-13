@@ -148,10 +148,23 @@ text above stays as written.
   transcript reading counts). So the table, the `[1m]` rule and the start's window are gone: the
   transcript reading divides only by a size the wrapped statusLine stated (`windowBy: "statusline"`),
   and a session without the wrap shows no context. The bridge drops a stored window that the
-  statusLine did not state, and the context counted against it. Known limit: after `/model` the
-  transcript reading divides by the old size until the statusLine runs again, on the next answer.
+  statusLine did not state, and the context counted against it. After `/model` the transcript reading
+  divides by the old size until the statusLine runs again: Claude Code runs it on every assistant
+  message, 300 ms debounced, so the stale share lasts well under a second and the statusLine's own
+  `used_percentage` replaces it.
+- **2026-11-13, later: the token count where no window is stated, and the wrap by default.** The owner's
+  call, both. (1) Every reading also keeps the context's token count (`contextTokens`, the same
+  numerator), and where no window was stated the phone draws it in the percentage's place, `ctx 222k`,
+  never red; in Dots there is no context dot then, because a dot is a fifth of a window. The journal
+  harnesses follow the same rule: a model no catalog names shows its count. (2) `hooks install claude`
+  wraps a plain statusLine by default; `--no-statusline` keeps or restores the operator's command, and
+  `--statusline` is accepted and changes nothing. Still no statusLine is ever added: a configured one
+  hides Claude Code's footer hints (code.claude.com/docs/en/statusline), so a person with none keeps
+  their footer and sees the token count. Windows stays unwrapped. `collie update` writes no settings,
+  so an older install keeps its plain statusLine until `hooks install claude` runs; `doctor` names it
+  in a `statusline-claude` row (warn, with the install and its undo as the remedy).
 - **The 5-hour and 7-day windows still come only from a wrapped statusLine.** Until another source is
-  decided, an operator without `--statusline` sees no windows (and, since 2026-11-13, no context dot). Altan's call.
+  decided, an operator without `--statusline` sees no windows (since 2026-11-13 the wrap is the default, below). Altan's call.
   Candidate, explicitly not built: Claude Code's own `/api/oauth/usage` endpoint with the operator's
   token, which is the credential road the Context above declined.
 - **2026-10-24, later: the windows now come from [ADR 0118](./0118-account-windows-come-from-the-vendors-usage-endpoint-with-the-operators-own-login.md)'s
