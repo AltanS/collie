@@ -224,6 +224,15 @@ export class InsideHub {
     return this.drafts.get(part.partId) ?? null;
   }
 
+  /**
+   * Whether the pane's part holds a question open (`ask.open` with no `ask.close` yet): a dialog stands
+   * in the session. A Deliver now never goes then (spec 05). False with no part.
+   */
+  askOpen(address: PaneAddress): boolean {
+    const part = this.registry.partOf(address);
+    return part !== null && (this.asks.get(part.partId)?.size ?? 0) > 0;
+  }
+
   /** The reason a part gave with `failed`, or null. */
   failReasonOf(id: string): string | null {
     const entry = this.queue.get(id);

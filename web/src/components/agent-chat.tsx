@@ -64,7 +64,7 @@ import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
-import { cancelHeldSend, cancelWalky, dropWalky, refreshNow, setWalkyOff } from "@/lib/api";
+import { cancelHeldSend, cancelWalky, deliverWalky, dropWalky, refreshNow, setWalkyOff } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
@@ -486,6 +486,15 @@ export function AgentChat({
   // The pane menu's row, a Chat card's tap and an id chip's tap all read it, so no tap opens a sheet the
   // menu would not offer.
   const messagesSheet = agent !== undefined;
+  // Deliver now (M99 spec 05) on a held message of a linked session; `deliverOffered` below says where.
+  const onDeliverNow = useCallback(
+    async (id: string) => {
+      const end = await deliverWalky(paneId, id, scope);
+      revalidator.revalidate();
+      return end;
+    },
+    [paneId, scope, revalidator],
+  );
   const { lead: crewLead } = useCrew();
   const walkySelf = paneAddress(paneId, scope, crewLead, agent?.instance);
   // The live panes a walky talky message names its sessions from, and the opener a name chip uses: the
@@ -1936,6 +1945,9 @@ export function AgentChat({
   // The same fact for the structural writes: the tab and pane sheets (rename, close, focus) take it
   // as `savedCopy`, and the create hook above reads it through the ref. Nothing saved can act.
   const savedCopyWrites = actsDisabledByCache || !paneLive;
+  // Deliver now (M99 spec 05) on a held message of a linked session: a write, behind the gates Reply rides, and on
+  // this machine's own panes only, like Drop (a member's message is delivered on that machine).
+  const deliverOffered = agent?.linked === true && isLead(scope) && !readOnly && !savedCopyWrites && hostBlock === undefined && !gone;
   structuralWritesOff.current = savedCopyWrites;
 
   // ── PINNED MESSAGES (M90) ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -3495,6 +3507,8 @@ export function AgentChat({
                     onToggle: () => setDrawer(drawer === "display" ? null : "display"),
                   }}
                   onSent={onSent}
+                  walkyLinked={deliverOffered}
+                  onDeliverNow={deliverOffered ? onDeliverNow : undefined}
                   // The held mark above the box (M62 spec 03) opens the Messages sheet, from the top.
                   onOpenMessages={
                     messagesSheet
@@ -3827,6 +3841,8 @@ export function AgentChat({
               return t("walky.sheet.takeBackFailed", { error: describeThrownError(thrown) });
             }
           }}
+          linked={deliverOffered}
+          onDeliverNow={deliverOffered ? onDeliverNow : undefined}
           // The session's walky talky switch (M89 spec 04): a write, behind the gates Reply rides, on an agent pane only.
           walkyOff={agent?.walkyOff === true}
           onWalkyOff={

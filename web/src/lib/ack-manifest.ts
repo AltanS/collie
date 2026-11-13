@@ -92,6 +92,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The pane owner's Drop on a held walky talky message (M62 spec 03): the row's receipt turns to `dropped by the pane's owner` on the next read and the held mark goes; an `already typed` answer and a failed call land as a line under the row.",
   },
+  deliverWalky: {
+    channel: "inline",
+    why: "The pane owner's Deliver now on a message held for their draft (M99 spec 05): the button spins while the call runs, a delivery shows the note \"Message delivered. Your text stays here.\" over the box and the row's receipt reads delivered with the text kept; a refusal lands as a line on the mark or under the row, because the message still waits.",
+  },
   setWalkyOff: {
     channel: "inline",
     why: "The walky talky switch in a pane's Messages sheet (M89 spec 04): the switch itself is the receipt, it holds the new place while the call runs and the pane row's flag then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",

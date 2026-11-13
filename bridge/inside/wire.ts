@@ -130,7 +130,12 @@ export type WireEvent =
 
 /** A command the bridge hands a part. `text` for prompt, mail and steer; `ask` and `decision` for an answer. */
 export type WireCommand =
-  | { readonly id: string; readonly kind: "prompt" | "mail" | "steer"; readonly text: string }
+  | { readonly id: string; readonly kind: "prompt" | "steer"; readonly text: string }
+  /**
+   * `overDraft`: the person chose Deliver now (M99 spec 05), so the part submits the mail without reading
+   * the box; their draft stays where it is. Absent on every other mail, which a draft sends back.
+   */
+  | { readonly id: string; readonly kind: "mail"; readonly text: string; readonly overDraft?: true }
   | { readonly id: string; readonly kind: "answer"; readonly ask: string; readonly decision: Decision }
   | { readonly id: string; readonly kind: "draft" };
 
@@ -326,7 +331,8 @@ export function parseCommand(text: string): WireCommand | WireRefusal {
     } else {
       const commandText = asJsonString(row.text);
       if (commandText === undefined) throw new Refused("bad text");
-      command = { id, kind, text: commandText };
+      // Only a literal `true` on a mail is Deliver now (spec 05); anywhere else the field is not read.
+      command = kind === "mail" && row.overDraft === true ? { id, kind, text: commandText, overDraft: true } : { id, kind, text: commandText };
     }
     const fault = checkCommand(command);
     if (fault !== null) throw new Refused(fault);

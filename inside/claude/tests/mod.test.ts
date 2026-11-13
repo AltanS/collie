@@ -122,6 +122,16 @@ describe('the Collie mod', () => {
     expect(events(held.wire).filter((e) => e?.cmd === 'req-00000021').map((e) => [e?.kind, e?.reason])).toEqual([['taken', undefined], ['failed', 'draft']])
   })
 
+  test('a mail the person chose to deliver over their draft goes in, the draft standing', async ($, on) => {
+    // The box holds 'half a thought' (the world's default): a plain mail would be sent back.
+    const over = JSON.stringify({ wire: 1, id: 'req-00000023', kind: 'mail', text: 'hello', overDraft: true })
+    const { clock, wire, submitted } = world(on, { commands: [over] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    expect(submitted).toEqual(['hello'])
+    expect(events(wire).filter((e) => e?.cmd === 'req-00000023').map((e) => e?.kind)).toEqual(['taken', 'sent'])
+  })
+
   test('a mail over an empty box goes in as the person\'s words', async ($, on) => {
     const { clock, wire, submitted } = world(on, { box: '', commands: [JSON.stringify({ wire: 1, id: 'req-00000022', kind: 'mail', text: 'hello' })] })
     await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })

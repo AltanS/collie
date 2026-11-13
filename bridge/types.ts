@@ -304,6 +304,13 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    */
   walkyOff?: true;
   /**
+   * True when the pane is linked (M99 spec 15): the inside wire is on and a live part of the pane declares
+   * what a send needs, so a plain message goes by data (`bridge/surface/path.ts` `isLinked`). Present only
+   * then, never `false`. In a crew a member's field reaches the phone through the lead unchanged; an older
+   * member sends none, and its panes read as not linked.
+   */
+  linked?: true;
+  /**
    * Which member of the crew this pane lives on — the `?h=` value completing the `(host, session,
    * paneId)` address (CREW_PROTOCOL.md §4). Present exactly when {@link SnapshotResponse.servers}
    * is; absent on every solo snapshot (§11). Pane ids are only unique per machine, which is why a

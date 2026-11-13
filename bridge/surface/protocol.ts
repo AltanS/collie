@@ -2541,6 +2541,12 @@ interface RunState {
   phase: string;
   /** The run of a held request (M56 spec 15): its `sent` also counts under `held_sent`. */
   released?: boolean;
+  /**
+   * The run of a Deliver now (M99 spec 05, decision of 2026-11-13): the person chose to hand this
+   * WalkyTalky message to the agent by data while their own draft stays in the box. Only the data road
+   * runs it; the draft is not asked, everything else is.
+   */
+  overDraft?: boolean;
   /** The turn gate refused a command the profile never lets wait (`keys.neverHeld`): it is not held either. */
   neverHold?: boolean;
   /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
@@ -2768,10 +2774,24 @@ class Ended extends Error {
  * The Send Protocol for one bridge session. Holds no state of its own beyond what its ports hold: the
  * lock map, the gate's revisions, the request files and the ring.
  */
+/** Why a Deliver now did not go, the message still held for the draft (M99 spec 05, decision of 2026-11-13). */
+export type OverDraftMiss = "busy" | "not-linked" | "not-taken";
+
+/**
+ * How a Deliver now ended: `sent` (the part submitted it), `unknown` (taken, no word: it may have arrived,
+ * and nothing sends it again), a miss (still held), `going` (a release or another tap runs it now),
+ * `not-held` (no such request held for a draft on this pane), `ended` (its run ended it another way).
+ */
+export type OverDraftAnswer =
+  | { readonly result: "sent" | "unknown" | "going" | "not-held" | OverDraftMiss }
+  | { readonly result: "ended"; readonly outcome: string };
+
 export class SendProtocol {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly inFlight = new Map<string, Promise<SendAnswer>>();
+  /** Why a Deliver now went back to its place, for its answer (spec 05): written by its run, read once. */
+  private readonly overDraftMisses = new Map<string, OverDraftMiss>();
   /** The hold queue's view of each pane with held requests, by session and pane (M56 spec 15 review). */
   private readonly watches = new Map<string, PaneWatch>();
   /** Receipts a prompt edge may close as `effective` (M56 spec 11), oldest first. */
@@ -3248,7 +3268,7 @@ export class SendProtocol {
    * held (cancelled, already running, gone). The request file takes the pane's generation now: a session
    * id that resolved, or a /clear, since the hold is the same pane (the poll checked the agent).
    */
-  async release(id: string): Promise<SendAnswer | null> {
+  async release(id: string, overDraft = false): Promise<SendAnswer | null> {
     const holds = this.deps.holds;
     const entry = holds?.get(id) ?? null;
     if (holds === undefined || entry === null || entry.state !== "held" || this.inFlight.has(id)) return null;
@@ -3268,7 +3288,7 @@ export class SendProtocol {
     const base: SendRequest = { id, text: entry.text, mode: entry.mode, revision: entry.revision };
     const request: SendRequest = entry.draftHolds === true ? { ...base, draftHolds: true } : base;
     const target: SendTarget = { session: entry.session, paneId: entry.paneId, harness: entry.harness };
-    const work = this.run(request, record, target, true);
+    const work = this.run(request, record, target, true, overDraft);
     this.inFlight.set(id, work);
     let answer: SendAnswer;
     try {
@@ -3515,6 +3535,40 @@ export class SendProtocol {
       console.warn(`[surface] counters failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     return receipt;
+  }
+
+  /**
+   * Deliver now (M99 spec 05, decision of 2026-11-13): the person hands ONE WalkyTalky message, held for
+   * their draft, to the agent by data at once, and the draft stays in the box. Only a request held now,
+   * on this pane, marked (`draftHolds`) and held for the draft (`draft_present`) is run; it is run by the
+   * hold queue's own release, so it goes at most once: the release flips it to running in the same step
+   * as this check, and a second tap, the part's "no draft" word or the poll then find it not held. The
+   * run takes the data road only, never while a turn runs or a question is open; a miss leaves it held
+   * for the draft as before. `unknown`: the part took it and gave no word, so it may have arrived, and
+   * nothing sends it again.
+   */
+  async deliverOverDraft(session: string, paneId: string, id: string): Promise<OverDraftAnswer> {
+    const entry = this.deps.holds?.get(id) ?? null;
+    if (entry === null || entry.session !== session || entry.paneId !== paneId) return { result: "not-held" };
+    if (entry.state === "running" || this.inFlight.has(id)) return { result: "going" };
+    if (entry.state !== "held" || entry.draftHolds !== true || entry.cause !== "draft_present") return { result: "not-held" };
+    this.overDraftMisses.delete(id);
+    let answer: SendAnswer | null;
+    let miss: OverDraftMiss | undefined;
+    try {
+      answer = await this.release(id, true);
+    } finally {
+      // Read once, never left for a later run of the same id.
+      miss = this.overDraftMisses.get(id);
+      this.overDraftMisses.delete(id);
+    }
+    if (answer === null) return { result: "going" };
+    const outcome = answer.receipt?.outcome;
+    if (outcome === "sent") return { result: "sent" };
+    if (outcome === "unknown") return { result: "unknown" };
+    // Back in its place with no miss named: another send held the pane's lock.
+    if (outcome === "held") return { result: miss ?? "busy" };
+    return { result: "ended", outcome: outcome ?? "unknown" };
   }
 
   /**
@@ -3802,7 +3856,7 @@ export class SendProtocol {
    * One run of the steps. `release` marks the run of a held request (M56 spec 15): a refusal that means
    * "not yet" sends it back to its place in the queue instead of ending it.
    */
-  private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false): Promise<SendAnswer> {
+  private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false, overDraft = false): Promise<SendAnswer> {
     const own = await this.deps.profile(target.harness, target.paneId);
     // A pane where a harness is starting is that harness's pane in waiting: its shell is not the place
     // for the text, and its input box is not there yet (the launch window).
@@ -3812,6 +3866,7 @@ export class SendProtocol {
     const state: RunState = {
       ...this.bareState(request, record, target, match),
       released: release,
+      overDraft,
       starting: own === null ? expected !== null : starting !== null,
       startingNamed: own !== null && starting !== null,
     };
@@ -3869,21 +3924,31 @@ export class SendProtocol {
    */
   private async runData(state: RunState, release: boolean): Promise<SendAnswer | null> {
     const data = this.deps.data;
-    if (data === undefined) return null;
     const { request, target, record } = state;
+    // A Deliver now runs on the data road or not at all: a miss leaves the message held for the draft, as it was.
+    const over = state.overDraft === true;
+    if (data === undefined) return over ? this.overDraftMiss(state, "not-linked") : null;
     const address = { session: target.session, paneId: target.paneId };
     const pick = pickSendPath({
       enabled: data.enabled(),
       part: data.door.partOf(address),
       request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true },
     });
-    if (pick.path === "screen") return null;
+    if (pick.path === "screen") return over ? this.overDraftMiss(state, "not-linked") : null;
     const mail = request.draftHolds === true;
+    if (over) {
+      // Never while a turn runs or a question is open (a dialog), and never on a turn nobody reported:
+      // the message keeps waiting for the draft, its try not counted.
+      const turn = data.door.turnOf(address);
+      if (turn === null) return this.overDraftMiss(state, "not-linked");
+      if (turn === "running" || data.door.askOpen(address)) return this.overDraftMiss(state, "busy");
+    }
     // A draft holds a WalkyTalky message by data too (spec 05, decision of 2026-11-13): another agent's
     // words never go in over the person's draft. The part says whether the box holds one; a part that
     // cannot say, or has not said yet, leaves it unknown, and unknown takes the screen road, which reads
     // the box itself. Unknown is never taken for "no draft". A phone send (spec 03) is not asked.
-    const draft = mail ? data.door.draftOf(address) : false;
+    // A Deliver now does not ask: the person chose to deliver over the draft, and the draft is never read.
+    const draft = mail && !over ? data.door.draftOf(address) : false;
     if (draft === null) return null;
     const turn = data.door.turnOf(address);
     // A part that has not reported a turn since it bound (a bridge restart, a reload mid turn) leaves
@@ -3900,11 +3965,16 @@ export class SendProtocol {
     const commandId = this.deps.store.get(record.id)?.path === undefined ? record.id : retryCommandId(record.id, this.now(), ++this.dataRetries);
     this.deps.store.markPath(record.id, "data");
     // A WalkyTalky delivery goes as `mail`: the text is the envelope the screen road would type (spec 05).
-    const result = await sendByData(data.door, address, { id: commandId, kind: mail ? "mail" : "prompt", text: request.text }, data.limits);
+    const command = { id: commandId, kind: mail ? ("mail" as const) : ("prompt" as const), text: request.text };
+    const result = await sendByData(data.door, address, over ? { ...command, overDraft: true } : command, data.limits);
+    // Nothing reached the part: a Deliver now leaves the message where it was, and never takes the screen.
+    if (result.kind === "screen" && over) return this.overDraftMiss(state, "not-taken");
     if (result.kind === "screen") {
       this.deps.store.markPath(record.id, "screen");
       return null;
     }
+    // A part too old to know `overDraft` read the draft and submitted nothing: still held, for the draft.
+    if (result.kind === "draft" && over) return this.overDraftMiss(state, "not-taken");
     // The part found a draft in the box as it was about to submit, and submitted nothing: held again.
     if (result.kind === "draft") return this.dataDraftHold(state, release);
     if (result.kind === "sent") return this.settle(state, new Ended("sent", undefined, { framed: false }));
@@ -3918,6 +3988,15 @@ export class SendProtocol {
    * clock bounds the wait. It goes when the part says the draft is gone, at the turn's end, or on the
    * poll's release; each of those runs this road again, which asks the part's draft state first.
    */
+  /**
+   * A Deliver now that did not go (spec 05, Deliver now): the message goes back to its place, held for the
+   * draft as before, its try not counted, and the reason is kept for {@link deliverOverDraft}'s answer.
+   */
+  private overDraftMiss(state: RunState, why: OverDraftMiss): SendAnswer {
+    this.overDraftMisses.set(state.record.id, why);
+    return this.backToQueue(state, new Ended("refused", "draft_present", { detail: "The box holds a draft." }));
+  }
+
   private dataDraftHold(state: RunState, release: boolean): SendAnswer {
     const end = new Ended("refused", "draft_present", { detail: "The box holds a draft." });
     if (release) return this.backToQueue(state, end);

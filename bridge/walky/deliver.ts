@@ -94,6 +94,23 @@ export interface TakeBack {
   readonly receipt: WalkyReceipt;
 }
 
+/**
+ * How one Deliver now ended (M99 spec 05, decision of 2026-11-13), for the pane's owner:
+ *  - `delivered`: the part submitted it, the person's text untouched; `repeat`: an earlier Deliver now did;
+ *  - `may have arrived`: the part took it and gave no word; nothing sends it again;
+ *  - `busy`: a turn runs, a question is open or another send holds the pane; it keeps waiting;
+ *  - `not linked`: no part takes it by data now; `not taken`: the part did not take it; it keeps waiting;
+ *  - `not held`: it does not wait for the person's text (any more); `elsewhere`: it waits on another machine.
+ */
+export interface DeliverNow {
+  readonly target: string;
+  readonly result: "delivered" | "repeat" | "may have arrived" | "busy" | "not linked" | "not taken" | "not held" | "elsewhere";
+  readonly receipt: WalkyReceipt;
+}
+
+/** The Send Protocol's answer to a Deliver now (`SendProtocol.deliverOverDraft`), as walky reads it. */
+export type OverDraftResult = "sent" | "unknown" | "going" | "not-held" | "busy" | "not-linked" | "not-taken" | "ended";
+
 /** One pane of this bridge, as walky talky sees it. */
 export interface WalkyPane {
   readonly session: string;
@@ -153,6 +170,12 @@ export interface WalkyHost {
   sendState(sendId: string): SendResult | null;
   /** Take back a held send. */
   cancelHeld(session: string, paneId: string, sendId: string): void;
+  /**
+   * Deliver now (spec 05): hand one send held for the person's draft to the pane's part by data, the draft
+   * left in the box. The Send Protocol runs it at most once ({@link OverDraftResult}). Absent: no data
+   * road on this host, and Deliver now answers `not linked`.
+   */
+  deliverOverDraft?(session: string, paneId: string, sendId: string): Promise<OverDraftResult>;
 }
 
 /**
@@ -228,6 +251,8 @@ interface ReceiptExtra {
   readonly verified?: WalkyVerified;
   /** How the message passed the space border here (M98). */
   readonly via?: BorderVerdict | undefined;
+  /** The end of a Deliver now (spec 05). */
+  readonly overDraft?: boolean;
 }
 
 /** The deepest reply chain a message may sit in: a fifth reply in a row is refused `thread depth`. */
@@ -342,9 +367,29 @@ export function reasonOf(result: SendResult): string {
   return (result.reason ?? "refused").replace(/_/gu, " ");
 }
 
-/** What holds a send, in the receipt's words: `draft present`, or `turn running` for anything else. */
-export function heldReason(result: SendResult): "draft present" | "turn running" {
-  return result.reason === "draft_present" ? "draft present" : "turn running";
+/** The receipt's words for what holds a send (M62 spec 02; the true reason since M99 spec 05's Deliver now). */
+export const HELD_DRAFT = "draft present";
+export const HELD_TURN = "turn running";
+/** A hold the screen road made from a box it could not read as free (`not_free`, `bound`, a clean `probe_failed`). */
+export const HELD_BOX = "box not free";
+export type HeldReason = typeof HELD_DRAFT | typeof HELD_TURN | typeof HELD_BOX;
+
+/**
+ * What holds a send, in the receipt's words: the person's draft, a running turn, or a box the screen road
+ * could not read as free. Null when the Send Protocol named no cause (a request still running): the
+ * receipt keeps the reason it has. Only a draft hold may be delivered over (`deliverOverDraft`).
+ */
+export function heldReason(result: SendResult): HeldReason | null {
+  switch (result.reason) {
+    case undefined:
+      return null;
+    case "draft_present":
+      return HELD_DRAFT;
+    case "turn_running":
+      return HELD_TURN;
+    default:
+      return HELD_BOX;
+  }
 }
 
 export class WalkyDeliverer {
@@ -364,6 +409,8 @@ export class WalkyDeliverer {
    * hold queue then keeps the order.
    */
   private readonly lanes = new Map<string, Promise<void>>();
+  /** The send ids a Deliver now runs right now: their end is written with `overDraft` (spec 05). */
+  private readonly overDraftSends = new Set<string>();
 
   constructor(private readonly deps: DelivererDeps) {
     this.now = deps.now ?? Date.now;
@@ -387,7 +434,8 @@ export class WalkyDeliverer {
     const reason = receiptReason(extra.reason);
     const withReason = reason === undefined ? base : { ...base, reason };
     const withSend = extra.sendId === undefined ? withReason : { ...withReason, sendId: extra.sendId };
-    return extra.via === undefined ? withSend : { ...withSend, via: extra.via };
+    const withVia = extra.via === undefined ? withSend : { ...withSend, via: extra.via };
+    return extra.overDraft === true ? { ...withVia, overDraft: true } : withVia;
   }
 
   /** A refusal written by this bridge: nothing typed, nothing logged but the count (M62 hardening I). */
@@ -411,7 +459,9 @@ export class WalkyDeliverer {
    * A refusal carries no verdict: the message did not pass.
    */
   private next(record: LogRecord, state: WalkyReceiptState, reason?: string, sendId?: string): WalkyReceipt {
-    return this.receipt(record.message.id, record.target, state, { reason, sendId, verified: record.receipt.verified, via: state === "refused" ? undefined : record.receipt.via });
+    // The end of a Deliver now says so, whichever watcher writes it first (`deliverNow`, `settle`).
+    const overDraft = sendId !== undefined && this.overDraftSends.has(sendId) && (state === "delivered" || state === "unknown");
+    return this.receipt(record.message.id, record.target, state, { reason, sendId, verified: record.receipt.verified, via: state === "refused" ? undefined : record.receipt.via, overDraft });
   }
 
   /** Resolves when every delivery started so far has settled. For tests and a clean stop. */
@@ -1059,7 +1109,10 @@ export class WalkyDeliverer {
       // The reason already on the receipt (a restart reads it back), so a repeat writes no line.
       let said = record.receipt.state === "accepted" ? record.receipt.reason : undefined;
       while (result.outcome === "held" && this.now() < until) {
-        const why = heldReason(result);
+        // The receipt's `at` is written only here, when the reason changes: it is the time the message began
+        // to wait for this reason, which the phone's grace counts from (spec 05, Deliver now). A poll that
+        // reads the same reason writes nothing.
+        const why = heldReason(result) ?? said ?? HELD_TURN;
         if (why !== said) {
           this.deps.log.update(this.next(record, "accepted", why, sendId));
           said = why;
@@ -1185,6 +1238,57 @@ export class WalkyDeliverer {
     const written = this.next(record, "inbox-only", reason, sendId);
     this.deps.log.update(written);
     return answer("taken", this.deps.log.get(record.message.id, target)?.receipt ?? written);
+  }
+
+  /**
+   * Deliver now (M99 spec 05, decision of 2026-11-13): the pane's owner hands one message held for their
+   * draft to the agent by data, and the draft stays in the box. Only a message `accepted` with the reason
+   * {@link HELD_DRAFT}, placed on a pane of this bridge, is asked for; the Send Protocol runs it at most
+   * once under its send id, and the part never runs a command id twice. The end is written here or by the
+   * hold watcher (`settle`), whichever reads it first, once, with `overDraft`. A repeat of a Deliver now
+   * that went answers its stored receipt and sends nothing. The caller decided who may ask.
+   */
+  async deliverNow(record: LogRecord): Promise<DeliverNow> {
+    const { receipt, target } = record;
+    const answer = (result: DeliverNow["result"], newer: WalkyReceipt = receipt): DeliverNow => ({ target, result, receipt: newer });
+    if (receipt.overDraft === true) return answer("repeat");
+    if (receipt.state !== "accepted" || receipt.reason === undefined) return answer("not held");
+    // It waits for a turn now, not for the person's text: Deliver now never goes over a running turn.
+    if (receipt.reason === HELD_TURN) return answer("busy");
+    if (receipt.reason !== HELD_DRAFT) return answer("not held");
+    const { session, paneId } = record;
+    if (session === null || paneId === null) return answer("elsewhere");
+    const sendId = receipt.sendId ?? sendIdOf(record.message.id, target);
+    this.overDraftSends.add(sendId);
+    try {
+      let result: OverDraftResult;
+      try {
+        result = this.deps.host.deliverOverDraft === undefined ? "not-linked" : await this.deps.host.deliverOverDraft(session, paneId, sendId);
+      } catch (err) {
+        console.warn(`[walky] deliver now of ${record.message.id} failed: ${err instanceof Error ? err.message : String(err)}`);
+        result = "unknown";
+      }
+      if (result === "sent" || result === "unknown") {
+        // The hold watcher may have read the end already; else it is written now, once (one synchronous step).
+        if (!this.ended(record)) await this.settle(record, session, paneId, record.instance, sendId, result === "sent" ? { outcome: "sent" } : { outcome: "unknown", reason: "no_evidence" });
+        const newest = this.deps.log.get(record.message.id, target)?.receipt ?? receipt;
+        return answer(result === "sent" ? "delivered" : "may have arrived", newest);
+      }
+      const newest = this.deps.log.get(record.message.id, target)?.receipt ?? receipt;
+      switch (result) {
+        case "busy":
+          return answer("busy", newest);
+        case "not-linked":
+          return answer("not linked", newest);
+        case "not-taken":
+          return answer("not taken", newest);
+        default:
+          // `going` ends as the other run ends; `not-held` and `ended`: it waits for the draft no more.
+          return answer("not held", newest);
+      }
+    } finally {
+      this.overDraftSends.delete(sendId);
+    }
   }
 
   /** Whether the record's pane id is held by another instance now. A record from before instances never is. */

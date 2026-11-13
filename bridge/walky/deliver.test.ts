@@ -2245,6 +2245,7 @@ describe("WalkyTalky by data (M99 spec 05)", () => {
         return why === undefined ? { outcome: receipt.outcome } : { outcome: receipt.outcome, reason: why };
       },
       cancelHeld: (session, paneId, sendId) => void data.protocol.cancelHeld(session, paneId, sendId),
+      deliverOverDraft: async (session, paneId, sendId) => (await data.protocol.deliverOverDraft(session, paneId, sendId)).result,
     };
     const root = mkdtempSync(join(tmpdir(), "walky-data-"));
     roots.push(root);
@@ -2470,6 +2471,173 @@ describe("WalkyTalky by data (M99 spec 05)", () => {
       await r.service.send(send("wt_aaaaaaaaaaa5", `local/${DATA_PANE.paneId}`), operator);
       await r.service.deliverer.settled();
       expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  // ── Deliver now (spec 05, decision of 2026-11-13): the person hands one held message over their draft ──
+
+  /** The pane as the owner's route names it. */
+  function owner(r: Awaited<ReturnType<typeof linked>>) {
+    const instance = r.service.instanceOf(DATA_PANE.session, DATA_PANE.paneId);
+    if (instance === null) throw new Error("no instance for the data pane");
+    return { session: DATA_PANE.session, paneId: DATA_PANE.paneId, instance };
+  }
+
+  /** One message from the operator, held for the draft. */
+  async function heldForDraft(r: Awaited<ReturnType<typeof linked>>, id: string): Promise<string> {
+    await r.service.send(send(id, `local/${DATA_PANE.paneId}`), operator);
+    await receiptReason(r, id, "draft present");
+    expect(r.service.status(id).receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+    return sendIdOf(id, `local/${DATA_PANE.paneId}`);
+  }
+
+  async function deliverNow(r: Awaited<ReturnType<typeof linked>>, id: string) {
+    const answer = await r.service.deliverNow(id, owner(r));
+    if (!answer.ok) throw new Error(answer.error);
+    return answer.result;
+  }
+
+  test("deliver now: the message goes once, as mail marked overDraft, the draft not asked; a repeat sends nothing", async () => {
+    const r = await linked({ draft: true });
+    try {
+      releaseLikeIndex(r);
+      const sendId = await heldForDraft(r, "wt_aaaaaaaaaa61");
+      const served = r.part.serveOnce({ waitMs: 3000 });
+      const result = await deliverNow(r, "wt_aaaaaaaaaa61");
+      expect(await served).toEqual({ id: sendId, kind: "mail", text: "[walky-talky wt_aaaaaaaaaa61] from operator (cli)\nhello", overDraft: true });
+      expect(result).toMatchObject({ result: "delivered", receipt: { state: "delivered", overDraft: true, sendId } });
+      await r.service.deliverer.settled();
+      expect(r.service.status("wt_aaaaaaaaaa61").receipts[0]).toMatchObject({ state: "delivered", overDraft: true });
+      // The draft still stands as the part said; the bridge never asked for its text.
+      expect(r.data.hub.draftOf(DATA_PANE)).toBe(true);
+      // Exactly once: a second tap, a retry after a lost answer, the draft clearing and a turn end hand out nothing more.
+      expect((await deliverNow(r, "wt_aaaaaaaaaa61")).result).toBe("repeat");
+      await r.part.event("draft.state", { present: false });
+      await r.part.event("turn.end", { turn: "t61" });
+      expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now races the draft clearing by itself: one command reaches the part, never two", async () => {
+    const r = await linked({ draft: true });
+    try {
+      releaseLikeIndex(r);
+      await heldForDraft(r, "wt_aaaaaaaaaa62");
+      const served = r.part.serveOnce({ waitMs: 3000 });
+      // The tap and the part's "no draft" in the same moment: the hold queue's release takes it once.
+      const [tap] = await Promise.all([deliverNow(r, "wt_aaaaaaaaaa62"), r.part.event("draft.state", { present: false })]);
+      expect((await served)?.kind).toBe("mail");
+      expect(["delivered", "not held"]).toContain(tap.result);
+      await r.service.deliverer.settled();
+      expect(r.service.status("wt_aaaaaaaaaa62").receipts[0]?.state).toBe("delivered");
+      expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now refuses while a turn runs or a question is open; the message keeps waiting for the draft, its try not counted", async () => {
+    const r = await linked({ draft: true });
+    try {
+      const sendId = await heldForDraft(r, "wt_aaaaaaaaaa63");
+      await r.part.event("turn.start", { turn: "t63" });
+      expect((await deliverNow(r, "wt_aaaaaaaaaa63")).result).toBe("busy");
+      await r.part.event("turn.end", { turn: "t63" });
+      await r.part.event("ask.open", { ask: "perm-63", askKind: "permission", tool: "Bash", input: null });
+      expect((await deliverNow(r, "wt_aaaaaaaaaa63")).result).toBe("busy");
+      expect(r.data.holds.get(sendId)).toMatchObject({ state: "held", cause: "draft_present", tries: 0 });
+      expect(r.service.status("wt_aaaaaaaaaa63").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+      expect(r.data.hub.stateOf(sendId)).toBeNull();
+      // The question closes: now it goes.
+      await r.part.event("ask.close", { ask: "perm-63" });
+      const served = r.part.serveOnce({ waitMs: 3000 });
+      expect((await deliverNow(r, "wt_aaaaaaaaaa63")).result).toBe("delivered");
+      expect((await served)?.id).toBe(sendId);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now asks nothing for a message that waits for a turn, one already delivered, or one not held", async () => {
+    const r = await linked();
+    try {
+      await r.part.event("turn.start", { turn: "t64" });
+      await r.service.send(send("wt_aaaaaaaaaa64", `local/${DATA_PANE.paneId}`), operator);
+      await receiptReason(r, "wt_aaaaaaaaaa64", "turn running");
+      expect((await deliverNow(r, "wt_aaaaaaaaaa64")).result).toBe("busy");
+      expect(r.data.hub.stateOf(sendIdOf("wt_aaaaaaaaaa64", `local/${DATA_PANE.paneId}`))).toBeNull();
+      // Delivered by itself after the turn: no Deliver now any more.
+      const served = r.part.serveOnce({ waitMs: 3000 });
+      releaseLikeIndex(r);
+      await r.part.event("turn.end", { turn: "t64" });
+      await served;
+      await r.service.deliverer.settled();
+      expect((await deliverNow(r, "wt_aaaaaaaaaa64")).result).toBe("not held");
+      expect("overDraft" in r.service.status("wt_aaaaaaaaaa64").receipts[0]!).toBe(false);
+      const other = await r.service.deliverNow("wt_aaaaaaaaaa64", { ...owner(r), paneId: "w9:p9" });
+      expect(other.ok).toBe(false);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now with no part taking it leaves the message held for the draft, and never types", async () => {
+    const r = await linked({ draft: true });
+    try {
+      const sendId = await heldForDraft(r, "wt_aaaaaaaaaa65");
+      // The part does not poll: the command is withdrawn, nothing reached it.
+      expect((await deliverNow(r, "wt_aaaaaaaaaa65")).result).toBe("not taken");
+      expect(r.data.hub.stateOf(sendId)).toBe("withdrawn");
+      expect(r.data.holds.get(sendId)).toMatchObject({ state: "held", cause: "draft_present", tries: 0 });
+      // A part too old to know Deliver now reads the draft and sends it back: still held.
+      const old = r.part.serveOnce({ waitMs: 3000, failReason: "draft" });
+      expect((await deliverNow(r, "wt_aaaaaaaaaa65")).result).toBe("not taken");
+      expect((await old)?.kind).toBe("mail");
+      expect(r.data.holds.get(sendId)).toMatchObject({ state: "held", cause: "draft_present" });
+      // The part leaves: not linked, still held.
+      await r.part.bye();
+      expect((await deliverNow(r, "wt_aaaaaaaaaa65")).result).toBe("not linked");
+      expect(r.service.status("wt_aaaaaaaaaa65").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now that the part took with no word may have arrived: unknown, marked, and never sent again", async () => {
+    const r = await linked({ draft: true, wordMs: 300 });
+    try {
+      const sendId = await heldForDraft(r, "wt_aaaaaaaaaa66");
+      const served = r.part.serveOnce({ waitMs: 3000, silent: true });
+      const tap = deliverNow(r, "wt_aaaaaaaaaa66");
+      await served;
+      await r.part.event("taken", { cmd: sendId });
+      expect(await tap).toMatchObject({ result: "may have arrived", receipt: { state: "unknown", reason: "no evidence", overDraft: true } });
+      expect((await deliverNow(r, "wt_aaaaaaaaaa66")).result).toBe("repeat");
+      await r.part.event("draft.state", { present: false });
+      expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("the held-since time: a hold's receipt is written once per reason, and the polls in between leave its time alone", async () => {
+    const r = await linked({ draft: true });
+    try {
+      await heldForDraft(r, "wt_aaaaaaaaaa67");
+      const first = r.service.status("wt_aaaaaaaaaa67").receipts[0]!.at;
+      // The walky poll runs on (each sleep moves the clock): the receipt keeps its time.
+      for (let i = 0; i < 20; i++) await Bun.sleep(5);
+      expect(r.clock.now).toBeGreaterThan(first);
+      expect(r.service.status("wt_aaaaaaaaaa67").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present", at: first });
     } finally {
       r.data.stop();
     }

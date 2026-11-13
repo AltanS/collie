@@ -276,7 +276,7 @@ interface ComposerProps {
    * where the pane has no sheet, and then no mark is drawn.
    */
   onOpenMessages?: (() => void) | undefined;
-  /** Whether this session has the data transport (the pane read's `linked`). Deliver now on the held mark needs it. Seam: not passed yet, see `DeliverNow` in lib/walky.ts. */
+  /** Whether this session has the data transport (the pane read's `linked`). Deliver now on the held mark needs it. */
   walkyLinked?: boolean | undefined;
   /** Deliver now (the seam, `DeliverNow`). Absent: the mark has no button. */
   onDeliverNow?: DeliverNow | undefined;
@@ -1137,8 +1137,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       onDeliverNow === undefined
         ? undefined
         : async (id: string) => {
-            await onDeliverNow(id);
-            delivered();
+            // "unknown": it may have arrived, so no note says delivered; the row says the rest.
+            if ((await onDeliverNow(id)) !== "unknown") delivered();
           },
     [onDeliverNow, delivered],
   );

@@ -17,6 +17,8 @@
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 
+import { WALKY_MARK_GRACE_MS } from "./walky-grace";
+
 export type WalkyKind = "agent" | "operator";
 
 export interface WalkyFrom {
@@ -70,12 +72,13 @@ export interface WalkyReceipt {
   by: string;
   /** The Send Protocol request id, when a send was made. */
   sendId?: string;
+  /** How the message passed the space border on the bridge that owns the pane (M98). Nothing in the app reads it. */
+  via?: "in" | "reply" | "outside" | "operator" | "legacy";
   /**
-   * How a `delivered` message reached the agent: `data` is the linked transport (Deliver now), handed over
-   * as data with the input box untouched. Absent: typed into the pane, as always. SEAM: the bridge does not
-   * send it yet (deliver-now prototype), the owner's row words read it in {@link ownerStateWord}.
+   * Deliver now (M99 spec 05): the person handed this message to the agent by data while their own text stayed in
+   * the box. Only on `delivered` and `unknown`. The owner's row words read it in {@link ownerStateWord}.
    */
-  via?: "data";
+  overDraft?: true;
   /**
    * The pane address this receipt is about. A message to `all` or `<memberId>/all` yields one receipt
    * per target under the same message `id`, and this is what tells them apart.
@@ -625,7 +628,7 @@ export function ownerStateWord(receipt: WalkyReceipt): string {
         return t("walky.owner.wait", { reason: reasonWord(receipt.reason ?? "") });
     }
   }
-  if (receipt.state === "delivered" && receipt.via === "data") return t("walky.owner.deliveredData");
+  if (receipt.state === "delivered" && receipt.overDraft === true) return t("walky.owner.deliveredData");
   return stateWord(receipt);
 }
 
@@ -639,12 +642,8 @@ export function heldForPane(rows: readonly WalkyRow[], self: string | undefined)
   return rows.filter((row) => isHeld(row.receipt) && directionOf(row, self) === "received");
 }
 
-/**
- * How long a message must have waited before the mark above the box tells the owner about it. A person who
- * types a line and sends it inside this time never sees the mark: the message goes in by itself when the
- * box clears. ONE constant, for every session, linked or not, and for both reasons a message waits.
- */
-export const WALKY_MARK_GRACE_MS = 20_000;
+// The grace before the mark shows: one constant, in a module of its own so the rig reads the same number.
+export { WALKY_MARK_GRACE_MS };
 
 /** What a message waits for: the person's own unsent text, a running turn, or anything else the bridge names. */
 export type WalkyWaitReason = "text" | "busy" | "other";
@@ -683,15 +682,14 @@ export function graceLeftMs(since: number, now: number): number {
 }
 
 /**
- * SEAM (deliver-now): the call that hands one waiting message to the agent as data and leaves the person's
- * text in the box. It resolves once the bridge took the message and rejects with the reason otherwise. The
- * UI takes it as `onDeliverNow` on `WalkySheet` and on the `Composer` (which hands it to the held mark and
- * shows the note "Message delivered. Your text stays here." after it resolves), together with `linked`, the
- * pane read's `linked: true`. `agent-chat.tsx` passes none of them yet, so no session shows Deliver now: the
- * real call goes beside `dropWalky` in `lib/api.ts` and is passed where `onDrop` and `onOpenMessages` are
- * passed. `AgentView` in lib/types.ts has no `linked` field yet (`lib/solo-baseline.test.ts` pins its keys).
+ * Deliver now (M99 spec 05): the call that hands one waiting message to the agent as data and leaves the
+ * person's text in the box (`deliverWalky` in lib/api.ts). It resolves once the bridge delivered it, or with
+ * `"unknown"` when the agent took it and said nothing: it may have arrived, it is not sent again, and the row
+ * says so. It rejects with the reason when the message still waits. The UI takes it as `onDeliverNow` on
+ * `WalkySheet` and on the `Composer` (which hands it to the held mark and shows the note "Message delivered.
+ * Your text stays here." after a delivery), together with `linked`, the pane read's `linked: true`.
  */
-export type DeliverNow = (id: string) => Promise<void>;
+export type DeliverNow = (id: string) => Promise<void | "unknown">;
 
 /** How one target's take-back ended (M62 spec 03), as the bridge's cancel and drop routes answer it. */
 export type TakeBackResult = "taken" | "repeat" | "already typed" | "not held" | "elsewhere";

@@ -189,6 +189,8 @@ const AGENT_VIEW_KEYS = {
   usage: true,
   // A session turned its walky talky off (M89). Present only while it is off, so a solo golden body carries no such key.
   walkyOff: true,
+  // The session is linked (M99 spec 15). Present only while a part of the pane declares what a send needs, so a solo golden body carries no such key.
+  linked: true,
   // How many pins the pane's session holds (M90). Present only above zero, so a solo golden body carries no such key.
   pins: true,
   // A trick session's part key (M94 slice 03). Present only on a pane of `kind: "trick"`, so a solo golden body carries no such key.
@@ -323,6 +325,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "kind",
       "lastActiveAt",
       "lastSeenAt",
+      "linked",
       "model",
       "paneId",
       "paneLabel",

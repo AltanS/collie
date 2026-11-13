@@ -588,7 +588,7 @@ describe("Deliver now on a held message of a linked pane", () => {
   });
 
   it("reads a message handed over as data as delivered with the text kept, never as typed", () => {
-    const viaData: WalkyRow = { ...fixtureWalkyAgent, receipt: { ...fixtureWalkyAgent.receipt, state: "delivered", via: "data" } };
+    const viaData: WalkyRow = { ...fixtureWalkyAgent, receipt: { ...fixtureWalkyAgent.receipt, state: "delivered", overDraft: true } };
     sheet([viaData], { ...GATES, onDeliverNow: vi.fn(async () => {}) });
     expect(screen.getByText("Delivered. Your text is still in the box.")).toBeInTheDocument();
     expect(screen.queryByText(/typed into the pane/)).toBeNull();
