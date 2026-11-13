@@ -280,7 +280,9 @@ export class NotificationCoordinator<H = unknown> {
     // stay a resolve. Known limit: an agent the operator interrupts also goes `working → idle` and
     // will push. Not `isNewWork`: that one includes `blocked → idle`.
     const to: AgentStatus = from === "working" && rawTo === "idle" ? "done" : rawTo;
-    if (!this.isNotifiable(to)) {
+    // A child with a live parent reports to its parent, so its own completion never pushes; a prior
+    // blocked alert on it still resolves here, and its blocked transitions still push (ADR 0140).
+    if ((agent.parentPaneId !== undefined && to === "done") || !this.isNotifiable(to)) {
       // Resolved to a non-notifiable (or preference-disabled) state: drop a still-pending alert,
       // retract a delivered one.
       this.resolve(id);

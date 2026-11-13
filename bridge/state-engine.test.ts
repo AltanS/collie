@@ -1583,6 +1583,48 @@ describe("soleTabName and tabPosition", () => {
     expect(byId.get("p3")?.tabPosition).toBe(1);
     expect(byId.get("p1")?.tabPosition).toBe(0);
   });
+
+  test("an unpaned child carries parentPaneId and unpaned, and does not strip its parent's soleTabName", async () => {
+    const parent: MuxPane = {
+      paneId: "t1",
+      spaceId: "spA",
+      spaceLabel: "collie",
+      spaceNumber: 1,
+      tabId: "tbA1",
+      tabLabel: "Ui fixes",
+      tabNamed: true,
+      cwd: "/home/dev/collie",
+      focused: false,
+      alive: true,
+      agent: "codex",
+      status: "idle",
+    };
+    const child: MuxPane = {
+      ...parent,
+      paneId: "t2",
+      paneLabel: "audit-auth",
+      parentPaneId: "t1",
+      unpaned: true,
+    };
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () =>
+        Promise.resolve({
+          panes: [parent, child],
+          spaces: [{ spaceId: "spA", number: 1, label: "collie", focused: false, activeTabId: "tbA1", tabCount: 1, paneCount: 2 }],
+          tabs: [{ tabId: "tbA1", spaceId: "spA", number: 1, label: "Ui fixes", focused: false, paneCount: 2 }],
+        }),
+    };
+    // SAFETY: codex panes never trigger the Claude viewport scrape or Muse probe.
+    const engine = new StateEngine(stub as MuxAdapter, 1500);
+    await engine["poll"]();
+    const byId = new Map(engine.current().agents.map((a) => [a.paneId, a]));
+    expect(byId.get("t1")?.soleTabName).toBe("Ui fixes");
+    expect(byId.get("t1")?.parentPaneId).toBeUndefined();
+    expect(byId.get("t2")?.parentPaneId).toBe("t1");
+    expect(byId.get("t2")?.unpaned).toBe(true);
+    expect(byId.get("t2")?.soleTabName).toBeUndefined();
+  });
 });
 
 // Whether the space's label is a name of its own rides only when it differs from the default

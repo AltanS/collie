@@ -260,3 +260,12 @@ describe("the foreground record of a terminal (#675)", () => {
     expect(foregroundOf({ cwd: "~", name: "bash", pid: 1.5, argv: "bash" })).toEqual({ name: "bash", cwd: "~" });
   });
 });
+
+describe("the parent field of a terminal", () => {
+  test("reads a string parent and normalises null or missing to empty", () => {
+    expect(parseTerminal({ address: "t2", parent: "t1" }).parent).toBe("t1");
+    expect(parseTerminal({ address: "t2", parent: null }).parent).toBe("");
+    expect(parseTerminal({ address: "t2" }).parent).toBe("");
+  });
+});
+

@@ -1107,6 +1107,8 @@ export const it: Dictionary = {
   "home.workspaceFilter.count.other": "{count} workspace",
   "home.sidebar.shells": "Shell",
   "home.pinned.title": "Fissati",
+  "home.subagents.collapse": "Comprimi sotto-agenti ({count})",
+  "home.subagents.expand": "Espandi sotto-agenti ({count})",
   "home.pinHint.hold": "Tieni premuto un riquadro per fissarlo qui.",
   "home.pinHint.rightClick": "Fai clic destro su un riquadro per fissarlo qui.",
   "home.pinHint.dismiss": "Ignora suggerimento",

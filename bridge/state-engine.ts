@@ -298,6 +298,8 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // A finished sentence for the operator, composed server-side and carried through untouched. It is
   // presentation: nothing in this engine reads it, and it never reaches `agent` or `status` above.
   if (pane.hint) view.hint = pane.hint;
+  if (pane.parentPaneId) view.parentPaneId = pane.parentPaneId;
+  if (pane.unpaned) view.unpaned = true;
   return view;
 }
 
@@ -700,6 +702,7 @@ export class StateEngine {
       // that name (types.ts § soleTabName). Position is the pane's index in the mux listing among the
       // panes of its tab, the same arrangement `byPlace` reads.
       const tabPanes = new Map(tabs.map((t) => [t.tabId, t.paneCount]));
+      const unpanedInTab = new Map<string, number>();
       const source = new Map(panes.map((p) => [p.paneId, p]));
       const position = new Map<string, number>();
       const perTab = new Map<string, number>();
@@ -707,13 +710,15 @@ export class StateEngine {
         const i = perTab.get(p.tabId) ?? 0;
         perTab.set(p.tabId, i + 1);
         position.set(p.paneId, i);
+        if (p.unpaned) unpanedInTab.set(p.tabId, (unpanedInTab.get(p.tabId) ?? 0) + 1);
       }
       for (const v of [...agents, ...shellPanes]) {
         const pos = position.get(v.paneId);
         if (pos !== undefined) v.tabPosition = pos;
         const raw = source.get(v.paneId);
         const label = raw?.tabLabel?.trim();
-        if (tabPanes.get(v.tabId) === 1 && raw?.tabNamed === true && label) v.soleTabName = label;
+        const framedCount = (tabPanes.get(v.tabId) ?? 0) - (unpanedInTab.get(v.tabId) ?? 0);
+        if (!raw?.unpaned && framedCount === 1 && raw?.tabNamed === true && label) v.soleTabName = label;
       }
 
       const live = new Set(agents.map((a) => a.paneId));

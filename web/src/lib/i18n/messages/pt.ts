@@ -1102,6 +1102,8 @@ export const pt: Dictionary = {
   "home.workspaceFilter.count.other": "{count} workspaces",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Fixados",
+  "home.subagents.collapse": "Recolher subagentes ({count})",
+  "home.subagents.expand": "Expandir subagentes ({count})",
   "home.pinHint.hold": "Segure um painel para fixá-lo aqui.",
   "home.pinHint.rightClick": "Clique com o botão direito em um painel para fixá-lo aqui.",
   "home.pinHint.dismiss": "Dispensar dica",

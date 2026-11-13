@@ -195,6 +195,10 @@ const AGENT_VIEW_KEYS = {
   view: true,
   // Whether the space's label is a name of its own (M98). Present only when the adapter's word differs from the default, so a solo golden body carries no such key.
   workspaceNamed: true,
+  // Not crew dimensions: herdr-core parent-child terminal link and unpaned flag (ADR 0140). Present
+  // only when a live local parent exists, so no solo golden byte moved.
+  parentPaneId: true,
+  unpaned: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -323,6 +327,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "model",
       "paneId",
       "paneLabel",
+      "parentPaneId",
       "pins",
       "progress",
       "readableLines",
@@ -341,6 +346,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "terminalTitleStale",
       "todos",
       "turnId",
+      "unpaned",
       "usage",
       "view",
       "walkyOff",
