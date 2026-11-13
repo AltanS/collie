@@ -440,6 +440,7 @@ describe("collie doctor — the contract", () => {
       // Windows only, and this suite runs on the real host.
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
+      "statusline-claude",
       "beacons",
       "skill-walky-talky",
       "account-windows",
@@ -1969,6 +1970,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "mux",
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
+      "statusline-claude",
       "beacons",
       "skill-walky-talky",
       "account-windows",
