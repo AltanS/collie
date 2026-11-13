@@ -1,5 +1,6 @@
-/* Presentation-only rules for the states playground. Nothing here is imported by the app: the file
-   is reachable from `src/playground/main.tsx` alone, which only `playground.html` loads. */
+/* Presentation-only rules for the design reference and the pick page. Nothing here is imported by the
+   app: the file is reachable from `src/playground/main.tsx` (design.html) and `src/pick/main.tsx`
+   (pick.html) alone, and neither page is a build input. */
 
 /* Orbitron, Audiowide and Nova Round — three dev-only auditions for the typeface switcher, loaded
    straight from the Google Fonts CDN. They stay here, never in index.css: index.css names exactly

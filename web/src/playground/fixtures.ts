@@ -1,8 +1,9 @@
-// Fixture data for the states playground — a believable herd, four rosters, three panes, so the page
+// Fixture data for the design reference — a believable herd, four rosters, three panes, so the page
 // shows what Collie looks like on a working day instead of on a two-row test snapshot.
 //
-// DEV-ONLY, like the rest of `src/playground/`: this module is only ever reached from
-// `playground.html`, which is not a build input.
+// DEV-ONLY, like the rest of `src/playground/`: this module is reached from `design.html` and the
+// pick page, which are not build inputs, and from the website's app screens, which import it by name
+// (`@/playground/fixtures`): keep the module's path and its exports' names.
 //
 // ── The rules this file keeps ────────────────────────────────────────────────────────────────────
 //

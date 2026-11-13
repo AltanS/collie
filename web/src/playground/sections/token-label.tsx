@@ -6,7 +6,7 @@
 // The bar: the theme and the half through the app's own store, the width of the column, and the chip's
 // words. `?theme=`, `?half=`, `?width=` and `?words=` set them on load.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 

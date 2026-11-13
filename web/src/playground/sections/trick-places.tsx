@@ -8,7 +8,7 @@
 // mounts the REAL components at 390 px over a store of its own, so a tap shows the busy state and the
 // receipt with no bridge.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 

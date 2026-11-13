@@ -14,7 +14,7 @@
 // them to one combination needs a bridge, a service worker and a deploy. The REDUCER is the seam, and
 // handing it an input is the same act as the app handing it one.
 //
-// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
+// DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/design.html.
 
 import { useState, type ReactNode } from "react";
 
