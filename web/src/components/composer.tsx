@@ -3838,14 +3838,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // armed, one more element is drawn inside the box (this element's positioned parent is the box's own
             // `relative` frame, in both layouts): the full inner height, on the Send side, solid in the box's fill under
             // the word and fading to nothing over the last 24px toward the text, so whole line ends go clean. It is
-            // absolute, `pointer-events-none` and `aria-hidden`: nothing in flow moves, no tap lands on it. It is above the
+            // absolute and `aria-hidden`: nothing in flow moves. It takes pointer events and has no handler, so it absorbs
+            // a tap: what it hides (Attach, the small mic, Expand) cannot be hit for the 3 seconds. The word is above it. It is above the
             // field and the small buttons it covers (z-5) and below the word (z-10), and it takes the box's corners.
             <>
               <div
                 aria-hidden="true"
                 data-slot="composer-confirm-cover"
                 className={cn(
-                  "pointer-events-none absolute inset-y-0 z-[5] w-40",
+                  "absolute inset-y-0 z-[5] w-40",
                   mirrored ? "left-0 rounded-l-xl" : "right-0 rounded-r-xl",
                   // The box's own fill: `bg-card` in the box layout, `bg-background` in the field one.
                   box

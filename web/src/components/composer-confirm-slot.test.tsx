@@ -92,12 +92,15 @@ describe("the Send slot while a confirm word is armed", () => {
         expect(word.classList.contains("shadow-md")).toBe(true);
         // The ring is gone: a cover does the hiding now.
         expect(word.className).not.toMatch(/\bring-/);
-        // The cover: one extra element in the composer's own frame, only while armed, out of flow and out of reach.
+        // The cover: one extra element in the composer's own frame, only while armed, out of flow, and absorbing taps.
         const cover = document.querySelector<HTMLElement>('[data-slot="composer-confirm-cover"]')!;
         expect(cover.getAttribute("aria-hidden")).toBe("true");
-        for (const token of ["pointer-events-none", "absolute", "inset-y-0", "z-[5]", "w-40", c.edge])
+        for (const token of ["absolute", "inset-y-0", "z-[5]", "w-40", c.edge])
           expect(cover.classList.contains(token), token).toBe(true);
         expect(cover.classList.contains(c.other)).toBe(false);
+        // It swallows taps: what it hides (Attach, the small mic, Expand) cannot be hit while it shows. The word stays above it.
+        expect(cover.classList.contains("pointer-events-none")).toBe(false);
+        expect(word.classList.contains("z-10")).toBe(true);
         expect(cover.classList.contains(c.hand === "left" ? "rounded-l-xl" : "rounded-r-xl")).toBe(true);
         // Its fill is the box's own, fading toward the text: card in the box layout, background in the field layout.
         const fill = c.layout === "box" ? "--color-card" : "--color-background";
