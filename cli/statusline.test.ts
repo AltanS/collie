@@ -152,6 +152,20 @@ describe("usageFromStatusLine", () => {
     });
   });
 
+  test("the 2026-11-13 report: a Fable session on a 1M window keeps Claude Code's own 22, and the 1M it divides by", () => {
+    // The `context_window` shape Claude Code 2.1.323 writes (code.claude.com/docs/en/statusline): 222,200 input tokens of 1M.
+    const context_window = {
+      total_input_tokens: 222_200,
+      total_output_tokens: 277,
+      context_window_size: 1_000_000,
+      used_percentage: 22,
+      remaining_percentage: 78,
+      current_usage: { input_tokens: 2, cache_creation_input_tokens: 1_913, cache_read_input_tokens: 220_285, output_tokens: 277 },
+    };
+    const model = { id: "claude-fable-5-2", display_name: "Fable 5.2" };
+    expect(usageFromStatusLine(payload({ model, context_window }), NOW)?.record).toMatchObject({ context: 22, window: 1_000_000, windowBy: "statusline" });
+  });
+
   test("takes the size of the context window the document states, and nothing for a size that is not a whole positive number", () => {
     const sized = (context_window_size: JsonValue) => usageFromStatusLine(payload({ context_window: { used_percentage: 59, context_window_size } }), NOW)?.record;
     expect(sized(400_000)).toMatchObject({ context: 59, window: 400_000, windowBy: "statusline" });
@@ -242,12 +256,12 @@ describe("collie beacon statusline", () => {
     expect(parseUsageRecord(custom.files.entries.get(usagePath)?.text ?? "")?.configDir).toBeUndefined();
   });
 
-  test("merges into a file the beacon wrote: the window it noted stays unless this reading states its own size, and the context stays unless it has its own", async () => {
+  test("merges into a file on disk: the stated window stays unless this reading states its own size, and the context stays unless it has its own", async () => {
     const { d, files } = deps({ stdin: JSON.stringify(payload({ context_window: { used_percentage: null } })) });
-    files.write(usagePath, JSON.stringify({ schemaVersion: 1, harness: "claude", at: NOW - 1, context: 17, window: 1_000_000 }));
+    files.write(usagePath, JSON.stringify({ schemaVersion: 1, harness: "claude", at: NOW - 1, context: 17, window: 1_000_000, windowBy: "statusline" }));
     await cmdBeaconStatusline(d, [token]);
     const merged = parseUsageRecord(files.entries.get(usagePath)?.text ?? "");
-    expect(merged).toMatchObject({ context: 17, window: 1_000_000, at: NOW });
+    expect(merged).toMatchObject({ context: 17, window: 1_000_000, windowBy: "statusline", at: NOW });
     expect(merged?.limits).toHaveLength(2);
     await cmdBeaconStatusline({ ...d, readStdin: () => Promise.resolve(JSON.stringify(payload())) }, [token]);
     expect(parseUsageRecord(files.entries.get(usagePath)?.text ?? "")).toMatchObject({ context: 42, window: 200_000, windowBy: "statusline" });

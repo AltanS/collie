@@ -24,9 +24,11 @@ import { mergeStatusLine, readUsage, writeUsage } from "./usage-store.ts";
 // the context window's use, and for a Pro or Max account the 5-hour and 7-day rate limit windows. It
 // is the one place the agent tells a local program the two subscription windows, so it is where the
 // phone's 5-hour and 7-day dots come from (.adr/0115). Collie never asks the vendor and never reads a
-// credential. The context dot does not need this verb: the beacon hooks read it from the session
-// transcript (`cli/context-reading.ts`). Since 2026-10-24 the wrap is OPT-IN, `hooks install claude
-// --statusline`, because rewriting an operator's statusLine is the part of the design that bites.
+// credential. It is also the one place Claude Code states the context window's size
+// (`context_window_size`), so a Claude session's context dot needs this verb: the beacon hooks read the
+// tokens from the session transcript (`cli/context-reading.ts`) but divide only by the size stated here.
+// Since 2026-10-24 the wrap is OPT-IN, `hooks install claude --statusline`, because rewriting an
+// operator's statusLine is the part of the design that bites.
 //
 // ── THE OPERATOR'S STATUSLINE IS NEVER REPLACED ───────────────────────────────────────────────────
 //
@@ -38,8 +40,8 @@ import { mergeStatusLine, readUsage, writeUsage } from "./usage-store.ts";
 //
 // A settings file with NO statusLine gets none. A statusLine is not free: with one configured, Claude
 // Code stops drawing most of its footer hints (`esc to interrupt` among them), which the phone's
-// screen readers use. So the windows come only to an operator who already chose a statusLine AND asked
-// for the wrap; a pane without one draws the model tag and the context dot.
+// screen readers use. So the windows and the context dot come only to an operator who already chose a
+// statusLine AND asked for the wrap; a pane without one draws the model tag alone.
 //
 // An install WITHOUT the flag leaves a plain statusLine alone, and re-points one that is already
 // wrapped (an operator who had the wrap keeps it, and a moved binary heals). Only a wrapped statusLine

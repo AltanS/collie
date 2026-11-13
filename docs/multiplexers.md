@@ -478,12 +478,12 @@ Behavior details for Claude configuration changes:
 - Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
   preserved. `hooks uninstall claude` removes only Collie entries.
 - **Leaves your statusLine alone unless you ask.** Without a flag the install does not touch
-  `statusLine`. You still get the context figure beside the model above the belt: the hooks read the
-  token count from the end of the session transcript, and the window size comes from the model. The
-  `[1m]` variants have 1,000,000 tokens, Fable and Mythos 400,000, Opus, Sonnet and Haiku 200,000. A model
-  Collie does not know has no figure, never a guess. The model named in the transcript wins over the one
-  at the session start, so `/model` is followed. With `--statusline` the window size Claude Code states
-  wins over all of these.
+  `statusLine`. The context figure beside the model above the belt needs the wrap
+  (`--statusline`, below): the statusLine is the only place Claude Code states the size of a session's
+  context window, and the same model can have a different window on another account or setup. With
+  the wrap, the figure is Claude Code's own, and between two statusLine runs the hooks read the token
+  count from the end of the session transcript and divide it by that stated size. Without the wrap a
+  Claude session shows no context figure, never a guess.
 - **The 5-hour and 7-day windows show on their own.** They need no hook and no statusLine. While a
   Claude pane is open, the bridge reads your Claude login on this machine
   (`~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`; the Keychain on a Mac

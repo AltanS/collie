@@ -9,10 +9,12 @@
 // agent: `collie hooks install claude` wraps the operator's OWN statusLine command, and the wrapper
 // (`collie beacon statusline`, cli/statusline.ts) writes the three numbers to one small file here
 // before it runs the operator's command and passes its output through untouched. Since 2026-10-24 the
-// context number also comes from the session transcript through the beacon hooks, with no statusLine
-// (`cli/context-reading.ts`), and the wrap is opt-in. Since 2026-10-24 the 5-hour and 7-day windows
-// come first from the vendor's usage endpoint with the operator's own login (bridge/account-windows.ts,
-// .adr/0118); a wrapped statusLine is the second road.
+// context number also comes from the session transcript through the beacon hooks
+// (`cli/context-reading.ts`), and since 2026-11-13 always against the window size the wrapped
+// statusLine stated: with the wrap off (it is opt-in) a Claude session has no context dot, because
+// nothing else states its window. Since 2026-10-24 the 5-hour and 7-day windows come first from the
+// vendor's usage endpoint with the operator's own login (bridge/account-windows.ts, .adr/0118); a
+// wrapped statusLine is the second road.
 //
 // OTHER HARNESSES WRITE NO FILE, so since 2026-10-25 their context comes from the journal: the cache
 // probe that already reads the session log for the prompt-cache chip also names the tokens the last
@@ -107,19 +109,17 @@ export interface UsageRecord extends PaneUsage {
   /** Epoch ms of the write; with kept `limits`, of the write that reported them. */
   at: number;
   /**
-   * The session's context window in tokens: the size the statusLine states, else what the model's `[1m]`
-   * suffix or the table of known models gives (`cli/context-reading.ts`), set by the SessionStart hook
-   * and corrected by the transcript's model. A writer's note to the next writer, never drawn:
-   * {@link usageAt} leaves it out. Absent when no start named a known model, and then the transcript
-   * reading writes no context.
+   * The session's context window in tokens, as Claude Code's statusLine document states it
+   * (`context_window.context_window_size`), the only window the transcript reading divides by
+   * (`cli/context-reading.ts`). A writer's note to the next writer, never drawn: {@link usageAt} leaves
+   * it out. Absent when no wrapped statusLine has run, and then the transcript reading writes no context.
    */
   window?: number;
   /**
-   * Who gave {@link window}: `statusline` for the size Claude Code's statusLine document states
-   * (exact, and it wins), or the key of the model family that `windowFromModel`'s table matched
-   * (`opus`, `fable`, `other` for a `[1m]` start on a model the table does not know). Absent on a record an
-   * older build wrote, whose window was a guess for every model but the `[1m]` ones. A writer's note,
-   * never drawn: {@link usageAt} leaves it out.
+   * Who gave {@link window}: always {@link WINDOW_BY_STATUSLINE}. Builds before 2026-11-13 also wrote a
+   * window from a table of model ids (`opus`, `fable`, `other`) or none at all, and those windows were
+   * wrong (a 1M session read against 400k or 200k): {@link parseUsageRecord} drops such a window and the
+   * context counted against it. A writer's note, never drawn.
    */
   windowBy?: string;
   /**
@@ -132,9 +132,6 @@ export interface UsageRecord extends PaneUsage {
 
 /** The largest window a record may name. A bound on a strange file, not a model's window. */
 const WINDOW_MAX = 100_000_000;
-
-/** What a `windowBy` may look like: a short lowercase key, never free text. */
-const WINDOW_BY = /^[a-z0-9-]{1,32}$/u;
 
 /** `windowBy` of a window the statusLine document stated. */
 export const WINDOW_BY_STATUSLINE = "statusline";
@@ -215,14 +212,18 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   const harness = asJsonString(root.harness);
   if (at === undefined || harness === undefined) return null;
   const record: UsageRecord = { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness.slice(0, 32), at };
+  // A window the statusLine did not state came from an older build's guess, and so did the context
+  // counted against it: neither is kept. A context with no window at all is the statusLine's own percent.
+  const guessed = root.window !== undefined && asJsonString(root.windowBy) !== WINDOW_BY_STATUSLINE;
   const context = asPercent(root.context);
-  if (context !== undefined) record.context = context;
+  if (context !== undefined && !guessed) record.context = context;
   const cost = asCost(root.cost);
   if (cost !== undefined) record.cost = cost;
   const size = asWindowSize(root.window);
-  if (size !== undefined) record.window = size;
-  const by = asJsonString(root.windowBy);
-  if (record.window !== undefined && by !== undefined && WINDOW_BY.test(by)) record.windowBy = by;
+  if (size !== undefined && !guessed) {
+    record.window = size;
+    record.windowBy = WINDOW_BY_STATUSLINE;
+  }
   const dir = asJsonString(root.configDir);
   if (dir !== undefined && dir.length <= 4096 && !hasControlChar(dir) && isAbsolute(dir)) {
     record.configDir = dir;

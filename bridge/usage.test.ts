@@ -61,28 +61,54 @@ describe("parseUsageRecord", () => {
 });
 
 describe("who gave the window", () => {
-  it("keeps a short lowercase key beside a window, and nothing else", () => {
-    expect(parseUsageRecord(record({ window: 400_000, windowBy: "fable" }))?.windowBy).toBe("fable");
-    expect(parseUsageRecord(record({ window: 400_000, windowBy: "statusline" }))?.windowBy).toBe("statusline");
-    for (const bad of ["Fable", "a b", "", "x".repeat(33), "<b>", 4]) {
-      expect(parseUsageRecord(record({ window: 400_000, windowBy: bad }))?.windowBy).toBeUndefined();
+  it("keeps only a window the statusLine stated", () => {
+    expect(parseUsageRecord(record({ context: 22.2, window: 1_000_000, windowBy: "statusline" }))).toEqual({
+      schemaVersion: 1,
+      harness: "claude",
+      at: NOW,
+      context: 22.2,
+      window: 1_000_000,
+      windowBy: "statusline",
+    });
+    expect(usageAt({ schemaVersion: 1, harness: "claude", at: NOW, context: 4, window: 400_000, windowBy: "statusline" }, NOW)).toEqual({ context: 4 });
+  });
+
+  it("drops a window an older build took from its model table, and the context counted against it", () => {
+    // The record a 2026-11-12 build wrote for a 1M Fable session: 222,200 tokens over a table's 400k.
+    const fable = parseUsageRecord(record({ context: 55.5, window: 400_000, windowBy: "fable" }));
+    expect(fable).toEqual({ schemaVersion: 1, harness: "claude", at: NOW });
+    expect(usageAt(fable!, NOW)).toBeUndefined();
+    // And one from before `windowBy`, a flat 200k guess; and any other key.
+    const others: JsonObject[] = [{}, { windowBy: "opus" }, { windowBy: "other" }, { windowBy: "Statusline" }, { windowBy: 4 }];
+    for (const by of others) {
+      const parsed = parseUsageRecord(record({ context: 100, window: 200_000, ...by }));
+      expect(parsed?.context).toBeUndefined();
+      expect(parsed?.window).toBeUndefined();
+      expect(parsed?.windowBy).toBeUndefined();
     }
-    expect(parseUsageRecord(record({ windowBy: "fable" }))?.windowBy).toBeUndefined();
-    expect(usageAt({ schemaVersion: 1, harness: "claude", at: NOW, context: 4, window: 400_000, windowBy: "fable" }, NOW)).toEqual({ context: 4 });
+    // The limits and the cost of such a record stay: only the window's own number was a guess.
+    const limits = [{ window: "5h", used: 9 }];
+    expect(parseUsageRecord(record({ context: 55.5, window: 400_000, windowBy: "fable", cost: 1.5, limits }))).toMatchObject({ cost: 1.5, limits });
+  });
+
+  it("keeps a context with no window at all: the statusLine's own percent", () => {
+    expect(parseUsageRecord(record({ context: 22 }))?.context).toBe(22);
   });
 });
 
 describe("the window note", () => {
   it("round-trips as a positive integer, a record without it still parses, and junk is dropped", () => {
-    expect(parseUsageRecord(record({ context: 4, window: 1_000_000 }))).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, context: 4, window: 1_000_000 });
+    expect(parseUsageRecord(record({ context: 4, window: 1_000_000, windowBy: "statusline" }))).toMatchObject({ context: 4, window: 1_000_000 });
     expect(parseUsageRecord(record({ context: 4 }))?.window).toBeUndefined();
-    for (const window of [0, -5, 1.5, "200000", null, 1e12]) expect(parseUsageRecord(record({ context: 4, window }))?.window).toBeUndefined();
+    for (const window of [0, -5, 1.5, "200000", null, 1e12]) {
+      expect(parseUsageRecord(record({ context: 4, window, windowBy: "statusline" }))?.window).toBeUndefined();
+    }
   });
 
   it("is never drawn: the phone gets the context and the limits only", () => {
-    const parsed = parseUsageRecord(record({ context: 4, window: 200_000 }));
+    const parsed = parseUsageRecord(record({ context: 4, window: 200_000, windowBy: "statusline" }));
     expect(usageAt(parsed!, NOW)).toEqual({ context: 4 });
-    expect(usageAt(parseUsageRecord(record({ window: 200_000 }))!, NOW)).toBeUndefined();
+    expect(usageAt(parseUsageRecord(record({ window: 200_000, windowBy: "statusline" }))!, NOW)).toBeUndefined();
   });
 });
 

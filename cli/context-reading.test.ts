@@ -17,7 +17,7 @@ describe("context-reading configDir tracking", () => {
     const customDeps = { files: customFiles, uid: 1000, ctx: context({ CLAUDE_CONFIG_DIR: CUSTOM_ROOT }) };
     takeSessionStart(
       customDeps,
-      { session: SESSION, harness: "claude", source: "startup", model: undefined, contextTokens: undefined },
+      { session: SESSION, harness: "claude", source: "startup", contextTokens: undefined },
       () => [STATE],
       NOW,
     );
@@ -28,26 +28,16 @@ describe("context-reading configDir tracking", () => {
       configDir: CUSTOM_ROOT,
     });
 
+    // The default dir on a start with nothing to say writes no file at all: a start names no window.
     const defaultFiles = fakeFiles({});
     const defaultDeps = { files: defaultFiles, uid: 1000, ctx: context({ CLAUDE_CONFIG_DIR: `${HOME}/.claude` }) };
-    takeSessionStart(
-      defaultDeps,
-      { session: SESSION, harness: "claude", source: "startup", model: "claude-opus-5-5", contextTokens: undefined },
-      () => [STATE],
-      NOW,
-    );
-    expect(parseUsageRecord(defaultFiles.read(USAGE) ?? "")).toEqual({
-      schemaVersion: 1,
-      harness: "claude",
-      at: NOW,
-      window: 200_000,
-      windowBy: "opus",
-    });
+    takeSessionStart(defaultDeps, { session: SESSION, harness: "claude", source: "startup", contextTokens: undefined }, () => [STATE], NOW);
+    expect(defaultFiles.read(USAGE)).toBeNull();
 
     // A default SessionStart on a session that previously had a custom configDir clears it even without a model.
     takeSessionStart(
       { files: customFiles, uid: 1000, ctx: context({}) },
-      { session: SESSION, harness: "claude", source: "startup", model: undefined, contextTokens: undefined },
+      { session: SESSION, harness: "claude", source: "startup", contextTokens: undefined },
       () => [STATE],
       NOW + 1000,
     );
@@ -59,7 +49,7 @@ describe("context-reading configDir tracking", () => {
     const transcript = join(customRoot, "projects", "-x", "session.jsonl");
     const files = fakeFiles({
       [transcript]: `${JSON.stringify({ type: "assistant", message: { model: "claude-opus-5-5", usage: { input_tokens: 50_000 } } })}\n`,
-      [USAGE]: JSON.stringify({ schemaVersion: 1, harness: "claude", at: NOW - 1000, window: 200_000 }),
+      [USAGE]: JSON.stringify({ schemaVersion: 1, harness: "claude", at: NOW - 1000, window: 200_000, windowBy: "statusline" }),
     });
     const deps = { files, uid: 1000, ctx: context({ CLAUDE_CONFIG_DIR: customRoot }) };
     takeContextReading(deps, { session: SESSION, transcriptPath: transcript, harness: "claude" }, () => [STATE], NOW);
@@ -68,7 +58,7 @@ describe("context-reading configDir tracking", () => {
       harness: "claude",
       at: NOW,
       window: 200_000,
-      windowBy: "opus",
+      windowBy: "statusline",
       context: 25,
       configDir: CUSTOM_ROOT,
     });

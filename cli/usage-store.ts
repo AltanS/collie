@@ -19,7 +19,8 @@ import type { Files } from "./sys.ts";
 // ONE FILE, TWO WRITERS. The statusLine wrapper (`cli/statusline.ts`, with `--statusline`) and the beacon
 // hooks (`cli/context-reading.ts`) both write a session's file, and each knows different things: the
 // wrapper has the context, the two subscription windows and the window size Claude Code states, the
-// beacon has the context and the window size its model table gives. Neither may erase what only the other knows, so each writes through a merge
+// beacon has the context it reads from the transcript against that stated size. Neither may erase what
+// only the other knows, so each writes through a merge
 // here: it reads the file that is there, replaces its own fields and keeps the rest.
 
 /** What a writer needs: the disk, and the uid a folder must belong to (absent off POSIX). */
@@ -47,18 +48,14 @@ function liveLimits(record: UsageRecord | null, now: number): UsageLimit[] {
 /** What the beacon hooks know. `null` removes the context; absent leaves it as it is. */
 export interface BeaconChange {
   readonly context?: number | null | undefined;
-  /** The session's window in tokens. Absent keeps the one on file. */
-  readonly window?: number | undefined;
-  /** Who gave `window` (`UsageRecord.windowBy`). Set with the window; a window on file keeps its own. */
-  readonly windowBy?: string | undefined;
   /** The non-default `CLAUDE_CONFIG_DIR` this session runs under. Absent clears any custom dir on file. */
   readonly configDir?: string | undefined;
 }
 
 /**
  * The record the beacon hooks write, or null when the file is already right. The beacon replaces the
- * context (or removes it), may set the window, and keeps the window and the running limits it did not
- * report. A record keeps its `at` while it carries kept limits: the bridge picks the newest window
+ * context (or removes it), and keeps the window the statusLine stated and the running limits it did
+ * not report. A record keeps its `at` while it carries kept limits: the bridge picks the newest window
  * across sessions by `at`, and limits are not newer for being carried along. An unchanged whole
  * percent is not a change, so the hot path writes nothing.
  */
@@ -72,18 +69,14 @@ export function mergeBeacon(existing: UsageRecord | null, harness: string, now: 
   };
   const context = change.context === undefined ? existing?.context : (change.context ?? undefined);
   if (context !== undefined) record.context = context;
-  const window = change.window ?? existing?.window;
-  if (window !== undefined) record.window = window;
-  const windowBy = change.window === undefined ? existing?.windowBy : change.windowBy;
-  if (window !== undefined && windowBy !== undefined) record.windowBy = windowBy;
+  if (existing?.window !== undefined) record.window = existing.window;
+  if (existing?.windowBy !== undefined) record.windowBy = existing.windowBy;
   if (change.configDir !== undefined) record.configDir = change.configDir;
   if (limits.length > 0) record.limits = limits;
   // The cost is the wrapper's alone: the beacon keeps what is on file.
   if (existing?.cost !== undefined) record.cost = existing.cost;
   if (
     existing !== null &&
-    existing.window === record.window &&
-    existing.windowBy === record.windowBy &&
     existing.configDir === record.configDir &&
     (existing.context === undefined ? record.context === undefined : record.context !== undefined && Math.round(existing.context) === Math.round(record.context)) &&
     (existing.limits?.length ?? 0) === limits.length
@@ -94,8 +87,8 @@ export function mergeBeacon(existing: UsageRecord | null, harness: string, now: 
 }
 
 /**
- * The record the statusLine wrapper writes: its own context and limits, with the window the beacon
- * noted kept. A reading without a context (early in a session) or without limits (an API-key
+ * The record the statusLine wrapper writes: its own context, limits and window size, each kept from
+ * the file when this run states none. A reading without a context (early in a session) or without limits (an API-key
  * session) keeps what is on file for that part, as long as it is still running.
  */
 export function mergeStatusLine(existing: UsageRecord | null, reading: UsageRecord, now: number): UsageRecord {
@@ -104,7 +97,7 @@ export function mergeStatusLine(existing: UsageRecord | null, reading: UsageReco
   if (context !== undefined) record.context = context;
   const window = reading.window ?? existing?.window;
   if (window !== undefined) record.window = window;
-  // A size the statusLine states wins over what a start or a table gave; without one, the note on file stays with its window.
+  // The size this run states; without one, the size an earlier run stated stays.
   const windowBy = reading.window === undefined ? existing?.windowBy : reading.windowBy;
   if (window !== undefined && windowBy !== undefined) record.windowBy = windowBy;
   if (reading.configDir !== undefined) record.configDir = reading.configDir;
