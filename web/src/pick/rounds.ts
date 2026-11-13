@@ -5,7 +5,9 @@ import type { PickRoundDef } from "./pick-page";
 
 export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 
-const REGISTRY = {} satisfies Record<string, PickRoundLoader>;
+const REGISTRY = {
+  "walky-deliver-now": () => import("./rounds/walky-deliver-now"),
+} satisfies Record<string, PickRoundLoader>;
 
 /** Every round, by id. */
 export const ROUNDS: ReadonlyMap<string, PickRoundLoader> = new Map(Object.entries(REGISTRY));

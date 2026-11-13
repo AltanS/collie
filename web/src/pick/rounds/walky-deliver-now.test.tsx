@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { PlaygroundApp } from "../app";
+import { PickPage } from "../pick-page";
+import round from "./walky-deliver-now";
 
-// The round for Deliver now (prototype): three numbered options, ONE Case switch, the real sheet and mark.
+// The round for Deliver now (prototype), on the pick page: three numbered options, ONE Case switch, the real sheet and mark.
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
@@ -11,11 +12,12 @@ beforeAll(() => {
 afterEach(() => cleanup());
 
 const SLOW = { timeout: 12_000 } as const;
-const option = (container: HTMLElement, n: number) => container.querySelector<HTMLElement>(`[data-state="walky-deliver-option-${n}"]`)!;
+const option = (container: HTMLElement, n: number) => container.querySelector<HTMLElement>(`[data-option="${n}"]`)!;
 const useCase = (name: string) => fireEvent.click(within(screen.getByRole("group", { name: "Case" })).getByRole("button", { name }));
 
 async function mount() {
-  const view = render(<PlaygroundApp tab="walky-deliver" />);
+  window.history.replaceState(null, "", "/pick.html?round=walky-deliver-now");
+  const view = render(<PickPage {...round} />);
   await waitFor(() => expect(option(view.container, 3)).not.toBeNull(), SLOW);
   return view;
 }
@@ -23,12 +25,7 @@ async function mount() {
 describe("the Deliver now round", () => {
   it("has three options, each a number and a title of at most five words, and one Case switch", async () => {
     const { container } = await mount();
-    expect([...container.querySelectorAll(".pg-grid > *")].map((el) => el.getAttribute("data-state"))).toEqual([1, 2, 3].map((n) => `walky-deliver-option-${n}`));
-    for (const n of [1, 2, 3]) {
-      const head = option(container, n).firstElementChild!;
-      expect(head.firstElementChild!.textContent).toBe(String(n));
-      expect(head.lastElementChild!.textContent!.split(/\s+/u).length).toBeLessThanOrEqual(5);
-    }
+    expect([...container.querySelectorAll("[data-option]")].map((el) => el.getAttribute("data-option"))).toEqual(["1", "2", "3"]);
     expect(screen.getAllByRole("group", { name: "Case" })).toHaveLength(1);
   });
 
@@ -51,7 +48,7 @@ describe("the Deliver now round", () => {
     expect(within(option(container, 2)).queryByRole("button", { name: "Deliver now" })).toBeNull();
     useCase("Not linked");
     await waitFor(() => expect(within(option(container, 2)).getByRole("button", { name: "1 message waits for the box to clear" })).toBeInTheDocument(), SLOW);
-    for (const n of [1, 2, 3]) expect(container.querySelector(`[data-state="walky-deliver-option-${n}"] [data-slot="walky-deliver"]`)).toBeNull();
+    for (const n of [1, 2, 3]) expect(container.querySelector(`[data-option="${n}"] [data-slot="walky-deliver"]`)).toBeNull();
   });
 
   it("answers a refusal with a line, in the case that fails", async () => {

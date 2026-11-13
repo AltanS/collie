@@ -1,4 +1,4 @@
-// "Deliver now", a design round (deliver-now prototype): a message held for a pane with a draft in its box
+// "Deliver now", a design round (deliver-now prototype), on the pick page: /pick.html?round=walky-deliver-now: a message held for a pane with a draft in its box
 // may be let in by the person's own act, when the session has the data transport (it is "linked"). Three
 // options, ONE Case switch, the real `WalkySheet` and the real held mark (`WalkyHeldStrip`).
 //
@@ -7,7 +7,7 @@
 // message turns delivered and the draft stays. The case "fails" answers with a refusal instead, and "plain"
 // is a session that is not linked, to show that nothing changed. Replay (in the bar) starts every option over.
 //
-// DEV-ONLY, unreachable from the app entry. A page rule applies (app.tsx): a number and at most five words
+// DEV-ONLY, unreachable from the app entry. The pick shell holds the rules: a number and at most five words
 // per option, nothing else on the page.
 
 import { useCallback, useMemo, useState, type CSSProperties } from "react";
@@ -20,26 +20,19 @@ import type { AgentView } from "@/lib/types";
 import { heldForPane, type WalkyRow } from "@/lib/walky";
 import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf } from "@/test/handlers";
 
-import { Round, type RoundCase, type RoundOption } from "../round";
-import { Section, type SectionDef } from "../layout";
-
-export const DEF: SectionDef = {
-  id: "walky-deliver",
-  title: "Deliver now",
-  intent: "A held message let in by the person's own act, for a linked session. Three options, one case for all.",
-};
+import type { PickCase, PickOption, PickRoundDef } from "../pick-page";
 
 /** What the fake takes: the call answers after this long. */
 const FAKE_MS = 800;
 
-const CASES: readonly RoundCase[] = [
-  { value: "one", label: "One held" },
-  { value: "three", label: "Three held" },
-  { value: "plain", label: "Not linked" },
-  { value: "long", label: "Long, 360 px" },
-  { value: "crew", label: "Crew pane" },
-  { value: "fails", label: "Fails" },
-  { value: "keyboard", label: "Keyboard up" },
+const CASES: readonly PickCase[] = [
+  { id: "one", label: "One held" },
+  { id: "three", label: "Three held" },
+  { id: "plain", label: "Not linked" },
+  { id: "long", label: "Long, 360 px" },
+  { id: "crew", label: "Crew pane" },
+  { id: "fails", label: "Fails" },
+  { id: "keyboard", label: "Keyboard up" },
 ];
 
 const DRAFT = "Also check the retry in sync.ts, and whether the empty list reaches the loader";
@@ -211,16 +204,12 @@ function Option({ option, caseValue }: { option: 1 | 2 | 3; caseValue: string })
   return <Pane key={caseValue} option={option} scenario={scenarioOf(caseValue)} />;
 }
 
-const OPTIONS: readonly RoundOption[] = [
-  { n: 1, title: "Action in the row", render: ({ caseValue }) => <Option option={1} caseValue={caseValue} /> },
-  { n: 2, title: "Action on the mark", render: ({ caseValue }) => <Option option={2} caseValue={caseValue} /> },
-  { n: 3, title: "Row action, confirm line", render: ({ caseValue }) => <Option option={3} caseValue={caseValue} /> },
+const OPTIONS: readonly PickOption[] = [
+  { n: 1, label: "Action in the row", render: (caseId) => <Option option={1} caseValue={caseId} /> },
+  { n: 2, label: "Action on the mark", render: (caseId) => <Option option={2} caseValue={caseId} /> },
+  { n: 3, label: "Row action, confirm line", render: (caseId) => <Option option={3} caseValue={caseId} /> },
 ];
 
-export function WalkyDeliverSection() {
-  return (
-    <Section def={DEF}>
-      <Round id="walky-deliver" cases={CASES} options={OPTIONS} frame={{ kind: "phone", height: 740 }} />
-    </Section>
-  );
-}
+const ROUND: PickRoundDef = { title: "Deliver now", cases: CASES, options: OPTIONS, frameHeight: 740 };
+
+export default ROUND;
