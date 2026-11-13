@@ -221,6 +221,8 @@ describe("the codex profile (M56 spec 13)", () => {
     const rows = parseProfile(rawClaude()).idle.volatile.below.footerRows!;
     const nameOf = (text: string): string | null => rows.find((row) => new RegExp(row.pattern, "u").test(text))?.name ?? null;
     expect(nameOf("  ● main")).toBe("agents-panel-main");
+    expect(nameOf("  ⏺ main")).toBe("agents-panel-main");
+    expect(nameOf("❯ ⏺ main")).toBe("agents-panel-main");
     expect(nameOf("  ◯ general-purpose   Reading profileFor in profile.ts      2m 3s · ↓ 120.1k tokens")).toBe("agents-panel-agent");
     expect(nameOf("❯ ◯ alright-it-seems  alright it seems a new issue arrived      31s · ↓ 40.2k tokens")).toBe("agents-panel-agent");
     expect(nameOf("  ↓ to manage")).toBe("agents-panel-manage-hint");

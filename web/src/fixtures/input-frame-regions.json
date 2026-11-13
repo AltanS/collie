@@ -2279,6 +2279,63 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2322-macos-agents-panel-focused--w80.txt",
+  "frame": {
+   "top": 22,
+   "prompt": 23,
+   "bottom": 24,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 25,
+    "last": 25
+   },
+   "footer": {
+    "first": 27,
+    "last": 29
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2322-macos-agents-panel-idle--w80.txt",
+  "frame": {
+   "top": 20,
+   "prompt": 21,
+   "bottom": 22,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 23,
+    "last": 24
+   },
+   "footer": {
+    "first": 26,
+    "last": 28
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2322-macos-agents-panel-working--w80.txt",
+  "frame": {
+   "top": 20,
+   "prompt": 21,
+   "bottom": 22,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 23,
+    "last": 24
+   },
+   "footer": {
+    "first": 26,
+    "last": 28
+   }
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

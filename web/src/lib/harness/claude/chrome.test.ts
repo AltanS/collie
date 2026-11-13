@@ -339,6 +339,19 @@ describe("extractAgentsFooter — the background-agents block under the statusli
   it("is empty when there is no input box at the tail", () => {
     expect(extractAgentsFooter(splitLines(parseAnsi("hello\nworld")))).toEqual([]);
   });
+
+  it("extracts the macOS ⏺ main header on idle and focused captures", () => {
+    expect(footerText(fixtureLines("claude--v2322-macos-agents-panel-idle--w80.txt"))).toEqual([
+      "⏺ main",
+      "◯ general-purpose  audit layout metrics across narrow vie… 4s · ↓ 307 tokens",
+      "◯ general-purpose  verify build types                      3s · ↓ 284 tokens",
+    ]);
+    expect(footerText(fixtureLines("claude--v2322-macos-agents-panel-focused--w80.txt"))).toEqual([
+      "❯ ⏺ main",
+      "◯ general-purpose  audit responsive layout metrics and ove… 2s · ↓ 29 tokens",
+      "◯ general-purpose  verify build types                       1s · ↓ 31 tokens",
+    ]);
+  });
 });
 
 describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
@@ -1168,6 +1181,10 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v21314-core-menu-model--w120", statusRows: 0, draft: null, stripped: 0 },
     // Claude Code 2.1.318: the weekly-limit notice fills the /model picker's top edge, one trailing `▔` (2026-11-06).
     { fixture: "v2318-model-picker-usage-notice-edge--w120", statusRows: 0, draft: null, stripped: 0 },
+    // Stock Claude Code 2.1.322 on macOS: `⏺ main` (U+23FA) over two `◯` rows, captured in an 80 x 45 tmux pane (2026-11-11).
+    { fixture: "v2322-macos-agents-panel-focused--w80", statusRows: 1, draft: null, stripped: 25 },
+    { fixture: "v2322-macos-agents-panel-idle--w80", statusRows: 2, draft: null, stripped: 27 },
+    { fixture: "v2322-macos-agents-panel-working--w80", statusRows: 2, draft: null, stripped: 27 },
     { fixture: "v21314-core-permission--w120", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-permission--w60", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-slash-list--w120", statusRows: 0, draft: "/", stripped: 24 },

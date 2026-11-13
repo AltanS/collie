@@ -1,4 +1,5 @@
-// The background-agents block Claude paints under its statusline ("● main" plus one
+// The background-agents block Claude paints under its statusline ("● main" on Linux or "⏺ main" on macOS,
+// optionally prefixed by "❯ " when focused, plus one
 // "◯ <agent>  <task>  <elapsed>" row per agent), re-surfaced as app chrome (issue #242). The strip
 // above the composer peels it off the mirror with the input box, and until this element it had no
 // surface at all.
@@ -9,7 +10,8 @@
 //
 // ONE ROW until tapped: the first agent's row, verbatim, with a `+N` for the rest. Tapping expands to
 // every row as the pane painted it. Nothing here reads the content beyond one check: a first row led
-// by "●" (Claude) or Muse's `main · ↓ to select` header is the "main" header, so the collapsed row shows
+// by "●" or "⏺" (with optional "❯ " focus prefix, Claude) or Muse's `main · ↓ to select` header is the
+// "main" header, so the collapsed row shows
 // the task under it instead. No new UI
 // string, so no translation: the button's name is the agent row itself, and `aria-expanded` carries
 // the state.
@@ -24,7 +26,7 @@ import { Icon } from "@/components/icons/icon";
 
 function isHeader(row: StyledLine): boolean {
   const text = row.segments.map((s) => s.text).join("").trim();
-  return text.startsWith("●") || isTasksPopupHeader(text);
+  return /^(?:❯\s+)?[●⏺](?:\s|$)/u.test(text) || isTasksPopupHeader(text);
 }
 
 function Row({ row, className }: { row: StyledLine; className?: string }) {
