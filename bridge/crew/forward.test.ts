@@ -25,6 +25,7 @@ import {
   ASK_BODY_READ_MAX,
 } from "./forward.ts";
 import type { JsonObject } from "../json.ts";
+import { MEMBER_DEADLINE_MS } from "../create-confirm.ts";
 import { LEAD_ROW_HEADER, LEAD_ROW_MARK, leadRowCarry } from "./launcher-rows.ts";
 import { crewDeviceOf } from "./peer-gate.ts";
 import { HISTORY_READ_BUDGET_MS } from "../mux/herdr-core/adapter.ts";
@@ -1105,9 +1106,10 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
     }
   });
 
-  test("a create's budget is above the member's own waits: its create call, its look, and its wait for the new shell (M100 spec 04)", () => {
-    // 5 s for the multiplexer's create + 4 s for the look in the snapshot + 5 s for the shell to draw.
-    expect(CREATE_WRITE_BUDGET_MS).toBeGreaterThan(5000 + 4000 + 5000);
+  test("a create's budget sits above the member's own deadline, which answers first (M100 spec 04)", () => {
+    // The member's steps add up to more than any budget; the member's one deadline is what ends its wait,
+    // and the lead gives it room for the link on top. The run itself is driven in create-unconfirmed.test.ts.
+    expect(CREATE_WRITE_BUDGET_MS).toBeGreaterThan(MEMBER_DEADLINE_MS);
     // And inside the phone's own 20 s mutation budget, so the lead's deadline still fires first.
     expect(CREATE_WRITE_BUDGET_MS).toBeLessThan(20_000);
     expect(budgetOf("write", "launch")).toBe(CREATE_WRITE_BUDGET_MS);

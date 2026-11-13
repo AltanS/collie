@@ -1559,7 +1559,10 @@ never crosses a crew link.
   the new shell to draw (5 s) before it types. The 5 s write budget made the lead give up inside the
   member's own wait, read `write_outcome_unknown` over a pane the member then made, and the next tap
   made a second agent. The budget is the member's own bound (`LAUNCH_BUDGET_MS`,
-  `bridge/create-confirm.ts`), still inside the phone's 20 s. The three routes now take an optional
+  `bridge/create-confirm.ts`), still inside the phone's 20 s. The member holds one deadline of its
+  own on the whole run (`MEMBER_DEADLINE_MS`, 15 s, below the lead's 18 s): past it the member answers
+  `write_outcome_unknown` at once and the run goes on, settling its receipt as the pane or as unknown,
+  so a repeat with the same id replays, joins or answers unknown. The three routes now take an optional
   `requestId` in the body, like `launch` since 1.19.0 (additive-optional, §7.1; the member keeps a
   receipt per id and answers a repeat with the first pane), and an unknown outcome on the member
   itself is the same 504 `write_outcome_unknown` the lead gives. Lead-local budget, so no version

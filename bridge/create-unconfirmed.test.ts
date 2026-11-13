@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { AuditLog } from "./audit.ts";
-import { CONFIRM_BOUND_MS, CONFIRM_POLL_MS, LAUNCH_BUDGET_MS, knownBefore, lookForCreated } from "./create-confirm.ts";
+import {
+  CONFIRM_BOUND_MS,
+  CONFIRM_POLL_MS,
+  LAUNCH_BUDGET_MS,
+  MEMBER_DEADLINE_MS,
+  knownBefore,
+  lookForCreated,
+  type CreateWanted,
+  type KnownBefore,
+} from "./create-confirm.ts";
 import type { JsonObject } from "./json.ts";
 import { isUnsettled, LAUNCH_RECEIPTS_FILE, LaunchReceiptStore, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
 import { createTab, createWorkspace, launch } from "./server.ts";
@@ -23,6 +32,8 @@ import {
   type MuxOutcome,
   type MuxPane,
   type MuxSnapshot,
+  type MuxSpace,
+  type MuxTab,
   type MuxSpaceRequest,
   type MuxTabRequest,
 } from "./mux/types.ts";
@@ -37,6 +48,10 @@ import {
 //      does not is the plain failure and the id may run again; one nobody can look up is `unknown`, a 504
 //      the phone reads as the lead's own, and the same id then starts nothing.
 //   4. On start a pending receipt older than the launch budget reads `unknown`.
+//   5. The look's "before" is a fresh snapshot, a pane that reports no folder or carries another label is
+//      not named, and a pane found by the look is typed into only when it reads as a shell.
+//   6. The member holds its own deadline: past it the answer is unknown at once and the run goes on.
+//   7. A throw, and a pane that could not be closed, never leave a receipt `pending` or forgotten.
 
 const ID = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
 const ID2 = "1c0f7b2d-4a3e-4d6f-9b8c-2e3f4a5b6c7d";
@@ -47,35 +62,90 @@ function pane(over: Partial<MuxPane> & Pick<MuxPane, "paneId" | "spaceId" | "tab
   return { spaceLabel: over.spaceId, spaceNumber: 1, cwd: "/home/op/app", focused: false, alive: true, agent: "shell", ...over } as MuxPane;
 }
 
-function snap(panes: MuxPane[]): MuxSnapshot {
-  // SAFETY: the look reads `panes` and nothing else of a snapshot.
-  return { panes, spaces: [], tabs: [] } as MuxSnapshot;
+/** A snapshot of `panes`, with the space and tab labels the multiplexer would report when the test gives them. */
+interface Labels {
+  spaces?: Array<[string, string]>;
+  tabs?: Array<[string, string]>;
 }
 
-function clock() {
-  let ms = 0;
+function snap(panes: MuxPane[], labels: Labels = {}): MuxSnapshot {
+  const spaces = (labels.spaces ?? []).map(([spaceId, label]) => ({ spaceId, label }));
+  const tabs = (labels.tabs ?? []).map(([tabId, label]) => ({ tabId, label }));
+  const rows: Pick<MuxSnapshot, "panes"> & { spaces: Partial<MuxSpace>[]; tabs: Partial<MuxTab>[] } = { panes, spaces, tabs };
+  // SAFETY: the look reads `panes`, and the `spaceId`/`tabId` and `label` of the spaces and tabs listed here.
+  return rows as MuxSnapshot;
+}
+
+/**
+ * A clock that only moves when every step is waiting on it. `sleep` parks a timer; `run` lets all that can
+ * run, run, then jumps to the earliest timer, until the promise it drives has answered. Nothing here waits in
+ * real time, so a create that takes 15 virtual seconds costs a few milliseconds.
+ */
+function virtualClock() {
+  let time = 0;
+  const timers: Array<{ at: number; fire: () => void }> = [];
+  // Lets everything that can run, run (a macrotask passes after every ready continuation), then jumps to the
+  // earliest timer. `stop` is asked after the flush and before the jump, so the clock never moves past an answer.
+  const next = async (stop: () => boolean): Promise<boolean> => {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    if (stop()) return false;
+    timers.sort((x, y) => x.at - y.at);
+    const due = timers.shift();
+    if (due === undefined) return false;
+    time = Math.max(time, due.at);
+    due.fire();
+    return true;
+  };
   return {
-    now: () => ms,
-    sleep: (by: number): Promise<void> => {
-      ms += by;
-      return Promise.resolve();
+    now: () => time,
+    sleep: (by: number): Promise<void> =>
+      new Promise<void>((resolve) => {
+        timers.push({ at: time + by, fire: resolve });
+      }),
+    /** Drive the clock until `work` has answered. */
+    async run<T>(work: Promise<T>): Promise<T> {
+      let done = false;
+      work.then(
+        () => (done = true),
+        () => (done = true),
+      );
+      for (let turns = 0; turns < 100_000; turns++) if (!(await next(() => done))) break;
+      return work;
+    },
+    /** Let everything that is still running finish, however long it takes on this clock. */
+    async drain(): Promise<void> {
+      for (let turns = 0; turns < 100_000; turns++) if (!(await next(() => false))) return;
     },
   };
 }
 
-const NONE = knownBefore({ agents: [], shellPanes: [{ paneId: "w1:p1", workspaceId: "w1" }], workspaces: [{ workspaceId: "w1" }] });
+type VirtualClock = ReturnType<typeof virtualClock>;
+
+const NONE = knownBefore(snap([pane({ paneId: "w1:p1", spaceId: "w1", tabId: "w1:t1" })]));
+
+/** The look, run on a virtual clock: what it found and how long it took. */
+async function runLook(
+  mux: { snapshot: () => Promise<MuxSnapshot> },
+  wanted: CreateWanted,
+  known: KnownBefore = NONE,
+): Promise<{ look: Awaited<ReturnType<typeof lookForCreated>>; elapsed: number }> {
+  const vc = virtualClock();
+  const look = await vc.run(lookForCreated(mux, known, wanted, vc));
+  return { look, elapsed: vc.now() };
+}
+
+const hangs = (): Promise<MuxSnapshot> => new Promise<MuxSnapshot>(() => {});
 
 describe("lookForCreated", () => {
   test("a space: the new space's first pane, in the folder asked for", async () => {
     const mux = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w1:p1", spaceId: "w1", tabId: "w1:t1" }), pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1", spaceLabel: "app" })])) };
-    const look = await lookForCreated(mux, NONE, { kind: "space", cwd: "/home/op/app" }, clock());
-    expect(look).toEqual({ kind: "found", pane: { paneId: "w2:p1", spaceId: "w2", spaceLabel: "app", tabId: "w2:t1", cwd: "/home/op/app" } });
+    const { look } = await runLook(mux, { kind: "space", cwd: "/home/op/app" });
+    expect(look).toEqual({ kind: "found", agent: "shell", pane: { paneId: "w2:p1", spaceId: "w2", spaceLabel: "app", tabId: "w2:t1", cwd: "/home/op/app" } });
   });
 
   test("a new space in another folder is not the one asked for", async () => {
     const mux = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1", cwd: "/elsewhere" })])) };
-    const look = await lookForCreated(mux, NONE, { kind: "space", cwd: "/home/op/app" }, clock());
-    expect(look.kind).toBe("none");
+    expect((await runLook(mux, { kind: "space", cwd: "/home/op/app" })).look.kind).toBe("none");
   });
 
   test("a tab: a new pane in the space asked for, not one in another space", async () => {
@@ -83,19 +153,17 @@ describe("lookForCreated", () => {
       snapshot: () =>
         Promise.resolve(snap([pane({ paneId: "w9:p1", spaceId: "w9", tabId: "w9:t1" }), pane({ paneId: "w1:p2", spaceId: "w1", tabId: "w1:t2" })])),
     };
-    const look = await lookForCreated(mux, NONE, { kind: "tab", spaceId: "w1" }, clock());
-    expect(look).toMatchObject({ kind: "found", pane: { paneId: "w1:p2", tabId: "w1:t2" } });
+    expect((await runLook(mux, { kind: "tab", spaceId: "w1" })).look).toMatchObject({ kind: "found", pane: { paneId: "w1:p2", tabId: "w1:t2" } });
   });
 
   test("two new spaces: it cannot tell which, so it proves nothing", async () => {
     const mux = {
       snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1" }), pane({ paneId: "w3:p1", spaceId: "w3", tabId: "w3:t1" })])),
     };
-    expect((await lookForCreated(mux, NONE, { kind: "space", cwd: "/home/op/app" }, clock())).kind).toBe("unread");
+    expect((await runLook(mux, { kind: "space", cwd: "/home/op/app" })).look.kind).toBe("unread");
   });
 
   test("a snapshot that shows it on the third look is found; one that never does is none after the bound", async () => {
-    const c = clock();
     let looks = 0;
     const late = {
       snapshot: () => {
@@ -103,9 +171,8 @@ describe("lookForCreated", () => {
         return Promise.resolve(snap(looks < 3 ? [] : [pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1" })]));
       },
     };
-    expect((await lookForCreated(late, NONE, { kind: "space" }, c)).kind).toBe("found");
+    expect((await runLook(late, { kind: "space" })).look.kind).toBe("found");
     expect(looks).toBe(3);
-    const never = clock();
     let tries = 0;
     const empty = {
       snapshot: () => {
@@ -113,19 +180,67 @@ describe("lookForCreated", () => {
         return Promise.resolve(snap([]));
       },
     };
-    expect((await lookForCreated(empty, NONE, { kind: "space" }, never)).kind).toBe("none");
-    expect(never.now()).toBeGreaterThanOrEqual(CONFIRM_BOUND_MS);
+    const never = await runLook(empty, { kind: "space" });
+    expect(never.look.kind).toBe("none");
+    expect(never.elapsed).toBeGreaterThanOrEqual(CONFIRM_BOUND_MS);
     expect(tries).toBe(Math.floor(CONFIRM_BOUND_MS / CONFIRM_POLL_MS) + 1);
   });
 
   test("a snapshot that cannot be read is unread, never none", async () => {
     const broken = { snapshot: () => Promise.reject(new Error("socket closed")) };
-    expect((await lookForCreated(broken, NONE, { kind: "space" }, clock())).kind).toBe("unread");
+    expect((await runLook(broken, { kind: "space" })).look.kind).toBe("unread");
   });
 
-  test("the lead's budget for a create is longer than the member's own waits put together", () => {
-    // The adapter's wait for the create (5 s) + the look + the wait for the new shell (5 s).
-    expect(LAUNCH_BUDGET_MS).toBeGreaterThan(5000 + CONFIRM_BOUND_MS + 5000);
+  test("a snapshot that hangs does not stretch the look: unread at the bound", async () => {
+    const stuck = await runLook({ snapshot: hangs }, { kind: "space" });
+    expect(stuck.look.kind).toBe("unread");
+    expect(stuck.elapsed).toBe(CONFIRM_BOUND_MS);
+    // One hung read in the middle costs the time left, and a later read cannot start past the bound.
+    let reads = 0;
+    const slowThenGone = { snapshot: () => (++reads === 1 ? Promise.resolve(snap([])) : hangs()) };
+    const mixed = await runLook(slowThenGone, { kind: "space" });
+    expect(mixed.look.kind).toBe("unread");
+    expect(mixed.elapsed).toBe(CONFIRM_BOUND_MS);
+  });
+
+  test("a new pane that reports no folder is not a match yet: the look goes on, and never says none", async () => {
+    const blank = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1", cwd: "" })])) };
+    const stuck = await runLook(blank, { kind: "space", cwd: "/home/op/app" });
+    expect(stuck.look.kind).toBe("unread");
+    expect(stuck.elapsed).toBeGreaterThanOrEqual(CONFIRM_BOUND_MS);
+    // The next look reads the folder: now it is a match.
+    let reads = 0;
+    const settles = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1", cwd: ++reads < 3 ? "" : "/home/op/app" })])) };
+    expect((await runLook(settles, { kind: "space", cwd: "/home/op/app" })).look.kind).toBe("found");
+    expect(reads).toBe(3);
+    // A create that named no folder has nothing to compare, so a blank folder is fine.
+    expect((await runLook(blank, { kind: "space" })).look.kind).toBe("found");
+  });
+
+  test("a label the request gave must be the label the snapshot shows", async () => {
+    const wrong = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1" })], { spaces: [["w2", "somebody's"]] })) };
+    // Not named as ours, and not "nothing was made" either: it may be ours under a name the multiplexer changed.
+    const mismatch = await runLook(wrong, { kind: "space", label: "app" });
+    expect(mismatch.look.kind).toBe("unread");
+    const right = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1" })], { spaces: [["w2", "app"]] })) };
+    expect((await runLook(right, { kind: "space", label: "app" })).look.kind).toBe("found");
+    // A snapshot that carries no label (an empty one) proves nothing against the request.
+    const silent = { snapshot: () => Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1", spaceLabel: "" })])) };
+    expect((await runLook(silent, { kind: "space", label: "app" })).look.kind).toBe("found");
+    // A tab reads the tab's own label.
+    const tabs = (label: string) => ({ snapshot: () => Promise.resolve(snap([pane({ paneId: "w1:p2", spaceId: "w1", tabId: "w1:t2" })], { tabs: [["w1:t2", label]] })) });
+    expect((await runLook(tabs("other"), { kind: "tab", spaceId: "w1", label: "Claude" })).look.kind).toBe("unread");
+    expect((await runLook(tabs("Claude"), { kind: "tab", spaceId: "w1", label: "Claude" })).look.kind).toBe("found");
+    // Nothing asked, nothing compared.
+    expect((await runLook(tabs("other"), { kind: "tab", spaceId: "w1" })).look.kind).toBe("found");
+  });
+
+  test("a doubtful pane beside a matching one is two candidates, so it proves nothing", async () => {
+    const both = {
+      snapshot: () =>
+        Promise.resolve(snap([pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1" }), pane({ paneId: "w3:p1", spaceId: "w3", tabId: "w3:t1", cwd: "" })])),
+    };
+    expect((await runLook(both, { kind: "space", cwd: "/home/op/app" })).look.kind).toBe("unread");
   });
 });
 
@@ -138,47 +253,72 @@ class FakeMux {
   capabilities = declareCapabilities({ supports: ["createSpace", "createTab", "renameTab"], topologyLatency: { kind: "push" } });
   /** What a create answers: the default makes the pane. */
   answer: "ok" | "unconfirmed" | "refused" = "ok";
-  /** The panes the snapshot shows after a create that timed out. `null`: the snapshot cannot be read. */
+  /** The panes the snapshot shows before any create was asked. */
+  before: MuxPane[] = [];
+  /** The panes the snapshot shows once a create was asked. `null`: the snapshot cannot be read at all. */
   shown: MuxPane[] | null = [];
+  /** The space and tab labels the snapshot reports once a create was asked. */
+  labels: Labels = {};
+  /** What the multiplexer's screen reads for a pane: constant text is a settled shell. */
+  screen: (read: number) => string = () => "$ ";
+  /** Virtual time each step takes, on the clock the test drives. All zero: instant. */
+  slow = { create: 0, snapshot: 0, type: 0 };
+  /** Set by a test to make a step wait on its clock. */
+  pause: (ms: number) => Promise<void> = () => Promise.resolve();
+  /** What closing a pane answers. */
+  closeAnswer: "ok" | "refused" = "ok";
+  /** What typing the line answers. */
+  typeAnswer: "ok" | "refused" = "ok";
+  /** A create that throws instead of answering. */
+  throwOnCreate = false;
+  private asked = false;
+  private reads = 0;
   /** Called as each create begins, to see what was on disk by then. */
   onCreate: (() => void) | null = null;
   private n = 0;
 
   private created(cwd: string | undefined, label: string | undefined, spaceId?: string): MuxOutcome<MuxCreatedPane> {
     this.onCreate?.();
+    this.asked = true;
+    if (this.throwOnCreate) throw new Error("adapter fell over");
     if (this.answer === "unconfirmed") return muxUnconfirmed("herdr workspace.create: timed out after 5000ms");
     if (this.answer === "refused") return muxRefused("no such directory");
     this.n++;
     const id = spaceId ?? `w${this.n}`;
     return muxOk({ paneId: `${id}:p${this.n}`, spaceId: id, spaceLabel: label ?? "shell", tabId: `${id}:t${this.n}`, cwd: cwd ?? "/" });
   }
-  createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+  async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     this.spaces.push(request);
-    return Promise.resolve(this.created(request.cwd, request.label));
+    await this.pause(this.slow.create);
+    return this.created(request.cwd, request.label);
   }
-  createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+  async createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     this.tabs.push(request);
-    return Promise.resolve(this.created(request.cwd, request.label, request.spaceId));
+    await this.pause(this.slow.create);
+    return this.created(request.cwd, request.label, request.spaceId);
   }
-  snapshot(): Promise<MuxSnapshot> {
-    return this.shown === null ? Promise.reject(new Error("socket closed")) : Promise.resolve(snap(this.shown));
+  async snapshot(): Promise<MuxSnapshot> {
+    await this.pause(this.slow.snapshot);
+    if (this.shown === null) throw new Error("socket closed");
+    return this.asked ? snap(this.shown, this.labels) : snap(this.before);
   }
   renameTab(): Promise<MuxAck> {
     return Promise.resolve(muxAck());
   }
   readGrid(paneId: string): Promise<MuxOutcome<MuxGrid>> {
-    return Promise.resolve(muxOk({ paneId, text: "$ ", truncated: false, revision: 1 }));
+    return Promise.resolve(muxOk({ paneId, text: this.screen(this.reads++), truncated: false, revision: 1 }));
   }
-  typeText(paneId: string, text: string): Promise<MuxAck> {
+  async typeText(paneId: string, text: string): Promise<MuxAck> {
     this.texts.push([paneId, text]);
-    return Promise.resolve(muxAck());
+    await this.pause(this.slow.type);
+    return this.typeAnswer === "ok" ? muxAck() : muxRefused("pane is gone");
   }
   writeKeys(): Promise<MuxAck> {
     return Promise.resolve(muxAck());
   }
   closePane(paneId: string): Promise<MuxAck> {
     this.closes.push(paneId);
-    return Promise.resolve(muxAck());
+    return Promise.resolve(this.closeAnswer === "ok" ? muxAck() : muxRefused("cannot close"));
   }
   refresh(): Promise<void> {
     return Promise.resolve();
@@ -191,9 +331,14 @@ function asMux(fake: Partial<MuxAdapter>): MuxAdapter {
   return fake as MuxAdapter;
 }
 
+// A test sets it to make the step after a create throw (the engine is poked once the pane exists).
+let pokeThrows = false;
+
 const engine = (): StateEngine => {
   const stub: Partial<StateEngine> = {
-    pokeNow: () => {},
+    pokeNow: () => {
+      if (pokeThrows) throw new Error("engine fell over");
+    },
     current: () => ({ agents: [], shellPanes: [], workspaces: [], tabs: [], bridge: "connected" }),
   };
   // SAFETY: a create reads `current()` (the panes it knew) and `pokeNow()`; nothing else.
@@ -203,21 +348,34 @@ const engine = (): StateEngine => {
 const post = (path: string, body: JsonObject) =>
   new Request(`http://x${path}`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
 
-async function launchOnce(mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject) {
-  const res = await launch(asMux(mux), engine(), post("/api/launch", body), new AuditLog(() => {}), null, "default", () => Promise.resolve([CLAUDE]), clock(), {
+// One clock per test: the routes wait on it, and `run` is what moves it.
+let vc: VirtualClock = virtualClock();
+beforeEach(() => {
+  vc = virtualClock();
+  pokeThrows = false;
+});
+
+const launchRaw = (mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject, audit: AuditLog = new AuditLog(() => {})) =>
+  launch(asMux(mux), engine(), post("/api/launch", body), audit, null, "default", () => Promise.resolve([CLAUDE]), vc, {
     receipts,
+    deadline: vc,
     home: "/home/op",
     fs: { isDirectory: () => Promise.resolve(true) },
   });
+
+async function launchOnce(mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject, audit?: AuditLog) {
+  const res = await vc.run(launchRaw(mux, receipts, body, audit));
   // SAFETY: `launch` answers JSON for every route this file takes.
   return { status: res.status, body: (await res.json()) as JsonObject };
 }
 
-const tab = (mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject) =>
-  createTab(asMux(mux), engine(), post("/api/tab", body), new AuditLog(() => {}), null, "default", { receipts, wait: clock() });
+const tabRaw = (mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject, audit: AuditLog = new AuditLog(() => {})) =>
+  createTab(asMux(mux), engine(), post("/api/tab", body), audit, null, "default", { receipts, wait: vc, deadline: vc });
+const tab = (mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject, audit?: AuditLog) => vc.run(tabRaw(mux, receipts, body, audit));
 
-const space = (mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject) =>
-  createWorkspace(asMux(mux), engine(), post("/api/workspace", body), new AuditLog(() => {}), null, "default", undefined, undefined, { receipts, wait: clock() });
+const spaceRaw = (mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject, audit: AuditLog = new AuditLog(() => {})) =>
+  createWorkspace(asMux(mux), engine(), post("/api/workspace", body), audit, null, "default", undefined, undefined, { receipts, wait: vc, deadline: vc });
+const space = (mux: FakeMux, receipts: LaunchReceiptSurface, body: JsonObject, audit?: AuditLog) => vc.run(spaceRaw(mux, receipts, body, audit));
 
 describe("a launch writes its receipt pending before the create, and settles it", () => {
   test("pending while the multiplexer is asked, the pane's receipt after", async () => {
@@ -261,7 +419,7 @@ describe("a create that timed out is looked up, not failed", () => {
   test("a launch whose space shows up in the snapshot succeeds, with a receipt, and types its line once", async () => {
     const mux = new FakeMux();
     mux.answer = "unconfirmed";
-    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: "app", cwd: homedir() })];
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: basename(homedir()), cwd: homedir() })];
     const receipts = memoryLaunchReceipts();
     const { status, body } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
     expect(status).toBe(200);
@@ -349,10 +507,10 @@ describe("a tab and a space create carry the request id like a launch", () => {
       await gate;
       return real(request);
     };
-    const one = tab(mux, receipts, { workspaceId: "w1", requestId: ID });
-    const two = tab(mux, receipts, { workspaceId: "w1", requestId: ID });
+    const one = tabRaw(mux, receipts, { workspaceId: "w1", requestId: ID });
+    const two = tabRaw(mux, receipts, { workspaceId: "w1", requestId: ID });
     release();
-    const [a, b] = await Promise.all([one, two]);
+    const [a, b] = await vc.run(Promise.all([one, two]));
     expect(mux.tabs).toHaveLength(1);
     expect(await a.json()).toMatchObject({ ok: true });
     expect(await b.json()).toMatchObject({ ok: true, replayed: true });
@@ -418,5 +576,268 @@ describe("the receipt file across a start", () => {
     const old = store.get(ID);
     expect(old !== undefined && !isUnsettled(old) ? old.paneId : null).toBe("w1:p1");
     expect(await store.expirePending(1e12)).toBe(0);
+  });
+});
+
+describe("the look's before is a fresh snapshot, and its answer is checked", () => {
+  const HOME_NAME = basename(homedir());
+
+  test("a pane that was there before the call is not the one the call made, whatever the engine remembers", async () => {
+    // The state engine's stub knows no pane at all; the multiplexer already had this one.
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    const old = pane({ paneId: "w2:p1", spaceId: "w2", tabId: "w2:t1", spaceLabel: HOME_NAME, cwd: homedir() });
+    mux.before = [old];
+    mux.shown = [old];
+    const receipts = memoryLaunchReceipts();
+    const { body } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(body).toMatchObject({ ok: false, code: "workspace.create_failed" });
+    expect(mux.texts).toEqual([]);
+    expect(receipts.get(ID)).toBeUndefined();
+  });
+
+  test("a snapshot that cannot be read before the call means no look: unknown, never a guess", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = null;
+    const receipts = memoryLaunchReceipts();
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).status).toBe(504);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+  });
+
+  test("a new pane that reports no folder is not named: unknown, and nothing is typed", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: HOME_NAME, cwd: "" })];
+    const receipts = memoryLaunchReceipts();
+    const { status } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(status).toBe(504);
+    expect(mux.texts).toEqual([]);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+  });
+
+  test("a new pane under another label than the launch gave is not named", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: "somebody's", cwd: homedir() })];
+    const { status } = await launchOnce(mux, memoryLaunchReceipts(), { command: "claude", requestId: ID });
+    expect(status).toBe(504);
+    expect(mux.texts).toEqual([]);
+  });
+
+  test("a tab create that named a label finds only a tab with that label", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [pane({ paneId: "w1:p5", spaceId: "w1", tabId: "w1:t5" })];
+    mux.labels = { tabs: [["w1:t5", "other"]] };
+    expect((await tab(mux, memoryLaunchReceipts(), { workspaceId: "w1", label: "build", requestId: ID })).status).toBe(504);
+    const right = new FakeMux();
+    right.answer = "unconfirmed";
+    right.shown = [pane({ paneId: "w1:p5", spaceId: "w1", tabId: "w1:t5" })];
+    right.labels = { tabs: [["w1:t5", "build"]] };
+    const res = await tab(right, memoryLaunchReceipts(), { workspaceId: "w1", label: "build", requestId: ID2 });
+    expect(await res.json()).toMatchObject({ ok: true, pane: { paneId: "w1:p5" } });
+  });
+
+  test("a pane the look found that holds an agent gets nothing typed: unknown", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: HOME_NAME, cwd: homedir(), agent: "claude" })];
+    const receipts = memoryLaunchReceipts();
+    const { status, body } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(status).toBe(504);
+    expect(body.code).toBe("write_outcome_unknown");
+    expect(mux.texts).toEqual([]);
+    expect(mux.closes).toEqual([]);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+  });
+
+  test("a pane the look found whose screen never settles gets nothing typed: unknown", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: HOME_NAME, cwd: homedir() })];
+    mux.screen = (read) => `output ${read}`;
+    const receipts = memoryLaunchReceipts();
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).status).toBe(504);
+    expect(mux.texts).toEqual([]);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+  });
+
+  test("the pane the create answered with is typed into as before, with no extra read of the shell", async () => {
+    const mux = new FakeMux();
+    mux.screen = (read) => (read < 3 ? "" : "$ ");
+    const { status } = await launchOnce(mux, memoryLaunchReceipts(), { command: "claude", requestId: ID });
+    expect(status).toBe(200);
+    expect(mux.texts).toEqual([["w1:p1", "claude"]]);
+  });
+});
+
+describe("the member holds its own deadline", () => {
+  const HOME_NAME = basename(homedir());
+  /** A create that took the adapter's whole 5 s, a pane in the snapshot, and a send that takes 10 s: the run ends past the deadline. */
+  function slowMux(): FakeMux {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: HOME_NAME, cwd: homedir() })];
+    mux.pause = (ms) => (ms === 0 ? Promise.resolve() : vc.sleep(ms));
+    mux.slow = { create: 5000, snapshot: 0, type: 10_000 };
+    return mux;
+  }
+
+  test("the answer is unknown at the deadline, below the lead's budget, and the run goes on to a receipt", async () => {
+    expect(MEMBER_DEADLINE_MS).toBeLessThan(LAUNCH_BUDGET_MS);
+    const mux = slowMux();
+    const receipts = memoryLaunchReceipts();
+    const first = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(vc.now()).toBe(MEMBER_DEADLINE_MS);
+    expect(first.status).toBe(504);
+    expect(first.body.code).toBe("write_outcome_unknown");
+    // The run is still going: its receipt is pending and the line is not through yet.
+    expect(receipts.get(ID)).toMatchObject({ state: "pending" });
+    await vc.drain();
+    const settled = receipts.get(ID);
+    expect(settled !== undefined && !isUnsettled(settled) ? settled.paneId : null).toBe("w7:p1");
+    // The retap replays the pane the run made. Nothing is created twice.
+    const again = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(again.body).toMatchObject({ ok: true, replayed: true, pane: { paneId: "w7:p1" } });
+    expect(mux.spaces).toHaveLength(1);
+    expect(mux.texts).toHaveLength(1);
+  });
+
+  test("a retap while the run still goes joins it, on its own deadline", async () => {
+    const mux = slowMux();
+    const receipts = memoryLaunchReceipts();
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).status).toBe(504);
+    const startedAt = vc.now();
+    const joined = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(joined.body).toMatchObject({ ok: true, replayed: true, pane: { paneId: "w7:p1" } });
+    expect(vc.now() - startedAt).toBeLessThan(MEMBER_DEADLINE_MS);
+    expect(mux.spaces).toHaveLength(1);
+  });
+
+  test("a retap that joins a run that will not end is answered at its own deadline", async () => {
+    const mux = slowMux();
+    mux.slow = { create: 5000, snapshot: 0, type: 100 * MEMBER_DEADLINE_MS };
+    const receipts = memoryLaunchReceipts();
+    await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    const startedAt = vc.now();
+    const joined = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(joined.status).toBe(504);
+    expect(vc.now() - startedAt).toBe(MEMBER_DEADLINE_MS);
+  });
+
+  test("a run that ends past the deadline as unknown settles its receipt as unknown", async () => {
+    const mux = slowMux();
+    mux.typeAnswer = "refused";
+    mux.closeAnswer = "refused";
+    const receipts = memoryLaunchReceipts();
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).status).toBe(504);
+    await vc.drain();
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).status).toBe(504);
+    expect(mux.spaces).toHaveLength(1);
+  });
+
+  test("a snapshot that hangs for ever ends the run unknown at the sum of its own bounds, not at the deadline", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    mux.shown = [];
+    mux.pause = (ms) => (ms === 0 ? Promise.resolve() : vc.sleep(ms));
+    mux.slow = { create: 5000, snapshot: 0, type: 0 };
+    mux.snapshot = hangs;
+    const receipts = memoryLaunchReceipts();
+    const { status } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(status).toBe(504);
+    // The "before" read gave up at 4 s, the create took 5 s, and no look can start without a "before".
+    expect(vc.now()).toBe(CONFIRM_BOUND_MS + 5000);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+  });
+
+  test("a tab and a space create hold the same deadline", async () => {
+    const mux = new FakeMux();
+    mux.pause = (ms) => (ms === 0 ? Promise.resolve() : vc.sleep(ms));
+    mux.slow = { create: 100 * MEMBER_DEADLINE_MS, snapshot: 0, type: 0 };
+    expect((await tab(mux, memoryLaunchReceipts(), { workspaceId: "w1", requestId: ID })).status).toBe(504);
+    expect(vc.now()).toBe(MEMBER_DEADLINE_MS);
+    const before = vc.now();
+    expect((await space(mux, memoryLaunchReceipts(), { requestId: ID2 })).status).toBe(504);
+    expect(vc.now() - before).toBe(MEMBER_DEADLINE_MS);
+  });
+
+  test("the member's worst case without the deadline is longer than the lead's budget, so the deadline is what holds", () => {
+    // create 5 s + look 4 s + shell wait 5 s + a send on the core 6.4 s.
+    expect(5000 + CONFIRM_BOUND_MS + 5000 + 6400).toBeGreaterThan(LAUNCH_BUDGET_MS);
+    expect(MEMBER_DEADLINE_MS).toBeLessThan(LAUNCH_BUDGET_MS);
+  });
+});
+
+describe("a pane that could not be closed, and a throw, never leave the receipt wrong", () => {
+  test("a failed line whose pane closes forgets the id, so it may run again", async () => {
+    const mux = new FakeMux();
+    mux.typeAnswer = "refused";
+    const receipts = memoryLaunchReceipts();
+    const { body } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(body.ok).toBe(false);
+    expect(mux.closes).toEqual(["w1:p1"]);
+    expect(receipts.get(ID)).toBeUndefined();
+  });
+
+  test("a failed line whose pane stays open keeps the receipt, as unknown, and the id starts nothing new", async () => {
+    const mux = new FakeMux();
+    mux.typeAnswer = "refused";
+    mux.closeAnswer = "refused";
+    const receipts = memoryLaunchReceipts();
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).body.ok).toBe(false);
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+    mux.typeAnswer = "ok";
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).status).toBe(504);
+    expect(mux.spaces).toHaveLength(1);
+  });
+
+  test("a close that throws is the same: the receipt stays, as unknown", async () => {
+    const mux = new FakeMux();
+    mux.typeAnswer = "refused";
+    mux.closePane = () => Promise.reject(new Error("socket closed"));
+    const receipts = memoryLaunchReceipts();
+    await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+  });
+
+  test("a create call that throws leaves unknown behind, on a launch, a tab and a space", async () => {
+    for (const run of [
+      (mux: FakeMux, receipts: LaunchReceiptSurface) => launchRaw(mux, receipts, { command: "claude", requestId: ID }),
+      (mux: FakeMux, receipts: LaunchReceiptSurface) => tabRaw(mux, receipts, { workspaceId: "w1", requestId: ID }),
+      (mux: FakeMux, receipts: LaunchReceiptSurface) => spaceRaw(mux, receipts, { requestId: ID }),
+    ]) {
+      const mux = new FakeMux();
+      mux.throwOnCreate = true;
+      const receipts = memoryLaunchReceipts();
+      let thrown = false;
+      await vc.run(run(mux, receipts)).catch(() => {
+        thrown = true;
+      });
+      expect(thrown).toBe(true);
+      expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+    }
+  });
+
+  test("a step after the create that throws leaves unknown behind too, on a launch, a tab and a space", async () => {
+    pokeThrows = true;
+    for (const run of [
+      (mux: FakeMux, receipts: LaunchReceiptSurface) => launchRaw(mux, receipts, { command: "claude", requestId: ID }),
+      (mux: FakeMux, receipts: LaunchReceiptSurface) => tabRaw(mux, receipts, { workspaceId: "w1", requestId: ID }),
+      (mux: FakeMux, receipts: LaunchReceiptSurface) => spaceRaw(mux, receipts, { requestId: ID }),
+    ]) {
+      const mux = new FakeMux();
+      const receipts = memoryLaunchReceipts();
+      let thrown = false;
+      await vc.run(run(mux, receipts)).catch(() => {
+        thrown = true;
+      });
+      expect(thrown).toBe(true);
+      expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+      // The pane exists, so the same id must not make another.
+      expect(mux.spaces.length + mux.tabs.length).toBe(1);
+    }
   });
 });
