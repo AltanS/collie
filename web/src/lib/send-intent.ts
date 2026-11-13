@@ -99,6 +99,23 @@ export function clearIntentIfDraftChanged(scope: Scope | undefined, paneId: stri
   clearIntent(scope, paneId);
 }
 
+/** Drop every intent, memory and storage. The wipe at the end of a pairing runs it: the keys hold the text of a draft. */
+export function forgetAllSendIntents(): void {
+  memory.clear();
+  try {
+    const store = storage();
+    if (store === null) return;
+    const held: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (key !== null && key.startsWith(PREFIX)) held.push(key);
+    }
+    for (const key of held) store.removeItem(key);
+  } catch {
+    // Locked-down storage kept nothing.
+  }
+}
+
 /** Test seam: forget the memory copies, as a reload does, and leave sessionStorage as it is. */
 export function __forgetSendIntentMemory(): void {
   memory.clear();

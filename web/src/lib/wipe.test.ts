@@ -1,4 +1,5 @@
 import { loadDraft, saveDraft } from "@/lib/drafts";
+import { loadIntent, saveIntent } from "@/lib/send-intent";
 import { AGAIN_KEY, rememberAgain } from "@/lib/new-page";
 import { NO_PROMPTS_KEY, rememberNoPromptsConfirm } from "@/lib/no-prompts";
 import { loadLastPaneText, loadLastSnapshot, saveLastPaneText, saveLastSnapshot } from "@/lib/last-seen";
@@ -166,6 +167,15 @@ describe("wipeDevice — a pairing that ended", () => {
     expect(loadDraft(LEAD, "w1:p1")).toBeNull();
   });
 
+  it("forgets the request id of a send with no answer, with the draft text its key holds", async () => {
+    stubCaches([]);
+    stubServiceWorker();
+    saveIntent(LEAD, "w1:p1", { key: "send\u0000secret words", requestId: "req-1" }, "secret words");
+    await wipeDevice("unpair");
+    expect(loadIntent(LEAD, "w1:p1")).toBeNull();
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it("has run its synchronous cleaners by the time it returns", async () => {
     seed();
     void wipeDevice("expired");
@@ -221,9 +231,13 @@ describe("wipeDevice — a password prompt (ADR 0017)", () => {
     seed();
     saveLastPaneText(LEAD, "w1:p2", "other pane");
     saveDraft(LEAD, "w1:p2", "other draft");
+    saveIntent(LEAD, "w1:p1", { key: "k1", requestId: "req-1" }, "x");
+    saveIntent(LEAD, "w1:p2", { key: "k2", requestId: "req-2" }, "y");
 
     await wipeDevice("password", { scope: LEAD, paneId: "w1:p1" });
 
+    expect(loadIntent(LEAD, "w1:p1")).toBeNull();
+    expect(loadIntent(LEAD, "w1:p2")).not.toBeNull();
     expect(loadDraft(LEAD, "w1:p1")).toBeNull();
     expect(await loadLastPaneText(LEAD, "w1:p1")).toBeNull();
     // The rest of the session text stays, and so does everything that is not session text.
