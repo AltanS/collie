@@ -3610,13 +3610,13 @@ describe("the link rows (M99 spec 09)", () => {
   test("linked with this build's part: ok, the version named", () => {
     const r = lab({ version: "1.29.0" });
     r.linkClaude("1.29.0");
-    expect(row(linkFindings(r.deps, () => "2.1.330"), "link-claude")).toMatchObject({ status: "ok", detail: "linked, part 1.29.0" });
+    expect(row(linkFindings(r.deps, () => "2.1.330"), "link-claude")).toMatchObject({ status: "ok", detail: "linked, plugin 1.29.0" });
   });
 
   test("a part older than the bridge: warn, with the verb that writes this build's", () => {
     const r = lab({ version: "1.29.0" });
     r.linkClaude("1.28.0");
-    expect(row(linkFindings(r.deps, () => null), "link-claude")).toMatchObject({ status: "warn", remedy: "`collie harness link claude` writes this build's part" });
+    expect(row(linkFindings(r.deps, () => null), "link-claude")).toMatchObject({ status: "warn", remedy: "`collie harness link claude` writes this build's plugin" });
   });
 
   test("blocked by policy: warn", () => {

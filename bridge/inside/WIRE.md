@@ -2,6 +2,8 @@
 
 > **Experimental.** This wire may change in any release until Collie 2.0. A part and a bridge agree on
 > the version in `hello`; there is no other compatibility promise yet.
+>
+> The protocol says "part"; text a person reads says "plugin".
 
 The inside wire is the one local protocol between an **inside part** (a small piece that runs inside an
 agent program through the vendor's own extension point: a Claude Code mod, a pi extension) and the
