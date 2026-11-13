@@ -1029,6 +1029,19 @@ describe("fetchChat", () => {
     expect(before.asked).toEqual(["?before=1000000%3Au-1"]);
   });
 
+  it("asks for a page of fewer prompts when the caller wants a small first paint", async () => {
+    const small = captureChat("chat-turns");
+    await fetchChat("chat-turns", { turns: 1 });
+    expect(small.asked).toEqual(["?turns=1"]);
+    // It rides along with a cursor and a limit, and a zero is not sent (the bridge would read it as absent).
+    const cursor = captureChat("chat-turns-before");
+    await fetchChat("chat-turns-before", { limit: 1, turns: 2, before: { seq: 5, uuid: "u-5" } });
+    expect(cursor.asked).toEqual(["?limit=1&turns=2&before=5%3Au-5"]);
+    const zero = captureChat("chat-turns-zero");
+    await fetchChat("chat-turns-zero", { turns: 0 });
+    expect(zero.asked).toEqual([""]);
+  });
+
   it("marks the pane seen — watching a session is looking at the pane", async () => {
     const { seen } = captureChat("chat-seen");
     await fetchChat("chat-seen");
