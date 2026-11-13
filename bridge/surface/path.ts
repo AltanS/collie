@@ -4,10 +4,10 @@
 //
 // Data only when all of these hold, else the screen, unchanged:
 //  - the inside wire is on for this instance (the kill switch, `COLLIE_INSIDE`);
-//  - a part is bound to the pane and declares `send` and `wake` (wake is how the bridge knows a turn
-//    runs, so it can hold the send as today; a part without it keeps the screen path);
-//  - the request is a plain new message: mode `send`, not a steer, not from an agent view, not a
-//    WalkyTalky delivery (spec 05 gives mail its own road);
+//  - a part is bound to the pane and declares `send` and `wake`, or for a WalkyTalky delivery `mail`
+//    and `wake` (wake is how the bridge knows a turn runs, so it can hold the send as today; a part
+//    without it keeps the screen path);
+//  - the request is a plain new message: mode `send`, not a steer, not from an agent view;
 //  - the text is plain: no reserved lead (`/`, `!`, `@`: a slash command, a shell line, a file
 //    mention) and no uploaded image path anywhere in it (an attachment).
 //
@@ -46,8 +46,9 @@ export interface PathInput {
   readonly request: PathRequest;
 }
 
-/** The capabilities a part must declare for the data road. */
+/** The capabilities a part must declare for the data road: a phone send, and a WalkyTalky delivery (M99 spec 05). */
 export const DATA_SEND_NEEDS = ["send", "wake"] as const;
+export const DATA_MAIL_NEEDS = ["mail", "wake"] as const;
 
 /** Whether a text carries one of Collie's uploaded image paths (an attachment). */
 function hasUpload(text: string): boolean {
@@ -68,9 +69,10 @@ export function pickSendPath(input: PathInput): PathPick {
   if (!input.enabled) return screen("off");
   if (input.part === null) return screen("no-part");
   const { capabilities } = input.part;
-  if (!DATA_SEND_NEEDS.every((word) => capabilities.has(word))) return screen("not-declared");
   const { request } = input;
-  if (request.mode !== "send" || request.when !== undefined || request.fromView || request.mail) return screen("not-plain-mode");
+  const needs = request.mail ? DATA_MAIL_NEEDS : DATA_SEND_NEEDS;
+  if (!needs.every((word) => capabilities.has(word))) return screen("not-declared");
+  if (request.mode !== "send" || request.when !== undefined || request.fromView) return screen("not-plain-mode");
   if (request.text.trim() === "") return screen("empty");
   if (reservedLead(request.text, COMMAND_LEADS) !== null) return screen("command");
   if (hasUpload(request.text)) return screen("attachment");

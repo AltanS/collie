@@ -21,7 +21,7 @@ export const WORD_MS = 15_000;
 export interface DataDoor {
   partOf(address: PaneAddress): { readonly capabilities: ReadonlySet<Capability> } | null;
   turnOf(address: PaneAddress): "running" | "idle" | null;
-  enqueue(address: PaneAddress, command: { readonly id: string; readonly kind: "prompt"; readonly text: string }): EnqueueOutcome;
+  enqueue(address: PaneAddress, command: { readonly id: string; readonly kind: "prompt" | "mail"; readonly text: string }): EnqueueOutcome;
   withdraw(id: string): boolean;
   waitFor(id: string, states: readonly CommandState[], ms: number): Promise<CommandState | null>;
 }
@@ -37,9 +37,15 @@ export interface DataLimits {
   readonly wordMs: number;
 }
 
-/** Send one text by data. Never throws. */
-export async function sendByData(door: DataDoor, address: PaneAddress, id: string, text: string, limits: DataLimits = { takeMs: TAKE_MS, wordMs: WORD_MS }): Promise<DataResult> {
-  const queued = door.enqueue(address, { id, kind: "prompt", text });
+/** Send one text by data, as a `prompt` or as a WalkyTalky `mail` (spec 05). Never throws. */
+export async function sendByData(
+  door: DataDoor,
+  address: PaneAddress,
+  send: { readonly id: string; readonly kind: "prompt" | "mail"; readonly text: string },
+  limits: DataLimits = { takeMs: TAKE_MS, wordMs: WORD_MS },
+): Promise<DataResult> {
+  const { id } = send;
+  const queued = door.enqueue(address, send);
   if (!queued.ok) return { kind: "screen", why: "refused" };
   const took = await door.waitFor(id, ["taken", "sent", "failed", "withdrawn"], limits.takeMs);
   // Not taken in time: withdraw it. A withdraw that fails means the part took it in between, and the

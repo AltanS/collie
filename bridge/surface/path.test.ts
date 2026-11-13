@@ -36,10 +36,18 @@ describe("pickSendPath", () => {
     expect(pick({}, { text: "   " }).why).toBe("empty");
   });
 
-  test("only a plain new message: other modes, a steer, an agent view and a WalkyTalky delivery keep the screen", () => {
+  test("only a plain new message: other modes, a steer and an agent view keep the screen", () => {
     for (const mode of ["command", "append", "replace", "submit", "discard"] as const) expect(pick({}, { mode }).why).toBe("not-plain-mode");
     expect(pick({}, { when: "steer" }).why).toBe("not-plain-mode");
     expect(pick({}, { fromView: true }).why).toBe("not-plain-mode");
-    expect(pick({}, { mail: true }).why).toBe("not-plain-mode");
+  });
+
+  test("a WalkyTalky delivery goes by data to a part that declares mail and wake (M99 spec 05)", () => {
+    const envelope = "[walky-talky wt_aaaaaaaaaaa1] from operator (cli)\nhello";
+    expect(pick({}, { mail: true, text: envelope })).toEqual({ path: "data", why: "data" });
+    expect(pick({ part: { capabilities: new Set(["send", "wake"]) } }, { mail: true, text: envelope })).toEqual({ path: "screen", why: "not-declared" });
+    expect(pick({ part: { capabilities: new Set(["mail"]) } }, { mail: true, text: envelope })).toEqual({ path: "screen", why: "not-declared" });
+    // A part that takes mail but no phone send keeps a phone send on the screen.
+    expect(pick({ part: { capabilities: new Set(["mail", "wake"]) } })).toEqual({ path: "screen", why: "not-declared" });
   });
 });

@@ -171,6 +171,15 @@ the `stop` edge (idle), and both poke the session's read now; a `row` only pokes
 `next` is still pending aborts what runs beneath. So a hook could leave the desk dialog open and
 still answer from the phone. This is read from the types and not proven live; no code uses it yet.
 
+## WalkyTalky by data
+
+A WalkyTalky delivery to a pane whose part declared `mail` and `wake` goes to the part as `mail`
+(M99 spec 05). Only the last step changes: the off rule, the border, the limits, the resting rule and
+`--wake` run before it as before, and the text handed over is the envelope the screen road would type.
+The bridge holds it while the part reports a turn running and releases it at `turn.end`; a draft in
+the box does not hold it, because a data delivery does not touch the box. A part that took it and
+gave no word leaves the receipt "may have arrived, will not be sent again"; it is never typed after.
+
 ## One id, one path, never twice
 
 A command's life is `queued`, then `taken`, then `sent` or `failed`; or `queued`, then `withdrawn`.

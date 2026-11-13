@@ -3877,7 +3877,8 @@ export class SendProtocol {
       return this.holdsEnd(state, end) ? this.hold(state, end) : this.settle(state, end);
     }
     this.deps.store.markPath(record.id, "data");
-    const result = await sendByData(data.door, address, record.id, request.text, data.limits);
+    // A WalkyTalky delivery goes as `mail`: the text is the envelope the screen road would type (spec 05).
+    const result = await sendByData(data.door, address, { id: record.id, kind: request.draftHolds === true ? "mail" : "prompt", text: request.text }, data.limits);
     if (result.kind === "screen") {
       this.deps.store.markPath(record.id, "screen");
       return null;
