@@ -74,7 +74,10 @@ async function measure(page: Page): Promise<Fit> {
     const within = (r: DOMRect, outer: DOMRect) => r.top >= outer.top - slack && r.bottom <= outer.bottom + slack;
     const inDock = (el: Element | null) => (el === null ? null : within(el.getBoundingClientRect(), d));
     const pre = dock.querySelector<HTMLElement>('[data-slot="prompt-subject"] pre');
-    const warning = dock.querySelector('[data-slot="prompt-subject"] pre [data-tone="warning"]');
+    // The warning's TEXT, the inner span. The tone span holds the line break that starts its row, and
+    // WebKit counts that break as a box on the end of the row above (a row scrolled half out of the
+    // subject box), so its bounding rect reaches up past the box while every glyph is inside.
+    const warning = dock.querySelector('[data-slot="prompt-subject"] pre [data-tone="warning"] > span');
     // The warning must be on screen twice over: inside the subject box's visible part, and that part
     // inside the dock.
     const warningIn =
