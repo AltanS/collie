@@ -352,13 +352,18 @@ describe("dsh discovery", () => {
     expect(await ok("/", { processes: [{ argv: ["dsh"], pid: 10 }] })).toEqual({ kind: "id", value: ID });
   });
 
+  // What `lsof -Fn` prints on macOS: a `/` path. The lock file is a real file the product stats, so on
+  // Windows the temp path is spelled with `/` (Windows takes it) and the darwin-only reader, which
+  // matches `/session.lock`, sees the macOS shape.
+  const lsofPath = (path: string): string => path.replaceAll("\\", "/");
+
   test("the macOS lock table reads a session.lock from the pid's open files", async () => {
     const { root, source, lock } = setup();
     writeSession(root, ID, batches());
     const asked: string[][] = [];
     const run: LsofRunner = async (args) => {
       asked.push([...args]);
-      return ["p10", "f5", `n${lock(ID)}`, `n${join(root, "other.jsonl")}`, "n/some/dir/"].join("\n");
+      return ["p10", "f5", `n${lsofPath(lock(ID))}`, `n${lsofPath(join(root, "other.jsonl"))}`, "n/some/dir/"].join("\n");
     };
     const discover = createDshDiscovery([root], source, createDarwinProc(createOpenFiles(run)));
     expect(await discover("/home/operator/project", { processes: [{ argv: ["node", "dsh"], pid: 10 }] })).toEqual({ kind: "id", value: ID });
@@ -372,7 +377,7 @@ describe("dsh discovery", () => {
     let forks = 0;
     const run: LsofRunner = async () => {
       forks += 1;
-      return `p10\nn${lock(ID)}`;
+      return `p10\nn${lsofPath(lock(ID))}`;
     };
     const discover = createDshDiscovery([root], source, createDarwinProc(createOpenFiles(run)));
     for (let i = 0; i < 20; i++) {

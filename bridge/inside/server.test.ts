@@ -3,7 +3,11 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { hostFor } from "../host.ts";
+
+import { dataDescribe } from "./data-rig.ts";
 import { FakePart, fakeEdgeTarget, fakeLiveness } from "./fake-part.ts";
+import { insideGate } from "./gate.ts";
 import { placeHello } from "./place.ts";
 import { InsideHub, type Placer } from "./hub.ts";
 import { CommandQueue } from "./queue.ts";
@@ -35,7 +39,25 @@ async function start(stateDir: string, panes: string[] = ["w1:p1"]) {
 
 const scratch = (): string => mkdtempSync(join(tmpdir(), "in-"));
 
-describe("the socket", () => {
+// Every test below that opens the socket is `dataDescribe`, a skip on win32: the data path is off on
+// Windows in 1.29.0 (ADR 0140, decision 15). This one runs on every platform and proves that refusal
+// with an injected host. The gate half is also in gate.test.ts.
+describe("Windows keeps the screen path (ADR 0140, decision 15)", () => {
+  test("start answers false and logs why, binds and creates nothing; the gate says `platform`", async () => {
+    const dir = scratch();
+    const lines: string[] = [];
+    const hub = new InsideHub({ registry: new PartRegistry({ log: (line) => lines.push(line) }), queue: new CommandQueue(), place: owning(["w1:p1"]) });
+    const server = new InsideServer({ socketPath: insideSocketPath(dir), hub, log: (line) => lines.push(line), host: hostFor("win32") });
+    expect(await server.start()).toBe(false);
+    expect(server.listening).toBe(false);
+    expect(lines.join("\n")).toContain("not built for Windows");
+    expect(existsSync(join(dir, "inside"))).toBe(false);
+    expect(insideGate({ setting: true, linked: true, edges: true, platform: "win32" })).toBe("platform");
+    expect(insideGate({ setting: null, linked: true, edges: true, platform: "linux" })).toBe("open");
+  });
+});
+
+dataDescribe("the socket", () => {
   test("lives in an owner-only folder, mode 0700, and is itself 0600", async () => {
     const dir = scratch();
     const { started, socket } = await start(dir);
@@ -137,7 +159,7 @@ describe("the socket", () => {
   });
 });
 
-describe("several bridges on one machine", () => {
+dataDescribe("several bridges on one machine", () => {
   test("each owns its own socket; the one that owns the pane says mine, the other says not mine", async () => {
     const a = await start(scratch(), ["w1:p1"]);
     const b = await start(scratch(), ["w7:p7"]);
@@ -152,7 +174,7 @@ describe("several bridges on one machine", () => {
   });
 });
 
-describe("several bridges, the real placement (M99, review of spec 09)", () => {
+dataDescribe("several bridges, the real placement (M99, review of spec 09)", () => {
   test("a part binds to the bridge whose session holds its pane; the other bridge refuses it", async () => {
     const dirA = scratch();
     const dirB = scratch();
@@ -182,7 +204,7 @@ describe("several bridges, the real placement (M99, review of spec 09)", () => {
   });
 });
 
-describe("caps", () => {
+dataDescribe("caps", () => {
   test("a body past the socket's cap is refused with 413, and the server keeps serving", async () => {
     const { socket } = await start(scratch());
     const part = new FakePart(socket);
@@ -233,7 +255,7 @@ describe("caps", () => {
   });
 });
 
-describe("the long poll", () => {
+dataDescribe("the long poll", () => {
   // Bun checks its idle limit on a coarse timer: a request past its 10 s default is cut after 10 to 12 s. A
   // wait of 11.5 s passed inside that window while every real 25 s poll was cut (`server.timeout()` does
   // nothing on a Unix socket in Bun 1.4), so the wait here is well past it.

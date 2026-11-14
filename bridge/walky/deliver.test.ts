@@ -15,7 +15,7 @@ import { SurfaceShadow } from "../surface/shadow.ts";
 import type { AgentView } from "../types.ts";
 import { RequestStore } from "../surface/requests.ts";
 import { readFileSync } from "node:fs";
-import { DATA_PANE, dataRig } from "../inside/data-rig.ts";
+import { DATA_PANE, dataDescribe, dataRig } from "../inside/data-rig.ts";
 import { WORD_FRESH_MS } from "../inside/hub.ts";
 import { releasesHeld } from "../inside/wake.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, HELD_LIMIT_MS, HELD_POLL_MS, isResting, REST_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
@@ -2227,7 +2227,7 @@ describe("the space border (M98 spec 03)", () => {
 /** A captured Claude Code screen whose box holds the person's draft: the screen road reads `composer: draft`. */
 const DRAFT_SCREEN = readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", "claude--draft-footer-single.txt"), "utf8");
 
-describe("WalkyTalky by data (M99 spec 05)", () => {
+dataDescribe("WalkyTalky by data (M99 spec 05)", () => {
   async function linked(options: { readonly capabilities?: string[]; readonly wordMs?: number; readonly draft?: boolean | null; readonly hubNow?: () => number } = {}) {
     const data = await dataRig({ harness: "claude", version: "2.1.200", wordMs: options.wordMs ?? 800, now: options.hubNow ?? Date.now });
     roots.push(join(data.socket, "..", ".."));

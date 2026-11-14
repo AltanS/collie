@@ -85,7 +85,8 @@ describe("the store", () => {
     await again.load();
     expect(again.get()).toBe("~/trees");
     expect(JSON.parse(await readFile(join(state, FOLDER_SETTING_FILE), "utf8"))).toEqual({ version: 1, dir: "~/trees" });
-    expect((await stat(join(state, FOLDER_SETTING_FILE))).mode & 0o777).toBe(0o600);
+    // Windows has no POSIX mode bits, so only the mode expectation waits for another platform.
+    if (process.platform !== "win32") expect((await stat(join(state, FOLDER_SETTING_FILE))).mode & 0o777).toBe(0o600);
   });
 
   test("null clears it, and the file goes", async () => {

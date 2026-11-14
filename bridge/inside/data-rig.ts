@@ -2,10 +2,12 @@
 // every call, a real inside hub and socket, and a fake part from `bridge/inside/fake-part.ts`. Test
 // code only; nothing in the bridge imports it.
 
+import { describe, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
 import { muxAck, muxOk, muxUnreachable, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
@@ -19,6 +21,15 @@ import { HoldStore } from "../surface/holds.ts";
 import { KeyGate } from "../surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "../surface/protocol.ts";
 import { RequestStore } from "../surface/requests.ts";
+
+// The data path is off on Windows in 1.29.0 (ADR 0140, decision 15: Windows keeps the screen path):
+// `InsideServer.start()` answers false there, so `dataRig` cannot start. Every test that builds on
+// the rig, or dials the inside socket, is `dataTest` or `dataDescribe`: a skip on win32, as the walky
+// and hold socket tests are. The Windows behaviour itself (no socket, the gate says "platform") runs
+// everywhere in server.test.ts and gate.test.ts with an injected host.
+const NO_DATA_PATH = HOST.platform === "win32";
+export const dataTest = test.skipIf(NO_DATA_PATH);
+export const dataDescribe = describe.skipIf(NO_DATA_PATH);
 
 export const DATA_PANE = { session: "main", paneId: "w1:p1" };
 const ENV = { HERDR_PANE_ID: "w1:p1", HERDR_SOCKET_PATH: "/run/herdr.sock" };

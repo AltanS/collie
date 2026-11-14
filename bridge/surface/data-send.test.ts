@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 
-import { dataId, dataRig, type DataRig } from "../inside/data-rig.ts";
+import { dataDescribe, dataId, dataRig, type DataRig } from "../inside/data-rig.ts";
 
 const rigs: DataRig[] = [];
 afterEach(() => {
@@ -12,7 +12,7 @@ async function rig(options: Partial<Parameters<typeof dataRig>[0]> = {}): Promis
   return made;
 }
 
-describe("a send by data", () => {
+dataDescribe("a send by data", () => {
   test("the part takes it and says sent: receipt sent, its request id, no call to the mux", async () => {
     const r = await rig();
     const part = await r.part();
@@ -72,7 +72,7 @@ describe("a send by data", () => {
   });
 });
 
-describe("never twice", () => {
+dataDescribe("never twice", () => {
   test("not taken in time: withdrawn, and the screen road runs it once; the part never sees it", async () => {
     const r = await rig({ takeMs: 300 });
     const part = await r.part();
@@ -112,7 +112,7 @@ describe("never twice", () => {
   });
 });
 
-describe("a session with no bound part", () => {
+dataDescribe("a session with no bound part", () => {
   test("the screen road exactly as before: the data road is never tried, the record carries no road", async () => {
     const r = await rig();
     const id = dataId();
@@ -124,7 +124,7 @@ describe("a session with no bound part", () => {
   });
 });
 
-describe("a turn the bridge does not know (M99 review item 6)", () => {
+dataDescribe("a turn the bridge does not know (M99 review item 6)", () => {
   test("a part that reported no turn since it bound: the screen road runs the send, the part never sees it", async () => {
     const r = await rig();
     const part = await r.part({}, { idle: false });

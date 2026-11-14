@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { dataDescribe } from "./data-rig.ts";
 import { fakeEdgeTarget, fakeLiveness, FakePart } from "./fake-part.ts";
 import { InsideHub, type InsideListener } from "./hub.ts";
 import { placeHello } from "./place.ts";
@@ -34,7 +35,7 @@ async function rig() {
   return { hub, events, socket };
 }
 
-describe("a whole round with the fake part", () => {
+dataDescribe("a whole round with the fake part", () => {
   test("hello, a prompt handed over and reported sent, wake events, a draft, bye", async () => {
     const { hub, events, socket } = await rig();
     const part = new FakePart(socket, { env: ENV, pidStartTime: 7 });

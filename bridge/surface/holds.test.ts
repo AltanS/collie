@@ -19,7 +19,7 @@ import { HoldBook, takeHold, type Held } from "./hold.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
-import { dataId, dataRig, type DataRig } from "../inside/data-rig.ts";
+import { dataDescribe, dataId, dataRig, type DataRig } from "../inside/data-rig.ts";
 import { HOLD_BRIDGE_MAX, HOLD_COMMAND_MS, HOLD_ENDED_KEEP_MS, HOLD_ENDED_PANE_MAX, HOLD_MS, HOLD_PANE_MAX, HoldStore, heldRow, type HoldInput } from "./holds.ts";
 
 let dir: string;
@@ -208,7 +208,7 @@ describe("HoldStore", () => {
 
 // ── The data road holds as the screen road does (M99 spec 03) ──
 
-describe("a data send while the part's turn runs", () => {
+dataDescribe("a data send while the part's turn runs", () => {
   const rigs: DataRig[] = [];
   afterEach(() => {
     for (const rig of rigs.splice(0)) rig.stop();

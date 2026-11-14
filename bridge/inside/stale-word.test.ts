@@ -7,11 +7,11 @@
 // road, which reads the turn and the box itself. Each word carries the part's count (`seq`), so a late
 // word never undoes a newer one.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { DATA_PANE, dataId, dataRig, type DataRig } from "./data-rig.ts";
+import { DATA_PANE, dataDescribe, dataId, dataRig, type DataRig } from "./data-rig.ts";
 import { WORD_FRESH_MS } from "./hub.ts";
 import { PART_RATE_BURST } from "./server.ts";
 import { paneLinkedReader } from "../surface/path.ts";
@@ -35,7 +35,7 @@ async function rig(): Promise<{ r: DataRig; clock: { at: number } }> {
 /** A WalkyTalky delivery, as walky hands it to the Send Protocol. */
 const mail = (r: DataRig, id: string, text: string) => r.send(id, text, { fromPhone: false, draftHolds: true });
 
-describe("a lost turn.end", () => {
+dataDescribe("a lost turn.end", () => {
   test("a phone send after the running word grew old takes the screen road, which reads the turn itself", async () => {
     const { r, clock } = await rig();
     const part = await r.part();
@@ -107,7 +107,7 @@ describe("a lost turn.end", () => {
   });
 });
 
-describe("a lost draft cleared", () => {
+dataDescribe("a lost draft cleared", () => {
   test("a WalkyTalky message is held over the draft while the word is fresh, then the screen road reads the box", async () => {
     const { r, clock } = await rig();
     const part = await r.part({}, { idle: true });
@@ -140,7 +140,7 @@ describe("a lost draft cleared", () => {
   });
 });
 
-describe("a draft that stays in the box past the word's age", () => {
+dataDescribe("a draft that stays in the box past the word's age", () => {
   test("a message sent then is held by the screen's read of the box; the pane stays linked, and Deliver now still goes by data", async () => {
     const { r, clock } = await rig();
     r.mux.screen = DRAFT_SCREEN;
@@ -160,7 +160,7 @@ describe("a draft that stays in the box past the word's age", () => {
   });
 });
 
-describe("the order and the age of a part's word", () => {
+dataDescribe("the order and the age of a part's word", () => {
   test("a late word never undoes a newer one; a part with no count is taken in arrival order", async () => {
     const { r } = await rig();
     const part = await r.part({}, { idle: false });

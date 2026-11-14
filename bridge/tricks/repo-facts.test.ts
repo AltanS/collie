@@ -330,7 +330,8 @@ describe("the cache", () => {
     before.want([REPO, "https://github.com/broken/repo"]);
     await before.settled();
     const info = await stat(join(stateDir, "tricks", REPO_FACTS_FILE));
-    expect(info.mode & 0o777).toBe(0o600);
+    // Windows has no POSIX mode bits, so only the mode expectation waits for another platform.
+    if (process.platform !== "win32") expect(info.mode & 0o777).toBe(0o600);
 
     clock.t = T0 + HOUR / 2;
     const second = fakeFetch();

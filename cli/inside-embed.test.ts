@@ -13,8 +13,9 @@ function shippedFiles(dir: string): string[] {
   const walk = (at: string): void => {
     for (const entry of readdirSync(at, { withFileTypes: true })) {
       const path = join(at, entry.name);
-      const rel = relative(dir, path);
-      if (rel === "tests" || rel === join(".claude-plugin", "types") || rel === "tsconfig.json" || rel === ".gitignore" || entry.name.endsWith(".spec.ts")) continue;
+      // The product embeds `/` paths on every platform, so the walk spells them with `/` too.
+      const rel = relative(dir, path).replaceAll("\\", "/");
+      if (rel === "tests" || rel === ".claude-plugin/types" || rel === "tsconfig.json" || rel === ".gitignore" || entry.name.endsWith(".spec.ts")) continue;
       if (entry.isDirectory()) walk(path);
       else out.push(rel);
     }
@@ -39,7 +40,8 @@ describe("the Collie mod in the binary's payload", () => {
     for (const file of CLAUDE_MOD_FILES) {
       const path = join(dir, "collie", file.path);
       expect(readFileSync(path, "utf8"), file.path).toBe(file.text);
-      expect(statSync(path).mode & 0o777).toBe(0o644);
+      // Windows has no POSIX mode bits, so only the mode expectation waits for another platform.
+      if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o644);
     }
     expect(shippedFiles(join(dir, "collie"))).toEqual(shippedFiles(MOD_DIR));
   });

@@ -22,6 +22,12 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
+  // The verbs' logic is the same on every platform, so a test pins `platform: "linux"` through the `deps.platform`
+  // seam (the verbs refuse on win32, and "on Windows link refuses" below proves that refusal on every platform).
+  // The fake `claude` below is a `#!/bin/bash` script, which Windows cannot run from a PATH lookup, so each test
+  // that runs it is `claudeTest`, a skip on win32.
+  const claudeTest = test.skipIf(process.platform === "win32");
+
   /** The fake `claude`: one line per call into `calls.log`, and the answers a real one gives as JSON. */
   const FAKE_CLAUDE = [
     "#!/bin/bash",
@@ -76,6 +82,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
       now: () => 1_786_000_000_000,
       version: options.version,
       parts: options.parts,
+      platform: "linux",
     };
     const calls = (): string[] => (existsSync(join(bin, "calls.log")) ? readFileSync(join(bin, "calls.log"), "utf8").trim().split("\n") : []);
     const failNext = (words: string | null): void => {
@@ -89,7 +96,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
 
   const PARTS: PartTexts = { pi: "export default function collie() {}\n", omp: "export default function collie() {}\n", opencode: "export const Collie = async () => ({})\n" };
 
-  test("link claude: writes the mod into the parts folder and registers it at the user scope, then status says linked", () => {
+  claudeTest("link claude: writes the mod into the parts folder and registers it at the user scope, then status says linked", () => {
     const r = lab();
     const code = cmdHarnessLink(r.deps, "claude");
     expect(r.io.stderr).toEqual([]);
@@ -112,7 +119,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(status.stdout.slice(1)).toEqual(["pi: not linked", "omp: not linked", "opencode: not linked"]);
   });
 
-  test("link claude twice: the second run registers nothing new", () => {
+  claudeTest("link claude twice: the second run registers nothing new", () => {
     const r = lab();
     cmdHarnessLink(r.deps, "claude");
     const before = r.calls().length;
@@ -120,7 +127,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(r.calls().slice(before)).toEqual(["plugin marketplace list --json", "plugin list --json"]);
   });
 
-  test("unlink claude: uninstalls, removes the marketplace and the folder, and status says not linked", () => {
+  claudeTest("unlink claude: uninstalls, removes the marketplace and the folder, and status says not linked", () => {
     const r = lab();
     cmdHarnessLink(r.deps, "claude");
     const before = r.calls().length;
@@ -143,7 +150,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(existsSync(join(r.home, ".config"))).toBe(false);
   });
 
-  test("a managed setting that stops user plugin hooks: linked, with a note, and status says blocked by policy", () => {
+  claudeTest("a managed setting that stops user plugin hooks: linked, with a note, and status says blocked by policy", () => {
     const r = lab({ managed: '{"allowManagedHooksOnly":true}' });
     expect(cmdHarnessLink(r.deps, "claude")).toBe(EXIT.OK);
     expect(r.io.stdout.join("\n")).toContain("allowManagedHooksOnly");
@@ -160,7 +167,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(r.calls()).toEqual([]);
   });
 
-  test("an interrupted first link leaves only our temporary folder, and the next link repairs it", () => {
+  claudeTest("an interrupted first link leaves only our temporary folder, and the next link repairs it", () => {
     const r = lab();
     const dir = claudePartDir(r.deps.ctx);
     // The kill came between the files and the rename: a half folder under our temporary name.
@@ -190,7 +197,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(readdirSync(join(dir, "..")).filter((name) => name.startsWith("claude.collie"))).toEqual([]);
   });
 
-  test("unlink while `claude plugin list` fails: a warning, exit 1, and the folder is kept; a rerun finishes", () => {
+  claudeTest("unlink while `claude plugin list` fails: a warning, exit 1, and the folder is kept; a rerun finishes", () => {
     const r = lab();
     cmdHarnessLink(r.deps, "claude");
     for (const words of ["plugin list", "plugin marketplace list"]) {
@@ -248,7 +255,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(none.io.stderr.join("\n")).toContain("no plugin for pi yet");
   });
 
-  test("update: harness sync rewrites an older linked part with this build's", () => {
+  claudeTest("update: harness sync rewrites an older linked part with this build's", () => {
     const old = lab({ version: "1.28.0", parts: PARTS });
     cmdHarnessLink(old.deps, "claude");
     cmdHarnessLink(old.deps, "pi");
@@ -283,7 +290,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(r.io.stdout).toEqual([]);
   });
 
-  test("touches nothing else: no settings file, no unit, no restart; only `claude plugin` runs", () => {
+  claudeTest("touches nothing else: no settings file, no unit, no restart; only `claude plugin` runs", () => {
     const r = lab({ parts: PARTS });
     const tree = (dir: string): string[] => (existsSync(dir) ? readdirSync(dir, { recursive: true }).map(String).toSorted() : []);
     const claudeBefore = tree(r.claudeDir);
@@ -321,7 +328,7 @@ describe("the update and the uninstall take the parts along (M99 spec 09)", () =
         ["/opt/collie/bin/collie harness sync", { stdout: "harness sync: pi plugin 1.29.0\n" }],
       ],
     });
-    const along: HarnessLinkDeps = { ctx, io, files: realFiles, exec, parts: { pi: "x\n", omp: null, opencode: null }, version: "1.29.0" };
+    const along: HarnessLinkDeps = { ctx, io, files: realFiles, exec, parts: { pi: "x\n", omp: null, opencode: null }, version: "1.29.0", platform: "linux" };
     return { deps: along, io, ran: exec.calls, setVersion: (v: string) => (version = v) };
   }
 
