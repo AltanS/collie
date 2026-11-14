@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A message queued while Claude Code compacts shows its queued card in Chat.** A message sent from the phone during a compaction gets the same card, with Send now, as one queued during a normal turn.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added

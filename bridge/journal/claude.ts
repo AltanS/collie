@@ -571,7 +571,10 @@ const MAX_QUEUED_CHARS = 200;
  * FOUR OPERATIONS, and the row shapes are measured over 19,000-odd `queue-operation` rows in the 570
  * newest sessions here (2026-10-08):
  *
- *   `enqueue`  `content` — the message. Every row carries one.
+ *   `enqueue`  `content` — the message. Every row carried one until 2026-11-14: a message queued
+ *              while a compaction runs is an `enqueue` with NO `content` (2.1.323, two of 209 rows in
+ *              one session). It takes its place like any other, with no words; {@link
+ *              QueueTracker.unnamed} counts it so the window can name it from Collie's receipt.
  *   `dequeue`  NO `content` at all. It says one came off, never which.
  *   `remove`   `content` and a `reason`: `absorbed_mid_turn`, `delivered_to_agent` or, once,
  *              `agent_stopped`. All mean it left the queue. 560 rows from older Claude Code carry
@@ -613,12 +616,16 @@ interface QueueTracker {
   readonly delivered: (content: string) => void;
   /** A SNAPSHOT, so a later `push` cannot change what a caller is holding. */
   readonly queued: () => readonly string[];
+  /** How many places came from an `enqueue` with no content: a message waits, its words are not in the log. */
+  readonly unnamed: () => number;
 }
 
 /** One place in the queue: a {@link QueueEntry} and the raw key an exact `remove` names it by. */
 interface QueueSlot extends QueueEntry {
   /** The raw `content`, bounded so a huge envelope costs little. */
   readonly raw: string;
+  /** The `enqueue` carried no content: a place with no words (a message queued during a compaction). */
+  readonly blind: boolean;
 }
 
 /**
@@ -676,7 +683,7 @@ function createQueueTracker(): QueueTracker {
       const content = row.content;
       if (op === "enqueue") {
         const text = typeof content === "string" ? content : "";
-        queue.push({ ...readQueueEntry(text), raw: slotKey(text) });
+        queue.push({ ...readQueueEntry(text), raw: slotKey(text), blind: typeof content !== "string" });
         if (queue.length > QUEUE_SLOTS_MAX) queue.shift();
       } else if (op === "dequeue") {
         depart(queue.shift());
@@ -704,6 +711,7 @@ function createQueueTracker(): QueueTracker {
       if (at !== -1) queue.splice(at, 1);
     },
     queued: () => queue.flatMap((slot) => (slot.text === null ? [] : [slot.text])).slice(-QUEUE_MAX),
+    unnamed: () => queue.filter((slot) => slot.blind).length,
   };
 }
 
@@ -1022,7 +1030,7 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     return reduction(entries, changed);
   }
 
-  return { push, unknowns: unknown.tally, queued: queue.queued };
+  return { push, unknowns: unknown.tally, queued: queue.queued, unnamedQueued: queue.unnamed };
 }
 
 /**
