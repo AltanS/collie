@@ -51,6 +51,11 @@ export interface LaunchUnsettled {
   /** Epoch ms the create began. */
   at: number;
   state: "pending" | "unknown";
+  /**
+   * The sentence an `unknown` launch ended with, when it is not {@link LAUNCH_UNKNOWN_TEXT}: a retap
+   * answers the same words the first answer gave. Absent: the general sentence.
+   */
+  text?: string;
 }
 
 /** What one id holds: the pane a launch made, or the open question of one that has none to name. */
@@ -75,6 +80,13 @@ export interface LaunchUnknown {
 /** What a launch, a tab create or a space create answers. */
 export type LaunchAnswer = CreateResponse | LaunchUnknown;
 
+/**
+ * The sentence for a launch whose pane the look FOUND (a positive match by folder or label), and in which no
+ * shell prompt showed inside the bound: the pane is there and nothing was typed. Only a launch that has a line
+ * to type can end this way; a plain shell, a tab and a space type nothing and never read a prompt.
+ */
+export const LAUNCH_NO_PROMPT_TEXT = "The pane opened, but Collie could not see a shell prompt in it, so it typed nothing. Start the agent there yourself.";
+
 /** The sentence a retry of an unsettled id answers, and the member's answer past its deadline. For a person on a phone. */
 export const LAUNCH_UNKNOWN_TEXT = "Collie started this once and cannot tell if it worked. Check your panes before you start it again.";
 
@@ -89,9 +101,11 @@ function asRecord(value: JsonValue): JsonObject | null {
 export function coerceLaunchReceipt(raw: JsonValue): LaunchEntry | null {
   const r = asRecord(raw);
   if (r === null) return null;
-  const { requestId, at, workspaceId, workspaceLabel, paneId, tabId, cwd, state } = r;
+  const { requestId, at, workspaceId, workspaceLabel, paneId, tabId, cwd, state, text } = r;
   if (!isRequestId(requestId)) return null;
   if (typeof at !== "number" || !Number.isFinite(at)) return null;
+  // Only a sentence this build knows is read back: a file is not a source of words for the phone.
+  if (state === "unknown" && text === LAUNCH_NO_PROMPT_TEXT) return { requestId, at, state, text };
   if (state === "pending" || state === "unknown") return { requestId, at, state };
   if (typeof workspaceId !== "string" || typeof workspaceLabel !== "string") return null;
   if (typeof paneId !== "string" || typeof tabId !== "string" || typeof cwd !== "string") return null;

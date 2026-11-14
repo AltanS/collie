@@ -49,7 +49,7 @@ import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
 import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
 import { endsInShellPrompt } from "./surface/shell-prompt.ts";
-import { isUnsettled, LAUNCH_UNKNOWN_TEXT, launchReplay, memoryLaunchReceipts, type LaunchAnswer, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import { isUnsettled, LAUNCH_NO_PROMPT_TEXT, LAUNCH_UNKNOWN_TEXT, launchReplay, memoryLaunchReceipts, type LaunchAnswer, type LaunchReceiptSurface } from "./launch-receipts.ts";
 import {
   MEMBER_DEADLINE_MS,
   lookForCreated,
@@ -8624,7 +8624,8 @@ function earlierLaunch(receipts: LaunchReceiptSurface, requestId: string): Promi
   if (stored === undefined) return null;
   // No run in flight and no pane to name (the bridge stopped, or the create could not be confirmed): the
   // pane may exist, and a second create under this id would make a second one.
-  if (isUnsettled(stored)) return Promise.resolve(unknownCreate(LAUNCH_UNKNOWN_TEXT));
+  // The retap answers the words the first answer ended with.
+  if (isUnsettled(stored)) return Promise.resolve(unknownCreate(stored.text ?? LAUNCH_UNKNOWN_TEXT));
   return Promise.resolve(launchReplay(stored));
 }
 
@@ -8831,8 +8832,9 @@ async function finishLaunch(
       const shell =
         made.looked.agent === "shell" && (await awaitPaneReady(herdr, created.paneId, { ...job.wait, accepts: endsInShellPrompt })).ready;
       if (!shell) {
-        if (job.requestId !== undefined) await job.receipts.record({ requestId: job.requestId, at: Date.now(), state: "unknown" });
-        return unknownCreate(LAUNCH_UNKNOWN_TEXT);
+        // The pane is there and nothing was typed: its own sentence, and the receipt keeps it for a retap.
+        if (job.requestId !== undefined) await job.receipts.record({ requestId: job.requestId, at: Date.now(), state: "unknown", text: LAUNCH_NO_PROMPT_TEXT });
+        return unknownCreate(LAUNCH_NO_PROMPT_TEXT);
       }
     }
     const sent =

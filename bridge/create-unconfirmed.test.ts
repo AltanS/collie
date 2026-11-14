@@ -15,7 +15,7 @@ import {
   type KnownBefore,
 } from "./create-confirm.ts";
 import type { JsonObject } from "./json.ts";
-import { isUnsettled, LAUNCH_RECEIPTS_FILE, LAUNCH_UNKNOWN_TEXT, LaunchReceiptStore, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import { isUnsettled, LAUNCH_NO_PROMPT_TEXT, LAUNCH_RECEIPTS_FILE, LAUNCH_UNKNOWN_TEXT, LaunchReceiptStore, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
 import { createTab, createWorkspace, launch } from "./server.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type { Launcher } from "./types.ts";
@@ -576,6 +576,18 @@ describe("the receipt file across a start", () => {
     expect(await third.expirePending(1000 + 3 * LAUNCH_BUDGET_MS)).toBe(0);
   });
 
+  test("an unknown receipt keeps its own sentence across a start; a sentence this build does not know is not read back", async () => {
+    const first = new LaunchReceiptStore(dir, () => {});
+    await first.record({ requestId: ID, at: 1, state: "unknown", text: LAUNCH_NO_PROMPT_TEXT });
+    const second = new LaunchReceiptStore(dir, () => {});
+    await second.load();
+    expect(second.get(ID)).toEqual({ requestId: ID, at: 1, state: "unknown", text: LAUNCH_NO_PROMPT_TEXT });
+    await Bun.write(join(dir, LAUNCH_RECEIPTS_FILE), JSON.stringify({ receipts: [{ requestId: ID2, at: 2, state: "unknown", text: "anything a file says" }] }));
+    const third = new LaunchReceiptStore(dir, () => {});
+    await third.load();
+    expect(third.get(ID2)).toEqual({ requestId: ID2, at: 2, state: "unknown" });
+  });
+
   test("a start with nothing pending writes no file", async () => {
     const store = new LaunchReceiptStore(dir, () => {});
     await store.load();
@@ -956,20 +968,58 @@ describe("a pane the look found is typed into only at a real shell prompt", () =
     return mux;
   }
 
-  test("a screen that holds still but ends in output, not a prompt: nothing is typed, unknown", async () => {
+  test("a screen that holds still but ends in output, not a prompt: nothing is typed, the pane's own sentence, and a retap says the same words", async () => {
     const mux = found(() => "Last login: today\nbuilding project...");
     const receipts = memoryLaunchReceipts();
-    const { status } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    const { status, body } = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
     expect(status).toBe(504);
+    expect(body).toMatchObject({ code: "write_outcome_unknown", error: LAUNCH_NO_PROMPT_TEXT });
     expect(mux.texts).toEqual([]);
     expect(mux.closes).toEqual([]);
-    expect(receipts.get(ID)).toMatchObject({ state: "unknown" });
+    expect(receipts.get(ID)).toMatchObject({ state: "unknown", text: LAUNCH_NO_PROMPT_TEXT });
+    // The retap cannot know which case it was; the receipt kept the words.
+    const retap = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(retap.status).toBe(504);
+    expect(retap.body).toMatchObject({ error: LAUNCH_NO_PROMPT_TEXT });
+    expect(mux.spaces).toHaveLength(1);
+    expect(mux.texts).toEqual([]);
   });
 
-  test("a screen that ends in an agent's input box is no prompt either", async () => {
-    const mux = found(() => "\u256d\u2500\u2500\u2500\u2500\u256e\n\u2502 > \u2502\n\u2570\u2500\u2500\u2500\u2500\u256f\n  ? for shortcuts");
-    expect((await launchOnce(mux, memoryLaunchReceipts(), { command: "claude", requestId: ID })).status).toBe(504);
+  test("a pane that holds an agent already gets the same sentence", async () => {
+    const mux = found(() => "$ ");
+    mux.shown = [pane({ paneId: "w7:p1", spaceId: "w7", tabId: "w7:t1", spaceLabel: HOME_NAME, cwd: homedir(), agent: "claude" })];
+    const { body } = await launchOnce(mux, memoryLaunchReceipts(), { command: "claude", requestId: ID });
+    expect(body).toMatchObject({ error: LAUNCH_NO_PROMPT_TEXT });
     expect(mux.texts).toEqual([]);
+  });
+
+  test("nothing seen keeps the general sentence, on the first answer and on the retap", async () => {
+    const mux = new FakeMux();
+    mux.answer = "unconfirmed";
+    const receipts = memoryLaunchReceipts();
+    const first = await launchOnce(mux, receipts, { command: "claude", requestId: ID });
+    expect(first.body).toMatchObject({ ok: false, code: "write_outcome_unknown" });
+    expect(first.body.error).not.toBe(LAUNCH_NO_PROMPT_TEXT);
+    expect(receipts.get(ID)).toEqual({ requestId: ID, at: expect.any(Number), state: "unknown" });
+    expect((await launchOnce(mux, receipts, { command: "claude", requestId: ID })).body.error).toBe(LAUNCH_UNKNOWN_TEXT);
+  });
+
+  test("a launch with no line to type (a plain shell) adopts the found pane and types nothing: no sentence is needed", async () => {
+    const mux = found(() => "building project...");
+    const { status, body } = await launchOnce(mux, memoryLaunchReceipts(), { shell: true, requestId: ID });
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ ok: true, pane: { paneId: "w7:p1" } });
+    expect(mux.texts).toEqual([]);
+  });
+
+  test("a tab and a space create type nothing, so a found pane is adopted with no prompt read", async () => {
+    const tabMux = new FakeMux();
+    tabMux.answer = "unconfirmed";
+    tabMux.shown = [pane({ paneId: "w1:p5", spaceId: "w1", tabId: "w1:t5" })];
+    tabMux.screen = () => "output";
+    expect((await tab(tabMux, memoryLaunchReceipts(), { workspaceId: "w1", cwd: "/home/op/app", requestId: ID })).status).toBe(200);
+    const spaceMux = found(() => "output");
+    expect((await space(spaceMux, memoryLaunchReceipts(), { cwd: homedir(), requestId: ID2 })).status).toBe(200);
   });
 
   test("a prompt on the last non-blank row, with blank rows under it, is typed into", async () => {
