@@ -3591,8 +3591,11 @@ export function AgentChat({
           title={t("chat.switcher.title")}
           pull={pull}
           pullFrom={pullFrom}
+          // Not drawn while the herd is a saved copy (`rootData.stale`): the dashboard keeps its button and
+          // refuses on the tap, but here a tap that closed the sheet and then showed an error line would read
+          // as a mis-tap on Close.
           action={
-            newEntry.offered ? (
+            newEntry.offered && rootData?.stale !== true ? (
               <FabButton
                 size="compact"
                 label={t("home.new.label")}

@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 
 // THE SWITCH PANE SHEET'S NEW BUTTON: the dashboard's own New button, in the sheet's title row, before the
-// close button. Drawn on the dashboard's terms (a device that may write; the saved copy keeps it and refuses
-// on the tap) and going where the dashboard's tap goes, the New page on this pane's machine and session.
+// close button. Drawn on the dashboard's terms (a device that may write), except on the saved copy of the herd, where
+// the dashboard keeps its button and refuses on the tap but the sheet draws none; and going where the dashboard's tap goes, the New page on this pane's machine and session.
 const liveness = vi.hoisted(() => ({ live: true }));
 vi.mock("@/lib/liveness", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/liveness")>()),
@@ -98,13 +98,12 @@ describe("the Switch pane sheet's New button", () => {
     expect(router.state.historyAction).toBe("PUSH");
   });
 
-  it("on the saved copy of the herd closes the sheet and says so, and goes nowhere", async () => {
+  it("is not drawn while the herd is a saved copy, so a tap can never read as a mis-tap on Close", async () => {
     const user = userEvent.setup();
     renderPane({}, true);
     await user.click(screen.getByRole("button", { name: "Switch pane" }));
-    await user.click(within(titleRow()).getByRole("button", { name: "New" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByTestId("where")).toHaveTextContent(/^\/$/u);
-    expect(screen.getByTestId("notice")).not.toHaveTextContent(/^$/u);
+    await screen.findByRole("dialog");
+    expect(within(titleRow()).queryByRole("button", { name: "New" })).toBeNull();
+    expect(titleRow().children).toHaveLength(2);
   });
 });

@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **The Switch pane sheet has the New button of the dashboard in its title row.** It sits before the close button, opens the same New page on the same machine, and appears under the same conditions as the dashboard's button.
+- **The Switch pane sheet has the New button of the dashboard in its title row.** It sits before the close button, opens the same New page on the same machine, and appears under the same conditions as the dashboard's button, except while the herd is a saved copy.
 
 ## [1.29.0] - 2026-11-12
 

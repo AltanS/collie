@@ -381,8 +381,11 @@ export function BottomSheet({
             >
               {title}
             </span>
+            {/* 12px (`mr-3`) between the action and the close button: a mis-tap on the action may leave the screen,
+                a mis-tap on the close button only closes the sheet, so their hit areas keep clear of each other,
+                pressed too (the action's press reach is 3% of its width, the close button's 1.5%). */}
             {action ? (
-              <span data-slot="sheet-action" className="mr-1 flex shrink-0 items-center">
+              <span data-slot="sheet-action" className="mr-3 flex shrink-0 items-center">
                 {action}
               </span>
             ) : null}

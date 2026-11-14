@@ -103,3 +103,53 @@ test("a slow drag down on the open switcher follows the finger through a poll", 
   expect(new Set(frames.map((f) => f.opacity))).toEqual(new Set([frames[0]!.opacity]));
   await expect(dialog).toBeVisible();
 });
+
+// A DRAG THAT STARTS ON A BUTTON IN THE TITLE ROW IS A DRAG, NEVER A TAP. The sheet's pull-down listens on the
+// whole panel, so a finger that lands on Close, on the New button, or in the New button's 7px reach above it and
+// then moves down does what a drag from the grab handle does: past 90px the sheet closes, short of it the sheet
+// settles back. None of them may navigate to the New page, and Close's own tap must not be what closes it.
+for (const from of ["close", "new", "above-new"] as const) {
+  for (const travel of [40, 120] as const) {
+    test(`a drag of ${travel}px that starts on ${from} ${travel > 90 ? "closes the sheet" : "settles back"} and never opens the New page`, async ({ page }) => {
+      await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
+      await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
+      const dialog = page.getByRole("dialog", { name: en["chat.switcher.title"] });
+      await expect(dialog).toBeVisible();
+      const panel = dialog.locator(':scope > div[tabindex="-1"]');
+      await expect
+        .poll(async () => {
+          const a = await panel.boundingBox();
+          await page.waitForTimeout(100);
+          const b = await panel.boundingBox();
+          return a !== null && b !== null && a.y === b.y;
+        })
+        .toBe(true);
+      const target = await dialog
+        .getByRole("button", { name: from === "close" ? en["common.closeAria"] : en["home.new.label"], exact: true })
+        .boundingBox();
+      if (target === null) throw new Error("the button has no box");
+      const x = Math.round(target.x + target.width / 2);
+      // The reach is 7px above the face; 4px up is well inside it and outside the face.
+      const y0 = Math.round(from === "above-new" ? target.y - 4 : target.y + target.height / 2);
+
+      const cdp = await page.context().newCDPSession(page);
+      const touch = (type: "touchStart" | "touchMove" | "touchEnd", y: number) =>
+        cdp.send("Input.dispatchTouchEvent", {
+          type,
+          touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }],
+        });
+      const startUrl = page.url();
+      await touch("touchStart", y0);
+      for (let dy = 6; dy <= travel; dy += 6) {
+        await touch("touchMove", y0 + dy);
+        await page.waitForTimeout(30);
+      }
+      await touch("touchEnd", y0 + travel);
+      await page.waitForTimeout(400);
+
+      expect(page.url()).toBe(startUrl);
+      if (travel > 90) await expect(dialog).toHaveCount(0);
+      else await expect(dialog).toBeVisible();
+    });
+  }
+}

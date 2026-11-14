@@ -109,5 +109,7 @@ describe("FabButton, the New button's face without a place to stand", () => {
     const button = screen.getByRole("button", { name: "New" });
     expect(button).not.toHaveAttribute("data-collapsed");
     expect(button.querySelector("span[aria-hidden]")).not.toHaveClass("max-w-0");
+    // The word carries no 64px cap, so a longer word of another locale shows whole; the float size keeps its cap.
+    expect(button.querySelector("span[aria-hidden]")).not.toHaveClass("max-w-16");
   });
 });

@@ -8,7 +8,7 @@ collect them: a run takes minutes and is for a person to start.
 
 | File | Question | Time |
 | --- | --- | --- |
-| `census.run.ts` | Every tap target on 36 screens at 390x844 and 360x780: size, hit area, gap, events, verdict | 3 min |
+| `census.run.ts` | Every tap target on 37 screens at 390x844 and 360x780: size, hit area, gap, events, verdict | 3 min |
 | `dashboard.run.ts` | Why a Dashboard tap sometimes does nothing: eight causes, 200 taps per poll cell | 15 min |
 
 ## Run it

@@ -130,7 +130,8 @@ export function FabButton({ label, onClick, busy = false, size = "float", collap
           aria-hidden
           className={cn(
             "overflow-hidden whitespace-nowrap text-sm font-medium transition-[max-width,opacity,margin] duration-200 ease-out motion-reduce:transition-none",
-            folded ? "ml-0 max-w-0 opacity-0" : "ml-1.5 max-w-16 opacity-100",
+            // The compact size never folds, so its word carries no cap: a longer word (a locale's) shows whole.
+            folded ? "ml-0 max-w-0 opacity-0" : cn("ml-1.5 opacity-100", !compact && "max-w-16"),
           )}
         >
           {label}

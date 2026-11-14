@@ -187,6 +187,8 @@ describe("BottomSheet: the title row's action slot", () => {
     expect(slot.nextElementSibling).toBe(screen.getByRole("button", { name: "Close" }));
     // The close button stays a direct child of the row, where the hit-area census finds it.
     expect(screen.getByRole("button", { name: "Close" }).parentElement).toBe(row);
+    // 12px clear of the close button, so a mis-tap on the action never reaches it, pressed or not.
+    expect(slot).toHaveClass("mr-3");
   });
 
   it("leaves the row exactly as it was without one", () => {
