@@ -258,6 +258,39 @@ describe("2. a text write that timed out is read before it is called nothing typ
     expect(pane.box).toBe("");
   });
 
+  // The text lands after Collie stopped looking, and the person confirms "Send it again?". This rig reads
+  // no styling, so a box text may be the placeholder and the Enter-only path is left to the probe (the
+  // styled case is in protocol.test.ts): the probe proves the draft and the send is refused. Either way the
+  // text is never in the box twice and nothing is submitted.
+  test("it lands after the wait, then the same text again on an unstyled read: refused, never the text twice", async () => {
+    const { pane, send } = rig();
+    pane.writes = ["ok", "lost"];
+    const first = await send("hello there");
+    expect(first.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    pane.box = "hello there";
+    const before = pane.textWrites;
+    const again = await send("hello there");
+    expect(again.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(pane.box).toBe("hello there");
+    expect(pane.textWrites - before).toBe(1);
+    expect(pane.submitted).toEqual([]);
+    expect(enters(pane)).toBe(0);
+  });
+
+  test("it lands after the wait beside other characters: the same text again is refused, nothing typed", async () => {
+    const { pane, send } = rig();
+    pane.writes = ["ok", "lost"];
+    await send("hello there");
+    pane.box = "hello there and more";
+    const before = pane.textWrites;
+    const again = await send("hello there");
+    expect(again.receipt?.outcome).toBe("refused");
+    expect(pane.box).toBe("hello there and more");
+    expect(pane.submitted).toEqual([]);
+    expect(enters(pane)).toBe(0);
+    expect(pane.textWrites - before).toBeLessThanOrEqual(1);
+  });
+
   test("half of it landed: typed, not submitted, with the half in the box, and no Enter", async () => {
     const { pane, send } = rig();
     pane.writes = ["ok", "half"];
@@ -282,6 +315,41 @@ describe("3. one frame with a cue waits for one more read", () => {
     const answer = await send("hello there");
     expect(shown).toBe(true);
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  // The two clean reads are two observations: each is its own readGrid call, at its own moment, never one
+  // answer counted twice (lead review, M100 spec 03).
+  test("S1: after a strike, Enter waits for two clean reads that are two mux calls at two moments", async () => {
+    const { pane, send } = rig();
+    let struck = false;
+    const after: { n: number; at: number; enters: number }[] = [];
+    pane.readHook = (n, rows) => {
+      if (pane.box === "hello there" && !struck) {
+        struck = true;
+        return { rows: pane.withDialog() };
+      }
+      if (struck) after.push({ n, at: pane.clock!.now, enters: enters(pane) });
+      return { rows };
+    };
+    const answer = await send("hello there");
+    expect(answer.receipt?.outcome).toBe("sent");
+    const before = after.filter((read) => read.enters === 0);
+    expect(before.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(before.map((read) => read.n)).size).toBe(before.length);
+    expect(before[1]!.at).toBeGreaterThan(before[0]!.at);
+  });
+
+  test("S1: a strike, one clean read, then the dialog again: no Enter, the clean read is not counted twice", async () => {
+    const { pane, send } = rig();
+    let typedReads = 0;
+    pane.readHook = (_n, rows) => {
+      if (pane.box !== "hello there") return { rows };
+      typedReads++;
+      return { rows: typedReads === 2 ? rows : pane.withDialog() };
+    };
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(enters(pane)).toBe(0);
   });
 
   test("S1: two reads in a row show it: typed, not submitted (modal_cue), as before", async () => {
