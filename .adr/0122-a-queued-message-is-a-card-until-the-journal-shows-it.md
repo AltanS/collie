@@ -155,6 +155,31 @@ count, so "Please do these:" over "1. …" and "2. …" settles `sent` + `queued
   over its box (`❯ Title` over an indented metadata row) would read as an echo; the corpus test "no Claude
   dialog fixture reads otherwise without the echo rule" is the guard for each new capture.
 
+## A place with no words (addendum, 2026-11-14)
+
+Claude Code 2.1.323 writes the `enqueue` of a message the person queues while a compaction runs with no
+`content` at all (two such rows in one session log, both during a `/compact`). The reducer took the place
+and had no words for it, and `recordsQueue` kept the receipt card out, so the Chat showed no queued card
+for a message the agent held, until the compaction ended.
+
+- The reducer counts such places (`RowReducer.unnamedQueued`, optional; only the Claude Code reducer
+  answers it). The live window gives them the texts of the open receipt sends in state `queued` that the
+  journal does not list and whose prompt has not landed, in send order, but only when those sends are no
+  more than the places (`unnamedFill`, `journal/receipt-queue.ts`). The reducer clears such a place on
+  the `dequeue` like any other, and an operator's `remove` that matches no place takes it.
+- That text rides in the legacy `queued` list, an exception to point 5. The place is the journal's own,
+  so it gets the journal's card, the one a message queued during a normal turn gets, and its Send now,
+  which the harness itself offers for it. Point 5's reason does not apply: only an adapter that records
+  its queue can report such a place. No harness name is read.
+- Short stays the safe side: fewer open sends than places leaves a place without a card, and the
+  `dequeue` that ends the compaction takes the place away again.
+- A message queued at the terminal, not through Collie, has no receipt, so its place stays undrawn until
+  Claude Code writes its row; and when more open sends wait than there are places, the match is
+  ambiguous and nothing is drawn.
+- The filled texts follow the journal's named ones. A filled card goes when its place goes (the `dequeue`), and its receipt ends as any queued
+  receipt does (the prompt in the journal, the prompt edge, `unconfirmed`), so it cannot stand beside
+  the prompt row it became.
+
 ## Assumptions
 
 - **One clock.** The journal's prompt time and the receipt's submit time are compared with a 2 s skew.

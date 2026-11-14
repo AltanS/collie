@@ -18,6 +18,12 @@
 // The receipt cards ride only in `queuedSends`, never in the legacy `queued` list: a phone one release
 // behind would draw them under its journal card with a Send now button that cannot work for them.
 //
+// ONE EXCEPTION, and it is the journal's own place, not a receipt card: a harness that records its
+// queue can record a place with no words (`RowReducer.unnamedQueued`; Claude Code while it compacts).
+// The journal then says a message waits and cannot say which, so the open queued sends give those
+// places their words when they are no more than the places (`unnamedFill`), and the text rides in `queued` because it IS the journal's
+// card, with the journal's Send now, the one the harness draws for it too.
+//
 // Pure: no clock, no disk, no harness name.
 
 import type { QueuedSendState, ReceiptQueued } from "../surface/queued.ts";
@@ -90,4 +96,25 @@ export function receiptQueue(
   return stillOpen(sends, entries)
     .filter((send) => (!recordsQueue || send.state === "returned") && !listed.has(folded(send.text)))
     .map((send) => ({ requestId: send.requestId, state: send.state, text: send.text }));
+}
+
+/**
+ * The words for the places a journal holds without any (`RowReducer.unnamedQueued`): the texts of the
+ * sends still `queued` and still open after the journal, less every text the journal already lists, in
+ * send order. NO GUESS AMONG SEVERAL: only when those sends are no more than the places does each get
+ * one; more sends than places draws nothing, as before this rule, because the log cannot say which of
+ * them the places hold. Fewer sends than places leaves the rest unnamed, which draws nothing too (a
+ * message queued at the terminal has no receipt). Short is the safe side.
+ */
+export function unnamedFill(
+  sends: readonly ReceiptQueued[],
+  entries: readonly TranscriptEntry[],
+  journalQueued: readonly string[],
+  unnamed: number,
+): string[] {
+  if (unnamed <= 0 || sends.length === 0) return [];
+  const listed = new Set(journalQueued.map(folded));
+  const waiting = stillOpen(sends, entries).filter((send) => send.state === "queued" && !listed.has(folded(send.text)));
+  if (waiting.length > unnamed) return [];
+  return waiting.map((send) => send.text);
 }
