@@ -87,3 +87,14 @@ export const PRESS_REACH_SOFT = "press-reach-soft";
 
 /** For a full-width row that scales to 99%: sideways only, so the next row's edge is never covered. */
 export const PRESS_REACH_ROW = "active:before:absolute active:before:-inset-x-[1%] active:before:inset-y-0 active:before:content-['']";
+
+/**
+ * The compact New button in a sheet's title row (`FabButton size="compact"`): 32px tall with a 1px border, so
+ * a 30px padding box, and `-7px` above and below is 44. Vertical only: the face is wider than 44px, and
+ * its neighbour, the close button, stands 4px to its right with a hit area of its own. The reach lies in
+ * the grab handle's row above and the title row's `pb-3` below, which hold no control. While pressed
+ * (`active:scale-95`) it also reaches 3% sideways, as `HEADER_PILL_TAP_TARGET` does, so the shrunken
+ * face never loses the rim.
+ */
+export const SHEET_ACTION_TAP_TARGET =
+  "relative before:absolute before:inset-x-0 before:-inset-y-[7px] before:content-[''] active:before:-inset-x-[3%]";

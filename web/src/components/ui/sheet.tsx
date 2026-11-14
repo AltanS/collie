@@ -118,6 +118,13 @@ interface BottomSheetProps {
    * canvas never pulls the sheet closed.
    */
   dragToDismiss?: boolean;
+  /**
+   * A control at the trailing end of the title row, directly before the close button. Absent: the row is
+   * exactly as it was. The slot adds no height of its own (the row is as tall as the 32px close button),
+   * so a caller passes a control no taller than that, and buys any hit area past it with a reach of its
+   * own (`ui/tap-target.ts`). The sheet knows nothing about what the control does.
+   */
+  action?: React.ReactNode;
 }
 
 export function BottomSheet({
@@ -129,6 +136,7 @@ export function BottomSheet({
   pull = 0,
   pullFrom = 0,
   dragToDismiss = true,
+  action,
 }: BottomSheetProps) {
   useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -373,6 +381,14 @@ export function BottomSheet({
             >
               {title}
             </span>
+            {/* 12px (`mr-3`) between the action and the close button: a mis-tap on the action may leave the screen,
+                a mis-tap on the close button only closes the sheet, so their hit areas keep clear of each other,
+                pressed too (the action's press reach is 3% of its width, the close button's 1.5%). */}
+            {action ? (
+              <span data-slot="sheet-action" className="mr-3 flex shrink-0 items-center">
+                {action}
+              </span>
+            ) : null}
             <Button
               variant="ghost"
               size="icon"

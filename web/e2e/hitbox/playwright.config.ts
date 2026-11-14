@@ -39,6 +39,9 @@ export default defineConfig({
     command: `bunx vite preview --host 127.0.0.1 --port ${String(PORT)} --strictPort`,
     env: { COLLIE_DEV_TARGET: "http://127.0.0.1:9" },
     url: `http://127.0.0.1:${String(PORT)}`,
+    // Playwright starts the server in the CONFIG's folder, and `vite preview` there finds no `dist`: it answered 404 and the
+    // run timed out (2026-11-14). The preview belongs to `web/`, two folders up.
+    cwd: "../..",
     reuseExistingServer: true,
     stdout: "ignore",
     stderr: "pipe",

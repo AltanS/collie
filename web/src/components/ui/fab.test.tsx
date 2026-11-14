@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { Fab } from "./fab";
+import { Fab, FabButton } from "./fab";
 
 const BOTTOM = "bottom-[calc(3.5rem_+_1px_+_env(safe-area-inset-bottom)_+_1rem)]";
 
@@ -79,5 +79,37 @@ describe("Fab, the dashboard's one floating New button", () => {
     expect(busy.querySelector(".animate-spin")).not.toBeNull();
     await userEvent.click(busy);
     expect(onClick).not.toHaveBeenCalled();
+  });
+});
+
+describe("FabButton, the New button's face without a place to stand", () => {
+  it("the float size is the very button the Fab draws", () => {
+    render(<FabButton label="New" onClick={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "New" })).toHaveClass("h-12", "w-24", "rounded-md", "shadow-md", "bg-background", "border-border");
+  });
+
+  it("the compact size keeps the tokens and the name, is 32px tall, and buys the 44px floor as reach", async () => {
+    const onClick = vi.fn();
+    render(<FabButton size="compact" label="New" onClick={onClick} />);
+    const button = screen.getByRole("button", { name: "New" });
+    // The same fill, edge, ink and press tokens as the Fab; only the size and the shadow differ.
+    expect(button).toHaveClass("border", "border-border", "bg-background", "text-foreground", "hover:bg-accent", "dark:bg-card", "rounded-md");
+    expect(button).toHaveClass("h-8");
+    expect(button).not.toHaveClass("shadow-md", "h-12", "w-24");
+    // 30px padding box plus 7px each way is 44.
+    expect(button.className).toContain("before:-inset-y-[7px]");
+    // The word is drawn beside the glyph, and the name is the label.
+    expect(button).toHaveTextContent("New");
+    await userEvent.setup().click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("a compact button never folds to the round glyph", () => {
+    render(<FabButton size="compact" label="New" collapsed onClick={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "New" });
+    expect(button).not.toHaveAttribute("data-collapsed");
+    expect(button.querySelector("span[aria-hidden]")).not.toHaveClass("max-w-0");
+    // The word carries no 64px cap, so a longer word of another locale shows whole; the float size keeps its cap.
+    expect(button.querySelector("span[aria-hidden]")).not.toHaveClass("max-w-16");
   });
 });

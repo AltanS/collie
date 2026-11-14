@@ -181,6 +181,32 @@ test("switcher: the Pinned section leads the sheet and each pane is listed once"
   await expect(page).toHaveURL(new RegExp(`/pane/${encodeURIComponent("w2:p1")}$`, "u"));
 });
 
+test("switcher: the New button in the title row lands where the dashboard's New lands, and Back returns to the pane", async ({ page }) => {
+  // Where the dashboard's own New button goes.
+  await page.goto("/");
+  await page.getByRole("button", { name: en["home.new.label"], exact: true }).click();
+  await expect(page).toHaveURL(/\/new(?:\?|$)/u);
+  const newUrl = page.url();
+
+  const pane = new RegExp(`/pane/${encodeURIComponent("w1:p1")}$`, "u");
+  await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
+  await page.getByRole("button", { name: en["chat.switcher.aria"] }).click();
+  const sheet = page.getByRole("dialog", { name: en["chat.switcher.aria"] });
+  const create = sheet.getByRole("button", { name: en["home.new.label"], exact: true });
+  await expect(create).toBeVisible();
+  // It stands in the title row, left of the close button.
+  const close = sheet.getByRole("button", { name: en["common.closeAria"] });
+  expect((await box(create)).x + (await box(create)).width).toBeLessThanOrEqual((await box(close)).x);
+  await create.click();
+  await expect(page).toHaveURL(newUrl);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // Back returns to the pane, with the sheet closed.
+  await page.goBack();
+  await expect(page).toHaveURL(pane);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
 test("hold: a hold on a row pins it, the row lands in view with focus, and Unpin returns it", async ({ page }) => {
   await page.goto("/");
   const codex = mainRow(page, "codex");

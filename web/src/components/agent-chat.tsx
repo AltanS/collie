@@ -10,6 +10,7 @@ import { besideOf, useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { shownStatus } from "@/lib/triage";
 import { useNav } from "@/hooks/use-nav";
+import { useNewEntry } from "@/hooks/use-new-entry";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useAgentStart } from "@/hooks/use-agent-start";
 import { useLaunchers } from "@/lib/launchers";
@@ -41,6 +42,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, TailRoomContext, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { StretchTextContext } from "@/components/markdown-text";
+import { FabButton } from "@/components/ui/fab";
 import { BottomSheet, SHEET_BODY_STICKY } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
@@ -438,6 +440,14 @@ export function AgentChat({
   // ReadOnlyBanner names which.
   const { refused: notPaired } = usePairing();
   const readOnly = isReadOnly(device) || notPaired;
+  // The Switch pane sheet's New button: the dashboard's own, drawn on the dashboard's own terms and
+  // going where its tap goes (`useNewEntry`). The saved copy is the HERD's, as on the dashboard.
+  const newEntry = useNewEntry({
+    scope,
+    saved: rootData?.stale === true,
+    readOnly,
+    launcherCount: launchers.length,
+  });
   // TIER 2: is the machine THIS pane lives on still answering the lead? Read off the pane's own host
   // — never the ambient scope — because the pane row is what carries the truth about where it lives;
   // `scope.host` is the fallback for a pane the snapshot has already dropped (an absent `?h=` is the
@@ -3581,6 +3591,23 @@ export function AgentChat({
           title={t("chat.switcher.title")}
           pull={pull}
           pullFrom={pullFrom}
+          // Not drawn while the herd is a saved copy (`rootData.stale`): the dashboard keeps its button and
+          // refuses on the tap, but here a tap that closed the sheet and then showed an error line would read
+          // as a mis-tap on Close.
+          action={
+            newEntry.offered && rootData?.stale !== true ? (
+              <FabButton
+                size="compact"
+                label={t("home.new.label")}
+                onClick={() => {
+                  // Close first, as the launch below does: the New page is a level below this pane, so
+                  // Back returns to the pane with the sheet closed.
+                  closeDrawer();
+                  newEntry.open();
+                }}
+              />
+            ) : undefined
+          }
         >
           <ThreadSidebar
             agents={agents}

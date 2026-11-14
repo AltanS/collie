@@ -33,13 +33,12 @@ import { useWorkspaceChangeCounts } from "@/hooks/use-workspace-change-counts";
 import { useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
+import { useNewEntry } from "@/hooks/use-new-entry";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { showBadge } from "@/lib/app-badge";
 import { takeBundleFocus, useBundleFocusPending } from "@/lib/bundle-apply";
 import { useLaunchers } from "@/lib/launchers";
-import { useMuxCapability } from "@/lib/mux-capability";
-import { setStatus } from "@/lib/status";
 import { isolateSpaces } from "@/lib/spaces";
 import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
@@ -47,7 +46,7 @@ import type { ChangesLookup } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { prefetchFolders } from "@/lib/folders";
 import { glideForward } from "@/lib/glide";
-import { hillPath, homePath, trickSessionPath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { hillPath, homePath, trickSessionPath, spaceChangesPath, spacePath } from "@/lib/nav";
 import { resolveIsolatedPrefKeys, workspaceGroupKey, type WorkspaceGroup } from "@/lib/pane-groups";
 import { panePlaceParts } from "@/lib/pane-name";
 import { scopeKey, type Scope } from "@/lib/scope";
@@ -256,16 +255,19 @@ export function HomeRoute() {
   // may not write gets none of it. A saved copy keeps the button drawn and refuses on the tap
   // (`workspace-new-tab.tsx` does the same): a control that comes and goes moves what is around it.
   const { launchers } = useLaunchers(data.scope);
-  const canCreateSpace = useMuxCapability("createSpace", data.scope).capable;
   const durableHome = view === "dashboard" && screenless;
-  // The New button stays on the durable home: the New page lists the program's starters there.
-  const fabOffered = view === "dashboard" && !readOnly && (canCreateSpace || launchers.length > 0 || screenless);
-  const openNew = () => {
-    if (data.stale === true) return setStatus(t("space.readOnly.savedCopy"), "error");
-    // THE ONE NEW PAGE (M48 spec 01): the floating button, the Spaces header's folder button and the
-    // empty dashboard's first-agent card all go to it, on the machine this view shows.
-    nav.down(newPath({ machine: data.scope.host, session: data.scope.session }));
-  };
+  // The New button stays on the durable home: the New page lists the program's starters there. When it
+  // is drawn and where a tap goes is `useNewEntry`'s, shared with the Switch pane sheet's New button
+  // (THE ONE NEW PAGE, M48 spec 01: the floating button, the Spaces header's folder button and the empty
+  // dashboard's first-agent card all go to it, on the machine this view shows).
+  const newEntry = useNewEntry({
+    scope: data.scope,
+    saved: data.stale === true,
+    readOnly,
+    launcherCount: launchers.length,
+  });
+  const fabOffered = view === "dashboard" && newEntry.offered;
+  const openNew = newEntry.open;
   // Hidden while a sheet is up (it would sit dimmed under the backdrop, a second create entry next
   // to the one being used) and while the keyboard is (the dashboard's filter field raises it, and
   // the button would ride up over the list). Neither moves anything: the layer is fixed.
