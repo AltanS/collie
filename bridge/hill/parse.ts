@@ -321,7 +321,9 @@ function readAnswer(value: JsonValue | undefined): HillDecision["answer"] | unde
   // Absent on an answer stored before answers carried the device's record id.
   const deviceId = row.deviceId === undefined ? undefined : asJsonString(row.deviceId);
   if (row.deviceId !== undefined && (deviceId === undefined || !HILL_DEVICE_ID_RE.test(deviceId))) return undefined;
-  const answer = { rid, intent, label, text, by, at, delivery, trick };
+  if (row.unconfirmed !== undefined && row.unconfirmed !== true) return undefined;
+  const base = { rid, intent, label, text, by, at, delivery, trick };
+  const answer = row.unconfirmed === true ? { ...base, unconfirmed: true as const } : base;
   return deviceId === undefined ? answer : { ...answer, deviceId };
 }
 

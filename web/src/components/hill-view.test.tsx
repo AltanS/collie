@@ -98,16 +98,27 @@ describe("the Hill", () => {
     expect(lines).toEqual(["Answered · Yes, Edge first · typed to collie lead", "Expired"]);
   });
 
-  it("draws a card the person answered in the session with its title, its summary and that line, not Withdrawn", () => {
+  it("draws a card closed by the person's message in the session with its title, its summary and that line, not Withdrawn", () => {
     const spoken = hillDecision({ title: "Ship it?", summary: "CI is green.", state: "withdrawn", closedReason: HILL_ANSWERED_IN_SESSION });
     const taken = hillDecision({ title: "Post now?", summary: "Draft ready.", state: "withdrawn", closedReason: "by the poster" });
     const { container } = renderView([], [spoken, taken]);
     const rows = [...container.querySelectorAll<HTMLElement>('[data-slot="hill-closed-row"]')];
-    expect(rows.map((row) => row.querySelector('[data-slot="hill-closed-line"]')?.textContent)).toEqual(["Answered in the session", "Withdrawn by the poster"]);
+    expect(rows.map((row) => row.querySelector('[data-slot="hill-closed-line"]')?.textContent)).toEqual(["You wrote in the session", "Withdrawn by the poster"]);
     expect(rows[0]).toHaveTextContent("Ship it?");
     expect(rows[0]!.querySelector('[data-slot="hill-closed-summary"]')).toHaveTextContent("CI is green.");
     // Any other closed row keeps its title and line only.
     expect(rows[1]!.querySelector('[data-slot="hill-closed-summary"]')).toBeNull();
+  });
+
+  it("says an answer may not have arrived only when its typed line was not confirmed", () => {
+    const answer = { rid: "r1", intent: "yes", label: "Yes", text: null, by: "phone", at: HILL_T0, trick: "none" } as const;
+    const lost = hillDecision({ state: "answered", answer: { ...answer, delivery: "unknown", unconfirmed: true } });
+    const inbox = hillDecision({ state: "answered", answer: { ...answer, delivery: "unknown" } });
+    const typed = hillDecision({ state: "answered", answer: { ...answer, delivery: "typed" } });
+    const held = hillDecision({ state: "answered", answer: { ...answer, delivery: "held" } });
+    const { container } = renderView([], [lost, inbox, typed, held]);
+    const lines = [...container.querySelectorAll('[data-slot="hill-closed-row"]')].map((row) => row.querySelector('[data-slot="hill-closed-unconfirmed"]')?.textContent ?? null);
+    expect(lines).toEqual(["Your answer may not have arrived. Check the session.", null, null, null]);
   });
 
   it("puts a glyph for each closed state in front of its row, named by what it means", () => {

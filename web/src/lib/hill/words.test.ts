@@ -22,7 +22,7 @@ describe("rights card close", () => {
 describe("a card answered in its session (M96 spec 10)", () => {
   it("says so, never 'Withdrawn by the poster'", () => {
     const agent: HillDecision["from"] = { kind: "agent", address: "local/%1#aaaa", trickId: null, trickKey: null, memberId: null, harness: "agent-x", label: "repo", host: "lodge", trickHost: null };
-    expect(closedWord({ state: "withdrawn", from: agent, closedReason: HILL_ANSWERED_IN_SESSION })).toBe("Answered in the session");
+    expect(closedWord({ state: "withdrawn", from: agent, closedReason: HILL_ANSWERED_IN_SESSION })).toBe("You wrote in the session");
     expect(closedWord({ state: "withdrawn", from: agent, closedReason: "by the poster" })).toBe("Withdrawn by the poster");
   });
 });

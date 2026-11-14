@@ -29,7 +29,7 @@ export function answeredInSession(decision: Pick<HillDecision, "state" | "from" 
  */
 export function closedWord(decision: Pick<HillDecision, "state" | "from" | "closedReason">): string {
   if (decision.state === "open") return "";
-  // The person answered in the session (M96 spec 10): never "Withdrawn by the poster".
+  // The person wrote in the session (M96 spec 10): never "Withdrawn by the poster".
   if (answeredInSession(decision)) return t("hill.state.answeredInSession");
   if (decision.state !== "withdrawn" || decision.from.kind !== "collie" || decision.from.ref?.type !== "rights") return stateWord(decision.state);
   const why = RIGHTS_CLOSED_KEYS.find((key) => RIGHTS_CLOSED[key] === decision.closedReason);

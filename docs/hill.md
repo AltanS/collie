@@ -58,7 +58,7 @@ session's next turn, its cards close by themselves
 ([When a card closes by itself](#when-a-card-closes-by-itself)).
 
 Answered keeps the cards you answered or dismissed until you clear them. A card your own message
-closed, "Answered in the session", is yours too: it stays with its title, its summary and that line
+closed, "You wrote in the session", is yours too: it stays with its title, its summary and that line
 until you clear it. A card that closed without you, because it expired, was withdrawn or replaced, or
 could not be delivered, stays there for one minute with its state, and then leaves by itself.
 
@@ -89,7 +89,7 @@ A Decision is in one of seven states. A closed one keeps its state and shows it.
 | `answered` | "Answered" |
 | `dismissed` | "Dismissed" |
 | `expired` | "Expired" |
-| `withdrawn` | "Withdrawn by the poster", or "Answered in the session" |
+| `withdrawn` | "Withdrawn by the poster", or "You wrote in the session" |
 | `superseded` | "Replaced by a newer Decision" |
 | `undeliverable` | "Could not be delivered" |
 
@@ -233,7 +233,7 @@ on a guess.
 | The card's expiry passed | `expired` |
 | The session the answer goes to is gone, at two looks in a row | `undeliverable` |
 | The machine the answer goes to was removed from the crew | `undeliverable` |
-| Your message from the phone started that session's next turn | `withdrawn`, "Answered in the session" |
+| Your message from the phone started that session's next turn | `withdrawn`, "You wrote in the session" |
 
 A session counts as gone only when the multiplexer answered the look and did not list it. A look
 that failed, a bridge that just started, and a crew machine that does not answer close nothing. A
@@ -295,6 +295,10 @@ After a tap the card says "Sending…", then one line that says what came of it.
 | "This device may not answer" | The device is read-only |
 | "<machine> is not answering. Your answer was not sent." | A crew machine is down. The card stays open, and you can answer again |
 | "Not sent." with "Try again" | The answer did not reach the bridge |
+
+When the line Collie typed was not confirmed, the answered card under Answered also says "Your
+answer may not have arrived. Check the session." Collie does not send it again. A line that waits in
+the session's box or inbox does not get this note.
 
 When a Decision closes before your answer lands, the card keeps your words under "Your answer, not
 delivered" and offers "Copy your answer", so you do not lose them. The same holds for a note you were
