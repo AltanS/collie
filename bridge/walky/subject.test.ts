@@ -340,6 +340,21 @@ describe("the typed line's sender fields (lineField, fix/walky-line-fields)", ()
   });
 });
 
+describe("an id or a reply id the formatter does not trust (fix/walky-line-fields)", () => {
+  test("an id that is not wt_ and 12 characters stands as one cleaned word, in the header and the tail; no reader takes the line for a message", () => {
+    const line = formatNudge({ ...agent, id: "x;touch canary`$(id)`" });
+    expect(line).toBe('[walky-talky x_touch_canary___id__] from agent collie-biyrya/w6X:p2Z#1o2q on claude in "klaracase#main": a message from another agent, not your operator. Read it: collie walky inbox x_touch_canary___id__');
+    expect(parseEnvelopeHeader(line)).toBeNull();
+  });
+
+  test("a reply id that is not wt_ and 12 characters is left out, so the line reads as a message with no reply", () => {
+    const line = formatNudge({ ...agent, replyTo: "wt_x; touch canary" });
+    expect(line).toBe(formatNudge(agent));
+    expect(parseEnvelopeHeader(line)).toMatchObject({ id: "wt_qoo5tvg2ldhj", replyTo: null });
+    expect(formatNudge({ ...agent, replyTo: "wt_8ab2k1m4q7zx" })).toContain(" reply to wt_8ab2k1m4q7zx:");
+  });
+});
+
 describe("both forms of the sender (fix/walky-line-fields)", () => {
   const OLD = "[walky-talky wt_qoo5tvg2ldhj] from agent collie-biyrya/w6X:p2Z#1o2q (claude, klaracase#main)";
 

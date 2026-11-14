@@ -7,7 +7,8 @@
 // in that folder), spelled for every way a shell runs a command: a separator, a pipe, `&&`, a backtick,
 // `$()`, fish's `(...)`, brace expansion, a newline, a glob, a redirect, a quote that would end the label's
 // quotes, and plain WORDS standing where a shell might take them for a command. Each value stands in every
-// place a value reaches the line: the label, the harness, the address and the subject, for an agent with a
+// place a value reaches the line: the label, the harness, the address, the subject, and an id or a reply id
+// that skipped the log's and the hop's checks, for an agent with a
 // harness, an agent without one, and an operator. A shell that is not installed gets no test (see below).
 //
 // Shells not run here, by their grammar (Windows 11 with Herdr is a supported host, and a Windows bridge
@@ -107,6 +108,10 @@ function linesFor(payload: string) {
     "agent subject": firstLine({ ...agent, subject: payload, replyTo: "wt_8ab2k1m4q7zx" }, true),
     "operator label": firstLine(operator),
     "operator subject": firstLine({ ...operator, from: { ...operator.from, label: "Pixel 9" }, subject: payload }),
+    "agent id (forged)": firstLine({ ...agent, id: payload }),
+    "agent reply id (forged)": firstLine({ ...agent, replyTo: payload }),
+    "operator id (forged)": firstLine({ ...operator, from: { ...operator.from, label: "Pixel 9" }, id: payload }),
+    "operator reply id (forged)": firstLine({ ...operator, from: { ...operator.from, label: "Pixel 9" }, replyTo: payload }),
   };
 }
 

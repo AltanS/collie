@@ -352,6 +352,16 @@ export function readSubject(raw: string | null | undefined): SubjectRead {
 export { lineField };
 
 /**
+ * A message id as the typed line carries it. The log and a crew hop check ids before a message gets
+ * here, and the formatter does not trust that: an id that is not {@link WALKY_ID} stands as one
+ * {@link lineField} word, so it can never run at a shell prompt. Such a line matches no header rule, so
+ * no reader takes it for a message.
+ */
+function lineId(id: string): string {
+  return WALKY_ID.test(id) ? id : lineField(id, 32, true);
+}
+
+/**
  * The one header line of a message. `outside`: the message passed the border by the outside flag.
  *
  * The sender stands in words (fix/walky-line-fields): `from agent <address> on <harness> in "<label>"`,
@@ -371,8 +381,9 @@ export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" 
   const who = message.kind === "agent" ? `${lineField(message.from.address ?? "-", 160, true)}${harness} in ${label}` : label;
   const mark = outside ? ` ${OUTSIDE_WORD}` : "";
   const about = message.subject !== undefined && isCleanSubject(message.subject) ? ` about "${message.subject}"` : "";
-  const reply = message.replyTo === null ? "" : ` reply to ${message.replyTo}`;
-  return `[walky-talky ${message.id}] from ${message.kind} ${who}${mark}${about}${reply}`;
+  // A reply id that is not WALKY_ID is left out: a reader takes the line as a plain message, as it does one with no reply.
+  const reply = message.replyTo === null || !WALKY_ID.test(message.replyTo) ? "" : ` reply to ${message.replyTo}`;
+  return `[walky-talky ${lineId(message.id)}] from ${message.kind} ${who}${mark}${about}${reply}`;
 }
 
 /**
@@ -395,7 +406,7 @@ export function nudgeTail(id: string): string {
  * command, so the line does not carry it (M98 spec 07).
  */
 export function formatNudge(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "subject">, outside = false): string {
-  return `${formatHeader(message, outside)}${NUDGE_MARK}${nudgeTail(message.id)}`;
+  return `${formatHeader(message, outside)}${NUDGE_MARK}${nudgeTail(lineId(message.id))}`;
 }
 
 /** The last line `collie walky inbox` prints for an agent's message: the command that answers it. */
