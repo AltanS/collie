@@ -87,6 +87,33 @@ export const withoutSubjects = (text: string): string => text.replace(/\babout\s
  */
 export const ABOUT = '(?:\\s+about\\s+"[^"]*")?';
 
+/** What a nudge pattern names: each part a RegExp source, except `harness` and `subject`, which are plain text. */
+export interface NudgeParts {
+  /** The message id: a literal id, or a capture group such as `(wt_[a-z0-9]{12})`. */
+  readonly id: string;
+  /** The sender's address, as `addressPattern` writes it. */
+  readonly from: string;
+  readonly harness: string;
+  /** Present when the line must carry the outside word. */
+  readonly outside?: true;
+  /** The exact subject the line must carry; absent, any subject or none passes. */
+  readonly subject?: string;
+  /** The id the line must answer (` reply to <id>`); absent, the line has no reply suffix. */
+  readonly replyTo?: string;
+}
+
+/**
+ * A RegExp source for an agent's nudge line, in either sender form. Every part is joined with `\s+` and holds
+ * no literal space, so a terminal may break the line at any space and the pattern still matches.
+ */
+export function nudgePattern(parts: NudgeParts): string {
+  const head = `\\[walky-talky\\s+${parts.id}\\]\\s+from\\s+agent\\s+${parts.from}${SENDER(parts.harness)}`;
+  const outside = parts.outside === true ? "\\s+outside" : "";
+  const about = parts.subject === undefined ? ABOUT : aboutExactly(parts.subject);
+  const reply = parts.replyTo === undefined ? "" : `\\s+reply\\s+to\\s+${parts.replyTo}`;
+  return `${head}${outside}${about}${reply}:\\s+${wrapped("a message from another agent, not your operator.")}`;
+}
+
 /** The single-pane address of a pane on a solo install, which is what the rig's bridge is. */
 export const addressOf = (paneId: string): string => `local/${paneId}`;
 
