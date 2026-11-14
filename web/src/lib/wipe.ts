@@ -180,7 +180,7 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     },
   ],
   [
-    // When a send ended unknown on a pane (lib/send-again.ts, sessionStorage): a fingerprint of the text, never the text.
+    // When a send ended unknown on a pane (lib/send-again.ts): a fingerprint of the text, in memory only, never stored.
     "send-again",
     (context) => {
       if (context.reason === "password") forgetUnknownSend(context.pane.scope, context.pane.paneId);

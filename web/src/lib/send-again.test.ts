@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import {
   asksSendAgain,
   forgetAllUnknownSends,
@@ -45,20 +46,9 @@ describe("send it again", () => {
   });
 
   it("on a shell pane only the end is trimmed: a leading space is a different line", () => {
-    rememberUnknownSend(undefined, "w1:p1", " ls -la  ", T0, { isShell: true });
+    rememberUnknownSend(undefined, "w1:p1", " ls -la  ", T0, true);
     expect(asksSendAgain(undefined, "w1:p1", " ls -la", T0 + 10, true)).toBe(true);
     expect(asksSendAgain(undefined, "w1:p1", "ls -la", T0 + 10, true)).toBe(false);
-  });
-
-  it("memoryOnly keeps the entry out of sessionStorage, asks while the page lives, and clears an older stored entry", () => {
-    rememberUnknownSend(undefined, "w1:p1", "old words", T0);
-    expect(sessionStorage.length).toBe(1);
-    rememberUnknownSend(undefined, "w1:p1", "hunter2", T0 + 5, { memoryOnly: true });
-    expect(sessionStorage.length).toBe(0);
-    expect(asksSendAgain(undefined, "w1:p1", "hunter2", T0 + 10)).toBe(true);
-    // A reload drops the memory copy, and with nothing in storage the question is simply not asked.
-    __forgetSendAgainMemory();
-    expect(asksSendAgain(undefined, "w1:p1", "hunter2", T0 + 10)).toBe(false);
   });
 
   it("is per pane, per session and per host", () => {
@@ -73,10 +63,9 @@ describe("send it again", () => {
     expect(asksSendAgain(undefined, "w1:p1", "go", T0 - 1)).toBe(false);
   });
 
-  it("forgetting ends the question, in both tiers", () => {
+  it("forgetting ends the question", () => {
     rememberUnknownSend(undefined, "w1:p1", "go", T0);
     forgetUnknownSend(undefined, "w1:p1");
-    __forgetSendAgainMemory();
     expect(asksSendAgain(undefined, "w1:p1", "go", T0 + 10)).toBe(false);
   });
 
@@ -88,21 +77,23 @@ describe("send it again", () => {
     expect(asksSendAgain(undefined, "w1:p1", "go", T0 + 10)).toBe(false);
   });
 
-  it("survives a reload that drops the memory copy", () => {
-    rememberUnknownSend(undefined, "w1:p1", "go", T0);
-    __forgetSendAgainMemory();
-    expect(asksSendAgain(undefined, "w1:p1", "go", T0 + 10)).toBe(true);
-  });
-
-  it("never stores the text itself", () => {
+  it("lives in memory only: nothing is written to sessionStorage, and a reload forgets it (the question is then not asked)", () => {
     rememberUnknownSend(undefined, "w1:p1", "hunter2-correct-horse", T0);
-    const stored = Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.getItem(sessionStorage.key(i) ?? "") ?? "");
-    expect(stored.join("")).not.toContain("hunter2");
+    expect(sessionStorage.length).toBe(0);
+    expect(asksSendAgain(undefined, "w1:p1", "hunter2-correct-horse", T0 + 10)).toBe(true);
+    __forgetSendAgainMemory();
+    expect(asksSendAgain(undefined, "w1:p1", "hunter2-correct-horse", T0 + 10)).toBe(false);
   });
 
-  it("a stored value that is not ours reads as nothing", () => {
-    sessionStorage.setItem("collie:send-again:default:w1:p1", "{not json");
-    expect(asksSendAgain(undefined, "w1:p1", "go", T0)).toBe(false);
+  it("removes the keys an earlier build left in sessionStorage when the module loads, and leaves other keys", async () => {
+    sessionStorage.setItem("collie:send-again:default:w1:p1", '{"print":"4:abc","at":1}');
+    sessionStorage.setItem("collie:send-again:minibuch@default:w2:p1", "x");
+    sessionStorage.setItem("collie:send-intent:default:w1:p1", "keep");
+    vi.resetModules();
+    await import("./send-again"); // loading the module runs the cleanup
+    expect(sessionStorage.getItem("collie:send-again:default:w1:p1")).toBeNull();
+    expect(sessionStorage.getItem("collie:send-again:minibuch@default:w2:p1")).toBeNull();
+    expect(sessionStorage.getItem("collie:send-intent:default:w1:p1")).toBe("keep");
   });
 
   it("the wipe drops every pane", () => {
@@ -111,6 +102,5 @@ describe("send it again", () => {
     forgetAllUnknownSends();
     expect(asksSendAgain(undefined, "w1:p1", "go", T0 + 10)).toBe(false);
     expect(asksSendAgain({ host: "minibuch" }, "w2:p1", "go", T0 + 10)).toBe(false);
-    expect(sessionStorage.length).toBe(0);
   });
 });
