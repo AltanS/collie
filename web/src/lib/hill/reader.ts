@@ -228,7 +228,8 @@ function readAnswer(value: JsonValue | undefined): HillDecision["answer"] | unde
   const trick = oneOf(HILL_TRICK_DELIVERIES, o.trick);
   if (rid === undefined || intent === undefined || label === undefined || text === undefined) return undefined;
   if (by === undefined || at === undefined || delivery === undefined || trick === undefined) return undefined;
-  return { rid, intent, label, text, by, at, delivery, trick };
+  const answer = { rid, intent, label, text, by, at, delivery, trick };
+  return o.unconfirmed === true ? { ...answer, unconfirmed: true } : answer;
 }
 
 /** One decision as the contract shapes it, or null when it does not fit. */

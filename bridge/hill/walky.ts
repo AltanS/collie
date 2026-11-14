@@ -180,6 +180,8 @@ export function deliveryOf(receipt: WalkyReceipt | undefined): HillSendResult {
   if (receipt.state === "delivered") return "typed";
   if (receipt.state === "refused") return "refused";
   if (receipt.state === "accepted" && receipt.reason !== undefined) return "held";
+  // In the inbox (typed but not submitted, a dialog, a hold past its clock): known, and not lost.
+  if (receipt.state === "inbox-only") return "inbox-only";
   return "unknown";
 }
 

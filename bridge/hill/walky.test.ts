@@ -117,7 +117,9 @@ describe("the send: one operator walky message", () => {
     expect(deliveryOf({ ...base, state: "delivered" })).toBe("typed");
     expect(deliveryOf({ ...base, reason: "turn running" })).toBe("held");
     expect(deliveryOf(base)).toBe("unknown");
-    expect(deliveryOf({ ...base, state: "inbox-only", reason: "dialog" })).toBe("unknown");
+    expect(deliveryOf({ ...base, state: "inbox-only", reason: "dialog" })).toBe("inbox-only");
+    expect(deliveryOf({ ...base, state: "inbox-only", reason: "typed, not submitted" })).toBe("inbox-only");
+    expect(deliveryOf({ ...base, state: "unknown", reason: "no evidence" })).toBe("unknown");
     // C-S1: walky typed nothing, so the Hill opens the Decision again instead of closing it answered.
     expect(deliveryOf({ ...base, state: "refused", reason: "off" })).toBe("refused");
     expect(deliveryOf(undefined)).toBe("unknown");
@@ -303,6 +305,29 @@ describe("a rename is not a removal (M96 spec 10)", () => {
     if (removed === null) throw new Error("fixture: expected a removal");
     expect(left(removed.next)("laptop/%3#cccc")).toBe(true);
     expect(left(removed.next)("nas/%2#bbbb")).toBe(false);
+  });
+
+  test("a null or unreadable trust store removes nobody and closes no card", () => {
+    expect(hillRosterIds(null)).toBeNull();
+    let n = 0;
+    const hill = new HillService({
+      store: new HillStore(null, () => 1000),
+      receipts: memoryHillReceipts(),
+      place: (address) => ({ address, label: "repo", host: "laptop", unattended: false }),
+      send: async () => "typed",
+      crewMode: () => "lead",
+      walkyOn: () => true,
+      memberId: "desk",
+      machine: "desk",
+      now: () => 1000,
+      mintId: () => `dc_null${String((n += 1)).padStart(8, "0")}`,
+      removed: hillLeftTheCrew({ memberId: "desk", ownIds: ["desk"], roster: () => hillRosterIds(null) }),
+    });
+    const sender = { kind: "agent", address: "laptop/%3#cccc", memberId: "laptop", harness: "agent-x", label: "repo", host: "laptop" } as const;
+    const posted = hill.post(sender, { requestId: "00000000-0000-4000-8000-000000000001", title: "Ship it?", summary: "Green." });
+    if (!posted.ok) throw new Error(posted.error);
+    for (const at of [2000, 3000, 4000]) hill.sweep(at);
+    expect(hill.list().open.map((d) => d.id)).toEqual([posted.decision.id]);
   });
 
   test("a card for a member that re-joined stays open and answerable; after `crew remove` it closes", async () => {

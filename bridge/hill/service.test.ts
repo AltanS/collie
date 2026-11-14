@@ -19,7 +19,7 @@ import {
   LEFT_THE_CREW,
   type HillAgentSender,
   type HillCrewMode,
-  type HillDelivery,
+  type HillSendResult,
   type HillPlace,
   notCollie,
   type HillPostAnswer,
@@ -27,6 +27,8 @@ import {
   type HillTrickTap,
 } from "./service.ts";
 import { HillStore } from "./store.ts";
+import { readDecision } from "./parse.ts";
+import { parseJsonObject } from "../../web/src/lib/json.ts";
 
 const POSTER: HillAgentSender = { kind: "agent", address: "local/%1#aaaa", memberId: null, harness: "agent-x", label: "repo#one", host: "desk" };
 const OTHER: HillAgentSender = { kind: "agent", address: "local/%2#bbbb", memberId: null, harness: "agent-y", label: "repo#two", host: "desk" };
@@ -70,7 +72,7 @@ interface Rig {
   mode: HillCrewMode;
   walky: boolean;
   clock: number;
-  delivery: HillDelivery | "throw";
+  delivery: HillSendResult | "throw";
   onSend?: (to: string) => void;
   /** Every tap the hill handed the tricks runner, in order. */
   readonly taps: Tapped[];
@@ -1149,6 +1151,30 @@ describe("answering at the edges", () => {
     const decision = posted(typed.hill.post(POSTER, input(1)));
     await receiptOf(typed, answerOf(decision, 100, "yes"));
     expect(typed.audit.some((entry) => entry.action === "hill.undelivered")).toBe(false);
+  });
+
+  test("only a typed line whose write was not confirmed marks the answer unconfirmed; the poster still reads the answer", async () => {
+    for (const [delivery, stored, unconfirmed] of [
+      ["unknown", "unknown", true],
+      ["throw", "unknown", true],
+      ["typed", "typed", false],
+      ["held", "held", false],
+      ["inbox-only", "unknown", false],
+    ] as const) {
+      const r = rig();
+      const decision = posted(r.hill.post(POSTER, input(1)));
+      r.delivery = delivery;
+      await receiptOf(r, answerOf(decision, 100, "yes", "Go."));
+      const answer = r.store.get(decision.id)?.answer;
+      expect(answer?.delivery).toBe(stored);
+      expect(answer?.unconfirmed === true).toBe(unconfirmed);
+      // Nothing is sent again, and `collie hill status` gives the poster the answer either way.
+      expect(r.sent).toHaveLength(1);
+      expect(r.hill.status(POSTER, decision.id)).toMatchObject({ ok: true, decision: { state: "answered", answer: { intent: "yes", text: "Go.", delivery: stored } } });
+      // The mark survives a restart: the file's reader takes it back.
+      const reread = readDecision(parseJsonObject(JSON.stringify(r.store.get(decision.id))) ?? {}, { collie: true });
+      expect(reread?.answer?.unconfirmed === true).toBe(unconfirmed);
+    }
   });
 });
 

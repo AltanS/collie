@@ -133,7 +133,7 @@ describe("Clear cards you answered in the session", () => {
     expect(r.state.audit).toContainEqual({ action: "hill.clear.spoken", device: "Pixel 9", detail: { count: 1 } });
     // The poster reads it as withdrawn, with the reason.
     expect(r.state.audit.filter((entry) => entry.action === "hill.clear")).toHaveLength(1);
-    expect(HILL_ANSWERED_IN_SESSION).toBe("answered in the session");
+    expect(HILL_ANSWERED_IN_SESSION).toBe("your person wrote in the session");
     expect(r.hill.clearSpoken()).toEqual({ ok: true, cleared: 0 });
   });
 
@@ -170,7 +170,7 @@ describe("Clear cards you answered in the session", () => {
 });
 
 describe("a message that started the session's next turn (M96 spec 10)", () => {
-  test("closes that session's open cards `withdrawn`, answered in the session, and types nothing", () => {
+  test("closes that session's open cards `withdrawn`, the person wrote in the session, and types nothing", () => {
     const r = rig();
     const asked = r.hill.post(ONE, input(1));
     const other = r.hill.post(TWO, input(2));
@@ -269,5 +269,13 @@ describe("a message that started the session's next turn (M96 spec 10)", () => {
     expect(sendStartedTurn("send", "sent", { queued: false, waited: false })).toBe(false);
     expect(sendStartedTurn("send", "held", { queued: false, waited: true })).toBe(false);
     expect(sendStartedTurn("command", "effective", { queued: false, waited: true })).toBe(false);
+  });
+
+  test("a close rests on the bridge's last read of the session, not on a read at the send (follow-up)", () => {
+    // KNOWN LIMIT: `waited` is the state engine's last poll, which may be seconds old, or a stored word from
+    // a plugin that no longer runs. Nothing here reads the session again at the send; the follow-up spec
+    // brings the Send Protocol's own first read (screen path) and the plugin's answer (data path). Until
+    // then a send into a session whose last read said idle closes its cards, however old that read is.
+    expect(sendStartedTurn("send", "sent", { queued: false, waited: true })).toBe(true);
   });
 });

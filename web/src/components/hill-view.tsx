@@ -103,7 +103,7 @@ const STATE_GLYPH = {
 
 /**
  * One closed decision under Answered: its state glyph, its title, its state in words, and for an answer where it
- * went. A card the person answered in the session also shows its summary.
+ * went. A card the person's own message closed also shows its summary.
  */
 function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | undefined }) {
   // The closed list holds closed decisions only (lib/hill/reader.ts); an open one would have no words here.
@@ -129,6 +129,12 @@ function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | 
         <span data-slot="hill-closed-line" className="truncate text-xs text-muted-foreground">
           {line}
         </span>
+        {/* The typed line's write was not confirmed (the bridge's `unconfirmed`): nothing sends it again. */}
+        {decision.state === "answered" && decision.answer?.unconfirmed === true && (
+          <span data-slot="hill-closed-unconfirmed" className="text-xs text-muted-foreground">
+            {t("hill.delivery.mayNotHaveArrived")}
+          </span>
+        )}
         {kept !== undefined && (
           <div className="pt-1.5">
             <KeptWords text={kept} />

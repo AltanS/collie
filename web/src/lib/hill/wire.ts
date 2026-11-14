@@ -105,11 +105,12 @@ export const RIGHTS_CLOSED = {
 export type RightsClosed = keyof typeof RIGHTS_CLOSED;
 
 /**
- * Why an agent's card closed `withdrawn` with nothing typed: the person answered in the session (the
- * second Clear, or a phone send that started the session's next turn, M96 spec 10). The phone says it in
- * its own words, never "Withdrawn by the poster".
+ * Why an agent's card closed `withdrawn` with nothing typed: the person wrote in the session (the second
+ * Clear, or a phone send that started the session's next turn, M96 spec 10). It says only that they wrote,
+ * never that the message answered the card: Collie cannot know what the message was about. The phone
+ * says it in its own words, never "Withdrawn by the poster". The name stays for its callers.
  */
-export const HILL_ANSWERED_IN_SESSION = "answered in the session";
+export const HILL_ANSWERED_IN_SESSION = "your person wrote in the session";
 export const RIGHTS_CLOSED_KEYS: readonly RightsClosed[] = ["approved", "off", "removed", "moved"];
 /** The id inside a Collie Decision's `ref`: a trick id for `version`. */
 export const HILL_COLLIE_REF_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -298,6 +299,12 @@ export interface HillDecision {
     at: number;
     /** What walky reported. "none" for a dismiss with nothing to type. */
     delivery: "typed" | "held" | "unknown" | "none";
+    /**
+     * Set when the typed line ended with its write not confirmed: walky's receipt said `unknown`, stayed a
+     * bare `accepted` past the wait, or the send threw. Never for typed, held, or a line that waits in the
+     * inbox (typed, not submitted). The answer is not sent again; the phone says it may not have arrived.
+     */
+    unconfirmed?: true;
     /** What the trick's program did with the answer, as a tap. "none" for an agent's decision. */
     trick: HillTrickDelivery;
   } | null;

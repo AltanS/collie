@@ -216,7 +216,11 @@ export interface HillPlace {
 /** What the walky send reported: typed, held by walky's hold rule, or not confirmed. */
 export type HillDelivery = "typed" | "held" | "unknown";
 /** What one send came to: a delivery, or `refused` when walky typed nothing (a rate limit, a pane gone). */
-export type HillSendResult = HillDelivery | "refused";
+/**
+ * What a send reports. `inbox-only`: the line waits in the session's inbox (typed but not submitted, a
+ * dialog); the answer shows it as `unknown`, but its write is known, so it is not marked `unconfirmed`.
+ */
+export type HillSendResult = HillDelivery | "refused" | "inbox-only";
 
 /** The crew role of this bridge, as `crew.mode` names it in bridge/index.ts. */
 export type HillCrewMode = "solo" | "lead" | "peer";
@@ -1692,6 +1696,8 @@ export class HillService {
     if (claim.kind === "done") return claim.outcome;
     let delivery: NonNullable<HillReceipt["delivery"]> = "none";
     let threw = false;
+    // The write of the typed line was not confirmed: walky said `unknown`, or the send threw.
+    let unconfirmed = false;
     if (claim.send !== null) {
       let sent: HillSendResult;
       try {
@@ -1703,7 +1709,8 @@ export class HillService {
       }
       // Walky typed nothing (C-S1, review 8): the answer did not happen, so the Decision opens again.
       if (sent === "refused" && claim.decision.from.kind !== "collie") return await this.unclaim(claim, request, by);
-      delivery = sent === "refused" ? "unknown" : sent;
+      delivery = sent === "refused" || sent === "inbox-only" ? "unknown" : sent;
+      unconfirmed = sent === "unknown";
     }
     // One line of its own: the answer is kept on the decision, and the session reads it with `collie hill status`.
     if (claim.send !== null && delivery === "unknown") this.deps.audit?.({ action: "hill.undelivered", device: by, detail: { decisionId: id, why: threw ? "the send failed" : "not confirmed" } });
@@ -1712,7 +1719,10 @@ export class HillService {
     const receipt: HillReceipt = { ...claim.record.receipt, delivery, trick };
     await this.deps.receipts.record({ ...claim.record, receipt });
     const now = this.deps.store.get(id);
-    if (now?.answer?.rid === request.rid && (now.answer.delivery !== delivery || now.answer.trick !== trick)) this.save({ ...now, answer: { ...now.answer, delivery, trick } });
+    if (now?.answer?.rid === request.rid && (now.answer.delivery !== delivery || now.answer.trick !== trick || (now.answer.unconfirmed === true) !== unconfirmed)) {
+      const { unconfirmed: _was, ...kept } = now.answer;
+      this.save({ ...now, answer: unconfirmed ? { ...kept, delivery, trick, unconfirmed: true } : { ...kept, delivery, trick } });
+    }
     this.auditAnswer(claim.decision, request, by, receipt);
     return { kind: "receipt", receipt };
   }
