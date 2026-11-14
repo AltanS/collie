@@ -587,7 +587,7 @@ export function AgentList({
     bestRows ?? [
       ...pinnedShown,
       ...(ranked
-        ? nestPanes(rankedShown, NO_FOLDED).map((e) => e.pane)
+        ? rankedShown
         : drawnShown.flatMap((d) => nestPanes(d.rows, NO_FOLDED).map((e) => e.pane))),
     ];
   const hitOf = (p: AgentView): PaneMatch | undefined => hits?.get(paneRowKey(p));
@@ -908,7 +908,7 @@ export function AgentList({
             tone="strong"
             className="min-h-7"
           />
-          <ListGroup>{nestPanes(rankedShown, activeFolded).map((entry) => row(entry.pane, "herd", entry))}</ListGroup>
+          <ListGroup>{rankedShown.map((p) => row(p, "herd"))}</ListGroup>
         </section>
       )}
 

@@ -170,6 +170,21 @@ describe("the herdr-core snapshot mapping", () => {
     expect(t3).toMatchObject({ spaceId: "spA", tabId: "tbA2", parentPaneId: "t2", unpaned: true });
   });
 
+  test("an unlabelled child under an unlabelled parent in the implicit space is still unpaned", () => {
+    const snapshot = toSnapshot(
+      [
+        terminal({ address: "t1", name: "root" }),
+        terminal({ address: "t2", name: "worker", parent: "t1" }),
+      ],
+      null,
+      "/home/dev",
+    );
+    const t1 = snapshot.panes.find((p) => p.paneId === "t1");
+    const t2 = snapshot.panes.find((p) => p.paneId === "t2");
+    expect(t1?.unpaned).toBeUndefined();
+    expect(t2).toMatchObject({ spaceId: "herdr-core", tabId: "herdr-core.1", parentPaneId: "t1", unpaned: true });
+  });
+
   test("a kept child with its own space and tab labels keeps its place and is not marked unpaned", () => {
     const snapshot = toSnapshot(
       [

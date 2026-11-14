@@ -1606,6 +1606,24 @@ describe("AgentList — the order select", () => {
     expect(screen.getByText("audit-auth")).toBeInTheDocument();
     __resetFoldedParents();
   });
+
+  it("keeps activity order as a frozen flat list: a child arriving after freeze stays at the end after Q", () => {
+    __resetFoldedParents();
+    const p = timed(agent("w1:p1", "idle", { ...ws(1), sessionName: "parent-P" }), 900);
+    const q = timed(agent("w2:p1", "idle", { ...ws(2), sessionName: "sibling-Q" }), 500);
+    const { rerender } = render(<AgentList agents={[p, q]} {...props} order="activity" />);
+    const orderNames = () =>
+      rowButtons().map((b) => ["parent-P", "sibling-Q", "child-C"].find((n) => within(b).queryByText(n) !== null));
+    expect(orderNames()).toEqual(["parent-P", "sibling-Q"]);
+
+    const c = timed(agent("w1:p2", "idle", { ...ws(1), sessionName: "child-C", parentPaneId: "w1:p1" }), 9_999);
+    rerender(<AgentList agents={[p, q, c]} {...props} order="activity" />);
+    expect(orderNames()).toEqual(["parent-P", "sibling-Q", "child-C"]);
+    expect(screen.queryByRole("button", { name: /sub-agents/i })).toBeNull();
+
+    rerender(<AgentList agents={[p, q, c]} {...props} order="place" />);
+    expect(screen.getByRole("button", { name: /sub-agents/i })).toBeInTheDocument();
+  });
 });
 
 // THE FILTER (M97 spec 04): a field over the Dashboard's session rows, a loose match, the matched letters marked.
@@ -1961,7 +1979,7 @@ describe("AgentList — the session filter", () => {
     expect(screen.getByRole("button", { name: "Expand sub-agents (1)" })).toBeInTheDocument();
   });
 
-  it("opens the parent on Enter when a newer child pulled the family to the top of activity order", async () => {
+  it("keeps activity order flat on Enter even when a child is newer than its parent", async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
     const parent = { ...API, lastActiveAt: 100 };
@@ -1974,8 +1992,8 @@ describe("AgentList — the session filter", () => {
     const ranked = [RELEASE, TRIAGE, parent, child, MIGRATE, LANDING, HEROES];
     const { container } = render(list({ agents: ranked, order: "activity", onOrderChange: vi.fn(), onOpen }));
     await user.type(field(), "api{Enter}");
-    expect(keys(container)).toEqual([parent, child].map(idOf));
+    expect(keys(container)).toEqual([child, parent].map(idOf));
     expect(onOpen).toHaveBeenCalledTimes(1);
-    expect(onOpen.mock.calls[0]?.[0]).toBe(parent);
+    expect(onOpen.mock.calls[0]?.[0]).toBe(child);
   });
 });

@@ -70,14 +70,17 @@ export function PaneTreeFoldButton({
         className,
       )}
     >
-      {folded && status !== undefined && status !== "idle" && status !== "unknown" && (
-        <StatusDot
-          status={status}
-          surface={surface}
-          label={statusLabel(status)}
-          className="size-2.5"
-        />
-      )}
+      {folded &&
+        (status !== undefined && status !== "idle" && status !== "unknown" ? (
+          <StatusDot
+            status={status}
+            surface={surface}
+            label={statusLabel(status)}
+            className="size-2.5"
+          />
+        ) : (
+          <span aria-hidden="true" className="size-2.5 shrink-0" />
+        ))}
       <span aria-hidden="true">{count}</span>
       <Icon
         name="disclosure"

@@ -350,13 +350,14 @@ export function ThreadSidebar({
     ? inRankOrder([...sections.flatMap((g) => g.rows), ...shellRows], ranks)
     : NO_PANES;
 
+  const activeFolded = hits === null ? folded : NO_FOLDED;
   const urgent = agents.filter((a) => URGENT.has(bucketOf(a)));
   const isUrgent = (a: AgentView) => URGENT.has(bucketOf(a));
   // The first urgent row in DISPLAY order, not in the order the list arrived in: in Pinned when a
   // pinned pane needs you, and in whichever order the rows below it are running in.
   const firstUrgent = [
     ...pinnedAll,
-    ...(ranked ? rankedAll : sections.flatMap((g) => g.rows)),
+    ...(ranked ? rankedAll : sections.flatMap((g) => nestPanes(g.rows, NO_FOLDED).map((e) => e.pane))),
   ].find(isUrgent);
 
   // ── WHAT A QUERY LEAVES ─────────────────────────────────────────────────────
@@ -382,12 +383,11 @@ export function ThreadSidebar({
     bestRows ?? [
       ...pinnedShown,
       ...(ranked
-        ? nestPanes(rankedRows, NO_FOLDED).map((e) => e.pane)
+        ? rankedRows
         : [...sectionsShown.flatMap((g) => nestPanes(g.rows, NO_FOLDED).map((e) => e.pane)), ...shellsShown]),
       ...trickShown,
     ];
   const hitOf = (p: AgentView): PaneMatch | undefined => hits?.get(paneRowKey(p));
-  const activeFolded = hits === null ? folded : NO_FOLDED;
 
   // The jump goes to the first urgent row the list SHOWS; when the query hides every urgent row, it
   // clears the query and jumps once the rows are back. The line's count stays the whole list's.
@@ -539,7 +539,7 @@ export function ThreadSidebar({
                 count={rankedRows.length}
                 tone={roomy ? "quiet" : "strong"}
               >
-                {nestPanes(rankedRows, activeFolded).map(treeRow)}
+                {rankedRows.map(row)}
               </Section>
             )
           ) : (

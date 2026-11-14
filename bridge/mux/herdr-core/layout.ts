@@ -14,8 +14,9 @@ import type { WireForeground, WireLayout, WireStatus, WireTerminal } from "./cli
 //
 // The labels are the truth for WHERE a terminal belongs: herdr-app shows a terminal in the space
 // and tab its labels name, even one it did not start (AGENTS.md § The model). The document gives
-// the names and the order. A terminal without the labels belongs to no herdr-app space, so it sits
-// in one implicit space with one tab ({@link IMPLICIT_SPACE_ID}).
+// the names and the order. An unlabelled child terminal inherits its nearest labelled live
+// ancestor's space and tab (as `unpaned: true`); any other terminal without the labels sits in one
+// implicit space with one tab ({@link IMPLICIT_SPACE_ID}).
 //
 // A terminal on another machine (`box/t7`) is dropped before anything else: its journal, uploads
 // and audit log sit on that machine, and it is reached through the Collie running there
@@ -163,17 +164,13 @@ function acyclicParent(
 
 /** Nearest live ancestor that carries `herdr.space` and `herdr.tab` labels, for unpaned sub-agents. */
 function inheritedLabels(
-  terminal: WireTerminal,
+  parent: WireTerminal,
   byAddress: ReadonlyMap<string, WireTerminal>,
 ): { readonly spaceId: string; readonly tabId: string } | null {
-  const seen = new Set<string>([terminal.address]);
-  let cur = acyclicParent(terminal, byAddress);
-  while (cur !== undefined && !seen.has(cur.address)) {
-    seen.add(cur.address);
+  for (let cur: WireTerminal | undefined = parent; cur !== undefined; cur = cur.parent ? byAddress.get(cur.parent) : undefined) {
     const spaceId = cur.labels[SPACE_LABEL] ?? "";
     const tabId = cur.labels[TAB_LABEL] ?? "";
     if (spaceId !== "" && tabId !== "") return { spaceId, tabId };
-    cur = acyclicParent(cur, byAddress);
   }
   return null;
 }
@@ -209,7 +206,9 @@ export function toSnapshot(terminals: readonly WireTerminal[], layout: WireLayou
     let spaceId = terminal.labels[SPACE_LABEL] ?? "";
     let tabId = terminal.labels[TAB_LABEL] ?? "";
     if (spaceId === "" || tabId === "") {
-      const inherited = inheritedLabels(terminal, byAddress);
+      const liveParent = acyclicParent(terminal, byAddress);
+      if (liveParent !== undefined) unpanedIds.add(terminal.address);
+      const inherited = liveParent === undefined ? null : inheritedLabels(liveParent, byAddress);
       if (inherited === null) {
         implicit ??= { id: IMPLICIT_SPACE_ID, docName: "", folder: "", tabs: [{ id: IMPLICIT_TAB_ID, docName: "", terminals: [] }] };
         implicit.tabs[0]?.terminals.push(terminal);
@@ -217,7 +216,6 @@ export function toSnapshot(terminals: readonly WireTerminal[], layout: WireLayou
       }
       spaceId = inherited.spaceId;
       tabId = inherited.tabId;
-      unpanedIds.add(terminal.address);
     }
     let space = spaceById.get(spaceId);
     if (space === undefined) {
