@@ -14,6 +14,7 @@ import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
 import { workspacePrefKey } from "./agent-list";
 import { paneRowKey } from "@/lib/hosts";
+import { __resetFoldedParents } from "@/lib/pane-tree";
 import { currentPins, setPinned } from "@/lib/pins";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import { __resetDashFilter } from "@/lib/dash-filter";
@@ -1580,6 +1581,31 @@ describe("AgentList — the order select", () => {
     const selectRow = filterButton().closest("div.relative")!.parentElement!;
     expect(selectRow.querySelector(".invisible")).not.toBeNull();
   });
+
+  it("parent-child tree: nests workers expanded by default, folds and unfolds without opening the parent", async () => {
+    __resetFoldedParents();
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    const parent = agent("t1", "idle", { ...ws(1), paneLabel: "release-coordinator" });
+    const workerA = agent("t2", "done", { ...ws(1), paneLabel: "audit-auth", parentPaneId: "t1", lastActiveAt: 200, lastSeenAt: 100 });
+    const workerB = agent("t3", "blocked", { ...ws(1), paneLabel: "check-migrations", parentPaneId: "t1" });
+
+    render(<AgentList agents={[parent, workerA, workerB]} {...props} onOpen={onOpen} />);
+    expect(screen.getByText("audit-auth")).toBeInTheDocument();
+    expect(screen.getByText("check-migrations")).toBeInTheDocument();
+
+    const collapseBtn = screen.getByRole("button", { name: "Collapse sub-agents (2)" });
+    await user.click(collapseBtn);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(screen.queryByText("audit-auth")).toBeNull();
+    expect(screen.queryByText("check-migrations")).toBeNull();
+
+    const expandBtn = screen.getByRole("button", { name: "Expand sub-agents (2)" });
+    expect(within(expandBtn).getByRole("img", { name: "needs you" })).toBeInTheDocument();
+    await user.click(expandBtn);
+    expect(screen.getByText("audit-auth")).toBeInTheDocument();
+    __resetFoldedParents();
+  });
 });
 
 // THE FILTER (M97 spec 04): a field over the Dashboard's session rows, a loose match, the matched letters marked.
@@ -1617,6 +1643,7 @@ describe("AgentList — the session filter", () => {
   });
   afterEach(() => {
     filterSwitch.off = false;
+    __resetFoldedParents();
   });
 
   it("renders exactly what it rendered before while the query is empty, in both entries", () => {
@@ -1912,5 +1939,43 @@ describe("AgentList — the session filter", () => {
     const { container } = render(list({ filter: { query: "moon", open: true, setQuery: vi.fn(), setOpen: vi.fn() } }));
     expect(field()).toHaveValue("moon");
     expect(keys(container)).toEqual([API, MIGRATE].map(idOf));
+  });
+
+  it("opens a folded parent while a query runs so a matched child is shown, and restores the fold when cleared", async () => {
+    const user = userEvent.setup();
+    const child = at("w2:p10", "w2", "moonward", 2, {
+      sessionName: "api worker",
+      parentPaneId: API.paneId,
+      unpaned: true,
+    });
+    const { container } = render(list({ agents: [...AGENTS, child] }));
+    await user.click(screen.getByRole("button", { name: "Collapse sub-agents (1)" }));
+    expect(keys(container)).not.toContain(idOf(child));
+
+    await user.type(field(), "api");
+    expect(keys(container)).toEqual([API, child].map(idOf));
+    expect(screen.queryByRole("button", { name: /sub-agents/i })).toBeNull();
+
+    await user.clear(field());
+    expect(keys(container)).not.toContain(idOf(child));
+    expect(screen.getByRole("button", { name: "Expand sub-agents (1)" })).toBeInTheDocument();
+  });
+
+  it("opens the parent on Enter when a newer child pulled the family to the top of activity order", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    const parent = { ...API, lastActiveAt: 100 };
+    const child = at("w2:p10", "w2", "moonward", 2, {
+      sessionName: "api worker",
+      parentPaneId: API.paneId,
+      unpaned: true,
+      lastActiveAt: 999,
+    });
+    const ranked = [RELEASE, TRIAGE, parent, child, MIGRATE, LANDING, HEROES];
+    const { container } = render(list({ agents: ranked, order: "activity", onOrderChange: vi.fn(), onOpen }));
+    await user.type(field(), "api{Enter}");
+    expect(keys(container)).toEqual([parent, child].map(idOf));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen.mock.calls[0]?.[0]).toBe(parent);
   });
 });

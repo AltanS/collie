@@ -335,6 +335,18 @@ export interface MuxPane extends MuxIdentity {
    * from their snapshot and optional here.
    */
   readonly revision?: number;
+  /**
+   * Live local parent pane (`herdr-core` `parent`). Omitted when the pane has none, when the parent
+   * has exited or lives on another machine, or when a cycle would form, so orphan panes fall back to
+   * top-level rows without client-side graph repair.
+   */
+  readonly parentPaneId?: string;
+  /**
+   * Set when an unlabelled child terminal borrows an ancestor's space and tab without owning a split
+   * pane of its own (`hc run --bg --parent`), so single-pane tab naming and the in-pane strip ignore
+   * it unless it is the open pane.
+   */
+  readonly unpaned?: true;
 }
 
 /** One space — a project-scoped container of tabs. Collie's word; the port never uses another. */

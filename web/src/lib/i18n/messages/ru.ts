@@ -1148,6 +1148,8 @@ export const ru: Dictionary = {
   "home.workspaceFilter.count.many": "Рабочих пространств: {count}",
   "home.sidebar.shells": "Оболочки",
   "home.pinned.title": "Закрепленные",
+  "home.subagents.collapse": "Свернуть субагентов ({count})",
+  "home.subagents.expand": "Развернуть субагентов ({count})",
   "home.pinHint.hold": "Удерживайте панель, чтобы закрепить ее здесь.",
   "home.pinHint.rightClick": "Нажмите правой кнопкой на панель, чтобы закрепить ее здесь.",
   "home.pinHint.dismiss": "Скрыть подсказку",

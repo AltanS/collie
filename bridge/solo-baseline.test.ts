@@ -423,6 +423,10 @@ const PANE_WIRE_KEYS = {
   // added 2026-11-13). Present only when the harness wrote one, and this harness builds its engine with no
   // title tracker, so no golden byte moved.
   agentTitle: true,
+  // Not crew dimensions: herdr-core parent-child terminal link and unpaned flag (ADR 0141). Present
+  // only when a live local parent exists, so no solo golden byte moved.
+  parentPaneId: true,
+  unpaned: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -589,6 +593,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "model",
       "paneId",
       "paneLabel",
+      "parentPaneId",
       "pins",
       "progress",
       "readableLines",
@@ -607,6 +612,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "terminalTitleStale",
       "todos",
       "turnId",
+      "unpaned",
       "usage",
       "view",
       "walkyOff",
