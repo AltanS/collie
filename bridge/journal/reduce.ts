@@ -252,6 +252,16 @@ export interface RowReducer {
    * waiting any more, still on screen, is a screen that lies.
    */
   queued(): readonly string[];
+  /**
+   * How many places the harness's queue holds that its log gave NO WORDS for, beside {@link queued}.
+   *
+   * Claude Code writes the `enqueue` of a message the operator queues while it compacts with no
+   * `content` at all (measured 2026-11-14 on 2.1.323), so the log says that a message waits and not
+   * which. The live window gives such a place the words of Collie's own open queued send
+   * (`journal/receipt-queue.ts` § `unnamedFill`). OPTIONAL: a format that never writes such a row
+   * leaves it out, and the window reads that as none.
+   */
+  unnamedQueued?(): number;
 }
 
 /** The answer for a row that did nothing. Frozen, because it is handed to every caller. */

@@ -24,6 +24,7 @@ import {
 } from "./live.ts";
 import { NO_CHANGE, noUnknowns, parseWith, type PendingTool, rememberPending, type RowReducer } from "./reduce.ts";
 import type { ReceiptQueued } from "./receipt-queue.ts";
+import { QueuedSends } from "../surface/queued.ts";
 import { TranscriptStore } from "./store.ts";
 import { redactEntry } from "./text.ts";
 import type {
@@ -50,6 +51,8 @@ type FakeRow = {
   for?: string;
   out?: string;
   queue?: string[];
+  /** With `queue`: how many more places the harness holds that its log gave no words for. */
+  unnamed?: number;
   ask?: string;
   role?: "user" | "note";
   ts?: string;
@@ -72,12 +75,14 @@ function fakeReducer(): RowReducer {
   // A `queue` row sets what is waiting and adds no turn, which is how the real thing behaves: a
   // `queue-operation` row moves state the thread never sees (`journal/claude.ts` § createQueueTracker).
   let queue: readonly string[] = [];
+  let unnamed = 0;
   return {
     push(line: string) {
       const row = readRow(line);
       if (row === null) return NO_CHANGE;
       if (Array.isArray(row.queue)) {
         queue = [...row.queue];
+        unnamed = row.unnamed ?? 0;
         return NO_CHANGE;
       }
       // A prompt: the operator's own (`user`) or one the agent sent itself (`note`).
@@ -113,6 +118,7 @@ function fakeReducer(): RowReducer {
     // reducers' own tallies are gated in `unknowns.test.ts` and by the canary (M41/05).
     unknowns: noUnknowns,
     queued: () => queue,
+    unnamedQueued: () => unnamed,
   };
 }
 
@@ -196,6 +202,8 @@ const say = (id: string, what = "ls") => JSON.stringify({ id, say: what });
 const answer = (id: string, out = "ok") => JSON.stringify({ for: id, out });
 /** A row that moves the message queue and adds no turn, the way a `queue-operation` row does. */
 const queue = (...waiting: string[]) => JSON.stringify({ queue: waiting });
+/** The queue with `unnamed` more places whose words the log does not hold (Claude Code while it compacts). */
+const blindQueue = (unnamed: number, ...waiting: string[]) => JSON.stringify({ queue: waiting, unnamed });
 /** A prompt turn; `note` makes it one the agent sent itself. */
 const ask = (id: string, text: string, role: "user" | "note" = "user") => JSON.stringify({ id, ask: text, role });
 /** A prompt turn the journal stamped at `ms` (epoch): what a queued send landing as a prompt writes. */
@@ -1041,6 +1049,112 @@ describe("what is queued, from the receipts", () => {
     const body = await windows(fx).window(recording, ref(), { limit: 10 }, mixed);
     expect(body!.queued).toEqual(["from the journal"]);
     expect(body!.queuedSends).toEqual([{ requestId: "req-back-00001", state: "returned", text: "popped back" }]);
+  });
+
+  test("a place the journal holds without words takes the newest open send's text, on the journal's card", async () => {
+    // Claude Code while it compacts: the `enqueue` carries no content, so the reducer knows a message
+    // waits and not which. The receipt knows the words. The card is the journal's own (`queued`), the
+    // same one a message queued during a normal turn gets, and no receipt card doubles it.
+    const fx = fakeJournal([say("u1"), blindQueue(1)]);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    const body = await windows(fx).window(recording, ref(), { limit: 10 }, sends());
+    expect(body!.queued).toEqual(["and a third"]);
+    expect("queuedSends" in body!).toBe(false);
+  });
+
+  test("a named place keeps its words, and only the unnamed one is filled", async () => {
+    const fx = fakeJournal([say("u1"), blindQueue(1, "second message")]);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    const body = await windows(fx).window(recording, ref(), { limit: 10 }, sends());
+    expect(body!.queued).toEqual(["second message", "and a third"]);
+  });
+
+  test("an unnamed place with no open send draws nothing, and a landed send fills nothing", async () => {
+    const fx = fakeJournal([askAt("p1", "and a third", AT + 30_000), blindQueue(1)]);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    const body = await windows(fx).window(recording, ref(), { limit: 10 }, sends());
+    expect(body!.queued).toEqual(["second message"]);
+    const none = await windows(fx).window(recording, ref(), { limit: 10 });
+    expect(none!.queued).toEqual([]);
+  });
+
+  test("two unnamed places take the two newest open sends, in send order", async () => {
+    const three: ReceiptQueued[] = [
+      { requestId: "req-three-0001", text: "first", at: AT, state: "queued" },
+      { requestId: "req-three-0002", text: "second", at: AT + 1_000, state: "queued" },
+      { requestId: "req-three-0003", text: "third", at: AT + 2_000, state: "queued" },
+    ];
+    const fx = fakeJournal([say("u1"), blindQueue(2)]);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    // Handed over out of order: the fill sorts by the send's own time, never by the list it was given.
+    const body = await windows(fx).window(recording, ref(), { limit: 10 }, three.toReversed());
+    expect(body!.queued).toEqual(["second", "third"]);
+  });
+
+  test("only a send still `queued` fills a place: never a returned or an unconfirmed one", async () => {
+    const others: ReceiptQueued[] = [
+      { requestId: "req-other-0001", text: "back in the box", at: AT, state: "returned" },
+      { requestId: "req-other-0002", text: "lost track", at: AT + 1_000, state: "unconfirmed" },
+    ];
+    const fx = fakeJournal([say("u1"), blindQueue(1)]);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    const body = await windows(fx).window(recording, ref(), { limit: 10 }, others);
+    expect(body!.queued).toEqual([]);
+    expect(body!.queuedSends?.map((card) => card.state)).toEqual(["returned"]);
+  });
+
+  test("a filled place is the journal's card, so it rides with the same Send now keys", async () => {
+    // The phone draws `queued` with one card and one Send now (session-stream.tsx § QueuedCard); a filled
+    // text is a string in that list like any other, so its Send now is the same key on the same path.
+    const fx = fakeJournal([say("u1"), blindQueue(1)]);
+    const declared: JournalAdapter = { ...fx.adapter, recordsQueue: true, sendQueuedNow: ["ctrl+Enter"] };
+    const body = await windows(fx).window(declared, ref(), { limit: 10 }, sends());
+    expect(body!.queued).toEqual(["and a third"]);
+    expect(body!.sendQueuedNow).toEqual(["ctrl+Enter"]);
+  });
+
+  test("the dequeue that ends the compaction takes the filled card away before the prompt lands", async () => {
+    const fx = fakeJournal([say("u1"), blindQueue(1)]);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    const live = windows(fx);
+    const first = await live.window(recording, ref(), { limit: 10 }, sends());
+    expect(first!.queued).toEqual(["and a third"]);
+    fx.append(queue());
+    fx.settle();
+    const between = await live.window(recording, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } }, sends());
+    expect(between!.queued).toEqual([]);
+    // And once the prompt is in, the receipt is closed too: one row, no card beside it.
+    fx.append(askAt("p9", "and a third", AT + 90_000));
+    fx.settle();
+    const after = await live.window(recording, ref(), { limit: 10, after: { gen: between!.gen, rev: between!.rev } }, sends());
+    expect(after!.queued).toEqual([]);
+    expect(after!.queuedSends).toBeUndefined();
+  });
+
+  // THE OPEN GAP, kept as a failing test until it is decided (2026-11-14). A slash command sent from
+  // the phone settles `sent`, and the Send Protocol keeps it as a SUBMITTED send (surface/queued.ts),
+  // which is never a card. Claude Code writes no row for a `/compact` until the compaction ends, a
+  // minute or more later, and no other row stands in for it, so the Chat shows nothing of the line the
+  // person just sent. Nothing in the body carries its words. `test.failing` passes while that holds;
+  // the day a fix draws the line, bun reports this test and it becomes a plain `test`.
+  test.failing("a sent `/compact` shows in the window before the journal writes its row", async () => {
+    const queued = new QueuedSends({
+      store: { list: () => [], markReturned: () => true },
+      generation: () => "claude:session",
+      matches: () => false,
+      now: () => AT,
+      busy: () => true,
+    });
+    queued.add({ id: "req-compact-001", session: "main", paneId: "%1", generation: "claude:session", text: "/compact keep the plan", collapse: null, at: AT, steer: false, submitted: true });
+    const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 60_000), say("u1")]);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    const body = await windows(fx).window(recording, ref(), { limit: 10 }, queued.of("main", "%1"));
+    const shown = [
+      ...body!.upserts.flatMap((entry) => entry.parts.flatMap((part) => (part.kind === "text" ? [part.text] : []))),
+      ...body!.queued,
+      ...(body!.queuedSends ?? []).map((card) => card.text),
+    ];
+    expect(shown).toContain("/compact keep the plan");
   });
 
   test("no open sends leave the body byte-identical to before", async () => {

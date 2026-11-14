@@ -155,6 +155,29 @@ count, so "Please do these:" over "1. …" and "2. …" settles `sent` + `queued
   over its box (`❯ Title` over an indented metadata row) would read as an echo; the corpus test "no Claude
   dialog fixture reads otherwise without the echo rule" is the guard for each new capture.
 
+## A place with no words (addendum, 2026-11-14)
+
+Claude Code 2.1.323 writes the `enqueue` of a message the person queues while a compaction runs with no
+`content` at all (two such rows in one session log, both during a `/compact`). The reducer took the place
+and had no words for it, and `recordsQueue` kept the receipt card out, so the Chat showed no queued card
+for a message the agent held, until the compaction ended.
+
+- The reducer counts such places (`RowReducer.unnamedQueued`, optional; only the Claude Code reducer
+  answers it). The live window gives each the text of the newest open receipt send in state `queued`
+  that the journal does not list and whose prompt has not landed (`unnamedFill`, `journal/receipt-queue.ts`).
+- That text rides in the legacy `queued` list, an exception to point 5. The place is the journal's own,
+  so it gets the journal's card, the one a message queued during a normal turn gets, and its Send now,
+  which the harness itself offers for it. Point 5's reason does not apply: only an adapter that records
+  its queue can report such a place. No harness name is read.
+- Short stays the safe side: fewer open sends than places leaves a place without a card, and the
+  `dequeue` that ends the compaction takes the place away again.
+- A message queued at the terminal, not through Collie, has no receipt. Its place stays undrawn until
+  Claude Code writes its row.
+- Several places take the newest open sends, in send order; the filled texts follow the journal's named
+  ones. A filled card goes when its place goes (the `dequeue`), and its receipt ends as any queued
+  receipt does (the prompt in the journal, the prompt edge, `unconfirmed`), so it cannot stand beside
+  the prompt row it became.
+
 ## Assumptions
 
 - **One clock.** The journal's prompt time and the receipt's submit time are compared with a 2 s skew.
