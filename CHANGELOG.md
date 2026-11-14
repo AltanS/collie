@@ -23,6 +23,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.28.4] - 2026-11-14
+
 ### Fixed
 
 - **A WalkyTalky line runs nothing when it lands at a shell prompt.** The line a message types into a pane named its sender in parentheses, `<address> (<harness>, <label>)` and `(<label>)`. fish runs a parenthesis as a command, so a folder or branch name in the label could run there when the agent had just quit, and zsh ran a backtick in any of its fields. The sender now stands in words, `from agent <address> on <harness> in "<label>"` and `from operator "<label>"`. On the line, the address, the harness and the label keep only ASCII letters, digits and `. , _ / # + @ = : % -`, the label also spaces, and every other character becomes `_`. The stored label, `collie walky who` and the phone keep the name as it is, and the phone reads lines in both forms. The machine that owns the pane types the line, so update each crew member too; `collie update` brings the agents' skill text to the new form.
