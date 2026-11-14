@@ -1051,25 +1051,46 @@ describe("what is queued, from the receipts", () => {
     expect(body!.queuedSends).toEqual([{ requestId: "req-back-00001", state: "returned", text: "popped back" }]);
   });
 
-  test("a place the journal holds without words takes the newest open send's text, on the journal's card", async () => {
-    // Claude Code while it compacts: the `enqueue` carries no content, so the reducer knows a message
-    // waits and not which. The receipt knows the words. The card is the journal's own (`queued`), the
-    // same one a message queued during a normal turn gets, and no receipt card doubles it.
-    const fx = fakeJournal([say("u1"), blindQueue(1)]);
+  // Claude Code while it compacts: the `enqueue` carries no content, so the reducer knows a message waits
+  // and not which. The receipts know the words. The card is the journal's own (`queued`), the same one a
+  // message queued during a normal turn gets, and no receipt card doubles it. No guess among several.
+  const queuedAt = (...texts: string[]): ReceiptQueued[] =>
+    texts.map((text, i) => ({ requestId: `req-fill-${String(i).padStart(4, "0")}`, text, at: AT + i * 1_000, state: "queued" }));
+  const blindWindow = async (places: number, sent: readonly ReceiptQueued[], named: string[] = []) => {
+    const fx = fakeJournal([say("u1"), blindQueue(places, ...named)]);
     const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
-    const body = await windows(fx).window(recording, ref(), { limit: 10 }, sends());
-    expect(body!.queued).toEqual(["and a third"]);
-    expect("queuedSends" in body!).toBe(false);
+    return (await windows(fx).window(recording, ref(), { limit: 10 }, sent))!;
+  };
+
+  test("one open send and one place with no words: the place takes its text, on the journal's card", async () => {
+    const body = await blindWindow(1, queuedAt("and a third"));
+    expect(body.queued).toEqual(["and a third"]);
+    expect("queuedSends" in body).toBe(false);
   });
 
-  test("a named place keeps its words, and only the unnamed one is filled", async () => {
-    const fx = fakeJournal([say("u1"), blindQueue(1, "second message")]);
-    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
-    const body = await windows(fx).window(recording, ref(), { limit: 10 }, sends());
-    expect(body!.queued).toEqual(["second message", "and a third"]);
+  test("two open sends and two places: both, in send order", async () => {
+    // Handed over out of order: the fill follows the send's own time, never the list it was given.
+    const body = await blindWindow(2, queuedAt("first", "second").toReversed());
+    expect(body.queued).toEqual(["first", "second"]);
   });
 
-  test("an unnamed place with no open send draws nothing, and a landed send fills nothing", async () => {
+  test("one open send and two places: the send fills one, the other place draws nothing", async () => {
+    const body = await blindWindow(2, queuedAt("only one"));
+    expect(body.queued).toEqual(["only one"]);
+  });
+
+  test("two open sends and one place: no guess, nothing is filled", async () => {
+    const body = await blindWindow(1, queuedAt("first", "second"));
+    expect(body.queued).toEqual([]);
+    expect("queuedSends" in body).toBe(false);
+  });
+
+  test("a named place keeps its words, and only the open send it does not list fills the other", async () => {
+    const body = await blindWindow(1, sends(), ["second message"]);
+    expect(body.queued).toEqual(["second message", "and a third"]);
+  });
+
+  test("a send whose prompt landed fills nothing, and no open send leaves the place undrawn", async () => {
     const fx = fakeJournal([askAt("p1", "and a third", AT + 30_000), blindQueue(1)]);
     const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
     const body = await windows(fx).window(recording, ref(), { limit: 10 }, sends());
@@ -1078,29 +1099,14 @@ describe("what is queued, from the receipts", () => {
     expect(none!.queued).toEqual([]);
   });
 
-  test("two unnamed places take the two newest open sends, in send order", async () => {
-    const three: ReceiptQueued[] = [
-      { requestId: "req-three-0001", text: "first", at: AT, state: "queued" },
-      { requestId: "req-three-0002", text: "second", at: AT + 1_000, state: "queued" },
-      { requestId: "req-three-0003", text: "third", at: AT + 2_000, state: "queued" },
-    ];
-    const fx = fakeJournal([say("u1"), blindQueue(2)]);
-    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
-    // Handed over out of order: the fill sorts by the send's own time, never by the list it was given.
-    const body = await windows(fx).window(recording, ref(), { limit: 10 }, three.toReversed());
-    expect(body!.queued).toEqual(["second", "third"]);
-  });
-
   test("only a send still `queued` fills a place: never a returned or an unconfirmed one", async () => {
     const others: ReceiptQueued[] = [
       { requestId: "req-other-0001", text: "back in the box", at: AT, state: "returned" },
       { requestId: "req-other-0002", text: "lost track", at: AT + 1_000, state: "unconfirmed" },
     ];
-    const fx = fakeJournal([say("u1"), blindQueue(1)]);
-    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
-    const body = await windows(fx).window(recording, ref(), { limit: 10 }, others);
-    expect(body!.queued).toEqual([]);
-    expect(body!.queuedSends?.map((card) => card.state)).toEqual(["returned"]);
+    const body = await blindWindow(1, others);
+    expect(body.queued).toEqual([]);
+    expect(body.queuedSends?.map((card) => card.state)).toEqual(["returned"]);
   });
 
   test("a filled place is the journal's card, so it rides with the same Send now keys", async () => {
@@ -1108,27 +1114,45 @@ describe("what is queued, from the receipts", () => {
     // text is a string in that list like any other, so its Send now is the same key on the same path.
     const fx = fakeJournal([say("u1"), blindQueue(1)]);
     const declared: JournalAdapter = { ...fx.adapter, recordsQueue: true, sendQueuedNow: ["ctrl+Enter"] };
-    const body = await windows(fx).window(declared, ref(), { limit: 10 }, sends());
+    const body = await windows(fx).window(declared, ref(), { limit: 10 }, queuedAt("and a third"));
     expect(body!.queued).toEqual(["and a third"]);
     expect(body!.sendQueuedNow).toEqual(["ctrl+Enter"]);
   });
 
-  test("the dequeue that ends the compaction takes the filled card away before the prompt lands", async () => {
+  test("the card, then the dequeue, then the prompt: the text is shown once at every step", async () => {
+    const sent = queuedAt("and a third");
     const fx = fakeJournal([say("u1"), blindQueue(1)]);
     const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
     const live = windows(fx);
-    const first = await live.window(recording, ref(), { limit: 10 }, sends());
-    expect(first!.queued).toEqual(["and a third"]);
+    const held: ChatEntry[] = [];
+    const shown = (body: NonNullable<Awaited<ReturnType<typeof live.window>>>) => {
+      for (const entry of body.upserts) {
+        const at = held.findIndex((have) => have.uuid === entry.uuid);
+        if (at === -1) held.push(entry);
+        else held[at] = entry;
+      }
+      const texts = [
+        ...held.flatMap((entry) => (entry.role === "user" ? entry.parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])) : [])),
+        ...body.queued,
+        ...(body.queuedSends ?? []).map((card) => card.text),
+      ];
+      return texts.filter((text) => text === "and a third").length;
+    };
+    const first = (await live.window(recording, ref(), { limit: 10 }, sent))!;
+    expect(first.queued).toEqual(["and a third"]);
+    expect(shown(first)).toBe(1);
+    // The compaction ends: the `dequeue` comes first, the message's `user` row a moment later.
     fx.append(queue());
     fx.settle();
-    const between = await live.window(recording, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } }, sends());
-    expect(between!.queued).toEqual([]);
-    // And once the prompt is in, the receipt is closed too: one row, no card beside it.
+    const between = (await live.window(recording, ref(), { limit: 10, after: { gen: first.gen, rev: first.rev } }, sent))!;
+    expect(between.queued).toEqual([]);
+    expect(shown(between)).toBe(0);
     fx.append(askAt("p9", "and a third", AT + 90_000));
     fx.settle();
-    const after = await live.window(recording, ref(), { limit: 10, after: { gen: between!.gen, rev: between!.rev } }, sends());
-    expect(after!.queued).toEqual([]);
-    expect(after!.queuedSends).toBeUndefined();
+    const after = (await live.window(recording, ref(), { limit: 10, after: { gen: between.gen, rev: between.rev } }, sent))!;
+    expect(after.queued).toEqual([]);
+    expect(after.queuedSends).toBeUndefined();
+    expect(shown(after)).toBe(1);
   });
 
   // THE OPEN GAP, kept as a failing test until it is decided (2026-11-14). A slash command sent from

@@ -591,7 +591,8 @@ const MAX_QUEUED_CHARS = 200;
  *
  *  1. A `remove`, matched in three steps: the exact content; then the same {@link readQueueEntry} `id`,
  *     which survives Claude Code rewriting an envelope's attributes; then, for plumbing only, the
- *     OLDEST place of the same kind. The last step never takes the operator's words, and a `remove`
+ *     OLDEST place of the same kind. The operator's words that match nothing take the oldest place
+ *     with no words, when there is one (an `enqueue` with no content cannot be matched any other way). The last step never takes the operator's words, and a `remove`
  *     of the operator's words that matches nothing leaves the queue alone (the window opened after
  *     its enqueue, which is ordinary).
  *  2. THE DELIVERY ITSELF. Every message that leaves the queue shows up again as a row: a
@@ -689,7 +690,16 @@ function createQueueTracker(): QueueTracker {
         // A `remove` with no content (older Claude Code) names nothing; its delivery row settles it.
         if (typeof content !== "string") return;
         const at = removeAt(content);
-        if (at !== -1) depart(queue.splice(at, 1)[0]);
+        if (at !== -1) {
+          depart(queue.splice(at, 1)[0]);
+          return;
+        }
+        // The operator's words that match no place: when a place with no words waits, it is that one
+        // (its enqueue named nothing to match), so it goes and never sits at the head for the next
+        // `dequeue` to take instead of the message really at the front. Plumbing never takes it.
+        if (readQueueEntry(content).kind !== null) return;
+        const blind = queue.findIndex((slot) => slot.blind);
+        if (blind !== -1) depart(queue.splice(blind, 1)[0]);
       } else if (op === "popAll") {
         queue = [];
         departed = [];

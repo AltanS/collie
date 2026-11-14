@@ -20,8 +20,8 @@
 //
 // ONE EXCEPTION, and it is the journal's own place, not a receipt card: a harness that records its
 // queue can record a place with no words (`RowReducer.unnamedQueued`; Claude Code while it compacts).
-// The journal then says a message waits and cannot say which, so the newest open queued sends give
-// those places their words (`unnamedFill`), and the text rides in `queued` because it IS the journal's
+// The journal then says a message waits and cannot say which, so the open queued sends give those
+// places their words when they are no more than the places (`unnamedFill`), and the text rides in `queued` because it IS the journal's
 // card, with the journal's Send now, the one the harness draws for it too.
 //
 // Pure: no clock, no disk, no harness name.
@@ -100,10 +100,11 @@ export function receiptQueue(
 
 /**
  * The words for the places a journal holds without any (`RowReducer.unnamedQueued`): the texts of the
- * newest `unnamed` sends still `queued` and still open after the journal, in send order, less every text
- * the journal already lists. The newest, because such a place was made by a send the harness took a
- * moment ago, and an older open send is more likely one whose prompt the journal spelled another way.
- * Fewer open sends than places leaves the rest unnamed, which draws nothing: short is the safe side.
+ * sends still `queued` and still open after the journal, less every text the journal already lists, in
+ * send order. NO GUESS AMONG SEVERAL: only when those sends are no more than the places does each get
+ * one; more sends than places draws nothing, as before this rule, because the log cannot say which of
+ * them the places hold. Fewer sends than places leaves the rest unnamed, which draws nothing too (a
+ * message queued at the terminal has no receipt). Short is the safe side.
  */
 export function unnamedFill(
   sends: readonly ReceiptQueued[],
@@ -114,5 +115,6 @@ export function unnamedFill(
   if (unnamed <= 0 || sends.length === 0) return [];
   const listed = new Set(journalQueued.map(folded));
   const waiting = stillOpen(sends, entries).filter((send) => send.state === "queued" && !listed.has(folded(send.text)));
-  return waiting.slice(-unnamed).map((send) => send.text);
+  if (waiting.length > unnamed) return [];
+  return waiting.map((send) => send.text);
 }
