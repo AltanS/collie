@@ -461,8 +461,17 @@ export const LEFT_THE_CREW = "its machine left the crew";
  * then the sweep clears it as Clear does. The sweep runs every 15 seconds, so it leaves 60 to 75 s after.
  */
 export const HILL_SELF_CLEAR_MS = 60_000;
-/** The closed states that leave by themselves. An answer and a dismiss were the person's; those stay. */
+/**
+ * The closed states that leave by themselves. An answer and a dismiss were the person's; those stay. So
+ * does a card closed {@link HILL_ANSWERED_IN_SESSION}: the person's own message closed it, and it stays
+ * under Answered with that line until the person clears it.
+ */
 const SELF_CLEARING: ReadonlySet<HillState> = new Set<HillState>(["expired", "withdrawn", "superseded", "undeliverable"]);
+
+/** Whether a closed card leaves by itself: it closed without the person, and not by their own message. */
+function selfClears(decision: HillDecision): boolean {
+  return SELF_CLEARING.has(decision.state) && decision.from.kind !== "collie" && decision.closedReason !== HILL_ANSWERED_IN_SESSION;
+}
 /** What `status` and `withdraw` answer the poster for a decision that left the Hill: the state it closed in. */
 export function leftTheHill(id: string, state: HillState): string {
   return `${id} is ${state}; it has left the Hill`;
@@ -1553,12 +1562,13 @@ export class HillService {
   /**
    * Clear every agent's or trick's decision that closed without the person ({@link SELF_CLEARING}) at
    * least {@link HILL_SELF_CLEAR_MS} ago, as Clear does: removed with its images, a tombstone kept, the
-   * revision moved, one `hill.clear.self` audit line with the count. Collie's own cards are left to the
+   * revision moved, one `hill.clear.self` audit line with the count. A card the person's own message
+   * closed ({@link HILL_ANSWERED_IN_SESSION}) is theirs, as an answer is, and stays. Collie's own cards are left to the
    * person: the version card reads an expired card as seen, and a cleared one would ask again. A write
    * that fails leaves them for the next sweep.
    */
   private selfClear(now: number): void {
-    const due = this.deps.store.all().filter((decision) => SELF_CLEARING.has(decision.state) && decision.from.kind !== "collie" && (decision.closedAt ?? decision.at) + HILL_SELF_CLEAR_MS <= now);
+    const due = this.deps.store.all().filter((decision) => selfClears(decision) && (decision.closedAt ?? decision.at) + HILL_SELF_CLEAR_MS <= now);
     if (due.length === 0) return;
     const removed = this.forgetClosed(due);
     if (removed !== null && removed.length > 0) this.deps.audit?.({ action: "hill.clear.self", detail: { count: removed.length } });

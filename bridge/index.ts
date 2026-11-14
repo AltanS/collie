@@ -374,7 +374,7 @@ import { ProposeDoor } from "./tricks/propose-door.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
 import { HillCrewStateFile } from "./hill/crew-state.ts";
-import { hillCensus, hillLeftTheCrew, hillSessionName, OneLook, walkyPlace, walkySend, type HillCensusMember } from "./hill/walky.ts";
+import { hillCensus, hillLeftTheCrew, hillRosterIds, hillSessionName, OneLook, walkyPlace, walkySend, type HillCensusMember } from "./hill/walky.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -2613,11 +2613,7 @@ const hill = new HillService({
   removed: hillLeftTheCrew({
     memberId: walkyMemberId,
     ownIds: [bridgeId.id, bridgeId.previous],
-    roster: () => {
-      const held = trustStore.current();
-      if (held === null) return null;
-      return [held.self.memberId, ...(held.lead === null ? [] : [held.lead.memberId]), ...held.peers.map((member) => member.memberId)];
-    },
+    roster: () => hillRosterIds(trustStore.current()),
   }),
   crewMode: () => crew.mode,
   // §25: a deposed lead's Hill is nobody's; the crown and its Decisions moved to the deputy. So is the

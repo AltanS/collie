@@ -8,6 +8,7 @@ import { maskTerminalTitle } from "../answer-mask.ts";
 import { paneName, type NameableP } from "../pane-name.ts";
 import { realAgentPanes } from "../tricks/panes.ts";
 import { isSelf, LOCAL_MEMBER, parseAddress } from "../walky/address.ts";
+import type { TrustStoreData } from "../crew/trust-store.ts";
 import type { WalkyService } from "../walky/service.ts";
 import { mintWalkyId, type WalkyReceipt } from "../walky/types.ts";
 import type { HillPlace, HillSendResult } from "./service.ts";
@@ -105,6 +106,18 @@ export function hillCensus(opts: {
     const member = opts.members().find((candidate) => candidate.memberId === at.memberId);
     return member !== undefined && member.reachable && goodCensus(member.sessions);
   };
+}
+
+/**
+ * Every member id a trust store lists, whatever the row's status: this machine, its lead and its peers.
+ * What {@link hillLeftTheCrew} reads as the roster. A member id is the member's stable key: a re-join
+ * under the same pinned certificate keeps it (crew/enrollment.ts `enrollPeer`), `crew rename` changes
+ * only the crew's display name, and a takeover carries the old lead as a peer (crew/takeover.ts). So an
+ * id leaves this list only when its row is deleted: `crew remove`, or the member's own `crew leave`.
+ */
+export function hillRosterIds(data: Pick<TrustStoreData, "self" | "lead" | "peers"> | null): string[] | null {
+  if (data === null) return null;
+  return [data.self.memberId, ...(data.lead === null ? [] : [data.lead.memberId]), ...data.peers.map((member) => member.memberId)];
 }
 
 /**

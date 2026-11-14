@@ -4,7 +4,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
-import { sortOpenDecisions, type HillDecision } from "@/lib/hill/wire";
+import { HILL_ANSWERED_IN_SESSION, sortOpenDecisions, type HillDecision } from "@/lib/hill/wire";
 import { withHeaderHost } from "@/test/header-host";
 import { HILL_T0, hillDecision, trickDecision } from "@/test/hill-fixtures";
 
@@ -96,6 +96,18 @@ describe("the Hill", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     const lines = [...fold.querySelectorAll('[data-slot="hill-closed-line"]')].map((el) => el.textContent);
     expect(lines).toEqual(["Answered · Yes, Edge first · typed to collie lead", "Expired"]);
+  });
+
+  it("draws a card the person answered in the session with its title, its summary and that line, not Withdrawn", () => {
+    const spoken = hillDecision({ title: "Ship it?", summary: "CI is green.", state: "withdrawn", closedReason: HILL_ANSWERED_IN_SESSION });
+    const taken = hillDecision({ title: "Post now?", summary: "Draft ready.", state: "withdrawn", closedReason: "by the poster" });
+    const { container } = renderView([], [spoken, taken]);
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-slot="hill-closed-row"]')];
+    expect(rows.map((row) => row.querySelector('[data-slot="hill-closed-line"]')?.textContent)).toEqual(["Answered in the session", "Withdrawn by the poster"]);
+    expect(rows[0]).toHaveTextContent("Ship it?");
+    expect(rows[0]!.querySelector('[data-slot="hill-closed-summary"]')).toHaveTextContent("CI is green.");
+    // Any other closed row keeps its title and line only.
+    expect(rows[1]!.querySelector('[data-slot="hill-closed-summary"]')).toBeNull();
   });
 
   it("puts a glyph for each closed state in front of its row, named by what it means", () => {

@@ -185,6 +185,35 @@ describe("a message that started the session's next turn (M96 spec 10)", () => {
     expect(r.state.audit).toContainEqual({ action: "hill.spoke.closed", detail: { count: 1 } });
   });
 
+  test("the closed card is the person's: the self-clear leaves it under Answered, and the first Clear removes it", () => {
+    const r = rig();
+    const asked = r.hill.post(ONE, input(1));
+    const taken = r.hill.post(TWO, input(2));
+    if (!asked.ok || !taken.ok) throw new Error("not posted");
+    r.state.clock = 5000;
+    r.hill.noteSpoke(ONE.address, 5000, true);
+    // Beside it, a card its poster took back: that one leaves by itself.
+    r.hill.withdraw(TWO, taken.decision.id);
+    r.state.audit.length = 0;
+    for (const at of [5000 + 60_000, 5000 + 10 * 60_000]) {
+      r.state.clock = at;
+      r.hill.sweep(at);
+      const closed = r.hill.list().closed;
+      expect(closed.map((d) => d.id)).toEqual([asked.decision.id]);
+      expect(closed[0]).toMatchObject({ title: "Ship?", summary: "Green.", state: "withdrawn", closedReason: HILL_ANSWERED_IN_SESSION });
+    }
+    expect(r.hill.clearedState(taken.decision.id)).toBe("withdrawn");
+    expect(r.state.audit.filter((entry) => entry.action === "hill.clear.self")).toEqual([{ action: "hill.clear.self", detail: { count: 1 } }]);
+    // A restart reads it the same, and the first Clear takes it like any closed card.
+    const again = r.again();
+    again.sweep(5000 + 10 * 60_000);
+    expect(again.list().closed.map((d) => d.id)).toEqual([asked.decision.id]);
+    expect(again.clear(null)?.cleared).toEqual([asked.decision.id]);
+    expect(again.list().closed.filter((d) => d.id === asked.decision.id)).toEqual([]);
+    expect(again.clearedState(asked.decision.id)).toBe("withdrawn");
+    expect(r.state.sent).toBe(0);
+  });
+
   test("a card posted after the send, and one whose answer goes to another session, stay open", () => {
     const r = rig();
     const routed = r.hill.post(ONE, { ...input(1), replyTo: TWO.address });

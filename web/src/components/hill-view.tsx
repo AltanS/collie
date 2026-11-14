@@ -19,7 +19,7 @@ import { useArm } from "@/hooks/use-arm";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
-import { answerLine, closedWord, priorityWord } from "@/lib/hill/words";
+import { answeredInSession, answerLine, closedWord, priorityWord } from "@/lib/hill/words";
 import { hillDraft, noteHillDraft } from "@/lib/hill/store";
 import { hostSlot } from "@/lib/hosts";
 import { t, tn } from "@/lib/i18n";
@@ -101,7 +101,10 @@ const STATE_GLYPH = {
   undeliverable: "error",
 } as const satisfies Record<Exclude<HillState, "open">, IconKey>;
 
-/** One closed decision under Answered: its state glyph, its title, its state in words, and for an answer where it went. */
+/**
+ * One closed decision under Answered: its state glyph, its title, its state in words, and for an answer where it
+ * went. A card the person answered in the session also shows its summary.
+ */
 function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | undefined }) {
   // The closed list holds closed decisions only (lib/hill/reader.ts); an open one would have no words here.
   if (decision.state === "open") return null;
@@ -117,6 +120,12 @@ function ClosedRow({ decision, kept }: { decision: HillDecision; kept: string | 
       />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="font-content truncate text-sm font-medium">{decision.title}</span>
+        {/* Closed by the person's own message, it stays until they clear it: the summary says what was asked. */}
+        {answeredInSession(decision) && decision.summary !== "" && (
+          <span data-slot="hill-closed-summary" className="font-content line-clamp-2 text-xs text-muted-foreground">
+            {decision.summary}
+          </span>
+        )}
         <span data-slot="hill-closed-line" className="truncate text-xs text-muted-foreground">
           {line}
         </span>

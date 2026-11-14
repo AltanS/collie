@@ -57,9 +57,10 @@ asked." ([Clear](#clear) takes such cards away.) When your message from the phon
 session's next turn, its cards close by themselves
 ([When a card closes by itself](#when-a-card-closes-by-itself)).
 
-Answered keeps the cards you answered or dismissed until you clear them. A card that closed without
-you, because it expired, was withdrawn or replaced, or could not be delivered, stays there for one
-minute with its state, and then leaves by itself.
+Answered keeps the cards you answered or dismissed until you clear them. A card your own message
+closed, "Answered in the session", is yours too: it stays with its title, its summary and that line
+until you clear it. A card that closed without you, because it expired, was withdrawn or replaced, or
+could not be delivered, stays there for one minute with its state, and then leaves by itself.
 
 The recommended option carries a star. Collie never preselects it, and never focuses it. A
 recommendation that you do not read must not become the answer by default.
@@ -241,6 +242,11 @@ Your message closes a card only when the session waited for you, and the message
 Nothing is typed for that card: your message already started the turn its answer would have started.
 A steer, or a message queued behind a running turn, only marks the card. Typing in the terminal is
 not seen, and a card waits there as before.
+Such a card stays under Answered until you clear it, so you can still read what was asked.
+
+A crew machine counts as removed only when the lead's roster no longer lists its member id, after
+`collie crew remove` or the machine's own `collie crew leave`. A member id stays the same through
+`collie crew rename`, a re-join with the same machine, and a takeover, so none of them closes a card.
 
 ## How you answer
 
