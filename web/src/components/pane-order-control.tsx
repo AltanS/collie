@@ -1,6 +1,7 @@
 import { Icon } from "@/components/icons/icon";
 
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { PaneOrderToggle } from "@/components/pane-order-toggle";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
@@ -22,7 +23,7 @@ import { t } from "@/lib/i18n";
  */
 export function PaneOrderControl() {
   useLocale();
-  const { prefs, setPaneOrder } = useDashPrefs();
+  const { prefs, setPaneOrder, setSwitcherLastViewed } = useDashPrefs();
 
   return (
     <Card className="gap-0 py-0">
@@ -38,6 +39,21 @@ export function PaneOrderControl() {
 
       <div className="border-t border-border p-2">
         <PaneOrderToggle order={prefs.paneOrder} onChange={setPaneOrder} />
+      </div>
+
+      {/* Dependent sub-row aligned under the header text (`ZenControl`'s layout), kept enabled
+          regardless of `paneOrder` so the operator can toggle it anytime even though it acts only
+          in Place order on a phone. */}
+      <div className="flex items-center justify-between gap-4 border-t border-border py-3 pl-12 pr-4">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{t("settings.paneOrder.lastViewed.label")}</div>
+          <p className="text-xs text-muted-foreground">{t("settings.paneOrder.lastViewed.hint")}</p>
+        </div>
+        <Switch
+          checked={prefs.switcherLastViewed}
+          onCheckedChange={setSwitcherLastViewed}
+          aria-label={t("settings.paneOrder.lastViewed.label")}
+        />
       </div>
     </Card>
   );

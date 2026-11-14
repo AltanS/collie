@@ -11,6 +11,7 @@ import {
 
 import { useNavTrail } from "@/hooks/use-nav";
 import { useSlotMemory } from "@/hooks/use-slot-memory";
+import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { readAgentLaunch } from "@/lib/agent-startup";
 import { usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
@@ -32,6 +33,7 @@ import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
 import { describeThrownError } from "@/lib/api-error-message";
 import { findPane, paneRowKey } from "@/lib/hosts";
+import { useLastViewedMemory } from "@/lib/last-viewed";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
 import { noteLeadName, noteSnapshotCrew, noteSnapshotRun } from "@/lib/update-run-store";
@@ -110,11 +112,18 @@ export function RootLayout() {
   useNavTrail();
   // Which pane this tab reopens on, when it came through `/slot/<n>` (lib/slots.ts).
   useSlotMemory();
+  const { prefs } = useDashPrefs();
   // The open pane as a ROW, so a peer's pane that shares its id is not silenced along with it.
+  const openScope = pane?.scope ?? data.scope;
   const openPane =
     paneId === undefined
       ? undefined
-      : findPane(data.agents, paneId, pane?.scope ?? data.scope, data.servers, data.sessions);
+      : findPane(data.agents, paneId, openScope, data.servers, data.sessions);
+  const viewedPane =
+    paneId === undefined || data.error || data.stale === true
+      ? undefined
+      : (openPane ?? findPane(data.shellPanes, paneId, openScope, data.servers, data.sessions));
+  useLastViewedMemory(viewedPane, prefs.switcherLastViewed);
   useAgentTransitions(data.agents, openPane ? paneRowKey(openPane) : null);
   // A notification whose clear the bridge skipped (its daily budget, bridge/push.ts rule 4) closes here
   // instead, once a live snapshot says nothing waits on it any more.

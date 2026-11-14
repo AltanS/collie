@@ -7,6 +7,7 @@ import {
   openForCount,
   useDashPrefs,
 } from "./use-dash-prefs";
+import { currentLastViewed, recordLastViewed } from "@/lib/last-viewed";
 
 describe("openForCount", () => {
   it("starts expanded on a small install", () => {
@@ -45,6 +46,7 @@ describe("coerceDashPrefs", () => {
       showToolCalls: false,
       showCompactions: false,
       paneOrder: "place",
+      switcherLastViewed: false,
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
@@ -92,6 +94,7 @@ describe("coerceDashPrefs", () => {
       showToolCalls: true,
       showCompactions: false,
       paneOrder: "activity",
+      switcherLastViewed: false,
       paneView: "terminal",
       zoomPill: "off",
       pageZoom: true,
@@ -134,6 +137,13 @@ describe("coerceDashPrefs", () => {
     expect(coerceDashPrefs({ changesDepth: "3" }).changesDepth).toBe(2);
     expect(coerceDashPrefs({ changesNested: "no" }).changesNested).toBe(true);
     expect(coerceDashPrefs({ changesLayout: "grid" }).changesLayout).toBe("list");
+  });
+
+  it("reads switcherLastViewed as off unless a boolean true is stored", () => {
+    expect(coerceDashPrefs({}).switcherLastViewed).toBe(false);
+    expect(coerceDashPrefs({ switcherLastViewed: "yes" }).switcherLastViewed).toBe(false);
+    expect(coerceDashPrefs({ switcherLastViewed: 1 }).switcherLastViewed).toBe(false);
+    expect(coerceDashPrefs({ switcherLastViewed: true }).switcherLastViewed).toBe(true);
   });
 
   it("keeps the Files ignored switch to a boolean, off by default", () => {
@@ -230,6 +240,7 @@ describe("coerceDashPrefs", () => {
       showToolCalls: false,
       showCompactions: false,
       paneOrder: "place",
+      switcherLastViewed: false,
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
@@ -261,6 +272,7 @@ describe("useDashPrefs", () => {
       showToolCalls: false,
       showCompactions: false,
       paneOrder: "place",
+      switcherLastViewed: false,
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
@@ -288,6 +300,7 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setNeedsYouOnly(true));
     act(() => first.result.current.setShowToolCalls(true));
     act(() => first.result.current.setPaneOrder("activity"));
+    act(() => first.result.current.setSwitcherLastViewed(true));
     act(() => first.result.current.setPaneView("terminal"));
     act(() => first.result.current.setZoomPill("off"));
     act(() => first.result.current.setUsageRow("dots"));
@@ -311,11 +324,25 @@ describe("useDashPrefs", () => {
       showToolCalls: true,
       showCompactions: false,
       paneOrder: "activity",
+      switcherLastViewed: true,
       paneView: "terminal",
       zoomPill: "off",
       pageZoom: true,
       usageRow: "dots",
     });
+  });
+
+  it("deletes any stored collie:last-viewed:v1 entries immediately when turning switcherLastViewed off", () => {
+    const { result } = renderHook(() => useDashPrefs());
+    act(() => result.current.setSwitcherLastViewed(true));
+    recordLastViewed("w1:p1", "collie");
+    expect(currentLastViewed()).toHaveLength(1);
+    expect(localStorage.getItem("collie:last-viewed:v1")).not.toBeNull();
+
+    act(() => result.current.setSwitcherLastViewed(false));
+    expect(result.current.prefs.switcherLastViewed).toBe(false);
+    expect(currentLastViewed()).toEqual([]);
+    expect(localStorage.getItem("collie:last-viewed:v1")).toBeNull();
   });
 
   it("writes the migrated blob back once, so a stored Focus does not turn the switch on again", () => {

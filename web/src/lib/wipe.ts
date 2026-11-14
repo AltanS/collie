@@ -50,6 +50,7 @@ import { forgetAllUnknownSends, forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent, forgetAllSendIntents } from "@/lib/send-intent";
 import { clearAllDrafts, clearDraft } from "@/lib/drafts";
 import { forgetAgain } from "@/lib/new-page";
+import { forgetLastViewed } from "@/lib/last-viewed";
 import { forgetSlots } from "@/lib/slots";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
 import { forgetTroubleSignals } from "@/lib/report/once";
@@ -212,6 +213,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "slots",
     (context) => {
       if (context.reason !== "password") forgetSlots();
+    },
+  ],
+  [
+    // The Switch pane sheet's recent-viewed pane trail (lib/last-viewed.ts): row keys and workspace names.
+    "last-viewed",
+    (context) => {
+      if (context.reason !== "password") forgetLastViewed();
     },
   ],
   [

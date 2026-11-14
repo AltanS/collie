@@ -1,5 +1,6 @@
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { loadIntent, saveIntent } from "@/lib/send-intent";
+import { currentLastViewed, recordLastViewed } from "@/lib/last-viewed";
 import { AGAIN_KEY, rememberAgain } from "@/lib/new-page";
 import { NO_PROMPTS_KEY, rememberNoPromptsConfirm } from "@/lib/no-prompts";
 import { loadLastPaneText, loadLastSnapshot, saveLastPaneText, saveLastSnapshot } from "@/lib/last-seen";
@@ -157,6 +158,20 @@ describe("wipeDevice — a pairing that ended", () => {
     rememberNoPromptsConfirm("", "codex --yolo", 1);
     await wipeDevice("password", { scope: LEAD, paneId: "w1:p1" });
     expect(localStorage.getItem(NO_PROMPTS_KEY)).not.toBeNull();
+  });
+
+  it("forgets the Switch pane last-viewed trail on unpair, and keeps it on a password wipe", async () => {
+    stubCaches([]);
+    stubServiceWorker();
+    recordLastViewed("w1:p1", "collie");
+    expect(currentLastViewed()).toHaveLength(1);
+
+    await wipeDevice("password", { scope: LEAD, paneId: "w1:p1" });
+    expect(currentLastViewed()).toHaveLength(1);
+
+    await wipeDevice("unpair");
+    expect(currentLastViewed()).toEqual([]);
+    expect(localStorage.getItem("collie:last-viewed:v1")).toBeNull();
   });
 
   it("clears the memory tier of drafts too, not only localStorage", async () => {

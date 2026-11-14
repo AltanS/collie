@@ -51,6 +51,7 @@ const KEYS = new Map<string, KeyFate>([
   // Cleared with the token (lib/pairing.ts `clearDeviceToken`): it caps the store at this pairing's expiry.
   ["collie:pairing-expires", { area: "local", prefix: false, fate: "wiped", why: "the ended pairing's expiry" }],
   ["collie:slot:v1:", { area: "local", prefix: true, fate: "wiped", why: "the last pane address and workspace name of each browser tile" }],
+  ["collie:last-viewed:v1", { area: "local", prefix: false, fate: "wiped", why: "the Switch pane sheet's recent-viewed pane trail: row keys and workspace names" }],
   // Written first by the wipe and removed last; present only while a wipe is unfinished (lib/wipe.ts).
   ["collie:wipe-pending", { area: "local", prefix: false, fate: "wiped", why: "a wipe's resume mark" }],
   // ── Kept: how this phone likes to look and behave, never what a session said ──

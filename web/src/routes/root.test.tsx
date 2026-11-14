@@ -10,6 +10,9 @@ import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { markIsLive, markPaper, markState } from "@/test/collie-mark";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
+import { currentLastViewed } from "@/lib/last-viewed";
+import { paneRowKey } from "@/lib/hosts";
+import { fixtureAgents } from "@/test/handlers";
 import { en } from "@/lib/i18n/messages/en";
 import {
   __resetTourStore,
@@ -657,5 +660,63 @@ describe("RootLayout — the tour holds the push prompt back", () => {
     render(<RouterProvider router={router} />);
     await waitFor(() => expect(register).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+// LAST VIEWED TRAIL GATE: visiting panes writes NOTHING to localStorage while the per-device
+// setting (`switcherLastViewed`) is off (the default), and records live non-stale panes once on.
+describe("RootLayout — last-viewed memory gate", () => {
+  beforeEach(() => markTourSeen());
+  afterEach(() => __resetTourStore());
+
+  function renderPaneRoutes(data: HomeData) {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => data,
+          element: <RootLayout />,
+          children: [
+            { index: true, element: <div>dashboard</div> },
+            { path: "pane/:paneId", element: <div>pane</div> },
+          ],
+        },
+      ],
+      { initialEntries: ["/pane/w1%3Ap1"] },
+    );
+    return { ...render(<RouterProvider router={router} />), router };
+  }
+
+  it("writes nothing to localStorage when switcherLastViewed is off (default)", async () => {
+    const liveData: HomeData = { ...home(AFTERNOON), error: false, agents: fixtureAgents };
+    renderPaneRoutes(liveData);
+    await waitFor(() => expect(screen.getByText("pane")).toBeInTheDocument());
+    expect(localStorage.getItem("collie:last-viewed:v1")).toBeNull();
+    expect(currentLastViewed()).toEqual([]);
+  });
+
+  it("records live panes once switcherLastViewed is enabled, and skips stale snapshots", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ switcherLastViewed: true }));
+    const staleData: HomeData = { ...home(AFTERNOON), error: true, agents: fixtureAgents };
+    const staleView = renderPaneRoutes(staleData);
+    await waitFor(() => expect(screen.getByText("pane")).toBeInTheDocument());
+    expect(currentLastViewed()).toEqual([]);
+    staleView.unmount();
+
+    const liveData: HomeData = { ...home(AFTERNOON), error: false, agents: fixtureAgents };
+    const { router } = renderPaneRoutes(liveData);
+    await waitFor(() => expect(screen.getByText("pane")).toBeInTheDocument());
+    expect(currentLastViewed()).toEqual([
+      { row: paneRowKey(fixtureAgents[0]!), space: fixtureAgents[0]!.workspaceLabel },
+    ]);
+
+    await act(() => router.navigate("/pane/w2%3Ap1"));
+    await waitFor(() =>
+      expect(currentLastViewed()).toEqual([
+        { row: paneRowKey(fixtureAgents[1]!), space: fixtureAgents[1]!.workspaceLabel },
+        { row: paneRowKey(fixtureAgents[0]!), space: fixtureAgents[0]!.workspaceLabel },
+      ]),
+    );
   });
 });

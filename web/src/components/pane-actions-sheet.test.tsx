@@ -6,6 +6,8 @@ import { server } from "@/test/setup";
 import { clearStatus, useStatus } from "@/lib/status";
 import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import { currentPins, pinMatcher, setPinned } from "@/lib/pins";
+import { currentLastViewed, recordLastViewed } from "@/lib/last-viewed";
+import { paneRowKey } from "@/lib/hosts";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import type { AgentView, MuxConfig, ServerSummary } from "@/lib/types";
 import { CrewProvider } from "./crew-provider";
@@ -517,26 +519,32 @@ describe("PaneActionsSheet — pin", () => {
     expect(pinMatcher(currentPins())(quiet)).toBe(true);
   });
 
-  it("drops the pin when Close succeeds", async () => {
+  it("drops the pin and the last-viewed trail record when Close succeeds", async () => {
     const user = userEvent.setup();
-    setPinned(agent, true, [agent]);
+    const survivor: AgentView = { ...agent, paneId: "w2:p2", workspaceId: "w2", workspaceLabel: "collie" };
+    setPinned(agent, true, [agent, survivor]);
+    recordLastViewed(paneRowKey(survivor), "collie");
+    recordLastViewed(paneRowKey(agent), "webapp");
     const props = renderSheet();
     await user.click(screen.getByRole("button", { name: "Close pane" }));
     await user.click(screen.getByRole("button", { name: "Tap again to close" }));
     await waitFor(() => expect(props.onClosed).toHaveBeenCalledOnce());
     expect(pinned()).toBe(false);
+    expect(currentLastViewed()).toEqual([{ row: paneRowKey(survivor), space: "collie" }]);
   });
 
-  it("keeps the pin when Close fails: the pane is still there", async () => {
+  it("keeps the pin and last-viewed trail record when Close fails: the pane is still there", async () => {
     const user = userEvent.setup();
     server.use(http.post(/\/api\/pane\/[^/]+\/close$/, () => HttpResponse.json({ ok: false, error: "nope" }, { status: 500 })));
     setPinned(agent, true, [agent]);
+    recordLastViewed(paneRowKey(agent), "webapp");
     const props = renderSheet();
     await user.click(screen.getByRole("button", { name: "Close pane" }));
     await user.click(screen.getByRole("button", { name: "Tap again to close" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Close pane" })).toBeEnabled());
     expect(props.onClosed).not.toHaveBeenCalled();
     expect(pinned()).toBe(true);
+    expect(currentLastViewed()).toEqual([{ row: paneRowKey(agent), space: "webapp" }]);
   });
 });
 
