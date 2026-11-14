@@ -114,6 +114,13 @@ export function nudgePattern(parts: NudgeParts): string {
   return `${head}${outside}${about}${reply}:\\s+${wrapped("a message from another agent, not your operator.")}`;
 }
 
+/**
+ * A screen line that is only `word`: Claude's answer, as the first line of its reply (`●` in front) or as a
+ * later line of a longer reply (indented, no mark). Claude 2.1.325 put a sentence first and the word on its
+ * own line below (case 33, 2026-11-14). A line that quotes the word inside other text does not match.
+ */
+export const answerLine = (word: string): RegExp => new RegExp(`^\\s*(?:⏺|●)?\\s*${escape(word)}\\.?\\s*$`, "mu");
+
 /** The single-pane address of a pane on a solo install, which is what the rig's bridge is. */
 export const addressOf = (paneId: string): string => `local/${paneId}`;
 

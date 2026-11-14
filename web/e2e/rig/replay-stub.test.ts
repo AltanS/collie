@@ -394,6 +394,33 @@ describe("matchTurn", () => {
     expect(matchKeyOf(make(full))).not.toBe(matchKeyOf(make(claudeBody("Use walky talky now."))));
   });
 
+  it("matches a Claude turn with or without the /model command record that Claude puts in front of the next prompt", () => {
+    const prompt = `[walky-talky wt_7afxl6rdw7jm] from operator "browser-leg"\nWalky check: reply with only the word WALKY-OK.`;
+    const plain = claudeBody(prompt);
+    // SAFETY: claudeBody above builds this JSON with exactly these message and content fields.
+    const parsed = JSON.parse(plain) as { messages: { role: string; content: unknown[] }[] };
+    const first = parsed.messages[0];
+    if (first === undefined) throw new Error("no first message");
+    // As Claude Code 2.1.325 sent it on replay after case 22, when case 8 had not taken the record.
+    first.content.splice(
+      2,
+      0,
+      { type: "text", text: "<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args></command-args>" },
+      { type: "text", text: "<local-command-stdout>Kept model as `Haiku 5.5`</local-command-stdout>" },
+    );
+    const make = (raw: string) => summarize("/v1/messages?beta=true", raw, claudeLiterals(LAB), "anthropic");
+    const withCommand = make(JSON.stringify(parsed));
+    expect(withCommand.prompt).toContain("<command-name>/model</command-name>");
+    expect(digestOf(withCommand)).not.toBe(digestOf(make(plain)));
+    expect(matchKeyOf(withCommand)).toBe(matchKeyOf(make(plain)));
+    // Both ways round: a recording that has the record matches a request without it.
+    const recorded = entry("turn", 0, JSON.stringify(parsed), sse(delta("WALKY-OK")));
+    expect("entry" in matchTurn([{ ...recorded, request: { ...recorded.request, ...withCommand } }], "lead", make(plain), new Set(), "claude.walky")).toBe(true);
+    // The prompt behind the record still decides.
+    const other = claudeBody("Walky check: reply with only the word OTHER.");
+    expect(matchKeyOf(withCommand)).not.toBe(matchKeyOf(make(other)));
+  });
+
   it("matches a side request by digest alone, from the pool", () => {
     const side = entry("side", 0, JSON.stringify({ model: "m", messages: [{ role: "user", content: "Title: hello" }] }), sse(delta("Hello")));
     expect(matchSide([side], summarize("/api/v1/messages", JSON.stringify({ model: "m", messages: [{ role: "user", content: "Title: hello" }] })))).toBe(side);

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { formatNudge, formatRead, type WalkyMessage } from "../../../bridge/walky/types.ts";
 import { DEVICE_LABEL } from "./rig-lib";
-import { ABOUT, SENDER, aboutExactly, addressPattern, nudgePattern, operatorHeaderPattern, withoutSubjects, wrapped } from "./walky-lib";
+import { ABOUT, SENDER, aboutExactly, addressPattern, answerLine, nudgePattern, operatorHeaderPattern, withoutSubjects, wrapped } from "./walky-lib";
 
 const ID = "wt_qoo5tvg2ldhj";
 const REPLY = "wt_8ab2k1m4q7zx";
@@ -112,5 +112,26 @@ describe("nudgePattern: every case's pattern survives a line break at any space"
     expect(formatNudge(agent("pi", "PING-EIGHT"))).not.toMatch(new RegExp(nudgePattern({ id: ID, from, harness: "pi", subject: "ping check" })));
     expect(formatNudge(agent("claude"))).not.toMatch(new RegExp(nudgePattern({ id: ID, from, harness: "claude", outside: true })));
     expect(formatNudge(agent("claude"))).not.toMatch(new RegExp(nudgePattern({ id: ID, from, harness: "claude", replyTo: REPLY })));
+  });
+});
+
+describe("answerLine", () => {
+  // The end of case 33's pane, Claude Code 2.1.325, 2026-11-14: a sentence first, the word on its own line.
+  const screen = [
+    "● Bash(collie walky inbox wt_33ua92uutej8)",
+    "     PING-OUTSIDE. The operator running this test asks you to read this message with collie walky inbox, then answe",
+    "● I read the walky message. It asked for the word OUTSIDE-OK.",
+    "  OUTSIDE-OK",
+  ].join("\n");
+
+  it("finds the word on its own line, with or without Claude's mark", () => {
+    expect(screen).toMatch(answerLine("OUTSIDE-OK"));
+    expect("● OUTSIDE-OK").toMatch(answerLine("OUTSIDE-OK"));
+    expect("⏺ OUTSIDE-OK.").toMatch(answerLine("OUTSIDE-OK"));
+  });
+
+  it("does not take a line that only quotes the word", () => {
+    expect(screen.split("\n").slice(0, 3).join("\n")).not.toMatch(answerLine("OUTSIDE-OK"));
+    expect('● Bash(collie walky reply wt_33ua92uutej8 "OUTSIDE-OK")').not.toMatch(answerLine("OUTSIDE-OK"));
   });
 });
