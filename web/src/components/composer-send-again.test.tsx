@@ -6,7 +6,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { markLive, resetLiveness } from "@/lib/liveness";
-import { rememberUnknownSend, SEND_AGAIN_WINDOW_MS, __forgetSendAgainMemory } from "@/lib/send-again";
+import { rememberUnknownSend, SEND_AGAIN_CONFIRM_DELAY_MS, SEND_AGAIN_WINDOW_MS, __forgetSendAgainMemory } from "@/lib/send-again";
 import { __forgetSendIntentMemory } from "@/lib/send-intent";
 import { clearStatus } from "@/lib/status";
 import { server } from "@/test/setup";
@@ -28,7 +28,7 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-function renderComposer() {
+function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
   const props: ComponentProps<typeof Composer> = {
     paneId: "w1:p1",
     agent: "claude",
@@ -42,6 +42,7 @@ function renderComposer() {
     prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
     display: { open: false, onToggle: vi.fn() },
     onSent: vi.fn(),
+    ...overrides,
   };
   const router = createMemoryRouter([{ path: "/", element: <Composer {...props} /> }]);
   render(<RouterProvider router={router} />);
@@ -76,6 +77,13 @@ async function tapSend(user: ReturnType<typeof userEvent.setup>) {
   await user.click(button);
 }
 
+/** The confirming tap on "Send it again?", given after the delay a person reading it would take. */
+async function tapAgain(user: ReturnType<typeof userEvent.setup>) {
+  const word = await screen.findByRole("button", { name: "Send it again?" });
+  await new Promise((resolve) => setTimeout(resolve, SEND_AGAIN_CONFIRM_DELAY_MS + 50));
+  await user.click(word);
+}
+
 const box = () => screen.getByPlaceholderText(/type a reply/i);
 
 describe("Send it again? after a send that ended unknown", () => {
@@ -94,6 +102,7 @@ describe("Send it again? after a send that ended unknown", () => {
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Really send?" })).toBeNull();
     expect(box()).toHaveValue("run the tests");
+    await new Promise((resolve) => setTimeout(resolve, SEND_AGAIN_CONFIRM_DELAY_MS + 50));
     await user.click(again);
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "run the tests" });
@@ -108,7 +117,7 @@ describe("Send it again? after a send that ended unknown", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sends).toHaveLength(1));
     await tapSend(user);
-    await user.click(await screen.findByRole("button", { name: "Send it again?" }));
+    await tapAgain(user);
     await waitFor(() => expect(sends).toHaveLength(2));
     await tapSend(user);
     expect(await screen.findByRole("button", { name: "Send it again?" })).toBeInTheDocument();
@@ -163,9 +172,91 @@ describe("Send it again? after a send that ended unknown", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sends).toHaveLength(1));
     await tapSend(user);
-    await user.click(await screen.findByRole("button", { name: "Send it again?" }));
+    await tapAgain(user);
     await waitFor(() => expect(sends).toHaveLength(2)); // known: refused
     await tapSend(user);
     await waitFor(() => expect(sends).toHaveLength(3));
+  });
+
+  it("a tap on the question 100 ms after the arm does nothing: the word stays and nothing is sent", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([UNKNOWN, SENT]);
+    renderComposer();
+    await user.type(box(), "run the tests");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await tapSend(user);
+    const word = await screen.findByRole("button", { name: "Send it again?" });
+    // A double tap by habit: the second tap lands 100 ms after the first.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await user.click(word);
+    expect(sends).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Send it again?" })).toBeInTheDocument();
+    expect(box()).toHaveValue("run the tests");
+    // The same word, once it has been on screen for 450 ms, sends.
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await user.click(screen.getByRole("button", { name: "Send it again?" }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+  });
+
+  it("an early tap does not restart the 3 seconds: the word still runs out from the arm", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([UNKNOWN]);
+    renderComposer();
+    await user.type(box(), "run the tests");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await tapSend(user);
+    const word = await screen.findByRole("button", { name: "Send it again?" });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await user.click(word);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Send it again?" })).toBeNull(), { timeout: 3500 });
+    expect(sends).toHaveLength(1);
+  });
+
+  it("Really send? still confirms on an immediate second tap: only the send-again question waits", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([SENT]);
+    renderComposer();
+    await user.type(box(), "rm -rf build");
+    await tapSend(user);
+    await user.click(await screen.findByRole("button", { name: "Really send?" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]).toMatchObject({ text: "rm -rf build" });
+  });
+
+  it("trailing whitespace in the box never disarms the question: the text is read the same way when it is remembered and when it is asked", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([UNKNOWN, SENT]);
+    renderComposer();
+    await user.type(box(), "run the tests  ");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await tapSend(user);
+    expect(await screen.findByRole("button", { name: "Send it again?" })).toBeInTheDocument();
+    expect(sends).toHaveLength(1);
+  });
+
+  it("a send to a no-echo prompt keeps its memory out of sessionStorage", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([UNKNOWN, SENT]);
+    renderComposer({ text: "$ sudo ls\n[sudo] password for altan:" });
+    await user.type(box(), "hunter2");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
+    expect(Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)).filter((k) => k?.startsWith("collie:send-again:"))).toEqual([]);
+  });
+
+  it("a shell pane keeps its memory out of sessionStorage, and still asks while the page lives", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([UNKNOWN, SENT]);
+    renderComposer({ isShell: true });
+    await user.type(screen.getByRole("textbox"), "ls -la");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await tapSend(user);
+    expect(await screen.findByRole("button", { name: "Send it again?" })).toBeInTheDocument();
+    expect(Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)).filter((k) => k?.startsWith("collie:send-again:"))).toEqual([]);
   });
 });

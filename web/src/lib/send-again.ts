@@ -10,16 +10,29 @@
 // to have gone or known not to have gone clears the memory and never asks. After the confirming tap the
 // memory for that text is cleared, so a send that ends unknown again arms it afresh.
 //
-// The store holds a fingerprint of the line, never the line: a password typed at a prompt that never
-// echoes ends `unknown` too, and its text must not sit in sessionStorage. The key style is
+// The store holds a fingerprint of the line, never the line (a 32-bit hash and the length). A send that went
+// to a no-echo prompt (a password) or to a pane the phone knows as a shell is kept in the memory map ONLY, never
+// written to sessionStorage (`memoryOnly`): a reload then forgets it, which is fine. The key style is
 // lib/send-intent.ts's, per (host, session, pane), sessionStorage behind the same guard and a memory map
 // beside it. A lost entry costs only the old behaviour (a send at once), never a failed send.
+//
+// Both ends read the text the same way: `sentForm` is what the composer's `send` types (trimmed at both ends
+// on an agent pane, at the end only on a shell), and `rememberUnknownSend` and `asksSendAgain` both apply it,
+// so a difference in trailing whitespace cannot disarm the question.
 
 import { asJsonNumber, asJsonString, parseJsonObject } from "./json";
 import { normalizeScope, type Scope } from "./scope";
 
 /** How long after an unknown send a second tap on the same text asks first: two minutes. */
 export const SEND_AGAIN_WINDOW_MS = 120_000;
+
+/**
+ * How long after "Send it again?" is armed before a tap on it counts: 400 ms. A person who double-taps Send by
+ * habit arms the question with the first tap and would confirm it with the second without having read it. A
+ * tap before this does nothing: the word stays armed, its 3 seconds keep running from the arm, nothing is sent.
+ * Only this question waits; "Really send?" and the other two-tap confirms take an immediate second tap.
+ */
+export const SEND_AGAIN_CONFIRM_DELAY_MS = 400;
 
 const PREFIX = "collie:send-again:";
 
@@ -31,6 +44,11 @@ interface Stored {
 }
 
 const memory = new Map<string, Stored>();
+
+/** The line as the composer's `send` types it: trimmed at both ends, at the end only on a shell (its leading space is kept). */
+export function sentForm(line: string, isShell: boolean): string {
+  return isShell ? line.trimEnd() : line.trim();
+}
 
 function keyFor(scope: Scope | undefined, paneId: string): string {
   const { host, session } = normalizeScope(scope);
@@ -83,34 +101,44 @@ function read(scope: Scope | undefined, paneId: string): Stored | null {
   }
 }
 
-/** A send of `line` on this pane ended `unknown` at `now`. */
-export function rememberUnknownSend(scope: Scope | undefined, paneId: string, line: string, now: number = Date.now()): void {
+/**
+ * A send of `line` on this pane ended `unknown` at `now`. `memoryOnly` keeps the entry out of sessionStorage
+ * (a send to a no-echo prompt or to a shell pane), and clears any entry an earlier send left there.
+ */
+export function rememberUnknownSend(
+  scope: Scope | undefined,
+  paneId: string,
+  line: string,
+  now: number = Date.now(),
+  options: { readonly isShell?: boolean; readonly memoryOnly?: boolean } = {},
+): void {
   const key = keyFor(scope, paneId);
-  const stored: Stored = { print: fingerprint(line), at: now };
+  const stored: Stored = { print: fingerprint(sentForm(line, options.isShell === true)), at: now };
   memory.set(key, stored);
   try {
-    storage()?.setItem(key, JSON.stringify(stored));
+    if (options.memoryOnly === true) storage()?.removeItem(key);
+    else storage()?.setItem(key, JSON.stringify(stored));
   } catch {
     // Quota or private mode: the memory copy still holds for this page.
   }
 }
 
 /** Whether a tap on Send with `line` should ask "Send it again?" first: the same text, the same pane, inside the window. */
-export function asksSendAgain(scope: Scope | undefined, paneId: string, line: string, now: number = Date.now()): boolean {
+export function asksSendAgain(scope: Scope | undefined, paneId: string, line: string, now: number = Date.now(), isShell = false): boolean {
   const stored = read(scope, paneId);
   if (stored === null) return false;
   const age = now - stored.at;
   if (age < 0 || age > SEND_AGAIN_WINDOW_MS) return false;
-  return stored.print === fingerprint(line);
+  return stored.print === fingerprint(sentForm(line, isShell));
 }
 
 /**
  * Forget a pane's unknown send: a known answer, the confirming tap, or the journal settling it ends the question.
  * With `line`, only an entry for that very text goes: a known answer for other words leaves it standing.
  */
-export function forgetUnknownSend(scope: Scope | undefined, paneId: string, line?: string): void {
+export function forgetUnknownSend(scope: Scope | undefined, paneId: string, line?: string, isShell = false): void {
   const key = keyFor(scope, paneId);
-  if (line !== undefined && read(scope, paneId)?.print !== fingerprint(line)) return;
+  if (line !== undefined && read(scope, paneId)?.print !== fingerprint(sentForm(line, isShell))) return;
   memory.delete(key);
   try {
     storage()?.removeItem(key);

@@ -33,8 +33,32 @@ describe("send it again", () => {
   it("sends at once for another text, and for a text that differs by one character", () => {
     rememberUnknownSend(undefined, "w1:p1", "run the tests", T0);
     expect(asksSendAgain(undefined, "w1:p1", "run the test", T0 + 10)).toBe(false);
-    expect(asksSendAgain(undefined, "w1:p1", "run the tests ", T0 + 10)).toBe(false);
+    expect(asksSendAgain(undefined, "w1:p1", "run  the tests", T0 + 10)).toBe(false);
     expect(asksSendAgain(undefined, "w1:p1", "", T0 + 10)).toBe(false);
+  });
+
+  it("reads the text the same way at both ends: trailing whitespace never disarms the question", () => {
+    rememberUnknownSend(undefined, "w1:p1", "run the tests", T0);
+    expect(asksSendAgain(undefined, "w1:p1", "  run the tests \n", T0 + 10)).toBe(true);
+    rememberUnknownSend(undefined, "w1:p2", "  run the tests \n", T0);
+    expect(asksSendAgain(undefined, "w1:p2", "run the tests", T0 + 10)).toBe(true);
+  });
+
+  it("on a shell pane only the end is trimmed: a leading space is a different line", () => {
+    rememberUnknownSend(undefined, "w1:p1", " ls -la  ", T0, { isShell: true });
+    expect(asksSendAgain(undefined, "w1:p1", " ls -la", T0 + 10, true)).toBe(true);
+    expect(asksSendAgain(undefined, "w1:p1", "ls -la", T0 + 10, true)).toBe(false);
+  });
+
+  it("memoryOnly keeps the entry out of sessionStorage, asks while the page lives, and clears an older stored entry", () => {
+    rememberUnknownSend(undefined, "w1:p1", "old words", T0);
+    expect(sessionStorage.length).toBe(1);
+    rememberUnknownSend(undefined, "w1:p1", "hunter2", T0 + 5, { memoryOnly: true });
+    expect(sessionStorage.length).toBe(0);
+    expect(asksSendAgain(undefined, "w1:p1", "hunter2", T0 + 10)).toBe(true);
+    // A reload drops the memory copy, and with nothing in storage the question is simply not asked.
+    __forgetSendAgainMemory();
+    expect(asksSendAgain(undefined, "w1:p1", "hunter2", T0 + 10)).toBe(false);
   });
 
   it("is per pane, per session and per host", () => {
