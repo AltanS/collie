@@ -440,12 +440,33 @@ const SESSION_REMINDER = /^<system-reminder>\nToday: [^\n]*\n<\/system-reminder>
 const LEADING_REMINDERS = /^(?:<system-reminder>\n(?:(?!<\/system-reminder>)[\s\S])*<\/system-reminder>\n)+/u;
 
 /**
- * What a request is matched on: its digest with the session reminders left out of the prompt (omp's and
+ * Claude Code's record of a local slash command (`/model` from the picker cases 1 and 22): the
+ * `<command-name>`, `<command-message>` and `<command-args>` lines and the command's
+ * `<local-command-stdout>`. Claude puts them in front of the NEXT prompt it sends, whichever case that
+ * is: in a run where case 8 sends the nudge it rides that nudge, and in a run where case 8 fails before
+ * pi sends it, it rides case 6's prompt instead (2026-11-14, Claude Code 2.1.325). The match key leaves
+ * the leading blocks out, the same way as the reminders.
+ */
+const LEADING_LOCAL_COMMANDS = /^(?:\s*<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat)>(?:(?!<\/\1>)[\s\S])*<\/\1>)+\s*/u;
+
+/** A prompt with its leading session blocks (omp's reminder, Claude's reminders and local commands) left out. */
+function withoutLeadingBlocks(prompt: string): string {
+  let rest = prompt.replace(SESSION_REMINDER, "");
+  for (let i = 0; i < 8; i++) {
+    const next = rest.replace(LEADING_REMINDERS, "").replace(LEADING_LOCAL_COMMANDS, "");
+    if (next === rest) return rest;
+    rest = next;
+  }
+  return rest;
+}
+
+/**
+ * What a request is matched on: its digest with the session blocks left out of the prompt (omp's and
  * Claude's). Computed from a stored entry's summary and from a live request alike, so the cassettes keep
  * their digests.
  */
 export function matchKeyOf(summary: RequestSummary): string {
-  const prompt = summary.prompt.replace(SESSION_REMINDER, "").replace(LEADING_REMINDERS, "");
+  const prompt = withoutLeadingBlocks(summary.prompt);
   return prompt === summary.prompt ? digestOf(summary) : digestOf({ ...summary, prompt });
 }
 

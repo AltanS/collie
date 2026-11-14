@@ -82,6 +82,7 @@ import {
   sentWithNoKey,
   addressOf,
   addressPattern,
+  answerLine,
   busyMessage,
   cliCancel,
   cliInbox,
@@ -810,7 +811,7 @@ test.describe("walky talky", () => {
         const nudged = (await rig.screenUntil(pane, nudge, 60_000, 200)) !== null;
         const inbox = new RegExp(`Bash\\(collie walky inbox ${id}\\)[\\s\\S]*${token}`);
         const read = (await rig.screenUntil(pane, inbox, REPLY_MS, 200)) !== null;
-        const answered = (await rig.screenUntil(pane, /^\s*(?:⏺|●)\s*OUTSIDE-OK/m, REPLY_MS, 200)) !== null;
+        const answered = (await rig.screenUntil(pane, answerLine("OUTSIDE-OK"), REPLY_MS, 200)) !== null;
         await waitIdle(rig, pane, REPLY_MS);
         const screen = await rig.screen(pane, 200);
         const bodyInNudge = screen.split("\n").some((line) => line.includes(`[walky-talky ${id}]`) && line.includes(token));
