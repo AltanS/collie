@@ -135,17 +135,19 @@ describe("the typed line at a shell prompt runs nothing (fix/walky-line-fields)"
   //         word first, which is how a backtick ran in the older form)
   //   fish  `fish: Unknown command: '[walky-talky'`, exit 127
   // So the first word runs only if a command named `[walky-talky` exists (bash's command_not_found_handle
-  // may run its own lookup). The message texts may change between versions; only the shape is asserted.
-  for (const [shell, said] of [
-    ["bash", /\[walky-talky: command not found/u],
-    ["zsh", /bad pattern: \[walky-talky/u],
-    ["fish", /Unknown command: '?\[walky-talky/u],
-  ] as const) {
-    if (!SHELLS.includes(shell)) continue;
-    test(`${shell}: the first word \`[walky-talky\` is no command, and the shell says so`, () => {
-      const out = spawnSync(shell, [...argsOf(shell), '[walky-talky wt_qoo5tvg2ldhj] from operator "Pixel 9"'], { cwd: tmpdir(), env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: tmpdir() }, encoding: "utf8", timeout: 10_000 });
+  // may run its own lookup). The texts differ between shells and versions (dash, and the older fish of
+  // Ubuntu's runner, were not measured here), so the test asserts only what the rule needs, in every shell
+  // this machine has: the shell ran no command from the line (no file appears) and did not exit 0.
+  for (const shell of SHELLS) {
+    test(`${shell}: the first word \`[walky-talky\` runs no command, and the shell does not exit 0`, () => {
+      const root = mkdtempSync(join(tmpdir(), "walky-line-first-"));
+      const work = join(root, "work");
+      mkdirSync(work);
+      const out = spawnSync(shell, [...argsOf(shell), '[walky-talky wt_qoo5tvg2ldhj] from operator "Pixel 9"'], { cwd: work, env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: root, XDG_CONFIG_HOME: join(root, ".config"), XDG_DATA_HOME: join(root, ".local/share"), XDG_CACHE_HOME: join(root, ".cache") }, timeout: 10_000 });
+      const left = readdirSync(work);
+      rmSync(root, { recursive: true, force: true });
       expect(out.status).not.toBe(0);
-      expect(out.stderr).toMatch(said);
+      expect(left).toEqual([]);
     });
   }
 
