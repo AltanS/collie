@@ -1294,6 +1294,12 @@ export const en = {
   "paneActions.focus.labelFallback": "Focus in the terminal",
   "paneActions.focus.done": "Focused in the terminal",
   "paneActions.focus.failed": "Couldn't focus in the terminal",
+  "paneActions.markSeen.label": "Mark as seen",
+  "paneActions.markSeen.done": "Marked as seen",
+  "paneActions.markSeen.failed": "Couldn't mark as seen",
+  "paneActions.markUnseen.label": "Mark as unseen",
+  "paneActions.markUnseen.done": "Marked as unseen",
+  "paneActions.markUnseen.failed": "Couldn't mark as unseen",
   "paneActions.pin.label": "Pin to top",
   "paneActions.branchOff.label": "New agent in a worktree",
   "paneActions.unpin.label": "Unpin",
@@ -4562,7 +4568,14 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "paneActions.markSeen.label",
+  "paneActions.markSeen.done",
+  "paneActions.markSeen.failed",
+  "paneActions.markUnseen.label",
+  "paneActions.markUnseen.done",
+  "paneActions.markUnseen.failed",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

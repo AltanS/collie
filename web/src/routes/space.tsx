@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
+import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
@@ -20,11 +21,11 @@ import { homePath, newPath, panePath, spacePath } from "@/lib/nav";
 import { queueSidebarReveal } from "@/lib/new-over";
 import { useWidthClass } from "@/hooks/use-width-class";
 import { pickTabPane } from "@/lib/tab-pane-memory";
-import type { AgentView, WorkspaceView } from "@/lib/types";
-import { ambientHost } from "@/lib/hosts";
+import type { WorkspaceView } from "@/lib/types";
+import { ambientHost, paneScope } from "@/lib/hosts";
 import { scopeKey } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
-import { isReadOnly } from "@/lib/types";
+import { isReadOnly, type AgentView } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import { useRootData } from "@/lib/route-data";
 
@@ -49,6 +50,9 @@ export function SpaceRoute() {
   }, [folderHost, folderSession]);
   // Either write gate refusing locks the tab strip's rename/close the same way (see ReadOnlyBanner).
   const { refused: notPaired } = usePairing();
+  const readOnly = isReadOnly(data.device) || notPaired;
+  const [held, setHeld] = useState<AgentView | null>(null);
+  const herd = useMemo(() => [...data.agents, ...data.shellPanes], [data.agents, data.shellPanes]);
 
   // Tab selection is ephemeral view state (no deep-link need). Reset it when the space changes:
   // navigating /space/a → /space/b does NOT remount this route (same element, new param), so without
@@ -59,6 +63,7 @@ export function SpaceRoute() {
   if (tabSpace !== spaceId) {
     setTabSpace(spaceId);
     setTab(null);
+    setHeld(null);
   }
 
   const selectedWs = data.workspaces.find((w) => w.workspaceId === spaceId);
@@ -195,6 +200,7 @@ export function SpaceRoute() {
                 onOpen={paneOpen.open}
                 glideKeyOf={paneOpen.glideKeyOf}
                 onPress={paneOpen.press}
+                onHold={setHeld}
                 host={navHost}
                 scope={data.scope}
                 servers={data.servers}
@@ -217,6 +223,19 @@ export function SpaceRoute() {
       <ToastViewport>
         <StatusArea />
       </ToastViewport>
+
+      <PaneActionsSheet
+        open={held !== null}
+        onClose={() => setHeld(null)}
+        pane={held}
+        scope={held === null ? data.scope : paneScope(data.scope, held, data.servers, data.sessions)}
+        readOnly={readOnly}
+        savedCopy={data.stale === true}
+        onRenamed={() => revalidator.revalidate()}
+        onClosed={() => revalidator.revalidate()}
+        herd={herd}
+        onSeenChange={() => revalidator.revalidate()}
+      />
     </div>
   );
 }

@@ -728,6 +728,7 @@ export function HomeRoute() {
         onClosed={() => revalidator.revalidate()}
         herd={herd}
         onPinChange={(pane) => setReveal({ rowKey: paneRowKey(pane) })}
+        onSeenChange={() => revalidator.revalidate()}
       />
 
       {fabFloat && !sheetOpen && !keyboardOpen && (

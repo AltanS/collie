@@ -4,8 +4,7 @@ import { basePath } from "@/lib/base-path";
 import { cacheStorage } from "@/lib/env";
 import { paneRowKey } from "@/lib/hosts";
 import type { HomeData } from "@/lib/loaders";
-import { sweepNotificationsIn, type SweepSource, type SweepView } from "@/lib/notification-sweep";
-import { needsYou } from "@/lib/triage";
+import { hasPendingAlert, sweepNotificationsIn, type SweepSource, type SweepView } from "@/lib/notification-sweep";
 
 // The page's half of the bridge's clear budget (lib/notification-sweep.ts says why). Mounted at the
 // data root, so it runs on every screen that holds the snapshot.
@@ -19,7 +18,7 @@ import { needsYou } from "@/lib/triage";
 
 /** What the snapshot says needs you, row by row, and which rows exist. Equal key, same verdicts. */
 export function sweepKey(data: Pick<HomeData, "agents" | "scope" | "viewAll">): string {
-  const rows = data.agents.map((a) => `${paneRowKey(a)}${needsYou(a) ? "!" : ""}`);
+  const rows = data.agents.map((a) => `${paneRowKey(a)}${hasPendingAlert(a) ? "!" : ""}`);
   return `${data.scope.host ?? ""}|${data.scope.session ?? ""}|${data.viewAll ? "all" : ""}|${rows.join(",")}`;
 }
 

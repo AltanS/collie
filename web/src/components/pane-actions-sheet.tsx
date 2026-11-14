@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
+import { UnseenMark } from "@/components/ui/unseen-mark";
 import { WalkyIcon, WalkyOffIcon } from "@/components/walky-icon";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { TrickMenuGroups } from "@/components/trick-menu-group";
@@ -23,6 +24,8 @@ import { CrossfadeText } from "@/components/ui/crossfade-text";
 import { paneRowKey } from "@/lib/hosts";
 import { paneName } from "@/lib/pane-name";
 import { dropPin, pinMatcher, setPinned, usePins } from "@/lib/pins";
+import { isTrickPane } from "@/lib/tricks/places";
+import { isUnseen } from "@/lib/triage";
 import type { PaneView } from "@/lib/pane-view";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
@@ -145,6 +148,11 @@ interface PaneActionsSheetProps {
    */
   onPinChange?: (pane: AgentView, pinned: boolean) => void;
   /**
+   * Fired after a manual Mark as seen / Mark as unseen succeeds. Passed ONLY by list sheets
+   * (dashboard, space, and sibling pills of the pane strip) — never by the currently open pane.
+   */
+  onSeenChange?: (paneId: string, seen: boolean) => void;
+  /**
    * Open "New agent in a worktree" for this pane (ADR 0089): the New page with "New worktree" on,
    * on this pane's repo.
    *
@@ -258,6 +266,7 @@ export function PaneActionsSheet({
   paneViewNote,
   herd = NO_HERD,
   onPinChange,
+  onSeenChange,
   onBranchOff,
   conversation = false,
   agentViews,
@@ -270,6 +279,20 @@ export function PaneActionsSheet({
   // on every door (lib/pins.ts).
   const pins = usePins();
   const pinned = pane !== null && pinMatcher(pins)(pane);
+  // A list can refresh after a 409 while the sheet still holds the pane from the long press.
+  const currentPane = pane === null || herd === NO_HERD
+    ? pane
+    : herd.find((candidate) => paneRowKey(candidate) === paneRowKey(pane));
+  const canToggleSeen =
+    onSeenChange !== undefined &&
+    currentPane != null &&
+    !conversation &&
+    currentPane.kind !== "shell" &&
+    !isTrickPane(currentPane) &&
+    (currentPane.status === "done" || currentPane.status === "idle") &&
+    (currentPane.lastActiveAt ?? 0) > 0;
+  const paneUnseen = currentPane != null && isUnseen(currentPane);
+  const [markingSeen, setMarkingSeen] = useState(false);
   // A session that turned its walky talky off (M89): the Messages row says so.
   const walkyOff = pane?.walkyOff === true;
   const [mode, setMode] = useState<Mode>("actions");
@@ -430,6 +453,32 @@ export function PaneActionsSheet({
     if (!pane) return;
     onClose();
     togglePanePin({ pane, pinned, herd, onPinChange });
+  }
+
+  async function toggleSeen(nextSeen: boolean) {
+    if (!pane || markingSeen || savedCopy) return;
+    const target = pane;
+    setMarkingSeen(true);
+    try {
+      const res = await api.setPaneSeen(target.paneId, nextSeen, scope);
+      if (res.ok) {
+        setStatus(t(nextSeen ? "paneActions.markSeen.done" : "paneActions.markUnseen.done"), "success");
+        onClose();
+        stampTopology();
+        onSeenChange?.(target.paneId, nextSeen);
+      } else {
+        setStatus(
+          describeApiError(res, t(nextSeen ? "paneActions.markSeen.failed" : "paneActions.markUnseen.failed")),
+          "error",
+        );
+        stampTopology();
+        onSeenChange?.(target.paneId, !nextSeen);
+      }
+    } catch (e) {
+      setStatus(describeThrownError(e), "error");
+    } finally {
+      setMarkingSeen(false);
+    }
   }
 
   const confirming = !!pane && pending === pane.paneId;
@@ -690,10 +739,26 @@ export function PaneActionsSheet({
               onClick={() => void requestClose()}
             />
           )}
+          {canToggleSeen && (
+            <ActionRow
+              icon={
+                paneUnseen ? (
+                  <Icon name="done" className={ROW_ICON} />
+                ) : (
+                  <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                    <UnseenMark on decorative className="size-3" />
+                  </span>
+                )
+              }
+              label={t(paneUnseen ? "paneActions.markSeen.label" : "paneActions.markUnseen.label")}
+              disabled={markingSeen}
+              onClick={() => void toggleSeen(paneUnseen)}
+            />
+          )}
           {/* An EMPTY sheet is the one case that must speak. Long-pressing a pane and being handed
               a blank box says nothing at all, so when every row is gone the adapter's own reason
               takes their place — hide the meaningless, explain the expected. */}
-          {!canRename.capable && !canClose.capable && !canFocus.capable && !showBranchOff && (
+          {!canRename.capable && !canClose.capable && !canFocus.capable && !showBranchOff && !canToggleSeen && (
             <p className="py-2 text-sm leading-snug text-muted-foreground">
               {canRename.note || canClose.note || canFocus.note || t("paneActions.empty.fallback")}
             </p>

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -174,5 +174,59 @@ describe("SpaceRoute, the tab row's '+'", () => {
     expect(launches).toHaveLength(1);
     expect(launches[0]!.host).toBe(PEER);
     expect(launches[0]!.body).toMatchObject({ harness: "codex", paneId: "wA:p2" });
+  });
+});
+
+describe("SpaceRoute — pane actions sheet and unseen mark", () => {
+  it("shows the unseen mark on a ready pane and opens PaneActionsSheet on row hold with Mark as seen", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/seen$/, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const unseenPeer: AgentView = {
+      ...peerAgent,
+      status: "done",
+      lastActiveAt: 500,
+      lastSeenAt: 100,
+    };
+    const data: HomeData = {
+      ...dataFor(PEER),
+      agents: [unseenPeer],
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => data,
+          children: [
+            {
+              path: "space/:spaceId",
+              element: withHeaderHost(
+                <CrewProvider servers={data.servers} sessions={data.sessions} ts={data.ts} pollMs={1500}>
+                  <SpaceRoute />
+                </CrewProvider>,
+              ),
+            },
+          ],
+        },
+      ],
+      { initialEntries: [`/space/wA?h=${PEER}`] },
+    );
+    render(<RouterProvider router={router} />);
+
+    const main = await screen.findByRole("main");
+    const row = within(main).getByRole("button", { name: /peer pane/ });
+    expect(within(row).getByRole("img", { name: "unseen" })).toBeInTheDocument();
+
+    fireEvent.contextMenu(row);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Mark as seen" }));
+    await waitFor(() => expect(bodies).toEqual([{ seen: true }]));
   });
 });

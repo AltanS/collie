@@ -25,20 +25,23 @@ import { useLocale } from "@/hooks/use-locale";
 export function UnseenMark({
   on = true,
   reserve = false,
+  decorative = false,
   className,
 }: {
   on?: boolean;
   reserve?: boolean;
+  decorative?: boolean;
   className?: string;
 }) {
   useLocale();
   if (!on && !reserve) return null;
+  const labelled = on && !decorative;
   return (
     <svg
       viewBox="0 0 12 12"
-      role={on ? "img" : undefined}
-      aria-label={on ? t("home.row.unseen") : undefined}
-      aria-hidden={on ? undefined : true}
+      role={labelled ? "img" : undefined}
+      aria-label={labelled ? t("home.row.unseen") : undefined}
+      aria-hidden={labelled ? undefined : true}
       focusable="false"
       className={cn("size-3 shrink-0 self-center text-foreground", !on && "invisible", className)}
     >
