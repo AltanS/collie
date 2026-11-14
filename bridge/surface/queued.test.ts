@@ -68,6 +68,29 @@ describe("QueuedSends", () => {
     expect(m.sends.of("main", "%1")).toEqual([]);
   });
 
+  // The owner's lead pane, 2026-11-07: a send that started a turn came back to the box on a Stop, with no card.
+  test("a submitted send is no card until the box gives it back, and its prompt edge does not end it", () => {
+    const m = memory();
+    m.sends.add({ id: "queued-sub-0001", session: "main", paneId: "%1", generation: "omp:session", text: "P text", collapse: null, at: m.clock.now, submitted: true });
+    expect(m.sends.of("main", "%1")).toEqual([]);
+    // Claude Code's prompt hook fires at the submit: the send stays a candidate.
+    m.sends.taken("queued-sub-0001");
+    expect(m.sends.panes("main")).toEqual(["%1"]);
+    m.clock.now += 7_000;
+    expect(m.sends.boxRead("main", "%1", { box: "P text", at: m.clock.now, turn: "idle", poll: false })).toEqual(["queued-sub-0001"]);
+    expect(m.sends.of("main", "%1")).toMatchObject([{ requestId: "queued-sub-0001", text: "P text", state: "returned" }]);
+    expect(m.sends.returnedText("main", "%1", "queued-sub-0001")).toBe("P text");
+  });
+
+  test("a prompt edge still ends a queued send and a steer", () => {
+    const m = memory();
+    m.add("queued-sub-0002", "Q text");
+    m.add("queued-sub-0003", "S text", true);
+    m.sends.taken("queued-sub-0002");
+    m.sends.taken("queued-sub-0003");
+    expect(m.sends.panes("main")).toEqual([]);
+  });
+
   test("a steer is no card until the box gives it back, and the run is steers first", () => {
     const m = memory();
     m.add("queued-st-0001", "Q text");
