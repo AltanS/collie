@@ -15,6 +15,12 @@ const FIXTURE = join(import.meta.dir, "fixtures", "sibling");
 const SESSION = "default";
 const PANE = "w6Y:pV";
 const ID = "wt_zsoxe7e4qh0j";
+/**
+ * The fixture log is a capture of 2026-11-07 and the log keeps rows for `LOG_KEEP_MS`, so a live clock
+ * makes these cases fail seven days later. This clock reads one minute after the fixture's newest `at`
+ * (1794034405653, 2026-11-07T06:53:25.653Z), so it is 2026-11-07T06:54:25.653Z.
+ */
+const FIXTURE_NOW = (): number => 1794034465653;
 
 const roots: string[] = [];
 afterEach(() => {
@@ -65,7 +71,7 @@ describe("a row a sibling instance recorded, with the siblings handed in (every 
   test("the next log's list for the pane holds the stable-recorded row, and the stable files stay as they were", () => {
     const { stable, next } = twoInstances();
     const before = readFileSync(join(stable, "walky", "log.jsonl"), "utf8");
-    const rows = new WalkyLog(join(next, "walky"), Date.now, injected(stable)).forPane(SESSION, PANE, "esaj", 50, true);
+    const rows = new WalkyLog(join(next, "walky"), FIXTURE_NOW, injected(stable)).forPane(SESSION, PANE, "esaj", 50, true);
     expect(rows.map((entry) => entry.id)).toEqual([ID]);
     expect(rows[0]).toMatchObject({ recordedBy: "collie", recordedAs: "collie-biyrya/w6Y:pV", receipt: { state: "delivered", target: "collie-biyrya/w6Y:pV" } });
     expect(readFileSync(join(stable, "walky", "log.jsonl"), "utf8")).toBe(before);
@@ -78,22 +84,22 @@ describe("a row a sibling instance recorded, with the siblings handed in (every 
 describe("a row a sibling instance recorded (the reproduction, from the live logs)", () => {
   test.skipIf(process.platform === "win32")("the next log's list for the pane holds the stable-recorded row, with `recordedBy`", () => {
     const { root, xdg, stable, next } = twoInstances();
-    const alone = new WalkyLog(join(next, "walky"));
+    const alone = new WalkyLog(join(next, "walky"), FIXTURE_NOW);
     expect(alone.forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
 
-    const log = new WalkyLog(join(next, "walky"), Date.now, siblingsOf(xdg, root, next));
+    const log = new WalkyLog(join(next, "walky"), FIXTURE_NOW, siblingsOf(xdg, root, next));
     const rows = log.forPane(SESSION, PANE, "esaj", 50, true);
     expect(rows.map((entry) => entry.id)).toEqual([ID]);
     expect(rows[0]).toMatchObject({ recordedBy: "collie", recordedAs: "collie-biyrya/w6Y:pV", receipt: { state: "delivered", target: "collie-biyrya/w6Y:pV" } });
     // The stable instance's own list does not merge its own rows a second time: it is excluded by real path.
-    const own = new WalkyLog(join(stable, "walky"), Date.now, siblingsOf(xdg, root, stable)).forPane(SESSION, PANE, "wl8b", 50, true);
+    const own = new WalkyLog(join(stable, "walky"), FIXTURE_NOW, siblingsOf(xdg, root, stable)).forPane(SESSION, PANE, "wl8b", 50, true);
     expect(own.map((entry) => [entry.id, entry.recordedBy])).toEqual([[ID, undefined]]);
   });
 
   test.skipIf(process.platform === "win32")("the sibling's files are only read: the log, its inbox and its instances stay as they were", () => {
     const { root, xdg, stable, next } = twoInstances();
     const before = readFileSync(join(stable, "walky", "log.jsonl"), "utf8");
-    new WalkyLog(join(next, "walky"), Date.now, siblingsOf(xdg, root, next)).forPane(SESSION, PANE, "esaj", 50, true);
+    new WalkyLog(join(next, "walky"), FIXTURE_NOW, siblingsOf(xdg, root, next)).forPane(SESSION, PANE, "esaj", 50, true);
     expect(readFileSync(join(stable, "walky", "log.jsonl"), "utf8")).toBe(before);
     expect(readFileSync(join(stable, "walky", "instances.json"), "utf8")).toBe(readFileSync(join(FIXTURE, "instances.json"), "utf8"));
   });
@@ -101,18 +107,18 @@ describe("a row a sibling instance recorded (the reproduction, from the live log
   test.skipIf(process.platform === "win32")("a registry that is not private reads as no siblings, and the list is the own one", () => {
     const { root, xdg, next } = twoInstances();
     chmodSync(join(xdg, "collie", "hook-targets"), 0o777);
-    expect(new WalkyLog(join(next, "walky"), Date.now, siblingsOf(xdg, root, next)).forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
+    expect(new WalkyLog(join(next, "walky"), FIXTURE_NOW, siblingsOf(xdg, root, next)).forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
   });
 
   test.skipIf(process.platform === "win32")("a missing registry reads as no siblings", () => {
     const root = tempRoot();
-    expect(new WalkyLog(join(root, "next", "walky"), Date.now, siblingsOf(join(root, "nowhere"), root, join(root, "next"))).forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
+    expect(new WalkyLog(join(root, "next", "walky"), FIXTURE_NOW, siblingsOf(join(root, "nowhere"), root, join(root, "next"))).forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
   });
 
   test.skipIf(process.platform === "win32")("a sibling with no walky log adds nothing", () => {
     const { root, xdg, stable, next } = twoInstances();
     rmSync(join(stable, "walky"), { recursive: true });
-    expect(new WalkyLog(join(next, "walky"), Date.now, siblingsOf(xdg, root, next)).forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
+    expect(new WalkyLog(join(next, "walky"), FIXTURE_NOW, siblingsOf(xdg, root, next)).forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
   });
 });
 
@@ -145,7 +151,7 @@ describe("which sibling row counts for the pane", () => {
     const { stable, next } = twoInstances();
     const instances = readFileSync(join(stable, "walky", "instances.json"), "utf8").replace('"token":"wl8b"', '"token":"zz99"');
     writeFileSync(join(stable, "walky", "instances.json"), instances);
-    expect(new WalkyLog(join(next, "walky"), Date.now, injected(stable)).forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
+    expect(new WalkyLog(join(next, "walky"), FIXTURE_NOW, injected(stable)).forPane(SESSION, PANE, "esaj", 50, true)).toEqual([]);
   });
 
   test("this bridge's own state dir is excluded by its real path, a link to it included", () => {
