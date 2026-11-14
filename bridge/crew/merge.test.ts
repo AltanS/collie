@@ -636,6 +636,21 @@ describe("parsePeerSnapshot — a peer contributes rows, never claims", () => {
     expect(parsed.shellPanes[0]!.instance).toBe("zz00");
   });
 
+  test("a pane's manualUnseen flag is kept only when strictly true", () => {
+    const parsed = parsePeerSnapshot({
+      sessions: [],
+      agents: [
+        { ...pane({ paneId: "w1:p1" }), manualUnseen: true },
+        { ...pane({ paneId: "w1:p2" }), manualUnseen: false },
+        { ...pane({ paneId: "w1:p3" }), manualUnseen: "yes" },
+      ],
+      shellPanes: [],
+    })!;
+    expect(parsed.agents[0]!.manualUnseen).toBe(true);
+    expect("manualUnseen" in parsed.agents[1]!).toBe(false);
+    expect("manualUnseen" in parsed.agents[2]!).toBe(false);
+  });
+
   test("a session's display label is kept only as a string, cleaned and capped by the lead's rule", () => {
     const parsed = parsePeerSnapshot({
       sessions: [

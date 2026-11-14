@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { badgeKey, recordSlot, type BadgeCaches } from "./app-badge";
 import { herdSlotTag, paneSlotTag } from "./pane-notifications";
 import {
+  hasPendingAlert,
   staleNotifications,
   sweepNotificationsIn,
   type ShownNotification,
@@ -56,6 +57,27 @@ describe("staleNotifications — a pane's own notification", () => {
     ]);
     const notes = ["w1:p1", "w1:p2", "w1:p3", "w1:p4"].map((id) => paneNote(id));
     expect(tags(staleNotifications(notes, v))).toEqual(["collie:herd:w1:p1", "collie:herd:w1:p2"]);
+  });
+
+  it("closes a pane's notification and herd summary when the pane is only manually marked unseen", () => {
+    const v = view([
+      pane("w1:p1", "done", { lastActiveAt: 200, lastSeenAt: 199, manualUnseen: true }),
+    ]);
+    const notes = [paneNote("w1:p1"), shown(herdSlotTag()!, { paneId: "w1:p1" })];
+    expect(tags(staleNotifications(notes, v))).toEqual(["collie:herd:w1:p1", "collie:herd"]);
+  });
+
+  it("never sweeps away a genuinely blocked pane even when manualUnseen is true", () => {
+    const blockedManual = pane("w1:p1", "blocked", { lastActiveAt: 200, lastSeenAt: 199, manualUnseen: true });
+    const doneManual = pane("w1:p2", "done", { lastActiveAt: 200, lastSeenAt: 199, manualUnseen: true });
+    expect(hasPendingAlert(blockedManual, { blocked: true, done: true })).toBe(true);
+    expect(hasPendingAlert(blockedManual, { blocked: true, done: false })).toBe(true);
+    expect(hasPendingAlert(blockedManual, { blocked: false, done: true })).toBe(false);
+    expect(hasPendingAlert(doneManual, { blocked: true, done: true })).toBe(false);
+
+    const v = view([blockedManual]);
+    const notes = [paneNote("w1:p1"), shown(herdSlotTag()!, { paneId: "w1:p1" })];
+    expect(staleNotifications(notes, v)).toEqual([]);
   });
 
   it("closes when the pane is gone from the session the snapshot lists whole", () => {

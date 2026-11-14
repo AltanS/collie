@@ -162,6 +162,11 @@ export interface AgentView {
    */
   lastSeenAt?: number;
   /**
+   * Mirrors `PaneWire.manualUnseen` in bridge/types.ts: true when manually marked unseen from a list
+   * sheet, so the app icon badge and notification sweep count genuine alerts only.
+   */
+  manualUnseen?: boolean;
+  /**
    * Which member of the crew this pane lives on — the `?h=` value (CREW_PROTOCOL.md §4). Mirrors
    * `PaneWire.host` in bridge/types.ts.
    *
