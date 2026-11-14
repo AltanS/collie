@@ -31,6 +31,7 @@ import type { BeaconDirectory, BeaconLiveness, BeaconSweepDeps } from "./beacon/
 import type { JsonValue } from "./json.ts";
 import type { Environment } from "../cli/context.ts";
 import { claudeSettingsTargets, markedCommandIn } from "../cli/hooks.ts";
+import { documentCarriesNativeHooks, hooksJsonPath } from "../cli/codex-native.ts";
 
 /**
  * The beacon directory on disk.
@@ -247,6 +248,11 @@ export function documentCarriesOurHooks(text: string): boolean {
  * agent, not that every pane will. An operator with hooks in one profile and not another gets sight
  * in the profile they installed it in and the honest "no beacon ⇒ unknown" everywhere else, which is
  * exactly what the join already does per pane.
+ *
+ * The harnesses are Claude (its settings files) and Codex (its `hooks.json`, written by `collie hooks
+ * install codex --native`, cli/codex-native.ts). Codex's notify line does not count: it writes edges
+ * and never a beacon. Without the Codex file here, a host that runs only Codex would never see the
+ * beacons its hooks write. The file is found from the bridge's own `CODEX_HOME`, else `~/.codex`.
  */
 export function hooksInstalledProbe(deps: HooksProbeDeps): () => boolean {
   const clock = deps.now ?? Date.now;
@@ -257,10 +263,13 @@ export function hooksInstalledProbe(deps: HooksProbeDeps): () => boolean {
     const now = clock();
     if (now - checkedAt < HOOKS_PROBE_TTL_MS) return answer;
     checkedAt = now;
-    answer = claudeSettingsTargets({ home: deps.home, env: deps.env }).some((target) => {
-      const text = read(target.path);
-      return text !== null && documentCarriesOurHooks(text);
-    });
+    const carries = (path: string, ours: (text: string) => boolean): boolean => {
+      const text = read(path);
+      return text !== null && ours(text);
+    };
+    answer =
+      claudeSettingsTargets({ home: deps.home, env: deps.env }).some((target) => carries(target.path, documentCarriesOurHooks)) ||
+      carries(hooksJsonPath({ home: deps.home, env: deps.env }), documentCarriesNativeHooks);
     return answer;
   };
 }

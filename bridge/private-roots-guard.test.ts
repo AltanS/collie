@@ -45,6 +45,7 @@ const ELSEWHERE: readonly Elsewhere[] = [
   { file: "cli/config.ts", count: 2, why: "`collie config set` writes config.toml into the config folder or ~/.collie, which the loader checks" },
   { file: "cli/hooks.ts", count: 2, why: "an agent's own settings file (~/.claude), not Collie's; documented as not covered" },
   { file: "cli/codex-hooks.ts", count: 2, why: "an agent's own config file ($CODEX_HOME/config.toml), not Collie's; the same case as cli/hooks.ts" },
+  { file: "cli/codex-native.ts", count: 2, why: "an agent's own hooks file ($CODEX_HOME/hooks.json) and its one-time backup, not Collie's; the same case as cli/codex-hooks.ts, and the install refuses Windows" },
   { file: "cli/skill-install.ts", count: 1, why: "the one-time `.collie-backup` copy beside an agent's own instruction file (~/.codex/AGENTS.md and kin), not Collie's; the same case as cli/hooks.ts" },
   { file: "cli/update.ts", count: 1, why: "the staging log is `stagingLogPath(deps.ctx.stateDir, runId)`, set further up the same function" },
   { file: "bridge/math/store.ts", count: 7, why: "every path is under `mathPackDir(deps.stateDir)`, `<stateDir>/math` (ADR 0132): the folder, a download's part file, and a version's temporary folder with its files and `pack.json`" },

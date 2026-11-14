@@ -220,7 +220,9 @@ as a separate multiplexer.
 
 ```bash
 COLLIE_MUX=herdr-core collie start
-collie hooks install claude   # History and Chat for Claude panes
+collie hooks install claude           # History and Chat for Claude panes
+collie hooks install codex --native   # History and Chat for Codex panes
+codex --no-daemon                     # how to start Codex in a core terminal
 ```
 
 With `COLLIE_MUX` unset, Collie picks the core on its own only when the core's socket is there and
@@ -260,6 +262,10 @@ What works:
   hook never changes the agent name or the status the core reported. A pane that stays quiet for
   more than twelve hours keeps its Chat and History while the Claude process still runs. Collie drops
   the session when the process is gone.
+- History and Chat for a Codex pane, once `collie hooks install codex --native` is done and Codex
+  runs as `codex --no-daemon`. Codex asks you to trust the new hooks at its next start. Plain
+  `codex` runs its hooks in a shared background process that names no pane, so that pane gets no
+  Chat. See [Codex native hooks](#codex-native-hooks).
 - History and Chat for a pi or Oh My Pi pane, with no hook. Collie finds the pane's session log from
   the pane's folder: pi keeps one log folder per working directory, and the newest log whose header
   names that folder is the pane's.
@@ -274,8 +280,9 @@ What looks different on the core:
 
 - **The mirror has no colour.** The core hands out the screen as plain text. The phone shows the
   words and the layout of the screen, and none of the agent's colours.
-- **Claude's History needs a hook.** The core does not know the agent's conversation. A Claude pane has
-  History and Chat once `collie hooks install claude` is done. pi and Oh My Pi need no hook, because
+- **Claude's and Codex's History needs a hook.** The core does not know the agent's conversation. A
+  Claude pane has History and Chat once `collie hooks install claude` is done. A Codex pane has them
+  once `collie hooks install codex --native` is done and Codex runs as `codex --no-daemon`. pi and Oh My Pi need no hook, because
   Collie finds their log from the pane's folder. A fresh pi or Oh My Pi pane shows an empty Chat until
   the agent's first reply, because pi writes its log only then. An older log in the same folder is not
   shown for a pane whose program started after it, and `pi --resume` keeps its Chat.
@@ -300,7 +307,8 @@ What the core cannot do:
   its folder.
 - Focus a terminal, so "Show in terminal" is missing. herdr-app keeps focus on its own screen.
 - Show colour. The core hands out the screen as text only.
-- Show History for a Claude pane before its hook is installed, or for an agent other than Claude, pi and Oh My Pi.
+- Show History for a Claude or Codex pane before its hook is installed, or for an agent other than
+  Claude, Codex, pi and Oh My Pi.
 - Show a terminal on another machine. Terminals of machines added to the core (`box/t7`) are not
   shown. Add that machine to your [crew](crew.md) and its own Collie shows them.
 - List sessions.
@@ -780,8 +788,9 @@ says in how many settings files the hooks hold permissions.
 
 #### Codex
 
-Codex has one outside hook, its `notify` command. Collie can use it for a hook edge when a Codex turn
-ends:
+Codex has two outside hooks: its `notify` command, and its own hooks in `hooks.json`
+([Codex native hooks](#codex-native-hooks), below). Collie can use the notify command for a hook
+edge when a Codex turn ends:
 
 ```console
 $ collie hooks install codex
@@ -806,8 +815,9 @@ it starts again.
 Codex sends one event, `agent-turn-complete`, at the end of each turn. Collie writes it as a stop
 edge, and the screen read after it decides whether the pane is free. The limits:
 
-- Codex sends no event for an approval dialog or for a new prompt. The screen alone shows a dialog,
-  and a send from the phone never shows as Confirmed on a Codex pane.
+- Codex sends no notify event for an approval dialog or for a new prompt. The screen alone shows a
+  dialog. With the notify command alone, a send from the phone never shows as Confirmed on a Codex
+  pane. The native hooks add a prompt edge.
 - Codex 0.163.0 runs the notify command from a background helper (`codex app-server`). Collie finds
   the Codex window in `/proc` with the same `CODEX_HOME` and the folder of the event. This is Linux
   only.
@@ -827,6 +837,59 @@ Collie answers a Codex approval with one key: the option's digit, `y`, or Escape
 prompt of Codex 0.156 walks. There Collie presses the arrow keys, reads the pointer back, then
 presses Enter. A Codex question dialog also takes one key, the option's digit. In Codex 0.163.0 the
 digit answers at once. On the last question it sends all the answers.
+
+#### Codex native hooks
+
+```console
+$ collie hooks install codex --native
+$ collie hooks status
+/home/you/.codex/hooks.json: native hooks installed. Codex runs them once you trust them
+```
+
+Codex also runs hooks of its own, from `$CODEX_HOME/hooks.json` (`~/.codex/hooks.json` when
+`CODEX_HOME` is not set). `--native` adds one Collie entry for each of four events, and each entry
+runs `collie beacon codex-hook`. On herdr-core, tmux, zellij and tern the hook names the pane's
+Codex session, which gives the pane Chat and History. On Herdr it writes hook edges only.
+
+> **Note.** At its next start Codex shows "Hooks need review". Trust the Collie hooks there, or
+> Codex never runs them. Codex asks again after every change to `hooks.json`.
+
+Start Codex in the pane as `codex --no-daemon`. Plain `codex` runs its sessions in a shared
+background process (`codex app-server`), and runs the hooks there too. That process belongs to no
+pane, so the hook cannot tell which pane the session is in. It then writes nothing, not even an edge.
+
+| Codex event | Hook edge | Beacon status |
+| --- | --- | --- |
+| `SessionStart` | start | idle |
+| `UserPromptSubmit` | prompt | working |
+| `Stop` | stop | idle |
+| `SessionEnd` | end | idle |
+
+On herdr-core the core's own status for the pane stays, and the beacon adds the session only. On
+tmux, zellij and tern the beacon also names the pane as a Codex pane, with the status above. The
+prompt edge carries a salted hash of the prompt, so a send from the phone can show as Confirmed.
+
+How the install treats the file:
+
+- It adds its entries at the end, and never changes, moves or removes an entry of yours. Codex keys
+  its trust by an entry's place in the file, so your entries keep their trust.
+- Running it twice changes no bytes. The first change keeps a copy as `hooks.json.collie-backup`.
+- It does not read or change `config.toml`. The `notify` line of `collie hooks install codex` can
+  stay beside the native hooks.
+- `collie hooks uninstall codex` removes the notify line and the native hooks, each only Collie's own.
+  `collie hooks uninstall codex --native` removes the native hooks only. When the install created
+  `hooks.json`, the uninstall removes the file again.
+- It refuses a `hooks.json` that is a symlink or not valid JSON, and writes nothing.
+- macOS and Linux only. On Windows the install refuses.
+
+The limits:
+
+- Codex names a new session at its first prompt. After `/new` it runs no hook until the next prompt,
+  so until then the pane still shows the Chat of the session before.
+- A Codex sub-agent runs no hook, so it never takes over the pane's Chat.
+- The bridge reads `hooks.json` too, to know the hooks are installed. It uses its own `CODEX_HOME`,
+  so a service needs `Environment=CODEX_HOME=...` when your shell sets `CODEX_HOME`.
+- `collie doctor` reports the install in its `beacon-hooks-codex` row.
 
 ## Harness profiles
 

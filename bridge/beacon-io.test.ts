@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { COMMAND_PROBE_CACHE_MS, documentCarriesOurHooks, hooksInstalledProbe, HOOKS_PROBE_TTL_MS, procBeaconLiveness, readStartTimeSync } from "./beacon-io.ts";
 import { HOOK_MARKER } from "../cli/hooks.ts";
+import { nativeCommand } from "../cli/codex-native.ts";
 import { parseHookTarget } from "./beacon/hook-targets.ts";
 import { parseLstart, type StartTimeCommand } from "./beacon/liveness.ts";
 import { beaconFileName, beaconKey } from "./beacon/paths.ts";
@@ -59,6 +60,16 @@ describe("hooksInstalledProbe", () => {
 
   test("no settings file anywhere is a no, not a throw", () => {
     expect(hooksInstalledProbe({ home: HOME, env: {}, readFile: () => null })()).toBe(false);
+  });
+
+  test("Codex's own hooks count, from the bridge's CODEX_HOME, else ~/.codex; its notify line does not", () => {
+    const native = JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: nativeCommand("/home/dev/.local/bin/collie") }] }] } });
+    const at = (file: string, text: string) => (path: string) => (path === file ? text : null);
+    expect(hooksInstalledProbe({ home: HOME, env: {}, readFile: at(join(HOME, ".codex", "hooks.json"), native) })()).toBe(true);
+    expect(hooksInstalledProbe({ home: HOME, env: { CODEX_HOME: "/srv/codex" }, readFile: at(join("/srv/codex", "hooks.json"), native) })()).toBe(true);
+    expect(hooksInstalledProbe({ home: HOME, env: {}, readFile: at(join(HOME, ".codex", "hooks.json"), JSON.stringify({ hooks: {} })) })()).toBe(false);
+    const notify = 'notify = ["/home/dev/.local/bin/collie","beacon","emit","codex"]\n';
+    expect(hooksInstalledProbe({ home: HOME, env: {}, readFile: at(join(HOME, ".codex", "config.toml"), notify) })()).toBe(false);
   });
 
   test("the answer is cached, then re-read — installing the hooks needs no restart", () => {

@@ -31,6 +31,7 @@ import {
 import type { AclTool, SaveResult } from "../bridge/icacls.ts";
 import type { OwnerOnlyDeps } from "../bridge/owner-only.ts";
 import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
+import { nativeCommand, planNativeInstall, serializeHooks } from "./codex-native.ts";
 import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
 import {
@@ -434,6 +435,7 @@ describe("collie doctor — the contract", () => {
       // Windows only, and this suite runs on the real host.
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
+      "beacon-hooks-codex",
       "beacons",
       "skill-walky-talky",
       "account-windows",
@@ -1961,6 +1963,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "mux",
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
+      "beacon-hooks-codex",
       "beacons",
       "skill-walky-talky",
       "account-windows",
@@ -2177,6 +2180,71 @@ describe("beacon-hooks-claude", () => {
     const { byCheck } = await findings(harness(null, [], blind(foreign)));
     expect(byCheck.get("beacon-hooks-claude")?.status).toBe("error");
     expect(byCheck.get("beacon-hooks-claude")?.detail).toContain("no settings file");
+  });
+});
+
+describe("beacon-hooks-codex", () => {
+  const CODEX_HOOKS = join(HOME, ".codex", "hooks.json");
+  const CORE = "/run/user/7/herdr-core/default.sock";
+  /** A hooks.json with Collie's native hooks pinned to `binary`, as `hooks install codex --native` writes it. */
+  const nativeHooks = (binary: string): string => {
+    const plan = planNativeInstall(null, binary);
+    return plan.kind === "plan" ? serializeHooks(plan.document) : "";
+  };
+  const onCore = (files: Record<string, string>) => {
+    const h = harness(null, [], { env: { COLLIE_MUX: "herdr-core", XDG_RUNTIME_DIR: "/run/user/7" }, files: { ...without(healthyFiles(), SETTINGS), [CORE]: "", ...files } });
+    h.deps = { ...h.deps, hcDial: () => Promise.resolve({ version: "0.1.16", generation: 1, live: 1 }) };
+    return h;
+  };
+
+  test("under Herdr, which names Codex panes and their sessions, no install is ok and asks for nothing", async () => {
+    const finding = (await findings(harness(null))).byCheck.get("beacon-hooks-codex")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.remedy).toBeNull();
+    expect(finding.detail).toContain("native hooks installed: no");
+  });
+
+  test("under herdr-core, no install is a skip naming the native install, the trust step and --no-daemon", async () => {
+    const finding = (await findings(onCore({}))).byCheck.get("beacon-hooks-codex")!;
+    expect(finding.status).toBe("skipped");
+    expect(finding.detail).toContain("Chat and History");
+    expect(finding.remedy).toContain("collie hooks install codex --native");
+    expect(finding.remedy).toContain("Hooks need review");
+    expect(finding.remedy).toContain("codex --no-daemon");
+  });
+
+  test("under herdr-core, the Codex hooks alone count as installed: agent-sessions reads the bridge's panes", async () => {
+    const { byCheck } = await findings(onCore({ [CODEX_HOOKS]: nativeHooks(OWN_BINARY) }));
+    expect(byCheck.get("beacon-hooks-codex")?.status).toBe("ok");
+    expect(byCheck.get("beacon-hooks-codex")?.detail).toContain("codex --no-daemon");
+    expect(byCheck.get("agent-sessions")?.detail ?? "").not.toContain("the hooks are not installed");
+  });
+
+  test("hooks that run a binary that is gone, or only some of them, are a warning naming the install", async () => {
+    const gone = (await findings(onCore({ [CODEX_HOOKS]: nativeHooks("/srv/moved/bin/collie") }))).byCheck.get("beacon-hooks-codex")!;
+    expect(gone.status).toBe("warn");
+    expect(gone.detail).toContain("/srv/moved/bin/collie");
+    const stop = { hooks: [{ type: "command", command: nativeCommand(OWN_BINARY) }] };
+    const partial = (await findings(onCore({ [CODEX_HOOKS]: JSON.stringify({ hooks: { Stop: [stop] } }) }))).byCheck.get("beacon-hooks-codex")!;
+    expect(partial.status).toBe("warn");
+    expect(partial.detail).toContain("SessionStart");
+    expect(partial.remedy).toContain("collie hooks install codex --native");
+  });
+
+  test("a hooks file that is there but cannot be read is a warning, never read as no install", async () => {
+    const h = onCore({ [CODEX_HOOKS]: nativeHooks(OWN_BINARY) });
+    const read = h.deps.files.read;
+    h.deps = { ...h.deps, files: { ...h.deps.files, read: (path: string) => (path === CODEX_HOOKS ? null : read(path)) } };
+    const finding = (await findings(h)).byCheck.get("beacon-hooks-codex")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.detail).toContain("cannot be read");
+  });
+
+  test("under tmux, which cannot name a Codex pane at all, no install is a skip, never an error", async () => {
+    const h = harness(null, [], { env: ON_TMUX, files: { ...healthyFiles(), [TMUX_BIN]: "" }, answers: tmuxAnswers("3.4\nwork\n") });
+    const finding = (await findings(h)).byCheck.get("beacon-hooks-codex")!;
+    expect(finding.status).toBe("skipped");
+    expect(finding.detail).toContain("a Codex pane and its session");
   });
 });
 
