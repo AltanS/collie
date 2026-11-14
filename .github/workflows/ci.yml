@@ -18,6 +18,11 @@ jobs:
   check:
     name: typecheck + tests
     runs-on: ubuntu-latest
+    # bridge/walky/line-shells.test.ts feeds the typed WalkyTalky line to real shells, and leaves out a
+    # shell a machine lacks. Here it must not: with this set, a missing bash, dash, zsh or fish fails
+    # the test. Only this job sets it (release, windows, webkit and packaging runs set CI, not this).
+    env:
+      COLLIE_REQUIRE_SHELLS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -40,6 +45,9 @@ jobs:
 
       - name: Typecheck (root)
         run: bun run typecheck
+      # bash and dash ship with the runner; the shell test needs zsh and fish too.
+      - name: Install the shells the line test runs (zsh, fish)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh fish
       - name: Test (bridge)
         run: bun run test
 
