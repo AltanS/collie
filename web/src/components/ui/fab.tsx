@@ -2,7 +2,7 @@ import { Icon } from "@/components/icons/icon";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
-import { PRESS_REACH } from "@/components/ui/tap-target";
+import { PRESS_REACH, SHEET_ACTION_TAP_TARGET } from "@/components/ui/tap-target";
 
 interface FabProps {
   /** ALREADY TRANSLATED. The accessible name: "New". */
@@ -58,43 +58,84 @@ export function Fab({ label, onClick, busy = false, bottom, collapsed = false }:
         bottom,
       )}
     >
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy}
-        aria-label={label}
-        aria-busy={busy}
-        data-slot="fab"
-        data-collapsed={collapsed || undefined}
-        className={cn(
-          "pointer-events-auto flex h-12 items-center justify-center border border-border bg-background text-foreground shadow-md animate-in fade-in hover:bg-accent hover:text-accent-foreground active:scale-95 active:bg-accent disabled:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-          // Dark: the page and a flat row are the same near-black, and --border is a 12% white hairline
-          // there (1.26:1). The card step (0.205 against 0.145) lifts the fill so the button still
-          // reads as a button over the list; hover and press go back to --accent.
-          "dark:bg-card dark:hover:bg-accent dark:active:bg-accent",
-          PRESS_REACH,
-          "transition-[width,border-radius,transform] duration-200 ease-out motion-reduce:transition-none",
-          // 24px on a 48px square is the circle; 2px is the house corner on the wider pill.
-          collapsed ? "w-12 rounded-[24px]" : "w-24 rounded-md",
-        )}
-      >
-        {/* The clip for the label's fold lives here and not on the button: a clip on the button would cut
-            the press reach (ui/tap-target.ts, PRESS_REACH) off at the border. Same box, same corners. */}
-        <span className="flex size-full items-center justify-center overflow-hidden rounded-[inherit]">
-          {busy ? <Icon name="busy" className="size-5 shrink-0 animate-spin" aria-hidden /> : <Icon name="add" className="size-5 shrink-0" aria-hidden />}
-          {/* The word fades and folds with the width. aria-hidden: the label above already names it. */}
-          <span
-            aria-hidden
-            className={cn(
-              "overflow-hidden whitespace-nowrap text-sm font-medium transition-[max-width,opacity,margin] duration-200 ease-out motion-reduce:transition-none",
-              collapsed ? "ml-0 max-w-0 opacity-0" : "ml-1.5 max-w-16 opacity-100",
-            )}
-          >
-            {label}
-          </span>
-        </span>
-      </button>
+      <FabButton label={label} onClick={onClick} busy={busy} collapsed={collapsed} />
     </div>,
     document.body,
+  );
+}
+
+interface FabButtonProps {
+  /** ALREADY TRANSLATED. The accessible name: "New". */
+  label: string;
+  onClick: () => void;
+  busy?: boolean;
+  /** `float` is the dashboard's 48px button; `compact` is the 32px one in a sheet's title row. */
+  size?: "float" | "compact";
+  /** The round "+" alone. Only the `float` size folds; a compact button always shows its word. */
+  collapsed?: boolean;
+}
+
+/**
+ * THE NEW BUTTON'S FACE, without a place to stand. The one look of "+ New" (the outline-button clothes,
+ * the `add` glyph, the word, the busy spinner swap, the name) so the dashboard's floating button and the
+ * Switch pane sheet's title-row button are the same button and never two class lists that drift. It
+ * positions nothing: {@link Fab} carries it in the fixed layer, `BottomSheet`'s `action` slot carries it
+ * in the title row.
+ *
+ * `compact` is the title-row size. The same border, fill, ink, hover and press tokens and the same
+ * 2px corner, but 32px tall like the close button beside it (the row does not grow, and
+ * `SHEET_BODY_STICKY` still holds), with no shadow and no entrance: a sheet is already a raised surface
+ * and has its own slide-in. The 44px floor is bought back as hit area, the way the header pills buy it
+ * (`SHEET_ACTION_TAP_TARGET`, `ui/tap-target.ts`).
+ */
+export function FabButton({ label, onClick, busy = false, size = "float", collapsed = false }: FabButtonProps) {
+  const compact = size === "compact";
+  const folded = collapsed && !compact;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-label={label}
+      aria-busy={busy}
+      data-slot={compact ? "fab-compact" : "fab"}
+      data-collapsed={folded || undefined}
+      className={cn(
+        "flex items-center justify-center border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground active:scale-95 active:bg-accent disabled:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        // Dark: the page and a flat row are the same near-black, and --border is a 12% white hairline
+        // there (1.26:1). The card step (0.205 against 0.145) lifts the fill so the button still
+        // reads as a button over the list; hover and press go back to --accent.
+        "dark:bg-card dark:hover:bg-accent dark:active:bg-accent",
+        compact
+          ? cn("h-8 rounded-md px-2.5", SHEET_ACTION_TAP_TARGET, "transition-transform")
+          : cn(
+              "pointer-events-auto h-12 shadow-md animate-in fade-in",
+              PRESS_REACH,
+              "transition-[width,border-radius,transform] duration-200 ease-out motion-reduce:transition-none",
+              // 24px on a 48px square is the circle; 2px is the house corner on the wider pill.
+              folded ? "w-12 rounded-[24px]" : "w-24 rounded-md",
+            ),
+      )}
+    >
+      {/* The clip for the label's fold lives here and not on the button: a clip on the button would cut
+          the press reach (ui/tap-target.ts, PRESS_REACH) off at the border. Same box, same corners. */}
+      <span className={cn("flex items-center justify-center overflow-hidden rounded-[inherit]", compact ? "" : "size-full")}>
+        {busy ? (
+          <Icon name="busy" className={cn("shrink-0 animate-spin", compact ? "size-4" : "size-5")} aria-hidden />
+        ) : (
+          <Icon name="add" className={cn("shrink-0", compact ? "size-4" : "size-5")} aria-hidden />
+        )}
+        {/* The word fades and folds with the width. aria-hidden: the label above already names it. */}
+        <span
+          aria-hidden
+          className={cn(
+            "overflow-hidden whitespace-nowrap text-sm font-medium transition-[max-width,opacity,margin] duration-200 ease-out motion-reduce:transition-none",
+            folded ? "ml-0 max-w-0 opacity-0" : "ml-1.5 max-w-16 opacity-100",
+          )}
+        >
+          {label}
+        </span>
+      </span>
+    </button>
   );
 }

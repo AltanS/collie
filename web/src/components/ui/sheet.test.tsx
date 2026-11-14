@@ -172,6 +172,34 @@ describe("BottomSheet — backdrop dismiss requires press AND release on the bac
   });
 });
 
+// THE TITLE ROW'S ACTION SLOT: one generic control at the trailing end, directly before the close
+// button, and nothing at all when a caller passes none.
+describe("BottomSheet: the title row's action slot", () => {
+  it("draws the action directly before the close button, in the title row", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Switch pane" action={<button type="button">Create</button>}>
+        body
+      </BottomSheet>,
+    );
+    const row = container.querySelector('[data-slot="sheet-title-row"]')!;
+    const slot = row.querySelector('[data-slot="sheet-action"]')!;
+    expect(slot).toContainElement(screen.getByRole("button", { name: "Create" }));
+    expect(slot.nextElementSibling).toBe(screen.getByRole("button", { name: "Close" }));
+    // The close button stays a direct child of the row, where the hit-area census finds it.
+    expect(screen.getByRole("button", { name: "Close" }).parentElement).toBe(row);
+  });
+
+  it("leaves the row exactly as it was without one", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Switch pane">
+        body
+      </BottomSheet>,
+    );
+    expect(container.querySelector('[data-slot="sheet-action"]')).toBeNull();
+    expect(container.querySelector('[data-slot="sheet-title-row"]')!.children).toHaveLength(2);
+  });
+});
+
 // DRAG-TO-DISMISS SURVIVES A RE-RENDER OF ITS CALLER. The switcher passes `onClose` as an inline
 // arrow, so every poll handed the sheet a new function; with that function in the drag effect's
 // deps, the effect re-ran and `setDragY(0)` snapped a held sheet back to the top on each poll, the
