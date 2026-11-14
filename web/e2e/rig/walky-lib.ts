@@ -62,7 +62,14 @@ export function wrapped(text: string): string {
 }
 
 /**
- * A RegExp source for the optional subject after the sender's parenthesis (M98 spec 07): ` about "<words>"`,
+ * A RegExp source for an agent's harness and label in a header, in either form: ` on <harness> in "<label>"`
+ * (since fix/walky-line-fields) or the older ` (<harness>, <label>)` that the recordings before it hold.
+ * Any white space stands for a space, since the terminal may wrap inside it.
+ */
+export const SENDER = (harness: string): string => `(?:\\s+on\\s+${harness}\\s+in\\s+"[^"]*"|\\s+\\(${harness},\\s[^)]*\\))`;
+
+/**
+ * A RegExp source for the optional subject after the sender (M98 spec 07): ` about "<words>"`,
  * any white space standing for a space, since the terminal may wrap inside it. A subject holds no `"`.
  */
 export const ABOUT = '(?:\\s+about\\s+"[^"]*")?';
@@ -139,8 +146,11 @@ export async function settledWalky(rig: Rig, paneId: string, id: string, ms: num
   return state ?? `not settled in ${String(ms / 1000)} s`;
 }
 
-/** The operator's header, as the bridge types it. */
-export const operatorHeader = (id: string): string => `[walky-talky ${id}] from operator (${DEVICE_LABEL})`;
+/** The operator's header in the older form, `(<label>)`: what a bridge before fix/walky-line-fields types. */
+export const olderOperatorHeader = (id: string): string => `[walky-talky ${id}] from operator (${DEVICE_LABEL})`;
+
+/** A RegExp source for the operator's header as the bridge types it, in either form: `"<label>"` or the older `(<label>)`. */
+export const operatorHeaderPattern = (id: string): string => `${escape(`[walky-talky ${id}] from operator `)}(?:"${escape(DEVICE_LABEL)}"|\\(${escape(DEVICE_LABEL)}\\))`;
 
 export interface OperatorMessage {
   readonly harness: HarnessId;
@@ -211,7 +221,7 @@ export async function operatorMessage(browser: Browser, rig: Rig, pane: string, 
     notes.push(`${tapWords(t)}; strip ${stripShown ? "shown" : "not shown"}`);
 
     // One prompt: the header row, then the body on the next row, in the pane's input history.
-    const typed = new RegExp(`${escape(operatorHeader(id))}\\s*\\n\\s*${escape(c.body)}`);
+    const typed = new RegExp(`${operatorHeaderPattern(id)}\\s*\\n\\s*${escape(c.body)}`);
     const screen = await rig.screenUntil(pane, typed, 30_000, 120);
     notes.push(screen === null ? "the header and body did not reach the pane as one prompt" : "the pane got the header and body as one prompt");
     const receipt = await settledWalky(rig, pane, id, 30_000);

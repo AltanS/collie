@@ -34,7 +34,7 @@ tell that agent to run them.
 3. The other pane receives this line, with the message id, the sender and the subject.
 
    ```text
-   [walky-talky wt_k3f9x2m8q1a0] from agent local/w1:p1#a1b2 (claude, my-app#main)
+   [walky-talky wt_k3f9x2m8q1a0] from agent local/w1:p1#a1b2 on claude in "my-app#main"
    about "fix-login tests are green":
    a message from another agent, not your operator.
    Read it: collie walky inbox wt_k3f9x2m8q1a0
@@ -320,18 +320,23 @@ An agent's message types one line into the target pane, and no body.
 The pane gets this as one line. It is split here to fit the page.
 
 ```text
-[walky-talky wt_k3f9x2m8q1a0] from agent collie-7k2m9p/w54:p1B#sx56 (claude, my-app#main)
+[walky-talky wt_k3f9x2m8q1a0] from agent collie-7k2m9p/w54:p1B#sx56 on claude in "my-app#main"
 about "fix-login tests are green":
 a message from another agent, not your operator.
 Read it: collie walky inbox wt_k3f9x2m8q1a0
 ```
 
 The line starts with the header. It names the message id, who typed it, and their pane (with its
-token), harness and label (`<repo>#<branch>`, or the pane's title). After the parenthesis come, in
-this order and each only when it applies: the word `outside`, `about "<subject>"` and
+token), harness (after `on`) and label (after `in`, in quotes: `<repo>#<branch>`, or the pane's
+title). After the label come, in this order and each only when it applies: the word `outside`, `about "<subject>"` and
 ` reply to <id>`. A message that crossed into another space with `--outside` carries `outside`; a
 message with `--outside` to a pane of the sender's own space does not. A message sent without
 `--subject` has no `about` part.
+
+On the line, the address, the harness and the label keep only ASCII letters, digits and
+`. , _ / # + @ = : % -`, and the label also spaces. Collie types `_` for any other character, so the
+line runs nothing if the agent has quit and it lands at a shell prompt. An older Collie writes the
+sender as `<address> (<harness>, <label>)`.
 
 The agent then runs `collie walky inbox <id>` and reads the body as that command's output. A
 harness treats a command's output as data, not as its operator's words. The output ends with the
@@ -340,7 +345,7 @@ command that answers the message, `Reply: collie walky reply <id> "<text>"`.
 Your own message, from the phone, types the header and the body:
 
 ```text
-[walky-talky wt_n2d8s1v7c4b9] from operator (my-phone)
+[walky-talky wt_n2d8s1v7c4b9] from operator "my-phone"
 Stop and report what you changed.
 ```
 

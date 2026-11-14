@@ -3740,9 +3740,22 @@ the machine without the subject, and the sender's answer carries `subjectLeftOut
 rule's own refusal is unchanged. 1.29.0-edge.1
 counts as below 1.29.0: a prerelease sorts before its release.
 
-The header a receiving bridge types carries `about "<subject>"` after the sender's parenthesis and
-the word `outside`, before any ` reply to <id>`. A reader that predates it takes it as part of the
-sender's text and still finds the id, the kind and the reply suffix.
+The header a receiving bridge types carries `about "<subject>"` after the sender and the word
+`outside`, before any ` reply to <id>`. A reader that predates it takes it as part of the sender's
+text and still finds the id, the kind and the reply suffix.
+
+### The typed line names its sender in words *(changed 2026-11-14, fix/walky-line-fields)*
+
+The receiving bridge types the sender as `<address> on <harness> in "<label>"` (` on <harness>` only
+when the pane has a known harness), and an operator as `"<label>"`. A bridge before this change typed
+`<address> (<harness>, <label>)` and `(<label>)`; fish runs a parenthesis as a command substitution,
+so a label typed at a fish prompt ran there. The address, the harness and the label keep only ASCII
+letters, digits and `. , _ / # + @ = : % -` (the label also the space), and every other character
+becomes `_` (`lineField`, `web/src/lib/walky-subject.ts`). Nothing on the wire changes: the fields keep
+their bytes and their signature, and only the typed line is cleaned. Both readers (`readHeaderPart`)
+take the new form and the old one, so a line from an older bridge, or in history, reads as before. A
+reader of 1.29.0-edge.1 finds the id, the kind and the reply suffix in the new form, and takes the word
+`outside` as sender text, because it looks for it after a parenthesis.
 
 ### The space of a message *(added 2026-11-10, M98)*
 
@@ -3796,7 +3809,7 @@ check, the lead's included, on the signed fields above (`bridge/walky/border.ts`
 6. **Anything else is refused** with the receipt reason `outside your space`.
 
 A bridge that passes a message by the outside flag (rule 4, not rule 3) types its header with the word
-`outside` after the sender's parenthesis and before any `reply to`. A reader that predates the word takes it as part of
+`outside` after the sender and before any `reply to`. A reader that predates the word takes it as part of
 the sender's text. The receipt records how the message passed (`via`: `operator`, `in`, `reply`,
 `outside` or `legacy`), an additive-optional field (§7.1).
 

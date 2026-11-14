@@ -77,7 +77,7 @@ import {
   type TapLog,
 } from "./leg";
 import { DEVICE_LABEL, LEAD_ID, MEMBER_ID, askWalky, paneClose, sleep } from "./rig-lib";
-import { ABOUT, OUTSIDE_YOUR_SPACE, PHONE, REPLY_MS, cliCancel, cliSend, ensureDraft, escape, firstRow, mintId, operatorHeader, refusalCount, settledWalky, startExtraAgent, takeBackFor, viaOf, wrapped } from "./walky-lib";
+import { ABOUT, OUTSIDE_YOUR_SPACE, PHONE, REPLY_MS, SENDER, cliCancel, cliSend, ensureDraft, escape, firstRow, mintId, operatorHeaderPattern, refusalCount, settledWalky, startExtraAgent, takeBackFor, viaOf, wrapped } from "./walky-lib";
 
 const RIG_TS = join(import.meta.dirname, "rig.ts");
 
@@ -226,7 +226,7 @@ test.describe("walky talky across a crew", () => {
         notes.push(`the POST answered ${String(targets.length)} receipts (${receiptWords(sent.answered)}), the sheet drew ${String(sent.rows)} rows`);
 
         // Both panes: the header and the body as one prompt.
-        const typed = new RegExp(`${escape(operatorHeader(id))}\\s*\\n\\s*${escape(body.slice(0, 40))}`);
+        const typed = new RegExp(`${operatorHeaderPattern(id)}\\s*\\n\\s*${escape(body.slice(0, 40))}`);
         const leadTyped = (await rig.screenUntil(claudePane, typed, 30_000, 120)) !== null;
         const memberTyped = (await rig.screenUntil(piPane, typed, 60_000, 120, MEMBER_ID)) !== null;
         notes.push(`header and body on the lead's pane: ${leadTyped ? "yes" : "NO"}, on the member's pane: ${memberTyped ? "yes" : "NO"}`);
@@ -301,7 +301,7 @@ test.describe("walky talky across a crew", () => {
         );
         // pi's screen, read through the lead: the one-line nudge from Claude's pane, with no body.
         const from = addressPattern(LEAD_ID, claudePane);
-        const nudge = new RegExp(`\\[walky-talky (wt_[a-z0-9]{12})\\] from agent ${from} \\(claude, [^)]*\\)${ABOUT}: ${wrapped("a message from another agent, not your operator.")}`, "g");
+        const nudge = new RegExp(`\\[walky-talky (wt_[a-z0-9]{12})\\] from agent ${from}${SENDER("claude")}${ABOUT}: ${wrapped("a message from another agent, not your operator.")}`, "g");
         const fresh = (text: string): string | null => [...text.matchAll(nudge)].map((m) => m[1]!).find((found) => !before.has(found)) ?? null;
         const nudged = await rig.until(() => rig.screen(piPane, 200, MEMBER_ID), (text) => fresh(text) !== null, REPLY_MS);
         const id = nudged === null ? null : fresh(nudged);
@@ -336,7 +336,7 @@ test.describe("walky talky across a crew", () => {
         const replyFrom = asJsonString(asJsonObject(reply?.from)?.address) ?? "";
         const replyState = replyId === null ? "no reply row" : await settledWalky(rig, claudePane, replyId, 60_000);
         notes.push(`pi replied: ${replyId ?? "-"} from ${replyFrom || "?"}, ${replyState}`);
-        const replyNudge = replyId === null ? null : new RegExp(`\\[walky-talky ${replyId}\\] from agent ${addressPattern(MEMBER_ID, piPane)} \\(pi, [^)]*\\)${ABOUT} reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
+        const replyNudge = replyId === null ? null : new RegExp(`\\[walky-talky ${replyId}\\] from agent ${addressPattern(MEMBER_ID, piPane)}${SENDER("pi")}${ABOUT} reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
         const replyOnScreen = replyNudge === null ? null : await rig.screenUntil(claudePane, replyNudge, 60_000, 200);
         notes.push(replyOnScreen === null ? "Claude's pane shows no reply nudge" : "Claude's pane shows the reply nudge");
         // The reply's outcome on the MEMBER, the machine that sent it: the lead pushed it back.
@@ -413,7 +413,7 @@ test.describe("walky talky across a crew", () => {
           const leftRow = page.locator('[data-slot="walky-receipt"]').filter({ hasText: `${MEMBER_ID}/` }).filter({ hasText: notSent });
           const leftRowText = (await leftRow.first().textContent().catch(() => null)) ?? null;
           notes.push(leftRowText === null ? `the sheet draws NO "${notSent}" row for ${MEMBER_ID}` : `the sheet's row for the left-out machine: "${leftRowText}"`);
-          const typed = new RegExp(`${escape(operatorHeader(id))}\\s*\\n\\s*${escape(body.slice(0, 40))}`);
+          const typed = new RegExp(`${operatorHeaderPattern(id)}\\s*\\n\\s*${escape(body.slice(0, 40))}`);
           const leadTyped = (await rig.screenUntil(claudePane, typed, 30_000, 120)) !== null;
           const leadRow = await settledWalky(rig, claudePane, id, 30_000);
           const answered = (await rig.screenUntil(claudePane, /^\s*(?:⏺|●)\s*LEAD-ONLY\.?\s*$/m, REPLY_MS, 120)) !== null;
@@ -542,7 +542,7 @@ test.describe("walky talky across a crew", () => {
         notes.push(piScreen.includes("collie walky who") ? "pi ran `collie walky who`" : "pi's screen does not show `collie walky who`");
 
         // Claude's screen: the one-line nudge with no body, then `inbox <id>` and the body in its output.
-        const nudge = new RegExp(`\\[walky-talky ${id}\\] from agent ${addressPattern(MEMBER_ID, piPane)} \\(pi, [^)]*\\)${ABOUT}: ${wrapped("a message from another agent, not your operator.")}`);
+        const nudge = new RegExp(`\\[walky-talky ${id}\\] from agent ${addressPattern(MEMBER_ID, piPane)}${SENDER("pi")}${ABOUT}: ${wrapped("a message from another agent, not your operator.")}`);
         const nudged = await rig.screenUntil(claudePane, nudge, 60_000, 300);
         const read = await rig.screenUntil(claudePane, new RegExp(`Bash\\(collie walky inbox ${id}\\)[\\s\\S]*${token}`), REPLY_MS, 300);
         const claudeScreen = await rig.screen(claudePane, 300);
@@ -555,7 +555,7 @@ test.describe("walky talky across a crew", () => {
         notes.push(`the member's \`collie walky status ${id}\`: ${receiptWords(memberStatus)}`);
 
         // Claude's `collie walky reply` shows on pi's pane as a nudge that names the first message.
-        const replyNudge = new RegExp(`\\[walky-talky (wt_[a-z0-9]{12})\\] from agent ${addressPattern(LEAD_ID, claudePane)} \\(claude, [^)]*\\)${ABOUT} reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
+        const replyNudge = new RegExp(`\\[walky-talky (wt_[a-z0-9]{12})\\] from agent ${addressPattern(LEAD_ID, claudePane)}${SENDER("claude")}${ABOUT} reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
         const piWithReply = await rig.until(() => rig.screen(piPane, 300, MEMBER_ID), (text) => replyNudge.test(text), REPLY_MS);
         const replyId = piWithReply === null ? null : (replyNudge.exec(piWithReply)?.[1] ?? null);
         notes.push(replyId === null ? "pi's pane shows no reply nudge" : `pi's pane shows the reply nudge for ${replyId}`);

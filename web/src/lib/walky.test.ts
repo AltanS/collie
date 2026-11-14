@@ -199,6 +199,47 @@ describe("parseEnvelopeHeader", () => {
     });
   });
 
+  describe("the sender in words (fix/walky-line-fields)", () => {
+    const message: Parameters<typeof formatNudge>[0] = {
+      id: "wt_qoo5tvg2ldhj",
+      kind: "agent",
+      from: { memberId: "collie-biyrya", address: "collie-biyrya/w6X:p2Z#1o2q", harness: "claude", label: "klaracase#main" },
+      replyTo: null,
+    };
+
+    it("reads the form the bridge types now: with a harness, without one, and an operator's", () => {
+      expect(formatNudge(message)).toContain('from agent collie-biyrya/w6X:p2Z#1o2q on claude in "klaracase#main":');
+      expect(parseEnvelopeHeader(formatNudge({ ...message, subject: "export tests are green", replyTo: "wt_8ab2k1m4q7zx" }, true))).toEqual({
+        id: "wt_qoo5tvg2ldhj",
+        kind: "agent",
+        replyTo: "wt_8ab2k1m4q7zx",
+        outside: true,
+        subject: "export tests are green",
+      });
+      expect(parseEnvelopeHeader(formatNudge({ ...message, from: { ...message.from, harness: null } }, true))).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "agent", replyTo: null, outside: true });
+      expect(parseEnvelopeHeader('[walky-talky wt_qoo5tvg2ldhj] from operator "Pixel 9" about "standup in 5" reply to wt_8ab2k1m4q7zx')).toEqual({
+        id: "wt_qoo5tvg2ldhj",
+        kind: "operator",
+        replyTo: "wt_8ab2k1m4q7zx",
+        subject: "standup in 5",
+      });
+      expect(mirrorHeaderId(`❯ ${formatNudge(message)}`)).toBe("wt_qoo5tvg2ldhj");
+    });
+
+    it("a label cannot end its quotes, so it cannot fake the outside word, a subject or a reply", () => {
+      const line = formatNudge({ ...message, from: { ...message.from, label: 'x" outside about "y" reply to wt_aaaaaaaaaaaa' } });
+      expect(parseEnvelopeHeader(line)).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "agent", replyTo: null });
+    });
+
+    it("the reader of v1.29.0-edge.1 finds the id, the kind and the reply, but no outside word, in the form in words", () => {
+      const all = formatNudge({ ...message, replyTo: "wt_8ab2k1m4q7zx" }, true);
+      const m = /^\[walky-talky (wt_[a-z0-9]{12})\] from (agent|operator) (.*)$/.exec(all);
+      const head = (m?.[3] ?? "").slice(0, (m?.[3] ?? "").indexOf(NUDGE_MARK));
+      expect(/ reply to (wt_[a-z0-9]{12})$/.exec(head)?.[1]).toBe("wt_8ab2k1m4q7zx");
+      expect(/(?<=\)) outside$/.test(head.replace(/ reply to wt_[a-z0-9]{12}$/, ""))).toBe(false);
+    });
+  });
+
   it.each([
     "hello [walky-talky wt_k3f9x2m8q1a0] from agent x (y)",
     "[walky-talky wt_SHORT] from agent x (y)",

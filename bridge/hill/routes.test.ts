@@ -302,7 +302,7 @@ describe("POST /api/hill/answer", () => {
     const two = await posted(r, { ...post, requestId: OTHER_RID, title: "Second?" });
     await hillAnswerRoute(r.hill, answerBody(one, "yes", null), { device: "Pixel 9", acceptEncoding: null });
     await hillAnswerRoute(r.hill, answerBody(two, "no", null, "33333333-3333-4333-8333-333333333333"), { device: null, acceptEncoding: null });
-    expect(r.typed.map((t) => t.text.split("\n")[0]!.replace(/wt_\w+/, "wt_"))).toEqual(["[walky-talky wt_] from operator (Pixel 9)", "[walky-talky wt_] from operator (phone)"]);
+    expect(r.typed.map((t) => t.text.split("\n")[0]!.replace(/wt_\w+/, "wt_"))).toEqual(["[walky-talky wt_] from operator \"Pixel 9\"", "[walky-talky wt_] from operator \"phone\""]);
     expect(r.hill.list().closed.map((d) => `${d.id} ${d.answer?.by}`).toSorted()).toEqual([`${one} Pixel 9`, `${two} phone`]);
   });
 
@@ -416,7 +416,7 @@ describe("end to end", () => {
       {
         paneId: "%2",
         // The answer goes to another session than the poster's: no title, no label (the poster's words).
-        text: "[walky-talky wt_e2e0000001] from operator (Pixel 9)\nAnswer to dc_e2e000000001\nOption: yes\nNot before the browser leg is green.\nRead the decision with: collie hill status dc_e2e000000001",
+        text: "[walky-talky wt_e2e0000001] from operator \"Pixel 9\"\nAnswer to dc_e2e000000001\nOption: yes\nNot before the browser leg is green.\nRead the decision with: collie hill status dc_e2e000000001",
       },
     ]);
     expect(r.walky.status("wt_e2e0000001").message).toMatchObject({ kind: "operator", from: { label: "Pixel 9", address: null } });
