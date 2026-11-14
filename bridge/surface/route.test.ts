@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
-import { ASK_OFF_TEXT, askRoute, heldCancelRoute, parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, SEND_STATE_FRESH_MS, sendReceiptsRoute, sendRoute, type AskRouteRuntime, type SendRouteRuntime } from "../server.ts";
+import { ASK_OFF_TEXT, askRoute, heldCancelRoute, parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendReceiptsRoute, sendRoute, type AskRouteRuntime, type SendRouteRuntime } from "../server.ts";
 import { readFileSync } from "node:fs";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
@@ -101,7 +101,7 @@ function idlePane() {
   };
 }
 
-function runtime(withSend: boolean, dir: string, holds?: HoldStore, status?: "idle" | "working" | "blocked" | "done" | "unknown", observedAt?: () => number | null) {
+function runtime(withSend: boolean, dir: string, holds?: HoldStore, status?: "idle" | "working" | "blocked" | "done" | "unknown") {
   const pane = idlePane();
   let clock = 0;
   const store = new RequestStore(join(dir, "sends"), () => clock);
@@ -123,13 +123,12 @@ function runtime(withSend: boolean, dir: string, holds?: HoldStore, status?: "id
       })
     : undefined;
   let pokes = 0;
-  const engine: SendRouteRuntime["engine"] = {
+  const engine = {
     current: () => ({ agents: [status === undefined ? { paneId: "%1", agent: "claude" } : { paneId: "%1", agent: "claude", status }], shellPanes: [{ paneId: "%7" }] }),
     noteInput: () => undefined,
     pokeNow: () => {
       pokes++;
     },
-    observedAt: (_paneId) => observedAt?.() ?? null,
   };
   // The herdr stub has no `controlTurn`, so it is a screen pane.
   const rt: SendRouteRuntime = { send, engine, herdr: {}, name: "main" };
@@ -165,33 +164,13 @@ describe("sendRoute", () => {
         ["unknown", false],
         [undefined, false],
       ] as const) {
-        const { rt } = runtime(true, join(dir, String(status)), undefined, status, () => Date.now());
+        const { rt } = runtime(true, join(dir, String(status)), undefined, status);
         const { audit } = auditLines();
         const told: Array<[string, boolean]> = [];
         const res = await sendRoute(rt, { id: `route-turn-${String(status).padEnd(4, "x").slice(0, 4)}`, pane: "%1", text: "go ahead" }, { audit, device: "phone", redact: false, acceptEncoding: null, spoke: (paneId, s) => void told.push([paneId, s]) });
         // SAFETY: the route answers the Send Protocol's answer as JSON; only `receipt.outcome` is read.
         const body = (await res.json()) as { receipt?: { outcome: string } };
         expect(body.receipt?.outcome).toBe("sent");
-        expect(told).toEqual([["%1", started]]);
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("a waiting state counts only when it was observed at most 2 s before the send: stale or unknown only marks (M96 spec 10)", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
-    try {
-      for (const [name, observed, started] of [
-        ["fresh", () => Date.now() - 500, true],
-        ["stale", () => Date.now() - SEND_STATE_FRESH_MS - 1000, false],
-        ["never", () => null, false],
-        ["absent", undefined, false],
-      ] as const) {
-        const { rt } = runtime(true, join(dir, name), undefined, "idle", observed);
-        const { audit } = auditLines();
-        const told: Array<[string, boolean]> = [];
-        await sendRoute(rt, { id: `route-age-${name}`, pane: "%1", text: "go ahead" }, { audit, device: "phone", redact: false, acceptEncoding: null, spoke: (paneId, s) => void told.push([paneId, s]) });
         expect(told).toEqual([["%1", started]]);
       }
     } finally {

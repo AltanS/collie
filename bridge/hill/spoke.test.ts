@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AuditEntry } from "../audit.ts";
-import { hillSpokenClearRoute, SEND_STATE_FRESH_MS, sendSpoke, sendStartedTurn } from "../server.ts";
+import { hillSpokenClearRoute, sendSpoke, sendStartedTurn } from "../server.ts";
 import type { HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_ANSWERED_IN_SESSION, HillService, NOT_ON_LEAD, type HillAgentSender, type HillCrewMode } from "./service.ts";
@@ -261,18 +261,21 @@ describe("a message that started the session's next turn (M96 spec 10)", () => {
   });
 
   test("only a send that started the next turn counts: not a steer, not one queued behind a turn, not one into a session that was not waiting", () => {
-    expect(sendStartedTurn("send", "effective", { queued: false, waited: true, stateAgeMs: 0 })).toBe(true);
-    expect(sendStartedTurn("submit", "sent", { queued: false, waited: true, stateAgeMs: 0 })).toBe(true);
-    expect(sendStartedTurn("send", "steered", { queued: false, waited: true, stateAgeMs: 0 })).toBe(false);
-    expect(sendStartedTurn("send", "sent", { queued: true, waited: true, stateAgeMs: 0 })).toBe(false);
-    expect(sendStartedTurn("send", "effective", { queued: true, waited: true, stateAgeMs: 0 })).toBe(false);
-    expect(sendStartedTurn("send", "sent", { queued: false, waited: false, stateAgeMs: 0 })).toBe(false);
-    expect(sendStartedTurn("send", "held", { queued: false, waited: true, stateAgeMs: 0 })).toBe(false);
-    expect(sendStartedTurn("command", "effective", { queued: false, waited: true, stateAgeMs: 0 })).toBe(false);
-    // The waiting state must rest on an observation at most 2 s old; an older or unknown one only marks.
-    expect(sendStartedTurn("send", "sent", { queued: false, waited: true, stateAgeMs: SEND_STATE_FRESH_MS })).toBe(true);
-    expect(sendStartedTurn("send", "sent", { queued: false, waited: true, stateAgeMs: SEND_STATE_FRESH_MS + 1 })).toBe(false);
-    expect(sendStartedTurn("send", "sent", { queued: false, waited: true, stateAgeMs: null })).toBe(false);
-    expect(sendStartedTurn("send", "sent", { queued: false, waited: true, stateAgeMs: -1 })).toBe(false);
+    expect(sendStartedTurn("send", "effective", { queued: false, waited: true })).toBe(true);
+    expect(sendStartedTurn("submit", "sent", { queued: false, waited: true })).toBe(true);
+    expect(sendStartedTurn("send", "steered", { queued: false, waited: true })).toBe(false);
+    expect(sendStartedTurn("send", "sent", { queued: true, waited: true })).toBe(false);
+    expect(sendStartedTurn("send", "effective", { queued: true, waited: true })).toBe(false);
+    expect(sendStartedTurn("send", "sent", { queued: false, waited: false })).toBe(false);
+    expect(sendStartedTurn("send", "held", { queued: false, waited: true })).toBe(false);
+    expect(sendStartedTurn("command", "effective", { queued: false, waited: true })).toBe(false);
+  });
+
+  test("a close rests on the bridge's last read of the session, not on a read at the send (follow-up)", () => {
+    // KNOWN LIMIT: `waited` is the state engine's last poll, which may be seconds old, or a stored word from
+    // a plugin that no longer runs. Nothing here reads the session again at the send; the follow-up spec
+    // brings the Send Protocol's own first read (screen path) and the plugin's answer (data path). Until
+    // then a send into a session whose last read said idle closes its cards, however old that read is.
+    expect(sendStartedTurn("send", "sent", { queued: false, waited: true })).toBe(true);
   });
 });
