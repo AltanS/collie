@@ -38,6 +38,8 @@ const SHELL_ARGS = [
 ] as const;
 const installed = (shell: string): boolean => spawnSync("sh", ["-c", `command -v ${shell}`]).status === 0;
 const SHELLS: readonly string[] = SHELL_ARGS.map(([shell]) => shell).filter(installed);
+/** The shells the Linux CI job must have (COLLIE_REQUIRE_SHELLS=1). ksh is optional everywhere. */
+const REQUIRED_SHELLS = ["bash", "dash", "zsh", "fish"] as const;
 const argsOf = (shell: string): readonly string[] => SHELL_ARGS.find(([name]) => name === shell)?.[1] ?? ["-c"];
 
 /** What the canary run left behind: every path under the temp root that is not the empty work folder or HOME's own files. */
@@ -118,9 +120,34 @@ function linesFor(payload: string) {
 describe("the typed line at a shell prompt runs nothing (fix/walky-line-fields)", () => {
   // A shell this machine lacks gets no test at all rather than a skipped one, so the Windows skip budget
   // (scripts/windows-suites.ps1) is untouched: on Windows `sh` is missing and only this first test runs.
+  // With COLLIE_REQUIRE_SHELLS=1 (the Linux bridge job of ci.yml, which installs zsh and fish) a missing
+  // bash, dash, zsh or fish FAILS here instead of leaving its tests out, so CI always runs the real shells.
+  // Not keyed on CI: release, windows, webkit and packaging runs set CI too and lack these shells.
   test(`the shells this machine has: ${SHELLS.length === 0 ? "none" : SHELLS.join(", ")}`, () => {
     expect(SHELLS.every((shell) => SHELL_ARGS.some(([name]) => name === shell))).toBe(true);
+    if (process.env.COLLIE_REQUIRE_SHELLS === "1") expect(REQUIRED_SHELLS.filter((shell) => !SHELLS.includes(shell))).toEqual([]);
   });
+
+  // Measured 2026-11-14 on bash 5.3.9, zsh 5.9 and fish 4.6.0, a header line as the only input:
+  //   bash  `bash: line 1: [walky-talky: command not found`, exit 127 (the line's first word is looked up
+  //         as a command; with the older form bash refused the whole line, a syntax error at `(`)
+  //   zsh   `zsh:1: bad pattern: [walky-talky`, exit 1 (an unclosed `[` glob; zsh still expands every
+  //         word first, which is how a backtick ran in the older form)
+  //   fish  `fish: Unknown command: '[walky-talky'`, exit 127
+  // So the first word runs only if a command named `[walky-talky` exists (bash's command_not_found_handle
+  // may run its own lookup). The message texts may change between versions; only the shape is asserted.
+  for (const [shell, said] of [
+    ["bash", /\[walky-talky: command not found/u],
+    ["zsh", /bad pattern: \[walky-talky/u],
+    ["fish", /Unknown command: '?\[walky-talky/u],
+  ] as const) {
+    if (!SHELLS.includes(shell)) continue;
+    test(`${shell}: the first word \`[walky-talky\` is no command, and the shell says so`, () => {
+      const out = spawnSync(shell, [...argsOf(shell), '[walky-talky wt_qoo5tvg2ldhj] from operator "Pixel 9"'], { cwd: tmpdir(), env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: tmpdir() }, encoding: "utf8", timeout: 10_000 });
+      expect(out.status).not.toBe(0);
+      expect(out.stderr).toMatch(said);
+    });
+  }
 
   for (const shell of SHELLS) {
     test(`${shell}: the canary works (a plain \`touch canary\` makes it)`, async () => {
