@@ -14,8 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 392 in all, each one named, with its reason:
-#              bridge 173. 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
+#              Today, 484 in all, each one named, with its reason:
+#              bridge 254: 173 from before 1.29.0 and 81 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
+#                adapters 10; see below). Of the 173, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below). 42 are the Hill and the tricks (see
@@ -129,7 +130,24 @@
 #                "updating an added trick to the list's commit" and "a git run killed at its time cap", and its 4 `test.if(posix)`
 #                cases. The fixture repository is reached as `file://` plus a temp path, which is no file URL on Windows; its
 #                programs are `#!/bin/sh` with an executable bit; the time cap kills a POSIX process group.
-#              cli 184 in all: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
+#              The data path, bridge (54 + 17). The part (the local socket of bridge/inside/, ADR 0140) is OFF on Windows in 1.29.0
+#                (decision 15: Windows keeps the screen path). `InsideServer.start()` answers false there, so `dataRig` cannot start
+#                and no test can dial the socket, as for the hold and walky sockets above. Each of these is `dataTest` or `dataDescribe`
+#                (bridge/inside/data-rig.ts), a skip on win32, and the file's tests that do not use the rig run on Windows:
+#                - 20 in bridge/walky/deliver.test.ts, "WalkyTalky by data (M99 spec 05)"
+#                - 7 in bridge/inside/round.test.ts, every test: a whole round with the fake part
+#                - 11 in bridge/surface/data-send.test.ts, every test
+#                - 3 in bridge/surface/holds.test.ts, "a data send while the part's turn runs"
+#                - 10 in bridge/inside/stale-word.test.ts, every test
+#                - 3 in bridge/inside/linked.test.ts, the two that start the rig and "the field follows the live part"
+#                - 17 in bridge/inside/server.test.ts, every test that starts the server or dials it. One test there runs everywhere
+#                  and proves the Windows answer with an injected host (`start()` is false and logs "not built for Windows"; the gate
+#                  says "platform", also in gate.test.ts).
+#              The Herdr and Tuios adapters, bridge (10). The describe "a connection closed before the reply" of
+#                bridge/mux/herdr/client.test.ts and of bridge/mux/tuios/client.test.ts (5 tests each, M100 spec 03) is `describe.skipIf`
+#                on win32: its stand-in daemon is a `net` server listening on a Unix socket path in a temp folder, which the
+#                Windows client does not dial (it dials a named pipe).
+#              cli 195 in all: 11 are new since 1.29.0: 3 of the hold card and 8 of the harness verbs, below. The other 184: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
 #                69 of the Hill verbs and the tricks (see "The Hill verbs and the tricks, cli" below), and 16 gated on Windows (b)
 #                (see "The helper's output, cli" below). Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
@@ -172,6 +190,17 @@
 #                2 are cli/trick-kit/trick.test.ts, the helper's POSIX tools. Each name sits on one line, so the pin test can find it:
 #                - "t.sh runs without a shell, never throws, caps its output, stops on time, and hides BUN_BE_BUN from the child" (echo, head, sleep, env, /dev/zero)
 #                - "t.tool finds a program on PATH, else in the extra and user folders, PATH only under TRICK_TOOLS_ONLY_PATH=1" (sh on /usr/bin:/bin, a tool found by its executable bit)
+#              The hold card, cli (3). The "two emitters, one card" describe of cli/hold.test.ts runs the hook against a real hold socket
+#                and is `test.skipIf` off Linux (Windows builds no hold socket, see the hold socket above):
+#                - "with no owning part the hook's hold is the card, as before"
+#                - "the part owns permissions: one card from the part, the hook returns at once with no decision"
+#                - "the hook comes first: its card stays until the part's hold opens, then the hook returns with no decision and the part's hold is the one card"
+#              The harness verbs, cli (8). The tests of "harness verbs for the data path" pin `platform: "linux"` through the verbs'
+#                `deps.platform` seam, so their logic runs on Windows (the verbs refuse on win32 in 1.29.0, ADR 0140; "on Windows link
+#                refuses" runs everywhere). The 8 that run the fake `claude`, a `#!/bin/bash` script that Windows cannot run from a
+#                PATH lookup, are `claudeTest`, a skip on win32: link claude, link claude twice, unlink claude, the managed setting,
+#                the interrupted first link, unlink while `claude plugin list` fails, "update: harness sync rewrites an older linked
+#                part" and "touches nothing else".
 #              The helper's output, cli (16): gated on Windows (b). A program that uses the trick helper (`./trick.ts`) prints
 #                nothing on Windows yet, so Collie gates tricks there (bridge/tricks/service.ts `gated`). Each test that runs
 #                such a program is `helperTest`, a `test.skipIf` on win32: 1 in cli/trick.test.ts ("the folder init writes
@@ -188,8 +217,8 @@
 #                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 173,
-  [int]$MaxSkipsCli = 184,
+  [int]$MaxSkipsBridge = 254,
+  [int]$MaxSkipsCli = 195,
   [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

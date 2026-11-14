@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 392 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 484 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([173, 184, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([254, 195, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -223,9 +223,32 @@ describe("the Windows check runs the flake's Bun", () => {
     const officialSkips = testsInBlocks(official, "describe.if(posix)(") + (official.match(/^ {2}test\.if\(posix\)\(/gm) ?? []).length;
     expect(officialSkips).toBe(33);
     expect(script).toContain("bridge/tricks/official.test.ts");
+    // The data path is off on Windows in 1.29.0 (ADR 0140, decision 15): every test on `dataRig` or the inside socket is
+    // `dataTest` or `dataDescribe` (bridge/inside/data-rig.ts), a skip on win32. 54 on the rig, 17 in server.test.ts.
+    const dataPathSkips = [
+      "bridge/walky/deliver.test.ts",
+      "bridge/inside/round.test.ts",
+      "bridge/surface/data-send.test.ts",
+      "bridge/surface/holds.test.ts",
+      "bridge/inside/stale-word.test.ts",
+      "bridge/inside/linked.test.ts",
+      "bridge/inside/server.test.ts",
+    ].reduce((sum, file) => {
+      const text = readFileSync(join(ROOT, file), "utf8");
+      return sum + testsInBlocks(text, "dataDescribe(") + (text.match(/^ {2}dataTest\(/gm) ?? []).length;
+    }, 0);
+    expect(dataPathSkips).toBe(71);
+    expect(script).toContain("bridge/inside/data-rig.ts");
+    // The Herdr and Tuios adapters (M100 spec 03): the stand-in daemon listens on a Unix socket path, so each describe skips on win32.
+    const adapterSkips = ["bridge/mux/herdr/client.test.ts", "bridge/mux/tuios/client.test.ts"].reduce(
+      (sum, file) => sum + testsInBlocks(readFileSync(join(ROOT, file), "utf8"), 'describe.skipIf(process.platform === "win32")("'),
+      0,
+    );
+    expect(adapterSkips).toBe(10);
+    expect(script).toContain("a connection closed before the reply");
     expect(budget("Bridge")).toBe(
       viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
-        hillSkips.length + legsEndToEnd + officialSkips,
+        hillSkips.length + legsEndToEnd + officialSkips + dataPathSkips + adapterSkips,
     );
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
     // 54 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
@@ -270,8 +293,16 @@ describe("the Windows check runs the flake's Bun", () => {
     const helperOutputSkips = ["cli/trick.test.ts", "cli/trick-kit/trick.test.ts", "cli/trick-dev.test.ts"].flatMap((file) => readFileSync(join(ROOT, file), "utf8").match(/^ {2}helperTest\(/gm) ?? []);
     expect(helperOutputSkips).toHaveLength(16);
     expect(script).toContain("gated on Windows (b)");
+    // The hold card (cli/hold.test.ts) runs the hook against a real hold socket: 3 tests, `test.skipIf` off Linux.
+    const holdCardSkips = (readFileSync(join(ROOT, "cli", "hold.test.ts"), "utf8").match(/^ {2}test\.skipIf\(POSIX_ONLY\)\(/gm) ?? []).length;
+    expect(holdCardSkips).toBe(3);
+    expect(script).toContain("two emitters, one card");
+    // The harness verbs run a fake `claude` that is a bash script: 8 `claudeTest` cases skip on win32, the rest pin the platform through the seam.
+    const harnessLinkSkips = (readFileSync(join(ROOT, "cli", "harness-link.test.ts"), "utf8").match(/^ {2}claudeTest\(/gm) ?? []).length;
+    expect(harnessLinkSkips).toBe(8);
+    expect(script).toContain("harness verbs for the data path");
     expect(budget("Cli")).toBe(
-      sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + viewSocketTests.length + 3 + 1 + 2 + hillSocketTests.length + stagingSkips.length + addSkips + proposeSkips.length + helperSkips.length + helperOutputSkips.length,
+      sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + viewSocketTests.length + 3 + 1 + 2 + hillSocketTests.length + stagingSkips.length + addSkips + proposeSkips.length + helperSkips.length + helperOutputSkips.length + holdCardSkips + harnessLinkSkips,
     );
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");
