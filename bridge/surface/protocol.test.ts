@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
+import { muxAck, muxOk, muxRefused, muxUnconfirmed, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type PopupRule, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
@@ -11788,6 +11788,38 @@ describe("the same text again onto the box an earlier send left it in: Enter onl
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual(["Enter"]);
     expect(pane.box).toBe("");
+  });
+
+  // M100 spec 03: a text write the multiplexer did not confirm and that did not show in its wait ends
+  // `unknown`. If it lands later and the person confirms "Send it again?", the box holds exactly this
+  // text: the resend takes this same path (Enter only), and the text is never in the box twice.
+  test("a write that was not confirmed, did not show, and landed later: the resend presses only Enter", async () => {
+    const r = rig({ version: "2.1.302" });
+    const writes = r.deps.mux;
+    const land = writes.pasteText ?? writes.typeText;
+    let lose = true;
+    const losing = (paneId: string, text: string): Promise<MuxAck> => {
+      if (lose && text.includes(TEXT_IN)) {
+        lose = false;
+        return Promise.resolve(muxUnconfirmed("Herdr did not confirm the text written to %1 in time (herdr pane.send_text: timed out after 5000ms). It may still arrive, so it was not written again."));
+      }
+      return land(paneId, text);
+    };
+    writes.typeText = losing;
+    if (writes.pasteText !== undefined) writes.pasteText = losing;
+    const first = await r.send(TEXT_IN);
+    expect(first.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(r.pane.box).toBe("");
+    // The text lands after Collie stopped looking.
+    await land("%1", TEXT_IN);
+    expect(r.pane.box).toBe(TEXT_IN);
+    r.pane.calls = [];
+    r.pane.keysSeen = [];
+    const again = await r.send(TEXT_IN);
+    expect(again.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual(["Enter"]);
+    expect(r.pane.box).toBe("");
   });
 
   test("the retry in a running turn queues it the same way: sent and queued, only Enter", async () => {

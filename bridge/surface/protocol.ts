@@ -2713,6 +2713,12 @@ interface RunState {
   /** A send found the text an earlier send left typed in the box and pressed only the submit key ({@link SendProtocol.finishesOwnText}). */
   finishedOwn?: boolean;
   /**
+   * The text write was not confirmed and did not show inside its wait ({@link SendProtocol.unconfirmedWrite}):
+   * the send ends `unknown`, and the text may land later. It is remembered like a text left typed, so a
+   * send of the same text that finds exactly it in the box presses only the submit key.
+   */
+  writeUnseen?: boolean;
+  /**
    * The box stood at its scroll height and showed only the end of the text: S1 (or Submit and
    * Discard's own check) compared those rows with the end of the text (boxHolds). The receipt says so.
    */
@@ -4434,11 +4440,14 @@ export class SendProtocol {
    * send, a command or a Replace that someone asked for now (not a release from the hold queue, not a
    * WalkyTalky message, not a view's send, not a steer) is remembered with the pane's generation. Any
    * other end that pressed a submit or clear key (sent, steered, discarded, unknown) forgets it; a
-   * refusal leaves it, because a refusal typed nothing that stayed.
+   * refusal leaves it, because a refusal typed nothing that stayed. An `unknown` whose text write was not
+   * confirmed and did not show ({@link RunState.writeUnseen}) pressed no key after the write and may
+   * land late: it is remembered too, so a confirmed resend of the same text finds it and never types it
+   * a second time (M100 spec 03).
    */
   private noteLeftTyped(state: RunState, outcome: SendOutcome): void {
     const key = state.lockKey;
-    if (outcome === "typed_not_submitted") {
+    if (outcome === "typed_not_submitted" || (outcome === "unknown" && state.writeUnseen === true)) {
       if (!ownTextKind(state)) {
         this.leftTyped.delete(key);
         return;
@@ -5774,8 +5783,11 @@ export class SendProtocol {
    * no longer reads as `base` did, or with no frame a read holds more of the text's first characters
    * than `base`). When it shows, the run goes on: the caller's S1 proves the whole text before any
    * submit key, as for any write, or ends `typed_not_submitted` with what stands in the box. When no
-   * read shows it, nothing of it is in the box, and the write is refused as before (`write_failed`,
-   * with the multiplexer's sentence). The request's bound grows by the wait, so S1 keeps its own.
+   * read shows it, the run ends `unknown(no_evidence)` with the multiplexer's sentence, never a
+   * refusal: "not seen in 3.2 s" is a time-out too, and the text may still land after it. A refusal
+   * would tell the phone that nothing was typed, and a retap would type the text twice; `unknown` keeps
+   * the draft and makes the next tap with the same text ask "Send it again?" (M100 spec 03). The
+   * request's bound grows by the wait, so S1 keeps its own.
    */
   private async unconfirmedWrite(state: RunState, base: Snap, text: string, detail: string): Promise<void> {
     this.stretch(state, UNCONFIRMED_WRITE.ms);
@@ -5788,7 +5800,9 @@ export class SendProtocol {
       return head.length > 0 && countIn(snap.texts, head) > countIn(base.texts, head) ? "pass" : "wait";
     };
     const seen = await this.poll(state, "write", UNCONFIRMED_WRITE, shows);
-    if (seen.verdict !== "pass") throw new Ended("refused", "write_failed", { detail });
+    if (seen.verdict === "pass") return;
+    state.writeUnseen = true;
+    throw new Ended("unknown", "no_evidence", { detail });
   }
 
   /**
