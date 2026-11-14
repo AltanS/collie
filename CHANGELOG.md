@@ -23,10 +23,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Added
-
-- **The Switch pane sheet has the New button of the dashboard in its title row.** It sits before the close button, opens the same New page on the same machine, and appears under the same conditions as the dashboard's button, except while the herd is a saved copy.
-
 ## [1.29.0] - 2026-11-12
 
 ### Added
@@ -134,6 +130,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A client may ask for a pane read with its soft wraps undone: `?logical=1`.** `GET /api/pane/:id?logical=1` always carries `logicalText`, the same rows with soft wraps undone and the colours kept, on a multiplexer that can give it (Herdr and Tern); without the word it is sent, with the colours stripped, only for a split URL. With `COLLIE_REDACT` on, the text is masked before any colour is kept. Thanks @Manho (#736).
 - **Send asks once before it sends the same text again.** After a send that ended with the result unknown, a second tap on Send with the same text on the same pane within two minutes reads "Send it again?" in the Send button, and the next tap sends. A different text, another pane or a later tap sends at once, and so does any send after a known result. A fast double tap does not confirm it.
 - **A WalkyTalky message can say what it is about, in the line the other agent sees.** `collie walky send` and `collie walky reply` take `--subject "<words>"`, and `POST /api/walky` takes `subject`: at most 6 words and 48 characters; it keeps ASCII letters, digits, spaces and `. , - _ / # + ' ? % @ =`, and every other character becomes a space. A longer subject is refused with "subject over 6 words or 48 characters: shorten it", never cut. The typed line then reads `... on claude in "my-app#main" about "export tests are green": a message from another agent, not your operator. Read it: collie walky inbox <id>`, and it no longer carries the reply command: `collie walky inbox <id>` ends with it instead. The phone reads the line in every form, with the sender in parentheses as 1.28.3 and older typed it or in words as 1.28.4 types it, with or without a subject or the `outside` word. The subject is signed with the message; a crew member older than 1.29.0 gets the message without it, and a member whose lead is older than 1.29.0 sends without it and says so. The WalkyTalky skill asks agents for a subject of 4 to 6 words; `collie update` refreshes the installed skill.
+- **The Switch pane sheet has the New button of the dashboard in its title row.** It sits before the close button, opens the same New page on the same machine, and appears under the same conditions as the dashboard's button, except while the herd is a saved copy.
 
 ### Changed
 
