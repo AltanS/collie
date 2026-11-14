@@ -77,7 +77,7 @@ import {
   type TapLog,
 } from "./leg";
 import { DEVICE_LABEL, LEAD_ID, MEMBER_ID, askWalky, paneClose, sleep } from "./rig-lib";
-import { ABOUT, OUTSIDE_YOUR_SPACE, PHONE, REPLY_MS, SENDER, cliCancel, cliSend, ensureDraft, escape, firstRow, mintId, operatorHeaderPattern, refusalCount, settledWalky, startExtraAgent, takeBackFor, viaOf, wrapped } from "./walky-lib";
+import { OUTSIDE_YOUR_SPACE, PHONE, REPLY_MS, cliCancel, cliSend, ensureDraft, escape, firstRow, mintId, nudgePattern, operatorHeaderPattern, refusalCount, settledWalky, startExtraAgent, takeBackFor, viaOf, withoutSubjects } from "./walky-lib";
 
 const RIG_TS = join(import.meta.dirname, "rig.ts");
 
@@ -285,6 +285,8 @@ test.describe("walky talky across a crew", () => {
       await resetBox(rig, piPane, MEMBER_ID);
       const notes = trail.notes;
       const token = "PING-THIRTEEN";
+      // A fixed subject that holds no token: a subject is typed on the nudge line, and the case judges that line.
+      const subject = "ping check";
       // The sender asks for the answer by walky talky, as one agent asks another: the nudge then names `collie walky reply`.
       const body = `${token}. Answer me by walky talky reply, with the single word pong.`;
       // The nudges already in pi's scrollback (a rerun on a kept rig): the case takes only a new one.
@@ -295,13 +297,13 @@ test.describe("walky talky across a crew", () => {
           await sendFromComposer(
             page,
             recorder,
-            `Use walky talky. Run \`collie walky who\`, then send the pi agent on the machine ${MEMBER_ID} this message, to its address exactly as \`who\` printed it: "${body}" Then stop.`,
+            `Use walky talky. Run \`collie walky who\`, then send the pi agent on the machine ${MEMBER_ID} this message, to its address exactly as \`who\` printed it, with \`--subject "${subject}"\`: "${body}" Then stop.`,
             "ask Claude to send",
           ),
         );
         // pi's screen, read through the lead: the one-line nudge from Claude's pane, with no body.
         const from = addressPattern(LEAD_ID, claudePane);
-        const nudge = new RegExp(`\\[walky-talky (wt_[a-z0-9]{12})\\] from agent ${from}${SENDER("claude")}${ABOUT}: ${wrapped("a message from another agent, not your operator.")}`, "g");
+        const nudge = new RegExp(nudgePattern({ id: "(wt_[a-z0-9]{12})", from, harness: "claude", subject }), "g");
         const fresh = (text: string): string | null => [...text.matchAll(nudge)].map((m) => m[1]!).find((found) => !before.has(found)) ?? null;
         const nudged = await rig.until(() => rig.screen(piPane, 200, MEMBER_ID), (text) => fresh(text) !== null, REPLY_MS);
         const id = nudged === null ? null : fresh(nudged);
@@ -314,7 +316,8 @@ test.describe("walky talky across a crew", () => {
         notes.push(`Claude ${who ? "ran" : "did NOT show"} \`collie walky who\`; pi got the nudge for ${id}`);
         // The address Claude sent to, off its own Bash call, against the one the lead's `who` prints for pi.
         const listed = asJsonString(jsonRows((await askWalky("lead", { op: "who" }))?.targets).find((t) => (asJsonString(t.address) ?? "").startsWith(crewAddress(MEMBER_ID, piPane)))?.address) ?? null;
-        const typedTo = [...claudeScreen.matchAll(/collie walky send\s+["']?([a-z0-9-]+\/[^\s"'()]+)/g)].map((m) => m[1]!).findLast((address) => address.startsWith(`${MEMBER_ID}/`)) ?? null;
+        // A flag may come before the address (`send --subject "..." <address> ...`).
+        const typedTo = [...claudeScreen.matchAll(/collie walky send\s+(?:--subject\s+(?:"[^"]*"|'[^']*'|\S+)\s+|--[a-z-]+\s+)*["']?([a-z0-9-]+\/[^\s"'()]+)/g)].map((m) => m[1]!).findLast((address) => address.startsWith(`${MEMBER_ID}/`)) ?? null;
         const tokened = typedTo !== null && new RegExp(`^${escape(crewAddress(MEMBER_ID, piPane))}#[a-z0-9]{4}$`).test(typedTo) && typedTo === listed;
         notes.push(`Claude sent to ${typedTo ?? "no address on screen"}, who lists ${listed ?? "nothing"}: ${tokened ? "the address with its token" : "NOT the token address"}`);
         const bodyInNudge = nudged!.split("\n").some((line) => line.includes(`[walky-talky ${id}]`) && line.includes(token));
@@ -336,7 +339,7 @@ test.describe("walky talky across a crew", () => {
         const replyFrom = asJsonString(asJsonObject(reply?.from)?.address) ?? "";
         const replyState = replyId === null ? "no reply row" : await settledWalky(rig, claudePane, replyId, 60_000);
         notes.push(`pi replied: ${replyId ?? "-"} from ${replyFrom || "?"}, ${replyState}`);
-        const replyNudge = replyId === null ? null : new RegExp(`\\[walky-talky ${replyId}\\] from agent ${addressPattern(MEMBER_ID, piPane)}${SENDER("pi")}${ABOUT} reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
+        const replyNudge = replyId === null ? null : new RegExp(nudgePattern({ id: replyId, from: addressPattern(MEMBER_ID, piPane), harness: "pi", replyTo: id }));
         const replyOnScreen = replyNudge === null ? null : await rig.screenUntil(claudePane, replyNudge, 60_000, 200);
         notes.push(replyOnScreen === null ? "Claude's pane shows no reply nudge" : "Claude's pane shows the reply nudge");
         // The reply's outcome on the MEMBER, the machine that sent it: the lead pushed it back.
@@ -511,6 +514,8 @@ test.describe("walky talky across a crew", () => {
       await resetBox(rig, claudePane);
       const notes = trail.notes;
       const token = "PING-NINETEEN";
+      // A fixed subject that holds no token: a subject is typed on the nudge line, and the case judges that line.
+      const subject = "ping check";
       const body = `${token}. Answer me by walky talky reply, with the single word pong.`;
       // The lead pane's address comes from the lead's `who` and goes into the prompt, so the send does not depend on what pi reads.
       const leadWho = await askWalky("lead", { op: "who" });
@@ -524,7 +529,7 @@ test.describe("walky talky across a crew", () => {
           await sendFromComposer(
             page,
             recorder,
-            `Use walky talky. Run \`collie walky who\` first: it lists the panes of your space on every machine. Then send the agent at ${address} this message, to that address exactly: "${body}" Then stop.`,
+            `Use walky talky. Run \`collie walky who\` first: it lists the panes of your space on every machine. Then run exactly this command: \`collie walky send ${address} --subject "${subject}" "${body}"\` Then stop.`,
             "ask pi to send",
           ),
         );
@@ -542,7 +547,7 @@ test.describe("walky talky across a crew", () => {
         notes.push(piScreen.includes("collie walky who") ? "pi ran `collie walky who`" : "pi's screen does not show `collie walky who`");
 
         // Claude's screen: the one-line nudge with no body, then `inbox <id>` and the body in its output.
-        const nudge = new RegExp(`\\[walky-talky ${id}\\] from agent ${addressPattern(MEMBER_ID, piPane)}${SENDER("pi")}${ABOUT}: ${wrapped("a message from another agent, not your operator.")}`);
+        const nudge = new RegExp(nudgePattern({ id, from: addressPattern(MEMBER_ID, piPane), harness: "pi", subject }));
         const nudged = await rig.screenUntil(claudePane, nudge, 60_000, 300);
         const read = await rig.screenUntil(claudePane, new RegExp(`Bash\\(collie walky inbox ${id}\\)[\\s\\S]*${token}`), REPLY_MS, 300);
         const claudeScreen = await rig.screen(claudePane, 300);
@@ -555,7 +560,7 @@ test.describe("walky talky across a crew", () => {
         notes.push(`the member's \`collie walky status ${id}\`: ${receiptWords(memberStatus)}`);
 
         // Claude's `collie walky reply` shows on pi's pane as a nudge that names the first message.
-        const replyNudge = new RegExp(`\\[walky-talky (wt_[a-z0-9]{12})\\] from agent ${addressPattern(LEAD_ID, claudePane)}${SENDER("claude")}${ABOUT} reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
+        const replyNudge = new RegExp(nudgePattern({ id: "(wt_[a-z0-9]{12})", from: addressPattern(LEAD_ID, claudePane), harness: "claude", replyTo: id }));
         const piWithReply = await rig.until(() => rig.screen(piPane, 300, MEMBER_ID), (text) => replyNudge.test(text), REPLY_MS);
         const replyId = piWithReply === null ? null : (replyNudge.exec(piWithReply)?.[1] ?? null);
         notes.push(replyId === null ? "pi's pane shows no reply nudge" : `pi's pane shows the reply nudge for ${replyId}`);
@@ -567,7 +572,8 @@ test.describe("walky talky across a crew", () => {
         await waitIdle(rig, piPane, REPLY_MS, MEMBER_ID);
         const finalPi = await rig.screen(piPane, 300, MEMBER_ID);
         const piCall = replyId === null ? -1 : finalPi.search(new RegExp(`collie walky inbox ${replyId}`));
-        const piRead = piCall !== -1 && /\bpong\b/i.test(finalPi.slice(piCall));
+        // A subject of Claude's own is no body: `inbox` prints it on its header line, so it is taken out first.
+        const piRead = piCall !== -1 && /\bpong\b/i.test(withoutSubjects(finalPi.slice(piCall)));
         notes.push(piRead ? "pi read the reply with `inbox`: pong" : "pi did not show the reply's body from `inbox`");
         trail.captures.push(await captureScreen(rig, claudePane, "walky-19-claude"), await captureScreen(rig, piPane, "walky-19-pi", MEMBER_ID), await capture(page, "walky-19-pi-phone"));
         const ok =

@@ -69,10 +69,50 @@ export function wrapped(text: string): string {
 export const SENDER = (harness: string): string => `(?:\\s+on\\s+${harness}\\s+in\\s+"[^"]*"|\\s+\\(${harness},\\s[^)]*\\))`;
 
 /**
+ * A RegExp source for one exact subject after the sender: ` about "<subject>"`, any white space standing for
+ * a space. A case whose model composes a send gives the subject in its prompt and asserts it with this, so a
+ * model cannot carry the case's token in a subject of its own choosing (a subject is typed on the nudge line).
+ */
+export const aboutExactly = (subject: string): string => `\\s+about\\s+"${wrapped(subject)}"`;
+
+/**
+ * Text as a reader of the screen should judge a body by: every ` about "<subject>"` taken out, since the
+ * subject is the sender's own words on the header (the nudge line and `inbox`'s first line), not the body.
+ */
+export const withoutSubjects = (text: string): string => text.replace(/\babout\s+"[^"]*"/gu, "");
+
+/**
  * A RegExp source for the optional subject after the sender (M98 spec 07): ` about "<words>"`,
  * any white space standing for a space, since the terminal may wrap inside it. A subject holds no `"`.
  */
 export const ABOUT = '(?:\\s+about\\s+"[^"]*")?';
+
+/** What a nudge pattern names: each part a RegExp source, except `harness` and `subject`, which are plain text. */
+export interface NudgeParts {
+  /** The message id: a literal id, or a capture group such as `(wt_[a-z0-9]{12})`. */
+  readonly id: string;
+  /** The sender's address, as `addressPattern` writes it. */
+  readonly from: string;
+  readonly harness: string;
+  /** Present when the line must carry the outside word. */
+  readonly outside?: true;
+  /** The exact subject the line must carry; absent, any subject or none passes. */
+  readonly subject?: string;
+  /** The id the line must answer (` reply to <id>`); absent, the line has no reply suffix. */
+  readonly replyTo?: string;
+}
+
+/**
+ * A RegExp source for an agent's nudge line, in either sender form. Every part is joined with `\s+` and holds
+ * no literal space, so a terminal may break the line at any space and the pattern still matches.
+ */
+export function nudgePattern(parts: NudgeParts): string {
+  const head = `\\[walky-talky\\s+${parts.id}\\]\\s+from\\s+agent\\s+${parts.from}${SENDER(parts.harness)}`;
+  const outside = parts.outside === true ? "\\s+outside" : "";
+  const about = parts.subject === undefined ? ABOUT : aboutExactly(parts.subject);
+  const reply = parts.replyTo === undefined ? "" : `\\s+reply\\s+to\\s+${parts.replyTo}`;
+  return `${head}${outside}${about}${reply}:\\s+${wrapped("a message from another agent, not your operator.")}`;
+}
 
 /** The single-pane address of a pane on a solo install, which is what the rig's bridge is. */
 export const addressOf = (paneId: string): string => `local/${paneId}`;
