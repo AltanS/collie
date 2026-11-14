@@ -171,7 +171,6 @@ beforeAll(() => {
 beforeEach(() => {
   clearStatus();
   // An unknown send arms "Send it again?" for the same text on the same pane; no test inherits another's.
-  sessionStorage.removeItem("collie:send-again:default:w1:p1");
   __forgetSendAgainMemory();
   imageEditHarness.mode = "auto";
   imageEditHarness.lastConfirm = null;
@@ -5060,7 +5059,7 @@ describe("outcome at the thumb", () => {
     // The same text on the same pane, moments after an unknown result: the Send slot asks (M100 spec 06).
     await user.click(screen.getByRole("button", { name: "Send" }));
     const again = await screen.findByRole("button", { name: "Send it again?" });
-    await new Promise((resolve) => setTimeout(resolve, 450)); // the question takes a moment before it counts (SEND_AGAIN_CONFIRM_DELAY_MS)
+    await new Promise((resolve) => setTimeout(resolve, 750)); // the question takes a moment before it counts (SEND_AGAIN_CONFIRM_DELAY_MS)
     await user.click(again);
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]!.id).not.toBe(recordedSends()[0]!.id);

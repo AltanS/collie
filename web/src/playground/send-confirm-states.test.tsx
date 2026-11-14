@@ -43,8 +43,8 @@ describe.each([
   it(`a tap of your own on ${word} sends, and the card stops arming`, async () => {
     const { container } = render(<SendConfirmPhone kind={kind} />);
     const button = await screen.findByRole("button", { name: word }, SLOW);
-    // "Send it again?" counts a tap only after 400 ms; a person reads it first.
-    await new Promise((resolve) => setTimeout(resolve, 450));
+    // "Send it again?" counts a tap only after 700 ms; a person reads it first.
+    await new Promise((resolve) => setTimeout(resolve, 750));
     button.click();
     await waitFor(() => expect(screen.getByRole<HTMLTextAreaElement>("textbox").value).toBe(""), SLOW);
     await new Promise((resolve) => setTimeout(resolve, 600));

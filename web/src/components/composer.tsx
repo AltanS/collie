@@ -881,6 +881,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const armedWhen = useRef<SendWhen | undefined>(undefined);
   // When "Send it again?" was armed (ms since the epoch): a confirming tap counts only after a short delay.
   const sendAgainArmedAt = useRef(0);
+  // True for the first SEND_AGAIN_CONFIRM_DELAY_MS (700 ms) after "Send it again?" is armed: the word cannot confirm yet, so it
+  // is drawn at reduced opacity (a cue that a tap now does nothing, not a frozen button). Flipped by a timer set at the arm.
+  const [sendAgainWaiting, setSendAgainWaiting] = useState(false);
+  const sendAgainWaitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (sendAgainWaitTimer.current !== null) clearTimeout(sendAgainWaitTimer.current);
+    },
+    [],
+  );
   // The password prompt the last refused send was looking at, if it was one (#103). Since M56 spec 06
   // the phone reads nothing before a send; this is a display read of the screen the composer already
   // has (`text`), taken when the bridge refused or left the text unsubmitted, and only to say so and
@@ -1918,17 +1928,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // An `unknown` outcome is an open question the journal can still answer (#511): remember the
       // send, so its text landing as a user turn retires this notice and the kept draft. A resend
       // carries no text of its own to recognise, so it is never remembered.
+      if (reading.note === "unknown" && resend === undefined) {
+        setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
+        // The next tap on this same text asks "Send it again?" first (lib/send-again.ts, memory only).
+        if (isDraft && t !== "") rememberUnknownSend(scope, paneId, t, Date.now(), isShell);
+      }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
       // A display read only; the bridge's answer is the verdict.
       const prompt = detectNoEchoPrompt(splitLines(parseAnsi(text)));
-      if (reading.note === "unknown" && resend === undefined) {
-        setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
-        // The next tap on this same text asks "Send it again?" first (lib/send-again.ts). What the phone knows at
-        // this moment decides where the memory lives: a send to a no-echo prompt (the one read above, or a
-        // notice already standing) or on a shell pane stays in memory and never reaches sessionStorage.
-        if (isDraft && t !== "") rememberUnknownSend(scope, paneId, t, Date.now(), { isShell, memoryOnly: prompt !== null || noEchoRef.current !== null || isShell });
-      }
       if (prompt !== null) noticeNoEcho({ prompt, typed: reading.note === "typed" || reading.note === "unknown" });
       // The person's next look is the pane: snap the mirror to the live tail, as a send does.
       onSent();
@@ -2016,11 +2024,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // destructive line has had its own confirm by now; this one is about a message that may have gone.
     // The memory holds the text as `send` types it, and both ends read it through `sentForm` (lib/send-again.ts).
     if (asksSendAgain(scope, paneId, line, Date.now(), isShell)) {
-      // A tap on the armed word within SEND_AGAIN_CONFIRM_DELAY_MS of the arm is a double tap by habit: it does
+      // A tap on the armed word within SEND_AGAIN_CONFIRM_DELAY_MS of the arm (700 ms) is a double tap by habit: it does
       // nothing, so the word stays and the shared confirm's 3 seconds keep running from the arm.
       if (sendConfirm.pending === sendAgainId(line) && Date.now() - sendAgainArmedAt.current < SEND_AGAIN_CONFIRM_DELAY_MS) return;
       if (!sendConfirm.confirm(sendAgainId(line))) {
         sendAgainArmedAt.current = Date.now();
+        setSendAgainWaiting(true);
+        if (sendAgainWaitTimer.current !== null) clearTimeout(sendAgainWaitTimer.current);
+        sendAgainWaitTimer.current = setTimeout(() => setSendAgainWaiting(false), SEND_AGAIN_CONFIRM_DELAY_MS);
         armedWhen.current = when;
         setDestructiveNote(null);
         return;
@@ -3883,6 +3894,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   className={cn(
                     // `absolute`, not TOOLBAR_TAP_TARGET's `relative`: the same 4px reach around the button, kept as the pseudo-element.
                     "absolute top-0 z-10 h-9 shrink-0 rounded-md px-3 text-sm font-semibold shadow-md before:absolute before:-inset-1 before:content-['']",
+                    // While "Send it again?" cannot confirm yet (its first 700 ms) it is drawn dimmed: no layout, no text, no movement.
+                    confirmingAgain && sendAgainWaiting && "opacity-60 motion-reduce:transition-none",
                     mirrored ? "left-0" : "right-0",
                   )}
                   onClick={() => onSendClick(armedWhen.current)}

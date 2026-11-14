@@ -178,7 +178,7 @@ describe("Send it again? after a send that ended unknown", () => {
     await waitFor(() => expect(sends).toHaveLength(3));
   });
 
-  it("a tap on the question 100 ms after the arm does nothing: the word stays and nothing is sent", async () => {
+  it("a tap on the question 500 ms after the arm does nothing: the word stays and nothing is sent", async () => {
     const user = userEvent.setup();
     const sends = bridge([UNKNOWN, SENT]);
     renderComposer();
@@ -187,14 +187,14 @@ describe("Send it again? after a send that ended unknown", () => {
     await waitFor(() => expect(sends).toHaveLength(1));
     await tapSend(user);
     const word = await screen.findByRole("button", { name: "Send it again?" });
-    // A double tap by habit: the second tap lands 100 ms after the first.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // A double tap by habit: the second tap lands about 500 ms after the first.
+    await new Promise((resolve) => setTimeout(resolve, 500));
     await user.click(word);
     expect(sends).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Send it again?" })).toBeInTheDocument();
     expect(box()).toHaveValue("run the tests");
-    // The same word, once it has been on screen for 450 ms, sends.
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    // The same word, once it has been on screen for 750 ms, sends.
+    await new Promise((resolve) => setTimeout(resolve, 250));
     await user.click(screen.getByRole("button", { name: "Send it again?" }));
     await waitFor(() => expect(sends).toHaveLength(2));
   });
@@ -208,7 +208,7 @@ describe("Send it again? after a send that ended unknown", () => {
     await waitFor(() => expect(sends).toHaveLength(1));
     await tapSend(user);
     const word = await screen.findByRole("button", { name: "Send it again?" });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     await user.click(word);
     await waitFor(() => expect(screen.queryByRole("button", { name: "Send it again?" })).toBeNull(), { timeout: 3500 });
     expect(sends).toHaveLength(1);
@@ -237,26 +237,62 @@ describe("Send it again? after a send that ended unknown", () => {
     expect(sends).toHaveLength(1);
   });
 
-  it("a send to a no-echo prompt keeps its memory out of sessionStorage", async () => {
+  const storedKeys = () => Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)).filter((k) => k?.startsWith("collie:send-again:"));
+
+  it("a send to a no-echo prompt writes nothing to sessionStorage", async () => {
     const user = userEvent.setup();
-    const sends = bridge([UNKNOWN, SENT]);
+    const sends = bridge([UNKNOWN]);
     renderComposer({ text: "$ sudo ls\n[sudo] password for altan:" });
     await user.type(box(), "hunter2");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sends).toHaveLength(1));
     await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
-    expect(Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)).filter((k) => k?.startsWith("collie:send-again:"))).toEqual([]);
+    expect(storedKeys()).toEqual([]);
   });
 
-  it("a shell pane keeps its memory out of sessionStorage, and still asks while the page lives", async () => {
+  it("a shell pane writes nothing to sessionStorage, and still asks while the page lives", async () => {
     const user = userEvent.setup();
-    const sends = bridge([UNKNOWN, SENT]);
+    const sends = bridge([UNKNOWN]);
     renderComposer({ isShell: true });
     await user.type(screen.getByRole("textbox"), "ls -la");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sends).toHaveLength(1));
     await tapSend(user);
     expect(await screen.findByRole("button", { name: "Send it again?" })).toBeInTheDocument();
-    expect(Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)).filter((k) => k?.startsWith("collie:send-again:"))).toEqual([]);
+    expect(storedKeys()).toEqual([]);
+  });
+
+  it("a reload (the memory dropped) sends at once: the question is not asked after it", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([UNKNOWN, SENT]);
+    renderComposer();
+    await user.type(box(), "run the tests");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    __forgetSendAgainMemory();
+    await tapSend(user);
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(screen.queryByRole("button", { name: "Send it again?" })).toBeNull();
+  });
+
+  it("the word is dimmed (opacity-60) for its first 700 ms and at full opacity from then on, with no other change", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([UNKNOWN]);
+    renderComposer();
+    await user.type(box(), "run the tests");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await tapSend(user);
+    const word = await screen.findByRole("button", { name: "Send it again?" });
+    const dimmed = word.className;
+    expect(word.classList.contains("opacity-60")).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(word.classList.contains("opacity-60")).toBe(true); // still dimmed at about 400 ms
+    await waitFor(() => expect(word.classList.contains("opacity-60")).toBe(false), { timeout: 1500 }); // gone at 700 ms
+    // Only the cue went: the same classes otherwise, so nothing moved and the words did not change.
+    expect(word.className.split(" ").filter((c) => c !== "").toSorted()).toEqual(
+      dimmed.split(" ").filter((c) => c !== "opacity-60" && c !== "motion-reduce:transition-none" && c !== "").toSorted(),
+    );
+    expect(word.textContent).toBe("Send it again?");
   });
 });
