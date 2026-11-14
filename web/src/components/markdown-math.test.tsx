@@ -225,6 +225,25 @@ describe("Markdown equations with MathJax", () => {
     expect(container.querySelector("image, img, [src], [href], [*|href]")).toBeNull();
   });
 
+  // `\color`, `\colorbox`, `mathcolor`, `mathbackground` and `\cancel`'s options take any string, and
+  // the SVG output writes it as a paint: `fill="url(...)"` names a resource or a page element. The
+  // formula draws in the theme colour instead. `data-latex` and the label quote the TeX, as text.
+  it.each([
+    String.raw`\color{url(https://example.com/paint.svg#p)}{x}`,
+    String.raw`\colorbox{url(#elsewhere)}{x}`,
+    String.raw`\mmlToken{mi}[mathcolor="url(#elsewhere)"]{x}`,
+    String.raw`\mmlToken{mi}[mathbackground="url(#elsewhere)"]{x}`,
+    String.raw`\cancel[mathbackground=url(#elsewhere)]{x}`,
+  ])("draws %s without a url() paint", (body) => {
+    const { container } = render(<MarkdownText text={`$${body}$`} />);
+    expect(within(container).getByRole("math")).toHaveAttribute("aria-label", body);
+    for (const element of container.querySelectorAll("svg, svg *")) {
+      for (const { name, value } of element.attributes) {
+        if (!/^(data|aria)-/.test(name)) expect(value).not.toContain("url(");
+      }
+    }
+  });
+
   it("keeps the colour a formula asks for", () => {
     const { container } = render(<MarkdownText text={String.raw`$\color{red}{x}$`} />);
     expect(container.querySelector('[fill="red"]')).not.toBeNull();

@@ -27,6 +27,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A message that Stop puts back in the box gets a Send and Discard card again.** 1.28.0 lost this fix of 1.27.3. When you tap Stop early in a turn, Claude Code takes your prompt out of the transcript and puts it back in its input box. The phone did not know that text was yours, so it showed no card, and every later send was refused because the box held a draft. Collie again keeps the text of a send that started a turn, and when Stop's read shows it back in the box, the "Back in the box" card offers Send and Discard. A turn that ends normally drops it after two idle reads, and nothing is pressed. Thanks @peter50216 and @bardrop (#774, #776).
 
+- **A formula makes no link and loads nothing.** With Math set to MathJax, `\mmlToken` could put a link of any scheme, an image, a style, a class or an id into an agent reply or a Markdown file, and `\color`, `\colorbox` and `mathcolor` could name a `url()` paint. A formula now draws its glyphs and its colours only, with either engine. Thanks @bardrop (#775). Reported by @peter50216 (#773).
+
 ## [1.28.3] - 2026-11-13
 
 **Urgent.** Claude Code's Remote Control can make Collie hold messages you send from the phone.
