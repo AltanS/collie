@@ -19,7 +19,7 @@ import type { Scope } from "@/lib/scope";
 
 import { WALKY_MARK_GRACE_MS } from "./walky-grace";
 // The subject's allow-list and the header grammar after the sender, one copy for the bridge and the phone.
-import { AFTER_SENDER, isCleanSubject } from "./walky-subject";
+import { readHeaderPart } from "./walky-subject";
 
 export type WalkyKind = "agent" | "operator";
 
@@ -212,16 +212,14 @@ export function parseEnvelopeHeader(line: string): EnvelopeHeader | null {
   const sender = m[3] ?? "";
   const nudge = sender.lastIndexOf(NUDGE_MARK);
   const head = nudge === -1 ? sender : sender.slice(0, nudge);
-  // The anchor is the sender's last closing parenthesis: no field after it can hold one.
-  const close = head.lastIndexOf(")");
-  const after = close === -1 ? null : AFTER_SENDER.exec(head.slice(close + 1));
-  const subject = after?.[2];
-  if (after !== null && (subject === undefined || isCleanSubject(subject))) {
-    const header: EnvelopeHeader = { id, kind, replyTo: after[3] ?? null };
-    const outside: EnvelopeHeader = after[1] === undefined ? header : { ...header, outside: true };
-    return subject === undefined ? outside : { ...outside, subject };
+  // The sender in words, or the older form anchored on its last closing parenthesis (walky-subject.ts).
+  const part = readHeaderPart(head);
+  if (part !== null) {
+    const header: EnvelopeHeader = { id, kind, replyTo: part.replyTo };
+    const outside: EnvelopeHeader = part.outside === true ? { ...header, outside: true } : header;
+    return part.subject === undefined ? outside : { ...outside, subject: part.subject };
   }
-  // A header part outside that grammar keeps the older rule: a reply suffix at its end, and nothing else read.
+  // A header part outside both grammars keeps the older rule: a reply suffix at its end, and nothing else read.
   return { id, kind, replyTo: REPLY_SUFFIX.exec(head)?.[1] ?? null };
 }
 

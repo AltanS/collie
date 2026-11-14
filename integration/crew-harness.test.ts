@@ -2730,7 +2730,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     const lines = typedFor(wb, id);
     expect(lines).toHaveLength(1);
     const line = lines[0];
-    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wa)}#[a-z0-9]{4} \\(claude, `, "u"));
+    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wa)}#[a-z0-9]{4} on claude in "`, "u"));
     expect(line).toContain(NUDGE_MARK);
     expect(line).toContain(`collie walky inbox ${id}`);
     expect(line).not.toContain(body);
@@ -2766,7 +2766,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(lines).toHaveLength(1);
     const line = lines[0];
     // Hardening A: ONE line, the header and the nudge. The body reaches the agent as `collie walky inbox <id>`.
-    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wl)}#[a-z0-9]{4} \\(claude, `, "u"));
+    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wl)}#[a-z0-9]{4} on claude in "`, "u"));
     expect(line.endsWith(`${NUDGE_MARK} Read it: collie walky inbox ${id}`)).toBe(true);
     expect(line).not.toContain(body);
     expect(line).not.toContain("\n");
@@ -3112,8 +3112,8 @@ describe("walky talky in a crew of four, on the real wire", () => {
     await settled(wb, id);
     // The receivers are of the sender's space, so the nudge carries no outside word.
     for (const at of [wl, wb]) {
-      expect(typedFor(at, id)[0]).toContain(`)${NUDGE_MARK}`);
-      expect(typedFor(at, id)[0]).not.toContain(") outside");
+      expect(typedFor(at, id)[0]).toContain(`"${NUDGE_MARK}`);
+      expect(typedFor(at, id)[0]).not.toContain(`" outside`);
     }
     // Not the sender's own pane.
     expect(typedFor(wa, id)).toEqual([]);
@@ -3127,7 +3127,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     const passed = await postAsMember(wa, { id: "wt_borderpass01", to: paneOf(wb), body: "from another space, said outside", at: Date.now(), space: "elsewhere", outside: true });
     expect(passed).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_borderpass01", target: paneOf(wb), state: "accepted", by: idOf(wb) }] } });
     await settled(wb, "wt_borderpass01");
-    expect(typedFor(wb, "wt_borderpass01")[0]).toContain(`) outside${NUDGE_MARK}`);
+    expect(typedFor(wb, "wt_borderpass01")[0]).toContain(`" outside${NUDGE_MARK}`);
   }, 60_000);
 
   test("the phone reads a member pane's list through the lead, from the member's own log, and replies to a message in it", async () => {
@@ -3174,7 +3174,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ receipt: { id, target: paneOf(wa), by: idOf(wa), verified: "origin" } });
     await waitFor(async () => typedFor(wa, id).length > 0, 15_000, async () => `A's pane never got the reply; writes: ${JSON.stringify(wa.herdr!.writes)}`);
-    expect(typedFor(wa, id)[0]).toContain(`[walky-talky ${id}] from operator (drill) reply to wt_a2bpane00001`);
+    expect(typedFor(wa, id)[0]).toContain(`[walky-talky ${id}] from operator "drill" reply to wt_a2bpane00001`);
     // …and the member's list, read through the lead again, holds the reply where A's log put it.
     expect(await rowsOf(await listOn(wa))).toEqual(expect.arrayContaining([expect.objectContaining({ id, replyTo: "wt_a2bpane00001" })]));
 

@@ -81,7 +81,7 @@ describe("the send: one operator walky message", () => {
     const typed: string[] = [];
     const send = walkySend(walky(() => ({ outcome: "sent" }), typed), { mintId: () => "wt_aaaaaaaaaaa1", sleep: async () => undefined });
     expect(await send("local/%1#aaaa", 'Answer to dc_k3m9x2p7q1ab "Ship?"\nOption: yes (Yes)', "Pixel 9")).toBe("typed");
-    expect(typed).toEqual(['[walky-talky wt_aaaaaaaaaaa1] from operator (Pixel 9)\nAnswer to dc_k3m9x2p7q1ab "Ship?"\nOption: yes (Yes)']);
+    expect(typed).toEqual(['[walky-talky wt_aaaaaaaaaaa1] from operator "Pixel 9"\nAnswer to dc_k3m9x2p7q1ab "Ship?"\nOption: yes (Yes)']);
   });
 
   test("a session that ended (the token moved) is refused by walky and reports refused: nothing was typed", async () => {

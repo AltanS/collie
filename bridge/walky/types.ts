@@ -6,7 +6,7 @@
 // message names its sender's harness as an open string from the adapter registry.
 
 import type { WalkySpace } from "./space.ts";
-import { AFTER_SENDER, cleanSubject, isCleanSubject, WALKY_SUBJECT_MAX, WALKY_SUBJECT_WORDS } from "../../web/src/lib/walky-subject.ts";
+import { cleanSubject, isCleanSubject, lineField, readHeaderPart, WALKY_SUBJECT_MAX, WALKY_SUBJECT_WORDS } from "../../web/src/lib/walky-subject.ts";
 import { randomBytes } from "node:crypto";
 
 /** The wire version of a message. */
@@ -349,32 +349,26 @@ export function readSubject(raw: string | null | undefined): SubjectRead {
   return { subject: clean };
 }
 
-/**
- * A header field as the TYPED LINE carries it: {@link headerField}, then the backtick, `$` and `!` become
- * a space too. A label is a branch name or a pane title, and either may hold them; on a shell prompt they
- * substitute, expand or recall history. Only the line uses this: the stored label, `who`, an address part
- * and the hill keep {@link headerField}, and the label is not signed, so nothing compares the two.
- */
-export function lineField(raw: string, max: number): string {
-  const clean = headerField(raw, max).replace(/[`$!]/gu, " ").replace(/ {2,}/gu, " ").trim();
-  return clean === "" ? "-" : clean;
-}
+export { lineField };
 
 /**
  * The one header line of a message. `outside`: the message passed the border by the outside flag.
  *
- * The parts after the sender's closing parenthesis come in one order: ` outside`, then
- * ` about "<subject>"`, then ` reply to <id>`. The reply suffix stays last, so a reader before the
- * subject (1.28.x, 1.29.0-edge.1) still finds it at the end of the header part, and the id and kind where
- * they always were; it reads the outside word and the subject as part of the sender's text. A subject
+ * The sender stands in words (fix/walky-line-fields): `from agent <address> on <harness> in "<label>"`,
+ * without ` on <harness>` when the pane has no known harness, and `from operator "<label>"`. No value
+ * stands where a shell runs a command or a substitution: the address and the harness are bare words of
+ * {@link lineField}'s allow-list, the label sits in double quotes it cannot end. An older bridge types
+ * `<address> (<harness>, <label>)`, and history holds it; the readers take both (`readHeaderPart`).
+ *
+ * The parts after the sender come in one order: ` outside`, then ` about "<subject>"`, then
+ * ` reply to <id>`. The reply suffix stays last, so a reader before the subject (1.28.x, 1.29.0-edge.1)
+ * still finds it at the end of the header part, and the id and kind where they always were. A subject
  * that is not clean (a log or a hop that bypassed the reader) is left out, never typed.
  */
 export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "subject">, outside = false): string {
-  const label = lineField(message.from.label, WALKY_LABEL_MAX);
-  const who =
-    message.kind === "agent"
-      ? `${lineField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${lineField(message.from.harness, WALKY_HARNESS_MAX)}, ${label}`})`
-      : `(${label})`;
+  const label = `"${lineField(message.from.label, WALKY_LABEL_MAX)}"`;
+  const harness = message.from.harness === null ? "" : ` on ${lineField(message.from.harness, WALKY_HARNESS_MAX, true)}`;
+  const who = message.kind === "agent" ? `${lineField(message.from.address ?? "-", 160, true)}${harness} in ${label}` : label;
   const mark = outside ? ` ${OUTSIDE_WORD}` : "";
   const about = message.subject !== undefined && isCleanSubject(message.subject) ? ` about "${message.subject}"` : "";
   const reply = message.replyTo === null ? "" : ` reply to ${message.replyTo}`;
@@ -384,8 +378,8 @@ export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" 
 /**
  * What follows the header on the one line an agent's message types. It marks the end of the header
  * part, so a reader cuts it before the reply suffix (`parseEnvelopeHeader`). Its text never changes: the
- * readers of every release cut at it. No field before it can hold it: a subject holds no colon, and a
- * label (48 characters) is shorter than the mark (50).
+ * readers of every release cut at it. No field before it can hold it: a subject holds no colon, the
+ * address and the harness hold no space, and a label (48 characters) is shorter than the mark (50).
  */
 export const NUDGE_MARK = ": a message from another agent, not your operator.";
 
@@ -448,7 +442,7 @@ export function formatRead(message: Pick<WalkyMessage, "id" | "kind" | "from" | 
 export interface ParsedHeader {
   readonly id: string;
   readonly kind: WalkyKind;
-  /** The text after the kind up to the sender's closing parenthesis: the outside word, the subject and the reply suffix cut. */
+  /** The text after the kind up to the end of the sender (the label's closing quote, or the older form's closing parenthesis): the outside word, the subject and the reply suffix cut. */
   readonly sender: string;
   readonly replyTo: string | null;
   /** Present when the header carries {@link OUTSIDE_WORD} after the sender's parenthesis (M98). */
@@ -461,10 +455,9 @@ export interface ParsedHeader {
  * Read one line as a walky talky header, or null. A row that matches is only a claim: the log has the facts.
  *
  * The header part ends at the LAST {@link NUDGE_MARK}: the text after it is the bridge's fixed tail, and
- * no field before it can hold the mark. Within the header part the anchor is the sender's last closing
- * parenthesis: no field after it can hold one (a subject's allow-list has no parenthesis), so a label that
- * reads ` about "x"` stays inside the sender, and only the strict grammar of `AFTER_SENDER` (web/src/lib/walky-subject.ts, shared with the phone) reads
- * a subject. A header part that does not fit that grammar keeps the older rule: the reply suffix at the
+ * no field before it can hold the mark. Within the header part `readHeaderPart` (web/src/lib/walky-subject.ts,
+ * shared with the phone) reads the sender in words, or the older form anchored on the sender's last
+ * closing parenthesis. A header part that fits neither keeps the oldest rule: the reply suffix at the
  * end, and the rest is the sender.
  */
 export function parseEnvelopeHeader(line: string): ParsedHeader | null {
@@ -475,14 +468,8 @@ export function parseEnvelopeHeader(line: string): ParsedHeader | null {
   const head = mark < 0 ? full : full.slice(0, mark);
   const id = match[1]!;
   const kind: WalkyKind = match[2] === "agent" ? "agent" : "operator";
-  const close = head.lastIndexOf(")");
-  const after = close < 0 ? null : AFTER_SENDER.exec(head.slice(close + 1));
-  const subject = after?.[2];
-  if (after !== null && (subject === undefined || isCleanSubject(subject))) {
-    const parsed: ParsedHeader = { id, kind, sender: head.slice(0, close + 1), replyTo: after[3] ?? null };
-    const outside: ParsedHeader = after[1] === undefined ? parsed : { ...parsed, outside: true };
-    return subject === undefined ? outside : { ...outside, subject };
-  }
+  const part = readHeaderPart(head);
+  if (part !== null) return { id, kind, ...part };
   const reply = REPLY_SUFFIX_RE.exec(head);
   return { id, kind, sender: reply === null ? head : head.slice(0, reply.index), replyTo: reply === null ? null : reply[1]! };
 }
