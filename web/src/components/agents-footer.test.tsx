@@ -64,6 +64,23 @@ describe("AgentsFooter (issue #242)", () => {
     expect(screen.getByRole("button")).not.toHaveTextContent("+");
   });
 
+  it("treats macOS ⏺ main and focused ❯ ⏺ main as headers, showing the first agent collapsed", () => {
+    const { unmount } = render(
+      <AgentsFooter
+        rows={rows("  ⏺ main\n  ◯ general-purpose  audit layout… 4s\n  ◯ general-purpose  verify types  3s")}
+        face={FACE}
+      />,
+    );
+    expect(screen.getByRole("button")).toHaveTextContent("audit layout");
+    expect(screen.getByRole("button")).toHaveTextContent("+1");
+    expect(screen.queryByText(/⏺ main/)).toBeNull();
+    unmount();
+
+    render(<AgentsFooter rows={rows("❯ ⏺ main\n  ◯ general-purpose  audit layout… 2s")} face={FACE} />);
+    expect(screen.getByRole("button")).toHaveTextContent("audit layout");
+    expect(screen.queryByText(/⏺ main/)).toBeNull();
+  });
+
   it("renders nothing for no rows", () => {
     const { container } = render(<AgentsFooter rows={[]} face={FACE} />);
     expect(container).toBeEmptyDOMElement();
