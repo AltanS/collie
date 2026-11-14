@@ -16,7 +16,7 @@
 //
 // pi and omp need a provider key (COLLIE_RIG_KEY_FILE); without one both cases report "not reached".
 import { NotReached, capture, captureScreen, message, openSession, phoneOn, resetBox, runScenario, sendFromComposer, spendTurn, tapWords, test, waitIdle, type Session } from "./leg";
-import { PHONE, REPLY_MS, addressOf, addressPattern, busyMessage, firstRow, operatorMessage, settledWalky, whoAddress, withoutInstance, wrapped } from "./walky-lib";
+import { PHONE, REPLY_MS, addressOf, addressPattern, busyMessage, firstRow, nudgePattern, operatorMessage, settledWalky, whoAddress, withoutInstance } from "./walky-lib";
 import { asJsonObject } from "../../src/lib/json";
 
 const claudeSession: Session = { paneId: null, startNote: "not started" };
@@ -92,7 +92,7 @@ test.describe("walky talky between agents", () => {
         notes.push(`pi sent ${id}: receipt ${first}`);
 
         // Claude's screen: the nudge line, with no body in it; the body only in the inbox command's output.
-        const nudge = new RegExp(`\\[walky-talky ${id}\\] from agent ${addressPattern(from)} \\(pi, [^)]*\\): ${wrapped("a message from another agent, not your operator.")}`);
+        const nudge = new RegExp(nudgePattern({ id, from: addressPattern(from), harness: "pi" }));
         const nudged = await rig.screenUntil(claudePane, nudge, 60_000, 200);
         const inbox = new RegExp(`Bash\\(collie walky inbox ${id}\\)`);
         const called = await rig.screenUntil(claudePane, inbox, REPLY_MS, 200);
@@ -109,7 +109,7 @@ test.describe("walky talky between agents", () => {
         const replyId = reply === null ? null : String(reply.id);
         const replyState = replyId === null ? "no reply row" : await settledWalky(rig, piPane, replyId, 60_000);
         notes.push(`Claude replied: ${replyId ?? "-"} ${replyState}`);
-        const replyNudge = replyId === null ? null : new RegExp(`\\[walky-talky ${replyId}\\] from agent ${addressPattern(to)} \\(claude, [^)]*\\) reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
+        const replyNudge = replyId === null ? null : new RegExp(nudgePattern({ id: replyId, from: addressPattern(to), harness: "claude", replyTo: id }));
         const replyOnScreen = replyNudge === null ? null : await rig.screenUntil(piPane, replyNudge, 60_000, 200);
         notes.push(replyOnScreen === null ? "pi's pane shows no reply nudge" : "pi's pane shows the reply nudge");
         await waitIdle(rig, claudePane, REPLY_MS);

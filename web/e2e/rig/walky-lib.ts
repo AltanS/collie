@@ -55,6 +55,34 @@ export function wrapped(text: string): string {
   return text.split(/\s+/u).map(escape).join("\\s+");
 }
 
+/**
+ * A RegExp source for an agent's harness and label in a header, in either form: ` on <harness> in "<label>"`
+ * (since 1.28.4, the backport of fix/walky-line-fields) or the older ` (<harness>, <label>)` that the
+ * recordings before it hold. Any white space stands for a space, since the terminal may wrap inside it.
+ */
+export const SENDER = (harness: string): string => `(?:\\s+on\\s+${harness}\\s+in\\s+"[^"]*"|\\s+\\(${harness},\\s[^)]*\\))`;
+
+/** What a nudge pattern names: each part a RegExp source, except `harness`, which is plain text. */
+export interface NudgeParts {
+  /** The message id: a literal id, or a capture group such as `(wt_[a-z0-9]{12})`. */
+  readonly id: string;
+  /** The sender's address, as `addressPattern` writes it. */
+  readonly from: string;
+  readonly harness: string;
+  /** The id the line must answer (` reply to <id>`); absent, the line has no reply suffix. */
+  readonly replyTo?: string;
+}
+
+/**
+ * A RegExp source for an agent's nudge line, in either sender form. Every part is joined with `\s+` and holds
+ * no literal space, so a terminal may break the line at any space and the pattern still matches.
+ */
+export function nudgePattern(parts: NudgeParts): string {
+  const head = `\\[walky-talky\\s+${parts.id}\\]\\s+from\\s+agent\\s+${parts.from}${SENDER(parts.harness)}`;
+  const reply = parts.replyTo === undefined ? "" : `\\s+reply\\s+to\\s+${parts.replyTo}`;
+  return `${head}${reply}:\\s+${wrapped("a message from another agent, not your operator.")}`;
+}
+
 /** The single-pane address of a pane on a solo install, which is what the rig's bridge is. */
 export const addressOf = (paneId: string): string => `local/${paneId}`;
 
@@ -113,8 +141,11 @@ export async function settledWalky(rig: Rig, paneId: string, id: string, ms: num
   return state ?? `not settled in ${String(ms / 1000)} s`;
 }
 
-/** The operator's header, as the bridge types it. */
-export const operatorHeader = (id: string): string => `[walky-talky ${id}] from operator (${DEVICE_LABEL})`;
+/** The operator's header in the older form, `(<label>)`: what a bridge before 1.28.4 types. */
+export const olderOperatorHeader = (id: string): string => `[walky-talky ${id}] from operator (${DEVICE_LABEL})`;
+
+/** A RegExp source for the operator's header as the bridge types it, in either form: `"<label>"` or the older `(<label>)`. */
+export const operatorHeaderPattern = (id: string): string => `${escape(`[walky-talky ${id}] from operator `)}(?:"${escape(DEVICE_LABEL)}"|\\(${escape(DEVICE_LABEL)}\\))`;
 
 export interface OperatorMessage {
   readonly harness: HarnessId;
@@ -185,7 +216,7 @@ export async function operatorMessage(browser: Browser, rig: Rig, pane: string, 
     notes.push(`${tapWords(t)}; strip ${stripShown ? "shown" : "not shown"}`);
 
     // One prompt: the header row, then the body on the next row, in the pane's input history.
-    const typed = new RegExp(`${escape(operatorHeader(id))}\\s*\\n\\s*${escape(c.body)}`);
+    const typed = new RegExp(`${operatorHeaderPattern(id)}\\s*\\n\\s*${escape(c.body)}`);
     const screen = await rig.screenUntil(pane, typed, 30_000, 120);
     notes.push(screen === null ? "the header and body did not reach the pane as one prompt" : "the pane got the header and body as one prompt");
     const receipt = await settledWalky(rig, pane, id, 30_000);

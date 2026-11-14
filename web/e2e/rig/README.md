@@ -464,7 +464,10 @@ URL at all: it is the live run of before M67. Claude's summary keeps each `<syst
 prompt to its first line, plus any memory file the rig wrote, because the reminders carry the operator's
 own `~/.claude/CLAUDE.md` (Claude finds it on its walk up from the project) and the account's email. It
 leaves Claude's `role: system` items out (the OS version, the session's scratchpad), and adds a digest of
-the system prompt and the tool definitions, so a new tool list is a mismatch.
+the system prompt and the tool definitions, so a new tool list is a mismatch. The match leaves out the
+blocks that lead a prompt only by where its case falls in the session: the reminders of a session's first
+message, and the record of a `/model` that the picker cases ran (`<command-name>`, `<local-command-stdout>`),
+which Claude puts in front of the next prompt, whichever case sends it.
 
 **The tier.** The global setup reads each harness's `--version` and picks one tier for the run:
 
