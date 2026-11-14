@@ -208,7 +208,7 @@ describe("send", () => {
     expect(await cmdWalkySend(d, ["local/%2", "Tests", "are", "green."])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to local/%2#bbbb, agent-y, repo#two", "typed into the pane"]);
     // An agent's message types one nudge line; the body waits for `inbox <id>`.
-    expect(b.sent).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one): a message from another agent, not your operator. Read it: collie walky inbox wt_aaaaaaaaaaa1. Reply: collie walky reply wt_aaaaaaaaaaa1 \"<text>\""]);
+    expect(b.sent).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa on agent-x in \"repo#one\": a message from another agent, not your operator. Read it: collie walky inbox wt_aaaaaaaaaaa1. Reply: collie walky reply wt_aaaaaaaaaaa1 \"<text>\""]);
   });
 
   socketTest("`--to` is an alias, `--` keeps a text that starts with a dash, and an address may carry the token `who` prints", async () => {
@@ -378,7 +378,7 @@ describe("reply, inbox, status, who", () => {
     await cmdWalkySend(deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa1" }), ["local/%2", "question?"]);
     const d = deps(b, inPane("%2"), { mintId: () => "wt_bbbbbbbbbbb2" });
     expect(await cmdWalkyReply(d, ["wt_aaaaaaaaaaa1", "answer."])).toBe(EXIT.OK);
-    expect(b.sent[1]).toBe("[walky-talky wt_bbbbbbbbbbb2] from agent local/%2#bbbb (agent-y, repo#two) reply to wt_aaaaaaaaaaa1: a message from another agent, not your operator. Read it: collie walky inbox wt_bbbbbbbbbbb2. Reply: collie walky reply wt_bbbbbbbbbbb2 \"<text>\"");
+    expect(b.sent[1]).toBe("[walky-talky wt_bbbbbbbbbbb2] from agent local/%2#bbbb on agent-y in \"repo#two\" reply to wt_aaaaaaaaaaa1: a message from another agent, not your operator. Read it: collie walky inbox wt_bbbbbbbbbbb2. Reply: collie walky reply wt_bbbbbbbbbbb2 \"<text>\"");
   });
 
   socketTest("a reply to an operator's message is refused: it has no address", async () => {
@@ -395,7 +395,7 @@ describe("reply, inbox, status, who", () => {
     await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "while you were busy"]);
     const keep = deps(b, inPane("%2"));
     expect(await cmdWalkyInbox(keep, ["--keep"])).toBe(EXIT.OK);
-    expect(keep.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "while you were busy"]);
+    expect(keep.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa on agent-x in \"repo#one\"", "while you were busy"]);
     const d = deps(b, inPane("%2"));
     expect(await cmdWalkyInbox(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(keep.io.stdout);
@@ -409,7 +409,7 @@ describe("reply, inbox, status, who", () => {
     await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "Tests are green."]);
     const d = deps(b, inPane("%2"));
     expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "Tests are green."]);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa on agent-x in \"repo#one\"", "Tests are green."]);
     // Read: the unread list is empty now.
     const after = deps(b, inPane("%2"));
     await cmdWalkyInbox(after, []);
@@ -466,7 +466,7 @@ describe("reply, inbox, status, who", () => {
     expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
     expect(older.lines).toHaveLength(1);
     expect(d.io.stderr).toEqual([]);
-    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "Tests are green."]);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa on agent-x in \"repo#one\"", "Tests are green."]);
   });
 
   socketTest("when every bridge knows the pane and none holds the message, `inbox <id>` prints the sentence and exits STATE, as before (2026-10-30)", async () => {
@@ -491,7 +491,7 @@ describe("reply, inbox, status, who", () => {
     const first = await bridge();
     const d = deps(first, inPane("%2"), { sockets: () => [walkySocketPath(first.stateDir), walkySocketPath(holder.stateDir)] });
     expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "held by the second"]);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa on agent-x in \"repo#one\"", "held by the second"]);
   });
 
   socketTest("`status <id>` asks past a bridge that holds no receipt, and prints the sentence only when none does (2026-10-30)", async () => {

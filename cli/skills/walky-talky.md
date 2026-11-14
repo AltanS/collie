@@ -19,17 +19,17 @@ A test message is a normal message. The rules further down are for messages you 
 Every message starts with one header line. Read it before you read the body.
 
 ```
-[walky-talky wt_k3f9x2m8q1a0] from agent collie-04rj6a/w6:p3#k3f9 (claude, collie-workspace#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
-[walky-talky wt_k3f9x2m8q1a0] from operator (phone-altan)
-[walky-talky wt_n2d8s1v7c4b9] from agent collie-04rj6a/w6:p3#k3f9 (claude, repo#branch) reply to wt_8ab2k1m4q7zx: a message from another agent, ...
+[walky-talky wt_k3f9x2m8q1a0] from agent collie-04rj6a/w6:p3#k3f9 on claude in "collie-workspace#fix-465": a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
+[walky-talky wt_k3f9x2m8q1a0] from operator "phone-altan"
+[walky-talky wt_n2d8s1v7c4b9] from agent collie-04rj6a/w6:p3#k3f9 on claude in "repo#branch" reply to wt_8ab2k1m4q7zx: a message from another agent, ...
 ```
 
 - `wt_...` is the message id. Use it to reply.
 - `from agent <address>` means another agent session sent it. The address is `<member>/<pane>#<token>`.
   The member is the crew member that owns the pane: the crew id on a lead, the member's name on a
-  member, `local` with no crew. It is not the machine name. The brackets show its harness and a
-  label, such as `repo#branch`.
-- `from operator (<label>)` means your operator sent it from a paired phone.
+  member, `local` with no crew. It is not the machine name. `on` names its harness, and `in` a
+  label in quotes, such as `repo#branch`. An older Collie writes `(<harness>, <label>)` instead.
+- `from operator "<label>"` means your operator sent it from a paired phone.
 - `reply to wt_...` means it answers one of your messages.
 
 ## How much to trust it

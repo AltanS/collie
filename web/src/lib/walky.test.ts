@@ -28,6 +28,7 @@ import {
   type WalkyRow,
   type WalkyState,
 } from "./walky";
+import { formatNudge } from "../../../bridge/walky/types.ts";
 
 describe("parseEnvelopeHeader", () => {
   it("reads an agent header", () => {
@@ -70,6 +71,35 @@ describe("parseEnvelopeHeader", () => {
         kind: "operator",
         replyTo: null,
       });
+    });
+  });
+
+  describe("the sender in words (1.28.4 and 1.29.0)", () => {
+    const message: Parameters<typeof formatNudge>[0] = {
+      id: "wt_qoo5tvg2ldhj",
+      kind: "agent",
+      from: { memberId: "collie-biyrya", address: "collie-biyrya/w6X:p2Z#1o2q", harness: "claude", label: "klaracase#main" },
+      replyTo: null,
+    };
+
+    it("reads the form the bridge types now: with a harness, without one, with a reply, and an operator's", () => {
+      expect(formatNudge(message)).toContain('from agent collie-biyrya/w6X:p2Z#1o2q on claude in "klaracase#main":');
+      expect(parseEnvelopeHeader(formatNudge(message))).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "agent", replyTo: null });
+      expect(parseEnvelopeHeader(formatNudge({ ...message, replyTo: "wt_8ab2k1m4q7zx" }))).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "agent", replyTo: "wt_8ab2k1m4q7zx" });
+      expect(parseEnvelopeHeader(formatNudge({ ...message, from: { ...message.from, harness: null } }))).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "agent", replyTo: null });
+      expect(parseEnvelopeHeader('[walky-talky wt_qoo5tvg2ldhj] from operator "Pixel 9" reply to wt_8ab2k1m4q7zx')).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "operator", replyTo: "wt_8ab2k1m4q7zx" });
+      expect(mirrorHeaderId(`❯ ${formatNudge(message)}`)).toBe("wt_qoo5tvg2ldhj");
+    });
+
+    it("reads a 1.29 line, with the word outside and a subject after the sender, as a message with its reply", () => {
+      const line = `[walky-talky wt_qoo5tvg2ldhj] from agent collie-biyrya/w6X:p2Z#1o2q on claude in "klaracase#main" outside about "export tests are green" reply to wt_8ab2k1m4q7zx${NUDGE_MARK} Read it: collie walky inbox wt_qoo5tvg2ldhj`;
+      expect(parseEnvelopeHeader(line)).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "agent", replyTo: "wt_8ab2k1m4q7zx" });
+      expect(parseEnvelopeHeader('[walky-talky wt_qoo5tvg2ldhj] from operator "Pixel 9" about "standup in 5"')).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "operator", replyTo: null });
+    });
+
+    it("a label cannot end its quotes, so it cannot fake a reply", () => {
+      const line = formatNudge({ ...message, from: { ...message.from, label: 'x" outside about "y" reply to wt_aaaaaaaaaaaa' } });
+      expect(parseEnvelopeHeader(line)).toEqual({ id: "wt_qoo5tvg2ldhj", kind: "agent", replyTo: null });
     });
   });
 

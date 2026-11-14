@@ -2584,7 +2584,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     const lines = typedFor(wb, id);
     expect(lines).toHaveLength(1);
     const line = lines[0];
-    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wa)}#[a-z0-9]{4} \\(claude, `, "u"));
+    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wa)}#[a-z0-9]{4} on claude in "`, "u"));
     expect(line).toContain(NUDGE_MARK);
     expect(line).toContain(`collie walky inbox ${id}`);
     expect(line).not.toContain(body);
@@ -2620,7 +2620,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(lines).toHaveLength(1);
     const line = lines[0];
     // Hardening A: ONE line, the header and the nudge. The body reaches the agent as `collie walky inbox <id>`.
-    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wl)}#[a-z0-9]{4} \\(claude, `, "u"));
+    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wl)}#[a-z0-9]{4} on claude in "`, "u"));
     expect(line).toContain(`${NUDGE_MARK} Read it: collie walky inbox ${id}. Reply: collie walky reply ${id} "<text>"`);
     expect(line).not.toContain(body);
     expect(line).not.toContain("\n");
@@ -2983,7 +2983,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ receipt: { id, target: paneOf(wa), by: idOf(wa), verified: "origin" } });
     await waitFor(async () => typedFor(wa, id).length > 0, 15_000, async () => `A's pane never got the reply; writes: ${JSON.stringify(wa.herdr!.writes)}`);
-    expect(typedFor(wa, id)[0]).toContain(`[walky-talky ${id}] from operator (drill) reply to wt_a2bpane00001`);
+    expect(typedFor(wa, id)[0]).toContain(`[walky-talky ${id}] from operator "drill" reply to wt_a2bpane00001`);
     // …and the member's list, read through the lead again, holds the reply where A's log put it.
     expect(await rowsOf(await listOn(wa))).toEqual(expect.arrayContaining([expect.objectContaining({ id, replyTo: "wt_a2bpane00001" })]));
 

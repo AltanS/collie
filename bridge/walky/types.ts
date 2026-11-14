@@ -200,12 +200,13 @@ export interface WalkySkipped {
 }
 
 /**
- * The header regex. Exactly one line, ASCII only. The rest after the kind is the sender's address
- * and its parenthesised harness and label, and ` reply to <id>` after the parenthesis on a reply.
+ * The header regex. Exactly one line, ASCII only. The rest after the kind is the sender: since 1.28.4
+ * `<address> on <harness> in "<label>"` (or `"<label>"` for an operator), before that
+ * `<address> (<harness>, <label>)`; then ` reply to <id>` on a reply.
  */
 export const HEADER_RE = /^\[walky-talky (wt_[a-z0-9]{12})\] from (agent|operator) (.*)$/u;
 
-/** The reply suffix: one space after the closing parenthesis, ASCII (M62 README, settled 2026-10-17). */
+/** The reply suffix: one space after the sender, ASCII (M62 README, settled 2026-10-17). */
 const REPLY_SUFFIX_RE = / reply to (wt_[a-z0-9]{12})$/u;
 
 /** Mint a message id: `wt_` and 12 characters of [a-z0-9], from a uniform random source. */
@@ -241,20 +242,82 @@ export function headerField(raw: string, max = 80): string {
   return cut === "" ? "-" : cut;
 }
 
-/** The one header line of a message. */
+// ── THE SENDER ON THE LINE (backport of fix/walky-line-fields, 1.29.0) ──────────────────────────
+// The typed line names its sender in words: `from agent <address> on <harness> in "<label>"`, or
+// `from agent <address> in "<label>"` with no harness, or `from operator "<label>"`. Until 1.28.4 it was
+// `<address> (<harness>, <label>)`, and fish runs a parenthesis as a command substitution, so a label
+// such as `touch canary` ran when the line reached a fish prompt, and zsh ran a backtick in any field.
+// Now no value stands where a shell runs a command: the first word is the fixed `[walky-talky`, the
+// address and the harness are bare words of LINE_WORD_CHAR_CLASS, and the label sits inside double
+// quotes that nothing in it can end. 1.29.0 types the same sender form; it adds its own parts after it.
+//
+// A line field holds letters, digits and these, and every other character becomes `_` (so two different
+// labels collide no more than needed, and a reader sees that something was there):
+//   space   a label is a folder or branch name or a pane title (only the label keeps it, inside quotes)
+//   .       folder names, versions in branch names (`release-1.29`), harness names (`a.b`)
+//   ,       a branch or a pane title may hold one; inert outside braces, and braces are never kept
+//   _       zellij `terminal_7`, folder names; also the replacement mark
+//   /       branch names (`feat/x`), the address separator (`<member>/<pane>`)
+//   #       Collie's own `<repo>#<branch>` label and an address's `#<token>`; mid-word it is text
+//   +       a pane id may hold it (address.ts PANE_ID), branch names (`c++`)
+//   @       a pane id may hold it (PANE_ID)
+//   =       a pane id may hold it (PANE_ID)
+//   :       Herdr's pane ids (`w6:p3`)
+//   %       tmux's pane ids (`%7`)
+//   -       names of every kind, tuios's UUID pane ids, member ids
+// Never kept: ( ) [ ] { } < > ; | & ^ " ' ` \ * ? ~ ! $, a control character, a newline, a Unicode line
+// or paragraph separator, a bidi control, anything outside ASCII.
+
+/** The characters a sender field keeps on the typed line, as the body of a RegExp class. `-` last. */
+export const LINE_FIELD_CHAR_CLASS = "A-Za-z0-9 .,_/#+@=:%-";
+/** The same without the space: the address and the harness stand as one bare word each. */
+export const LINE_WORD_CHAR_CLASS = "A-Za-z0-9.,_/#+@=:%-";
+
+const LINE_ALLOWED = new RegExp(`^[${LINE_FIELD_CHAR_CLASS}]$`, "u");
+
+/**
+ * A sender field as the TYPED LINE carries it: every character outside {@link LINE_FIELD_CHAR_CLASS}
+ * becomes `_`, runs of spaces become one, the ends are trimmed, at most `max` characters; `word` turns a
+ * space into `_` too. A field left empty is `-`. Only the line uses this: the stored label, `who`, an
+ * address part and the wire keep {@link headerField}, and the label is not signed, so nothing compares the two.
+ */
+export function lineField(raw: string, max: number, word = false): string {
+  let out = "";
+  for (const ch of raw) out += LINE_ALLOWED.test(ch) && !(word && ch === " ") ? ch : "_";
+  const clean = out.replace(/ {2,}/gu, " ").trim();
+  const cut = clean.length > max ? clean.slice(0, max).trimEnd() : clean;
+  return cut === "" ? "-" : cut;
+}
+
+/**
+ * A message id as the typed line carries it. The log and a crew hop check ids before a message gets
+ * here, and the formatter does not trust that: an id that is not {@link WALKY_ID} stands as one
+ * {@link lineField} word, so it can never run at a shell prompt. Such a line matches no header rule, so
+ * no reader takes it for a message.
+ */
+function lineId(id: string): string {
+  return WALKY_ID.test(id) ? id : lineField(id, 32, true);
+}
+
+/**
+ * The one header line of a message. The sender stands in words (see above): the address and the
+ * harness are bare words of {@link lineField}'s allow-list, the label sits in double quotes it cannot
+ * end. ` reply to <id>` comes last, only for a reply id that is {@link WALKY_ID}.
+ */
 export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">): string {
-  const label = headerField(message.from.label, WALKY_LABEL_MAX);
-  const who =
-    message.kind === "agent"
-      ? `${headerField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${headerField(message.from.harness, WALKY_HARNESS_MAX)}, ${label}`})`
-      : `(${label})`;
-  const reply = message.replyTo === null ? "" : ` reply to ${message.replyTo}`;
-  return `[walky-talky ${message.id}] from ${message.kind} ${who}${reply}`;
+  const label = `"${lineField(message.from.label, WALKY_LABEL_MAX)}"`;
+  const harness = message.from.harness === null ? "" : ` on ${lineField(message.from.harness, WALKY_HARNESS_MAX, true)}`;
+  const who = message.kind === "agent" ? `${lineField(message.from.address ?? "-", 160, true)}${harness} in ${label}` : label;
+  // A reply id that is not WALKY_ID is left out: a reader takes the line as a plain message, as it does one with no reply.
+  const reply = message.replyTo === null || !WALKY_ID.test(message.replyTo) ? "" : ` reply to ${message.replyTo}`;
+  return `[walky-talky ${lineId(message.id)}] from ${message.kind} ${who}${reply}`;
 }
 
 /**
  * What follows the header on the one line an agent's message types. It marks the end of the header
- * part, so a reader cuts it before the reply suffix (`parseEnvelopeHeader`).
+ * part, so a reader cuts it before the reply suffix (`parseEnvelopeHeader`). Its text never changes: the
+ * readers of every release cut at it. No field before it can hold it: the address and the harness hold
+ * no space, and a label (48 characters) is shorter than the mark (50).
  */
 export const NUDGE_MARK = ": a message from another agent, not your operator.";
 
@@ -264,7 +327,8 @@ export const NUDGE_MARK = ": a message from another agent, not your operator.";
  * which a harness treats as data and not as its operator's words.
  */
 export function formatNudge(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">): string {
-  return `${formatHeader(message)}${NUDGE_MARK} Read it: collie walky inbox ${message.id}. Reply: collie walky reply ${message.id} "<text>"`;
+  const id = lineId(message.id);
+  return `${formatHeader(message)}${NUDGE_MARK} Read it: collie walky inbox ${id}. Reply: collie walky reply ${id} "<text>"`;
 }
 
 /**
@@ -301,12 +365,20 @@ export function formatRead(message: Pick<WalkyMessage, "id" | "kind" | "from" | 
 export interface ParsedHeader {
   readonly id: string;
   readonly kind: WalkyKind;
-  /** The text after the kind, the reply suffix cut. */
+  /** The text after the kind, the reply suffix cut: the sender in either form (and, on a 1.29 line, its ` outside` and ` about "..."` parts). */
   readonly sender: string;
   readonly replyTo: string | null;
 }
 
-/** Read one line as a walky talky header, or null. A row that matches is only a claim: the log has the facts. */
+/**
+ * Read one line as a walky talky header, or null. A row that matches is only a claim: the log has the facts.
+ *
+ * One rule reads every form: the sender in words (since 1.28.4 and 1.29.0, with the 1.29 parts
+ * ` outside` and ` about "<subject>"` after it), the older `<address> (<harness>, <label>)`, and the
+ * oldest. The reply suffix is the last thing before the nudge mark in all of them, and no field can
+ * forge it: the label sits inside quotes it cannot end (or a parenthesis it cannot close), and a 1.29
+ * subject sits in quotes too.
+ */
 export function parseEnvelopeHeader(line: string): ParsedHeader | null {
   const match = HEADER_RE.exec(line);
   if (match === null) return null;

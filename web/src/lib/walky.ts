@@ -166,6 +166,10 @@ export const ENVELOPE_HEADER = /^\[walky-talky (wt_[a-z0-9]{12})\] from (agent|o
 export const NUDGE_MARK = ": a message from another agent, not your operator.";
 
 // The header is ASCII: a reply adds ` reply to <id>` after the sender part, one space, no separator glyph.
+// The one suffix rule reads every form a bridge types: the sender in words, `<address> on <harness> in
+// "<label>"` or `"<label>"` (1.28.4 and later; a 1.29 bridge adds ` outside` and ` about "<subject>"`
+// after it), the older `<address> (<harness>, <label>)`, and the oldest. The label sits in quotes it
+// cannot end (or a parenthesis it cannot close), so no label can forge the suffix.
 const REPLY_SUFFIX = / reply to (wt_[a-z0-9]{12})$/;
 
 export interface EnvelopeHeader {
