@@ -23,10 +23,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Fixed
-
-- **A message queued while Claude Code compacts shows its queued card in Chat.** A message sent from the phone during a compaction gets the same card, with Send now, as one queued during a normal turn.
-
 ## [1.29.0] - 2026-11-12
 
 ### Added
@@ -249,6 +245,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Hill card closes when its machine's last agent leaves.** The Hill closed a card whose session ended only while some agent was still running on that machine, so the cards of a machine with no agent left waited 14 days. The sweep now trusts an empty list when the multiplexer answered the read, and closes such a card after two sweeps, 15 to 30 seconds. A read that failed, or a bridge that has not read its multiplexer yet, closes nothing.
 - **A note you typed into a Hill card is not lost when the card leaves.** When a card closed while you wrote a note in it, the note went with the card. It now stays under Answered as "Your answer, not delivered" with Copy until you leave the page, and so do the words of an answer that did not arrive, after its card left the Hill.
 - **A Hill card for a machine removed from the crew closes.** When a member leaves the crew, with `collie crew remove` on the lead or `collie leave` on the member, the open cards whose answer would go to that machine close as undeliverable at the next sweep, with nothing typed. A member that only does not answer keeps its cards, as before.
+- **A message queued while Claude Code compacts shows its queued card in Chat.** A message sent from the phone during a compaction gets the same card, with Send now, as one queued during a normal turn.
 
 ### Docs
 
