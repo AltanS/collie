@@ -306,6 +306,18 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The place `session` is called a Page in every text you read.** The tricks reference, `collie trick guide`, Tricks, Write a trick and Terminology say "a page of the trick's own". The word in `places` stays `session`.
 - **The tricks reference and the guides follow the agent view rules.** Collie marks the pick, so a button takes no `pressed` and a decision block no `picked`. A link goes to a web address only, Collie's own words are refused in an agent's text, and the Hill shows as the first row of Settings, Tricks. The reference, Write a trick, Tricks and The Hill say so, and a test pins every limit that moved into one file to its old value.
 
+## [1.28.4] - 2026-11-14
+
+### Fixed
+
+- **A WalkyTalky line runs nothing when it lands at a shell prompt.** The line a message types into a pane named its sender in parentheses, `<address> (<harness>, <label>)` and `(<label>)`. fish runs a parenthesis as a command, so a folder or branch name in the label could run there when the agent had just quit, and zsh ran a backtick in any of its fields. The sender now stands in words, `from agent <address> on <harness> in "<label>"` and `from operator "<label>"`. On the line, the address, the harness and the label keep only ASCII letters, digits and `. , _ / # + @ = : % -`, the label also spaces, and every other character becomes `_`. The stored label, `collie walky who` and the phone keep the name as it is, and the phone reads lines in both forms. The machine that owns the pane types the line, so update each crew member too; `collie update` brings the agents' skill text to the new form.
+
+- **A message that Stop puts back in the box gets a Send and Discard card again.** 1.28.0 lost this fix of 1.27.3. When you tap Stop early in a turn, Claude Code takes your prompt out of the transcript and puts it back in its input box. The phone did not know that text was yours, so it showed no card, and every later send was refused because the box held a draft. Collie again keeps the text of a send that started a turn, and when Stop's read shows it back in the box, the "Back in the box" card offers Send and Discard. A turn that ends normally drops it after two idle reads, and nothing is pressed. Thanks @peter50216 and @bardrop (#774, #776).
+
+- **A formula makes no link and loads nothing.** With Math set to MathJax, `\mmlToken` could put a link of any scheme, an image, a style, a class or an id into an agent reply or a Markdown file, and `\color`, `\colorbox` and `mathcolor` could name a `url()` paint. A formula now draws its glyphs and its colours only, with either engine. Thanks @bardrop (#775). Reported by @peter50216 (#773).
+
+- **The background-agents bar shows above the composer on Claude Code for macOS.** On macOS Claude Code draws the header of its background-agents footer as `⏺ main`, where Linux draws `● main`. Collie knew only the Linux mark, so the collapsed agents bar stayed hidden, and while a turn ran a focused `❯ ⏺ main` panel read as something open at the box and refused a send. Both marks now match, in the footer reader, the agents bar and the Claude profile. Thanks @GGGODLIN (#782).
+
 ## [1.28.3] - 2026-11-13
 
 **Urgent.** Claude Code's Remote Control can make Collie hold messages you send from the phone.
