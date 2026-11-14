@@ -4128,3 +4128,23 @@ Read by `lib/surface/sign-in.test.ts`.
 | --- | --- | --- |
 | `claude--v2325-theme-command--w61.txt` | `❯ /theme` in the chat, the theme list under it, `❯ ✔ Dark mode`, the footer | modal unreadable, the unread-dialog card (as before `idle.dialogRows`) |
 | `claude--v2325-theme-command--w40.txt` | The same at 40 columns | the unread-dialog card |
+## MiniMax Code 0.7.7 on herdr-core (captured 2026-11-15, hc 0.1.21)
+
+`mcode--v077-*.txt` is MiniMax Code 0.7.7 (npm `@minimax-ai/code`) in a throwaway herdr-core 0.1.21
+terminal (`hc run --bg mcode`), in an empty scratch folder holding a `README.md` and a `notes.txt`,
+driven by typed prompts. The model behind the capture was a local Anthropic-Messages stub
+(`mcode provider add --api-format anthropic-messages`), because these were made without a MiniMax
+account: the two replies and the `ls -la` call are the stub's, and everything else is as MiniMax Code
+drew it.
+
+These are **plain text**, because that is what the bridge reads here: herdr-core's `terminal.read`
+gives no colour (`bridge/mux/herdr-core/client.ts`). The bridge only meets an `mcode` pane on
+herdr-core — the herdr 0.9.x line does not detect MiniMax Code at all — so a styled capture would be
+a screen Collie never sees. `hc read` appends its own `[hc] incomplete: older output may be missing`
+line to a partial read; that line is removed here, and trailing blank rows with it, and nothing else.
+Privacy: the scratch folder reads `~/project`, and the stub model names itself `stub-model`.
+
+| Fixture | What's in it | Reads as |
+| --- | --- | --- |
+| `mcode--v077-idle-w200.txt` | The welcome panel (`v0.7.7 … ● Ready`), three tip rows, the what's-new box, the `Start · @ file or Plugin · / autocomplete` row, the composer between two rules with `›  Ask Mcode to do anything`, and the status row `~/project │ Auto │ ✦ stub-model · Thinking On │ Context 100K` | idle, composer found and empty |
+| `mcode--v077-turn-suggestion-w200.txt` | One finished turn: the prompt row, `└ • Ran  ls -la · 5 output lines`, the reply, `└ Completed in 1s · ⚡ 1667 tok/s`, then `Suggested next message · Tab accept` over a composer whose text is the grey suggestion — plain text cannot mark it grey, so the bridge reads a draft | draft |
