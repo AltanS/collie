@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **MiniMax Code (mcode) gains first-class harness support.** Collie can now discover active mcode sessions from live processes using open observability runtime logs, read session transcripts in Chat and History views, launch mcode with recipe option chips (Continue, PTC, mode flags), trigger slash commands from the command palette and harness bar, and display the official purple M brand icon.
+- **MiniMax Code (mcode) is a harness of its own.** Collie reads the sessions `mcode` writes under `$MINIMAX_DATA_DIR/v2`, shows them in Chat and History, finds the pane's own session by the file its process holds open or the `--session` it was started with, and keeps a second pane in the same folder from showing the first one's chat. The New sheet starts it with its recipe chips (Continue, PTC, mode flags), its slash commands are in the command palette and the harness bar (plan, compact, history, sessions), and the pane wears MiniMax Code's own M from its TUI welcome banner. MiniMax Code names itself on the wire as `mcode` (OSC 7501 `app=mcode`), which is the name herdr-core reports; the herdr 0.9.x line detects no mcode pane at all. (#735)
 
 ## [1.29.0] - 2026-11-12
 

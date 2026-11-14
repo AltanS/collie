@@ -9,6 +9,13 @@
 // via muse.ai/images/landing/brand/muse-logo.svg, the Muse family's mark on the white tile of
 // muse.ai's own app icon. Muse Code itself has none (its page at dev.meta.ai/products/muse-code
 // shows only Meta's, its CLI prints only its name), and dev.meta.ai links muse.ai as Muse's site.
+// mcode (MiniMax Code) has no vector mark to copy: its TUI welcome banner is block art
+// (MiniMax-AI/minimax-code docs/assets/wordmark-light.svg, blue #3DAEFF), and the official logo is a
+// gradient the brand book reserves for the logo shown alone, never inside a product (MiniMax Brand
+// Book, 2026-09-14, § Logo Colors). So the `d` is the block M of that banner drawn as one 24×24
+// silhouette, and #5B50E6 is a flat purple from the product gradient the book lists for product
+// branding (#7A27FF → #1BA4FF), flat because the book allows the gradient only on the logo. Nothing
+// is copied from an asset file: the letter's shape and the brand's own colours are what is taken.
 // To refresh: re-run the fetch in CHANGELOG and replace the `d` strings.
 
 export interface AgentBrand {
