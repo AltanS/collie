@@ -7366,6 +7366,48 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     expect(r.pane.transcript.slice(-2)).toEqual(["> fix the parser", "> from walky"]);
   });
 
+  // A cancel (the sender's, a Drop) and an expiry end a held message only while it waits. Once its release
+  // starts, `release` marks the row `running` in the same synchronous step (protocol.ts `release`), and both
+  // `cancelHeld` and the poll's expiry skip a running row. So a mail row never ends `cancelled` or `expired`
+  // with its text in the box: it ends by the receipt of the write.
+  test("a cancel or an expiry that arrives before or while the message is typed ends nothing: refused busy, and the send ends by its receipt (never cancelled)", async () => {
+    const r = queued();
+    r.pane.box = "fix the parser";
+    const until = r.clock.now + HOUR;
+    await r.send("from walky", { id: "draft-000071", ...marked(until), walky: "wt_aaaaaaaaaaa1" });
+    r.pane.transcript.push("> fix the parser");
+    r.pane.box = "";
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    const cancels: (HeldCancelAnswer | null)[] = [];
+    const polls: Promise<SendAnswer | null>[] = [];
+    // Once as the release reads the box (before the write), once as its text goes in (during the write).
+    const strike = () => {
+      cancels.push(r.protocol.cancelHeld("main", "%1", "draft-000071"));
+      expect(r.holds.get("draft-000071")?.state).toBe("running");
+      const was = r.clock.now;
+      r.clock.now = until + 1;
+      polls.push(...r.protocol.tickHolds("main", () => FREE));
+      r.clock.now = was;
+    };
+    r.pane.beforeRead = () => {
+      if (cancels.length === 0) strike();
+    };
+    r.pane.afterInput = (_p, what) => {
+      if (cancels.length === 1 && what.includes("from walky")) strike();
+    };
+    const [released] = await tick(r);
+    await Promise.all(polls);
+    expect(cancels).toEqual([{ result: "refused", reason: "busy" }, { result: "refused", reason: "busy" }]);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000071", outcome: "sent" });
+    expect(r.deps.store.get("draft-000071")?.receipt?.outcome).toBe("sent");
+    expect(r.holds.list()).toEqual([]);
+    expect(r.pane.transcript.slice(-2)).toEqual(["> fix the parser", "> from walky"]);
+    // After the end the cancel is still refused, with the stored receipt, never `cancelled`.
+    expect(r.protocol.cancelHeld("main", "%1", "draft-000071")).toMatchObject({ result: "refused", reason: "busy", receipt: { outcome: "sent" } });
+  });
+
   test("a submitted draft whose turn has not drawn yet: two quick free reads type nothing, the turn read makes it a turn hold (2026-10-21 rig case 9)", async () => {
     // The browser leg's sequence: the draft, then Enter. The box clears at once, and the poll ticks on
     // every screen update, so two reads a few hundred milliseconds apart read an empty box over an idle
