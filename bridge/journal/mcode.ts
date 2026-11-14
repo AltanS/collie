@@ -1,11 +1,21 @@
 // MiniMax Code's (`mcode`, `@minimax-ai/code`) journal adapter.
 //
-// SHAPE OF THE SOURCE (verified against on-disk sessions, 2026-11-07):
-//   $MINIMAX_HOME/v2/sessions/YYYY/MM/DD/HH-mm-ss-SSS-session_<base64url(sessionId)>/
+// HOW THE PANE IS NAMED: a multiplexer names a MiniMax Code pane `mcode` from the program's own
+// OSC 7501 report (`app=mcode`). Verified 2026-11-15 against mcode 0.7.7 in a herdr-core 0.1.21
+// terminal: `hc ls` answered {"agent":"mcode","status":"blocked"} for a terminal started as
+// `mc`, so the name is the program's and not the terminal's. The herdr 0.9.x line has no mcode
+// detection (0.9.5 reports such panes `agent_status: unknown`), so this name reaches Collie on
+// herdr-core, where `status.app` is the harness name (bridge/mux/herdr-core).
+//
+// SHAPE OF THE SOURCE (verified against on-disk sessions, 2026-11-07; re-read from a 0.7.7 data
+// folder on 2026-11-15):
+//   $MINIMAX_DATA_DIR/v2/sessions/YYYY/MM/DD/HH-mm-ss-SSS-session_<base64url(sessionId)>/
 //     manifest.json   — session metadata, { sessionId, createdAtMs, updatedAtMs, paths }
 //     messages.jsonl  — the transcript
-// plus a metadata database at $MINIMAX_HOME/v2/sqlite/runtime-state.sqlite, table
+// plus a metadata database at $MINIMAX_DATA_DIR/v2/sqlite/runtime-state.sqlite, table
 // `local_runtime_sessions`, which maps session_id → workspace_dir and history_relative_dir.
+// `MINIMAX_DATA_DIR` is the program's own variable (README § Configuration), ~/.minimax by
+// default; a blank value counts as unset, as mcode counts it.
 //
 // messages.jsonl rows are Anthropic-Messages-shaped envelopes:
 //   {"message_id":"msg-…","turn_id":"…","message":{ "role":"user"|"assistant"|"toolResult",
@@ -14,11 +24,11 @@
 // A toolResult row carries { toolCallId, toolName, content, isError } and folds onto the call.
 //
 // WHERE THE SESSION COMES FROM: mcode panes report no session Herdr keeps, so the adapter
-// discovers it — first through the SQLite index (workspace_dir = cwd, not archived, newest), then
-// through the newest messages.jsonl under the roots. The disk walk cannot tell two panes in one
-// folder apart, so it is the fallback, not the answer.
+// discovers it — the session file the pane's own process holds open, then the argv's own intent,
+// then the SQLite index (workspace_dir = cwd, not archived, newest). Everything that answers from
+// the folder alone is a guess about WHICH pane, so it answers null in a shared folder (#508); the
+// disk walk cannot tell two panes in one folder apart and is never used.
 
-import { Database } from "bun:sqlite";
 import { execFile } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -38,6 +48,7 @@ import {
   rememberPending,
   type RowReducer,
 } from "./reduce.ts";import { containedRealpath, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
 import type {
@@ -49,7 +60,6 @@ import type {
   TranscriptSource,
 } from "./types.ts";
 
-/** MiniMax Code names sessions `mvs_<hex-or-base64url>`. */
 /**
  * execFile as a promise, typed for the one call this file makes (no overloads) so tests can spy on
  * node:child_process. Bound at each call so a spy on the module is the one that runs.
@@ -335,7 +345,7 @@ function isoOf(value: JsonValue | undefined): string {
 }
 
 /**
- * Scan `$MINIMAX_HOME/v2/sessions/YYYY/MM/DD/HH-mm-ss-SSS-session_<base64url>/messages.jsonl`.
+ * Scan `$MINIMAX_DATA_DIR/v2/sessions/YYYY/MM/DD/HH-mm-ss-SSS-session_<base64url>/messages.jsonl`.
  * The folder suffix is the base64url of the session id, so the lookup is a name match at one depth,
  * not a content read. The manifest is not trusted for identity — the folder name is.
  */
@@ -396,11 +406,15 @@ export class McodeTranscriptSource implements TranscriptSource {
   }
 
   /**
-   * The session the pane's foreground mcode process is writing, resolved through a four-tier
-   * pipeline: an open session file (`lsof`), the process's argv intent, the index bounded by the
-   * process start, and finally the index bounded to the last five minutes when no process is
-   * known. A fresh mcode waiting for its first prompt answers null, so no pane ever inherits a
-   * past session.
+   * The session the pane's foreground mcode process is writing, resolved in tiers: an open session
+   * file (`lsof`), the process's argv intent, the index bounded by the process start, and finally
+   * the index bounded to the last five minutes when no process is known. A fresh mcode waiting for
+   * its first prompt answers null, so no pane ever inherits a past session.
+   *
+   * Only the first two tiers bind to THIS pane: a session file the process holds open, or a
+   * `--session <id>` it was started with. The rest answer from the folder (`workspace_dir = cwd`),
+   * and two mcode panes in one folder share it, so in a shared folder (`hints.shared`, #508) they
+   * answer nothing rather than hand this pane its neighbour's chat.
    */
   async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
     const targetProcs = (hints?.processes ?? []).filter((p) => {
@@ -435,6 +449,9 @@ export class McodeTranscriptSource implements TranscriptSource {
         if ((await this.resolve(ref)) !== null) return ref;
       }
       if (intents.some((i) => i.kind === "resume_picker")) return null;
+      // From here the index answers by folder, which two panes in one folder share. --continue and
+      // a fresh start are exactly the folder-scoped questions, so a shared folder answers null.
+      if (hints?.shared === true) return null;
       if (cwd.trim() === "") return null;
       if (intents.some((i) => i.kind === "continue")) {
         // --continue means the newest session in this folder, however old it is.
@@ -465,8 +482,7 @@ export class McodeTranscriptSource implements TranscriptSource {
     }
     // Tier 3: no process hints — the multiplexer fallback, five minutes only.
     if (hints?.shared === true) return null;
-    if (cwd.trim() === "") return null;
-    const maxAgeMs = 300_000;
+    if (cwd.trim() === "") return null;    const maxAgeMs = 300_000;
     for (const root of this.roots) {
       const indexed = await this.fromSqlite(root, cwd, { maxAgeMs });
       if (indexed !== null) {
@@ -480,6 +496,10 @@ export class McodeTranscriptSource implements TranscriptSource {
   /**
    * The newest unarchived session the index lists for `cwd`, or null. Read-only; never writes.
    *
+   * mcode keeps this database in WAL mode, so a clean exit leaves a file whose header still says WAL
+   * with no `-wal` and no `-shm` beside it, and a read-only open of that file fails. It goes through
+   * `readSqlite` for the rollback copy that makes it readable, as `agy.ts`'s does.
+   *
    * mcode sets `status` to `idle` between turns and through most active use, so the status filter
    * reads the whole live set. The window is `maxAgeMs` over `updated_at_ms` OR `created_at_ms`:
    * a long session updated recently and a fresh one both count, a stale row does not.
@@ -490,31 +510,21 @@ export class McodeTranscriptSource implements TranscriptSource {
     options?: { sinceMs?: number; maxAgeMs?: number },
   ): Promise<string | null> {
     const dbPath = join(root, "..", "sqlite", "runtime-state.sqlite");
-    let db: Database;
-    try {
-      db = new Database(dbPath, { readonly: true });
-    } catch {
-      return null;
-    }
-    try {
-      // `sinceMs` answers "since this process started"; `maxAgeMs` answers "recently"; neither
-      // answers "whatever is newest", which is what --continue wants.
-      const since = options?.sinceMs ?? (options?.maxAgeMs !== undefined ? Date.now() - options.maxAgeMs : null);
-      const sql = since === null
-        ? "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND status IN ('idle', 'started', 'running', 'interrupted') ORDER BY updated_at_ms DESC LIMIT 1"
-        : "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND (updated_at_ms > ? OR created_at_ms > ?) AND status IN ('idle', 'started', 'running', 'interrupted') ORDER BY updated_at_ms DESC LIMIT 1";
+    // `sinceMs` answers "since this process started"; `maxAgeMs` answers "recently"; neither
+    // answers "whatever is newest", which is what --continue wants.
+    const since = options?.sinceMs ?? (options?.maxAgeMs !== undefined ? Date.now() - options.maxAgeMs : null);
+    const sql = since === null
+      ? "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND status IN ('idle', 'started', 'running', 'interrupted') ORDER BY updated_at_ms DESC LIMIT 1"
+      : "SELECT session_id FROM local_runtime_sessions WHERE workspace_dir = ? AND archived = 0 AND (updated_at_ms > ? OR created_at_ms > ?) AND status IN ('idle', 'started', 'running', 'interrupted') ORDER BY updated_at_ms DESC LIMIT 1";
+    return readSqlite(dbPath, (db) => {
       // SAFETY: `bun:sqlite`'s `.get` is typed as unknown rows; the SELECT names exactly the one
-      // column this cast reads, and the shape check guards it.
+      // column this cast reads, and the shape check below guards it.
       const row = (
         since === null ? db.query(sql).get(cwd) : db.query(sql).get(cwd, since, since)
       ) as { session_id?: unknown } | null;
-      const id = row?.session_id;
-      return typeof id === "string" && isMcodeSessionId(id) ? id : null;
-    } catch {
-      return null;
-    } finally {
-      db.close();
-    }
+      const value = row?.session_id;
+      return typeof value === "string" && isMcodeSessionId(value) ? value : null;
+    });
   }
 
   stat = statFile;

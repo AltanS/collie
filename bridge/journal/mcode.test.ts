@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
@@ -391,6 +392,78 @@ describe("discoverSession pipeline", () => {
   test("shared-folder hints answer null without process hints", async () => {
     const root = await indexedRoot();
     expect(await new McodeTranscriptSource(root).discoverSession(CWD, { shared: true })).toBeNull();
+  });
+
+  test("in a shared folder only what names this pane answers, never the folder's index", async () => {
+    // A row touched now, which the same folder answers without `shared`.
+    const root = await indexedRoot();
+    expect(await new McodeTranscriptSource(root).discoverSession(CWD)).toEqual({ kind: "id", value: SID });
+    expect(await new McodeTranscriptSource(root).discoverSession(CWD, { shared: true })).toBeNull();
+    await withLsofEmpty(async () => {
+      const src = new McodeTranscriptSource(root, async () => Date.now() - 60_000);
+      // A fresh process: the index window since its start is the folder's answer, so it is withheld.
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }], shared: true })).toBeNull();
+      // --continue means the folder's newest session, shared by every pane in it.
+      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "-c"], pid: 10 }], shared: true })).toBeNull();
+      // The argv itself naming the session is this pane's own answer, so it stands.
+      expect(
+        await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session", SID], pid: 10 }], shared: true }),
+      ).toEqual({ kind: "id", value: SID });
+    });
+  });
+
+  test("a cleanly closed WAL index is still read, through readSqlite", async () => {
+    if (process.platform === "win32") return; // a read-only folder is not enforced there
+    const root = await indexedRoot();
+    const dbPath = join(root, "..", "sqlite", "runtime-state.sqlite");
+    const { Database } = await import("bun:sqlite");
+    const db = new Database(dbPath);
+    db.run("pragma journal_mode=wal");
+    db.run("pragma wal_checkpoint(truncate)");
+    db.close();
+    // What a clean exit leaves: the header still says WAL, and neither side file is there.
+    await rm(`${dbPath}-wal`, { force: true });
+    await rm(`${dbPath}-shm`, { force: true });
+    const folder = join(root, "..", "sqlite");
+    await chmod(folder, 0o555);
+    try {
+      const src = new McodeTranscriptSource(root);
+      expect(await src.discoverSession(CWD)).toEqual({ kind: "id", value: SID });
+    } finally {
+      await chmod(folder, 0o755);
+    }
+  });
+});
+
+describe("the committed mcode capture", () => {
+  // fixtures/mcode/README.md says how MiniMax Code 0.7.7 wrote this session. It is the only place a
+  // real envelope, a real canonicalTextRange and a real tool result are exercised together, so it
+  // also pins that none of the injected plumbing reaches Chat or History.
+  const entries = parseMcodeTranscript(
+    readFileSync(join(import.meta.dir, "fixtures", "mcode", "messages.jsonl"), "utf8"),
+  );
+
+  test("reads the two turns, with the tool call joined to the result the session recorded", () => {
+    expect(entries.map((entry) => entry.role)).toEqual(["user", "assistant", "assistant", "user", "assistant"]);
+    expect(entries[0]!.parts).toEqual([
+      { kind: "text", text: "list the files in this folder and say what each one holds" },
+    ]);
+    const tool = entries[1]!.parts[0];
+    expect(tool).toMatchObject({ kind: "tool", name: "bash", summary: "ls -la", call: { kind: "execute", command: "ls -la" } });
+    if (tool?.kind !== "tool") throw new Error("expected a tool part");
+    expect(tool.result?.text).toContain("README.md");
+    expect(tool.result?.text).toContain("notes.txt");
+    expect(entries[4]!.parts).toEqual([
+      { kind: "text", text: "The folder holds two files: README.md, one line about the folder, and notes.txt." },
+    ]);
+  });
+
+  test("the plumbing mcode injects into a user row never reaches a transcript entry", () => {
+    const text = JSON.stringify(entries);
+    for (const plumbing of ["system-reminder", "agent-context", "media-output-reminder", "mcode-tools-master"]) {
+      expect(text).not.toContain(plumbing);
+    }
+    expect(entries[3]!.parts).toEqual([{ kind: "text", text: "thanks - what is in notes.txt?" }]);
   });
 });
 

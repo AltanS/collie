@@ -67,7 +67,7 @@ export interface JournalRoots {
   /** OpenClaw's state folder (`$OPENCLAW_STATE_DIR`, `~/.openclaw`), one SQLite per agent under
    *  `agents/<id>/agent/`. */
   openclaw: readonly string[];
-  /** MiniMax Code's `$MINIMAX_HOME/v2/sessions` — dated `…-session_<base64url(id)>` folders under
+  /** MiniMax Code's `$MINIMAX_DATA_DIR/v2/sessions` — dated `…-session_<base64url(id)>` folders under
    *  it, and the SQLite index at `../sqlite/runtime-state.sqlite`. */
   mcode: readonly string[];
 }

@@ -765,7 +765,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "journal",
     kind: "roots",
     default: [],
-    doc: "Where MiniMax Code keeps its dated session folders. Empty follows MINIMAX_HOME, else ~/.minimax/v2/sessions.",
+    doc: "Where MiniMax Code keeps its dated session folders. Empty follows MINIMAX_DATA_DIR, else ~/.minimax/v2/sessions.",
     configField: "journalRoots",
   },
 
