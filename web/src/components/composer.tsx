@@ -81,7 +81,7 @@ import {
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { useKeyBoard } from "@/lib/key-board-store";
 import { isDestructiveInput } from "@/lib/destructive";
-import { asksSendAgain, forgetUnknownSend, rememberUnknownSend, sendAgainId } from "@/lib/send-again";
+import { asksSendAgain, forgetUnknownSend, rememberUnknownSend, SEND_AGAIN_CONFIRM_DELAY_MS, sendAgainId } from "@/lib/send-again";
 import { useHostLabel } from "@/components/crew-provider";
 import { fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
 import { clearIntent, clearIntentIfDraftChanged, loadIntent, saveIntent } from "@/lib/send-intent";
@@ -879,6 +879,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // confirm the command palette uses for /clear.
   const sendConfirm = usePendingConfirm();
   const armedWhen = useRef<SendWhen | undefined>(undefined);
+  // When "Send it again?" was armed (ms since the epoch): a confirming tap counts only after a short delay.
+  const sendAgainArmedAt = useRef(0);
   // The password prompt the last refused send was looking at, if it was one (#103). Since M56 spec 06
   // the phone reads nothing before a send; this is a display read of the screen the composer already
   // has (`text`), taken when the bridge refused or left the text unsubmitted, and only to say so and
@@ -1405,7 +1407,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (pendingUnknown === null || chatEntries === undefined) return;
     if (findUnknownSendMatch(pendingUnknown, chatEntries) === undefined) return;
     setPendingUnknown(null);
-    forgetUnknownSend(scope, paneId, pendingUnknown.sentText); // it went: nothing is left to ask about
+    forgetUnknownSend(scope, paneId, pendingUnknown.sentText, isShell); // it went: nothing is left to ask about
     setProtocolOffer(null);
     setSendRefusal(null);
     if (
@@ -1890,7 +1892,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         noteSend(reportKey, paneId, { requestId: res.requestId, outcome: reply.outcome, reason: reply.reason, cap: reply.cap !== null, at: settledAt }, settledAt, scope);
       }
       // A known answer, gone or not gone, ends the question about this text.
-      if (reading.note !== "unknown" && t !== "") forgetUnknownSend(scope, paneId, t);
+      if (reading.note !== "unknown" && t !== "") forgetUnknownSend(scope, paneId, t, isShell);
       if (reading.clear) {
         setProtocolOffer(null);
         afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(reading.note, when), sentFrom);
@@ -1916,15 +1918,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // An `unknown` outcome is an open question the journal can still answer (#511): remember the
       // send, so its text landing as a user turn retires this notice and the kept draft. A resend
       // carries no text of its own to recognise, so it is never remembered.
-      if (reading.note === "unknown" && resend === undefined) {
-        setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
-        // The next tap on this same text asks "Send it again?" first (lib/send-again.ts).
-        if (isDraft && t !== "") rememberUnknownSend(scope, paneId, t);
-      }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
       // A display read only; the bridge's answer is the verdict.
       const prompt = detectNoEchoPrompt(splitLines(parseAnsi(text)));
+      if (reading.note === "unknown" && resend === undefined) {
+        setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
+        // The next tap on this same text asks "Send it again?" first (lib/send-again.ts). What the phone knows at
+        // this moment decides where the memory lives: a send to a no-echo prompt (the one read above, or a
+        // notice already standing) or on a shell pane stays in memory and never reaches sessionStorage.
+        if (isDraft && t !== "") rememberUnknownSend(scope, paneId, t, Date.now(), { isShell, memoryOnly: prompt !== null || noEchoRef.current !== null || isShell });
+      }
       if (prompt !== null) noticeNoEcho({ prompt, typed: reading.note === "typed" || reading.note === "unknown" });
       // The person's next look is the pane: snap the mirror to the live tail, as a send does.
       onSent();
@@ -2010,17 +2014,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     // A second tap on the text of a send that ended unknown, moments ago, on this pane: ask once. A
     // destructive line has had its own confirm by now; this one is about a message that may have gone.
-    // The memory holds the text as `send` types it (trimmed), so the tap compares that form.
-    const typed = isShell ? line.trimEnd() : line.trim();
-    if (asksSendAgain(scope, paneId, typed) && !sendConfirm.confirm(sendAgainId(line))) {
-      armedWhen.current = when;
-      setDestructiveNote(null);
-      return;
+    // The memory holds the text as `send` types it, and both ends read it through `sentForm` (lib/send-again.ts).
+    if (asksSendAgain(scope, paneId, line, Date.now(), isShell)) {
+      // A tap on the armed word within SEND_AGAIN_CONFIRM_DELAY_MS of the arm is a double tap by habit: it does
+      // nothing, so the word stays and the shared confirm's 3 seconds keep running from the arm.
+      if (sendConfirm.pending === sendAgainId(line) && Date.now() - sendAgainArmedAt.current < SEND_AGAIN_CONFIRM_DELAY_MS) return;
+      if (!sendConfirm.confirm(sendAgainId(line))) {
+        sendAgainArmedAt.current = Date.now();
+        armedWhen.current = when;
+        setDestructiveNote(null);
+        return;
+      }
     }
     sendConfirm.reset();
     setDestructiveNote(null);
     armedWhen.current = undefined;
-    forgetUnknownSend(scope, paneId, typed); // the confirming tap ends it; an unknown answer arms it afresh
+    forgetUnknownSend(scope, paneId, line, isShell); // the confirming tap ends it; an unknown answer arms it afresh
     void send(line, true, when);
   }
   // Armed on the composed line: an edited line no longer stands armed, and the note goes with it.

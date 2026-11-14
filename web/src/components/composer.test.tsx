@@ -5059,7 +5059,9 @@ describe("outcome at the thumb", () => {
     expect(header()).toBe("");
     // The same text on the same pane, moments after an unknown result: the Send slot asks (M100 spec 06).
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await user.click(await screen.findByRole("button", { name: "Send it again?" }));
+    const again = await screen.findByRole("button", { name: "Send it again?" });
+    await new Promise((resolve) => setTimeout(resolve, 450)); // the question takes a moment before it counts (SEND_AGAIN_CONFIRM_DELAY_MS)
+    await user.click(again);
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]!.id).not.toBe(recordedSends()[0]!.id);
   });
