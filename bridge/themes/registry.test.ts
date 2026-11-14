@@ -212,9 +212,11 @@ describe("the store", () => {
     const file = join(themesDir(dir), "registry.json");
     writeFileSync(file, JSON.stringify({ v: 1, fetchedAt: "2026-11-07T10:00:00.000Z", generated: null, dropped: 0, themes: [entry(), entry({ repo: "a/b/c" })] }));
     const { fetch } = fakeFetch(() => new Response("never"));
-    expect((await store({ fetch, dir }).store.status()).themes).toEqual([KEPT]);
+    // The file is dated 2026-11-07 and a stored copy goes stale after REGISTRY_STALE_MS, so it is read at a pinned time.
+    const now = () => Date.parse("2026-11-07T10:00:00Z");
+    expect((await store({ fetch, dir, now }).store.status()).themes).toEqual([KEPT]);
     writeFileSync(file, "{ broken");
-    expect((await store({ fetch, dir }).store.status()).themes).toEqual([]);
+    expect((await store({ fetch, dir, now }).store.status()).themes).toEqual([]);
   });
 
   test("the copy is held in memory for an hour, then read from disk again", async () => {
