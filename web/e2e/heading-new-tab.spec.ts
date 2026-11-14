@@ -35,6 +35,15 @@ async function tapPlus(page: Page, workspace: string): Promise<Request> {
   return sent;
 }
 
+/** The shape `mintRequestId` (lib/worktree-name.ts) gives every create: a version 4 UUID. */
+const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+/** A heading's create posts the workspace and the request id the phone mints per tap (one launch, one agent). */
+function expectCreateBody(sent: Request, workspaceId: string): void {
+  // `toEqual` is exact on the keys, so a stray field fails too; the id must be a non-empty string of the minted shape.
+  expect(sent.postDataJSON()).toEqual({ workspaceId, requestId: expect.stringMatching(REQUEST_ID) });
+}
+
 /** The path the new pane opens on: the fixture's fresh shell, as the router spells a pane id. */
 const NEW_PANE = `/pane/${encodeURIComponent(fixtureNewTab.pane.paneId)}`;
 
@@ -58,7 +67,7 @@ test("a heading's '+' opens a new tab in that workspace and steps into its shell
 
   // Solo: no machine and no session on the wire, as every solo request has always gone.
   expect(new URL(sent.url()).search).toBe("");
-  expect(sent.postDataJSON()).toEqual({ workspaceId: "w2" });
+  expectCreateBody(sent, "w2");
   await expect(page).toHaveURL(new RegExp(`${NEW_PANE}$`, "u"));
   await expect(
     page.getByText(fill(en["space.create.ready"], { what: en["space.noun.tab"] }), { exact: true }).first(),
@@ -109,13 +118,13 @@ test("in a crew, each heading sends the create to its own machine, whatever the 
   await page.goto("/");
   const peer = await tapPlus(page, "moonward");
   expect(new URL(peer.url()).searchParams.get("host")).toBe("workshop");
-  expect(peer.postDataJSON()).toEqual({ workspaceId: "w1" });
+  expectCreateBody(peer, "w1");
   await expect(page).toHaveURL(new RegExp(`${NEW_PANE}\\?h=workshop$`, "u"));
 
   // The lead's `w1`, seen from the peer's URL: it goes to the lead, which the wire spells as no host.
   await page.goto("/?h=workshop");
   const lead = await tapPlus(page, "webapp");
   expect(new URL(lead.url()).searchParams.get("host")).toBeNull();
-  expect(lead.postDataJSON()).toEqual({ workspaceId: "w1" });
+  expectCreateBody(lead, "w1");
   await expect(page).toHaveURL(new RegExp(`${NEW_PANE}$`, "u"));
 });
