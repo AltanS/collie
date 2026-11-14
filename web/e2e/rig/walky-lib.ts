@@ -69,6 +69,19 @@ export function wrapped(text: string): string {
 export const SENDER = (harness: string): string => `(?:\\s+on\\s+${harness}\\s+in\\s+"[^"]*"|\\s+\\(${harness},\\s[^)]*\\))`;
 
 /**
+ * A RegExp source for one exact subject after the sender: ` about "<subject>"`, any white space standing for
+ * a space. A case whose model composes a send gives the subject in its prompt and asserts it with this, so a
+ * model cannot carry the case's token in a subject of its own choosing (a subject is typed on the nudge line).
+ */
+export const aboutExactly = (subject: string): string => `\\s+about\\s+"${wrapped(subject)}"`;
+
+/**
+ * Text as a reader of the screen should judge a body by: every ` about "<subject>"` taken out, since the
+ * subject is the sender's own words on the header (the nudge line and `inbox`'s first line), not the body.
+ */
+export const withoutSubjects = (text: string): string => text.replace(/\babout\s+"[^"]*"/gu, "");
+
+/**
  * A RegExp source for the optional subject after the sender (M98 spec 07): ` about "<words>"`,
  * any white space standing for a space, since the terminal may wrap inside it. A subject holds no `"`.
  */

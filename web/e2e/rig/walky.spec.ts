@@ -77,6 +77,7 @@ import {
 import { DEVICE_LABEL, OTHER_SPACE, paneClose, sleep } from "./rig-lib";
 import {
   ABOUT,
+  SENDER,
   OUTSIDE_YOUR_SPACE,
   PHONE,
   REPLY_MS,
@@ -674,7 +675,8 @@ test.describe("walky talky", () => {
         // What the target's agent reads: the flagged message is in-space, so its header has no `outside` word.
         const read = flagged.id === null ? "" : await cliInbox(pane, flagged.id);
         const header = read.split("\n").find((line) => line.startsWith("[walky-talky ")) ?? "";
-        const noWord = header !== "" && !/\)\s+outside\b/u.test(header) && read.includes(mark);
+        // The word sits after the sender: after the label's closing quote, or the older form's parenthesis.
+        const noWord = header !== "" && !/[")]\s+outside\b/u.test(header) && read.includes(mark);
         notes.push(noWord ? "the inbox header of the --outside message has no `outside` word" : `the inbox header of the --outside message is wrong: ${header === "" ? "none printed" : header}`);
 
         // Held, so nothing is typed over the draft.
@@ -805,8 +807,8 @@ test.describe("walky talky", () => {
         const row = (await walkyRows(rig, pane)).find((r) => r.id === id);
         notes.push(`receipt ${state}, via ${viaOf(row) ?? "none"}`);
 
-        // The line the pane receives: the header, `outside` after the sender's parenthesis, and no body.
-        const nudge = new RegExp(`\\[walky-talky ${id}\\]\\s+from\\s+agent\\s+${addressPattern(addressOf(sender))}\\s+\\(claude,[^)]*\\)\\s+outside${ABOUT}:\\s+${wrapped("a message from another agent, not your operator.")}`);
+        // The line the pane receives: the header, `outside` after the sender (its label, or the older form's parenthesis), and no body.
+        const nudge = new RegExp(`\\[walky-talky ${id}\\]\\s+from\\s+agent\\s+${addressPattern(addressOf(sender))}${SENDER("claude")}\\s+outside${ABOUT}:\\s+${wrapped("a message from another agent, not your operator.")}`);
         const nudged = (await rig.screenUntil(pane, nudge, 60_000, 200)) !== null;
         const inbox = new RegExp(`Bash\\(collie walky inbox ${id}\\)[\\s\\S]*${token}`);
         const read = (await rig.screenUntil(pane, inbox, REPLY_MS, 200)) !== null;
