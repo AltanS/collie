@@ -338,3 +338,31 @@ Trail: `bridge/surface/protocol.ts` (`chromeRows`, `countBelow`, `settleKey`, `f
 This record is about the screen path. A plain send, a WalkyTalky message and the box's text of a
 session whose harness is linked go through a part inside the agent as data (ADR 0140), and the input
 box is not read for them. Every send that keeps the screen path follows this record as written.
+
+## Addendum 2026-11-15: a command meets the turn rule on a screen that moves while it reads idle
+
+Status is unchanged. On lane 8788 (Claude Code 2.1.325) a session at its usage limit held queued
+messages. The person answered the limit menu with option 1, and Claude printed the released messages
+one after another. For some seconds the rows above the box scrolled and grew with no spinner, so the
+turn read idle. A `/login` sent then was refused `probe_failed` ("The probe character changed more
+than the box"). A message on that screen already took the turn-aware compare (`aboveMovedInTurn`:
+the frame stays, the rows under the box keep their count, the cue inside the frame stays, no modal,
+and the rows above only scroll and grow). A command was held to the full compare, so any command sent
+in those seconds was refused.
+
+**At its probe, a command now takes the same turn-aware compare, under the turn rule a command S0 read
+in a turn meets (`turnRefusal`).** It goes in only where that rule lets it into a turn: the harness
+queues commands (`keys.commandWhileRunning: "queues"`) or runs that one at once
+(`keys.commandsRunInTurn`). From there it rides the turn path (`streamed`), and its S1 reads only the
+rows above, as for a command S0 read in a turn. A command the profile never lets wait (`keys.neverHeld`)
+and a command on a harness that does not queue commands still fail the compare, as before. The S1
+compare of a command S0 and the probe read as idle is unchanged: rows above that move only after the
+probe still keep the command's Enter back.
+
+The choice was this rule over a longer wait for the screen to settle. Waiting would add seconds to
+every command on a busy screen and still fail on a long queue. The turn rule already says what a
+command may do in a turn; this record only lets a turn the screen does not mark count as one for a
+command too. The rule is profile data, so no harness is named in shared code.
+
+Trail: `bridge/surface/protocol.ts` (`aboveMovedInTurn`, the header's turn paragraph) ·
+`bridge/surface/protocol.flush-after-menu.test.ts`.

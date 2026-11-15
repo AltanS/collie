@@ -70,9 +70,12 @@
 // anything else is `unknown(no_evidence)`. A steer is never held and never joins a pane's held sends.
 //
 // A turn the screen does not mark: Claude Code 2.1.301 draws no spinner while the answer streams, so
-// S0 reads idle. On a harness that queues, a send that is not a command may see the rows above the
+// S0 reads idle. On a harness that queues, a send may see the rows above the
 // box move while Collie types, if the frame stays, the rows under the box keep their count, the cue
-// inside the frame stays and the Surface claims no modal (aboveMovedInTurn). The rows above may only
+// inside the frame stays and the Surface claims no modal (aboveMovedInTurn). A command may too, at its
+// probe, where the turn rule would let it into a running turn (the harness queues commands, or runs
+// that one at once): an agent that prints its released queue after a menu answer reads idle for some
+// seconds, and a command sent then was refused `probe_failed` (2026-11-15). The rows above may only
 // scroll and grow: each read shares two rows in order with the read before it (aboveScrolled), so a
 // screen that replaced the conversation fails. From there it takes the queued path; the receipt says
 // `queued` only on S0's running read or a witness (in S2, or one late read where a turn may run). A
@@ -5408,7 +5411,10 @@ export class SendProtocol {
   /**
    * The amended rule of S1 (ARCHITECTURE.md, Send Protocol, 2026-10-16): on a harness that takes a
    * message in a turn (its Enter queues, or its profile names a queue key, which commitKeys then
-   * presses), a send that is not a command may see the rows ABOVE the box move while Collie types. All
+   * presses), a send may see the rows ABOVE the box move while Collie types. Since 2026-11-15 a command
+   * may too, at its probe, when the turn rule lets that command into a turn (the harness queues
+   * commands, `keys.commandWhileRunning`, or runs it at once); a command the turn rule refuses still
+   * fails the compare. Only the probe asks this for a command; its S1 then reads it on the turn path. All
    * else must hold: the frame is there, the rows under the box keep their count, the cue read inside
    * the frame is the same, and the Surface claims no modal. When the rows above moved under these
    * terms, the send takes the queued path from there and this returns true. Movement under the box, a
@@ -5417,9 +5423,11 @@ export class SendProtocol {
    */
   private aboveMovedInTurn(state: RunState, s0: Snap, snap: Snap): boolean {
     // (The rows above may only scroll and grow from read to read: bandScrolled.)
-    if (state.queued || state.manual || state.command || !queuesInTurn(state.match)) return false;
+    if (state.queued || state.manual || !queuesInTurn(state.match)) return false;
     const { mode } = state.request;
-    if (mode !== "send" && mode !== "append" && mode !== "replace") return false;
+    // A command meets the same turn rule a command S0 read in a turn meets (turnRefusal, below): it goes
+    // in where the harness queues commands or runs that one at once, and never where it would wait.
+    if (mode !== "send" && mode !== "append" && mode !== "replace" && mode !== "command") return false;
     if (s0.frame === null || snap.frame === null || aboveUnchanged(s0, snap)) return false;
     if (snap.cueStrength !== s0.cueStrength || framedCueGrew(s0, snap) || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame) || modalAtBox(snap)) return false;
     if (!this.bandScrolled(state, snap)) return false;
