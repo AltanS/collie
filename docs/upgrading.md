@@ -754,7 +754,7 @@ nothing needs doing on upgrade day. What you will notice:
   If you never ran `collie hooks install claude`, run it once. A Claude session that is already
   running shows no dot until it starts again, resumes, clears or compacts, because the window size
   comes from the session start.
-- **The 5-hour and 7-day dots read your own logins.** For Claude, Collie reads the login file on this
+- **The usage figures read your own logins.** For Claude, Collie reads the login file on this
   machine and asks `api.anthropic.com`. For Codex, it reads Codex's session files and asks nobody.
   Both are on by default. Set `COLLIE_ACCOUNT_WINDOWS=0` in your `.env`, or `account_windows = false`
   under `[bridge]`, to turn them off. OpenCode Go and Grok stay off until you name them
