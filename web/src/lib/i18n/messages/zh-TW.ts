@@ -1159,6 +1159,8 @@ export const zhTW: Dictionary = {
   "home.workspaceFilter.count.other": "{count} 個工作區",
   "home.sidebar.shells": "終端機執行個體",
   "home.pinned.title": "已釘選",
+  "home.subagents.collapse": "收合子 Agent（{count}）",
+  "home.subagents.expand": "展開子 Agent（{count}）",
   "home.pinHint.hold": "按住窗格以釘選至此處。",
   "home.pinHint.rightClick": "以滑鼠右鍵點擊窗格以釘選至此處。",
   "home.pinHint.dismiss": "關閉提示",

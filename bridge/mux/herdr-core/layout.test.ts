@@ -151,6 +151,76 @@ describe("the herdr-core snapshot mapping", () => {
     expect(snapshot.spaces.every((s) => !s.focused)).toBe(true);
     expect(snapshot.tabs.every((t) => !t.focused)).toBe(true);
   });
+
+  test("an unlabelled child terminal joins its live ancestor's space and tab as unpaned", () => {
+    const snapshot = toSnapshot(
+      [
+        terminal({ address: "t1", labels: inSpace("spA", "tbA2", "collie-workspace / fix login") }),
+        terminal({ address: "t2", name: "audit-auth", parent: "t1" }),
+        terminal({ address: "t3", name: "nested", parent: "t2" }),
+      ],
+      LAYOUT,
+      "/home/dev",
+    );
+    expect(snapshot.spaces.map((s) => [s.spaceId, s.paneCount])).toEqual([["spA", 3]]);
+    expect(snapshot.tabs.map((t) => [t.tabId, t.paneCount])).toEqual([["tbA2", 3]]);
+    const t2 = snapshot.panes.find((p) => p.paneId === "t2");
+    const t3 = snapshot.panes.find((p) => p.paneId === "t3");
+    expect(t2).toMatchObject({ spaceId: "spA", tabId: "tbA2", parentPaneId: "t1", unpaned: true });
+    expect(t3).toMatchObject({ spaceId: "spA", tabId: "tbA2", parentPaneId: "t2", unpaned: true });
+  });
+
+  test("an unlabelled child under an unlabelled parent in the implicit space is still unpaned", () => {
+    const snapshot = toSnapshot(
+      [
+        terminal({ address: "t1", name: "root" }),
+        terminal({ address: "t2", name: "worker", parent: "t1" }),
+      ],
+      null,
+      "/home/dev",
+    );
+    const t1 = snapshot.panes.find((p) => p.paneId === "t1");
+    const t2 = snapshot.panes.find((p) => p.paneId === "t2");
+    expect(t1?.unpaned).toBeUndefined();
+    expect(t2).toMatchObject({ spaceId: "herdr-core", tabId: "herdr-core.1", parentPaneId: "t1", unpaned: true });
+  });
+
+  test("a kept child with its own space and tab labels keeps its place and is not marked unpaned", () => {
+    const snapshot = toSnapshot(
+      [
+        terminal({ address: "t1", labels: inSpace("spA", "tbA1") }),
+        terminal({ address: "t2", labels: inSpace("spB", "tbB1"), parent: "t1" }),
+      ],
+      LAYOUT,
+      "/home/dev",
+    );
+    const t2 = snapshot.panes.find((p) => p.paneId === "t2");
+    expect(t2?.spaceId).toBe("spB");
+    expect(t2?.tabId).toBe("tbB1");
+    expect(t2?.parentPaneId).toBe("t1");
+    expect(t2?.unpaned).toBeUndefined();
+  });
+
+  test("exited, remote, missing and cyclic parents are omitted so orphans stay top-level", () => {
+    const snapshot = toSnapshot(
+      [
+        terminal({ address: "tDead", state: "finished", labels: inSpace("spA", "tbA1") }),
+        terminal({ address: "tOrphanDead", parent: "tDead" }),
+        terminal({ address: "tOrphanRemote", parent: "box/t1" }),
+        terminal({ address: "tOrphanMissing", parent: "t99" }),
+        terminal({ address: "tSelf", parent: "tSelf" }),
+        terminal({ address: "tCycleA", parent: "tCycleB" }),
+        terminal({ address: "tCycleB", parent: "tCycleA" }),
+      ],
+      LAYOUT,
+      "/home/dev",
+    );
+    for (const p of snapshot.panes) {
+      expect(p.parentPaneId).toBeUndefined();
+      expect(p.unpaned).toBeUndefined();
+      expect(p.spaceId).toBe(IMPLICIT_SPACE_ID);
+    }
+  });
 });
 
 describe("status and app words", () => {

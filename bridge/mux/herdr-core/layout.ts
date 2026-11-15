@@ -14,8 +14,9 @@ import type { WireForeground, WireLayout, WireStatus, WireTerminal } from "./cli
 //
 // The labels are the truth for WHERE a terminal belongs: herdr-app shows a terminal in the space
 // and tab its labels name, even one it did not start (AGENTS.md § The model). The document gives
-// the names and the order. A terminal without the labels belongs to no herdr-app space, so it sits
-// in one implicit space with one tab ({@link IMPLICIT_SPACE_ID}).
+// the names and the order. An unlabelled child terminal inherits its nearest labelled live
+// ancestor's space and tab (as `unpaned: true`); any other terminal without the labels sits in one
+// implicit space with one tab ({@link IMPLICIT_SPACE_ID}).
 //
 // A terminal on another machine (`box/t7`) is dropped before anything else: its journal, uploads
 // and audit log sit on that machine, and it is reached through the Collie running there
@@ -139,6 +140,42 @@ type MutableMuxPane = { -readonly [K in keyof MuxPane]: MuxPane[K] };
 type MutableMuxSpace = { -readonly [K in keyof MuxSpace]: MuxSpace[K] };
 
 /**
+ * Direct live local parent when the ancestor chain is cycle-free; `undefined` otherwise so exited,
+ * remote, missing and cyclic links never strand a child out of top-level lists.
+ */
+function acyclicParent(
+  terminal: WireTerminal,
+  byAddress: ReadonlyMap<string, WireTerminal>,
+): WireTerminal | undefined {
+  const parentId = terminal.parent ?? "";
+  if (!isLocalAddress(parentId) || parentId === terminal.address) return undefined;
+  const direct = byAddress.get(parentId);
+  if (direct === undefined) return undefined;
+  const seen = new Set<string>([terminal.address]);
+  let cur: WireTerminal | undefined = direct;
+  while (cur !== undefined) {
+    if (seen.has(cur.address)) return undefined;
+    seen.add(cur.address);
+    const nextId: string = cur.parent ?? "";
+    cur = isLocalAddress(nextId) ? byAddress.get(nextId) : undefined;
+  }
+  return direct;
+}
+
+/** Nearest live ancestor that carries `herdr.space` and `herdr.tab` labels, for unpaned sub-agents. */
+function inheritedLabels(
+  parent: WireTerminal,
+  byAddress: ReadonlyMap<string, WireTerminal>,
+): { readonly spaceId: string; readonly tabId: string } | null {
+  for (let cur: WireTerminal | undefined = parent; cur !== undefined; cur = cur.parent ? byAddress.get(cur.parent) : undefined) {
+    const spaceId = cur.labels[SPACE_LABEL] ?? "";
+    const tabId = cur.labels[TAB_LABEL] ?? "";
+    if (spaceId !== "" && tabId !== "") return { spaceId, tabId };
+  }
+  return null;
+}
+
+/**
  * The snapshot for these terminals and this layout document.
  *
  * Only LIVE local terminals become panes. Spaces and tabs keep the document's order, and ids the
@@ -149,6 +186,8 @@ type MutableMuxSpace = { -readonly [K in keyof MuxSpace]: MuxSpace[K] };
  */
 export function toSnapshot(terminals: readonly WireTerminal[], layout: WireLayout | null, home: string): MuxSnapshot {
   const live = terminals.filter((terminal) => isLocalAddress(terminal.address) && terminal.state === "live");
+  const byAddress = new Map(live.map((terminal) => [terminal.address, terminal]));
+  const unpanedIds = new Set<string>();
   const spaces: SpaceDraft[] = [];
   const spaceById = new Map<string, SpaceDraft>();
   const tabById = new Map<string, TabDraft>();
@@ -164,12 +203,19 @@ export function toSnapshot(terminals: readonly WireTerminal[], layout: WireLayou
   }
   let implicit: SpaceDraft | null = null;
   for (const terminal of live) {
-    const spaceId = terminal.labels[SPACE_LABEL] ?? "";
-    const tabId = terminal.labels[TAB_LABEL] ?? "";
+    let spaceId = terminal.labels[SPACE_LABEL] ?? "";
+    let tabId = terminal.labels[TAB_LABEL] ?? "";
     if (spaceId === "" || tabId === "") {
-      implicit ??= { id: IMPLICIT_SPACE_ID, docName: "", folder: "", tabs: [{ id: IMPLICIT_TAB_ID, docName: "", terminals: [] }] };
-      implicit.tabs[0]?.terminals.push(terminal);
-      continue;
+      const liveParent = acyclicParent(terminal, byAddress);
+      if (liveParent !== undefined) unpanedIds.add(terminal.address);
+      const inherited = liveParent === undefined ? null : inheritedLabels(liveParent, byAddress);
+      if (inherited === null) {
+        implicit ??= { id: IMPLICIT_SPACE_ID, docName: "", folder: "", tabs: [{ id: IMPLICIT_TAB_ID, docName: "", terminals: [] }] };
+        implicit.tabs[0]?.terminals.push(terminal);
+        continue;
+      }
+      spaceId = inherited.spaceId;
+      tabId = inherited.tabId;
     }
     let space = spaceById.get(spaceId);
     if (space === undefined) {
@@ -194,7 +240,7 @@ export function toSnapshot(terminals: readonly WireTerminal[], layout: WireLayou
     // A tab is shown by its place among the tabs that hold a terminal here, as herdr-app numbers them.
     const shown = space.tabs.filter((tab) => tab.terminals.length > 0);
     if (shown.length === 0) continue;
-    const first = shown[0]?.terminals[0];
+    const first = shown[0]?.terminals.find((t) => !unpanedIds.has(t.address)) ?? shown[0]?.terminals[0];
     const spaceNumber = outSpaces.length + 1;
     const label =
       space.id === IMPLICIT_SPACE_ID
@@ -213,9 +259,12 @@ export function toSnapshot(terminals: readonly WireTerminal[], layout: WireLayou
     outSpaces.push(outSpace);
     shown.forEach((tab, index) => {
       const place = String(index + 1);
-      const tabLabel = tab.docName || whereParts(tab.terminals[0]).tab || place;
+      const lead = tab.terminals.find((t) => !unpanedIds.has(t.address)) ?? tab.terminals[0];
+      const tabLabel = tab.docName || whereParts(lead).tab || place;
       outTabs.push({ tabId: tab.id, spaceId: space.id, number: index + 1, label: tabLabel, focused: false, paneCount: tab.terminals.length });
-      for (const terminal of tab.terminals) panes.push(toPane(terminal, { space, label, spaceNumber, tab, tabLabel, home }));
+      for (const terminal of tab.terminals) {
+        panes.push(toPane(terminal, { space, label, spaceNumber, tab, tabLabel, home, byAddress, unpaned: unpanedIds.has(terminal.address) }));
+      }
     });
   }
   return { panes, spaces: outSpaces, tabs: outTabs };
@@ -229,6 +278,8 @@ interface PanePlace {
   readonly tabLabel: string;
   /** The bridge's home, which the core's `~` stands for: the bridge runs on its core's machine. */
   readonly home: string;
+  readonly byAddress: ReadonlyMap<string, WireTerminal>;
+  readonly unpaned: boolean;
 }
 
 /**
@@ -278,5 +329,8 @@ function toPane(terminal: WireTerminal, place: PanePlace): MuxPane {
   if (title !== undefined && title !== "") pane.terminalTitle = title;
   // A raw process fact for presentation only, never the agent (MuxPane.foregroundCommand).
   if (terminal.foreground !== null && terminal.foreground.name !== "") pane.foregroundCommand = terminal.foreground.name;
+  const parent = acyclicParent(terminal, place.byAddress);
+  if (parent !== undefined) pane.parentPaneId = parent.address;
+  if (place.unpaned) pane.unpaned = true;
   return pane;
 }

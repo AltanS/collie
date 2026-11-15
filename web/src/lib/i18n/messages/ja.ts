@@ -1174,6 +1174,8 @@ export const ja: Dictionary = {
   "home.workspaceFilter.count.other": "{count} 個のワークスペース",
   "home.sidebar.shells": "シェル",
   "home.pinned.title": "固定済み",
+  "home.subagents.collapse": "サブエージェントを折りたたむ ({count})",
+  "home.subagents.expand": "サブエージェントを展開 ({count})",
   "home.pinHint.hold": "ペインを長押しするとここに固定できます。",
   "home.pinHint.rightClick": "ペインを右クリックするとここに固定できます。",
   "home.pinHint.dismiss": "ヒントを閉じる",

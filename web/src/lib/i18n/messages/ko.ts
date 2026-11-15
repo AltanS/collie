@@ -1172,6 +1172,8 @@ export const ko: Dictionary = {
   "home.workspaceFilter.count.other": "{count}개 워크스페이스",
   "home.sidebar.shells": "셸",
   "home.pinned.title": "고정됨",
+  "home.subagents.collapse": "하위 에이전트 접기 ({count})",
+  "home.subagents.expand": "하위 에이전트 펼치기 ({count})",
   "home.pinHint.hold": "창을 길게 누르면 여기에 고정됩니다.",
   "home.pinHint.rightClick": "창을 마우스 오른쪽 버튼으로 클릭하면 여기에 고정됩니다.",
   "home.pinHint.dismiss": "힌트 닫기",

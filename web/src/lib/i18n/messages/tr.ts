@@ -1102,6 +1102,8 @@ export const tr: Dictionary = {
   "home.workspaceFilter.count.other": "{count} çalışma alanı",
   "home.sidebar.shells": "Kabuklar",
   "home.pinned.title": "Sabitlendi",
+  "home.subagents.collapse": "Alt aracıları daralt ({count})",
+  "home.subagents.expand": "Alt aracıları genişlet ({count})",
   "home.pinHint.hold": "Buraya sabitlemek için bir bölmeyi basılı tutun.",
   "home.pinHint.rightClick": "Buraya sabitlemek için bir bölmeye sağ tıklayın.",
   "home.pinHint.dismiss": "İpucunu kapat",

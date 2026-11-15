@@ -1495,6 +1495,13 @@ prevents (`web/src/lib/api.ts:201-203`).
   which is what every older member sends and what a session with no pins sends. The lead keeps the
   field only in that form and drops anything else. It only shows: the list and the unpin are the
   member's `pane/:id/pins` route.
+- **A pane may carry `parentPaneId?: string` and `unpaned?: true`** (additive-optional, §7.1, added
+  2026-11-15, [ADR 0141](./.adr/0141-a-child-terminal-reports-completion-to-its-parent.md)): present
+  on a `herdr-core` child terminal whose parent is live on the same machine and session in the same
+  snapshot, and omitted otherwise (`unpaned: true` is set only when the child is unlabelled and
+  inherits its ancestor's space and tab without a split pane of its own). Absent means a top-level
+  pane, which is what every older member and every other multiplexer sends. The merge passes both
+  through like `asks` and `turnId`, and a lead that predates them does the same.
 - **A session may carry `label`** (additive-optional, §7.1, added 2026-10-19): the display label
   the member's own operator wrote in its `spaces.toml`. It is display-only: `name` stays the
   session's identity on the link and in every address. The lead keeps it only as a string and runs

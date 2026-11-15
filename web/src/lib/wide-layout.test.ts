@@ -25,6 +25,7 @@ import {
   scrollTargetFor,
   shownPreset,
   spaceKeyOf,
+  spacesInOrder,
   spaceSwipe,
   wholeColumnStart,
   widthClassOf,
@@ -268,5 +269,32 @@ describe("strip geometry", () => {
     expect(spaceSwipe(5, 70)).toBe(-1);
     expect(spaceSwipe(60, 50)).toBeNull();
     expect(spaceSwipe(0, 30)).toBeNull();
+  });
+});
+
+describe("spacesInOrder with nested sub-agents", () => {
+  const pane = (paneId: string, tabPosition: number, parentPaneId?: string): AgentView => {
+    const base: AgentView = {
+      paneId,
+      workspaceId: "w1",
+      workspaceLabel: "webapp",
+      workspaceNumber: 1,
+      tabId: "w1:t1",
+      tabPosition,
+      agent: "claude",
+      status: "idle",
+      cwd: "/home/you/webapp",
+      focused: false,
+    };
+    return parentPaneId === undefined ? base : { ...base, parentPaneId, unpaned: true };
+  };
+
+  it("orders panes depth-first per workspace to agree with ThreadSidebar (ADR 0121)", () => {
+    const groups = spacesInOrder(
+      [pane("t1", 0), pane("t2", 1, "t1"), pane("t3", 2, "t1"), pane("t4", 3, "t2")],
+      [],
+      { order: "fixed" },
+    );
+    expect(groups.map((g) => g.panes.map((p) => p.paneId))).toEqual([["t1", "t2", "t4", "t3"]]);
   });
 });
