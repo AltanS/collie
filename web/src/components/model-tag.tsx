@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "
 import type { StatusItem } from "@/components/trick-status-item";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
+import { knownWindowName } from "@/lib/accounts";
 import { t, type MessageKey } from "@/lib/i18n";
 import { hasResizeObserver } from "@/lib/env";
 import { effortLabel, modelLabel } from "@/lib/model-label";
@@ -235,7 +236,7 @@ function windowGauge(limit: UsageLimit): Gauge {
     const short = week === undefined ? "7d" : t(week.short);
     return { id: limit.window, window: true, short: `${short} ${drawnLabel(label)}`, spoken: t("chat.usage.window.7d.scoped.aria", { label, percent }), used: limit.used };
   }
-  const label = limit.label ?? limit.window;
+  const label = limit.label ?? knownWindowName(limit.window) ?? limit.window;
   return { id: limit.window, window: true, short: drawnLabel(label), spoken: t("chat.usage.window.other.aria", { label, percent }), used: limit.used };
 }
 

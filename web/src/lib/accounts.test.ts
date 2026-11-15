@@ -8,6 +8,7 @@ import {
   accountName,
   addedCount,
   addedOf,
+  folderTextInvalid,
   groupAccounts,
   isHot,
   nameFromFolder,
@@ -32,7 +33,20 @@ describe("accounts: the windows are the harness's own", () => {
     expect(windowName({ window: "7d:sonnet", label: "Sonnet", usedPct: 1, resetsAt: null })).toBe("Week · Sonnet");
     expect(windowName({ window: "7d:opus", usedPct: 1, resetsAt: null })).toBe("Week · opus");
     expect(windowName({ window: "spend", label: "Spend", usedPct: 1, resetsAt: null })).toBe("Spend");
-    expect(windowName({ window: "spend", usedPct: 1, resetsAt: null })).toBe("spend");
+    expect(windowName({ window: "spend", label: "Gateway", usedPct: 1, resetsAt: null })).toBe("Gateway");
+    expect(windowName({ window: "spend", usedPct: 1, resetsAt: null })).toBe("Spend");
+    expect(windowName({ window: "credits", usedPct: 1, resetsAt: null })).toBe("Credits");
+    expect(windowName({ window: "30d", usedPct: 1, resetsAt: null })).toBe("30d");
+  });
+
+  it("refuses a typed folder the bridge would refuse, by character and by length", () => {
+    expect(folderTextInvalid("~/.claude-alt")).toBe(false);
+    expect(folderTextInvalid("/home/op/my folder")).toBe(false);
+    for (const bad of ["/a'b", '/a"b', "/a\\b", "/a`b", "/a$b", "/a\nb", "/a\u0007b", "/a\u202eb", "/a\u0085b"]) {
+      expect(folderTextInvalid(bad), JSON.stringify(bad)).toBe(true);
+    }
+    expect(folderTextInvalid(`/${"a".repeat(199)}`)).toBe(false);
+    expect(folderTextInvalid(`/${"a".repeat(200)}`)).toBe(true);
   });
 
   it("draws used percent, hot from 80, and a reset window as 'reset' with the long form", () => {
