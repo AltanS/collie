@@ -84,6 +84,7 @@ const ELSEWHERE: readonly Elsewhere[] = [
   { file: "bridge/walky/refusals.ts", count: 3, why: "the refusal counter `RefusalCounter` is handed the folder for, `<stateDir>/walky` from index.ts (M62 hardening I): the folder at 0700 and `refusals.json` at 0600 through its `.tmp` sibling" },
   { file: "bridge/surface/hold.ts", count: 3, why: "the hold socket's folder and file, `holdSocketPath(cfg.stateDir)` from index.ts (M56 spec 12): `<stateDir>/hold` at 0700 and its `sock` at 0600; the server does not start on Windows" },
   { file: "bridge/owner-only.ts", count: 2, why: "the private-folder code itself: the backup folder inside the state folder, and the folder being made private" },
+  { file: "bridge/account-links.ts", count: 2, why: "an account folder and the folders it links, under the person's home (M101), the agent's own folders, not Collie's; the same case as cli/hooks.ts" },
 ];
 
 function sourceFiles(dir: string): string[] {

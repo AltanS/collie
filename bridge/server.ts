@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import { homedir, hostname, networkInterfaces } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
+import type { Accounts } from "./accounts-routes.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
@@ -1584,6 +1585,11 @@ export function startServer(opts: {
    */
   worktreeFolderSetting?: WorktreeFolderSettingSurface;
   /**
+   * This machine's accounts (M101, ADR 0141). Absent: `GET /api/accounts` answers
+   * `accounts.unavailable`, a launch that names an account is refused, and no pane carries a tag.
+   */
+  accounts?: Accounts;
+  /**
    * Every machine's load, the day of minutes behind it and the alert rules (ADR 0084).
    *
    * Supplied on a lead and on a solo collie, and **absent on a peer**, which answers the three
@@ -1894,6 +1900,11 @@ export function startServer(opts: {
     if (!rt) return undefined;
     void sessionLabels.refresh();
     const { workspaces, tabs, bridge, muxFault } = rt.engine.current();
+    // A launch note (M101) lives only as long as its pane: the panes of every session read here prune it.
+    for (const from of widen ? registry.ordered() : [rt]) {
+      const now = from.engine.current();
+      opts.accounts?.keep(from.name, [...now.agents, ...now.shellPanes].map((p) => p.paneId));
+    }
     // Attach each pane's activity timestamps. Done here rather than in the state engine so the
     // engine stays a pure Herdr-poller with no knowledge of the ledger — and so the two numbers
     // are read at serialise time, i.e. as fresh as the request. The ledger is keyed by SESSION, so
@@ -1938,9 +1949,12 @@ export function startServer(opts: {
       // The usage dots: numbers only, the session's context and the account's windows (ADR 0118).
       const readUsage = opts.usage?.get(p);
       const withUsage = readUsage === undefined ? withJobs : { ...withJobs, usage: readUsage };
+      // The added account the pane runs under (M101): from memory, a label and an id, never a folder.
+      const account = opts.accounts?.paneAccount(from.name, p);
+      const withAccount = account === undefined ? withUsage : { ...withUsage, account };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
-      return gitHead === undefined ? withUsage : { ...withUsage, gitHead };
+      return gitHead === undefined ? withAccount : { ...withAccount, gitHead };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is
@@ -2254,6 +2268,7 @@ export function startServer(opts: {
         harnesses,
         receipts: launchReceipts,
         launchWindow: opts.launchWindow,
+        accounts: opts.accounts,
         starterReceipts,
         folders,
         switches: launcherSources.switches,
@@ -2317,6 +2332,10 @@ export function startServer(opts: {
     // `?host=` call reads and writes the member's own value, never the lead's.
     const worktreeFolderAnswerRes = await serveWorktreeFolderRoute(req, pathname, caller, worktreeFolderSetting);
     if (worktreeFolderAnswerRes !== null) return worktreeFolderAnswerRes;
+    // Accounts (M101): this machine's, read and changed per machine. Session-scoped for the folder
+    // setting's reason: `?host=` reaches the member whose folders they are.
+    const accountsAnswer = await serveAccountsRoute(req, pathname, caller, opts.accounts);
+    if (accountsAnswer !== null) return accountsAnswer;
     // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
     //
     // A READ, and gated as one: it hands back a picture an agent already put in its own log, so a
@@ -2464,13 +2483,14 @@ export function startServer(opts: {
           const family = canonicalAgent(pane.agent?.toLowerCase().trim() ?? "");
           const skillAgent = skillAgentFor(family);
           if (skillAgent !== undefined) {
-            commands = await discoverAgentSkills(skillAgent, { home, cwd, env: process.env });
+            // An added account's agent reads its own folder (M101): the scan reads the same one.
+            commands = await discoverAgentSkills(skillAgent, { home, cwd, env: opts.accounts?.envOf(rt.name, pane) ?? process.env });
           }
         } else {
           commands = await discoverClaudeCommands({
             home,
             cwd,
-            configDir: claudeConfigDir(cfg.journalRoots.claude, home),
+            configDir: opts.accounts?.folderOf(rt.name, pane) ?? claudeConfigDir(cfg.journalRoots.claude, home),
           });
         }
       } catch (err) {
@@ -2507,6 +2527,7 @@ export function startServer(opts: {
         folderSetting: worktreeFolderSetting,
         harnesses,
         folders,
+        accounts: opts.accounts,
       });
     }
     // ── Tab actions: rename (set its label) / close (kill it + every pane in it) ──
@@ -7391,7 +7412,7 @@ async function runWorktreeCreate(
   branch: string,
   base: string | undefined,
   // The row to start once the space is open, and `lead` when it is a lead row this member was sent.
-  launcher: Pick<PickedLaunch, "row" | "source">,
+  launcher: Pick<PickedLaunch, "row" | "source" | "afterTyped">,
   requestId: string | undefined,
   audit: AuditLog,
   device: string | null,
@@ -7446,6 +7467,7 @@ async function runWorktreeCreate(
   } else if (row !== undefined) {
     const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, wait, "worktree");
     launcherStarted = sent.ok;
+    if (sent.ok) launcher.afterTyped?.(session, created.paneId);
     if (!sent.ok) launcherError = sent.error;
   }
   // `launcher` redacts under COLLIE_AUDIT_CONTENT=none like `command` on a launch; `requestId` is an
@@ -7692,6 +7714,8 @@ export async function createWorktreeAt(
     harnesses?: Pick<HarnessProbe, "launch">;
     folders?: Pick<FolderSurface, "recordRecent">;
     wait?: PaneReadyOptions;
+    /** This machine's accounts (M101): an `account` on the body starts the agent under it. */
+    accounts?: Accounts;
   },
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
@@ -7727,10 +7751,11 @@ export async function createWorktreeAt(
   if (!parsedBase.ok) return refuse("worktree.invalid_base");
   const folder = parseFolderChoice(fields.folder);
   if (folder === null) return refuse("worktree.folder_invalid");
-  // `run` counts as named so a one-off line on a branch is refused (ADR 0095), never read as a shell.
-  const named = ["command", "harness", "shell", "run"].some((k) => fields[k] !== undefined && fields[k] !== null && fields[k] !== false);
+  // `run` counts as named so a one-off line on a branch is refused (ADR 0095), never read as a shell, and
+  // so do `account` and `signIn` (M101): alone they name no agent, and `pickLaunch` refuses them.
+  const named = ["command", "harness", "shell", "run", "account", "signIn"].some((k) => fields[k] !== undefined && fields[k] !== null && fields[k] !== false);
   const picked = named
-    ? await pickLaunch(fields, getLaunchers, deps.harnesses, null, leadRowGate(req, deps.viaCrew, home))
+    ? await pickLaunch(fields, getLaunchers, deps.harnesses, null, leadRowGate(req, deps.viaCrew, home), deps.accounts)
     : ({ kind: "shell", row: undefined } as const);
   if (picked instanceof Response) return picked;
   const cwd = askedFolder(fields.cwd, home);
@@ -8046,6 +8071,50 @@ export async function serveLaunchCheckRoute(
   if (asked === null) return text("bad body", 400);
   const line = typeof asked.run === "string" ? asked.run : undefined;
   return json(checkRunLine(line) satisfies LaunchCheckResponse, req.headers.get("accept-encoding"));
+}
+
+// ── Accounts (M101, ADR 0141, bridge/accounts-routes.ts) ──────────────────────────────────────────
+//
+// Three routes: `GET /api/accounts` reads this machine's accounts, `POST /api/accounts` adds one and
+// `POST /api/accounts/remove` forgets one. The gate first, then the resolver (which forwards a `?host=`
+// call to the member whose folders they are), then THIS machine's own service. A bridge built with no
+// service, and every Windows host, answers the read with `accounts.unavailable`, and the app hides the
+// feature as it does for an older bridge.
+
+/** The accounts routes, or `null` when `pathname` is none of them. */
+export async function serveAccountsRoute(
+  req: Request,
+  pathname: string,
+  caller: Pick<RouteCaller, "gate" | "resolve" | "device" | "audit">,
+  accounts: Accounts | undefined,
+): Promise<Response | null> {
+  const ae = req.headers.get("accept-encoding");
+  if (pathname === "/api/accounts" && req.method === "GET") {
+    const denied = caller.gate("read");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    const body = accounts === undefined ? null : await accounts.body();
+    if (body === null) return json({ ok: false, ...apiError("accounts.unavailable") }, ae, 404);
+    return json(body, ae);
+  }
+  const act = pathname === "/api/accounts" ? "add" : pathname === "/api/accounts/remove" ? "remove" : null;
+  if (act === null || req.method !== "POST") return null;
+  const denied = caller.gate("write");
+  if (denied) return denied;
+  const rt = await caller.resolve();
+  if (rt instanceof Response) return rt;
+  if (accounts === undefined) return json({ ok: false, ...apiError("accounts.unavailable") }, ae, 404);
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; the service checks every field.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const who = { device: caller.device(), audit: caller.audit, session: rt.name };
+  const answer = act === "add" ? await accounts.add(body, who) : await accounts.remove(body, who);
+  return json(answer.body, ae, answer.status);
 }
 
 // ── The "Worktree folder" setting (ADR 0093, note of 2026-11-13) ──────────────────────────────────
@@ -8481,6 +8550,7 @@ export async function launch(
     deps.harnesses,
     { device, switches: deps.switches ?? (() => Promise.resolve({ ...DEFAULT_SWITCHES })) },
     leadRowGate(req, deps.viaCrew, deps.home ?? homedir()),
+    deps.accounts,
   );
   if (picked instanceof Response) return picked;
 
@@ -8535,6 +8605,7 @@ export async function launch(
     harness: picked.harness,
     launchWindow: deps.launchWindow,
     source: picked.source,
+    afterTyped: picked.afterTyped,
   });
   if (requestId !== undefined) receipts.track(requestId, work);
   // What follows a launch that worked runs when the run ends, also after the deadline below has answered.
@@ -8609,6 +8680,8 @@ export interface LaunchDeps {
   sessionFolder?: string;
   /** The clock the member's one deadline ({@link MEMBER_DEADLINE_MS}) runs on; production passes nothing. */
   deadline?: LookClock;
+  /** This machine's accounts (M101). Absent: a launch that names one is `accounts.unavailable`. */
+  accounts?: Accounts;
 }
 
 /**
@@ -8638,6 +8711,8 @@ type PickedLaunch = {
   harness?: string;
   /** `lead` when the row is one the lead carried over the crew link (ADR 0127 point 3). */
   source?: "lead";
+  /** Runs once the line is typed into the new pane: a launch with an account notes the pane (M101). */
+  afterTyped?: (session: string, paneId: string) => void;
 };
 
 /** Whether a carried lead row is taken, and the home its `~` is read under (ADR 0127 point 3). */
@@ -8679,6 +8754,7 @@ async function pickLaunch(
   harnesses: Pick<HarnessProbe, "launch"> | undefined,
   runGate: RunGate | null,
   leadGate: LeadRowGate,
+  accounts?: Accounts,
 ): Promise<PickedLaunch | Response> {
   const command = typeof fields.command === "string" ? fields.command.trim() : "";
   const harness = typeof fields.harness === "string" ? fields.harness.trim() : "";
@@ -8687,6 +8763,13 @@ async function pickLaunch(
   const run = fields.run !== undefined && fields.run !== null;
   const named = [command !== "", harness !== "", shell, run].filter(Boolean).length;
   if (named !== 1) return text("bad body", 400);
+  // An account (M101) is only ever a built-in start: never a shell, a one-off line or a hand-written row.
+  const accountField = fields.account;
+  if (accountField !== undefined && accountField !== null && (typeof accountField !== "string" || accountField === "")) return text("bad body", 400);
+  const account = typeof accountField === "string" ? accountField : undefined;
+  const signIn = fields.signIn === true;
+  const withAccount = account !== undefined || signIn;
+  if (withAccount && (shell || run)) return text("bad body", 400);
   if (shell) return { kind: "shell", row: undefined };
   if (run) return pickRun(fields.run, runGate);
   if (harness !== "") {
@@ -8694,13 +8777,26 @@ async function pickLaunch(
     if (known === undefined) {
       return json({ ok: false, ...apiError("launch.unknown_harness", { harness }) } satisfies CreateResponse, null, 400);
     }
-    return { kind: "harness", row: { command: known.binary, label: known.label }, harness };
+    // No account and no sign-in: the line it always was, byte for byte.
+    if (!withAccount) return { kind: "harness", row: { command: known.binary, label: known.label }, harness };
+    const start = await accountStart(accounts, { harness, base: known.binary, account, signIn });
+    if (start instanceof Response) return start;
+    return { kind: "harness", row: { command: start.command, label: known.label }, harness, afterTyped: start.afterTyped };
   }
   // Live read, behind the same mtime cache the other operator files use — a new row in
   // `launchers.toml` is live on the bridge without a restart (an already-open tab needs a reload to
   // re-fetch its rows, the same property `commands.toml` has).
   const row = (await getLaunchers()).find((r) => r.command === command);
+  if (row && withAccount) {
+    // Only a recipe row a phone built from the bridge's own table (ADR 0094) takes an account: its line
+    // is Collie's, so the variable goes in front of it. A hand-written or operator row is never rewritten.
+    if (signIn || row.source !== "added" || row.addedAs !== "recipe" || row.harness === undefined) return text("bad body", 400);
+    const start = await accountStart(accounts, { harness: row.harness, base: row.command, account, signIn: false });
+    if (start instanceof Response) return start;
+    return { kind: "row", row: { ...row, command: start.command }, afterTyped: start.afterTyped };
+  }
   if (row) return { kind: "row", row };
+  if (withAccount) return text("bad body", 400);
   const carried = fields[ROW_FIELD];
   if (carried === undefined || carried === null) {
     return json({ ok: false, ...apiError("launch.not_allowlisted") } satisfies CreateResponse, null, 400);
@@ -8709,6 +8805,22 @@ async function pickLaunch(
   const lead = rowFromLead(carried, command, leadGate.home);
   if (lead === null) return text("bad body", 400);
   return { kind: "row", row: lead, source: "lead" };
+}
+
+/** The line a start with an account types, or the refusal, before anything runs (M101). */
+async function accountStart(
+  accounts: Accounts | undefined,
+  input: { harness: string; base: string; account: string | undefined; signIn: boolean },
+): Promise<{ command: string; afterTyped?: (session: string, paneId: string) => void } | Response> {
+  if (accounts === undefined) {
+    if (input.account === undefined) return { command: input.base };
+    return json({ ok: false, ...apiError("accounts.unavailable") } satisfies CreateResponse, null, 404);
+  }
+  const start = await accounts.startLine(input);
+  if (!start.ok) return json({ ok: false, ...apiError(start.code, start.detail) } satisfies CreateResponse, null, start.status);
+  const row = start.account;
+  if (row === undefined) return { command: start.command };
+  return { command: start.command, afterTyped: (session, paneId) => accounts.noteLaunch(session, paneId, row.harness, row.id) };
 }
 
 /** A one-off run's gates, in order, and the line it types (ADR 0095). */
@@ -8774,6 +8886,8 @@ interface RunLaunchJob {
   launchWindow: Pick<LaunchWindow, "mark"> | undefined;
   /** `lead` for a row the lead carried (ADR 0127 point 3): the audit line says so. */
   source?: "lead" | undefined;
+  /** Runs once the line is typed (M101): a launch with an account notes its pane. */
+  afterTyped?: ((session: string, paneId: string) => void) | undefined;
 }
 
 async function runLaunch(herdr: MuxAdapter, engine: StateEngine, job: RunLaunchJob
@@ -8862,6 +8976,7 @@ async function finishLaunch(
     // The line is typed and the agent is booting: until its input box is on screen, a send to this pane
     // waits for the agent's input box instead of going into the shell (the Send Protocol, `starting`).
     if (job.harness !== undefined) job.launchWindow?.mark(job.session, created.paneId, job.harness);
+    job.afterTyped?.(job.session, created.paneId);
   }
   // `command` is deliberately NOT added to `METADATA_KEYS` in audit.ts. Under
   // `COLLIE_AUDIT_CONTENT=none` it therefore redacts like every other content-bearing detail, and

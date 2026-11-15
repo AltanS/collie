@@ -23,6 +23,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Accounts keep a second login of one agent beside the first.** Settings lists each agent's Default account and the ones you add. A shared Claude Code account is a new folder that links the default folder's setup and history, so only the login and the per-account state are its own; an own account adopts a folder you already use, as it is. Collie sets one variable on the agent's own command and you sign in inside the agent. Nothing changes until you add one.
+- **The slash list of a pane started with an account reads that account's commands and skills.** A command or skill kept only in the account's own folder now shows in the list.
+
 ### Changed
 
 - **A dev build's icon has an orange ground and a dark mark.** A build off its release tag showed an orange mark on the release's dark tile. Its favicons and home-screen tiles are now orange with the mark in the dark tile's colour, so a dev install stands apart at a glance. The release icons are unchanged.
@@ -32,6 +37,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A command sent right after you answer a menu is no longer refused while the agent is still catching up.** When the agent prints its queued messages after the answer, the screen keeps moving for a few seconds with no spinner. A command sent then, such as `/login`, now goes in the way a message already did on that screen, on harnesses that take a command during a turn. A command that must never wait, such as `/clear`, is still refused there.
+- **A launcher line that sets a variable first is still read for a no-prompts flag.** In `CODEX_HOME=~/.codex-work codex -a never`, the agent's own short flags now count, as they do without the variable, so the No prompts mark shows.
+
 
 ## [1.29.0] - 2026-11-12
 

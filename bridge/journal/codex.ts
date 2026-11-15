@@ -65,7 +65,8 @@ import {
   loadTail,
   MAX_TRANSCRIPT_BYTES,
   readSinceFile,
-  rootList,
+  rootReader,
+  type RootSource,
   statFile,
 } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
@@ -624,14 +625,19 @@ export function codexHistoryBase(firstLine: string): HistoryBase | null {
 export class CodexTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, { path: string; at: number }>();
 
-  private readonly roots: string[];
+  private readonly rootsNow: () => string[];
+
+  /** The roots now: fixed, or the live list an added account joins (M101). */
+  private get roots(): string[] {
+    return this.rootsNow();
+  }
 
   /** One sessions directory or several (a second `CODEX_HOME`), searched in order. */
   constructor(
-    roots: string | readonly string[],
+    roots: RootSource,
     private readonly now: () => number = () => Date.now(),
   ) {
-    this.roots = rootList(roots);
+    this.rootsNow = rootReader(roots);
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
@@ -814,7 +820,7 @@ async function descending(dir: string): Promise<string[]> {
 }
 
 /** Codex's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
-export function codexJournal(roots: string | readonly string[]): JournalAdapter {
+export function codexJournal(roots: RootSource): JournalAdapter {
   const source = new CodexTranscriptSource(roots);
   return {
     agent: "codex",

@@ -155,6 +155,8 @@
         "**/bridge/starter-launch.ts",
         "**/bridge/launchers-added.ts",
         "**/bridge/launcher-adds.ts",
+        "**/bridge/accounts-store.ts",
+        "**/bridge/accounts-routes.ts",
         "**/bridge/recent-runs.ts",
         "**/bridge/sent.ts",
         "**/bridge/worktree-choices.ts",

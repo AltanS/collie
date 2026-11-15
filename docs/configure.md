@@ -650,6 +650,110 @@ every add, rename and removal.
 > once before it first starts that row, and shows the command, the folder and the machine. Set
 > `adds = false` on the lead to turn off every phone-added row.
 
+### Accounts
+
+Keep a second login of one agent beside the first, and pick it when you start a session. Open
+**Settings**, then **Accounts**. With no account added, nothing else changes.
+
+Each agent has a **Default** account: its normal folder, started with nothing set. Add an account in
+one of two kinds:
+
+- **Shared** (Claude Code only): Collie makes a new folder, `~/.claude-<name>`, and links the default
+  folder's setup and history into it. Your sessions, `/resume`, skills, commands, plugins, hooks,
+  `settings.json`, `CLAUDE.md` and the prompt history stay one set. Only the login and the agent's
+  per-account state are the account's own.
+- **Own**: a folder you already use, taken as it is. Collie writes nothing into it. A folder that does
+  not exist yet is made empty.
+
+| Agent | What picks the folder | Kinds |
+| --- | --- | --- |
+| Claude Code | `CLAUDE_CONFIG_DIR` | Shared, Own |
+| Codex | `CODEX_HOME` | Own |
+| pi | `PI_CODING_AGENT_DIR` | Own |
+
+To sign in, start a session with the new account. The agent shows its own sign-in in the pane:
+Claude Code asks for a theme and then the login method, Codex offers a browser sign-in or a device
+code, and pi says to run `/login`. Some sign-ins need a browser on that machine.
+
+The New page lets you pick the account for an agent and for a row you built from its options. A row
+you wrote by hand starts as you wrote it. A Claude Code session started from a desktop terminal with
+the account's line (shown on the account's page) gets the account's tag too, once its hooks report
+the folder.
+
+A shared Claude Code account keeps three things per account, because Claude Code keeps them in the
+account's own `.claude.json`: project trust, MCP servers added with `claude mcp add`, and the theme.
+A link Collie could not make, because the account folder already holds that name, is listed on the
+account's page. Collie never replaces it.
+
+The history of an own folder is found with no restart and no `.env` line. An own Claude Code folder
+may have no Collie hooks yet; its page says so and shows the line that installs them.
+
+**Remove** forgets the account's name only. The folder, its links and its login stay.
+
+> **Note.** Accounts are per machine. A crew member's accounts are its own, and the New page reads
+> the accounts of the machine you start on. Windows offers no accounts yet.
+
+### Use several accounts of one agent
+
+Two Claude subscriptions, a work and a personal Codex, a second set of pi providers: give each
+account its own launcher row. Each row starts the agent with a different folder for its login and
+settings. Collie does not switch accounts. The agent keeps the login in the folder you name.
+
+```toml
+[[launchers]]
+command = "CLAUDE_CONFIG_DIR=~/.claude-work claude"
+label = "Claude Code, work"
+harness = "claude"
+
+[[launchers]]
+command = "CODEX_HOME=~/.codex-work codex"
+label = "Codex, work"
+harness = "codex"
+
+[[launchers]]
+command = "PI_CODING_AGENT_DIR=~/.pi-work pi"
+label = "pi, work"
+harness = "pi"
+
+[[launchers]]
+command = "omp --profile work"
+label = "omp, work"
+harness = "omp"
+```
+
+Collie types the `command` into a fresh shell, so a leading `VAR=value` sets the variable for that
+one program, as it does in bash, zsh and fish. The `harness` key lists the row under **Agent** with
+that agent's mark. Your plain **Claude Code** entry keeps the default account, so a personal login
+needs no row.
+
+| Agent | What separates the accounts | Sign in, once per folder |
+| --- | --- | --- |
+| Claude Code | `CLAUDE_CONFIG_DIR=<folder>`, the way Anthropic documents several accounts | `/login` in the pane |
+| Codex | `CODEX_HOME=<folder>` | `codex login` in a shell with `CODEX_HOME` set |
+| pi | `PI_CODING_AGENT_DIR=<folder>`, which moves settings, sessions and login | `/login` in the pane |
+| omp | `--profile <name>`, or `OMP_PROFILE=<name>` | `/login` in the pane, or `omp login` |
+
+To sign in, start the row once and run the sign-in in its pane. Each folder asks one time. After
+that, the row starts signed in. The sign-in is the agent's own flow, and some need a browser on that
+machine.
+
+A running session keeps its account. To use the other account, start a new session from the other
+row.
+
+Three more things need to know the folder, because the bridge reads its own environment and not a pane's:
+
+- **Chat history.** Collie finds a session's log under the default folder. For another folder, add
+  its logs to the bridge's `.env`, with absolute paths, then restart that Collie instance. For
+  Claude Code the setting is `COLLIE_TRANSCRIPT_ROOT=/home/you/.claude/projects,/home/you/.claude-work/projects`.
+  Codex takes `COLLIE_CODEX_ROOT` (`/home/you/.codex-work/sessions`). pi and omp take `COLLIE_PI_ROOT`
+  with the `sessions` folder of each home. Each setting replaces the default list, so name the
+  default folder too.
+- **Claude Code hooks.** Run `CLAUDE_CONFIG_DIR=/home/you/.claude-work collie hooks install claude`
+  once per folder ([Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)).
+- **The 5-hour and 7-day windows** of a Claude Code pane read that pane's own login, once the hooks
+  in its folder report the folder. Collie only reads the file, and it sends the login nowhere but
+  Anthropic ([Usage windows](#usage-windows)).
+
 ### Reaching a durable agent (experimental)
 
 Each durable agent a Collie runs beside its terminal is one entry in `sources.json`, written by

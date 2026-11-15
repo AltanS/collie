@@ -255,6 +255,13 @@ export interface AgentView {
    */
   usage?: PaneUsage;
   /**
+   * The ADDED account this pane's agent runs under (M101, ADR 0141): the folder its agent reported
+   * (hook or statusLine) is that account's folder, or the bridge started this pane with that account
+   * and the agent has not reported yet. ABSENT for the Default account, for a folder no account names,
+   * and from an older bridge. Never keyed on the pane alone: a report from the agent wins over the note.
+   */
+  account?: PaneAccount;
+  /**
    * What the checkout holding this pane's folder is on: a branch, or a detached head at a full
    * object name. Read off disk by `bridge/git-head.ts` (two small files, no git process, no lock) and
    * attached at serialise time exactly as {@link cache} is.
@@ -2624,3 +2631,73 @@ export const STATUS_RANK = {
   idle: 3,
   done: 4,
 } satisfies Record<AgentStatus, number>;
+
+// ── Accounts (M101, ADR 0141): GET /api/accounts, POST /api/accounts[/remove] ──────────────────
+
+/** An added account as a pane carries it. */
+export interface PaneAccount {
+  id: string;
+  label: string;
+}
+
+/** One usage window of an account, in the harness's own key. */
+export interface AccountWindow {
+  window: string;
+  label?: string;
+  /** Percent used, 0 to 100. `null`: the window passed its reset time and was not read since. */
+  usedPct: number | null;
+  resetsAt: number | null;
+}
+
+/** An account-capable harness found on this machine. */
+export interface AccountHarness {
+  /** A HARNESS_LAUNCHES id. */
+  id: string;
+  label: string;
+  /** What picks the folder, as text: `CLAUDE_CONFIG_DIR`. */
+  select: string;
+  /** What Add may offer for it on this machine. */
+  kinds: ("shared" | "own")[];
+  /** The pattern of a new folder, `~/.claude-{slug}`. */
+  newFolder: string;
+}
+
+/** One account row. Per harness, the Default row first, then the added rows in the order added. */
+export interface AccountRow {
+  /** Default: `<harness>:default`. Added: an opaque stable id. */
+  id: string;
+  harness: string;
+  /** Default rows carry "" and the app writes its own word. */
+  label: string;
+  kind: "default" | "shared" | "own";
+  /** For reading: `~/.claude-work` when under the home folder. */
+  folder: string;
+  /** What a desktop terminal needs: `CLAUDE_CONFIG_DIR=~/.claude-work claude`; Default: `claude`. */
+  startLine: string;
+  windows: AccountWindow[];
+  /** Epoch ms of the reading in `windows`; `null` when never read. */
+  seenAt: number | null;
+  /** A pane of this account runs now. */
+  live: boolean;
+  /** Shared only: entries that should be links and are not. */
+  unlinked?: string[];
+  /** Only where the adapter can tell. */
+  hooks?: "installed" | "missing";
+}
+
+/** A folder in use that is not added yet. */
+export interface FoundFolder {
+  harness: string;
+  /** For reading, as {@link AccountRow.folder}. */
+  folder: string;
+  /** The absolute path, the value an Add sends back. */
+  path: string;
+  why: "reported" | "name";
+}
+
+/** The body of `GET /api/accounts`. */
+export interface AccountsBody {
+  harnesses: AccountHarness[];
+  accounts: AccountRow[];
+  found: FoundFolder[];
+}

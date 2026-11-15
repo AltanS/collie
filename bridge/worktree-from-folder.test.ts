@@ -3,6 +3,9 @@ import { mkdir, mkdtemp, readdir, realpath, rm, symlink } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { realLinkDisk } from "./account-links.ts";
+import { Accounts } from "./accounts-routes.ts";
+import { memoryAccountStore } from "./accounts-store.ts";
 import { AuditLog } from "./audit.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import { harnessLaunch } from "./harness-launch.ts";
@@ -131,7 +134,11 @@ const clock = () => {
   };
 };
 
-async function create(mux: FakeMux, body: JsonObject, extra: { choices?: ReturnType<typeof memoryWorktreeChoices>; receipts?: ReturnType<typeof memoryWorktreeReceipts> } = {}) {
+async function create(
+  mux: FakeMux,
+  body: JsonObject,
+  extra: { choices?: ReturnType<typeof memoryWorktreeChoices>; receipts?: ReturnType<typeof memoryWorktreeReceipts>; accounts?: Accounts } = {},
+) {
   const res = await createWorktreeAt(
     asMux(mux),
     engine(),
@@ -146,10 +153,12 @@ async function create(mux: FakeMux, body: JsonObject, extra: { choices?: ReturnT
       choices: extra.choices,
       harnesses: { launch: harnessLaunch },
       wait: clock(),
+      accounts: extra.accounts,
     },
   );
-  // SAFETY: createWorktreeAt wrote this body as a WorktreeCreateResponse.
-  return { status: res.status, body: (await res.json()) as WorktreeCreateResponse };
+  // SAFETY: createWorktreeAt wrote this body as a WorktreeCreateResponse, or a plain-text 400 (a bad
+  // body) that reads as `null` here; only the status of that one is looked at.
+  return { status: res.status, body: (await res.json().catch(() => null)) as WorktreeCreateResponse };
 }
 
 describe("GET /api/worktree/plan", () => {
@@ -280,6 +289,18 @@ describe("POST /api/worktree", () => {
     expect((await create(mux, { cwd: repo, branch: "x2", harness: "rm -rf" })).body).toMatchObject({
       code: "launch.unknown_harness",
     });
+  });
+
+  test("an account on a branch types its start line in the new folder; an account alone is refused (M101)", async () => {
+    const store = memoryAccountStore();
+    const id = "6f1c2a4e-3b5d-4c7e-9f00-112233445566";
+    await store.add({ id, harness: "codex", label: "Work", kind: "own", dir: "/srv/codex-work", addedAt: 1, device: "pixel" });
+    const accounts = new Accounts({ store, harnesses: { list: () => Promise.resolve([]), launch: harnessLaunch }, home, env: {}, platform: "linux", disk: realLinkDisk });
+    const mux = new FakeMux();
+    const { body } = await create(mux, { cwd: repo, branch: "acct-a", harness: "codex", account: id }, { accounts });
+    expect(body).toMatchObject({ ok: true, launcherStarted: true });
+    expect(mux.texts).toEqual([["w7:p1", "CODEX_HOME='/srv/codex-work' codex"]]);
+    expect((await create(new FakeMux(), { cwd: repo, branch: "acct-b", account: id }, { accounts })).status).toBe(400);
   });
 
   test("a create that worked is remembered for the repo; a refusal is not", async () => {

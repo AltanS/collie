@@ -134,6 +134,20 @@ export function rootList(roots: string | readonly string[]): string[] {
 }
 
 /**
+ * An adapter's roots: fixed, or read again at each use. The live form is how an added account's own
+ * folder joins the search with no restart (M101, ADR 0141): the registry hands the adapter a function
+ * over the configured roots plus the accounts' roots, and every lookup asks it.
+ */
+export type RootSource = string | readonly string[] | (() => readonly string[]);
+
+/** The roots of `source` now, normalised as {@link rootList} does. */
+export function rootReader(source: RootSource): () => string[] {
+  if (typeof source === "function") return () => rootList(source());
+  const fixed = rootList(source);
+  return () => fixed;
+}
+
+/**
  * First root that really contains `candidate`, or null.
  *
  * ONLY for a path an adapter did not build — a session ref that arrived as a path (pi). Since no root
