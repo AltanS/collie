@@ -94,11 +94,9 @@ describe("ModelTag usage dots (the Dots choice)", () => {
     expect(container.querySelector(".sr-only")?.textContent).toBe("Context 7% used");
   });
 
-  it("skips a window this build does not know, and draws nothing for an empty reading", () => {
-    // SAFETY: a newer bridge may send a window this build has no label for; the test sends one on purpose.
-    const strange = { limits: [{ window: "30d" as "7d", used: 50 }] };
-    expect(render(<ModelTag model={undefined} usage={strange} />).container.innerHTML).toBe("");
+  it("draws nothing for an empty reading", () => {
     expect(render(<ModelTag model={undefined} usage={{}} />).container.innerHTML).toBe("");
+    expect(render(<ModelTag model={undefined} usage={{ limits: [] }} />).container.innerHTML).toBe("");
   });
 
   it("lights one dot per full fifth, so only 100% lights the fifth", () => {
@@ -111,6 +109,73 @@ describe("ModelTag usage dots (the Dots choice)", () => {
     expect(lit(81)).toBe("4");
     expect(lit(99)).toBe("4");
     expect(lit(100)).toBe("5");
+  });
+});
+
+describe("ModelTag draws the windows the agent reports (M101 spec 02)", () => {
+  const text = (container: HTMLElement) => container.querySelector("[aria-hidden]")?.textContent;
+  const spoken = (container: HTMLElement) => container.querySelector(".sr-only")?.textContent;
+
+  it("draws a plan that reports one window as one window", () => {
+    const { container } = render(<ModelTag model={undefined} usage={{ limits: [{ window: "7d", used: 12 }] }} />);
+    expect(text(container)).toBe("7d12%");
+    expect([...container.querySelectorAll("[data-gauge]")].map((g) => g.getAttribute("data-gauge"))).toEqual(["7d"]);
+    expect(spoken(container)).toBe("7-day limit 12% used");
+  });
+
+  it("draws a model-scoped weekly window as 7d and its label, and says both", () => {
+    const usage = { limits: [{ window: "5h", used: 10 }, { window: "7d", used: 20 }, { window: "7d:opus", used: 30, label: "Opus" }] };
+    const { container } = render(<ModelTag model={undefined} usage={usage} />);
+    expect(text(container)).toBe("5h10%7d20%7d Opus30%");
+    expect(spoken(container)).toBe("5-hour limit 10% used. 7-day limit 20% used. 7-day Opus limit 30% used");
+  });
+
+  it("falls back to the key after 7d: when the label is missing, and cuts a long label", () => {
+    const { container } = render(<ModelTag model={undefined} usage={{ limits: [{ window: "7d:sonnet-4.6", used: 5 }, { window: "7d:x", used: 6, label: "A very long model name" }] }} />);
+    expect(text(container)).toBe("7d sonnet-4.65%7d A very lo\u20266%");
+    expect(spoken(container)).toContain("7-day A very long model name limit 6% used");
+  });
+
+  it("draws any other window by its label, else its key, and no longer skips it", () => {
+    const usage = { limits: [{ window: "30d", used: 50 }, { window: "spend", used: 61, label: "Spend" }] };
+    const { container } = render(<ModelTag model={undefined} usage={usage} />);
+    expect(text(container)).toBe("30d50%Spend61%");
+    expect(spoken(container)).toBe("30d limit 50% used. Spend limit 61% used");
+  });
+
+  it("holds the row to three windows and counts the rest, while the screen reader hears every one", () => {
+    const limits = [
+      { window: "5h", used: 10 },
+      { window: "7d", used: 20 },
+      { window: "7d:opus", used: 30, label: "Opus" },
+      { window: "7d:sonnet", used: 40, label: "Sonnet" },
+    ];
+    const { container } = render(<ModelTag model="claude-opus-5-5" effort="high" usage={{ context: 5, limits }} />);
+    expect(text(container)).toBe("Opus 5.5 · highctx5%5h10%7d20%7d Opus30%+1");
+    expect([...container.querySelectorAll("[data-gauge]")].map((g) => g.getAttribute("data-gauge"))).toEqual(["context", "5h", "7d", "7d:opus"]);
+    expect(container.querySelector("[data-slot='usage-more']")?.textContent).toBe("+1");
+    expect(spoken(container)).toBe(
+      "Model Opus 5.5 · high. Context 5% used. 5-hour limit 10% used. 7-day limit 20% used. 7-day Opus limit 30% used. 7-day Sonnet limit 40% used",
+    );
+    // Three windows draw no counter.
+    const three = render(<ModelTag model={undefined} usage={{ limits: limits.slice(0, 3) }} />);
+    expect(three.container.querySelector("[data-slot='usage-more']")).toBeNull();
+  });
+
+  it("counts a window past the third in dots mode as well", () => {
+    const limits = Array.from({ length: 5 }, (_, i) => ({ window: `w${String(i)}`, used: i * 10 }));
+    const { container } = render(<ModelTag model={undefined} usage={{ limits }} usageRow="dots" />);
+    expect(container.querySelectorAll("[data-slot='usage-dots']")).toHaveLength(3);
+    expect(container.querySelector("[data-slot='usage-more']")?.textContent).toBe("+2");
+  });
+
+  it("is red from 80% on a scoped or unknown window just as on 5h and 7d", () => {
+    const { container } = render(<ModelTag model={undefined} usage={{ limits: [{ window: "7d:opus", used: 90, label: "Opus" }, { window: "30d", used: 10 }] }} />);
+    expect([...container.querySelectorAll("[data-slot='usage-percent']")].map((f) => f.hasAttribute("data-hot"))).toEqual([true, false]);
+  });
+
+  it("counts any window as a gauge for the caller", () => {
+    expect(hasGauge({ limits: [{ window: "30d", used: 50 }] })).toBe(true);
   });
 });
 

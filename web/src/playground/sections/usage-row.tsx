@@ -1,5 +1,6 @@
 // Usage row section of the states playground: the model tag above the belt, extended with the
-// session's context use and the subscription's 5-hour and 7-day windows: the REAL `ModelTag`
+// session's context use and the subscription's windows as the agent reports them (5-hour and 7-day, a
+// weekly window scoped to a model, or just one window): the REAL `ModelTag`
 // (components/model-tag.tsx) in both modes of the Usage row setting. The design round of 2026-10-23
 // (bars, dots, text) is decided: dots shipped, then percentages became the default (2026-11-13).
 //
@@ -32,7 +33,7 @@ export const DEF: SectionDef = {
   id: "usage-row",
   title: "Usage row",
   intent:
-    "The model tag above the belt, with the session's context use and the 5-hour and 7-day subscription windows beside it. The real tag as a percentage (the default) and as dots, the Usage row setting. Each card shows the same four states: a working session, one near every limit, an API-key session with no subscription windows, and a pane whose own statusline already names the model.",
+    "The model tag above the belt, with the session's context use and the subscription windows the agent reports beside it. The real tag as a percentage (the default) and as dots, the Usage row setting. Each card shows the same six states: a working session, one near every limit, a plan that reports one window, a weekly window scoped to a model, an API-key session with no subscription windows, and a pane whose own statusline already names the model.",
 };
 
 /** One reading, as Claude Code's statusLine input reports it. A gauge it did not send is absent. */
@@ -41,6 +42,8 @@ interface Usage {
   ctx?: number;
   fiveHour?: number;
   sevenDay?: number;
+  /** A weekly window scoped to a model, as `7d:<scope>` with the harness's label. */
+  scoped?: { label: string; used: number };
 }
 
 interface StateDef {
@@ -52,6 +55,8 @@ interface StateDef {
 const STATES: readonly StateDef[] = [
   { key: "mid", title: "Working session", usage: { model: "Opus 5.5 · high", ctx: 42, fiveHour: 58, sevenDay: 36 } },
   { key: "high", title: "Near every limit (80% and up turns red)", usage: { model: "Opus 5.5 · high", ctx: 86, fiveHour: 93, sevenDay: 81 } },
+  { key: "one", title: "A plan that reports one window", usage: { model: "Opus 5.5 · high", ctx: 42, sevenDay: 36 } },
+  { key: "scoped", title: "A weekly window scoped to a model", usage: { model: "Opus 5.5 · high", ctx: 42, fiveHour: 58, sevenDay: 36, scoped: { label: "Opus", used: 22 } } },
   { key: "api", title: "API key: no subscription windows", usage: { model: "Sonnet 5.5", ctx: 23 } },
   { key: "named", title: "The statusline names the model: gauges only", usage: { ctx: 7, fiveHour: 8, sevenDay: 36 } },
 ];
@@ -79,8 +84,9 @@ function PercentTag({ usage }: { usage: Usage }) {
 function RealTag({ usage, mode }: { usage: Usage; mode: UsageRow }) {
   const named = usage.model === undefined ? undefined : MODEL_IDS.get(usage.model);
   const limits = [
-    ...(usage.fiveHour === undefined ? [] : [{ window: "5h" as const, used: usage.fiveHour }]),
-    ...(usage.sevenDay === undefined ? [] : [{ window: "7d" as const, used: usage.sevenDay }]),
+    ...(usage.fiveHour === undefined ? [] : [{ window: "5h", used: usage.fiveHour }]),
+    ...(usage.sevenDay === undefined ? [] : [{ window: "7d", used: usage.sevenDay }]),
+    ...(usage.scoped === undefined ? [] : [{ window: `7d:${usage.scoped.label.toLowerCase()}`, label: usage.scoped.label, used: usage.scoped.used }]),
   ];
   const pane: PaneUsage = {};
   if (usage.ctx !== undefined) pane.context = usage.ctx;
