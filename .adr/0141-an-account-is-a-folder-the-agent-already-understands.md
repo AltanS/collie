@@ -92,5 +92,11 @@ and pi with kind `own`.
   wrote it last. So Remove forgets the label only, and the folder, its links and its login stay.
 - Project trust, MCP servers added with `claude mcp add`, and the theme stay per account in a shared
   Claude account, because they live in `.claude.json`.
+- The sign-in code a person sends from the phone is a secret send: the phone marks it, keeps no draft,
+  and the bridge keeps no text of it. A phone bundle without that mark leaves three gaps: the text
+  sits in the request record from accept until the first screen read, it joins a pane's hold queue
+  without a read, and a linked part may take it as a prompt. They are accepted, because the bundle
+  updates with the bridge that serves it, and the bridge removes the text once that read shows a
+  sign-in field.
 - Revisit when an agent ships a profile switch of its own that keeps one history (omp has one today),
   or when a shared kind for Codex, pi or Grok has a lab test behind it.
