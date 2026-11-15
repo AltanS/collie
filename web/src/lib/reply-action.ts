@@ -46,6 +46,8 @@ export interface ReplyArgs {
    * view's key for typed text, plus the screen's rev and the control for a tap. The bridge builds the line.
    */
   readonly view?: SendRequestBody["view"];
+  /** The text goes into a sign-in field (the Surface's `field: "secret"`): the bridge keeps no line of it. */
+  readonly secret?: boolean;
 }
 
 export type ReplyOutcome =
@@ -95,7 +97,7 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${resendOf ?? ""}\u0000${args.when ?? ""}\u0000${viewKey}\u0000${args.text}`, args.mint ?? mintRequestId);
   const body: SendRequestBody = args.view === undefined ? { id: intent.requestId, pane: args.paneId, text: args.text, mode } : { id: intent.requestId, pane: args.paneId, text: args.text, mode, view: args.view };
   try {
-    const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when }, args.scope);
+    const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when, secret: args.secret === true ? true : undefined }, args.scope);
     return { status: "answered", reply, reading: readSend(reply), requestId: intent.requestId };
   } catch (e) {
     // A view send the bridge refused before the Send Protocol answers 409 with `{ error, code, view: true }`.

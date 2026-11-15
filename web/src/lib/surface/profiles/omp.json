@@ -49,6 +49,39 @@
     },
     "frameAlternates": [
       {
+        "walk": "interior",
+        "precedes": true,
+        "top": {
+          "pattern": "^╭─ (?<label>.*?) ─+╮$",
+          "column": 0
+        },
+        "prompt": {
+          "pattern": "^│ > ?(?<draft>(?:(?!\\s{8,}\\S).)*?)\\s*│$",
+          "column": 0
+        },
+        "bottom": {
+          "pattern": "^╰─+╯$",
+          "column": 0
+        },
+        "trailer": {
+          "row": "^│ \\(⎋ to cancel\\)\\s*│$",
+          "hint": true
+        },
+        "continuationIndent": 0,
+        "maxDraftRows": 40,
+        "maxTailRows": 3,
+        "answers": true,
+        "newlineSubmits": true,
+        "submit": [
+          "Enter"
+        ],
+        "secret": {
+          "lead": "^│ .*(?:press ⏎|here):\\s*│$",
+          "tail": true
+        },
+        "note": "The sign-in field of /login (omp 18.6.1, lab 2026-11-15, omp--v18-6-1-login-*.txt): a rounded box titled `Login to ...`, the sign-in address, the steps, `Paste the authorization code (or full redirect URL), then press ⏎:`, the `> ` field and `(⎋ to cancel)`. It shows the text as typed."
+      },
+      {
         "top": {
           "pattern": "^─+(?:\\s+(?<label>\\S.*?))?(?:\\s+─+)?$",
           "minCells": 8,

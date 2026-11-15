@@ -297,7 +297,9 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   if (found === null && idle !== null && endsInsideFrame(rows, idle)) reason = "torn";
   else if (cues.cutWrap === true || (frame === null && input.ask === null && cues.strength === "none")) reason = "no-match";
 
-  const surface: Surface = reason === undefined ? { revision: input.revision, turn, modal, composer } : { revision: input.revision, turn, modal, composer, reason };
+  const read: Surface = reason === undefined ? { revision: input.revision, turn, modal, composer } : { revision: input.revision, turn, modal, composer, reason };
+  // A sign-in field (`idle.frame.secret`) the screen can claim: the phone names it and keeps no draft of it.
+  const surface: Surface = frame?.secret !== undefined && composer !== "unknown" ? { ...read, field: "secret" } : read;
   return { surface, frame, cues };
 }
 

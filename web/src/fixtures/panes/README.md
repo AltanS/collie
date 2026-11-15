@@ -4047,3 +4047,39 @@ of the exact same length (`00000000-0000-0000-0000-000000000000/sample-lab`); no
 | `claude--v2322-macos-agents-panel-working--w80.txt` | Captured during the turn that started two background `Agent` calls (`tmux capture-pane -e -p`) | Running turn (`✽ Sprouting… (5s · ↓ 267 tokens)`), empty box, two status rows (`⏸ manual mode on · esc to interrupt · ← for agents · ↓ to manage`, `◐ medium · /effort`), blank row, `  ⏺ main`, two `◯ general-purpose` rows truncated with `…`. Reads `running` |
 | `claude--v2322-macos-agents-panel-focused--w80.txt` | Same tmux pane after the turn finished, after pressing `Down` (`tmux send-keys Down`) | `✻ Waiting for 2 background agents to finish`, empty box, `↑/↓ to select` + `◐ medium · /effort`, blank row, `❯ ⏺ main`, two `◯ general-purpose` rows. Reads `idle` |
 | `claude--v2322-macos-agents-panel-idle--w80.txt` | Second disposable 80 x 45 tmux lab run (`demo-project3`), captured idle after READY | `✻ Waiting for 2 background agents to finish`, empty box, two status rows, blank row, `  ⏺ main` (rendered as three bold spans) and two `◯ general-purpose` rows. Reads `idle` |
+
+## `/login` sign-in screens (captured 2026-11-15, Claude Code 2.1.325, pi 1.3.0, omp 18.6.1, 61 columns)
+
+The sign-in method lists, the sign-in panel with its address, and its code field, on all three. Captured
+in a scratch tmux server (`tmux -L loginlab -f /dev/null`) with empty config folders (`CLAUDE_CONFIG_DIR`
+holding `{"hasCompletedOnboarding":true}` only, `PI_CODING_AGENT_DIR` with an empty `auth.json`), and
+`BROWSER=/usr/bin/true`. No login was completed: every code typed is made up (`FAKE…`), and a submitted one
+was refused. Privacy: every `state` and `code_challenge` value is `X` of the same length (the OSC 8 link
+targets that carried them too are gone), and the home folder is `/home/demo/user`. Read by
+`lib/surface/sign-in.test.ts` and `bridge/surface/protocol.sign-in.test.ts`.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--v2325-login-methods--w61.txt` | `Select login method:`, three rows, `Esc to cancel` under a `─` rule | prompt-select, digit keys (login-methods.ts) |
+| `claude--v2325-login-console-methods--w61.txt` | `How do you want to sign in?` after `2`, three rows with Go back | prompt-select, digit keys |
+| `claude--v2325-login-url--w61.txt` | The address from column 0, `  Paste code here if prompted >` | box-text sign-in card; field secret, empty |
+| `claude--v2325-login-url-typed--w61.txt` | A short code typed: `*` but the last six | field secret, draft `***************ESTATE` |
+| `claude--v2325-login-url-typed--w120.txt` | The same at 120 columns | field secret, draft |
+| `claude--v2325-login-console-url--w61.txt` | The Console address | sign-in card; field secret |
+| `claude--v2325-login-console-url-pasted--w61.txt` | A long code pasted: a row of `*` cut with `…` | field secret, draft |
+| `claude--v2325-login-bad-code--w61.txt` | `OAuth error: … Press Enter to retry` | no field, no card |
+| `pi--v130-login-methods--w61.txt` | `Select authentication method:` | prompt-select |
+| `pi--v130-login-providers--w61.txt` | The provider search list, `→ Anthropic`, `(1/9)` | raw (not lifted) |
+| `pi--v130-login-methods-moved--w61.txt` | The same after one `Down`, `→` on `Sign in with an API key` | prompt-select; the walk pair |
+| `pi--v130-login-anthropic-methods--w61.txt` | `Select Anthropic login method:` | prompt-select |
+| `pi--v130-login-anthropic-methods-moved--w61.txt` | The same after one `Down`, `→` on `Copy code login (headless)` | prompt-select; the walk pair |
+| `pi--v130-login-browser-url--w61.txt` | The panel between the editor's rules, the address one cell in | sign-in card; field secret, empty |
+| `pi--v130-login-browser-url-typed--w61.txt` | A code typed, shown as typed | field secret, draft |
+| `pi--v130-login-headless-url--w61.txt` | Copy code login: `Paste the code Anthropic shows after you sign in:` | sign-in card; field secret |
+| `pi--v130-login-headless-pasted-long--w61.txt` | A long text pasted: the field scrolled to its end | field secret, draft is the end |
+| `pi--v130-login-api-key--w61.txt` | `Enter Anthropic API key`, `> ` | sign-in card (no link); field secret |
+| `pi--v130-login-api-key-typed--w61.txt` | A made-up key typed | field secret, draft |
+| `pi--v130-login-bad-code--w61.txt` | `Error: Failed to login to Anthropic: OAuth state mismatch`, the editor back | the editor, no field |
+| `omp--v18-6-1-login-providers--w61.txt` | `Select provider to login` | raw (not lifted) |
+| `omp--v18-6-1-login-url--w61.txt` | `╭─ Login to Anthropic (Claude Pro/Max) ─╮`, the address, the local shortcut, `│ > ` | sign-in card titled by the box; field secret |
+| `omp--v18-6-1-login-url-typed--w61.txt` | A code typed, shown as typed | field secret, draft |

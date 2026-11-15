@@ -616,6 +616,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const canSendKeys = useMuxCapability("sendKeys", scope);
   const missingSend = !canType.capable ? canType : !canSendKeys.capable ? canSendKeys : null;
   const shownSurface = missingSend !== null ? unreachable(surface) : surface;
+  // A sign-in field (the Surface's `field: "secret"`): the agent asks for the code or the redirect
+  // address a login page shows, or for a key. What is typed for it is a secret: it is never written to
+  // the draft store or the request-id store, the send names it to the bridge, and the "sent" line does
+  // not repeat it. A ref beside it, because the draft write-through reads it in the tick it changes.
+  const secretField = surface.field === "secret";
+  const secretFieldRef = useRef(secretField);
+  secretFieldRef.current = secretField;
   const unreachableWords =
     missingSend !== null
       ? missingSend.note || translate("composer.placeholder.noMuxSend")
@@ -757,6 +764,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // what the operator just put there. The clear itself writes "" and so never ends its own window.
     if (value !== "" || attachmentsRef.current.length > 0) endUndoWindow();
     inputValueRef.current = value;
+    // Text typed while a sign-in field is up stays out of the store until the field is emptied, also
+    // after the field has gone: it may be a code that was never sent.
+    secretDraftRef.current = value !== "" && (secretFieldRef.current || secretDraftRef.current);
     setInput(value);
     persistDraft();
     // A draft that changed is no longer the text a send left without an answer: its request id goes.
@@ -771,7 +781,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0) {
       nextAttachmentRef.current = 1;
     }
-    if (noEchoRef.current !== null) return;
+    if (noEchoRef.current !== null || secretDraftRef.current) return;
     saveDraft(scope, paneId, inputValueRef.current, attachmentsRef.current, nextAttachmentRef.current);
   }
 
@@ -785,7 +795,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   useEffect(() => {
     const prev = draftPaneRef.current;
     if (prev.paneId === paneId && prev.scopeId === scopeId) return;
-    if (noEchoRef.current === null) {
+    if (noEchoRef.current === null && !secretDraftRef.current) {
       saveDraft(prev.scope, prev.paneId, inputValueRef.current, attachmentsRef.current, nextAttachmentRef.current);
     }
     // The outgoing pane's previews die here: its chips come back from the store as icon tiles.
@@ -797,6 +807,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     draftPaneRef.current = { scope, scopeId, paneId };
     const restored = loadDraftEntry(scope, paneId);
     inputValueRef.current = restored?.text ?? "";
+    secretDraftRef.current = false;
     setInput(inputValueRef.current);
     attachmentsRef.current = restored?.attachments ?? [];
     setAttachments(attachmentsRef.current);
@@ -1028,6 +1039,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // which holds nothing a person must act on, M56 spec 07). Shown only while the confirm is armed.
   const [destructiveNote, setDestructiveNote] = useState<string | null>(null);
   const noEchoRef = useRef<{ prompt: string; typed: boolean } | null>(null);
+  // True while the field holds text typed for a sign-in field (see `secretField`): the draft store skips it.
+  const secretDraftRef = useRef(false);
 
   /** Raise or clear the password-prompt notice. Raising it also DROPS the stored draft: at that moment
    *  we know the field holds a secret the pane never accepted, and leaving it in a 48h store to be
@@ -1318,8 +1331,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
   // effectiveStable gates the preview's APPEARANCE (stabilised value); effectiveRaw is the live line
   // its text tracks.
-  const effectiveStable = suppressEcho(terminalDraft);
-  const effectiveRaw = suppressEcho(rawTerminalDraft);
+  // A sign-in field's text is no draft to take over: it is a secret, and the field may show only its mask.
+  const effectiveStable = secretField ? null : suppressEcho(terminalDraft);
+  const effectiveRaw = secretField ? null : suppressEcho(rawTerminalDraft);
 
   const startMessage = walky.startMessage;
   // The latest `send`, for the handle's `sendViewTap`: the handle is made once per `startMessage`, and a
@@ -1738,6 +1752,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
   // bridge's held row above the box (`held`), which is not a send yet and so leaves no "You sent" preview.
   function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" | "steered" | "queuedInstead" = "sent", sent?: ComposerDraftNow) {
+    // Read before the draft is cleared below: a text for a sign-in field is not repeated on screen.
+    const secret = secretFieldRef.current || secretDraftRef.current;
     // The bridge has a new line now (a shell pane only: the read is off elsewhere).
     suggestions.refresh();
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
@@ -1769,7 +1785,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // the person asked to steer with. A steer never leaves a plain "Sent" behind that says neither.
     setStatus(translate(STATUS_KEY[note]), "success");
     if (note !== "held") {
-      const preview = t.length > 60 ? `${t.slice(0, 57)}…` : t;
+      const preview = secret ? "••••••" : t.length > 60 ? `${t.slice(0, 57)}…` : t;
       setLastSent(preview);
       if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
       lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
@@ -1863,12 +1879,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: loadIntent(scope, paneId) };
+      // A text for a sign-in field says so (`secret`): the bridge writes no `line` of it, only its hash and length.
+      const secret = secretFieldRef.current && resend === undefined && view === undefined;
+      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: loadIntent(scope, paneId), secret };
       const res = await sendText(view === undefined ? base : { ...base, view });
       if (res.status === "noAnswer") {
-        // No answer: the id stays, so the next tap on the same text asks for the same request.
-        saveIntent(scope, paneId, res.intent, draftLine);
-        setSendRefusal(phoneRefusal(translate("composer.protocol.retry", { error: res.error })));
+        // No answer: the id stays, so the next tap on the same text asks for the same request. Not for a
+        // sign-in field: the stored intent names the text, so its next tap takes a new id.
+        if (!secret) saveIntent(scope, paneId, res.intent, draftLine);
+        // A sign-in field's next tap is a new request, so its notice does not say it cannot send twice.
+        setSendRefusal(phoneRefusal(secret ? translate("composer.protocol.retrySecret") : translate("composer.protocol.retry", { error: res.error })));
         return false;
       }
       // Any answer ends the intent. A refusal from the phone itself (offline) asked nothing, so an earlier id stays.
@@ -2115,7 +2135,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ? translate("composer.placeholder.direct")
             : isShell
               ? translate("composer.placeholder.shell")
-              : staleWords
+              : secretField
+                ? translate("composer.secret.hint")
+                : staleWords
                 ? translate("composer.stale.hint")
                 : steerWords
                   ? translate("composer.steer.hint")
@@ -3580,7 +3602,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // `autoCapitalize="none"` (issue 465). An agent pane keeps the keyboard's defaults.
             // The browser spellchecker is off on every pane: on Android Chrome a tap on a marked
             // word opens the browser's suggestion menu, which takes the focus and hides the keyboard.
-            autoCorrect={direct.active || isShell ? "off" : undefined}
+            // A sign-in code (a sign-in field, `secretField`) is case sensitive: no correction touches it either.
+            autoCorrect={direct.active || isShell || secretField ? "off" : undefined}
             spellCheck={false}
             className={cn(
               // `flex-1 min-w-0`: the field takes whatever width the two buttons beside it leave,

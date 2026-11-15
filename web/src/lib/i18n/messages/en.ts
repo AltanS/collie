@@ -617,6 +617,9 @@ export const en = {
   "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Hold Send to steer.",
   "composer.stale.hint": "The screen may be stale. Send probes it first.",
+  // The placeholder of a sign-in field (the Surface's `field: "secret"`). English only until the
+  // translation pass: listed in PENDING_TRANSLATION below.
+  "composer.secret.hint": "Sign-in code. Not saved as a draft.",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
   "composer.steer.steered": "Steered: the agent takes it after its current step.",
   "composer.steer.unsupported": "Steer is not available on this pane. Nothing was sent.",
@@ -680,6 +683,9 @@ export const en = {
   "composer.protocol.idReused": "This request was already used for another text. Send again.",
   "composer.protocol.refused": "The send was refused. Nothing was typed.",
   "composer.protocol.retry": "No answer ({error}). Tap Send again: it does not send twice.",
+  // A send into a sign-in field that got no answer: its next tap takes a new request id, so the
+  // sentence above would not be true. English only until the translation pass: in PENDING_TRANSLATION.
+  "composer.protocol.retrySecret": "No answer from the bridge. Look at the agent's screen before you send the code again.",
   "composer.protocol.append": "Add to it",
   "composer.protocol.replace": "Replace",
   "composer.protocol.cancel": "Cancel",
@@ -3888,6 +3894,8 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "composer.secret.hint",
+  "composer.protocol.retrySecret",
   "newPage.branch.folder.default",
   "settings.worktreeFolder.title",
   "settings.worktreeFolder.description",

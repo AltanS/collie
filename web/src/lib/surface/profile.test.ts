@@ -881,8 +881,9 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(own, ["idle", "frame", "rows"], undefined)).path).toBe("idle.frame.ownPrompt");
     const pi = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!);
     expect(pi.idle.frame.ownPrompt).toBeUndefined();
-    // The rail layout (issue 747) names no glyph of its own: every row of it carries the rail.
-    expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true, true, undefined]);
+    // The rail layout (issue 747) names no glyph of its own: every row of it carries the rail. Nor does
+    // the `/login` sign-in field, the first alternate.
+    expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([undefined, true, true, undefined]);
   });
 
   it("names a newline draft as the box's own lines (`draftLines`) on Muse alone, never on pi (#552)", () => {
@@ -928,9 +929,10 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
 
   it("names the alternate frame shape in the path of a bad field", () => {
     const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!;
-    expect(failure(change(raw, ["idle", "frameAlternates", 1, "bottom", "pattern"], "[unclosed")).path).toBe("idle.frameAlternates[1].bottom.pattern");
+    expect(failure(change(raw, ["idle", "frameAlternates", 2, "bottom", "pattern"], "[unclosed")).path).toBe("idle.frameAlternates[2].bottom.pattern");
     expect(failure(change(raw, ["idle", "frameAlternates"], "no list")).path).toBe("idle.frameAlternates");
-    expect(parseProfile(raw).idle.frameAlternates).toHaveLength(6);
+    // Six box shapes and the `/login` sign-in field.
+    expect(parseProfile(raw).idle.frameAlternates).toHaveLength(7);
   });
 
   it("omp 18.11 (issue 497): the chips of every symbol preset collapse, the Nerd Font pointer points, and a skill is listed under its namespace", () => {

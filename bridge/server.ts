@@ -9691,7 +9691,7 @@ export const SEND_MAX_TEXT = 64 * 1024;
 export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; resendOf?: string } & SendRequest) | null {
   const fields = asJsonRecord(body);
   if (fields === null) return null;
-  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf, when } = fields;
+  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf, when, secret } = fields;
   if (typeof id !== "string" || !REQUEST_ID.test(id)) return null;
   if (typeof pane !== "string" || pane.length === 0 || pane.length > 256) return null;
   if (typeof words !== "string" || words.length > SEND_MAX_TEXT) return null;
@@ -9721,6 +9721,11 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; 
     const chosenWhen = SEND_WHENS.find((w) => w === when);
     if (chosenWhen === undefined) return null;
     Object.assign(request, { when: chosenWhen });
+  }
+  // A send into a sign-in field (`idle.frame.secret`): only `true` is a word.
+  if (secret !== undefined) {
+    if (secret !== true) return null;
+    Object.assign(request, { secret: true });
   }
   return request;
 }

@@ -22,6 +22,9 @@ import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
 import { detectAbovePromptNotice } from "./above-prompt-notice";
 import { detectAuthBox } from "./auth-box";
+import { detectLoginMethodsRegion } from "./login-methods";
+import { detectSignInCard } from "../sign-in-card";
+import { CLAUDE_IDLE } from "./markers";
 import {
   stripChrome,
   extractStatusLines,
@@ -154,6 +157,28 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
   // VERIFIED keystroke recipe for a dialog it recognises, and this one only knows what the screen
   // printed. It must never pre-empt them; it exists to catch what they decline (the `/model` picker),
   // where the alternative is no buttons at all and a composer send typed into the picker.
+  // The SIGN-IN METHOD PICKER of `/login` (login-methods.ts): its footer names Esc alone, so the menu
+  // grammar below would offer no way to choose. A digit alone chooses, so it lifts as a choice card.
+  const loginMethods = detectLoginMethodsRegion(lines);
+  if (loginMethods) {
+    const before = trimTrailingBlank(lines.slice(0, loginMethods.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "prompt-select", prompt: loginMethods.model, lines: lines.slice(loginMethods.startLine) });
+    return blocks;
+  }
+
+  // The SIGN-IN PANEL of `/login` over its field (sign-in-card.ts): the address as one link, the field
+  // left to the composer, which the profile's sign-in layout reads as the input box.
+  const signIn = detectSignInCard(lines, CLAUDE_IDLE);
+  if (signIn) {
+    const before = trimTrailingBlank(lines.slice(0, signIn.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "box-text", boxText: signIn.model, lines: lines.slice(signIn.startLine) });
+    return blocks;
+  }
+
   const menuRegion = detectMenuRegion(lines);
   if (menuRegion) {
     const before = trimTrailingBlank(lines.slice(0, menuRegion.startLine));
@@ -241,6 +266,8 @@ const CLAUDE_DIALOG_DETECTORS: readonly DialogDetector[] = [
   { name: "resume-picker", detect: onPrepared(detectResumePickerRegion) },
   { name: "switch-model", detect: onPrepared(detectSwitchModelRegion) },
   { name: "marketplaces", detect: onPrepared(detectMarketplacesRegion) },
+  { name: "login-methods", detect: onPrepared(detectLoginMethodsRegion) },
+  { name: "sign-in", detect: onPrepared((lines) => detectSignInCard(lines, CLAUDE_IDLE)) },
   { name: "menu", detect: onPrepared(detectMenuRegion) },
   { name: "above-prompt-notice", detect: onPrepared(detectAbovePromptNotice) },
   { name: "auth-box", detect: onPrepared(detectAuthBox) },

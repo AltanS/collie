@@ -7,7 +7,8 @@
 //  - a part is bound to the pane and declares `send` and `wake`, or for a WalkyTalky delivery `mail`
 //    and `wake` (wake is how the bridge knows a turn runs, so it can hold the send as today; a part
 //    without it keeps the screen path);
-//  - the request is a plain new message: mode `send`, not a steer, not from an agent view;
+//  - the request is a plain new message: mode `send`, not a steer, not from an agent view, not for a
+//    sign-in field (that text goes into the field on screen, never to the part as a prompt);
 //  - the text is plain: no reserved lead (`/`, `!`, `@`: a slash command, a shell line, a file
 //    mention) and no uploaded image path anywhere in it (an attachment).
 //
@@ -21,7 +22,7 @@ import { reservedLead, startsWithUploadPath, type SendMode, type SendWhen } from
 export type SendPath = "data" | "screen";
 
 /** Why the pick fell where it did, for the log and the tests. Never shown on the phone. */
-export type PathWhy = "data" | "off" | "no-part" | "not-declared" | "not-plain-mode" | "command" | "attachment" | "empty";
+export type PathWhy = "data" | "off" | "no-part" | "not-declared" | "not-plain-mode" | "command" | "attachment" | "empty" | "secret";
 
 /** What the pick reads about the pane's part: null when no part is bound. */
 export interface PathPart {
@@ -37,6 +38,8 @@ export interface PathRequest {
   readonly fromView: boolean;
   /** Set for a WalkyTalky delivery (`draftHolds`). */
   readonly mail: boolean;
+  /** Set for a send into a sign-in field (`SendRequest.secret`): it goes into that field on screen, never to the part as a prompt. */
+  readonly secret?: boolean;
 }
 
 export interface PathInput {
@@ -109,6 +112,7 @@ export function pickSendPath(input: PathInput): PathPick {
   const { request } = input;
   const away = sessionRoad(input, request.mail ? DATA_MAIL_NEEDS : DATA_SEND_NEEDS);
   if (away !== null) return screen(away);
+  if (request.secret === true) return screen("secret");
   if (request.mode !== "send" || request.when !== undefined || request.fromView) return screen("not-plain-mode");
   if (request.text.trim() === "") return screen("empty");
   if (reservedLead(request.text, COMMAND_LEADS) !== null) return screen("command");

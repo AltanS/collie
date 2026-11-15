@@ -2485,6 +2485,83 @@
   }
  },
  {
+  "fixture": "claude--v2325-login-bad-code--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-login-console-methods--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-login-console-url--w61.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 21,
+   "bottom": 23,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-login-console-url-pasted--w61.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 21,
+   "bottom": 24,
+   "label": null,
+   "text": "***************************…",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-login-methods--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-login-url--w61.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 24,
+   "bottom": 26,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-login-url-typed--w120.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 19,
+   "bottom": 21,
+   "label": null,
+   "text": "***************ESTATE",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-login-url-typed--w61.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 24,
+   "bottom": 26,
+   "label": null,
+   "text": "***************ESTATE",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

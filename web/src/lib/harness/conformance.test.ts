@@ -201,6 +201,9 @@ const NEUTRAL = new Set([
   "claude--v2322-macos-agents-panel-idle--w80.txt",
   "claude--v2322-macos-agents-panel-focused--w80.txt",
   "claude--v2322-macos-agents-panel-working--w80.txt",
+  // `/login` after a refused code (2.1.325): an error and `Press Enter to retry. Esc to cancel`, no
+  // grammar. The unread-dialog card carries the way out (unread-dialog.test.ts).
+  "claude--v2325-login-bad-code--w61.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

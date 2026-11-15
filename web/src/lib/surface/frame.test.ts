@@ -323,7 +323,9 @@ function perturbations(rows: readonly StyledLine[], frame: Frame): Perturbation[
     { name: "a blank row under the box", rows: at(frame.bottom + 1, blankRow()), mustFind: true },
     { name: "top edge dropped", rows: without(frame.top), mustFind: false },
     { name: "bottom edge dropped", rows: without(frame.bottom), mustFind: false },
-    { name: "one more status row", rows: at(frame.bottom + 1, styled(plainRun("  one more status row"))), mustFind: true },
+    // Claude's `/login` sign-in field (`secret`) runs to the end of the screen: Claude draws nothing
+    // under its `Esc to cancel`, so a row there is not its screen and losing the field is the safe read.
+    { name: "one more status row", rows: at(frame.bottom + 1, styled(plainRun("  one more status row"))), mustFind: frame.secret === undefined },
     { name: `re-wrapped at ${String(cols)} columns`, rows: rewrap(rows, frame, cols), mustFind: false },
   ];
   if (frame.top > 0) list.push({ name: "box moved up one row", rows: without(frame.top - 1), mustFind: true });

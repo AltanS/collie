@@ -1,0 +1,40 @@
+
+ [38;5;174m[48;5;67m▀[49m▀█[39m  [2mv1.3.0[0m
+ [38;5;67m█▀[39m [38;5;179m█[39m [2mescape interrupt · ctrl+c/ctrl+d clear/exit · /
+[0m [2mcommands · ! bash · ctrl+o more[0m
+ [2mPress ctrl+o to show full startup help and loaded
+[0m [2mresources.[0m
+
+ [2mPi can explain its own features and look up its docs. Ask
+[0m [2mit how to use or extend Pi.[0m
+
+
+ [38;5;3mWarning: No models available. Use /login to log into a
+[39m [38;5;3mprovider via OAuth or API key. See:
+[39m [38;5;3m
+[39m [38;5;3m/home/demo/user/.config/nvm/versions/node/v24.22.1/lib/node
+[39m [38;5;3m_modules/@earendil-works/pi-coding-agent/docs/providers.md
+[39m [38;5;3m
+[39m [38;5;3m/home/demo/user/.config/nvm/versions/node/v24.22.1/lib/node
+[39m [38;5;3m_modules/@earendil-works/pi-coding-agent/docs/models.md[39m
+
+[38;5;3m─────────────────────────────────────────────────────────────
+[39m [1m[38;5;3mUpdate Available[0m
+ [2mNew version 1.5.2 is available. Run [0m[38;5;5mpi update[39m
+ [2mChangelog: [0m[38;5;5mhttps://pi.dev/changelog[39m
+[38;5;3m─────────────────────────────────────────────────────────────
+
+
+[38;5;4m─────────────────────────────────────────────────────────────
+
+[39m [1m[38;5;5mSelect authentication method:
+
+[0m [38;5;5m→ Sign in with an account[39m
+   Sign in with an API key
+   Sign in with Radius[2m • not configured[0m
+
+ [2m↑↓ navigate[0m  [2menter select[0m  [2mescape/ctrl+c cancel[0m
+
+[38;5;4m─────────────────────────────────────────────────────────────
+[2m[39m~/.cache/collie-lab/login-paste-lab/work (master)[0m
+[2m0.0%/0 (auto)                                         unknown
