@@ -24,10 +24,10 @@ import { mergeStatusLine, readUsage, writeUsage } from "./usage-store.ts";
 // `collie beacon statusline` — the operator's own Claude Code statusLine, with Collie listening in.
 //
 // Claude Code runs the statusLine command on every assistant message with a JSON document on stdin:
-// the context window's use, and for a Pro or Max account the 5-hour and 7-day rate limit windows. It
-// is the one place the agent tells a local program the two subscription windows, so it is where the
-// phone's 5-hour and 7-day dots come from (.adr/0115). Collie never asks the vendor and never reads a
-// credential. It is also the one place Claude Code states the context window's size
+// the context window's use, and for a Pro or Max account the rate limit windows it reports. It is the
+// one place the agent tells a local program those subscription windows, so it is one source of the
+// phone's usage dots (.adr/0115; the other is the account windows of ADR 0118). This verb never asks
+// the vendor and never reads a credential. It is also the one place Claude Code states the context window's size
 // (`context_window_size`), so a Claude session's context dot needs this verb: the beacon hooks read the
 // tokens from the session transcript (`cli/context-reading.ts`) but divide only by the size stated here.
 // The wrap was opt-in from 2026-10-24 (`--statusline`); since 2026-11-13 `hooks install claude` wraps a
