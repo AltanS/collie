@@ -435,6 +435,8 @@ export function PaneActionsSheet({
           describeApiError(res, t(nextSeen ? "paneActions.markSeen.failed" : "paneActions.markUnseen.failed")),
           "error",
         );
+        stampTopology();
+        onSeenChange?.(target.paneId, !nextSeen);
       }
     } catch (e) {
       setStatus(describeThrownError(e), "error");

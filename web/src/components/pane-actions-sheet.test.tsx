@@ -819,8 +819,20 @@ describe("PaneActionsSheet — manual mark seen / unseen", () => {
     server.use(
       http.post(/\/api\/pane\/[^/]+\/seen$/, () => new HttpResponse("pane is not settled", { status: 409 })),
     );
+    const onSeenChange = vi.fn();
+    rerender(
+      <PaneActionsSheet
+        {...renderProps({
+          pane: { ...agent, status: "done", lastActiveAt: 200, lastSeenAt: 100 },
+          onSeenChange,
+        })}
+      />,
+    );
+    resetPollIntent();
     await user.click(screen.getByRole("button", { name: "Mark as seen" }));
     await waitFor(() => expect(status.result.current).toMatchObject({ text: "pane is not settled", tone: "error" }));
+    expect(topologyBursting()).toBe(true);
+    expect(onSeenChange).toHaveBeenCalledOnce();
   });
 
   it("hides the row when onSeenChange is omitted, lastActiveAt is absent/0, or on shells, tricks, working/blocked, conversations, read-only, and saved copies", () => {
