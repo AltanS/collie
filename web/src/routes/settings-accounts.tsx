@@ -21,6 +21,7 @@ import {
   accountName,
   addedCount,
   groupAccounts,
+  folderTextInvalid,
   harnessLabel,
   nameFromFolder,
   newFolderFor,
@@ -176,7 +177,7 @@ function FoundBlock({ body, onAdd }: { body: AccountsBody; onAdd: (found: FoundF
                 {t("accounts.found.row", { agent: harnessLabel(body, f.harness), why: t(f.why === "reported" ? "accounts.found.reported" : "accounts.found.name") })}
               </p>
             </div>
-            <Button variant="outline" size="sm" className="shrink-0" onClick={() => onAdd(f)}>
+            <Button variant="outline" className="h-11 shrink-0" onClick={() => onAdd(f)}>
               {t("accounts.add.label")}
             </Button>
           </li>
@@ -277,6 +278,7 @@ export function SettingsAccountAddRoute() {
   const found = (body?.found ?? []).filter((f) => harness !== undefined && f.harness === harness.id);
   const typedFound = found.find((f) => f.folder === folderText.trim() || f.path === folderText.trim());
   const folderShown = harness === undefined ? "" : kind === "shared" ? newFolderFor(harness, label) : folderText.trim() || newFolderFor(harness, "alt");
+  const folderInvalid = kind === "own" && folderTextInvalid(folderText.trim());
   const ready = harness !== undefined && label.trim() !== "" && (kind === "shared" || folderText.trim() !== "");
 
   async function create() {
@@ -389,10 +391,12 @@ export function SettingsAccountAddRoute() {
             <p className="break-all font-mono text-xs leading-5">{folderShown}</p>
             <Hint>{kind === "shared" ? t("accounts.kind.shared.body") : t("accounts.kind.own.body")}</Hint>
           </div>
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium text-muted-foreground">{t("accounts.add.terminal")}</p>
-            <p className="break-all rounded-md bg-muted px-2 py-1.5 font-mono text-xs leading-5">{startLineFor(harness, folderShown)}</p>
-          </div>
+          {!folderInvalid && (
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-muted-foreground">{t("accounts.add.terminal")}</p>
+              <p className="break-all rounded-md bg-muted px-2 py-1.5 font-mono text-xs leading-5">{startLineFor(harness, folderShown)}</p>
+            </div>
+          )}
         </>
       )}
       {error !== null && (

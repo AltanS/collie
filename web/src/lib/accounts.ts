@@ -182,12 +182,23 @@ export function harnessLabel(body: AccountsBody | null, id: string): string {
 
 // ── Windows ───────────────────────────────────────────────────────────────────────────────────────
 
-/** The words for a window. `5h` is Session, `7d` is Week, `7d:<scope>` is Week plus the scope; any other key reads its label, else the key. */
+/** The app's own word for a window key it knows by name and that carries no label of its own, else null. */
+export function knownWindowName(key: string): string | null {
+  if (key === "spend") return t("accounts.window.spend");
+  if (key === "credits") return t("accounts.window.credits");
+  return null;
+}
+
+/**
+ * The words for a window. `5h` is Session, `7d` is Week, `7d:<scope>` is Week plus the scope. `spend`
+ * and `credits` have words of their own. Any other key reads its label, else the key; a label the
+ * agent sent always wins over the app's word.
+ */
 export function windowName(w: AccountWindow): string {
   if (w.window === "5h") return t("accounts.window.session");
   if (w.window === "7d") return t("accounts.window.week");
   if (w.window.startsWith("7d:")) return t("accounts.window.weekScope", { scope: w.label ?? w.window.slice(3) });
-  return w.label ?? w.window;
+  return w.label ?? knownWindowName(w.window) ?? w.window;
 }
 
 /** Whether a reading is drawn hot. Never for a window that passed its reset. */
@@ -238,6 +249,33 @@ export function startLineFor(harness: AccountHarness, folder: string): string {
   const asVariable = /^[A-Z_][A-Z0-9_]*$/u.test(harness.select);
   const command = harness.binary ?? harness.id;
   return asVariable ? `${harness.select}=${folder} ${command}` : `${command} ${harness.select} ${folder}`;
+}
+
+/** The longest folder, in code points. Mirrors `MAX_FOLDER_CHARS` in bridge/account-folder.ts. */
+const MAX_FOLDER_CHARS = 200;
+
+/**
+ * Whether a typed folder already fails the character rules the bridge enforces (bridge/account-folder.ts):
+ * a control or bidi character, a quote, a backslash, a backtick, `$`, or more than 200 characters. The
+ * bridge's answer on submit says why; this only lets the page stop drawing a line that cannot work.
+ */
+export function folderTextInvalid(text: string): boolean {
+  if ([...text].length > MAX_FOLDER_CHARS) return true;
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (isForbiddenCode(code) || "'\"\\`$".includes(ch)) return true;
+  }
+  return false;
+}
+
+/** Control and bidi code points, as `isForbiddenCodePoint` in bridge/launcher-recipes.ts. */
+function isForbiddenCode(code: number): boolean {
+  if (code < 0x20 || code === 0x7f) return true;
+  if (code >= 0x80 && code <= 0x9f) return true;
+  if (code === 0x2028 || code === 0x2029) return true;
+  if (code >= 0x202a && code <= 0x202e) return true;
+  if (code >= 0x2066 && code <= 0x2069) return true;
+  return code === 0x200e || code === 0x200f || code === 0x061c;
 }
 
 const MAX_LABEL = 24;

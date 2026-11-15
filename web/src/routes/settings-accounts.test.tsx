@@ -112,6 +112,14 @@ describe("Accounts: the list", () => {
     expect(posted[0]).toMatchObject({ harness: "claude", label: "Spare", kind: "own", path: "/home/op/.claude-alt" });
   });
 
+  it("draws each Add of a found folder at the 44 px tap floor", async () => {
+    serveAccounts(body({ found: [FOUND_ALT] }));
+    mount("/settings/accounts");
+    await screen.findByText("Found 1 folder in use");
+    const add = within(screen.getByText("~/.claude-alt").closest("li")!).getByRole("button", { name: "Add" });
+    expect(add).toHaveClass("h-11");
+  });
+
   it("says why when the sheet's add is refused, and stays open", async () => {
     serveAccounts(body({ found: [FOUND_ALT] }));
     server.use(http.post("/api/accounts", () => HttpResponse.json({ ok: false, error: "x", code: "accounts.label_taken" }, { status: 409 })));
@@ -212,7 +220,7 @@ describe("Accounts: one account", () => {
   it("an own account says it is used as it is", async () => {
     serveAccounts(body({ accounts: [defaultRow(), workRow({ kind: "own", label: "Alt", folder: "~/.claude-alt" })] }));
     mount("/settings/accounts/acc-work");
-    expect(await screen.findByText("A folder you already use. Collie uses it as it is: its own history, settings and sessions.")).toBeInTheDocument();
+    expect(await screen.findByText("Collie uses the folder as it is: its own history, settings and sessions.")).toBeInTheDocument();
   });
 
   it("Default cannot be removed and says no variable is set", async () => {
@@ -330,6 +338,22 @@ describe("Accounts: Add", () => {
     expect(screen.queryByRole("radio", { name: "Shared with Default" })).toBeNull();
     expect(screen.getByText("Collie uses the folder as it is")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Folder" })).toBeInTheDocument();
+  });
+
+  it("shows no terminal line for an own folder the page already knows is invalid, and no error text", async () => {
+    serveAccounts(body({ harnesses: [HARNESS_CLAUDE, HARNESS_CODEX], accounts: [defaultRow()] }));
+    mount("/settings/accounts/add");
+    await screen.findByRole("textbox", { name: "Name" });
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Agent" }), "Codex");
+    const folder = screen.getByRole("textbox", { name: "Folder" });
+    await userEvent.type(folder, "/home/op/ok");
+    expect(screen.getByText("The same account from a desktop terminal")).toBeInTheDocument();
+    await userEvent.type(folder, "$x");
+    expect(screen.queryByText("The same account from a desktop terminal")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    await userEvent.clear(folder);
+    await userEvent.type(folder, "/home/op/ok");
+    expect(screen.getByText("The same account from a desktop terminal")).toBeInTheDocument();
   });
 
   it("creates a shared account, then starts the sign-in on the same agent and lands on the pane", async () => {

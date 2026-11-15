@@ -143,6 +143,12 @@ describe("ModelTag draws the windows the agent reports (M101 spec 02)", () => {
     expect(spoken(container)).toBe("30d limit 50% used. Spend limit 61% used");
   });
 
+  it("words an unlabelled spend or credits window, and keeps a label the agent sent", () => {
+    const usage = { limits: [{ window: "spend", used: 61 }, { window: "credits", used: 5 }, { window: "other", used: 7, label: "Mine" }] };
+    const { container } = render(<ModelTag model={undefined} usage={usage} />);
+    expect(text(container)).toBe("Spend61%Credits5%Mine7%");
+  });
+
   it("holds the row to three windows and counts the rest, while the screen reader hears every one", () => {
     const limits = [
       { window: "5h", used: 10 },
