@@ -248,6 +248,14 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "The new label replaces the old one in the row being edited once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the row keeps its old label.",
   },
+  addAccount: {
+    channel: "inline",
+    why: "The new account appears in the list the person is looking at, so the list is the acceptance. A refusal names a field (a name taken, a folder the bridge cannot use) or a full list, and the person must still read it while they fix the form, so it sits in the add form or the name sheet itself and not on the status line (M101).",
+  },
+  removeAccount: {
+    channel: "silent",
+    why: "The account leaves the list under the thumb once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the list is read again (M101).",
+  },
   starFolder: {
     channel: "silent",
     why: "The row moves between Favourites and Recent and its star fills or empties under the thumb, both on the page the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",

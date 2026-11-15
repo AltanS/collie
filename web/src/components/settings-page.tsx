@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, UIEventHandler } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { RouteHeader } from "@/components/app-header";
@@ -20,7 +20,24 @@ import { BandMain } from "@/components/ui/strip-host";
 //
 // A page one level further down (Voice's Host speech and Whistle model) names its own `parent`, so Back
 // lands on the section it was opened from.
-export function SettingsPage({ title, parent, children }: { title: MessageKey; parent?: string; children: ReactNode }) {
+export function SettingsPage({
+  title,
+  heading,
+  parent,
+  onScroll,
+  foot,
+  children,
+}: {
+  title: MessageKey;
+  /** A title already in words (an account's own name). It stands in for `title`, which stays the page's key. */
+  heading?: string;
+  parent?: string;
+  /** The column's scroll, for a page whose floating button folds as the list moves (Accounts). */
+  onScroll?: UIEventHandler<HTMLElement>;
+  /** A band under the scrolling column that holds the page's own button (the Add form's), above the keyboard. */
+  foot?: ReactNode;
+  children: ReactNode;
+}) {
   const nav = useNav();
   const scope = useScope();
   useLocale();
@@ -41,16 +58,17 @@ export function SettingsPage({ title, parent, children }: { title: MessageKey; p
             >
               <Icon name="back" className="size-5" />
             </Button>
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t(title)}</h1>
+            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{heading ?? t(title)}</h1>
           </>
         }
       />
       {/* `relative` for the same reason the home scroller carries it: an `sr-only` (position:
           absolute) deep in the page would otherwise escape the scroller and grow the document's
           own scrollbar. */}
-      <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
+      <BandMain base={16} onScroll={onScroll} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         {children}
       </BandMain>
+      {foot}
     </div>
   );
 }

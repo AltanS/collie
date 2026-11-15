@@ -4716,6 +4716,34 @@ describe("AgentChat header — the branch on the path line", () => {
   });
 });
 
+// The added account the session runs under (M101) is a word on the same line, after the branch.
+describe("AgentChat header — the account on the path line", () => {
+  const pathLine = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-place"]')!.parentElement!;
+
+  it("draws the label after the branch and before the meta, in the line's own 12px box", () => {
+    const agent: AgentView = { ...fixtureAgents[0]!, gitHead: { kind: "branch", name: "fix-login" }, account: { id: "acc-work", label: "Work" } };
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    const line = pathLine(container);
+    expect(line).toHaveClass("h-3");
+    const tag = line.querySelector<HTMLElement>('[data-slot="pane-account"]')!;
+    expect(tag).toHaveTextContent("Work");
+    expect(tag).toHaveClass("leading-3");
+    expect(tag.previousElementSibling).toHaveAttribute("data-slot", "branch-label");
+    expect(tag.nextElementSibling).toHaveAttribute("data-slot", "pane-meta");
+  });
+
+  it("draws nothing, and the line's markup is as before, for a pane with no account", () => {
+    const base = fixtureAgents[0]!;
+    const plain = renderChat({ agent: { ...base, gitHead: { kind: "branch", name: "fix-login" } } });
+    expect(plain.container.querySelector('[data-slot="pane-account"]')).toBeNull();
+    const html = pathLine(plain.container).innerHTML;
+    cleanup();
+    const withKeyAbsent = renderChat({ agent: { ...base, gitHead: { kind: "branch", name: "fix-login" } } });
+    expect(pathLine(withKeyAbsent.container).innerHTML).toBe(html);
+    expect(html).not.toContain("pane-account");
+  });
+});
+
 // A durable program's subtitle takes the header's second line, in the same 12px box (WIRE.md 7.11).
 // SAFETY: the header reads the field through the JSON guard (lib/pane-marks.ts); this hands it a shape a peer could send.
 const wrongSubtitle = (value: JsonValue): AgentView["subtitle"] => value as AgentView["subtitle"];

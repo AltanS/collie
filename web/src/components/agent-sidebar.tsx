@@ -208,7 +208,7 @@ function jumpTo(pane: AgentView): void {
 }
 
 /** The switcher row draws the name, the space and the tab as text; the machine is a glyph only. */
-const SWITCHER_DRAWN: ReadonlySet<PaneField> = new Set<PaneField>(["name", "space", "tab"]);
+const SWITCHER_DRAWN: ReadonlySet<PaneField> = new Set<PaneField>(["name", "space", "tab", "account"]);
 
 export function ThreadSidebar({
   agents,
@@ -765,6 +765,13 @@ function PaneRow({
                     <MatchText text={tab.text} ranges={marks?.tab} />
                   </span>
                 </>
+              )}
+              {/* The added account the session runs under (M101), a word after the place. Nothing when the
+                  pane has none, so a row without an account is the markup it always was. */}
+              {pane.account !== undefined && (
+                <span data-slot="pane-account" className="max-w-[35%] shrink-0 truncate">
+                  <MatchText text={pane.account.label} ranges={marks?.account} />
+                </span>
               )}
             </>
           )}

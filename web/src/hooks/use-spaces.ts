@@ -50,6 +50,13 @@ export interface StartAsk {
   what: api.StartWhat;
   /** An agent row's existing harness metadata; never inferred from its command line. */
   rowHarness?: string;
+  /**
+   * An added account's id (M101), for an agent started by id (`what.kind === "harness"`). Absent for
+   * Default and for every other start, so a request without an account is built exactly as before.
+   */
+  account?: string;
+  /** Type the agent's sign-in line instead of the plain start (the Accounts pages). Only with `what.kind === "harness"`. */
+  signIn?: true;
   /** The folder, as typed or picked; absent is home (or a row's pinned folder). */
   cwd?: string;
   /** One id per intent, minted by the page and kept by a retry of the same ask. */
@@ -284,7 +291,15 @@ export function useSpaceActions(canWrite?: () => boolean) {
         }
         if (ask.branch !== undefined) {
           const res = await api.createWorktreeAt(
-            { cwd: ask.branch.cwd, branch: ask.branch.name, base: ask.branch.base, folder: ask.branch.folder, requestId: ask.requestId, what: ask.what },
+            {
+              cwd: ask.branch.cwd,
+              branch: ask.branch.name,
+              base: ask.branch.base,
+              folder: ask.branch.folder,
+              requestId: ask.requestId,
+              what: ask.what,
+              account: ask.account,
+            },
             scope,
           );
           if (!res.ok) return { kind: "refused", message: describeApiError(res) };
@@ -301,7 +316,11 @@ export function useSpaceActions(canWrite?: () => boolean) {
             ? beside === undefined
               ? await api.createWorkspace(cwd, scope)
               : await api.createTab(beside.workspaceId, cwd, scope)
-            : await api.startLaunch(ask.what, { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: beside?.paneId }, scope);
+            : await api.startLaunch(
+                ask.what,
+                { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: beside?.paneId, account: ask.account, signIn: ask.signIn },
+                scope,
+              );
         if (!res.ok) return { kind: "refused", message: describeApiError(res) };
         open(res, beside === undefined ? "space" : "tab", scope, startupHarness(ask.what, ask.rowHarness));
         return { kind: "done" };

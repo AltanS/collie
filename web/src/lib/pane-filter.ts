@@ -3,12 +3,13 @@
 // its second; both read the row through `paneFields` and match it through `matchPane`.
 //
 // ── WHAT A ROW IS SEARCHED BY ──────────────────────────────────────────────────────────────────────
-// Seven fields, each read through the helper the rows themselves draw with, so the filter can never
+// Eight fields, each read through the helper the rows themselves draw with, so the filter can never
 // match a string the app would spell differently: the name (`paneName`), the space and the tab
 // (`panePlaceParts`), the branch (`paneGitHead`, spelled as `BranchLabel` spells it), the folder (the
 // last part of the cwd), the agent program's name as the bridge sends it (no list of harness names
 // here), and the machine (`machineLabel`, the name `HostChip` draws, and only on a crew, where the
-// chip draws one). A field the row has no value for is the empty string, which no term matches.
+// chip draws one) and the label of the added account the session runs under (M101). A field the row
+// has no value for is the empty string, which no term matches.
 //
 // ── HOW A QUERY MATCHES ────────────────────────────────────────────────────────────────────────────
 // The query is cut into terms at spaces (`queryTerms`). Every term must match some searched field
@@ -50,10 +51,10 @@ export interface PaneFilterSettings {
  */
 export const PANE_FILTER = { level: "anchored", order: "place", hidden: "second-line" } as const satisfies PaneFilterSettings;
 
-export type PaneField = "name" | "space" | "tab" | "branch" | "folder" | "agent" | "machine";
+export type PaneField = "name" | "space" | "tab" | "branch" | "folder" | "agent" | "machine" | "account";
 
 /** Every field, in the order a tie between two undrawn fields is broken. */
-export const PANE_FIELDS: readonly PaneField[] = ["name", "space", "tab", "branch", "folder", "agent", "machine"];
+export const PANE_FIELDS: readonly PaneField[] = ["name", "space", "tab", "branch", "folder", "agent", "machine", "account"];
 
 /** A row's strings, one per field; the empty string where the row has none. */
 export interface PaneFields {
@@ -64,6 +65,8 @@ export interface PaneFields {
   readonly folder: string;
   readonly agent: string;
   readonly machine: string;
+  /** The label of the added account the session runs under (M101); empty for every other session. */
+  readonly account: string;
 }
 
 export interface PaneHit {
@@ -137,6 +140,7 @@ export function paneFields(pane: AgentView, ctx: PaneFieldContext = {}): PaneFie
     // A bare shell runs no agent program; its kind is already its name when it has no other.
     agent: pane.kind === "shell" ? "" : pane.agent,
     machine: machineText(pane, ctx.servers),
+    account: pane.account?.label ?? "",
   };
 }
 
@@ -224,6 +228,8 @@ export function viaLabelKey(field: PaneField): MessageKey | null {
       return "sessionFilter.field.agent";
     case "machine":
       return "sessionFilter.field.machine";
+    case "account":
+      return "accounts.filter.field";
     case "name":
     case "space":
     case "tab":
