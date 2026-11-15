@@ -33,8 +33,8 @@
 //
 // Numbers only, plus an optional absolute `configDir` that scopes which local Claude credential
 // directory `AccountWindows` polls for that session (`configDir` is never sent in `usageAt`). The
-// record carries no text the phone draws: the window labels are the bridge's own
-// (`5h`, `7d`), a percentage is clamped to 0 to 100, and anything else in the file is ignored. A file
+// record carries no free text the phone draws: a window's key and label are cleaned and capped, and
+// since 2026-11-15 they are the harness's own words (`7d:opus`, `Opus`), not a fixed pair; a percentage is clamped to 0 to 100, and anything else in the file is ignored. A file
 // that does not parse, is too large or is from a newer schema is ABSENT, and an absent reading draws
 // nothing. A window whose `resetsAt` has passed is dropped, as Claude Code drops it: the number
 // belonged to a window that is over.
@@ -49,6 +49,7 @@ import { isAbsolute, join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonValue } from "./json.ts";
 import type { AgentView } from "./types.ts";
+import type { UsageSeen } from "./usage-seen.ts";
 
 /** The directory's name under the state dir, beside `beacons/`. */
 export const USAGE_SUBDIR = "usage";
@@ -67,17 +68,87 @@ export const USAGE_MAX_AGE_MS = 8 * 24 * 60 * 60 * 1000;
 /** How many files the directory may hold before the oldest go, whatever their age. */
 export const USAGE_FILES_MAX = 512;
 
-/** The subscription windows, by the label the phone draws. The bridge's words, never the file's. */
-export const USAGE_WINDOWS = ["5h", "7d"] as const;
-export type UsageWindow = (typeof USAGE_WINDOWS)[number];
+/** The five-hour window's key. Its meaning never changes: an older crew member sends it, and the phone words it. */
+export const WINDOW_5H = "5h";
+/** The seven-day window's key, as {@link WINDOW_5H}. */
+export const WINDOW_7D = "7d";
+/** The prefix of a weekly window scoped to a model: `7d:opus`. */
+const SCOPED_PREFIX = `${WINDOW_7D}:`;
 
-/** One subscription window's reading. */
+/** The most windows one reading holds. A strange answer does not fill the tag. */
+export const USAGE_WINDOWS_MAX = 8;
+/** The longest window key or label a reading carries. */
+const WINDOW_TEXT_MAX = 64;
+
+/**
+ * One subscription window's reading. `window` is the harness's own window as an open string (no closed
+ * list, since 2026-11-15): `5h` and `7d` keep their meaning, `7d:<scope>` is a weekly window scoped to a
+ * model, a length such as `30d` is a window of another length, and `spend` is a gateway spend limit. The
+ * field keeps its name because an older crew member sends it and an older phone reads it: that phone
+ * skips a key it does not know.
+ */
 export interface UsageLimit {
-  window: UsageWindow;
+  window: string;
   /** Percent of the window used, 0 to 100. */
   used: number;
   /** When the window resets, epoch ms. Absent when the harness did not say. */
   resetsAt?: number;
+  /** The harness's own name for a scoped window (`Opus`), cleaned. Absent when it has none. */
+  label?: string;
+}
+
+/** Text from a reading, made safe to draw: control characters out, trimmed, at most 64 characters. Undefined when nothing is left. */
+export function cleanWindowText(text: string): string | undefined {
+  // SAFETY: the class is control characters on purpose; text from the wire must not carry them.
+  // eslint-disable-next-line no-control-regex
+  const clean = text.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, WINDOW_TEXT_MAX);
+  return clean === "" ? undefined : clean;
+}
+
+/** A window key as a record may hold it: a non-empty string, cleaned, at most 64 characters. */
+export function asWindowKey(value: JsonValue | undefined): string | undefined {
+  const text = asJsonString(value);
+  return text === undefined ? undefined : cleanWindowText(text);
+}
+
+/** The key of a weekly window scoped to the model the vendor names `label`: `7d:` and the label in lower case, spaces as `-`. */
+export function scopedWindowKey(label: string): string {
+  const scope = label.toLowerCase().replace(/\s+/g, "-");
+  return `${SCOPED_PREFIX}${scope}`.slice(0, WINDOW_TEXT_MAX);
+}
+
+/** One window's reading, with `resetsAt` and `label` present only when given (an absent key, never `undefined`). */
+export function makeLimit(window: string, used: number, resetsAt?: number, label?: string): UsageLimit {
+  const limit: UsageLimit = { window, used };
+  if (resetsAt !== undefined) limit.resetsAt = resetsAt;
+  if (label !== undefined) limit.label = label;
+  return limit;
+}
+
+/** How a window is sorted: `5h`, then `7d`, then the rest. */
+function windowRank(window: string): number {
+  return window === WINDOW_5H ? 0 : window === WINDOW_7D ? 1 : 2;
+}
+
+/** The name a window sorts by within the rest: its label, else its key. */
+function windowName(limit: UsageLimit): string {
+  return (limit.label ?? limit.window).toLowerCase();
+}
+
+/**
+ * A reading's windows in the order they are drawn: `5h`, `7d`, then the rest by label (else key), with a
+ * key seen twice kept once (the first) and at most {@link USAGE_WINDOWS_MAX}.
+ */
+export function orderedLimits(limits: readonly UsageLimit[]): UsageLimit[] {
+  const seen = new Set<string>();
+  const unique = limits.filter((limit) => {
+    if (seen.has(limit.window)) return false;
+    seen.add(limit.window);
+    return true;
+  });
+  return unique
+    .toSorted((a, b) => windowRank(a.window) - windowRank(b.window) || windowName(a).localeCompare(windowName(b)) || a.window.localeCompare(b.window))
+    .slice(0, USAGE_WINDOWS_MAX);
 }
 
 /**
@@ -94,7 +165,7 @@ export interface PaneUsage {
    * unknown, never a placeholder.
    */
   contextTokens?: number;
-  /** The windows still running, in {@link USAGE_WINDOWS} order. Absent rather than empty. */
+  /** The windows still running, in {@link orderedLimits} order. Absent rather than empty. */
   limits?: UsageLimit[];
   /**
    * The running total of what the session this pane shows has cost, in US dollars (never a count of
@@ -247,14 +318,16 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   }
   const rows = Array.isArray(root.limits) ? root.limits.map(asJsonObject) : [];
   const limits: UsageLimit[] = [];
-  for (const window of USAGE_WINDOWS) {
-    const entry = rows.find((row) => row !== undefined && asJsonString(row.window) === window);
-    const used = asPercent(entry?.used);
-    if (entry === undefined || used === undefined) continue;
-    const resetsAt = asEpochMs(entry.resetsAt);
-    limits.push(resetsAt === undefined ? { window, used } : { window, used, resetsAt });
+  for (const row of rows) {
+    const window = asWindowKey(row?.window);
+    const used = asPercent(row?.used);
+    if (row === undefined || window === undefined || used === undefined) continue;
+    const resetsAt = asEpochMs(row.resetsAt);
+    const labelText = asJsonString(row.label);
+    limits.push(makeLimit(window, used, resetsAt, labelText === undefined ? undefined : cleanWindowText(labelText)));
   }
-  if (limits.length > 0) record.limits = limits;
+  const ordered = orderedLimits(limits);
+  if (ordered.length > 0) record.limits = ordered;
   return record;
 }
 
@@ -339,6 +412,12 @@ export interface JournalContext {
   cost?(sessionKey: string): number | undefined;
 }
 
+/** The windows {@link UsageTracker} takes from the held records, and when the newest of those records was written. */
+interface NewestLimits {
+  limits: UsageLimit[];
+  at: number | undefined;
+}
+
 /** How often the directory is swept for old files. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -363,6 +442,7 @@ export class UsageTracker {
     private readonly now: () => number = Date.now,
     private readonly account?: AccountLimits,
     private readonly journal?: JournalContext,
+    private readonly seen?: UsageSeen,
   ) {}
 
   /** The session id a pane's usage is keyed by, or null for a pane with no id-kind session. */
@@ -436,11 +516,14 @@ export class UsageTracker {
     const account = harness === undefined || harness === "" ? undefined : this.account?.limits(harness, configDir);
     if (account !== undefined && account.length > 0) {
       const base: UsageRecord = record ?? { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness ?? "", at: now };
+      this.seen?.record(base.harness, configDir, account, now);
       return usageAt({ ...base, ...overlay, limits: account }, now);
     }
     if (record === null) return hasReading(overlay) ? overlay : undefined;
-    const held = record.limits === undefined ? record : { ...record, limits: this.newestLimits(record.harness, now, configDir) };
-    return usageAt({ ...held, ...overlay }, now);
+    if (record.limits === undefined) return usageAt({ ...record, ...overlay }, now);
+    const newest = this.newestLimits(record.harness, now, configDir);
+    if (newest.at !== undefined) this.seen?.record(record.harness, configDir, newest.limits, newest.at);
+    return usageAt({ ...record, ...overlay, limits: newest.limits }, now);
   }
 
   /**
@@ -468,9 +551,12 @@ export class UsageTracker {
     return this.journal.cost(key);
   }
 
-  /** Per window, the limit from the newest held record of `harness` and `configDir` that carries it unexpired. */
-  private newestLimits(harness: string, now: number, configDir?: string): UsageLimit[] {
-    const newest = new Map<UsageWindow, { at: number; limit: UsageLimit }>();
+  /**
+   * Per window, the limit from the newest held record of `harness` and `configDir` that carries it
+   * unexpired, and when the newest of those records was written (undefined with no window).
+   */
+  private newestLimits(harness: string, now: number, configDir?: string): NewestLimits {
+    const newest = new Map<string, { at: number; limit: UsageLimit }>();
     for (const { record } of this.held.values()) {
       if (record === null || record.harness !== harness || record.configDir !== configDir) continue;
       for (const limit of record.limits ?? []) {
@@ -479,10 +565,8 @@ export class UsageTracker {
         if (best === undefined || record.at > best.at) newest.set(limit.window, { at: record.at, limit });
       }
     }
-    return USAGE_WINDOWS.flatMap((window) => {
-      const best = newest.get(window);
-      return best === undefined ? [] : [best.limit];
-    });
+    const best = [...newest.values()];
+    return { limits: orderedLimits(best.map((entry) => entry.limit)), at: best.length === 0 ? undefined : Math.max(...best.map((entry) => entry.at)) };
   }
 
   /** Remove readings past {@link USAGE_MAX_AGE_MS}, then the oldest past {@link USAGE_FILES_MAX}. */

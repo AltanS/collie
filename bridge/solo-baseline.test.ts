@@ -1495,6 +1495,10 @@ const STATE_DIR_ENTRIES = [
   // The usage readings, `usage/` (ADR 0115): one small file per Claude session, written by the
   // statusLine wrapper, read and pruned by the bridge. Absent until a wrapped statusLine runs.
   "usage",
+  // The last reading of each account's usage windows (bridge/usage-seen.ts, M101 spec 02): one 0600 file,
+  // written at most once a minute per key and only when a figure changed. Written by use and by nothing
+  // else: absent until the first reading of a window is held, and a bridge that is only started never has it.
+  "usage-seen.json",
   // The Whistle model's folder, `whistle/` (ADR 0096): the model, its manifest and a download's
   // part file. Absent until a write device taps "Download to host" or the operator runs
   // `collie stt whistle`; nothing else creates it.
