@@ -2483,13 +2483,14 @@ export function startServer(opts: {
           const family = canonicalAgent(pane.agent?.toLowerCase().trim() ?? "");
           const skillAgent = skillAgentFor(family);
           if (skillAgent !== undefined) {
-            commands = await discoverAgentSkills(skillAgent, { home, cwd, env: process.env });
+            // An added account's agent reads its own folder (M101): the scan reads the same one.
+            commands = await discoverAgentSkills(skillAgent, { home, cwd, env: opts.accounts?.envOf(rt.name, pane) ?? process.env });
           }
         } else {
           commands = await discoverClaudeCommands({
             home,
             cwd,
-            configDir: claudeConfigDir(cfg.journalRoots.claude, home),
+            configDir: opts.accounts?.folderOf(rt.name, pane) ?? claudeConfigDir(cfg.journalRoots.claude, home),
           });
         }
       } catch (err) {

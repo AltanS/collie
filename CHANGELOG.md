@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Accounts keep a second login of one agent beside the first.** Settings lists each agent's Default account and the ones you add. A shared Claude Code account is a new folder that links the default folder's setup and history, so only the login and the per-account state are its own; an own account adopts a folder you already use, as it is. Collie sets one variable on the agent's own command and you sign in inside the agent. Nothing changes until you add one.
+- **The slash list of a pane started with an account reads that account's commands and skills.** A command or skill kept only in the account's own folder now shows in the list.
 
 ### Fixed
 

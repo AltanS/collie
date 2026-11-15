@@ -257,6 +257,16 @@ describe("a pane's account", () => {
     expect(accounts.paneAccount("default", pane({ paneId: "w9:p9" }))).toEqual({ id: ID, label: "Work" });
   });
 
+  test("the slash and skill scan reads the account's folder: the folder, and the variable laid over the env", async () => {
+    await store.add(row);
+    const accounts = build({ env: { HOME: "/home/op" }, reported: { reportedConfigDir: () => "/srv/work", reportedConfigDirs: () => [] } });
+    expect(accounts.folderOf("default", pane())).toBe("/srv/work");
+    expect(accounts.envOf("default", pane())).toEqual({ HOME: "/home/op", CLAUDE_CONFIG_DIR: "/srv/work" });
+    const plain = build({ env: { HOME: "/home/op" } });
+    expect(plain.folderOf("default", pane())).toBeUndefined();
+    expect(plain.envOf("default", pane())).toEqual({ HOME: "/home/op" });
+  });
+
   test("a note is dropped when the pane runs another agent or is gone", async () => {
     await store.add(row);
     const accounts = build();

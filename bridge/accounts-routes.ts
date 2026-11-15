@@ -166,6 +166,23 @@ export class Accounts {
     return row === undefined ? undefined : { id: row.id, label: row.label };
   }
 
+  /** The folder of the pane's added account, or undefined for the Default and an unknown folder. */
+  folderOf(session: string, pane: AgentView): string | undefined {
+    return this.accountOf(session, pane)?.dir;
+  }
+
+  /**
+   * The environment the pane's agent runs under, as far as its account sets it: the bridge's own with
+   * the account's variable laid over. For a scan that reads the agent's folder the way the agent does
+   * (its skills and commands), so it reads the account's folder, not the default one.
+   */
+  envOf(session: string, pane: AgentView): AccountsDeps["env"] {
+    const row = this.accountOf(session, pane);
+    const adapter = row === undefined ? undefined : accountAdapter(row.harness);
+    if (row === undefined || adapter === undefined) return this.deps.env;
+    return { ...this.deps.env, [adapter.select.env]: row.dir };
+  }
+
   /** Note that this bridge just started `paneId` with an account. */
   noteLaunch(session: string, paneId: string, harness: string, id: string): void {
     const key = `${session}\u0000${paneId}`;
