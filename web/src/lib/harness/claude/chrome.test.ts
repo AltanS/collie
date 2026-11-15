@@ -1213,6 +1213,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2325-login-url--w61", statusRows: 0, draft: null, stripped: 35 },
     { fixture: "v2325-login-url-typed--w120", statusRows: 0, draft: "***************ESTATE", stripped: 35 },
     { fixture: "v2325-login-url-typed--w61", statusRows: 0, draft: "***************ESTATE", stripped: 35 },
+    // `/theme` in an onboarded session (2.1.325, 2026-11-15): the theme list under the prompt, no box.
+    { fixture: "v2325-theme-command--w40", statusRows: 0, draft: null, stripped: 2 },
+    { fixture: "v2325-theme-command--w61", statusRows: 0, draft: null, stripped: 5 },
     // Claude Code 2.1.325's first run, an empty config folder (2026-11-15). The sign-in field reads as a box
     // from the welcome art's last row (or the welcome row) to the end; its draft is the masked text, wrapped.
     { fixture: "v2325-first-run-console-methods--w61", statusRows: 0, draft: null, stripped: 16 },

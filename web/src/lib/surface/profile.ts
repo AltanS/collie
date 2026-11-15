@@ -730,6 +730,13 @@ export interface Profile {
      */
     readonly signInRows?: readonly string[];
     /**
+     * Rows that say a dialog Collie does not read holds the keys, as regular expression sources read on
+     * the trimmed text of every row of a screen with no box. For a screen that names no key and has no
+     * footer, so no cue reads it as a dialog (Claude Code's first-run theme step). The modal reads
+     * `unreadable`: nothing is offered, and the screen is shown as a dialog Collie cannot read. Optional.
+     */
+    readonly dialogRows?: readonly string[];
+    /**
      * True for a harness that draws its dialogs where the box stands, between the same two rules. The
      * frame walk then finds a box on a dialog screen, so the modal cues read the whole screen, the
      * box rows included, as they do on a screen with no frame. A draft that looks like a list reads
@@ -1652,7 +1659,16 @@ export function parseProfile(raw: JsonValue): Profile {
           if (row.test("")) fail(`idle.signInRows[${String(i)}]`, "must not match a blank row");
           return row.source;
         });
-  const withOverlay0: Profile["idle"] = signInRows === undefined ? withOverlayRows : { ...withOverlayRows, signInRows };
+  const withSignIn: Profile["idle"] = signInRows === undefined ? withOverlayRows : { ...withOverlayRows, signInRows };
+  const dialogRows =
+    idleNode.dialogRows === undefined
+      ? undefined
+      : list(idleNode.dialogRows, "idle.dialogRows").map((item, i) => {
+          const row = pattern(item, `idle.dialogRows[${String(i)}]`);
+          if (row.test("")) fail(`idle.dialogRows[${String(i)}]`, "must not match a blank row");
+          return row.source;
+        });
+  const withOverlay0: Profile["idle"] = dialogRows === undefined ? withSignIn : { ...withSignIn, dialogRows };
   const withOverlay: Profile["idle"] =
     idleNode.frameAlternates === undefined
       ? withOverlay0

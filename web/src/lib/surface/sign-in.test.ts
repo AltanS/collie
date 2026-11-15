@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { agentOf, idleFor, readScreen, rowsOf } from "../../test/surface-corpus";
 import { lineText } from "../blocks";
+import { buildBlocks } from "../harness";
 import { adapterFor } from "../harness/registry";
 import { detectSignInCard } from "../harness/sign-in-card";
 import { asJsonObject, parseJsonObject, type JsonObject, type JsonValue } from "../json";
@@ -392,5 +393,55 @@ describe("the first run's sign-in method lists", () => {
     expect(card("claude--v2325-first-run-methods--w61.txt")).not.toBeNull();
     const rows = rowsOf(texts.slice(at).join("\n"));
     expect(adapterFor(agentOf("claude"))!.buildBlocks(rows).some((block) => block.kind === "prompt-select")).toBe(false);
+  });
+});
+
+// The first run's theme step names no key and has no footer. The Claude profile's `idle.dialogRows`
+// names its own words, so it reads as a dialog Collie does not read: the card with the screen, and the
+// Keys tray. `/theme` in a session showed the card before and still does.
+describe("the first run's theme step reads as a dialog Collie does not read", () => {
+  const kinds = (name: string) => buildBlocks(screen(name).rows, { agent: "claude" }).map((block) => block.kind);
+
+  for (const name of [
+    "claude--v2325-first-run-theme--w40.txt",
+    "claude--v2325-first-run-theme--w61.txt",
+    "claude--v2325-first-run-theme-moved--w61.txt",
+  ]) {
+    it(`${name}: the modal reads unreadable, and the card shows the screen`, () => {
+      const { surface } = screen(name).read;
+      expect(surface).toMatchObject({ turn: "unknown", modal: "unreadable", composer: "unknown" });
+      expect(surface.reason).toBeUndefined();
+      expect(kinds(name)).toEqual(["unread-dialog"]);
+    });
+  }
+
+  for (const name of ["claude--v2325-theme-command--w40.txt", "claude--v2325-theme-command--w61.txt"]) {
+    it(`${name}: \`/theme\` in a session reads as before, with no help from \`dialogRows\``, () => {
+      const texts = textsOf(name);
+      expect(texts.some((text) => text.includes("Let's get started"))).toBe(false);
+      expect(screen(name).read.surface).toMatchObject({ turn: "unknown", modal: "unreadable", composer: "unknown" });
+      expect(kinds(name)).toEqual(["unread-dialog"]);
+    });
+  }
+
+  it("the same words in the chat over a live box name no dialog", () => {
+    const texts = textsOf("claude-lab--idle-after-turn--w200.txt");
+    const base = readTexts("claude", texts);
+    const top = base.frame!.top;
+    const read = readTexts("claude", [...texts.slice(0, top), "Let's get started.", "", ...texts.slice(top)]);
+    expect(read.frame).not.toBeNull();
+    expect(read.surface.modal).toBe(base.surface.modal);
+    expect(read.surface.modal).toBe("none");
+  });
+
+  it("the theme step without its words reads as it did: no card", () => {
+    const texts = textsOf("claude--v2325-first-run-theme--w61.txt").filter((text) => !text.includes("Let's get started"));
+    expect(readTexts("claude", texts).surface.modal).toBe("unknown");
+    expect(buildBlocks(rowsOf(texts.join("\n")), { agent: "claude" }).map((block) => block.kind)).toEqual(["raw"]);
+  });
+
+  it("the profile grammar refuses a dialog row that matches a blank row", () => {
+    expect(failure(change(raw("claude"), ["idle", "dialogRows"], ["^\\s*$"])).message).toMatch(/idle\.dialogRows\[0\]/u);
+    expect(failure(change(raw("claude"), ["idle", "dialogRows"], "Let's")).message).toMatch(/idle\.dialogRows/u);
   });
 });

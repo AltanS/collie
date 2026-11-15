@@ -47,7 +47,7 @@
 
 import { signInShown } from "./secret-field";
 import { edgeListHolds, readCuesFor, runningSign, type CueRead } from "./cues";
-import { coveredFrame, findInputFrame, frameEdge, overlayInRows, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import { coveredFrame, dialogRowShown, findInputFrame, frameEdge, overlayInRows, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { LOST_STOP_READS, LOST_STOP_SPAN_MS, SETTLE_MS, type EdgeKind } from "./edges";
 import { isFree, type Ask, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface";
 
@@ -273,6 +273,7 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   // A dialog the profile names drawn over the screen above a live box (`idle.overlayRows`), or a command
   // list in the box's edge run that is not the box's own typeahead: Enter acts on it (`commandList.inEdgeRun`).
   const covered = frame !== null && idle !== null && (coveredFrame(rows, frame, idle) || edgeListHolds(rows.map(rowText), frame, idle, rows));
+  const unreadDialog = frame === null && found === null && idle !== null && dialogRowShown(rows, idle);
   let modal: SurfaceModal;
   // A box that reads as a wrapped draft but for a row cut by an ellipsis (`cutWrap`, cues.ts `draftWrap`)
   // is unreadable: a draft or a menu cut to the box's width. No ask from it either, since a tap's Enter
@@ -282,6 +283,9 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   else if (cues.strength === "strong") modal = "unreadable";
   // No frame, and a row the profile names (`idle.overlayRows`) in the cues' cluster: a full-screen picker.
   else if (frame === null && found === null && idle !== null && cues.strength !== "none" && overlayInRows(rows, cues.cluster, idle)) modal = "unreadable";
+  // No box, and a row the profile names as a dialog it does not read (`idle.dialogRows`): a screen that
+  // names no key, so no cue reads it (Claude Code's first-run theme step).
+  else if (unreadDialog) modal = "unreadable";
   else if (cues.strength === "weak") modal = "unknown";
   else if (covered) modal = "unreadable";
   else if (frame !== null) modal = "none";
@@ -296,7 +300,7 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   // Torn is a read cut inside the box. A whole box the dialog rule hid above is not one: its strong cue
   // already keeps it from free, and the person may check the screen and confirm.
   if (found === null && idle !== null && endsInsideFrame(rows, idle)) reason = "torn";
-  else if (cues.cutWrap === true || (frame === null && input.ask === null && cues.strength === "none")) reason = "no-match";
+  else if (cues.cutWrap === true || (frame === null && input.ask === null && cues.strength === "none" && !unreadDialog)) reason = "no-match";
 
   const read: Surface = reason === undefined ? { revision: input.revision, turn, modal, composer } : { revision: input.revision, turn, modal, composer, reason };
   // A sign-in field (`idle.frame.secret`) the screen can claim: the phone names it and keeps no draft of it.

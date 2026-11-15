@@ -2706,6 +2706,14 @@
   }
  },
  {
+  "fixture": "claude--v2325-theme-command--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-theme-command--w61.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

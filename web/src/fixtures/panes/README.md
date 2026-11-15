@@ -4098,9 +4098,9 @@ finished login: the screens after sign-in (security notes, terminal setup, folde
 
 | Fixture | State | Reads as |
 | --- | --- | --- |
-| `claude--v2325-first-run-theme--w61.txt` | `Choose the text style…`, seven unnumbered rows, `❯ ✔ Dark mode`, a diff preview, no footer | raw, not lifted (no key printed, ADR 0009) |
-| `claude--v2325-first-run-theme--w40.txt` | The same at 40 columns, no art | raw |
-| `claude--v2325-first-run-theme-moved--w61.txt` | After one `Down`: `❯` on `Light mode`, the preview recoloured | raw (cues read a modal) |
+| `claude--v2325-first-run-theme--w61.txt` | `Let's get started.`, `Choose the text style…`, seven unnumbered rows, `❯ ✔ Dark mode`, a diff preview, no footer | modal unreadable, the unread-dialog card: no grammar offers a key (no key printed, ADR 0009), and the profile's `idle.dialogRows` names `Let's get started.` |
+| `claude--v2325-first-run-theme--w40.txt` | The same at 40 columns, no art | the unread-dialog card |
+| `claude--v2325-first-run-theme-moved--w61.txt` | After one `Down`: `❯` on `Light mode`, the preview recoloured | the unread-dialog card |
 | `claude--v2325-first-run-methods--w61.txt` | Under the art, `Select login method:`, three rows, nothing under them | prompt-select, digit keys, no caption (login-methods.ts) |
 | `claude--v2325-first-run-methods--w40.txt` | The same at 40 columns: `Welcome to Claude Code v2.1.325` and no art | prompt-select |
 | `claude--v2325-first-run-methods--w120.txt` | The same at 120 columns | prompt-select |
@@ -4116,3 +4116,15 @@ finished login: the screens after sign-in (security notes, terminal setup, folde
 | `claude--v2325-first-run-url-typed--w40.txt` | The same 21 at 40 columns: `********`, `********`, `STATE` (the last row shows at most its own characters clear) | field secret, draft wrapped |
 | `claude--v2325-first-run-url-pasted--w61.txt` | 99 characters: three rows of 29 `*`, then `******ateEND`, 31 columns in, never cut | field secret, draft wrapped |
 | `claude--v2325-first-run-url-pasted--w120.txt` | 132 characters at 120 columns, two rows | field secret, draft wrapped |
+
+### `/theme` in an onboarded session (captured 2026-11-15, Claude Code 2.1.325, 40 and 61 columns)
+
+The negative of the first-run theme step: the same list, opened with `/theme` in a scratch config folder
+marked onboarded and not signed in, in the same scratch tmux server. A `Theme` title, `Enter to select ·
+Esc to cancel`, no `Let's get started.`. The working folder in the header is renamed to a sample path.
+Read by `lib/surface/sign-in.test.ts`.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--v2325-theme-command--w61.txt` | `❯ /theme` in the chat, the theme list under it, `❯ ✔ Dark mode`, the footer | modal unreadable, the unread-dialog card (as before `idle.dialogRows`) |
+| `claude--v2325-theme-command--w40.txt` | The same at 40 columns | the unread-dialog card |

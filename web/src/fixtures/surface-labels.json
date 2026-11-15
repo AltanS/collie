@@ -6954,6 +6954,16 @@
    "harness": "claude",
    "version": "2.1.325",
    "state": "idle"
+  },
+  "claude--v2325-theme-command--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-theme-command--w40.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
   }
  },
  "knownMismatches": {

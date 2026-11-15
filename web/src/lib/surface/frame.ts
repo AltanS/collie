@@ -958,6 +958,26 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   return idle.frame.ownPrompt === true && c.interior.rows !== null ? { ...hinted, ownPrompt: { row: prompt, end: holeStart } } : hinted;
 }
 
+const compiledDialogRows = new WeakMap<IdleProfile, readonly RegExp[]>();
+
+/**
+ * Whether a row of the screen matches one of the profile's `idle.dialogRows`: a dialog Collie does not
+ * read holds the keys. The caller asks only of a screen with no box. False for a profile with none.
+ */
+export function dialogRowShown(rows: readonly FrameRow[], idle: IdleProfile): boolean {
+  const sources = idle.dialogRows;
+  if (sources === undefined || sources.length === 0) return false;
+  let patterns = compiledDialogRows.get(idle);
+  if (patterns === undefined) {
+    patterns = sources.map((source) => new RegExp(source, "u"));
+    compiledDialogRows.set(idle, patterns);
+  }
+  return rows.some((row) => {
+    const text = rowText(row).trim();
+    return text.length > 0 && patterns.some((pattern) => pattern.test(text));
+  });
+}
+
 const compiledOverlays = new WeakMap<IdleProfile, readonly RegExp[]>();
 
 function overlayPatterns(idle: IdleProfile): readonly RegExp[] {
