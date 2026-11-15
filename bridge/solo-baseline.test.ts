@@ -1352,6 +1352,9 @@ describe("solo zero-tax — config", () => {
 
 /** Every `<stateDir>/…` path any bridge module names. `uploads` is a directory, the rest are files. */
 const STATE_DIR_ENTRIES = [
+  // The accounts a person added on this machine (M101, ADR 0141). Written by use and by nothing else:
+  // absent until the first add from Settings succeeds.
+  "accounts.json",
   // Windows only (M43 spec 04): the access lists Collie saved before it changed one, so the change can
   // be undone with `icacls /restore`. Absent until the bridge actually repaired a loose folder or file;
   // never on Linux or macOS, and never on a Windows install whose folders were private already.
