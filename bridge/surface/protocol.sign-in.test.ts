@@ -339,3 +339,30 @@ describe("fail closed: a sign-in prompt no layout reads keeps no line and is nev
     expect(blind).toEqual([]);
   });
 });
+
+describe("a sign-in code never joins a pane's hold queue", () => {
+  // A pane that holds a message (a turn ran when it was sent) and now shows the sign-in field: a new
+  // message joins the end of the queue without a read, and a held text waits on disk in plain form.
+  // A send the phone names a sign-in code goes now instead, and keeps no copy anywhere.
+  test("a named code runs at once on a pane with a held message, and nothing of it is held", async () => {
+    const field = firstRunPane({ fixture: "claude--v2325-first-run-url--w61.txt" }, 61);
+    const { send, store, holds } = rig(field, "claude", "2.1.325", true);
+    holds!.add({ id: "req-held-000001", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "an earlier message", revision: 0, command: false, cause: "turn_running" });
+    const answer = await send(CODE, { secret: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(field.submitted).toEqual([CODE]);
+    expect(holds!.waiting("main", "%1").map((entry) => entry.id)).toEqual(["req-held-000001"]);
+    expect(heldFiles()).not.toContain(CODE);
+    expect(store.get(answer.id)?.line).toBeUndefined();
+    expect(requestFiles()).not.toContain(CODE);
+  });
+
+  test("an ordinary message on the same pane still joins the queue", async () => {
+    const field = firstRunPane({ fixture: "claude--v2325-first-run-url--w61.txt" }, 61);
+    const { send, holds } = rig(field, "claude", "2.1.325", true);
+    holds!.add({ id: "req-held-000002", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "an earlier message", revision: 0, command: false, cause: "turn_running" });
+    const answer = await send("a later message");
+    expect(answer.receipt?.outcome).toBe("held");
+    expect(holds!.waiting("main", "%1")).toHaveLength(2);
+  });
+});
