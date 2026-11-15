@@ -2660,6 +2660,8 @@ export interface AccountHarness {
   kinds: ("shared" | "own")[];
   /** The pattern of a new folder, `~/.claude-{slug}`. */
   newFolder: string;
+  /** The command that starts the agent (its `HARNESS_LAUNCHES` binary), for the terminal line the page shows. */
+  binary: string;
 }
 
 /** One account row. Per harness, the Default row first, then the added rows in the order added. */

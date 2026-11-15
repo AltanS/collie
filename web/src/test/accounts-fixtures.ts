@@ -11,6 +11,7 @@ export const HARNESS_CLAUDE: AccountHarness = {
   select: "CLAUDE_CONFIG_DIR",
   kinds: ["shared", "own"],
   newFolder: "~/.claude-{slug}",
+  binary: "claude",
 };
 
 export const HARNESS_CODEX: AccountHarness = {
@@ -19,6 +20,7 @@ export const HARNESS_CODEX: AccountHarness = {
   select: "CODEX_HOME",
   kinds: ["own"],
   newFolder: "~/.codex-{slug}",
+  binary: "codex",
 };
 
 export function defaultRow(over: Partial<AccountRow> = {}): AccountRow {

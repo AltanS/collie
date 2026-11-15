@@ -264,6 +264,7 @@ export class Accounts {
       select: selectText(h.adapter.select),
       kinds: this.kinds(h.adapter),
       newFolder: h.adapter.newFolder,
+      binary: h.binary,
     }));
     const accounts: AccountRow[] = [];
     for (const h of listed) {

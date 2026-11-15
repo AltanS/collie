@@ -97,7 +97,7 @@ describe("GET /api/accounts", () => {
   test("only found, account-capable harnesses, each with its Default row first", async () => {
     const body = await bodyOf(build());
     expect(body.harnesses.map((h) => h.id)).toEqual(["claude", "codex"]);
-    expect(body.harnesses[0]).toEqual({ id: "claude", label: "Claude Code", select: "CLAUDE_CONFIG_DIR", kinds: ["shared", "own"], newFolder: "~/.claude-{slug}" });
+    expect(body.harnesses[0]).toEqual({ id: "claude", label: "Claude Code", select: "CLAUDE_CONFIG_DIR", kinds: ["shared", "own"], newFolder: "~/.claude-{slug}", binary: "claude" });
     expect(body.harnesses[1]?.kinds).toEqual(["own"]);
     expect(body.accounts.map((a) => a.id)).toEqual(["claude:default", "codex:default"]);
     expect(body.accounts[0]).toMatchObject({ kind: "default", label: "", folder: "~/.claude", startLine: "claude", windows: [], seenAt: null, live: false });

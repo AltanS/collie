@@ -94,7 +94,14 @@ describe("accounts: Add", () => {
 
   it("builds the terminal line from the selector: a variable before the command, a flag after it", () => {
     expect(startLineFor(HARNESS_CLAUDE, "~/.claude-work")).toBe("CLAUDE_CONFIG_DIR=~/.claude-work claude");
-    expect(startLineFor({ ...HARNESS_CLAUDE, id: "tool", select: "--profile" }, "work")).toBe("tool --profile work");
+    expect(startLineFor({ ...HARNESS_CLAUDE, id: "tool", select: "--profile", binary: "tool" }, "work")).toBe("tool --profile work");
+  });
+
+  it("names the command by the bridge's binary, and by the id when an older bridge sends none", () => {
+    expect(startLineFor({ ...HARNESS_CODEX, id: "codex-cli", binary: "codex" }, "~/.codex-work")).toBe("CODEX_HOME=~/.codex-work codex");
+    expect(startLineFor({ ...HARNESS_CLAUDE, id: "tool", select: "--profile", binary: "tool-bin" }, "work")).toBe("tool-bin --profile work");
+    const { binary: _gone, ...older } = { ...HARNESS_CODEX, binary: "x" };
+    expect(startLineFor(older, "~/.codex-work")).toBe("CODEX_HOME=~/.codex-work codex");
   });
 
   it("prefills a name from a found folder: no dot, no agent word, a capital", () => {

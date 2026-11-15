@@ -27,6 +27,8 @@ export interface AccountHarness {
   kinds: ("shared" | "own")[];
   /** Pattern of a new shared folder, `~/.claude-{slug}`. */
   newFolder: string;
+  /** The command that starts the agent. Absent from an older bridge: the id stands in for it. */
+  binary?: string;
 }
 
 /** One window of a reading. `usedPct` null: the window passed its reset time and was not read since. */
@@ -234,7 +236,8 @@ export function newFolderFor(harness: AccountHarness, label: string): string {
 export function startLineFor(harness: AccountHarness, folder: string): string {
   // A selector written like a variable name is set before the command; anything else is a flag.
   const asVariable = /^[A-Z_][A-Z0-9_]*$/u.test(harness.select);
-  return asVariable ? `${harness.select}=${folder} ${harness.id}` : `${harness.id} ${harness.select} ${folder}`;
+  const command = harness.binary ?? harness.id;
+  return asVariable ? `${harness.select}=${folder} ${command}` : `${command} ${harness.select} ${folder}`;
 }
 
 const MAX_LABEL = 24;
