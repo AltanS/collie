@@ -1,5 +1,6 @@
 import { groupPanesByTab } from "@/lib/spaces";
 import { tabTitle } from "@/lib/pane-name";
+import { bucketOf } from "@/lib/triage";
 import type { AgentView, TabView, WorkspaceView } from "@/lib/types";
 import { AgentCard } from "./agent-card";
 import { t, tn } from "@/lib/i18n";
@@ -18,6 +19,8 @@ interface SpaceViewProps {
   glideKeyOf?: (pane: AgentView) => string;
   /** The finger landed on a row (lib/pane-prefetch.ts). */
   onPress?: (pane: AgentView) => void;
+  /** Hold on a row opens the pane actions sheet. */
+  onHold?: (pane: AgentView) => void;
   /** The machine this space is on — the WORKSPACE's host, not the crew's lead. Undefined when solo. */
   host?: string;
 }
@@ -35,6 +38,7 @@ export function SpaceView({
   onOpen,
   glideKeyOf,
   onPress,
+  onHold,
   host,
 }: SpaceViewProps) {
   useLocale();
@@ -92,6 +96,8 @@ export function SpaceView({
                   onClick={(el) => onOpen(p, el)}
                   glideKey={glideKeyOf?.(p)}
                   onPress={onPress && (() => onPress(p))}
+                  onHold={onHold && (() => onHold(p))}
+                  unseen={bucketOf(p) === "ready"}
                   scope="tab"
                 />
               ))}

@@ -1213,6 +1213,12 @@ export const en = {
   "paneActions.focus.labelFallback": "Focus in the terminal",
   "paneActions.focus.done": "Focused in the terminal",
   "paneActions.focus.failed": "Couldn't focus in the terminal",
+  "paneActions.markSeen.label": "Mark as seen",
+  "paneActions.markSeen.done": "Marked as seen",
+  "paneActions.markSeen.failed": "Couldn't mark as seen",
+  "paneActions.markUnseen.label": "Mark as unseen",
+  "paneActions.markUnseen.done": "Marked as unseen",
+  "paneActions.markUnseen.failed": "Couldn't mark as unseen",
   "paneActions.pin.label": "Pin to top",
   "paneActions.branchOff.label": "New agent in a worktree",
   "paneActions.unpin.label": "Unpin",
@@ -4279,6 +4285,12 @@ export const PENDING_TRANSLATION = [
   "walky.held.deliverStays",
   "walky.composer.delivered",
   "composer.send.sendAgain",
+  "paneActions.markSeen.label",
+  "paneActions.markSeen.done",
+  "paneActions.markSeen.failed",
+  "paneActions.markUnseen.label",
+  "paneActions.markUnseen.done",
+  "paneActions.markUnseen.failed",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

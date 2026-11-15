@@ -2817,6 +2817,7 @@ export function AgentChat({
                     onRenamed={() => revalidator.revalidate()}
                     // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
                     onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
+                    onSeenChange={() => revalidator.revalidate()}
                     herd={herd}
                   />
                 )}

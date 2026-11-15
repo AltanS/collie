@@ -5,7 +5,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "no
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
-import type { ActivityLedger } from "./activity.ts";
+import type { ActivityLedger, PaneActivity } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
 import {
@@ -242,7 +242,7 @@ import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
 import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
 import type { OfficialTricksSurface } from "./tricks/official-install.ts";
-import { placeTrickSessions } from "./tricks/panes.ts";
+import { placeTrickSessions, realAgentPanes } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
 import { snapshotPlan } from "./crew/merge.ts";
 import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
@@ -525,7 +525,7 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * `pins` (M90) is the one segment with a read and writes: a GET lists the pins of the pane's session (a read), a
  * POST `{ itemId }` pins a block and a DELETE `?pin=<id>` drops one (writes). See `bridge/pins/routes.ts`.
  */
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|seen|answer|send|abort|clear|action|pins|held))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -755,6 +755,9 @@ export const SEEN_HEADER = "x-collie-seen";
  * not the pane's conversation).
  */
 export function marksPaneSeen(req: Request, action: string | undefined): boolean {
+  // `seen` sets or clears the seen mark explicitly from its JSON body (`{ seen: boolean }`), so
+  // the generic entry hook must not pre-stamp `noteSeen` before `{ seen: false }` runs.
+  if (action === "seen") return false;
   if (req.headers.get(SEEN_HEADER) !== null) return true;
   // Pins are the operator's notes on a session, not a look at the pane: only the header says "seen".
   if (action === "pins") return false;
@@ -801,7 +804,7 @@ export function isTopologyWrite(pathname: string, method: string): boolean {
   if (TAB_ACTION_ROUTE.test(pathname)) return true;
   if (SWEEP_WAITS.has(pathname)) return true;
   const action = pathname.match(PANE_ROUTE)?.[2];
-  return action === "close" || action === "rename";
+  return action === "close" || action === "rename" || action === "seen";
 }
 
 /**
@@ -1909,7 +1912,7 @@ export function startServer(opts: {
       // The title is the one string here a program in the pane writes, so it is masked like the
       // mirror (bridge/redact.ts) before it reaches the phone and the phone's cache.
       const titled = cfg.redact ? maskTerminalTitle(p) : p;
-      const withTimes = a ? { ...titled, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : titled;
+      const withTimes = withPaneActivity(titled, a);
       const key = p.agentSession?.value;
       const reading = key === undefined ? undefined : cache?.get(key);
       const read = reading === undefined ? withTimes : { ...withTimes, cache: reading };
@@ -2671,6 +2674,7 @@ export function startServer(opts: {
       if (action === "close" && req.method === "POST") return closePane(herdr, rt.engine, paneId, req, audit_, device, session);
       if (action === "rename" && req.method === "POST") return renamePane(herdr, rt.engine, paneId, req, audit_, device, session);
       if (action === "focus" && req.method === "POST") return focusPane(herdr, rt.engine, paneId, req, audit_, device, session);
+      if (action === "seen" && req.method === "POST") return seenPane(activity, rt.engine, paneId, req, audit_, device, session);
       // An answer to an ask, by id, from a person's tap (ADR 0100). The receipt is written before
       // the answer leaves; on a crew it lives on the member that owns the pane.
       if (action === "answer" && req.method === "POST") {
@@ -6853,6 +6857,42 @@ async function focusPane(
   // carry — otherwise the pane the operator just showed on their terminal would keep reading as
   // unfocused for as long as the adapter's declared bound (ADR 0031).
   await settleTopology(herdr, engine);
+  return json({ ok: true } satisfies ActionResponse, ae);
+}
+
+/** Attach ledger activity timestamps and optional `manualUnseen` flag at serialise time. */
+export function withPaneActivity(pane: AgentView, entry: PaneActivity | undefined): AgentView {
+  if (!entry) return pane;
+  const next: AgentView = { ...pane, lastActiveAt: entry.activeAt, lastSeenAt: entry.seenAt };
+  if (entry.unreadAt !== undefined && entry.activeAt > entry.seenAt) next.manualUnseen = true;
+  return next;
+}
+
+export async function seenPane(
+  activity: Pick<ActivityLedger, "setSeen">,
+  engine: Pick<StateEngine, "current" | "pokeNow">,
+  paneId: string,
+  req: Request,
+  audit: Pick<AuditLog, "record">,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; `seen` is checked below.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const fields = asJsonRecord(body) ?? {};
+  if (typeof fields.seen !== "boolean") return text("bad seen", 400);
+  const pane = realAgentPanes(engine.current().agents).find((p) => p.paneId === paneId);
+  if (!pane || pane.kind === "shell") return text("pane not found", 404);
+  if (pane.status !== "done" && pane.status !== "idle") return text("pane is not settled", 409);
+  activity.setSeen(session, paneId, fields.seen);
+  audit.record({ action: "pane.seen", paneId, session, device, detail: { seen: fields.seen } });
+  engine.pokeNow();
   return json({ ok: true } satisfies ActionResponse, ae);
 }
 

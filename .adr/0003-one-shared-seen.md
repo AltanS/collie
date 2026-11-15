@@ -86,3 +86,8 @@ leave `activeAt` where it was.
 ## Amendment 2026-11-03
 
 The status dot follows the same shared seen mark. A pane that finished its turn draws the filled `done` disc only while it is unseen; once it is opened or driven in Collie, every screen draws it as the resting `idle` ring and counts it as idle (issue 665). The mark is still the bridge's one shared fact and is still not per device, and nothing changes on the bridge.
+
+## Amendment 2026-11-15
+
+Manual **Mark as unseen** and **Mark as seen** (`POST /api/pane/:id/seen`, `{ seen: boolean }`) from list action sheets adjust `seenAt` in the same shared `activity.json` ledger on settled (`done` or `idle`) agent panes without moving `activeAt` or firing a push alert. `noteUnread` winds `seenAt` to `activeAt - 1` (ignoring already-unseen panes so a genuine alert is never downgraded to manual) and keeps optional `unreadAt` across restarts; the bridge surfaces `manualUnseen?: true` so list surfaces show it as unseen while the app icon badge and notification sweep count alerts only.
+

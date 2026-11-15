@@ -1230,6 +1230,7 @@ export const handlers = [
   http.post(/\/api\/pane\/[^/]+\/keys$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/rename$/, () => HttpResponse.json({ ok: true })),
+  http.post(/\/api\/pane\/[^/]+\/seen$/, () => HttpResponse.json({ ok: true })),
   http.post("/api/tab", () => HttpResponse.json(fixtureNewTab)),
   http.post("/api/workspace", () => HttpResponse.json(fixtureNewSpace)),
   // The DEFAULT world is solo, so the census refuses exactly as a non-lead bridge does: 404 with the

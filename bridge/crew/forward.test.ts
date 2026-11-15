@@ -297,7 +297,7 @@ describe("which routes cross a link", () => {
     // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
     // `files` with the Files view (ADR 0083), `held` with the Cancel and Dismiss on a member's queued row (issue 740).
     expect(paneActions).toEqual([
-      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "held", "history", "keys", "pins", "rename", "reply", "send", "upload",
+      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "held", "history", "keys", "pins", "rename", "reply", "seen", "send", "upload",
     ]);
     // The Cancel or Dismiss on a member's queued row changes that member's hold queue: a write, audited on
     // the lead under the member's own name for the act (issue 740).
@@ -428,6 +428,7 @@ describe("which routes cross a link", () => {
     expect(forwardAuditAction("pane/w1:p1/close")).toBe("pane.close");
     expect(forwardAuditAction("pane/w1:p1/rename")).toBe("pane.rename");
     expect(forwardAuditAction("pane/w1:p1/focus")).toBe("pane.focus");
+    expect(forwardAuditAction("pane/w1:p1/seen")).toBe("pane.seen");
     expect(forwardAuditAction("tab")).toBe("tab.create");
     expect(forwardAuditAction("tab/w1:t1/rename")).toBe("tab.rename");
     expect(forwardAuditAction("space/w1/rename")).toBe("space.rename");

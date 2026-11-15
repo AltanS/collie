@@ -196,6 +196,11 @@ export interface AgentView {
    */
   lastSeenAt?: number;
   /**
+   * Present (and `true`) when this pane was manually marked unseen (`POST /api/pane/:id/seen`), so
+   * the app icon badge and notification sweep can count genuine alerts only. Absent otherwise.
+   */
+  manualUnseen?: true;
+  /**
    * How long this pane's prompt cache stays warm, read from the harness's own transcript
    * (bridge/cache/tracker.ts). Attached at serialise time exactly as {@link lastActiveAt} is, so it
    * rides `toPaneWire`'s rest spread onto the wire.

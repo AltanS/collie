@@ -441,11 +441,12 @@ function untagSession(s: SessionSummary): SessionSummary {
  * (`PaneWire.pins`, M90) is a number the phone draws, so it is kept only as a whole number above zero.
  */
 function untagPane(p: PaneWire): PaneWire {
-  const { host: _ignored, instance, pins, workspaceNamed, ...rest } = p;
+  const { host: _ignored, instance, pins, workspaceNamed, manualUnseen, ...rest } = p;
   const tokened = typeof instance === "string" && INSTANCE_TOKEN.test(instance) ? { ...rest, instance } : rest;
   // M98: the space's "named" fact is kept only as a boolean; anything else reads as absent, which is the default.
   const named = typeof workspaceNamed === "boolean" ? { ...tokened, workspaceNamed } : tokened;
-  return Number.isSafeInteger(pins) && pins !== undefined && pins > 0 ? { ...named, pins } : named;
+  const manual = manualUnseen === true ? { ...named, manualUnseen: true as const } : named;
+  return Number.isSafeInteger(pins) && pins !== undefined && pins > 0 ? { ...manual, pins } : manual;
 }
 
 function untagWorkspace(w: WorkspaceView): WorkspaceView {
