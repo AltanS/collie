@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **A dev build's icon has an orange ground and a dark mark.** A build off its release tag showed an orange mark on the release's dark tile. Its favicons and home-screen tiles are now orange with the mark in the dark tile's colour, so a dev install stands apart at a glance. The release icons are unchanged.
+
 ### Fixed
 
 - **A command sent right after you answer a menu is no longer refused while the agent is still catching up.** When the agent prints its queued messages after the answer, the screen keeps moving for a few seconds with no spinner. A command sent then, such as `/login`, now goes in the way a message already did on that screen, on harnesses that take a command during a turn. A command that must never wait, such as `/clear`, is still refused there.
