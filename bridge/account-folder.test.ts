@@ -66,6 +66,12 @@ describe("parseFolderPath: the hostile inputs", () => {
     expect(accountStartLine(ACCOUNT_ADAPTERS.claude, parsed.dir, "claude")).toBe("CLAUDE_CONFIG_DIR='/home/op/my work' claude");
     expect(quoteFolder(parsed.dir).slice(1, -1)).not.toContain("'");
   });
+
+  test("quoting throws on a folder that holds a ', whoever passed it", () => {
+    expect(() => quoteFolder("/home/op/it's")).toThrow();
+    expect(() => accountStartLine(ACCOUNT_ADAPTERS.claude, "/home/op/x' ; rm -rf ~ ; '", "claude")).toThrow();
+    expect(quoteFolder("/home/op/plain")).toBe("'/home/op/plain'");
+  });
 });
 
 /** A disk with the named paths present; realpath is the identity unless `links` says otherwise. */
