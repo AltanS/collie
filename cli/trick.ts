@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { redactText } from "../bridge/redact.ts";
 import { GROUP_CAPACITY_WORDS } from "../bridge/tricks/card-group.ts";
@@ -96,7 +97,8 @@ import { SKILL_BYTES_MAX } from "../web/src/lib/tricks/limits.ts";
 //   dev <folder>      `check --run` made friendly (cli/trick-dev.ts): one run, a short summary of each
 //                     part, Decision and refusal; `--tap`, `--json`, `--watch`
 //   init <id>         a new folder with `trick.toml`, a TypeScript program, the helper `trick.ts`, a
-//                     `config.toml` and an `AGENTS.md`; `--sh` writes the shell sample instead
+//                     `config.toml` and an `AGENTS.md`; `--sh` writes the shell sample instead. In an
+//                     agent's pane, or with `--dir <folder>`, the folder is a DRAFT outside the tricks folder
 //   helper <id>       rewrite `trick.ts` in a trick folder with the helper this Collie carries
 //   skill [<id>]      what an agent reads: the `SKILL.md` of the approved copy of a trick that is ON (what
 //                     the trick that runs asks of the agent), or with no id the brief for writing a trick
@@ -119,6 +121,8 @@ export interface TrickDeps {
   paneKind?: () => Promise<PaneKind>;
   /** This machine's platform, for the Windows gate (`refuseTricksOnWindows`). Absent: no gate. */
   platform?: NodeJS.Platform;
+  /** The working folder `init` writes a draft into. Absent: the process's own. A seam for tests. */
+  cwd?: string;
 }
 
 /**
@@ -356,15 +360,16 @@ export { SKILL_BYTES_MAX };
 
 /** The brief `collie trick skill` prints with no id: for an agent that wants to write a trick. */
 export const TRICK_WRITE_BRIEF = [
-  "A trick is a folder, <config dir>/tricks/<id>/, with a trick.toml and a program. The phone draws what the program prints.",
+  "A trick is a folder with a trick.toml and a program. The phone draws what the program prints.",
   "To write one:",
-  "  1. Run `collie trick init <id>`. It makes the folder with a sample program and an AGENTS.md.",
-  "  2. Read that AGENTS.md. It says what the program gets, what it may print, and the limits.",
-  "  3. Write the trick. `collie trick dev <folder>` runs it once and says what the phone would get; `--watch` runs it on each change.",
-  "     Then run `collie trick check --run <folder>`. It reads the folder, runs the program once and greps it.",
+  "  1. Run `collie trick init <id>`. In your pane it makes ./<id>/ in your current folder, with a sample program and an AGENTS.md. That folder is your draft.",
+  "  2. Read ./<id>/AGENTS.md. It says what the program gets, what it may print, and the limits.",
+  "  3. Write the trick. `collie trick dev ./<id>` runs it once and says what the phone would get; `--watch` runs it on each change.",
+  "     Then run `collie trick check --run ./<id>`. It reads the folder, runs the program once and greps it.",
   "  4. Fix what it reports, and run it again until it is clean.",
-  "The trick stays off. Never switch it on yourself: `collie trick on <id>` is the person's approval of the code, and it refuses inside an agent's pane.",
-  "To hand it to the person, run `collie trick propose <folder>`: they see your code on the Hill, and nothing runs before their yes. `collie trick guide` says more.",
+  "The draft lives in your own work folder. Nothing is added to this machine's tricks before the person's yes.",
+  "Never switch it on yourself: `collie trick on <id>` is the person's approval of the code, and it refuses inside an agent's pane.",
+  "To hand it to the person, run `collie trick propose ./<id>`: it sends the draft to the Hill, they see your code there, and nothing runs before their yes. `collie trick guide` says more.",
   "To teach other agents what the trick asks of them, add a SKILL.md to the folder. `collie trick skill <id>` prints it while the trick is on. SKILL.md is part of the trick's code: the trick runs the copy a person approved, so an edit waits for their yes before agents read it.",
 ] as const;
 
@@ -999,8 +1004,17 @@ n=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')
 printf '{"v":${String(TRICK_CONTRACT_DEFAULT)},"parts":[{"at":"belt","id":"belt","mark":{"icon":"plug","label":"%s","tone":"plain"}}]}\\n' "$n"
 `;
 
+/**
+ * The last step of the loop. A draft (made in an agent's pane, or with `--dir`) is outside the tricks folder:
+ * `propose` sends it to the Hill, and nothing is added to this machine's tricks before the person's yes.
+ */
+function handOff(id: string, draft: boolean): string {
+  if (!draft) return `Ask a person to switch the trick on (\`collie trick on ${id}\`, outside an agent's pane). It runs\n   while a phone watches.`;
+  return `Run \`collie trick propose .\` to send this draft to the Hill. This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself:\n   \`collie trick on\` refuses inside an agent's pane.`;
+}
+
 /** The loop and the helper's table, for a TypeScript trick. */
-function agentsTsLoop(id: string): string {
+function agentsTsLoop(id: string, draft: boolean): string {
   return `## The loop
 
 1. Change \`program.ts\`. It imports \`./trick.ts\`, the helper. Collie runs the program with its own
@@ -1010,12 +1024,11 @@ function agentsTsLoop(id: string): string {
    \`collie trick dev . --watch\` runs it again on each change; \`--tap <intent>\` runs it as a tap;
    \`--facts <file.json>\`, \`--state <dir>\` and \`--rid <uuid>\` set the facts, the state folder and the tap's id.
 3. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
-4. Ask a person to switch the trick on (\`collie trick on ${id}\`, outside an agent's pane). It runs
-   while a phone watches.
+4. ${handOff(id, draft)}
 
 ## The helper
 
-\`trick.ts\` is Collie's helper. Do not edit it: \`collie trick helper ${id}\` rewrites it with the newest
+\`trick.ts\` is Collie's helper. Do not edit it: \`collie trick helper ${draft ? "." : id}\` rewrites it with the newest
 version. \`run((t) => { ... })\` reads the facts, calls your function once and prints the document.
 
 | Call | What it does |
@@ -1053,24 +1066,23 @@ trick has no session.
 }
 
 /** The loop of a shell trick. */
-function agentsShLoop(id: string): string {
+function agentsShLoop(id: string, draft: boolean): string {
   return `## The loop
 
 1. Change \`program.sh\` (or point \`run\` at another program in this folder).
 2. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
-3. Ask a person to switch the trick on (\`collie trick on ${id}\`, outside an agent's pane). It runs
-   while a phone watches.
+3. ${handOff(id, draft)}
 `;
 }
 
-/** The `AGENTS.md` `init` writes: the contract, in prose, for the agent that grows the trick. */
-export function sampleAgents(id: string, form: InitForm = "ts"): string {
+/** The `AGENTS.md` `init` writes: the contract, in prose, for the agent that grows the trick. `draft`: the folder is outside the tricks folder. */
+export function sampleAgents(id: string, form: InitForm = "ts", draft = false): string {
   return `# The Collie trick "${id}"
 
 This folder is a Collie trick. Collie's bridge runs the program named by \`run\` in \`trick.toml\` and
 draws what it prints on the phone, with Collie's own parts in the current theme.
 
-${form === "ts" ? agentsTsLoop(id) : agentsShLoop(id)}
+${form === "ts" ? agentsTsLoop(id, draft) : agentsShLoop(id, draft)}
 ## Switching on approves this code
 
 The trick runs with the full rights of the user who runs Collie: it can read and change any file that
@@ -1183,36 +1195,117 @@ Everything printed, stderr too, goes through Collie's secret mask.
 `;
 }
 
+/** The usage line of `init`. */
+export const TRICK_INIT_USAGE = "usage: collie trick init [--sh] [--dir <folder>] <id>   (an id is 1 to 32 of a-z, 0-9 and -; in an agent's pane the draft goes to ./<id>)";
+
+/** `p` through any links, or as resolved when it does not exist. */
+function realOrResolved(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+}
+
+/** Whether `path` is `root` or inside it. Both are resolved through links when they exist. */
+function isInside(path: string, root: string): boolean {
+  const rel = relative(realOrResolved(root), realOrResolved(path));
+  return rel === "" || (rel.split(sep)[0] !== ".." && !isAbsolute(rel));
+}
+
+/** A path as a command line names it: `./x` for a bare relative path, quoted when it holds a space. */
+function shownPath(path: string): string {
+  const named = isAbsolute(path) || path.startsWith(".") ? path : `./${path}`;
+  return /\s/u.test(named) ? JSON.stringify(named) : named;
+}
+
+/** What `init` takes: the form, the id, and `--dir <folder>` (or `--dir=<folder>`). Null: a usage error. */
+function parseInit(args: readonly string[]): { form: InitForm; id: string; dir: string | null } | null {
+  let form: InitForm = "ts";
+  let dir: string | null = null;
+  const ids: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--sh") form = "sh";
+    else if (arg === "--dir") {
+      const value = args[i + 1];
+      if (value === undefined || value === "" || value.startsWith("-")) return null;
+      dir = value;
+      i += 1;
+    } else if (arg.startsWith("--dir=") && arg.length > "--dir=".length) dir = arg.slice("--dir=".length);
+    else if (arg.startsWith("-")) continue;
+    else ids.push(arg);
+  }
+  const id = ids[0];
+  if (id === undefined || !isTrickId(id)) return null;
+  return { form, id, dir };
+}
+
+/** Whether `dir` holds anything, or is not a folder at all. A missing folder is empty. */
+async function holdsSomething(dir: string, files: Pick<Files, "entryType">): Promise<boolean> {
+  const kind = files.entryType(dir);
+  if (kind === null) return false;
+  return kind !== "directory" || (await readdir(dir)).length > 0;
+}
+
+/**
+ * `collie trick init [--sh] [--dir <folder>] <id>`. A trick that an agent writes is a DRAFT until a person says
+ * yes, so in an agent's pane the scaffold goes to `./<id>` in the working folder, never the tricks folder: a
+ * folder there is "added on this machine" and `propose` refuses it. `--dir` does the same for any caller.
+ * Outside an agent's pane and without `--dir`, the scaffold goes to the tricks folder, as it always did.
+ */
 export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Promise<number> {
-  const form: InitForm = args.includes("--sh") ? "sh" : "ts";
-  const id = args.find((a) => !a.startsWith("-"));
-  if (id === undefined || !isTrickId(id)) {
-    deps.io.err("usage: collie trick init [--sh] <id>   (an id is 1 to 32 of a-z, 0-9 and -)");
+  const parsed = parseInit(args);
+  if (parsed === null) {
+    deps.io.err(TRICK_INIT_USAGE);
     return EXIT.USAGE;
   }
+  const { form, id } = parsed;
   const root = tricksConfigDir(deps.ctx.configDir);
-  const dir = join(root, id);
-  if (deps.files.exists(dir)) {
+  const draft = parsed.dir !== null || (await inAgentPane(deps));
+  const cwd = deps.cwd ?? process.cwd();
+  const base = parsed.dir === null ? cwd : resolve(cwd, parsed.dir);
+  const dir = draft ? join(base, id) : join(root, id);
+  if (draft && isInside(base, root)) {
+    deps.io.err(`error: ${base} is inside Collie's tricks folder, and a draft never lives there.`);
+    deps.io.err("Change to your own work folder, or name one with --dir <folder>, then run init again.");
+    return EXIT.FAIL;
+  }
+  if (!draft && deps.files.exists(dir)) {
     deps.io.err(`error: ${dir} exists already. init makes a new folder and never writes into one.`);
     return EXIT.FAIL;
   }
-  // The tricks folder sits in the config folder beside `.env`, owner only like it.
-  await mkdir(root, { recursive: true, mode: 0o700 });
-  await mkdir(dir, { mode: 0o700 });
+  if (draft && (await holdsSomething(dir, deps.files))) {
+    deps.io.err(`error: ${dir} exists and is not empty. init makes a new folder and never writes into one that holds files.`);
+    return EXIT.FAIL;
+  }
+  // The tricks folder sits in the config folder beside `.env`, owner only like it. A draft is the author's own folder.
+  if (draft) await mkdir(dir, { recursive: true });
+  else {
+    await mkdir(root, { recursive: true, mode: 0o700 });
+    await mkdir(dir, { mode: 0o700 });
+  }
   await writeFile(join(dir, MANIFEST_FILE), sampleManifest(id, form));
-  await writeFile(join(dir, "AGENTS.md"), sampleAgents(id, form));
-  if (form === "sh") {
-    await writeFile(join(dir, "program.sh"), SAMPLE_SHELL_PROGRAM, { mode: 0o755 });
-    deps.io.out(`Made ${dir} with trick.toml, program.sh and AGENTS.md. The trick is off.`);
-  } else {
+  await writeFile(join(dir, "AGENTS.md"), sampleAgents(id, form, draft));
+  const made = form === "sh" ? "trick.toml, program.sh and AGENTS.md" : "trick.toml, program.ts, trick.ts (the helper), config.toml and AGENTS.md";
+  if (form === "sh") await writeFile(join(dir, "program.sh"), SAMPLE_SHELL_PROGRAM, { mode: 0o755 });
+  else {
     await writeFile(join(dir, "program.ts"), sampleProgram(id));
     await writeFile(join(dir, HELPER_FILE), TRICK_HELPER);
     await writeFile(join(dir, CONFIG_FILE), sampleConfig(id));
-    deps.io.out(`Made ${dir} with trick.toml, program.ts, trick.ts (the helper), config.toml and AGENTS.md. The trick is off.`);
   }
-  deps.io.out(`Try it: collie trick dev ${dir}`);
-  deps.io.out(`Check it: collie trick check --run ${dir}`);
-  deps.io.out(`Switch it on: collie trick on ${id}`);
+  if (!draft) {
+    deps.io.out(`Made ${dir} with ${made}. The trick is off.`);
+    deps.io.out(`Try it: collie trick dev ${dir}`);
+    deps.io.out(`Check it: collie trick check --run ${dir}`);
+    deps.io.out(`Switch it on: collie trick on ${id}`);
+    return EXIT.OK;
+  }
+  const shown = shownPath(parsed.dir === null ? id : join(parsed.dir, id));
+  deps.io.out(`Made your draft ${shown} with ${made}. It is outside the tricks folder: nothing is added to this machine's tricks before the person's yes.`);
+  deps.io.out(`Try it: collie trick dev ${shown}`);
+  deps.io.out(`Check it: collie trick check --run ${shown}`);
+  deps.io.out(`Hand it to the person: collie trick propose ${shown}`);
   return EXIT.OK;
 }
 

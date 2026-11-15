@@ -90,6 +90,11 @@ async function ask(deps: ProposeDeps, line: string, requestId: string): Promise<
   return { ok: false, error: PROPOSE_UNKNOWN, code: null, exit: EXIT.UNREACHABLE };
 }
 
+/** The tail of the service's refusal for a trick that is in the tricks folder and not a proposal (bridge/tricks/service.ts `targetOf`). */
+const ADDED_HERE = "was added on this machine. Change it there.";
+/** What the CLI adds to that refusal: the way out for an agent that made its trick in the tricks folder. */
+export const PROPOSE_ADDED_HERE_HINT = "Copy the folder outside the tricks folder and propose the copy, or ask the person to switch it on.";
+
 const USAGE = "usage: collie trick propose <folder> [--request-id <uuid>] [--json]";
 
 /** `collie trick propose <folder>`: hand a trick to the person, through the lead's Hill. */
@@ -159,6 +164,7 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   const answer = await ask(deps, line, rid);
   if (!answer.ok) {
     const exit = fail(answer.error, answer.code, answer.exit);
+    if (!json && answer.error.endsWith(ADDED_HERE)) deps.io.err(`propose: ${PROPOSE_ADDED_HERE_HINT}`);
     if (!json && answer.code !== "lead_unreachable") deps.io.err(`propose: request id ${rid}`);
     return exit;
   }

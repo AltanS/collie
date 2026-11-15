@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,7 +25,8 @@ import { realFiles } from "./sys.ts";
 import { cmdTrickGuide, trickGuide } from "./trick-guide.ts";
 import { GROUP_MASKED, GROUP_TOO_LARGE, groupLineEnds } from "../bridge/tricks/card-group.ts";
 import { TRICK_HELPER } from "../bridge/tricks/scan.ts";
-import { cmdTrickPropose, PROPOSE_UNKNOWN, proposeExit, readTrickFolder } from "./trick-propose.ts";
+import { cmdTrickPropose, PROPOSE_ADDED_HERE_HINT, PROPOSE_UNKNOWN, proposeExit, readTrickFolder } from "./trick-propose.ts";
+import { cmdTrickInit } from "./trick.ts";
 import { askSocket } from "./walky.ts";
 
 // `collie trick guide` and `collie trick propose` (crew slice 8). The guide is checked against the schema;
@@ -255,6 +256,29 @@ describe("collie trick propose, over the walky socket", () => {
       "Proposed legs. Your person sees it on the Hill as dc_k3m9x2p7q1ab. Nothing runs before their yes.",
       "Read the answer with: collie hill status dc_k3m9x2p7q1ab",
     ]);
+    // A draft that init made in an agent's work folder proposes with nothing registered for its id.
+    const work = tempDir("propose-work-");
+    const root = tempDir("propose-config-");
+    const out = capture();
+    const init = {
+      ctx: context(inPane("%1"), { configDir: join(root, "config"), stateDir: join(root, "state") }),
+      io: out,
+      files: realFiles,
+      fetch: async () => new Response("{}"),
+      now: () => 1000,
+      paneKind: async () => "agent" as const,
+      cwd: work,
+    };
+    expect(await cmdTrickInit(init, ["draft-one"])).toBe(EXIT.OK);
+    const draft = join(work, "draft-one");
+    // Nothing was written to the tricks folder, so the bridge has no entry for the id.
+    expect(existsSync(join(root, "config", "tricks"))).toBe(false);
+    const e = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(e, [draft])).toBe(EXIT.OK);
+    expect(e.io.stderr).toEqual([]);
+    expect(b.calls).toHaveLength(2);
+    const sent = b.calls[1]?.fields.files;
+    expect(Array.isArray(sent) ? sent.map((f) => asJsonObject(f)?.rel) : []).toContain("trick.toml");
   });
 
   socketTest("a config.toml stays behind, and the CLI says so", async () => {
@@ -313,6 +337,16 @@ describe("collie trick propose, over the walky socket", () => {
     const d = deps([walkySocketPath(b.stateDir)]);
     expect(await cmdTrickPropose(d, [trickFolder()])).toBe(EXIT.REFUSED);
     expect(d.io.stderr).toEqual(["propose: This session proposed 6 tricks in the last hour. Wait, then propose again.", "propose: request id 0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f"]);
+    // A trick added on this machine: the CLI adds the way out on a line of its own, after the bridge's words.
+    const added = await bridge(async () => ({ ok: false, code: "exists", error: "legs was added on this machine. Change it there." }));
+    const e = deps([walkySocketPath(added.stateDir)]);
+    expect(await cmdTrickPropose(e, [trickFolder()])).toBe(EXIT.REFUSED);
+    expect(e.io.stderr).toEqual([
+      "propose: legs was added on this machine. Change it there.",
+      `propose: ${PROPOSE_ADDED_HERE_HINT}`,
+      "propose: request id 0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f",
+    ]);
+    expect(PROPOSE_ADDED_HERE_HINT).toBe("Copy the folder outside the tricks folder and propose the copy, or ask the person to switch it on.");
   });
 
   socketTest("a bridge without proposals answers unknown, and the CLI says so", async () => {

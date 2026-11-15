@@ -86,6 +86,15 @@ async function deps(answer: CliAnswer | null = null): Promise<TrickDeps & Captur
   };
 }
 
+const DRAFT_PANE = { HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" };
+
+/** Deps whose pane the bridge says runs an agent (or a shell), with `cwd` as the working folder. */
+async function inPaneDraft(kind: "agent" | "shell", cwd?: string) {
+  const d = await deps();
+  const work = cwd ?? (await tempDir());
+  return { d: { ...d, ctx: { ...d.ctx, env: { ...d.ctx.env, ...DRAFT_PANE } }, paneKind: async () => kind, cwd: work }, work };
+}
+
 describe("collie trick init", () => {
   test("AGENTS.md names every place this Collie draws, and its item example parses in both item places", () => {
     const text = sampleAgents("legs");
@@ -180,6 +189,116 @@ describe("collie trick init", () => {
     expect(await cmdTrickCheck(e, ["--run", join(e.configDir, "tricks", "plain")])).toBe(EXIT.OK);
     expect(e.out.join("\n")).toContain("parts: belt belt");
     expect(e.out.at(-1)).toBe("ok: no problems.");
+    // A draft made in an agent's pane checks and runs the same, with nothing registered for its id.
+    const { d: agent, work } = await inPaneDraft("agent");
+    expect(await cmdTrickInit(agent, ["solo"])).toBe(EXIT.OK);
+    const mark = agent.out.length;
+    expect(await cmdTrickCheck(agent, ["--run", "--json", join(work, "solo")])).toBe(EXIT.OK);
+    // SAFETY: `--json` prints exactly one TrickCheckReport, and the fields read below are checked by value.
+    const drafted = JSON.parse(agent.out.slice(mark).join("\n")) as TrickCheckReport;
+    expect(drafted.refusals).toEqual([]);
+    expect(drafted.problems).toEqual([]);
+    expect(drafted.run?.problem).toBeNull();
+    expect(drafted.run?.parts).toEqual(["status status", "dashboard dashboard", "session main"]);
+    expect(await Bun.file(switchesPath(agent.stateDir)).exists()).toBe(false);
+  });
+});
+
+describe("collie trick init, a draft outside the tricks folder", () => {
+  const PANE = DRAFT_PANE;
+  const inPane = inPaneDraft;
+
+  test("in an agent's pane the scaffold goes to ./<id>, not the tricks folder, and the output names the next commands", async () => {
+    const { d, work } = await inPane("agent");
+    expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.OK);
+    const dir = join(work, "legs");
+    expect(await readFile(join(dir, "trick.toml"), "utf8")).toContain('run = "program.ts"');
+    expect(await readFile(join(dir, "trick.ts"), "utf8")).toBe(TRICK_HELPER);
+    expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toBe(sampleAgents("legs", "ts", true));
+    expect(await Bun.file(join(d.configDir, "tricks", "legs", "trick.toml")).exists()).toBe(false);
+    expect(await Bun.file(join(d.configDir, "tricks")).exists()).toBe(false);
+    expect(d.out).toEqual([
+      "Made your draft ./legs with trick.toml, program.ts, trick.ts (the helper), config.toml and AGENTS.md. It is outside the tricks folder: nothing is added to this machine's tricks before the person's yes.",
+      "Try it: collie trick dev ./legs",
+      "Check it: collie trick check --run ./legs",
+      "Hand it to the person: collie trick propose ./legs",
+    ]);
+  });
+
+  test("the draft's AGENTS.md ends the loop with propose, not with a switch-on, in both forms", () => {
+    for (const form of ["ts", "sh"] as const) {
+      const draft = sampleAgents("legs", form, true);
+      expect(draft, form).toContain("`collie trick propose .`");
+      expect(draft, form).toContain("nothing is added to this machine's tricks before the person's yes");
+      expect(draft, form).not.toContain("Ask a person to switch the trick on");
+      expect(sampleAgents("legs", form), form).toContain("Ask a person to switch the trick on (`collie trick on legs`");
+    }
+    expect(sampleAgents("legs", "ts", true)).toContain("`collie trick helper .` rewrites it");
+  });
+
+  test("a shell pane and a bare terminal still write to the tricks folder, as before", async () => {
+    const { d, work } = await inPane("shell");
+    expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.OK);
+    expect(await Bun.file(join(d.configDir, "tricks", "legs", "trick.toml")).exists()).toBe(true);
+    expect(await Bun.file(join(work, "legs", "trick.toml")).exists()).toBe(false);
+    expect(d.out.at(-1)).toBe("Switch it on: collie trick on legs");
+    // A pane the bridge does not answer for, and a process with no pane markers, are not an agent's.
+    const { d: unknown } = await inPane("agent");
+    expect(await cmdTrickInit({ ...unknown, paneKind: async () => Promise.reject(new Error("socket gone")) }, ["other"])).toBe(EXIT.OK);
+    expect(await Bun.file(join(unknown.configDir, "tricks", "other", "trick.toml")).exists()).toBe(true);
+    const bare = await deps();
+    expect(await cmdTrickInit({ ...bare, paneKind: async () => "agent", cwd: work }, ["third"])).toBe(EXIT.OK);
+    expect(await Bun.file(join(bare.configDir, "tricks", "third", "trick.toml")).exists()).toBe(true);
+  });
+
+  test("--dir writes <folder>/<id> for any caller, shell form too, and a relative folder is read from the working folder", async () => {
+    const d = await deps();
+    const work = await tempDir();
+    const dd = { ...d, cwd: work };
+    expect(await cmdTrickInit(dd, ["--dir", "drafts", "--sh", "plain"])).toBe(EXIT.OK);
+    expect(await Bun.file(join(work, "drafts", "plain", "program.sh")).exists()).toBe(true);
+    expect(await Bun.file(join(d.configDir, "tricks", "plain", "trick.toml")).exists()).toBe(false);
+    expect(d.out.at(-1)).toBe("Hand it to the person: collie trick propose ./drafts/plain");
+    const elsewhere = await tempDir();
+    expect(await cmdTrickInit(dd, [`--dir=${elsewhere}`, "legs"])).toBe(EXIT.OK);
+    expect(await Bun.file(join(elsewhere, "legs", "trick.toml")).exists()).toBe(true);
+    expect(d.out.at(-1)).toBe(`Hand it to the person: collie trick propose ${join(elsewhere, "legs")}`);
+    expect(await cmdTrickInit(dd, ["--dir"])).toBe(EXIT.USAGE);
+    expect(await cmdTrickInit(dd, ["legs", "--dir", "--sh"])).toBe(EXIT.USAGE);
+    expect(d.err.at(-1)).toContain("usage: collie trick init [--sh] [--dir <folder>] <id>");
+  });
+
+  test("it refuses a draft folder that holds files, and takes an empty one", async () => {
+    const { d, work } = await inPane("agent");
+    await mkdir(join(work, "legs"));
+    expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.OK);
+    expect(await Bun.file(join(work, "legs", "trick.toml")).exists()).toBe(true);
+    const before = await readFile(join(work, "legs", "trick.toml"), "utf8");
+    expect(await cmdTrickInit(d, ["legs"])).toBe(EXIT.FAIL);
+    expect(d.err.at(-1)).toContain(`${join(work, "legs")} exists and is not empty`);
+    expect(await readFile(join(work, "legs", "trick.toml"), "utf8")).toBe(before);
+    await writeFile(join(work, "plain"), "a file");
+    expect(await cmdTrickInit(d, ["plain"])).toBe(EXIT.FAIL);
+    expect(await readFile(join(work, "plain"), "utf8")).toBe("a file");
+  });
+
+  test("it refuses when the working folder is the tricks folder, a trick in it, or the approved copies", async () => {
+    const d = await deps();
+    const tricks = join(d.configDir, "tricks");
+    await mkdir(join(tricks, ".collie-approved", "legs"), { recursive: true });
+    await mkdir(join(tricks, "legs"), { recursive: true });
+    const before = await readdir(tricks);
+    for (const cwd of [tricks, join(tricks, "legs"), join(tricks, ".collie-approved"), join(tricks, ".collie-approved", "legs")]) {
+      const agent = { ...d, ctx: { ...d.ctx, env: { ...d.ctx.env, ...PANE } }, paneKind: async () => "agent" as const, cwd };
+      d.err.length = 0;
+      expect(await cmdTrickInit(agent, ["fresh"])).toBe(EXIT.FAIL);
+      expect(d.err.join("\n")).toContain("inside Collie's tricks folder");
+    }
+    // The flag cannot aim a draft into it either.
+    const flagged = { ...d, cwd: await tempDir() };
+    expect(await cmdTrickInit(flagged, ["--dir", tricks, "fresh"])).toBe(EXIT.FAIL);
+    expect(await readdir(tricks)).toEqual(before);
+    expect(await Bun.file(join(tricks, "fresh", "trick.toml")).exists()).toBe(false);
   });
 });
 
@@ -900,7 +1019,12 @@ describe("collie trick skill", () => {
     const text = d.out.join("\n");
     expect(text).toContain("collie trick init <id>");
     expect(text).toContain("AGENTS.md");
-    expect(text).toContain("collie trick check --run <folder>");
+    expect(text).toContain("collie trick check --run ./<id>");
+    expect(text).toContain("collie trick dev ./<id>");
+    expect(text).toContain("collie trick propose ./<id>");
+    expect(text).toContain("Nothing is added to this machine's tricks before the person's yes.");
+    expect(text).not.toContain("<config dir>/tricks/<id>/");
+    expect(text).not.toContain("<folder>");
     expect(await cmdTrickSkill(d, ["Bad Id"])).toBe(EXIT.USAGE);
   });
 });
