@@ -38,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A command sent right after you answer a menu is no longer refused while the agent is still catching up.** When the agent prints its queued messages after the answer, the screen keeps moving for a few seconds with no spinner. A command sent then, such as `/login`, now goes in the way a message already did on that screen, on harnesses that take a command during a turn. A command that must never wait, such as `/clear`, is still refused there.
 - **A launcher line that sets a variable first is still read for a no-prompts flag.** In `CODEX_HOME=~/.codex-work codex -a never`, the agent's own short flags now count, as they do without the variable, so the No prompts mark shows.
+- **An agent that follows `collie trick skill` can now hand its trick to the person.** `collie trick init <id>` made the folder in the tricks folder, where a trick counts as added on this machine, so `collie trick propose` refused it. In an agent's pane `init` now makes a draft at `./<id>` in the working folder, outside the tricks folder, and prints the `dev`, `check --run` and `propose` commands for it; nothing is added to this machine's tricks before the person's yes. `collie trick init --dir <folder>` makes `<folder>/<id>` for anyone, `init` refuses a folder that holds files or one inside the tricks folder, and `propose` adds the way out when it meets a trick added on this machine.
 
 
 ## [1.29.0] - 2026-11-12

@@ -1455,7 +1455,7 @@ export const COMMANDS: readonly CommandEntry[] = [
       { flag: "--watch", what: "Run again when a file in the folder changes." },
     ],
   },
-  { group: "trick", verb: "init", usage: "trick init [--sh] <id>", what: "Makes a new trick folder with a program and the helper.", flags: [{ flag: "--sh", what: "Write a shell program instead of a TypeScript one." }] },
+  { group: "trick", verb: "init", usage: "trick init [--sh] [--dir <folder>] <id>", what: "Makes a new trick folder with a program and the helper. In an agent's pane the folder is a draft in the working folder, outside the tricks folder.", flags: [{ flag: "--sh", what: "Write a shell program instead of a TypeScript one." }, { flag: "--dir", what: "Make `<folder>/<id>` as a draft, outside the tricks folder, instead of the tricks folder." }] },
   { group: "trick", verb: "helper", usage: "trick helper <id|folder>", what: "Rewrites a trick's `trick.ts` with the helper this Collie carries.", flags: [] },
   { group: "trick", verb: "skill", usage: "trick skill [<id>]", what: "Prints what a trick that is on asks of an agent. With no id, prints how to write a trick.", flags: [] },
   { group: "trick", verb: "guide", usage: "trick guide [--json]", what: "Prints how to write a trick and hand it to the person, as plain text for an agent.", flags: [JSON_FLAG] },

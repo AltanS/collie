@@ -488,7 +488,9 @@ collie trick check ~/.config/collie/tricks/disk-space
 collie trick on disk-space
 ```
 
-`init` makes the folder, with a starter program, and also writes the notes an agent needs. `dev` runs
+`init` makes the folder, with a starter program, and also writes the notes an agent needs. In an agent's
+pane it makes the folder in the agent's own work folder instead, as a draft, and nothing is added to this
+machine's tricks before your yes. `dev` runs
 it once and prints what the phone would draw, and sends nothing to the phone. `check` searches the
 code for the five risky things. And `on` refuses in a pane where an agent works, so the yes stays
 yours.
