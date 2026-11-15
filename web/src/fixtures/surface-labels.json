@@ -231,19 +231,19 @@
    "state": "popup"
   },
   "claude--background-work-exit-1.txt": {
-    "harness": "claude",
-    "version": "2.1.306",
-    "state": "dialog"
+   "harness": "claude",
+   "version": "2.1.306",
+   "state": "dialog"
   },
   "claude--background-work-exit-2.txt": {
-    "harness": "claude",
-    "version": "2.1.306",
-    "state": "dialog"
+   "harness": "claude",
+   "version": "2.1.306",
+   "state": "dialog"
   },
   "claude--background-work-exit-3.txt": {
-    "harness": "claude",
-    "version": "2.1.306",
-    "state": "dialog"
+   "harness": "claude",
+   "version": "2.1.306",
+   "state": "dialog"
   },
   "claude--box-table-vs16-emoji.txt": {
    "harness": "claude",
@@ -6746,6 +6746,121 @@
    "state": "idle"
   },
   "pi--v130-core-question-quote-rail--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "claude--v2325-login-methods--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-login-console-methods--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-login-url--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-login-url-typed--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "draft"
+  },
+  "claude--v2325-login-url-typed--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "draft"
+  },
+  "claude--v2325-login-console-url--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-login-console-url-pasted--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "draft"
+  },
+  "claude--v2325-login-bad-code--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "pi--v130-login-methods--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-login-providers--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-login-anthropic-methods--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-login-browser-url--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-login-browser-url-typed--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
+  "pi--v130-login-bad-code--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-login-headless-url--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-login-headless-pasted-long--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
+  "pi--v130-login-api-key--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-login-api-key-typed--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
+  "omp--v18-6-1-login-providers--w61.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
+  },
+  "omp--v18-6-1-login-url--w61.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "idle"
+  },
+  "omp--v18-6-1-login-url-typed--w61.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "draft"
+  },
+  "pi--v130-login-methods-moved--w61.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-login-anthropic-methods-moved--w61.txt": {
    "harness": "pi",
    "version": "1.3.0",
    "state": "dialog"

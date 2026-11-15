@@ -1,6 +1,7 @@
-// A URL THE BOX BROKE — Claude Code's boxes wrap their text at, or just short of, the last content
-// column, so a login URL longer than the width comes out as several rows. This joins those rows back
-// into one line, so the link finder sees the whole address.
+// A URL THE BOX BROKE — Claude Code's boxes (its Authentication box, its `/login` panel) and the login
+// panels of pi and omp wrap their text at, or just short of, the last content column, so a login URL
+// longer than the width comes out as several rows. This joins those rows back into one line, so the
+// link finder sees the whole address. Harness-neutral: the caller hands the rows and the width.
 //
 // The box moves a word that does not fit on to the next row whole, and cuts inside a word only when
 // the word is longer than the content width. So length is the one sign a break can be read by, and

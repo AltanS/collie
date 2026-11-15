@@ -18,6 +18,10 @@ describe("pickSendPath", () => {
     expect(pick({ part: { capabilities: new Set(["send"]) } })).toEqual({ path: "screen", why: "not-declared" });
   });
 
+  test("a send into a sign-in field always goes by the screen: the field is not the agent's prompt", () => {
+    expect(pick({}, { secret: true })).toEqual({ path: "screen", why: "secret" });
+  });
+
   test("the kill switch off: the screen, whatever the part declares", () => {
     expect(pick({ enabled: false })).toEqual({ path: "screen", why: "off" });
   });

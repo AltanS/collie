@@ -70,6 +70,19 @@ describe("accept", () => {
     });
   });
 
+  test("keeps no line of a send into a sign-in field, and forgets the line of one found there later", () => {
+    const store = new RequestStore(join(dir, "sends"), () => 5000);
+    const secret = store.accept(input({ text: "FAKEcode1234#FAKEstate", secret: true }));
+    expect(secret.record.line).toBeUndefined();
+    expect(readFileSync(join(dir, "sends", `${ID}.json`), "utf8")).not.toContain("FAKEcode");
+    const id = "req-0002-abcdef";
+    expect(store.accept(input({ id, text: "FAKEother5678" })).record.line).toBe("FAKEother5678");
+    store.forgetLine(id);
+    expect(store.get(id)?.line).toBeUndefined();
+    expect(readFileSync(join(dir, "sends", `${id}.json`), "utf8")).not.toContain("FAKEother");
+    expect(store.get(id)?.id).toBe(id);
+  });
+
   test("the line survives a restart, and a line that is not what it should be is dropped while the record stays", () => {
     const first = new RequestStore(join(dir, "sends"), () => 5000);
     first.accept(input({ text: "git status" }));

@@ -22,6 +22,22 @@
       "maxDraftRows": 100,
       "maxTailRows": 60
     },
+    "frameAlternates": [
+      {
+        "walk": "interior",
+        "top": { "pattern": "^─+$", "minCells": 8, "column": 0 },
+        "prompt": { "pattern": "^  Paste code here if prompted > ?(?<draft>.*)$", "column": 2 },
+        "bottom": { "pattern": "^", "column": 0, "maxColumn": 3, "open": true },
+        "trailer": { "row": "^  Esc to cancel$", "hint": true },
+        "continuationIndent": 0,
+        "maxDraftRows": 40,
+        "maxTailRows": 0,
+        "answers": true,
+        "newlineSubmits": true,
+        "secret": { "mask": { "glyph": "*", "clear": 6, "cut": "…" } },
+        "note": "The sign-in field of /login (Claude Code 2.1.325, lab 2026-11-15, claude--v2325-login-*.txt): under the rule, `Login`, the sign-in address wrapped at the pane's edge, then `Paste code here if prompted >` and `Esc to cancel`. The field shows each character as `*` but the last six (`***************ESTATE`), and a text longer than the row as `*` cut with `…`, with no space after `>`."
+      }
+    ],
     "placeholders": {
       "texts": ["Press up to edit queued messages"],
       "patterns": ["^Try \"[^\"]*\"$"],

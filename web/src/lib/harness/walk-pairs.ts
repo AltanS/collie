@@ -175,6 +175,9 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["kiro", "kiro--v3-replace-trusted-allow-w120.txt", "kiro--v3-replace-trusted-deny-w120.txt"],
   // Codex 0.167.0 hook-trust prompt (codex/hooks.ts): the pointer on Review hooks, then on Trust all.
   ["codex", "codex--v0167-hooks-review--w80.txt", "codex--v0167-hooks-review-moved--w80.txt"],
+  // pi 1.3.0 `/login` (2026-11-15): the method list and the Anthropic method list, each with the pointer moved one row.
+  ["pi", "pi--v130-login-methods--w61.txt", "pi--v130-login-methods-moved--w61.txt"],
+  ["pi", "pi--v130-login-anthropic-methods--w61.txt", "pi--v130-login-anthropic-methods-moved--w61.txt"],
 ];
 
 /**

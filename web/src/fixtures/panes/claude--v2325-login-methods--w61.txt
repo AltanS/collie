@@ -1,0 +1,40 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.325[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mAPI[39m [38;5;246mUsage[39m [38;5;246mBilling[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m~/.cache/collie-lab/login-paste-lab/work[39m
+
+[38;5;174m▎[39m [1mAuto[0m [1mmode[0m [1mis[0m [1mnow[0m [1mClaude[0m [1mCode's[0m [1mdefault[0m [1mpermission[0m [1mmode.[0m
+[38;5;174m▎[39m [38;5;246mAuto[39m [38;5;246mmode[39m [38;5;246mlets[39m [38;5;246mClaude[39m [38;5;246mhandle[39m [38;5;246mpermission[39m [38;5;246mprompts[39m
+[38;5;174m▎[39m [38;5;246mautomatically.[39m [38;5;246mClaude[39m [38;5;246mchecks[39m [38;5;246meach[39m [38;5;246mtool[39m [38;5;246mcall[39m [38;5;246mfor[39m [38;5;246mrisky[39m
+[38;5;174m▎[39m [38;5;246mactions[39m [38;5;246mand[39m [38;5;246mprompt[39m [38;5;246minjection[39m [38;5;246mbefore[39m [38;5;246mexecuting,[39m [38;5;246mruns[39m [38;5;246mthe[39m
+[38;5;174m▎[39m [38;5;246mones[39m [38;5;246mit[39m [38;5;246massesses[39m [38;5;246mas[39m [38;5;246mlower-risk,[39m [38;5;246mand[39m [38;5;246mblocks[39m [38;5;246mthe[39m [38;5;246mrest.[39m
+[38;5;174m▎[39m [38;5;246mhttps://code.claude.com/docs/en/permission-modes[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231m/login[39m
+
+[38;5;153m[49m─────────────────────────────────────────────────────────────
+[39m  [1m[38;5;153mLogin[0m
+
+  [1mClaude Code can be used with your Claude subscription or [0m
+  [1mbilled based on API usage through your Console account.[0m
+
+  Select login method:
+
+  [38;5;153m❯[39m [38;5;246m1. [38;5;153mClaude account with subscription · [38;5;246mIndividual, Team,[39m
+       [38;5;246mor Enterprise[39m
+    [38;5;246m2. [39mAnthropic Console account · [38;5;246mAPI usage billing[39m
+    [38;5;246m3. [39m3rd-party platform · [38;5;246mBedrock, Microsoft Foundry, [39m
+       [38;5;246mGoogle Vertex AI[39m
+
+  [3m[38;5;246mEsc to cancel[0m
+
+
+
+
+
+
+
+
+
+
+
+

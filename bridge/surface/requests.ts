@@ -79,6 +79,8 @@ export interface AcceptInput {
   readonly surfaceRevision: number;
   readonly mode: SendMode;
   readonly text: string;
+  /** The text is for a sign-in field (`SendRequest.secret`): the record keeps no `line` of it, only the hash and length. */
+  readonly secret?: boolean;
 }
 
 export type AcceptResult =
@@ -400,11 +402,22 @@ export class RequestStore {
       acceptedAt: this.now(),
       phase: "accepted",
     };
-    const line = sentLineOf(input.text);
+    const line = input.secret === true ? null : sentLineOf(input.text);
     if (line !== null) record = { ...record, line };
     if (this.collie !== undefined) record = { ...record, collie: this.collie };
     this.write(record);
     return { kind: "new", record };
+  }
+
+  /**
+   * Drop the record's `line`: the send met a sign-in field (`idle.frame.secret`) its caller did not
+   * name, so the text is a secret after all. The hash and the length stay.
+   */
+  forgetLine(id: string): void {
+    const known = this.get(id);
+    if (known === null || known.line === undefined) return;
+    const { line: _secret, ...rest } = known;
+    this.write(rest);
   }
 
   /** The road the send took (see {@link SendRecord.path}). A settled record keeps the road it settled on. */

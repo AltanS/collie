@@ -96,6 +96,9 @@ const SWITCH_LIFTED = SWITCH_COHORT.filter((name) => !DECLINED_SWITCH.includes(n
 // fourteen-row `write`), and the compact model picker's session state (18.4.10: the pointer moved,
 // wrapped and at both window edges, searches, over-context and truncated rows, role chips, and windows
 // of 16, 15 and 5 rows).
+/** The `/login` box over its sign-in field (omp 18.6.1, 2026-11-15): a box-text card, no key. */
+const SIGN_IN = new Set(["omp--v18-6-1-login-url--w61.txt", "omp--v18-6-1-login-url-typed--w61.txt"]);
+
 const LIFTED = new Set([
   "omp--menu-resume-moved.txt",
   "omp--menu-resume.txt",
@@ -488,6 +491,8 @@ const DECLINED = new Set([
   ...ASCII_SYMBOL_LISTS,
   ...TOKEN_WRAPPED_DRAFTS,
   ...BORDERLESS_FIELD_COMPOSERS,
+  // omp 18.6.1 `/login` (2026-11-15): the provider list, a modal with no grammar. Its sign-in box is SIGN_IN.
+  "omp--v18-6-1-login-providers--w61.txt",
 ]);
 
 // The own cohort is the lifted captures, so every conformance leg that needs one runs on them
@@ -495,7 +500,8 @@ const DECLINED = new Set([
 // model signs itself and fails the committing check when a row of it changes. The neutral cohort still
 // carries the leg that matters most here: raw-only on the other omp captures and on every foreign
 // harness capture.
-const ownFixtures = allOmpFixtures.filter((f) => LIFTED.has(f));
+// The sign-in card (SIGN_IN) is keyless, but the conformance legs count it as a lift: it must sit at the tail.
+const ownFixtures = allOmpFixtures.filter((f) => LIFTED.has(f) || SIGN_IN.has(f));
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
 describeAdapterConformance(ompAdapter, {
@@ -748,6 +754,9 @@ describe("the omp corpus", () => {
     "omp--v18-6-1-hash-popup--w120.txt",
     "omp--v18-6-1-hash-popup-single--w120.txt",
     "omp--v18-6-1-hash-popup-stale--w120.txt",
+    "omp--v18-6-1-login-providers--w61.txt",
+    "omp--v18-6-1-login-url--w61.txt",
+    "omp--v18-6-1-login-url-typed--w61.txt",
     "omp--v18-6-1-path-popup--w120.txt",
     "omp--v18-6-1-path-popup-tilde--w120.txt",
     "omp--v18-6-1-queued-before-stop--w119.txt",
@@ -813,8 +822,8 @@ describe("the omp corpus", () => {
     expect(SWITCH_LIFTED.length).toBeGreaterThan(0);
   });
 
-  it(`lifts the ${ownFixtures.length} \`/resume\`, Ask single-select, approval and model picker captures and declines the other ${neutralFixtures.length}`, () => {
-    expect(ownFixtures).toEqual([...LIFTED].toSorted());
+  it(`lifts the ${ownFixtures.length} \`/resume\`, Ask single-select, approval, model picker and sign-in captures and declines the other ${neutralFixtures.length}`, () => {
+    expect(ownFixtures).toEqual([...LIFTED, ...SIGN_IN].toSorted());
     expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(PINNED);
     expect(ownFixtures.filter((f) => neutralFixtures.includes(f))).toEqual([]);
   });
@@ -827,10 +836,16 @@ describe("the omp corpus", () => {
 // through its own kind-agnostic filter; asserting the kinds directly here is what makes the claim in
 // omp/index.ts's header, "no interactive kind but those four lists", a test rather than a comment.
 describe("ompBuildBlocks emits nothing but raw, bar the four lifted screens", () => {
-  it.each(allOmpFixtures.filter((f) => !LIFTED.has(f)))("%s builds only raw blocks", (name) => {
+  it.each(allOmpFixtures.filter((f) => !LIFTED.has(f) && !SIGN_IN.has(f)))("%s builds only raw blocks", (name) => {
     const blocks = ompAdapter.buildBlocks(fixtureLines(name));
     expect(blocks.length).toBeGreaterThan(0);
     expect(blocks.map((b) => b.kind)).toEqual(blocks.map(() => "raw"));
+  });
+
+  // The `/login` box over its sign-in field (harness/sign-in-card.ts) is a `box-text`: it prints no key
+  // and owns no keyboard, so it does not widen the claim above.
+  it.each([...SIGN_IN].toSorted())("%s builds the sign-in card, and nothing else but the raw above it", (name) => {
+    expect(ompAdapter.buildBlocks(fixtureLines(name)).map((b) => b.kind)).toEqual(["raw", "box-text"]);
   });
 
   it.each([...LIFTED].toSorted())("%s builds one prompt-select, and nothing else but the raw above it", (name) => {

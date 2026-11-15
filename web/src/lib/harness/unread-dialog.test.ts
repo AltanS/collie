@@ -251,6 +251,9 @@ const CARD_FIXTURES = {
       // field no grammar reads; the Marketplaces grammar does not claim it (no `Manage marketplaces`
       // title), so the card and its Escape are the way back to the tab.
       "claude--v2283-plugin-marketplaces-add-form--w82.txt",
+      // README: `/login` after a refused code (2.1.325), `OAuth error: … Press Enter to retry. Esc to
+      // cancel`. No input box and no grammar; the card's Escape is the way back.
+      "claude--v2325-login-bad-code--w61.txt",
     ],
     notModals: [
       // corpus, DELIBERATE: a statusline printing numbered rows is refused by ADR 0048 step 4

@@ -617,6 +617,9 @@ export const en = {
   "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Hold Send to steer.",
   "composer.stale.hint": "The screen may be stale. Send probes it first.",
+  // The placeholder of a sign-in field (the Surface's `field: "secret"`). English only until the
+  // translation pass: listed in PENDING_TRANSLATION below.
+  "composer.secret.hint": "Sign-in field. Collie keeps no copy.",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
   "composer.steer.steered": "Steered: the agent takes it after its current step.",
   "composer.steer.unsupported": "Steer is not available on this pane. Nothing was sent.",
@@ -3810,6 +3813,7 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "composer.secret.hint",
   "newPage.branch.folder.default",
   "settings.worktreeFolder.title",
   "settings.worktreeFolder.description",

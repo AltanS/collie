@@ -781,6 +781,55 @@ describe("Composer: a read dialog is refused at the thumb", () => {
   });
 });
 
+// A sign-in field (`/login`'s code or key field, the Surface's `field: "secret"`): the composer keeps no
+// draft of what is typed there, no stored send intent, no "You sent" text, and names the send `secret`.
+describe("Composer: sign-in field", () => {
+  const SIGN_IN: Surface = { revision: 3, turn: "idle", modal: "none", composer: "empty", field: "secret" };
+  const CODE = "FAKEcode1234abcd#FAKEstate5678";
+
+  function storedAnywhere(text: string): boolean {
+    const all = [localStorage, sessionStorage].flatMap((store) => Object.keys(store).map((key) => store.getItem(key) ?? ""));
+    return all.some((value) => value.includes(text));
+  }
+
+  it("names the field, stores no draft of the code, and sends it marked secret", async () => {
+    const user = userEvent.setup();
+    let typed = "";
+    server.use(...replyHandler((text) => (typed = text)));
+    renderComposer({ surface: SIGN_IN });
+    const box = screen.getByPlaceholderText("Sign-in field. Collie keeps no copy.");
+
+    await user.type(box, CODE);
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
+    expect(storedAnywhere(CODE)).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(typed).toBe(CODE));
+    expect(recordedSends()[0]?.secret).toBe(true);
+    expect(storedAnywhere(CODE)).toBe(false);
+    expect(screen.queryByText(CODE)).toBeNull();
+  });
+
+  it("keeps no send intent of the code when the bridge does not answer", async () => {
+    const user = userEvent.setup();
+    server.use(http.post("*/api/send", () => HttpResponse.error()));
+    renderComposer({ surface: SIGN_IN });
+    const box = screen.getByPlaceholderText("Sign-in field. Collie keeps no copy.");
+
+    await user.type(box, CODE);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText(/No answer/u);
+    expect(storedAnywhere(CODE)).toBe(false);
+  });
+
+  it("a plain box still keeps its draft", async () => {
+    const user = userEvent.setup();
+    renderComposer({ surface: FREE });
+    await user.type(screen.getByRole("textbox"), "an ordinary reply");
+    expect(loadDraft(undefined, "w1:p1")).toBe("an ordinary reply");
+  });
+});
+
 // A shell's password prompt never echoes what is typed (#103), so the bridge cannot see a text land
 // there. When the bridge refuses a tap over such a screen (the stub below answers `unconfirmed`), the
 // composer reads the screen it already shows for the prompt, display only, and says so. A bare shell

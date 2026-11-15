@@ -45,8 +45,9 @@ describeAdapterConformance(piAdapter, {
 
 describe("pi adapter routing", () => {
   it("lifts every question screen the corpus proves, and no fewer", () => {
-    // The system-theme permission fixture joins the upstream corpus.
-    expect(lifted).toHaveLength(66);
+    // The system-theme permission fixture joins the upstream corpus. `/login` (2026-11-15) adds four
+    // method lists and six screens of its sign-in card.
+    expect(lifted).toHaveLength(76);
   });
 
   it.each([

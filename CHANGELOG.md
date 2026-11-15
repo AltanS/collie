@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Sign in to an agent from the phone.** On Claude Code, pi and omp, `/login` shows its sign-in address as one link you can tap, and the code field takes the code from the composer. Collie keeps no copy of it: no draft, no stored line, no row in its memory, and the phone shows dots, not the code, after the send. Claude Code's list of sign-in methods is a card with one button per method.
+
 ### Fixed
 
 - **A command sent right after you answer a menu is no longer refused while the agent is still catching up.** When the agent prints its queued messages after the answer, the screen keeps moving for a few seconds with no spinner. A command sent then, such as `/login`, now goes in the way a message already did on that screen, on harnesses that take a command during a turn. A command that must never wait, such as `/clear`, is still refused there.

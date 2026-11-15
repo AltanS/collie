@@ -257,6 +257,7 @@ import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommand
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, readIsUnstyled, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
+import { fieldShows } from "../../web/src/lib/surface/secret-field.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
 import type { CommandListRows, FooterRow, OtherScreenRow, Profile, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
@@ -757,6 +758,12 @@ export interface SendRequest {
    * as the person's own words and is never held either.
    */
   readonly view?: { readonly head: boolean; readonly check: () => string | null };
+  /**
+   * The text is for a sign-in field (`idle.frame.secret`): the phone saw one and says so. The record
+   * keeps no line of it, and it takes the screen road only. A send that meets such a field without it
+   * loses its line at S0.
+   */
+  readonly secret?: boolean;
 }
 
 export { BAD_HEAD, VIEW_NO_PROFILE };
@@ -1275,6 +1282,28 @@ function ghostView(ghost: string | null, snap: Snap): Snap {
   if (ghost === null || frame === null || frame.placeholder || frame.interior.text !== ghost || !readIsUnstyled(snap.rows)) return snap;
   const surface: Surface = snap.surface.composer === "draft" ? { ...snap.surface, composer: "empty" } : snap.surface;
   return { ...snap, frame: { ...frame, placeholder: true }, surface };
+}
+
+/**
+ * A read as the run knows a sign-in field (`idle.frame.secret`): a field that hides or scrolls what is
+ * typed shows the run's own text only in its drawn form (a mask, the end of a long text). Where the
+ * field shows exactly that form ({@link fieldShows}), the box reads as holding the text, so every
+ * compare after it checks the one text it typed. Every other read is as it was read.
+ */
+function secretView(typed: string, snap: Snap): Snap {
+  const { frame } = snap;
+  const secret = frame?.secret;
+  if (frame === null || secret === undefined || frame.placeholder) return snap;
+  const shown = frame.interior.text;
+  const line = typed.trim();
+  if (shown === line || !fieldShows(shown, line, secret)) return snap;
+  return { ...snap, frame: { ...frame, interior: { ...frame.interior, text: line } } };
+}
+
+/** The read's rows for the memory ring: a sign-in field's rows are left out, since they may show the secret. */
+function ringRows(texts: readonly string[], frame: Frame | null): readonly string[] {
+  if (frame?.secret === undefined) return texts;
+  return texts.map((row, i) => (i >= frame.interior.prompt && i <= frame.interior.last ? "" : row));
 }
 
 /**
@@ -3296,6 +3325,7 @@ export class SendProtocol {
       surfaceRevision: request.revision ?? 0,
       mode: request.mode,
       text: request.text,
+      secret: request.secret === true,
     });
     if (accepted.kind === "id_reused") {
       // The stored request is someone else's; this refusal is not stored under its id.
@@ -4226,7 +4256,7 @@ export class SendProtocol {
     const pick = pickSendPath({
       enabled: data.enabled(),
       part: data.door.partOf(address),
-      request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true },
+      request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true, secret: request.secret === true },
     });
     if (pick.path === "screen") return over ? this.overDraftMiss(state, "not-linked") : null;
     const mail = request.draftHolds === true;
@@ -4956,6 +4986,8 @@ export class SendProtocol {
         throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX_COMMAND });
       }
     }
+    // A sign-in field the phone did not name: the text is a secret all the same, so its record keeps no line.
+    if (s0.frame?.secret !== undefined && state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
     // A box whose line break submits it takes one line: a second line would go out as a second message.
     if (s0.frame?.newlineSubmits === true && sendLines(state.request.text).length > 1) {
       throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });
@@ -5588,7 +5620,7 @@ export class SendProtocol {
     const chrome = chromeRows(frame, idle?.volatile.below.footerRows);
     const checked = (ticks && frame !== null ? plain.map((row, i) => (i < frame.top ? tickMarked(row) : row)) : plain).map((row, i) => (chrome.has(i) ? "" : row));
     const win = bottomWindow(texts);
-    this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
+    this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: ringRows(texts, frame) });
     const framed = readCuesFor(rows, frame, idle);
     // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
     // the typed command's own list over or under the box (ownCommandList): Enter there picks that command.
@@ -5646,7 +5678,7 @@ export class SendProtocol {
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(checked.slice(win.first, win.end).join("\n")),
     };
-    const snap = ghostView(state.ghost, read);
+    const snap = secretView(state.request.text, ghostView(state.ghost, read));
     state.previousRead = state.lastRead;
     state.lastRead = snap;
     return snap;
