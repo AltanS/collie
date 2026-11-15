@@ -677,9 +677,10 @@ one of two kinds:
 
 To sign in, start a session with the new account. The agent shows its own sign-in in the pane:
 Claude Code asks for a theme and then the login method, Codex offers a browser sign-in or a device
-code, pi says to run `/login`, and Grok shows a code to approve in a browser. Some sign-ins need a
-browser on that machine. Grok also tries to open that page in a browser on the machine that runs the
-bridge.
+code, pi says to run `/login`, and Grok shows a code to approve in a browser. The first start of a new
+Claude Code account asks for a text style before the sign-in. Open Keys and press Enter to keep the one
+it suggests. Some sign-ins need a browser on that machine. Claude Code and Grok also try to open that
+page in a browser on the machine that runs the bridge.
 
 The New page lets you pick the account for an agent and for a row you built from its options. A row
 you wrote by hand starts as you wrote it. A Claude Code session started from a desktop terminal with
