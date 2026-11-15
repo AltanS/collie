@@ -1,5 +1,5 @@
 import { type ComponentProps } from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 
@@ -14,6 +14,8 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
 }));
 
 import { clearStatus, useStatus } from "@/lib/status";
+import { paneRowKey } from "@/lib/hosts";
+import { recordLastViewed } from "@/lib/last-viewed";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { fixtureAgents, paneTextWithDraft } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
@@ -105,5 +107,22 @@ describe("the Switch pane sheet's New button", () => {
     await screen.findByRole("dialog");
     expect(within(titleRow()).queryByRole("button", { name: "New" })).toBeNull();
     expect(titleRow().children).toHaveLength(2);
+  });
+
+  it("wires switcherLastViewed from DashPrefs into the Switch pane sheet (off by default, shown when enabled)", async () => {
+    const user = userEvent.setup();
+    recordLastViewed(paneRowKey(fixtureAgents[1]!), "collie");
+
+    renderPane();
+    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    const offSheet = await screen.findByRole("dialog");
+    expect(within(offSheet).queryByRole("region", { name: "Last viewed" })).toBeNull();
+    cleanup();
+
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ switcherLastViewed: true }));
+    renderPane();
+    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    const onSheet = await screen.findByRole("dialog");
+    expect(within(onSheet).getByRole("region", { name: "Last viewed" })).toBeInTheDocument();
   });
 });

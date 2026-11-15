@@ -5,6 +5,7 @@ import { ThreadSidebar } from "./agent-sidebar";
 import { CrewProvider } from "./crew-provider";
 import { BottomSheet } from "./ui/sheet";
 import { paneRowKey } from "@/lib/hosts";
+import { recordLastViewed } from "@/lib/last-viewed";
 import { currentPins, setPinned } from "@/lib/pins";
 import { fixtureAgents, fixtureCrewAgents, fixtureServers, fixtureShellPanes } from "@/test/handlers";
 import type { AgentView, Launcher, WorkspaceView } from "@/lib/types";
@@ -1170,5 +1171,277 @@ describe("ThreadSidebar: the filter", () => {
     expect(field()).toHaveValue("");
     const landing = [...container.querySelectorAll<HTMLElement>("button[data-pane-key]")].find((b) => b.dataset.paneKey === paneRowKey(LANDING));
     expect(landing).toHaveFocus();
+  });
+});
+
+// LAST VIEWED UNDER PINNED: one non-current, unpinned live pane directly below Pinned (or first when
+// nothing is pinned) in place order on a phone, gated off by default (`showLastViewed = false`),
+// locked to that single target when the sheet opens (ADR 0063), and listed once across Pinned,
+// workspaces and Shells (ADR 0070).
+describe("ThreadSidebar — last viewed", () => {
+  const shell: AgentView = {
+    paneId: "w2:p9",
+    workspaceId: "w2",
+    workspaceLabel: "collie",
+    workspaceNumber: 2,
+    tabId: "w2:t1",
+    agent: "shell",
+    status: "unknown",
+    cwd: "/home/you/collie",
+    focused: false,
+    kind: "shell",
+  };
+  const agents = [...fixtureAgents, idleAgent];
+  const herd = [...agents, shell];
+  const region = () => screen.getByRole("region", { name: "Last viewed" });
+  const headings = () =>
+    screen.queryAllByRole("heading", { level: 3 }).map((h) => h.firstChild?.textContent ?? h.textContent);
+  const paneButtons = (c: HTMLElement) =>
+    [...c.querySelectorAll<HTMLElement>("button[data-pane-key]")].map((b) => b.dataset.paneKey);
+
+  it("renders identically to baseline when showLastViewed is omitted or false, even with stored visits", () => {
+    const empty = render(
+      <ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} />,
+    );
+    const baseline = empty.container.innerHTML;
+    empty.unmount();
+
+    recordLastViewed(paneRowKey(idleAgent), "sandbox");
+    const offDefault = render(
+      <ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} />,
+    );
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    expect(offDefault.container.innerHTML).toBe(baseline);
+    offDefault.unmount();
+
+    const offExplicit = render(
+      <ThreadSidebar
+        agents={agents}
+        shellPanes={[shell]}
+        currentPaneKey=""
+        onSelect={vi.fn()}
+        showLastViewed={false}
+      />,
+    );
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    expect(offExplicit.container.innerHTML).toBe(baseline);
+  });
+
+  it("renders identically when nothing was viewed, and leads with Last viewed once showLastViewed is true and a pane is remembered", () => {
+    const empty = render(
+      <ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} showLastViewed />,
+    );
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    const baseline = empty.container.innerHTML;
+    empty.unmount();
+
+    const again = render(
+      <ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} showLastViewed />,
+    );
+    expect(again.container.innerHTML).toBe(baseline);
+    again.unmount();
+
+    recordLastViewed(paneRowKey(idleAgent), "sandbox");
+    render(
+      <ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} showLastViewed />,
+    );
+    expect(headings()[0]).toBe("Last viewed");
+    expect(within(region()).getByRole("button")).toHaveTextContent("sandbox");
+  });
+
+  it("lists 1 row from Home, skips currentPaneKey inside a pane, and removes that row from its workspace or Shells", () => {
+    recordLastViewed(paneRowKey(fixtureAgents[0]!), "webapp");
+    recordLastViewed(paneRowKey(shell), "collie");
+    recordLastViewed(paneRowKey(fixtureAgents[1]!), "collie");
+
+    // From Home (`currentPaneKey === ""`), the newest visit (`fixtureAgents[1]`, collie) leads once
+    // and its workspace section (which held no other agent) leaves.
+    const home = render(
+      <ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} showLastViewed />,
+    );
+    expect(within(region()).getAllByRole("button")).toHaveLength(1);
+    expect(within(region()).getByRole("button")).toHaveTextContent("codex");
+    expect(headings()).toEqual(["Last viewed", "webapp", "sandbox", expect.stringMatching(/^Shells/u)]);
+    expect(paneButtons(home.container)).toHaveLength(herd.length);
+    expect(new Set(paneButtons(home.container)).size).toBe(herd.length);
+    home.unmount();
+
+    // Inside `fixtureAgents[1]`, `currentPaneKey` is skipped so `shell` leads Last viewed and leaves Shells,
+    // while `fixtureAgents[1]` stays in its `collie` workspace marked current.
+    const inside = render(
+      <ThreadSidebar
+        agents={agents}
+        shellPanes={[shell]}
+        currentPaneKey={paneRowKey(fixtureAgents[1]!)}
+        onSelect={vi.fn()}
+        showLastViewed
+      />,
+    );
+    expect(within(region()).getAllByRole("button")).toHaveLength(1);
+    expect(within(region()).getByRole("button")).toHaveTextContent("shell");
+    expect(headings()).toEqual(["Last viewed", "webapp", "collie", "sandbox"]);
+    expect(screen.getByRole("button", { current: "page" })).toHaveTextContent("codex");
+    expect(paneButtons(inside.container)).toHaveLength(herd.length);
+    expect(new Set(paneButtons(inside.container)).size).toBe(herd.length);
+  });
+
+  it("keeps Pinned leading intact and places Last viewed right below it with the most recent unpinned pane", async () => {
+    const user = userEvent.setup();
+    Element.prototype.scrollIntoView = vi.fn();
+    const extraInSandbox: AgentView = { ...idleAgent, paneId: "w3:p2", paneLabel: "companion", status: "working" };
+    const blockedSandbox: AgentView = { ...idleAgent, status: "blocked" };
+    const calmFirst: AgentView = { ...fixtureAgents[0]!, status: "idle" };
+    const allAgents = [calmFirst, fixtureAgents[1]!, blockedSandbox, extraInSandbox];
+
+    setPinned(calmFirst, true, allAgents, 1);
+    setPinned(fixtureAgents[1]!, true, allAgents, 2);
+    // Visit unpinned `blockedSandbox`, then pinned `fixtureAgents[1]`: Pinned keeps both members in
+    // place order, and Last viewed skips the pinned pane to promote `blockedSandbox` right below Pinned.
+    recordLastViewed(paneRowKey(blockedSandbox), "sandbox");
+    recordLastViewed(paneRowKey(fixtureAgents[1]!), "collie");
+
+    const { container } = render(
+      <ThreadSidebar
+        agents={allAgents}
+        currentPaneKey=""
+        onSelect={vi.fn()}
+        pins={currentPins()}
+        showLastViewed
+      />,
+    );
+    expect(headings()).toEqual(["Pinned", "Last viewed", "sandbox"]);
+    const pinnedRegion = screen.getByRole("region", { name: "Pinned" });
+    expect(within(pinnedRegion).getAllByRole("button").map((b) => b.dataset.paneKey)).toEqual([
+      paneRowKey(calmFirst),
+      paneRowKey(fixtureAgents[1]!),
+    ]);
+    expect(within(region()).getByRole("button")).toHaveAttribute("data-pane-key", paneRowKey(blockedSandbox));
+    expect(paneButtons(container)).toHaveLength(allAgents.length);
+    expect(new Set(paneButtons(container)).size).toBe(allAgents.length);
+
+    // `sandbox` still lights and counts both of its panes (`blockedSandbox` + `extraInSandbox`).
+    const sandboxHeading = screen.getByRole("heading", { level: 3, name: /sandbox/ });
+    expect(sandboxHeading.querySelector(".text-status-blocked")).not.toBeNull();
+    expect(sandboxHeading.parentElement).toHaveTextContent("1");
+
+    // Tapping the summary line jumps to the first urgent row in display order (`Last viewed`, since Pinned has none).
+    await user.click(screen.getByRole("button", { name: /1 needs you/i }));
+    expect(within(region()).getByRole("button")).toHaveFocus();
+  });
+
+  it("hides Last viewed under a filter query, returns the pane to its workspace, and jumps to Last viewed when clearing a filter that hid urgent rows", async () => {
+    const user = userEvent.setup();
+    Element.prototype.scrollIntoView = vi.fn();
+    const many: AgentView[] = Array.from({ length: 6 }, (_, i) => ({
+      paneId: `w${i + 1}:p1`,
+      workspaceId: `w${i + 1}`,
+      workspaceLabel: `space-${i + 1}`,
+      workspaceNumber: i + 1,
+      tabId: `w${i + 1}:t1`,
+      agent: "claude",
+      // Both `space-1` (`many[0]`) and `space-5` (`many[4]`, Last viewed) are blocked: in unfiltered
+      // display order `Last viewed` sits above `space-1`, so clearing the filter via the summary line
+      // must focus `many[4]`, not `many[0]`.
+      status: i === 0 || i === 4 ? "blocked" : "idle",
+      cwd: `/work/space-${i + 1}`,
+      focused: false,
+      paneLabel: i === 4 ? "release notes" : `worker-${i + 1}`,
+    }));
+    recordLastViewed(paneRowKey(many[4]!), "space-5");
+
+    const { container } = render(
+      <ThreadSidebar agents={many} currentPaneKey="" onSelect={vi.fn()} showLastViewed />,
+    );
+    expect(within(region()).getByRole("button")).toHaveTextContent("release notes");
+    expect(paneButtons(container)).toHaveLength(many.length);
+
+    const filterBox = screen.getByRole("textbox", { name: "Filter sessions" });
+    await user.type(filterBox, "rel");
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    expect(headings()).toEqual(["space-5"]);
+    expect(paneButtons(container)).toEqual([paneRowKey(many[4]!)]);
+    expect([...container.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["rel"]);
+    expect(container.querySelector('[data-slot="session-filter-count"]')).toHaveTextContent("1 of 6");
+
+    // Hide BOTH blocked panes under a query matching only `worker-2` (`many[1]`, idle), then tap the
+    // summary line: clearing the filter restores `Last viewed` at the top and focuses `many[4]`.
+    await user.clear(filterBox);
+    await user.type(filterBox, "worker-2");
+    expect(paneButtons(container)).toEqual([paneRowKey(many[1]!)]);
+    await user.click(screen.getByRole("button", { name: /2 needs you/i }));
+    expect(filterBox).toHaveValue("");
+    expect(within(region()).getByRole("button")).toHaveFocus();
+  });
+
+  it("withholds Last viewed in activity order, cache order, and the large screen's roomy sidebar", () => {
+    recordLastViewed(paneRowKey(idleAgent), "sandbox");
+    const { container, rerender } = render(
+      <ThreadSidebar agents={agents} currentPaneKey="" onSelect={vi.fn()} order="place" showLastViewed />,
+    );
+    expect(within(region()).getByRole("button")).toHaveTextContent("sandbox");
+
+    rerender(<ThreadSidebar agents={agents} currentPaneKey="" onSelect={vi.fn()} order="activity" showLastViewed />);
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    expect(headings()).toEqual([expect.stringContaining("Newest first")]);
+    expect(paneButtons(container)).toContain(paneRowKey(idleAgent));
+
+    rerender(<ThreadSidebar agents={agents} currentPaneKey="" onSelect={vi.fn()} order="cache" showLastViewed />);
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    expect(headings()).toEqual([expect.stringContaining("Going cold first")]);
+    expect(paneButtons(container)).toContain(paneRowKey(idleAgent));
+
+    rerender(<ThreadSidebar agents={agents} currentPaneKey="" onSelect={vi.fn()} order="place" roomy showLastViewed />);
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    expect(headings()).toEqual(["webapp", "collie", "sandbox"]);
+    expect(paneButtons(container)).toContain(paneRowKey(idleAgent));
+  });
+
+  it("locks onto a single target on open: closing it on a poll hides Last viewed rather than pulling up the runner-up (ADR 0063)", () => {
+    recordLastViewed(paneRowKey(fixtureAgents[0]!), "webapp");
+    recordLastViewed(paneRowKey(fixtureAgents[1]!), "collie");
+    const { rerender, unmount } = render(
+      <ThreadSidebar agents={agents} currentPaneKey="" onSelect={vi.fn()} showLastViewed />,
+    );
+    expect(within(region()).getByRole("button")).toHaveAttribute("data-pane-key", paneRowKey(fixtureAgents[1]!));
+
+    // Another visit recorded or a poll flipping statuses while the sheet is open must not jump the row.
+    recordLastViewed(paneRowKey(idleAgent), "sandbox");
+    const polled = agents.map((a) =>
+      a.paneId === fixtureAgents[1]!.paneId ? Object.assign({}, a, { status: "working" as const, lastActiveAt: 9_999 }) : a,
+    );
+    rerender(<ThreadSidebar agents={polled} currentPaneKey="" onSelect={vi.fn()} showLastViewed />);
+    const frozenRow = within(region()).getByRole("button");
+    expect(frozenRow).toHaveAttribute("data-pane-key", paneRowKey(fixtureAgents[1]!));
+    expect(within(frozenRow).getByRole("img", { name: "working" })).toBeInTheDocument();
+
+    // If a poll closes `fixtureAgents[1]` while the sheet stays open, Last viewed hides instead of
+    // yanking runner-up `fixtureAgents[0]` out of `webapp` under a moving thumb.
+    rerender(<ThreadSidebar agents={[fixtureAgents[0]!, idleAgent]} currentPaneKey="" onSelect={vi.fn()} showLastViewed />);
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    expect(headings()).toEqual(["webapp", "sandbox"]);
+
+    // Closing and reopening the sheet reads the updated trail.
+    unmount();
+    render(<ThreadSidebar agents={[fixtureAgents[0]!, idleAgent]} currentPaneKey="" onSelect={vi.fn()} showLastViewed />);
+    expect(within(region()).getByRole("button")).toHaveAttribute("data-pane-key", paneRowKey(idleAgent));
+  });
+
+  it("resolves once when a cold boot's empty herd first fills, and never promotes a pane arriving on a later poll", () => {
+    recordLastViewed(paneRowKey(idleAgent), "sandbox");
+    // Cold boot: `agents` is initially empty, then first snapshot lands with `idleAgent`.
+    const cold = render(<ThreadSidebar agents={[]} currentPaneKey="" onSelect={vi.fn()} showLastViewed />);
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    cold.rerender(<ThreadSidebar agents={agents} currentPaneKey="" onSelect={vi.fn()} showLastViewed />);
+    expect(within(region()).getByRole("button")).toHaveAttribute("data-pane-key", paneRowKey(idleAgent));
+    cold.unmount();
+
+    // Non-empty herd at open where the remembered pane (`idleAgent`) is absent -> locks `null`;
+    // when `idleAgent` arrives on a later poll it must not push existing rows down (ADR 0071 §4).
+    const miss = render(
+      <ThreadSidebar agents={[fixtureAgents[0]!, fixtureAgents[1]!]} currentPaneKey="" onSelect={vi.fn()} showLastViewed />,
+    );
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
+    miss.rerender(<ThreadSidebar agents={agents} currentPaneKey="" onSelect={vi.fn()} showLastViewed />);
+    expect(screen.queryByRole("region", { name: "Last viewed" })).toBeNull();
   });
 });

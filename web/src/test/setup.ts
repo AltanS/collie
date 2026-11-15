@@ -6,6 +6,7 @@ import { server } from "./msw";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { __resetPairing } from "@/lib/pairing";
 import { __resetDraftPrune } from "@/lib/drafts";
+import { forgetLastViewed } from "@/lib/last-viewed";
 import { __resetPins } from "@/lib/pins";
 import { __resetPinHint } from "@/lib/pin-hint";
 import { __resetHiddenMachines } from "@/lib/hidden-machines";
@@ -42,6 +43,7 @@ beforeEach(() => {
     // ignore
   }
   __resetDraftPrune();
+  forgetLastViewed();
   // The pins store keeps its list in module scope (lib/pins.ts), which the storage clear above
   // cannot reach: one case's pin would otherwise lead the next case's dashboard.
   __resetPins();

@@ -3671,6 +3671,7 @@ export function AgentChat({
             // value, so a person who taps it here finds it there.
             order={dash.prefs.paneOrder}
             onOrderChange={dash.setPaneOrder}
+            showLastViewed={dash.prefs.switcherLastViewed}
             className="px-0 py-1"
             // The filter field sticks under the sheet's own sticky head, across the panel's width.
             filterClassName={SHEET_BODY_STICKY}

@@ -8,6 +8,7 @@ import { coercePaneView, type PaneView } from "@/lib/pane-view";
 import { coerceUsageRow, DEFAULT_USAGE_ROW, type UsageRow } from "@/lib/usage-row";
 import { coerceZoomPill, type ZoomPill } from "@/lib/zoom-pill";
 import { setPageZoomAllowed } from "@/lib/page-zoom";
+import { forgetLastViewed } from "@/lib/last-viewed";
 import type { RecentDir } from "@/lib/triage";
 
 // Dashboard layout preferences, persisted in localStorage. Deliberately separate from
@@ -114,6 +115,12 @@ export interface DashPrefs {
    */
   paneOrder: PaneOrder;
   /**
+   * Whether the phone's Switch pane sheet promotes a single "Last viewed" row at the top in `place`
+   * order. OFF by default (ADR 0063), so a row never moves unless the operator opted in; turning it
+   * off deletes any stored `collie:last-viewed:v1` entries immediately (ADR 0129 discipline).
+   */
+  switcherLastViewed: boolean;
+  /**
    * Which body a pane with a session draws: the chat stream or the terminal mirror. One standing
    * value for the whole device, written from the pane's ⋮ menu alone. `chat` by default since 1.17.0
    * (ADR 0082); a device that chose the terminal keeps it.
@@ -170,6 +177,7 @@ const DEFAULTS: DashPrefs = {
   showToolCalls: false,
   showCompactions: false,
   paneOrder: "place",
+  switcherLastViewed: false,
   paneView: "chat",
   zoomPill: null,
   pageZoom: true,
@@ -251,6 +259,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     showToolCalls: asJsonBoolean(p.showToolCalls) ?? DEFAULTS.showToolCalls,
     showCompactions: asJsonBoolean(p.showCompactions) ?? DEFAULTS.showCompactions,
     paneOrder: coercePaneOrder(p.paneOrder),
+    switcherLastViewed: p.switcherLastViewed === true,
     paneView: coercePaneView(p.paneView),
     zoomPill: coerceZoomPill(p.zoomPill),
     pageZoom: asJsonBoolean(p.pageZoom) ?? DEFAULTS.pageZoom,
@@ -308,6 +317,7 @@ export interface UseDashPrefsReturn {
   setShowToolCalls: (show: boolean) => void;
   setShowCompactions: (show: boolean) => void;
   setPaneOrder: (order: PaneOrder) => void;
+  setSwitcherLastViewed: (next: boolean) => void;
   setPaneView: (view: PaneView) => void;
   setZoomPill: (choice: ZoomPill) => void;
   setPageZoom: (on: boolean) => void;
@@ -360,6 +370,14 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setShowToolCalls = useCallback((showToolCalls: boolean) => update({ showToolCalls }), [update]);
   const setShowCompactions = useCallback((showCompactions: boolean) => update({ showCompactions }), [update]);
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
+  const setSwitcherLastViewed = useCallback(
+    (next: boolean) => {
+      // Off-deletes-stored-state (ADR 0129): disabling the opt-in deletes the recorded trail right away.
+      if (!next) forgetLastViewed();
+      update({ switcherLastViewed: next });
+    },
+    [update],
+  );
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
   const setUsageRow = useCallback((usageRow: UsageRow) => update({ usageRow }), [update]);
   const setZoomPill = useCallback((zoomPill: ZoomPill) => update({ zoomPill }), [update]);
@@ -413,6 +431,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setShowToolCalls,
     setShowCompactions,
     setPaneOrder,
+    setSwitcherLastViewed,
     setPaneView,
     setZoomPill,
     setPageZoom,

@@ -19,6 +19,7 @@ import { branchOffOffered } from "@/lib/branch-off";
 import { setStatus } from "@/lib/status";
 import { stampTopology } from "@/lib/poll-intent";
 import { paneName } from "@/lib/pane-name";
+import { dropLastViewed } from "@/lib/last-viewed";
 import { dropPin, pinMatcher, setPinned, usePins } from "@/lib/pins";
 import type { PaneView } from "@/lib/pane-view";
 import type { AgentView } from "@/lib/types";
@@ -344,9 +345,11 @@ export function PaneActionsSheet({
           return false;
         }
         onClose();
-        // A pane closed from Collie takes its pin with it (ADR 0070), on every door this sheet has.
-        // A pane closed in the terminal only leaves its pin dormant: absence never prunes.
+        // A pane closed from Collie takes its pin and recent-viewed trail entry with it (ADR 0070),
+        // on every door this sheet has. A pane closed in the terminal only leaves them dormant:
+        // absence never prunes.
         dropPin(target);
+        dropLastViewed(target);
         // Same catch-up as a create: the list the operator just closed a pane out of should not
         // wait out an idle-timed gap to show it gone.
         stampTopology();

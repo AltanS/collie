@@ -792,6 +792,8 @@ export const en = {
   "chat.switcher.aria": "Switch pane",
   "chat.switcher.ariaNeedsYou": "Switch pane, another pane needs you",
   "chat.switcher.title": "Switch pane",
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "switcher.section.lastViewed": "Last viewed",
   "chat.switcher.launch.here": "here",
   "wide.sidebar.label": "Panes",
   "wide.space.position": "space {index} of {total}",
@@ -828,6 +830,10 @@ export const en = {
   "settings.keepChat.cleared": "Saved copies cleared. Live panes are saved again as you read them.",
   "settings.paneOrder.description":
     "Activity puts the pane where something last happened at the top of the dashboard and the switcher. Cache puts the one whose prompt cache dies soonest there. Place keeps the order your terminal has.",
+  // English only until the translation pass: listed in PENDING_TRANSLATION below.
+  "settings.paneOrder.lastViewed.label": "Last viewed in Switch pane",
+  "settings.paneOrder.lastViewed.hint":
+    "Show one row under Pinned for the pane you opened before this one, in Place order on a phone.",
   "chat.status.feedbackSent": "Feedback sent",
   "chat.status.answerSent": "Answer sent",
   "chat.status.sent": "Sent",
@@ -4279,6 +4285,9 @@ export const PENDING_TRANSLATION = [
   "walky.held.deliverStays",
   "walky.composer.delivered",
   "composer.send.sendAgain",
+  "switcher.section.lastViewed",
+  "settings.paneOrder.lastViewed.label",
+  "settings.paneOrder.lastViewed.hint",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
