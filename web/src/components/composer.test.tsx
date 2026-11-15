@@ -781,7 +781,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
   });
 });
 
-// A sign-in field (`/login`'s code or key field, the Surface's `field: "secret"`): the composer keeps no
+// A sign-in field (`/login`'s code or key field, the Surface's `field: "secret"`): the composer saves no
 // draft of what is typed there, no stored send intent, no "You sent" text, and names the send `secret`.
 describe("Composer: sign-in field", () => {
   const SIGN_IN: Surface = { revision: 3, turn: "idle", modal: "none", composer: "empty", field: "secret" };
@@ -792,12 +792,12 @@ describe("Composer: sign-in field", () => {
     return all.some((value) => value.includes(text));
   }
 
-  it("names the field, stores no draft of the code, and sends it marked secret", async () => {
+  it("names the field, saves no draft of the code, and sends it marked secret", async () => {
     const user = userEvent.setup();
     let typed = "";
     server.use(...replyHandler((text) => (typed = text)));
     renderComposer({ surface: SIGN_IN });
-    const box = screen.getByPlaceholderText("Sign-in field. Collie keeps no copy.");
+    const box = screen.getByPlaceholderText("Sign-in code. Not saved as a draft.");
 
     await user.type(box, CODE);
     expect(loadDraft(undefined, "w1:p1")).toBeNull();
@@ -814,12 +814,23 @@ describe("Composer: sign-in field", () => {
     const user = userEvent.setup();
     server.use(http.post("*/api/send", () => HttpResponse.error()));
     renderComposer({ surface: SIGN_IN });
-    const box = screen.getByPlaceholderText("Sign-in field. Collie keeps no copy.");
+    const box = screen.getByPlaceholderText("Sign-in code. Not saved as a draft.");
 
     await user.type(box, CODE);
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await screen.findByText(/No answer/u);
+    await screen.findByText("No answer from the bridge. Look at the agent's screen before you send the code again.");
+    expect(screen.queryByText(/it does not send twice/u)).toBeNull();
     expect(storedAnywhere(CODE)).toBe(false);
+  });
+
+  it("a plain send with no answer keeps today's notice", async () => {
+    const user = userEvent.setup();
+    server.use(http.post("*/api/send", () => HttpResponse.error()));
+    renderComposer({ surface: FREE });
+    await user.type(screen.getByRole("textbox"), "an ordinary reply");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText(/Tap Send again: it does not send twice\./u);
+    expect(screen.queryByText(/Look at the agent's screen/u)).toBeNull();
   });
 
   it("a plain box still keeps its draft", async () => {

@@ -1712,6 +1712,11 @@ function commitKeys(state: RunState): readonly string[] {
  * Whether the box answers a question the agent asked: a frame whose layout says so (`idle.frame.answers`),
  * or the profile's `idle.answerPrompt` on the frame's prompt row.
  */
+/** Whether a send's text is a sign-in code: the phone named it (`secret`), or S0 read a sign-in field. */
+function isSecretSend(state: RunState): boolean {
+  return state.request.secret === true || state.secretField === true;
+}
+
 function answersQuestion(match: ProfileMatch | null, snap: Snap): boolean {
   if (snap.frame?.answers === true) return true;
   const source = match?.profile.idle.answerPrompt;
@@ -2795,6 +2800,8 @@ interface RunState {
   neverHold?: boolean;
   /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
   answerWait?: boolean;
+  /** S0 read a sign-in field (`idle.frame.secret`): the text is a secret, named by the phone or not. */
+  secretField?: boolean;
   /**
    * A release met a box that is still starting: its probe never showed, or an earlier probe character
    * is still pending there (the header). It goes back to its place, the try does not count, and the
@@ -3420,6 +3427,9 @@ export class SendProtocol {
     if (state.request.view !== undefined) return false;
     // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
     if (state.request.when === "steer") return false;
+    // A sign-in code is never held: a held text waits on disk in plain form (holds.ts), and a code is
+    // good for one try. The person sends it again once the field is free.
+    if (isSecretSend(state)) return false;
     const clean = cleanProbe(state, end);
     // A draft proven live by its probe (2026-10-25) left the box as it was: it holds like an unprobed one did.
     if (state.keys.length > 0 && !clean && !(end.reason === "draft_present" && (probeOnly(state) || state.placeholderProbe !== null))) return false;
@@ -4435,6 +4445,8 @@ export class SendProtocol {
   /** Tell {@link SendDeps.blindSent} a blind send went out. Never throws, and never changes the answer. */
   private noteBlindSent(state: RunState): void {
     try {
+      // A sign-in code never reaches the shell-line record (sent.ts).
+      if (isSecretSend(state)) return;
       this.deps.blindSent?.({ session: state.target.session, paneId: state.target.paneId, text: state.request.text });
     } catch (err) {
       console.warn(`[send] the blind-send note failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -4453,7 +4465,8 @@ export class SendProtocol {
     // A steer is kept too, with no card of its own: a Stop may give it back together with the queue. So is a
     // send that started a turn: a Stop early in it gives the prompt back to the box (queued.ts, SUBMITTED).
     const submitted = (receipt.outcome === "sent" || receipt.outcome === "effective") && receipt.queued !== true;
-    if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered" || submitted) {
+    // A sign-in code is not kept for a queued or returned card: the field is not a turn's input box.
+    if (!isSecretSend(state) && ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered" || submitted)) {
       this.queuedSends.add({
         id: state.record.id,
         session: state.target.session,
@@ -4987,7 +5000,10 @@ export class SendProtocol {
       }
     }
     // A sign-in field the phone did not name: the text is a secret all the same, so its record keeps no line.
-    if (s0.frame?.secret !== undefined && state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
+    if (s0.frame?.secret !== undefined) {
+      state.secretField = true;
+      if (state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
+    }
     // A box whose line break submits it takes one line: a second line would go out as a second message.
     if (s0.frame?.newlineSubmits === true && sendLines(state.request.text).length > 1) {
       throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });

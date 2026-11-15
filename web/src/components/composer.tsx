@@ -1879,7 +1879,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      // A text for a sign-in field says so (`secret`): the bridge keeps no line of it.
+      // A text for a sign-in field says so (`secret`): the bridge writes no `line` of it, only its hash and length.
       const secret = secretFieldRef.current && resend === undefined && view === undefined;
       const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: loadIntent(scope, paneId), secret };
       const res = await sendText(view === undefined ? base : { ...base, view });
@@ -1887,7 +1887,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // No answer: the id stays, so the next tap on the same text asks for the same request. Not for a
         // sign-in field: the stored intent names the text, so its next tap takes a new id.
         if (!secret) saveIntent(scope, paneId, res.intent, draftLine);
-        setSendRefusal(phoneRefusal(translate("composer.protocol.retry", { error: res.error })));
+        // A sign-in field's next tap is a new request, so its notice does not say it cannot send twice.
+        setSendRefusal(phoneRefusal(secret ? translate("composer.protocol.retrySecret") : translate("composer.protocol.retry", { error: res.error })));
         return false;
       }
       // Any answer ends the intent. A refusal from the phone itself (offline) asked nothing, so an earlier id stays.

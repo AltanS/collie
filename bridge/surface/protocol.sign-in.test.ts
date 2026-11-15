@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
+import { HoldStore } from "./holds.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -114,9 +115,10 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 let ids = 0;
 
-function rig(field: SignInPane, harness: string, version: string) {
+function rig(field: SignInPane, harness: string, version: string, withHolds = false) {
   const clock = { now: 1_000_000 };
   const now = (): number => clock.now;
+  const holds = withHolds ? new HoldStore(join(dir, "held"), now) : undefined;
   const ring = new RowRing();
   const store = new RequestStore(join(dir, "sends"), now);
   const protocol = new SendProtocol({
@@ -125,6 +127,7 @@ function rig(field: SignInPane, harness: string, version: string) {
     store,
     locks: new SessionLocks(),
     ring,
+    holds,
     profile: () => Promise.resolve(profileFor(harness, version, { log: () => undefined })),
     generation: () => "gen-1",
     now,
@@ -137,7 +140,7 @@ function rig(field: SignInPane, harness: string, version: string) {
     const id = `req-signin-${String(++ids).padStart(6, "0")}`;
     return protocol.handle({ id, text, mode: "send", fromPhone: true, ...over }, { session: "main", paneId: "%1", harness }).then((answer) => ({ ...answer, id }));
   };
-  return { send, ring, store };
+  return { send, ring, store, holds };
 }
 
 /** Every request file's bytes, together. */
@@ -179,6 +182,17 @@ describe("Claude Code's sign-in field hides the code: the send is checked by its
     expect(answer.receipt?.outcome).toBe("sent");
     expect(store.get(answer.id)?.line).toBeUndefined();
     expect(requestFiles()).not.toContain(SHORT);
+  });
+
+  test("a code meant for the field is never held: a held text waits on disk in plain form", async () => {
+    // The field closed under the send: the method list is up, a modal, which holds an ordinary send.
+    const field = new SignInPane("claude--v2325-login-methods--w61.txt", /^ {2}Esc to cancel$/u, () => "  Esc to cancel", "");
+    const { send, holds } = rig(field, "claude", "2.1.325", true);
+    const answer = await send(SHORT, { secret: true });
+    expect(answer.receipt?.outcome).toBe("refused");
+    expect(holds?.waiting("main", "%1")).toHaveLength(0);
+    expect(readdirSync(dir).includes("held") ? readdirSync(join(dir, "held")).map((name) => readFileSync(join(dir, "held", name), "utf8")).join("") : "").not.toContain(SHORT);
+    expect(field.submitted).toEqual([]);
   });
 
   test("a text of two lines is refused before any key", async () => {
