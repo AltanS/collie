@@ -418,6 +418,13 @@ interface NewestLimits {
   at: number | undefined;
 }
 
+/**
+ * The folder of the added account a pane runs under (bridge/accounts-routes.ts `folderOf`), cleaned, or
+ * undefined for the Default and for a pane that reported a folder no account holds. `scope` is the
+ * mux session's name, as the launch note is keyed. A seam, so usage needs no accounts code.
+ */
+export type PaneAccountFolder = (pane: AgentView, scope: string) => string | undefined;
+
 /** How often the directory is swept for old files. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -434,6 +441,8 @@ export class UsageTracker {
   private readonly held = new Map<string, Held>();
   /** The session ids each mux session's last poll named, so one session's poll forgets only its own. */
   private readonly scopes = new Map<string, Set<string>>();
+  /** The harnesses each mux session's last refresh named folders for, so a harness whose last pane left is told so. */
+  private readonly folderScopes = new Map<string, Set<string>>();
   private lastPrune = 0;
 
   constructor(
@@ -443,7 +452,17 @@ export class UsageTracker {
     private readonly account?: AccountLimits,
     private readonly journal?: JournalContext,
     private readonly seen?: UsageSeen,
+    private readonly accountFolder?: PaneAccountFolder,
   ) {}
+
+  /**
+   * The config folder a pane runs under: the one its session reported, else the folder of the pane's
+   * added account (a pane started with an account whose agent has not reported, or never does).
+   * Undefined is the default folder.
+   */
+  private folderOf(pane: AgentView, record: UsageRecord | null | undefined, scope: string): string | undefined {
+    return record?.configDir ?? this.accountFolder?.(pane, scope);
+  }
 
   /** The session id a pane's usage is keyed by, or null for a pane with no id-kind session. */
   private static sessionOf(pane: AgentView): string | null {
@@ -478,13 +497,36 @@ export class UsageTracker {
         this.held.set(session, { mtime, record: text === null ? null : parseUsageRecord(text) });
       }),
     );
-    const claudeDirs = new Set<string>();
-    for (const session of sessions) {
-      const record = this.held.get(session)?.record;
-      if (record?.harness === "claude" && record.configDir !== undefined) claudeDirs.add(record.configDir);
-    }
-    this.account?.observeConfigDirs?.("claude", claudeDirs, scope);
+    this.observeFolders(panes, scope);
     await this.prune();
+  }
+
+  /**
+   * Tell the account windows which non-default folders have live panes in `scope`, per harness, so an
+   * added account's windows are asked for and a closed one's stop. Every harness with an agent pane
+   * here is named, with an empty set when none of its panes runs under another folder, and so is every
+   * harness named last time whose panes have all gone: its empty set is what stops a closed folder.
+   */
+  private observeFolders(panes: readonly AgentView[], scope: string): void {
+    const observe = this.account?.observeConfigDirs?.bind(this.account);
+    if (observe === undefined) return;
+    const byHarness = new Map<string, Set<string>>();
+    for (const name of this.folderScopes.get(scope) ?? []) byHarness.set(name, new Set());
+    const withPanes = new Set<string>();
+    for (const pane of panes) {
+      if (pane.kind === "shell") continue;
+      const session = UsageTracker.sessionOf(pane);
+      const record = session === null ? null : (this.held.get(session)?.record ?? null);
+      const harness = pane.agent || record?.harness;
+      if (harness === undefined || harness === "") continue;
+      withPanes.add(harness);
+      const dirs = byHarness.get(harness) ?? new Set<string>();
+      byHarness.set(harness, dirs);
+      const dir = this.folderOf(pane, record, scope);
+      if (dir !== undefined) dirs.add(dir);
+    }
+    this.folderScopes.set(scope, withPanes);
+    for (const [harness, dirs] of byHarness) observe(harness, dirs, scope);
   }
 
   /**
@@ -503,7 +545,7 @@ export class UsageTracker {
    * and the window (pi, OMP, Codex, OpenCode; .adr/0115 amended 2026-10-25). The cost follows the
    * same rule: the file's (Claude's statusLine), else the journal's sum (pi, OMP, OpenCode).
    */
-  get(pane: AgentView): PaneUsage | undefined {
+  get(pane: AgentView, scope = ""): PaneUsage | undefined {
     const session = UsageTracker.sessionOf(pane);
     const record = session === null ? null : (this.held.get(session)?.record ?? null);
     const now = this.now();
@@ -512,7 +554,7 @@ export class UsageTracker {
     const overlay: PaneUsage = record?.context === undefined && record?.contextTokens === undefined ? this.journalContext(pane) : {};
     const journalCost = record?.cost === undefined ? this.journalCost(pane) : undefined;
     if (journalCost !== undefined) overlay.cost = journalCost;
-    const configDir = record?.configDir;
+    const configDir = harness === undefined || harness === "" ? record?.configDir : this.folderOf(pane, record, scope);
     const account = harness === undefined || harness === "" ? undefined : this.account?.limits(harness, configDir);
     if (account !== undefined && account.length > 0) {
       const base: UsageRecord = record ?? { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness ?? "", at: now };

@@ -1462,7 +1462,7 @@ export function startServer(opts: {
    * Each pane's context use and subscription windows (bridge/usage.ts), read synchronously at
    * serialise time like `todos`. Absent means no pane carries a `usage` key.
    */
-  usage?: { get(pane: AgentView): AgentView["usage"] };
+  usage?: { get(pane: AgentView, scope?: string): AgentView["usage"] };
   /**
    * Which branch each pane's folder is on (bridge/git-head.ts), read synchronously at serialise time
    * like `cache`: it answers from memory and reads the disk in the background. Absent means no pane
@@ -1947,7 +1947,7 @@ export function startServer(opts: {
       const jobs = readJobs !== undefined && cfg.redact ? maskJobList(readJobs) : readJobs;
       const withJobs = jobs === undefined ? withSubagents : { ...withSubagents, jobs };
       // The usage dots: numbers only, the session's context and the account's windows (ADR 0118).
-      const readUsage = opts.usage?.get(p);
+      const readUsage = opts.usage?.get(p, from.name);
       const withUsage = readUsage === undefined ? withJobs : { ...withJobs, usage: readUsage };
       // The added account the pane runs under (M101): from memory, a label and an id, never a folder.
       const account = opts.accounts?.paneAccount(from.name, p);

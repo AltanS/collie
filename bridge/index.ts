@@ -961,7 +961,12 @@ const accountWindows = new AccountWindows({
 // journal (.adr/0115, amended 2026-10-25); with transcripts off there is none.
 // The last reading of each account's windows (bridge/usage-seen.ts), kept for an account with no live session.
 const usageSeen = new UsageSeen(usageSeenIo(cfg.stateDir));
-const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows, paneCache ?? undefined, usageSeen);
+// A pane started with an added account counts under that account's folder until its agent reports
+// one (or always, for an agent that never does), so its windows and last reading are the account's.
+// `accounts` is built below; the seam is first called on a poll, after it exists.
+const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows, paneCache ?? undefined, usageSeen, (pane, scope) =>
+  accounts.folderOf(scope, pane),
+);
 
 // The agents the New sheet starts, probed on this machine (ADR 0091), shared by the server and the
 // accounts below so both read one found list.
