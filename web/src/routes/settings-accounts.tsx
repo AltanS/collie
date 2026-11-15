@@ -277,9 +277,6 @@ export function SettingsAccountAddRoute() {
   const found = (body?.found ?? []).filter((f) => harness !== undefined && f.harness === harness.id);
   const typedFound = found.find((f) => f.folder === folderText.trim() || f.path === folderText.trim());
   const folderShown = harness === undefined ? "" : kind === "shared" ? newFolderFor(harness, label) : folderText.trim() || newFolderFor(harness, "alt");
-  // A typed path that no list knows may not exist yet; then Collie makes it as an empty folder.
-  const knownFolders = new Set([...found.flatMap((f) => [f.folder, f.path]), ...(body?.accounts ?? []).map((a) => a.folder)]);
-  const makesFolder = kind === "own" && folderText.trim() !== "" && !knownFolders.has(folderText.trim());
   const ready = harness !== undefined && label.trim() !== "" && (kind === "shared" || folderText.trim() !== "");
 
   async function create() {
@@ -374,6 +371,7 @@ export function SettingsAccountAddRoute() {
                   spellCheck={false}
                 />
               </Field>
+              <Hint>{t("accounts.add.folderMadeIfMissing")}</Hint>
               {found.length > 0 && (
                 <div className="flex flex-col gap-1">
                   <p className="text-xs font-medium text-muted-foreground">{t("accounts.add.found")}</p>
@@ -390,7 +388,6 @@ export function SettingsAccountAddRoute() {
             <p className="text-xs font-medium text-muted-foreground">{kind === "shared" ? t("accounts.add.makes") : t("accounts.add.uses")}</p>
             <p className="break-all font-mono text-xs leading-5">{folderShown}</p>
             <Hint>{kind === "shared" ? t("accounts.kind.shared.body") : t("accounts.kind.own.body")}</Hint>
-            {makesFolder && <Hint>{t("accounts.add.newFolderMade")}</Hint>}
           </div>
           <div className="flex flex-col gap-1">
             <p className="text-xs font-medium text-muted-foreground">{t("accounts.add.terminal")}</p>

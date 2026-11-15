@@ -369,19 +369,24 @@ describe("Accounts: Add", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Own folder" }));
     await userEvent.click(screen.getByRole("radio", { name: "~/.claude-alt" }));
     expect(screen.getByRole("textbox", { name: "Folder" })).toHaveValue("~/.claude-alt");
-    // A folder the lists know is not announced as one Collie would make.
-    expect(screen.queryByText("Collie makes this empty folder.")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Create and sign in" }));
     await waitFor(() => expect(added).toHaveLength(1));
     expect(added[0]).toMatchObject({ harness: "claude", label: "Alt", kind: "own", path: "/home/op/.claude-alt" });
   });
 
-  it("a typed path no list knows says Collie makes the empty folder", async () => {
-    serveAccounts(body());
+  it("the own-folder field says once, whatever is typed, that a missing folder is made empty", async () => {
+    serveAccounts(body({ found: [FOUND_ALT] }));
     mount("/settings/accounts/add");
     await userEvent.click(await screen.findByRole("radio", { name: "Own folder" }));
+    const hint = "If the folder does not exist yet, Collie makes it empty.";
+    expect(screen.getAllByText(hint)).toHaveLength(1);
     await userEvent.type(screen.getByRole("textbox", { name: "Folder" }), "~/.claude-new");
-    expect(screen.getByText("Collie makes this empty folder.")).toBeInTheDocument();
+    expect(screen.getAllByText(hint)).toHaveLength(1);
+    await userEvent.click(screen.getByRole("radio", { name: "~/.claude-alt" }));
+    expect(screen.getAllByText(hint)).toHaveLength(1);
+    // The shared kind has no folder field, and no such line.
+    await userEvent.click(screen.getByRole("radio", { name: "Shared with Default" }));
+    expect(screen.queryByText(hint)).toBeNull();
   });
 
   it("the button waits for a name", async () => {
