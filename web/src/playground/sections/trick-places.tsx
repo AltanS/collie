@@ -171,7 +171,7 @@ function Belt({ marks, toEnd = false }: { marks: readonly WireTrickPart[]; toEnd
   );
 }
 
-const USAGE = { context: 42, limits: [{ window: "5h" as const, used: 58 }, { window: "7d" as const, used: 81 }] };
+const USAGE = { context: 42, limits: [{ window: "5h", used: 58 }, { window: "7d", used: 81 }] };
 const LEGS_PANE_FOR_STATUS = trickPane("legs", LEGS_SESSION, { paneLabel: "Browser leg" });
 
 /** The usage row over a stand-in mirror, with the tricks' items after Collie's own. `width` is the mirror box's; `own` false leaves Collie's items out. */

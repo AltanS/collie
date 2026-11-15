@@ -1062,7 +1062,7 @@ logged. A folder that is not on disk at launch time falls back to home.
 
 ## Usage windows
 
-The figures beside the model show your 5-hour and 7-day limits for Claude and Codex, with no setup. They read as a percentage of what is used (`7d 83%`) unless you choose dots in Settings, Appearance, Usage row.
+The figures beside the model show the limits the agent reports for Claude and Codex, usually the 5-hour and 7-day ones, with no setup. A plan that reports one limit shows one. A weekly limit for one model shows as `7d` and the model name (`7d Opus 30%`), and a row with more than three limits shows the first three and a count (`+1`). They read as a percentage of what is used (`7d 83%`) unless you choose dots in Settings, Appearance, Usage row.
 
 ```bash
 # turn every source off

@@ -26,6 +26,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **A dev build's icon has an orange ground and a dark mark.** A build off its release tag showed an orange mark on the release's dark tile. Its favicons and home-screen tiles are now orange with the mark in the dark tile's colour, so a dev install stands apart at a glance. The release icons are unchanged.
+- **The usage figures show the limits the agent reports, not a fixed 5h and 7d pair.** Each reading is a list of windows with the agent's own key, a label, the share used and the reset time. A plan that reports one window shows one. A weekly window for one model shows as `7d` and the model name, and any other window shows by its label. The row draws the first three and counts the rest (`+1`). The window field keeps its name and the old `5h` and `7d` values keep their meaning, so an older crew member and an older phone still work. The bridge also keeps the last reading of each account in `usage-seen.json` (numbers, labels and times only), so a later screen can show an account with no live session and say that a window has reset since.
+- **The usage tag draws every window the agent reports.** A weekly window for one model shows as `7d` and its model name, any other window by its label or key, and a plan that reports one window shows one. The row draws the first three windows and counts the rest (`+1`); the screen reader hears every one.
 
 ### Fixed
 

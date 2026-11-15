@@ -243,3 +243,16 @@ Codex's log has no cost. The usage file's cost wins over the journal's, as the c
 is absent, never a placeholder: no `0` for an unknown cost, and a journal sum of zero (aborted turns, a
 free model) is not sent. The tag writes `<$0.01`, `$0.11` or `$123` (`formatCost`), is not a gauge (no
 dots, never the working colour), and shows even when the harness's own status line prints a cost too.
+
+**The windows are the agent's own, not a fixed pair (2026-11-15, M101).** Points 6 and 7 above say the
+bridge draws its own labels `5h` and `7d` and that "no text from the document reaches the file or the
+phone", and the phone draws two gauges. That changed. The wrapper now reads every key of `rate_limits`
+that holds a `used_percentage`: `five_hour` is `5h`, `seven_day` is `7d`, the gateway `spend_limit` is
+`spend` (Claude Code 2.1.325 sends it only behind a Claude apps gateway, with `used_percentage`,
+`resets_at` and optional `used_usd`, `limit_usd`, `period`; the first three are read and the dollars are
+not), and any other key keeps the vendor's name when it is short and plain (letters, digits, `_`, `.`,
+`-`). So a short vendor key does reach the file and the phone, as a window key and nothing more. A
+reading holds at most eight windows, in the order `5h`, `7d`, then the rest by label. `UsageLimit.window`
+is an open string and gains an optional `label`; an older phone skips a key it does not know, and an
+older record or crew member still parses. A plan that reports one window shows one. Altan agreed to
+this change of the shipped usage dots on 2026-11-15. Everything else above holds.

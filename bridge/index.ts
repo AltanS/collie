@@ -243,6 +243,7 @@ import { StateEngine } from "./state-engine.ts";
 import { SubagentTracker } from "./subagents.ts";
 import { TodoTracker } from "./todos.ts";
 import { diskUsageFiles, usageDir, UsageTracker } from "./usage.ts";
+import { UsageSeen, usageSeenIo } from "./usage-seen.ts";
 import { AccountWindows, defaultAccountSources, diskCredentialSeams, isTurnEnd } from "./account-windows.ts";
 import {
   bridgeStampSync,
@@ -939,7 +940,9 @@ const accountWindows = new AccountWindows({
 // wrapper and the beacon write, joined with the account windows above. The pane's session id is the
 // key. A harness whose hooks write no file takes its context from the cache probe's reading of its
 // journal (.adr/0115, amended 2026-10-25); with transcripts off there is none.
-const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows, paneCache ?? undefined);
+// The last reading of each account's windows (bridge/usage-seen.ts), kept for an account with no live session.
+const usageSeen = new UsageSeen(usageSeenIo(cfg.stateDir));
+const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows, paneCache ?? undefined, usageSeen);
 
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.

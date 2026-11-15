@@ -2694,6 +2694,11 @@ export const en = {
   "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7-day limit {percent}% used",
+  // A weekly window scoped to a model ({label} is the harness's own name for it), and any other window
+  // the harness reports ({label} is its label, else its key). English only until the translation pass:
+  // listed in PENDING_TRANSLATION below.
+  "chat.usage.window.7d.scoped.aria": "7-day {label} limit {percent}% used",
+  "chat.usage.window.other.aria": "{label} limit {percent}% used",
   "chat.usage.cost.aria": "Session cost {amount}",
   "files.title": "Files",
   // --- the branch a pane's folder is on (components/ui/branch-label.tsx) ---
@@ -4137,6 +4142,9 @@ export const PENDING_TRANSLATION = [
   "tokens.uses",
   // The context as a token count (.adr/0115, amended 2026-11-13).
   "chat.usage.context.tokens.aria",
+  // The windows a harness reports beyond 5h and 7d (M101 spec 02).
+  "chat.usage.window.7d.scoped.aria",
+  "chat.usage.window.other.aria",
   "settings.tricks.about.tokens.agentView",
   "settings.tricks.about.tokens.rules",
   "settings.tricks.about.tokens.answer",

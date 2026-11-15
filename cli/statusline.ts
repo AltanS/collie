@@ -9,11 +9,13 @@ import {
   asTokenCount,
   asWindowSize,
   customClaudeConfigDir,
+  orderedLimits,
   USAGE_SCHEMA_VERSION,
+  WINDOW_5H,
+  WINDOW_7D,
   WINDOW_BY_STATUSLINE,
   type UsageLimit,
   type UsageRecord,
-  type UsageWindow,
 } from "../bridge/usage.ts";
 import { BEACON_HARNESS, edgeStateDirs, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
 import { EXIT } from "./io.ts";
@@ -201,11 +203,20 @@ export function statusLineBehind(document: JsonObject, binary: string): boolean 
 
 // ── The payload ──────────────────────────────────────────────────────────────
 
-/** The two windows Claude Code reports, by its key, and the label the phone draws for each. */
-const WINDOW_KEYS: readonly (readonly [string, UsageWindow])[] = [
-  ["five_hour", "5h"],
-  ["seven_day", "7d"],
-];
+/**
+ * The keys of `rate_limits` whose window has a key of Collie's own: Claude Code's `five_hour` and
+ * `seven_day` are `5h` and `7d` (the keys an older phone words), and its gateway `spend_limit` is `spend`.
+ * Any other key that holds a `used_percentage` keeps the vendor's own key, so a window Claude Code adds
+ * later is drawn as it is named and never dropped (2026-11-15).
+ */
+const WINDOW_KEYS: ReadonlyMap<string, string> = new Map([
+  ["five_hour", WINDOW_5H],
+  ["seven_day", WINDOW_7D],
+  ["spend_limit", "spend"],
+]);
+
+/** A vendor key kept as a window key: a short name made of letters, digits, `_`, `.` and `-`. Anything else is not a window. */
+const VENDOR_WINDOW_KEY = /^[A-Za-z0-9_.-]{1,32}$/;
 
 /**
  * The context's token count the document states: `current_usage`'s input, cache creation and cache read
@@ -250,17 +261,19 @@ export function usageFromStatusLine(
   }
   const cost = asCost(asJsonObject(payload.cost)?.total_cost_usd);
   if (cost !== undefined) record.cost = cost;
-  const limitsRoot = asJsonObject(payload.rate_limits);
+  const limitsRoot = asJsonObject(payload.rate_limits) ?? {};
   const limits: UsageLimit[] = [];
-  for (const [key, window] of WINDOW_KEYS) {
-    const row = asJsonObject(limitsRoot?.[key]);
+  for (const [key, value] of Object.entries(limitsRoot)) {
+    const window = WINDOW_KEYS.get(key) ?? (VENDOR_WINDOW_KEY.test(key) ? key : undefined);
+    const row = asJsonObject(value);
     const used = asPercent(row?.used_percentage);
-    if (used === undefined) continue;
+    if (window === undefined || used === undefined) continue;
     // Claude Code says epoch SECONDS; the record is epoch milliseconds, as every time in the bridge is.
     const seconds = asJsonNumber(row?.resets_at);
     limits.push(seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? { window, used, resetsAt: seconds * 1000 } : { window, used });
   }
-  if (limits.length > 0) record.limits = limits;
+  const ordered = orderedLimits(limits);
+  if (ordered.length > 0) record.limits = ordered;
   if (record.context === undefined && record.contextTokens === undefined && record.limits === undefined && record.cost === undefined) return null;
   if (configDir !== undefined) record.configDir = configDir;
   return { session, record };

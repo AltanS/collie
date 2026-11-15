@@ -191,3 +191,23 @@ per `CODEX_HOME`) for a number the session files already hold. Collie spawns no 
 - The login reads add two files: OpenCode's auth store holds every provider's key, and Collie reads
   only the `opencode-go` entry and keeps it for one request, as for Claude. Grok's holds a refresh
   token that Collie does not touch.
+
+**Scoped and odd windows join the reading (2026-11-15, M101).** Point 2 kept `weekly_scoped` rows in a
+side list, `scoped`, and kept them out of `UsageLimit[]`; point 5's "`USAGE_WINDOWS` stays `5h` and
+`7d`; the phone draws what it drew" and the Grok and OpenCode lines that send a monthly or unknown
+period "to `scoped`" no longer hold. The side list and `AccountWindows.scoped()` are gone. A
+`weekly_scoped` row is a window of its own: key `7d:<scope>` (the vendor's model name, lower case,
+spaces as `-`) with the cleaned name as its `label`; a row with no model name is `7d:scoped`. A Codex
+window of another length, OpenCode Go's monthly period and a Grok billing cycle longer than 8 days keep
+a length key (`1h`, `30d`) and a Grok period of unknown length keeps `credits`, instead of being
+dropped. `AccountWindows.limits(harness, configDir)` returns all of them, per config folder as before,
+at most eight, in the order `5h`, `7d`, then the rest by label. Nothing else about the login, the
+cadence or the backoff changes. The bridge also keeps the last reading of each account in
+`<stateDir>/usage-seen.json` (`bridge/usage-seen.ts`): numbers, labels and times only, no token and no
+account id, at most 32 keys, written at most once a minute per key and only when a figure changed.
+
+The Codex and Grok sources also offer `forConfigDir(dir)`, as Claude's does: `dir` is that account's
+`CODEX_HOME` (the sessions folder is derived from it as from the bridge's own environment) or
+`GROK_HOME` (`auth.json` under it). One reading per folder, at most 16 custom folders across all
+harnesses; `observeConfigDirs(harness, dirs, scope)` names the folders with a live pane, and a closed
+folder stops polling. The folder the base source already reads is the base source, not a new slot.
