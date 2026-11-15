@@ -181,7 +181,9 @@ const NO_PROMPT_PAIRS: readonly (readonly [string, string])[] = [
  * case the tick exists for.
  */
 export function scanNoPrompts(line: string): boolean {
-  const words = line.trim().split(/\s+/).map(unquote);
+  // Leading `NAME=value` assignments are not the command word (an account's `CODEX_HOME='…' codex`, M101),
+  // as `runProgram` reads them. A quoted value may hold spaces, so the assignments go before the split.
+  const words = line.trim().replace(LEADING_ASSIGNMENTS, "").split(/\s+/).map(unquote);
   // The command word's last path part, on either separator, without a Windows launcher suffix.
   const first = (words[0]?.split(/[\\/]/).at(-1) ?? "").replace(/\.(?:exe|cmd|ps1)$/i, "");
   for (let i = 0; i < words.length; i++) {
@@ -197,6 +199,9 @@ export function scanNoPrompts(line: string): boolean {
   }
   return false;
 }
+
+/** One or more `NAME=value` words at the start of a line, a value bare or in one pair of quotes. */
+const LEADING_ASSIGNMENTS = /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"|\S*)\s+)+/u;
 
 /** A word with one layer of matching quotes taken off, so `'--yolo'` still reads as the flag. */
 function unquote(word: string): string {

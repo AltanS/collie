@@ -40,7 +40,8 @@ import {
   loadTail,
   readSinceFile,
   realpathOf,
-  rootList,
+  rootReader,
+  type RootSource,
   statFile,
 } from "./files.ts";
 import {
@@ -1213,7 +1214,12 @@ export function resumeValueOf(processes: readonly ForegroundProcess[] | undefine
 export class PiTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, string>();
 
-  private readonly roots: string[];
+  private readonly rootsNow: () => string[];
+
+  /** The roots now: fixed, or the live list an added account joins (M101). */
+  private get roots(): string[] {
+    return this.rootsNow();
+  }
 
   private readonly places: PiPlaces;
 
@@ -1226,11 +1232,11 @@ export class PiTranscriptSource implements TranscriptSource {
    * answers when a process started (default: the real one); tests inject a fake so nothing forks.
    */
   constructor(
-    roots: string | readonly string[],
+    roots: RootSource,
     places: PiPlaces = { home: homedir(), tmp: tmpdir() },
     options: PiSourceOptions = {},
   ) {
-    this.roots = rootList(roots);
+    this.rootsNow = rootReader(roots);
     this.places = places;
     this.processStart = options.processStartMs ?? processStartMs;
   }
@@ -1539,7 +1545,7 @@ export function piNamesOf(head: JsonObject | null, lines: readonly string[]): Na
 }
 
 /** pi's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
-export function piJournal(roots: string | readonly string[]): JournalAdapter {
+export function piJournal(roots: RootSource): JournalAdapter {
   const source = new PiTranscriptSource(roots);
   const catalog = new WindowCatalog();
   const costs = new FileSum('"cost"', piRowCost);

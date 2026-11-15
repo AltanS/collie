@@ -3,6 +3,9 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { realLinkDisk } from "./account-links.ts";
+import { Accounts } from "./accounts-routes.ts";
+import { memoryAccountStore } from "./accounts-store.ts";
 import { AuditLog } from "./audit.ts";
 import { harnessLaunch } from "./harness-launch.ts";
 import { LAUNCH_RECEIPTS_FILE, LaunchReceiptStore, coerceLaunchReceipt, isUnsettled, memoryLaunchReceipts } from "./launch-receipts.ts";
@@ -543,5 +546,95 @@ describe("GET /api/launchers — the harness list rides along", () => {
   test("without one: the body an older bridge sends, which is how the phone tells it apart", async () => {
     const res = await launchersRoute(() => Promise.resolve([]), null);
     expect(await res.json()).toEqual({ launchers: [], home: homedir() });
+  });
+});
+
+// ── An account on a launch (M101, ADR 0141) ─────────────────────────────────────────────────────
+//
+//   1. With no `account` and no `signIn`, the typed line is the line it always was, byte for byte.
+//   2. An added account types `NAME='<folder>' <binary>`; its pane is noted for the tag.
+//   3. An unknown id, or one of another agent, is refused before anything is created.
+//   4. A shell, a one-off run and a hand-written row never take an account; a recipe row does.
+
+describe("POST /api/launch — with an account", () => {
+  const ACCOUNT = "6f1c2a4e-3b5d-4c7e-9f00-112233445566";
+
+  async function accountsWith(rows: { harness: string; kind: "own" | "shared"; dir: string; id?: string }[] = []) {
+    const store = memoryAccountStore();
+    for (const r of rows) await store.add({ id: r.id ?? ACCOUNT, harness: r.harness, label: "Work", kind: r.kind, dir: r.dir, addedAt: 1, device: "pixel" });
+    return new Accounts({
+      store,
+      harnesses: { list: () => Promise.resolve([]), launch: harnessLaunch },
+      home: "/home/op",
+      env: {},
+      platform: "linux",
+      disk: realLinkDisk,
+    });
+  }
+
+  test("no account and no sign-in: the typed line is unchanged, with or without the service", async () => {
+    for (const accounts of [undefined, await accountsWith()]) {
+      const mux = new FakeMux();
+      expect((await run(mux, { harness: "claude", cwd: "/home/op/src/app" }, { accounts })).status).toBe(200);
+      expect(mux.texts).toEqual([["w1:p1", "claude"]]);
+    }
+  });
+
+  test("an own account types the quoted folder before the binary, and the pane carries the account", async () => {
+    const accounts = await accountsWith([{ harness: "codex", kind: "own", dir: "/home/op/.codex-work" }]);
+    const mux = new FakeMux();
+    const { status } = await run(mux, { harness: "codex", account: ACCOUNT, cwd: "/home/op/src/app" }, { accounts });
+    expect(status).toBe(200);
+    expect(mux.texts).toEqual([["w1:p1", "CODEX_HOME='/home/op/.codex-work' codex"]]);
+    const started: AgentView = { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "app", workspaceNumber: 1, tabId: "w1:t1", agent: "codex", status: "idle", cwd: "/home/op/src/app", focused: false };
+    expect(accounts.paneAccount("default", started)).toEqual({ id: ACCOUNT, label: "Work" });
+  });
+
+  test("an unknown id, another agent's id, no service, and Windows are refused before anything runs", async () => {
+    const accounts = await accountsWith([{ harness: "codex", kind: "own", dir: "/home/op/.codex-work" }]);
+    const cases: [JsonObject, LaunchDeps, number, "accounts.unknown" | "accounts.unavailable"][] = [
+      [{ harness: "codex", account: "6f1c2a4e-3b5d-4c7e-9f00-000000000000" }, { accounts }, 400, "accounts.unknown"],
+      [{ harness: "claude", account: ACCOUNT }, { accounts }, 400, "accounts.unknown"],
+      [{ harness: "codex", account: ACCOUNT }, {}, 404, "accounts.unavailable"],
+    ];
+    for (const [body, deps, status, code] of cases) {
+      const mux = new FakeMux();
+      const out = await run(mux, body, deps);
+      expect([out.status, out.body?.ok === false ? out.body.code : undefined]).toEqual([status, code]);
+      expect(mux.spaces).toEqual([]);
+    }
+    const windows = new Accounts({ store: memoryAccountStore(), harnesses: { list: () => Promise.resolve([]), launch: harnessLaunch }, home: "/home/op", env: {}, platform: "win32", disk: realLinkDisk });
+    const mux = new FakeMux();
+    expect((await run(mux, { harness: "codex", account: ACCOUNT }, { accounts: windows })).status).toBe(404);
+    expect(mux.spaces).toEqual([]);
+  });
+
+  test("an account never rides a shell, a one-off run or a hand-written row", async () => {
+    const accounts = await accountsWith([{ harness: "codex", kind: "own", dir: "/home/op/.codex-work" }]);
+    for (const body of [{ shell: true, account: ACCOUNT }, { run: "ls", account: ACCOUNT }, { command: "htop", account: ACCOUNT }, { account: ACCOUNT }, { harness: "codex", account: 7 }]) {
+      const mux = new FakeMux();
+      expect((await run(mux, body, { accounts })).status).toBe(400);
+      expect(mux.spaces).toEqual([]);
+    }
+  });
+
+  test("a recipe row a phone added takes the account in front of its own line", async () => {
+    const accounts = await accountsWith([{ harness: "codex", kind: "own", dir: "/home/op/.codex-work" }]);
+    const recipe: Launcher = { command: "codex --search", label: "Codex search", source: "added", addedAs: "recipe", harness: "codex", kind: "agent", id: "r1" };
+    const mux = new FakeMux();
+    const res = await launch(asMux(mux), engine(), post({ command: "codex --search", account: ACCOUNT }), new AuditLog(() => {}), null, "default", () => Promise.resolve([recipe]), clock(), {
+      harnesses: { launch: harnessLaunch },
+      home: "/home/op",
+      fs: dirs(),
+      accounts,
+    });
+    expect(res.status).toBe(200);
+    expect(mux.texts).toEqual([["w1:p1", "CODEX_HOME='/home/op/.codex-work' codex --search"]]);
+  });
+
+  test("signIn with the harness alone types the Default start", async () => {
+    const mux = new FakeMux();
+    expect((await run(mux, { harness: "claude", signIn: true }, { accounts: await accountsWith() })).status).toBe(200);
+    expect(mux.texts).toEqual([["w1:p1", "claude"]]);
   });
 });

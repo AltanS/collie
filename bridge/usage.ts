@@ -505,4 +505,27 @@ export class UsageTracker {
       }
     }
   }
+
+  // ── Accounts (M101): the config folder a session reported, for the account tag and found folders ──
+
+  /**
+   * The config folder the pane's session reported, raw: a string for a non-default folder, `null` when
+   * the session's record names none (the default), `undefined` when no record is held for it yet.
+   */
+  reportedConfigDir(pane: AgentView): string | null | undefined {
+    const session = UsageTracker.sessionOf(pane);
+    const record = session === null ? undefined : this.held.get(session)?.record;
+    if (record === undefined || record === null) return undefined;
+    return record.configDir ?? null;
+  }
+
+  /** Every non-default config folder a held session reported, raw, with its harness. */
+  reportedConfigDirs(): { harness: string; dir: string }[] {
+    const out: { harness: string; dir: string }[] = [];
+    for (const { record } of this.held.values()) {
+      if (record?.configDir === undefined) continue;
+      if (!out.some((r) => r.harness === record.harness && r.dir === record.configDir)) out.push({ harness: record.harness, dir: record.configDir });
+    }
+    return out;
+  }
 }
