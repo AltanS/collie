@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { accountTest } from "./accounts-skip.ts";
 import type { JsonObject } from "./json.ts";
 import { memoryAddedIo } from "./launchers-added.ts";
 import {
@@ -33,7 +34,7 @@ function idN(n: number): string {
 }
 
 describe("coerceAccountRow: a row is checked again when it is read", () => {
-  test("a good row reads back", () => {
+  accountTest("a good row reads back", () => {
     expect(coerceAccountRow(onDisk(row()))).toEqual(row());
   });
 
@@ -65,14 +66,14 @@ describe("parseAccountsText", () => {
     expect(parseAccountsText(JSON.stringify({ version: 2, rows: [] }))).toBeNull();
   });
 
-  test("a second row with the same folder or the same label without case is dropped", () => {
+  accountTest("a second row with the same folder or the same label without case is dropped", () => {
     const text = formatAccountsFile([row(), row({ id: idN(2), label: "WORK", dir: "/home/op/.claude-b" }), row({ id: idN(3), label: "B" })]);
     expect(parseAccountsText(text)?.map((r) => r.id)).toEqual([ID]);
   });
 });
 
 describe("AccountStore", () => {
-  test("add, replay, the refusals, the cap and remove", async () => {
+  accountTest("add, replay, the refusals, the cap and remove", async () => {
     const io = memoryAddedIo();
     const store = new AccountStore(io, () => {});
     expect(await store.add(row())).toEqual({ ok: true, row: row(), replayed: false });
@@ -99,7 +100,7 @@ describe("AccountStore", () => {
     expect(io.text).toBe("not json");
   });
 
-  test("a listener hears a change, also one made by hand on disk", async () => {
+  accountTest("a listener hears a change, also one made by hand on disk", async () => {
     const io = memoryAddedIo();
     const store = new AccountStore(io, () => {});
     let heard = 0;

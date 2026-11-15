@@ -258,7 +258,7 @@ describe("collie trick init, a draft outside the tricks folder", () => {
     expect(await cmdTrickInit(dd, ["--dir", "drafts", "--sh", "plain"])).toBe(EXIT.OK);
     expect(await Bun.file(join(work, "drafts", "plain", "program.sh")).exists()).toBe(true);
     expect(await Bun.file(join(d.configDir, "tricks", "plain", "trick.toml")).exists()).toBe(false);
-    expect(d.out.at(-1)).toBe("Hand it to the person: collie trick propose ./drafts/plain");
+    expect(d.out.at(-1)).toBe(`Hand it to the person: collie trick propose ./${join("drafts", "plain")}`);
     const elsewhere = await tempDir();
     expect(await cmdTrickInit(dd, [`--dir=${elsewhere}`, "legs"])).toBe(EXIT.OK);
     expect(await Bun.file(join(elsewhere, "legs", "trick.toml")).exists()).toBe(true);

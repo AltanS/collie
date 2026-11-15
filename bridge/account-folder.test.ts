@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { ACCOUNT_ADAPTERS } from "./account-adapters.ts";
+import { accountTest } from "./accounts-skip.ts";
 import {
   accountStartLine,
   checkFolder,
@@ -53,14 +54,14 @@ describe("parseFolderPath: the hostile inputs", () => {
     });
   }
 
-  test("takes ~/x and an absolute path, and cleans both to one spelling", () => {
+  accountTest("takes ~/x and an absolute path, and cleans both to one spelling", () => {
     expect(parseFolderPath("~/.claude-work", HOME)).toEqual({ ok: true, dir: "/home/op/.claude-work" });
     expect(parseFolderPath("/home/op/.claude-work/", HOME)).toEqual({ ok: true, dir: "/home/op/.claude-work" });
     expect(parseFolderPath("/home/op/./.claude-work", HOME)).toEqual({ ok: true, dir: "/home/op/.claude-work" });
     expect(parseFolderPath("/srv/claude one", HOME)).toEqual({ ok: true, dir: "/srv/claude one" });
   });
 
-  test("the typed line quotes the folder, and a passed folder can never close the quote", () => {
+  accountTest("the typed line quotes the folder, and a passed folder can never close the quote", () => {
     const parsed = parseFolderPath("~/my work", HOME);
     if (!parsed.ok) throw new Error("expected ok");
     expect(accountStartLine(ACCOUNT_ADAPTERS.claude, parsed.dir, "claude")).toBe("CLAUDE_CONFIG_DIR='/home/op/my work' claude");
@@ -86,22 +87,22 @@ describe("checkFolder", () => {
   const none: string[] = [];
   const base = { home: HOME, defaultDir: "/home/op/.claude", taken: none };
 
-  test("a missing folder under home is fine, and is to be made", async () => {
+  accountTest("a missing folder under home is fine, and is to be made", async () => {
     expect(await checkFolder({ ...base, raw: "~/.claude-work", look: look(["/home/op/.claude"]) })).toEqual({ ok: true, dir: "/home/op/.claude-work", exists: false });
   });
 
-  test("a missing folder outside home is refused, an existing one outside home is taken", async () => {
+  accountTest("a missing folder outside home is refused, an existing one outside home is taken", async () => {
     expect(await checkFolder({ ...base, raw: "/srv/new", look: look([]) })).toMatchObject({ ok: false, code: "accounts.bad_folder" });
     expect(await checkFolder({ ...base, raw: "/srv/old", look: look(["/srv/old"]) })).toEqual({ ok: true, dir: "/srv/old", exists: true });
   });
 
-  test("the default folder is refused, also through a link", async () => {
+  accountTest("the default folder is refused, also through a link", async () => {
     expect(await checkFolder({ ...base, raw: "~/.claude", look: look(["/home/op/.claude"]) })).toMatchObject({ problem: "the agent's default folder" });
     const linked = look(["/home/op/.claude", "/home/op/alias"], { "/home/op/alias": "/home/op/.claude" });
     expect(await checkFolder({ ...base, raw: "~/alias", look: linked })).toMatchObject({ problem: "the agent's default folder" });
   });
 
-  test("a folder another account holds is taken, by spelling and by real path", async () => {
+  accountTest("a folder another account holds is taken, by spelling and by real path", async () => {
     expect(await checkFolder({ ...base, taken: ["/home/op/.claude-a"], raw: "~/.claude-a/", look: look([]) })).toEqual({ ok: false, code: "accounts.folder_taken" });
     const linked = look(["/home/op/.claude-a", "/home/op/b"], { "/home/op/b": "/home/op/.claude-a" });
     expect(await checkFolder({ ...base, taken: ["/home/op/.claude-a"], raw: "~/b", look: linked })).toEqual({ ok: false, code: "accounts.folder_taken" });

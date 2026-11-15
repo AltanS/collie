@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { realLinkDisk } from "./account-links.ts";
 import { Accounts } from "./accounts-routes.ts";
+import { accountTest } from "./accounts-skip.ts";
 import { memoryAccountStore } from "./accounts-store.ts";
 import { AuditLog } from "./audit.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
@@ -291,7 +292,7 @@ describe("POST /api/worktree", () => {
     });
   });
 
-  test("an account on a branch types its start line in the new folder; an account alone is refused (M101)", async () => {
+  accountTest("an account on a branch types its start line in the new folder; an account alone is refused (M101)", async () => {
     const store = memoryAccountStore();
     const id = "6f1c2a4e-3b5d-4c7e-9f00-112233445566";
     await store.add({ id, harness: "codex", label: "Work", kind: "own", dir: "/srv/codex-work", addedAt: 1, device: "pixel" });

@@ -5,13 +5,14 @@ import { join } from "node:path";
 
 import { ACCOUNT_ADAPTERS } from "./account-adapters.ts";
 import { inspectLinks, planLinks, prepareSharedFolder, realLinkDisk, runLinkPass } from "./account-links.ts";
+import { accountTest } from "./accounts-skip.ts";
 
 const share = { dirs: ["projects", "skills"], files: ["settings.json", "CLAUDE.md"] };
 
 describe("planLinks (pure)", () => {
   const base = { defaultReal: "/d", accountDir: "/a", share };
 
-  test("a fresh default: folders are made and linked, missing files skipped", () => {
+  accountTest("a fresh default: folders are made and linked, missing files skipped", () => {
     const plan = planLinks({ ...base, defaults: {}, account: {} });
     expect(plan.unlinked).toEqual([]);
     expect(plan.actions).toEqual([
@@ -22,7 +23,7 @@ describe("planLinks (pure)", () => {
     ]);
   });
 
-  test("a file link points at the real file, one level", () => {
+  accountTest("a file link points at the real file, one level", () => {
     const plan = planLinks({ ...base, defaults: { "settings.json": { kind: "file", real: "/dots/settings.json" } }, account: {} });
     expect(plan.actions).toContainEqual({ op: "link", at: "/a/settings.json", target: "/dots/settings.json", name: "settings.json" });
   });

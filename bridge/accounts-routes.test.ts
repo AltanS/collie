@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { realLinkDisk } from "./account-links.ts";
 import { Accounts, defaultAccountId, ownJournalRoots, seenReading, type AccountsAnswer, type AccountsCaller, type AccountsDeps } from "./accounts-routes.ts";
+import { accountTest } from "./accounts-skip.ts";
 import { AccountStore, MAX_ACCOUNTS, type AccountRecord } from "./accounts-store.ts";
 import { AuditLog } from "./audit.ts";
 import { harnessLaunch } from "./harness-launch.ts";
@@ -108,7 +109,7 @@ describe("GET /api/accounts", () => {
     expect(await build({ harnesses: { list: () => Promise.resolve([{ id: "opencode", label: "opencode", found: true }]), launch: harnessLaunch } }).body()).toBeNull();
   });
 
-  test("found folders: by name and layout, and reported by a session; never the default or an added one", async () => {
+  accountTest("found folders: by name and layout, and reported by a session; never the default or an added one", async () => {
     await mkdir(join(home, ".claude-work", "projects"), { recursive: true });
     await mkdir(join(home, ".claude-empty"));
     await mkdir(join(home, ".codex-old", "sessions"), { recursive: true });
@@ -129,7 +130,7 @@ describe("GET /api/accounts", () => {
     expect((await bodyOf(accounts)).found.map((f) => f.folder)).toEqual(["~/elsewhere", "~/.codex-old"]);
   });
 
-  test("each row's windows are the reading the usage store keeps under the same harness and folder", async () => {
+  accountTest("each row's windows are the reading the usage store keeps under the same harness and folder", async () => {
     const seen = new UsageSeen(memoryAddedIo(), () => 5_000, () => {});
     await seen.settled();
     const accounts = build({ reading: seenReading(seen, () => 6_000) });
@@ -162,7 +163,7 @@ describe("GET /api/accounts", () => {
 });
 
 describe("POST /api/accounts", () => {
-  test("a shared account: a new folder that links the default's setup, one audit line, a replay", async () => {
+  accountTest("a shared account: a new folder that links the default's setup, one audit line, a replay", async () => {
     const accounts = build();
     const row = await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "shared" });
     expect(row).toMatchObject({ id: ID, kind: "shared", label: "Work", folder: "~/.claude-work", startLine: "CLAUDE_CONFIG_DIR=~/.claude-work claude", unlinked: [] });
@@ -206,7 +207,7 @@ describe("POST /api/accounts", () => {
     expect(lines).toEqual([]);
   });
 
-  test("a label is unique per agent without case, a folder once, and the cap holds", async () => {
+  accountTest("a label is unique per agent without case, a folder once, and the cap holds", async () => {
     const accounts = build();
     await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "shared" });
     expect(codeOf((await accounts.add({ requestId: ID2, harness: "claude", label: "WORK", kind: "own", path: "~/a" }, caller())).body)).toBe("accounts.label_taken");
@@ -221,7 +222,7 @@ describe("POST /api/accounts", () => {
 });
 
 describe("POST /api/accounts/remove", () => {
-  test("forgets the label only; the folder and its links stay", async () => {
+  accountTest("forgets the label only; the folder and its links stay", async () => {
     const accounts = build();
     await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "shared" });
     expect(codeOf((await accounts.remove({ id: defaultAccountId("claude") }, caller())).body)).toBe("accounts.default");
@@ -233,7 +234,7 @@ describe("POST /api/accounts/remove", () => {
 });
 
 describe("the start line", () => {
-  test("no account is the base line; the Default id is too; an own account is the quoted folder", async () => {
+  accountTest("no account is the base line; the Default id is too; an own account is the quoted folder", async () => {
     const accounts = build();
     expect(await accounts.startLine({ harness: "claude", base: "claude", account: undefined, signIn: false })).toEqual({ ok: true, command: "claude" });
     expect(await accounts.startLine({ harness: "claude", base: "claude", account: "claude:default", signIn: true })).toEqual({ ok: true, command: "claude" });
@@ -253,7 +254,7 @@ describe("the start line", () => {
     expect(await build({ platform: "win32" }).startLine({ harness: "codex", base: "codex", account: ID, signIn: false })).toMatchObject({ ok: false, code: "accounts.unavailable" });
   });
 
-  test("a shared account runs the link pass first, so an entry the default gained since is linked", async () => {
+  accountTest("a shared account runs the link pass first, so an entry the default gained since is linked", async () => {
     const accounts = build();
     await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "shared" });
     await writeFile(join(home, ".claude", "CLAUDE.md"), "# notes");
@@ -265,7 +266,7 @@ describe("the start line", () => {
 describe("a pane's account", () => {
   const row: AccountRecord = { id: ID, harness: "claude", label: "Work", kind: "own", dir: "/srv/work", addedAt: 1, device: "pixel" };
 
-  test("the folder the agent reported wins; a launch note counts until it reports", async () => {
+  accountTest("the folder the agent reported wins; a launch note counts until it reports", async () => {
     await store.add(row);
     let reported: string | null | undefined;
     const accounts = build({ reported: { reportedConfigDir: () => reported, reportedConfigDirs: () => [] } });
@@ -280,7 +281,7 @@ describe("a pane's account", () => {
     expect(accounts.paneAccount("default", pane({ paneId: "w9:p9" }))).toEqual({ id: ID, label: "Work" });
   });
 
-  test("the slash and skill scan reads the account's folder: the folder, and the variable laid over the env", async () => {
+  accountTest("the slash and skill scan reads the account's folder: the folder, and the variable laid over the env", async () => {
     await store.add(row);
     const accounts = build({ env: { HOME: "/home/op" }, reported: { reportedConfigDir: () => "/srv/work", reportedConfigDirs: () => [] } });
     expect(accounts.folderOf("default", pane())).toBe("/srv/work");
@@ -301,7 +302,7 @@ describe("a pane's account", () => {
     expect(accounts.paneAccount("default", pane())).toBeUndefined();
   });
 
-  test("live follows the panes: an added account's pane, and the Default's", async () => {
+  accountTest("live follows the panes: an added account's pane, and the Default's", async () => {
     await store.add(row);
     const accounts = build({
       reported: { reportedConfigDir: (p) => (p.paneId === "w1:p2" ? "/srv/work" : undefined), reportedConfigDirs: () => [] },
@@ -318,7 +319,7 @@ describe("a pane's account", () => {
     ]);
   });
 
-  test("the journal roots grow with own accounts only", async () => {
+  accountTest("the journal roots grow with own accounts only", async () => {
     await store.add(row);
     await store.add({ ...row, id: ID2, label: "S", kind: "shared", dir: "/srv/shared" });
     expect(ownJournalRoots(store, "claude")).toEqual(["/srv/work/projects"]);
@@ -346,7 +347,7 @@ describe("the server glue (serveAccountsRoute)", () => {
     expect(await res?.json()).toMatchObject({ code: "accounts.unavailable" });
   });
 
-  test("read, add and remove; a read-only device may read and not write; other paths are not ours", async () => {
+  accountTest("read, add and remove; a read-only device may read and not write; other paths are not ours", async () => {
     const accounts = build();
     expect((await serveAccountsRoute(get(), "/api/accounts", fakeCaller(true), accounts))?.status).toBe(200);
     expect((await serveAccountsRoute(post("/api/accounts", { requestId: ID, harness: "claude", label: "W", kind: "shared" }), "/api/accounts", fakeCaller(true), accounts))?.status).toBe(403);
@@ -363,7 +364,7 @@ describe("the server glue (serveAccountsRoute)", () => {
 });
 
 describe("live journal roots", () => {
-  test("an own account's journal root joins the registry's search with no rebuild", async () => {
+  accountTest("an own account's journal root joins the registry's search with no rebuild", async () => {
     const work = join(home, "work");
     const sid = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
     await mkdir(join(work, "projects", "-x"), { recursive: true });

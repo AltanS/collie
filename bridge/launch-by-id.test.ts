@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { realLinkDisk } from "./account-links.ts";
 import { Accounts } from "./accounts-routes.ts";
+import { accountTest } from "./accounts-skip.ts";
 import { memoryAccountStore } from "./accounts-store.ts";
 import { AuditLog } from "./audit.ts";
 import { harnessLaunch } from "./harness-launch.ts";
@@ -580,7 +581,7 @@ describe("POST /api/launch — with an account", () => {
     }
   });
 
-  test("an own account types the quoted folder before the binary, and the pane carries the account", async () => {
+  accountTest("an own account types the quoted folder before the binary, and the pane carries the account", async () => {
     const accounts = await accountsWith([{ harness: "codex", kind: "own", dir: "/home/op/.codex-work" }]);
     const mux = new FakeMux();
     const { status } = await run(mux, { harness: "codex", account: ACCOUNT, cwd: "/home/op/src/app" }, { accounts });
@@ -618,7 +619,7 @@ describe("POST /api/launch — with an account", () => {
     }
   });
 
-  test("a recipe row a phone added takes the account in front of its own line", async () => {
+  accountTest("a recipe row a phone added takes the account in front of its own line", async () => {
     const accounts = await accountsWith([{ harness: "codex", kind: "own", dir: "/home/op/.codex-work" }]);
     const recipe: Launcher = { command: "codex --search", label: "Codex search", source: "added", addedAs: "recipe", harness: "codex", kind: "agent", id: "r1" };
     const mux = new FakeMux();

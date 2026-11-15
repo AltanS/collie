@@ -1737,7 +1737,7 @@ describe("per-folder accounts for the sources with a folder factory", () => {
 
   it("reads each Grok folder's own auth.json, and never another folder's token", async () => {
     clock.now = NOW;
-    const tokens = { [join(HOME, ".grok", "auth.json")]: "placeholder-grok-default", "/accounts/grok-b/auth.json": "placeholder-grok-b" };
+    const tokens = { [join(HOME, ".grok", "auth.json")]: "placeholder-grok-default", [join("/accounts/grok-b", "auth.json")]: "placeholder-grok-b" };
     const files = Object.fromEntries(
       Object.entries(tokens).map(([path, key]) => [path, { mode: 0o600, text: grokStore({ "https://auth.x.ai::c": { key } }) }]),
     );

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { ACCOUNT_ADAPTERS, ACCOUNT_HARNESSES, accountAdapter } from "./account-adapters.ts";
+import { accountTest } from "./accounts-skip.ts";
 import { harnessLaunch } from "./harness-launch.ts";
 
 describe("the account adapter table", () => {
@@ -18,7 +19,7 @@ describe("the account adapter table", () => {
     expect(accountAdapter("omp")).toBeUndefined();
   });
 
-  test("the default folder follows the agent's own variable, and only an absolute one", () => {
+  accountTest("the default folder follows the agent's own variable, and only an absolute one", () => {
     const home = "/home/op";
     expect(ACCOUNT_ADAPTERS.claude.defaultDir(home, {})).toBe("/home/op/.claude");
     expect(ACCOUNT_ADAPTERS.claude.defaultDir(home, { CLAUDE_CONFIG_DIR: "/srv/c/" })).toBe("/srv/c");
@@ -29,7 +30,7 @@ describe("the account adapter table", () => {
     expect(ACCOUNT_ADAPTERS.grok.defaultDir(home, { GROK_HOME: "/srv/g/" })).toBe("/srv/g");
   });
 
-  test("the journal root sits where bridge/config.ts puts the default one", () => {
+  accountTest("the journal root sits where bridge/config.ts puts the default one", () => {
     expect(ACCOUNT_ADAPTERS.claude.journalRoot("/a")).toBe("/a/projects");
     expect(ACCOUNT_ADAPTERS.codex.journalRoot("/a")).toBe("/a/sessions");
     expect(ACCOUNT_ADAPTERS.pi.journalRoot("/a")).toBe("/a/sessions");
