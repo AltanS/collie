@@ -662,6 +662,9 @@ one of two kinds:
   folder's setup and history into it. Your sessions, `/resume`, skills, commands, plugins, hooks,
   `settings.json`, `CLAUDE.md` and the prompt history stay one set. Only the login and the agent's
   per-account state are the account's own.
+  The shared account also reads the Default folder's `settings.json`. A key helper, an environment block
+  or a forced organisation in that file applies to the shared account too. Use an own folder when the
+  two logins must not share settings or history.
 - **Own**: a folder you already use, taken as it is. Collie writes nothing into it. A folder that does
   not exist yet is made empty.
 
@@ -675,7 +678,8 @@ one of two kinds:
 To sign in, start a session with the new account. The agent shows its own sign-in in the pane:
 Claude Code asks for a theme and then the login method, Codex offers a browser sign-in or a device
 code, pi says to run `/login`, and Grok shows a code to approve in a browser. Some sign-ins need a
-browser on that machine.
+browser on that machine. Grok also tries to open that page in a browser on the machine that runs the
+bridge.
 
 The New page lets you pick the account for an agent and for a row you built from its options. A row
 you wrote by hand starts as you wrote it. A Claude Code session started from a desktop terminal with
@@ -694,6 +698,10 @@ may have no Collie hooks yet; its page says so and shows the line that installs 
 
 > **Note.** Accounts are per machine. A crew member's accounts are its own, and the New page reads
 > the accounts of the machine you start on. Windows offers no accounts yet.
+>
+> On tmux and zellij, the first start of a new Claude Code account shows the terminal view, not the
+> sign-in card, until the agent has signed in. Type the code with the keys there. The phone treats that
+> text as an ordinary message.
 
 ### Use several accounts of one agent
 
