@@ -650,12 +650,54 @@ every add, rename and removal.
 > once before it first starts that row, and shows the command, the folder and the machine. Set
 > `adds = false` on the lead to turn off every phone-added row.
 
+### Accounts
+
+Keep a second login of one agent beside the first, and pick it when you start a session. Open
+**Settings**, then **Accounts**. With no account added, nothing else changes.
+
+Each agent has a **Default** account: its normal folder, started with nothing set. Add an account in
+one of two kinds:
+
+- **Shared** (Claude Code only): Collie makes a new folder, `~/.claude-<name>`, and links the default
+  folder's setup and history into it. Your sessions, `/resume`, skills, commands, plugins, hooks,
+  `settings.json`, `CLAUDE.md` and the prompt history stay one set. Only the login and the agent's
+  per-account state are the account's own.
+- **Own**: a folder you already use, taken as it is. Collie writes nothing into it. A folder that does
+  not exist yet is made empty.
+
+| Agent | What picks the folder | Kinds |
+| --- | --- | --- |
+| Claude Code | `CLAUDE_CONFIG_DIR` | Shared, Own |
+| Codex | `CODEX_HOME` | Own |
+| pi | `PI_CODING_AGENT_DIR` | Own |
+
+To sign in, start a session with the new account. The agent shows its own sign-in in the pane:
+Claude Code asks for a theme and then the login method, Codex offers a browser sign-in or a device
+code, and pi says to run `/login`. Some sign-ins need a browser on that machine.
+
+The New page lets you pick the account for an agent and for a row you built from its options. A row
+you wrote by hand starts as you wrote it. A Claude Code session started from a desktop terminal with
+the account's line (shown on the account's page) gets the account's tag too, once its hooks report
+the folder.
+
+A shared Claude Code account keeps three things per account, because Claude Code keeps them in the
+account's own `.claude.json`: project trust, MCP servers added with `claude mcp add`, and the theme.
+A link Collie could not make, because the account folder already holds that name, is listed on the
+account's page. Collie never replaces it.
+
+The history of an own folder is found with no restart and no `.env` line. An own Claude Code folder
+may have no Collie hooks yet; its page says so and shows the line that installs them.
+
+**Remove** forgets the account's name only. The folder, its links and its login stay.
+
+> **Note.** Accounts are per machine. A crew member's accounts are its own, and the New page reads
+> the accounts of the machine you start on. Windows offers no accounts yet.
+
 ### Use several accounts of one agent
 
 Two Claude subscriptions, a work and a personal Codex, a second set of pi providers: give each
 account its own launcher row. Each row starts the agent with a different folder for its login and
-settings. Collie does not switch accounts, and it never stores or copies a login. The agent keeps
-it in the folder you name.
+settings. Collie does not switch accounts. The agent keeps the login in the folder you name.
 
 ```toml
 [[launchers]]

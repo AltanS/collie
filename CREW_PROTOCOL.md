@@ -1495,6 +1495,13 @@ prevents (`web/src/lib/api.ts:201-203`).
   which is what every older member sends and what a session with no pins sends. The lead keeps the
   field only in that form and drops anything else. It only shows: the list and the unpin are the
   member's `pane/:id/pins` route.
+- **A pane may carry `account`** (additive-optional, §7.1, added 2026-11-15, M101): the added account
+  the pane's agent runs under on the member that owns it, `{ id, label }`, the member's own id and
+  label. Absent means the Default account or no account known, which is what every older member
+  sends. The lead passes it through untouched, as the `cache` bullet says of a field merge does not
+  read. It only shows: the member's accounts are its own, read and changed with `?host=` on
+  `/api/accounts`. `CREW_PROTOCOL_VERSION` stays `2`, no new route on the link, no new verb and no new
+  header.
 - **A session may carry `label`** (additive-optional, §7.1, added 2026-10-19): the display label
   the member's own operator wrote in its `spaces.toml`. It is display-only: `name` stays the
   session's identity on the link and in every address. The lead keeps it only as a string and runs
