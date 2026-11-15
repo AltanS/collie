@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { realLinkDisk } from "./account-links.ts";
-import { Accounts, defaultAccountId, ownJournalRoots, type AccountsAnswer, type AccountsCaller, type AccountsDeps } from "./accounts-routes.ts";
+import { Accounts, defaultAccountId, ownJournalRoots, seenReading, type AccountsAnswer, type AccountsCaller, type AccountsDeps } from "./accounts-routes.ts";
 import { AccountStore, MAX_ACCOUNTS, type AccountRecord } from "./accounts-store.ts";
 import { AuditLog } from "./audit.ts";
 import { harnessLaunch } from "./harness-launch.ts";
@@ -13,6 +13,7 @@ import type { JsonValue } from "./json.ts";
 import { memoryAddedIo } from "./launchers-added.ts";
 import { serveAccountsRoute } from "./server.ts";
 import type { AccountRow, AccountsBody, AgentView } from "./types.ts";
+import { UsageSeen } from "./usage-seen.ts";
 
 const ID = "6f1c2a4e-3b5d-4c7e-9f00-112233445566";
 const ID2 = "6f1c2a4e-3b5d-4c7e-9f00-112233445577";
@@ -126,6 +127,28 @@ describe("GET /api/accounts", () => {
     ]);
     await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "own", path: "~/.claude-work" });
     expect((await bodyOf(accounts)).found.map((f) => f.folder)).toEqual(["~/elsewhere", "~/.codex-old"]);
+  });
+
+  test("each row's windows are the reading the usage store keeps under the same harness and folder", async () => {
+    const seen = new UsageSeen(memoryAddedIo(), () => 5_000, () => {});
+    await seen.settled();
+    const accounts = build({ reading: seenReading(seen, () => 6_000) });
+    const slash = await added(accounts, { requestId: ID, harness: "claude", label: "Slash", kind: "own", path: "~/acct-slash/" });
+    const plain = await added(accounts, { requestId: ID2, harness: "claude", label: "Plain", kind: "own", path: "~/acct-plain" });
+    // The tracker records under the folder the session reported, raw: the default as undefined, an
+    // added one as its env held it, with or without a trailing slash.
+    seen.record("claude", undefined, [{ window: "5h", used: 10, resetsAt: 9_000 }], 4_000);
+    seen.record("claude", `${join(home, "acct-slash")}/`, [{ window: "7d:opus", used: 30, resetsAt: 2_000, label: "Opus" }], 4_100);
+    seen.record("claude", join(home, "acct-plain"), [{ window: "7d", used: 50, resetsAt: 9_000 }], 4_200);
+    const rows = (await bodyOf(accounts)).accounts.filter((a) => a.harness === "claude");
+    expect(rows.map((r) => [r.label, r.windows, r.seenAt, r.live])).toEqual([
+      ["", [{ window: "5h", usedPct: 10, resetsAt: 9_000 }], 4_000, false],
+      // Past its reset at the time of the ask: "reset since".
+      [slash.label, [{ window: "7d:opus", label: "Opus", usedPct: null, resetsAt: 2_000 }], 4_100, false],
+      [plain.label, [{ window: "7d", usedPct: 50, resetsAt: 9_000 }], 4_200, false],
+    ]);
+    // Codex has no reading: no windows, never read.
+    expect((await bodyOf(accounts)).accounts.find((a) => a.id === "codex:default")).toMatchObject({ windows: [], seenAt: null });
   });
 
   test("hooks are read from the settings file only, where the adapter names one", async () => {

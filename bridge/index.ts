@@ -246,7 +246,7 @@ import { diskUsageFiles, usageDir, UsageTracker } from "./usage.ts";
 import { UsageSeen, usageSeenIo } from "./usage-seen.ts";
 import { AccountWindows, defaultAccountSources, diskCredentialSeams, isTurnEnd } from "./account-windows.ts";
 import { realLinkDisk } from "./account-links.ts";
-import { Accounts, ownJournalRoots } from "./accounts-routes.ts";
+import { Accounts, ownJournalRoots, seenReading } from "./accounts-routes.ts";
 import { AccountStore, accountsFileIo } from "./accounts-store.ts";
 import { createHarnessProbe } from "./harness-launch.ts";
 import {
@@ -966,8 +966,8 @@ const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now,
 // The agents the New sheet starts, probed on this machine (ADR 0091), shared by the server and the
 // accounts below so both read one found list.
 const harnessProbe = createHarnessProbe();
-// Accounts (M101, ADR 0141): the list in Settings, the start line, and a pane's tag. The usage seam is
-// today's account windows, read only for an account with a live pane; spec 02 replaces it.
+// Accounts (M101, ADR 0141): the list in Settings, the start line, and a pane's tag. Each row's windows
+// are the live or last-seen reading the usage tracker recorded for that harness and folder (usage-seen.ts).
 const accounts = new Accounts({
   store: accountStore,
   harnesses: harnessProbe,
@@ -975,11 +975,7 @@ const accounts = new Accounts({
   env: process.env,
   platform: HOST.platform,
   disk: realLinkDisk,
-  reading: (harness, dir) => {
-    const limits = accountWindows.limits(harness, dir);
-    if (limits === undefined) return null;
-    return { windows: limits.map((l) => ({ window: l.window, usedPct: l.used, resetsAt: l.resetsAt ?? null })), at: Date.now() };
-  },
+  reading: seenReading(usageSeen, Date.now),
   reported: usage,
   panes: () => registry.ordered().flatMap((rt) => rt.engine.current().agents.map((pane) => ({ session: rt.name, pane }))),
   readText: (path) => {

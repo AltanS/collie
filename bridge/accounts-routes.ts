@@ -10,6 +10,7 @@ import { apiError, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts"
 import type { HarnessProbe } from "./harness-launch.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { AccountHarness, AccountRow, AccountsBody, AccountWindow, AgentView, FoundFolder, PaneAccount } from "./types.ts";
+import type { UsageSeen } from "./usage-seen.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
 // ── Accounts: the routes, the found folders, the start line and a pane's tag (M101, ADR 0141) ──
@@ -32,8 +33,27 @@ export interface AccountsAnswer {
   body: JsonValue | AccountsBody | { ok: true; account: AccountRow } | { ok: true };
 }
 
-/** One reading of an account's windows: the seam spec 02 fills with its own source. */
+/** One reading of an account's windows: the live or last-seen reading the bridge holds, from memory. */
 export type AccountReading = (harness: string, dir: string | undefined) => { windows: AccountWindow[]; at: number } | null;
+
+/**
+ * The seam's real source: the last reading of each (harness, folder) the bridge held
+ * (bridge/usage-seen.ts). `dir` is the account's cleaned folder, undefined for Default; the store keys
+ * the same way ("" for the default folder, else `join(dir, ".")`), so the folder an agent reported and
+ * the folder an account holds meet. `at` is when the bridge held the reading, never the time of the ask.
+ */
+export function seenReading(seen: Pick<UsageSeen, "reading">, now: () => number): AccountReading {
+  return (harness, dir) => {
+    const reading = seen.reading(harness, dir, now());
+    if (reading === null) return null;
+    const windows = reading.windows.map((w): AccountWindow => {
+      const out: AccountWindow = { window: w.window, usedPct: w.usedPct, resetsAt: w.resetsAt };
+      if (w.label !== undefined) out.label = w.label;
+      return out;
+    });
+    return { windows, at: reading.at };
+  };
+}
 
 /** Where a session reported its config folder: raw string, `null` for the default, `undefined` unknown. */
 export interface ReportedFolders {
@@ -223,10 +243,11 @@ export class Accounts {
     return text !== null && documentCarriesOurHooks(text) ? "installed" : "missing";
   }
 
-  private windowsOf(harness: string, dir: string | undefined, live: boolean): Pick<AccountRow, "windows" | "seenAt"> {
-    // Only a live account is read: the usage read asks the vendor with the login of a folder that has
-    // a live pane, and nothing else (ADR 0118, README decision 5). Spec 02 keeps a last-seen store.
-    const reading = live ? (this.deps.reading?.(harness, dir) ?? null) : null;
+  private windowsOf(harness: string, dir: string | undefined): Pick<AccountRow, "windows" | "seenAt"> {
+    // The seam reads memory only (the last reading the bridge held, README decision 12), so an account
+    // with no live pane shows its last reading with its age. Nothing here asks a vendor: that ask runs
+    // only for a folder with a live pane (ADR 0118, README decision 5), in bridge/account-windows.ts.
+    const reading = this.deps.reading?.(harness, dir) ?? null;
     return reading === null ? { windows: [], seenAt: null } : { windows: reading.windows, seenAt: reading.at };
   }
 
@@ -255,7 +276,7 @@ export class Accounts {
         kind: "default",
         folder: displayFolder(defaultDir, this.deps.home),
         startLine: h.binary,
-        ...this.windowsOf(h.id, undefined, isLive),
+        ...this.windowsOf(h.id, undefined),
         live: isLive,
       };
       const defaultHooks = this.hooksOf(h.adapter, defaultDir);
@@ -274,7 +295,7 @@ export class Accounts {
       kind: r.kind,
       folder: displayFolder(r.dir, this.deps.home),
       startLine: displayStartLine(adapter, r.dir, binary, this.deps.home),
-      ...this.windowsOf(r.harness, r.dir, live),
+      ...this.windowsOf(r.harness, r.dir),
       live,
     };
     if (r.kind === "shared" && adapter.share !== undefined) {
