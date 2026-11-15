@@ -7,14 +7,15 @@
 // The check is the hard part, because such a field may not show the text as typed. Claude Code
 // 2.1.325 draws every character as `*` but the last six (`***************ESTATE`), and a text longer
 // than the row as a row of `*` cut with `…`. pi 1.3.0 shows the text, but a text longer than the row
-// scrolls, so only its end is on screen. This module says whether the field shows a given text in
+// scrolls, so only its end is on screen. Claude Code's first-run field (an empty config folder) wraps a
+// long text under its label instead of cutting it, and shows clear characters on its last row only. This module says whether the field shows a given text in
 // the way its profile says it draws one. It never guesses the hidden part: a mask is checked by its
 // length and its clear tail, a cut row by being full of the mask glyph, a scrolled row by being the
 // end of the text.
 //
 // Pure: no DOM, no Bun API, no harness name.
 
-import type { SecretField, SecretMask } from "./profile";
+import type { Profile, SecretField, SecretMask } from "./profile";
 
 /** A scrolled field shows at least this many characters of a longer text: fewer is no evidence. */
 const MIN_TAIL = 16;
@@ -33,14 +34,33 @@ function tailOf(shown: string, drawn: string): boolean {
 }
 
 /**
- * Whether the field's text `shown` is how the field draws `typed`. Exact text always is. With a mask:
- * the masked form of `typed`, or, with `cut`, a row of the mask glyph cut short of `typed`'s length.
- * With `tail`: the end of the text (or of its masked form) the field scrolled to.
+ * Whether the rows of a wrapping field (`wrap`), joined with no space, draw `typed` under `mask`: as many
+ * characters as `typed` holds, the mask glyph for each, but a clear tail of at most `mask.clear` that is
+ * `typed`'s own end. The clear tail is shorter when the last row holds fewer characters (Claude Code
+ * 2.1.325 at 40 columns: 21 characters draw `********`, `********`, `STATE`). Never guesses a hidden one.
  */
-export function fieldShows(shown: string, typed: string, field: Pick<SecretField, "mask" | "tail">): boolean {
+function wrappedShows(shown: string, typed: string, mask: SecretMask): boolean {
+  const drawn = Array.from(shown.replace(/\s+/gu, ""));
+  const chars = [...typed];
+  if (drawn.length !== chars.length) return false;
+  let clear = 0;
+  while (clear < drawn.length && drawn[drawn.length - 1 - clear] !== mask.glyph) clear++;
+  if (clear > mask.clear) return false;
+  for (let i = 0; i < drawn.length - clear; i++) if (drawn[i] !== mask.glyph) return false;
+  return drawn.slice(drawn.length - clear).join("") === chars.slice(chars.length - clear).join("");
+}
+
+/**
+ * Whether the field's text `shown` is how the field draws `typed`. Exact text always is. With a mask:
+ * the masked form of `typed`, or, with `cut`, a row of the mask glyph cut short of `typed`'s length, or,
+ * with `wrap`, the masked form over rows that join with no space ({@link wrappedShows}). With `tail`:
+ * the end of the text (or of its masked form) the field scrolled to.
+ */
+export function fieldShows(shown: string, typed: string, field: Pick<SecretField, "mask" | "tail" | "wrap">): boolean {
   if (shown === "" || typed === "") return false;
   if (shown === typed) return true;
   const mask = field.mask;
+  if (mask !== undefined && field.wrap === true && wrappedShows(shown, typed, mask)) return true;
   if (mask === undefined) return field.tail === true && tailOf(shown, typed);
   if (mask.cut !== undefined && shown.endsWith(mask.cut)) {
     const glyphs = Array.from(shown.slice(0, shown.length - mask.cut.length));
@@ -48,4 +68,32 @@ export function fieldShows(shown: string, typed: string, field: Pick<SecretField
   }
   const drawn = maskedText(typed, mask);
   return shown === drawn || (field.tail === true && tailOf(shown, drawn));
+}
+
+/** How many of the screen's last rows that are not blank {@link signInShown} reads. */
+const SIGN_IN_REACH = 12;
+
+const signInCache = new WeakMap<readonly string[], readonly RegExp[]>();
+
+/**
+ * Whether one of the profile's `idle.signInRows` matches one of the screen's last rows that are not
+ * blank: a sign-in field is on screen, whether or not a layout reads it. The caller asks only where no
+ * other box was found, so a chat line that quotes such a row over a live input box never counts.
+ */
+export function signInShown(texts: readonly string[], idle: Pick<Profile["idle"], "signInRows">): boolean {
+  const sources = idle.signInRows;
+  if (sources === undefined || sources.length === 0) return false;
+  let patterns = signInCache.get(sources);
+  if (patterns === undefined) {
+    patterns = sources.map((source) => new RegExp(source, "u"));
+    signInCache.set(sources, patterns);
+  }
+  let seen = 0;
+  for (let i = texts.length - 1; i >= 0 && seen < SIGN_IN_REACH; i--) {
+    const text = texts[i]!.trim();
+    if (text === "") continue;
+    seen++;
+    if (patterns.some((pattern) => pattern.test(text))) return true;
+  }
+  return false;
 }

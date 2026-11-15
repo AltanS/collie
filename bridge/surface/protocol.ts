@@ -5000,7 +5000,8 @@ export class SendProtocol {
       }
     }
     // A sign-in field the phone did not name: the text is a secret all the same, so its record keeps no line.
-    if (s0.frame?.secret !== undefined) {
+    // So is a screen that names one (`field: "secret"`) where no layout read the field (fail closed).
+    if (s0.frame?.secret !== undefined || s0.surface.field === "secret") {
       state.secretField = true;
       if (state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
     }

@@ -528,6 +528,13 @@ export interface SecretField {
    * Optional.
    */
   readonly tail?: true;
+  /**
+   * The field wraps a text longer than the row under its label and never cuts it (Claude Code 2.1.325's
+   * first-run field). Its rows join with no space, and only the last row shows clear characters: at
+   * most `mask.clear`, fewer when the last row holds fewer. The Send Protocol then checks the joined
+   * rows by their length and that clear tail. Optional.
+   */
+  readonly wrap?: true;
 }
 
 /**
@@ -714,6 +721,14 @@ export interface Profile {
      * a match in the rows the modal cues read does the same when those rows hold any cue. Optional.
      */
     readonly overlayRows?: readonly string[];
+    /**
+     * Rows that say a sign-in field is on screen, as regular expression sources read on the trimmed
+     * text of each of the screen's last rows (secret-field.ts `signInShown`). The field's own layout
+     * (`idle.frame.secret`) reads the field and draws the card; these rows are the wider net for a
+     * shape no layout reads yet. Where one matches and no other box was found, the Surface still
+     * names the field (`field: "secret"`): the phone keeps no draft and the bridge no line. Optional.
+     */
+    readonly signInRows?: readonly string[];
     /**
      * True for a harness that draws its dialogs where the box stands, between the same two rules. The
      * frame walk then finds a box on a dialog screen, so the modal cues read the whole screen, the
@@ -1472,7 +1487,7 @@ type AnswerBoxFields = { answers?: true; submit?: readonly string[]; newlineSubm
 
 /** `idle.frame.secret`: a sign-in field ({@link FrameLayout.secret}). */
 /** {@link SecretField} while {@link parseSecret} builds it. */
-type SecretFields = { lead?: string; mask?: SecretMask; tail?: true };
+type SecretFields = { lead?: string; mask?: SecretMask; tail?: true; wrap?: true };
 
 function parseSecret(value: JsonValue, frameNode: JsonObject): SecretField {
   const node = object(value, "idle.frame.secret");
@@ -1481,6 +1496,8 @@ function parseSecret(value: JsonValue, frameNode: JsonObject): SecretField {
   if (node.lead !== undefined) secret.lead = pattern(node.lead, "idle.frame.secret.lead").source;
   if (node.tail !== undefined && node.tail !== true) fail("idle.frame.secret.tail", "must be true when named");
   if (node.tail === true) secret.tail = true;
+  if (node.wrap !== undefined && node.wrap !== true) fail("idle.frame.secret.wrap", "must be true when named");
+  if (node.wrap === true) secret.wrap = true;
   if (node.mask !== undefined) {
     const mask = object(node.mask, "idle.frame.secret.mask");
     const glyph = text(field(mask, "glyph", "idle.frame.secret.mask"), "idle.frame.secret.mask.glyph");
@@ -1626,7 +1643,16 @@ export function parseProfile(raw: JsonValue): Profile {
     idleNode.overlayRows === undefined
       ? undefined
       : list(idleNode.overlayRows, "idle.overlayRows").map((item, i) => pattern(item, `idle.overlayRows[${String(i)}]`).source);
-  const withOverlay0: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  const withOverlayRows: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  const signInRows =
+    idleNode.signInRows === undefined
+      ? undefined
+      : list(idleNode.signInRows, "idle.signInRows").map((item, i) => {
+          const row = pattern(item, `idle.signInRows[${String(i)}]`);
+          if (row.test("")) fail(`idle.signInRows[${String(i)}]`, "must not match a blank row");
+          return row.source;
+        });
+  const withOverlay0: Profile["idle"] = signInRows === undefined ? withOverlayRows : { ...withOverlayRows, signInRows };
   const withOverlay: Profile["idle"] =
     idleNode.frameAlternates === undefined
       ? withOverlay0

@@ -114,7 +114,7 @@ export interface Frame {
    * The layout's `secret`: this box is a sign-in field, and what is typed there is a secret
    * (profile.ts {@link FrameLayout.secret}). `mask` says how the field hides it, when it does.
    */
-  readonly secret?: { readonly mask?: SecretMask; readonly tail?: true };
+  readonly secret?: { readonly mask?: SecretMask; readonly tail?: true; readonly wrap?: true };
 }
 
 /** A row under the bottom edge that a named footer row of the profile matches. */
@@ -921,6 +921,9 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   const pieces: DraftPiece[] = [];
   for (let j = secret === undefined ? top + 1 : prompt; j <= last; j++) {
     const piece = j === prompt ? trimmedPiece(j, texts[j]!, holeStart, keptBorder(texts[j]!, promptMatch) ?? holeStart + (hole ?? "").length) : interiorPiece(j, texts[j]!, c.interior.continuation);
+    // A sign-in field that wraps (`secret.wrap`) holds only its own rows under the prompt row: any
+    // other row there is not this screen, and no box is the safe read.
+    if (piece === null && j > prompt && secret?.wrap === true && !isBlank(texts[j]!)) return null;
     if (piece !== null) pieces.push(piece);
   }
   const text = draftText(rows, texts, pieces, c.hint);

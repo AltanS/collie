@@ -6864,6 +6864,96 @@
    "harness": "pi",
    "version": "1.3.0",
    "state": "dialog"
+  },
+  "claude--v2325-first-run-theme--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-theme--w40.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-theme-moved--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-methods--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-methods--w40.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-methods--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-methods-moved2--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-methods-moved3--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-console-methods--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-thirdparty-methods--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-url--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-first-run-url--w40.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-first-run-url--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-first-run-url-typed--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "draft"
+  },
+  "claude--v2325-first-run-url-typed--w40.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "draft"
+  },
+  "claude--v2325-first-run-url-pasted--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "draft"
+  },
+  "claude--v2325-first-run-url-pasted--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "draft"
+  },
+  "claude--v2325-first-run-console-url--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
   }
  },
  "knownMismatches": {

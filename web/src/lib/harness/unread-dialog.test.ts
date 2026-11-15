@@ -254,6 +254,10 @@ const CARD_FIXTURES = {
       // README: `/login` after a refused code (2.1.325), `OAuth error: … Press Enter to retry. Esc to
       // cancel`. No input box and no grammar; the card's Escape is the way back.
       "claude--v2325-login-bad-code--w61.txt",
+      // README: the first run's third-party list (2.1.325), `Using 3rd-party platforms`, no question and
+      // a `Foundry:` row under its options, so the method card declines. The card shows the screen;
+      // Esc does nothing on the first run, so its way out is the digit on the Keys tray.
+      "claude--v2325-first-run-thirdparty-methods--w61.txt",
     ],
     notModals: [
       // corpus, DELIBERATE: a statusline printing numbered rows is refused by ADR 0048 step 4

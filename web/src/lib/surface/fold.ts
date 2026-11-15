@@ -45,6 +45,7 @@
 //
 // Pure: no DOM, no Bun API, no harness name. One log and one context always give one Surface.
 
+import { signInShown } from "./secret-field";
 import { edgeListHolds, readCuesFor, runningSign, type CueRead } from "./cues";
 import { coveredFrame, findInputFrame, frameEdge, overlayInRows, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { LOST_STOP_READS, LOST_STOP_SPAN_MS, SETTLE_MS, type EdgeKind } from "./edges";
@@ -299,7 +300,12 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
 
   const read: Surface = reason === undefined ? { revision: input.revision, turn, modal, composer } : { revision: input.revision, turn, modal, composer, reason };
   // A sign-in field (`idle.frame.secret`) the screen can claim: the phone names it and keeps no draft of it.
-  const surface: Surface = frame?.secret !== undefined && composer !== "unknown" ? { ...read, field: "secret" } : read;
+  // Where no layout read it (a box that is no ordinary one, or none at all), a row the profile names
+  // (`idle.signInRows`) still names it: the read stays as it is, so nothing is offered that was not,
+  // but a code typed for it keeps no draft and no line (fail closed).
+  const claimed = frame?.secret !== undefined && composer !== "unknown";
+  const named = !claimed && idle !== null && (frame === null || frame.secret !== undefined) && signInShown(rows.map(rowText), idle);
+  const surface: Surface = claimed || named ? { ...read, field: "secret" } : read;
   return { surface, frame, cues };
 }
 

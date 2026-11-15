@@ -204,6 +204,13 @@ const NEUTRAL = new Set([
   // `/login` after a refused code (2.1.325): an error and `Press Enter to retry. Esc to cancel`, no
   // grammar. The unread-dialog card carries the way out (unread-dialog.test.ts).
   "claude--v2325-login-bad-code--w61.txt",
+  // The first run's theme step (2.1.325, an empty config folder): an unnumbered list with no footer and
+  // no key named, so no grammar may offer a key (ADR 0009); and the third-party list, which asks no
+  // question and draws a row under its options. Not lifted; the theme step stays as it was.
+  "claude--v2325-first-run-theme--w40.txt",
+  "claude--v2325-first-run-theme--w61.txt",
+  "claude--v2325-first-run-theme-moved--w61.txt",
+  "claude--v2325-first-run-thirdparty-methods--w61.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)
