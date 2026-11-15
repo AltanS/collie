@@ -199,6 +199,11 @@ interface Alert {
   ask?: true;
   /** The program's own words for the ask's push (`durable/ask-push.ts`), cleaned. Only with `ask`. */
   askText?: AskPushText;
+  /**
+   * What a blocked pane waits on, in the agent's own words, read from its journal when the alert fires
+   * (`waiting-words.ts`, `push_words`, ADR 0141), cleaned. Never with `ask`, and only for `blocked`.
+   */
+  said?: AskPushText;
   /** What a push calls this pane — {@link pushName}, the operator's label and never the title. */
   label: string;
   /** Where it sits — `space › tab`, or the space alone. The one place rule, same module. */
@@ -236,6 +241,9 @@ export class NotificationCoordinator<H = unknown> {
     private readonly isNotifiable: (status: AgentStatus) => boolean,
     // Whether each alert is its own notification, read live like `isNotifiable`. Absent: the summary.
     private readonly individual: () => boolean = () => false,
+    // What a blocked pane waits on, in the agent's own words (`waiting-words.ts`), asked when its alert
+    // fires. Absent unless the operator turned `push_words` on (ADR 0141): the push stays generic.
+    private readonly wordsFor?: (paneId: string) => AskPushText | undefined,
   ) {
     this.individualShown = individual();
   }
@@ -276,6 +284,9 @@ export class NotificationCoordinator<H = unknown> {
     }
     const handle = this.clock.schedule(() => {
       this.pending.delete(id);
+      // Asked at fire time, after the debounce: the poll that reads the journal has run by then.
+      const said = alert.status === "blocked" && alert.ask !== true ? this.wordsFor?.(id) : undefined;
+      if (said !== undefined) alert.said = cleanAskText(said);
       this.outstanding.set(id, alert);
       this.emitAlert(id, true);
     }, this.delayMs);
@@ -455,12 +466,18 @@ export class NotificationCoordinator<H = unknown> {
     // The program MAY choose the words (`askText`, already cleaned and cut). Its title goes after the pane's
     // push name, so the push still says where it comes from, and carries no code: those words are not
     // Collie's to translate. Its line replaces the place as the body. Either part alone is used alone.
+    //
+    // With `push_words` on (ADR 0141), a blocked pane that is no ask says what it waits on the same way:
+    // the agent's words after the pane's push name, its line as the body.
     const title: Pick<HerdSummary, "title" | "titleCode" | "titleDetail"> =
       a.ask !== true
-        ? pushTitle(a.status === "blocked" ? "agent.blocked" : "agent.done", { agent: a.agent })
+        ? a.said?.title !== undefined
+          ? { title: `${a.label}: ${a.said.title}` }
+          : pushTitle(a.status === "blocked" ? "agent.blocked" : "agent.done", { agent: a.agent })
         : a.askText?.title !== undefined
           ? { title: `${a.label}: ${a.askText.title}` }
           : pushTitle("ask.permission", { pane: a.label });
+    const line = a.ask === true ? a.askText?.line : a.said?.line;
     return {
       ...title,
       // The PLACE, and nothing else. A push says the same two things the screens say — what it is
@@ -468,7 +485,7 @@ export class NotificationCoordinator<H = unknown> {
       // deep-links to read alike. The cwd is deliberately gone: a full absolute path on a lock
       // screen is the least readable fact Collie has, and the space and tab are what locate the
       // work.
-      body: a.ask === true && a.askText?.line !== undefined ? a.askText.line : a.place,
+      body: line ?? a.place,
       paneId,
       renotify,
       badge: 1,

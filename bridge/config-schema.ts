@@ -190,6 +190,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "notifyDelayMs",
   },
   {
+    key: "push_words",
+    env: "COLLIE_PUSH_WORDS",
+    section: "bridge",
+    kind: "bool",
+    default: false,
+    doc: "Let a push say what a blocked agent waits on, in the agent's own words from its session log.",
+    configField: "pushWords",
+  },
+  {
     key: "task_run_level",
     env: "COLLIE_TASK_RUN_LEVEL",
     section: "bridge",

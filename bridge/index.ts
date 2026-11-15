@@ -242,6 +242,7 @@ import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
 import { SubagentTracker } from "./subagents.ts";
 import { TodoTracker } from "./todos.ts";
+import { WaitingWords } from "./waiting-words.ts";
 import { diskUsageFiles, usageDir, UsageTracker } from "./usage.ts";
 import { AccountWindows, defaultAccountSources, diskCredentialSeams, isTurnEnd } from "./account-windows.ts";
 import {
@@ -1977,12 +1978,17 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const sink = makeNotifySink(push, herdPushGate(crew.mode, snooze), herdTagFor(isPrimary, name), {
     session: isPrimary ? undefined : name,
   });
+  // With `push_words` on, what each blocked pane waits on, read from its journal on the poll, so its push
+  // can say it (waiting-words.ts, ADR 0141). Off, or with transcripts off, the push stays generic.
+  const waiting = cfg.pushWords && journals !== null ? new WaitingWords(journals) : null;
+  if (waiting !== null) engine.onUpdate((s) => void waiting.refresh(s.agents));
   const notifications = new NotificationCoordinator(
     clock,
     sink,
     cfg.notifyDelayMs,
     (status) => notifyPrefs.isNotifiable(status),
     () => notifyPrefs.current().individual,
+    waiting === null ? undefined : (paneId) => waiting.get(paneId),
   );
   // A pane whose adapter raises asks as data (ADR 0100) does not push on its way into `blocked`: the
   // ask guard decides, once per ask, after each poll. Every other pane, and every other transition,

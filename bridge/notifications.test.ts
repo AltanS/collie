@@ -339,6 +339,65 @@ describe("an ask's push words (durable/ask-push.ts)", () => {
   });
 });
 
+describe("what a blocked pane waits on, in the agent's words (push_words, ADR 0141)", () => {
+  function setupWords(words: Record<string, { title?: string; line?: string }>) {
+    const clock = new FakeClock();
+    const sink = new RecordingSink();
+    const asked: string[] = [];
+    const coord = new NotificationCoordinator(clock, sink, 30_000, (s) => s === "blocked" || s === "done", () => false, (paneId) => {
+      asked.push(paneId);
+      return words[paneId];
+    });
+    return { clock, sink, coord, asked };
+  }
+  const named = (paneId: string, status: AgentStatus) => agentNamed(paneId, "claude", status, { paneLabel: "api" });
+
+  test("the words follow the pane's push name and carry no code; the line is the body", () => {
+    const { clock, sink, coord } = setupWords({ p1: { title: "Run the database migrations", line: "bun run db:migrate" } });
+    coord.onTransition(named("p1", "blocked"), "working", "blocked");
+    clock.fireAll();
+    expect(sink.last).toMatchObject({ title: "api: Run the database migrations", body: "bun run db:migrate" });
+    expect(sink.last?.titleCode).toBeUndefined();
+  });
+
+  test("they are asked for when the alert fires, after the debounce, not when the pane turns blocked", () => {
+    const { clock, coord, asked } = setupWords({});
+    coord.onTransition(named("p1", "blocked"), "working", "blocked");
+    expect(asked).toEqual([]);
+    clock.fireAll();
+    expect(asked).toEqual(["p1"]);
+  });
+
+  test("a title alone keeps the place as the body; no words keep the generic push", () => {
+    const { clock, sink, coord } = setupWords({ p1: { title: "Which branch should I deploy?" } });
+    coord.onTransition(named("p1", "blocked"), "working", "blocked");
+    clock.fireAll();
+    expect(sink.last).toMatchObject({ title: "api: Which branch should I deploy?", body: "demo" });
+    const other = setupWords({});
+    other.coord.onTransition(named("p2", "blocked"), "working", "blocked");
+    other.clock.fireAll();
+    expect(other.sink.last).toMatchObject({ title: "claude needs you", titleCode: "agent.blocked", body: "demo" });
+  });
+
+  test("a finished pane, an ask and a digest are not asked and do not change", () => {
+    const { clock, sink, coord, asked } = setupWords({ p1: { title: "ignored" }, p2: { title: "ignored" } });
+    coord.onTransition(named("p1", "working"), "working", "done");
+    clock.fireAll();
+    expect(sink.last?.title).toBe("claude is done");
+    coord.onTransition(agentNamed("p2", "durable", "blocked", { paneLabel: "Triage" }), "working", "blocked", "ask");
+    clock.fireAll();
+    expect(asked).toEqual([]);
+    expect(sink.last?.titleCode).toBe("herd.mixed");
+  });
+
+  test("control and direction characters are stripped from the words", () => {
+    const { clock, sink, coord } = setupWords({ p1: { title: "Run‮ it\u0007", line: "a\u0000b" } });
+    coord.onTransition(named("p1", "blocked"), "working", "blocked");
+    clock.fireAll();
+    expect(sink.last).toMatchObject({ title: "api: Run it", body: "ab" });
+  });
+});
+
 describe("NotificationCoordinator — multi-agent digest labels (#215)", () => {
   test("several panes of the SAME agent kind are told apart by their pane label", () => {
     const { clock, sink, coord } = setup();

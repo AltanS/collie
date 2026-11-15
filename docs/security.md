@@ -581,6 +581,13 @@ strips control and direction characters from it and cuts it to 80 characters. Wi
 on, Collie masks it in the app and in the push, as it masks the terminal title. With the mask off, a
 push can show that title on your lock screen and send it through the browser's push service.
 
+A push for a pane that waits on you says nothing of what it waits on, unless you set
+`COLLIE_PUSH_WORDS=on`. Then it also carries the agent's words for the call it stopped on, read from
+its session log: the command it wants to run and its description, or the question it asked and its
+options. Collie cuts them to one line of 60 characters and one of 120, strips control and direction
+characters, and masks them with `COLLIE_REDACT` on. They still reach your lock screen and the
+browser's push service, which is why the setting is off by default.
+
 Collie keeps the last names of up to 512 sessions in `session-titles.json` in its state folder, with
 owner-only access, so a name stays after a restart. With `COLLIE_REDACT` on, it keeps only the name you
 set there, never the agent's title.
