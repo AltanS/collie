@@ -734,7 +734,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   }
   if (wrappedLines > 0) {
     deps.io.out(`  statusLine → \`${binary} beacon statusline\`: your own command still runs and prints exactly as before.`);
-    deps.io.out("  The wrapper passes on the context window's size and the 5h and 7d limits, so the phone shows the context in percent.");
+    deps.io.out("  The wrapper passes on the context window's size and the usage limits the agent reports, so the phone shows the context in percent.");
     deps.io.out(`  To undo it: \`collie hooks install claude ${NO_STATUSLINE_FLAG}\`.`);
   } else if (!wrapsStatusLine()) {
     deps.io.out("  statusLine not wrapped on Windows, so the phone shows the context as a token count.");
