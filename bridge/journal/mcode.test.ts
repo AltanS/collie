@@ -180,7 +180,8 @@ describe("McodeTranscriptSource", () => {
     const src = new McodeTranscriptSource(root);
     const resolved = await src.resolve({ kind: "id", value: SID });
     expect(resolved).toMatch(/messages\.jsonl$/);
-    expect(resolved).toContain("2026/11/03");
+    // The segments join with the host separator, so spell the expectation the same way.
+    expect(resolved).toContain(join("2026", "11", "03"));
     expect(await src.resolve({ kind: "id", value: OTHER })).toBeNull();
     expect(await src.resolve({ kind: "id", value: "../escape" })).toBeNull();
     expect(await src.resolve({ kind: "path", value: "/etc/passwd" })).toBeNull();
@@ -228,7 +229,9 @@ describe("McodeTranscriptSource", () => {
     const lsof = spyOn(cp, "execFile").mockImplementation(
       // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
       ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
-        const log = join(root, "2026", "11", "03", `12-00-00-000-session_${Buffer.from(SID).toString("base64url")}`, "messages.jsonl");
+        // `lsof` is a POSIX tool and prints POSIX spellings, so the mock answers with `/` paths
+        // even on Windows — the production regexes match what lsof itself would print.
+        const log = [root, "2026", "11", "03", `12-00-00-000-session_${Buffer.from(SID).toString("base64url")}`, "messages.jsonl"].join("/");
         const observability = `/Users/x/.minimax/v2/observability/logs/sessions/${OTHER}/events.jsonl`;
         cb(null, { stdout: ["p10", "f3", `n${log}`, `n${observability}`].join("\n") });
         // SAFETY: test mock casting
