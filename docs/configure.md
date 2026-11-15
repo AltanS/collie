@@ -670,10 +670,12 @@ one of two kinds:
 | Claude Code | `CLAUDE_CONFIG_DIR` | Shared, Own |
 | Codex | `CODEX_HOME` | Own |
 | pi | `PI_CODING_AGENT_DIR` | Own |
+| Grok | `GROK_HOME` | Own |
 
 To sign in, start a session with the new account. The agent shows its own sign-in in the pane:
 Claude Code asks for a theme and then the login method, Codex offers a browser sign-in or a device
-code, and pi says to run `/login`. Some sign-ins need a browser on that machine.
+code, pi says to run `/login`, and Grok shows a code to approve in a browser. Some sign-ins need a
+browser on that machine.
 
 The New page lets you pick the account for an agent and for a row you built from its options. A row
 you wrote by hand starts as you wrote it. A Claude Code session started from a desktop terminal with

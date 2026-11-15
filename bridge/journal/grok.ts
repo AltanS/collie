@@ -50,7 +50,7 @@ import {
   rememberPending,
   type RowReducer,
 } from "./reduce.ts";
-import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { containedRealpath, exists, loadTail, readSinceFile, rootReader, statFile, type RootSource } from "./files.ts";
 import { MAX_OPEN_FILES_PIDS, openFiles as defaultOpenFiles, type OpenFiles } from "./open-files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -447,14 +447,19 @@ export class GrokTranscriptSource implements TranscriptSource {
   // an outward link after the first resolve would otherwise be served. CLAUDE.md requires every
   // path — including one we already accepted — to go through containedRealpath on the real paths.
   private readonly pathCache = new Map<string, { path: string; root: string }>();
-  private readonly roots: string[];
+  private readonly rootsNow: () => string[];
+
+  /** The roots now: fixed, or the live list an added account joins (M101). */
+  private get roots(): string[] {
+    return this.rootsNow();
+  }
 
   constructor(
-    roots: string | readonly string[],
+    roots: RootSource,
     private readonly isAlive: (pid: number) => boolean = processAlive,
     private readonly openFiles: OpenFiles = defaultOpenFiles,
   ) {
-    this.roots = rootList(roots);
+    this.rootsNow = rootReader(roots);
   }
 
   /**
@@ -582,7 +587,7 @@ export class GrokTranscriptSource implements TranscriptSource {
   }
 }
 
-export function grokJournal(roots: string | readonly string[]): JournalAdapter {
+export function grokJournal(roots: RootSource): JournalAdapter {
   const source = new GrokTranscriptSource(roots);
   return {
     agent: "grok",

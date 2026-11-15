@@ -102,6 +102,20 @@ export const ACCOUNT_ADAPTERS = {
     // bridge/config.ts: `join(PI_CODING_AGENT_DIR, "sessions")`.
     journalRoot: (dir) => join(dir, "sessions"),
   },
+  grok: {
+    // Lab check on Grok Build 1.0.77 (2026-11-15), scratch HOME, empty `GROK_HOME`, no login: the first
+    // start wrote `agent_id`, `config.toml`, `sessions/`, `installed-plugins/`, `logs/`, `docs/` and
+    // its lock files under `GROK_HOME` only, nothing under `~/.grok`, and looks for its login at
+    // `$GROK_HOME/auth.json`. The plain start shows the device sign-in screen.
+    select: { env: "GROK_HOME" },
+    defaultDir: (home, env) => envDir(env, "GROK_HOME") ?? join(home, ".grok"),
+    newDirName: (slug) => `.grok-${slug}`,
+    newFolder: "~/.grok-{slug}",
+    looksLike: (entries) => hasAny(entries, ["agent_id", "installed-plugins", "config.toml", "sessions"]),
+    nameGlobs: ["~/.grok-*"],
+    // bridge/config.ts: `join(GROK_HOME ?? ~/.grok, "sessions")`.
+    journalRoot: (dir) => join(dir, "sessions"),
+  },
 } as const satisfies Readonly<Record<string, AccountAdapter>>;
 
 /** The adapter of `harness`, or undefined for an agent that takes no account. Own keys only. */

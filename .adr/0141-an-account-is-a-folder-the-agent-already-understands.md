@@ -5,7 +5,8 @@
 - **Shipped in:** pending
 - **Trail:** M101 "Accounts", README decisions 1 to 18 · lab on Claude Code 2.1.325, 2026-11-15 (the
   state file, the settings writer's link handling, `history.jsonl`, the sign-in screen on an empty
-  folder) · lab on Codex 0.169.0 and pi 1.3.0, 2026-11-15 (the variable moves the whole state) ·
+  folder) · lab on Codex 0.169.0 and pi 1.3.0, 2026-11-15 (the variable moves the whole state) · lab on
+  Grok Build 1.0.77, 2026-11-15 (the same) ·
   `bridge/account-adapters.ts` · `bridge/account-folder.ts` · `bridge/account-links.ts` ·
   `bridge/accounts-store.ts` · `bridge/accounts-routes.ts` · docs/configure.md, "Accounts"
 
@@ -18,14 +19,18 @@ so `/resume` saw a different history, and with every other setting copied by han
 
 Every agent Collie starts already has its own way to run under another login: one variable that moves
 its state folder. Claude Code takes `CLAUDE_CONFIG_DIR`, Codex `CODEX_HOME`, pi
-`PI_CODING_AGENT_DIR`. What differs is what lives in that folder. Lab facts for Claude Code 2.1.325:
+`PI_CODING_AGENT_DIR`, Grok `GROK_HOME`. What differs is what lives in that folder. Lab facts for Claude Code 2.1.325:
 with the variable set, the state file is `<dir>/.claude.json` (it also holds project trust, MCP servers
 added with `claude mcp add`, and the theme); the settings writer reads ONE link level and renames onto
 the link's target, so a one-level file link survives and a chain of two breaks; `history.jsonl` is
 appended in place under a lock on the real file. On macOS the Keychain item is keyed on the raw text of
 the variable. On an empty folder, the plain start shows the theme step and then the login method menu,
 and `claude /login` shows the same two screens. Codex 0.169.0 and pi 1.3.0 put everything inside their
-variable's folder and nothing beside it; Codex needs the folder to exist, pi makes it.
+variable's folder and nothing beside it; Codex needs the folder to exist, pi makes it. Grok Build
+1.0.77 does the same: with a scratch `HOME` and an empty `GROK_HOME`, its first start wrote its id,
+`config.toml`, `sessions/`, its plugins, logs and docs under `GROK_HOME` and nothing under `~/.grok`,
+looked for its login in `$GROK_HOME/auth.json`, and showed a device sign-in screen. So Grok joins Codex
+and pi with kind `own`.
 
 ## Decision
 
@@ -88,4 +93,4 @@ variable's folder and nothing beside it; Codex needs the folder to exist, pi mak
 - Project trust, MCP servers added with `claude mcp add`, and the theme stay per account in a shared
   Claude account, because they live in `.claude.json`.
 - Revisit when an agent ships a profile switch of its own that keeps one history (omp has one today),
-  or when a shared kind for Codex or pi has a lab test behind it.
+  or when a shared kind for Codex, pi or Grok has a lab test behind it.

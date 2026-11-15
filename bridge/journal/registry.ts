@@ -99,7 +99,7 @@ export function buildJournalRegistry(
     codexJournal(live("codex", roots.codex)),
     piJournal(live("pi", roots.pi)),
     opencodeJournal(roots.opencode, catalogs.opencode),
-    grokJournal(roots.grok),
+    grokJournal(live("grok", roots.grok)),
     hermesJournal(roots.hermes),
     kiroJournal(roots.kiro),
     museJournal(roots.muse),
