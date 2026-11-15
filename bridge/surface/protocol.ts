@@ -3355,8 +3355,9 @@ export class SendProtocol {
     if (request.view !== undefined && waiting.length > 0) return this.settle(this.bareState(request, accepted.record, target, null), new Ended("refused", "busy", { detail: VIEW_BEHIND_HELD }));
     const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.draftHolds === true && entry.cause === "draft_present");
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
-    // which wait for that turn to end anyway.
-    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer";
+    // which wait for that turn to end anyway. Nor does a sign-in code (`secret`): a held text waits on
+    // disk in plain form, and the code is for the field on screen now, not for a later turn.
+    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer" && request.secret !== true;
     const match = joins ? ((await this.deps.profile(target.harness, target.paneId)) ?? (await this.heldPlainProfile(request, waiting, target.paneId, generation))) : null;
     if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, accepted.record, target, match);
@@ -5000,7 +5001,8 @@ export class SendProtocol {
       }
     }
     // A sign-in field the phone did not name: the text is a secret all the same, so its record keeps no line.
-    if (s0.frame?.secret !== undefined) {
+    // So is a screen that names one (`field: "secret"`) where no layout read the field (fail closed).
+    if (s0.frame?.secret !== undefined || s0.surface.field === "secret") {
       state.secretField = true;
       if (state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
     }

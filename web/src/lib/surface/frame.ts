@@ -114,7 +114,7 @@ export interface Frame {
    * The layout's `secret`: this box is a sign-in field, and what is typed there is a secret
    * (profile.ts {@link FrameLayout.secret}). `mask` says how the field hides it, when it does.
    */
-  readonly secret?: { readonly mask?: SecretMask; readonly tail?: true };
+  readonly secret?: { readonly mask?: SecretMask; readonly tail?: true; readonly wrap?: true };
 }
 
 /** A row under the bottom edge that a named footer row of the profile matches. */
@@ -921,6 +921,9 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   const pieces: DraftPiece[] = [];
   for (let j = secret === undefined ? top + 1 : prompt; j <= last; j++) {
     const piece = j === prompt ? trimmedPiece(j, texts[j]!, holeStart, keptBorder(texts[j]!, promptMatch) ?? holeStart + (hole ?? "").length) : interiorPiece(j, texts[j]!, c.interior.continuation);
+    // A sign-in field that wraps (`secret.wrap`) holds only its own rows under the prompt row: any
+    // other row there is not this screen, and no box is the safe read.
+    if (piece === null && j > prompt && secret?.wrap === true && !isBlank(texts[j]!)) return null;
     if (piece !== null) pieces.push(piece);
   }
   const text = draftText(rows, texts, pieces, c.hint);
@@ -953,6 +956,26 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   const hinted = hint === null ? frame : { ...frame, hint };
   // The layout's own prompt glyph (`ownPrompt`): only on a box whose every row the profile's `rows` named.
   return idle.frame.ownPrompt === true && c.interior.rows !== null ? { ...hinted, ownPrompt: { row: prompt, end: holeStart } } : hinted;
+}
+
+const compiledDialogRows = new WeakMap<IdleProfile, readonly RegExp[]>();
+
+/**
+ * Whether a row of the screen matches one of the profile's `idle.dialogRows`: a dialog Collie does not
+ * read holds the keys. The caller asks only of a screen with no box. False for a profile with none.
+ */
+export function dialogRowShown(rows: readonly FrameRow[], idle: IdleProfile): boolean {
+  const sources = idle.dialogRows;
+  if (sources === undefined || sources.length === 0) return false;
+  let patterns = compiledDialogRows.get(idle);
+  if (patterns === undefined) {
+    patterns = sources.map((source) => new RegExp(source, "u"));
+    compiledDialogRows.set(idle, patterns);
+  }
+  return rows.some((row) => {
+    const text = rowText(row).trim();
+    return text.length > 0 && patterns.some((pattern) => pattern.test(text));
+  });
 }
 
 const compiledOverlays = new WeakMap<IdleProfile, readonly RegExp[]>();

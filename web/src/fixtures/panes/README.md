@@ -4083,3 +4083,48 @@ targets that carried them too are gone), and the home folder is `/home/demo/user
 | `omp--v18-6-1-login-providers--w61.txt` | `Select provider to login` | raw (not lifted) |
 | `omp--v18-6-1-login-url--w61.txt` | `╭─ Login to Anthropic (Claude Pro/Max) ─╮`, the address, the local shortcut, `│ > ` | sign-in card titled by the box; field secret |
 | `omp--v18-6-1-login-url-typed--w61.txt` | A code typed, shown as typed | field secret, draft |
+
+## The first run's sign-in screens (captured 2026-11-15, Claude Code 2.1.325, 40, 61 and 120 columns)
+
+Claude Code started with an EMPTY config folder shows its onboarding instead of `/login`: the theme step,
+then the same method lists and the same code field, with no rule, no `Login` title and no `Esc to cancel`
+(Esc does nothing on any of these screens). Captured in a scratch tmux server (`tmux -L first-run-lab -f
+/dev/null`, 40 rows) with an empty `CLAUDE_CONFIG_DIR`, a scratch `HOME` and `BROWSER` set to a script
+that only logs that it was called (Claude Code calls it once per address). No login was completed: every
+code typed is made up (`FAKE…`) and none was submitted. Privacy: every `state` and `code_challenge` value
+is `X` of the same length, and the OSC 8 link targets are gone. Not captured, because they need a
+finished login: the screens after sign-in (security notes, terminal setup, folder trust). Read by
+`lib/surface/sign-in.test.ts` and `bridge/surface/protocol.sign-in.test.ts`.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--v2325-first-run-theme--w61.txt` | `Let's get started.`, `Choose the text style…`, seven unnumbered rows, `❯ ✔ Dark mode`, a diff preview, no footer | modal unreadable, the unread-dialog card: no grammar offers a key (no key printed, ADR 0009), and the profile's `idle.dialogRows` names `Let's get started.` |
+| `claude--v2325-first-run-theme--w40.txt` | The same at 40 columns, no art | the unread-dialog card |
+| `claude--v2325-first-run-theme-moved--w61.txt` | After one `Down`: `❯` on `Light mode`, the preview recoloured | the unread-dialog card |
+| `claude--v2325-first-run-methods--w61.txt` | Under the art, `Select login method:`, three rows, nothing under them | prompt-select, digit keys, no caption (login-methods.ts) |
+| `claude--v2325-first-run-methods--w40.txt` | The same at 40 columns: `Welcome to Claude Code v2.1.325` and no art | prompt-select |
+| `claude--v2325-first-run-methods--w120.txt` | The same at 120 columns | prompt-select |
+| `claude--v2325-first-run-methods-moved2--w61.txt` | `❯` on option 2 | prompt-select, the same options |
+| `claude--v2325-first-run-methods-moved3--w61.txt` | `❯` on option 3 | prompt-select, the same options |
+| `claude--v2325-first-run-console-methods--w61.txt` | After `2`: `Anthropic Console account`, `How do you want to sign in?`, Go back | prompt-select |
+| `claude--v2325-first-run-thirdparty-methods--w61.txt` | After `3`: `Using 3rd-party platforms`, four rows, a `Foundry:` row under them | the unread-dialog card (no question) |
+| `claude--v2325-first-run-url--w61.txt` | After `1`: the address from column 0, ` Paste code here if prompted >` from column 1 | box-text sign-in card; field secret, empty |
+| `claude--v2325-first-run-url--w40.txt` | The same at 40 columns, the address on thirteen rows | sign-in card; field secret |
+| `claude--v2325-first-run-url--w120.txt` | The same at 120 columns | sign-in card; field secret |
+| `claude--v2325-first-run-console-url--w61.txt` | The Console address after `2`, `1` | sign-in card; field secret |
+| `claude--v2325-first-run-url-typed--w61.txt` | 21 characters typed: `***************ESTATE` | field secret, draft |
+| `claude--v2325-first-run-url-typed--w40.txt` | The same 21 at 40 columns: `********`, `********`, `STATE` (the last row shows at most its own characters clear) | field secret, draft wrapped |
+| `claude--v2325-first-run-url-pasted--w61.txt` | 99 characters: three rows of 29 `*`, then `******ateEND`, 31 columns in, never cut | field secret, draft wrapped |
+| `claude--v2325-first-run-url-pasted--w120.txt` | 132 characters at 120 columns, two rows | field secret, draft wrapped |
+
+### `/theme` in an onboarded session (captured 2026-11-15, Claude Code 2.1.325, 40 and 61 columns)
+
+The negative of the first-run theme step: the same list, opened with `/theme` in a scratch config folder
+marked onboarded and not signed in, in the same scratch tmux server. A `Theme` title, `Enter to select ·
+Esc to cancel`, no `Let's get started.`. The working folder in the header is renamed to a sample path.
+Read by `lib/surface/sign-in.test.ts`.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--v2325-theme-command--w61.txt` | `❯ /theme` in the chat, the theme list under it, `❯ ✔ Dark mode`, the footer | modal unreadable, the unread-dialog card (as before `idle.dialogRows`) |
+| `claude--v2325-theme-command--w40.txt` | The same at 40 columns | the unread-dialog card |

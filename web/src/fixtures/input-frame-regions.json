@@ -2485,6 +2485,150 @@
   }
  },
  {
+  "fixture": "claude--v2325-first-run-console-methods--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-console-url--w61.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 28,
+   "bottom": 28,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-methods--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-methods--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-methods--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-methods-moved2--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-methods-moved3--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-theme--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-theme--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-theme-moved--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-thirdparty-methods--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-url--w120.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 26,
+   "bottom": 26,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url--w40.txt",
+  "frame": {
+   "top": 0,
+   "prompt": 20,
+   "bottom": 20,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url--w61.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 31,
+   "bottom": 31,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url-pasted--w120.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 26,
+   "bottom": 27,
+   "label": null,
+   "text": "**************************************************************************************** **************************************#state",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url-pasted--w61.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 31,
+   "bottom": 34,
+   "label": null,
+   "text": "***************************** ***************************** ***************************** ******ateEND",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url-typed--w40.txt",
+  "frame": {
+   "top": 0,
+   "prompt": 20,
+   "bottom": 22,
+   "label": null,
+   "text": "******** ******** STATE",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url-typed--w61.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 31,
+   "bottom": 31,
+   "label": null,
+   "text": "***************ESTATE",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2325-login-bad-code--w61.txt",
   "frame": null
  },
@@ -2560,6 +2704,14 @@
    "status": null,
    "footer": null
   }
+ },
+ {
+  "fixture": "claude--v2325-theme-command--w40.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-theme-command--w61.txt",
+  "frame": null
  },
  {
   "fixture": "claude--wizard-multiselect-checked.txt",

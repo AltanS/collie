@@ -322,7 +322,10 @@ function perturbations(rows: readonly StyledLine[], frame: Frame): Perturbation[
     { name: "box moved down one row", rows: at(frame.top, blankRow()), mustFind: true },
     { name: "a blank row under the box", rows: at(frame.bottom + 1, blankRow()), mustFind: true },
     { name: "top edge dropped", rows: without(frame.top), mustFind: false },
-    { name: "bottom edge dropped", rows: without(frame.bottom), mustFind: false },
+    // A sign-in field that wraps (`secret.wrap`, Claude Code's first run) is open: its last row is its
+    // last row of text, so a read without it shows a shorter mask. Left out here; the Send Protocol
+    // counts the mask's characters (secret-field.ts), so such a read never passes for the typed text.
+    ...(frame.secret?.wrap === true && frame.bottom > frame.interior.prompt ? [] : [{ name: "bottom edge dropped", rows: without(frame.bottom), mustFind: false }]),
     // Claude's `/login` sign-in field (`secret`) runs to the end of the screen: Claude draws nothing
     // under its `Esc to cancel`, so a row there is not its screen and losing the field is the safe read.
     { name: "one more status row", rows: at(frame.bottom + 1, styled(plainRun("  one more status row"))), mustFind: frame.secret === undefined },
@@ -376,6 +379,8 @@ describe("perturbed fixtures", () => {
       const rows = fixtureRows(fixture);
       const dropped = [...rows.slice(0, pinned.bottom), ...rows.slice(pinned.bottom + 1)];
       const result = findInputFrame(dropped, IDLE);
+      // A wrapping sign-in field's last row is text, not an edge (see `perturbations`).
+      if (result?.secret?.wrap === true) continue;
       if (result !== null) expect(squash(result.interior.text), fixture).toBe(squash(pinned.text));
     }
   });

@@ -1,0 +1,40 @@
+[38;5;174mWelcome[39m [38;5;174mto[39m [38;5;174mClaude[39m [38;5;174mCode[39m [38;5;246mv2.1.325[39m
+
+ [38;5;246mBrowser didn't open? Use the [39m [38;5;246m(c to [39m
+ [38;5;246murl[39m [38;5;246mbelow[39m [38;5;246mto[39m [38;5;246msign[39m [38;5;246min[39m          [38;5;246mcopy)[39m
+
+[38;5;246mhttps://claude.com/cai/oauth/authorize?c
+ode=true&client_id=9d1c250a-e61b-44d9-88
+ed-5944d1962f5e&response_type=code&redir
+ect_uri=https%3A%2F%2Fplatform.claude.co
+m%2Foauth%2Fcode%2Fcallback&scope=org%3A
+create_api_key+user%3Aprofile+user%3Ainf
+erence+user%3Asessions%3Aclaude_code+use
+r%3Amcp_servers+user%3Afile_upload+user%
+3Aplugins+user%3Aprivacy_consents%3Awrit
+e&code_challenge=XXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXXXXX&code_challenge_meth
+od=S256&state=XXXXXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXX[39m
+
+
+ Paste code here if prompted > ********
+                               ********
+                               STATE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

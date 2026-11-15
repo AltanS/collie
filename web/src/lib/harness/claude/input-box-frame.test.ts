@@ -56,13 +56,23 @@ function claimedByADialog(lines: StyledLine[]): boolean {
   );
 }
 
-/** Claude Code 2.1.325's `/login` sign-in field, empty, typed and pasted (fixtures README). */
+/** Claude Code 2.1.325's sign-in field, `/login` and the first run, empty, typed and pasted (fixtures README). */
 const SIGN_IN = [
   "claude--v2325-login-console-url--w61.txt",
   "claude--v2325-login-console-url-pasted--w61.txt",
   "claude--v2325-login-url--w61.txt",
   "claude--v2325-login-url-typed--w120.txt",
   "claude--v2325-login-url-typed--w61.txt",
+  // The first run (an empty config folder): the same field with no rule, no title and no footer,
+  // a long text wrapped under its label (profiles/claude.json, `secret.wrap`).
+  "claude--v2325-first-run-console-url--w61.txt",
+  "claude--v2325-first-run-url--w120.txt",
+  "claude--v2325-first-run-url--w40.txt",
+  "claude--v2325-first-run-url--w61.txt",
+  "claude--v2325-first-run-url-pasted--w120.txt",
+  "claude--v2325-first-run-url-pasted--w61.txt",
+  "claude--v2325-first-run-url-typed--w40.txt",
+  "claude--v2325-first-run-url-typed--w61.txt",
 ];
 
 describe("parity with the old walk on the real corpus", () => {
@@ -485,8 +495,9 @@ describe("invariant: rows appended below a box never change the box or its draft
     }
   });
 
-  // The other class, also by design: the `/login` sign-in field runs to the end of the screen, since
-  // Claude draws nothing under its `Esc to cancel`. A row under it is not that screen, and no box is the safe read.
+  // The other class, also by design: the sign-in field runs to the end of the screen, since Claude draws
+  // nothing under its `Esc to cancel` (`/login`) or its field (the first run). A row under it is not that
+  // screen, and no box is the safe read.
   it.each(SIGN_IN)("%s: a row under the sign-in field leaves no box", (name) => {
     const base = textRows(load(name));
     expect(hasInputBox(fromTexts(base))).toBe(true);

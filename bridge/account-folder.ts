@@ -134,8 +134,13 @@ export async function checkFolder(input: FolderRuleInput): Promise<FolderRule> {
   return { ok: true, dir, exists };
 }
 
-/** One shell word, single-quoted. Only for a folder {@link parseFolderPath} passed: it holds no `'`. */
+/**
+ * One shell word, single-quoted. Only for a folder {@link parseFolderPath} passed: it holds no `'`.
+ * Throws on one all the same, so a folder that reached here another way can never close the quote
+ * and type a command of its own.
+ */
 export function quoteFolder(dir: string): string {
+  if (dir.includes("'")) throw new Error("a folder with a ' cannot be quoted as one shell word");
   return `'${dir}'`;
 }
 

@@ -25,6 +25,7 @@ import { detectAuthBox } from "./auth-box";
 import { detectLoginMethodsRegion } from "./login-methods";
 import { detectSignInCard } from "../sign-in-card";
 import { CLAUDE_IDLE } from "./markers";
+import { dialogRowShown } from "../../surface/frame";
 import {
   stripChrome,
   extractStatusLines,
@@ -314,7 +315,9 @@ export const claudeAdapter: HarnessAdapter = {
   // cancel", "Esc to close", "enter to return", "Enter to select" (the allow-list in
   // unread-dialog.test.ts), and a missed select still shows its `❯ N.` pointer. The shell prompt
   // under a starting or exiting Claude shows none of these.
-  modalOnScreen: tailNamesAKey,
+  // The first-run theme step names no key at all; its own words, named in the profile
+  // (`idle.dialogRows`), say a dialog holds the keys.
+  modalOnScreen: (lines) => tailNamesAKey(lines) || dialogRowShown(lines, CLAUDE_IDLE),
   dialogDetectors: CLAUDE_DIALOG_DETECTORS,
   // Long sends never appear in the box as themselves — Claude collapses them into `[Pasted text #N
   // +M lines]` — so the reply guard's literal match can't verify them and the send stalls. These two
