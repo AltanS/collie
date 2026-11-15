@@ -32,6 +32,7 @@ import {
   SettingsCharacterRoute,
   SettingsInstallCountRoute,
 } from "@/routes/settings-sections";
+import { SettingsAccountAddRoute, SettingsAccountRoute, SettingsAccountsRoute } from "@/routes/settings-accounts";
 import { CrewRoute } from "@/routes/crew";
 import { MachineRoute } from "@/routes/machine";
 import { MachinesRoute } from "@/routes/machines";
@@ -130,6 +131,12 @@ export const router = createBrowserRouter([
       // One level below Appearance, like Voice's two pages: which character the header draws.
       { path: "settings/appearance/character", element: <SettingsCharacterRoute /> },
       { path: "settings/harnesses", element: <SettingsHarnessesRoute /> },
+      // Accounts (M101): a second login for an agent. The list, the Add form and one account's page. The row in
+      // the index is offered only while GET /api/accounts answers 200; the pages are routable always and
+      // say so when the machine offers none.
+      { path: "settings/accounts", element: <SettingsAccountsRoute /> },
+      { path: "settings/accounts/add", element: <SettingsAccountAddRoute /> },
+      { path: "settings/accounts/:id", element: <SettingsAccountRoute /> },
       { path: "settings/device", element: <SettingsDeviceRoute /> },
       { path: "settings/voice", element: <SettingsVoiceRoute /> },
       // Two pages below Voice: the host's option for every device, and the Whistle model's copies.

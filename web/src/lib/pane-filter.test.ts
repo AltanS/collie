@@ -74,6 +74,18 @@ const hitOf = (p: AgentView, query: string, opts: Partial<MatchPaneOptions> = {}
   matchPane(paneFields(p, { servers: SERVERS }), queryTerms(query), { ...OPTS, ...opts });
 
 describe("paneFields", () => {
+  it("reads the label of an added account, and nothing for a session without one", () => {
+    expect(paneFields({ ...HERDR, account: { id: "a1", label: "Work" } }).account).toBe("Work");
+    expect(paneFields(HERDR).account).toBe("");
+  });
+
+  it("finds a session by its account label, and a row without an account never matches it", () => {
+    const withAccount = { ...HERDR, account: { id: "a1", label: "Work" } };
+    const options = { level: "anchored", drawn: new Set<PaneField>(["name", "space", "tab", "account"]), hidden: "second-line" } as const;
+    expect(matchPane(paneFields(withAccount), queryTerms("work"), options)).not.toBeNull();
+    expect(matchPane(paneFields(HERDR), queryTerms("work"), { ...options, hidden: "drawn-only" })).toBeNull();
+  });
+
   it("reads a Herdr row through the helpers the rows draw with", () => {
     expect(paneFields(HERDR)).toEqual({
       name: "release notes",
@@ -83,6 +95,7 @@ describe("paneFields", () => {
       folder: "collie-workspace",
       agent: "claude",
       machine: "",
+      account: "",
     });
   });
 

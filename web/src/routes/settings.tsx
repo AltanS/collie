@@ -9,6 +9,7 @@ import { SettingsNavRow } from "@/components/settings-nav-row";
 import { InstallControl } from "@/components/install-control";
 import { useTricksPresent } from "@/components/tricks-settings-card";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
+import { addedCount, useAccounts } from "@/lib/accounts";
 import { hasExperiments } from "@/lib/experiments";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
@@ -137,10 +138,28 @@ const TRICKS_ROW: Row = {
   blurb: "settings.section.tricks.blurb",
 };
 
-function rows(withTricks: boolean): Row[] {
-  if (!withTricks) return ROWS;
-  const at = ROWS.findIndex((row) => row.id === "experiments");
-  return at === -1 ? [...ROWS, TRICKS_ROW] : [...ROWS.slice(0, at), TRICKS_ROW, ...ROWS.slice(at)];
+// Accounts (M101) sits right after Agents: it is about the logins of those agents. Like Tricks, it is
+// offered only when it has something to say: GET /api/accounts answers 200. Its caption is live (how many
+// accounts were added), so the row carries no fixed blurb key and the list below words it.
+const ACCOUNTS_ROW: Row = {
+  id: "accounts",
+  to: (scope) => settingsSectionPath("accounts", scope),
+  icon: "mod-icon-user",
+  title: "accounts.title",
+  blurb: "accounts.row.none",
+};
+
+function rows(withTricks: boolean, withAccounts: boolean): Row[] {
+  const base = withAccounts ? withRow(ROWS, ACCOUNTS_ROW, "harnesses") : ROWS;
+  if (!withTricks) return base;
+  const at = base.findIndex((row) => row.id === "experiments");
+  return at === -1 ? [...base, TRICKS_ROW] : [...base.slice(0, at), TRICKS_ROW, ...base.slice(at)];
+}
+
+/** `list` with `row` right after the row named `after`, or last when there is none. */
+function withRow(list: Row[], row: Row, after: string): Row[] {
+  const at = list.findIndex((r) => r.id === after);
+  return at === -1 ? [...list, row] : [...list.slice(0, at + 1), row, ...list.slice(at + 1)];
 }
 
 export function SettingsRoute() {
@@ -149,6 +168,9 @@ export function SettingsRoute() {
   const updates = useUpdatesStatus();
   // Tricks (M94): a row only while the phone holds a tricks reply, so an install without tricks is unchanged.
   const tricks = useTricksPresent();
+  // Accounts (M101): a row only while the machine answers the accounts route, so an older bridge, Windows and an install with no account-capable agent are unchanged.
+  const accounts = useAccounts();
+  const accountsCount = addedCount(accounts.body);
   useLocale();
 
   return (
@@ -206,12 +228,12 @@ export function SettingsRoute() {
               }
               onOpen={() => nav.down(updatesPath(scope))}
             />
-            {rows(tricks).map((row) => (
+            {rows(tricks, accounts.status === "ready").map((row) => (
               <SettingsNavRow
                 key={row.id}
                 icon={row.icon}
                 title={t(row.title)}
-                caption={t(row.blurb)}
+                caption={row.id === "accounts" && accountsCount > 0 ? t("accounts.row.added", { n: accountsCount }) : t(row.blurb)}
                 onOpen={() => nav.down(row.to(scope))}
               />
             ))}

@@ -233,6 +233,13 @@ export interface AgentView {
    */
   usage?: PaneUsage;
   /**
+   * The added account this session runs under (M101), present only for an ADDED account. Mirrors
+   * `PaneWire.account` in bridge/types.ts. **Absent, never a placeholder**: the Default account, a
+   * pane of no account-capable agent, and an older bridge all send no key, and every one of those
+   * renders what it rendered before the field existed.
+   */
+  account?: { id: string; label: string };
+  /**
    * What the checkout holding this pane's folder is on. Mirrors `PaneWire.gitHead` in bridge/types.ts.
    *
    * **Absent, never a placeholder**: a folder in no checkout, a reading the bridge has not taken yet,

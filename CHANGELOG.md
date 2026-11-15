@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Accounts keep a second login for an agent in one list in Settings.** A new Accounts row opens the list of each agent's accounts, with the folders already in use offered for adoption, an Add page, and a page per account that starts the agent's own sign-in. The New page picks an added account for a built-in agent, a session shows its account's label in the pane header and in the switcher, and the filter finds a session by it. Each account shows the usage windows its agent reports. With no added account, or an older machine, every page and request is as before.
+
 ### Fixed
 
 - **A command sent right after you answer a menu is no longer refused while the agent is still catching up.** When the agent prints its queued messages after the answer, the screen keeps moving for a few seconds with no spinner. A command sent then, such as `/login`, now goes in the way a message already did on that screen, on harnesses that take a command during a turn. A command that must never wait, such as `/clear`, is still refused there.

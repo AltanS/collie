@@ -1,0 +1,225 @@
+import { renderHook, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+
+import { body, defaultRow, HARNESS_CLAUDE, HARNESS_CODEX, serveAccounts, serveAccountsStatus, workRow } from "@/test/accounts-fixtures";
+import { server } from "@/test/setup";
+import { addAccount, createWorktreeAt, removeAccount, startLaunch } from "./api";
+import {
+  accountName,
+  addedCount,
+  addedOf,
+  groupAccounts,
+  isHot,
+  nameFromFolder,
+  newFolderFor,
+  rememberStartError,
+  seenLine,
+  slugOf,
+  startLineFor,
+  takeStartError,
+  useAccounts,
+  windowDetail,
+  windowFigure,
+  windowName,
+} from "./accounts";
+
+const NOW = Date.UTC(2026, 10, 15, 12, 0, 0);
+
+describe("accounts: the windows are the harness's own", () => {
+  it("names the two known keys, a scoped week, a labelled key, and a bare key", () => {
+    expect(windowName({ window: "5h", usedPct: 1, resetsAt: null })).toBe("Session");
+    expect(windowName({ window: "7d", usedPct: 1, resetsAt: null })).toBe("Week");
+    expect(windowName({ window: "7d:sonnet", label: "Sonnet", usedPct: 1, resetsAt: null })).toBe("Week · Sonnet");
+    expect(windowName({ window: "7d:opus", usedPct: 1, resetsAt: null })).toBe("Week · opus");
+    expect(windowName({ window: "spend", label: "Spend", usedPct: 1, resetsAt: null })).toBe("Spend");
+    expect(windowName({ window: "spend", usedPct: 1, resetsAt: null })).toBe("spend");
+  });
+
+  it("draws used percent, hot from 80, and a reset window as 'reset' with the long form", () => {
+    expect(windowFigure({ window: "5h", usedPct: 42, resetsAt: null })).toBe("42% used");
+    expect(isHot({ window: "5h", usedPct: 79, resetsAt: null })).toBe(false);
+    expect(isHot({ window: "5h", usedPct: 80, resetsAt: null })).toBe(true);
+    const over = { window: "7d", usedPct: null, resetsAt: NOW - 1000 };
+    expect(windowFigure(over)).toBe("reset");
+    expect(isHot(over)).toBe(false);
+    expect(windowDetail(over, NOW)).toBe("over, not read since");
+    expect(windowDetail({ window: "7d", usedPct: 5, resetsAt: null }, NOW)).toBe("");
+  });
+
+  it("says in use now, else the age of the reading, else nothing", () => {
+    expect(seenLine(workRow({ live: true, seenAt: NOW }), NOW)).toBe("In use now");
+    expect(seenLine(workRow({ seenAt: NOW - 5 * 60_000 }), NOW)).toMatch(/^Last seen 5.*m.* ago$/);
+    expect(seenLine(workRow(), NOW)).toBeNull();
+  });
+});
+
+describe("accounts: the list", () => {
+  it("writes the app's own word for a Default row and keeps the label of an added one", () => {
+    expect(accountName(defaultRow())).toBe("Default");
+    expect(accountName(workRow())).toBe("Work");
+  });
+
+  it("counts and lists only added accounts, per agent", () => {
+    const b = body({ accounts: [defaultRow(), workRow(), defaultRow({ id: "codex:default", harness: "codex" })] });
+    expect(addedCount(b)).toBe(1);
+    expect(addedOf(b, "claude").map((a) => a.label)).toEqual(["Work"]);
+    expect(addedOf(b, "codex")).toEqual([]);
+    expect(addedOf(null, "claude")).toEqual([]);
+  });
+
+  it("groups by the bridge's agent order and keeps an agent the bridge no longer lists", () => {
+    const b = body({
+      harnesses: [HARNESS_CODEX, HARNESS_CLAUDE],
+      accounts: [defaultRow(), workRow(), defaultRow({ id: "codex:default", harness: "codex" }), defaultRow({ id: "x:default", harness: "x" })],
+    });
+    expect(groupAccounts(b).map((g) => [g.harness, g.label, g.rows.length])).toEqual([
+      ["codex", "Codex", 1],
+      ["claude", "Claude Code", 2],
+      ["x", "x", 1],
+    ]);
+  });
+});
+
+describe("accounts: Add", () => {
+  it("slugs a label the way the bridge does", () => {
+    expect(slugOf("  My Work  ")).toBe("my-work");
+    expect(slugOf("Büro 2")).toBe("bro-2");
+    expect(slugOf("***")).toBe("");
+  });
+
+  it("shows the new folder from the harness's own pattern, 'name' while the label is empty", () => {
+    expect(newFolderFor(HARNESS_CLAUDE, "Work")).toBe("~/.claude-work");
+    expect(newFolderFor(HARNESS_CODEX, "")).toBe("~/.codex-name");
+  });
+
+  it("builds the terminal line from the selector: a variable before the command, a flag after it", () => {
+    expect(startLineFor(HARNESS_CLAUDE, "~/.claude-work")).toBe("CLAUDE_CONFIG_DIR=~/.claude-work claude");
+    expect(startLineFor({ ...HARNESS_CLAUDE, id: "tool", select: "--profile" }, "work")).toBe("tool --profile work");
+  });
+
+  it("prefills a name from a found folder: no dot, no agent word, a capital", () => {
+    expect(nameFromFolder("~/.claude-work", "claude")).toBe("Work");
+    expect(nameFromFolder("~/.config/claude-team", "claude")).toBe("Team");
+    expect(nameFromFolder("~/personal_login", "claude")).toBe("Personal login");
+    expect(nameFromFolder("~/.claude", "claude")).toBe("Claude");
+    expect(nameFromFolder("/", "claude")).toBe("");
+  });
+
+  it("keeps a failed sign-in start for the account's page, once", () => {
+    rememberStartError("acc-1", "no screen");
+    expect(takeStartError("acc-1")).toBe("no screen");
+    expect(takeStartError("acc-1")).toBeNull();
+  });
+});
+
+describe("accounts: the read hook", () => {
+  it("reads the machine's accounts and says which scope the answer belongs to", async () => {
+    const seen: string[] = [];
+    serveAccounts(body({ accounts: [defaultRow(), workRow()] }), seen);
+    const { result } = renderHook(() => useAccounts({ host: "mini" }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(seen).toEqual(["?host=mini"]);
+    expect(result.current.body?.accounts).toHaveLength(2);
+    expect(result.current.loadedFor).toBe("mini\u0000");
+  });
+
+  it("a 404 means no feature: unavailable, no body", async () => {
+    serveAccountsStatus(404);
+    const { result } = renderHook(() => useAccounts());
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    expect(result.current.body).toBeNull();
+  });
+
+  it("any other failure is a failed read that also hides the feature", async () => {
+    serveAccountsStatus(500);
+    const { result } = renderHook(() => useAccounts());
+    await waitFor(() => expect(result.current.status).toBe("failed"));
+    expect(result.current.body).toBeNull();
+  });
+
+  it("reads nothing while disabled", async () => {
+    const seen: string[] = [];
+    serveAccounts(body(), seen);
+    const { result } = renderHook(() => useAccounts(undefined, false));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(result.current.status).toBe("loading");
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("accounts: the request bodies", () => {
+  const ID = "11111111-1111-4111-8111-111111111111";
+
+  it("a start without an account is built byte for byte as before", async () => {
+    const bodies: string[] = [];
+    server.use(
+      http.post("/api/launch", async ({ request }) => {
+        bodies.push(await request.text());
+        return HttpResponse.json({ ok: true, pane: { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "x", tabId: "w1:t1", cwd: "/x" } });
+      }),
+    );
+    await startLaunch({ kind: "harness", id: "claude" }, { cwd: "~/src", requestId: ID });
+    await startLaunch({ kind: "harness", id: "claude" }, { cwd: "~/src", requestId: ID, account: undefined, signIn: undefined });
+    await startLaunch({ kind: "row", command: "htop" }, { requestId: ID, account: "a1", signIn: true });
+    expect(bodies[0]).toBe(`{"requestId":"${ID}","harness":"claude","cwd":"~/src"}`);
+    expect(bodies[1]).toBe(bodies[0]);
+    // An account and a sign-in belong to an agent started by id; a row carries neither.
+    expect(bodies[2]).toBe(`{"requestId":"${ID}","command":"htop"}`);
+  });
+
+  it("an agent started by id carries its account and the sign-in flag", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/launch", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true, pane: { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "x", tabId: "w1:t1", cwd: "/x" } });
+      }),
+    );
+    await startLaunch({ kind: "harness", id: "claude" }, { requestId: ID, account: "acc-work", signIn: true });
+    await startLaunch({ kind: "harness", id: "claude" }, { requestId: ID, signIn: true });
+    expect(bodies).toEqual([
+      { requestId: ID, harness: "claude", account: "acc-work", signIn: true },
+      { requestId: ID, harness: "claude", signIn: true },
+    ]);
+  });
+
+  it("a worktree start carries the account only with an agent by id", async () => {
+    const bodies: string[] = [];
+    server.use(
+      http.post("/api/worktree", async ({ request }) => {
+        bodies.push(await request.text());
+        return HttpResponse.json({ ok: false, error: "x" }, { status: 400 });
+      }),
+    );
+    const ask = { cwd: "~/src", branch: "b", base: { kind: "default" }, folder: { kind: "default" }, requestId: ID } as const;
+    await createWorktreeAt({ ...ask, what: { kind: "harness", id: "claude" } }).catch(() => undefined);
+    await createWorktreeAt({ ...ask, what: { kind: "harness", id: "claude" }, account: "acc-work" }).catch(() => undefined);
+    await createWorktreeAt({ ...ask, what: { kind: "shell" }, account: "acc-work" }).catch(() => undefined);
+    expect(bodies[0]).not.toContain("account");
+    expect(JSON.parse(bodies[1]!)).toMatchObject({ harness: "claude", account: "acc-work" });
+    expect(bodies[2]).not.toContain("account");
+  });
+
+  it("add and remove send the contract's bodies to the lead, with no host on the wire", async () => {
+    const seen: Array<{ url: string; body: unknown }> = [];
+    server.use(
+      http.post("/api/accounts", async ({ request }) => {
+        seen.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ account: workRow() });
+      }),
+      http.post("/api/accounts/remove", async ({ request }) => {
+        seen.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    await addAccount({ harness: "claude", label: "Work", kind: "shared" }, ID);
+    await addAccount({ harness: "claude", label: "Alt", kind: "own", path: "~/.claude-alt" }, ID);
+    await removeAccount("acc-work", ID);
+    expect(seen.map((s) => new URL(s.url).search)).toEqual(["", "", ""]);
+    expect(seen.map((s) => s.body)).toEqual([
+      { harness: "claude", label: "Work", kind: "shared", requestId: ID },
+      { harness: "claude", label: "Alt", kind: "own", path: "~/.claude-alt", requestId: ID },
+      { requestId: ID, id: "acc-work" },
+    ]);
+  });
+});

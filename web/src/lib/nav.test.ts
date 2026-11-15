@@ -1,4 +1,6 @@
 import {
+  accountPath,
+  accountsAddPath,
   readPreviewAsked,
   ancestorsOf,
   changesCommitPath,
@@ -25,6 +27,7 @@ import {
   resolveUpTo,
   resolveUpToExact,
   settingsPath,
+  settingsSectionPath,
   spaceChangesCommitPath,
   spaceFilesPath,
   treeUpLanding,
@@ -242,6 +245,16 @@ describe("installCountPath", () => {
   });
 });
 
+describe("accountsAddPath and accountPath", () => {
+  it("name the pages below Accounts, keeping the scope, and encode the opaque id", () => {
+    expect(accountsAddPath()).toBe("/settings/accounts/add");
+    expect(accountsAddPath({ host: "badger", session: "demo" })).toBe("/settings/accounts/add?h=badger&s=demo");
+    expect(accountPath("acc-work")).toBe("/settings/accounts/acc-work");
+    expect(accountPath("claude:default", { host: "badger" })).toBe("/settings/accounts/claude%3Adefault?h=badger");
+    expect(settingsSectionPath("accounts")).toBe("/settings/accounts");
+  });
+});
+
 describe("characterPath", () => {
   it("names the page below Appearance, keeping the scope", () => {
     expect(characterPath()).toBe("/settings/appearance/character");
@@ -318,6 +331,9 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/settings/appearance", "/settings/appearance/character", true],
     ["/settings", "/settings/appearance/character", true],
     ["/settings/appearance/character", "/settings/appearance", false],
+    ["/settings/accounts", "/settings/accounts/add", true],
+    ["/settings", "/settings/accounts/acc-work", true],
+    ["/settings/accounts/acc-work", "/settings/accounts", false],
     ["/settings/voice/host", "/settings/voice", false],
     ["/settings/voice/host", "/settings/voice/model", false],
     ["/", "/settings", true],
@@ -452,6 +468,10 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     // The Character page sits one level below Appearance: the index and Appearance behind it.
     ["/settings/appearance/character", "", ["/", "/settings", "/settings/appearance"]],
     ["/settings/appearance/character", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/appearance?h=badger"]],
+    // Accounts (M101): the Add form and one account's page sit below the list, and the index behind that.
+    ["/settings/accounts", "", ["/", "/settings"]],
+    ["/settings/accounts/add", "", ["/", "/settings", "/settings/accounts"]],
+    ["/settings/accounts/claude%3Adefault", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/accounts?h=badger"]],
     ["/crew", "", ["/", "/settings", "/settings/system"]],
     // Machines sits under Settings, and one machine under Machines: a cold deep link gets both behind it.
     ["/machines", "", ["/", "/settings"]],

@@ -2582,6 +2582,13 @@ export function AgentChat({
                       line box, so the 36px block above holds with or without it. The workspace gives
                       way first, then the branch, keeping its tail; the meta never does. */}
                   {gitHead !== null && <BranchLabel head={gitHead} className="shrink leading-3 text-muted-foreground" />}
+                  {/* The added account the session runs under (M101), a word after the branch. It stays whole
+                      before the place and the branch give way. Nothing for a pane with none. */}
+                  {agent.account !== undefined && (
+                    <span data-slot="pane-account" className="max-w-[35%] shrink-0 truncate text-[11px] leading-3 text-muted-foreground">
+                      {agent.account.label}
+                    </span>
+                  )}
                   <PaneMeta
                     host={agent.host}
                     cache={agent.cache}
