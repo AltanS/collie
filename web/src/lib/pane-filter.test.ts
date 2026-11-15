@@ -80,10 +80,10 @@ describe("paneFields", () => {
   });
 
   it("finds a session by its account label, and a row without an account never matches it", () => {
-    const withAccount = { ...HERDR, account: { id: "a1", label: "Work" } };
+    const withAccount = { ...HERDR, account: { id: "a1", label: "Zebra" } };
     const options = { level: "anchored", drawn: new Set<PaneField>(["name", "space", "tab", "account"]), hidden: "second-line" } as const;
-    expect(matchPane(paneFields(withAccount), queryTerms("work"), options)).not.toBeNull();
-    expect(matchPane(paneFields(HERDR), queryTerms("work"), { ...options, hidden: "drawn-only" })).toBeNull();
+    expect(matchPane(paneFields(withAccount), queryTerms("zebra"), options)).not.toBeNull();
+    expect(matchPane(paneFields(HERDR), queryTerms("zebra"), options)).toBeNull();
   });
 
   it("reads a Herdr row through the helpers the rows draw with", () => {
