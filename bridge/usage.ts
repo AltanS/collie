@@ -76,7 +76,7 @@ export const WINDOW_7D = "7d";
 const SCOPED_PREFIX = `${WINDOW_7D}:`;
 
 /** The most windows one reading holds. A strange answer does not fill the tag. */
-export const USAGE_WINDOWS_MAX = 8;
+export const READING_WINDOWS_MAX = 8;
 /** The longest window key or label a reading carries. */
 const WINDOW_TEXT_MAX = 64;
 
@@ -137,7 +137,7 @@ function windowName(limit: UsageLimit): string {
 
 /**
  * A reading's windows in the order they are drawn: `5h`, `7d`, then the rest by label (else key), with a
- * key seen twice kept once (the first) and at most {@link USAGE_WINDOWS_MAX}.
+ * key seen twice kept once (the first) and at most {@link READING_WINDOWS_MAX}.
  */
 export function orderedLimits(limits: readonly UsageLimit[]): UsageLimit[] {
   const seen = new Set<string>();
@@ -148,7 +148,7 @@ export function orderedLimits(limits: readonly UsageLimit[]): UsageLimit[] {
   });
   return unique
     .toSorted((a, b) => windowRank(a.window) - windowRank(b.window) || windowName(a).localeCompare(windowName(b)) || a.window.localeCompare(b.window))
-    .slice(0, USAGE_WINDOWS_MAX);
+    .slice(0, READING_WINDOWS_MAX);
 }
 
 /**

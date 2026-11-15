@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonValue } from "./json.ts";
 import { stateFileIo, type AddedFileIo } from "./launchers-added.ts";
-import { asPercent, asWindowKey, cleanWindowText, makeLimit, orderedLimits, USAGE_MAX_AGE_MS, USAGE_WINDOWS_MAX, type UsageLimit } from "./usage.ts";
+import { asPercent, asWindowKey, cleanWindowText, makeLimit, orderedLimits, USAGE_MAX_AGE_MS, READING_WINDOWS_MAX, type UsageLimit } from "./usage.ts";
 
 // ── The last reading of each account's usage windows, kept on THIS machine (M101 spec 02) ───────
 //
@@ -130,7 +130,7 @@ export function parseSeenText(text: string | null): Entry[] | null {
     const dir = asJsonString(row.dir) ?? "";
     const at = asJsonNumber(row.at);
     if (harness === undefined || harness === "" || harness.length > 32 || dir.length > 4096 || at === undefined || !Number.isFinite(at) || at <= 0) continue;
-    const windows = (Array.isArray(row.windows) ? row.windows : []).map(readStoredWindow).filter((w): w is StoredWindow => w !== undefined).slice(0, USAGE_WINDOWS_MAX);
+    const windows = (Array.isArray(row.windows) ? row.windows : []).map(readStoredWindow).filter((w): w is StoredWindow => w !== undefined).slice(0, READING_WINDOWS_MAX);
     if (windows.length > 0) entries.push({ harness, dir, at, windows });
   }
   return entries.toSorted((a, b) => b.at - a.at).slice(0, SEEN_KEYS_MAX);
