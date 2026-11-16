@@ -650,9 +650,11 @@ const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
 const TRICKS_OFFICIAL_ROUTE = /^\/api\/tricks\/official\/([^/]+)\/(add|update)$/;
 
 /**
- * How long a worktree create may hold its connection open, in seconds (ADR 0089). Above Herdr's own
- * 60 s worktree budget plus the launcher's wait, so the bridge always answers before the listener
- * gives up. The phone waits 75 s (web/src/lib/api.ts).
+ * How long a worktree create may hold its connection open, in seconds (ADR 0089). Bun drops a request
+ * that has been idle for 10 s unless the route calls `server.timeout`, so a create must ask for more.
+ * The bound is above `WORKTREE_ADD_TIMEOUT_MS` (60 s, bridge/worktree-add.ts, the time `git worktree
+ * add` may run) plus the launcher's wait, so the bridge always answers before the listener gives up.
+ * The phone waits 75 s (web/src/lib/api.ts), so a phone that gave up retries into the receipt.
  */
 const WORKTREE_ROUTE_BUDGET_S = 90;
 

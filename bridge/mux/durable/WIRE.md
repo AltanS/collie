@@ -106,7 +106,9 @@ the check there.
 ### 1B. TLS with a bearer token
 
 For a program the person deployed themselves, behind TLS, and that Collie dials out to. The program
-has a public URL, so the token is the whole gate.
+has a public URL, so the token is the whole gate. A relay was the road not taken: a bridge program on a
+machine that runs a Collie, between a local socket and the deployed program, would be a second program
+to write, run and secure, and it would hold the same token one hop further away.
 
 | Rule | Value |
 | --- | --- |
@@ -956,6 +958,8 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 - `send` and `abort` answer once the program has accepted the act, not when the turn ends.
 - `abort` with `caps.abort` false: 409 `not-supported`. On a pane with nothing running, `abort`
   answers `{ "ok": true }` and does nothing.
+- The turn id is only as good as the program's own idea of a turn. A program with no stable turn
+  boundary cannot be guarded this way, and would need a different rule.
 
 ### 7.5 A stop
 
@@ -1400,6 +1404,10 @@ document. The version number stays 1; the spike's shapes are not supported.
 > its answer from a log on every request), and what it keeps in the log beyond what Pi Durable already keeps. A
 > host with a process of its own does not use it. The core's seams for it are in
 > `packages/durable-sdk/src/core/` (`journal.ts`, `Pane.seedAsk`, `ReceiptStore.claim`).
+
+Two roads were not taken. A server that holds the state is a second thing to deploy, and the wire would
+depend on one process again; the log already is the state. A new wire version is not needed, because
+nothing here changes a shape of version 1.
 
 A host with no process starts nothing, so section 8 has nothing to hang on: there is no start to mint an epoch
 at, and no memory that outlives a request. Every request builds the state it needs from the **World**, the

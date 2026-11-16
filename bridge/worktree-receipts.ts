@@ -7,8 +7,9 @@ import type { WorktreeCreateResponse } from "./types.ts";
 
 // ── One receipt per phone request, so a retried create never makes a second worktree (ADR 0089) ──
 //
-// A worktree create can take a minute: Herdr runs `git worktree add`, opens a workspace, and the
-// bridge may then wait for the new shell and type a launcher into it. A phone on a train loses that
+// A worktree create can take a minute: the bridge runs `git worktree add` (bridge/worktree-add.ts, ADR
+// 0126), asks the multiplexer to open the folder as a space, and may then wait for the new shell and
+// type a launcher into it. A phone on a train loses that
 // reply all the time. The operator taps again, and without a receipt the second tap is a second
 // worktree on a second branch, or a refusal because the path is taken, while the first one sits
 // there unseen.

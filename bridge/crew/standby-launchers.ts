@@ -27,6 +27,12 @@ import { folderQuestion } from "./launcher-rows.ts";
 // lead's home crosses as `~/rel` (`folderQuestion`, spec 03's carry), so it is read under the
 // deputy's home when the deputy serves it.
 //
+// ── A SECRET IN A LINE TRAVELS WITH THE ROW ───────────────────────────────────────────────────────
+// A launch line can carry a secret inline, for example a token in an environment assignment. Such a
+// line reaches this copy and the audit log of every machine that runs it, as it already reaches the
+// lead's own `launchers.toml` and the lead's audit. Keep secrets out of launch lines, in the
+// environment of the machine instead.
+//
 // ── A REPORT, NOT A MEMORY ────────────────────────────────────────────────────────────────────────
 // The deputy reports the digest of the copy it holds (`launchersDigest`, on `hello` and `snapshot`),
 // and the lead sends when that differs from what it would send: §18.14's own rule for the device
