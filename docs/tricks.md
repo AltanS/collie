@@ -415,7 +415,7 @@ is a speed bump, not a lock. Your user account is the real boundary
 Collie runs the approved copy. When you edit the trick's folder, or `collie trick update` fetches new
 code, the trick keeps running the old version. Its row says "A new version waits for your yes."
 
-A card asks "Use the new version of <name>?". It is on the [Hill](hill.md), and in Settings → Tricks
+A card asks "Use the new version of `<name>`?". It is on the [Hill](hill.md), and in Settings → Tricks
 under **Waiting for your yes**, where the trick's row opens it too, with the Hill on or off. It shows the files that changed
 and any new power the version asks for. You have three options:
 
@@ -548,10 +548,10 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | "This Collie cannot draw this part" | A crew member's older Collie does not know the kind. Update Collie |
 | "The Hill is off: this trick's Decisions are not shown." | Switch the Hill on in Settings → Experiments, or run `collie hill on` |
 | "Tricks run on the lead of this crew. This machine runs none." | You are on a member. Switch tricks on from the lead |
-| "Could not switch <name>. Try again." | The phone could not write the switch. Check that the device may write, and that the bridge answers |
+| "Could not switch `<name>`. Try again." | The phone could not write the switch. Check that the device may write, and that the bridge answers |
 | "error: collie trick on is a person's yes to the code, ..." | An agent ran the command. Run it in a shell pane, or tap the switch on the phone |
-| "a trick <id> is already in <folder>. ..." | The id is taken. Use `collie trick update`, or `remove` the old one first |
-| "<id> is on. Switch it off first: collie trick off <id>" | `remove` works only on a trick that is off |
+| "a trick `<id>` is already in `<folder>`. ..." | The id is taken. Use `collie trick update`, or `remove` the old one first |
+| "`<id>` is on. Switch it off first: collie trick off `<id>`" | `remove` works only on a trick that is off |
 | "This trick needs a newer Collie: ..." | The trick was written for a later Collie. Run `collie update` |
 | "The trick is busy. Try again in a moment." | A tap came while another waited. Tap again |
 | "The bridge restarted while this tap ran. ..." | Check the result, then tap again if needed |

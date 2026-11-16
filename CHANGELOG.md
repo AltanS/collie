@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **After the update the Hill and every trick are off until you switch them on.** Switch the Hill on in Settings, Experiments, or with `collie hill on`, and each trick in Settings, Tricks. A trick's card works with the Hill off.
 - **A trick's card works with the Hill off.** A proposed trick, a new version, a trick's changed rights and a carried trick still get their card while the Hill is off, and your answer still acts and reaches the agent that asked. The cards wait under **Waiting for your yes**, the first group in Settings → Tricks, with the Hill on or off; a trick's "A new version waits for your yes." line opens its card, and with the Hill off the Dashboard says "A trick waits for your yes." with a button to the oldest card. The Hill's switch still stops what agents and tricks ask, and every proposal limit holds.
 - **`collie trick propose` runs the trick once without its settings file.** A proposal never carries `config.toml`, so propose now runs the trick without it before it sends. When the trick then draws nothing, fails or prints a part Collie refuses, it is still proposed, the agent gets a warning, and the first card says the trick has a settings file that does not come along and may show nothing until you add it on the machine.
 - **A proposal names the notes `collie trick init` writes instead of showing them.** An `AGENTS.md` exactly as init wrote it is named on the first card, as the helper `trick.ts` is, and shown on no card. Notes an agent changed show only the change against Collie's text.
@@ -57,6 +58,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **A check keeps placeholders out of the docs' plain text.** `scripts/check-docs-placeholders.ts`, run by `bun run test`, fails a placeholder such as `<repo>` written outside a code span in `README.md` or a docs page, because every Markdown renderer reads it as an HTML tag and drops it. Twenty-three such placeholders in the Crew, Durable SDK, Hill, Tricks and Troubleshooting pages are now code spans.
 - **The trick docs say what a proposal leaves behind and what its answer says.** The Hill docs say the answer is typed into the proposing session and starts a turn there; the authoring guide says a trick must work with no `config.toml`, which files the text search reads, and how the cards treat the helper and `AGENTS.md`.
 
 ## [1.29.0] - 2026-11-12

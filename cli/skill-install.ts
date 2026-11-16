@@ -29,8 +29,11 @@ import type { Files } from "./sys.ts";
 //    `{{/HILL}}`, inline in the description and as marker lines around the Hill section. On keeps them,
 //    and the text is the one of before the markers; off cuts them, so an agent's context holds no Hill
 //    word while the Hill is off. `status`, `--check`, `doctor` and `print` render for the switch as it
-//    reads now, so a switch never turns them red. A running agent keeps the description it loaded; the
-//    change reaches the sessions started after it.
+//    reads now, so a switch never turns them red. Measured on 2026-11-16, in project skill folders and
+//    with two agents only: when the skill file changes on disk, a running Codex session shows the new
+//    description at once, and a running Claude Code session gets the new text with its next prompt.
+//    Pi needs its `/reload`, and any other agent is unmeasured, so those keep the description they
+//    loaded until a new session starts.
 //  - KNOWN LIMIT (true before the switch too): two instances on one machine share one skill file per
 //    harness, and the instance that synced last decides its text, its binary path and now its Hill part.
 //  - A SYMLINKED FILE IS REFUSED, an unreadable one too. A rename onto a symlink replaces the link

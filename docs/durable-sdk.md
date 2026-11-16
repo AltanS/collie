@@ -372,7 +372,7 @@ An opener that does not read it makes `withCollie` throw, because no call would 
 | --- | --- | --- |
 | `registry` | Your registry. Required. What you install in it later reaches every open session | None |
 | `risky` | The tool names that need the phone's yes. Required | None |
-| `words` | The words of a call's question, as for `riskGuard` | "<tool> wants to run", Allow and Deny |
+| `words` | The words of a call's question, as for `riskGuard` | "`<tool>` wants to run", Allow and Deny |
 | `timeoutMs` | How long the phone has. Past it the question closes as timed out and the call is blocked | No limit |
 | `onTimeout` | Called with the tool name and the question's title when a question timed out | None |
 | `journal` | The journal to use. For a test | The session's own World |
