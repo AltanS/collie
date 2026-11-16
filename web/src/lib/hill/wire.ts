@@ -88,6 +88,31 @@ export type HillCollieRefType = "version" | "proposal" | "carried" | "rights";
 export const HILL_COLLIE_REF_TYPES: readonly HillCollieRefType[] = ["version", "proposal", "carried", "rights"];
 
 /**
+ * THE CARDS THAT WORK WITH THE HILL OFF (M96 spec 14, 2026-11-16). The Hill's switch gates what agents
+ * and tricks ASK. A card of Collie's own about a trick is an approval, and it is posted, served and
+ * answered with the Hill on or off. Every kind is listed here on purpose: a new kind of Collie card is a
+ * compile error until someone decides whether it is about a trick. An agent's post and a trick's own
+ * Decision are never in this table (they are no kind of Collie's own card), so the Hill off still refuses
+ * them (bridge/hill/service.ts `postAny`, `answer`, `list`).
+ */
+export const HILL_OFF_TRICK_CARDS = {
+  proposal: true,
+  version: true,
+  rights: true,
+  carried: true,
+} as const satisfies { readonly [K in HillCollieRefType]: boolean };
+
+/**
+ * Whether a sender or a decision's `from` is a card of Collie's own about a trick: kind `collie` with a
+ * `ref` of a kind {@link HILL_OFF_TRICK_CARDS} lists. False for an agent and for a trick, always.
+ */
+export function isTrickCard(from: { readonly kind: string; readonly ref?: { readonly type: string } | undefined }): boolean {
+  if (from.kind !== "collie" || from.ref === undefined) return false;
+  const type = HILL_COLLIE_REF_TYPES.find((candidate) => candidate === from.ref?.type);
+  return type !== undefined && HILL_OFF_TRICK_CARDS[type];
+}
+
+/**
  * Why Collie's card about a trick's changed rights closed (bridge/tricks/rights-card.ts), as the bridge
  * writes it into `closedReason` when it withdraws the card. One list for both sides: the phone says each
  * in its own words (lib/hill/words.ts `closedWord`), never "Withdrawn by the poster".

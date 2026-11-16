@@ -363,15 +363,18 @@ agents on a member the Hill text, run `collie hill on` on that member.
 
 With the Hill off:
 
-- Agents and tricks cannot post, and agents cannot propose a trick. Nothing about a Decision is
-  pushed.
-- The phone takes no answer, so no message is typed and no trick runs.
+- Agents and tricks cannot post. Nothing about a Decision is pushed.
+- The phone takes no answer to their Decisions, so no message is typed and no trick runs.
 - The Hill leaves the bar. Its page says "The Hill is off." and offers "Switch the Hill on".
 - The open Decisions stay, and their expiry still runs. They show again when you switch it on.
 - An agent can still run `status`, `list` and `withdraw`, so it can clean up.
 - The crew state and "Tell all sessions now" are off too.
-- A trick whose new version waits says on its row in Settings → Tricks: "A new version waits. Switch
-  the Hill on in Settings, Experiments, to read it."
+
+Collie's own cards about a trick are not Decisions of an agent or a trick, so they need no Hill. The
+switch does not stop them: a proposed trick, a new version, a trick's changed rights and a carried
+trick still get their card, and your answer still acts and reaches the agent that asked. With the Hill
+off they are under **Waiting for your yes** in Settings → Tricks, and the Dashboard shows "A trick
+waits for your yes." with a button to the oldest card. Every limit on proposals still holds.
 
 A post is refused with: "the Hill is off on this Collie; your person can switch it on in Settings,
 Experiments, on the phone, or with: collie hill on".

@@ -153,7 +153,7 @@ export function trickGuide(): string[] {
     "It sends the folder, your draft ./<id>, to the lead of your crew, or to this Collie when it has no crew.",
     "Dot files, node_modules, logs, inputs/, media/, captures/ and config.toml stay behind.",
     "A proposal cannot carry a config.toml: the program reads it, so your person writes it.",
-    "The person sees a card on the Hill with your code. Nothing runs before their yes. Nothing is added to this machine's tricks before it.",
+    "The person sees a card with your code: on the Hill, or in Settings, Tricks, while the Hill is off. Nothing runs before their yes. Nothing is added to this machine's tricks before it.",
     `Code that does not fit one card shows on a group of up to ${String(GROUP_CODE_CARDS + 1)} cards, every line of it.`,
     `Card 1 holds the facts. ${String(GROUP_CODE_CARDS)} cards hold the code, about ${String(GROUP_CARD_CODE_BYTES / 1024)} KB each (${String(GROUP_CODE_BYTES / 1024)} KB in all).`,
     "The yes waits until the person opened every card. collie trick check says how many.",

@@ -5,7 +5,9 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { originLine } from "@/lib/tricks/row-words";
-import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, warningLines } from "@/components/tricks-settings-card";
+import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, versionCardOpener, warningLines } from "@/components/tricks-settings-card";
+import type { HillDecision } from "@/lib/hill/wire";
+import { collieCard } from "@/test/hill-fixtures";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, TRICKS_WINDOWS_LINE, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
@@ -554,23 +556,26 @@ describe("a new version waits", () => {
   const WAITING: WireTrickInfo = { ...LEGS, pending: PENDING };
 
   it("slotLine: the note for a trick that is on, after any trouble and before the Hill note", () => {
-    expect(slotLine(WAITING, NOW)).toEqual({ text: "A new version waits for your yes.", trouble: false });
-    // With the Hill off the new version's card cannot be read: the row says where to switch the Hill on, trick that asks or not.
-    const hillOffLine = "A new version waits. Switch the Hill on in Settings, Experiments, to read it.";
-    expect(slotLine({ ...WAITING, decides: true }, NOW, true)).toEqual({ text: hillOffLine, trouble: false });
-    expect(slotLine(WAITING, NOW, true).text).toBe(hillOffLine);
+    expect(slotLine(WAITING, NOW)).toEqual({ text: "A new version waits for your yes.", trouble: false, waits: true });
+    // M96 spec 14: the card needs no Hill, so the Hill off changes nothing in the line, trick that asks or not.
+    expect(slotLine({ ...WAITING, decides: true }, NOW, true)).toEqual({ text: "A new version waits for your yes.", trouble: false, waits: true });
+    expect(slotLine(WAITING, NOW, true).text).toBe("A new version waits for your yes.");
+    // A version card the phone holds says it too, with no `pending` on the row (a proposal's new version).
+    expect(slotLine(LEGS, NOW, true, true)).toEqual({ text: "A new version waits for your yes.", trouble: false, waits: true });
     // A trick that is off keeps its provenance line, and one in trouble its trouble.
     expect(slotLine({ ...WAITING, on: false, state: "off" }, NOW, true).text).toBe("Added by agent · 2 h ago");
     expect(slotLine({ ...WAITING, on: false, state: "off" }, NOW).text).toBe("Added by agent · 2 h ago");
     expect(slotLine({ ...WAITING, state: "failing", error: "exit 2" }, NOW)).toEqual({ text: "exit 2", trouble: true });
   });
 
-  it("the row says where to switch the Hill on while the Hill is off", async () => {
-    const store = await storeWith([WAITING, TRACKER]);
-    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} hillOff /> }], { initialEntries: ["/"] });
-    render(<RouterProvider router={router} />);
-    await screen.findByText("Browser leg");
-    expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("A new version waits. Switch the Hill on in Settings, Experiments, to read it.");
+  it("versionCardOpener: only an open version or proposal card of this trick opens from its row", () => {
+    const opened: string[] = [];
+    const open = (d: HillDecision) => opened.push(d.id);
+    const cards = [collieCard("rights", "legs", { id: "rights-legs" }), collieCard("version", "legs", { id: "version-legs" })];
+    versionCardOpener(cards, { id: "legs" }, open)?.();
+    expect(opened).toEqual(["version-legs"]);
+    expect(versionCardOpener(cards, { id: "tracker" }, open)).toBeUndefined();
+    expect(versionCardOpener([cards[0]!], { id: "legs" }, open)).toBeUndefined();
   });
 
   it("the row shows the note and adds no button", async () => {

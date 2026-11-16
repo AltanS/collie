@@ -3090,7 +3090,6 @@ export const it: Dictionary = {
   "settings.tricks.warn.honesty": "Trovato con una ricerca testuale nel suo codice, non è una prova.",
   "settings.tricks.hillOff": "La Hill è disattivata: le Decisioni di questo trick non vengono mostrate.",
   "settings.tricks.pending": "Una nuova versione attende il tuo sì.",
-  "settings.tricks.pendingHillOff": "Una nuova versione è in attesa. Per leggerla, attiva la Hill in Impostazioni, Esperimenti.",
   "settings.tricks.rightsMoved": "I suoi permessi sono cambiati. Attivalo di nuovo.",
   "settings.tricks.auto.failed": "Impossibile cambiare {name}. Riprova.",
   "settings.tricks.autoAt": "Aggiornato {ago}, in automatico.",

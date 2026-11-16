@@ -7,10 +7,10 @@ import type { AuditEntry } from "../audit.ts";
 import { hillTopic, type PushMessage } from "../push.ts";
 import { HILL_SWITCHED_OFF_TEXT, hillAnswerRoute, hillSwitchRoute, withHill } from "../server.ts";
 import type { SnapshotResponse } from "../types.ts";
-import type { HillPostInput } from "../../web/src/lib/hill/wire.ts";
+import { HILL_COLLIE_REF_TYPES, HILL_OFF_TRICK_CARDS, isTrickCard, type HillCollieRef, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { HillPush, hillPushTag } from "./push.ts";
 import { memoryHillReceipts } from "./receipts.ts";
-import { EXPIRED, HILL_OFF, HillService, type HillAgentSender, type HillPlace, type HillPostAnswer, type HillTrickSender } from "./service.ts";
+import { EXPIRED, HILL_OFF, HillService, type HillAgentSender, type HillCollieSender, type HillPlace, type HillPostAnswer, type HillTrickSender } from "./service.ts";
 import { HillStore, hillDir } from "./store.ts";
 import { HILL_SWITCH_FILE, HillSwitch, hillSwitchPath, parseHillSwitch, readHillSwitch, renderHillSwitch, writeHillSwitch } from "./switch.ts";
 
@@ -61,6 +61,8 @@ interface Rig {
   readonly audit: AuditEntry[];
   readonly sent: string[];
   readonly taps: string[];
+  /** The answers Collie's own handler took: `<ref type>:<id>:<intent>`. */
+  readonly acts: string[];
   clock: number;
 }
 
@@ -72,7 +74,8 @@ function rig(): Rig {
   const audit: AuditEntry[] = [];
   const sent: string[] = [];
   const taps: string[] = [];
-  const state = { pushes, audit, sent, taps, clock: 1000 };
+  const acts: string[] = [];
+  const state = { pushes, audit, sent, taps, acts, clock: 1000 };
   const store = new HillStore(null, () => state.clock);
   const sw = new HillSwitch(dir, null, () => undefined, () => state.clock);
   const hill = new HillService({
@@ -96,6 +99,10 @@ function rig(): Rig {
     },
     push: new HillPush({ ready: () => true, send: (message) => state.pushes.push(message), now: () => state.clock }),
     hillSwitch: sw,
+    onCollieAnswer: async (ref, intent) => {
+      state.acts.push(`${ref.type}:${ref.id}:${intent}`);
+      return { ok: true, told: `${ref.id} is installed and on.` };
+    },
   });
   // The Hill is off until switched on (2026-11-13): this rig is an instance whose person switched it on.
   sw.set(true);
@@ -352,5 +359,106 @@ describe("the snapshot", () => {
     expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillOff: true });
     r.sw.set(true);
     expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillRev: 1000 });
+  });
+});
+
+// A CARD OF COLLIE'S OWN ABOUT A TRICK WORKS WITH THE HILL OFF (M96 spec 14): posted, read and answered as
+// with the Hill on. Nothing else opens: an agent's post, a trick's own Decision, an answer to either, and
+// the read of either stay as they were with the Hill off.
+describe("with the Hill off, a card of Collie's own about a trick", () => {
+  const HASH = "a".repeat(64);
+  const collie = (type: HillCollieRef["type"], id = "legs"): HillCollieSender => ({ kind: "collie", ref: { type, id, hash: HASH }, label: "Collie" });
+  const card = (n: number): HillPostInput => ({ requestId: uuid(n), title: "Switch on the trick legs?", summary: "An agent session (repo#one) on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" });
+  const snapshot: SnapshotResponse = { bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], sessions: [], ts: 5 };
+
+  test("every kind of Collie's own card is a trick card, and neither an agent nor a trick is one", () => {
+    expect(Object.keys(HILL_OFF_TRICK_CARDS).toSorted()).toEqual([...HILL_COLLIE_REF_TYPES].toSorted());
+    for (const type of HILL_COLLIE_REF_TYPES) expect(isTrickCard(collie(type))).toBe(true);
+    expect(isTrickCard(POSTER)).toBe(false);
+    expect(isTrickCard(TRICK)).toBe(false);
+    // A `ref` on another kind, or a kind of ref nobody listed, opens nothing.
+    expect(isTrickCard({ kind: "agent", ref: { type: "proposal" } })).toBe(false);
+    expect(isTrickCard({ kind: "collie", ref: { type: "question" } })).toBe(false);
+    expect(isTrickCard({ kind: "collie" })).toBe(false);
+  });
+
+  test("is posted for each kind; in the same Hill an agent's post and a trick's own Decision are still refused hill_off", () => {
+    const r = rig();
+    r.sw.set(false);
+    for (const [n, type] of HILL_COLLIE_REF_TYPES.entries()) posted(r.hill.postCollie(collie(type, `t${String(n)}`), card(n + 1)));
+    expect(r.store.all().map((d) => d.from.ref?.type)).toEqual([...HILL_COLLIE_REF_TYPES]);
+    expect(r.hill.post(POSTER, input(10))).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
+    expect(r.hill.postDecision(TRICK, input(11), {})).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
+    expect(r.store.all()).toHaveLength(HILL_COLLIE_REF_TYPES.length);
+    // Nothing rings: Collie's own card is a "today" card, with the Hill on as with it off.
+    expect(r.pushes).toEqual([]);
+  });
+
+  test("the caps still hold: a repeated request id answers the stored card, and another payload under it is refused", () => {
+    const r = rig();
+    r.sw.set(false);
+    const first = posted(r.hill.postCollie(collie("proposal"), card(1)));
+    expect(posted(r.hill.postCollie(collie("proposal"), card(1)))).toBe(first);
+    expect(r.hill.postCollie(collie("proposal"), { ...card(1), title: "Switch on the trick other?" })).toMatchObject({ ok: false, code: "request_id_reused" });
+  });
+
+  test("is answered: Collie's handler acts, the card closes, and the told line is typed into the proposing session", async () => {
+    const r = rig();
+    r.sw.set(false);
+    const id = posted(r.hill.postCollie(collie("proposal"), card(1), { tellOf: "local/%1#aaaa" }));
+    const outcome = await r.hill.answer({ rid: uuid(100), node: `hill/${id}`, intent: "on", value: { text: null } }, id, "Pixel 9");
+    expect(outcome).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "answered" } });
+    expect(r.acts).toEqual(["proposal:legs:on"]);
+    expect(r.sent).toEqual(["local/%1#aaaa"]);
+    expect(r.audit.some((entry) => entry.action === "hill.answer")).toBe(true);
+  });
+
+  test("an answer to an agent's or a trick's card stored before is still refused off, beside it", async () => {
+    const r = rig();
+    const agent = posted(r.hill.post(POSTER, input(1)));
+    const trick = posted(r.hill.postDecision(TRICK, input(2), {}));
+    r.sw.set(false);
+    const own = posted(r.hill.postCollie(collie("version"), card(3)));
+    for (const id of [agent, trick]) {
+      expect(await r.hill.answer({ rid: uuid(100), node: `hill/${id}`, intent: "yes", value: { text: null } }, id, "Pixel 9")).toEqual({ kind: "off" });
+      expect(r.store.get(id)?.state).toBe("open");
+    }
+    // An answer naming an id the Hill never held, with the Hill off, is off as before.
+    expect(await r.hill.answer({ rid: uuid(101), node: "hill/dc_nothing0000", intent: "yes", value: { text: null } }, "dc_nothing0000", "Pixel 9")).toEqual({ kind: "off" });
+    expect(r.sent).toEqual([]);
+    expect(r.taps).toEqual([]);
+    expect(r.store.get(own)?.state).toBe("open");
+  });
+
+  test("the read serves only Collie's cards about a trick while off; on again, everything", async () => {
+    const r = rig();
+    const agent = posted(r.hill.post(POSTER, input(1)));
+    const trick = posted(r.hill.postDecision(TRICK, input(2), {}));
+    const closed = posted(r.hill.post(POSTER, input(3)));
+    expect(r.hill.withdraw(POSTER, closed)).toMatchObject({ ok: true });
+    r.sw.set(false);
+    const own = posted(r.hill.postCollie(collie("proposal"), card(4)));
+    const answered = posted(r.hill.postCollie(collie("rights", "other"), card(5)));
+    await r.hill.answer({ rid: uuid(100), node: `hill/${answered}`, intent: "on", value: { text: null } }, answered, "Pixel 9");
+    const off = r.hill.list();
+    expect(off.open.map((d) => d.id)).toEqual([own]);
+    expect(off.closed.map((d) => d.id)).toEqual([answered]);
+    expect(off.closedTotal).toBe(1);
+    expect(off.rev).toBe(r.hill.rev());
+    r.sw.set(true);
+    expect(r.hill.list().open.map((d) => d.id).toSorted()).toEqual([agent, trick, own].toSorted());
+    expect(r.hill.list().closed.map((d) => d.id).toSorted()).toEqual([closed, answered].toSorted());
+  });
+
+  test("the snapshot carries trickCardsRev while off and one is held, and never hillRev, so the bar shows no Hill", () => {
+    const r = rig();
+    posted(r.hill.post(POSTER, input(1)));
+    r.sw.set(false);
+    // An agent's card alone: off reads as before, no key of the cards.
+    expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillOff: true });
+    posted(r.hill.postCollie(collie("proposal"), card(2)));
+    expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillOff: true, trickCardsRev: r.hill.rev() });
+    r.sw.set(true);
+    expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillRev: r.hill.rev() });
   });
 });

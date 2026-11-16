@@ -3224,7 +3224,6 @@ export const zh: Dictionary = {
   "settings.tricks.warn.honesty": "来自对其代码的文本搜索，并非证明。",
   "settings.tricks.hillOff": "Hill 已关闭：不显示此 Trick 的决定。",
   "settings.tricks.pending": "有新版本等待你确认。",
-  "settings.tricks.pendingHillOff": "有新版本在等待。请在设置的实验功能中开启 Hill，才能阅读它。",
   "settings.tricks.rightsMoved": "它的权限变了。请重新开启。",
   "settings.tricks.auto.failed": "无法更改 {name}。请重试。",
   "settings.tricks.autoAt": "已自动更新（{ago}）。",

@@ -10273,10 +10273,17 @@ export function trickViewsMediaRoute(views: AgentViewService | undefined, set: s
  * Hill's switch): no revision, so the phone empties its list and the bar loses the Hill item, and
  * `hillOff: true`, so the Hill's route and Settings say it is off. With the Hill on the body carries no
  * `hillOff` key at all, so an install that never switched it keeps its bytes.
+ *
+ * Off, while the store holds a card of Collie's own about a trick (spec 14), the body also carries
+ * `trickCardsRev`: the phone reads `GET /api/hill`, which then serves only those cards, for Settings,
+ * Tricks, the Dashboard's line and the card's own page. Still no `hillRev`, so still no Hill item.
  */
-export function withHill(body: SnapshotResponse, hill: Pick<HillService, "isOn" | "rev"> | undefined): SnapshotResponse {
+export function withHill(body: SnapshotResponse, hill: Pick<HillService, "isOn" | "rev" | "trickCardsRev"> | undefined): SnapshotResponse {
   if (hill === undefined) return body;
-  if (!hill.isOn()) return { ...body, hillOff: true };
+  if (!hill.isOn()) {
+    const cards = hill.trickCardsRev();
+    return cards === undefined ? { ...body, hillOff: true } : { ...body, hillOff: true, trickCardsRev: cards };
+  }
   return withHillRev(body, hill.rev());
 }
 

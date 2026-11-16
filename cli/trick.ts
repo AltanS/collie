@@ -102,7 +102,7 @@ import { SKILL_BYTES_MAX } from "../web/src/lib/tricks/limits.ts";
 //   skill [<id>]      what an agent reads: the `SKILL.md` of the approved copy of a trick that is ON (what
 //                     the trick that runs asks of the agent), or with no id the brief for writing a trick
 //   guide             how to write a trick and hand it over, plain text from the real constants (cli/trick-guide.ts)
-//   propose <folder>  hand a trick to the person: a card on the lead's Hill, inert until the yes
+//   propose <folder>  hand a trick to the person: a card of Collie's own on the lead, inert until the yes
 //                     (cli/trick-propose.ts, bridge/tricks/proposals.ts); allowed in an agent's pane
 //
 // `check` exits 0 (clean, or only "later" notes), 1 (a refusal or a failed run) or 2 (usage: no
@@ -343,7 +343,7 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
   ]);
   for (const line of lines) deps.io.out(line);
   if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
-  if (rows.some((r) => r.pending)) deps.io.out("NEW: a new version waits for your yes. Approve it on the Hill, or with collie trick on <id>.");
+  if (rows.some((r) => r.pending)) deps.io.out("NEW: a new version waits for your yes. Approve it in Settings, Tricks, on the phone, or with collie trick on <id>.");
   if (!bridge) deps.io.out("(the bridge did not answer: state and last run are from the files only)");
   if (rows.some((r) => r.skill && r.on)) deps.io.out("An agent reads what a trick asks of it with: collie trick skill <id>");
   return EXIT.OK;
@@ -368,7 +368,7 @@ export const TRICK_WRITE_BRIEF = [
   "  4. Fix what it reports, and run it again until it is clean.",
   "The draft lives in your own work folder. Nothing is added to this machine's tricks before the person's yes.",
   "Never switch it on yourself: `collie trick on <id>` is the person's approval of the code, and it refuses inside an agent's pane.",
-  "To hand it to the person, run `collie trick propose ./<id>`: it sends the draft to the Hill, they see your code there, and nothing runs before their yes. `collie trick guide` says more.",
+  "To hand it to the person, run `collie trick propose ./<id>`: they see your code on a card, on the Hill or in Settings, Tricks, and nothing runs before their yes. `collie trick guide` says more.",
   "To teach other agents what the trick asks of them, add a SKILL.md to the folder. `collie trick skill <id>` prints it while the trick is on. SKILL.md is part of the trick's code: the trick runs the copy a person approved, so an edit waits for their yes before agents read it.",
 ] as const;
 

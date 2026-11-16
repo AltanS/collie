@@ -3,7 +3,7 @@ import { DECISION_VIEW_LIMITS, DIFF_LIMITS, TABLE_LIMITS, VIEW_LIMITS, type View
 import { looksBinary } from "../changes.ts";
 import { MANIFEST_FILE } from "./paths.ts";
 import { HELPER_FILE, shippedHelperVersion } from "./scan.ts";
-import { NOTES_FILE, NOTES_VERSION, shippedNotesTexts } from "./agents-notes.ts";
+import { NOTES_FILE, NOTES_VERSION, shippedNotesTexts, shippedNotesVersion } from "./agents-notes.ts";
 import type { ProposedFile } from "./propose-wire.ts";
 import { bytesOf, cellPath, checked, countCell } from "./version-card.ts";
 import { readViewLine, VIEW_GAP_MAX, type ChangedFile, type VersionDiff } from "./version-diff.ts";
@@ -69,13 +69,14 @@ const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
  */
 export function shippedHelpers(files: readonly Pick<ProposedFile, "rel" | "bytes">[], id?: string): Map<string, ShippedFile> {
   const out = new Map<string, ShippedFile>();
-  const notes = id === undefined ? [] : shippedNotesTexts(id);
   for (const file of files) {
     if (file.rel === HELPER_FILE) {
       const version = shippedHelperVersion(decode(file.bytes));
       if (version !== null) out.set(file.rel, { what: "helper", version });
     }
-    if (file.rel === NOTES_FILE && notes.includes(decode(file.bytes))) out.set(file.rel, { what: "notes", version: NOTES_VERSION });
+    // Any version a Collie shipped, named as that version (an older draft keeps being named, not shown).
+    const notes = file.rel === NOTES_FILE && id !== undefined ? shippedNotesVersion(id, decode(file.bytes)) : null;
+    if (notes !== null) out.set(file.rel, { what: "notes", version: notes });
   }
   return out;
 }

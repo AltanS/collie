@@ -226,14 +226,15 @@ describe("fault B: the Hill card of a trick stopped for its rights", () => {
     expect(l.runs).toEqual([]);
   });
 
-  test("fault B: with the Hill off nothing is posted and the row still says it; switched on, the card comes once", async () => {
+  // M96 spec 14: the rights card is Collie's own about a trick, so the Hill's switch does not hold it back.
+  test("fault B: with the Hill off the card still comes once, and the row still says it; switched on, no second card", async () => {
     const f = await folders(OLDER_READER);
     const l = life(f, false);
     await scan(l, T0);
     await scan(l, T0 + 60_000);
-    expect(cards(l)).toEqual([]);
+    expect(cards(l).map((decision) => decision.state)).toEqual(["open"]);
     expect((await l.service.reply(undefined)).tricks[0]).toMatchObject({ error: RIGHTS_LINE, rightsMoved: true });
-    expect(l.warnings.filter((line) => line.includes("its rights changed was not posted"))).toHaveLength(1);
+    expect(l.warnings.filter((line) => line.includes("its rights changed was not posted"))).toEqual([]);
     l.hillOn.value = true;
     await scan(l, T0 + 120_000);
     await scan(l, T0 + 180_000);

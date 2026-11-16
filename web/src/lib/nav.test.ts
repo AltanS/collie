@@ -3,6 +3,7 @@ import {
   accountsAddPath,
   readPreviewAsked,
   ancestorsOf,
+  trickCardPath,
   changesCommitPath,
   filesFolders,
   filesParent,
@@ -76,6 +77,19 @@ describe("the hill path", () => {
     expect(hillPath()).toBe("/hill");
     expect(hillPath({ host: "badger", session: undefined })).toBe("/hill?h=badger");
     expect(ancestorsOf("/hill")).toEqual(["/"]);
+  });
+});
+
+describe("a trick's card (M96 spec 14)", () => {
+  it("carries the scope, and Back steps back to Settings, Tricks or the Dashboard, whichever opened it", () => {
+    expect(trickCardPath("dc_abc123def456")).toBe("/trick-card/dc_abc123def456");
+    expect(trickCardPath("dc_abc123def456", { host: "badger", session: undefined })).toBe("/trick-card/dc_abc123def456?h=badger");
+    expect(ancestorsOf("/trick-card/dc_abc123def456")).toEqual(["/", "/settings/tricks"]);
+    expect(resolveUp("/trick-card/dc_abc123def456", "/settings/tricks", "/")).toEqual({ kind: "back" });
+    expect(resolveUp("/trick-card/dc_abc123def456", "/", "/")).toEqual({ kind: "back" });
+    // Opened from anywhere else (a bookmark): Back lands on the Dashboard.
+    expect(resolveUp("/trick-card/dc_abc123def456", "/hill", "/")).toEqual({ kind: "replace", to: "/" });
+    expect(parentChain("/trick-card/dc_abc123def456", "")).toEqual(["/"]);
   });
 });
 

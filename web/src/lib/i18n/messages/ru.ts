@@ -3221,7 +3221,6 @@ export const ru: Dictionary = {
   "settings.tricks.warn.honesty": "Найдено текстовым поиском по коду, это не доказательство.",
   "settings.tricks.hillOff": "Hill выключен: Решения этого трюка не показываются.",
   "settings.tricks.pending": "Новая версия ждет вашего согласия.",
-  "settings.tricks.pendingHillOff": "Новая версия ждет. Чтобы прочитать ее, включите Hill в разделе Настройки, Эксперименты.",
   "settings.tricks.rightsMoved": "Его права изменились. Включите его снова.",
   "settings.tricks.auto.failed": "Не удалось изменить {name}. Повторите попытку.",
   "settings.tricks.autoAt": "Обновлено {ago}, автоматически.",
