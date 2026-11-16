@@ -1413,15 +1413,16 @@ export function createPiReducer(): RowReducer {
 const RESUME_FLAGS: ReadonlyMap<string, readonly string[]> = new Map([
   // Oh My Pi: `-r, --resume=<value>`, "by ID prefix, path, or picker if omitted".
   ["omp", ["--resume", "-r"]],
-  // pi: `--resume` only opens a picker and takes no value; `--session <path|id>` names the session.
-  ["pi", ["--session"]],
+  // pi: `--resume` only opens a picker and takes no value; `--session <path|id>` names the session,
+  // and `--session-id <id>` names it too, creating it when this folder has none by that id (#780).
+  ["pi", ["--session", "--session-id"]],
 ]);
 
 const PI_BINARIES: ReadonlyMap<string, string> = new Map([["pi", "pi"], ["omp", "omp"]]);
 
 /**
  * The value of the pane's resume flag (`omp --resume <v>`, `omp -r <v>`, `--resume=<v>`, `pi --session
- * <v>`), or null: no pi or omp process, no such flag, or the flag with no value (the picker; a next
+ * <v>`, `pi --session-id <v>`), or null: no pi or omp process, no such flag, or the flag with no value (the picker; a next
  * word that is itself a flag is no value). The first process that runs the harness answers.
  */
 export function resumeValueOf(processes: readonly ForegroundProcess[] | undefined): string | null {

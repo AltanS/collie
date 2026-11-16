@@ -1165,6 +1165,17 @@ describe("PiTranscriptSource — a pane that names no session finds it by its fo
       await rm(f.base, { recursive: true, force: true });
     });
 
+    test("pi's --session-id tells two panes in one folder apart (#780)", async () => {
+      const { f, src } = await twoLogs();
+      const pi = (...args: string[]) => ({ processes: [{ argv: ["pi", ...args] }], shared: true as const });
+      expect(await src.discoverSession(cwd, pi("--session-id", OLD))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, pi("--session-id", ONE))).toEqual({ kind: "id", value: ONE });
+      expect(await src.discoverSession(cwd, pi(`--session-id=${ONE}`))).toEqual({ kind: "id", value: ONE });
+      // An id this folder has no log for yet (pi writes it after the first reply) names nothing so far.
+      expect(await src.discoverSession(cwd, pi("--session-id", TWO))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
     test("a path outside the sessions roots, or in another folder's place, is refused", async () => {
       const { f, mine, src } = await twoLogs();
       const outside = join(f.base, "elsewhere", `2026-10-30T10-00-00-000Z_${TWO}.jsonl`);
