@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The Stop button shows a filled square.** The outline square read as an empty checkbox, so the Belt Stop, a durable agent's Stop and the recording button now share one solid square, in every icon set.
+- **The 1.29 strings are in all eleven other languages.** The Hill, Tricks, Accounts, pairing by phone, the session filter and the other 1.29 settings now read in German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish and both Chinese forms, where they showed English until now.
 
 ### Fixed
 
