@@ -204,4 +204,8 @@ export const ENTRIES: readonly SectionEntry[] = [
     def: { id: "dashboard-places", group: "Dashboard", title: "Dashboard places", keywords: ["dashboard", "hill", "bottom-bar", "DashboardTabBar", "TrickDashboardStrip", "tiles", "DecisionCard"] },
     load: () => import("./sections/dashboard-places").then((m) => ({ default: m.DashboardPlacesSection })),
   },
+  {
+    def: { id: "accounts", group: "Settings", title: "Accounts", keywords: ["accounts", "login", "sign-in", "email", "plan", "AccountListRow", "SignedInRow", "identity"] },
+    load: () => import("./sections/accounts").then((m) => ({ default: m.AccountsSection })),
+  },
 ];

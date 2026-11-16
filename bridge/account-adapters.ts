@@ -1,12 +1,19 @@
 import { isAbsolute, join } from "node:path";
 
+import { asRecord, asText } from "./journal/cache-probe.ts";
+import type { JsonValue } from "./json.ts";
+import type { AccountIdentity } from "./types.ts";
+
+export type { AccountIdentity } from "./types.ts";
+
 // ── Accounts: what each agent needs to run under a second login (M101, ADR 0141) ────────────────
 //
 // An account is a label, a harness and a folder the agent already understands. The agent picks its
 // folder from ONE variable (or, later, one flag) on its own command, and the person signs in inside
 // the agent's own screen. So everything the bridge must know per agent is data, and it lives here:
 // how the folder is selected, where the default folder is, how a new folder is named, how a folder is
-// recognised by its entry names, where its journal sits, and what a `shared` account may link.
+// recognised by its entry names, where its journal sits, what a `shared` account may link, and the
+// agent's own status command with a pure parser of its answer (who is signed in, M101 spec 04).
 //
 // Shared code reads this table and nothing else. A harness that is not a key here takes no account.
 // `account-adapters.test.ts` fails when a key is not a launch id (`bridge/harness-launch.ts`).
@@ -25,6 +32,36 @@ export interface AccountShare {
   dirs: readonly string[];
   /** Files, each ONE link to the real file. A file the default lacks is skipped. */
   files: readonly string[];
+}
+
+/** One run of a status command: the exit code (null when it was killed) and both streams. */
+export interface AccountStatusRun {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * How an agent says who is signed in: the words after its binary, and a parser of what they print to an
+ * {@link AccountIdentity} (M101 spec 04). Nothing else of that output ever leaves the parser: no
+ * organisation, no id, no token, no key fragment, no raw text.
+ */
+export interface AccountStatus {
+  /** Fixed words after the binary. Data of this table; nothing from a request is ever added. */
+  args: readonly string[];
+  /**
+   * Entry NAMES in the account's folder that show the agent has run there; at least one must exist, or
+   * the account reads not signed in and nothing runs. Existence only: the entry is never opened. A
+   * status call on a folder the agent never started in would write the agent's state file there first.
+   */
+  needs: readonly string[];
+  /**
+   * The same for the Default account, as names in the home folder: where the agent keeps that state with
+   * no variable set. Either list counts for Default.
+   */
+  needsAtHome?: readonly string[];
+  /** The identity, or null for an output it cannot read ("unknown"). Pure: no disk, no clock. */
+  parse(run: AccountStatusRun): AccountIdentity | null;
 }
 
 /** One agent's account facts. */
@@ -46,6 +83,13 @@ export interface AccountAdapter {
   share?: AccountShare;
   /** Words after the binary that open the sign-in. Absent: the plain start reaches it. */
   signInArgs?: readonly string[];
+  /**
+   * Words after the binary for a sign-in on a folder that reads signed in, so the agent opens its login
+   * menu and not a plain session. Absent: the sign-in start is the same as for a signed-out folder.
+   */
+  signInAgainArgs?: readonly string[];
+  /** The agent's own status command. Absent: the agent says nothing about who is signed in. */
+  status?: AccountStatus;
   /** The settings file that holds Collie's hooks, where the bridge can tell. */
   hooksFile?(dir: string): string;
 }
@@ -58,6 +102,41 @@ function envDir(env: Readonly<Record<string, string | undefined>>, name: string)
 
 function hasAny(entries: readonly string[], markers: readonly string[]): boolean {
   return markers.some((m) => entries.includes(m));
+}
+
+/** The longest email kept, RFC 5321's path limit. */
+const MAX_EMAIL_CHARS = 254;
+/** An address with one `@`, no space and no control or bidi character. Anything else is not shown. */
+const EMAIL_RULE = /^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+$/u;
+/** A plan word as an agent names it: `max`, `pro`, `team`, `enterprise`. */
+const PLAN_RULE = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/u;
+
+/**
+ * `claude auth status` (Claude Code 2.1.325, probe of 2026-11-16): JSON on stdout by default. Signed in
+ * is exit 0 with `loggedIn: true`, `email` and `subscriptionType`; not signed in is exit 1 with
+ * `loggedIn: false`. Only those three fields are read. `orgName` can hold the address too and is never
+ * read. A killed run, a code other than 0 or 1, or output that is not that object is unknown.
+ */
+export function parseClaudeAuthStatus(run: AccountStatusRun): AccountIdentity | null {
+  if (run.code !== 0 && run.code !== 1) return null;
+  let doc: JsonValue;
+  try {
+    // SAFETY: `JSON.parse` answers a JSON value by construction; every field read below is checked.
+    doc = JSON.parse(run.stdout.trim()) as JsonValue;
+  } catch {
+    return null;
+  }
+  // The field readers of bridge/journal/cache-probe.ts: the narrowing of a third-party JSON document.
+  const fields = asRecord(doc);
+  if (fields === null) return null;
+  if (fields.loggedIn === false) return { signedIn: false };
+  if (fields.loggedIn !== true || run.code !== 0) return null;
+  const out: AccountIdentity = { signedIn: true };
+  const email = asText(fields.email);
+  if (email !== undefined && email.length <= MAX_EMAIL_CHARS && EMAIL_RULE.test(email)) out.email = email;
+  const plan = asText(fields.subscriptionType);
+  if (plan !== undefined && PLAN_RULE.test(plan)) out.plan = plan;
+  return out;
 }
 
 /**
@@ -81,6 +160,11 @@ export const ACCOUNT_ADAPTERS = {
       files: ["settings.json", "CLAUDE.md", "history.jsonl"],
     },
     hooksFile: (dir) => join(dir, "settings.json"),
+    // `claude /login` opens the login method menu on a signed-in folder too (lab of 2026-11-15).
+    signInAgainArgs: ["/login"],
+    // `.claude.json` is the state file: `<dir>/.claude.json` with the variable set, `~/.claude.json`
+    // without. A shared account that never started holds links only, so it has none.
+    status: { args: ["auth", "status"], needs: [".claude.json"], needsAtHome: [".claude.json"], parse: parseClaudeAuthStatus },
   },
   codex: {
     select: { env: "CODEX_HOME" },

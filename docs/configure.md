@@ -682,6 +682,17 @@ Claude Code account asks for a text style before the sign-in. Open Keys and pres
 it suggests. Some sign-ins need a browser on that machine. Claude Code and Grok also try to open that
 page in a browser on the machine that runs the bridge.
 
+A Claude Code account shows who is signed in: the email under the account's name in the list, and on
+its page the full address with the plan, for example "Max". The bridge asks Claude Code itself, with
+`claude auth status` run with the account's folder, and reads only the sign-in flag, the email and the
+plan from its answer. It opens no login file for this. It asks only where Claude Code has run before,
+that is where its state file `.claude.json` exists. Any other account reads "Not signed in" without
+asking, so the command creates no files in an account Claude Code has never started in. The answer is
+kept in memory and shown on the phone only, and it is not written to disk or to the audit log. An
+answer older than a minute is shown at once and checked again in the background. **Sign in again** on an account that is signed in starts
+`claude /login`, which opens the login menu. Codex, pi and Grok do not say which login they hold, so
+their accounts show no email.
+
 A sign-in session started from the Accounts page does not start in your home folder. It starts in an
 empty folder of Collie's own, `sign-in` in the instance's state folder (`~/.local/state/collie/sign-in`
 unless `COLLIE_STATE_DIR` moves it). The agent may still ask whether you trust that folder. Either

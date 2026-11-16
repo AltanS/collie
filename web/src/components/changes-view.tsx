@@ -273,7 +273,7 @@ const SPLIT_MIN = TAIL_CHARS * 2;
  * element's width, so there is no layout pass and no resize listener, and the split point is the
  * same on every device rather than a function of the font that happened to load.
  */
-function MiddleTruncate({ text, className }: { text: string; className?: string }) {
+export function MiddleTruncate({ text, className }: { text: string; className?: string }) {
   if (text.length <= SPLIT_MIN) {
     return <span className={cn("min-w-0 truncate", className)}>{text}</span>;
   }

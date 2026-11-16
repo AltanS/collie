@@ -1,10 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { lstat, mkdir, mkdtemp, readlink, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { AccountStatusRun } from "./account-adapters.ts";
+import type { StatusAsk, StatusRunner } from "./account-identity.ts";
 import { realLinkDisk } from "./account-links.ts";
-import { Accounts, defaultAccountId, ownJournalRoots, seenReading, type AccountsAnswer, type AccountsCaller, type AccountsDeps } from "./accounts-routes.ts";
+import { Accounts, defaultAccountId, ownJournalRoots, seenReading, withoutBridgeSettings, type AccountsAnswer, type AccountsCaller, type AccountsDeps } from "./accounts-routes.ts";
 import { accountTest } from "./accounts-skip.ts";
 import { AccountStore, MAX_ACCOUNTS, type AccountRecord } from "./accounts-store.ts";
 import { AuditLog } from "./audit.ts";
@@ -379,5 +381,300 @@ describe("live journal roots", () => {
     expect(await claude.source.resolve({ kind: "id", value: sid })).toBeNull();
     await store.add({ id: ID, harness: "claude", label: "W", kind: "own", dir: work, addedAt: 1, device: "pixel" });
     expect(await claude.source.resolve({ kind: "id", value: sid })).toBe(join(work, "projects", "-x", `${sid}.jsonl`));
+  });
+});
+
+// ── Who is signed in (spec 04) ────────────────────────────────────────────────────────────────────────
+//
+// The status command runs through the injected seam only: no test starts a process. The answers are
+// masked, hand-written `claude auth status` outputs with made-up values.
+
+/** A signed-in answer, with the fields the parser must drop (the organisation carries the email too). */
+function signedInAs(email: string): AccountStatusRun {
+  const stdout = JSON.stringify({
+    loggedIn: true,
+    authMethod: "claude.ai",
+    email,
+    orgId: "00000000-0000-0000-0000-000000000000",
+    orgName: `${email}'s Organization`,
+    subscriptionType: "max",
+    planTier: "default_claude_max_20x",
+  });
+  return { code: 0, stdout, stderr: "" };
+}
+const SIGNED_OUT: AccountStatusRun = { code: 1, stdout: JSON.stringify({ loggedIn: false }), stderr: "" };
+const GARBAGE: AccountStatusRun = { code: 0, stdout: "not json", stderr: "" };
+
+/** A fake seam: answers by the account's variable (absent for Default), and keeps every ask. */
+function fakeStatus(answer: (folder: string | undefined) => AccountStatusRun | null | Promise<AccountStatusRun | null>) {
+  const asks: StatusAsk[] = [];
+  const run: StatusRunner = async (ask) => {
+    asks.push(ask);
+    return answer(ask.env.CLAUDE_CONFIG_DIR);
+  };
+  return { run, asks };
+}
+
+function identityOf(body: AccountsBody, id: string) {
+  return body.accounts.find((a) => a.id === id)?.identity;
+}
+
+describe("who is signed in", () => {
+  // The Default has run here: `~/.claude.json`, the state file with no variable set. Existence only.
+  beforeEach(async () => {
+    await writeFile(join(home, ".claude.json"), "{}");
+  });
+
+  /** A folder Claude Code has run in: its state file is there. */
+  async function ranIn(dir: string): Promise<void> {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, ".claude.json"), "{}");
+  }
+
+  accountTest("each account asks the agent's own status command: Default with nothing set, an added one with its variable", async () => {
+    await ranIn(join(home, ".claude-work"));
+    const status = fakeStatus((folder) => signedInAs(folder === undefined ? "me@example.com" : "work@example.com"));
+    const accounts = build({ status: status.run, env: { HOME: home } });
+    await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "own", path: "~/.claude-work" });
+    const body = await bodyOf(accounts);
+    expect(identityOf(body, "claude:default")).toEqual({ signedIn: true, email: "me@example.com", plan: "max" });
+    expect(identityOf(body, ID)).toEqual({ signedIn: true, email: "work@example.com", plan: "max" });
+    // Codex has no status command: its row shows what it showed before.
+    expect(identityOf(body, "codex:default")).toBeUndefined();
+    // The two run side by side, so their order is not fixed.
+    expect(status.asks).toHaveLength(2);
+    expect(status.asks).toContainEqual({ binary: "claude", args: ["auth", "status"], env: { HOME: home } });
+    expect(status.asks).toContainEqual({ binary: "claude", args: ["auth", "status"], env: { HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude-work") } });
+  });
+
+  test("the bridge's own settings stay out of a status run's environment", () => {
+    expect(withoutBridgeSettings({ PATH: "/usr/bin", HOME: "/home/you", COLLIE_X: "1", COLLIE_STATE_DIR: "/home/you/.local/state/collie", GONE: undefined })).toEqual({ PATH: "/usr/bin", HOME: "/home/you" });
+  });
+
+  accountTest("a status run gets PATH, HOME and the account's variable, never a COLLIE_ setting", async () => {
+    await ranIn(join(home, ".claude-work"));
+    const status = fakeStatus((folder) => signedInAs(folder === join(home, ".claude-work") ? "work@example.com" : "me@example.com"));
+    const env = { PATH: "/usr/bin", HOME: home, COLLIE_X: "1", COLLIE_PORT: "8788" };
+    const accounts = build({ status: status.run, env });
+    await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "own", path: "~/.claude-work" });
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(2);
+    expect(status.asks.map((a) => a.env)).toContainEqual({ PATH: "/usr/bin", HOME: home });
+    expect(status.asks.map((a) => a.env)).toContainEqual({ PATH: "/usr/bin", HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude-work") });
+  });
+
+  accountTest("CLAUDE_CONFIG_DIR from the bridge's own environment still reaches a Default run", async () => {
+    await ranIn(join(home, "elsewhere"));
+    const status = fakeStatus(() => signedInAs("me@example.com"));
+    await bodyOf(build({ status: status.run, env: { HOME: home, CLAUDE_CONFIG_DIR: join(home, "elsewhere"), COLLIE_X: "1" } }));
+    expect(status.asks.map((a) => a.env)).toEqual([{ HOME: home, CLAUDE_CONFIG_DIR: join(home, "elsewhere") }]);
+  });
+
+  accountTest("a missing folder, or one the agent has not run in, reads not signed in with no run", async () => {
+    const status = fakeStatus(() => signedInAs("me@example.com"));
+    const accounts = build({ status: status.run });
+    // An own account on a new folder: the add makes it empty.
+    await added(accounts, { requestId: ID, harness: "claude", label: "New", kind: "own", path: "~/.claude-new" });
+    await store.add({ id: ID2, harness: "claude", label: "Gone", kind: "own", dir: join(home, ".claude-gone"), addedAt: 1, device: "pixel" });
+    const body = await bodyOf(accounts);
+    expect(identityOf(body, ID)).toEqual({ signedIn: false });
+    expect(identityOf(body, ID2)).toEqual({ signedIn: false });
+    expect(status.asks.map((a) => a.env.CLAUDE_CONFIG_DIR)).toEqual([undefined]);
+  });
+
+  accountTest("a shared account that never started has links only: nothing runs until its state file is there", async () => {
+    const status = fakeStatus((folder) => signedInAs(folder === undefined ? "me@example.com" : "work@example.com"));
+    const accounts = build({ status: status.run });
+    await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "shared" });
+    // The links make it look like a Claude Code folder; that is not enough.
+    expect(await readlink(join(home, ".claude-work", "projects"))).toBe(join(home, ".claude", "projects"));
+    const before = await bodyOf(accounts);
+    expect(identityOf(before, ID)).toEqual({ signedIn: false });
+    expect(status.asks.map((a) => a.env.CLAUDE_CONFIG_DIR)).toEqual([undefined]);
+    // The agent's own first start wrote its state file: now the status command runs there.
+    await writeFile(join(home, ".claude-work", ".claude.json"), "{}");
+    const after = await bodyOf(accounts);
+    expect(identityOf(after, ID)).toEqual({ signedIn: true, email: "work@example.com", plan: "max" });
+    expect(status.asks.map((a) => a.env.CLAUDE_CONFIG_DIR)).toEqual([undefined, join(home, ".claude-work")]);
+  });
+
+  accountTest("the Default with no state file at home or in its folder reads not signed in with no run", async () => {
+    await rm(join(home, ".claude.json"));
+    const status = fakeStatus(() => signedInAs("me@example.com"));
+    const body = await bodyOf(build({ status: status.run }));
+    expect(identityOf(body, "claude:default")).toEqual({ signedIn: false });
+    expect(status.asks).toHaveLength(0);
+    // With the variable set in the bridge's environment, the state file sits in the folder itself.
+    await ranIn(join(home, "elsewhere"));
+    const moved = await bodyOf(build({ status: status.run, env: { CLAUDE_CONFIG_DIR: join(home, "elsewhere") } }));
+    expect(identityOf(moved, "claude:default")).toMatchObject({ signedIn: true });
+  });
+
+  accountTest("an answer the parser cannot read, or no answer, shows no identity", async () => {
+    const garbage = await bodyOf(build({ status: fakeStatus(() => GARBAGE).run }));
+    expect(identityOf(garbage, "claude:default")).toBeUndefined();
+    const none = await bodyOf(build({ status: fakeStatus(() => null).run }));
+    expect(identityOf(none, "claude:default")).toBeUndefined();
+    const out = await bodyOf(build({ status: fakeStatus(() => SIGNED_OUT).run }));
+    expect(identityOf(out, "claude:default")).toEqual({ signedIn: false });
+  });
+
+  accountTest("a list read waits at most the cap; the answer arrives with the next read", async () => {
+    let answer: (run: AccountStatusRun) => void = () => {};
+    const slow = new Promise<AccountStatusRun>((resolve) => {
+      answer = resolve;
+    });
+    const status = fakeStatus(() => slow);
+    const accounts = build({ status: status.run, identityWaitMs: 20 });
+    expect(identityOf(await bodyOf(accounts), "claude:default")).toBeUndefined();
+    answer(signedInAs("me@example.com"));
+    await slow;
+    expect(identityOf(await bodyOf(accounts), "claude:default")).toMatchObject({ email: "me@example.com" });
+    expect(status.asks).toHaveLength(1);
+  });
+
+  accountTest("one run serves the reads of a minute; after it the held answer is served at once and refreshed behind it", async () => {
+    let now = 1_000;
+    let email = "me@example.com";
+    let release: () => void = () => {};
+    let hold = false;
+    const status = fakeStatus(async () => {
+      if (hold) {
+        await new Promise<void>((resolve) => {
+          release = () => resolve();
+        });
+      }
+      return signedInAs(email);
+    });
+    const accounts = build({ status: status.run, now: () => now });
+    await bodyOf(accounts);
+    now += 59_000;
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(1);
+    now += 2_000;
+    email = "new@example.com";
+    hold = true;
+    // The refresh is held open, and the read does not wait for it.
+    const stale = await bodyOf(accounts);
+    expect(identityOf(stale, "claude:default")).toMatchObject({ email: "me@example.com" });
+    expect(status.asks).toHaveLength(2);
+    // Other pages read the list too: no second run while the first is in flight.
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(2);
+    hold = false;
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(identityOf(await bodyOf(accounts), "claude:default")).toMatchObject({ email: "new@example.com" });
+    expect(status.asks).toHaveLength(2);
+  });
+
+  accountTest("the email reaches the list and nothing else: no audit line, no log line, no organisation, no raw output", async () => {
+    await ranIn(join(home, ".claude-work"));
+    const status = fakeStatus((folder) => signedInAs(folder === undefined ? "me@example.com" : "work@example.com"));
+    const accounts = build({ status: status.run });
+    const said: string[] = [];
+    const spies = (["log", "info", "warn", "error", "debug"] as const).map((level) =>
+      spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        said.push(args.map(String).join(" "));
+      }),
+    );
+    try {
+      await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "own", path: "~/.claude-work" });
+      await bodyOf(accounts);
+      await accounts.remove({ id: ID }, caller());
+      // The add answer carries the identity the bridge already holds for that folder, and runs nothing.
+      const again = await added(accounts, { requestId: ID2, harness: "claude", label: "Work", kind: "own", path: "~/.claude-work" });
+      expect(again.identity).toEqual({ signedIn: true, email: "work@example.com", plan: "max" });
+      expect(status.asks).toHaveLength(2);
+      const res = await serveAccountsRoute(new Request("http://x/api/accounts"), "/api/accounts", {
+        gate: () => null,
+        // SAFETY: the accounts routes read only `name` off the runtime (for the audit line's session).
+        resolve: () => Promise.resolve({ name: "default" } as Awaited<ReturnType<Parameters<typeof serveAccountsRoute>[2]["resolve"]>>),
+        device: () => "pixel",
+        audit,
+      }, accounts);
+      const wire = await res?.text();
+      expect(wire).toContain("me@example.com");
+      expect(wire).toContain("work@example.com");
+      for (const dropped of ["Organization", "orgId", "00000000-0000", "planTier", "authMethod", "loggedIn"]) expect(wire).not.toContain(dropped);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+    expect(lines.length).toBeGreaterThan(0);
+    const audited = JSON.stringify(lines);
+    expect(audited).not.toContain("example.com");
+    expect(audited).not.toContain("max");
+    expect(said.join("\n")).not.toContain("example.com");
+  });
+
+  accountTest("Sign in again: the login menu while the account reads signed in, the plain start otherwise", async () => {
+    await ranIn(join(home, ".claude-work"));
+    let answer: AccountStatusRun = signedInAs("me@example.com");
+    const accounts = build({ status: fakeStatus(() => answer).run });
+    await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "own", path: "~/.claude-work" });
+    const start = (account: string | undefined, signIn = true) => accounts.startLine({ harness: "claude", base: "claude", account, signIn });
+    const work = `CLAUDE_CONFIG_DIR='${join(home, ".claude-work")}' claude`;
+    // Nothing read yet: unknown, so the plain start.
+    expect(await start(undefined)).toMatchObject({ ok: true, command: "claude" });
+    await bodyOf(accounts);
+    // Signed in.
+    expect(await start(undefined)).toMatchObject({ ok: true, command: "claude /login" });
+    expect(await start("claude:default")).toMatchObject({ ok: true, command: "claude /login" });
+    expect(await start(ID)).toMatchObject({ ok: true, command: `${work} /login` });
+    // Not a sign-in: the line it always was.
+    expect(await start(ID, false)).toEqual({ ok: true, command: work, account: expect.objectContaining({ id: ID }) });
+    // Not signed in.
+    answer = SIGNED_OUT;
+    const fresh = build({ status: fakeStatus(() => answer).run });
+    await bodyOf(fresh);
+    expect(await fresh.startLine({ harness: "claude", base: "claude", account: ID, signIn: true })).toMatchObject({ ok: true, command: work });
+    expect(await fresh.startLine({ harness: "claude", base: "claude", account: undefined, signIn: true })).toMatchObject({ ok: true, command: "claude" });
+    // Unknown.
+    answer = GARBAGE;
+    const unknown = build({ status: fakeStatus(() => answer).run });
+    await bodyOf(unknown);
+    expect(await unknown.startLine({ harness: "claude", base: "claude", account: undefined, signIn: true })).toMatchObject({ ok: true, command: "claude" });
+    // An agent with no status command keeps its start.
+    expect(await accounts.startLine({ harness: "codex", base: "codex", account: undefined, signIn: true })).toEqual({ ok: true, command: "codex" });
+  });
+
+  accountTest("a sign-in start drops the identity, re-reads it every 5 s while its pane lives, and once more when it goes", async () => {
+    let now = 1_000;
+    let panes = [{ session: "default", pane: pane({ paneId: "w1:p7" }) }];
+    let email = "me@example.com";
+    const status = fakeStatus(() => signedInAs(email));
+    const accounts = build({ status: status.run, now: () => now, panes: () => panes });
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(1);
+    const begun = await accounts.startLine({ harness: "claude", base: "claude", account: undefined, signIn: true });
+    if (!begun.ok || begun.signInFor === undefined) throw new Error("expected a sign-in mark");
+    accounts.noteSignIn("default", "w1:p7", begun.signInFor);
+    // Dropped: the old answer is never served again; the next read waits for a new run.
+    expect(await accounts.startLine({ harness: "claude", base: "claude", account: undefined, signIn: true })).toMatchObject({ command: "claude" });
+    email = "other@example.com";
+    expect(identityOf(await bodyOf(accounts), "claude:default")).toMatchObject({ email: "other@example.com" });
+    expect(status.asks).toHaveLength(2);
+    now += 3_000;
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(2);
+    now += 3_000;
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(3);
+    // The pane is gone: dropped once more, then back to the minute.
+    panes = [];
+    accounts.keep("default", []);
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(4);
+    now += 10_000;
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(4);
+  });
+
+  test("Windows asks nothing", async () => {
+    const status = fakeStatus(() => signedInAs("me@example.com"));
+    const accounts = build({ status: status.run, platform: "win32" });
+    expect(await accounts.body()).toBeNull();
+    expect(await accounts.startLine({ harness: "claude", base: "claude", account: undefined, signIn: true })).toEqual({ ok: true, command: "claude" });
+    expect(status.asks).toHaveLength(0);
   });
 });

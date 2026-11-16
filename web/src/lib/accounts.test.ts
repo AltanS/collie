@@ -13,8 +13,10 @@ import {
   isHot,
   nameFromFolder,
   newFolderFor,
+  planWords,
   rememberStartError,
   seenLine,
+  signedInText,
   slugOf,
   startLineFor,
   takeStartError,
@@ -242,5 +244,20 @@ describe("accounts: the request bodies", () => {
       { harness: "claude", label: "Alt", kind: "own", path: "~/.claude-alt", requestId: ID },
       { requestId: ID, id: "acc-work" },
     ]);
+  });
+});
+
+describe("accounts: who is signed in", () => {
+  it("reads a plan in plain words", () => {
+    expect(planWords("max")).toBe("Max");
+    expect(planWords("pro")).toBe("Pro");
+    expect(planWords("team_plus")).toBe("Team Plus");
+  });
+
+  it("gives the email with the plan after it, either alone, or nothing", () => {
+    expect(signedInText({ signedIn: true, email: "someone@example.com", plan: "max" })).toBe("someone@example.com · Max");
+    expect(signedInText({ signedIn: true, email: "someone@example.com" })).toBe("someone@example.com");
+    expect(signedInText({ signedIn: true, plan: "max" })).toBe("Max");
+    expect(signedInText({ signedIn: true })).toBeNull();
   });
 });
