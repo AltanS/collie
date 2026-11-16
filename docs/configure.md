@@ -856,7 +856,7 @@ weight = "400 700"           # optional
 ```
 
 Custom fonts append to the built-in list rather than replacing it
-([ADR 0033](../.adr/0033-the-app-face-is-a-device-preference.md)), unlike the behavior in
+([ADR 0148](../.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)), unlike the behavior in
 `commands.toml` and the other configuration files. Because fonts do not trigger actions, there is
 nothing to shadow.
 

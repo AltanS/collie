@@ -1536,8 +1536,8 @@ prevents (`web/src/lib/api.ts:201-203`).
 **The merged `agents` and `shellPanes` run in place order, never by status.** The lead's panes come
 first, then each peer's in member-id order. Inside one machine the order is workspace number, then
 the tab's index in the merged `tabs` list, then `tabPosition`, then the pane id. A status change
-therefore never moves a row. *(added 2026-09-23,
-[ADR 0063](./.adr/0063-a-pane-keeps-its-place-when-its-state-changes.md); the merge used to sort by
+therefore never moves a row. *(added 2026-09-23; the rule today is
+[ADR 0147](./.adr/0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md); the merge used to sort by
 status first.)*
 
 Merging is the *only* place the lead re-serialises. Its ETag over the merged body is **the lead's

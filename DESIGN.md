@@ -525,7 +525,7 @@ only ever swaps a class name. The default wears no class at all, so a device tha
 the card runs no JavaScript before its first paint.
 
 This **reverses** the old rule, which said the face was the maker's choice and forbade a
-picker. [ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md) records why it fell.
+picker. [ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md) records why it fell.
 The **TERMINAL font is a separate setting** — the Terminal font card directly below,
 reaching `--font-mono` consumers only. The two are two settings because they are two
 questions, and the cards sit adjacent so that reading one after the other makes the split
@@ -630,7 +630,7 @@ every occupant states its own box, and the strip's height is a number the layout
 around rather than a consequence of what it holds.
 
 **The second one is update mode's docked panel** (`components/update-screen.tsx`,
-[ADR 0064](./.adr/0064-an-update-puts-the-phone-in-update-mode.md)). Its heading is `h-7` and
+[ADR 0143](./.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)). Its heading is `h-7` and
 truncates, its subtitle is `h-10` and clamps to two lines, each row is `h-13` with a reserved
 second line, the note is `h-[5.25rem]` and the footer two 44px rows, all in rem so a larger text
 size grows each box with its text, and the row list alone gives way, by scrolling, when the panel
@@ -699,7 +699,7 @@ fails loudly.
   regeneration. The host picks a mark through `BrandMark`; the header's spin round drives it
   through the handle. `mark-conformance.test.tsx` runs the contract over the whole registry
   (`lib/mark-ids.ts`), so a mark that fails it cannot ship. The reasoning is in
-  [ADR 0136](./.adr/0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md).
+  [ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md).
 
 ---
 
@@ -981,14 +981,14 @@ On a phone the edge swipe is history back, so the history stack must be the leve
   The arrow stays at every width.
 
 **A glide is reserved for the one case where a row IS the next screen's header** — one element
-carries its identity forward, not merely its position ([ADR 0069](./.adr/0069-a-row-glides-into-its-header.md),
+carries its identity forward, not merely its position (the rule is in the header of
 `web/src/lib/glide.ts`). Forward is the tap on that row; reverse is the in-app back arrow alone,
 never the swipe. Every other move stays what it was: a sideways move crossfades or slides, and the
 phone's own edge swipe plays the phone's own animation, never one of ours.
 
 ## 13. Themes: a token is the only way a colour reaches a component
 
-From 1.22.0 a person can pick a theme or import one ([ADR 0106](./.adr/0106-a-theme-is-a-closed-file-of-named-tokens.md)).
+From 1.22.0 a person can pick a theme or import one ([ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)).
 A theme is a closed JSON file: a light half and a dark half of named colour tokens, one UI face, and, from
 schema version 2, a `surface` block of thirteen closed words, a display face and a terminal palette of
 gate-checked colours. It changes the
