@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 
 import { HILL_SUMMARY_MAX, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, placesTables, shippedHelpers, sizeWords, type GroupRefusal } from "./card-group.ts";
-import { bytesOf, checked, filesSentence, fitView, listWords, newInputs, newRights, placeWords, rightsHead, versionTitle, WARN_VERBS } from "./version-card.ts";
+import { bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, placeWords, rightsHead, versionTitle, WARN_VERBS } from "./version-card.ts";
 import type { ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
 
@@ -97,9 +97,36 @@ export function proposalTitle(id: string): string {
   return `Switch on the trick ${id}?`;
 }
 
-/** What the trick asks for, as chip words: its environment names and its places. */
-export function proposalRights(manifest: Pick<TrickManifest, "env" | "places">): string[] {
-  return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place))];
+/**
+ * EVERY `trick.toml` KEY, AND WHETHER THE CARD MUST NAME IT (the first full trick run, 2026-11-16,
+ * decision 1). `chip`: a right the card names as a chip ({@link proposalRights}). `reads`: the files it
+ * reads, the card's inputs sentence. `refused`: a proposal never carries it (propose-wire.ts). `text`: not a
+ * right (`powersOf` in approved.ts leaves it out). A new key in `MANIFEST_KEYS` is a compile error until it
+ * is classed here, and proposal-card.test.ts fails when a `chip` or `reads` key has no line on the card.
+ */
+export const PROPOSAL_KEY_RIGHTS = {
+  id: "text",
+  name: "text",
+  run: "text",
+  every: "text",
+  watch: "text",
+  on: "text",
+  mode: "text",
+  contract: "text",
+  icon: "text",
+  description: "text",
+  about: "text",
+  version: "text",
+  places: "chip",
+  env: "chip",
+  decides: "chip",
+  inputs: "reads",
+  rules: "refused",
+} as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: "chip" | "reads" | "refused" | "text" };
+
+/** What the trick asks for, as chip words: its environment names, its places, and `decides` (its answers go to a session). */
+export function proposalRights(manifest: Pick<TrickManifest, "env" | "places" | "decides">): string[] {
+  return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place)), ...(manifest.decides === "reply" ? [DECIDES_REPLY_CHIP] : [])];
 }
 
 /** The author's words on a card: at most this many paragraphs ... */

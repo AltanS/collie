@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
@@ -40,7 +40,7 @@ import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
 import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from "./bound.ts";
 import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
-import { diskTrickFs, unsafeText } from "./code-hash.ts";
+import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { scrubEnv, type ProgramEnv } from "./env.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
@@ -49,7 +49,8 @@ import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
 import { replaceTrickCode, writeProposedTrick } from "./proposal-install.ts";
-import type { ProposedFile } from "./propose-wire.ts";
+import { proposalHash, type ProposedFile } from "./propose-wire.ts";
+import { PROPOSAL_CHANGED } from "./proposals.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
@@ -58,7 +59,7 @@ import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run
 import type { RepoFactsPort } from "./repo-facts.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
-import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
+import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withFreshApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
 
@@ -1975,14 +1976,20 @@ export class TricksService implements TricksSurface {
    * exactly the code written (the snapshot must hash to it), and switch it on. Refused when a folder of
    * that name appeared since the card. By `proposal` in the switch file and the audit line.
    */
-  async installProposed(id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalPlaced> {
+  async installProposed(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, cardHash: string): Promise<ProposalPlaced> {
     if (this.gated()) return { ok: false, message: TRICKS_WINDOWS_LINE };
+    // Decision 4 (2026-11-16): the bytes handed in are the card's, or nothing is written.
+    if (proposalHash(files) !== cardHash) return { ok: false, message: PROPOSAL_CHANGED };
     return await this.lane(async () => {
       await this.refresh(true);
       if (this.runtimes.has(id)) return { ok: false, message: `A trick named ${id} is here now. Nothing was switched on.` };
-      const written = await writeProposedTrick(tricksConfigDir(this.deps.configDir), id, files, origin);
-      if (!written.ok) return { ok: false, message: written.reason };
-      const placed = await this.approveWritten(id, written.codeHash, "The trick was written but changed before it could be approved, so it stays off.");
+      // ... and the stage on disk must hash to those same bytes right before it is renamed into place.
+      const written = await writeProposedTrick(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(files) });
+      if (!written.ok) return { ok: false, message: written.code === "mismatch" ? PROPOSAL_CHANGED : written.reason };
+      // Decision 3: a trick new to this machine starts from a new state folder and a fresh switch entry. The
+      // write above refused a folder of this name, so a state folder left here belongs to no trick that runs.
+      await rm(trickStateDir(this.deps.stateDir, id), { recursive: true, force: true });
+      const placed = await this.approveWritten(id, written.codeHash, "The trick was written but changed before it could be approved, so it stays off.", { fresh: true });
       await this.freshScan();
       return placed;
     });
@@ -1995,8 +2002,9 @@ export class TricksService implements TricksSurface {
    * byte), and exactly the code written is approved. The trick stays on. No scan runs between the write and the approval,
    * so the runner never sees the written code as a version waiting.
    */
-  async installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string): Promise<ProposalPlaced> {
+  async installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string, cardHash: string): Promise<ProposalPlaced> {
     if (this.gated()) return { ok: false, message: TRICKS_WINDOWS_LINE };
+    if (proposalHash(files) !== cardHash) return { ok: false, message: PROPOSAL_CHANGED };
     return await this.lane(async () => {
       await this.refresh(true);
       const target = this.targetOf(id);
@@ -2006,7 +2014,7 @@ export class TricksService implements TricksSurface {
       this.scanning = held;
       let placed: ProposalPlaced;
       try {
-        const written = await replaceTrickCode(tricksConfigDir(this.deps.configDir), id, files, origin);
+        const written = await replaceTrickCode(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(files) });
         placed = written.ok ? await this.approveWritten(id, written.codeHash, "The new version was written but changed before it could be approved.") : { ok: false, message: written.reason };
       } finally {
         if (this.scanning === held) this.scanning = null;
@@ -2018,13 +2026,14 @@ export class TricksService implements TricksSurface {
   }
 
   /** Copy the folder just written into an approved copy that must hash to `codeHash`, and approve it. */
-  private async approveWritten(id: string, codeHash: string, failed: string): Promise<ProposalPlaced> {
+  private async approveWritten(id: string, codeHash: string, failed: string, opts: { fresh?: boolean } = {}): Promise<ProposalPlaced> {
     const src = join(tricksConfigDir(this.deps.configDir), id);
     const snap = await snapshotTrick({ src, parent: approvedTrickDir(this.deps.configDir, id), expect: codeHash, platform: this.deps.platform });
     if (!snap.ok) return { ok: false, message: `${failed} ${snap.reason}` };
     const read = await scanTrickDir(diskTrickFs, snap.dir, id, undefined);
     const at = new Date(this.now()).toISOString();
-    await updateSwitches(this.deps.stateDir, (now) => withApproval(now, id, { at, hash: snap.hash, by: "proposal", powers: read.manifest === undefined ? null : powersOf(read.manifest) }));
+    const approval = { at, hash: snap.hash, by: "proposal", powers: read.manifest === undefined ? null : powersOf(read.manifest) };
+    await updateSwitches(this.deps.stateDir, (now) => (opts.fresh === true ? withFreshApproval(now, id, approval) : withApproval(now, id, approval)));
     this.deps.audit?.({ action: "trick.approve", detail: { trick: id, hash: snap.hash.slice(0, 16), by: "proposal" } });
     return { ok: true, codeHash: snap.hash };
   }

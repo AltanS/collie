@@ -33,7 +33,7 @@ import { GROUP_CODE_BYTES, GROUP_MASKED, GROUP_NOT_TEXT, GROUP_TOO_LARGE, helper
 import { HELPER_VERSION, TRICK_HELPER } from "./scan.ts";
 import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
-import { withSwitch, writeSwitches } from "./switches.ts";
+import { SWITCHES_VERSION, withEntry, withSwitch, writeSwitches } from "./switches.ts";
 import { VersionCards } from "./version-card.ts";
 import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
@@ -246,6 +246,35 @@ describe("a proposal for a new trick", () => {
     expect(await tap(l, card!, "on")).toMatchObject({ code: "rejected", reason: PROPOSAL_CHANGED });
     expect(l.store.get(card!.id)?.state).toBe("open");
     expect(await listed(l)).toEqual([]);
+  });
+
+  test("decision 3: the yes starts from a fresh switch entry and a new state folder, whatever an old entry of that name held", async () => {
+    const l = await lead();
+    // A trick folder deleted by hand leaves its entry (auto on, an Undo target) and its state folder behind.
+    const stale = { at: "2026-11-01T00:00:00Z", hash: "a".repeat(64), auto: true, by: "cli", powers: null, previous: { hash: "b".repeat(64), at: "2026-10-01T00:00:00Z", by: "cli", powers: null } };
+    await writeSwitches(l.stateDir, withEntry(withSwitch({ on: new Map(), version: SWITCHES_VERSION }, "legs", true, stale.at), "legs", stale));
+    const oldState = join(l.stateDir, TRICKS_DIR, "legs");
+    await mkdir(oldState, { recursive: true });
+    await writeFile(join(oldState, "notes.json"), '{"from":"the old trick"}\n');
+    await l.proposals.propose(proposal("legs"), AGENT);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok" });
+    const entry = JSON.parse(await readFile(join(l.stateDir, TRICKS_DIR, "switches.json"), "utf8")).on.legs;
+    expect(entry).toMatchObject({ by: "proposal", auto: false });
+    expect(entry.previous).toBeUndefined();
+    expect(entry.hash).not.toBe(stale.hash);
+    expect(await readdir(oldState).catch(() => [])).not.toContain("notes.json");
+  });
+
+  test("decision 4: bytes that do not hash to the card's hash are never written, for a new trick and a new version", async () => {
+    const l = await lead();
+    const p = proposal("legs");
+    const origin = { by: "agent" as const, host: "workshop", label: "repo#one", at: "2026-11-16T09:00:00Z" };
+    expect(await l.service.installProposed("legs", p.files, origin, "0".repeat(64))).toEqual({ ok: false, message: PROPOSAL_CHANGED });
+    expect(await readdir(join(l.configDir, TRICKS_DIR))).not.toContain("legs");
+    expect(await l.service.installProposedVersion("legs", p.files, origin, "c".repeat(64), "0".repeat(64))).toEqual({ ok: false, message: PROPOSAL_CHANGED });
+    // The card's own hash installs.
+    expect(await l.service.installProposed("legs", p.files, origin, p.hash)).toMatchObject({ ok: true });
   });
 
   test("a folder of that name that appeared since the card is never written over", async () => {

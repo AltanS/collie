@@ -79,8 +79,8 @@ function why<T>(err: T): string {
  * Make `<root>/<id>` from a proposal. Refused when anything named `<id>` is there. The code hash answered is
  * the staged folder's, taken before the rename, so the approval that follows can insist on exactly it.
  */
-export async function writeProposedTrick(root: string, id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalWrite> {
-  return await writeNewTrick(root, id, files, renderProposalOrigin(origin));
+export async function writeProposedTrick(root: string, id: string, files: readonly ProposedFile[], origin: ProposalOrigin, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
+  return await writeNewTrick(root, id, files, renderProposalOrigin(origin), opts);
 }
 
 /** A folder of that name that appeared after the first look. Answered as `exists`. */
@@ -203,8 +203,8 @@ function ancestors(rel: string): string[] {
  * whole. A failure half way leaves the folder as a change that waits for the person's yes: the trick keeps
  * running the approved copy, which this never touches.
  */
-export async function replaceTrickCode(root: string, id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalWrite> {
-  return await replaceCode(root, id, files, renderProposalOrigin(origin));
+export async function replaceTrickCode(root: string, id: string, files: readonly ProposedFile[], origin: ProposalOrigin, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
+  return await replaceCode(root, id, files, renderProposalOrigin(origin), opts);
 }
 
 /**

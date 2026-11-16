@@ -114,8 +114,9 @@ export interface ProposalsHill {
 /** What proposals need of the tricks runner (service.ts). */
 export interface ProposalsTricks {
   proposalTarget(id: string): Promise<ProposalTarget>;
-  installProposed(id: string, files: readonly ProposedFile[], origin: ProposalOrigin): Promise<ProposalPlaced>;
-  installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string): Promise<ProposalPlaced>;
+  /** `cardHash`: the proposal hash the card showed; bytes that hash otherwise are never written (decision 4). */
+  installProposed(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, cardHash: string): Promise<ProposalPlaced>;
+  installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string, cardHash: string): Promise<ProposalPlaced>;
 }
 
 export interface TrickProposalsDeps {
@@ -531,7 +532,7 @@ export class TrickProposals {
       // TOCTOU: the bytes installed are the bytes read here, and they must hash to the card's hash.
       if (files === null || proposalHash(files) !== ref.hash || !checkProposedFiles(files).ok) return { ok: false, reason: PROPOSAL_CHANGED };
       const origin: ProposalOrigin = { by: entry.proposer.by, host: entry.proposer.host, label: entry.proposer.label, at: new Date(this.now()).toISOString() };
-      const placed = entry.kind === "version" && entry.base !== null ? await tricks.installProposedVersion(entry.id, files, origin, entry.base) : await tricks.installProposed(entry.id, files, origin);
+      const placed = entry.kind === "version" && entry.base !== null ? await tricks.installProposedVersion(entry.id, files, origin, entry.base, ref.hash) : await tricks.installProposed(entry.id, files, origin, ref.hash);
       if (!placed.ok) return { ok: false, reason: placed.message };
       await this.drop(state, entry);
       this.deps.audit?.({ action: "trick.proposal.on", detail: { trick: entry.id, hash: entry.hash.slice(0, 16) } });
