@@ -1902,7 +1902,7 @@ export const es: Dictionary = {
   "apiError.session.unknown": "No existe la sesión {session} en este collie.",
   "apiError.host.unknown": "No existe el collie {host} en este equipo.",
   "apiError.crew.not_lead": "Este collie no lidera ningún equipo. No hay datos para mostrar.",
-  // --- worktrees (ADR 0032) ---
+  // --- worktrees (ADR 0145) ---
   "apiError.worktree.create_failed": "Error al crear el worktree: {reason}",
   "apiError.worktree.created_not_opened": "La rama fue creada, pero falló la apertura del espacio: {reason}",
   "apiError.worktree.branch_required": "Indique un nombre de rama.",

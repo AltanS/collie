@@ -2136,7 +2136,7 @@ export const en = {
   "apiError.host.unknown": "There is no collie called {host} in this crew.",
   // The key mirrors the wire code `crew.not_lead` (`bridge/error-codes.ts`). Both say crew from 1.8.0.
   "apiError.crew.not_lead": "This collie doesn't lead a crew, so there is no crew to show.",
-  // --- worktrees (ADR 0032) ---
+  // --- worktrees (ADR 0145) ---
   "apiError.worktree.create_failed": "The worktree couldn't be created: {reason}",
   "apiError.worktree.created_not_opened": "The branch was created, but nothing could be opened on it: {reason}",
   "apiError.worktree.branch_required": "Type a branch name first.",

@@ -1906,7 +1906,7 @@ export const de: Dictionary = {
   "apiError.session.unknown": "Keine Sitzung namens {session} auf diesem collie vorhanden.",
   "apiError.host.unknown": "Kein collie namens {host} in dieser Crew vorhanden.",
   "apiError.crew.not_lead": "Dieser collie führt keine Crew. Es gibt keine Crew anzuzeigen.",
-  // --- worktrees (ADR 0032) ---
+  // --- worktrees (ADR 0145) ---
   "apiError.worktree.create_failed": "Worktree konnte nicht erstellt werden: {reason}",
   "apiError.worktree.created_not_opened": "Branch wurde erstellt, konnte jedoch nicht geöffnet werden: {reason}",
   "apiError.worktree.branch_required": "Bitte zuerst einen Branch-Namen angeben.",
