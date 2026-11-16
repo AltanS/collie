@@ -951,6 +951,62 @@ export function proposalGroup(): HillDecision {
   });
 }
 
+/**
+ * 68 and 69: a proposal of a folder `collie trick init` made (the first full trick run, 2026-11-16,
+ * decision 10). The helper and the notes Collie ships are named on card 1 and shown on no card; notes the
+ * agent changed show only their change against the shipped text.
+ */
+function initProposal(notesChanged: boolean): HillDecision {
+  const notesRow: View = ["AGENTS.md", notesChanged ? "11.8 KB" : "11.7 KB", notesChanged ? "2" : "Collie's notes v1"].map((text) => ({ kind: "cell", text }));
+  const facts: View = [
+    { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
+    { kind: "bar", attrs: { label: "It asks for" }, kids: [{ kind: "chip", text: "the status line" }] },
+    { kind: "line", text: notesChanged ? "3 files, on card 2." : "2 files, on card 2.", attrs: { role: "note" } },
+    { kind: "para", text: "trick.ts is the helper Collie ships (v5), byte for byte, so no card shows it." },
+    ...(notesChanged ? [{ kind: "para", text: "AGENTS.md shows only how it differs from the notes Collie ships (v1)." } as const] : [{ kind: "para", text: "AGENTS.md is the notes Collie ships (v1), byte for byte, so no card shows it." } as const]),
+    {
+      kind: "table",
+      kids: [
+        { kind: "col", text: "File" },
+        { kind: "col", text: "Size" },
+        { kind: "col", text: "Card" },
+        { kind: "cell", text: "trick.toml" },
+        { kind: "cell", text: "301 B" },
+        { kind: "cell", text: "2" },
+        { kind: "cell", text: "program.ts" },
+        { kind: "cell", text: "612 B" },
+        { kind: "cell", text: "2" },
+        ...notesRow,
+        { kind: "cell", text: "trick.ts" },
+        { kind: "cell", text: "42.6 KB" },
+        { kind: "cell", text: "Collie's helper v5" },
+      ],
+    },
+  ];
+  const code: View = [
+    { kind: "diff", attrs: { file: "trick.toml" }, text: ["@@ -0,0 +1,5 @@", '+id = "git-branch"', '+name = "Git branch"', '+run = "program.ts"', '+places = ["status"]', "+contract = 1"].join("\n") },
+    { kind: "diff", attrs: { file: "program.ts" }, text: ["@@ -0,0 +1,4 @@", '+import { run } from "./trick.ts";', "+run(async (t) => {", '+  t.status({ text: "main", icon: "plug" });', "+});"].join("\n") },
+    ...(notesChanged
+      ? [{ kind: "diff", attrs: { file: "AGENTS.md" }, text: ["@@ -14,4 +14,6 @@", " ## Switching on approves this code", " ", "+Read TODO.md first.", "+", " The trick runs with the full rights of the user who runs Collie: it can read and change any file that", " user can, the Collie config folder too. Switching it on, on the phone or with `collie trick on`, is"].join("\n") } as const]
+      : []),
+  ];
+  return decision({
+    title: "Switch on the trick git-branch?",
+    summary: `An agent session (crew-08#propose) on workshop proposes it. It has 4 files. It asks for the status line. It shows on 2 cards.`,
+    ago: 1,
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "git-branch", hash: (notesChanged ? "6e" : "6d").repeat(32) } },
+    target: null,
+    text: "none",
+    options: [
+      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "later", label: "Not now" },
+    ],
+    group: { digest: (notesChanged ? "c2" : "c1").repeat(32), decline: "later", parts: [{ view: facts, sha256: "21".repeat(32) }, { view: code, sha256: "22".repeat(32) }] },
+  });
+}
+export const proposalFromInit = initProposal(false);
+export const proposalNotesChanged = initProposal(true);
+
 /** 66: a trick stopped because its rights changed since the person's yes (fault B), OK alone. */
 export const rightsMoved = decision({
   title: "Browser leg changed its rights",

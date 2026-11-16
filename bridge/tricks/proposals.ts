@@ -11,12 +11,12 @@ import { codeHashOfFiles, isCodePath, unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { recoverProposalWrites } from "./proposal-install.ts";
-import { proposalCard, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposalCardResult, type ProposerFacts } from "./proposal-card.ts";
+import { proposalCard, proposalDiff, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposalCardResult, type ProposerFacts } from "./proposal-card.ts";
 import { checkProposedFiles, foldKey, proposalHash, PROPOSE_HAS_RULES, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
 import { versionDiff, type VersionDiff } from "./version-diff.ts";
-import { addedDiff, GROUP_FILES_MAX, shippedHelpers } from "./card-group.ts";
+import { GROUP_FILES_MAX, shippedHelpers } from "./card-group.ts";
 import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_MEMBER_OPEN_MAX, PROPOSALS_OPEN_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../../web/src/lib/tricks/limits.ts";
 
 // The proposal caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
@@ -415,7 +415,7 @@ export class TrickProposals {
     if (base === null) {
       // A new trick's code is its files' own bytes, every line added: no git run, nothing left out.
       const sizes = new Map(proposal.files.map((file) => [file.rel, file.bytes.byteLength]));
-      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), diff: addedDiff(proposal.files), warnings: kinds, crew, replaces, sizes, helpers: shippedHelpers(proposal.files) });
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), warnings: kinds, crew, replaces, sizes, ...proposalDiff(id, proposal.files) });
     }
     const exec = new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel));
     const diff = await this.diff(base.baseDir, dir, exec).catch((): VersionDiff => ({ files: [], counted: false }));
@@ -424,7 +424,7 @@ export class TrickProposals {
     const code = codeHashOfFiles(proposal.files.filter((file) => isCodePath(file.rel)));
     if ((!diff.counted && diff.files.length > 0) || (diff.files.length === 0 && code !== base.baseHash)) return { ok: false, code: "cannot_show", error: PROPOSAL_NOT_COMPARED };
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
-    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, helpers: shippedHelpers(proposal.files) });
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, helpers: shippedHelpers(proposal.files, id) });
   }
 
   private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {

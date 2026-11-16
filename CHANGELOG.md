@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **A proposal names the notes `collie trick init` writes instead of showing them.** An `AGENTS.md` exactly as init wrote it is named on the first card, as the helper `trick.ts` is, and shown on no card. Notes an agent changed show only the change against Collie's text.
 - **The answer to a trick proposal tells the agent what happened.** After the option line, the proposing session now reads that the trick is installed and on, or that you declined, the proposal is closed and nothing was installed.
 - **The Stop button shows a filled square.** The outline square read as an empty checkbox, so the Belt Stop, a durable agent's Stop and the recording button now share one solid square, in every icon set.
 - **The 1.29 strings are in all eleven other languages.** The Hill, Tricks, Accounts, pairing by phone, the session filter and the other 1.29 settings now read in German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish and both Chinese forms, where they showed English until now.

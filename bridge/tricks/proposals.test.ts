@@ -932,8 +932,8 @@ describe("a proposal whose code does not fit one card", () => {
     const parts = card!.group!.parts;
     expect(parts.length).toBe(2);
     const first = JSON.stringify(parts[0]!.view);
-    expect(first).toContain(helperNote(HELPER_VERSION));
-    expect(first).toContain(helperCell(HELPER_VERSION));
+    expect(first).toContain(helperNote({ what: "helper", version: HELPER_VERSION }));
+    expect(first).toContain(helperCell({ what: "helper", version: HELPER_VERSION }));
     expect(first).toContain("2 files, on card 2.");
     expect(JSON.stringify(parts[1]!.view)).not.toContain("trick.ts");
     const changed: ProposedFile = { rel: "trick.ts", bytes: enc(`${TRICK_HELPER}// mine\n`), executable: false };

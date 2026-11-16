@@ -59,7 +59,9 @@ import {
   twoOptions,
   unattended,
   later,
+  proposalFromInit,
   proposalGroup,
+  proposalNotesChanged,
   rightsMoved,
   versionGroup,
   versionPlain,
@@ -962,6 +964,14 @@ export function HillSection() {
         <Card state="hill-group-version" label="57: a new version on 2 cards">
           <CardHead n={57} title="A proposed new version on 2 cards" />
           <OneCard decision={versionGroup} />
+        </Card>
+        <Card state="hill-group-init" label="68: a proposal init made, helper and notes named">
+          <CardHead n={68} title="Collie's helper and notes are named on card 1, shown on no card" />
+          <OneCard decision={proposalFromInit} />
+        </Card>
+        <Card state="hill-group-notes-changed" label="69: the notes changed, only the change shown">
+          <CardHead n={69} title="Notes changed from Collie's: card 2 shows only the change" />
+          <PagedCard decision={proposalNotesChanged} to={2} />
         </Card>
         <Card state="hill-rights-moved" label="66: a trick stopped because its rights changed">
           <CardHead n={66} title="A trick changed its rights: Collie's card, OK alone" />
