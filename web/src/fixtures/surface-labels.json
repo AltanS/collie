@@ -6835,6 +6835,11 @@
    "version": "2.1.325",
    "state": "idle"
   },
+  "claude--v2325-login-url-in-session--w220.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
   "claude--v2325-login-url-typed--w61.txt": {
    "harness": "claude",
    "version": "2.1.325",
