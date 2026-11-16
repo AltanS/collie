@@ -915,6 +915,33 @@ describe("a write to a member that is not reachable (§10.3)", () => {
     expect(calls).toHaveLength(0);
   });
 
+  // 2026-11-16: a tap on a member's pane left no line on any machine. A write the lead refuses here
+  // must say so in the lead's own audit, as the refusal of an old member's text does.
+  test("the lead writes its own audit line for a write it refuses before the dial, the hold card's answer included", async () => {
+    const cases: [PeerState, string, string, Record<string, string>][] = [
+      [DEAD, "/api/ask/ask-0123456789abcd?host=laptop&session=main", `{"pane":"w1:p1","hash":"0abc12","optionId":"1","origin":"person_tap","via":"hold-card"}`, { action: "ask", outcome: "refused" }],
+      [SKEWED, "/api/pane/w1:p1/keys?host=laptop&session=main", `{"keys":["1"]}`, { action: "keys", outcome: "incompatible" }],
+    ];
+    for (const [state, path, body, want] of cases) {
+      const { transport, calls } = transportOf(() => ok(new Response("{}")));
+      const audit: unknown[] = [];
+      const [req, url] = post(path, body);
+      const res = await forward(req, url, { transport, state, audit: (entry) => audit.push(entry) });
+      expect(res.status).toBe(503);
+      expect(calls).toHaveLength(0);
+      expect(audit).toEqual([{ ...want, host: "laptop", paneId: "w1:p1", session: "main" }]);
+    }
+  });
+
+  test("a read refused for no reason writes no audit line, and a star refused before the dial writes none either", async () => {
+    const { transport } = transportOf(() => ok(new Response("{}")));
+    const audit: unknown[] = [];
+    const [req, url] = post("/api/folders/star?host=laptop", `{"folder":"/srv/a","starred":true}`);
+    await forward(req, url, { transport, state: DEAD, audit: (entry) => audit.push(entry) });
+    // A star is a preference neither side audits (forwardAuditAction answers null).
+    expect(audit).toEqual([]);
+  });
+
   test("a star onto a member that is not reachable is refused before it is attempted", async () => {
     const { transport, calls } = transportOf(() => ok(new Response("{}")));
     const [req, url] = post("/api/folders/star?host=laptop", `{"folder":"/srv/a","starred":true}`);

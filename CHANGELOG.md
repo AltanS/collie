@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A tap the lead refuses for a crew member leaves a line in the lead's audit log.** When the lead holds a member unreachable or on another crew protocol, it refuses a write before it sends it, and the phone shows why. That refusal now also writes an audit line on the lead, with the member, the pane and `refused` or `incompatible`, so a tap that reached no machine can still be found.
 - **A sign-in code is never kept as a draft.** A code typed while the phone's picture of the screen was a moment old could be kept as a draft, because that picture lost the sign-in field. Now the field stays, so the code is never kept.
 - **`collie trick guide` names the status line's limit.** A status text is at most 12 characters, and the guide says so next to the helper's calls, so an agent's message for a missing setting fits.
 - **A trick's code warnings start with one word.** `collie trick check`, `on`, `add` and `propose` print each warning as `warning: <file>:<line> ...`; `propose` printed `warning: warn:`.
