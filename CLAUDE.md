@@ -755,19 +755,19 @@ A branch's folder (`bridge/worktree-folder.ts`,
 child the bridge names after the branch; `resolveParentTarget` refuses a `..` as sent, a link below
 home, a folder outside home, in a dotdir or in the repo, and a child that exists, and it runs at plan
 and again at create. The bridge runs `git worktree add` itself since ADR 0126 and no Herdr `worktree.create` runs, so never give git a `path` that did not just pass it. The Changes view
-(`bridge/changes.ts`, [ADR 0065](./.adr/0065-the-changes-view-reads-git-read-only.md)) is bounded by
+(`bridge/changes.ts`, [ADR 0150](./.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)) is bounded by
 a listed-paths rule: a diff is served only for a repo the bridge's own discovery returned and a path
 git listed there, and an untracked read goes through `containedRealpath` too. Its git runs are
 hardened against repo-driven code execution (fsmonitor, external diff, textconv, filter drivers);
 don't drop a `-c` there without reading the module header. The Files view (`bridge/files-view.ts`,
-[ADR 0083](./.adr/0083-the-files-view-reads-the-changes-root.md)) is bounded by the Changes root: the
+[ADR 0150](./.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)) is bounded by the Changes root: the
 root comes off the snapshot, never the request, and its real path must pass the same bound; the
 client's path is relative, refused on its shape before any disk call, and its real path must sit
 inside the root's through `containedRealpath`; `.git` and the bridge's state and config folders are
 denied on top. The New page's folder browser (`bridge/folder-browse.ts`, #467) is the same place
 with home as the root: folder names only, the same shape check, containment, deny list, refusal and
 gate, and no new rule. It needs an authorised device (`device-read`), and its bytes go out as JSON, never as
-a document, with one exception: `files/image` ([ADR 0090](./.adr/0090-files-shows-images.md)) sends a
+a document, with one exception: `files/image` ([ADR 0150](./.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)) sends a
 picture's raw bytes, typed by `sniffImageType` from the bytes alone (PNG, JPEG, GIF, WebP, AVIF; no
 SVG), with `no-store` and a `default-src 'none'; sandbox` CSP, through the same `readFile` checks. `GET /api/fonts/<basename>` does not become a fourth such place: the request's name is **looked up** in the rows the operator's own
 `theme.toml` declared and that row's path is taken, so a name nobody declared is refused before any path exists. The containment
@@ -842,7 +842,7 @@ bearer credential the device holds, and is always on, reads included
 ([ADR 0086](./.adr/0086-reads-need-the-pairing-token.md)). Every `/api/*` route except `/api/health`
 and `/api/pair` needs a valid token, and an empty registry answers `403 device not paired`. The
 header gate still covers writes only, with one exception: the Files view asks for both as a
-`device-read` ([ADR 0083](./.adr/0083-the-files-view-reads-the-changes-root.md)). Neither applies to `/crew/v1/*`, which has its own two factors. The reasoning sits in
+`device-read` ([ADR 0150](./.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)). Neither applies to `/crew/v1/*`, which has its own two factors. The reasoning sits in
 `bridge/pairing.ts`'s header; don't collapse the two gates into one.
 
 **Collie manages exactly one front door: `tailscale serve`** — the CLI (`cli/serve.ts`) publishes it,
@@ -862,7 +862,7 @@ pairing credential ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-mo
 wire-shape files in `bridge/crew/` must also stage `CREW_PROTOCOL.md` (additive-optional, §7.1) or
 bump `CREW_PROTOCOL_VERSION` (not expressible that way). `scripts/check-crew-wire.sh` is guard C of
 the pre-commit hook; a pure refactor takes the `SKIP_CREW_WIRE_CHECK=1` hatch
-([ADR 0025](./.adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md)).
+(the header of the script holds the reasoning).
 
 **Code reaches a peer over the operator's own SSH, never over the crew link** — `crew add` installs
 it and `crew update` levels it, both pushing the lead's own commit as a `git bundle` from a checkout

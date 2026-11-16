@@ -357,7 +357,7 @@ open like any other row.
   changes. A pane on zellij older than 0.44 has no Files button. A workspace folder that is a symlink to one of those
   counts as that folder.
 
-The full rules are in [ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md).
+The full rules are in [ADR 0150](../.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md).
 
 ## Read-only and safe
 
@@ -370,7 +370,7 @@ Changes runs git to read, and nothing else.
   shows with zero counts and an empty diff.
 - A diff is served only for a file git itself listed as changed, in a repo the search found.
 
-The full rules are in [ADR 0065](../.adr/0065-the-changes-view-reads-git-read-only.md).
+The full rules are in [ADR 0150](../.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md).
 
 ## Across a crew
 

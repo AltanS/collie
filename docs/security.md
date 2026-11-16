@@ -270,7 +270,7 @@ Key security boundaries and risks:
 - **The Files view reads files off your disk.** It shows any file under a workspace's folder, except
   a `.git` folder, Collie's own state and config folders, and files named like a Collie state
   secret. So it asks for an authorised device, like a write
-  ([ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md)).
+  ([ADR 0150](../.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)).
 - **The New page's Browse lists folder names under your home.** Names only, with the Files view's
   limits: no dot-folders unless typed, no `.git`, no Collie state or config folder, no link out of
   home, at most 200 rows. It needs an authorised device too
