@@ -34,6 +34,7 @@ import {
 } from "./surface/send";
 import type { ProfileStatus } from "./surface/profile";
 import { ASK_CHANNELS, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
+import { CODE_REJECTED_PLAIN } from "./surface/secret-field";
 
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
 export interface SendReply {
@@ -227,6 +228,7 @@ export type SendNote =
   | "steered"
   | "steerUnsupported"
   | "steerNotAllowed"
+  | "codeRejected"
   | "held"
   | "expired"
   | "cancelled"
@@ -341,6 +343,8 @@ function refusalNote(reason: SendReason | null): SendNote {
       return "badHead";
     case "stale_view":
       return "moved";
+    case "code_rejected":
+      return "codeRejected";
     default:
       return "refused";
   }
@@ -510,6 +514,8 @@ function ownSentence(reply: SendReply): boolean {
   if (reply.cause === "stale_screen") return true;
   if (reply.cause === "short_pane") return false;
   if (REPEATS_THE_NOTE.has(reply.reason)) return true;
+  // A refused code whose words held the code: the bridge sent only the plain sentence (M102 spec 05).
+  if (reply.reason === "code_rejected") return reply.detail === CODE_REJECTED_PLAIN;
   return reply.reason === "not_free" && reply.detail === PLAIN_NOT_FREE;
 }
 

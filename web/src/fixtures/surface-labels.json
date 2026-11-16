@@ -6964,6 +6964,21 @@
    "harness": "claude",
    "version": "2.1.325",
    "state": "dialog"
+  },
+  "claude--v2325-first-run-login-ok--w219.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-security-notes--w219.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
+  },
+  "claude--v2325-first-run-trust--w219.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "dialog"
   }
  },
  "knownMismatches": {

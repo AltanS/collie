@@ -2502,6 +2502,10 @@
   }
  },
  {
+  "fixture": "claude--v2325-first-run-login-ok--w219.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2325-first-run-methods--w120.txt",
   "frame": null
  },
@@ -2522,6 +2526,10 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2325-first-run-security-notes--w219.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2325-first-run-theme--w40.txt",
   "frame": null
  },
@@ -2535,6 +2543,10 @@
  },
  {
   "fixture": "claude--v2325-first-run-thirdparty-methods--w61.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2325-first-run-trust--w219.txt",
   "frame": null
  },
  {

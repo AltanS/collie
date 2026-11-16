@@ -13,7 +13,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
-import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
+import { RECEIPT_DETAIL_MAX, type SendAnswer } from "../../web/src/lib/surface/send.ts";
+import { CODE_REJECTED_PLAIN } from "../../web/src/lib/surface/secret-field.ts";
 import { HoldStore } from "./holds.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
@@ -50,6 +51,7 @@ class SignInPane {
   keysSeen: string[] = [];
   private reads = 0;
   private closed = false;
+  private lagLeft = 0;
   private readonly rows: string[];
   private readonly at: number;
 
@@ -58,13 +60,21 @@ class SignInPane {
     field: RegExp,
     private readonly draw: DrawField,
     private readonly after: string,
+    /** Reads after Enter that still show the field as it was at the submit: the agent checking the code. */
+    private readonly lag = 0,
   ) {
     this.rows = "fixture" in screen ? pane(screen.fixture).split("\n") : [...screen.rows];
     this.at = this.rows.findIndex((row) => field.test(row.replace(SGR, "")));
     if (this.at < 0) throw new Error(`${screen} has no field row`);
   }
 
+  private shownAtSubmit = "";
+
   private render(): string {
+    if (this.closed && this.lagLeft > 0) {
+      this.lagLeft--;
+      return this.shownAtSubmit;
+    }
     if (this.closed) return this.after;
     // A field that wraps (Claude Code's first-run field) draws over the rows under it.
     const drawn = this.draw(this.box).split("\n");
@@ -100,6 +110,8 @@ class SignInPane {
       if (this.closed) continue;
       if (key === "Backspace") this.box = [...this.box].slice(0, -1).join("");
       else if (key === "Enter") {
+        this.shownAtSubmit = this.render();
+        this.lagLeft = this.lag;
         this.submitted.push(this.box);
         this.box = "";
         this.closed = true;
@@ -157,6 +169,16 @@ function requestFiles(): string {
 }
 
 const CLAUDE_FIELD = /^ {2}Paste code here if prompted >/u;
+
+/** Claude Code 2.1.325 after a code it took: `Login successful. Press Enter to continue…` (live, 2026-11-16, masked). */
+const LOGIN_OK = pane("claude--v2325-first-run-login-ok--w219.txt");
+/** Claude Code 2.1.325 after a code it did not take: `OAuth error: …`, `Press Enter to retry.` */
+const LOGIN_BAD = pane("claude--v2325-login-bad-code--w61.txt");
+/** pi 1.3.0 after a code: its editor back. Its error row taken out stands for a code it took (no capture of that). */
+const PI_BAD = pane("pi--v130-login-bad-code--w61.txt");
+const PI_OK = PI_BAD.split("\n")
+  .filter((row) => !row.replace(SGR, "").includes("Error: Failed to login"))
+  .join("\n");
 const PI_FIELD = /^> ?/u;
 
 describe("Claude Code's sign-in field hides the code: the send is checked by its mask", () => {
@@ -165,7 +187,7 @@ describe("Claude Code's sign-in field hides the code: the send is checked by its
     ["a code longer than the row, checked as a full row of the mask cut with …", CODE],
   ] as const) {
     test(name, async () => {
-      const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, pane("claude--v2325-login-bad-code--w61.txt"));
+      const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, LOGIN_OK);
       const { send, ring, store } = rig(field, "claude", "2.1.325");
       const view = await send("", { mode: "prepare" });
       expect(view.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty", field: "secret" });
@@ -181,7 +203,7 @@ describe("Claude Code's sign-in field hides the code: the send is checked by its
   }
 
   test("a send that does not name the field loses its line at S0 all the same", async () => {
-    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, pane("claude--v2325-login-bad-code--w61.txt"));
+    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, LOGIN_OK);
     const { send, store } = rig(field, "claude", "2.1.325");
     const answer = await send(SHORT);
     expect(answer.receipt?.outcome).toBe("sent");
@@ -201,7 +223,7 @@ describe("Claude Code's sign-in field hides the code: the send is checked by its
   });
 
   test("a text of two lines is refused before any key", async () => {
-    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, pane("claude--v2325-login-bad-code--w61.txt"));
+    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, LOGIN_OK);
     const { send } = rig(field, "claude", "2.1.325");
     const answer = await send(`${SHORT}\nmore`, { secret: true });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "multiline", keys: [] });
@@ -215,7 +237,7 @@ describe("pi's sign-in field shows the code and scrolls a long one: the send is 
     ["a redirect address longer than the row, checked by the end the field scrolled to", `http://localhost:53692/callback?code=${CODE}&state=FAKEstate`],
   ] as const) {
     test(name, async () => {
-      const field = new SignInPane({ fixture: "pi--v130-login-headless-url--w61.txt" }, PI_FIELD, piField, pane("pi--v130-login-bad-code--w61.txt"));
+      const field = new SignInPane({ fixture: "pi--v130-login-headless-url--w61.txt" }, PI_FIELD, piField, PI_OK);
       const { send, ring, store } = rig(field, "pi", "1.3.0");
       const answer = await send(code, { secret: true });
       expect(answer.receipt?.outcome).toBe("sent");
@@ -258,7 +280,7 @@ const FIRST_RUN_FIELD = /^ Paste code here if prompted >/u;
 
 /** The first-run screen with the field's label as it is drawn, and a bad code's answer under it. */
 function firstRunPane(screen: { readonly fixture: string } | { readonly rows: readonly string[] }, width: number): SignInPane {
-  return new SignInPane(screen, FIRST_RUN_FIELD, firstRunField(width), pane("claude--v2325-login-bad-code--w61.txt"));
+  return new SignInPane(screen, FIRST_RUN_FIELD, firstRunField(width), LOGIN_OK);
 }
 
 /** Every held file's bytes, together. */
@@ -405,4 +427,92 @@ describe("the first-run theme step is a question the phone answers with keys: a 
       expect(heldFiles()).not.toContain(SHORT);
     });
   }
+});
+
+
+describe("sign-in code: the agent's own next screen is the evidence (M102 spec 05)", () => {
+  test("sign-in code: a good code ends sent on Login successful, after the field held it while the agent checked", async () => {
+    // Twelve reads of the field still holding the masked code: past S2's own bound (six reads, 3 s).
+    const field = new SignInPane({ fixture: "claude--v2325-first-run-url--w61.txt" }, FIRST_RUN_FIELD, firstRunField(61), LOGIN_OK, 12);
+    const { send, store } = rig(field, "claude", "2.1.325");
+    const answer = await send(CODE);
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(field.submitted).toEqual([CODE]);
+    expect(store.get(answer.id)?.line).toBeUndefined();
+  });
+
+  for (const [what, fixture, fieldRow, draw] of [
+    ["/login", "claude--v2325-login-url--w61.txt", CLAUDE_FIELD, claudeField],
+    ["the first run", "claude--v2325-first-run-url--w61.txt", FIRST_RUN_FIELD, firstRunField(61)],
+  ] as const) {
+    test(`sign-in code: a code the agent did not take on ${what} ends refused code_rejected, with the agent's words`, async () => {
+      const field = new SignInPane({ fixture }, fieldRow, draw, LOGIN_BAD, 3);
+      const { send, store } = rig(field, "claude", "2.1.325");
+      const answer = await send(CODE, { secret: true });
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "code_rejected" });
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      expect(answer.receipt?.detail).toBe(
+        "OAuth error: That code wasn't accepted. It may be incomplete, expired, already used, or from an earlier sign-in attempt. Sign in again to get a new code.",
+      );
+      expect(answer.receipt?.detail).not.toContain(CODE.slice(-6));
+      expect(requestFiles()).not.toContain(CODE);
+      expect(store.get(answer.id)?.line).toBeUndefined();
+    });
+  }
+
+  test("sign-in code: an error row that echoes a run of the code is dropped, and the plain sentence stands alone", async () => {
+    const echo = LOGIN_BAD.replace("That code wasn't accepted.", `The code ${CODE.slice(20, 28)} wasn't accepted.`);
+    expect(echo).not.toBe(LOGIN_BAD);
+    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, echo);
+    const { send, store } = rig(field, "claude", "2.1.325");
+    const answer = await send(CODE, { secret: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "code_rejected", detail: CODE_REJECTED_PLAIN });
+    expect(answer.detail).toBe(CODE_REJECTED_PLAIN);
+    expect(JSON.stringify(answer)).not.toContain(CODE.slice(20, 26));
+    expect(JSON.stringify(store.get(answer.id))).not.toContain(CODE.slice(20, 26));
+    expect(requestFiles()).not.toContain(CODE.slice(20, 26));
+  });
+
+  test("sign-in code: a long error row is cut to a receipt's detail", async () => {
+    const long = LOGIN_BAD.replace("That code wasn't accepted.", `That code wasn't accepted.${" It may be expired.".repeat(30)}`);
+    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, long);
+    const { send } = rig(field, "claude", "2.1.325");
+    const answer = await send(CODE, { secret: true });
+    expect(answer.receipt?.reason).toBe("code_rejected");
+    expect([...(answer.receipt?.detail ?? "")]).toHaveLength(RECEIPT_DETAIL_MAX);
+    expect([...(answer.detail ?? "")].length).toBeLessThanOrEqual(RECEIPT_DETAIL_MAX);
+    expect(answer.receipt?.detail?.startsWith("OAuth error: That code wasn't accepted. It may be expired.")).toBe(true);
+  });
+
+  // pi keeps an earlier try's error in its scrollback (its lab capture shows one over the field), and a
+  // new error can push the old one off the top: no count of rows tells a new error from an old one. So
+  // pi names no `idle.signInErrors` yet, and its code send is proven by the field closing, as before.
+
+  test("sign-in code: a screen that keeps changing is no evidence until it stands still", async () => {
+    // A spinner row under the success text that changes on every read never settles: the send waits
+    // out its bound and ends unknown rather than calling a moving screen proof.
+    let tick = 0;
+    const spinning = (): string => `${LOGIN_OK}\n Checking ${"·".repeat(++tick % 7)}x${String(tick)}`;
+    const field = new SignInPane({ fixture: "claude--v2325-first-run-url--w61.txt" }, FIRST_RUN_FIELD, firstRunField(61), "");
+    Object.defineProperty(field, "after", { get: spinning });
+    const { send } = rig(field, "claude", "2.1.325");
+    const answer = await send(SHORT);
+    expect(answer.receipt?.outcome).toBe("unknown");
+  });
+});
+
+describe("secret path: a code typed in the normal box on a code screen keeps no draft, hold or stored text", () => {
+  test("secret path: no secret flag from the phone, a hold store present: no line, no hold, no shell record", async () => {
+    const field = firstRunPane({ fixture: "claude--v2325-first-run-url--w61.txt" }, 61);
+    const { send, store, holds, blind, ring } = rig(field, "claude", "2.1.325", true);
+    const answer = await send(CODE);
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(store.get(answer.id)?.line).toBeUndefined();
+    expect(requestFiles()).not.toContain(CODE);
+    expect(holds?.waiting("main", "%1")).toHaveLength(0);
+    expect(heldFiles()).not.toContain(CODE);
+    expect(blind).toEqual([]);
+    expect(ring.of(answer.id).some((entry) => entry.rows.some((row) => row.includes(CODE.slice(-5))))).toBe(false);
+  });
 });

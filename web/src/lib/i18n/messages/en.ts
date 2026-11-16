@@ -674,6 +674,7 @@ export const en = {
   "composer.protocol.writeFailed": "Typing failed. Nothing was typed.",
   "composer.protocol.idReused": "This request was already used for another text. Send again.",
   "composer.protocol.refused": "The send was refused. Nothing was typed.",
+  "composer.protocol.codeRejected": "The agent did not take the code. Its words are below. Get a new code, then send it.",
   "composer.protocol.retry": "No answer ({error}). Tap Send again: it does not send twice.",
   // A send into a sign-in field that got no answer: its next tap takes a new request id, so the
   // sentence above would not be true.
@@ -3871,7 +3872,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = ["composer.protocol.codeRejected"] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

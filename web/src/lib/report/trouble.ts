@@ -73,6 +73,8 @@ const REASONS = {
   steer_not_allowed: "ignore",
   bad_head: "ignore",
   stale_view: "ignore",
+  // the agent's own answer to a code, shown already
+  code_rejected: "ignore",
   // a dialog on screen, shown already
   dialog_open: "ignore",
   dialog_after_enter: "ignore",

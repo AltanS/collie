@@ -97,3 +97,64 @@ export function signInShown(texts: readonly string[], idle: Pick<Profile["idle"]
   }
   return false;
 }
+
+const rejectCache = new WeakMap<readonly string[], readonly RegExp[]>();
+
+/** How many rows an error sentence may wrap onto under the row that matched. */
+const REJECTION_ROWS = 4;
+
+/**
+ * What the screen says where the agent did not take a sign-in code, top to bottom: each row one of the
+ * profile's `idle.signInErrors` matches, joined with the rows its sentence wraps onto (up to a blank
+ * row or a row with no letter, a rule; at most {@link REJECTION_ROWS} rows in all), each trimmed. An
+ * earlier try's error may still stand in the scrollback, so a caller compares the count with a read
+ * from before the code went in. Pure.
+ */
+export function signInRejections(texts: readonly string[], idle: Pick<Profile["idle"], "signInErrors">): string[] {
+  const sources = idle.signInErrors;
+  if (sources === undefined || sources.length === 0) return [];
+  let patterns = rejectCache.get(sources);
+  if (patterns === undefined) {
+    patterns = sources.map((source) => new RegExp(source, "u"));
+    rejectCache.set(sources, patterns);
+  }
+  const found: string[] = [];
+  for (let at = 0; at < texts.length; at++) {
+    const head = texts[at]!.trim();
+    if (head === "" || !patterns.some((pattern) => pattern.test(head))) continue;
+    const words: string[] = [];
+    for (let i = at; i < texts.length && words.length < REJECTION_ROWS; i++) {
+      const text = texts[i]!.trim();
+      if (text === "" || !/\p{L}/u.test(text)) break;
+      words.push(text);
+    }
+    found.push(words.join(" "));
+  }
+  return found;
+}
+
+/**
+ * A refused code's detail where the agent's words could not be kept (they held the code): the plain
+ * sentence, which the phone's own sentence already says, so the phone shows its own alone.
+ */
+export const CODE_REJECTED_PLAIN = "The agent did not take the code.";
+
+/** The shortest run of a code's characters that, found in the agent's words, drops them. */
+export const CODE_RUN = 6;
+
+/**
+ * The agent's words about a code it did not take, made safe to keep: null when they hold the code, or
+ * any run of {@link CODE_RUN} or more of its characters in a row (an agent that echoes the code, or a
+ * part of it, in its error); else the words cut to `max` characters. Whitespace is left out of both
+ * sides first, so a code the screen wrapped is still found. With null the plain sentence stands alone.
+ * The words go into the stored receipt, the report line and the phone. Pure.
+ */
+export function rejectionDetail(words: string, code: string, max: number): string | null {
+  const said = [...words.replace(/\s+/gu, "")];
+  const secret = [...code.replace(/\s+/gu, "")];
+  const heard = said.join("");
+  for (let at = 0; at + CODE_RUN <= secret.length; at++) {
+    if (heard.includes(secret.slice(at, at + CODE_RUN).join(""))) return null;
+  }
+  return [...words].slice(0, max).join("");
+}

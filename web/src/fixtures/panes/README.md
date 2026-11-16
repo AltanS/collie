@@ -4117,6 +4117,20 @@ finished login: the screens after sign-in (security notes, terminal setup, folde
 | `claude--v2325-first-run-url-pasted--w61.txt` | 99 characters: three rows of 29 `*`, then `******ateEND`, 31 columns in, never cut | field secret, draft wrapped |
 | `claude--v2325-first-run-url-pasted--w120.txt` | 132 characters at 120 columns, two rows | field secret, draft wrapped |
 
+### After the code: the first run signed in (captured live 2026-11-16, Claude Code 2.1.325, 219 columns)
+
+The screens after a code Claude Code took, from a real sign-in into an empty config folder, recorded by
+the operator in tmux. Each capture began with the host shell's banner; only the agent's rows were kept.
+Privacy: the account address is `person@example.com`, every link is `https://example.invalid/masked`,
+the home folder is `/home/user`, and the trust dialog's list of tool permissions is masked. The moment between the submit key and `Login successful.` was not captured. Read by
+`lib/harness/claude/first-run-continue.test.ts` and `bridge/surface/protocol.sign-in.test.ts`.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--v2325-first-run-login-ok--w219.txt` | Under the art: `Logged in as …`, `Login successful. Press Enter to continue…` | a menu card, one action: Continue, Enter (first-run-continue.ts); after a code send, the evidence it was taken |
+| `claude--v2325-first-run-security-notes--w219.txt` | After Enter: `Security notes:`, two numbered notes, `Press Enter to continue…` | a menu card, one action: Continue, Enter; the numbered notes are text, never options |
+| `claude--v2325-first-run-trust--w219.txt` | After Enter: `Accessing workspace:`, `Quick safety check`, `❯ No, exit`, `Yes, I trust this folder`, `Enter to confirm · Esc to cancel` | prompt-select: No is Enter, Yes is Down and Enter |
+
 ### `/theme` in an onboarded session (captured 2026-11-15, Claude Code 2.1.325, 40 and 61 columns)
 
 The negative of the first-run theme step: the same list, opened with `/theme` in a scratch config folder
