@@ -2,7 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Shipped in:** 1.22.0
+- **Amended in scope by:** [ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md): the durable SDK
+  is published as an npm package, which reverses the line that this record does not publish it.
 - **Amends in scope:** [ADR 0099](./0099-a-durable-program-is-a-mux-with-no-screen.md), the rule
   that one Collie watches one mux
 - **Trail:** the second small Collie that a durable program needed under 0099, and a review of that

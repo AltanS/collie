@@ -9,7 +9,6 @@
   with the reading frozen while the list is on screen, so nothing moves on a poll in either order.
   No list is ordered by status, and everything else below stands.
 - **Date:** 2026-09-23
-- **Shipped in:** pending
 - **Trail:** `bridge/state-engine.ts` (`byPlace`) · `bridge/crew/merge.ts` (`placeSorted`, which
   replaced `triageSorted` and its §9.2 reading "the phone's NEEDS YOU list must not hide a blocked
   agent behind a host tab") · `web/src/lib/pane-groups.ts` · `web/src/lib/pane-ordinal.ts` ·

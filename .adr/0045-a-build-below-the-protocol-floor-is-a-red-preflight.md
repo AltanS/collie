@@ -1,6 +1,7 @@
 # 0045 — A build below the protocol floor is a red preflight, never a silent link
 
 Status: **Accepted** (2026-09-13)
+Date: 2026-09-13
 
 Related: [ADR 0039](./0039-the-machine-says-crew-too.md) (the rename that scheduled the removal this
 answers) · [ADR 0016](./0016-updates-ride-the-operators-ssh.md) (the walk this check runs inside) ·

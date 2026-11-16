@@ -2,8 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-14
-- **Shipped in:** 1.22.0
-- **Amends in scope:** [ADR 0104](./0104-a-program-is-a-session.md), the line that it does not publish the SDK
+- **Amends in scope:** [ADR 0104](./0104-a-program-is-a-session.md), the line that it does not publish the SDK, and
+  [ADR 0099](./0099-a-durable-program-is-a-mux-with-no-screen.md), point 5 (the SDK stays unpublished example code)
 - **Trail:** M55 spec 10 · `packages/durable-sdk/` (the package) · `scripts/sdk-build.ts` (`bun run sdk:build`) ·
   `scripts/sdk-pack-check.sh` and `scripts/sdk-pack-check.ts` (the pack check, a step of the `durable-example` CI
   job) · `examples/durable-member/` · `docs/durable-programs.md` ·

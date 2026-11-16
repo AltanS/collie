@@ -11,7 +11,6 @@
   `needsYouOnly`) and a Crew tab joins while a crew is configured; the filter's rules, the corner
   mark's rule (now on the Dashboard tab) and Changes stand.
 - **Date:** 2026-09-23
-- **Shipped in:** pending
 - **Trail:** GitHub issue 270 (@simplysoft: a `Needs you` chip on the workspace strip, persisted as
   `attentionOnly`) · the playground's `dashboard-nav` round, four numbered options (commit
   186e777d), option 1 picked with two corrections · `web/src/components/ui/tab-bar.tsx` ·

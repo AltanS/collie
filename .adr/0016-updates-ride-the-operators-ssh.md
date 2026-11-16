@@ -2,6 +2,10 @@
 
 Status: **Accepted** (2026-08-15) · Amended in scope by
 [0062](./0062-a-crew-run-levels-to-its-target-and-its-second-step-is-not-a-new-attempt.md)
+Date: 2026-08-15
+
+Amended in scope by: [ADR 0110](./0110-two-release-lines.md): the crew follow gains
+`X-Crew-Lead-Line` and a named step down (rollback or switch) on the Edge line.
 
 Related: [ADR 0015](./0015-pack-add-pushes-over-the-operators-ssh.md) (the same channel, for the same
 reasons, one verb earlier) · [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (a

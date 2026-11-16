@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-09
-- **Shipped in:** pending (1.19.0)
 - **Relates to:** [ADR 0089](./0089-a-second-agent-on-a-branch.md) (the receipt pattern this reuses),
   [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (the crew link forwards, it does
   not interpret).

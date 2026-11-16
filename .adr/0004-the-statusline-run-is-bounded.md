@@ -1,6 +1,7 @@
 # 4. The statusline run is bounded, but the bound guards less than it looks
 
 Status: Accepted · 2026-07-30
+Date: 2026-07-30
 
 Amended in scope by: [ADR 0048](./0048-the-input-box-is-found-by-its-own-frame.md) — the bound now limits only what the view strips as a statusline; the box is found by its own frame.
 

@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-21
-- **Shipped in:** nothing to ship; this records a standing choice
 - **Trail:** `web/src/router.tsx` (`createBrowserRouter`) · `web/src/lib/loaders.ts` · `web/vite.config.ts`
   (the `index.html` transform hook, the playground page, the PWA plugin) · `web/src/sw.ts` ·
   `web/CLAUDE.md` → "Data flows through React Router" · PR #253, whose review asked the question

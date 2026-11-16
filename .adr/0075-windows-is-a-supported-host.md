@@ -7,7 +7,6 @@
   That tolerance closes itself: it is mandatory once any earlier release carries a Windows zip, or on
   2026-11-15.
 - **Date:** 2026-10-03
-- **Shipped in:** 1.16.0
 - **Supersedes:** the contrib-only decisions on PR #71 (2026-08-11) and PR #298 (2026-09-26), which
   made Windows a community-maintained, best-effort platform. Their reasoning held while nobody could
   test Windows. It does not hold now.

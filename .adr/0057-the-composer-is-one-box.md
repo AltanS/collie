@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-22
-- **Shipped in:** pending (target 1.12.0)
 - **Trail:** `web/src/components/composer.tsx` · `web/src/components/ui/chat/chat-input.tsx` ·
   `web/src/components/actions-row.tsx` · `web/src/components/ui/anchored-menu.tsx` ·
   `DESIGN.md` §2, §6 · [ADR 0005](./0005-a-composed-key-queue-never-outlives-its-dock.md)

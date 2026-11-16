@@ -18,7 +18,9 @@
   bullet ("the guard checks the screen before the batch") is superseded the same way. Nothing else
   changes.
 - **Date:** 2026-10-02
-- **Shipped in:** 1.16.0
+- **Amended in scope by:** [ADR
+  0133](./0133-the-omp-plan-review-is-lifted-and-its-tier-is-named-not-moved.md): the omp plan
+  review is now a card. The modal gate of point 1 is unchanged.
 - **Amends:** [ADR 0053](./0053-an-unread-dialog-still-has-a-way-out.md) and
   [ADR 0072](./0072-a-two-pane-box-pans.md), in scope. 0053's omp row (none, a gap) now reads
   `Escape`, with the fifth condition from its own addendum, and 0072's omp `/model` consequence

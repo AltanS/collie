@@ -1,6 +1,7 @@
 # 0005 — A composed key queue never outlives its dock
 
 Status: **Accepted** (2026-08-03)
+Date: 2026-08-03
 
 ## Context
 

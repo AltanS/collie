@@ -2,7 +2,8 @@
 
 - **Status:** Accepted. Amended by [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md): the walk is no longer "sent as one batch"; the arrows go first, the pointer is read back, and `Enter` follows bound to that read.
 - **Date:** 2026-09-22
-- **Shipped in:** pending (target 1.12.0)
+- **Amends in scope:** [ADR 0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md), as a
+  narrow exception: an unprinted Enter on this one dialog.
 - **Trail:** `web/src/lib/harness/claude/resume.ts` (`detectResumePickerRegion`) ·
   `web/src/lib/harness/claude/index.ts` · `web/src/lib/harness/claude/prompt-select.ts`
   (`pointerWalk`) · `web/src/fixtures/panes/claude--menu-resume-picker--*.txt` ·

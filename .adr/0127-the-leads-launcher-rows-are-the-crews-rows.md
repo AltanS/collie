@@ -2,7 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-03
-- **Shipped in:** pending
+- **Amends in scope:** [ADR 0094](./0094-launchers-added-from-a-phone.md), points 7 and 11 only (the
+  lead's rows are the crew's rows; adds go to the lead).
 - **Relates to:** [ADR 0094](./0094-launchers-added-from-a-phone.md) (amended: points 7 and 11 are
   superseded, the rest stands), [ADR 0091](./0091-launch-by-id-with-a-request-id.md) (launch by id,
   the request id and the receipt, unchanged),

@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-26
-- **Shipped in:** unreleased (1.25.0 candidate)
 - **Trail:** M67 `browser-leg-replay` (counsel of 2026-10-21, specs 03 and 04) · `web/e2e/rig/replay/`
   (`cassette.ts`, `stub.ts`, `tier.ts`, `report.ts`, `check.ts`) · `web/e2e/rig/harnesses.ts` ·
   `web/e2e/rig/rig.ts` · `web/e2e/rig/leg.ts` · `web/e2e/rig/global-setup.ts`, `global-teardown.ts` ·

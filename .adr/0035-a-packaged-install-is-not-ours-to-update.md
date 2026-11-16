@@ -1,6 +1,7 @@
 # 0035 — A packaged install is not ours to update
 
 Status: **Accepted** (2026-09-06)
+Date: 2026-09-06
 
 ## Context
 

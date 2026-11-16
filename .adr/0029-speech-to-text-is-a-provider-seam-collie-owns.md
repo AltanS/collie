@@ -1,6 +1,12 @@
 # 0029 — Speech-to-text is a provider seam Collie owns; Codex auth rides the operator's own binary
 
 Status: **Accepted** (2026-08-23)
+Date: 2026-08-23
+
+Amended in scope by: [ADR 0096](./0096-speech-can-stay-on-the-phone.md) adds a fourth provider,
+`whistle`, and one named exception to the setup-is-a-CLI-act rule. [ADR
+0097](./0097-codex-speech-can-be-chosen-from-settings.md) names a second, narrower exception: a
+write device may switch the host between Whistle, Codex and Off from Settings.
 
 Supersedes: the decline reasoning of [#91](https://github.com/AltanS/collie/pull/91) (en-ver,
 `openai-compatible` transcription) and [#115](https://github.com/AltanS/collie/pull/115)

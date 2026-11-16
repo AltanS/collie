@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-26
-- **Shipped in:** pending
 - **Amends:** [ADR 0063](./0063-a-pane-keeps-its-place-when-its-state-changes.md) and
   [ADR 0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md), in scope. No list is
   ordered by status, and the footer, the strip and the summary line stand. A pane gains one more

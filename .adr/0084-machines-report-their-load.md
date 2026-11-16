@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-05
-- **Shipped in:** 1.17.0
 - **Relates to:** [ADR 0042](./0042-notification-kinds-and-the-cache-watch.md) (the cache
   warning, whose shape the machine alert copies), [ADR 0074](./0074-a-push-title-is-a-code-the-phone-translates.md)
   (push titles are catalogue codes), [ADR 0034](./0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md) (Collie collects nothing;

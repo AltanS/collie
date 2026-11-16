@@ -1,6 +1,7 @@
 # 0039 — The machine says "crew" too
 
 Status: **Accepted** (2026-09-09)
+Date: 2026-09-09
 
 Supersedes [ADR 0038](./0038-the-group-is-a-crew-the-wire-keeps-pack.md) on the machine-read names
 only; the operator word, the roles, the verbs and the alias plan stand.

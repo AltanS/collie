@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-12
-- **Shipped in:** pending (1.20.1)
 - **Trail:** [PR 397](https://github.com/AltanS/collie/pull/397) (a `pi` adapter with recipes for one
   question extension) · [issue 412](https://github.com/AltanS/collie/issues/412) (a `pi` adapter for
   OmO's built-in ask) · `web/src/lib/harness/pi/ask.ts`, `footer.ts`, `ASK_NOTES.md` ·

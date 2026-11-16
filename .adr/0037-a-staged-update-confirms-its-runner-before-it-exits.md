@@ -1,6 +1,7 @@
 # 0037 — A staged update confirms its runner before it exits
 
 Status: **Accepted** (2026-09-08)
+Date: 2026-09-08
 
 Contract: [`docs/upgrading.md`](../docs/upgrading.md) ·
 Related: [ADR 0006](./0006-update-advances-the-checkout-herdr-installed.md) (which made `update`

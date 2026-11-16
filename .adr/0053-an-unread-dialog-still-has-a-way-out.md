@@ -5,7 +5,6 @@
   omp now declares `Escape` and a `modalOnScreen` probe, which closes the gap recorded in the table
   below. The rules above stand.
 - **Date:** 2026-09-21
-- **Shipped in:** pending (M34, target 1.12.0)
 - **Trail:** `web/src/lib/harness/claude/markers.ts` (`classifyFooter`) ·
   `web/src/lib/harness/claude/menu.ts` (`detectMenuRegion`) ·
   `web/src/lib/harness/claude/effort.ts` · `web/src/lib/harness/index.ts` (the post-pass) ·

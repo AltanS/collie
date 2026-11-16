@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-12
-- **Shipped in:** pending (1.21.0)
 - **Trail:** a durable agent program (Pi Durable) whose tool calls wait for a person ·
   `web/src/lib/harness/prompt-model.ts` (`PromptModel`, `promptsEqual`) · `bridge/prompt-binding.ts` ·
   `bridge/types.ts` (`PaneWire`) · `bridge/server.ts` (the `prompt_changed` refusal) ·

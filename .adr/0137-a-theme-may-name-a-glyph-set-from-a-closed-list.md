@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-08
-- **Shipped in:** pending
 - **Builds on:** [ADR 0136](./0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md) (a theme
   names a goodie from a closed list, a lazy chunk outside the precache) and
   [ADR 0106](./0106-a-theme-is-a-closed-file-of-named-tokens.md) (a theme is a closed file).

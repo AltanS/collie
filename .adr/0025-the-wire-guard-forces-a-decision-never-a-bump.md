@@ -1,6 +1,7 @@
 # 0025 — The pack-wire guard forces a decision, never a bump
 
 Status: **Accepted** (2026-08-20)
+Date: 2026-08-20
 
 Protocol: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §7, §7.1 · Code:
 [`scripts/check-pack-wire.sh`](../scripts/check-crew-wire.sh),

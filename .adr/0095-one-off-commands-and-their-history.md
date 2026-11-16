@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-09
-- **Shipped in:** pending (1.19.0)
 - **Relates to:** [ADR 0091](./0091-launch-by-id-with-a-request-id.md) (the launch kinds, the request
   id and the folder rules this reuses), [ADR 0094](./0094-launchers-added-from-a-phone.md) (the
   `[phone]` switches, the character rule and the versioned state file this copies),

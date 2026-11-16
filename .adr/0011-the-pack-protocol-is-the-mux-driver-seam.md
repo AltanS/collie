@@ -1,6 +1,7 @@
 # 0011 — The pack protocol is the mux-driver seam, and peers are full collies
 
 Status: **Accepted** (2026-08-06)
+Date: 2026-08-06
 
 Contract: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) · Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md)
 (how a peer listens) · [ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) (the words used here)

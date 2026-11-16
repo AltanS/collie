@@ -1,6 +1,7 @@
 # 0026 — The operator is the quorum
 
 Status: **Accepted** (2026-08-20)
+Date: 2026-08-20
 
 Generalises: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md) — promotion-is-a-confirm becomes
 the no-deputy instance of a broader rule. 0014 is not superseded and its gate is unchanged.

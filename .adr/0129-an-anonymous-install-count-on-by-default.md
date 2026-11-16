@@ -2,7 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-04
-- **Shipped in:** pending
+- **Amended in scope by:** [ADR
+  0134](./0134-the-trouble-tally-names-the-dialog-by-a-hash-of-its-key-hint-row.md): the trouble
+  tally may carry `screen`, a hash of the dialog's key-hint row, behind a strict key-hint gate.
 - **Supersedes:** [ADR 0034](./0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md) (Collie
   collects nothing, and opt-in is the ceiling). Its update-check paragraph stands.
 - **Relates to:** [ADR 0123](./0123-report-a-problem-three-failed-sends-offer-a-prefilled-issue.md)

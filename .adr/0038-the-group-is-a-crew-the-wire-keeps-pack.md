@@ -1,9 +1,11 @@
 # 0038 — The group is a crew; the wire keeps "pack"
 
-Status: **Accepted** (2026-09-09)
+Status: **Accepted** (2026-09-09). Superseded in part by [ADR 0039](./0039-the-machine-says-crew-too.md) (2026-09-09) on the
+machine-read names; the operator word, the roles and the alias plan stand.
+Date: 2026-09-09
 
-Superseded on the machine-read names by [ADR 0039](./0039-the-machine-says-crew-too.md)
-(2026-09-09); the operator word, the roles and the alias plan stand.
+Supersedes in part: [ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md), on the word "pack" only (the group is a crew). Every other
+decision there stands.
 
 Related: [ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) (superseded on the
 word only, every other decision there stands) ·

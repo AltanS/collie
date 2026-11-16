@@ -1,6 +1,7 @@
 # 0013 — A peer listens without becoming a front door
 
 Status: **Accepted** (2026-08-06)
+Date: 2026-08-06
 
 Amends: [ADR 0001](./0001-one-managed-front-door.md) — *one managed front door* graduates from
 **per machine** to **per pack**. 0001 is not superseded; its criterion is unchanged and still binding.

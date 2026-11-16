@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-23
-- **Shipped in:** pending
 - **Amended in scope by:** [ADR 0085](./0085-the-dashboards-tabs-are-dashboard-crew-and-changes.md):
   Focus stops being a tab and becomes a switch in the summary line, wearing the same `CircleDot`; a
   stored `"focus"` reads as Dashboard with the switch on.

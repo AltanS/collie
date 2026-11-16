@@ -1,6 +1,7 @@
 # 0006 — `update` advances the checkout Herdr installed, and never re-links it
 
 Status: **Accepted** (2026-08-04)
+Date: 2026-08-04
 
 ## Context
 

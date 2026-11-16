@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-17
-- **Shipped in:** 1.10.1
 - **Amends:** [ADR 0004](./0004-the-statusline-run-is-bounded.md). The 8-row statusline bound stays,
   and so does its size. It now bounds only what the view strips as a statusline. It no longer
   decides whether the box exists, so it no longer guards the send.

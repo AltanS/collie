@@ -1,6 +1,12 @@
 # 0014 — Promotion is a confirm on the receiver, not a command from the claimant
 
 Status: **Accepted** (2026-08-11)
+Date: 2026-08-11
+
+Amended in scope by: [ADR 0026](./0026-the-operator-is-the-quorum.md) generalises it:
+promotion-is-a-confirm becomes the no-deputy case of a broader rule. [ADR
+0027](./0027-the-deputy-is-named-ahead-of-time.md) narrows it: it stays the no-deputy floor. Its
+gate is unchanged.
 
 Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (the pack listener and its
 two factors) · [ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) (the

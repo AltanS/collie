@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-23
-- **Shipped in:** pending
 - **Trail:** the operator's report from the installed app on an iPhone: the edge swipe often lands
   on the last screen instead of one level up · `web/src/lib/nav.ts` (`ancestorsOf`, `resolveUp`,
   `resolveUpTo`, `parentChain`) · `web/src/hooks/use-nav.ts` (`useNav`) ·

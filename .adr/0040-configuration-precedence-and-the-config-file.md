@@ -1,6 +1,7 @@
 # 0040 — Configuration precedence, and the config file under it
 
 Status: **Accepted** (2026-09-13)
+Date: 2026-09-13
 
 Related: [ADR 0018](./0018-operator-command-rows-replace-the-catalog.md) (the operator TOML files
 this one sits beside, and does not touch) ·

@@ -1,6 +1,7 @@
 # 0018 — The operator's command rows replace the catalog, never merge into it
 
 Status: **Accepted** (2026-08-17)
+Date: 2026-08-17
 
 ## Context
 

@@ -1,6 +1,7 @@
 # 0092 — The Keys pad is a board you arrange, and the operator's Presets stay the operator's
 
 Status: **Accepted** (2026-10-09)
+Date: 2026-10-09
 
 Related: [ADR 0018](./0018-operator-command-rows-replace-the-catalog.md) (the `keys.toml` rows replace
 the shipped Presets, and are not touched here) ·

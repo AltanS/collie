@@ -1,6 +1,10 @@
 # 0033 — The app's face is a device preference, and an operator's fonts add to the list
 
 Status: **Accepted** (2026-08-31)
+Date: 2026-08-31
+
+Amended in scope by: [ADR 0106](./0106-a-theme-is-a-closed-file-of-named-tokens.md): the design
+store grows one sibling, `theme`. A radius or a density never joins it.
 
 Related: [ADR 0018](./0018-operator-command-rows-replace-the-catalog.md) (the trio's replace-law,
 which this file deliberately does **not** extend) ·

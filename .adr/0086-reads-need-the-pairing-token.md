@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-07
-- **Shipped in:** pending
 - **Amends:** [ADR 0083](./0083-the-files-view-reads-the-changes-root.md), whose context named reads
   as open to every device past the front door. The Files view's `device-read` level stands; the
   read-side fact does not. Also [ADR 0028](./0028-the-standby-door-is-a-second-listener.md), in its

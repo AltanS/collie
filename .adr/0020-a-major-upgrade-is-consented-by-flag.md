@@ -1,6 +1,11 @@
 # 0020 — A major upgrade is consented by flag; routine update follows tags within the installed major
 
 Status: **Accepted** (2026-08-19)
+Date: 2026-08-19
+
+Amended in scope by: [ADR 0110](./0110-two-release-lines.md): a machine on the Edge line is also
+offered `-edge.N` builds, and a downgrade exists for a rollback or a switch back to Stable. The
+Stable rule here is unchanged.
 
 Related: [ADR 0006](./0006-update-advances-the-checkout-herdr-installed.md) — extended, not superseded:
 `update` still advances the checkout in place, in whichever of the two shapes it was installed. Only

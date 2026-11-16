@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-07
-- **Shipped in:** 1.18.0
 - **Relates to:** [ADR 0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md) (the
   multiplexer opens a worktree; a half-done create is opened, never created again),
   [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (the crew link carries no

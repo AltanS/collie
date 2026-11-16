@@ -2,7 +2,11 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-02
-- **Shipped in:** 1.16.0
+- **Amends in scope:** [ADR 0058](./0058-the-resume-picker-commits-with-enter.md), [ADR
+  0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md) and [ADR
+  0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md): a tap on a
+  pointed row is no longer sent as one batch. The Deny plan of 0078 that leaned on list clamping is
+  gone.
 - **Amends:** [ADR 0055](./0055-a-pointed-list-is-walked-then-confirmed.md), point 4 only. Points 1 to 3
   and 5 to 7 stand.
 - **Trail:** `web/src/lib/prompt-action.ts` (`submitPromptOption`, `walkVerifyCommit`) ·

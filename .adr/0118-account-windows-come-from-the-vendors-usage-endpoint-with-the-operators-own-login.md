@@ -2,7 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-24
-- **Shipped in:** 1.24.0
+- **Amends in scope:** [ADR 0115](./0115-usage-numbers-come-from-the-operators-own-statusline.md):
+  the account windows come from the vendor's usage endpoint with the operator's own login, a road
+  0115 declined.
 - **Trail:** Altan, 2026-10-24: the windows must show without a statusLine; the operator sees no dots
   on 8788 because their statusLine is not wrapped; counsel the same day: an allowlist, the unproven readers off · `bridge/account-windows.ts` (`AccountWindows`,
   `readClaudeLogin`, `parseAccountUsage`, `isTurnEnd`) · `bridge/usage.ts` (`UsageTracker.get`, the

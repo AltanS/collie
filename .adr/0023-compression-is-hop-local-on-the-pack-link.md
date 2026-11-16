@@ -1,6 +1,7 @@
 # 0023 — Compression is hop-local on the pack link, and the ETag names the identity bytes
 
 Status: **Accepted** (2026-08-20)
+Date: 2026-08-20
 
 Protocol: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §9.1 · Code:
 [`bridge/pack/forward.ts`](../bridge/crew/forward.ts), [`bridge/http-cache.ts`](../bridge/http-cache.ts) ·

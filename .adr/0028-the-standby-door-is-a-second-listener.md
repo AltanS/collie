@@ -3,11 +3,12 @@
 Status: **Accepted** (2026-08-20). Amended by [ADR 0086](./0086-reads-need-the-pairing-token.md) in
 reasoning only: pairing is always on, so the quarantine of the synced registry now keeps the lead's
 phones off the deputy's own front door rather than keeping a gate from arming. The rule stands.
+Date: 2026-08-20
 
 Subordinate to: [ADR 0026](./0026-the-operator-is-the-quorum.md) — silence may *arm* a surface and may
 never *authorise* an action; that argument is there, not here.
 Amends: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md), exactly as 0013 amended
-[ADR 0001](./0001-one-managed-front-door.md). **0013's criterion is untouched and still binding — a
+the one-front-door rule. **0013's criterion is untouched and still binding — a
 peer publishes nothing.** What changes is that a peer may *bind* an unpublished, three-route browser
 listener while a lead-signed warrant names it. 0013's own "what would justify revisiting" anticipates
 this class of change; nothing in its body is retracted.

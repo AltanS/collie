@@ -2,6 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-18
+- **Amends in scope:** [ADR 0020](./0020-a-major-upgrade-is-consented-by-flag.md) (which releases a
+  machine is offered) and [ADR 0016](./0016-updates-ride-the-operators-ssh.md) (the crew follow
+  carries the lead's line and a named step down).
 - **Trail:** `bridge/update-line.ts` (the line record and the one resolver, `lineOffer`) · `cli/update.ts` (`planToTag`, `--line`, `--downgrade`, `keptStepDown`, `stampCheckout`, `lastStableKept`) · `bridge/update-action.ts` (`backVerdict`, `parseLineRequest`) · `bridge/server.ts` (`POST /api/update/back`, `GET`/`POST /api/update/line`) · `bridge/crew/follow.ts` (`X-Crew-Lead-Line`, `followGuards`) · `scripts/release-version.ts` (`--stamp`) · `web/src/components/release-line-card.tsx` · `bridge/state-shapes.test.ts` with `bridge/fixtures/last-stable/` · CREW_PROTOCOL.md §20, "Two release lines" · amends [ADR 0020](./0020-a-major-upgrade-is-consented-by-flag.md) (Stable is unchanged; Edge is a second line beside it) and [ADR 0016](./0016-updates-ride-the-operators-ssh.md)'s "no downgrade path" for two named cases
 
 ## Context

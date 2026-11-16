@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-22
-- **Shipped in:** pending (target 1.12.0)
 - **Trail:** `web/src/components/terminal-draft-preview.tsx` · `web/src/components/composer.tsx` ·
   `web/src/components/agent-chat.tsx` · `DESIGN.md` §1, §2 ·
   [ADR 0059](./0059-a-card-docks-above-the-belt.md)

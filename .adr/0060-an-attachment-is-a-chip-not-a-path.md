@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-22
-- **Shipped in:** pending (target 1.12.0)
 - **Trail:** `web/src/components/composer.tsx` · `web/src/components/attachment-chip.tsx` ·
   `web/src/lib/attachments.ts` · `web/src/lib/drafts.ts` · `bridge/server.ts` (CSP) ·
   [ADR 0057](./0057-the-composer-is-one-box.md)

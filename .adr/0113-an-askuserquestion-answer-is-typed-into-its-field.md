@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-14
-- **Shipped in:** 1.24.0
 - **Trail:** the 2026-09-26 rule that AskUserQuestion's `Type something.` row is "read, shown, and
   never typed into" (`web/src/lib/grammar/PLAN_FEEDBACK_NOTES.md`, `CLAUDE.md`), against an
   operator who answers interviews from the phone and could only pick a preset or end the whole

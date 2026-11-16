@@ -1,6 +1,10 @@
 # 0009 — A generic menu is driven by the keys it names, never by digits
 
 Status: **Accepted** (2026-08-05)
+Date: 2026-08-05
+
+Amended in scope by: [ADR 0058](./0058-the-resume-picker-commits-with-enter.md): a narrow exception,
+Enter is sent unprinted on the Claude /resume picker only. The digit ban stands everywhere else.
 
 ## Context
 

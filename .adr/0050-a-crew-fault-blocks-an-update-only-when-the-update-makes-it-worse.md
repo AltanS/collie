@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-20
-- **Shipped in:** points 1 and 2 pending release; point 3 not yet built
 - **Trail:** `cli/update-check.ts` (`doctorCheck`, `skewCheck`) · `bridge/update-action.ts`
   (`mergedUpdateVerdict`, `crewUpdateRows`) · `cli/crew-update.ts` (`preflightGate`) · `cli/doctor.ts` (the `local` and
   `crew` finding lists, `reach`) · `web/src/components/update-card.tsx` (`blocked`,

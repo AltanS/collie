@@ -2,7 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-25
-- **Shipped in:** 1.24.1
+- **Amends in scope:** [ADR 0034](./0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md): a
+  person may send a report as a prefilled GitHub issue that they open and submit themselves. 0034
+  stands, because Collie makes no call and collects nothing.
 - **Trail:** `web/src/lib/report/trouble.ts` (the rule) · `web/src/lib/report/store.ts` ·
   `web/src/lib/report/body.ts` (the issue text and the link) · `web/src/components/report-card.tsx` ·
   `web/src/components/report-sheet.tsx` · `web/src/components/report-control.tsx` ·

@@ -1,6 +1,7 @@
 # 0022 — The multiplexer is a port Collie owns, not a relocated Herdr client
 
 Status: **Accepted** (2026-08-19)
+Date: 2026-08-19
 
 Contract: [`MUX_CONTRACT.md`](../MUX_CONTRACT.md) · Code: [`bridge/mux/`](../bridge/mux/) ·
 Related: [ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) (which named this seam and

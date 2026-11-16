@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-22
-- **Shipped in:** pending (target 1.12.0)
 - **Trail:** `web/src/lib/harness/menu-model.ts` (`MenuLeftRight.values`, `menusSameIdentity`) ·
   `web/src/lib/harness/claude/effort.ts` · `web/src/components/menu-block.tsx` ·
   `web/src/fixtures/panes/claude--menu-effort-slider--w132.txt` ·

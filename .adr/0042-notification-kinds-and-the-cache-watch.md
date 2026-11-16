@@ -1,6 +1,7 @@
 # 0042 — Notification kinds, and the cache watch
 
 Status: **Accepted** (2026-09-13)
+Date: 2026-09-13
 
 Related: [ADR 0041](./0041-cache-rules-are-sourced-claims.md) (the reading this alerts on, and why a
 number with no dated page behind it is a rumour) ·

@@ -4,7 +4,6 @@
 - **Date:** 2026-09-23
 - **Amends:** [ADR 0016](./0016-updates-ride-the-operators-ssh.md), the 2026-09-04 addendum, fact
   "One attempt per hour, on the peer"
-- **Shipped in:** pending
 - **Trail:** `bridge/crew/follow.ts` (`followGuards`, `followLimit`, `UpdateTurns.observe`) ·
   `bridge/crew/lead.ts` (`foldTurns`) · `web/src/lib/update-screen.ts` (`legDetail`) ·
   [`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md) §20

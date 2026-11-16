@@ -2,7 +2,6 @@
 
 - **Status:** Proposed. Accepted at the tag that ships it.
 - **Date:** 2026-11-13
-- **Shipped in:** pending (1.29.0 at the earliest)
 - **Trail:** M99 "By data, not by the screen", README decisions 1 to 6 and 14 · live proof on Claude
   Code 2.1.323, 2026-11-13 (a mod took a prompt over a Unix socket and started a turn in 181 ms) ·
   `bridge/inside/WIRE.md` · `bridge/inside/` · `bridge/beacon/hook-targets.ts` (fields `inside`,

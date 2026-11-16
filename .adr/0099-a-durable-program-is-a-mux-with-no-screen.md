@@ -2,7 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-12
-- **Shipped in:** pending (1.21.0)
+- **Amended in scope by:** [ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md), point 5: the
+  durable SDK is no longer unpublished example code, it is the npm package `@colliepwa/durable-sdk`.
 - **Amended in scope by:** [ADR 0103](./0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md),
   points 3 and 4: a program the person deployed behind TLS is reached at a URL with a bearer token
 - **Amended in scope by:** [ADR 0104](./0104-a-program-is-a-session.md): a program can also be a

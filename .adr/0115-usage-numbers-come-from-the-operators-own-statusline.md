@@ -2,7 +2,10 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-23
-- **Shipped in:** 1.24.0
+- **Amended in scope by:** [ADR
+  0118](./0118-account-windows-come-from-the-vendors-usage-endpoint-with-the-operators-own-login.md):
+  the account windows come from the vendor's usage endpoint, not from the statusLine wrapper. It
+  reopens the road this record declined on 2026-10-23.
 - **Trail:** Altan, 2026-10-23: the row above the belt should carry the session's context use and the
   5-hour and 7-day subscription windows, as bars or dots. The brief named the other road and asked
   for an explicit yes before it was built: read `~/.claude/.credentials.json` and call the OAuth

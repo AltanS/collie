@@ -5,7 +5,6 @@
   exactly this case. ADR 0063 stands in full; this ADR walks through the one door it left open, and
   narrows it on the way.
 - **Date:** 2026-09-30
-- **Shipped in:** 1.15.0
 - **Trail:** `web/src/lib/pane-order.ts` · `web/src/components/pane-order-toggle.tsx` ·
   `web/src/components/pane-order-control.tsx` · `web/src/components/agent-sidebar.tsx` ·
   `web/src/hooks/use-dash-prefs.ts` · `web/src/hooks/use-frozen-ranks.ts` ·

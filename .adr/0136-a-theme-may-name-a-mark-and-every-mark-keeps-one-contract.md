@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-08
-- **Shipped in:** pending
 - **Amends in scope:** [ADR 0106](./0106-a-theme-is-a-closed-file-of-named-tokens.md), item 1 of its
   amendment of 2026-10-16 ("the mark is gone"): a theme may name a header mark again, from a closed list.
 - **Trail:** ADR 0106's amendment of 2026-10-16, where M57 spec 13 removed the theme's `mark` field after

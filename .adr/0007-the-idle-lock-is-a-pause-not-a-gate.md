@@ -1,6 +1,7 @@
 # 0007 — The idle lock is a pause, not a gate
 
 Status: **Accepted** (2026-08-04)
+Date: 2026-08-04
 
 ## Context
 

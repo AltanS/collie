@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-05
-- **Shipped in:** 1.17.0
 - **Amends:** [ADR 0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md) and
   [ADR 0068](./0068-the-second-tab-is-focus-not-attention.md), in scope. The footer, the filter's
   rules (a filter and never a sort, whole-workspace counts on every heading, a group with nothing

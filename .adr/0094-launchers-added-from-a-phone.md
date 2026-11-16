@@ -5,7 +5,6 @@
   points 7 and 11 are superseded (the lead's rows are the crew's rows; adds go to the lead). The
   rest stands.
 - **Date:** 2026-10-09
-- **Shipped in:** pending (1.19.0)
 - **Relates to:** [ADR 0091](./0091-launch-by-id-with-a-request-id.md) (launch by id, the request id
   pattern this reuses), [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (the crew
   link forwards, it does not interpret), [ADR 0086](./0086-reads-need-the-pairing-token.md) (pairing).

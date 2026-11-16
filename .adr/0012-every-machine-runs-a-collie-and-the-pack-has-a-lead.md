@@ -1,9 +1,8 @@
 # 0012 — Every machine runs a collie; the pack has a lead
 
-Status: **Accepted** (2026-08-06)
-
-Superseded on the word "pack" by [ADR 0038](./0038-the-group-is-a-crew-the-wire-keeps-pack.md)
-(2026-09-09); every other decision here stands.
+Status: **Accepted** (2026-08-06). Superseded in part by [ADR 0038](./0038-the-group-is-a-crew-the-wire-keeps-pack.md) (2026-09-09) on the word
+"pack"; every other decision here stands.
+Date: 2026-08-06
 
 Related: [ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) (what the protocol is) ·
 [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (what a peer may do) ·

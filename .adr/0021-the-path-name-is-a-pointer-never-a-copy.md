@@ -1,6 +1,7 @@
 # 0021 — The name on PATH is a pointer, never a copy
 
 Status: **Accepted** (2026-08-19)
+Date: 2026-08-19
 
 Related: [ADR 0006](./0006-update-advances-the-checkout-herdr-installed.md) — extended, not superseded.
 That ADR settled that **the checkout is the plugin**: `update` advances it in place, and everything

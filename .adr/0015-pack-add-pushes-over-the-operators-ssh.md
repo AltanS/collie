@@ -1,6 +1,7 @@
 # 0015 — `pack add` pushes the lead's own commit over the operator's SSH
 
 Status: **Accepted** (2026-08-12)
+Date: 2026-08-12
 
 Related: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md) (the two-machine consent this ADR must
 not weaken) · [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (a peer publishes

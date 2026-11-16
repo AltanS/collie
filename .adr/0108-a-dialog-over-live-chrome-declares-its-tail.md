@@ -1,8 +1,7 @@
 # 0108: a dialog over live chrome declares its tail
 
-- **Status:** Proposed (2026-10-16), for the maintainer to accept with the Hermes adapter
+- **Status:** Accepted (2026-10-16)
 - **Date:** 2026-10-16
-- **Shipped in:** pending
 - **Trail:** [issue #354](https://github.com/AltanS/collie/issues/354), whose local Hermes adapter
   bound the ticking rows under the panel and answered every tap with "Menu changed: reloading" ·
   [ADR 0098](./0098-pi-questions-are-read-by-shape-and-footer.md), amendment 2026-10-12 (the

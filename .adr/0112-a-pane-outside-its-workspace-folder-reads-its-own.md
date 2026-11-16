@@ -1,6 +1,6 @@
 # 0112 — A pane outside its workspace folder reads its own
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-18
 - **Amends:** [ADR 0065](./0065-the-changes-view-reads-git-read-only.md) §3 in scope — "every pane
   in one workspace shows the same list" now holds for the panes that sit inside the workspace

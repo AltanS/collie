@@ -2,7 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-22
-- **Shipped in:** pending (target 1.12.0)
+- **Amended in scope by:** [ADR 0059](./0059-a-card-docks-above-the-belt.md), in one place: the
+  instance survives because the card renders in `card-dock.tsx`, not `ansi-output.tsx`. The
+  reasoning is unchanged.
 - **Trail:** `web/src/components/option-button.tsx` (`PromptPanel`) ·
   `web/src/components/raw-mirror.tsx` · `web/src/components/prompt-select-block.tsx` ·
   `web/src/components/wizard-block.tsx` · `web/src/components/multi-select-block.tsx` ·

@@ -5,7 +5,6 @@
 - **Amends:** [ADR 0044](./0044-the-update-screen-is-one-reducer-and-one-shared-poll.md), in scope. Its
   one reducer and one shared poll stand. What changes is what the reducer says: the end of a run,
   the phone's own step, and where the confirm lives.
-- **Shipped in:** pending
 - **Trail:** the four drawn options of 2026-09-23 (checklist, machine cards, focus, and "Locked app,
   docked panel", the one chosen) · ADR 0044's own rule "the end is announced by the toast, not by a
   panel the operator has to close" · the card's inline confirm (M20/07) · `lib/pwa.ts`'s reload on

@@ -8,7 +8,6 @@
   refusal of point 6, a cap of 200 rows, and the `device-read` gate of point 9. Home as the root is
   the one difference from point 2, whose bound exists to stop a workspace root from being home.
 - **Date:** 2026-10-05
-- **Shipped in:** pending (1.17.0)
 - **Relates to:** [ADR 0065](./0065-the-changes-view-reads-git-read-only.md), whose last bullet named a
   later Files view "on the same rails". Nothing there is retracted.
 - **Trail:** `bridge/files-view.ts` · `bridge/server.ts` (`PANE_ROUTE`, `WORKSPACE_FILES_ROUTE`,

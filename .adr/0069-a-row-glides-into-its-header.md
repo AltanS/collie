@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-23
-- **Shipped in:** pending
 - **Trail:** the operator, 2026-09-23: "if we do one, we should do it right" — asked for the tap
   into the Changes screen to feel native, then asked for the same on a pane row once the first one
   landed · `web/src/lib/glide.ts` · `web/src/lib/pane-prefetch.ts` ·

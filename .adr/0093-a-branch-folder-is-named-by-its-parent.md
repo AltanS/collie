@@ -6,7 +6,6 @@
   the folder Collie puts the checkout in, by Herdr's rule; and point 9 no longer holds, because the
   worktree routes are forwarded to the addressed host. Everything else below stands.
 - **Date:** 2026-10-09
-- **Shipped in:** pending (1.19.0)
 - **Relates to:** [ADR 0089](./0089-a-second-agent-on-a-branch.md) (the worktree create, its
   receipts and its base), [ADR 0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md)
   (the multiplexer makes the worktree), [ADR 0083](./0083-the-files-view-reads-the-changes-root.md)

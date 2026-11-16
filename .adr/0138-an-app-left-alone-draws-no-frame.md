@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-08
-- **Shipped in:** pending
 - **Trail:** issue #748 (Chrome's GPU process on a Xiaomi 15 Ultra passed HyperOS's 5000-fd limit while
   Collie was on screen, and the system force-stopped Chrome), which asked for an in-app "Reduce motion"
   setting · Altan, 2026-11-08: "we should just fix it, this is half baked" · the 48 s resting drift the

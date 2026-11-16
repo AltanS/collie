@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-12
-- **Shipped in:** pending (1.21.0)
 - **Trail:** a durable agent program (Pi Durable) that offers named ways to begin a conversation ·
   `bridge/server.ts` (`launchersRoute`, the `/api/launchers` and `/api/launch` routes) ·
   `bridge/harness-launch.ts` · `bridge/launch-receipts.ts` · `bridge/worktree-receipts.ts` ·

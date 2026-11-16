@@ -2,14 +2,13 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-08
-- **Shipped in:** 1.27.4
 - **Amends:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md),
   in scope. The plan review was one of the omp modals that 0076 left raw with the Escape card. It is a
-  card now. The modal gate of 0076 point 1 is unchanged, and so are
-  [ADR 0077](./0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md),
+  card now. The modal gate of 0076 point 1 is unchanged.
+- **Related:** [ADR 0077](./0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md),
   [ADR 0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md) and
-  [ADR 0079](./0079-the-omp-model-picker-is-lifted-as-its-visible-window.md).
-- **Related:** [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md) carries the
+  [ADR 0079](./0079-the-omp-model-picker-is-lifted-as-its-visible-window.md) are unchanged.
+  [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md) carries the
   guarantee that a tap on this card is walked, verified, then confirmed.
   [ADR 0129](./0129-an-anonymous-install-count-on-by-default.md) is the count whose trouble tally
   found this screen.

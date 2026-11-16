@@ -1,10 +1,11 @@
 # 0032 — A worktree is opened by the multiplexer, not by Git
 
-Status: **Accepted** (2026-08-28)
+Status: **Superseded by [ADR 0126](./0126-collie-makes-a-worktree-with-git-and-opens-it-as-a-space.md)** (2026-11-02)
+Date: 2026-08-28
 
-Superseded by 0126 ([ADR 0126](./0126-collie-makes-a-worktree-with-git-and-opens-it-as-a-space.md),
-2026-11-02): Collie runs `git worktree add` in the bridge and opens the checkout with `createSpace`,
-and the three worktree verbs leave the port. That ADR answers the three objections below.
+Since 2026-11-02 Collie runs `git worktree add` in the bridge and opens the checkout with
+`createSpace`, and the three worktree verbs leave the port. ADR 0126 answers the three objections
+below.
 
 Contract: [`MUX_CONTRACT.md`](../MUX_CONTRACT.md) · Code: [`bridge/mux/`](../bridge/mux/) ·
 Related: [ADR 0022](./0022-the-mux-seam-is-a-port-collie-owns.md) (the port these capabilities join) ·

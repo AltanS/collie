@@ -1,10 +1,10 @@
 # 0114: a host with no process keeps its state in the log
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-21
-- **Shipped in:** pending
 - **Amends in scope:** the rules of `bridge/mux/durable/WIRE.md` section 8, point 1 (a new random epoch
-  on every start), for a host that has no start. [ADR 0104](./0104-a-program-is-a-session.md) and
+  on every start), for a host that has no start.
+- **Related:** [ADR 0104](./0104-a-program-is-a-session.md) and
   [ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md) are not changed. (Their exit was withdrawn on 2026-10-28.)
 - **Trail:** Altan, 2026-10-21: "i'd like collie to become the visual layer for these types of durable
   agents. we already have the sdk that supports Pi durable, lets add this one to it." Vercel's

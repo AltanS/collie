@@ -1,6 +1,7 @@
 # 0044 — The update screen is one reducer and one shared poll
 
 **Status:** accepted, 2026-09-13
+**Date:** 2026-09-13
 
 **Amended in scope by:** [ADR 0064](./0064-an-update-puts-the-phone-in-update-mode.md): the one reducer
 and the one poll stand; the screen they decide is now update mode, which ends only on Done, Rolled

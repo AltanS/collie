@@ -1,6 +1,7 @@
 # 0041 — Cache rules are sourced claims
 
 Status: **Accepted** (2026-09-13)
+Date: 2026-09-13
 
 Related: [ADR 0018](./0018-operator-command-rows-replace-the-catalog.md) (the operator-file contract
 this joins, and the replace-law it does not dilute) ·

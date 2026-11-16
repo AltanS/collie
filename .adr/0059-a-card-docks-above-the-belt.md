@@ -2,7 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-22
-- **Shipped in:** pending (target 1.12.0)
+- **Amends in scope:** [ADR 0056](./0056-a-card-can-be-put-down.md), in one place: where the card
+  renders. The reasoning of 0056 is unchanged.
 - **Trail:** `web/src/components/card-dock.tsx` · `web/src/components/ansi-output.tsx` ·
   `web/src/components/agent-chat.tsx` · `web/src/hooks/use-auto-scroll.ts` ·
   [ADR 0053](./0053-an-unread-dialog-still-has-a-way-out.md) ·

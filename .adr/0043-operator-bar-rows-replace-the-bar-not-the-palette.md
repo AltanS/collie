@@ -1,6 +1,7 @@
 # 0043 — Operator bar rows replace the bar, not the palette
 
 Status: **Accepted** (2026-09-13)
+Date: 2026-09-13
 
 ## Context
 

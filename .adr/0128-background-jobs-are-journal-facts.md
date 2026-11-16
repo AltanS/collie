@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-03
-- **Shipped in:** pending
 - **Relates to:** [ADR 0119](./0119-a-plan-is-a-tool-kind-and-its-updates-fold.md) (Gentle Shell's
   background tools end on a notice row; the reducer keeps `ongoing` until it arrives),
   [ADR 0073](./0073-a-live-session-is-a-bounded-window-on-the-existing-poll.md) (the live window the

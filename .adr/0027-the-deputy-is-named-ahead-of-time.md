@@ -1,6 +1,7 @@
 # 0027 — The deputy is named ahead of time, and takes over on the operator's word
 
 Status: **Accepted** (2026-08-20)
+Date: 2026-08-20
 
 Subordinate to: [ADR 0026](./0026-the-operator-is-the-quorum.md) — this is the mechanism; the argument
 for *why there is no election* lives there and is not repeated here.

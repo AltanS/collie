@@ -2,14 +2,14 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-02
-- **Shipped in:** 1.16.0
 - **Amends:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md),
   in scope, twice. The compact model picker that 0076 left raw with the Escape card is now a card in
   its session state. And the modal gate of 0076 point 1 accepts ONE segment after the way out, the
   picker's task-mode toggle, so the picker's declined states keep their Escape card. Everything else
-  in 0076 stands, as do [ADR 0077](./0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md)
-  and [ADR 0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md).
-- **Related:** [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md) carries the guarantee that a tap on this picker's rows is walked, verified, then
+  in 0076 stands.
+- **Related:** [ADR 0077](./0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md)
+  and [ADR 0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md) stand as
+  written. [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md) carries the guarantee that a tap on this picker's rows is walked, verified, then
   confirmed. Points 2 and 4 and the residual-risk bullets below are written to it.
 - **Trail:** the road this closes is a picker that types into its own search box from the card, and
   a card that carries the whole model list; both were weighed and refused below ·

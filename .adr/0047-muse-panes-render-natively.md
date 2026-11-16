@@ -2,7 +2,6 @@
 
 - **Status:** Accepted (2026-09-14)
 - **Date:** 2026-09-14
-- **Shipped in:** 1.9.1
 - **Amends:** [0002](0002-invert-the-light-terminal-mirror.md) — narrows "every mirror inverts in
   light" with the per-agent exception 0002 reserves ("one bit is all the mirror needs").
 - **Trail:** every figure is WCAG relative luminance against the `#f5f5f5` light ground,

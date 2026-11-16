@@ -1,6 +1,6 @@
 # 0109: an above-prompt notice is not a modal
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-17
 - **Trail:** `web/src/lib/surface/notice.ts` (the one reader) · `idle.notices` in `web/src/lib/surface/profiles/claude.json` · `web/src/lib/surface/cues.ts` · `bridge/surface/protocol.ts` (`gateSend`) · `web/src/lib/harness/claude/above-prompt-notice.ts` · `web/src/lib/harness/conformance.ts` · fixtures `claude--v2302-heads-up-above-box--w142.txt`, `claude--v2303-titled-edge-survey--w160.txt` and the `claude--v2304-heads-up-*` follow-ups · `web/src/components/menu-block.tsx` (a body notice's mirror) · opposes [ADR 0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md)'s no-digits rule, on the owner's ruling that the notice must not block sends and the phone shows it as a card with its buttons
 

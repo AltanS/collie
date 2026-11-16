@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-07
-- **Shipped in:** pending
 - **Relates to:** [ADR 0083](./0083-the-files-view-reads-the-changes-root.md) (the Files view reads
   one root-relative path under the Changes root, as JSON; this adds a second answer for one kind of
   file and retracts nothing) · [ADR 0086](./0086-reads-need-the-pairing-token.md) (reads need the
