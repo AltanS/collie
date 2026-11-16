@@ -31,3 +31,13 @@ M62 shipped the walky talky skill with one rule: only `collie skill install` wri
 The same step now also refreshes a linked harness part: after the skill sync, the new binary runs
 `collie harness sync` when a harness is linked and the binary reports 1.29.0 or later. It never replaces a
 newer part, and it never fails the update.
+
+## Addendum 2026-11-16: a change of the Hill's switch runs the same sync (M96)
+
+The skill holds the Hill's words only while the Hill is on, so a real change of an instance's Hill
+switch runs the same `skill sync` as the update, with the same guards and the same uninstall marker.
+The phone's `POST /api/hill/switch` and the takeover's adopt spawn the bridge's own binary with `skill
+sync --json` and do not wait for it; `collie hill on|off` runs the sync in its own process. A write of
+the same value and a bridge start sync nothing, `COLLIE_SKILL_SYNC=off` keeps the files as they are,
+and a fault is one log line that never fails the switch. The sentence "the bridge still never writes a
+harness file" above now holds except for this sync. The rule is in the header of `cli/skill-install.ts`.
