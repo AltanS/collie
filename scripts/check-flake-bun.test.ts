@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 514 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 525 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([284, 195, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([295, 195, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -224,7 +224,7 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(officialSkips).toBe(33);
     expect(script).toContain("bridge/tricks/official.test.ts");
     // The data path is off on Windows in 1.29.0 (ADR 0140, decision 15): every test on `dataRig` or the inside socket is
-    // `dataTest` or `dataDescribe` (bridge/inside/data-rig.ts), a skip on win32. 54 on the rig, 17 in server.test.ts.
+    // `dataTest` or `dataDescribe` (bridge/inside/data-rig.ts), a skip on win32. 63 on the rig, 19 in server.test.ts.
     const dataPathSkips = [
       "bridge/walky/deliver.test.ts",
       "bridge/inside/round.test.ts",
@@ -237,7 +237,7 @@ describe("the Windows check runs the flake's Bun", () => {
       const text = readFileSync(join(ROOT, file), "utf8");
       return sum + testsInBlocks(text, "dataDescribe(") + (text.match(/^ {2}dataTest\(/gm) ?? []).length;
     }, 0);
-    expect(dataPathSkips).toBe(71);
+    expect(dataPathSkips).toBe(82);
     expect(script).toContain("bridge/inside/data-rig.ts");
     // The Herdr and Tuios adapters (M100 spec 03): the stand-in daemon listens on a Unix socket path, so each describe skips on win32.
     const adapterSkips = ["bridge/mux/herdr/client.test.ts", "bridge/mux/tuios/client.test.ts"].reduce(
