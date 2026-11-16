@@ -28,11 +28,11 @@
       }
     },
     "grok": {
-      "version": "1.0.41",
-      "verified": "2026-09-27",
-      "how": "capture",
+      "version": "1.0.77",
+      "verified": "2026-11-16",
+      "how": "canary",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/grok--reporter-294-draft-newline-hint.txt (a reporter's Grok Build 1.0.41 capture, issue #294): the draft screen only; the dialog grammars were last seen on 1.0.5 (README § \"Grok corpus (live panes 2026-08-21-23)\")",
+      "evidence": "harness lab 2026-11-16 on grok 1.0.77: Surface on 91 screen reads at 61, 80, 120 and 200 columns over tmux and Herdr (idle, drafts, paste fold, slash list, trust prompt, model list, settings, running, queued), 14 kept as grok--v1.0.77-*.txt; three probed sends through a scratch bridge on Herdr (sent, sent, sent queued); 6 model turns. No permission card showed on this login, so the dialog grammars were last seen on 1.0.5",
       "journal": {
         "version": "0.0.0",
         "verified": "2026-08-21",
