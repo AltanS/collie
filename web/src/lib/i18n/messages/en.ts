@@ -261,7 +261,6 @@ export const en = {
   "settings.notify.updates.hint": "a new Collie version is available",
   "settings.notify.machines.label": "Machine load stays high",
   "settings.notify.machines.hint": "CPU or memory stays above a rule you set on a machine",
-  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "settings.notify.decisions.label": "Decisions that need you now",
   "settings.notify.decisions.hint": "an agent or a trick posts a Decision marked now on the Hill",
   "settings.notify.cache.label": "Cache about to go cold",
@@ -283,7 +282,6 @@ export const en = {
   "settings.snooze.preset.hour1": "1h",
   "settings.snooze.preset.hour4": "4h",
   // --- settings.clearNotifications ---
-  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "settings.clearNotifications.title": "Clear notifications",
   "settings.clearNotifications.description":
     "Clears the alerts of this machine, the Collie your phone talks to, and of this device. Finished agents count as seen. Other devices follow when they next open Collie. Agents waiting on you stay on the dashboard.",
@@ -303,8 +301,7 @@ export const en = {
   "settings.devices.description.enforced": "Every read and every write needs a paired device.",
   "settings.devices.pairedAs": "This device is paired as {device}.",
   "settings.devices.loadError": "Couldn’t load the paired devices from the bridge.",
-  // The bridge (or a proxy in front of it) refused this read with a 401 or 403. English only until the
-  // translation pass, listed in PENDING_TRANSLATION below.
+  // The bridge (or a proxy in front of it) refused this read with a 401 or 403.
   "settings.devices.denied": "This browser has no access, so Collie cannot show the paired devices.",
   "settings.devices.thisDevice": "This device",
   "settings.devices.row.meta": "Paired {paired} · last seen {lastSeen}",
@@ -367,8 +364,7 @@ export const en = {
   "settings.connection.bridge.notPaired": "Reachable, not paired",
   "settings.connection.device.notPaired": "Enforced, this device is not paired",
   "settings.connection.device.paired": "Enforced, this device is paired",
-  // The snapshot read was refused, so the bridge has not said what this browser may do. English only
-  // until the translation pass, listed in PENDING_TRANSLATION below.
+  // The snapshot read was refused, so the bridge has not said what this browser may do.
   "settings.connection.device.denied": "Refused, this browser has no access",
   "settings.connection.device.fullAccessNamed": "Full access · {device}",
   "settings.connection.device.fullAccessLocal": "Full access (local)",
@@ -391,8 +387,7 @@ export const en = {
   "settings.updateBanner.copyAria": "Copy command: {command}",
   "settings.updateBanner.bundleProgress": "{percent}% downloaded",
   "settings.updateBanner.bundleReloads": "It reloads on its own once nothing is in progress.",
-  // The "card" look of the update line (2026-11-09), English only until the translation pass: listed
-  // in PENDING_TRANSLATION below.
+  // The "card" look of the update line (2026-11-09).
   "settings.updateBanner.updateNow": "Update now",
 
   // --- settings.typeface (the APP's own face — a per-device preference since ADR 0033) ---
@@ -417,8 +412,7 @@ export const en = {
   "settings.typeface.note.nunito": "Soft and rounded, with a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
   // --- settings.character (which character the header draws: a per-device choice that wins over the
-  // theme's `character`, ADR 0136). English only until the translation pass: listed in PENDING_TRANSLATION
-  // below. The character names are proper nouns and stay in lib/mark-ids.ts. ---
+  // theme's `character`, ADR 0136). The character names are proper nouns and stay in lib/mark-ids.ts. ---
   "settings.character.title": "Character",
   "settings.character.description": "The character in the header, on this device.",
   "settings.character.fromTheme": "From the theme",
@@ -432,7 +426,6 @@ export const en = {
   "settings.character.movesHint": "Turn it off to keep the character still.",
   // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
   // --- settings.worktreeFolder (ADR 0093 note) ---
-  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "settings.worktreeFolder.title": "Worktree folder",
   "settings.worktreeFolder.description":
     "Where new worktrees go on a machine, in a folder named after the repo and the branch. You can still pick another folder for one worktree when you start it.",
@@ -617,8 +610,7 @@ export const en = {
   "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Hold Send to steer.",
   "composer.stale.hint": "The screen may be stale. Send probes it first.",
-  // The placeholder of a sign-in field (the Surface's `field: "secret"`). English only until the
-  // translation pass: listed in PENDING_TRANSLATION below.
+  // The placeholder of a sign-in field (the Surface's `field: "secret"`).
   "composer.secret.hint": "Sign-in code. Not saved as a draft.",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
   "composer.steer.steered": "Steered: the agent takes it after its current step.",
@@ -684,7 +676,7 @@ export const en = {
   "composer.protocol.refused": "The send was refused. Nothing was typed.",
   "composer.protocol.retry": "No answer ({error}). Tap Send again: it does not send twice.",
   // A send into a sign-in field that got no answer: its next tap takes a new request id, so the
-  // sentence above would not be true. English only until the translation pass: in PENDING_TRANSLATION.
+  // sentence above would not be true.
   "composer.protocol.retrySecret": "No answer from the bridge. Look at the agent's screen before you send the code again.",
   "composer.protocol.append": "Add to it",
   "composer.protocol.replace": "Replace",
@@ -880,8 +872,8 @@ export const en = {
   // `{reason}` is a whole sentence of its own and leading with a clause would read as one sentence
   // interrupted by another.
   "chat.mode.noChat": "{reason} The terminal stays here.",
-  // Agent views (a trick's view of a session that the session's own agent draws): English only until the
-  // translation pass, listed in PENDING_TRANSLATION below. `{name}` is the trick's own name, never translated.
+  // Agent views (a trick's view of a session that the session's own agent draws). `{name}` is the trick's own
+  // name, never translated.
   "view.back": "{name} view",
   "view.switch.hint": "Drawn by this session's agent. A tap sends a message in your name.",
   "view.switch.failed": "Not changed: {error}",
@@ -1040,7 +1032,6 @@ export const en = {
   "prompt.family.plan": "Review the plan",
   "prompt.sendingAria": "Sending",
   "prompt.reconnectNote": "Reconnect to answer.",
-  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "prompt.subjectCut": "The start of this request is above the screen. Open Screen to read all of it.",
   "ask.caption": "Needs your answer",
   "ask.captionNamed": "Needs your answer · {name}",
@@ -1427,7 +1418,6 @@ export const en = {
   "newPage.branch.name": "Branch name",
   "newPage.branch.folder": "Branch folder",
   // The default is this machine's own folder on every multiplexer, so the label no longer names Herdr.
-  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "newPage.branch.folder.default": "Default folder",
   "newPage.branch.folder.other": "Other folder",
   "newPage.branch.parent": "Put the branch folder in",
@@ -1560,8 +1550,7 @@ export const en = {
   "status.detail.dismiss": "Dismiss",
 
   // --- sessionFilter (the filter field over the session switcher and the Dashboard, M97) ---
-  // English only until the translation pass: listed in PENDING_TRANSLATION below. The field labels
-  // name the field a row matched in when the row does not draw it (`branch fix/748`), lower case.
+  // The field labels name the field a row matched in when the row does not draw it (`branch fix/748`), lower case.
   "sessionFilter.placeholder": "Filter sessions",
   "sessionFilter.noMatch": "No session matches “{query}”.",
   "sessionFilter.count": "{shown} of {total}",
@@ -2693,16 +2682,14 @@ export const en = {
   "chat.model.aria": "Model {name}",
   "chat.usage.context": "ctx",
   "chat.usage.context.aria": "Context {percent}% used",
-  // The context as a token count, where no window was stated (`222k`). English only until the
-  // translation pass: listed in PENDING_TRANSLATION below.
+  // The context as a token count, where no window was stated (`222k`).
   "chat.usage.context.tokens.aria": "Context {tokens} tokens",
   "chat.usage.window.5h": "5h",
   "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7-day limit {percent}% used",
   // A weekly window scoped to a model ({label} is the harness's own name for it), and any other window
-  // the harness reports ({label} is its label, else its key). English only until the translation pass:
-  // listed in PENDING_TRANSLATION below.
+  // the harness reports ({label} is its label, else its key).
   "chat.usage.window.7d.scoped.aria": "7-day {label} limit {percent}% used",
   "chat.usage.window.other.aria": "{label} limit {percent}% used",
   "chat.usage.cost.aria": "Session cost {amount}",
@@ -3173,7 +3160,7 @@ export const en = {
   "walky.reason.resting": "that session rests",
   "walky.reason.walkyOff": "the session has its WalkyTalky off",
   "walky.reason.senderOff": "the sending session has its WalkyTalky off",
-  // The space border (M98): English only until the translation pass, listed in PENDING_TRANSLATION below.
+  // The space border (M98).
   "walky.reason.outsideSpace": "Outside its space",
   "walky.off.label": "WalkyTalky",
   "walky.off.hint": "Off: other agents cannot message this session. You still can.",
@@ -3345,7 +3332,6 @@ export const en = {
   "telemetry.row.off": "Off",
   "telemetry.row.reading": "Reading…",
   "telemetry.row.failed": "Could not be read",
-  // English only until the translation pass (ping v3 added the usage pairs): listed in PENDING_TRANSLATION below.
   "telemetry.card.description":
     "Anonymous: one ping a day with the install count, which agents and multiplexers ran and whether the optional data link was on, and the trouble signals, under a random ID.",
   "telemetry.card.reading": "Reading the setting from this machine…",
@@ -3393,10 +3379,8 @@ export const en = {
   "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
   "settings.zoomPill.option.screen": "Screen view",
   "settings.zoomPill.option.off": "Off",
-  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "settings.pageZoom.title": "Pinch to zoom",
   "settings.pageZoom.description": "Pinch the page to make it bigger. Off stops a stray pinch from zooming the app. The Screen view's own zoom works either way.",
-  // English only until the translation pass: listed in PENDING_TRANSLATION below.
   "settings.usageRow.title": "Usage row",
   "settings.usageRow.description": "How the small model line shows context and limits: as the percent used, or as five dots.",
   "settings.usageRow.option.percent": "Percent",
@@ -3469,8 +3453,7 @@ export const en = {
   "tricks.frame.refused.value": "The trick does not take that value. Nothing ran.",
   "tricks.frame.refused.changed": "This changed before your tap. Nothing ran.",
   "tricks.frame.refused.session": "No open agent session here. Nothing ran.",
-  // A trick's rows in a session's settings (the `menu` place, contract 2): English only until the
-  // translation pass, listed in PENDING_TRANSLATION below. `{name}` is the trick's own name, never
+  // A trick's rows in a session's settings (the `menu` place, contract 2). `{name}` is the trick's own name, never
   // translated. tricks/sheet-labels.ts folds these with the sheet's own labels: no row label may read as one.
   "tricks.menu.heading": "From the trick {name}",
   "tricks.menu.waiting": "Waiting for {name}…",
@@ -3520,7 +3503,7 @@ export const en = {
   "settings.tricks.withTime": "{what} · {time}",
   "settings.tricks.refused": "Manifest refused: {reason}",
   "settings.tricks.refusedBare": "Manifest refused",
-  // Warnings at the switch (M94 review 15): English only until the translation pass, listed in PENDING_TRANSLATION below.
+  // Warnings at the switch (M94 review 15).
   "settings.tricks.warn.label": "What a text search of its code found",
   "settings.tricks.warn.spawn": "This trick starts other programs on this machine.",
   "settings.tricks.warn.network": "This trick reaches the network.",
@@ -3530,23 +3513,20 @@ export const en = {
   "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
   "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
   "settings.tricks.pending": "A new version waits for your yes.",
-  // The same row with the Hill off (2026-11-13): the new version's card is a Decision on the Hill. English only
-  // until the translation pass: listed in PENDING_TRANSLATION below.
+  // The same row with the Hill off (2026-11-13): the new version's card is a Decision on the Hill.
   "settings.tricks.pendingHillOff": "A new version waits. Switch the Hill on in Settings, Experiments, to read it.",
   // Fault B: the trick stopped because its code asks for a right the person's yes did not hold.
   "settings.tricks.rightsMoved": "Its rights changed. Switch it on again.",
-  // Take changes without asking, and the undo of an automatic change (crew slice 3). English only until
-  // the translation pass, listed in PENDING_TRANSLATION below.
+  // Take changes without asking, and the undo of an automatic change (crew slice 3).
   "settings.tricks.auto.failed": "Could not change {name}. Try again.",
   "settings.tricks.autoAt": "Updated {ago}, automatically.",
   "settings.tricks.undo": "Undo",
   "settings.tricks.undoArmed": "Undo?",
   "settings.tricks.undoFailed": "Could not undo {name}. Try again.",
-  // What a contract 2 trick reads (M99): English only until the translation pass, listed in
-  // PENDING_TRANSLATION below. The same words as schema.ts `inputsSentence`, held there by a test.
+  // What a contract 2 trick reads (M99). The same words as schema.ts `inputsSentence`, held there by a test.
   "settings.tricks.reads.solo": "Reads {globs} in your agent sessions' folders.",
   "settings.tricks.reads.crew": "Reads {globs} in your agent sessions' folders on every machine of the crew.",
-  // A trick's About sheet: English only until the translation pass, listed in PENDING_TRANSLATION below.
+  // A trick's About sheet.
   "settings.tricks.about.open": "About {name}",
   "settings.tricks.about.none": "This trick has no description.",
   "settings.tricks.about.does": "What it does",
@@ -3560,8 +3540,7 @@ export const en = {
   "settings.tricks.about.updates": "Updates",
   "settings.tricks.about.auto.label": "Take changes without asking",
   "settings.tricks.about.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
-  // An agent view and its rules (contract 2): English only until the translation pass, listed in
-  // PENDING_TRANSLATION below. The rights lines are schema.ts's own words
+  // An agent view and its rules (contract 2). The rights lines are schema.ts's own words
   // (AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS), held there by a test.
   "settings.tricks.place.agentView": "agent view",
   "settings.tricks.about.agentView": "Adds a view of a session that the session's own agent draws. You switch it on per session.",
@@ -3575,8 +3554,8 @@ export const en = {
   "settings.tricks.about.rulesUnshown": "This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.",
   "settings.tricks.about.rulesAfterAdd": "Read the instructions after you add it. It stays off until you switch it on.",
   "settings.tricks.switchMoved": "The trick changed after you read it. Read it again, then switch it on.",
-  // Official tricks, the ones this release can add (M94): English only until the translation pass,
-  // listed in PENDING_TRANSLATION below. The failure lines are the bridge's own (bridge/tricks/official-install.ts).
+  // Official tricks, the ones this release can add (M94). The failure lines are the bridge's own
+  // (bridge/tricks/official-install.ts).
   // The About sheet's facts of a trick's repository (2026-11-12): the bridge reads them, the phone never does.
   // `{stars}` is the count in the app's number format ("1,234"), the plural form picks by the count itself.
   // `{date}` is a date in the app's language; `{version}` is the author's own word from trick.toml.
@@ -3591,7 +3570,7 @@ export const en = {
   "settings.tricks.origin.community": "Community",
   // A trick or a Collie feature that makes an agent read or write more (2026-11-12): the chip after its name,
   // and in a trick's About sheet the first row of "What it does", one sentence on why
-  // (lib/tricks/token-use.ts, lib/token-use-features.ts). English only until the translation pass.
+  // (lib/tricks/token-use.ts, lib/token-use-features.ts).
   "tokens.uses": "Uses agent tokens",
   "settings.tricks.about.tokens.agentView": "Your agent reads this trick's instructions and draws its answers. That uses tokens.",
   "settings.tricks.about.tokens.rules": "Your agent reads this trick's instructions. That uses tokens.",
@@ -3628,7 +3607,7 @@ export const en = {
   "hill.empty.answered.one": "{count} answered. Nothing waits on you.",
   "hill.empty.answered.other": "{count} answered. Nothing waits on you.",
   "hill.answered": "Answered",
-  // Clear on the Answered group: English only until the translation pass, listed in PENDING_TRANSLATION below.
+  // Clear on the Answered group.
   "hill.clear.button": "Clear",
   "hill.clear.armed.one": "Clear {count} entry?",
   "hill.clear.armed.other": "Clear {count} entries?",
@@ -3667,11 +3646,9 @@ export const en = {
   "hill.receipt.gone": "This Decision is closed",
   "hill.receipt.denied": "This device may not answer",
   "hill.receipt.failed": "Not sent.",
-  // An answer to a session on a crew machine that is not answering (CREW_PROTOCOL §22): English only
-  // until the translation pass, listed in PENDING_TRANSLATION below.
+  // An answer to a session on a crew machine that is not answering (CREW_PROTOCOL §22).
   "hill.receipt.offline": "{machine} is not answering. Your answer was not sent.",
   // An answer to a Decision of Collie's own (crew slice 3): Collie acted itself, nothing was typed.
-  // English only until the translation pass, listed in PENDING_TRANSLATION below.
   "hill.receipt.versionUsed": "Now running the new version.",
   "hill.receipt.versionKept": "Kept the old version.",
   "hill.receipt.collieDone": "Done.",
@@ -3709,15 +3686,14 @@ export const en = {
   "settings.hill.hint": "Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar.",
   "settings.hill.switchFailed": "Could not switch the Hill. Try again.",
   // The armed second tap on the Hill's switch in Settings, Experiments (it had been the Tricks card's About
-  // sheet until 2026-11-13): English only until the translation pass, listed in PENDING_TRANSLATION below.
+  // sheet until 2026-11-13).
   "settings.tricks.hill.waits.one": "{count} question waits on the Hill. You cannot answer it while it is off.",
   "settings.tricks.hill.waits.other": "{count} questions wait on the Hill. You cannot answer them while it is off.",
   "hill.state.answered": "Answered",
   "hill.state.dismissed": "Dismissed",
   "hill.state.expired": "Expired",
   "hill.state.withdrawn": "Withdrawn by the poster",
-  // A card the person answered in its session (M96 spec 10): English only until the translation pass,
-  // listed in PENDING_TRANSLATION below.
+  // A card the person answered in its session (M96 spec 10).
   "hill.state.answeredInSession": "You wrote in the session",
   "hill.rightsClosed.approved": "It runs again.",
   "hill.rightsClosed.off": "The trick is off.",
@@ -3747,7 +3723,7 @@ export const en = {
   "hill.media.next": "Next picture",
   "hill.media.position": "{index} of {count}",
   "hill.media.open": "Open {name} at full size",
-  // A group of cards (crew slice 8): English only until the translation pass, listed in PENDING_TRANSLATION below.
+  // A group of cards (crew slice 8).
   "hill.group.count.one": "{count} card",
   "hill.group.count.other": "{count} cards",
   "hill.group.position": "Card {index} of {count}",
@@ -3762,8 +3738,8 @@ export const en = {
   "tricks.spark.trend": "Trend",
   "tricks.spark.aria": "{label}: from {min} to {max}, last {last}",
   // Pairing with a phone (ADR 0139): the new device's block (`pairPhone.*`, components/pair-with-phone.tsx)
-  // and the approver's page (`pairApprove.*`, routes/pair-approve.tsx). English only until the
-  // translation pass, listed in PENDING_TRANSLATION below. `{command}` is the CLI verb, never translated.
+  // and the approver's page (`pairApprove.*`, routes/pair-approve.tsx). `{command}` is the CLI verb, never
+  // translated.
   "pair.endsIn": "Ends in {time}",
   "pairPhone.title": "Pair this device with your phone",
   "pairPhone.body": "Use a phone that already has Collie. It scans a code and lets this device in.",
@@ -3816,7 +3792,7 @@ export const en = {
   "pairApprove.error": "Could not reach Collie. Try again.",
   "pairApprove.retry": "Try again",
   "pairApprove.done": "Done",
-  // Accounts (M101): one block. English only until the translation pass: listed in PENDING_TRANSLATION below.
+  // Accounts (M101): one block.
   "accounts.title": "Accounts",
   "accounts.row.none": "One login per agent",
   "accounts.row.added": "{n} added",
