@@ -682,6 +682,11 @@ Claude Code account asks for a text style before the sign-in. Open Keys and pres
 it suggests. Some sign-ins need a browser on that machine. Claude Code and Grok also try to open that
 page in a browser on the machine that runs the bridge.
 
+A sign-in session started from the Accounts page does not start in your home folder. It starts in an
+empty folder of Collie's own, `sign-in` in the instance's state folder (`~/.local/state/collie/sign-in`
+unless `COLLIE_STATE_DIR` moves it). The agent may still ask whether you trust that folder. Either
+answer is fine for a sign-in.
+
 The New page lets you pick the account for an agent and for a row you built from its options. A row
 you wrote by hand starts as you wrote it. A Claude Code session started from a desktop terminal with
 the account's line (shown on the account's page) gets the account's tag too, once its hooks report

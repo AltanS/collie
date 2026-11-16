@@ -166,3 +166,12 @@ export function displayStartLine(adapter: AccountAdapter, dir: string, binary: s
   const value = shown.startsWith("~/") && /^~\/[A-Za-z0-9._/-]+$/u.test(shown) ? shown : quoteFolder(dir);
   return `${adapter.select.env}=${value} ${binary}`;
 }
+
+/**
+ * The folder a sign-in start runs in: `sign-in` in the instance's state folder, so it follows
+ * `COLLIE_STATE_DIR`. An agent started only to log in should not ask about, or get trust for, the home
+ * folder or the folder of a neighbouring pane. The bridge makes it empty and writes nothing into it.
+ */
+export function signInFolder(stateDir: string): string {
+  return join(stateDir, "sign-in");
+}

@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -108,6 +108,8 @@ export interface FolderFs {
   isDirectory(path: string): Promise<boolean>;
   /** Whether anything (a link included, dangling or not) sits at `path`. */
   exists(path: string): Promise<boolean>;
+  /** Makes the folder and its parents with `mode`; no error when it is already a folder. Rejects when `path` is not one. */
+  makeDir(path: string, mode: number): Promise<void>;
 }
 
 export const diskFolderFs: FolderFs = {
@@ -120,6 +122,10 @@ export const diskFolderFs: FolderFs = {
     } catch {
       return false;
     }
+  },
+  makeDir: async (path, mode) => {
+    // A recursive mkdir answers EEXIST for a file in the way, and nothing for a folder already there.
+    await mkdir(path, { recursive: true, mode });
   },
 };
 

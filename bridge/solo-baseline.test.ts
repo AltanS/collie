@@ -1463,6 +1463,9 @@ const STATE_DIR_ENTRIES = [
   // after a restart. Written by use and by nothing else: absent until a harness log first names a
   // session. Transcripts off never builds the tracker, so it never writes it.
   "session-titles.json",
+  // The folder a sign-in start runs in (bridge/account-folder.ts `signInFolder`): made empty, at 0700, by the
+  // first sign-in start from a phone, and never written into. Absent until then.
+  "sign-in",
   "snooze.json",
   // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
   // else: absent until the first starter run, which only a peer on `COLLIE_MUX=durable` can offer.
