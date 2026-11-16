@@ -104,7 +104,8 @@ describe("placing an edge", () => {
 
   test("checks the pid against the pane's foreground where the multiplexer reports pids", async () => {
     expect((await placeEdge(record(), [target({ foreground: foreground([PID, 5]) })], alive)).kind).toBe("placed");
-    expect(await placeEdge(record(), [target({ foreground: foreground([5, 6]) })], alive)).toEqual({ kind: "dropped", reason: "not-foreground" });
+    // Dropped, with the pane its markers matched: another process of that pane wrote it.
+    expect(await placeEdge(record(), [target({ foreground: foreground([5, 6]) })], alive)).toEqual({ kind: "dropped", reason: "not-foreground", pane: { session: "main", paneId: "w1:p1" } });
     // No pid reported (argv only): the marker and the live pid are the evidence.
     expect((await placeEdge(record(), [target({ foreground: foreground([undefined]) })], alive)).kind).toBe("placed");
   });
@@ -129,16 +130,18 @@ function router(targets: EdgeTarget[], liveness: BeaconLiveness = alive) {
   const spool = new FakeSpool();
   const lines: string[] = [];
   const drops: string[] = [];
+  const foreign: string[] = [];
   let clock = 1_000_000;
   const r = new EdgeRouter({
     spool,
     liveness,
     targets: () => targets,
     onDrop: (_record, reason) => drops.push(reason),
+    onForeign: (pane, pid, ended) => foreign.push(`${pane.session}/${pane.paneId} ${String(pid)}${ended ? " end" : ""}`),
     log: (line) => lines.push(line),
     now: () => clock,
   });
-  return { r, spool, lines, drops, advance: (ms: number) => (clock += ms) };
+  return { r, spool, lines, drops, foreign, advance: (ms: number) => (clock += ms) };
 }
 
 describe("the edge router", () => {
@@ -162,6 +165,21 @@ describe("the edge router", () => {
     expect(got).toEqual([]);
     expect(drops).toEqual(["unparsed", "old", "dead-pid"]);
     expect(lines.filter((line) => line.includes(`${EDGE_TAG}.dropped`))).toEqual([`[surface] ${EDGE_TAG}.dropped reason=dead-pid event=Stop pid=99`]);
+  });
+
+  test("a not-foreground edge is dropped and told as another process of the pane, its end too; a subagent's and an unplaced one are not", async () => {
+    const got: { paneId: string; edge: PlacedEdge }[] = [];
+    const { r, spool, drops, foreign } = router([target({ got, foreground: foreground([5]) })]);
+    spool.files.push(
+      JSON.stringify(record({ event: "PostToolUse" })),
+      JSON.stringify(record({ event: "SessionEnd" })),
+      JSON.stringify(record({ event: "PostToolUse", agent: "sub-1" })),
+      JSON.stringify(record({ pid: 99 })),
+    );
+    await r.tick();
+    expect(got).toEqual([]);
+    expect(drops).toEqual(["not-foreground", "not-foreground", "not-foreground", "dead-pid"]);
+    expect(foreign).toEqual([`main/w1:p1 ${String(PID)}`, `main/w1:p1 ${String(PID)} end`]);
   });
 
   test("counts a foreign-mux edge and never logs it, while a no-pane edge of the same namespace is logged", async () => {

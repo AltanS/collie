@@ -109,12 +109,20 @@ export class InsideHub {
   private readonly turns = new Map<string, Word<"running" | "idle">>();
   /** Whether the box holds a draft, as each part last said (`draft.state`). Only parts that declared `draft.state`. */
   private readonly drafts = new Map<string, Word<boolean>>();
+  /**
+   * Parts whose pane carries the hook edges of ANOTHER live agent process, not the pane's foreground
+   * ({@link noteForeignEdge}), by part id: that process's pid. Such a part may not be the process that
+   * runs the agent, so the data road leaves its pane ({@link shadowed}).
+   */
+  private readonly shadows = new Map<string, number>();
   private readonly now: () => number;
   private readonly registry: PartRegistry;
   private readonly queue: CommandQueue;
   private readonly place: Placer;
+  private readonly log: (line: string) => void;
 
   constructor(options: InsideHubOptions) {
+    this.log = options.log ?? ((line) => console.log(line));
     this.registry = options.registry;
     this.queue = options.queue;
     this.place = options.place;
@@ -125,6 +133,7 @@ export class InsideHub {
       this.asks.delete(change.part.partId);
       this.turns.delete(change.part.partId);
       this.drafts.delete(change.part.partId);
+      this.shadows.delete(change.part.partId);
       // The gone part's waits end at once, a replaced part's too: a command must never go to a dead part
       // id's open poll (a reloaded module's old fetch has nobody left to read it). Queued commands stay
       // for the pane's next part.
@@ -168,9 +177,17 @@ export class InsideHub {
         if (this.queue.isFor(event.cmd, part.address)) this.tell(part, event);
         return empty(204);
       case "sent":
-      case "failed":
-        if (this.queue.settle(event.cmd, part.address, event.kind, event.kind === "failed" ? event.reason : null)) this.tell(part, event);
+      case "failed": {
+        const reason = event.kind === "failed" ? event.reason : null;
+        const detail = event.kind === "failed" ? event.detail : null;
+        if (!this.queue.settle(event.cmd, part.address, event.kind, reason, detail)) return empty(204);
+        // The part's word, never a body text: the reason is a word, the detail the part's own one line
+        // (an error's class and message), quoted so it stays one field of the line.
+        const why = event.kind === "failed" ? ` reason=${reason ?? "-"}${detail === null ? "" : ` detail=${JSON.stringify(detail)}`}` : "";
+        this.log(`[inside] ${event.kind} part=${part.partId.slice(0, 6)} cmd=${event.cmd}${why}`);
+        this.tell(part, event);
         return empty(204);
+      }
       case "draft":
         // The draft answers a `draft` question this pane's part took; anything else is dropped unread.
         if (this.queue.get(event.cmd)?.command.kind === "draft" && this.queue.settle(event.cmd, part.address, "sent")) this.tell(part, event);
@@ -279,10 +296,51 @@ export class InsideHub {
     return part !== null && (this.asks.get(part.partId)?.size ?? 0) > 0;
   }
 
+  /**
+   * A hook edge for this pane came from a live agent process that is not the pane's foreground (the edge
+   * router drops it `not-foreground`), with that process's pid and whether the edge was its end.
+   *
+   * The field case (2026-11-16): a Claude Code session moved to a background job. The job's agent runs
+   * in a process of its own, under the job host, and writes the session's hooks; the process that stays
+   * in the pane is the viewer, still the pane's foreground, and its mod keeps the part it bound before.
+   * That part saw none of the job's turns and its submits did not reach the session, so every phone send
+   * by data ended "may have arrived" and never arrived. From the first such edge the pane's part is
+   * shadowed: its sends and WalkyTalky messages take the screen road, which types into the pane the
+   * person sees. An edge of the part's own pid changes nothing; the other process's end edge clears
+   * the shadow; a new hello is a new part id, with none.
+   */
+  noteForeignEdge(address: PaneAddress, pid: number, ended: boolean): void {
+    const part = this.registry.partOf(address);
+    if (part === null || part.pid === pid) return;
+    const known = this.shadows.get(part.partId);
+    if (ended) {
+      if (known === pid) {
+        this.shadows.delete(part.partId);
+        this.log(`[inside] unshadowed part=${part.partId.slice(0, 6)} pane=${address.paneId}: pid=${String(pid)} ended`);
+      }
+      return;
+    }
+    if (known === pid) return;
+    this.shadows.set(part.partId, pid);
+    this.log(`[inside] shadowed part=${part.partId.slice(0, 6)} pane=${address.paneId} part-pid=${String(part.pid)} agent-pid=${String(pid)}: sends take the screen road`);
+  }
+
+  /** Whether the pane's part is shadowed by another agent process ({@link noteForeignEdge}). False with no part. */
+  shadowed(address: PaneAddress): boolean {
+    const part = this.registry.partOf(address);
+    return part !== null && this.shadows.has(part.partId);
+  }
+
   /** The reason a part gave with `failed`, or null. */
   failReasonOf(id: string): string | null {
     const entry = this.queue.get(id);
     return entry?.state === "failed" ? entry.reason : null;
+  }
+
+  /** The part's own words with its `failed` (`detail`, one line, never a text), or null. */
+  failDetailOf(id: string): string | null {
+    const entry = this.queue.get(id);
+    return entry?.state === "failed" ? entry.detail : null;
   }
 
   /** Queue a command for a pane's part. Refused when no part is bound or it did not declare the need. */

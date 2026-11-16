@@ -105,7 +105,7 @@ Every event carries `part` and `kind`.
 | `ask.close` | `ask`, `how`? | the ask ended on the part's side |
 | `taken` | `cmd` | the part read the command (confirmation only) |
 | `sent` | `cmd` | the part did what the command asked |
-| `failed` | `cmd`, `reason`? | the part could not |
+| `failed` | `cmd`, `reason`?, `detail`? | the part could not; `detail` is its own words (below) |
 | `draft` | `cmd`, `text`, `caret`? | the answer to a `draft` question: the input box as it stands |
 | `draft.state` | `present`, `seq`? | whether the input box holds a draft, a boolean; never the text |
 | `bye` | | the part stops; the pane falls back to the screen path at once |
@@ -140,6 +140,27 @@ answer in time, a `429` past the burst, a `5xx`. Three rules cover that.
   The part keeps per bridge which words that bridge took, so a word whose post failed is never
   deduplicated away. A `410` says hello instead, and the hello says the words.
 
+**`failed`, its reason and its detail.** `reason` is a lower-case word; a reason that is not one
+refuses the whole event (`400`), so a part never puts free text there. `detail` (added 2026-11-16,
+optional) carries the part's own words: one line, an error's class and message or the agent's reason
+for a refusal, never the command's text. The bridge reads it leniently, so it can never cost the word:
+control characters and runs of space become one space, it is cut at 160 characters, and anything that
+is not a string is dropped. The bridge logs `sent` and `failed` with the command id, the reason and
+the detail (`[inside] failed part=… cmd=… reason=… detail="…"`), and the detail reaches the send's
+receipt. An older bridge ignores the field. The words the bridge acts on:
+
+| reason | for | meaning | the bridge |
+| --- | --- | --- | --- |
+| `dropped` | `prompt` | the agent answered the submit "did not enter" | the screen road runs it once |
+| `draft` | `mail` | the box held a draft; nothing was submitted | holds the message again |
+| `desk` | `answer` | the desk answered first | the hold settles `desk` |
+
+A part says `dropped` only where its agent's contract guarantees the refused submit entered nothing.
+For the Claude Code mod that is the `{ drop }` answer of `$.prompt.submit`, whose contract is "the
+prompt did not enter: a hook's refusal, a settings hook's block beneath, or the engine's own". A submit
+that throws is `submit`, and any other fault while the part handles the command is `error`: the
+contract promises nothing for them, so the bridge reads them as "may have arrived".
+
 `ask.close` also withdraws an answer still queued for that ask.
 
 `ask.open` answers `{"wait": false}`, or `{"wait": true, "waitMs": <ms>}` when the bridge wants the
@@ -172,8 +193,25 @@ running, and releases it at the part's `turn.end`; the held card, Cancel and Dis
 road's own. A part that has not reported a turn since it bound (a bridge restart, a reload mid turn)
 leaves the turn unknown, and the send takes the screen road until its first turn event; so does a
 `running` word grown old (*State words* above), whose `turn.end` may have been lost. The send
-keeps the phone's request id as the command id, and its receipt: `sent` on the part's `sent`; `unknown` (it may have arrived) on `failed` or no word in 15 seconds. The send record
-and the audit entry carry `path: "data"`, or `path: "screen"` after a data try that no part took.
+keeps the phone's request id as the command id, and its receipt: `sent` on the part's `sent`; `unknown`
+(it may have arrived) on `failed` or no word in 15 seconds, with the part's reason and detail in the
+receipt's `detail` after a `failed`. One `failed` proves nothing was submitted: `dropped` on a
+`prompt` (above). The same request then runs the screen road once, with the screen road's own checks,
+and stays on it for the rest of its life (a release from the hold queue included). The send record
+and the audit entry carry `path: "data"`, or `path: "screen"` after a data try that no part took or
+that the agent dropped.
+
+**A part shadowed by another agent process** (2026-11-16). The bridge places a part by its pid, which
+must be the pane's foreground. A Claude Code session moved to a background job breaks the pairing: the
+job's agent runs in a process of its own and writes the session's hooks, while the process left in
+the pane, the viewer, stays the foreground and keeps the part it bound before. That part sees none of
+the job's turns, and its submits do not reach the session. The bridge knows the case by the hook
+edges: an edge whose markers name the pane but whose live pid is not the foreground is dropped
+`not-foreground`, and its pid is told to the hub (`noteForeignEdge`). From the first such edge of a
+pid other than the part's own, the part is shadowed: phone sends and WalkyTalky messages to its pane
+take the screen road (a Deliver now stays held, as for a pane with no part), and the log says
+`[inside] shadowed part=… pane=… part-pid=… agent-pid=…`. The other process's end edge, or a new
+hello, lifts it. A subagent's edge is the same process and shadows nothing.
 
 ## Asks and wake by data
 
@@ -251,11 +289,14 @@ for any `mail`.
 A command's life is `queued`, then `taken`, then `sent` or `failed`; or `queued`, then `withdrawn`.
 
 - **Taken is the handoff.** A command is taken the moment the bridge writes it into a `next` answer.
-  From then on it is never withdrawn, never handed out again, and the screen path never sends it.
+  From then on it is never withdrawn, never handed out again, and the screen path never sends it,
+  with one exception: a phone `prompt` whose part answered `failed` with `dropped`, the agent's word
+  that nothing entered. Nothing was submitted by data, so the screen road may run it once.
 - **Withdraw only while queued.** The bridge may withdraw a command no part took and send it the old
   way, once. A command nobody takes in 60 seconds is withdrawn by age.
 - **The part's word decides after take.** `sent` or `failed`, once, from the pane it was for. With no
-  word, the command stays taken: the receipt says it may have arrived, and nothing is sent again.
+  word, or a `failed` that does not prove nothing was submitted, the receipt says it may have arrived,
+  and nothing is sent again.
 - A command id the queue has seen, in any state, is refused when queued again.
 
 A part keeps the ids it acted on across a reload of its own code too (the Claude mod: in `$.state`), so

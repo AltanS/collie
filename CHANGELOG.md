@@ -23,6 +23,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A phone message to a Claude Code background job arrives.** When a linked Claude Code session runs as a background job, its agent runs in a process of its own while the viewer stays in the pane, and the viewer kept the plugin's binding, so a message sent from the phone ended "may have arrived", never arrived, and stayed in the composer. The bridge now sees the job's hook events on the pane and sends that pane's messages by typing into it, as for a session with no plugin, until the job ends or the plugin binds again. The log says `[inside] shadowed part=… pane=…`.
+- **A message the agent refused by data is typed instead, once.** When Claude Code answers the plugin's submit with a refusal that entered nothing (a hook's or the engine's own), the same send now runs the screen road once, with its own checks, and its record says `screen`. Any other failure the plugin reports still reads "may have arrived", now with the plugin's reason and its own words in the receipt and on the phone, and the bridge logs each `sent` and `failed` of the plugin with the command id and the reason, never the text.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added

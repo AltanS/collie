@@ -107,9 +107,13 @@ export function deliverEdge(sinks: EdgeSinks, paneId: string, edge: PlacedEdge):
   sinks.hold?.(paneId, kind, { tool: record.tool ?? null, agent: record.agent ?? null, at: record.at, inputHash: record.inputHash ?? null });
 }
 
+/**
+ * Where an edge lands. A `not-foreground` drop also names the pane its markers matched: another process
+ * of that pane wrote it (a background agent whose viewer holds the pane, a child run of the agent).
+ */
 export type Placement =
   | { readonly kind: "placed"; readonly target: EdgeTarget; readonly paneId: string }
-  | { readonly kind: "dropped"; readonly reason: DropReason };
+  | { readonly kind: "dropped"; readonly reason: DropReason; readonly pane?: { readonly session: string; readonly paneId: string } };
 
 /** The edge's kind under its harness's profile. No profile, or no row: a `reread`. */
 export function kindOfEdge(record: EdgeRecord): EdgeKind {
@@ -145,7 +149,7 @@ export async function placeEdge(record: EdgeRecord, targets: readonly EdgeTarget
   if (hit.target.foreground !== undefined) {
     const outcome = await hit.target.foreground(hit.paneId).catch(() => null);
     const pids = outcome?.ok === true ? outcome.value.flatMap((process) => (process.pid === undefined ? [] : [process.pid])) : [];
-    if (pids.length > 0 && !pids.includes(record.pid)) return { kind: "dropped", reason: "not-foreground" };
+    if (pids.length > 0 && !pids.includes(record.pid)) return { kind: "dropped", reason: "not-foreground", pane: { session: hit.target.session, paneId: hit.paneId } };
   }
   return { kind: "placed", target: hit.target, paneId: hit.paneId };
 }
@@ -204,6 +208,12 @@ export interface EdgeRouterDeps {
   targets(): readonly EdgeTarget[];
   /** Where a dropped edge is counted, by its harness. Never throws to the router. */
   readonly onDrop?: (record: EdgeRecord | null, reason: DropReason) => void;
+  /**
+   * A live agent process that is not the pane's foreground wrote an edge for this pane (`not-foreground`):
+   * its pid, and whether the edge was its end. The inside hub reads it as "the pane's part may not be
+   * the process that runs the agent" (`InsideHub.noteForeignEdge`). Never throws to the router.
+   */
+  readonly onForeign?: (pane: { readonly session: string; readonly paneId: string }, pid: number, ended: boolean) => void;
   readonly log?: (line: string) => void;
   readonly now?: () => number;
 }
@@ -285,7 +295,10 @@ export class EdgeRouter {
     const now = this.now();
     if (now - record.at > EDGE_MAX_AGE_MS) return this.drop(record, "old");
     const placement = await placeEdge(record, targets, this.deps.liveness);
-    if (placement.kind === "dropped") return this.drop(record, placement.reason);
+    if (placement.kind === "dropped") {
+      if (placement.pane !== undefined) this.foreign(placement.pane, record);
+      return this.drop(record, placement.reason);
+    }
     const kind = kindOfEdge(record);
     const key = keyOf(placement.target.session, placement.paneId);
     if (kind === "end") this.forget(key);
@@ -384,6 +397,16 @@ export class EdgeRouter {
     if (this.dropLogged.size > 256) this.dropLogged.clear();
     this.dropLogged.set(key, now);
     this.log(`[surface] ${EDGE_TAG}.dropped reason=${reason} event=${record?.event ?? "-"} pid=${String(record?.pid ?? "-")}`);
+  }
+
+  /** Tell {@link EdgeRouterDeps.onForeign} of a `not-foreground` edge. A subagent's edge is the same process: never. */
+  private foreign(pane: { readonly session: string; readonly paneId: string }, record: EdgeRecord): void {
+    if (record.agent !== undefined) return;
+    try {
+      this.deps.onForeign?.(pane, record.pid, kindOfEdge(record) === "end");
+    } catch {
+      // A note is not a verdict.
+    }
   }
 
   /**

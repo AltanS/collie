@@ -2949,6 +2949,20 @@ interface EndNote {
   inFlux?: boolean;
   /** Which rule decided the end, copied onto the answer ({@link SendAnswer.cause}). */
   cause?: SendCause;
+  /** An `unknown` whose receipt keeps {@link detail} too (the part's word on a data send). Others keep it on the answer only. */
+  keepDetail?: true;
+}
+
+/** The most requests {@link SendProtocol} keeps on the screen road after a dropped data try. */
+const DROPPED_KEEP = 256;
+
+/**
+ * The line of a data send the part answered `failed` with any reason but the ones that prove nothing
+ * was submitted: the part's reason and its own words, and that it may still have arrived. Never the text.
+ */
+export function partFailedDetail(reason: string | null, detail: string | null): string {
+  const why = reason === null ? "no reason" : detail === null ? reason : `${reason}: ${detail}`;
+  return `The agent's plugin took this message and reported a failure (${why}). It may still have arrived, so check the session before you send it again.`;
 }
 
 /** A receipt being built, field by field. */
@@ -3058,6 +3072,11 @@ export class SendProtocol {
   private readonly leftTyped = new Map<string, LeftTyped>();
   /** A serial for {@link retryCommandId}: two tries of one send never share a command id. */
   private dataRetries = 0;
+  /**
+   * Requests whose data try the part answered `dropped` (the agent said it entered nothing): they stay on
+   * the screen road for the rest of their life, a release from the hold queue included. Gone at settle.
+   */
+  private readonly droppedByData = new Set<string>();
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -4161,6 +4180,8 @@ export class SendProtocol {
       const saw = note.surface ?? state.lastRead?.surface ?? state.marks.s0?.surface;
       if (saw !== undefined) receipt.saw = surfaceWords(saw);
     }
+    // The part's word on a data send that may have arrived (runData): the receipt says what it said.
+    if (outcome === "unknown" && note?.keepDetail === true && note.detail !== undefined) receipt.detail = note.detail.slice(0, RECEIPT_DETAIL_MAX);
     // Whatever the end, a box that showed only the end of the text was compared by those rows alone.
     if (state.tailOnly && receipt.detail === undefined) receipt.detail = TAIL_ONLY;
     // A send that found its own earlier text in the box pressed only the submit key: the receipt says why no text went.
@@ -4270,6 +4291,12 @@ export class SendProtocol {
       request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true, secret: request.secret === true },
     });
     if (pick.path === "screen") return over ? this.overDraftMiss(state, "not-linked") : null;
+    // Another agent process writes this pane's hooks: the part may not run the agent (a background job
+    // whose viewer holds the pane). The screen road types into the pane the person sees; a Deliver now
+    // stays held for the draft, as for a pane with no part.
+    if (data.door.shadowed?.(address) === true) return over ? this.overDraftMiss(state, "not-linked") : null;
+    // A request whose data try the agent answered "did not enter" runs on the screen road from then on.
+    if (this.droppedByData.has(record.id)) return null;
     const mail = request.draftHolds === true;
     if (over) {
       // Never while a turn runs or a question is open (a dialog), and never on a turn nobody reported:
@@ -4309,6 +4336,14 @@ export class SendProtocol {
     if (result.kind === "screen" && over) return this.overDraftMiss(state, "not-taken");
     if (result.kind === "screen") {
       this.deps.store.markPath(record.id, "screen");
+      // The part took it and the agent answered "did not enter": nothing was submitted by data, so the
+      // screen road runs it once, with its own checks (a dialog refused, a running turn held there).
+      if (result.why === "dropped") {
+        // Bounded: a request held and then cancelled never settles here, so the oldest id goes past the cap.
+        if (this.droppedByData.size >= DROPPED_KEEP) this.droppedByData.delete(this.droppedByData.values().next().value ?? "");
+        this.droppedByData.add(record.id);
+        console.log(`[send] ${record.id} data road dropped on ${target.paneId}: the screen road runs it`);
+      }
       return null;
     }
     // A part too old to know `overDraft` read the draft and submitted nothing: still held, for the draft.
@@ -4316,6 +4351,8 @@ export class SendProtocol {
     // The part found a draft in the box as it was about to submit, and submitted nothing: held again.
     if (result.kind === "draft") return this.dataDraftHold(state, release);
     if (result.kind === "sent") return this.settle(state, new Ended("sent", undefined, { framed: false }));
+    // A `failed` carries the part's word into the receipt and the phone's card; no word stays as it was.
+    if (result.why === "failed") return this.settle(state, new Ended("unknown", "no_evidence", { framed: false, detail: partFailedDetail(result.reason ?? null, result.detail ?? null), keepDetail: true }));
     return this.settle(state, new Ended("unknown", "no_evidence", { framed: false }));
   }
 
@@ -4455,6 +4492,7 @@ export class SendProtocol {
   }
 
   private settle(state: RunState, end: Ended): SendAnswer {
+    this.droppedByData.delete(state.record.id);
     const outcome = this.settleOpen(state, end.outcome);
     if (outcome === "refused" && end.reason === "write_failed" && end.extra.detail !== undefined) {
       console.warn(`[send] ${state.record.id} write_failed on ${state.target.paneId}: ${end.extra.detail}`);

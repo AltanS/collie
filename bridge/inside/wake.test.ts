@@ -42,7 +42,7 @@ describe("wake from events", () => {
       { ok: true, part: PART, kind: "ask.open", ask: "a1", askKind: "permission", tool: "Bash", input: { command: "ls" } },
       { ok: true, part: PART, kind: "ask.close", ask: "a1", how: null },
       { ok: true, part: PART, kind: "sent", cmd: "c1" },
-      { ok: true, part: PART, kind: "failed", cmd: "c1", reason: null },
+      { ok: true, part: PART, kind: "failed", cmd: "c1", reason: null, detail: null },
       { ok: true, part: PART, kind: "draft", cmd: "c1", text: "hello", caret: null },
     ];
     for (const event of events) {
