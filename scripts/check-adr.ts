@@ -62,8 +62,10 @@ export const MAX_LINES = 120;
 /**
  * Records that are superseded but still hold their full text. The truth pass of 2026-11-16 marked
  * them superseded and left the bodies alone; the stub conversion removes a number from this list.
+ * It is empty since 0032 and 0034 became stubs, and stays as the one place a later pass may park a
+ * number.
  */
-export const NOT_YET_STUBBED: ReadonlySet<string> = new Set(["0032", "0034"]);
+export const NOT_YET_STUBBED: ReadonlySet<string> = new Set<string>();
 
 const RECORD_NAME = /^(\d{4})-[a-z0-9-]+\.md$/;
 const DATE = /\d{4}-\d{2}-\d{2}/;

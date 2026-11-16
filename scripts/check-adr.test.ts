@@ -62,6 +62,15 @@ describe("check-adr: the real .adr/", () => {
       expect(file?.text).toContain("\n## ");
     }
   });
+
+  test("holds no superseded record that still has a body", () => {
+    // Every `Superseded by` record is a stub unless it is on the list above.
+    for (const file of files) {
+      if (!/Status:\*{0,2} \*{0,2}Superseded by/.test(file.text)) continue;
+      if (NOT_YET_STUBBED.has(file.name.slice(0, 4))) continue;
+      expect(file.text).not.toContain("\n## ");
+    }
+  });
 });
 
 describe("check-adr: the header", () => {

@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0006, ADR 0020, ADR 0037, ADR 0044, ADR 0045, ADR 0050, ADR 0062, ADR 0064, ADR 0110
 - **Trail:** #63 and herdrdev/herdr#2250 (leave a managed install to `herdr plugin install`), #169 (a
   marker file the packager writes), #468 and #465 (every machine takes one build on one day), #283,
   PR #71 and PR #298 (Windows as best effort), PR 634 (math engines in every payload), the incidents
@@ -11,9 +12,8 @@
 
 ## Context
 
-Fifteen records shaped the update one fault at a time: a turnkey install that could not update, a
-silent major, a runner killed with its parent's cgroup, a sleeping laptop that blocked a desktop, and
-a regression that reached every machine on one day. Several changed others inside their bodies.
+Fifteen records shaped the update one fault at a time: a turnkey install that could not update, a silent major, a runner killed with its parent's cgroup, a sleeping laptop that blocked a desktop,
+and a regression that reached every machine on one day. Several changed others inside their bodies.
 
 ## Decision
 
@@ -107,7 +107,7 @@ a regression that reached every machine on one day. Several changed others insid
 - A failed build changes nothing a person sees. A silent member below a future protocol floor gets
   no floor check; the next protocol bump must decide that case (ADR 0050).
 - Live beside this record: 0035 (packaged), 0046 (urgent), 0075 (Windows), 0132 (the math pack is a
-  release asset fetched on a tap), 0016 (the crew link), 0111 (`collie skill sync` after an update).
+  release asset fetched on a tap), 0144 (the crew link, which replaced 0016), 0111 (`collie skill sync` after an update).
 
 ## What we tried before
 

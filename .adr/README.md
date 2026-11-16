@@ -79,7 +79,7 @@ The old text of a record stays in git history. A reader who opens an old number 
   - **Full text:** `git show <sha>:.adr/NNNN-file.md`
   ```
 
-  where `<sha>` is the last commit that held the full text and the date in `Status` is the day of the supersession. The successor carries a short "what we tried before" list that points at the stubs, so the wrong turns stay findable. Until a record is converted, a superseded record keeps its full text and its `Status` line says `Superseded by`; the check lists those still waiting (0032 and 0034).
+  where `<sha>` is the last commit that held the full text and the date in `Status` is the day of the supersession. The successor carries a short "what we tried before" list that points at the stubs, so the wrong turns stay findable. Until a record is converted, a superseded record keeps its full text and its `Status` line says `Superseded by`; the check lists those still waiting, and none waits today.
 - **A record that is not a decision is retired.** Its status is `Retired: the rule lives in <path>`, with the same stub shape. The path is the code header or the doc that now holds the rule.
 - **A record is at most 120 lines.** A spec belongs in the code header or in a doc, and the record links it.
 - **A record has at most two addenda.** A third change, or any change of the decision itself, is a new record that supersedes the old one. Never rewrite the argument of an old record.
@@ -117,24 +117,24 @@ The rule today: Every `/api/*` route except `/api/health` and `/api/pair` needs 
 
 ### Crew and deputy
 
-The rule today: [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) states it in one place. A crew is full Collie instances with one lead, and the lead talks to a member's Collie API, never its multiplexer socket. One front door per crew, on the lead; a member publishes nothing and admits only its pinned lead (and the deputy, for the takeover) with the crew secret. Code reaches a member over the operator's own SSH or from the public release, never over the crew link (update rules: 0143). Only the operator moves the crown: a confirm on the old lead (`approve-promote`), or a takeover by the one deputy named ahead, spent through the standby door that arms on silence. The wire says crew too; records 0011 to 0028 still write "pack" and `PACK_PROTOCOL.md`, which read as crew and `CREW_PROTOCOL.md`. 0036 (a multiplexer reports one machine) stays live beside it.
+The rule today: [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) states it in one place. A crew is full Collie instances with one lead, and the lead talks to a member's Collie API, never its multiplexer socket. One front door per crew, on the lead; a member publishes nothing and admits only its pinned lead (and the deputy, for the takeover) with the crew secret. Code reaches a member over the operator's own SSH or from the public release, never over the crew link (update rules: 0143). Only the operator moves the crown: a confirm on the old lead (`approve-promote`), or a takeover by the one deputy named ahead, spent through the standby door that arms on silence. The wire says crew too; the live records 0013 and 0026 still write "pack" and `PACK_PROTOCOL.md`, which read as crew and `CREW_PROTOCOL.md`. Three records stay live beside it: 0013 (a peer listens without becoming a front door), 0026 (the operator is the quorum, with the roads it closes) and 0036 (a multiplexer reports one machine).
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) | A crew has one lead and one door; code rides the operator's SSH; only the operator moves the crown. | Accepted |
-| [0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) | The lead consumes a peer's Collie HTTP API, never its Herdr socket. | Accepted |
-| [0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) | Every machine runs a collie and the group has a lead (the word "pack" is replaced by 0038). | Superseded in part by 0038 |
-| [0013](./0013-a-peer-listens-without-becoming-a-front-door.md) | A peer opens an unpublished crew listener and publishes no front door. | Accepted, amended in scope by 0028 |
-| [0014](./0014-promote-is-a-confirm-on-the-lead.md) | Promotion needs the old lead's own confirm on the receiver, never a claim alone. | Accepted, amended in scope by 0026, 0027 |
-| [0015](./0015-pack-add-pushes-over-the-operators-ssh.md) | `crew add` pushes the lead's own commit over the operator's SSH. | Accepted |
-| [0016](./0016-updates-ride-the-operators-ssh.md) | Updates and installs reach a peer over the operator's SSH; the crew link carries data, never code. | Accepted, amended in scope by 0062, 0110 |
-| [0023](./0023-compression-is-hop-local-on-the-pack-link.md) | Compression is negotiated per hop on the crew link; the ETag names the identity bytes. | Accepted |
+| [0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) | The lead consumes a peer's Collie HTTP API, never its Herdr socket. | Superseded by 0144 |
+| [0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) | Every machine runs a collie and the group has a lead (the word "pack" is replaced by 0038). | Superseded by 0144 |
+| [0013](./0013-a-peer-listens-without-becoming-a-front-door.md) | A peer opens an unpublished crew listener and publishes no front door. | Accepted |
+| [0014](./0014-promote-is-a-confirm-on-the-lead.md) | Promotion needs the old lead's own confirm on the receiver, never a claim alone. | Superseded by 0144 |
+| [0015](./0015-pack-add-pushes-over-the-operators-ssh.md) | `crew add` pushes the lead's own commit over the operator's SSH. | Superseded by 0144 |
+| [0016](./0016-updates-ride-the-operators-ssh.md) | Updates and installs reach a peer over the operator's SSH; the crew link carries data, never code. | Superseded by 0144 |
+| [0023](./0023-compression-is-hop-local-on-the-pack-link.md) | Compression is negotiated per hop on the crew link; the ETag names the identity bytes. | Superseded by 0144 |
 | [0026](./0026-the-operator-is-the-quorum.md) | The operator is the quorum: no election, no timer, no promotion from silence. | Accepted |
-| [0027](./0027-the-deputy-is-named-ahead-of-time.md) | The operator names one deputy ahead of time; a takeover spends the lead's signed warrant. | Accepted |
-| [0028](./0028-the-standby-door-is-a-second-listener.md) | The deputy's standby door is a second unpublished listener that arms on silence. | Accepted, amended in scope by 0086 |
+| [0027](./0027-the-deputy-is-named-ahead-of-time.md) | The operator names one deputy ahead of time; a takeover spends the lead's signed warrant. | Superseded by 0144 |
+| [0028](./0028-the-standby-door-is-a-second-listener.md) | The deputy's standby door is a second unpublished listener that arms on silence. | Superseded by 0144 |
 | [0036](./0036-the-map-of-machines-is-collies-a-mux-reports-one-machine.md) | A multiplexer reports one machine; the map of machines is Collie's. | Accepted |
-| [0038](./0038-the-group-is-a-crew-the-wire-keeps-pack.md) | The group is a crew; the wire keeps "pack" (until 0039). | Superseded in part by 0039 |
-| [0039](./0039-the-machine-says-crew-too.md) | The machine says crew too: protocol version 2, one release of overlap. | Accepted |
+| [0038](./0038-the-group-is-a-crew-the-wire-keeps-pack.md) | The group is a crew; the wire keeps "pack" (until 0039). | Superseded by 0144 |
+| [0039](./0039-the-machine-says-crew-too.md) | The machine says crew too: protocol version 2, one release of overlap. | Superseded by 0144 |
 | [0084](./0084-machines-report-their-load.md) | Each Collie samples its own load; the lead keeps 24 hours of history and judges alert rules. | Accepted |
 
 ### Update, release and packaging
@@ -144,19 +144,19 @@ The rule today: 0143 is the live record, and it names the code that holds each r
 | # | Decision | Status |
 | --- | --- | --- |
 | [0143](./0143-how-an-install-updates-and-what-a-release-offers-it.md) | How an install updates, and what a release offers it: the rule of today, with the code that holds it. | Accepted |
-| [0006](./0006-update-advances-the-checkout-herdr-installed.md) | `update` advances the checkout Herdr installed and never re-links it. | Accepted |
-| [0020](./0020-a-major-upgrade-is-consented-by-flag.md) | `update` stays inside the installed major; crossing one needs `--major`. | Accepted, amended in scope by 0110 |
+| [0006](./0006-update-advances-the-checkout-herdr-installed.md) | `update` advances the checkout Herdr installed and never re-links it. | Superseded by 0143 |
+| [0020](./0020-a-major-upgrade-is-consented-by-flag.md) | `update` stays inside the installed major; crossing one needs `--major`. | Superseded by 0143 |
 | [0021](./0021-the-path-name-is-a-pointer-never-a-copy.md) | The name on PATH is a symlink to the checkout's binary, never a copy. | Accepted |
 | [0035](./0035-a-packaged-install-is-not-ours-to-update.md) | A packaged install is not ours to update. | Accepted |
-| [0037](./0037-a-staged-update-confirms-its-runner-before-it-exits.md) | A staged update confirms its runner has left the cgroup before it exits. | Accepted |
-| [0044](./0044-the-update-screen-is-one-reducer-and-one-shared-poll.md) | The update screen is one reducer and one shared poll. | Accepted, amended in scope by 0064 |
-| [0045](./0045-a-build-below-the-protocol-floor-is-a-red-preflight.md) | A build below the protocol floor is a red preflight, never a silent link. | Accepted |
+| [0037](./0037-a-staged-update-confirms-its-runner-before-it-exits.md) | A staged update confirms its runner has left the cgroup before it exits. | Superseded by 0143 |
+| [0044](./0044-the-update-screen-is-one-reducer-and-one-shared-poll.md) | The update screen is one reducer and one shared poll. | Superseded by 0143 |
+| [0045](./0045-a-build-below-the-protocol-floor-is-a-red-preflight.md) | A build below the protocol floor is a red preflight, never a silent link. | Superseded by 0143 |
 | [0046](./0046-an-urgent-patch-keeps-the-daily-cadence.md) | An urgent release moves the digest to daily and never touches the version. | Accepted |
-| [0050](./0050-a-crew-fault-blocks-an-update-only-when-the-update-makes-it-worse.md) | A crew fault blocks an update only when the update would make it worse. | Accepted |
-| [0062](./0062-a-crew-run-levels-to-its-target-and-its-second-step-is-not-a-new-attempt.md) | A crew run levels to its target, and its second step is not a new attempt. | Accepted |
-| [0064](./0064-an-update-puts-the-phone-in-update-mode.md) | A run this device started puts the phone in update mode until Done, Rolled back or Stuck. | Accepted |
+| [0050](./0050-a-crew-fault-blocks-an-update-only-when-the-update-makes-it-worse.md) | A crew fault blocks an update only when the update would make it worse. | Superseded by 0143 |
+| [0062](./0062-a-crew-run-levels-to-its-target-and-its-second-step-is-not-a-new-attempt.md) | A crew run levels to its target, and its second step is not a new attempt. | Superseded by 0143 |
+| [0064](./0064-an-update-puts-the-phone-in-update-mode.md) | A run this device started puts the phone in update mode until Done, Rolled back or Stuck. | Superseded by 0143 |
 | [0075](./0075-windows-is-a-supported-host.md) | Windows 11 x64 with Herdr is a supported host, held by CI and a VM rehearsal. | Accepted |
-| [0110](./0110-two-release-lines.md) | Two release lines, Stable and Edge; the switch installs nothing; state files only grow. | Accepted |
+| [0110](./0110-two-release-lines.md) | Two release lines, Stable and Edge; the switch installs nothing; state files only grow. | Superseded by 0143 |
 | [0132](./0132-the-math-engines-are-a-pack-the-host-downloads.md) | The math engines are one release asset that the host downloads only on a tap. | Accepted |
 
 ### Sends and the input box
@@ -334,7 +334,7 @@ The rule today: Speech to text is a provider seam Collie owns, off by default an
 
 ### Tricks and the Hill
 
-The rule today: No record decides tricks or the Hill on its own yet. Trick code may cross the crew link as inert data and runs only on a tap on the machine that runs it (the addendum of 2026-11-10 to 0016), and the footer's Hill item and trick items are in the amendments of 2026-11-10 to 0066 and 0085.
+The rule today: No record decides tricks or the Hill on its own yet. Trick code may cross the crew link as inert data and runs only on a tap on the machine that runs it (0144 rule 3, which took the addendum of 2026-11-10 to 0016), and the footer's Hill item and trick items are in the amendments of 2026-11-10 to 0066 and 0085.
 
 ### Process, lint and tests
 
@@ -348,7 +348,7 @@ The rule today: oxlint plus the vendored anti-slop rules is the lint gate, with 
 
 ### Other: the mirror, the mux port, configuration and translation
 
-The rule today: Collie runs no terminal emulator (0008) and owns a multiplexer port in its own vocabulary, with Herdr as one adapter (0022); an adapter declares its freshness, focus and shape (0031). "Never write the operator's screen" is stated in three places, 0008 (geometry writes), 0031 (the phone moves the terminal only on a named tap) and 0032 (never send focus, superseded). The operator's command rows replace the catalog on the panes they address, per surface for the bar (0018, 0043), and configuration reads default, machine file, instance file, then the environment (0040). The UI is translated by a typed dictionary (0030), and a push title is a code the phone translates (0074).
+The rule today: Collie runs no terminal emulator (0008) and owns a multiplexer port in its own vocabulary, with Herdr as one adapter (0022); an adapter declares its freshness, focus and shape (0031). "Never write the operator's screen" is stated in three places, 0008 (geometry writes), 0031 (the phone moves the terminal only on a named tap) and 0126 (never send focus when a worktree opens as a space, which replaced 0032). The operator's command rows replace the catalog on the panes they address, per surface for the bar (0018, 0043), and configuration reads default, machine file, instance file, then the environment (0040). The UI is translated by a typed dictionary (0030), and a push title is a code the phone translates (0074).
 
 One live record for this topic is being written.
 

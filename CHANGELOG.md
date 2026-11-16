@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Docs
 
 - **The decision records have a topic map and a check.** `.adr/README.md` opens with a map by topic and the rules for stubs, size and pointers, and `scripts/check-adr.ts`, run by `bun run test`, fails a record that has no `Status` or `Date`, a pointer without its back pointer, or a record the map does not list.
+- **Two topic records state the update and crew rules.** ADR 0143 holds the rule for how an install updates and what a release offers it, ADR 0144 the rule for the crew and the deputy, and the records they replace are stubs that point to them.
 
 ## [1.29.0] - 2026-11-12
 

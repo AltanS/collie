@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0011, ADR 0012, ADR 0014, ADR 0015, ADR 0016, ADR 0023, ADR 0027, ADR 0028, ADR 0038, ADR 0039
 - **Trail:** the other roads were argued in discussion #67 (a Collie with its own remote protocol,
   ADR 0011, 0015, 0016), in #248 (`crew add` from a lead with no commit, ADR 0015), in finding F2 of
   `CREW_PROTOCOL.md` §8.5 (a member's self-claim moved the crown, ADR 0014), in the owner's call of
@@ -11,8 +12,7 @@
 
 ## Context
 
-A crew is several machines and one phone. About fourteen records shaped it one road at a time, and
-this record states the rule of today in one place; the wire contract stays in `CREW_PROTOCOL.md`.
+A crew is several machines and one phone. About fourteen records shaped it one road at a time, and this record states the rule of today in one place; the wire contract stays in `CREW_PROTOCOL.md`.
 Records 0011 to 0028 say "pack" and `PACK_PROTOCOL.md`; read them as "crew" and `CREW_PROTOCOL.md`.
 
 ## Decision
