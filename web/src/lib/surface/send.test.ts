@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { offersFor, REQUEST_ID, reservedLead, SEND_MODES, SEND_REASONS, sendLines, takesManualSend, wsFree } from "./send";
+import { en } from "../i18n/messages/en";
+import { noteKey, readSend, STEP_BUTTONS, type SendReply } from "../send-protocol";
+import { ANOTHER_SEND, offersFor, REQUEST_ID, reservedLead, SEND_CAUSES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, sendLines, takesManualSend, wsFree, type SendCause, type SendOutcome, type SendReason } from "./send";
 import type { Surface } from "./surface";
 
 describe("sendLines", () => {
@@ -115,5 +117,90 @@ describe("takesManualSend (M56 spec 06)", () => {
 
   it("the modes include command, for a text with a reserved lead", () => {
     expect(SEND_MODES).toContain("command");
+  });
+});
+
+// M102 spec 02: every pair of the closed lists that can reach a stop card names its next step, and the
+// card has an action that changes the situation. A new reason, cause or outcome cannot ship as a dead end:
+// `nextStep` is total, and this walk fails on the first pair it leaves without a step or a sentence
+// without one. The table behind it: experiments/m102/refusal-table.md.
+describe("no dead end: every refusal names its next step (M102 spec 02)", () => {
+  const surfaceOf = (over: Partial<Surface>): Surface => ({ revision: 7, turn: "idle", modal: "none", composer: "empty", ...over });
+  const SURFACES: readonly (Surface | null)[] = [
+    null,
+    surfaceOf({}),
+    surfaceOf({ turn: "running" }),
+    surfaceOf({ composer: "draft" }),
+    surfaceOf({ modal: "unreadable" }),
+    surfaceOf({ modal: "unknown", composer: "unknown" }),
+    surfaceOf({ composer: "unreachable" }),
+    surfaceOf({ reason: "stale" }),
+  ];
+  const CAUSES: readonly (SendCause | null)[] = [null, ...SEND_CAUSES];
+  // The ends that block nothing: the text went, the box was emptied on purpose, or a held send ended
+  // on its own card (ADR 0122, which has its Resend and Dismiss).
+  const NOT_A_STOP: ReadonlySet<SendOutcome> = new Set<SendOutcome>(["sent", "effective", "steered", "discarded", "held", "expired", "cancelled"]);
+  // A gone pane: nothing on this pane can change it. Its sentence still says the draft stays and to go back.
+  const NO_BUTTON: ReadonlySet<SendReason> = new Set<SendReason>(["pane_gone"]);
+  // A next step is a sentence that starts with what the person does.
+  const STEP_WORDS = /(?:^|[.!?] )(?:Send|Answer|Add|Replace|Submit|Look|Read|Check|Change|Stop|Empty|Get|Go|Wait|Try|Use|Tap|Select|Close)\b/u;
+
+  const pairs = SEND_OUTCOMES.flatMap((outcome) =>
+    [null, ...SEND_REASONS].flatMap((reason) =>
+      [true, false].flatMap((framed) => [false, true].map((command) => ({ outcome, reason, framed, command }))),
+    ),
+  );
+
+  it.each(pairs)("no dead end: $outcome / $reason (framed $framed, command $command)", ({ outcome, reason, framed, command }) => {
+    for (const surface of SURFACES) {
+      for (const cause of CAUSES) {
+        const reply: SendReply = {
+          outcome,
+          reason,
+          offers: offersFor(outcome, reason ?? undefined, framed, command),
+          rowsHash: null,
+          replayed: false,
+          surface,
+          detail: reason === "busy" ? ANOTHER_SEND : null,
+          cap: null,
+          queued: false,
+          cause,
+        };
+        const reading = readSend(reply);
+        if (reading.clear || NOT_A_STOP.has(outcome)) continue;
+        const where = `${outcome}/${String(reason)}/${String(cause)}/${surface === null ? "no surface" : JSON.stringify(surface)}`;
+        // An action that changes the situation: Open Keys alone never counts, and a step's button is
+        // always one of the strip's offers, the card, a step button or the person's own field.
+        if (!(reason !== null && NO_BUTTON.has(reason))) {
+          expect(reading.step, where).not.toBeNull();
+          if (reading.step === "offers") expect(reading.offers.length, where).toBeGreaterThan(0);
+          if (reading.step === "card") expect(reading.toCard, where).toBe(true);
+          if (reading.step !== null && reading.step !== "offers" && reading.step !== "card" && reading.step !== "field") {
+            expect(STEP_BUTTONS, where).toContain(reading.step);
+          }
+        }
+        // The sentence ends on what the person can do.
+        const sentence = en[noteKey(reading.note)];
+        expect(sentence, where).toMatch(STEP_WORDS);
+      }
+    }
+  });
+
+  it("no dead end: Send again waits only for the other running send, and a full queue keeps its line", () => {
+    const busy = (detail: string): SendReply => ({ outcome: "refused", reason: "busy", offers: ["keys"], rowsHash: null, replayed: false, surface: null, detail, cap: null, queued: false, cause: null });
+    expect(readSend(busy(ANOTHER_SEND))).toMatchObject({ step: "sendAgain", waits: true, detail: null });
+    const full = readSend(busy("This pane already holds 5 messages. Cancel one, or wait for the turn to end."));
+    expect(full).toMatchObject({ step: "sendAgain", waits: false });
+    expect(full.detail).toContain("already holds 5 messages");
+  });
+
+  it("no dead end: a draft with no Add, Replace or Cancel offers Empty the box, and its sentence says the draft is deleted", () => {
+    const reading = readSend({ outcome: "refused", reason: "draft_present", offers: ["keys"], rowsHash: null, replayed: false, surface: null, detail: null, cap: null, queued: false, cause: null });
+    expect(reading).toMatchObject({ note: "draftUnseen", step: "emptyBox", offers: [] });
+    expect(en["composer.protocol.draftUnseen"]).toMatch(/deletes that draft/u);
+  });
+
+  it("no dead end: a step's button never repeats the card, and the Keys offer is never the only way", () => {
+    for (const step of STEP_BUTTONS) expect(["offers", "card", "field"]).not.toContain(step);
   });
 });

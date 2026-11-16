@@ -42,7 +42,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
-import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
+import { Notice } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
@@ -118,7 +118,7 @@ import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
 import type { TranscriptEntry } from "@/lib/types";
 import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
-import { clearNotice, phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, stopNotice, type SendRefusal } from "@/components/send-notice";
+import { clearNotice, phoneRefusal, readingRefusal, RefusalActions, refusalKey, SendRefusalNotice, stepLabel, stopNotice, type SendRefusal } from "@/components/send-notice";
 import { mintRequestId } from "@/lib/worktree-name";
 import { Icon } from "@/components/icons/icon";
 
@@ -926,6 +926,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [sendRefusal, setSendRefusalState] = useState<SendRefusal | null>(null);
   // The sentence of the notice just raised, for the agent view's "Not sent" line to mirror (`onViewRequest`).
   const refusalWordsRef = useRef<string | null>(null);
+  // The text of the last send from this composer, for the notice's Send again (M102 spec 02). A send
+  // from the field is sent again from the field as it reads now; a quick reply keeps its own words.
+  const lastSendRef = useRef<{ readonly value: string; readonly isDraft: boolean } | null>(null);
   // What the bridge said of the last send from an agent view: the line it typed, or its refusal code.
   const viewAnswerRef = useRef<{ line: string | null; code: string | null }>({ line: null, code: null });
   // Which notice that is (send-notice.tsx `refusalKey`: the screen it is about and its words), and
@@ -1819,6 +1822,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const view = agentView === undefined ? undefined : tap === undefined ? { trick: agentView.trick, session: agentView.session } : { trick: agentView.trick, session: agentView.session, rev: tap.rev, control: tap.control };
     if (tap !== undefined && view === undefined) return false;
     viewAnswerRef.current = { line: null, code: null };
+    if (view === undefined) lastSendRef.current = { value, isDraft };
     const tell = (phase: ViewRequestNote["phase"], reason: string | null = null): void => {
       if (view !== undefined) onViewRequest?.({ text: t, phase, reason, line: phase === "sent" ? viewAnswerRef.current.line : null, about: tap?.about ?? null });
     };
@@ -1939,7 +1943,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // A resend makes no offer: an offer would carry the row's text, which may be masked.
       const offered = reading.offers.length > 0 && resend === undefined;
       setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null } : null);
-      const refusal = readingRefusal(reading);
+      // The revision the answer read: a Send again that waits for another send turns on once a later read differs.
+      const refusal = { ...readingRefusal(reading), atRevision: (reply.surface ?? shownSurface).revision };
       setSendRefusal(
         returnedDraft && reading.note === "draft" ? { ...refusal, sentence: translate("composer.protocol.draftIsReturned") } : refusal,
         reply.surface ?? shownSurface,
@@ -2108,6 +2113,46 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const refusalCard = sendRefusal?.toCard === true && onAnswerDialog !== undefined && dialogCard;
   const refusalScreen = sendRefusal?.screen === true && screen !== undefined && !screen.on;
   const refusalKeys = way.keysOpen && drawer !== "keys";
+  // THE STEP (M102 spec 02): the one button that changes the situation, first in the notice. The card (or,
+  // with no card, the Screen) and Open Keys follow it, so the notice holds at most two buttons plus the
+  // card. A step that cannot act here draws nothing: the card and the Keys pad still show.
+  const refusalStep = sendRefusal?.step ?? null;
+  // Send again after a refusal for another running send waits until a later read differs and the box
+  // holds no text (the other send went or was taken back). It never sends by itself.
+  const stepWaiting =
+    refusalStep === "sendAgain" &&
+    sendRefusal?.waits === true &&
+    sendRefusal.atRevision !== undefined &&
+    (shownSurface.revision === sendRefusal.atRevision || shownSurface.composer === "draft");
+  const stepButton =
+    refusalStep === "sendAgain"
+      ? !locked && lastSendRef.current !== null
+      : refusalStep === "stop"
+        ? stopOffered
+        : refusalStep === "emptyBox"
+          ? way.keysSendable
+          : refusalStep === "screen" && screen !== undefined && !screen.on;
+  const stepWord = stepLabel(refusalStep);
+  function onRefusalStep(): void {
+    if (refusalStep === "stop") {
+      void stopTurn();
+      return;
+    }
+    if (refusalStep === "emptyBox") {
+      void clearBox();
+      return;
+    }
+    if (refusalStep === "screen") {
+      screen?.onToggle();
+      return;
+    }
+    const last = lastSendRef.current;
+    if (refusalStep !== "sendAgain" || last === null || stepWaiting) return;
+    // The person's tap is the decision: the "Send it again?" second tap is not asked on top of it.
+    const line = last.isDraft ? composeLine(input, attachments, isShell) : last.value;
+    forgetUnknownSend(scope, paneId, line, isShell);
+    void send(line, last.isDraft);
+  }
   // What the field's placeholder says: the facts first (a pane that is gone, a device that may not
   // write, a box out of reach), then Type mode, then the shell line, then (M69) the Steer hint while a
   // turn runs on a harness that can steer, then the ordinary reply line. The placeholder names no other
@@ -3377,24 +3422,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               refusal={sendRefusal}
               onDismiss={hideRefusal}
               action={
-                refusalCard || refusalScreen || refusalKeys ? (
-                  <span className="flex flex-wrap justify-end gap-1">
-                    {refusalCard && (
-                      <Button variant="ghost" size="sm" className={NOTICE_ACTION} onClick={() => onAnswerDialog?.()}>
-                        {translate("composer.send.dialogFirst")}
-                      </Button>
-                    )}
-                    {refusalScreen && (
-                      <Button variant="ghost" size="sm" className={NOTICE_ACTION} onClick={() => screen?.onToggle()}>
-                        {translate("composer.controls.screen")}
-                      </Button>
-                    )}
-                    {refusalKeys && (
-                      <Button variant="ghost" size="sm" className={NOTICE_ACTION} onClick={() => requestDrawer("keys")}>
-                        {translate("composer.protocol.openKeys")}
-                      </Button>
-                    )}
-                  </span>
+                (stepButton && stepWord !== null) || refusalCard || refusalScreen || refusalKeys ? (
+                  <RefusalActions
+                    step={stepButton && stepWord !== null ? { word: stepWord, disabled: sending || stepWaiting, onPress: onRefusalStep } : null}
+                    wait={stepButton && refusalStep === "sendAgain" && sendRefusal.waits === true ? (stepWaiting ? "waits" : "ready") : null}
+                    onCard={refusalCard ? () => onAnswerDialog?.() : null}
+                    onScreen={refusalScreen && !refusalCard && refusalStep !== "screen" ? () => screen?.onToggle() : null}
+                    onKeys={refusalKeys ? () => requestDrawer("keys") : null}
+                  />
                 ) : undefined
               }
             />

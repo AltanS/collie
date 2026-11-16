@@ -31,7 +31,7 @@ describe("SendReceiptsView", () => {
     expect(items[0]).toHaveTextContent("Sent");
     expect(items[0]).toHaveTextContent(/just now/i);
     expect(items[1]).toHaveTextContent("Refused");
-    expect(items[1]).toHaveTextContent("The input box is not free. Nothing was typed.");
+    expect(items[1]).toHaveTextContent("The input box is not free, so nothing was typed. Answer or close what is open there, then send again.");
     expect(items[1]).toHaveTextContent("5m ago");
     expect(items[2]).toHaveTextContent("Typed, not sent");
     expect(items[2]).toHaveTextContent("Your text is in the box, but Enter was not pressed. Submit it or discard it.");
@@ -46,7 +46,7 @@ describe("SendReceiptsView", () => {
     const items = screen.getAllByRole("listitem");
     expect(items[0]?.querySelector(".font-medium")).toHaveTextContent(/^Steered$/u);
     expect(items[0]).not.toHaveTextContent("the agent takes it after its current step");
-    expect(items[1]).toHaveTextContent("Steer is not available on this pane. Nothing was sent.");
+    expect(items[1]).toHaveTextContent("Steer is not available on this pane, so nothing was sent. Send again to queue it for the end of the turn.");
   });
 
   it("says a reason with the composer's sentence and keeps the raw code in the title only", () => {
@@ -57,10 +57,10 @@ describe("SendReceiptsView", () => {
     ];
     render(<SendReceiptsView rows={[...rows, ...more]} now={NOW} />);
     const items = screen.getAllByRole("listitem");
-    expect(screen.getByTitle("not_free")).toHaveTextContent("The input box is not free. Nothing was typed.");
+    expect(screen.getByTitle("not_free")).toHaveTextContent("The input box is not free, so nothing was typed. Answer or close what is open there, then send again.");
     expect(screen.getByTitle("changed")).toHaveTextContent("Your text is in the box, but Enter was not pressed. Submit it or discard it.");
-    expect(screen.getByTitle("multiline")).toHaveTextContent("The send was refused. Nothing was typed.");
-    expect(screen.getByTitle("probe_failed")).toHaveTextContent("Typing did not land in the input box, so nothing was typed. Check the pane.");
+    expect(screen.getByTitle("multiline")).toHaveTextContent("The send was refused, so nothing was typed. Read the line below, then change the text or send again.");
+    expect(screen.getByTitle("probe_failed")).toHaveTextContent("Collie's test key did not land in the input box, so nothing was typed. Wait a moment, then send again.");
     for (const item of items) expect(item.textContent).not.toMatch(/not_free|modal cue|modal_cue|\bchanged\b|multiline|probe_failed|probe failed/u);
   });
 

@@ -208,7 +208,7 @@ describe("the way out", () => {
     const { onToggle } = mount("no-match");
     await user.type(screen.getByPlaceholderText("Type a reply…"), "hello");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await screen.findByText(/typing did not land in the input box/i);
+    await screen.findByText(/test key did not land in the input box/i);
     expect(screen.getByText(/could not find the input box/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Keys" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Screen" })).toBeEnabled();

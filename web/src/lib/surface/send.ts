@@ -487,6 +487,13 @@ export const SEND_CAUSES = ["notice_key", "stale_screen", "short_pane", "late_ke
 export type SendCause = (typeof SEND_CAUSES)[number];
 
 /**
+ * The bridge's line for a `busy` refusal of a send while another send on the pane runs. The phone reads
+ * it as "wait for the other send": its Send again waits until the screen moves on (M102 spec 02). A
+ * full hold queue is `busy` too, with its own line, and that one is shown under the sentence.
+ */
+export const ANOTHER_SEND = "Another send on this pane is still running.";
+
+/**
  * The bridge's line for a `stale_screen` refusal (2026-10-25). The phone says it in its own words; a
  * line that adds to it (a probe character that may remain in the box) gets its own sentence too.
  */

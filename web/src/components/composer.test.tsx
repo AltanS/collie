@@ -511,7 +511,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     const user = await typeAndSend("carry on please");
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).not.toBeNull());
-    expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen.*cannot read was open over the box/i);
+    expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read was open over the box.*cannot read this screen/i);
     // The phone's sentence says it once: the bridge's same English is not repeated under it.
     expect(container.querySelector('[data-slot="composer-refusal-detail"]')).toBeNull();
     expect(screen.getByRole("textbox")).toHaveValue("carry on please");
@@ -531,7 +531,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], surface: RUNNING, detail: "The input box is not free." })));
     const { container } = renderWithContainer({ surface: RUNNING });
     await typeAndSend("next step please");
-    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/not free.*agent was working/i));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/agent was working.*not free/i));
     expect(screen.getByRole("textbox")).toHaveValue("next step please");
     // No card to go to: the notice carries no control.
     expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
@@ -5015,7 +5015,7 @@ describe("outcome at the thumb", () => {
   it("refused turn_running: the agent is working, said as that, with the draft kept", async () => {
     await send(() => sendAnswer("x", "refused", "turn_running", { offers: ["keys"], surface: SURFACES.running }), { surface: SURFACES.running });
     await waitFor(() => expect(refusalText()).not.toBe(""));
-    expect(refusalText()).toBe("The agent is working. Send again when it is done.");
+    expect(refusalText()).toBe("The agent is working and does not take a message now. Stop the turn, or send again when it ends.");
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
   });
 
@@ -5093,7 +5093,7 @@ describe("outcome at the thumb", () => {
 
   it("refused probe_failed: names the Surface and points to the Keys dock and the Screen", async () => {
     await send(() => sendAnswer("x", "refused", "probe_failed", { surface: SURFACES.noMatch, offers: ["keys"] }));
-    await waitFor(() => expect(refusalText()).toMatch(/typing did not land.*could not find the input box/i));
+    await waitFor(() => expect(refusalText()).toMatch(/could not find the input box.*test key did not land/i));
     expect(screen.getByRole("button", { name: "Open Keys" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Screen" })).toBeInTheDocument();
     expect(header()).toBe("");
@@ -5102,7 +5102,7 @@ describe("outcome at the thumb", () => {
   it("refused not_free: names the dialog that was open and points to its card and the Keys dock", async () => {
     const onAnswerDialog = vi.fn();
     const user = await send(() => sendAnswer("x", "refused", "not_free", { surface: SURFACES.ask }), { onAnswerDialog, dialogCard: true });
-    await waitFor(() => expect(refusalText()).toMatch(/not free.*a menu was open/i));
+    await waitFor(() => expect(refusalText()).toMatch(/a menu was open.*not free/i));
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
     expect(onAnswerDialog).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "Open Keys" }));
@@ -5994,5 +5994,117 @@ describe("Composer — known launch startup send-lock", () => {
     await user.click(commit);
     expect(typed).toHaveBeenCalledOnce();
     expect(box).toHaveValue("offered draft");
+  });
+});
+
+// M102 spec 02: the step each stop card names is a button first in the notice, then the card or the
+// Screen, then Open Keys. Send again after another running send waits, off, with its reason under it,
+// until a later read shows the box free; it never sends by itself.
+describe("the next step on a stop card (M102 spec 02)", () => {
+  /** A composer whose Surface the test moves on, as a poll would. */
+  function renderWithSurface(first: Surface, over: Partial<ComponentProps<typeof Composer>> = {}) {
+    let move: (next: Surface) => void = () => undefined;
+    function Harness() {
+      const [surface, setSurface] = useState<Surface>(first);
+      move = setSurface;
+      return (
+        <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <Composer
+            paneId="w1:p1"
+            agent="claude"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            surface={surface}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+            display={{ open: false, onToggle: vi.fn() }}
+            onSent={vi.fn()}
+            {...over}
+          />
+        </CrewProvider>
+      );
+    }
+    markLive("w1:p1", Date.now());
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Harness /> }])} />);
+    return { move: (next: Surface) => act(() => move(next)) };
+  }
+
+  const free = (revision: number): Surface => ({ ...FREE, revision });
+
+  it("next step: Send again waits for the other send, says why, turns on when the box is free again, and never sends by itself", async () => {
+    let calls = 0;
+    server.use(
+      ...sendHandler((request) => {
+        calls += 1;
+        return calls === 1 ? sendAnswer(request.id, "refused", "busy", { offers: ["keys"], surface: free(3), detail: "Another send on this pane is still running." }) : sendAnswer(request.id, "sent");
+      }),
+    );
+    const user = userEvent.setup();
+    const { move } = renderWithSurface(free(3));
+    await user.type(screen.getByRole("textbox"), "after the other one");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    const again = await screen.findByRole("button", { name: "Send again" });
+    expect(again).toBeDisabled();
+    expect(screen.getByText("Send again turns on when the other send ends.")).toBeInTheDocument();
+    // The other send still holds the box: a new read with text in it keeps the button off.
+    move({ ...FREE, revision: 4, composer: "draft" });
+    expect(screen.getByRole("button", { name: "Send again" })).toBeDisabled();
+    // The box is free again: the button turns on, the live line says so, and nothing went out by itself.
+    move(free(5));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send again" })).toBeEnabled());
+    expect(screen.getByText("The other send ended. You can send again.")).toBeInTheDocument();
+    expect(recordedSends()).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Send again" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ text: "after the other one", mode: "send" });
+    expect(recordedSends()[1]!.id).not.toBe(recordedSends()[0]!.id);
+  });
+
+  it("next step: a turn the agent does not take a message in offers Stop the turn first, then Open Keys", async () => {
+    const running = wayOutCase("running").surface;
+    let stops = 0;
+    server.use(
+      ...sendHandler((request) => sendAnswer(request.id, "refused", "turn_running", { offers: ["keys"], surface: running })),
+      http.post(/\/api\/pane\/[^/]+\/abort$/, () => {
+        stops += 1;
+        return HttpResponse.json({ requestId: "stop-0001", outcome: "stopped" });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithSurface(running, { stopOffered: true });
+    await user.type(screen.getByRole("textbox"), "one more thing");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText(/Stop the turn, or send again/u);
+    // The notice's own buttons, in order: the step first, Open Keys last (the belt has its own Stop).
+    const notice = document.querySelector('[data-slot="composer-refusal"]')!.closest<HTMLElement>('[data-slot="notice"]')!;
+    const words = within(notice).getAllByRole("button").map((b) => b.textContent);
+    expect(words.indexOf("Stop the turn")).toBe(0);
+    expect(words.indexOf("Stop the turn")).toBeLessThan(words.indexOf("Open Keys"));
+    await user.click(within(notice).getByRole("button", { name: "Stop the turn" }));
+    await waitFor(() => expect(stops).toBe(1));
+  });
+
+  it("next step: a draft Collie cannot read whole offers Empty the box, which is the Clear route", async () => {
+    const posted: string[] = [];
+    server.use(
+      ...sendHandler((request) => sendAnswer(request.id, "refused", "draft_present", { offers: ["keys"], surface: { ...FREE, composer: "draft" }, detail: "The draft is longer than Collie empties in one request." })),
+      http.post(/\/api\/pane\/[^/]+\/clear$/, ({ request }) => {
+        posted.push(request.url);
+        return HttpResponse.json({ requestId: "clear-0001", outcome: "cleared" });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithSurface({ ...FREE, composer: "draft" });
+    await user.type(screen.getByRole("textbox"), "my long message");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/cannot read whole.*Empty the box deletes that draft/u));
+    await user.click(screen.getByRole("button", { name: "Empty the box" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    // The person's draft in the phone's field stays: only the agent's box was emptied.
+    expect(screen.getByRole("textbox")).toHaveValue("my long message");
   });
 });

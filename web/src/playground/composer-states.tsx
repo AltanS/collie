@@ -9,7 +9,10 @@
 // a Send tap answers "No answer" at the thumb, which is itself a state worth seeing; the Keys dock and
 // the Screen pill are real and answer in one tap.
 //
-// Cards are numbered, 1 to 22, so a worker can be briefed by number ("card 4 is modal unreadable").
+// Cards 26 to 32 are the stop cards (M102 spec 02): the real notice and its real buttons, read from a
+// refusal by the phone's own reader, one card per kind of step.
+//
+// Cards are numbered, 1 to 32, so a worker can be briefed by number ("card 4 is modal unreadable").
 //
 // DEV-ONLY, unreachable from the app entry.
 
@@ -17,6 +20,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { Composer } from "@/components/composer";
+import { readingRefusal, RefusalActions, SendRefusalNotice, stepLabel } from "@/components/send-notice";
+import { readSend, type SendReply } from "@/lib/send-protocol";
 import { SubagentSheet } from "@/components/subagent-sheet";
 import { t } from "@/lib/i18n";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
@@ -24,7 +29,8 @@ import { markLive } from "@/lib/liveness";
 import { saveDraft } from "@/lib/drafts";
 import { forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent } from "@/lib/send-intent";
-import type { HeldRow } from "@/lib/surface/send";
+import { ANOTHER_SEND, offersFor, type HeldRow, type SendOutcome, type SendReason } from "@/lib/surface/send";
+import type { Surface } from "@/lib/surface/surface";
 import type { Scope } from "@/lib/scope";
 import { wayOutCase, type WayOutCase } from "@/test/way-out-states";
 import type { WayOutState } from "@/lib/way-out";
@@ -476,6 +482,73 @@ function SendConfirmCase({ n, state, title, reach, note, kind }: { n: number; st
   );
 }
 
+/** One stop card (M102 spec 02): a refusal as the bridge would answer it, read by the phone's own reader. */
+interface StopCase {
+  readonly outcome: SendOutcome;
+  readonly reason: SendReason;
+  readonly surface: Surface | null;
+  readonly detail?: string;
+  /** The Send again of a refusal for another running send: off, or turned on after the box went free. */
+  readonly wait?: "waits" | "ready";
+  /** Whether the pane has a card to go to (an ask or an overlay on the screen). */
+  readonly card?: boolean;
+}
+
+const STOP_FREE: Surface = { revision: 1, turn: "idle", modal: "none", composer: "empty" };
+/** A button on a stop card goes nowhere: there is no bridge behind this page. */
+const none = () => {};
+
+/** The real notice and its real buttons, from the same reader the composer uses; nothing is redrawn. */
+function StopCardPhone({ c }: { c: StopCase }) {
+  const reply: SendReply = {
+    outcome: c.outcome,
+    reason: c.reason,
+    offers: offersFor(c.outcome, c.reason, true),
+    rowsHash: null,
+    replayed: false,
+    surface: c.surface,
+    detail: c.detail ?? null,
+    cap: null,
+    queued: false,
+    cause: null,
+  };
+  const refusal = readingRefusal(readSend(reply));
+  const word = stepLabel(refusal.step);
+  return (
+    <PhoneMock>
+      <div className="bg-background px-3 pt-3 pb-2">
+        <SendRefusalNotice
+          refusal={refusal}
+          onDismiss={none}
+          action={
+            <RefusalActions
+              step={word === null ? null : { word, disabled: c.wait === "waits", onPress: none }}
+              wait={c.wait ?? null}
+              onCard={c.card === true ? none : null}
+              onScreen={refusal.screen && c.card !== true && refusal.step !== "screen" ? none : null}
+              onKeys={none}
+            />
+          }
+        />
+      </div>
+    </PhoneMock>
+  );
+}
+
+function StopCardCase({ n, state, title, reach, c }: { n: number; state: string; title: string; reach: string; c: StopCase }) {
+  return (
+    <Card state={state} label={`${String(n)}: ${title}`} reach={reach}>
+      <CardControls className="flex items-center gap-3">
+        <NumberBadge n={n} />
+        <p className="text-sm font-semibold text-foreground">
+          {n}: {title}
+        </p>
+      </CardControls>
+      <StopCardPhone c={c} />
+    </Card>
+  );
+}
+
 /**
  * The section's groups, as elements for `Section` to take as direct children (a group is a sub-page of
  * its section, and the bar reads them off the children). The section itself is `sections/composer-states.tsx`
@@ -607,6 +680,57 @@ export function wayOutGroups(): ReactNode[] {
         reach="Send a text whose result is unknown (Collie cannot tell if it was sent), then tap Send on the same text within two minutes. The Send button's spot reads Send it again? in red for 3 seconds; a second tap sends."
         note="The card sends once to a fake bridge that answers unknown, then arms the question and taps again whenever the 3 seconds run out. A tap of your own on the word sends, and the fake bridge answers sent."
         kind="again"
+      />
+    </Group>,
+    <Group key="stop-cards" title="Stop cards">
+      <StopCardCase
+        n={26}
+        state="stop-send-again"
+        title="Send again"
+        reach="A send the terminal did not take. The notice says nothing was typed and offers Send again first, then Open Keys."
+        c={{ outcome: "refused", reason: "write_failed", surface: STOP_FREE }}
+      />
+      <StopCardCase
+        n={27}
+        state="stop-send-again-waits"
+        title="Send again waits"
+        reach="Send while another send to the same pane still runs. Send again is off, and the line under it says it turns on when the other send ends."
+        c={{ outcome: "refused", reason: "busy", surface: STOP_FREE, detail: ANOTHER_SEND, wait: "waits" }}
+      />
+      <StopCardCase
+        n={28}
+        state="stop-send-again-ready"
+        title="Send again turned on"
+        reach="The other send ended: Send again is on, and a screen reader hears the line under it. Nothing is sent until the tap."
+        c={{ outcome: "refused", reason: "busy", surface: STOP_FREE, detail: ANOTHER_SEND, wait: "ready" }}
+      />
+      <StopCardCase
+        n={29}
+        state="stop-stop-turn"
+        title="Stop the turn"
+        reach="Send to an agent that takes no message while it works. The step is Stop the turn."
+        c={{ outcome: "refused", reason: "turn_running", surface: { ...STOP_FREE, turn: "running" } }}
+      />
+      <StopCardCase
+        n={30}
+        state="stop-empty-box"
+        title="Empty the box"
+        reach="Send onto a draft too long for Collie to read whole. Empty the box is the Clear: it deletes that draft in checked rounds."
+        c={{ outcome: "refused", reason: "draft_present", surface: { ...STOP_FREE, composer: "draft" } }}
+      />
+      <StopCardCase
+        n={31}
+        state="stop-answer-card"
+        title="Answer the card first"
+        reach="Send while a dialog Collie cannot read is open. The card is the step; Open Keys follows."
+        c={{ outcome: "refused", reason: "not_free", surface: { ...STOP_FREE, modal: "unreadable" }, card: true }}
+      />
+      <StopCardCase
+        n={32}
+        state="stop-read-screen"
+        title="Read the screen"
+        reach="Send where Collie finds no input box. The step is the Screen, then the Keys pad."
+        c={{ outcome: "refused", reason: "not_free", surface: { ...STOP_FREE, modal: "unknown", composer: "unknown" } }}
       />
     </Group>,
   ];
