@@ -61,6 +61,7 @@ import {
   later,
   proposalFromInit,
   proposalGroup,
+  proposalNeedsSettings,
   proposalNotesChanged,
   rightsMoved,
   versionGroup,
@@ -972,6 +973,10 @@ export function HillSection() {
         <Card state="hill-group-notes-changed" label="69: the notes changed, only the change shown">
           <CardHead n={69} title="Notes changed from Collie's: card 2 shows only the change" />
           <PagedCard decision={proposalNotesChanged} to={2} />
+        </Card>
+        <Card state="hill-group-needs-settings" label="70: a trick that needs its settings file">
+          <CardHead n={70} title="Its config.toml stays behind: card 1 says it may show nothing" />
+          <OneCard decision={proposalNeedsSettings} />
         </Card>
         <Card state="hill-rights-moved" label="66: a trick stopped because its rights changed">
           <CardHead n={66} title="A trick changed its rights: Collie's card, OK alone" />

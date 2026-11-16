@@ -956,11 +956,12 @@ export function proposalGroup(): HillDecision {
  * decision 10). The helper and the notes Collie ships are named on card 1 and shown on no card; notes the
  * agent changed show only their change against the shipped text.
  */
-function initProposal(notesChanged: boolean): HillDecision {
+function initProposal(notesChanged: boolean, settingsLeft = false): HillDecision {
   const notesRow: View = ["AGENTS.md", notesChanged ? "11.8 KB" : "11.7 KB", notesChanged ? "2" : "Collie's notes v1"].map((text) => ({ kind: "cell", text }));
   const facts: View = [
     { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
     { kind: "bar", attrs: { label: "It asks for" }, kids: [{ kind: "chip", text: "the status line" }] },
+    ...(settingsLeft ? [{ kind: "para", text: "This trick has a settings file that does not come along. It may show nothing until you add it on the machine." } as const] : []),
     { kind: "line", text: notesChanged ? "3 files, on card 2." : "2 files, on card 2.", attrs: { role: "note" } },
     { kind: "para", text: "trick.ts is the helper Collie ships (v5), byte for byte, so no card shows it." },
     ...(notesChanged ? [{ kind: "para", text: "AGENTS.md shows only how it differs from the notes Collie ships (v1)." } as const] : [{ kind: "para", text: "AGENTS.md is the notes Collie ships (v1), byte for byte, so no card shows it." } as const]),
@@ -994,18 +995,20 @@ function initProposal(notesChanged: boolean): HillDecision {
     title: "Switch on the trick git-branch?",
     summary: `An agent session (crew-08#propose) on workshop proposes it. It has 4 files. It asks for the status line. It shows on 2 cards.`,
     ago: 1,
-    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "git-branch", hash: (notesChanged ? "6e" : "6d").repeat(32) } },
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "git-branch", hash: (settingsLeft ? "6f" : notesChanged ? "6e" : "6d").repeat(32) } },
     target: null,
     text: "none",
     options: [
       { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
       { intent: "later", label: "Not now" },
     ],
-    group: { digest: (notesChanged ? "c2" : "c1").repeat(32), decline: "later", parts: [{ view: facts, sha256: "21".repeat(32) }, { view: code, sha256: "22".repeat(32) }] },
+    group: { digest: (settingsLeft ? "c3" : notesChanged ? "c2" : "c1").repeat(32), decline: "later", parts: [{ view: facts, sha256: "21".repeat(32) }, { view: code, sha256: "22".repeat(32) }] },
   });
 }
 export const proposalFromInit = initProposal(false);
 export const proposalNotesChanged = initProposal(true);
+/** 70: a trick that drew nothing without the config.toml it leaves behind (decision 7): card 1 says so. */
+export const proposalNeedsSettings = initProposal(false, true);
 
 /** 66: a trick stopped because its rights changed since the person's yes (fault B), OK alone. */
 export const rightsMoved = decision({

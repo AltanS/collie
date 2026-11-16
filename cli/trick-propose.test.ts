@@ -25,7 +25,7 @@ import { realFiles } from "./sys.ts";
 import { cmdTrickGuide, trickGuide } from "./trick-guide.ts";
 import { GROUP_MASKED, GROUP_TOO_LARGE, groupLineEnds } from "../bridge/tricks/card-group.ts";
 import { TRICK_HELPER } from "../bridge/tricks/scan.ts";
-import { cmdTrickPropose, PROPOSE_ADDED_HERE_HINT, PROPOSE_UNKNOWN, proposeExit, readTrickFolder } from "./trick-propose.ts";
+import { cmdTrickPropose, PROPOSE_ADDED_HERE_HINT, PROPOSE_NEEDS_CONFIG, PROPOSE_UNKNOWN, proposeExit, readTrickFolder } from "./trick-propose.ts";
 import { cmdTrickInit } from "./trick.ts";
 import { askSocket } from "./walky.ts";
 
@@ -240,6 +240,25 @@ function rawAsk(path: string, line: string): Promise<JsonObject | undefined> {
 }
 
 describe("collie trick propose, over the walky socket", () => {
+  socketTest("decision 7: a trick that draws nothing without its config.toml is proposed with a warning, and the line says so", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)], { ...inPane("%1"), PATH: process.env.PATH ?? "/usr/bin:/bin" });
+    // Without config.toml the program prints no part: the person would see nothing until they add it.
+    const program = 'import { readFileSync } from "node:fs";\nlet parts = [];\ntry { readFileSync("config.toml"); parts = [{ at: "belt", id: "belt", mark: { icon: "plug", label: "ok" } }]; } catch {}\nconsole.log(JSON.stringify({ v: 1, parts }));\n';
+    expect(await cmdTrickPropose(d, [trickFolder({ "program.ts": program, "config.toml": 'repo = "x"\n' })])).toBe(EXIT.OK);
+    expect(d.io.stderr).toContain(PROPOSE_NEEDS_CONFIG);
+    expect(b.calls[0]?.fields.settings).toBe(true);
+  });
+
+  socketTest("decision 7: a trick that draws without its config.toml carries no such line", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)], { ...inPane("%1"), PATH: process.env.PATH ?? "/usr/bin:/bin" });
+    const program = 'console.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { icon: "plug", label: "ok" } }] }));\n';
+    expect(await cmdTrickPropose(d, [trickFolder({ "program.ts": program, "config.toml": 'repo = "x"\n' })])).toBe(EXIT.OK);
+    expect(d.io.stderr).not.toContain(PROPOSE_NEEDS_CONFIG);
+    expect(b.calls[0]?.fields.settings).toBeUndefined();
+  });
+
   socketTest("decision 11: a scan warning prints with one prefix, warning:", async () => {
     const b = await bridge();
     const d = deps([walkySocketPath(b.stateDir)]);

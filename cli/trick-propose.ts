@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { join, resolve } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import type { HillDeps } from "./hill.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
-import { checkStatic, leadsCrewOnDisk, reportFails } from "./trick.ts";
+import { checkStatic, leadsCrewOnDisk, reportFails, runAgainstFixture } from "./trick.ts";
 import { readTrickFolder } from "./trick-folder.ts";
 
 export { PROPOSE_WALK_MAX, readTrickFolder, type FolderRead } from "./trick-folder.ts";
@@ -14,7 +16,8 @@ import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { PROPOSE_ASK_MS } from "../bridge/tricks/propose-door.ts";
 import { proposalCardCount } from "../bridge/tricks/proposal-card.ts";
-import { manifestGivesRules, PROPOSE_HAS_RULES, readProposal, wireFiles } from "../bridge/tricks/propose-wire.ts";
+import { manifestGivesRules, PROPOSE_HAS_RULES, readProposal, wireFiles, type ProposedFile } from "../bridge/tricks/propose-wire.ts";
+import type { TrickManifest } from "../web/src/lib/tricks/schema.ts";
 import { MANIFEST_FILE } from "../bridge/tricks/paths.ts";
 import { warningLines } from "../bridge/tricks/scan.ts";
 import { unknownOp } from "../bridge/walky/refusals.ts";
@@ -39,6 +42,28 @@ export const PROPOSE_NOT_HERE = "No Collie bridge on this machine knows this pan
 
 /** What the CLI says when the folder's config.toml stayed behind. */
 export const PROPOSE_CONFIG_LEFT = "config.toml stays behind: your person sets the trick up on the machine.";
+/** The warning for a trick that, run without its config.toml, drew nothing, failed or printed a part Collie refuses (decision 7). */
+export const PROPOSE_NEEDS_CONFIG =
+  "warning: run without config.toml, the trick drew nothing, failed or printed a part Collie refuses. It is proposed all the same, and the card tells your person it may show nothing until they add config.toml on the machine. Make the trick draw a short message when a setting is missing.";
+
+/**
+ * Run the files that go once, without the config.toml that stays behind, as the bridge would run them
+ * after the yes: true when the run draws no part, fails, or prints a part Collie refuses (the first full
+ * trick run, 2026-11-16, decision 7). Runs in a scratch folder of its own, removed after.
+ */
+async function needsItsConfig(manifest: TrickManifest, files: readonly ProposedFile[], env: ProposeDeps["ctx"]["env"]): Promise<boolean> {
+  const dir = await mkdtemp(join(tmpdir(), `collie-propose-${manifest.id}-`));
+  try {
+    for (const file of files) {
+      await mkdir(dirname(join(dir, file.rel)), { recursive: true });
+      await writeFile(join(dir, file.rel), file.bytes, { mode: file.executable ? 0o755 : 0o644 });
+    }
+    const ran = await runAgainstFixture(manifest, dir, env);
+    return ran.problem !== null || ran.parsed === null || ran.parsed.parts.length === 0 || ran.parsed.refusals.length > 0;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
 export type ProposeDeps = HillDeps;
 
@@ -94,6 +119,13 @@ async function ask(deps: ProposeDeps, line: string, requestId: string): Promise<
 const ADDED_HERE = "was added on this machine. Change it there.";
 /** What the CLI adds to that refusal: the way out for an agent that made its trick in the tricks folder. */
 export const PROPOSE_ADDED_HERE_HINT = "Copy the folder outside the tricks folder and propose the copy, or ask the person to switch it on.";
+
+/** What `trick.propose` carries: the request id, the files, and `settings` when the trick needs the config.toml it leaves behind. */
+type ProposeFields = {
+  requestId: string;
+  files: ReturnType<typeof wireFiles>;
+  settings?: true;
+};
 
 const USAGE = "usage: collie trick propose <folder> [--request-id <uuid>] [--json]";
 
@@ -154,11 +186,15 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   const cards = proposalCardCount({ manifest: report.manifest!, files: read.files, warnings: [...new Set(report.warnings.map((w) => w.kind))], crew: leadsCrewOnDisk(deps) });
   if (!cards.ok) return fail(cards.error, cards.code, EXIT.REFUSED);
   const rid = requestId ?? (deps.mintRequestId ?? randomUUID)();
+  // A trick whose config.toml stays behind runs once without it: the person adds the settings only after the yes.
+  const settings = read.config && report.manifest!.run !== undefined && (await needsItsConfig(report.manifest!, read.files, deps.ctx.env));
   // The one reader the bridge and the lead use: what it refuses, they refuse.
-  const fields = { requestId: rid, files: wireFiles(read.files) };
+  const fields: ProposeFields = { requestId: rid, files: wireFiles(read.files) };
+  if (settings) fields.settings = true;
   const checked = readProposal(fields);
   if (!checked.ok) return fail(checked.refusal.error, checked.refusal.code, EXIT.FAIL);
   if (!json) for (const line of warningLines(report.warnings)) deps.io.err(line);
+  if (!json && settings) deps.io.err(PROPOSE_NEEDS_CONFIG);
   // The op first: the bridge reads a long line only when it opens with it (parse.ts PROPOSE_LINE_PREFIX).
   const line = `${JSON.stringify({ op: "trick.propose", v: 1, markers: readEnvMarkers(deps.ctx.env), ...fields })}\n`;
   const answer = await ask(deps, line, rid);
@@ -174,7 +210,7 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   const decision = asJsonString(body.decision) ?? null;
   const replaced = asJsonString(body.replaced) ?? null;
   if (json) {
-    deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, decision, replaced, requestId: rid, files: read.files.length, left: read.left, warnings: report.warnings.map((w) => w.kind) }));
+    deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, decision, replaced, requestId: rid, files: read.files.length, left: read.left, warnings: report.warnings.map((w) => w.kind), needsConfig: settings }));
     return EXIT.OK;
   }
   deps.io.out(`Sent ${String(read.files.length)} files. Left behind: ${String(read.left)} (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).`);

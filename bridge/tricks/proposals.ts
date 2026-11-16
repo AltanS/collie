@@ -415,7 +415,7 @@ export class TrickProposals {
     if (base === null) {
       // A new trick's code is its files' own bytes, every line added: no git run, nothing left out.
       const sizes = new Map(proposal.files.map((file) => [file.rel, file.bytes.byteLength]));
-      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), warnings: kinds, crew, replaces, sizes, ...proposalDiff(id, proposal.files) });
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), warnings: kinds, crew, replaces, sizes, settingsLeft: proposal.settingsLeft === true, ...proposalDiff(id, proposal.files) });
     }
     const exec = new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel));
     const diff = await this.diff(base.baseDir, dir, exec).catch((): VersionDiff => ({ files: [], counted: false }));
@@ -424,7 +424,7 @@ export class TrickProposals {
     const code = codeHashOfFiles(proposal.files.filter((file) => isCodePath(file.rel)));
     if ((!diff.counted && diff.files.length > 0) || (diff.files.length === 0 && code !== base.baseHash)) return { ok: false, code: "cannot_show", error: PROPOSAL_NOT_COMPARED };
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
-    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, helpers: shippedHelpers(proposal.files, id) });
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, settingsLeft: proposal.settingsLeft === true, helpers: shippedHelpers(proposal.files, id) });
   }
 
   private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {

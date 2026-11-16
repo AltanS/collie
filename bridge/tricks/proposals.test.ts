@@ -32,7 +32,7 @@ import {
 import { ProposeDoor } from "./propose-door.ts";
 import { GROUP_CODE_BYTES, GROUP_MASKED, GROUP_NOT_TEXT, GROUP_TOO_LARGE, helperCell, helperNote } from "./card-group.ts";
 import { HELPER_VERSION, TRICK_HELPER } from "./scan.ts";
-import { readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
+import { PROPOSAL_SETTINGS_LEFT, readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { SWITCHES_VERSION, withEntry, withSwitch, writeSwitches } from "./switches.ts";
 import { VersionCards } from "./version-card.ts";
@@ -277,6 +277,23 @@ describe("a proposal for a new trick", () => {
     expect(entry.previous).toBeUndefined();
     expect(entry.hash).not.toBe(stale.hash);
     expect(await readdir(oldState).catch(() => [])).not.toContain("notes.json");
+  });
+
+  test("decision 7: a trick that needs the settings it leaves behind says so on card 1; the flag changes no hash", async () => {
+    const l = await lead();
+    const files = wireFiles(proposal("legs").files);
+    const read = readProposal({ requestId: nextRid(), files, settings: true });
+    if (!read.ok) throw new Error(read.refusal.error);
+    expect(read.proposal.settingsLeft).toBe(true);
+    const plain = readProposal({ requestId: nextRid(), files });
+    expect(plain.ok && plain.proposal.hash).toBe(read.proposal.hash);
+    await l.proposals.propose(read.proposal, AGENT);
+    const [card] = openCards(l);
+    expect(JSON.stringify(card!.view ?? card!.group?.parts[0]?.view)).toContain(PROPOSAL_SETTINGS_LEFT);
+    // Without the flag, no such line.
+    const m = await lead();
+    if (plain.ok) await m.proposals.propose(plain.proposal, AGENT);
+    expect(JSON.stringify(openCards(m))).not.toContain(PROPOSAL_SETTINGS_LEFT);
   });
 
   test("decision 4: bytes that do not hash to the card's hash are never written, for a new trick and a new version", async () => {
