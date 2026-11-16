@@ -3519,6 +3519,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {secretOpen ? (
           <SecretField
             disabled={starting || sending || locked}
+            // A locked field says why in the composer's own words (the gone, read-only and out-of-reach
+            // placeholders): the frame's own "Not saved" line would leave a dead Send with no reason.
+            lockedWhy={locked ? placeholderWords : undefined}
             onSend={(code) => send(code, false)}
             onClose={() => {
               setSecretClosed(true);
