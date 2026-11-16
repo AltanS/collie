@@ -111,9 +111,8 @@ the `offersFor` table for sends).
 - 0009: a generic menu sends only the keys it names, never digits (changed here by rule 3).
 - 0010, 0017: a long send is proven by its paste placeholder; a password prompt changes only words.
 - 0053: an unread dialog gets its adapter's declared cancel key (changed here by rule 3).
-- 0054 to 0059, 0061, 0080: scales and pointed lists are walked, verified, confirmed; cards dock.
-- 0076 to 0079, 0098, 0133: the omp and pi dialogs Collie lifts, and the Escape card for the rest.
-- 0108, 0109, 0113: a dialog over live chrome declares its tail; a notice above the box is not a
+- 0054 to 0061, 0076 to 0079, 0098, 0108, 0133: the dialog rules, now ADR 0151.
+- 0080, 0109, 0113: a pointed list is walked, verified, confirmed; a notice above the box is not a
   modal; an AskUserQuestion answer is typed into its field, cleared only when it holds what was seen.
 - 0116, 0117, 0140: a Stop and a steer are a person's tap with a receipt; a send by data, never twice.
 - 0122 to 0124: a queued send is a card with an exit in each state; three failed sends offer an issue.
