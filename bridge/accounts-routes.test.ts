@@ -343,6 +343,30 @@ describe("the server glue (serveAccountsRoute)", () => {
   const get = () => new Request("http://x/api/accounts");
   const post = (path: string, body: JsonValue) => new Request(`http://x${path}`, { method: "POST", body: JSON.stringify(body) });
 
+  test("a ?host= read: the gate first, then the member's answer as it came; the lead's own service and audit are not touched (M101 spec 06)", async () => {
+    const rows = JSON.stringify({ harnesses: [], accounts: [{ id: "claude:default", identity: { signedIn: true, email: "person@example.com" } }], found: [] });
+    let resolved = 0;
+    const forwarding = (deny: boolean): Caller => ({
+      gate: (level) => (deny && level === "read" ? new Response("not paired", { status: 401 }) : null),
+      resolve: () => {
+        resolved += 1;
+        return Promise.resolve(new Response(rows, { status: 200 }));
+      },
+      device: () => "pixel",
+      audit,
+    });
+    // The lead's own service must not be asked: a spy that fails the test if it is.
+    const own = build();
+    const asked = spyOn(own, "body");
+    expect((await serveAccountsRoute(get(), "/api/accounts", forwarding(true), own))?.status).toBe(401);
+    expect(resolved).toBe(0);
+    const res = await serveAccountsRoute(get(), "/api/accounts", forwarding(false), own);
+    expect(resolved).toBe(1);
+    expect(await res?.text()).toBe(rows);
+    expect(asked).not.toHaveBeenCalled();
+    expect(lines).toEqual([]);
+  });
+
   test("no service answers the read with accounts.unavailable, as an older bridge would be read", async () => {
     const res = await serveAccountsRoute(get(), "/api/accounts", fakeCaller(), undefined);
     expect(res?.status).toBe(404);

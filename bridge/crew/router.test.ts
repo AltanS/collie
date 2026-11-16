@@ -1180,6 +1180,20 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
     expect(d.seen).toEqual([]);
   });
 
+  test("the accounts list is dispatched for a GET alone; the add, the remove and any other method are not (M101 spec 06)", async () => {
+    const d = dispatcher(() => new Response("{}"));
+    const { handler } = peerRouter(d);
+    const res = (await call(handler, `${CREW_PREFIX}accounts?session=work`, { headers: authed }))!;
+    expect(res.status).toBe(200);
+    expect(d.seen).toEqual([{ path: "/api/accounts", search: "?session=work", from: "desk", method: "GET" }]);
+    for (const [route, method] of [["accounts", "POST"], ["accounts", "DELETE"], ["accounts/remove", "POST"], ["accounts/remove", "GET"], ["accounts/x", "GET"]] as const) {
+      const init: RequestInit = { method, headers: authed };
+      if (method !== "GET") init.body = "{}";
+      expect([route, method, (await call(handler, `${CREW_PREFIX}${route}`, init))!.status]).toEqual([route, method, 404]);
+    }
+    expect(d.seen).toHaveLength(1);
+  });
+
   test("an unadmitted caller never reaches the dispatch — routing happens after both factors", async () => {
     const d = dispatcher(() => new Response("{}"));
     const h = harness(leadStore({ peers: [nas] }));
