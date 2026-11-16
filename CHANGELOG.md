@@ -37,6 +37,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Jobs and subagents of a pi that restarted stop counting as running.** Gentle Shell numbers its jobs and subagents again from 1 in each new pi run and writes no end for the work the old run left. When a number starts again, the Jobs and Agents marks now end every job and subagent the old run started before its last numbered start, as stopped, with no failure. A job is told apart by its run and its id, so a new `job-1` never ends or takes over the old one. Thanks @viniciosrab (#783, #784).
+- **A cancelled pi subagent leaves the Agents mark.** A `subagent_cancel` that answers without an error now ends the subagent its `task_id` names, and a `subagent_list_tasks` line that says completed, failed, cancelled or stopped ends that subagent too. Thanks @viniciosrab (#784).
+- **The Agents mark counts subagents a pi script starts.** A background `subagent_run` inside a `codemode` call now counts while it runs, and ends with its end row when that names its agent and label and no other open run has both. Thanks @viniciosrab (#795).
 - **A sign-in code is never kept as a draft.** A code typed while the phone's picture of the screen was a moment old could be kept as a draft, because that picture lost the sign-in field. Now the field stays, so the code is never kept.
 - **`collie trick guide` names the status line's limit.** A status text is at most 12 characters, and the guide says so next to the helper's calls, so an agent's message for a missing setting fits.
 - **A trick's code warnings start with one word.** `collie trick check`, `on`, `add` and `propose` print each warning as `warning: <file>:<line> ...`; `propose` printed `warning: warn:`.
