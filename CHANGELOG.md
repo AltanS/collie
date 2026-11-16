@@ -38,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **pi in WSL gets the send key it reads from its own environment.** pi takes Ctrl+Q under WSL only when `WSL_DISTRO_NAME` or `WSL_INTEROP` is set in its own process, and Alt+Enter without them, for example in a terminal a service started. Collie chose Ctrl+Q from the WSL kernel alone, so a send to such a pi stayed in the box. Under Herdr and the Herdr core, the bridge now reads those two variables, and no other, from the pane's pi process and picks the key pi picks. A pi started from a WSL shell keeps Ctrl+Q, and Linux, macOS and Windows keep their keys. Reported by @rgruenewald (#797).
 - **A sign-in code is never kept as a draft.** A code typed while the phone's picture of the screen was a moment old could be kept as a draft, because that picture lost the sign-in field. Now the field stays, so the code is never kept.
 - **`collie trick guide` names the status line's limit.** A status text is at most 12 characters, and the guide says so next to the helper's calls, so an agent's message for a missing setting fits.
 - **A trick's code warnings start with one word.** `collie trick check`, `on`, `add` and `propose` print each warning as `warning: <file>:<line> ...`; `propose` printed `warning: warn:`.

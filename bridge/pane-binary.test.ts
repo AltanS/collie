@@ -3,9 +3,9 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { hostFor } from "./host.ts";
+import { hostFor, WSL_FLAGS } from "./host.ts";
 import type { ForegroundProcess } from "./journal/types.ts";
-import { argvFromCmdline, createPaneProfile, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, procProbe, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
+import { argvFromCmdline, createPaneProfile, envFromEnviron, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, procProbe, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
 import { createVersionReader, VersionCache } from "./surface/binary-version.ts";
 import { findTool } from "./tools.ts";
 import { loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
@@ -230,6 +230,80 @@ describe("createPaneProfile — the version of the pane's own program", () => {
     ).toBeNull();
     expect(reads).toBe(0);
   });
+});
+
+// Issues 594 and 797: pi under WSL takes ctrl+q for submit and queue only when WSL_DISTRO_NAME or
+// WSL_INTEROP is in its own environment; without them it takes alt+Enter, kernel or not. The send's
+// profile reads the pane's pi process environment under WSL.
+describe("createPaneProfile — the keys of the pane's agent under WSL", () => {
+  const versions = { programVersion: () => Promise.resolve({ version: "1.3.0", command: undefined }) };
+  const piPid = 4242;
+  const pi = (): ForegroundOutcome => ({ ok: true, value: [ps(["/bin/sh"]), ps(["/opt/pi/bin/pi"], piPid)] });
+  const withEnv = (env: Record<string, string> | null, cmdline?: readonly string[] | null): ProcessProbe => ({
+    ...probe(null, null, cmdline),
+    environOf: (pid, names) => (pid === piPid && env !== null ? Object.fromEntries(Object.entries(env).filter(([name]) => names.includes(name))) : null),
+  });
+  const keysOf = async (platform: string, env: Record<string, string> | null, read: () => Promise<ForegroundOutcome> = () => Promise.resolve(pi()), cmdline?: readonly string[] | null) => {
+    const lookup = createPaneProfile({ versions, binaries: () => binaries, probe: withEnv(env, cmdline), platform, host: linux });
+    const match = await lookup("pi", "p1", read);
+    return { submit: match?.profile.keys.submit, queueKey: match?.profile.keys.queueKey };
+  };
+  const ALT = { submit: ["alt+Enter"], queueKey: "alt+Enter" };
+  const CTRL_Q = { submit: ["ctrl+q"], queueKey: "ctrl+q" };
+
+  test("issue 797: a WSL bridge, a pi started with neither flag: alt+Enter", async () => {
+    expect(await keysOf("wsl", { PATH: "/usr/bin", HOME: "/home/op" })).toEqual(ALT);
+  });
+
+  test("issue 594: a WSL bridge, a pi started with a WSL flag: ctrl+q", async () => {
+    expect(await keysOf("wsl", { WSL_DISTRO_NAME: "Distro", WSL_INTEROP: "/run/WSL/9_interop" })).toEqual(CTRL_Q);
+    expect(await keysOf("wsl", { WSL_INTEROP: "/run/WSL/9_interop" })).toEqual(CTRL_Q);
+  });
+
+  test("no proof of pi's environment keeps the bridge's answer: ctrl+q under WSL", async () => {
+    // An environment that cannot be read, a pid whose argv is not the reported one, a refused read, no read.
+    expect(await keysOf("wsl", null)).toEqual(CTRL_Q);
+    expect(await keysOf("wsl", { PATH: "/usr/bin" }, undefined, ["/usr/bin/other"])).toEqual(CTRL_Q);
+    expect(await keysOf("wsl", { PATH: "/usr/bin" }, () => Promise.resolve<ForegroundOutcome>({ ok: false }))).toEqual(CTRL_Q);
+    const lookup = createPaneProfile({ versions, binaries: () => binaries, probe: withEnv({ PATH: "/usr/bin" }), platform: "wsl", host: linux });
+    expect((await lookup("pi"))?.profile.keys.submit).toEqual(["ctrl+q"]);
+  });
+
+  test("linux, darwin and win32 keep their keys, whatever pi's environment holds", async () => {
+    const envs: Array<Record<string, string> | null> = [{ WSL_DISTRO_NAME: "Distro" }, {}, null];
+    for (const env of envs) {
+      expect(await keysOf("linux", env)).toEqual(ALT);
+      expect(await keysOf("darwin", env)).toEqual(ALT);
+      expect(await keysOf("win32", env)).toEqual(CTRL_Q);
+    }
+  });
+});
+
+test("envFromEnviron reads NUL-separated NAME=value entries, only the named ones", () => {
+  expect(envFromEnviron("A=1\0B=x=y\0EMPTY=\0junk\0", ["A", "B", "EMPTY", "junk"])).toEqual({ A: "1", B: "x=y", EMPTY: "" });
+  expect(envFromEnviron("", ["A"])).toEqual({});
+});
+
+test("envFromEnviron drops every variable it is not asked for, a secret first", () => {
+  const raw = "SOME_API_KEY=value\0WSL_INTEROP=/run/WSL/9_interop\0PATH=/usr/bin\0";
+  const env = envFromEnviron(raw, WSL_FLAGS);
+  expect(env).toEqual({ WSL_INTEROP: "/run/WSL/9_interop" });
+  expect("SOME_API_KEY" in env).toBe(false);
+  expect(JSON.stringify(env)).not.toContain("value");
+  expect(envFromEnviron(raw, [])).toEqual({});
+});
+
+test.skipIf(process.platform !== "linux")("procProbe reads a live process's environment, and nothing on another host", () => {
+  const child = Bun.spawn(["sleep", "30"], { env: { PATH: "/usr/bin:/bin", COLLIE_PROBE_MARK: "seen", SOME_API_KEY: "value" } });
+  try {
+    const real = procProbe(linux);
+    for (let i = 0; i < 100 && real.cmdlineOf(child.pid)?.length === 0; i++) Bun.sleepSync(10);
+    expect(real.environOf?.(child.pid, ["COLLIE_PROBE_MARK", "WSL_INTEROP"])).toEqual({ COLLIE_PROBE_MARK: "seen" });
+    expect(real.environOf?.(2 ** 31 - 2, ["PATH"])).toBeNull();
+    expect(procProbe(hostFor("darwin")).environOf?.(child.pid, ["PATH"])).toBeNull();
+  } finally {
+    child.kill();
+  }
 });
 
 // Two copies of one harness on disk, as in the 1.24.1 live check (W5): the PATH holds one, the pane runs

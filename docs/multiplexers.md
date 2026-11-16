@@ -884,7 +884,9 @@ Collie checks that the character lands in the box, then removes it.
   A pi dialog opens between the same two rules.
   So Collie reads the key hints and the list from the top rule down.
   In pi, Enter steers a running turn, but Alt+Enter sends on an idle box and queues in a turn.
-  So Collie sends with Alt+Enter, and with Ctrl+Q on Windows and in WSL.
+  So Collie sends with Alt+Enter, and with Ctrl+Q on Windows.
+  In WSL, pi takes Ctrl+Q only when `WSL_DISTRO_NAME` or `WSL_INTEROP` is set in its own environment.
+  Under Herdr and the Herdr core, Collie reads the pi process's environment and sends the same key; elsewhere it sends Ctrl+Q in WSL.
   pi shows a queued message as a `Follow-up:` row above the box.
   A box taller than 30 rows does not read as a box. The screen reads as unknown, and a send needs your tap.
   Gentle Shell 4.5.1, which bundles pi 1.4.0, draws a float editor instead: a left rail of `▎` rows

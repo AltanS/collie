@@ -81,13 +81,34 @@ export interface SurfacePlatformSource {
  * except under WSL: a Linux kernel that is Microsoft's, where an agent program may take the Windows
  * key set. A profile opts in with a `wsl` entry; one without keeps its default keys. WSL shows in `WSL_DISTRO_NAME` or
  * `WSL_INTEROP`, or in a `/proc/version` line that names Microsoft; either signal counts. Only the
- * profile lookup reads this: paths, units and checks keep reading {@link HOST}.
+ * profile lookup reads this: paths, units and checks keep reading {@link HOST}. A send narrows it per
+ * pane with {@link paneSurfacePlatform}.
  */
 export function surfacePlatform(source: SurfacePlatformSource): string {
   if (source.platform !== "linux") return source.platform;
-  const { WSL_DISTRO_NAME: distro, WSL_INTEROP: interop } = source.env;
-  if ((distro ?? "") !== "" || (interop ?? "") !== "") return "wsl";
+  if (hasWslFlags(source.env)) return "wsl";
   return /microsoft/i.test(source.readProcVersion() ?? "") ? "wsl" : "linux";
+}
+
+/** The variables that mark a WSL process. The only names the bridge reads from an agent's environment. */
+export const WSL_FLAGS = ["WSL_DISTRO_NAME", "WSL_INTEROP"] as const;
+
+function hasWslFlags(env: Readonly<Record<string, string | undefined>>): boolean {
+  return WSL_FLAGS.some((name) => (env[name] ?? "") !== "");
+}
+
+/**
+ * The platform for one pane: the bridge's {@link surfacePlatform}, narrowed by the environment of the
+ * pane's agent process when the bridge can read it. An agent that takes the Windows keys under WSL
+ * decides by `WSL_DISTRO_NAME` or `WSL_INTEROP` in its own environment, not by the kernel (issue 797):
+ * a WSL shell sets them, a service manager's terminal may not. So under WSL a pane whose agent has
+ * neither flag is `linux`, one with a flag stays `wsl`, and an environment the bridge cannot read
+ * (null: no foreground pid, another user, no `/proc`) keeps the bridge's answer. Every other platform
+ * is the bridge's answer as it is.
+ */
+export function paneSurfacePlatform(bridge: string, agentEnv: Readonly<Record<string, string | undefined>> | null): string {
+  if (bridge !== "wsl" || agentEnv === null) return bridge;
+  return hasWslFlags(agentEnv) ? "wsl" : "linux";
 }
 
 // ── The one place a collie binary file name is written ───────────────────────
