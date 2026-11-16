@@ -308,12 +308,11 @@ The rule today: [0146](./0146-a-durable-agent-is-a-session-with-no-screen-that-a
 
 ### Usage and accounts
 
-The rule today: A cache rule shown on screen carries a dated source, and a measured value beats a table (0041). The context reading comes from the operator's own statusLine for Claude and from the journal for the other harnesses (0115); the account windows come from the vendor's usage endpoint with the operator's own login, which Collie reads locally and never stores (0118 is newer than 0115 and wins where they differ). An account is a label, a harness and a folder the agent already understands, and Collie holds no login (0141, still Proposed). A notification kind is a bridge-wide switch that defaults off (0042).
-
-One live record for this topic is being written.
+The rule today: 0149 states the usage figures. The context and the cost are the session's and come from what the harness states: Claude's beacon hooks with the window size from the wrapped statusLine (the wrap is the default), the session logs and model catalogs for the other harnesses, and a token count where no window is stated. The account windows are the agent's own list, asked of the vendor with the login the harness keeps on this machine, read for one request and not stored, per account folder. 0115 and 0118 are its history. An account is a label, a harness and a folder the agent already understands, and the person signs in inside the agent (0141, still Proposed). Two cache records stand apart: a cache rule shown on screen carries a dated source (0041), and a notification kind is a bridge-wide switch that defaults off (0042).
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0149](./0149-usage-figures-are-what-the-agent-states-and-the-account-is-asked-with-its-own-login.md) | Usage figures are what the agent states; the account windows are asked with the harness's own login, per account folder. | Accepted |
 | [0041](./0041-cache-rules-are-sourced-claims.md) | Every cache number shown carries a dated source. | Accepted |
 | [0042](./0042-notification-kinds-and-the-cache-watch.md) | A notification kind is a bridge-wide switch that defaults off; a cache watch is per pane. | Accepted |
 | [0115](./0115-usage-numbers-come-from-the-operators-own-statusline.md) | Usage context comes from the operator's own statusLine wrapper and the journal. | Accepted, amended in scope by 0118 |
