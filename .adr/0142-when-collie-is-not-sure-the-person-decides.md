@@ -3,7 +3,8 @@
 - **Status:** Accepted (2026-11-16). Rules 1, 2 and 6 hold in part today; rules 3, 4, 5 and 7 wait for
   the milestone "No block without an exit" (see "Decided, not built yet").
 - **Date:** 2026-11-16
-- **Supersedes:** ADR 0117. **Amends in scope:** ADR 0009 and ADR 0053 (rule 3).
+- **Supersedes:** ADR 0117
+- **Amends in scope:** ADR 0009, ADR 0053 and ADR 0151 (rule 2, 3f), all by rule 3
 - **Trail:** the other road is the old posture: a provable receipt first, a block when Collie is unsure.
   It was argued in #34 (a blind Enter approved a permission dialog), in the `/model` digit probe of
   ADR 0009, in #103 (a password prompt) and in #623 (late keys). Field reports of 2026-11-16 argue
@@ -27,10 +28,12 @@ a failure. About 30 records shaped this road one case at a time, and none states
 1. Collie may refuse to act alone. It never refuses the person's informed tap. The person sees the
    screen; Collie only reads a copy.
 2. No block without an exit. Every stop card says what Collie sees, and the next step is on the card.
-3. A screen Collie cannot read shows the live screen, the plain keys a person needs (Enter, the arrows,
-   Esc) and "Type it anyway". This changes ADR 0009 in one point: the card may offer plain keys the
-   screen did not print. They are labelled as keys, never as answers. Collie still never invents a
-   key to press by itself.
+3. A screen Collie cannot read gets one card, and its keys are the person's own Keys pad, not a
+   second keyboard. The pad opens once per dialog, and only when no drawer is open; its digits stay
+   closed. The card holds a caption, the live screen, the adapter's declared key with its second
+   tap, and "Type it anyway". It draws a key only for a core key (Esc, Enter, an arrow) the person's
+   board lacks, named as a key, never as an answer. This changes ADR 0009 and ADR 0151 (rule 2, 3f)
+   in one point: the person may press plain keys the screen did not print. Collie never presses one.
 4. "Cannot tell if this was sent" shows the screen as it is now and two actions. "It arrived" clears
    the card. "Send again" is a new request, made by the person's tap.
 5. The receipt stays honest, but it is no gate. A send by the person's override is recorded as sent
@@ -39,7 +42,7 @@ a failure. About 30 records shaped this road one case at a time, and none states
 6. Four hard stops stay, because the risk is real. Each card names the reason and the next step.
    a. No message into an open permission prompt or question: text can approve a command.
    b. No secret into a normal field, the hold queue or any store. Where Collie knows the screen asks
-      for a secret, the composer is the secret field, and "Send again" means: enter it again.
+      for a secret, the composer is the secret field, and "Send again" reads "Enter it again".
    c. Collie never sends again by itself: one request id, one road, never twice automatically.
    d. No WalkyTalky message from another agent over the person's draft.
 7. A stop card without an exit is a bug. The trouble tally counts such cards.
@@ -84,8 +87,8 @@ the `offersFor` table for sends).
 
 - Rule 2 in full: `not_free`, `probe_failed` and `unknown` offer only the Keys pad today, and the
   sentence does not name a next step (`offersFor`, `web/src/lib/i18n/messages/en.ts`).
-- Rule 3: the unread-dialog card offers one declared key, and a screen with no declared key or no
-  modal evidence gets no card. It gains Enter, the arrows, Esc and "Type it anyway".
+- Rule 3 (M102 spec 03): the unread card offers one declared key, and a screen without one or without
+  modal evidence gets none. It gains the Keys pad, a missing core key and "Type it anyway".
 - Rule 4: `unknown` gains "It arrived" and "Send again" on its card. The queued card's `unconfirmed`
   state gains "Send again" beside Discard.
 - Rule 5: a receipt word for "sent on the person's word". The outcome list is closed, so it is a new
@@ -108,9 +111,8 @@ the `offersFor` table for sends).
 ## What we tried before
 
 - 0004, 0048, 0005: the box is found by its own frame; a composed key queue never outlives its dock.
-- 0009: a generic menu sends only the keys it names, never digits (changed here by rule 3).
+- 0009, 0053: a menu sends only keys it names, never digits; the unread card (both changed by rule 3).
 - 0010, 0017: a long send is proven by its paste placeholder; a password prompt changes only words.
-- 0053: an unread dialog gets its adapter's declared cancel key (changed here by rule 3).
 - 0054 to 0061, 0076 to 0079, 0098, 0108, 0133: the dialog rules, now ADR 0151.
 - 0080, 0109, 0113: a pointed list is walked, verified, confirmed; a notice above the box is not a
   modal; an AskUserQuestion answer is typed into its field, cleared only when it holds what was seen.

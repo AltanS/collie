@@ -1,6 +1,6 @@
 # 0151: A dialog becomes a card by its own words, and a tap sends what the screen printed
 
-- **Status:** Accepted (2026-11-16)
+- **Status:** Accepted (2026-11-16). Amended in scope by [ADR 0142](./0142-when-collie-is-not-sure-the-person-decides.md) (rule 2, 3f; not built yet)
 - **Date:** 2026-11-16
 - **Supersedes:** ADR 0054, ADR 0055, ADR 0056, ADR 0058, ADR 0059, ADR 0061, ADR 0076, ADR 0077, ADR 0078, ADR 0079, ADR 0098, ADR 0108, ADR 0133
 - **Retires:** ADR 0072 (rule in `web/src/lib/table-run.ts`)

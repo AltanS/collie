@@ -95,8 +95,7 @@ stays the contract. People read "durable agent"; the code, `program` and old rec
 
 ## Recorded, not found in the code
 
-- "An operator who turns rows off turns starters off too" (ADR 0102). No launcher switch reaches
-  the starter rows; only `COLLIE_PROGRAMS=off` removes them, with the whole session.
+- 0102 point 4 was dropped on 2026-11-16, never built.
 - `sources.json` is "mode 0600": the attach verb writes it so; the bridge reads it with no check.
 - "A change that must touch a terminal path says so in its commit message" (ADR 0104).
 - `/api/config` without `session` answers the primary "for one minor release": no end is coded.
